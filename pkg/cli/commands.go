@@ -116,6 +116,22 @@ func (c serveCmd) Run(g *Globals) error {
 	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log})
 }
 
+type drainCmd struct {
+	Pool string `help:"Drain only this pool (default: every pool and session)."`
+}
+
+func (c drainCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodDrain, rpc.DrainParams{Pool: c.Pool}, nil)
+}
+
+type undrainCmd struct {
+	Pool string `help:"Undrain only this pool (default: clear every drain)."`
+}
+
+func (c undrainCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodDrain, rpc.DrainParams{Pool: c.Pool, Undrain: true}, nil)
+}
+
 type shutdownCmd struct {
 	All  bool          `help:"Also end every session (stops agents and hosts)."`
 	Wait time.Duration `default:"2m" help:"How long to wait for the controller to exit."`

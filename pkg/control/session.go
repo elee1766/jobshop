@@ -400,6 +400,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 	idle := config.Duration(pool.IdleTimeout, defaultIdle)
 	idleSince := time.Now()
 	for {
+		if r.c.poolDrained(r.pool) && r.idle() {
+			return errSessionEnd{resolution: resolutionDrained}
+		}
 		t, _, err := r.c.store.ClaimNext(ctx, store.ClaimNext{
 			Project: r.project(), Pool: r.pool, Holder: r.id, Lease: r.c.lease,
 		})
@@ -776,7 +779,7 @@ func (c *Controller) supervise() {
 		return
 	}
 	for name, p := range c.cfg.Pools {
-		if p.MaxSessions == 0 {
+		if p.MaxSessions == 0 || c.poolDrained(name) {
 			continue
 		}
 		open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: name})
