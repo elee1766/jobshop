@@ -72,3 +72,50 @@ func dial(t *testing.T, path string) *rpc.Client {
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
+
+// TestSessionListEnded filters closed sessions by resolution and close time,
+// the one-command evidence the gasserver runbook uses.
+func TestSessionListEnded(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte("projects:\n  js: {}\n"), 0o600))
+	root := config.Root{Dir: dir}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- control.Run(ctx, root, control.Options{Tick: time.Hour}) }()
+	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
+
+	admin := dial(t, root.AdminSocket())
+	newSess := func(resolution string) string {
+		var s rpc.SessionNewResult
+		require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &s))
+		if resolution != "" {
+			require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: s.Ticket.ID, Resolution: resolution}, nil))
+		}
+		return s.Ticket.ID
+	}
+	crashed := newSess("crashed")
+	newSess("done")
+	newSess("")
+
+	ids := func(p rpc.SessionListParams) []string {
+		var infos []rpc.SessionInfo
+		require.NoError(t, admin.Call(ctx, rpc.MethodSessionList, p, &infos))
+		out := []string{}
+		for _, i := range infos {
+			out = append(out, i.ID)
+		}
+		return out
+	}
+	assert.Equal(t, []string{crashed}, ids(rpc.SessionListParams{State: "crashed"}))
+	assert.Equal(t, []string{crashed}, ids(rpc.SessionListParams{State: "crashed", Since: time.Hour}))
+	assert.Len(t, ids(rpc.SessionListParams{Since: time.Hour}), 2, "closed sessions only")
+	assert.Empty(t, ids(rpc.SessionListParams{State: "crashed", Since: time.Nanosecond}))
+	assert.Len(t, ids(rpc.SessionListParams{All: true}), 3)
+
+	err = admin.Call(ctx, rpc.MethodSessionList, rpc.SessionListParams{Since: -time.Hour}, nil)
+	assert.ErrorIs(t, err, store.ErrInvalid)
+}

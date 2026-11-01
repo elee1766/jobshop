@@ -182,8 +182,14 @@ type SessionNewResult struct {
 }
 
 // SessionListParams selects sessions. All includes closed session tickets.
+// State keeps only sessions with that resolution (for example "crashed"),
+// and Since only sessions closed within that duration. Either one selects
+// closed sessions only and leaves orphan hosts out, so the result is
+// evidence about ended sessions alone.
 type SessionListParams struct {
-	All bool `json:"all,omitempty"`
+	All   bool          `json:"all,omitempty"`
+	State string        `json:"state,omitempty"`
+	Since time.Duration `json:"since,omitempty"`
 }
 
 // SessionRestartParams restarts one session's host. Without Now a busy
