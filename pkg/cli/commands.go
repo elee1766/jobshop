@@ -383,6 +383,7 @@ func (c labelRm) Run(g *Globals) error {
 type sessionCmd struct {
 	New  sessionNewCmd  `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
 	List sessionListCmd `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
+	Reap sessionReapCmd `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
 }
 
 type sessionListCmd struct {
@@ -391,6 +392,18 @@ type sessionListCmd struct {
 
 func (c sessionListCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodSessionList, rpc.SessionListParams{All: c.All}, nil)
+}
+
+type sessionReapCmd struct {
+	Closed    bool          `help:"Also delete directories (and worktrees) of closed sessions."`
+	OlderThan time.Duration `default:"24h" help:"With --closed, only sessions closed longer ago than this."`
+	DryRun    bool          `help:"Report what would be done without doing it."`
+}
+
+func (c sessionReapCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionReap, rpc.SessionReapParams{
+		Closed: c.Closed, OlderThan: c.OlderThan, DryRun: c.DryRun,
+	}, nil)
 }
 
 type sessionNewCmd struct {

@@ -37,6 +37,7 @@ const (
 	MethodRelease      = "release"
 	MethodSessionNew   = "session.new"
 	MethodSessionList  = "session.list"
+	MethodSessionReap  = "session.reap"
 	MethodWhoami       = "whoami"
 	MethodShutdown     = "controller.shutdown"
 )
@@ -191,6 +192,24 @@ type SessionInfo struct {
 	Seq      int64         `json:"seq,omitempty"`       // last journal sequence number
 	SeqTime  *time.Time    `json:"seq_time,omitempty"`
 	Exit     string        `json:"exit,omitempty"` // exit.json reason, for dead hosts
+}
+
+// SessionReapParams cleans up session leftovers. Hosts with no open session
+// ticket are always stopped. Closed removes the directories (and git
+// worktrees) of sessions closed more than OlderThan ago. DryRun reports
+// without acting.
+type SessionReapParams struct {
+	Closed    bool          `json:"closed,omitempty"`
+	OlderThan time.Duration `json:"older_than,omitempty"` // default 24h
+	DryRun    bool          `json:"dry_run,omitempty"`
+}
+
+// SessionReapResult names what was (or, with DryRun, would be) stopped and
+// removed.
+type SessionReapResult struct {
+	Stopped []string `json:"stopped"`
+	Removed []string `json:"removed"`
+	DryRun  bool     `json:"dry_run,omitempty"`
 }
 
 // Whoami describes the caller's scope.

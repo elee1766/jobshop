@@ -314,6 +314,7 @@ func init() {
 		rpc.MethodRelease:      bind((*Controller).release),
 		rpc.MethodSessionNew:   bind((*Controller).sessionNew),
 		rpc.MethodSessionList:  bind((*Controller).sessionList),
+		rpc.MethodSessionReap:  bind((*Controller).sessionReap),
 		rpc.MethodShutdown:     bind((*Controller).shutdown),
 	}
 }

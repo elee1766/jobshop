@@ -405,6 +405,69 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	return info, nil
 }
 
+// sessionReap stops orphaned hosts (the startup reapOrphans rule) and, with
+// Closed, deletes old closed sessions' directories (plan 8.4 item 5). An
+// open session is never touched: only closed tickets' directories are
+// removed, and only after their host is dead.
+func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionReapParams) (any, error) {
+	if err := requireAdmin(sc, "session reap"); err != nil {
+		return nil, err
+	}
+	if p.OlderThan <= 0 {
+		p.OlderThan = 24 * time.Hour
+	}
+	res := rpc.SessionReapResult{Stopped: []string{}, Removed: []string{}, DryRun: p.DryRun}
+	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range c.orphans(open) {
+		if !p.DryRun {
+			c.log.Warn("stopping orphaned host", "session", id)
+			stopHost(c.root.SessionDir(id))
+		}
+		res.Stopped = append(res.Stopped, id)
+	}
+	if !p.Closed {
+		return res, nil
+	}
+	closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed})
+	if err != nil {
+		return nil, err
+	}
+	cutoff := c.now().Add(-p.OlderThan)
+	for _, t := range closed {
+		dir := c.root.SessionDir(t.ID)
+		if t.ClosedAt.IsZero() || t.ClosedAt.After(cutoff) {
+			continue
+		}
+		if _, err := os.Stat(dir); err != nil {
+			continue
+		}
+		// Still alive after the stop above means stopHost could not end it;
+		// leave it for a later run rather than delete under a live host.
+		if !p.DryRun && host.Alive(dir) {
+			c.log.Warn("reap: host still alive, keeping dir", "session", t.ID)
+			continue
+		}
+		if !p.DryRun {
+			c.removeWorktree(t)
+			if err := os.RemoveAll(dir); err != nil {
+				return res, fmt.Errorf("remove %s: %w", dir, err)
+			}
+		}
+		res.Removed = append(res.Removed, t.ID)
+	}
+	return res, nil
+}
+
+func (c *Controller) now() time.Time {
+	if c.opt.Now != nil {
+		return c.opt.Now()
+	}
+	return time.Now()
+}
+
 func (c *Controller) shutdown(_ context.Context, sc scope, p rpc.ShutdownParams) (any, error) {
 	if err := requireAdmin(sc, "shutdown"); err != nil {
 		return nil, err
