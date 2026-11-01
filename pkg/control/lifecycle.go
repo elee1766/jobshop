@@ -13,21 +13,30 @@ import (
 // between spawn and record, or from a session closed while the controller
 // was down.
 func (c *Controller) reapOrphans(open []store.Ticket) {
+	for _, id := range c.orphans(open) {
+		c.log.Warn("stopping orphaned host", "session", id)
+		stopHost(c.root.SessionDir(id))
+	}
+}
+
+// orphans lists session directories with a live host whose session is not
+// in open.
+func (c *Controller) orphans(open []store.Ticket) []string {
 	keep := map[string]bool{}
 	for _, t := range open {
 		keep[t.ID] = true
 	}
 	entries, err := os.ReadDir(c.root.SessionDir(""))
 	if err != nil {
-		return
+		return nil
 	}
+	var out []string
 	for _, e := range entries {
-		dir := c.root.SessionDir(e.Name())
-		if !keep[e.Name()] && host.Alive(dir) {
-			c.log.Warn("stopping orphaned host", "session", e.Name())
-			stopHost(dir)
+		if !keep[e.Name()] && host.Alive(c.root.SessionDir(e.Name())) {
+			out = append(out, e.Name())
 		}
 	}
+	return out
 }
 
 // stopAll is the full shutdown: end every session, then stop.

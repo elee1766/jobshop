@@ -418,6 +418,14 @@ Leak prevention, layered:
    spawn-then-crash window.
 5. Visible: `jobshop session list --all` shows store vs live processes;
    `jobshop session reap` cleans up.
+   (2026-11-01) `session reap` is implemented (admin socket, method
+   `session.reap`). It stops every host whose session directory has no
+   open session ticket, the same rule `reapOrphans` applies at startup.
+   With `--closed` it also deletes the directories of sessions closed more
+   than `--older-than` ago (default 24h), removing the pool's git worktree
+   first. A directory whose host is still alive after the stop is kept for
+   a later run. Open sessions are never touched. `--dry-run` reports the
+   same `stopped` / `removed` lists without acting.
 
 Not planned: upgrading a running host in place (re-exec preserving fds).
 Possible later; see the Pdeathsig thread caveat noted in discussion.

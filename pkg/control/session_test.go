@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -32,6 +33,10 @@ func TestMain(m *testing.M) {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "fake-agent" {
 		fakeAgent()
+		os.Exit(0)
+	}
+	if len(os.Args) >= 3 && os.Args[1] == "hold-lock" {
+		holdLock(os.Args[2])
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
@@ -79,6 +84,71 @@ func TestControllerRestart(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(pid), string(pid2), "same host adopted")
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
+}
+
+// holdLock poses as a host for dir: takes its lock, writes its pid, and
+// waits to be signalled.
+func holdLock(dir string) {
+	f, err := os.Create(filepath.Join(dir, host.LockFile))
+	if err != nil || syscall.Flock(int(f.Fd()), syscall.LOCK_EX) != nil {
+		os.Exit(1)
+	}
+	_ = os.WriteFile(filepath.Join(dir, host.PidFile), fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600)
+	time.Sleep(time.Minute)
+}
+
+// TestSessionReap stops a host with no session ticket and, with Closed,
+// removes a closed session's directory while leaving an open one alone.
+func TestSessionReap(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+
+	// External sessions (agent not configured) get a directory but no host.
+	newSession := func() store.Ticket {
+		var r rpc.SessionNewResult
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "ext"}, &r))
+		return r.Ticket
+	}
+	open, closed := newSession(), newSession()
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: closed.ID}, nil))
+	require.DirExists(t, root.SessionDir(closed.ID))
+
+	// Made after startup so the controller's startup reaping leaves it.
+	odir := root.SessionDir("js-orphan")
+	require.NoError(t, os.MkdirAll(odir, 0o700))
+	holder := exec.Command(os.Args[0], "hold-lock", odir)
+	require.NoError(t, holder.Start())
+	exited := make(chan struct{})
+	go func() { _ = holder.Wait(); close(exited) }()
+	t.Cleanup(func() { _ = holder.Process.Kill(); <-exited })
+	require.Eventually(t, func() bool { return host.Alive(odir) }, 5*time.Second, 10*time.Millisecond)
+
+	params := rpc.SessionReapParams{Closed: true, OlderThan: time.Nanosecond, DryRun: true}
+	var res rpc.SessionReapResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionReap, params, &res))
+	assert.Equal(t, []string{"js-orphan"}, res.Stopped)
+	assert.Equal(t, []string{closed.ID}, res.Removed)
+	assert.True(t, host.Alive(odir), "dry run stops nothing")
+	assert.DirExists(t, root.SessionDir(closed.ID), "dry run removes nothing")
+
+	params.DryRun = false
+	res = rpc.SessionReapResult{}
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionReap, params, &res))
+	assert.Equal(t, []string{"js-orphan"}, res.Stopped)
+	assert.Equal(t, []string{closed.ID}, res.Removed)
+	select {
+	case <-exited:
+	case <-time.After(15 * time.Second):
+		t.Fatal("orphan host not stopped")
+	}
+	assert.NoDirExists(t, root.SessionDir(closed.ID))
+	assert.DirExists(t, root.SessionDir(open.ID), "open session untouched")
+
+	// Sessions cannot reap.
+	sess := dial(t, filepath.Join(root.SessionDir(open.ID), "cli.sock"))
+	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodSessionReap, rpc.SessionReapParams{DryRun: true}, nil), rpc.ErrForbidden)
 }
 
 // poolRoot writes a root with one fake-agent pool. start runs a controller
