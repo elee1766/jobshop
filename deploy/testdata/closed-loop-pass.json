@@ -1,0 +1,33 @@
+{
+  "id": "js-plan1",
+  "title": "Plan next step",
+  "pool": "plan",
+  "status": "closed",
+  "resolution": "done",
+  "created_by": "controller",
+  "trigger": "replan",
+  "holders": ["js-sessP"],
+  "links": ["https://github.com/elee1766/jobshop/issues/70"],
+  "children": [
+    {
+      "id": "js-dev1",
+      "title": "Resolve elee1766/jobshop#70",
+      "pool": "refinery",
+      "status": "closed",
+      "resolution": "done",
+      "created_by": "js-sessP",
+      "holders": ["js-sessD", "js-sessR"],
+      "links": [
+        "https://github.com/elee1766/jobshop/issues/70",
+        "https://github.com/elee1766/jobshop/pull/74"
+      ]
+    },
+    {
+      "id": "js-dev2",
+      "title": "Resolve elee1766/jobshop#73",
+      "pool": "dev",
+      "status": "open",
+      "created_by": "js-sessP"
+    }
+  ]
+}
