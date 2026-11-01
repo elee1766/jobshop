@@ -300,6 +300,11 @@ and `work/` (git worktree when the pool sets `repo`).
   the host.
 - Git: `fetch` then `worktree add --detach <ref>` per session, removed when
   the session ends; git calls on one repo are serialized.
+- A worktree deleted under a live session (seen on gasserver 2026-11-01:
+  every tool call failed for five hours, tickets claimed and dropped) makes
+  the runner respawn the host before its next claim. Spawning prunes stale
+  worktree registrations and adds a fresh worktree at `ref`; the
+  conversation and claims are kept, uncommitted work in the old one is lost.
 - `${SESSION_DIR}` expands in agent args.
 
 ### 7.2 Env refresh and session restart (#11, #37)

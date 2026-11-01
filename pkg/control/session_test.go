@@ -513,6 +513,60 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	return root, start
 }
 
+// TestWorktreeDeleted removes a live session's git worktree, as happened on
+// gasserver (2026-11-01): the session respawns its host with a new worktree
+// and keeps working instead of failing every tool call.
+func TestWorktreeDeleted(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	repo := filepath.Join(root.Dir, "repo")
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "master", repo},
+		{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"},
+	} {
+		out, err := exec.Command("git", args...).CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    repo: %q\n    ref: master\n", os.Args[0], repo)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
+	stop := start()
+	defer stop()
+
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	var first store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
+	require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	sdir := root.SessionDir(sessions[0].ID)
+	work := filepath.Join(sdir, "work")
+	oldPid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	require.NoError(t, err)
+	require.NoError(t, os.RemoveAll(work))
+
+	require.Eventually(t, func() bool {
+		pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+		_, werr := os.Stat(work)
+		return err == nil && string(pid) != string(oldPid) && werr == nil
+	}, 20*time.Second, 50*time.Millisecond, "host respawned with a new worktree")
+
+	var second store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
+	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	sessions = nil
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	assert.Len(t, sessions, 1, "same session, not a new one")
+	assert.Equal(t, store.StatusOpen, sessions[0].Status)
+}
+
 // TestPoolSession runs a pool end to end: ready work starts a session, the
 // agent closes the ticket through its CLI socket, and the idle session ends
 // with its host.

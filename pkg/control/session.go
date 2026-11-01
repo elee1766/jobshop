@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"net"
@@ -548,6 +549,20 @@ func (r *runner) crashCount() int {
 	return n
 }
 
+// worktreeMissing reports whether the session's git worktree was deleted
+// under a live host (only pools with a repo get one).
+func (r *runner) worktreeMissing() bool {
+	t, err := r.c.store.Get(r.ctx, r.id)
+	if err != nil {
+		return false
+	}
+	if p, ok := r.c.config().Pools[t.Pool]; !ok || p.Repo == "" {
+		return false
+	}
+	_, err = os.Stat(r.c.sessionCwd(t))
+	return errors.Is(err, fs.ErrNotExist)
+}
+
 func (r *runner) refresh(nc net.Conn) error {
 	r.log.Info("refreshing host env", "host_pid", hostPid(r.dir))
 	_ = nc.Close()
@@ -605,6 +620,16 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 	for {
 		if r.wantsRestart() {
 			return r.restart(nc)
+		}
+		if r.worktreeMissing() {
+			// Every tool call fails in a deleted cwd, so turns would only
+			// claim and drop tickets. Respawning recreates the worktree
+			// (spawnHost) and keeps the conversation and claims.
+			r.log.Warn("session worktree missing, respawning host", "host_pid", hostPid(r.dir))
+			r.lifecycle("worktree_missing")
+			_ = nc.Close()
+			stopHost(r.dir)
+			return errRefresh
 		}
 		// Queued messages go before the next claim, so also after each turn.
 		if err := r.deliver(ctx, conn, acpSession); err != nil {
@@ -1034,6 +1059,11 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) error {
 	// remote) still allows a worktree from what is there.
 	if out, err := exec.Command("git", "-C", p.Repo, "fetch", "--quiet", "--prune").CombinedOutput(); err != nil {
 		c.log.Warn("git fetch", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
+	}
+	// A worktree deleted without git (rm -rf) stays registered and makes
+	// `worktree add` refuse the same path.
+	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "prune").CombinedOutput(); err != nil {
+		c.log.Warn("git worktree prune", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
 	}
 	out, err := exec.Command("git", "-C", p.Repo, "worktree", "add", "--detach", cwd, ref).CombinedOutput()
 	if err != nil {
