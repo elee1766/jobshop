@@ -147,14 +147,16 @@ New for Jobshop:
   not a rewrite.
 - **YAML config** (decided 2026-11-01).
 
-### Open questions
-- Should the store expose a generic graph (nodes, typed edges, metadata), or
-  first-class types (ticket, message, session, schedule)? Gas City stores
-  everything as beads plus about 200 `gc.*` metadata keys
-  (`internal/beadmeta`). That is flexible but implicit.
-- How strict do we want the schema to be versus a metadata map?
+### Decided (2026-11-01)
+- Generic graph of tickets with an engine-defined `kind`, not separate
+  tables per concept (sessions and messages are kinds too).
+- Kind-specific engine data is typed per kind in Go. Packs get a free-form
+  `meta` document the engine never reads. Packs do not declare schemas.
+  See `docs/data-model.md`.
 
-## 5. Ticket store interface (sketch)
+## 5. Ticket store
+
+Full tables and queries: `docs/data-model.md`.
 
 Starting point: Gas City's `beads.Store` (24 methods: create, get, update,
 close, reopen, delete, list and filter, `Ready`, children, metadata, `Tx`,
@@ -168,22 +170,26 @@ building in from the start:
 - **Ready frontier query** (open, unblocked, not deferred).
 - **Graph apply**: create a run's tickets and edges in one transaction
   (`sqlite_store_graph_apply.go`).
-- **Ephemeral tier** for ephemeral runs.
-- **Typed edges**: `blocks`, `parent-child`, `tracks`, `waits-for` cover nearly
-  all of Gas City's usage.
+- **Ephemeral flag** for short-lived tickets, reaped after close.
+- **Engine-defined edges**: `blocks` and `waits_for` block readiness;
+  `tracks` is informational. Parent-child is the `parent_id` column.
 
 A conformance test suite that every backend must pass, written before the
 SQLite implementation.
 
-### Open questions
-- Should classes (work, graph, sessions, messaging, ...) be separate tables,
-  separate stores, or a column?
-- Do we need Gas City's "split city" (class bindings across stores) at all?
-  It accounts for a lot of complexity (`cmd/gc/bd_split_*`).
-- Multi-project: one database or one per project? We currently run one
-  work store per rig plus a shared infra store.
-- Is `modernc.org/sqlite` (pure Go, what Gas City uses) acceptable, or do we
-  want cgo?
+### Decided (2026-11-01)
+- One database per install. `project` is a column. No storage classes, no
+  split stores.
+- SQLite driver: `modernc.org/sqlite` (pure Go, no cgo).
+- Ticket IDs: random with a per-project prefix (e.g. `js-4f2a9c`).
+- Claims are released by the controller as soon as it knows a session is
+  dead. The lease is a backstop, swept by the controller every tick, and
+  expiry returns the ticket straight to `open`.
+- Comments have their own table. `history` is an audit log, not an event
+  stream.
+- CLI and admin sockets speak JSON-RPC 2.0 using `go.lsp.dev/jsonrpc2`
+  (github.com/go-language-server/jsonrpc2) with NDJSON framing, matching
+  ACP. Requires Go 1.26+.
 
 ## 6. What could be reused from Gas City
 
@@ -470,8 +476,8 @@ Recovery below the host:
   or spill to the journal only?
 - Lease length before an orphaned host shuts down.
 - Human attach: read-only tail of the journal, or allow injecting input?
-- Which socket protocol for the CLI: JSON-RPC (matches ACP), or plain
-  JSON lines?
+- Which socket protocol for the CLI: decided, JSON-RPC via
+  `go.lsp.dev/jsonrpc2` (section 5).
 
 ## 9. Observability (proposed)
 
