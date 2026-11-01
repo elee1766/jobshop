@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -34,6 +35,84 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(m.Run())
+}
+
+// TestControllerRestart restarts the controller mid-turn: the host and
+// agent survive, the new controller adopts them, and the turn's result
+// still closes the ticket.
+func TestControllerRestart(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
+	stop := start()
+
+	admin := dial(t, root.AdminSocket())
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "started"))
+		return err == nil
+	}, 20*time.Second, 20*time.Millisecond)
+
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	sdir := root.SessionDir(sessions[0].ID)
+	pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	require.NoError(t, err)
+
+	stop()
+	require.True(t, host.Alive(sdir), "host outlives the controller")
+	stop = start()
+	defer stop()
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
+
+	admin = dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	require.NoError(t, err)
+	assert.Equal(t, string(pid), string(pid2), "same host adopted")
+	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
+}
+
+// poolRoot writes a root with one fake-agent pool. start runs a controller
+// and returns a func that stops it (leaving sessions running).
+func poolRoot(t *testing.T, idle string) (config.Root, func() func()) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	root := config.Root{Dir: dir}
+	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: %s\n    dir: %q\n", os.Args[0], idle, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte(cfg), 0o600))
+	start := func() func() {
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() {
+			done <- control.Run(ctx, root, control.Options{Tick: 50 * time.Millisecond, HostExe: os.Args[0]})
+		}()
+		return func() { cancel(); assert.NoError(t, <-done) }
+	}
+	t.Cleanup(func() {
+		// Stop leftover hosts so the test leaves no processes behind.
+		entries, _ := os.ReadDir(root.SessionDir(""))
+		for _, e := range entries {
+			if b, err := os.ReadFile(filepath.Join(root.SessionDir(e.Name()), host.PidFile)); err == nil {
+				var p int
+				if _, err := fmt.Sscan(string(b), &p); err == nil && p > 1 {
+					_ = syscall.Kill(p, syscall.SIGTERM)
+				}
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+		_ = os.RemoveAll(dir)
+	})
+	return root, start
 }
 
 // TestPoolSession runs a pool end to end: ready work starts a session, the
@@ -122,6 +201,16 @@ func (a *agent) LoadSession(context.Context, acp.LoadSessionRequest) (acp.LoadSe
 }
 
 func (a *agent) Prompt(ctx context.Context, _ acp.PromptRequest) (acp.PromptResponse, error) {
+	// With a "block" file present, hold the turn open until "go" appears.
+	if _, err := os.Stat("block"); err == nil {
+		_ = os.WriteFile("started", nil, 0o600)
+		for {
+			if _, err := os.Stat("go"); err == nil {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
 	c, err := rpc.Dial(ctx, os.Getenv("JOBSHOP_SOCKET"))
 	if err != nil {
 		return acp.PromptResponse{}, err

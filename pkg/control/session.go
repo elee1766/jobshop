@@ -227,6 +227,11 @@ func (r *runner) session() error {
 
 	ctx, cancel := context.WithCancel(r.ctx)
 	defer cancel()
+	// Stopping the controller closes the connection rather than cancelling
+	// requests: a cancelled request makes the SDK send session/cancel, which
+	// would end a turn that should keep running in the host.
+	stopClose := context.AfterFunc(ctx, func() { _ = nc.Close() })
+	defer stopClose()
 	go func() {
 		select {
 		case <-conn.Done():
@@ -395,7 +400,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		}
 	})
 	defer stop()
-	res, err := conn.Prompt(ctx, acp.PromptRequest{
+	res, err := conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
 		SessionId: acp.SessionId(acpSession),
 		Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 	})
@@ -419,8 +424,8 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 	}
 	if ticketID != "" {
 		reminder := "Your turn ended but you still hold " + ids(held) + ". " +
-			"If the work is finished run the jobshop close command from the ticket prompt; if you cannot finish it run " +
-			"release -r \"<why>\"; otherwise continue working."
+			"If the work is finished run `jobshop close`; if you cannot finish it run " +
+			"`jobshop release -r \"<why>\"`; otherwise continue working."
 		if err := r.turn(ctx, conn, acpSession, reminder); err != nil {
 			return
 		}
@@ -458,20 +463,13 @@ func (r *runner) ticketPrompt(t store.Ticket) string {
 		b.WriteString(t.Body)
 		b.WriteString("\n\n")
 	}
-	js := "jobshop"
-	if exe, err := r.c.hostExe(); err == nil {
-		// Some agents (jcode acp) run tools in a daemon that does not inherit
-		// the agent's env, so spell out the binary and socket.
-		js = fmt.Sprintf("JOBSHOP_SOCKET=%s %s", r.c.socketPath(r.id), exe)
-	}
-	fmt.Fprintf(&b, `Run the jobshop CLI exactly as: %s <command>
-It acts as your session; with no id it uses your current ticket.
-- ticket show                       ticket details, comments and history
-- comment "<text>"                  record progress or findings
-- close                             when the work is done (-r failed if it cannot be done)
-- release -r "<why>"                hand the ticket back without finishing it
-- ticket create "<title>" -b "<body>"   file follow-up work
-Close or release the ticket before you end your turn.`, js)
+	b.WriteString(`The jobshop CLI is on your PATH and acts as your session; with no id it uses your current ticket.
+- jobshop ticket show                       ticket details, comments and history
+- jobshop comment "<text>"                  record progress or findings
+- jobshop close                             when the work is done (-r failed if it cannot be done)
+- jobshop release -r "<why>"                hand the ticket back without finishing it
+- jobshop ticket create "<title>" -b "<body>"   file follow-up work
+Close or release the ticket before you end your turn.`)
 	return b.String()
 }
 
@@ -571,8 +569,15 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	for k, v := range agent.Env {
 		env = append(env, k+"="+v)
 	}
+	// ${SESSION_DIR} lets an agent keep per-session state, e.g.
+	// `jcode acp --socket ${SESSION_DIR}/jcode.sock` for a private daemon
+	// whose tool shells inherit this env.
+	args := make([]string, len(agent.Args))
+	for i, a := range agent.Args {
+		args[i] = strings.ReplaceAll(a, "${SESSION_DIR}", dir)
+	}
 	if err := host.WriteSpec(dir, host.Spec{
-		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: agent.Args,
+		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
 		Env: env, Dir: cwd, LeaseMS: hostLease.Milliseconds(),
 	}); err != nil {
 		return err

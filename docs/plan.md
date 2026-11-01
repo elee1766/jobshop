@@ -455,11 +455,11 @@ As built in phase 2 (decided 2026-11-01):
   `shutdown --all` ends every session first.
 - With `repo` set, each session gets `git worktree add --detach` of `ref`
   at `sessions/<id>/work`, removed when the session ends.
-- `jcode acp` runs tools in its daemon, which does not inherit the agent
-  process env, so `JOBSHOP_SOCKET` and `PATH` never reach the agent's shell.
-  Ticket prompts therefore give the full command
-  (`JOBSHOP_SOCKET=<sock> <binary> <command>`). Verified with a real
-  `jcode acp` run on 2026-11-01: one turn, ticket closed by the session.
+- `jcode acp` by default runs tools in the shared user daemon, which does
+  not inherit the agent's env (`JOBSHOP_SOCKET`, `PATH`). Configure it as
+  `jcode acp --socket ${SESSION_DIR}/jcode.sock`: a private daemon per
+  session that inherits the env and exits with the session (verified
+  2026-11-01). Agent args expand `${SESSION_DIR}`.
 
 Recovery below the host:
 - Agent or host died: start a new agent and resume with `session/load`
