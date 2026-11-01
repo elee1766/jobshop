@@ -37,14 +37,14 @@ CREATE TABLE tickets (
   body         TEXT NOT NULL DEFAULT '',
   status       TEXT NOT NULL DEFAULT 'open'
                CHECK (status IN ('open','in_progress','closed')),
-  resolution   TEXT,                        -- set on close: done, failed, cancelled, ...
+  resolution   TEXT NOT NULL DEFAULT '',     -- set on close: done, failed, cancelled, ...
   priority     INTEGER NOT NULL DEFAULT 2,  -- lower runs first
-  pool         TEXT,                        -- queue it is routed to (assign)
-  holder       TEXT,                        -- claimant (session id)
-  lease_until  INTEGER,                     -- claim expires at (backstop only)
-  fence        INTEGER NOT NULL DEFAULT 0,  -- bumped on every claim
+  pool         TEXT NOT NULL DEFAULT '',     -- queue it is routed to (assign)
+  holder       TEXT NOT NULL DEFAULT '',     -- claimant or pre-assignee (session id)
+  lease_until  INTEGER NOT NULL DEFAULT 0,  -- claim expires at (backstop only); 0 = none
+  fence        INTEGER NOT NULL DEFAULT 0,  -- bumped on every new claim
   parent_id    TEXT REFERENCES tickets(id),
-  defer_until  INTEGER,
+  defer_until  INTEGER NOT NULL DEFAULT 0,
   ephemeral    INTEGER NOT NULL DEFAULT 0,  -- no history rows, reaped after close
   fields       TEXT NOT NULL DEFAULT '{}',  -- engine data, typed per kind in Go
   meta         TEXT NOT NULL DEFAULT '{}',  -- pack/user data, never read by the engine
@@ -52,12 +52,16 @@ CREATE TABLE tickets (
   created_by   TEXT NOT NULL DEFAULT '',
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,
-  closed_at    INTEGER
+  closed_at    INTEGER NOT NULL DEFAULT 0
 );
+-- Empty string / 0 instead of NULL for optional scalars (decided 2026-11-01):
+-- simpler generated Go, no three-valued comparisons. parent_id stays NULL
+-- because it is a foreign key. The SQL below is illustrative; the source of
+-- truth is pkg/store/sqlite/migrations and queries.
 -- Postgres: fields/meta JSONB, booleans as BOOLEAN.
 
 CREATE INDEX tickets_queue   ON tickets(project, pool, status, priority, created_at);
-CREATE INDEX tickets_holder  ON tickets(holder) WHERE holder IS NOT NULL;
+CREATE INDEX tickets_holder  ON tickets(holder) WHERE holder <> '';
 CREATE INDEX tickets_lease   ON tickets(lease_until) WHERE status = 'in_progress';
 CREATE INDEX tickets_parent  ON tickets(parent_id);
 CREATE INDEX tickets_kind    ON tickets(kind, status);

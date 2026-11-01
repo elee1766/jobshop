@@ -21,7 +21,7 @@ buildGo127Module {
   subPackages = [ "cmd/jobshop" ];
 
   # Update with: nix build .#jobshop 2>&1 | grep got:
-  vendorHash = "sha256-x9Ra+dCzSfaR9y62HFLb9FaENlJ4GF+oT13BzsKGsy0=";
+  vendorHash = "sha256-PMw5QcIwRJ8DfLEA550kX6h4hRTbbi6xhtlOECHSVVs=";
 
   # modernc.org/sqlite is pure Go.
   env.CGO_ENABLED = "0";
