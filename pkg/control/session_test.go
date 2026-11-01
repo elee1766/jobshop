@@ -848,11 +848,14 @@ func TestSessionRestartIdle(t *testing.T) {
 	pid := hostPidOf(t, sdir)
 
 	// A ticket the session holds but will not be prompted with (deferred).
+	// Defer before claiming: the idle runner polls ClaimNext, which resumes
+	// any undeferred ticket the session holds and the agent would close it.
+	// Claim by id ignores defer_until.
 	var held store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "held", Pool: "other", Project: "js"}, &held))
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: held.ID, Holder: id}, nil))
 	later := time.Now().Add(time.Hour)
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketUpdate, rpc.UpdateParams{ID: held.ID, DeferUntil: &later}, nil))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: held.ID, Holder: id}, nil))
 
 	// Change the agent's env in the config and reload: the running host
 	// keeps its old spec until the restart.
