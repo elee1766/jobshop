@@ -159,6 +159,10 @@ type Pool struct {
 	IdleTimeout string `yaml:"idle_timeout"`
 	// TurnTimeout cancels a single agent turn. Default 2h.
 	TurnTimeout string `yaml:"turn_timeout"`
+	// ConversationExport makes the session host send prompts, agent
+	// messages and tool calls as OTLP log records to the telemetry logs
+	// endpoint, redacted and capped. Default off.
+	ConversationExport bool `yaml:"conversation_export"`
 }
 
 // Project is one repo / work area.
@@ -259,6 +263,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.MaxSessions < 0 {
 			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", src("pools", name), name)
+		}
+		if p.ConversationExport && c.Telemetry.LogsURL() == "" {
+			return nil, fmt.Errorf("%s: pool %s: conversation_export needs telemetry.otlp_endpoint or otlp_logs_endpoint", src("pools", name), name)
 		}
 		for _, d := range []struct{ key, v string }{{"idle_timeout", p.IdleTimeout}, {"turn_timeout", p.TurnTimeout}} {
 			if d.v == "" {

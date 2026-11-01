@@ -21,6 +21,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // maxFrame bounds one NDJSON frame; agents can send large tool output.
@@ -52,6 +54,7 @@ type Host struct {
 	log  *slog.Logger
 
 	journal *os.File
+	conv    *telemetry.ConvExporter // nil unless the pool exports conversations
 	agentIn io.WriteCloser
 	agent   *exec.Cmd
 	inMu    sync.Mutex // serializes writes to the agent
@@ -146,6 +149,18 @@ func (h *Host) run() error {
 		return err
 	}
 
+	if ce := h.spec.ConvExport; ce != nil {
+		// Export is best effort: a setup error is logged and the session runs.
+		h.conv, err = telemetry.NewConvExporter(context.Background(), telemetry.ConvConfig{
+			LogsURL: ce.LogsURL, Headers: ce.Headers, Session: h.spec.Session, Pool: ce.Pool,
+			Project: ce.Project, TraceParent: ce.TraceParent, Env: append(os.Environ(), h.spec.Env...),
+		})
+		if err != nil {
+			h.log.Warn("conversation export disabled", "err", err)
+			h.conv = nil
+		}
+	}
+
 	agentOut, err := h.startAgent()
 	if err != nil {
 		h.writeExit(Exit{Reason: "start failed: " + err.Error(), ExitCode: -1})
@@ -162,6 +177,9 @@ func (h *Host) run() error {
 	}()
 	go h.acceptLoop(ln)
 	go h.leaseLoop()
+	if h.conv != nil {
+		go h.statsLoop()
+	}
 
 	readErr := h.readAgent(agentOut) // returns when the agent closes stdout
 	waitErr := h.agent.Wait()
@@ -177,6 +195,14 @@ func (h *Host) run() error {
 		ex.Reason = "agent output: " + readErr.Error()
 	}
 	h.writeExit(ex)
+	if h.conv != nil {
+		// Bounded: a dead endpoint must not hold the host open.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := h.conv.Close(ctx); err != nil {
+			h.log.Warn("conversation export flush", "err", err)
+		}
+		cancel()
+	}
 	h.log.Info("host exiting", "exit", ex, "wait", waitErr)
 	return nil
 }
@@ -221,6 +247,39 @@ func (h *Host) writeExit(e Exit) {
 	b, _ := json.Marshal(e) // fixed struct, cannot fail
 	if err := os.WriteFile(filepath.Join(h.dir, ExitFile), b, 0o600); err != nil {
 		h.log.Error("write exit", "err", err)
+	}
+}
+
+// statsLoop reports conversation export drop and truncation counts to the
+// connected controller, which owns the metrics. Counts taken while no
+// controller is connected are kept for the next report.
+func (h *Host) statsLoop() {
+	t := time.NewTicker(10 * time.Second)
+	defer t.Stop()
+	var pending ExportStats
+	for {
+		select {
+		case <-h.stopping:
+			return
+		case <-t.C:
+		}
+		d, tr := h.conv.TakeCounts()
+		pending.Dropped += d
+		pending.Truncated += tr
+		if d > 0 {
+			h.log.Warn("conversation export dropped records", "dropped", d)
+		}
+		if pending == (ExportStats{}) {
+			continue
+		}
+		h.mu.Lock()
+		conn := h.conn
+		h.mu.Unlock()
+		if conn == nil {
+			continue
+		}
+		conn.send(outItem{line: notification(MethodExportStats, pending)})
+		pending = ExportStats{}
 	}
 }
 
@@ -336,6 +395,7 @@ func (h *Host) readAgent(r io.Reader) error {
 		// controller never stalls the agent's stdout.
 		h.mu.Lock()
 		h.record("agent", line)
+		h.conv.Observe("agent", line)
 		out, conn := h.routeAgent(f, line)
 		if out != nil && conn != nil {
 			// Every agent frame carries its seq so dropped notifications
@@ -516,6 +576,7 @@ func (h *Host) fromController(c *controllerConn, line []byte) {
 	}
 	h.mu.Lock()
 	h.record("controller", line)
+	h.conv.Observe("controller", line)
 	var reply []byte
 	switch {
 	case f.isResponse():

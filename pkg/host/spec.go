@@ -36,7 +36,16 @@ const (
 	// MethodTurnEnd (host to controller, notification): a session/prompt
 	// sent by an earlier controller connection finished.
 	MethodTurnEnd = "_jobshop/turn_end"
+	// MethodExportStats (host to controller, notification): conversation
+	// export records dropped and fields truncated since the last report.
+	MethodExportStats = "_jobshop/export_stats"
 )
+
+// ExportStats is the payload of MethodExportStats.
+type ExportStats struct {
+	Dropped   int64 `json:"dropped"`
+	Truncated int64 `json:"truncated"`
+}
 
 // Spec is written by the controller before spawning the host.
 type Spec struct {
@@ -55,6 +64,18 @@ type Spec struct {
 	// GCRootDir overrides where the Nix GC root for the host binary goes
 	// (default /nix/var/nix/gcroots/per-user/$USER). Used by tests.
 	GCRootDir string `json:"gcroot_dir,omitempty"`
+	// ConvExport, if set, turns on conversation export for this host.
+	ConvExport *ConvExport `json:"conv_export,omitempty"`
+}
+
+// ConvExport is the conversation export setup the controller hands a host.
+// Headers may hold tokens; spec.json is 0600 like the rest of the dir.
+type ConvExport struct {
+	LogsURL     string            `json:"logs_url"`
+	Headers     map[string]string `json:"headers,omitempty"`
+	Pool        string            `json:"pool"`
+	Project     string            `json:"project"`
+	TraceParent string            `json:"traceparent,omitempty"`
 }
 
 // Hello is the first line a controller sends on acp.sock.
