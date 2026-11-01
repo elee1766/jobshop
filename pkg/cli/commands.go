@@ -9,12 +9,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -419,9 +421,53 @@ func (c labelRm) Run(g *Globals) error {
 }
 
 type sessionCmd struct {
-	New  sessionNewCmd  `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
-	List sessionListCmd `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
-	Reap sessionReapCmd `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
+	New    sessionNewCmd    `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
+	List   sessionListCmd   `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
+	Reap   sessionReapCmd   `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
+	Attach sessionAttachCmd `cmd:"" help:"Follow a session's conversation, read-only. Ctrl-C detaches."`
+}
+
+type sessionAttachCmd struct {
+	ID     string `arg:"" help:"Session id."`
+	Since  *int64 `help:"Start after this journal seq (default: the last 50 frames)."`
+	JSON   bool   `name:"json" help:"Print raw journal frames."`
+	Follow bool   `default:"true" negatable:"" help:"Keep following new frames."`
+}
+
+// Run reads the session's journal file directly rather than asking the
+// controller to stream it: the host writes the journal even while the
+// controller is down, and reading a file needs no new RPC (plan.md phase 3).
+func (c sessionAttachCmd) Run(g *Globals) error {
+	r, err := g.root()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(r.SessionDir(c.ID), host.JournalFile)
+	since := int64(-50)
+	if c.Since != nil {
+		since = *c.Since
+	}
+	frames, off, err := host.ReadJournal(path, since)
+	if err != nil {
+		return err
+	}
+	render := &host.Renderer{W: stdout}
+	show := func(f host.Frame) {
+		if c.JSON {
+			_, _ = stdout.Write(host.RawFrame(f))
+			return
+		}
+		render.Render(f)
+	}
+	for _, f := range frames {
+		show(f)
+	}
+	if !c.Follow {
+		return nil
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return host.FollowJournal(ctx, path, off, show)
 }
 
 type sessionListCmd struct {
