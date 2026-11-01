@@ -3,14 +3,18 @@ package control
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -117,6 +121,9 @@ func (r *runner) run() {
 		r.mu.Unlock()
 		if stopping {
 			return
+		}
+		if errors.Is(err, errRefresh) {
+			continue
 		}
 		var end errSessionEnd
 		if errors.As(err, &end) {
@@ -228,6 +235,10 @@ func (r *runner) session() error {
 	conn := acp.NewClientSideConnection(&client{r: r}, nc, rd)
 	conn.SetLogger(rpc.QuietLogger(r.log))
 	r.log.Info("connected to host", "host_pid", welcome.Pid, "agent_pid", welcome.AgentPid, "fresh", fresh, "busy", welcome.Busy)
+	stale := !fresh && r.staleEnv(t, fields)
+	if stale && !welcome.Busy && r.idle() {
+		return r.refresh(nc)
+	}
 
 	ctx, cancel := context.WithCancel(r.ctx)
 	defer cancel()
@@ -298,13 +309,47 @@ func (r *runner) session() error {
 			return r.dropped(conn)
 		}
 		r.afterTurn(ctx, conn, fields.ACPSession, "")
+		if stale && r.idle() {
+			return r.refresh(nc)
+		}
 	} else {
 		select {
 		case <-r.turnEnd: // a turn that ended while no controller was attached
 		default:
 		}
 	}
-	return r.work(ctx, conn, fields.ACPSession)
+	return r.work(ctx, conn, nc, fields.ACPSession, stale)
+}
+
+// errRefresh: the host was stopped so the next session() spawns it with the
+// current env. run() restarts at once and does not count it as a crash.
+var errRefresh = errors.New("host env refresh")
+
+// staleEnv reports whether the adopted host's spec env differs from what a
+// new host would get, e.g. after a deploy changed PATH or credentials.
+func (r *runner) staleEnv(t store.Ticket, f store.SessionFields) bool {
+	spec, err := host.ReadSpec(r.dir)
+	if err != nil {
+		return false
+	}
+	want, _, err := r.c.hostSpec(t, f)
+	if err != nil {
+		return false
+	}
+	return spec.EnvHash != want.EnvHash
+}
+
+// idle: the session holds no in_progress ticket.
+func (r *runner) idle() bool {
+	held, err := r.c.store.List(r.ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
+	return err == nil && len(held) == 0
+}
+
+func (r *runner) refresh(nc net.Conn) error {
+	r.log.Info("refreshing host env", "host_pid", hostPid(r.dir))
+	_ = nc.Close()
+	stopHost(r.dir)
+	return errRefresh
 }
 
 func (r *runner) dropped(conn *acp.ClientSideConnection) error {
@@ -349,7 +394,8 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 }
 
 // work claims and prompts tickets until the pool has none for idle_timeout.
-func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, acpSession string) error {
+// A stale host is refreshed after the first turn that leaves it idle.
+func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc net.Conn, acpSession string, stale bool) error {
 	pool, havePool := r.c.cfg.Pools[r.pool]
 	idle := config.Duration(pool.IdleTimeout, defaultIdle)
 	idleSince := time.Now()
@@ -378,6 +424,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 			return err
 		}
 		r.afterTurn(ctx, conn, acpSession, t.ID)
+		if stale && r.idle() {
+			return r.refresh(nc)
+		}
 		idleSince = time.Now()
 	}
 }
@@ -547,24 +596,19 @@ func (c *Controller) sessionCwd(t store.Ticket) string {
 	return c.root.SessionDir(t.ID)
 }
 
-// spawnHost prepares the session directory and starts a detached host.
-func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
+// hostSpec builds the spec a new host for t would get. EnvHash also covers
+// the env the host inherits from this controller, so a deploy that changes
+// either is noticed when a live host is adopted.
+func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec, string, error) {
 	agent, ok := c.cfg.Agents[f.Agent]
 	if !ok {
-		return fmt.Errorf("unknown agent %q", f.Agent)
-	}
-	dir := c.root.SessionDir(t.ID)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	cwd := c.sessionCwd(t)
-	if err := c.ensureWorktree(t, cwd); err != nil {
-		return err
+		return host.Spec{}, "", fmt.Errorf("unknown agent %q", f.Agent)
 	}
 	exe, err := c.hostExe()
 	if err != nil {
-		return err
+		return host.Spec{}, "", err
 	}
+	dir := c.root.SessionDir(t.ID)
 	env := []string{
 		"JOBSHOP_SOCKET=" + c.socketPath(t.ID),
 		"JOBSHOP_SESSION=" + t.ID,
@@ -580,10 +624,47 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	for i, a := range agent.Args {
 		args[i] = strings.ReplaceAll(a, "${SESSION_DIR}", dir)
 	}
-	if err := host.WriteSpec(dir, host.Spec{
+	return host.Spec{
 		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
-		Env: env, Dir: cwd, LeaseMS: hostLease.Milliseconds(),
-	}); err != nil {
+		Env: env, EnvHash: envHash(hostInheritedEnv(), env), Dir: c.sessionCwd(t),
+		LeaseMS: hostLease.Milliseconds(),
+	}, exe, nil
+}
+
+// hostInheritedEnv is the controller env a spawned host starts with.
+func hostInheritedEnv() []string {
+	return withoutEnv(os.Environ(), "JOBSHOP_ROOT", "JOBSHOP_SOCKET")
+}
+
+// envHash hashes the agent's final env (inherited, overridden by env),
+// sorted so agent.Env map order does not matter.
+func envHash(inherited, env []string) string {
+	m := map[string]string{}
+	for _, kv := range append(slices.Clone(inherited), env...) {
+		k, v, _ := strings.Cut(kv, "=")
+		m[k] = v
+	}
+	h := sha256.New()
+	for _, k := range slices.Sorted(maps.Keys(m)) {
+		_, _ = fmt.Fprintf(h, "%s=%s\x00", k, m[k])
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// spawnHost prepares the session directory and starts a detached host.
+func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
+	spec, exe, err := c.hostSpec(t, f)
+	if err != nil {
+		return err
+	}
+	dir := c.root.SessionDir(t.ID)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := c.ensureWorktree(t, spec.Dir); err != nil {
+		return err
+	}
+	if err := host.WriteSpec(dir, spec); err != nil {
 		return err
 	}
 	logf, err := os.OpenFile(filepath.Join(dir, host.LogFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
@@ -595,7 +676,7 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	cmd.Args[0] = "jobshop"
 	cmd.Dir = dir
 	cmd.Stdout, cmd.Stderr = logf, logf
-	cmd.Env = withoutEnv(os.Environ(), "JOBSHOP_ROOT", "JOBSHOP_SOCKET")
+	cmd.Env = hostInheritedEnv()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err

@@ -469,6 +469,15 @@ As built in phase 2 (decided 2026-11-01):
   conversation). Hosts in `sessions/` with no open ticket are stopped.
   Item 4 above (records with PID start time) and `session reap` are not
   built; the flock replaces the PID-reuse check.
+- Env refresh (decided 2026-11-01, issue #11): `spec.json` carries
+  `env_hash`, a sha256 of the agent's full env (the controller env the host
+  inherits, then the spec env). When adopting a live host the controller
+  computes the hash a new host would get; if it differs and the session is
+  idle (no in_progress ticket, host not busy) it stops the host and the
+  runner respawns it at once with the new spec, resuming the conversation
+  with `session/load`. A busy session is refreshed after its current turn.
+  Refreshes are logged (`refreshing host env`) and do not count as crashes.
+  Hosts spawned before this have no hash, so they are refreshed once.
 - Driver loop per session: `claim --next` as the session, prompt the
   ticket, then check the session no longer holds it. If it does, one
   reminder turn, then release with a 10 minute deferral. No work for

@@ -46,7 +46,10 @@ type Spec struct {
 	Args     []string `json:"args,omitempty"`
 	// Env is added to the host's environment for the agent (KEY=VALUE).
 	Env []string `json:"env,omitempty"`
-	Dir string   `json:"dir"`
+	// EnvHash identifies the agent's full env (inherited plus Env). The host
+	// ignores it; a controller compares it to decide whether to respawn.
+	EnvHash string `json:"env_hash,omitempty"`
+	Dir     string `json:"dir"`
 	// LeaseMS: the host exits if no controller has been connected this long.
 	LeaseMS int64 `json:"lease_ms"`
 	// GCRootDir overrides where the Nix GC root for the host binary goes
