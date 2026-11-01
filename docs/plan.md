@@ -122,7 +122,7 @@ already plain. "Jobshop" stays as the project name.
 | Convoy | Batch | Group of tickets tracked together |
 | Order | Schedule | Scheduled workflow trigger |
 | Mail | Message | |
-| Event log | Events | |
+| Event log | (none) | No event bus. Controller sees every write and notifies over the admin socket; ticket `history` is an audit log. Observability is OTel (section 9) |
 
 Roles (mayor, polecat, ...) are configuration, not engine concepts. Jobshop
 keeps Gas City's "zero hardcoded roles" principle.
@@ -255,7 +255,8 @@ Until then, development happens by hand (or with an outside agent).
 
 **Phase 4: the rest of our surface**
 - Messages (mail), batches (convoys), schedules (orders).
-- Events, and an API if the dashboard is to be ported.
+- Admin-socket subscriptions for change notifications, and an API if the
+  dashboard is to be ported.
 
 **Dogfood milestone (target, may land between phases 1 and 3)**
 - Smallest loop that works on itself: one project (this repo), one pool of
@@ -472,7 +473,57 @@ Recovery below the host:
 - Which socket protocol for the CLI: JSON-RPC (matches ACP), or plain
   JSON lines?
 
-## 9. Chat gateway (future, design must not preclude)
+## 9. Observability (proposed)
+
+Decided 2026-11-01: full OpenTelemetry tracing and logging, Prometheus
+metrics, and opt-in export of ACP conversation content. This replaces Gas
+City's `internal/events` JSONL bus for observability purposes.
+
+**Operational telemetry (always available, configured in YAML)**
+- Traces: OTel SDK, OTLP exporter. Spans for controller ticks, socket
+  requests (CLI and admin), store transactions, session lifecycle (spawn,
+  adopt, restart, reap), and claim/heartbeat/close. Trace context is
+  propagated over the CLI socket, so an agent's `jobshop close` shows up
+  under its session's trace.
+- Logs: `log/slog` with an OTel bridge, so logs carry trace and span ids.
+  JSON to stderr/file by default, OTLP when configured.
+- Metrics: Prometheus `/metrics` on a configurable listen address (OTel
+  metrics SDK with the Prometheus exporter, so OTLP push is also possible).
+  Starting set: sessions by pool/state, session restarts, queue depth and
+  ready count per pool, claim latency, lease expiries, ticket closes by
+  resolution, store transaction latency, host reconnects and replay size,
+  conversation export drops.
+- Common attributes: `jobshop.project`, `jobshop.pool`,
+  `jobshop.session.id`, `jobshop.ticket.id`, `jobshop.kind`.
+
+**Conversation export (opt-in, off by default)**
+Port of our Gas City branch's `internal/convtel`
+(`docs/guides/conversation-telemetry.md` in the fork): ACP content as OTLP
+logs and traces for later analysis in a log store.
+- Emitted by the session host, which already sees every ACP frame. One
+  trace per session, spans per turn and per tool call, log records for
+  prompts, assistant messages, provider-exposed reasoning, tool calls and
+  results, permission requests and replies, lifecycle.
+- Records carry ticket, project, pool, agent, model and ACP session id, so
+  a query can pull the full context of how a ticket was worked.
+- Keep convtel's safety properties: separate explicit opt-in from
+  operational telemetry, redaction before enqueue (secret-named keys,
+  launch-env secret values, credential patterns), per-field size cap with a
+  truncation marker, bounded non-blocking queues with drop counters, export
+  failures never affect a session, stable event ids for dedupe.
+- Destination: convtel restricts to loopback (local collector forwards).
+  Keep that default; allow non-loopback only with explicit config.
+- The host's journal remains the record of truth; export is best effort.
+
+### Open questions
+- Copy `internal/convtel` and adapt, or rewrite on the OTel Go SDK? convtel
+  hand-rolls OTLP/HTTP JSON; the SDK would share exporters with operational
+  telemetry.
+- Per-pool opt-in for conversation export, or global only?
+- Log store target (Loki, ClickHouse, Grafana Cloud) only affects the
+  collector config, not Jobshop.
+
+## 10. Chat gateway (future, design must not preclude)
 
 **Not a priority and not scheduled in any phase** (decided 2026-11-01).
 This section exists so the earlier design keeps it implementable. Only the
@@ -531,7 +582,7 @@ Message delivery to a busy session (decided 2026-11-01):
 Decided 2026-11-01: one session per room or thread, shared by everyone in
 it.
 
-## 10. Risks
+## 11. Risks
 
 - Rebuilding session supervision and claim recovery means rediscovering edge
   cases Gas City already hit. Read its git history and incident notes
@@ -541,7 +592,7 @@ it.
 - Self-hosting failure: a bad change to the controller can stop the agents
   that would fix it. Needs a known-good binary to fall back to.
 
-## 11. Alternatives considered
+## 12. Alternatives considered
 
 - **Keep extending `sqlite-work` in the Gas City fork.** Lowest short-term
   cost. Merge drag grows, and the packs still assume `bd`'s CLI.
@@ -556,7 +607,7 @@ it.
 - **Gas City `file` provider.** Same CLI gap as `sqlite-work`, and documented
   as for local trials only.
 
-## 12. References
+## 13. References
 
 Gas City (fork checkout `~/repo/github.com/elee1766/gascity`):
 - `AGENTS.md`: design principles, primitives, layering invariants.

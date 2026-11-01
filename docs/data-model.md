@@ -74,7 +74,10 @@ CREATE TABLE labels (
 );
 CREATE INDEX labels_label ON labels(label);
 
--- Append-only change log; doubles as the event stream.
+-- Append-only audit log of ticket changes (who, when, before/after).
+-- Not an event stream: nothing tails it, and it may be compacted. Live
+-- change notifications come from the controller (admin socket), since all
+-- writes go through it.
 CREATE TABLE history (
   seq        INTEGER PRIMARY KEY AUTOINCREMENT,  -- Postgres: BIGSERIAL
   ticket_id  TEXT NOT NULL,
@@ -100,8 +103,6 @@ CREATE TABLE comments (
   deleted    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX comments_ticket ON comments(ticket_id, id);
--- Adding a comment also writes a history row (op='comment_add', diff holds
--- the comment id only) so the change stream sees it.
 -- Structured notes (handoffs, blocker reports) are a declared kind instead.
 
 -- Kind and edge-kind declarations loaded from YAML. Stored so the
@@ -309,7 +310,6 @@ WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
 
 ```sql
 SELECT at, actor, op, diff AS detail FROM history WHERE ticket_id = :id
-  AND op <> 'comment_add'
 UNION ALL
 SELECT created_at, author, 'comment', body FROM comments
   WHERE ticket_id = :id AND deleted = 0
