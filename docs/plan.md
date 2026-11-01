@@ -90,11 +90,19 @@ gastown patrol formulas.
 routing work to pools, a small set of formulas, mail, and session supervision.
 We do not use most of the gastown patrol machinery as designed.
 
-### Open questions
-- Which of these do we actually need on day one versus later?
-- Do the observer agents (deacon/boot/witness) still earn their cost, or can
-  the controller plus events cover them?
-- Is `gx` part of Jobshop, or does it stay a separate client?
+### Decided (2026-11-01)
+- Day-one scope is the phase plan (section 7).
+- Observer agents (deacon/boot/witness): Jobshop ships none. Gas City
+  already moved their patrol duties into the controller (its parity audit
+  maps witness and deacon patrol to the reconciler tick and controller
+  loop), and in the live city they send almost no mail. In Jobshop those
+  duties are deterministic: dead-session release, lease sweep, idle-kill,
+  quarantine, metrics and alerts. The layer for observer-style agents must
+  still exist: roles are config, so any install can define an observer
+  pool, and scheduled judgment work (e.g. stale PR review) runs as a
+  schedule assigning tickets to a coordinator pool. We just do not build
+  or run one ourselves.
+- `gx` stays a separate client of the Jobshop CLI/admin socket.
 
 ## 3. Glossary
 
@@ -218,11 +226,12 @@ upstream beads/Dolt library):**
 Estimates come from `go list -deps` and line counts on 2026-11-01. They do not
 account for test code or hidden coupling.
 
-### Open questions
-- Copy and adapt, or vendor at a pinned commit? Copying loses history but
-  allows trimming.
-- How much of `internal/dispatch` do we use? Our formulas may not need
-  fan-out, tally or drain at all.
+### Decided (2026-11-01)
+- Copy Gas City code only where its internals are clean (self-contained,
+  few dependencies, readable). Everything else is reference only. No
+  vendoring.
+- Dispatcher scope is decided in phase 4 from the workflows we actually
+  run.
 
 ## 7. Phases
 
@@ -482,8 +491,13 @@ Recovery below the host:
 - Orphaned host lease: 30 minutes without a controller connection.
 - CLI socket protocol: JSON-RPC via `go.lsp.dev/jsonrpc2` (section 5).
 
+- Human attach (decided 2026-11-01): read-only to start (tail the
+  journal). The attach protocol includes an input method from day one,
+  disabled by config, so enabling write access later needs no protocol
+  change.
+
 ### Open questions
-- Human attach: read-only tail of the journal, or allow injecting input?
+- None currently.
 
 ## 9. Observability (proposed)
 
@@ -627,9 +641,7 @@ Message delivery to a busy session (decided 2026-11-01):
 - Chat: a plain chat message to a busy session queues; a marked message
   (e.g. a `/steer` or `!` prefix) interrupts.
 
-### Open questions
-- Should queued messages to an idle ticket worker wake it immediately?
-  (Probably yes, same as a new prompt.)
+- A message to an idle worker wakes it immediately (decided 2026-11-01).
 
 Decided 2026-11-01: one session per room or thread, shared by everyone in
 it.
