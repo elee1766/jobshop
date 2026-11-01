@@ -460,6 +460,10 @@ As built in phase 2 (decided 2026-11-01):
   `jcode acp --socket ${SESSION_DIR}/jcode.sock`: a private daemon per
   session that inherits the env and exits with the session (verified
   2026-11-01). Agent args expand `${SESSION_DIR}`.
+- `defer_until` gates only automatic pickup (`claim --next`, ready). A
+  claim by id ignores it, as in Gas City (decided 2026-11-01): ids are
+  deliberate, usually the session finishing its own work. Clear a hold with
+  `jobshop ticket update <id> --defer 0`.
 
 Recovery below the host:
 - Agent or host died: start a new agent and resume with `session/load`
