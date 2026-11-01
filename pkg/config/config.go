@@ -6,18 +6,48 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"time"
 
 	"github.com/goccy/go-yaml"
 )
 
-// Config is the parsed jobshop.yaml. Phase 1 needs only projects; agents,
-// pools and telemetry are added as their features land.
+// Config is the parsed jobshop.yaml.
 type Config struct {
 	// DefaultProject is used when a request names no project.
 	DefaultProject string             `yaml:"default_project"`
 	Projects       map[string]Project `yaml:"projects"`
 	// Lease is the claim lease (Go duration). Default 30m.
-	Lease string `yaml:"lease"`
+	Lease  string           `yaml:"lease"`
+	Agents map[string]Agent `yaml:"agents"`
+	Pools  map[string]Pool  `yaml:"pools"`
+}
+
+// Agent is how to start an ACP agent process.
+type Agent struct {
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args"`
+	Env     map[string]string `yaml:"env"`
+}
+
+// Pool is a queue of work in one project served by sessions of one agent.
+type Pool struct {
+	Project string `yaml:"project"`
+	Agent   string `yaml:"agent"`
+	// MaxSessions caps concurrent sessions. 0 means the pool never starts
+	// sessions on its own (manual sessions only).
+	MaxSessions int `yaml:"max_sessions"`
+	// Dir is the working directory for agents. With Repo set, each session
+	// instead gets its own git worktree of Repo under its session directory.
+	Dir  string `yaml:"dir"`
+	Repo string `yaml:"repo"`
+	// Ref is the commit-ish new worktrees start from. Default HEAD.
+	Ref string `yaml:"ref"`
+	// Prompt is prepended to every ticket prompt (pool instructions).
+	Prompt string `yaml:"prompt"`
+	// IdleTimeout ends a session that found no work for this long. Default 5m.
+	IdleTimeout string `yaml:"idle_timeout"`
+	// TurnTimeout cancels a single agent turn. Default 2h.
+	TurnTimeout string `yaml:"turn_timeout"`
 }
 
 // Project is one repo / work area.
@@ -76,7 +106,52 @@ func Parse(b []byte) (*Config, error) {
 			return nil, fmt.Errorf("%s: default_project %q is not defined", FileName, c.DefaultProject)
 		}
 	}
+	for name, a := range c.Agents {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: agent name %q must match %s", FileName, name, namePattern)
+		}
+		if a.Command == "" {
+			return nil, fmt.Errorf("%s: agent %s: command is required", FileName, name)
+		}
+	}
+	for name, p := range c.Pools {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: pool name %q must match %s", FileName, name, namePattern)
+		}
+		if p.Project == "" {
+			p.Project = c.DefaultProject
+		}
+		if _, ok := c.Projects[p.Project]; !ok {
+			return nil, fmt.Errorf("%s: pool %s: unknown project %q", FileName, name, p.Project)
+		}
+		if _, ok := c.Agents[p.Agent]; !ok {
+			return nil, fmt.Errorf("%s: pool %s: unknown agent %q", FileName, name, p.Agent)
+		}
+		if p.Dir == "" && p.Repo == "" {
+			return nil, fmt.Errorf("%s: pool %s: set dir or repo", FileName, name)
+		}
+		if p.MaxSessions < 0 {
+			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", FileName, name)
+		}
+		for _, d := range []struct{ key, v string }{{"idle_timeout", p.IdleTimeout}, {"turn_timeout", p.TurnTimeout}} {
+			if d.v == "" {
+				continue
+			}
+			if v, err := time.ParseDuration(d.v); err != nil || v <= 0 {
+				return nil, fmt.Errorf("%s: pool %s: %s %q must be a positive duration", FileName, name, d.key, d.v)
+			}
+		}
+		c.Pools[name] = p
+	}
 	return &c, nil
+}
+
+// Duration parses an optional duration string already checked by Parse.
+func Duration(s string, def time.Duration) time.Duration {
+	if d, err := time.ParseDuration(s); err == nil && d > 0 {
+		return d
+	}
+	return def
 }
 
 // Prefix returns the id prefix for a project.

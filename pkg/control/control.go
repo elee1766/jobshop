@@ -32,6 +32,8 @@ type Options struct {
 	Tick time.Duration    // lease sweep interval, default 30s
 	Now  func() time.Time // clock, for tests
 	Log  *slog.Logger
+	// HostExe is the binary started as session-host. Default /proc/self/exe.
+	HostExe string
 }
 
 // Controller serves one Jobshop root.
@@ -47,6 +49,8 @@ type Controller struct {
 	cancel   context.CancelFunc
 	mu       sync.Mutex
 	sessions map[string]context.CancelFunc // open session id -> stops its cli.sock
+	runners  map[string]*runner
+	drain    bool // full shutdown in progress: start nothing new
 	wg       sync.WaitGroup
 }
 
@@ -83,7 +87,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 
 	c := &Controller{
 		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: opt.Log,
-		sessions: map[string]context.CancelFunc{},
+		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
@@ -140,13 +144,17 @@ func (c *Controller) serve() error {
 		if err := c.openSession(t); err != nil {
 			c.log.Warn("session socket", "session", t.ID, "err", err)
 		}
+		// Adopts a live host, or restarts the agent and resumes it.
+		c.drive(t)
 	}
+	c.reapOrphans(open)
 	c.log.Info("controller serving", "root", c.root.Dir, "sessions", len(open))
 
 	tick := time.NewTicker(c.opt.Tick)
 	defer tick.Stop()
 	for {
 		c.sweep()
+		c.supervise()
 		select {
 		case <-c.ctx.Done():
 			c.cancel()

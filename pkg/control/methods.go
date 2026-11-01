@@ -3,7 +3,6 @@ package control
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"time"
@@ -183,14 +182,19 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		return nil, err
 	}
 	if t.Kind == store.KindSession {
+		c.stopRunner(t.ID)
 		c.endSession(ctx, t.ID, "session closed")
 	}
 	return t, nil
 }
 
-// endSession stops a session's socket and frees everything it held.
+// endSession stops a session's socket, frees everything it held and removes
+// its worktree.
 func (c *Controller) endSession(ctx context.Context, id, reason string) {
 	c.closeSession(id)
+	if t, err := c.store.Get(ctx, id); err == nil {
+		c.removeWorktree(t)
+	}
 	released, err := c.store.ReleaseHolder(ctx, "controller", id, reason)
 	if err != nil {
 		c.log.Error("release session claims", "session", id, "err", err)
@@ -298,25 +302,27 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 	if err != nil {
 		return nil, err
 	}
-	fields, err := json.Marshal(store.SessionFields{Agent: p.Agent, Key: p.Key})
-	if err != nil {
-		return nil, err
+	if p.Pool != "" {
+		if pool, ok := c.cfg.Pools[p.Pool]; ok && p.Agent == "" {
+			p.Agent = pool.Agent
+		}
 	}
-	t, err := c.store.Create(ctx, sc.actor, store.NewTicket{
-		Project: proj, Kind: store.KindSession, Title: p.Title, Pool: p.Pool, Fields: fields,
-	})
+	t, err := c.newSession(ctx, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title)
 	if err != nil {
-		return nil, err
-	}
-	if err := c.openSession(t); err != nil {
 		return nil, err
 	}
 	return rpc.SessionNewResult{Ticket: t, Socket: c.socketPath(t.ID)}, nil
 }
 
-func (c *Controller) shutdown(_ context.Context, sc scope, _ struct{}) (any, error) {
+func (c *Controller) shutdown(_ context.Context, sc scope, p rpc.ShutdownParams) (any, error) {
 	if err := requireAdmin(sc, "shutdown"); err != nil {
 		return nil, err
+	}
+	if p.All {
+		// Ending sessions takes a while; the caller waits for the socket to
+		// close rather than for this response.
+		go c.stopAll()
+		return struct{}{}, nil
 	}
 	// Let the response flush before sockets close.
 	time.AfterFunc(50*time.Millisecond, c.cancel)

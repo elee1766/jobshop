@@ -116,10 +116,27 @@ func (c serveCmd) Run(g *Globals) error {
 	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log})
 }
 
-type shutdownCmd struct{}
+type shutdownCmd struct {
+	All  bool          `help:"Also end every session (stops agents and hosts)."`
+	Wait time.Duration `default:"2m" help:"How long to wait for the controller to exit."`
+}
 
-func (shutdownCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodShutdown, nil, &struct{}{})
+func (c shutdownCmd) Run(g *Globals) error {
+	if err := g.call(rpc.MethodShutdown, rpc.ShutdownParams{All: c.All}, &struct{}{}); err != nil {
+		return err
+	}
+	r, err := g.root()
+	if err != nil {
+		return nil // talked to an explicit socket; nothing to wait on
+	}
+	deadline := time.Now().Add(c.Wait)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(r.AdminSocket()); errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("controller still running after %s", c.Wait)
 }
 
 type whoamiCmd struct{}

@@ -147,13 +147,21 @@ type ReleaseParams struct {
 	Reason string `json:"reason,omitempty"`
 }
 
-// SessionNewParams creates a session ticket and its CLI socket.
+// SessionNewParams creates a session ticket and its CLI socket. With a
+// configured agent the controller starts and drives it; otherwise the
+// session is external (the caller runs an agent with JOBSHOP_SOCKET).
 type SessionNewParams struct {
 	Project string `json:"project,omitempty"`
 	Pool    string `json:"pool,omitempty"`
-	Agent   string `json:"agent"`
+	Agent   string `json:"agent,omitempty"` // default: the pool's agent
 	Key     string `json:"key,omitempty"`
 	Title   string `json:"title,omitempty"`
+}
+
+// ShutdownParams stops the controller. All also ends every session; without
+// it, sessions keep running and the next controller adopts them.
+type ShutdownParams struct {
+	All bool `json:"all,omitempty"`
 }
 
 // SessionNewResult names the new session and where its socket is.

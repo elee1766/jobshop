@@ -3,13 +3,13 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
 	"github.com/alecthomas/kong"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/host"
 )
 
 // Set at build time with -ldflags "-X github.com/elee1766/jobshop/pkg/cli.version=...".
@@ -40,7 +40,7 @@ type root struct {
 	Init        initCmd        `cmd:"" help:"Create a Jobshop root (jobshop.yaml) in a directory."`
 	Serve       serveCmd       `cmd:"" help:"Run the controller for the root."`
 	SessionHost sessionHostCmd `cmd:"" name:"session-host" hidden:"" help:"Run a session host (spawned by the controller)."`
-	Shutdown    shutdownCmd    `cmd:"" help:"End every session and stop the controller."`
+	Shutdown    shutdownCmd    `cmd:"" help:"Stop the controller. Sessions keep running unless --all."`
 
 	Ticket    ticketCmd    `cmd:"" help:"Create, show, list, update and close tickets."`
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`
@@ -89,10 +89,8 @@ func (versionCmd) Run() error {
 	return nil
 }
 
-var errNotImplemented = errors.New("not implemented yet")
-
 type sessionHostCmd struct {
-	ID string `arg:"" help:"Session id."`
+	Dir string `arg:"" help:"Session directory containing spec.json." type:"path"`
 }
 
-func (sessionHostCmd) Run(*Globals) error { return errNotImplemented }
+func (c sessionHostCmd) Run() error { return host.Main(c.Dir) }
