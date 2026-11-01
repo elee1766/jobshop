@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -314,9 +316,31 @@ func Dial(ctx context.Context, path string) (*Client, error) {
 		return nil, fmt.Errorf("connect %s: %w (is the controller running?)", path, err)
 	}
 	// The controller never calls back, so the client has no handler.
-	conn := acp.NewConnection(nil, nc, nc)
+	gate := NewGate(nc)
+	conn := acp.NewConnection(nil, nc, gate)
 	conn.SetLogger(QuietLogger(slog.New(slog.DiscardHandler)))
+	gate.Open()
 	return &Client{nc: nc, conn: conn}, nil
+}
+
+// Gate is a reader that blocks until Open. The SDK starts reading in
+// NewConnection, and its receive loop reads the logger that SetLogger
+// writes; holding reads until after SetLogger avoids that data race.
+type Gate struct {
+	r    io.Reader
+	open chan struct{}
+	once sync.Once
+}
+
+// NewGate wraps r closed.
+func NewGate(r io.Reader) *Gate { return &Gate{r: r, open: make(chan struct{})} }
+
+// Open lets reads through.
+func (g *Gate) Open() { g.once.Do(func() { close(g.open) }) }
+
+func (g *Gate) Read(p []byte) (int, error) {
+	<-g.open
+	return g.r.Read(p)
 }
 
 // QuietLogger returns l raised to WARN: the SDK logs every closed

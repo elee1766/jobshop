@@ -264,8 +264,10 @@ func (r *runner) session() error {
 	r.agentPid = welcome.AgentPid
 	r.mu.Unlock()
 
-	conn := acp.NewClientSideConnection(&client{r: r}, nc, rd)
+	gate := rpc.NewGate(rd)
+	conn := acp.NewClientSideConnection(&client{r: r}, nc, gate)
 	conn.SetLogger(rpc.QuietLogger(r.log))
+	gate.Open()
 	r.log.Info("connected to host", "host_pid", welcome.Pid, "agent_pid", welcome.AgentPid, "fresh", fresh, "busy", welcome.Busy)
 	stale := !fresh && r.staleEnv(t, fields)
 	if stale && !welcome.Busy && r.idle() {

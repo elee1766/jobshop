@@ -520,7 +520,11 @@ func TestRateLimitBackoff(t *testing.T) {
 				continue
 			}
 			sawBackoff = true
-			assert.Equal(t, task.ID, s.Current, "claim kept while backing off")
+			// The retry may close the ticket between reading backoff and
+			// reading the claim; otherwise the claim must still be held.
+			if s.Current != task.ID {
+				assert.Equal(t, store.StatusClosed, show(task.ID).Status, "claim kept while backing off")
+			}
 			if hostPid == 0 {
 				hostPid = s.HostPid
 			}

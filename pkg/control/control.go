@@ -211,8 +211,10 @@ func (c *Controller) start(ln net.Listener, sc scope) context.CancelFunc {
 				return
 			}
 			conns.Go(func() {
-				conn := acp.NewConnection(c.handler(ctx, sc), nc, nc)
+				gate := rpc.NewGate(nc)
+				conn := acp.NewConnection(c.handler(ctx, sc), nc, gate)
 				conn.SetLogger(rpc.QuietLogger(c.log))
+				gate.Open()
 				select {
 				case <-conn.Done(): // client hung up
 				case <-ctx.Done(): // socket or controller stopping
