@@ -115,6 +115,11 @@ Uses:
   `github.com/prometheus/client_golang` for its registry and `promhttp`
   handler. `pkg/telemetry` uses a private registry per controller rather
   than the global one, so tests and restarts do not collide.
+- **OTLP HTTP exporters and otelslog** (added 2026-11-01, issue #15):
+  `otlptracehttp`, `otlploghttp` (v0.23.0) and `sdk/log` for
+  `telemetry.otlp_endpoint`; the bridge sends controller logs with trace
+  ids. They pull in `grpc-gateway` and `otlp` protos (types only, HTTP
+  transport). Only imported by `pkg/telemetry`.
 - **errgroup**: controller and host goroutine lifetimes and shutdown.
 - **gitleaks**: its detector and default rule set redact secrets in
   conversation export before records are queued, plus launch-env secret

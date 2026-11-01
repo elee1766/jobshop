@@ -76,9 +76,10 @@ func TestParseErrors(t *testing.T) {
 }
 
 func TestParseTelemetry(t *testing.T) {
-	c, err := Parse([]byte("telemetry:\n  metrics_listen: 127.0.0.1:9464\n"))
+	c, err := Parse([]byte("telemetry:\n  metrics_listen: 127.0.0.1:9464\n  otlp_endpoint: http://127.0.0.1:4318\n"))
 	require.NoError(t, err)
 	assert.Equal(t, "127.0.0.1:9464", c.Telemetry.MetricsListen)
+	assert.Equal(t, "http://127.0.0.1:4318", c.Telemetry.OTLPEndpoint)
 
 	c, err = Parse([]byte("projects:\n  js: {}\n"))
 	require.NoError(t, err)

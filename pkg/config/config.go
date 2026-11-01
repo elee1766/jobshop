@@ -28,6 +28,9 @@ type Telemetry struct {
 	// MetricsListen is the TCP address for Prometheus /metrics, e.g.
 	// 127.0.0.1:9464. Empty: no metrics server.
 	MetricsListen string `yaml:"metrics_listen"`
+	// OTLPEndpoint is an OTLP/HTTP base URL (e.g. http://127.0.0.1:4318);
+	// traces go to /v1/traces and logs to /v1/logs. Empty: no export.
+	OTLPEndpoint string `yaml:"otlp_endpoint"`
 }
 
 // Agent is how to start an ACP agent process.

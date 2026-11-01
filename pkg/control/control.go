@@ -17,6 +17,10 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sys/unix"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -48,6 +52,8 @@ type Options struct {
 	// MetricsReady, if set, receives the /metrics listen address once it
 	// is bound (tests use ":0" in the config).
 	MetricsReady func(addr string)
+	// SpanProcessor, if set, also receives every span (tests).
+	SpanProcessor sdktrace.SpanProcessor
 }
 
 // Controller serves one Jobshop root.
@@ -60,6 +66,7 @@ type Controller struct {
 	log   *slog.Logger
 
 	metrics  *telemetry.Metrics
+	tracer   trace.Tracer
 	ctx      context.Context
 	cancel   context.CancelFunc
 	mu       sync.Mutex
@@ -122,8 +129,20 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	defer func() { _ = m.Shutdown(context.WithoutCancel(ctx)) }()
 
+	var extra []sdktrace.SpanProcessor
+	if opt.SpanProcessor != nil {
+		extra = append(extra, opt.SpanProcessor)
+	}
+	tr, err := telemetry.NewTracing(ctx, cfg.Telemetry.OTLPEndpoint, extra...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tr.Shutdown(context.WithoutCancel(ctx)) }()
+	log := slog.New(tr.LogHandler(opt.Log.Handler()))
+
 	c := &Controller{
-		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: opt.Log, metrics: m,
+		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: log, metrics: m,
+		tracer:   tr.Tracer(),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		drained:      map[string]bool{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
@@ -197,8 +216,7 @@ func (c *Controller) serve() error {
 	tick := time.NewTicker(c.opt.Tick)
 	defer tick.Stop()
 	for {
-		c.sweep()
-		c.supervise()
+		c.tick()
 		select {
 		case <-c.ctx.Done():
 			c.cancel()
@@ -209,6 +227,14 @@ func (c *Controller) serve() error {
 		case <-tick.C:
 		}
 	}
+}
+
+// tick runs one supervisor pass under a span.
+func (c *Controller) tick() {
+	_, span := c.tracer.Start(c.ctx, "supervisor tick")
+	defer span.End()
+	c.sweep()
+	c.supervise()
 }
 
 func (c *Controller) sweep() {
@@ -342,11 +368,21 @@ func (c *Controller) handler(sockCtx context.Context, sc scope) acp.MethodHandle
 		if !ok {
 			return nil, acp.NewMethodNotFound(name)
 		}
+		params, meta := rpc.SplitMeta(params)
+		ctx = telemetry.WithTraceParent(ctx, meta.TraceParent)
+		ctx, span := c.tracer.Start(ctx, "rpc "+name, trace.WithSpanKind(trace.SpanKindServer),
+			trace.WithAttributes(telemetry.AttrMethod.String(name), attribute.String("jobshop.actor", sc.actor)))
+		defer span.End()
+		if sc.session != "" {
+			span.SetAttributes(telemetry.AttrSession.String(sc.session), telemetry.AttrPool.String(sc.pool),
+				telemetry.AttrProject.String(sc.project))
+		}
 		defer c.metrics.Since(ctx, time.Now(), name)
 		res, err := h(c, ctx, sc, params)
 		if err != nil {
 			if !errors.Is(err, store.ErrNoWork) {
-				c.log.Debug("rpc error", "method", name, "actor", sc.actor, "err", err)
+				span.SetStatus(codes.Error, err.Error())
+				c.log.DebugContext(ctx, "rpc error", "method", name, "actor", sc.actor, "err", err)
 			}
 			return nil, rpc.ToWire(err)
 		}

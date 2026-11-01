@@ -5,6 +5,7 @@
 package rpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Method names.
@@ -366,6 +368,10 @@ func (h minLevel) WithGroup(n string) slog.Handler { return minLevel{h.Handler.W
 
 // Call invokes method and decodes the result into out (may be nil).
 func (c *Client) Call(ctx context.Context, method string, params, out any) error {
+	params, err := withMeta(ctx, params)
+	if err != nil {
+		return err
+	}
 	res, err := acp.SendRequest[json.RawMessage](c.conn, ctx, method, params)
 	if err != nil {
 		return FromWire(err)
@@ -374,6 +380,62 @@ func (c *Client) Call(ctx context.Context, method string, params, out any) error
 		return nil
 	}
 	return json.Unmarshal(res, out)
+}
+
+// MetaKey carries request metadata (trace context) inside params, as ACP
+// does with _meta.
+const MetaKey = "_meta"
+
+// Meta is request metadata.
+type Meta struct {
+	TraceParent string `json:"traceparent,omitempty"`
+}
+
+// withMeta adds _meta.traceparent from ctx to object params.
+func withMeta(ctx context.Context, params any) (any, error) {
+	tp := telemetry.TraceParent(ctx)
+	if tp == "" {
+		return params, nil
+	}
+	obj := map[string]json.RawMessage{}
+	if params != nil {
+		b, err := json.Marshal(params)
+		if err != nil {
+			return nil, err
+		}
+		if string(b) != "null" && json.Unmarshal(b, &obj) != nil {
+			return params, nil // not an object: send without metadata
+		}
+	}
+	m, err := json.Marshal(Meta{TraceParent: tp})
+	if err != nil {
+		return nil, err
+	}
+	obj[MetaKey] = m
+	return obj, nil
+}
+
+// SplitMeta removes _meta from object params.
+func SplitMeta(raw json.RawMessage) (json.RawMessage, Meta) {
+	var meta Meta
+	if !bytes.Contains(raw, []byte(MetaKey)) {
+		return raw, meta
+	}
+	obj := map[string]json.RawMessage{}
+	if json.Unmarshal(raw, &obj) != nil {
+		return raw, meta
+	}
+	m, ok := obj[MetaKey]
+	if !ok {
+		return raw, meta
+	}
+	_ = json.Unmarshal(m, &meta)
+	delete(obj, MetaKey)
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return raw, meta
+	}
+	return out, meta
 }
 
 // Close closes the connection.
