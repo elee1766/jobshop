@@ -261,3 +261,18 @@ dev ticket from the planner session, none reached `refinery`, or no
 merged PR linked. A dev ticket that is still in `dev` or `refinery` means
 the cycle has not finished yet. Pick an older plan ticket or wait for it.
 `--trace FILE` checks saved trace JSON offline.
+
+## Self-deploy
+
+Promotion is unattended (`services.jobshop.selfDeploy`, `docs/plan.md`
+section 6). Every 10 minutes `jobshop-self-deploy` picks the newest master
+commit with green CI and rebuilds with that jobshop rev. Check it with:
+
+```sh
+journalctl -u jobshop-self-deploy -o cat --since -1h   # "deployed <rev>" or "already at"
+cat /var/lib/jobshop-deploy/{deployed,failed} 2>/dev/null
+```
+
+A rev that failed to build or left the controller unhealthy is recorded in
+`failed` and skipped until a newer green commit lands; the host was switched
+back to the previous generation.
