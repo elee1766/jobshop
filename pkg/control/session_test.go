@@ -1061,3 +1061,22 @@ func TestLoadFallback(t *testing.T) {
 		})
 	}
 }
+
+// TestCancelDuringStartup cancels after the admin socket is up but before
+// open sessions are listed: Run must return nil and clean up (#61).
+func TestCancelDuringStartup(t *testing.T) {
+	root, _ := poolRoot(t, "1m")
+	f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = f.WriteString("telemetry:\n  metrics_listen: 127.0.0.1:0\n")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	ctx, cancel := context.WithCancel(t.Context())
+	err = control.Run(ctx, root, control.Options{
+		Tick: 50 * time.Millisecond, HostExe: os.Args[0],
+		MetricsReady: func(string) { cancel() },
+	})
+	require.NoError(t, err)
+	assert.NoFileExists(t, root.AdminSocket())
+}
