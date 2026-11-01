@@ -358,7 +358,8 @@ permission is not built.
 `triggers:` entries have `when`, a `ticket` template and an optional
 `cooldown`. Each tick the controller fires a trigger when all hold: no open
 ticket it created (`meta.trigger.name`), cooldown passed since its last
-ticket closed, cron slot due, every count threshold met. Thresholds are
+ticket closed (a last ticket read with no `closed_at`, because it closed
+mid-evaluation, waits for the next tick; #47, 2026-11-01), cron slot due, every count threshold met. Thresholds are
 `{ready,open,in_progress}_{below,above}` over `when.pool`, `when.kind`
 (default task) and `when.label`. State is read back from the store, so
 restarts change nothing. Cron is 5-field, UTC unless `when.timezone`;

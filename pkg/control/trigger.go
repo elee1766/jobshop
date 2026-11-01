@@ -98,6 +98,13 @@ func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Tri
 	}
 
 	if lastT != nil && tr.Cooldown != "" {
+		// lastT was read before the open-status queries. If it was closed
+		// in between, its ClosedAt is still zero here and the cooldown
+		// would compute from year 1 (#47). Treat that as not yet cooled.
+		if lastT.ClosedAt.IsZero() {
+			st.why = "ticket " + lastT.ID + " closed during evaluation"
+			return st, nil
+		}
 		until := lastT.ClosedAt.Add(config.Duration(tr.Cooldown, 0))
 		if now.Before(until) {
 			st.why = "cooldown until " + until.UTC().Format(time.RFC3339)
