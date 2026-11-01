@@ -2,6 +2,7 @@ package control_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -221,6 +222,80 @@ func TestQuarantine(t *testing.T) {
 	sessions = nil
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	assert.Len(t, sessions, 3, "pool paused")
+}
+
+// TestMessages delivers a queued message to an idle pool session, then an
+// interrupt message that cancels a blocked turn and is delivered before the
+// ticket is finished.
+func TestMessages(t *testing.T) {
+	root, start := poolRootOpt(t, "1m", control.Options{MessagePoll: 50 * time.Millisecond})
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	prompts := func() []string {
+		b, _ := os.ReadFile(filepath.Join(root.Dir, "prompts"))
+		var out []string
+		for line := range strings.Lines(string(b)) {
+			var s string
+			if json.Unmarshal([]byte(line), &s) == nil {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	send := func(to, text string, interrupt bool) store.Ticket {
+		f, err := json.Marshal(store.MessageFields{To: to, Interrupt: interrupt})
+		require.NoError(t, err)
+		var m store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Kind: store.KindMessage, Title: text, Fields: f}, &m))
+		return m
+	}
+
+	// Start a session with a first ticket, then queue a message to the pool.
+	var first store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
+	require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	queued := send("pool:dev", "hello queued", false)
+	require.Eventually(t, func() bool { return show(queued.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, "delivered", show(queued.ID).Resolution)
+	var msg store.MessageFields
+	require.NoError(t, json.Unmarshal(show(queued.ID).Fields, &msg))
+	assert.Equal(t, "admin", msg.From)
+	require.Eventually(t, func() bool {
+		p := prompts()
+		return len(p) > 0 && strings.HasPrefix(p[len(p)-1], "Messages for you:") && strings.Contains(p[len(p)-1], "hello queued")
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// A blocked turn is cancelled by an interrupt message.
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
+	var second store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "started"))
+		return err == nil
+	}, 20*time.Second, 20*time.Millisecond)
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	urgent := send(sessions[0].ID, "stop that", true)
+	require.Eventually(t, func() bool { return show(urgent.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, store.StatusInProgress, show(second.ID).Status, "cancelled turn keeps its ticket")
+	require.Eventually(t, func() bool {
+		return slices.ContainsFunc(prompts(), func(p string) bool {
+			return strings.HasPrefix(p, "Messages for you:") && strings.Contains(p, "stop that")
+		})
+	}, 5*time.Second, 50*time.Millisecond)
+
+	// The reminder turn finishes the ticket once unblocked.
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
+	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
 }
 
 // TestSessionList joins a running session's ticket with its live host
@@ -455,12 +530,15 @@ pools:
 
 // fakeAgent speaks ACP on stdio and closes each prompted ticket.
 func fakeAgent() {
-	a := &agent{}
+	a := &agent{cancel: make(chan struct{}, 1)}
 	conn := acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
 	<-conn.Done()
 }
 
-type agent struct{ n int }
+type agent struct {
+	n      int
+	cancel chan struct{}
+}
 
 func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
 	return acp.InitializeResponse{
@@ -478,7 +556,22 @@ func (a *agent) LoadSession(context.Context, acp.LoadSessionRequest) (acp.LoadSe
 	return acp.LoadSessionResponse{}, nil
 }
 
-func (a *agent) Prompt(ctx context.Context, _ acp.PromptRequest) (acp.PromptResponse, error) {
+func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+	// Record every prompt (one JSON string per line) for tests to inspect.
+	var text string
+	for _, b := range p.Prompt {
+		if b.Text != nil {
+			text += b.Text.Text
+		}
+	}
+	if f, err := os.OpenFile("prompts", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+		line, _ := json.Marshal(text)
+		_, _ = f.Write(append(line, '\n'))
+		_ = f.Close()
+	}
+	if strings.HasPrefix(text, "Messages for you:") {
+		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	}
 	// With a "crash" file present, die mid-turn like a crashing agent.
 	if _, err := os.Stat("crash"); err == nil {
 		os.Exit(3)
@@ -499,7 +592,12 @@ func (a *agent) Prompt(ctx context.Context, _ acp.PromptRequest) (acp.PromptResp
 			if _, err := os.Stat("go"); err == nil {
 				break
 			}
-			time.Sleep(20 * time.Millisecond)
+			select {
+			case <-a.cancel:
+				// Cancelled turns leave the ticket held, like a real agent.
+				return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
+			case <-time.After(20 * time.Millisecond):
+			}
 		}
 	}
 	c, err := rpc.Dial(ctx, os.Getenv("JOBSHOP_SOCKET"))
@@ -512,7 +610,13 @@ func (a *agent) Prompt(ctx context.Context, _ acp.PromptRequest) (acp.PromptResp
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 
-func (a *agent) Cancel(context.Context, acp.CancelNotification) error { return nil }
+func (a *agent) Cancel(context.Context, acp.CancelNotification) error {
+	select {
+	case a.cancel <- struct{}{}:
+	default:
+	}
+	return nil
+}
 
 func (a *agent) Authenticate(context.Context, acp.AuthenticateRequest) (acp.AuthenticateResponse, error) {
 	return acp.AuthenticateResponse{}, nil

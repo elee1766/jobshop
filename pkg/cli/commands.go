@@ -132,6 +132,28 @@ func (c undrainCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodDrain, rpc.DrainParams{Pool: c.Pool, Undrain: true}, nil)
 }
 
+type sendCmd struct {
+	To        string `arg:"" help:"Session id, session key, or pool:<name>."`
+	Text      string `arg:"" help:"Message text. Use - to read stdin."`
+	Interrupt bool   `help:"Cancel the recipient's running turn and deliver now."`
+	Project   string `help:"Project (admin only; sessions use their own)."`
+}
+
+func (c sendCmd) Run(g *Globals) error {
+	text, err := readBody(c.Text)
+	if err != nil {
+		return err
+	}
+	fields, err := json.Marshal(store.MessageFields{To: c.To, Interrupt: c.Interrupt})
+	if err != nil {
+		return err
+	}
+	title, body, _ := strings.Cut(text, "\n")
+	return g.call(rpc.MethodTicketCreate, rpc.CreateParams{
+		Project: c.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
+	}, nil)
+}
+
 type shutdownCmd struct {
 	All  bool          `help:"Also end every session (stops agents and hosts)."`
 	Wait time.Duration `default:"2m" help:"How long to wait for the controller to exit."`

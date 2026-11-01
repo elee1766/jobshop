@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -103,6 +104,21 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 	}
 	if p.Holder != "" && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
+	}
+	if p.Kind == store.KindMessage {
+		// A message's sender is the caller; sessions cannot speak for others.
+		var f store.MessageFields
+		if len(p.Fields) > 0 {
+			if err := json.Unmarshal(p.Fields, &f); err != nil {
+				return nil, fmt.Errorf("%w: message fields: %v", store.ErrInvalid, err)
+			}
+		}
+		if !sc.admin || f.From == "" {
+			f.From = sc.actor
+		}
+		if p.Fields, err = json.Marshal(f); err != nil {
+			return nil, err
+		}
 	}
 	return c.store.Create(ctx, sc.actor, store.NewTicket{
 		Project: proj, Kind: p.Kind, Title: p.Title, Body: p.Body, Priority: p.Priority,
