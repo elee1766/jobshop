@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -25,6 +25,11 @@ type Config struct {
 	Pools     map[string]Pool    `yaml:"pools"`
 	Triggers  map[string]Trigger `yaml:"triggers"`
 	Telemetry Telemetry          `yaml:"telemetry"`
+	// Packs are pack directories merged before this file (see LoadFile).
+	Packs []PackRef `yaml:"packs"`
+	// Sources maps "pools.<name>", "agents.<name>" and "triggers.<name>"
+	// to the files that set the entry, in merge order.
+	Sources map[string][]string `yaml:"-"`
 }
 
 // Trigger creates a ticket from Ticket while every condition in When
@@ -109,6 +114,9 @@ type Pool struct {
 	Ref string `yaml:"ref"`
 	// Prompt is prepended to every ticket prompt (pool instructions).
 	Prompt string `yaml:"prompt"`
+	// PromptFile is read into Prompt at load time, relative to the file
+	// that declares it. Setting both is an error.
+	PromptFile string `yaml:"prompt_file"`
 	// IdleTimeout ends a session that found no work for this long. Default 5m.
 	IdleTimeout string `yaml:"idle_timeout"`
 	// TurnTimeout cancels a single agent turn. Default 2h.
@@ -126,20 +134,33 @@ var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
 // Load reads and validates the root's config.
 func Load(r Root) (*Config, error) {
-	b, err := os.ReadFile(r.Config())
-	if err != nil {
-		return nil, err
-	}
-	return Parse(b)
+	return LoadFile(r.Config())
 }
 
-// Parse decodes and validates config bytes. Unknown keys are rejected.
+// Parse decodes and validates config bytes with no packs or prompt files
+// (they need a file location; see LoadFile). Unknown keys are rejected.
 func Parse(b []byte) (*Config, error) {
+	return parse(b, nil)
+}
+
+// parse validates merged config bytes. sources maps "section.name" to the
+// files that set it, so errors can name the file to fix.
+func parse(b []byte, sources map[string][]string) (*Config, error) {
+	src := func(section, name string) string {
+		if s := sources[section+"."+name]; len(s) > 0 {
+			return strings.Join(s, ", ")
+		}
+		return FileName
+	}
 	var c Config
 	if len(bytes.TrimSpace(b)) > 0 {
 		if err := yaml.UnmarshalWithOptions(b, &c, yaml.Strict()); err != nil {
 			return nil, fmt.Errorf("%s: %w", FileName, err)
 		}
+	}
+	c.Sources = sources
+	if len(c.Packs) > 0 {
+		return nil, fmt.Errorf("%s: packs need a config file location", FileName)
 	}
 	if c.Projects == nil {
 		c.Projects = map[string]Project{}
@@ -173,44 +194,47 @@ func Parse(b []byte) (*Config, error) {
 	}
 	for name, a := range c.Agents {
 		if !namePattern.MatchString(name) {
-			return nil, fmt.Errorf("%s: agent name %q must match %s", FileName, name, namePattern)
+			return nil, fmt.Errorf("%s: agent name %q must match %s", src("agents", name), name, namePattern)
 		}
 		if a.Command == "" {
-			return nil, fmt.Errorf("%s: agent %s: command is required", FileName, name)
+			return nil, fmt.Errorf("%s: agent %s: command is required", src("agents", name), name)
 		}
 	}
 	for name, p := range c.Pools {
 		if !namePattern.MatchString(name) {
-			return nil, fmt.Errorf("%s: pool name %q must match %s", FileName, name, namePattern)
+			return nil, fmt.Errorf("%s: pool name %q must match %s", src("pools", name), name, namePattern)
 		}
 		if p.Project == "" {
 			p.Project = c.DefaultProject
 		}
 		if _, ok := c.Projects[p.Project]; !ok {
-			return nil, fmt.Errorf("%s: pool %s: unknown project %q", FileName, name, p.Project)
+			return nil, fmt.Errorf("%s: pool %s: unknown project %q", src("pools", name), name, p.Project)
 		}
 		if _, ok := c.Agents[p.Agent]; !ok {
-			return nil, fmt.Errorf("%s: pool %s: unknown agent %q", FileName, name, p.Agent)
+			return nil, fmt.Errorf("%s: pool %s: unknown agent %q", src("pools", name), name, p.Agent)
 		}
 		if p.Dir == "" && p.Repo == "" {
-			return nil, fmt.Errorf("%s: pool %s: set dir or repo", FileName, name)
+			return nil, fmt.Errorf("%s: pool %s: set dir or repo", src("pools", name), name)
+		}
+		if p.PromptFile != "" {
+			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)
 		}
 		if p.MaxSessions < 0 {
-			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", FileName, name)
+			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", src("pools", name), name)
 		}
 		for _, d := range []struct{ key, v string }{{"idle_timeout", p.IdleTimeout}, {"turn_timeout", p.TurnTimeout}} {
 			if d.v == "" {
 				continue
 			}
 			if v, err := time.ParseDuration(d.v); err != nil || v <= 0 {
-				return nil, fmt.Errorf("%s: pool %s: %s %q must be a positive duration", FileName, name, d.key, d.v)
+				return nil, fmt.Errorf("%s: pool %s: %s %q must be a positive duration", src("pools", name), name, d.key, d.v)
 			}
 		}
 		c.Pools[name] = p
 	}
 	for name, tr := range c.Triggers {
 		if err := c.checkTrigger(name, &tr); err != nil {
-			return nil, fmt.Errorf("%s: trigger %s: %w", FileName, name, err)
+			return nil, fmt.Errorf("%s: trigger %s: %w", src("triggers", name), name, err)
 		}
 		c.Triggers[name] = tr
 	}
