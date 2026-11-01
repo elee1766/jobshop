@@ -838,19 +838,28 @@ func TestMetrics(t *testing.T) {
 		require.NoError(t, err)
 		return string(b)
 	}
-	var body string
-	require.Eventually(t, func() bool {
-		body = scrape()
-		return strings.Contains(body, `jobshop_closes_total{jobshop_kind="task",jobshop_pool="dev",jobshop_resolution="done"`)
-	}, 20*time.Second, 100*time.Millisecond, "closes series")
-	for _, want := range []string{
+	// The fake agent closes its ticket inside the turn, so closes_total can
+	// appear a scrape before turns_total (#73). Wait for every series.
+	wants := []string{
+		`jobshop_closes_total{jobshop_kind="task",jobshop_pool="dev",jobshop_resolution="done"`,
 		`jobshop_claims_total{jobshop_pool="dev"`,
 		`jobshop_sessions{jobshop_pool="dev",jobshop_session_state="idle"`,
 		`jobshop_tickets_ready{jobshop_pool="dev",jobshop_project="js"`,
 		`jobshop_rpc_duration_seconds_bucket{`,
 		`rpc_method="ticket.create"`,
 		`jobshop_turns_total{jobshop_pool="dev",jobshop_turn_stop_reason="end_turn"`,
-	} {
+	}
+	var body string
+	assert.Eventually(t, func() bool {
+		body = scrape()
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				return false
+			}
+		}
+		return true
+	}, 20*time.Second, 100*time.Millisecond, "metrics series")
+	for _, want := range wants {
 		assert.Contains(t, body, want)
 	}
 }
