@@ -159,6 +159,12 @@ All dated 2026-11-01 unless noted.
   and prompts. Go handles transport, not judgment.
 - Work persists in tickets; sessions are disposable. Recovery re-reads
   state. No status files.
+- The refinery merges without `--delete-branch`. gh (2.101+) then deletes
+  the local branch and removes the linked worktree holding it, which was a
+  live dev session's: its jcode bash tool failed every call ("could not
+  load saved cloud environment", from canonicalizing the deleted cwd) and
+  it claimed and dropped tickets for hours. The repo deletes merged head
+  branches on GitHub instead.
 - No observer agents shipped. Their Gas City duties (dead-session release,
   lease sweep, idle-kill, quarantine, alerts) are deterministic controller
   work. Observer-style pools stay possible as config.

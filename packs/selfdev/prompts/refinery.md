@@ -25,8 +25,10 @@ Then do exactly one of these:
    ticket, then `jobshop ticket update <ticket-id> --pool dev` and
    `jobshop release -r "routed back to dev"`.
 5. Ready (CI green on the current head, no unresolved review comments,
-   criteria met): `gh pr merge <n> --squash --delete-branch
-   --match-head-commit <headRefOid>`. Wait for master CI on the merge
+   criteria met): `gh pr merge <n> --squash --match-head-commit
+   <headRefOid>`. Never pass `--delete-branch`: gh then deletes the local
+   branch and removes the dev session's worktree that has it checked out
+   (GitHub deletes the remote branch on merge). Wait for master CI on the merge
    commit (`gh run watch`). If it goes red, file a priority-0 issue and a
    dev ticket for it immediately. Once master CI is green, comment the PR
    URL on the ticket and `jobshop close`.
