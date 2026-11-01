@@ -136,12 +136,11 @@ as its own user, not as `agent`.
 
 - **User `jobshop`**: own home, own data dir (`/var/lib/jobshop` or
   `~jobshop/data`), own GitHub identity (`cog` credentials via sops).
-- **Resource limit via its own slice**: `jobshop.slice` with
-  `AllowedCPUs` pinned to 6 cores and `MemoryMax = 8G` (plus a lower
-  `MemoryHigh`), `TasksMax`, and oomd pressure kill, mirroring how
-  `modules/resources.nix` caps `user-1001.slice` for `agent`.
-  `AllowedCPUs` gives a hard 6-core cap; `CPUQuota=600%` is the
-  alternative if pinning to specific cores is undesirable.
+- **Resource limit via its own slice** (decided 2026-11-01): `jobshop.slice`
+  with `CPUQuota = 600%` (six cores' worth, placed by the scheduler) and
+  `MemoryMax = 8G` (plus a lower `MemoryHigh`), `TasksMax`, and oomd
+  pressure kill, mirroring how `modules/resources.nix` caps
+  `user-1001.slice` for `agent`.
 - **Network**: same egress policy as `agent` (public internet and
   loopback; no private, CGNAT/tailnet or link-local ranges), copied from
   `modules/agent/default.nix`.
@@ -155,16 +154,17 @@ as its own user, not as `agent`.
   rollback = previous generation. This replaces the symlink scheme in
   plan section 7.
 - **Where the module lives**: `nixosModules.jobshop` in this repo, imported
-  by `gasserver.nix` as a flake input. Host-specific values (core list,
+  by `gasserver.nix` as a flake input. Host-specific values (limits,
   secrets) stay in `gasserver.nix`.
-
-Open questions:
-- `KillMode=process` leaves hosts running on `systemctl stop`, which is the
-  point, but also on a deliberate full shutdown. Add a `jobshop session
-  reap --all` ExecStop variant for explicit full stops?
-- Which 6 cores: a fixed range (e.g. 42-47) so Jobshop never competes with
-  Gas City's hottest cores, or CPUQuota and let the scheduler place it?
-- Hot restart vs Nix switch: switching to a new store path restarts
-  `jobshop.service`; hosts keep running the old store path until their
-  sessions end. Keep old generations until no host references them (GC
-  roots per running host).
+- **Restart vs full stop** (decided 2026-11-01): `systemctl restart` and a
+  Nix switch restart only the controller; hosts keep running and are
+  re-adopted. A full stop cleans up session hosts too. systemd's ExecStop
+  cannot tell a restart from a stop, so full stop is an explicit command,
+  `jobshop shutdown`, which asks the controller over the admin socket to
+  end every session (stop agents, flush journals, release claims, reap
+  hosts) and then exit. The NixOS module wires it to system shutdown.
+- **Old builds** (decided 2026-11-01): a host keeps running the store path
+  it started from. Each running host registers a Nix GC root for its
+  binary (under `/nix/var/nix/gcroots/per-user/jobshop/`), removed when
+  the host exits, so garbage collection never deletes a build a live
+  session uses.
