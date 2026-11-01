@@ -40,7 +40,7 @@ jobshop/
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter,
 │   │                         conversation export
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
-│   └── ids/                  ticket ids: per-project prefix + xid
+│   └── ids/                  ticket ids: per-project prefix + sonyflake base32
 ├── docs/                     plan.md, data-model.md, layout.md
 ├── examples/                 sample jobshop.yaml, agent prompts
 ├── nix/
@@ -89,7 +89,7 @@ Subcommands:
 | ACP | own `pkg/acp`, message types only, over jsonrpc2 | |
 | CLI | `github.com/alecthomas/kong` | v1.16.1 |
 | YAML config | `github.com/goccy/go-yaml` | v1.19.2 |
-| IDs | `github.com/rs/xid` | v1.6.0 |
+| IDs | `github.com/sony/sonyflake/v2`, Crockford base32 | v2.2.0 |
 | Tracing, logs, metrics | `go.opentelemetry.io/otel` + sdk, OTLP HTTP exporters | v1.47.0 |
 | Prometheus | `go.opentelemetry.io/otel/exporters/prometheus` | v0.69.0 |
 | slog to OTel | `go.opentelemetry.io/contrib/bridges/otelslog` | v0.21.0 |
@@ -98,10 +98,15 @@ Subcommands:
 Notes:
 - `coder/acp-go-sdk` was considered for ACP and not used: it is pre-1.0
   and brings its own JSON-RPC. Types can be copied from it as needed.
-- Ticket IDs are `<project prefix>-<xid>`, e.g. `js-d4ek2h3r8a1u6jqfm0s0`.
-  xid is 20 characters, globally unique without coordination, and sorts
-  by creation time. Longer than a short random suffix; the CLI can accept
-  unique prefixes for convenience.
+- Ticket IDs (decided 2026-11-01): `<project prefix>-<13 chars>`, e.g.
+  `js-0031w02j0r012`. A Sonyflake 63-bit ID, big-endian, encoded in
+  lowercase Crockford base32 (no `i l o u`). Fixed width, so IDs sort by
+  creation time as strings. Settings: 1 ms time unit, 47 time bits
+  (about 4,400 years from a 2026-01-01 epoch), 12 sequence bits (4,096
+  IDs per ms), 4 machine-id bits fixed to 1. Only the controller
+  generates IDs and the controller lock guarantees one writer, so the
+  machine id never needs to vary. Chosen over xid (20 chars) for length;
+  uniqueness is the same for a single writer.
 - New direct dependencies need a reason recorded here.
 
 ## Build

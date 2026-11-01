@@ -189,8 +189,8 @@ SQLite implementation.
 - One database per install. `project` is a column. No storage classes, no
   split stores.
 - SQLite driver: `modernc.org/sqlite` (pure Go, no cgo).
-- Ticket IDs: per-project prefix plus an xid (`github.com/rs/xid`), e.g.
-  `js-d4ek2h3r8a1u6jqfm0s0`. Dependencies: `docs/layout.md`.
+- Ticket IDs: per-project prefix plus a Sonyflake ID in 13-character
+  Crockford base32, e.g. `js-0031w02j0r012`. Details: `docs/layout.md`.
 - Claims are released by the controller as soon as it knows a session is
   dead. The lease is a backstop, swept by the controller every tick, and
   expiry returns the ticket straight to `open`.
