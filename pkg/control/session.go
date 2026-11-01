@@ -640,6 +640,11 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) error {
 	if ref == "" {
 		ref = "HEAD"
 	}
+	// Start from the latest remote state; a failed fetch (offline, no
+	// remote) still allows a worktree from what is there.
+	if out, err := exec.Command("git", "-C", p.Repo, "fetch", "--quiet", "--prune").CombinedOutput(); err != nil {
+		c.log.Warn("git fetch", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
+	}
 	out, err := exec.Command("git", "-C", p.Repo, "worktree", "add", "--detach", cwd, ref).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
