@@ -60,6 +60,9 @@ type Spec struct {
 // Hello is the first line a controller sends on acp.sock.
 type Hello struct {
 	Protocol int `json:"protocol"`
+	// Since, if set, asks for every agent notification after this journal
+	// seq to be replayed before live traffic. Older hosts ignore it.
+	Since *int64 `json:"since,omitempty"`
 }
 
 // Welcome is the host's reply, sent before any ACP traffic.

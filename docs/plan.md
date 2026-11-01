@@ -106,7 +106,7 @@ Short list; behavior details are in section 7.
 - Messages with queued and interrupt delivery (#16), read-only attach (#17).
 - Triggers: store counts, cron, dedup and cooldown (#26).
 - Packs and `packs/selfdev` (#27), refinery handoff (#28).
-- Config reload (#38), `session restart` (#37).
+- Config reload (#38), `session restart` (#37), host backpressure (#39).
 
 ## 5. What's next
 
@@ -116,8 +116,6 @@ Short list; behavior details are in section 7.
 - Refinery dry run on real PRs, and one full planner cycle on gasserver.
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
   sessions.
-- Host backpressure: a slow or absent controller never blocks the agent or
-  grows host memory without bound.
 - `session/load` fallback from the host journal for agents that cannot
   load a conversation.
 - gasserver scrapes `/metrics` and ships traces; a Grafana dashboard.
@@ -236,6 +234,18 @@ and `work/` (git worktree when the pool sets `repo`).
 - The host rewrites request ids so a new controller never collides with an
   old one, re-sends unanswered agent requests to a new controller, and
   reports a prompt that finished while detached as `_jobshop/turn_end`.
+- Backpressure (decided 2026-11-01, #39): agent stdout is read and
+  journaled without waiting on the controller. Frames are then queued per
+  connection and one writer goroutine drains the queue, so a controller
+  that stops reading blocks only that goroutine. The queue holds at most
+  8 MiB or 4096 frames. Past that, agent notifications are dropped from
+  memory only: the writer replays them from the journal in seq order
+  before the next live frame and logs the count (`replayed frames from
+  journal`; the host has no metrics). Responses, agent requests and host
+  messages are never dropped. At most 256 agent requests wait for a
+  controller answer; more get a JSON-RPC error back to the agent. With no
+  controller nothing is queued. Optional `Hello.since` replays agent
+  notifications after a seq on connect (protocol unchanged).
 - Stopping a host: SIGTERM (forwarded to the agent's group, SIGKILL after
   5s); the controller SIGKILLs the host after 10s.
 - Leak guards: the agent gets `Pdeathsig: SIGKILL` and its own process
