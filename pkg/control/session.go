@@ -729,7 +729,10 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec,
 
 // hostInheritedEnv is the controller env a spawned host starts with.
 func hostInheritedEnv() []string {
-	return withoutEnv(os.Environ(), "JOBSHOP_ROOT", "JOBSHOP_SOCKET")
+	// systemd sets these per service start; hashing them would refresh
+	// every session on each controller restart.
+	return withoutEnv(os.Environ(), "JOBSHOP_ROOT", "JOBSHOP_SOCKET",
+		"INVOCATION_ID", "JOURNAL_STREAM", "SYSTEMD_EXEC_PID", "MEMORY_PRESSURE_WATCH", "MEMORY_PRESSURE_WRITE")
 }
 
 // envHash hashes the agent's final env (inherited, overridden by env),
