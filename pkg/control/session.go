@@ -21,11 +21,13 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 const (
@@ -163,6 +165,7 @@ func (r *runner) run() {
 			return
 		}
 		r.log.Warn("session interrupted, restarting", "err", err)
+		r.c.metrics.Restarts.Add(r.ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
 		if r.crashed() {
 			r.finish(resolutionCrashed, fmt.Sprintf("%d restarts in %s: %v", maxCrashes, crashWindow, err))
 			return
@@ -195,6 +198,9 @@ func (r *runner) finish(resolution, reason string) {
 	ctx := context.WithoutCancel(r.ctx)
 	if _, err := r.c.store.CloseTicket(ctx, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
 		r.log.Error("close session ticket", "err", err)
+	} else if err == nil {
+		r.c.metrics.Closes.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
+			telemetry.AttrKind.String(string(store.KindSession)), telemetry.AttrResolution.String(resolution)))
 	}
 	if reason != "" {
 		_, _ = r.c.store.AddComment(ctx, "controller", r.id, reason)
@@ -467,6 +473,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			}
 			return err
 		}
+		r.c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
 		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t))
 		if err != nil {
 			return err
@@ -845,6 +852,7 @@ func (c *Controller) supervise() {
 			}
 		}
 	}
+	c.recordGauges()
 	if c.draining() {
 		return
 	}
@@ -878,6 +886,49 @@ func (c *Controller) supervise() {
 				c.log.Error("start session", "pool", name, "err", err)
 				break
 			}
+		}
+	}
+}
+
+// recordGauges sets the session and ready-ticket gauges for each pool.
+// Session state is backoff, working (holds a ticket) or idle.
+func (c *Controller) recordGauges() {
+	ctx := c.ctx
+	backoff := map[string]bool{}
+	c.mu.Lock()
+	for id, r := range c.runners {
+		if !r.backoff().IsZero() {
+			backoff[id] = true
+		}
+	}
+	c.mu.Unlock()
+	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	if err != nil {
+		return
+	}
+	counts := map[[2]string]int64{}
+	for name := range c.cfg.Pools {
+		for _, st := range []string{"idle", "working", "backoff"} {
+			counts[[2]string{name, st}] = 0
+		}
+	}
+	for _, s := range open {
+		state := "idle"
+		if backoff[s.ID] {
+			state = "backoff"
+		} else if held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: store.StatusInProgress, Limit: 1}); err == nil && len(held) > 0 {
+			state = "working"
+		}
+		counts[[2]string{s.Pool, state}]++
+	}
+	for k, n := range counts {
+		c.metrics.Sessions.Record(ctx, n, metric.WithAttributes(telemetry.AttrPool.String(k[0]), telemetry.AttrState.String(k[1])))
+	}
+	for name, p := range c.cfg.Pools {
+		// Ready is capped by the store's default limit; enough for a gauge.
+		if ready, err := c.store.Ready(ctx, p.Project, name, 0); err == nil {
+			c.metrics.Ready.Record(ctx, int64(len(ready)), metric.WithAttributes(
+				telemetry.AttrProject.String(p.Project), telemetry.AttrPool.String(name)))
 		}
 	}
 }

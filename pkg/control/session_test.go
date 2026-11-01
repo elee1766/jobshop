@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -701,4 +703,60 @@ func TestRateLimitBackoff(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(root.Dir, "ratelimit"))
 	require.NoError(t, err)
 	assert.Equal(t, "0", string(b))
+}
+
+// TestMetrics serves /metrics from the controller and checks that a pool
+// run produces the starting series.
+func TestMetrics(t *testing.T) {
+	root, _ := poolRoot(t, "1m")
+	f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0)
+	require.NoError(t, err)
+	_, err = f.WriteString("telemetry:\n  metrics_listen: 127.0.0.1:0\n")
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	addr := make(chan string, 1)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- control.Run(ctx, root, control.Options{
+			Tick: 50 * time.Millisecond, HostExe: os.Args[0],
+			MetricsReady: func(a string) { addr <- a },
+		})
+	}()
+	defer func() { cancel(); assert.NoError(t, <-done) }()
+	var url string
+	select {
+	case a := <-addr:
+		url = "http://" + a + "/metrics"
+	case <-time.After(10 * time.Second):
+		t.Fatal("metrics not served")
+	}
+
+	admin := dial(t, root.AdminSocket())
+	var task store.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+
+	scrape := func() string {
+		res, err := http.Get(url) //nolint:noctx // test
+		require.NoError(t, err)
+		defer func() { _ = res.Body.Close() }()
+		b, err := io.ReadAll(res.Body)
+		require.NoError(t, err)
+		return string(b)
+	}
+	var body string
+	require.Eventually(t, func() bool {
+		body = scrape()
+		return strings.Contains(body, `jobshop_closes_total{jobshop_kind="task",jobshop_pool="dev",jobshop_resolution="done"`)
+	}, 20*time.Second, 100*time.Millisecond, "closes series")
+	for _, want := range []string{
+		`jobshop_claims_total{jobshop_pool="dev"`,
+		`jobshop_sessions{jobshop_pool="dev",jobshop_session_state="idle"`,
+		`jobshop_tickets_ready{jobshop_pool="dev",jobshop_project="js"`,
+		`jobshop_rpc_duration_seconds_bucket{`,
+		`rpc_method="ticket.create"`,
+	} {
+		assert.Contains(t, body, want)
+	}
 }

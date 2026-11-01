@@ -64,6 +64,7 @@ func TestParseErrors(t *testing.T) {
 		{"unknown pool key", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    extra: 1\n", "extra"},
 		{"unknown agent key", "agents:\n  a:\n    command: x\n    cmd: y\n", "cmd"},
 		{"bad timeout", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    idle_timeout: soon\n", "idle_timeout"},
+		{"unknown telemetry key", base + "telemetry:\n  metrics: x\n", "metrics"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -72,6 +73,16 @@ func TestParseErrors(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.want)
 		})
 	}
+}
+
+func TestParseTelemetry(t *testing.T) {
+	c, err := Parse([]byte("telemetry:\n  metrics_listen: 127.0.0.1:9464\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "127.0.0.1:9464", c.Telemetry.MetricsListen)
+
+	c, err = Parse([]byte("projects:\n  js: {}\n"))
+	require.NoError(t, err)
+	assert.Empty(t, c.Telemetry.MetricsListen, "off by default")
 }
 
 func TestDuration(t *testing.T) {

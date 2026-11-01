@@ -17,9 +17,17 @@ type Config struct {
 	DefaultProject string             `yaml:"default_project"`
 	Projects       map[string]Project `yaml:"projects"`
 	// Lease is the claim lease (Go duration). Default 30m.
-	Lease  string           `yaml:"lease"`
-	Agents map[string]Agent `yaml:"agents"`
-	Pools  map[string]Pool  `yaml:"pools"`
+	Lease     string           `yaml:"lease"`
+	Agents    map[string]Agent `yaml:"agents"`
+	Pools     map[string]Pool  `yaml:"pools"`
+	Telemetry Telemetry        `yaml:"telemetry"`
+}
+
+// Telemetry configures observability.
+type Telemetry struct {
+	// MetricsListen is the TCP address for Prometheus /metrics, e.g.
+	// 127.0.0.1:9464. Empty: no metrics server.
+	MetricsListen string `yaml:"metrics_listen"`
 }
 
 // Agent is how to start an ACP agent process.

@@ -10,9 +10,12 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
@@ -200,6 +203,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 	if err != nil {
 		return nil, err
 	}
+	c.countClose(ctx, t)
 	if t.Kind == store.KindSession {
 		c.stopRunner(t.ID)
 		c.endSession(ctx, t.ID, "session closed")
@@ -286,7 +290,14 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 	if err != nil {
 		return nil, err
 	}
+	c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.Ticket.Pool)))
 	return r, nil
+}
+
+func (c *Controller) countClose(ctx context.Context, t store.Ticket) {
+	c.metrics.Closes.Add(ctx, 1, metric.WithAttributes(
+		telemetry.AttrPool.String(t.Pool), telemetry.AttrKind.String(string(t.Kind)),
+		telemetry.AttrResolution.String(t.Resolution)))
 }
 
 func (c *Controller) heartbeat(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
