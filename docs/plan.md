@@ -107,6 +107,8 @@ Short list; behavior details are in section 7.
 - Triggers: store counts, cron, dedup and cooldown (#26).
 - Packs and `packs/selfdev` (#27), refinery handoff (#28).
 - Config reload (#38), `session restart` (#37), host backpressure (#39).
+- Per-signal OTLP URLs and headers, nix telemetry options, Grafana
+  dashboard (#44).
 
 ## 5. What's next
 
@@ -118,7 +120,8 @@ Short list; behavior details are in section 7.
   sessions.
 - `session/load` fallback from the host journal for agents that cannot
   load a conversation.
-- gasserver scrapes `/metrics` and ships traces; a Grafana dashboard.
+- gasserver scrapes `/metrics` and ships traces (dashboard and per-signal
+  endpoints are in, #44; deploy pending).
 - Conversation export (section 7.8).
 - Validate meta pack names (#29), `jobshop config show` (#32).
 - Done when every box on #36 is checked, master CI is green, and the pool
@@ -216,6 +219,9 @@ All dated 2026-11-01 unless noted.
   and binary versions match.
 - Triggers and the controller make no GitHub calls. GitHub state is read
   by agents through `gh`, or by a trigger's check command.
+- OTLP export goes straight to the Victoria backends with no collector, so
+  jobshop takes per-signal URLs and headers itself. Header secrets come
+  from the environment via `${VAR}`, never from the YAML (#44).
 
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
@@ -346,8 +352,17 @@ on the next host. Telemetry changes need a restart.
   Spans: `supervisor tick`, `rpc <method>`, session lifecycle. Each session
   has one trace; its traceparent is stored on the session and passed to
   the agent as `JOBSHOP_TRACEPARENT`, and the CLI propagates it.
-- Planned: per-signal endpoint URLs and headers (VictoriaMetrics paths),
-  store transaction spans, and conversation export: opt-in per pool,
+- `otlp_traces_endpoint` and `otlp_logs_endpoint` (full URLs) override
+  the base per signal, and either alone turns that signal on.
+  `otlp_headers` go on both; `${VAR}` in values expands from the
+  controller env at startup, never at parse, so `config show` prints the
+  placeholder. The nix module exposes these as `services.jobshop.telemetry.*`
+  plus `environmentFile` for the tokens (#44).
+- Grafana dashboard: `deploy/grafana/jobshop.json` (sessions by pool and
+  state, backoff, restarts, ready queue, claims and closes, rpc p95). A
+  test scrapes `/metrics` and fails if a panel names a series or label
+  that is not exported.
+- Planned: store transaction spans, and conversation export: opt-in per pool,
   emitted by the host as OTLP logs, with redaction (secret-named keys,
   launch-env values, gitleaks rules), per-field caps, bounded queues with
   drop counters, and failures that never affect a session. Same scope as

@@ -147,7 +147,11 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	if opt.SpanProcessor != nil {
 		extra = append(extra, opt.SpanProcessor)
 	}
-	tr, err := telemetry.NewTracing(ctx, cfg.Telemetry.OTLPEndpoint, extra...)
+	tr, err := telemetry.NewTracing(ctx, telemetry.Export{
+		TracesURL: cfg.Telemetry.TracesURL(),
+		LogsURL:   cfg.Telemetry.LogsURL(),
+		Headers:   cfg.Telemetry.Headers(os.Getenv),
+	}, extra...)
 	if err != nil {
 		return err
 	}

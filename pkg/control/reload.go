@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -47,7 +48,7 @@ func (c *Controller) reload() error {
 		var lc *liveConfig
 		if lc, err = newLiveConfig(cfg); err == nil {
 			old := c.live.Swap(lc).cfg
-			if old.Telemetry != cfg.Telemetry {
+			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.Warn("config reload: telemetry changes need a controller restart")
 			}
 			c.log.Info("config reloaded", "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers))
