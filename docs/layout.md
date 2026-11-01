@@ -35,8 +35,6 @@ jobshop/
 │   │                         session supervision, admin and CLI socket handlers
 │   ├── host/                 session host: spawn agent, ACP proxy, journal,
 │   │                         replay, backpressure, leak guards
-│   ├── acp/                  ACP framing and the few message types the host and
-│   │                         controller parse (wraps the chosen ACP SDK)
 │   ├── config/               YAML loading, validation, defaults
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter,
 │   │                         conversation export
