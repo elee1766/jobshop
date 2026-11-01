@@ -75,6 +75,25 @@ type runner struct {
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
+	// turnTicket is the ticket the current prompt works on, sent in the
+	// prompt's _meta so conversation export can tag records with it.
+	turnTicket string
+}
+
+func (r *runner) setTurnTicket(id string) {
+	r.mu.Lock()
+	r.turnTicket = id
+	r.mu.Unlock()
+}
+
+// promptMeta is the session/prompt _meta: the ticket, if any.
+func (r *runner) promptMeta() map[string]any {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.turnTicket == "" {
+		return nil
+	}
+	return map[string]any{telemetry.MetaTicket: r.turnTicket}
 }
 
 // newConversation starts a new ACP session in place of one the agent could
@@ -610,8 +629,10 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			return err
 		}
 		r.c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
+		r.setTurnTicket(t.ID)
 		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t))
 		if err != nil {
+			r.setTurnTicket("")
 			return err
 		}
 		if r.wantsRestart() {
@@ -666,6 +687,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
 			SessionId: acp.SessionId(acpSession),
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
+			Meta:      r.promptMeta(),
 		})
 		if err == nil || ctx.Err() != nil || !rateLimited(err) {
 			break
@@ -695,6 +717,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 // stopped working on it. One reminder, then release with a deferral so a
 // confused agent cannot spin on the same ticket.
 func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, acpSession, ticketID string) {
+	defer r.setTurnTicket("")
 	held, err := r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
 	if err != nil || len(held) == 0 {
 		return
@@ -767,7 +790,17 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 
 func (c *client) SessionUpdate(context.Context, acp.SessionNotification) error { return nil }
 
-func (c *client) HandleExtensionMethod(_ context.Context, method string, _ json.RawMessage) (any, error) {
+func (c *client) HandleExtensionMethod(_ context.Context, method string, params json.RawMessage) (any, error) {
+	if method == host.MethodExportStats {
+		var s host.ExportStats
+		if json.Unmarshal(params, &s) == nil {
+			ctx := c.r.c.ctx
+			attrs := metric.WithAttributes(telemetry.AttrPool.String(c.r.pool))
+			c.r.c.metrics.ConvDropped.Add(ctx, s.Dropped, attrs)
+			c.r.c.metrics.ConvTruncated.Add(ctx, s.Truncated, attrs)
+		}
+		return nil, nil
+	}
 	if method == host.MethodTurnEnd {
 		select {
 		case c.r.turnEnd <- struct{}{}:
@@ -852,11 +885,20 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec,
 	for i, a := range agent.Args {
 		args[i] = strings.ReplaceAll(a, "${SESSION_DIR}", dir)
 	}
-	return host.Spec{
+	spec := host.Spec{
 		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
 		Env: env, EnvHash: envHash(hostInheritedEnv(), env), Dir: c.sessionCwd(t),
 		LeaseMS: hostLease.Milliseconds(),
-	}, exe, nil
+	}
+	// Config validation guarantees a logs endpoint when a pool exports.
+	if p, ok := c.config().Pools[t.Pool]; ok && p.ConversationExport {
+		tel := c.config().Telemetry
+		spec.ConvExport = &host.ConvExport{
+			LogsURL: tel.LogsURL(), Headers: tel.Headers(os.Getenv), Pool: t.Pool, Project: t.Project,
+			TraceParent: f.TraceParent,
+		}
+	}
+	return spec, exe, nil
 }
 
 // hostInheritedEnv is the controller env a spawned host starts with.

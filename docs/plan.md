@@ -109,6 +109,7 @@ Short list; behavior details are in section 7.
 - Config reload (#38), `session restart` (#37), host backpressure (#39).
 - Per-signal OTLP URLs and headers, nix telemetry options, Grafana
   dashboard (#44).
+- Conversation export with redaction (#45).
 
 ## 5. What's next
 
@@ -122,7 +123,6 @@ Short list; behavior details are in section 7.
   load a conversation.
 - gasserver scrapes `/metrics` and ships traces (dashboard and per-signal
   endpoints are in, #44; deploy pending).
-- Conversation export (section 7.8).
 - Validate meta pack names (#29), `jobshop config show` (#32).
 - Done when every box on #36 is checked, master CI is green, and the pool
   runs 24h without a manual fix.
@@ -374,12 +374,25 @@ on the next host. Telemetry changes need a restart.
   state, backoff, restarts, ready queue, claims and closes, rpc p95). A
   test scrapes `/metrics` and fails if a panel names a series or label
   that is not exported.
-- Planned: store transaction spans, and conversation export: opt-in per pool,
-  emitted by the host as OTLP logs, with redaction (secret-named keys,
-  launch-env values, gitleaks rules), per-field caps, bounded queues with
-  drop counters, and failures that never affect a session. Same scope as
-  `internal/convtel` in our Gas City fork, rebuilt on the OTel SDK. The
-  journal stays the record of truth.
+- Planned: store transaction spans.
+- Conversation export (decided 2026-11-01, #45): `conversation_export:
+  true` on a pool (default off; needs a logs endpoint, checked at load)
+  makes its hosts emit OTLP log records named
+  `jobshop.conversation.<event>`: `prompt`, `agent_message`,
+  `agent_thought` (chunks joined), `tool_call` (title, kind, input),
+  `tool_result` (status changes, input, output), `turn_end`. Records carry
+  session, pool, project, the ticket (sent in the prompt's
+  `_meta["jobshop/ticket"]`) and the session traceparent. Redaction runs
+  before a record is built: values under secret-named JSON keys,
+  secret-named launch-env values (8+ bytes, exact match) and gitleaks
+  default-rule findings become `[REDACTED]`. Each text field is capped at
+  8 KiB with `jobshop.conversation.truncated=true`. Frames go to a queue
+  of 1024 frames / 16 MiB; overflow drops and counts, the exporter has no
+  retries and a 10s timeout, and the host gives the final flush 5s.
+  Hosts report counts every 10s; the controller exports
+  `jobshop_conversation_export_dropped_total` and
+  `jobshop_conversation_export_truncated_total` by pool. Code:
+  `pkg/telemetry/convexport.go`. The journal stays the record of truth.
 - gasserver backends: VictoriaMetrics, VictoriaLogs, VictoriaTraces, all
   OTLP/HTTP, no collector.
 
