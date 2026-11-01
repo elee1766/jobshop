@@ -58,6 +58,38 @@ type runner struct {
 	crashes  []time.Time
 	stopping bool
 	agentPid int // from the host's welcome; 0 until connected
+	// backoffUntil is set while the agent's provider is rate limited and the
+	// runner waits to retry the same turn.
+	backoffUntil time.Time
+}
+
+// rateLimited reports whether a prompt error is the provider refusing
+// work for now (account limit) rather than a broken agent. Agents report
+// it as a generic ACP error, so match the message.
+func rateLimited(err error) bool {
+	var re *acp.RequestError
+	if !errors.As(err, &re) {
+		return false
+	}
+	s := strings.ToLower(fmt.Sprint(re.Message, " ", re.Data))
+	for _, k := range []string{"429", "rate_limit", "rate limit", "is unavailable"} {
+		if strings.Contains(s, k) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *runner) setBackoff(until time.Time) {
+	r.mu.Lock()
+	r.backoffUntil = until
+	r.mu.Unlock()
+}
+
+func (r *runner) backoff() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.backoffUntil
 }
 
 func (c *Controller) startRunner(t store.Ticket) {
@@ -232,8 +264,10 @@ func (r *runner) session() error {
 	r.agentPid = welcome.AgentPid
 	r.mu.Unlock()
 
-	conn := acp.NewClientSideConnection(&client{r: r}, nc, rd)
+	gate := rpc.NewGate(rd)
+	conn := acp.NewClientSideConnection(&client{r: r}, nc, gate)
 	conn.SetLogger(rpc.QuietLogger(r.log))
+	gate.Open()
 	r.log.Info("connected to host", "host_pid", welcome.Pid, "agent_pid", welcome.AgentPid, "fresh", fresh, "busy", welcome.Busy)
 	stale := !fresh && r.staleEnv(t, fields)
 	if stale && !welcome.Busy && r.idle() {
@@ -456,10 +490,30 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		}
 	})
 	defer stop()
-	res, err := conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
-		SessionId: acp.SessionId(acpSession),
-		Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
-	})
+	// A rate limit is not a crash: keep the session and its claims (the
+	// supervisor keeps heartbeating) and retry the same prompt later.
+	wait := r.c.opt.Backoff
+	var res acp.PromptResponse
+	var err error
+	for {
+		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
+			SessionId: acp.SessionId(acpSession),
+			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
+		})
+		if err == nil || ctx.Err() != nil || !rateLimited(err) {
+			break
+		}
+		r.log.Warn("provider rate limited, backing off", "wait", wait, "err", err)
+		r.setBackoff(time.Now().Add(wait))
+		select {
+		case <-ctx.Done():
+			r.setBackoff(time.Time{})
+			return r.dropped(conn)
+		case <-time.After(wait):
+		}
+		wait = min(wait*2, 15*r.c.opt.Backoff)
+	}
+	r.setBackoff(time.Time{})
 	if err != nil {
 		if ctx.Err() != nil {
 			return r.dropped(conn)
@@ -778,8 +832,11 @@ func (c *Controller) supervise() {
 	if c.draining() {
 		return
 	}
+	backingOff := c.backingOffPools()
 	for name, p := range c.cfg.Pools {
-		if p.MaxSessions == 0 || c.poolDrained(name) {
+		if p.MaxSessions == 0 || c.poolDrained(name) || backingOff[name] {
+			// A rate-limited pool would only start more sessions that hit
+			// the same limit.
 			continue
 		}
 		open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: name})
@@ -807,6 +864,23 @@ func (c *Controller) supervise() {
 			}
 		}
 	}
+}
+
+// backingOffPools returns pools with a session waiting out a rate limit.
+func (c *Controller) backingOffPools() map[string]bool {
+	c.mu.Lock()
+	rs := make([]*runner, 0, len(c.runners))
+	for _, r := range c.runners {
+		rs = append(rs, r)
+	}
+	c.mu.Unlock()
+	out := map[string]bool{}
+	for _, r := range rs {
+		if !r.backoff().IsZero() {
+			out[r.pool] = true
+		}
+	}
+	return out
 }
 
 func (c *Controller) draining() bool {
