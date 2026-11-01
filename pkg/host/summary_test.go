@@ -22,10 +22,12 @@ func promptFrame(seq int64, text string) host.Frame {
 }
 
 func chunkFrame(seq int64, text string) host.Frame {
+	update := map[string]any{
+		"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": text},
+	}
 	msg, _ := json.Marshal(map[string]any{
 		"jsonrpc": "2.0", "method": "session/update",
-		"params": map[string]any{"sessionId": "s1", "update": map[string]any{
-			"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": text}}},
+		"params": map[string]any{"sessionId": "s1", "update": update},
 	})
 	return host.Frame{Seq: seq, From: "agent", Msg: msg}
 }
