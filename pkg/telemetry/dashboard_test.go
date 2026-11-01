@@ -72,6 +72,7 @@ func exportedNames(t *testing.T) map[string]bool {
 	m.Claims.Add(ctx, 1, all)
 	m.Closes.Add(ctx, 1, all)
 	m.Turns.Add(ctx, 1, all)
+	m.SessionsEnded.Add(ctx, 1, all)
 	m.LeaseExpiries.Add(ctx, 1)
 	m.Since(ctx, time.Now(), "ping")
 

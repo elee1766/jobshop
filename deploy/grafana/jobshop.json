@@ -137,6 +137,21 @@
           "legendFormat": "{{jobshop_pool}} {{jobshop_turn_stop_reason}}"
         }
       ]
+    },
+    {
+      "id": 8,
+      "title": "Sessions ended per hour by resolution",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (jobshop_pool, jobshop_resolution) (increase(jobshop_sessions_ended_total{jobshop_pool=~\"$pool\"}[1h]))",
+          "legendFormat": "{{jobshop_pool}} {{jobshop_resolution}}"
+        }
+      ]
     }
   ]
 }

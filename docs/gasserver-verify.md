@@ -44,6 +44,7 @@ Before each scenario, with at least one session busy on a ticket:
 ```sh
 jobshop session list                       # note ids, host_pid, current
 jobshop session list --state crashed --since 24h   # expect []
+jobshop session list --state stuck --since 24h     # expect []
 date -u +%FT%TZ > /tmp/verify-start        # start time for journalctl
 ```
 
@@ -62,7 +63,7 @@ Pass:
 - `session list` shows the same session ids with the same `host_pid`
   (hosts were adopted, not respawned; `KillMode=process` keeps them alive).
 - A session that was mid-turn finishes that turn (its ticket moves on).
-- No `session ended` line with `resolution=crashed`.
+- No `session ended` line with `resolution=crashed` or `resolution=stuck`.
 
 ## 2. Env refresh via deploy
 
@@ -86,7 +87,7 @@ Pass:
   same `current` ticket.
 - `tr '\0' '\n' < /proc/<new host_pid>/environ | grep VERIFY` shows the
   new value.
-- No `resolution=crashed`.
+- No `resolution=crashed` or `resolution=stuck`.
 
 `jobshop session restart <id>` exercises the same path on one session and
 logs `restarting host on request`.
@@ -125,16 +126,19 @@ Pass:
   claimed; no second session starts for `verify-rl`.
 - Kill the stub. On the next retry the prompt goes through or fails as a
   normal error, `backoff_until` clears.
-- No `resolution=crashed`.
+- No `resolution=crashed` or `resolution=stuck`.
 
 Clean up: close the probe ticket, remove the pool, reload.
 
 ## 4. Evidence
 
-One command per check; paste its output on #36:
+One command per check; paste its output on #36. A session that ends
+`stuck` (agent stopped closing tickets, #62) counts as a failure just like
+`crashed` (#71, 2026-11-01): both must be `[]` for the evidence window.
 
 ```sh
 jobshop session list --state crashed --since 24h
+jobshop session list --state stuck --since 24h
 ```
 
 `--state` keeps closed sessions with that resolution, `--since` keeps
@@ -145,7 +149,7 @@ of the window, together with:
 ```sh
 jobshop session list --since 24h | jq -r '.[].ticket.resolution' | sort | uniq -c
 # before #54 is deployed (no --state/--since):
-jobshop session list --all | jq '[.[] | select(.ticket.resolution=="crashed")]'
+jobshop session list --all | jq '[.[] | select(.ticket.resolution=="crashed" or .ticket.resolution=="stuck")]'
 journalctl -u jobshop --since -24h -o cat | grep -c 'session ended'
 ```
 
@@ -171,6 +175,10 @@ curl -s 'http://127.0.0.1:18428/api/v1/targets' \
   | jq -r '.data.activeTargets[] | select(.labels.job=="jobshop") | .health'   # up
 curl -s 'http://127.0.0.1:18428/api/v1/query?query=jobshop_sessions' | jq '.data.result | length'
 curl -s 'http://127.0.0.1:20428/select/jaeger/api/services' | jq .data           # has "jobshop"
+# crashed or stuck session ends in the last 24h, by pool; expect []
+curl -s 'http://127.0.0.1:18428/api/v1/query' --data-urlencode \
+  'query=sum by (jobshop_pool, jobshop_resolution) (increase(jobshop_sessions_ended_total{jobshop_resolution=~"crashed|stuck"}[24h])) > 0' \
+  | jq .data.result
 ```
 
 Counters such as `jobshop_session_restarts_total` and

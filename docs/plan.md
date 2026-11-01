@@ -121,6 +121,8 @@ Short list; behavior details are in section 7.
 - `jobshop_turns_total` and its dashboard panel, `deploy/verify-telemetry.sh`
   (#55).
 - `jobshop ticket trace` for closed-loop evidence (#53).
+- `jobshop_sessions_ended_total` by resolution, its dashboard panel, and
+  the runbook counting `stuck` as a failure (#71).
 
 ## 5. What's next
 
@@ -128,7 +130,7 @@ Short list; behavior details are in section 7.
 - Refinery dry run on real PRs, and one full planner cycle on gasserver
   (evidence: `jobshop ticket trace <plan ticket>`, #53).
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
-  sessions (runbook: `docs/gasserver-verify.md`, #52).
+  or `stuck` sessions (runbook: `docs/gasserver-verify.md`, #52, #71).
 - gasserver scrapes `/metrics` and ships traces: wired and passing
   `deploy/verify-telemetry.sh` (#55); the turns panel ships with the
   next deploy.
@@ -402,8 +404,10 @@ header values print unexpanded.
   `jobshop_lease_expiries_total`, `jobshop_rpc_duration_seconds`,
   `jobshop_turns_total` (by pool and `jobshop_turn_stop_reason`: the ACP
   stop reason, or `error` when the prompt failed; counted once per turn
-  after rate-limit retries, not on shutdown). No ticket or session ids
-  on metrics.
+  after rate-limit retries, not on shutdown),
+  `jobshop_sessions_ended_total` (by pool and `jobshop_resolution`: idle,
+  crashed, stuck, ...; counted in `runner.finish`, #71, 2026-11-01). No
+  ticket or session ids on metrics.
 - `telemetry.otlp_endpoint` sends traces and slog logs over OTLP/HTTP.
   Spans: `supervisor tick`, `rpc <method>`, session lifecycle. Each session
   has one trace; its traceparent is stored on the session and passed to
