@@ -422,6 +422,40 @@ Leak prevention, layered:
 Not planned: upgrading a running host in place (re-exec preserving fds).
 Possible later; see the Pdeathsig thread caveat noted in discussion.
 
+As built in phase 2 (decided 2026-11-01):
+- The CLI socket stays in the controller, not the host. The host only
+  proxies ACP. Agent CLI calls fail while the controller restarts, and
+  agents retry; this kept the host small (one stdio pipe, one socket).
+- Host files in `sessions/<id>/`: `spec.json`, `host.lock` (flock; held
+  means alive), `host.pid`, `host.log`, `acp.sock`, `journal.ndjson` (every
+  frame with a seq), `exit.json`. The host rewrites request ids so a new
+  controller never collides with an old one, caches the `initialize`
+  result, re-sends unanswered agent requests to a new controller, and
+  reports a prompt that finished while detached as `_jobshop/turn_end`.
+- Stopping a host is SIGTERM to its pid (it forwards to the agent group,
+  SIGKILL after 5s); the controller SIGKILLs the host after 10s.
+- Reconciliation on start: open session tickets are adopted (live host) or
+  restarted (new host, `session/load` if advertised, else a new
+  conversation). Hosts in `sessions/` with no open ticket are stopped.
+  Item 4 above (records with PID start time) and `session reap` are not
+  built; the flock replaces the PID-reuse check.
+- Driver loop per session: `claim --next` as the session, prompt the
+  ticket, then check the session no longer holds it. If it does, one
+  reminder turn, then release with a 10 minute deferral. No work for
+  `idle_timeout` (default 5m) ends a pool session (`idle`); more than 3
+  restarts in 10 minutes ends it (`crashed`). Turns over `turn_timeout`
+  (default 2h) get `session/cancel`.
+- Permission requests are auto-approved (allow_always, else allow_once).
+  fs and terminal client methods are not offered.
+- Supervisor tick: heartbeat claims held by driven sessions, then per pool
+  start sessions while ready work exceeds open sessions, up to
+  `max_sessions`. Sessions whose agent is not in the config are external
+  (a human runs an agent with `JOBSHOP_SOCKET`) and are not driven.
+- `jobshop shutdown` leaves sessions running for the next controller;
+  `shutdown --all` ends every session first.
+- With `repo` set, each session gets `git worktree add --detach` of `ref`
+  at `sessions/<id>/work`, removed when the session ends.
+
 Recovery below the host:
 - Agent or host died: start a new agent and resume with `session/load`
   (agent-native if advertised, else from the host journal). Recovers

@@ -142,7 +142,8 @@ func (r *runner) crashed() bool {
 			keep = append(keep, t)
 		}
 	}
-	r.crashes = append(keep, now)
+	keep = append(keep, now)
+	r.crashes = keep
 	return len(r.crashes) > maxCrashes
 }
 

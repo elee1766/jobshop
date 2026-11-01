@@ -59,8 +59,8 @@ flowchart TD
   cmd[cmd/jobshop] --> cli
   cli --> control & host
   cli --> rpc & config
-  control --> store & rpc & config & telemetry & acp
-  host --> rpc & acp & telemetry
+  control --> store & rpc & config & telemetry & acp & host
+  host --> acp
   sqlite[store/sqlite] --> store
   storetest[store/storetest] --> store
   rpc --> store
@@ -74,7 +74,7 @@ Subcommands:
 | Command | Runs |
 |---|---|
 | `jobshop serve` | controller (long-running) |
-| `jobshop session-host <id>` | session host, spawned by the controller only |
+| `jobshop session-host <dir>` | session host, spawned by the controller only |
 | `jobshop ticket ...`, `claim`, `assign`, `comment`, ... | CLI over a socket |
 | `jobshop session list/attach/reap` | CLI over the admin socket |
 | `jobshop migrate` | apply store migrations (also done on `serve` start) |
@@ -195,7 +195,8 @@ from the root; there are no separate config, data or socket path flags.
 ├── jobshop.db            SQLite store (+ -wal, -shm)
 ├── controller.lock       flock held by the running controller
 ├── admin.sock            admin socket, 0700 dir keeps it private
-└── sessions/<id>/        spec.json, host.log, journal, acp.sock, cli.sock
+└── sessions/<id>/        spec.json, host.{lock,pid,log}, acp.sock, cli.sock,
+                          journal.ndjson, exit.json, work/ (git worktree)
 ```
 
 Copying or backing up the directory moves the whole deployment, and
