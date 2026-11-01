@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ type Config struct {
 	Telemetry Telemetry          `yaml:"telemetry"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
+	// MetaPacks are extra allowed top-level ticket meta keys, beyond
+	// BuiltinMetaPacks.
+	MetaPacks []string `yaml:"meta_packs"`
 	// Sources maps "pools.<name>", "agents.<name>" and "triggers.<name>"
 	// to the files that set the entry, in merge order.
 	Sources map[string][]string `yaml:"-"`
@@ -361,4 +365,13 @@ func (c *Config) Prefix(project string) string {
 		return p.Prefix
 	}
 	return project
+}
+
+// BuiltinMetaPacks are the meta pack names the controller itself writes.
+var BuiltinMetaPacks = []string{"github", "trigger"}
+
+// KnownMetaPack reports whether name may be a top-level meta key: a
+// built-in pack or one listed under meta_packs.
+func (c *Config) KnownMetaPack(name string) bool {
+	return slices.Contains(BuiltinMetaPacks, name) || slices.Contains(c.MetaPacks, name)
 }

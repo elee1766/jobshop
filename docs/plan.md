@@ -112,6 +112,7 @@ Short list; behavior details are in section 7.
 - Conversation export with redaction (#45).
 - `session/load` fallback from the journal (#43).
 - `session list --state --since` and the gasserver runbook (#52).
+- Meta pack name validation and `meta_packs:` (#29).
 
 ## 5. What's next
 
@@ -123,7 +124,7 @@ Short list; behavior details are in section 7.
   sessions (runbook: `docs/gasserver-verify.md`, #52).
 - gasserver scrapes `/metrics` and ships traces (dashboard and per-signal
   endpoints are in, #44; deploy pending).
-- Validate meta pack names (#29), `jobshop config show` (#32).
+- `jobshop config show` (#32).
 - Done when every box on #36 is checked, master CI is green, and the pool
   runs 24h without a manual fix.
 
@@ -227,6 +228,10 @@ All dated 2026-11-01 unless noted.
   from the environment via `${VAR}`, never from the YAML (#44).
 - Crash evidence is a `session list` filter (`--state`, `--since`) rather
   than a separate script, so it reads the store the controller uses (#52).
+- Meta pack names are checked by the controller on create and update,
+  against built-ins (`github`, `trigger`) plus `meta_packs:` in
+  jobshop.yaml. `packs:` was already taken by pack directories. The store
+  stays shape-only (2026-11-01, #29).
 
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
@@ -407,6 +412,13 @@ can do anything the controller can; socket scoping guards against mistakes,
 not hostile agents. Later options if needed: agents as a separate user via
 a narrow sudoers rule, or per-session bubblewrap or Landlock applied by the
 host (read-only system, writable worktree, own CLI socket).
+
+### 7.10 Meta pack names (#29)
+
+Top-level `meta` keys on `ticket create`/`update` must be `github`,
+`trigger`, or listed in `meta_packs:` (a string list in jobshop.yaml,
+picked up on reload). Unknown names fail with `invalid`. The store only
+checks the `{"<pack>": {...}}` shape.
 
 ## 8. Chat gateway (future)
 

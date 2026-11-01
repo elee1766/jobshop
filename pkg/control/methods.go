@@ -12,6 +12,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -108,6 +109,9 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 	if p.Holder != "" && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
 	}
+	if err := c.checkMetaPacks(p.Meta); err != nil {
+		return nil, err
+	}
 	if p.Kind == store.KindMessage {
 		// A message's sender is the caller; sessions cannot speak for others.
 		var f store.MessageFields
@@ -172,6 +176,9 @@ func (c *Controller) ready(ctx context.Context, sc scope, p rpc.ReadyParams) (an
 func (c *Controller) update(ctx context.Context, sc scope, p rpc.UpdateParams) (any, error) {
 	if p.Holder != nil && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
+	}
+	if err := c.checkMetaPacks(p.Meta); err != nil {
+		return nil, err
 	}
 	id, err := c.current(ctx, sc, p.ID)
 	if err != nil {
@@ -566,4 +573,23 @@ func (c *Controller) shutdown(_ context.Context, sc scope, p rpc.ShutdownParams)
 	// Let the response flush before sockets close.
 	time.AfterFunc(50*time.Millisecond, c.cancel)
 	return struct{}{}, nil
+}
+
+// checkMetaPacks rejects top-level meta keys that are not known packs, so
+// a typo such as "gihtub" is not stored where no pack filter finds it.
+func (c *Controller) checkMetaPacks(raw json.RawMessage) error {
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil // shape errors come from store.NormalizeMeta
+	}
+	cfg := c.live.Load().cfg
+	for name := range m {
+		if !cfg.KnownMetaPack(name) {
+			return fmt.Errorf("%w: meta: unknown pack %q (add it to meta_packs in %s)", store.ErrInvalid, name, config.FileName)
+		}
+	}
+	return nil
 }
