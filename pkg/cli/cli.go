@@ -59,6 +59,7 @@ type root struct {
 	Label     labelCmd     `cmd:"" help:"Manage labels."`
 	Session   sessionCmd   `cmd:"" help:"Manage sessions."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
+	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
 }

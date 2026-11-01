@@ -210,6 +210,14 @@ type triggerCmd struct {
 	List triggerListCmd `cmd:"" help:"Show each trigger: whether it holds now, last fired, open ticket, next cron time."`
 }
 
+type configCmd struct {
+	Show configShowCmd `cmd:"" help:"Print the merged config the controller runs with, and which pack or file set each agent, pool and trigger."`
+}
+
+type configShowCmd struct{}
+
+func (configShowCmd) Run(g *Globals) error { return g.call(rpc.MethodConfigShow, nil, nil) }
+
 type triggerListCmd struct{}
 
 func (triggerListCmd) Run(g *Globals) error { return g.call(rpc.MethodTriggerList, nil, nil) }

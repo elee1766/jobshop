@@ -1,6 +1,7 @@
 package control_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -143,4 +144,33 @@ func TestReloadInvalid(t *testing.T) {
 	prompts, err = os.ReadFile(filepath.Join(root.Dir, "prompts"))
 	require.NoError(t, err)
 	assert.Contains(t, string(prompts), "NEW-PROMPT")
+}
+
+// TestConfigShow reports the merged pool and which files set it.
+func TestConfigShow(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	root := config.Root{Dir: dir}
+	pack := filepath.Join(root.Dir, "pk")
+	require.NoError(t, os.MkdirAll(pack, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName),
+		[]byte("pools:\n  dev:\n    prompt: from-pack\n    max_sessions: 3\n"), 0o600))
+	cfg := fmt.Sprintf("packs:\n  - path: pk\nprojects:\n  js: {}\nagents:\n  fake:\n    command: %q\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 0\n    dir: %q\n",
+		os.Args[0], root.Dir)
+	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- control.Run(ctx, root, control.Options{Tick: time.Hour}) }()
+	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
+	admin := dial(t, root.AdminSocket())
+
+	var res rpc.ConfigShowResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodConfigShow, struct{}{}, &res))
+	dev := res.Config["pools"].(map[string]any)["dev"].(map[string]any)
+	assert.Equal(t, "from-pack", dev["prompt"])
+	assert.InDelta(t, 0, dev["max_sessions"], 0)
+	assert.Equal(t, []string{filepath.Join(pack, config.PackFileName), root.Config()}, res.Sources["pools.dev"])
+	assert.Equal(t, []string{root.Config()}, res.Sources["agents.fake"])
 }

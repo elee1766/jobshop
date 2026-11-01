@@ -114,6 +114,7 @@ Short list; behavior details are in section 7.
 - `session/load` fallback from the journal (#43).
 - `session list --state --since` and the gasserver runbook (#52).
 - Meta pack name validation and `meta_packs:` (#29).
+- `jobshop config show` with per-entry sources (#32).
 
 ## 5. What's next
 
@@ -123,7 +124,6 @@ Short list; behavior details are in section 7.
   sessions (runbook: `docs/gasserver-verify.md`, #52).
 - gasserver scrapes `/metrics` and ships traces (dashboard and per-signal
   endpoints are in, #44; deploy pending).
-- `jobshop config show` (#32).
 - Done when every box on #36 is checked, master CI is green, and the pool
   runs 24h without a manual fix.
 
@@ -234,6 +234,9 @@ All dated 2026-11-01 unless noted.
   against built-ins (`github`, `trigger`) plus `meta_packs:` in
   jobshop.yaml. `packs:` was already taken by pack directories. The store
   stays shape-only (2026-11-01, #29).
+- `config show` asks the controller for its live config instead of
+  reading the file, so it shows what runs after the last good reload
+  (2026-11-01, #32).
 
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
@@ -365,7 +368,11 @@ unset is an error); jobshop.yaml is not substituted. `prompt_file` is read
 relative to its declaring file. `jobshop reload`/SIGHUP swaps the config
 atomically or keeps the old one on error: pool limits and triggers apply on
 the next tick, prompts and timeouts on the next turn, agent command and env
-on the next host. Telemetry changes need a restart.
+on the next host. Telemetry changes need a restart. `jobshop config show`
+(admin) prints the live merged config with jobshop.yaml keys, and
+`sources`: for each `agents.<name>`, `pools.<name>` and `triggers.<name>`,
+the files that set it in merge order (packs, then jobshop.yaml). OTLP
+header values print unexpanded.
 
 ### 7.8 Observability (#14, #15)
 
