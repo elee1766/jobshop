@@ -357,11 +357,29 @@ func narg(s string) any {
 
 // List returns tickets matching f ordered by priority then age.
 func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
-	rows, err := s.q.ListTickets(ctx, sqlcdb.ListTicketsParams{
-		Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
-		Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID),
-		Label: narg(f.Label), MaxRows: limit(f.Limit),
-	})
+	var metaPath any
+	if f.MetaPack != "" && f.MetaKey != "" {
+		// json_extract path; quoted so pack and key names cannot inject.
+		mp, _ := json.Marshal(f.MetaPack)
+		mk, _ := json.Marshal(f.MetaKey)
+		metaPath = "$." + string(mp) + "." + string(mk)
+	}
+	metaValue := sql.NullString{String: f.MetaValue, Valid: metaPath != nil}
+	var rows []sqlcdb.Ticket
+	var err error
+	if f.Newest {
+		rows, err = s.q.ListTicketsNewest(ctx, sqlcdb.ListTicketsNewestParams{
+			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
+			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID),
+			Label: narg(f.Label), MetaPath: metaPath, MetaValue: metaValue, MaxRows: limit(f.Limit),
+		})
+	} else {
+		rows, err = s.q.ListTickets(ctx, sqlcdb.ListTicketsParams{
+			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
+			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID),
+			Label: narg(f.Label), MetaPath: metaPath, MetaValue: metaValue, MaxRows: limit(f.Limit),
+		})
+	}
 	if err != nil {
 		return nil, err
 	}

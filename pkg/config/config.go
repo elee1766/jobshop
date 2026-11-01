@@ -3,12 +3,15 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 	"time"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/elee1766/jobshop/pkg/cron"
 )
 
 // Config is the parsed jobshop.yaml.
@@ -17,10 +20,61 @@ type Config struct {
 	DefaultProject string             `yaml:"default_project"`
 	Projects       map[string]Project `yaml:"projects"`
 	// Lease is the claim lease (Go duration). Default 30m.
-	Lease     string           `yaml:"lease"`
-	Agents    map[string]Agent `yaml:"agents"`
-	Pools     map[string]Pool  `yaml:"pools"`
-	Telemetry Telemetry        `yaml:"telemetry"`
+	Lease     string             `yaml:"lease"`
+	Agents    map[string]Agent   `yaml:"agents"`
+	Pools     map[string]Pool    `yaml:"pools"`
+	Triggers  map[string]Trigger `yaml:"triggers"`
+	Telemetry Telemetry          `yaml:"telemetry"`
+}
+
+// Trigger creates a ticket from Ticket while every condition in When
+// holds and no ticket it created is still open.
+type Trigger struct {
+	When   TriggerWhen   `yaml:"when"`
+	Ticket TriggerTicket `yaml:"ticket"`
+	// Cooldown is the minimum time after its last ticket closed before the
+	// trigger fires again (Go duration).
+	Cooldown string `yaml:"cooldown"`
+}
+
+// TriggerWhen holds the conditions; all set ones must hold. Count
+// thresholds compare the number of tickets matching Pool, Kind and Label.
+type TriggerWhen struct {
+	Pool  string `yaml:"pool"`
+	Kind  string `yaml:"kind"` // default task
+	Label string `yaml:"label"`
+
+	ReadyBelow      *int `yaml:"ready_below"`
+	ReadyAbove      *int `yaml:"ready_above"`
+	OpenBelow       *int `yaml:"open_below"`
+	OpenAbove       *int `yaml:"open_above"`
+	InProgressBelow *int `yaml:"in_progress_below"`
+	InProgressAbove *int `yaml:"in_progress_above"`
+
+	// Cron is a 5-field expression; the condition holds from each
+	// scheduled time until the trigger fires for it.
+	Cron     string `yaml:"cron"`
+	Timezone string `yaml:"timezone"` // IANA name, default UTC
+}
+
+// HasCounts reports whether any count threshold is set.
+func (w TriggerWhen) HasCounts() bool {
+	for _, p := range []*int{w.ReadyBelow, w.ReadyAbove, w.OpenBelow, w.OpenAbove, w.InProgressBelow, w.InProgressAbove} {
+		if p != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// TriggerTicket is the template for created tickets.
+type TriggerTicket struct {
+	Project  string   `yaml:"project"` // default: the pool's project
+	Pool     string   `yaml:"pool"`
+	Title    string   `yaml:"title"`
+	Body     string   `yaml:"body"`
+	Priority *int     `yaml:"priority"`
+	Labels   []string `yaml:"labels"`
 }
 
 // Telemetry configures observability.
@@ -154,7 +208,74 @@ func Parse(b []byte) (*Config, error) {
 		}
 		c.Pools[name] = p
 	}
+	for name, tr := range c.Triggers {
+		if err := c.checkTrigger(name, &tr); err != nil {
+			return nil, fmt.Errorf("%s: trigger %s: %w", FileName, name, err)
+		}
+		c.Triggers[name] = tr
+	}
 	return &c, nil
+}
+
+func (c *Config) checkTrigger(name string, tr *Trigger) error {
+	if !namePattern.MatchString(name) {
+		return fmt.Errorf("name must match %s", namePattern)
+	}
+	w := tr.When
+	if w.Cron == "" && !w.HasCounts() {
+		return errors.New("when needs a cron or a count threshold")
+	}
+	if w.Pool != "" {
+		if _, ok := c.Pools[w.Pool]; !ok {
+			return fmt.Errorf("when: unknown pool %q", w.Pool)
+		}
+	}
+	if w.Kind != "" && w.Kind != "task" && w.Kind != "message" {
+		return fmt.Errorf("when: kind %q must be task or message", w.Kind)
+	}
+	for _, p := range []*int{w.ReadyBelow, w.ReadyAbove, w.OpenBelow, w.OpenAbove, w.InProgressBelow, w.InProgressAbove} {
+		if p != nil && *p < 0 {
+			return errors.New("when: thresholds must be >= 0")
+		}
+	}
+	if w.Cron != "" {
+		if _, err := cron.Parse(w.Cron); err != nil {
+			return fmt.Errorf("when: %w", err)
+		}
+	}
+	if w.Timezone != "" {
+		if w.Cron == "" {
+			return errors.New("when: timezone needs cron")
+		}
+		if _, err := time.LoadLocation(w.Timezone); err != nil {
+			return fmt.Errorf("when: timezone: %w", err)
+		}
+	}
+	if tr.Cooldown != "" {
+		if d, err := time.ParseDuration(tr.Cooldown); err != nil || d < 0 {
+			return fmt.Errorf("cooldown %q must be a non-negative duration", tr.Cooldown)
+		}
+	}
+	t := &tr.Ticket
+	if t.Title == "" {
+		return errors.New("ticket: title is required")
+	}
+	if t.Pool != "" {
+		p, ok := c.Pools[t.Pool]
+		if !ok {
+			return fmt.Errorf("ticket: unknown pool %q", t.Pool)
+		}
+		if t.Project == "" {
+			t.Project = p.Project
+		}
+	}
+	if t.Project == "" {
+		t.Project = c.DefaultProject
+	}
+	if _, ok := c.Projects[t.Project]; !ok {
+		return fmt.Errorf("ticket: unknown project %q", t.Project)
+	}
+	return nil
 }
 
 // Duration parses an optional duration string already checked by Parse.

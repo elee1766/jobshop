@@ -67,6 +67,7 @@ type Controller struct {
 
 	metrics  *telemetry.Metrics
 	tracer   trace.Tracer
+	started  time.Time // base for cron triggers that never fired
 	ctx      context.Context
 	cancel   context.CancelFunc
 	mu       sync.Mutex
@@ -148,6 +149,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
+	c.started = c.now()
 	defer c.cancel()
 	return c.serve()
 }
@@ -234,6 +236,10 @@ func (c *Controller) tick() {
 	_, span := c.tracer.Start(c.ctx, "supervisor tick")
 	defer span.End()
 	c.sweep()
+	// Before supervise, so a created ticket can get a session this tick.
+	if !c.draining() {
+		c.runTriggers()
+	}
 	c.supervise()
 }
 
@@ -433,5 +439,6 @@ func init() {
 		rpc.MethodSessionReap:  bind((*Controller).sessionReap),
 		rpc.MethodShutdown:     bind((*Controller).shutdown),
 		rpc.MethodDrain:        bind((*Controller).drainPools),
+		rpc.MethodTriggerList:  bind((*Controller).triggerList),
 	}
 }

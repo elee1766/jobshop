@@ -322,6 +322,30 @@ development happens by hand (or with an outside agent).
     `=== turn` / `=== turn end <stopReason>` boundaries. Tool output
     deltas and usage updates are skipped. `--json` prints raw frames.
     Sending prompts into a session is not built.
+- Triggers as built (decided 2026-11-01, issue #26): `triggers:` in
+  jobshop.yaml. Each has a `when` block, a `ticket` template, and an
+  optional `cooldown`. On every supervisor tick (before session
+  supervision, skipped during a full shutdown) the controller fires each
+  trigger whose conditions all hold: no open or in_progress ticket it
+  created, cooldown elapsed since its last ticket closed, cron slot due,
+  and every count threshold met. Count thresholds are
+  `{ready,open,in_progress}_{below,above}` over tickets of `when.pool`,
+  `when.kind` (default task) and `when.label`. Counts read only the store,
+  never GitHub or anything else external. Created tickets carry
+  `meta.trigger = {"name": "<trigger>"}`. Dedup, cooldown (from that
+  ticket's `closed_at`) and cron state (from its `created_at`) are all
+  read back from the store, so no new table is needed and a restart
+  changes nothing. Cron: 5 fields, UTC unless `when.timezone`. The
+  trigger fires on the first tick at or after the first slot after its
+  last ticket was created. Slots missed while the controller was down
+  collapse into one fire on startup. A cron trigger that never fired
+  counts from controller start, so a new trigger does not fire for past
+  slots. Config errors (unknown pool, empty `when`, bad cron or timezone,
+  negative durations or thresholds, missing title) stop the controller
+  from loading. Each fire logs `trigger fired` with trigger and ticket.
+  `jobshop trigger list` shows per trigger whether it would fire now (and
+  if not, why), its open ticket, last fired time and next cron time.
+  Pack names in `meta` are still not validated (#29).
 
 **Phase 4: workflows and runs**
 - Port the formula concepts we use; decide which workflow features to keep.
@@ -329,7 +353,7 @@ development happens by hand (or with an outside agent).
 - Only the dispatcher features our workflows need; retry limits live here.
 
 **Phase 5: the rest of our surface**
-- Batches (convoys), schedules (orders).
+- Batches (convoys). Schedules (orders) are done via triggers (phase 3).
 - Admin-socket change subscriptions and an API if the dashboard is ported.
 - Gateway prerequisites (section 10) are already covered by phases 1-3.
 

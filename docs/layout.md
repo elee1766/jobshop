@@ -39,6 +39,7 @@ jobshop/
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter,
 │   │                         conversation export
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
+│   ├── cron/                 5-field cron parser for triggers (no dependency)
 │   └── ids/                  ticket ids: per-project prefix + sonyflake base32
 ├── docs/                     plan.md, data-model.md, layout.md
 ├── examples/                 sample jobshop.yaml, agent prompts
@@ -59,7 +60,8 @@ flowchart TD
   cmd[cmd/jobshop] --> cli
   cli --> control & host
   cli --> rpc & config
-  control --> store & rpc & config & telemetry & acp & host
+  config --> cron
+  control --> store & rpc & config & telemetry & acp & host & cron
   host --> acp
   sqlite[store/sqlite] --> store
   storetest[store/storetest] --> store
@@ -164,6 +166,13 @@ Notes:
   generates IDs and the controller lock guarantees one writer, so the
   machine id never needs to vary. Chosen over xid (20 chars) for length;
   uniqueness is the same for a single writer.
+- Cron (decided 2026-11-01, issue #26): `pkg/cron` is a small 5-field
+  parser (about 150 lines), not `robfig/cron/v3`. Triggers need only
+  `Parse` and `Next`. The controller tick does the scheduling, so the
+  library's scheduler, seconds field and descriptors would be unused.
+  Supported: `*`, numbers, ranges, lists, steps, day of week 0-7, and the
+  Vixie rule that restricted day-of-month and day-of-week match if either
+  does. Names (`MON`) and macros (`@daily`) are not supported.
 - New direct dependencies need a reason recorded here.
 
 ## Build

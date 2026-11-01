@@ -75,6 +75,45 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
+func TestParseTriggers(t *testing.T) {
+	base := "projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  dev:\n    agent: a\n    dir: /w\n"
+	c, err := Parse([]byte(base + `triggers:
+  replan:
+    when: {pool: dev, ready_below: 1}
+    ticket: {pool: dev, title: Plan, priority: 1, labels: [plan]}
+    cooldown: 10m
+  nightly:
+    when: {cron: "0 6 * * *", timezone: Europe/Berlin}
+    ticket: {title: Review}
+`))
+	require.NoError(t, err)
+	r := c.Triggers["replan"]
+	require.NotNil(t, r.When.ReadyBelow)
+	assert.Equal(t, 1, *r.When.ReadyBelow)
+	assert.Equal(t, "js", r.Ticket.Project, "project from the ticket's pool")
+	assert.Equal(t, "js", c.Triggers["nightly"].Ticket.Project, "project defaults to default_project")
+
+	trig := func(s string) string { return base + "triggers:\n  t:\n" + s }
+	tests := []struct{ name, yaml, want string }{
+		{"empty when", trig("    when: {}\n    ticket: {title: x}\n"), "cron or a count threshold"},
+		{"unknown pool", trig("    when: {pool: nope, ready_below: 1}\n    ticket: {title: x}\n"), `unknown pool "nope"`},
+		{"unknown ticket pool", trig("    when: {ready_below: 1}\n    ticket: {pool: nope, title: x}\n"), `ticket: unknown pool "nope"`},
+		{"bad cron", trig("    when: {cron: \"61 * * * *\"}\n    ticket: {title: x}\n"), "minute"},
+		{"negative cooldown", trig("    when: {ready_below: 1}\n    ticket: {title: x}\n    cooldown: -1m\n"), "cooldown"},
+		{"negative threshold", trig("    when: {open_above: -1}\n    ticket: {title: x}\n"), ">= 0"},
+		{"no title", trig("    when: {ready_below: 1}\n    ticket: {pool: dev}\n"), "title is required"},
+		{"bad timezone", trig("    when: {cron: \"0 6 * * *\", timezone: Mars/Base}\n    ticket: {title: x}\n"), "timezone"},
+		{"unknown key", trig("    when: {ready_below: 1, nope: 1}\n    ticket: {title: x}\n"), "nope"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse([]byte(tt.yaml))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+		})
+	}
+}
+
 func TestParseTelemetry(t *testing.T) {
 	c, err := Parse([]byte("telemetry:\n  metrics_listen: 127.0.0.1:9464\n  otlp_endpoint: http://127.0.0.1:4318\n"))
 	require.NoError(t, err)
