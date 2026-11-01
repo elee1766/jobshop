@@ -27,7 +27,7 @@ jobshop/
 │   │   │                     engine kinds and their typed field structs
 │   │   ├── storetest/        conformance suite every backend runs
 │   │   └── sqlite/           modernc.org/sqlite backend
-│   │       └── migrations/   *.sql, embedded, applied in order
+│   │       └── migrations/   goose *.sql files, embedded
 │   ├── rpc/                  JSON-RPC method names, request/response types,
 │   │                         client and server helpers over go.lsp.dev/jsonrpc2
 │   ├── control/              controller: tick loop, claims release, lease sweep,
@@ -40,7 +40,7 @@ jobshop/
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter,
 │   │                         conversation export
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
-│   └── ids/                  ticket id generation (per-project prefix)
+│   └── ids/                  ticket ids: per-project prefix + xid
 ├── docs/                     plan.md, data-model.md, layout.md
 ├── examples/                 sample jobshop.yaml, agent prompts
 ├── nix/
@@ -78,6 +78,31 @@ Subcommands:
 | `jobshop ticket ...`, `claim`, `assign`, `comment`, ... | CLI over a socket |
 | `jobshop session list/attach/reap` | CLI over the admin socket |
 | `jobshop migrate` | apply store migrations (also done on `serve` start) |
+
+## Dependencies (decided 2026-11-01)
+
+| Need | Module | Version at decision |
+|---|---|---|
+| SQLite | `modernc.org/sqlite` | v1.61.1 |
+| Migrations | `github.com/pressly/goose/v3` (embedded `*.sql`) | v3.29.0 |
+| JSON-RPC (sockets, ACP framing) | `go.lsp.dev/jsonrpc2` | v1.0.1 |
+| ACP | own `pkg/acp`, message types only, over jsonrpc2 | |
+| CLI | `github.com/alecthomas/kong` | v1.16.1 |
+| YAML config | `github.com/goccy/go-yaml` | v1.19.2 |
+| IDs | `github.com/rs/xid` | v1.6.0 |
+| Tracing, logs, metrics | `go.opentelemetry.io/otel` + sdk, OTLP HTTP exporters | v1.47.0 |
+| Prometheus | `go.opentelemetry.io/otel/exporters/prometheus` | v0.69.0 |
+| slog to OTel | `go.opentelemetry.io/contrib/bridges/otelslog` | v0.21.0 |
+| Tests | `github.com/stretchr/testify` | v1.12.1 |
+
+Notes:
+- `coder/acp-go-sdk` was considered for ACP and not used: it is pre-1.0
+  and brings its own JSON-RPC. Types can be copied from it as needed.
+- Ticket IDs are `<project prefix>-<xid>`, e.g. `js-d4ek2h3r8a1u6jqfm0s0`.
+  xid is 20 characters, globally unique without coordination, and sorts
+  by creation time. Longer than a short random suffix; the CLI can accept
+  unique prefixes for convenience.
+- New direct dependencies need a reason recorded here.
 
 ## Build
 

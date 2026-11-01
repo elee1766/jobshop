@@ -30,7 +30,7 @@ Postgres (notes inline). Timestamps are integer unix milliseconds.
 ```sql
 -- Core. One row per ticket of any kind.
 CREATE TABLE tickets (
-  id           TEXT PRIMARY KEY,            -- '<project prefix>-<random>', e.g. 'js-4f2a9c'
+  id           TEXT PRIMARY KEY,            -- '<project prefix>-<xid>', e.g. 'js-d4ek2h3r8a1u6jqfm0s0'
   project      TEXT NOT NULL,
   kind         TEXT NOT NULL,               -- engine-defined: task, session, message, run, step, ...
   title        TEXT NOT NULL DEFAULT '',
