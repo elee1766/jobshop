@@ -86,6 +86,52 @@ func TestControllerRestart(t *testing.T) {
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
 }
 
+// TestEnvRefresh adopts an idle host whose spec env no longer matches what
+// the controller would write: it is respawned and the session stays open.
+func TestEnvRefresh(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	stop := start()
+
+	admin := dial(t, root.AdminSocket())
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	sdir := root.SessionDir(sessions[0].ID)
+	pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	require.NoError(t, err)
+	stop()
+
+	// Pretend the host was spawned by an older deploy with another env.
+	spec, err := host.ReadSpec(sdir)
+	require.NoError(t, err)
+	spec.Env = append(spec.Env, "OLD_DEPLOY=1")
+	spec.EnvHash = "old"
+	require.NoError(t, host.WriteSpec(sdir, spec))
+
+	stop = start()
+	defer stop()
+	admin = dial(t, root.AdminSocket())
+	require.Eventually(t, func() bool {
+		pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+		return err == nil && string(pid2) != string(pid) && host.Alive(sdir)
+	}, 20*time.Second, 50*time.Millisecond, "host respawned")
+	require.Eventually(t, func() bool {
+		s, err := host.ReadSpec(sdir)
+		return err == nil && s.EnvHash != "old"
+	}, 5*time.Second, 50*time.Millisecond)
+	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
+}
+
 // TestSessionList joins a running session's ticket with its live host
 // state and reports a locked session directory with no ticket as an orphan.
 func TestSessionList(t *testing.T) {
