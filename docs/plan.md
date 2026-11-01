@@ -474,6 +474,11 @@ Recovery below the host:
 
 ## 9. Chat gateway (future, design must not preclude)
 
+**Not a priority and not scheduled in any phase** (decided 2026-11-01).
+This section exists so the earlier design keeps it implementable. Only the
+"What this requires now" items below affect current work; everything else
+here is a sketch to revisit when the gateway is actually built.
+
 A human-facing way into the system, modeled on Hermes Agent's messaging
 gateway: one long-lived session per chat conversation (room, DM or thread).
 
