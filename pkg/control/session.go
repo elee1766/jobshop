@@ -637,6 +637,8 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) error {
 	if !ok || p.Repo == "" {
 		return nil
 	}
+	c.gitMu.Lock()
+	defer c.gitMu.Unlock()
 	if _, err := os.Stat(cwd); err == nil {
 		return nil
 	}
@@ -665,6 +667,8 @@ func (c *Controller) removeWorktree(t store.Ticket) {
 	if _, err := os.Stat(cwd); err != nil {
 		return
 	}
+	c.gitMu.Lock()
+	defer c.gitMu.Unlock()
 	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "remove", "--force", cwd).CombinedOutput(); err != nil {
 		c.log.Warn("git worktree remove", "session", t.ID, "err", err, "out", strings.TrimSpace(string(out)))
 	}

@@ -51,7 +51,10 @@ type Controller struct {
 	sessions map[string]context.CancelFunc // open session id -> stops its cli.sock
 	runners  map[string]*runner
 	drain    bool // full shutdown in progress: start nothing new
-	wg       sync.WaitGroup
+	// gitMu serializes git commands on pool repos: concurrent fetches in
+	// one repo fail on the remote-ref lock.
+	gitMu sync.Mutex
+	wg    sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
