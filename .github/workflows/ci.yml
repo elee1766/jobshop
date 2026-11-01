@@ -46,9 +46,11 @@ jobs:
       actions: write # cache-nix-action deletes superseded caches
     steps:
       - uses: actions/checkout@v5
-      - uses: cachix/install-nix-action@v31
+      # Single-user store owned by the runner: cache-nix-action cannot restore
+      # into install-nix-action's root-owned daemon store.
+      - uses: nixbuild/nix-quick-install-action@v35
       # Keeps the Go toolchain and the vendored-modules derivation between runs.
-      - uses: nix-community/cache-nix-action@v6
+      - uses: nix-community/cache-nix-action@v7
         with:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'nix/**', 'go.sum') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
