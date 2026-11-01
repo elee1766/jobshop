@@ -20,6 +20,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -221,7 +222,7 @@ func (r *runner) session() error {
 	defer func() { _ = nc.Close() }()
 
 	conn := acp.NewClientSideConnection(&client{r: r}, nc, rd)
-	conn.SetLogger(r.log)
+	conn.SetLogger(rpc.QuietLogger(r.log))
 	r.log.Info("connected to host", "host_pid", welcome.Pid, "agent_pid", welcome.AgentPid, "fresh", fresh, "busy", welcome.Busy)
 
 	ctx, cancel := context.WithCancel(r.ctx)
@@ -418,8 +419,8 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 	}
 	if ticketID != "" {
 		reminder := "Your turn ended but you still hold " + ids(held) + ". " +
-			"If the work is finished run `jobshop close`; if you cannot finish it run " +
-			"`jobshop release -r \"<why>\"`; otherwise continue working."
+			"If the work is finished run the jobshop close command from the ticket prompt; if you cannot finish it run " +
+			"release -r \"<why>\"; otherwise continue working."
 		if err := r.turn(ctx, conn, acpSession, reminder); err != nil {
 			return
 		}
@@ -457,13 +458,20 @@ func (r *runner) ticketPrompt(t store.Ticket) string {
 		b.WriteString(t.Body)
 		b.WriteString("\n\n")
 	}
-	b.WriteString(`The jobshop CLI is on your PATH and already knows your session and ticket.
-- jobshop ticket show            ticket details, comments and history
-- jobshop comment "<text>"       record progress or findings on the ticket
-- jobshop close                  when the work is done (-r failed if it cannot be done)
-- jobshop release -r "<why>"     hand the ticket back without finishing it
-- jobshop ticket create "<title>" -b "<body>"   file follow-up work
-Close or release the ticket before you end your turn.`)
+	js := "jobshop"
+	if exe, err := r.c.hostExe(); err == nil {
+		// Some agents (jcode acp) run tools in a daemon that does not inherit
+		// the agent's env, so spell out the binary and socket.
+		js = fmt.Sprintf("JOBSHOP_SOCKET=%s %s", r.c.socketPath(r.id), exe)
+	}
+	fmt.Fprintf(&b, `Run the jobshop CLI exactly as: %s <command>
+It acts as your session; with no id it uses your current ticket.
+- ticket show                       ticket details, comments and history
+- comment "<text>"                  record progress or findings
+- close                             when the work is done (-r failed if it cannot be done)
+- release -r "<why>"                hand the ticket back without finishing it
+- ticket create "<title>" -b "<body>"   file follow-up work
+Close or release the ticket before you end your turn.`, js)
 	return b.String()
 }
 

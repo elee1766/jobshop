@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -268,8 +269,31 @@ func Dial(ctx context.Context, path string) (*Client, error) {
 		return nil, fmt.Errorf("connect %s: %w (is the controller running?)", path, err)
 	}
 	// The controller never calls back, so the client has no handler.
-	return &Client{nc: nc, conn: acp.NewConnection(nil, nc, nc)}, nil
+	conn := acp.NewConnection(nil, nc, nc)
+	conn.SetLogger(QuietLogger(slog.New(slog.DiscardHandler)))
+	return &Client{nc: nc, conn: conn}, nil
 }
+
+// QuietLogger returns l raised to WARN: the SDK logs every closed
+// connection at INFO, which is one line per CLI call.
+func QuietLogger(l *slog.Logger) *slog.Logger {
+	return slog.New(minLevel{l.Handler(), slog.LevelWarn})
+}
+
+type minLevel struct {
+	slog.Handler
+	min slog.Level
+}
+
+func (h minLevel) Enabled(ctx context.Context, l slog.Level) bool {
+	return l >= h.min && h.Handler.Enabled(ctx, l)
+}
+
+func (h minLevel) WithAttrs(as []slog.Attr) slog.Handler {
+	return minLevel{h.Handler.WithAttrs(as), h.min}
+}
+
+func (h minLevel) WithGroup(n string) slog.Handler { return minLevel{h.Handler.WithGroup(n), h.min} }
 
 // Call invokes method and decodes the result into out (may be nil).
 func (c *Client) Call(ctx context.Context, method string, params, out any) error {
