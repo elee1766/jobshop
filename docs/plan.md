@@ -237,7 +237,8 @@ Until then, development happens by hand (or with an outside agent).
 - Conformance suite.
 - SQLite backend (adapt from Gas City `sqlite_*` where it fits).
 - Minimal CLI: `jobshop ticket create/show/list/update/close`, `claim`,
-  `heartbeat`, `release`, `ready`, with stable JSON output.
+  `heartbeat`, `release`, `ready`, with stable JSON output. The CLI talks
+  to the controller over a socket, never to SQLite directly (section 8.5).
 
 **Phase 2: workflows and runs**
 - Port `internal/formula`. Decide which workflow features to keep.
@@ -246,7 +247,7 @@ Until then, development happens by hand (or with an outside agent).
 
 **Phase 3: controller and sessions**
 - Config loader (project/agent/pool) in YAML.
-- Runtime provider: ACP first (that's all we use), tmux maybe later.
+- Runtime provider: ACP via a per-session host (section 8). No tmux.
 - Controller tick: pool demand from queues, start and drain sessions,
   restart, quarantine, idle-kill.
 - `jobshop assign`, and the hook: `jobshop claim --next` (three-tier query:
@@ -292,83 +293,184 @@ Until then, development happens by hand (or with an outside agent).
   yes, since a flat ticket queue is enough to start.
 - What safety rails does self-hosting need (agents editing the controller
   that runs them; review before merging; a way to roll back a broken build)?
-- Which runtime does the dogfood loop use: ACP via jcode as in our city, or
-  tmux as the simpler first provider?
+- Runtime for the dogfood loop: ACP via jcode (decided 2026-11-01; see
+  section 8).
 
-## 8. Session persistence and hot restart (proposed)
+## 8. Sessions: host process, hot restart, CLI socket (proposed)
 
 Goal: restart or upgrade the controller without killing agent sessions or
-losing in-flight turns.
+losing in-flight turns, with no tmux or systemd dependency, and give agents
+a CLI that knows which session it belongs to.
 
-**Why not tmux directly.** ACP is JSON-RPC over the agent's stdin/stdout.
-A tmux pane is a terminal, so the stream would pass through a pty (echo,
-line discipline, wrapping) and there is no clean way to reattach a
-program to the pane's raw stdio. Gas City's ACP provider spawns the agent
-as a child of the controller (`internal/runtime/acp/acp.go`, `Setpgid`),
-so when the controller exits, the stdio pipes close and the session dies.
+### 8.1 Shape
 
-**Proposal: a per-session host process (dtach/abduco for ACP).**
-- `jobshop session-host` is a small process started per session inside a
-  detached tmux session (`tmux new-session -d -s js-<id> 'jobshop
-  session-host ...'`). The tmux server keeps it alive across controller
-  restarts, so Jobshop does no daemonizing of its own and needs no systemd
-  (decided 2026-11-01). The ACP stream does not go through the tmux pty:
-  the host owns the agent's stdio and serves it on a socket. The pane only
-  shows the host's human-readable log, so `tmux attach` still works for
-  watching a session. Liveness: `tmux has-session` plus the socket.
-  Caveat: anything that kills the tmux server (or its cgroup) kills all
-  sessions; recovery then falls to the layers below.
-- One host process per session, all under a single dedicated tmux server
-  (`tmux -L jobshop`), kept apart from Gas City's and any human tmux.
-  Per-session hosts mean a host crash or bug loses one session, and new
-  host versions roll out as sessions turn over instead of restarting
-  everything at once. Cost is ~10 MB per idle Go process, fine at our
-  session counts. A single shared host would itself become a process whose
-  restart kills every session, which is the problem this section exists to
-  remove.
-- It spawns the agent, owns its stdin/stdout, and listens on a Unix socket
-  (`<data>/sessions/<id>.sock`).
-- The controller connects to the socket and speaks ACP through it. On
-  restart, the new controller lists sockets, reconnects, and re-adopts.
-- While no client is connected, the host keeps reading agent output into
-  a bounded, sequence-numbered buffer and appends it to a transcript file.
-  On reconnect the client sends its last seen sequence number and the host
-  replays the gap. Requests the agent sends to the client (permission
-  prompts, fs/terminal calls) are held until a client is connected.
-- The host is deliberately dumb: framing, buffering, replay, and liveness.
-  No ticket or policy logic, so it rarely needs upgrading. Its protocol is
-  versioned so a new controller can adopt hosts started by an old one.
-- The host can also expose a read-only human attach (tail the transcript),
-  which covers what we use tmux attach for today.
+```mermaid
+flowchart LR
+  C[controller<br/>user: agent] -- ACP over acp.sock --> H[session-host<br/>user: agent]
+  H -- stdin/stdout pipes --> A[agent process, e.g. jcode ACP<br/>user: jobshop-agent later]
+  A -- jobshop CLI over cli.sock --> H
+  H -- scoped ticket ops --> C
+  C --> S[(SQLite store)]
+  H --> J[(session journal)]
+```
 
-**Second layer: ACP `session/load`.** If the agent process itself dies (or
-the host does), the controller starts a new agent and calls `session/load`
-with the stored ACP session id, when the agent advertises `loadSession`.
-This recovers conversation context, not in-flight tool calls. Check that
-jcode supports it before relying on it.
+- One `session-host` process per session. A host bug or crash loses one
+  session, and host upgrades roll out as sessions turn over. Cost is about
+  10 MB per idle host. A single shared daemon would reintroduce a process
+  whose restart kills every session.
+- Prior art (none in Go): hydra-acp (TypeScript, one shared daemon),
+  karet-agentd proposal (Rust, same proxy shape as this), acpx/acpxd
+  (TypeScript/Swift; their PRs document reconnect bugs worth avoiding),
+  aptove-bridge (Rust). ACP drafts: RFD #533 (multi-client attach,
+  `session/detach`) and the session-resume RFD (proxy that journals
+  messages and serves `session/load`). Read hydra-acp and the acpxd PRs
+  before writing the host.
 
-**Third layer: tickets.** Work state lives in the store, so even a cold
-start (both layers lost) only costs the agent's context: the replacement
-session re-claims its ticket via `claim --next`.
+### 8.2 Spawning
 
-**Controller restart sequence**
+- The controller runs `exec.Command("/proc/self/exe", "session-host",
+  <id>)` with `Args[0] = "jobshop"`, `SysProcAttr{Setsid: true}`, stdin
+  from `/dev/null`, stdout/stderr to `<data>/sessions/<id>/host.log`. It
+  does not wait on the child, so the host outlives the controller. No
+  tmux, no systemd, no hand-rolled double fork (decided 2026-11-01).
+- New process, not a fork: Go cannot fork safely, and `os/exec` is
+  fork+exec. The host inherits nothing except what is passed explicitly.
+- `/proc/self/exe` is for correctness, not security: the host runs the
+  exact build of the controller that spawned it, even if the release
+  symlink moves. Security comes from users and file ownership (8.6).
+- Before spawning, the controller writes a session spec to
+  `<data>/sessions/<id>/spec.json`: agent command, args, env, working
+  dir, socket paths, host protocol version, binary path.
+- A host keeps running the build it started with. Keep each release
+  binary until no live host references it; `session reap` reports which
+  are still in use.
+
+### 8.3 What the host does
+
+1. Reads the spec, writes a pidfile and takes a lock in its session dir.
+2. Starts the agent with pipes on stdin/stdout, `Pdeathsig: SIGKILL`,
+   in its own process group. Marks itself a child subreaper.
+3. Listens on `acp.sock` (controller) and `cli.sock` (agent CLI).
+4. Proxies ACP between `acp.sock` and the agent's pipes. It is not a full
+   ACP client and mostly forwards frames. It parses only:
+   - `initialize`: caches the agent's response and replays it to a
+     reconnecting controller instead of re-initializing the agent.
+   - Agent-to-client requests (permission prompts, fs/terminal calls):
+     held while no controller is connected.
+   - Every agent frame gets a sequence number and is appended to a
+     journal. A reconnecting controller sends its last seen sequence and
+     the host replays the gap.
+   - Optionally, `session/load` served from the journal, so resume works
+     even if the agent does not advertise `loadSession` (karet's idea).
+5. Serves `cli.sock` for the agent's `jobshop` commands (8.5).
+6. Exits when the agent exits, after flushing the journal.
+
+The host holds no ticket or policy logic, so it rarely needs to change.
+Its protocol to the controller is versioned so a new controller can adopt
+hosts started by an old one.
+
+### 8.4 Hot restart and leaks
+
+Controller restart sequence:
 1. New binary starts, opens the store, takes the controller lock.
-2. Scans session sockets and the sessions table, reconnects to live hosts,
-   replays missed output, marks unreachable ones dead.
+2. Scans `<data>/sessions/*/` and the sessions table. Reconnects to live
+   hosts, renews their lease, replays missed output. Marks unreachable
+   ones dead.
 3. Resumes the normal tick. No sessions are started or stopped until
    reconciliation finishes.
 
-**Dogfood order**: the first loop can run without the host (controller
-restart = sessions restart, recovered via tickets). Add the host when
-controller restarts start costing real work, which should be soon after
-self-hosting begins since agents will be redeploying the controller.
+None of the leak guards below fire on a controller restart: they tie the
+agent to its host, not to the controller.
+
+Leak prevention, layered:
+1. Agent cannot outlive host: `Pdeathsig: SIGKILL`, and the host kills its
+   process group on exit.
+2. Agent's own children cannot escape: host is a child subreaper, so
+   orphans reparent to it and die with the group.
+3. Host cannot outlive its usefulness: exits when the agent exits; holds a
+   lease and shuts down if no controller has connected for a configurable
+   window (default around 30 minutes).
+4. Controller reaps unknowns: each host is recorded with PID, process
+   start time and socket. Reconciliation kills hosts with no record (start
+   time checked against `/proc` to avoid PID reuse) and removes stale
+   records and sockets. The pidfile written before the record covers the
+   spawn-then-crash window.
+5. Visible: `jobshop session list --all` shows store vs live processes;
+   `jobshop session reap` cleans up.
+
+Not planned: upgrading a running host in place (re-exec preserving fds).
+Possible later; see the Pdeathsig thread caveat noted in discussion.
+
+Recovery below the host:
+- Agent or host died: start a new agent and resume with `session/load`
+  (agent-native if advertised, else from the host journal). Recovers
+  conversation, not in-flight tool calls.
+- Everything lost: work state is in tickets; the replacement session
+  re-claims via `claim --next`.
+
+### 8.5 CLI over sockets
+
+- Agent-facing `jobshop` commands never open the database. They talk to a
+  socket.
+- The host starts the agent with `JOBSHOP_SOCKET=<data>/sessions/<id>/cli.sock`.
+  Every `jobshop` call from the agent and its subprocesses inherits it.
+- The socket identifies the session, so calls inherit its holder,
+  current ticket, project, pool and worktree. `jobshop close` with no
+  arguments closes the session's current ticket. No `--holder` or
+  `--session` flags in prompts.
+- The host forwards requests to the controller tagged with the session;
+  the controller enforces scope: only this session's tickets plus what the
+  pool's config allows.
+- Humans and the controller's own tooling use an admin socket
+  (`<data>/admin.sock`, owned by `agent`, `0700`) with full access. The CLI
+  uses it when `JOBSHOP_SOCKET` is unset.
+- Build this in phase 1, since retrofitting direct-DB CLI calls is the
+  expensive part.
+
+### 8.6 Users and security
+
+- Now: controller, hosts and agents all run as `agent`. Accepted risk: an
+  agent can do anything the controller can (edit the store, replace
+  binaries, signal processes, connect to other sessions' sockets). Socket
+  scoping guards against mistakes, not hostile agents.
+- Next (when self-hosting starts): agents run as a separate user,
+  `jobshop-agent`. The host starts the agent via a narrow sudoers rule
+  (`agent` may run only the agent command as `jobshop-agent`, NOPASSWD;
+  on NixOS via `security.sudo.extraRules`). The data dir, store, binaries
+  and admin socket stay `agent`-owned and `0700`, so agents cannot touch
+  them and cannot ptrace or signal the controller or hosts.
+  Needs: worktrees owned by or group-shared with `jobshop-agent`, and
+  `cog` git credentials and model-provider auth readable by it.
+- Later, if needed: per-session isolation (agents can still read each
+  other's worktrees and sockets under one shared user). Options: Landlock
+  applied by the host (no root), or a pool of agent users.
+
+### 8.7 Libraries
+
+- Default candidate: `github.com/coder/acp-go-sdk` (both sides,
+  `AgentLoader` for `session/load`, HTTP transport). Alternative with
+  minimal deps: `github.com/gopact-ai/acp`. The host may need only frame
+  parsing; the controller benefits more from an SDK.
+- Gas City's `internal/runtime/acp` is a hand-rolled JSON-RPC client;
+  useful as reference for edge cases, not as a dependency.
+
+### 8.8 Dogfood order
+
+- The first loop can run with the controller spawning agents directly
+  (restart = sessions restart, recovered via tickets), but the CLI socket
+  must exist from the start.
+- Add the host once controller restarts cost real work, which should be
+  soon after self-hosting begins.
 
 ### Open questions
-- Does jcode's ACP server support `session/load`? (Determines how much the
-  second layer gives us.)
-- Buffer size and policy when the host's buffer fills while disconnected:
-  block the agent's stdout, or drop to transcript-only?
-- Should a human attach be read/write (inject input) or read-only?
+- Does jcode's ACP server advertise `loadSession`? If not, journal-backed
+  `session/load` in the host matters more.
+- Host buffer policy when disconnected and full: block the agent's stdout,
+  or spill to the journal only?
+- Lease length before an orphaned host shuts down.
+- Human attach: read-only tail of the journal, or allow injecting input?
+- Which socket protocol for the CLI: JSON-RPC (matches ACP), or plain
+  JSON lines?
 
 ## 9. Risks
 
