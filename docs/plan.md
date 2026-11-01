@@ -504,10 +504,27 @@ What this requires now, so it can be added later without redesign:
    a chat session can mail a worker and a worker's reply can surface in
    chat.
 
+Message delivery to a busy session (decided 2026-11-01):
+- Default: queue. The message is delivered at the start of the
+  recipient's next turn (or by the host as a new prompt once the current
+  turn ends).
+- Course correction: a sender may mark a message `--interrupt`. The
+  controller sends ACP `session/cancel` for the in-flight turn, waits for
+  the turn to end (falling back to SIGINT after a timeout, as Gas City
+  does), then sends a new prompt carrying the correction plus a short note
+  that the previous turn was interrupted. Work state is unaffected: the
+  ticket stays claimed, and the agent continues from the correction.
+- Interrupt is a permission in pool config: humans and coordinator pools
+  may interrupt; workers may only queue by default.
+- Chat: a plain chat message to a busy session queues; a marked message
+  (e.g. a `/steer` or `!` prefix) interrupts.
+
 ### Open questions
-- One session per room/thread, or per user inside shared rooms?
-- Delivery of a message to a busy worker: queue until its next turn, or
-  interrupt?
+- Should queued messages to an idle ticket worker wake it immediately?
+  (Probably yes, same as a new prompt.)
+
+Decided 2026-11-01: one session per room or thread, shared by everyone in
+it.
 
 ## 10. Risks
 
