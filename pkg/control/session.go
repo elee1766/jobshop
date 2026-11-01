@@ -683,6 +683,19 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 	wait := r.c.opt.Backoff
 	var res acp.PromptResponse
 	var err error
+	// Counted once per turn, after rate-limit retries; a shutdown is not a
+	// turn outcome.
+	defer func() {
+		if ctx.Err() != nil {
+			return
+		}
+		reason := string(res.StopReason)
+		if err != nil {
+			reason = "error"
+		}
+		r.c.metrics.Turns.Add(context.WithoutCancel(ctx), 1, metric.WithAttributes(
+			telemetry.AttrPool.String(r.pool), telemetry.AttrStopReason.String(reason)))
+	}()
 	for {
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
 			SessionId: acp.SessionId(acpSession),

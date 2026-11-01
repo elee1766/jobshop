@@ -769,6 +769,7 @@ func TestMetrics(t *testing.T) {
 		`jobshop_tickets_ready{jobshop_pool="dev",jobshop_project="js"`,
 		`jobshop_rpc_duration_seconds_bucket{`,
 		`rpc_method="ticket.create"`,
+		`jobshop_turns_total{jobshop_pool="dev",jobshop_turn_stop_reason="end_turn"`,
 	} {
 		assert.Contains(t, body, want)
 	}
