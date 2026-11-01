@@ -241,9 +241,10 @@ Jobshop ticket in this repo, then let that loop build the rest. Until then,
 development happens by hand (or with an outside agent).
 
 **Phase 0: groundwork**
-- Repo layout, CI, lint. Build is plain `go` (`go build`, `go test`), no
-  Bazel. CI on GitHub Actions: build, `go vet`, `golangci-lint`,
-  `go test -race`.
+- Repo layout, CI, lint. Plain `go` for development and CI; Nix flake for
+  the deployable package and NixOS module (`docs/layout.md`). No Bazel.
+  CI on GitHub Actions: build, `go vet`, `golangci-lint`,
+  `go test -race`, `nix build`.
 - Data model: `docs/data-model.md`.
 
 **Phase 1: store, controller sockets, CLI**
@@ -290,21 +291,23 @@ development happens by hand (or with an outside agent).
 **Later**: Postgres backend, against the same conformance suite.
 
 **Isolation (decided 2026-11-01)**: no bwrap or separate agent user at the
-start. The isolation boundary is the VM: gasserver is a VM, and everything
-runs as `agent` inside it. Per-session sandboxing (section 8.6) stays an
-option for later.
+start. Everything runs as the `jobshop` user on gasserver (an isolated OVH
+machine), in its own cgroup slice. Per-session sandboxing (section 8.6)
+stays an option for later.
 
 **Self-hosting setup (decided 2026-11-01)**
-- Host: `gasserver` (a VM), next to the live Gas City. Work happens over
-  SSH. The VM is the isolation boundary; no bwrap at the start.
+- Host: `gasserver` (isolated OVH machine), next to the live Gas City.
+  Work happens over SSH. No bwrap at the start. (agent-server is a
+  separate machine and not used.)
 - GitHub identity: the `cog` user, with write access to this repo to push
   branches, open PRs and merge.
-- Isolation from Gas City: own data dir and SQLite file, own controller
-  process, own session cap so Jobshop cannot starve the live city's 20 slots.
-  Runs as the existing `agent` user (decided 2026-11-01).
-- Known-good binary: the controller runs a pinned build from a release path
-  (e.g. `~/.local/share/jobshop/bin/jobshop-<sha>`), never the working tree.
-  Promotion is an explicit step, and rollback is repointing a symlink.
+- Isolation from Gas City: own Linux user `jobshop`, own data dir and
+  SQLite file, own controller process, and its own cgroup slice capped at
+  6 cores and 8 GB (decided 2026-11-01), so it cannot starve the live city.
+  Deployment details: `docs/layout.md`.
+- Known-good binary: the NixOS module pins a specific `jobshop` store path.
+  Promotion is bumping the flake input and switching; rollback is the
+  previous generation.
 - Agents work in git worktrees, one per ticket, and deliver via PR.
 - Merge policy: branch protection requires CI. `cog` merges when CI passes,
   for all changes (decided 2026-11-01). The pinned binary is the safety net.
@@ -445,8 +448,8 @@ Recovery below the host:
 
 ### 8.6 Users and security
 
-- Now: controller, hosts and agents all run as `agent` inside the
-  gasserver VM, which is the isolation boundary (decided 2026-11-01).
+- Now: controller, hosts and agents all run as the `jobshop` user inside
+  its own slice on gasserver (decided 2026-11-01).
   Accepted risk: an
   agent can do anything the controller can (edit the store, replace
   binaries, signal processes, connect to other sessions' sockets). Socket
