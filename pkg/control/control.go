@@ -37,6 +37,9 @@ type Options struct {
 	// Backoff is the first wait after a provider rate limit, doubling to
 	// 15x. Default 1m; tests shorten it.
 	Backoff time.Duration
+	// RestartDelay is the pause before restarting an interrupted session.
+	// Default 2s.
+	RestartDelay time.Duration
 }
 
 // Controller serves one Jobshop root.
@@ -55,6 +58,9 @@ type Controller struct {
 	runners  map[string]*runner
 	drain    bool            // full shutdown in progress: start nothing new
 	drained  map[string]bool // drained pools (drainAll for every pool); memory only
+	// Pool crash-loop quarantine, memory only (see quarantine.go).
+	poolCrashLog    map[string][]time.Time
+	poolPausedUntil map[string]time.Time
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
@@ -80,6 +86,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	if opt.Backoff <= 0 {
 		opt.Backoff = time.Minute
 	}
+	if opt.RestartDelay <= 0 {
+		opt.RestartDelay = 2 * time.Second
+	}
 	if opt.Log == nil {
 		opt.Log = slog.Default()
 	}
@@ -98,7 +107,8 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	c := &Controller{
 		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: opt.Log,
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
-		drained: map[string]bool{},
+		drained:      map[string]bool{},
+		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()

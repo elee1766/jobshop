@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -183,6 +184,45 @@ func TestDrain(t *testing.T) {
 	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
 }
 
+// TestQuarantine runs an agent that dies on every prompt: three crashed
+// sessions quarantine the ticket and pause the pool.
+func TestQuarantine(t *testing.T) {
+	root, start := poolRootOpt(t, "1m", control.Options{RestartDelay: 10 * time.Millisecond})
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "crash"), nil, 0o600))
+	stop := start()
+	defer stop()
+
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	require.Eventually(t, func() bool { return slices.Contains(show(task.ID).Labels, "quarantined") }, 60*time.Second, 100*time.Millisecond)
+	got := show(task.ID)
+	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.True(t, got.DeferUntil.After(time.Now().Add(50*time.Minute)), "deferred about an hour")
+
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 3)
+	for _, s := range sessions {
+		assert.Equal(t, "crashed", s.Resolution)
+	}
+
+	// The pool is paused: ready work starts no session.
+	var other store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "u", Pool: "dev"}, &other))
+	time.Sleep(500 * time.Millisecond)
+	sessions = nil
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	assert.Len(t, sessions, 3, "pool paused")
+}
+
 // TestSessionList joins a running session's ticket with its live host
 // state and reports a locked session directory with no ticket as an orphan.
 func TestSessionList(t *testing.T) {
@@ -314,6 +354,10 @@ func TestSessionReap(t *testing.T) {
 // poolRoot writes a root with one fake-agent pool. start runs a controller
 // and returns a func that stops it (leaving sessions running).
 func poolRoot(t *testing.T, idle string) (config.Root, func() func()) {
+	return poolRootOpt(t, idle, control.Options{})
+}
+
+func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, func() func()) {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "js")
 	require.NoError(t, err)
@@ -323,8 +367,12 @@ func poolRoot(t *testing.T, idle string) (config.Root, func() func()) {
 	start := func() func() {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
+		opt.Tick, opt.HostExe = 50*time.Millisecond, os.Args[0]
+		if opt.Backoff == 0 {
+			opt.Backoff = 100 * time.Millisecond
+		}
 		go func() {
-			done <- control.Run(ctx, root, control.Options{Tick: 50 * time.Millisecond, HostExe: os.Args[0], Backoff: 100 * time.Millisecond})
+			done <- control.Run(ctx, root, opt)
 		}()
 		return func() { cancel(); assert.NoError(t, <-done) }
 	}
@@ -431,6 +479,10 @@ func (a *agent) LoadSession(context.Context, acp.LoadSessionRequest) (acp.LoadSe
 }
 
 func (a *agent) Prompt(ctx context.Context, _ acp.PromptRequest) (acp.PromptResponse, error) {
+	// With a "crash" file present, die mid-turn like a crashing agent.
+	if _, err := os.Stat("crash"); err == nil {
+		os.Exit(3)
+	}
 	// A "ratelimit" file holding N fails the next N prompts the way a
 	// provider account limit does.
 	if b, err := os.ReadFile("ratelimit"); err == nil {
