@@ -370,13 +370,13 @@ func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error
 	if f.Newest {
 		rows, err = s.q.ListTicketsNewest(ctx, sqlcdb.ListTicketsNewestParams{
 			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
-			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID),
+			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
 			Label: narg(f.Label), MetaPath: metaPath, MetaValue: metaValue, MaxRows: limit(f.Limit),
 		})
 	} else {
 		rows, err = s.q.ListTickets(ctx, sqlcdb.ListTicketsParams{
 			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
-			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID),
+			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
 			Label: narg(f.Label), MetaPath: metaPath, MetaValue: metaValue, MaxRows: limit(f.Limit),
 		})
 	}

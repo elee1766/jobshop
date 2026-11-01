@@ -205,11 +205,12 @@ WHERE (?1 IS NULL OR project = ?1)
   AND (?4 IS NULL OR pool = ?4)
   AND (?5 IS NULL OR holder = ?5)
   AND (?6 IS NULL OR parent_id = ?6)
-  AND (?7 IS NULL OR EXISTS (
-    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?7))
-  AND (?8 IS NULL OR json_extract(meta, ?8) = ?9)
+  AND (?7 IS NULL OR created_by = ?7)
+  AND (?8 IS NULL OR EXISTS (
+    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?8))
+  AND (?9 IS NULL OR json_extract(meta, ?9) = ?10)
 ORDER BY priority, created_at, id
-LIMIT ?10
+LIMIT ?11
 `
 
 type ListTicketsParams struct {
@@ -219,6 +220,7 @@ type ListTicketsParams struct {
 	Pool      interface{}
 	Holder    interface{}
 	ParentID  interface{}
+	CreatedBy interface{}
 	Label     interface{}
 	MetaPath  interface{}
 	MetaValue sql.NullString
@@ -233,6 +235,7 @@ func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Tic
 		arg.Pool,
 		arg.Holder,
 		arg.ParentID,
+		arg.CreatedBy,
 		arg.Label,
 		arg.MetaPath,
 		arg.MetaValue,
@@ -290,11 +293,12 @@ WHERE (?1 IS NULL OR project = ?1)
   AND (?4 IS NULL OR pool = ?4)
   AND (?5 IS NULL OR holder = ?5)
   AND (?6 IS NULL OR parent_id = ?6)
-  AND (?7 IS NULL OR EXISTS (
-    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?7))
-  AND (?8 IS NULL OR json_extract(meta, ?8) = ?9)
+  AND (?7 IS NULL OR created_by = ?7)
+  AND (?8 IS NULL OR EXISTS (
+    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?8))
+  AND (?9 IS NULL OR json_extract(meta, ?9) = ?10)
 ORDER BY created_at DESC, id DESC
-LIMIT ?10
+LIMIT ?11
 `
 
 type ListTicketsNewestParams struct {
@@ -304,6 +308,7 @@ type ListTicketsNewestParams struct {
 	Pool      interface{}
 	Holder    interface{}
 	ParentID  interface{}
+	CreatedBy interface{}
 	Label     interface{}
 	MetaPath  interface{}
 	MetaValue sql.NullString
@@ -320,6 +325,7 @@ func (q *Queries) ListTicketsNewest(ctx context.Context, arg ListTicketsNewestPa
 		arg.Pool,
 		arg.Holder,
 		arg.ParentID,
+		arg.CreatedBy,
 		arg.Label,
 		arg.MetaPath,
 		arg.MetaValue,

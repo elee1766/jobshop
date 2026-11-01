@@ -229,6 +229,7 @@ func (whoamiCmd) Run(g *Globals) error { return g.call(rpc.MethodWhoami, nil, ni
 type ticketCmd struct {
 	Create ticketCreateCmd `cmd:"" help:"Create a ticket."`
 	Show   ticketShowCmd   `cmd:"" help:"Show a ticket with edges, comments and history."`
+	Trace  ticketTraceCmd  `cmd:"" help:"Show the chain from a ticket: its trigger, holders, GitHub links and the tickets it led to."`
 	List   ticketListCmd   `cmd:"" help:"List tickets."`
 	Update ticketUpdateCmd `cmd:"" help:"Change a ticket."`
 	Close  closeCmd        `cmd:"" help:"Close a ticket."`
@@ -282,6 +283,15 @@ type ticketShowCmd struct {
 
 func (c ticketShowCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodTicketShow, rpc.IDParams{ID: c.ID}, nil)
+}
+
+type ticketTraceCmd struct {
+	ID    string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
+	Depth int    `short:"d" help:"Levels of children to follow (default 5)."`
+}
+
+func (c ticketTraceCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodTicketTrace, rpc.TraceParams{ID: c.ID, Depth: c.Depth}, nil)
 }
 
 type ticketListCmd struct {

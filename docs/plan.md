@@ -120,11 +120,13 @@ Short list; behavior details are in section 7.
 - `jobshop config show` with per-entry sources (#32).
 - `jobshop_turns_total` and its dashboard panel, `deploy/verify-telemetry.sh`
   (#55).
+- `jobshop ticket trace` for closed-loop evidence (#53).
 
 ## 5. What's next
 
 **Phase 3** (remaining items on #36):
-- Refinery dry run on real PRs, and one full planner cycle on gasserver.
+- Refinery dry run on real PRs, and one full planner cycle on gasserver
+  (evidence: `jobshop ticket trace <plan ticket>`, #53).
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
   sessions (runbook: `docs/gasserver-verify.md`, #52).
 - gasserver scrapes `/metrics` and ships traces: wired and passing
@@ -459,6 +461,18 @@ Top-level `meta` keys on `ticket create`/`update` must be `github`,
 `trigger`, or listed in `meta_packs:` (a string list in jobshop.yaml,
 picked up on reload). Unknown names fail with `invalid`. The store only
 checks the `{"<pack>": {...}}` shape.
+
+### 7.11 Ticket trace (#53)
+
+`jobshop ticket trace [id] [-d depth]` prints a tree as JSON. Each node
+shows the trigger that created the ticket (`meta.trigger.name`), its
+creator, the sessions that claimed it (from history), its edges, and the
+GitHub issue and PR URLs in its body and comments. Children are tickets
+with `parent_id` set to the node, plus tickets that one of its holders
+created while holding it (claim to close, release or lease expiry). The
+second rule links a plan ticket to the dev tickets its planner filed. The
+depth defaults to 5, and a ticket appears once. Store `Filter.CreatedBy`
+backs the lookup.
 
 ## 8. Chat gateway (future)
 
