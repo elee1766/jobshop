@@ -110,7 +110,7 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 		var f store.MessageFields
 		if len(p.Fields) > 0 {
 			if err := json.Unmarshal(p.Fields, &f); err != nil {
-				return nil, fmt.Errorf("%w: message fields: %v", store.ErrInvalid, err)
+				return nil, fmt.Errorf("%w: message fields: %w", store.ErrInvalid, err)
 			}
 		}
 		if !sc.admin || f.From == "" {
