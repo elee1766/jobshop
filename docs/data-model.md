@@ -86,6 +86,24 @@ CREATE TABLE history (
 );
 CREATE INDEX history_ticket ON history(ticket_id, seq);
 
+-- Comments: append-mostly human/agent notes. Separate from history so
+-- history can be compacted without losing them (decided 2026-11-01).
+-- Gas City has no comment primitive; bd uses a comments table, our
+-- sqlite-work fork packs them into one metadata key (gc.work.comments).
+CREATE TABLE comments (
+  id         INTEGER PRIMARY KEY,           -- Postgres: BIGSERIAL
+  ticket_id  TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  author     TEXT NOT NULL,                 -- session id or human
+  body       TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  edited_at  INTEGER,
+  deleted    INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX comments_ticket ON comments(ticket_id, id);
+-- Adding a comment also writes a history row (op='comment_add', diff holds
+-- the comment id only) so the change stream sees it.
+-- Structured notes (handoffs, blocker reports) are a declared kind instead.
+
 -- Kind and edge-kind declarations loaded from YAML. Stored so the
 -- database is self-describing and old rows can be checked against the
 -- schema version they were written under.
@@ -287,10 +305,19 @@ DELETE FROM tickets
 WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
 ```
 
+### Timeline for `jobshop show`
+
+```sql
+SELECT at, actor, op, diff AS detail FROM history WHERE ticket_id = :id
+  AND op <> 'comment_add'
+UNION ALL
+SELECT created_at, author, 'comment', body FROM comments
+  WHERE ticket_id = :id AND deleted = 0
+ORDER BY 1;
+```
+
 ## Open questions
 
-- Comments/notes on a ticket: a `comment` kind with `parent_id`, or rows in
-  `history` with op='comment'?
 - Lease expiry: straight back to `open`, or a `stale` state the controller
   reviews first?
 - Kind schema changes: how to migrate existing rows when a pack bumps a
