@@ -331,7 +331,9 @@ WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
 ## Pack data and labels (decided 2026-11-01)
 
 - `meta` is grouped by pack name: `{"gx": {"linear_id": "ENG-123"}}`.
-  The store rejects top-level keys that are not a known pack name. Gas City
+  The controller rejects top-level keys that are not a known pack name
+  (built-ins `github`, `trigger`, plus `meta_packs:` in jobshop.yaml);
+  the store only checks the shape (#29, 2026-11-01). Gas City
   has only a flat `map[string]string` with an optional dot-prefix
   convention, and in the live city engine keys (`close_reason`, `state`,
   `session_id`, ...) and pack keys (`merge_strategy`, `kn.*`) share one

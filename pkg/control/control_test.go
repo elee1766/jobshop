@@ -119,3 +119,26 @@ func TestSessionListEnded(t *testing.T) {
 	err = admin.Call(ctx, rpc.MethodSessionList, rpc.SessionListParams{Since: -time.Hour}, nil)
 	assert.ErrorIs(t, err, store.ErrInvalid)
 }
+
+// TestMetaPacks checks that meta keys must be built-in or listed packs.
+func TestMetaPacks(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte("projects:\n  js: {}\nmeta_packs: [gx]\n"), 0o600))
+	root := config.Root{Dir: dir}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- control.Run(ctx, root, control.Options{Tick: time.Hour}) }()
+	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
+
+	admin := dial(t, root.AdminSocket())
+	var tk store.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Meta: []byte(`{"github":{"n":1},"gx":{}}`)}, &tk))
+	err = admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Meta: []byte(`{"gihtub":{}}`)}, nil)
+	require.ErrorContains(t, err, "unknown pack")
+	err = admin.Call(ctx, rpc.MethodTicketUpdate, rpc.UpdateParams{ID: tk.ID, Meta: []byte(`{"nope":{}}`)}, nil)
+	require.ErrorContains(t, err, "unknown pack")
+}
