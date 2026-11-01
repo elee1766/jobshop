@@ -49,6 +49,9 @@ type Spec struct {
 	Dir string   `json:"dir"`
 	// LeaseMS: the host exits if no controller has been connected this long.
 	LeaseMS int64 `json:"lease_ms"`
+	// GCRootDir overrides where the Nix GC root for the host binary goes
+	// (default /nix/var/nix/gcroots/per-user/$USER). Used by tests.
+	GCRootDir string `json:"gcroot_dir,omitempty"`
 }
 
 // Hello is the first line a controller sends on acp.sock.
