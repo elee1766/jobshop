@@ -3,10 +3,13 @@ package control
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -312,6 +315,94 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 		return nil, err
 	}
 	return rpc.SessionNewResult{Ticket: t, Socket: c.socketPath(t.ID)}, nil
+}
+
+// sessionList joins session tickets with the live state of their session
+// directories, so store and processes can be compared (plan 8.4 item 5).
+func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionListParams) (any, error) {
+	if err := requireAdmin(sc, "session list"); err != nil {
+		return nil, err
+	}
+	statuses := []store.Status{store.StatusOpen, store.StatusInProgress}
+	if p.All {
+		statuses = []store.Status{""}
+	}
+	var tickets []store.Ticket
+	for _, s := range statuses {
+		ts, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: s})
+		if err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, ts...)
+	}
+
+	out := []rpc.SessionInfo{}
+	seen := map[string]bool{}
+	for i := range tickets {
+		t := tickets[i]
+		info, err := c.sessionInfo(ctx, t.ID)
+		if err != nil {
+			return nil, err
+		}
+		info.Ticket = &t
+		// A closed ticket whose host still runs is a leak too.
+		info.Orphan = t.Status == store.StatusClosed && info.Alive
+		seen[t.ID] = true
+		out = append(out, info)
+	}
+
+	entries, err := os.ReadDir(c.root.SessionDir(""))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	for _, e := range entries {
+		if !e.IsDir() || seen[e.Name()] || !host.Alive(c.root.SessionDir(e.Name())) {
+			continue
+		}
+		info, err := c.sessionInfo(ctx, e.Name())
+		if err != nil {
+			return nil, err
+		}
+		if t, err := c.store.Get(ctx, e.Name()); err == nil {
+			info.Ticket = &t
+			if t.Kind == store.KindSession && t.Status != store.StatusClosed {
+				continue // listed above unless the store changed under us
+			}
+		}
+		info.Orphan = true
+		out = append(out, info)
+	}
+	return out, nil
+}
+
+// sessionInfo reads the live state of one session directory.
+func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInfo, error) {
+	dir := c.root.SessionDir(id)
+	info := rpc.SessionInfo{ID: id, Alive: host.Alive(dir), HostPid: hostPid(dir)}
+	c.mu.Lock()
+	if r := c.runners[id]; r != nil {
+		r.mu.Lock()
+		info.AgentPid = r.agentPid
+		r.mu.Unlock()
+	}
+	c.mu.Unlock()
+	if !info.Alive {
+		info.AgentPid = 0
+		if ex, ok := host.ReadExit(dir); ok {
+			info.Exit = ex.Reason
+		}
+	}
+	if seq, at := host.JournalTail(dir); seq > 0 {
+		info.Seq, info.SeqTime = seq, &at
+	}
+	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
+	if err != nil {
+		return info, err
+	}
+	if len(held) > 0 {
+		info.Current = held[0].ID
+	}
+	return info, nil
 }
 
 func (c *Controller) shutdown(_ context.Context, sc scope, p rpc.ShutdownParams) (any, error) {

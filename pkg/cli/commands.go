@@ -381,7 +381,16 @@ func (c labelRm) Run(g *Globals) error {
 }
 
 type sessionCmd struct {
-	New sessionNewCmd `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
+	New  sessionNewCmd  `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
+	List sessionListCmd `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
+}
+
+type sessionListCmd struct {
+	All bool `help:"Include closed sessions."`
+}
+
+func (c sessionListCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionList, rpc.SessionListParams{All: c.All}, nil)
 }
 
 type sessionNewCmd struct {

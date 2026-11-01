@@ -53,6 +53,7 @@ type runner struct {
 	turnEnd  chan struct{} // signalled by _jobshop/turn_end
 	crashes  []time.Time
 	stopping bool
+	agentPid int // from the host's welcome; 0 until connected
 }
 
 func (c *Controller) startRunner(t store.Ticket) {
@@ -220,6 +221,9 @@ func (r *runner) session() error {
 		return err
 	}
 	defer func() { _ = nc.Close() }()
+	r.mu.Lock()
+	r.agentPid = welcome.AgentPid
+	r.mu.Unlock()
 
 	conn := acp.NewClientSideConnection(&client{r: r}, nc, rd)
 	conn.SetLogger(rpc.QuietLogger(r.log))

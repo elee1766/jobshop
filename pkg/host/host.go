@@ -265,23 +265,38 @@ func (h *Host) record(from string, line []byte) {
 }
 
 func lastSeq(path string) int64 {
+	seq, _ := journalTail(path)
+	return seq
+}
+
+// JournalTail returns the last sequence number and its time in dir's
+// journal, or zero values if there is none.
+func JournalTail(dir string) (int64, time.Time) {
+	return journalTail(filepath.Join(dir, JournalFile))
+}
+
+func journalTail(path string) (int64, time.Time) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0
+		return 0, time.Time{}
 	}
 	defer func() { _ = f.Close() }()
-	var last int64
+	var last, ms int64
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64<<10), maxFrame+1024)
 	for sc.Scan() {
 		var e struct {
 			Seq int64 `json:"seq"`
+			T   int64 `json:"t"`
 		}
 		if json.Unmarshal(sc.Bytes(), &e) == nil && e.Seq > last {
-			last = e.Seq
+			last, ms = e.Seq, e.T
 		}
 	}
-	return last
+	if last == 0 {
+		return 0, time.Time{}
+	}
+	return last, time.UnixMilli(ms)
 }
 
 func (h *Host) writeAgent(line []byte) error {
