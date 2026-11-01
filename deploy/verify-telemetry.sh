@@ -20,7 +20,8 @@ Usage: verify-telemetry.sh [--metrics URL] [--vm URL] [--vt URL]
 Checks, in order:
   1. the controller /metrics endpoint serves jobshop_* series
   2. the VictoriaMetrics scrape target with job=NAME is up
-  3. jobshop_sessions and jobshop_tickets_ready exist for every pool
+  3. jobshop_sessions and jobshop_tickets_ready exist for every configured
+     pool (pools are read from jobshop_tickets_ready)
      (counters such as restarts and turns are listed, not required:
      they appear after their first increment)
   4. VictoriaTraces has a "session" trace for service NAME in the
@@ -121,12 +122,14 @@ else
 	fail "VictoriaMetrics $vm_url: unreachable"
 fi
 
-# 3. Series per pool. Pools come from jobshop_sessions, which the supervisor
-# records every tick for each configured pool. last_over_time keeps a
+# 3. Series per pool. Pools come from jobshop_tickets_ready, which the
+# supervisor records every tick for configured pools only. jobshop_sessions
+# also carries pools of leftover open sessions after a pool is removed from
+# config, so it would make a removed pool look broken (#80). last_over_time keeps a
 # controller restart (one missed scrape) from looking like a missing series.
-if pools=$(vm_query 'count by (jobshop_pool) (last_over_time(jobshop_sessions[5m]))' | jq -r '.[].metric.jobshop_pool' | sort); then
+if pools=$(vm_query 'count by (jobshop_pool) (last_over_time(jobshop_tickets_ready[5m]))' | jq -r '.[].metric.jobshop_pool' | sort); then
 	if [ -z "$pools" ]; then
-		fail "series: jobshop_sessions has no pools"
+		fail "series: jobshop_tickets_ready has no pools"
 	fi
 	for pool in $pools; do
 		for name in jobshop_sessions jobshop_tickets_ready; do
