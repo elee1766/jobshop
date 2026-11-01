@@ -463,5 +463,6 @@ func init() {
 		rpc.MethodDrain:          bind((*Controller).drainPools),
 		rpc.MethodTriggerList:    bind((*Controller).triggerList),
 		rpc.MethodReload:         bind((*Controller).reloadConfig),
+		rpc.MethodConfigShow:     bind((*Controller).configShow),
 	}
 }

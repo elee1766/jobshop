@@ -48,6 +48,7 @@ const (
 	MethodDrain          = "controller.drain"
 	MethodReload         = "config.reload"
 	MethodTriggerList    = "trigger.list"
+	MethodConfigShow     = "config.show"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -498,4 +499,12 @@ type TriggerInfo struct {
 	Open      string     `json:"open,omitempty"` // open ticket it created
 	LastFired *time.Time `json:"last_fired,omitempty"`
 	NextCron  *time.Time `json:"next_cron,omitempty"`
+}
+
+// ConfigShowResult is the active merged config, keyed as in jobshop.yaml,
+// and for each "agents.<name>", "pools.<name>" and "triggers.<name>" the
+// files that set it in merge order (packs first, jobshop.yaml last).
+type ConfigShowResult struct {
+	Config  map[string]any      `json:"config"`
+	Sources map[string][]string `json:"sources"`
 }

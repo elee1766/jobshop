@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
@@ -68,4 +70,26 @@ func (c *Controller) reloadConfig(_ context.Context, sc scope, _ struct{}) (any,
 	}
 	cfg := c.config()
 	return rpc.ReloadResult{Pools: len(cfg.Pools), Agents: len(cfg.Agents), Triggers: len(cfg.Triggers)}, nil
+}
+
+// configShow returns the active config, not a fresh read of the file, so
+// it shows what the controller runs with after the last good reload.
+func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, error) {
+	if err := requireAdmin(sc, "config show"); err != nil {
+		return nil, err
+	}
+	cfg := c.config()
+	// Round trip through YAML so keys match jobshop.yaml, not Go names.
+	b, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, err
+	}
+	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources}
+	if err := yaml.Unmarshal(b, &out.Config); err != nil {
+		return nil, err
+	}
+	if out.Sources == nil {
+		out.Sources = map[string][]string{}
+	}
+	return out, nil
 }
