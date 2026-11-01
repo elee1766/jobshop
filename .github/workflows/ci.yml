@@ -43,21 +43,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      actions: write # cache-nix-action deletes superseded caches
+      actions: read # hestia: detect evicted cache entries upfront
     steps:
       - uses: actions/checkout@v5
-      # Single-user store owned by the runner: cache-nix-action cannot restore
-      # into install-nix-action's root-owned daemon store.
-      - uses: nixbuild/nix-quick-install-action@v35
-      # Keeps the Go toolchain and the vendored-modules derivation between runs.
-      - uses: nix-community/cache-nix-action@v7
+      - uses: cachix/install-nix-action@v31
+      # Binary cache in the GitHub Actions cache: uploads each path this job
+      # builds (the vendored-modules derivation, jobshop) and substitutes them
+      # next run. Paths cache.nixos.org already serves are not stored.
+      - uses: Mic92/hestia/action@v3
         with:
-          primary-key: nix-${{ runner.os }}-${{ hashFiles('flake.lock', 'nix/**', 'go.sum') }}
-          restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 2G
-          purge: true
-          purge-prefixes: nix-${{ runner.os }}-
-          purge-created: 0
-          purge-primary-key: never
+          upstream-cache-filter: true
       - run: nix build .#jobshop --print-build-logs
       - run: ./result/bin/jobshop version
