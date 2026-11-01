@@ -1,0 +1,127 @@
+{
+  "title": "Jobshop",
+  "uid": "jobshop",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "1m",
+  "tags": ["jobshop"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Data source"
+      },
+      {
+        "name": "pool",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(jobshop_sessions, jobshop_pool)",
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Sessions by pool and state",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (jobshop_pool, jobshop_session_state) (jobshop_sessions{jobshop_pool=~\"$pool\"})",
+          "legendFormat": "{{jobshop_pool}} {{jobshop_session_state}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Sessions in backoff",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (jobshop_pool) (jobshop_sessions{jobshop_pool=~\"$pool\", jobshop_session_state=\"backoff\"})",
+          "legendFormat": "{{jobshop_pool}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Restarts per hour",
+      "type": "timeseries",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (jobshop_pool) (increase(jobshop_session_restarts_total{jobshop_pool=~\"$pool\"}[1h]))",
+          "legendFormat": "{{jobshop_pool}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Tickets ready (queue depth)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (jobshop_pool) (jobshop_tickets_ready{jobshop_pool=~\"$pool\"})",
+          "legendFormat": "{{jobshop_pool}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Claims and closes per hour",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (jobshop_pool) (increase(jobshop_claims_total{jobshop_pool=~\"$pool\"}[1h]))",
+          "legendFormat": "claims {{jobshop_pool}}"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (jobshop_resolution) (increase(jobshop_closes_total{jobshop_kind!=\"session\"}[1h]))",
+          "legendFormat": "closes {{jobshop_resolution}}"
+        },
+        {
+          "refId": "C",
+          "expr": "sum(increase(jobshop_lease_expiries_total[1h]))",
+          "legendFormat": "lease expiries"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "RPC p95 latency",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, rpc_method) (rate(jobshop_rpc_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{rpc_method}}"
+        }
+      ]
+    }
+  ]
+}

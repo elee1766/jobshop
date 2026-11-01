@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -90,6 +91,43 @@ type Telemetry struct {
 	// OTLPEndpoint is an OTLP/HTTP base URL (e.g. http://127.0.0.1:4318);
 	// traces go to /v1/traces and logs to /v1/logs. Empty: no export.
 	OTLPEndpoint string `yaml:"otlp_endpoint"`
+	// OTLPTracesEndpoint and OTLPLogsEndpoint are full URLs that override
+	// the base for one signal (VictoriaTraces and VictoriaLogs use their own
+	// paths). Either one alone enables that signal.
+	OTLPTracesEndpoint string `yaml:"otlp_traces_endpoint"`
+	OTLPLogsEndpoint   string `yaml:"otlp_logs_endpoint"`
+	// OTLPHeaders are sent on every export. Values expand ${VAR} from the
+	// controller environment so tokens stay out of the file.
+	OTLPHeaders map[string]string `yaml:"otlp_headers"`
+}
+
+// TracesURL is the traces export URL, or "" for none.
+func (t Telemetry) TracesURL() string { return t.signalURL(t.OTLPTracesEndpoint, "/v1/traces") }
+
+// LogsURL is the logs export URL, or "" for none.
+func (t Telemetry) LogsURL() string { return t.signalURL(t.OTLPLogsEndpoint, "/v1/logs") }
+
+func (t Telemetry) signalURL(full, path string) string {
+	if full != "" {
+		return full
+	}
+	if t.OTLPEndpoint == "" {
+		return ""
+	}
+	return strings.TrimSuffix(t.OTLPEndpoint, "/") + path
+}
+
+// Headers returns OTLPHeaders with ${VAR} expanded by getenv. Expansion
+// happens at use, not parse, so config show never prints secrets.
+func (t Telemetry) Headers(getenv func(string) string) map[string]string {
+	if len(t.OTLPHeaders) == 0 {
+		return nil
+	}
+	h := make(map[string]string, len(t.OTLPHeaders))
+	for k, v := range t.OTLPHeaders {
+		h[k] = os.Expand(v, getenv)
+	}
+	return h
 }
 
 // Agent is how to start an ACP agent process.

@@ -10,7 +10,20 @@ self:
 let
   cfg = config.services.jobshop;
   settingsFormat = pkgs.formats.yaml { };
-  configFile = settingsFormat.generate "jobshop.yaml" cfg.settings;
+  tel = cfg.telemetry;
+  # Only set keys go into the file, so settings.telemetry can still be used directly.
+  telemetrySettings = lib.filterAttrs (_: v: v != "" && v != { }) {
+    metrics_listen = tel.metricsListen;
+    otlp_endpoint = tel.otlpEndpoint;
+    otlp_traces_endpoint = tel.otlpTracesEndpoint;
+    otlp_logs_endpoint = tel.otlpLogsEndpoint;
+    otlp_headers = tel.otlpHeaders;
+  };
+  configFile = settingsFormat.generate "jobshop.yaml" (
+    lib.recursiveUpdate cfg.settings (
+      lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; }
+    )
+  );
   jobshop = lib.getExe cfg.package;
 in
 {
@@ -55,6 +68,47 @@ in
       type = lib.types.attrsOf lib.types.str;
       default = { };
       description = "Extra environment for the controller, inherited by session hosts and agents.";
+    };
+
+    environmentFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "systemd EnvironmentFile for secrets, e.g. tokens referenced as \${VAR} in telemetry.otlpHeaders. Kept out of the Nix store. Like environment, it is inherited by session hosts and agents.";
+    };
+
+    telemetry = {
+      metricsListen = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "127.0.0.1:9464";
+        description = "TCP address for Prometheus /metrics. Empty: off.";
+      };
+      otlpEndpoint = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "http://127.0.0.1:4318";
+        description = "OTLP/HTTP base URL; traces go to /v1/traces and logs to /v1/logs.";
+      };
+      otlpTracesEndpoint = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "http://127.0.0.1:10428/insert/opentelemetry/v1/traces";
+        description = "Full traces URL, overriding otlpEndpoint.";
+      };
+      otlpLogsEndpoint = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "http://127.0.0.1:9428/insert/opentelemetry/v1/logs";
+        description = "Full logs URL, overriding otlpEndpoint.";
+      };
+      otlpHeaders = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
+        example = {
+          Authorization = "Bearer \${OTLP_TOKEN}";
+        };
+        description = "Headers on every OTLP export. \${VAR} expands from the controller environment (see environmentFile).";
+      };
     };
 
     cpuQuota = lib.mkOption {
@@ -136,6 +190,7 @@ in
         Slice = "jobshop.slice";
         WorkingDirectory = cfg.dataDir;
         ExecStart = "${jobshop} serve";
+        EnvironmentFile = lib.mkIf (cfg.environmentFile != null) cfg.environmentFile;
         # `systemctl reload jobshop` re-reads jobshop.yaml and packs.
         ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
         # Restarts and Nix switches restart only the controller; session hosts
