@@ -19,21 +19,31 @@ func TestVersionInfo(t *testing.T) {
 		wantVersion, wantCmt string
 	}{
 		{"no build info", "dev", "unknown", nil, "dev", "unknown"},
-		{"devel build, clean", "dev", "unknown",
+		{
+			"devel build, clean", "dev", "unknown",
 			&debug.BuildInfo{Main: debug.Module{Version: "(devel)"}, Settings: vcs(rev, "false")},
-			"dev", "0123456789ab"},
-		{"dirty tree", "dev", "unknown",
+			"dev", "0123456789ab",
+		},
+		{
+			"dirty tree", "dev", "unknown",
 			&debug.BuildInfo{Main: debug.Module{Version: "(devel)"}, Settings: vcs(rev, "true")},
-			"dev", "0123456789ab-dirty"},
-		{"go install with module version", "dev", "unknown",
+			"dev", "0123456789ab-dirty",
+		},
+		{
+			"go install with module version", "dev", "unknown",
 			&debug.BuildInfo{Main: debug.Module{Version: "v0.3.0"}},
-			"v0.3.0", "unknown"},
-		{"short revision", "dev", "unknown",
+			"v0.3.0", "unknown",
+		},
+		{
+			"short revision", "dev", "unknown",
 			&debug.BuildInfo{Settings: vcs("abc", "false")},
-			"dev", "abc"},
-		{"ldflags win", "1.2.3", "deadbeef",
+			"dev", "abc",
+		},
+		{
+			"ldflags win", "1.2.3", "deadbeef",
 			&debug.BuildInfo{Main: debug.Module{Version: "v0.3.0"}, Settings: vcs(rev, "true")},
-			"1.2.3", "deadbeef"},
+			"1.2.3", "deadbeef",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
