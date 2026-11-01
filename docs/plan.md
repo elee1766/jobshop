@@ -129,7 +129,7 @@ Short list; behavior details are in section 7.
 
 **Phase 3** (remaining items on #36):
 - Refinery dry run on real PRs, and one full planner cycle on gasserver
-  (evidence: `jobshop ticket trace <plan ticket>`, #53).
+  (evidence: `deploy/verify-closed-loop.sh <plan ticket>`, #53, #76).
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
   or `stuck` sessions (runbook: `docs/gasserver-verify.md`, #52, #71).
 - gasserver scrapes `/metrics` and ships traces: wired and passing
@@ -492,6 +492,13 @@ created while holding it (claim to close, release or lease expiry). The
 second rule links a plan ticket to the dev tickets its planner filed. The
 depth defaults to 5, and a ticket appears once. Store `Filter.CreatedBy`
 backs the lookup.
+
+`deploy/verify-closed-loop.sh <plan-ticket>` (#76) checks one cycle on that
+tree: the plan ticket came from a trigger and is closed, its planner
+session created a dev ticket, one of those reached `refinery`, and it links
+a PR that `gh` reports as merged. It exits 1 naming the first missing link.
+`--trace FILE` reads saved JSON. Tests in `deploy/` run it against
+`deploy/testdata` with a fake `gh`.
 
 ### 7.12 Ticket prompt (#70)
 
