@@ -384,6 +384,10 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	if r != nil {
 		r.mu.Lock()
 		info.AgentPid = r.agentPid
+		if !r.backoffUntil.IsZero() {
+			bu := r.backoffUntil
+			info.BackoffUntil = &bu
+		}
 		r.mu.Unlock()
 	}
 	c.mu.Unlock()

@@ -34,6 +34,9 @@ type Options struct {
 	Log  *slog.Logger
 	// HostExe is the binary started as session-host. Default /proc/self/exe.
 	HostExe string
+	// Backoff is the first wait after a provider rate limit, doubling to
+	// 15x. Default 1m; tests shorten it.
+	Backoff time.Duration
 }
 
 // Controller serves one Jobshop root.
@@ -73,6 +76,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	if opt.Tick <= 0 {
 		opt.Tick = 30 * time.Second
+	}
+	if opt.Backoff <= 0 {
+		opt.Backoff = time.Minute
 	}
 	if opt.Log == nil {
 		opt.Log = slog.Default()

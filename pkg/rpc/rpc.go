@@ -194,6 +194,8 @@ type SessionInfo struct {
 	SeqTime  *time.Time    `json:"seq_time,omitempty"`
 	Exit     string        `json:"exit,omitempty"`    // exit.json reason, for dead hosts
 	Drained  bool          `json:"drained,omitempty"` // takes no new tickets
+	// BackoffUntil is set while the session waits out a provider rate limit.
+	BackoffUntil *time.Time `json:"backoff_until,omitempty"`
 }
 
 // SessionReapParams cleans up session leftovers. Hosts with no open session

@@ -492,6 +492,12 @@ As built in phase 2 (decided 2026-11-01):
   `idle_timeout` (default 5m) ends a pool session (`idle`); more than 3
   restarts in 10 minutes ends it (`crashed`). Turns over `turn_timeout`
   (default 2h) get `session/cancel`.
+- Provider rate limits (decided 2026-11-01, issue #10): a prompt error
+  whose message has `429`, `rate_limit` or `is unavailable` is not a
+  crash. The session keeps its host and claims (heartbeats continue) and
+  retries the same prompt after 1m, doubling to 15m, reset on success.
+  While any session of a pool backs off the supervisor starts no new
+  sessions for that pool. `session list` shows `backoff_until`.
 - Permission requests are auto-approved (allow_always, else allow_once).
   fs and terminal client methods are not offered.
 - Supervisor tick: heartbeat claims held by driven sessions, then per pool

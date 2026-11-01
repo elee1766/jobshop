@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -323,7 +324,7 @@ func poolRoot(t *testing.T, idle string) (config.Root, func() func()) {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() {
-			done <- control.Run(ctx, root, control.Options{Tick: 50 * time.Millisecond, HostExe: os.Args[0]})
+			done <- control.Run(ctx, root, control.Options{Tick: 50 * time.Millisecond, HostExe: os.Args[0], Backoff: 100 * time.Millisecond})
 		}()
 		return func() { cancel(); assert.NoError(t, <-done) }
 	}
@@ -430,6 +431,15 @@ func (a *agent) LoadSession(context.Context, acp.LoadSessionRequest) (acp.LoadSe
 }
 
 func (a *agent) Prompt(ctx context.Context, _ acp.PromptRequest) (acp.PromptResponse, error) {
+	// A "ratelimit" file holding N fails the next N prompts the way a
+	// provider account limit does.
+	if b, err := os.ReadFile("ratelimit"); err == nil {
+		var n int
+		if _, err := fmt.Sscan(string(b), &n); err == nil && n > 0 {
+			_ = os.WriteFile("ratelimit", fmt.Appendf(nil, "%d", n-1), 0o600)
+			return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "API Error: 429 rate_limit_error"}
+		}
+	}
 	// With a "block" file present, hold the turn open until "go" appears.
 	if _, err := os.Stat("block"); err == nil {
 		_ = os.WriteFile("started", nil, 0o600)
@@ -478,4 +488,57 @@ func (a *agent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOpti
 
 func (a *agent) SetSessionMode(context.Context, acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
 	return acp.SetSessionModeResponse{}, nil
+}
+
+// TestRateLimitBackoff has the agent fail prompts with a 429 a few times:
+// the session keeps its claim and host, backs off without restarting, and
+// the retried turn closes the ticket.
+func TestRateLimitBackoff(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "ratelimit"), []byte("3"), 0o600))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+
+	sawBackoff := false
+	hostPid := 0
+	require.Eventually(t, func() bool {
+		var list []rpc.SessionInfo
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &list))
+		for _, s := range list {
+			if s.BackoffUntil == nil {
+				continue
+			}
+			sawBackoff = true
+			assert.Equal(t, task.ID, s.Current, "claim kept while backing off")
+			if hostPid == 0 {
+				hostPid = s.HostPid
+			}
+			assert.Equal(t, hostPid, s.HostPid, "no restart")
+		}
+		return show(task.ID).Status == store.StatusClosed
+	}, 30*time.Second, 20*time.Millisecond)
+	assert.True(t, sawBackoff)
+	assert.Equal(t, "done", show(task.ID).Resolution)
+
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1, "no extra sessions started")
+	assert.Equal(t, store.StatusOpen, sessions[0].Status)
+	pid, err := os.ReadFile(filepath.Join(root.SessionDir(sessions[0].ID), host.PidFile))
+	require.NoError(t, err)
+	assert.Equal(t, fmt.Sprint(hostPid), strings.TrimSpace(string(pid)), "same host")
+	b, err := os.ReadFile(filepath.Join(root.Dir, "ratelimit"))
+	require.NoError(t, err)
+	assert.Equal(t, "0", string(b))
 }
