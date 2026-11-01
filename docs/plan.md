@@ -309,6 +309,19 @@ development happens by hand (or with an outside agent).
     the turn to end, delivers, then runs the usual unclosed-ticket
     reminder. The pool-config interrupt permission below is not built.
 - Human attach.
+  - Read-only attach as built (decided 2026-11-01, issue #17): `jobshop
+    session attach <id> [--since <seq>] [--json] [--no-follow]` prints the
+    session's `journal.ndjson` (default: the last 50 frames), then polls
+    the file for new frames until Ctrl-C. The CLI reads the journal file
+    directly instead of streaming it over a new admin RPC. That is simpler
+    (no new method, no backpressure on the controller), and it keeps
+    working while the controller is down, because the host writes the
+    journal itself. It needs read access to the root's `sessions/`, which
+    an admin has anyway. The renderer joins agent message chunks and
+    prints one line per tool call status change, plan entries, and
+    `=== turn` / `=== turn end <stopReason>` boundaries. Tool output
+    deltas and usage updates are skipped. `--json` prints raw frames.
+    Sending prompts into a session is not built.
 
 **Phase 4: workflows and runs**
 - Port the formula concepts we use; decide which workflow features to keep.
