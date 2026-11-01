@@ -17,6 +17,15 @@ pools:
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/plan.md
+  refinery:
+    agent: ${agent}
+    repo: ${repo}
+    ref: origin/master
+    # One session serializes merges.
+    max_sessions: 1
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/refinery.md
 triggers:
   replan:
     when:

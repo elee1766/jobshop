@@ -362,6 +362,18 @@ development happens by hand (or with an outside agent).
   changes apply on controller restart. Validation errors name the files
   that set the failing entry. `packs/selfdev` ships the dev and plan pools
   and the `replan` trigger.
+- Refinery handoff (decided 2026-11-01, issue #28): dev workers stop at a
+  green PR, comment its URL and head SHA, move the same ticket to the
+  `refinery` pool and release it. `refinery` has `max_sessions: 1`, so the
+  single session serializes merges. It merges with `--match-head-commit`
+  only on green CI, no open review comments and met acceptance criteria,
+  then waits for master CI before closing. It never edits code: changes
+  go back to `dev` as PR and ticket comments, and dev continues on the
+  existing PR branch. Gas City mapping: this is the `gastown.refinery`
+  handoff; its watched gates are replaced by `--defer 5m` polling until
+  GitHub event wakes exist. The `master-red` check named in the issue does
+  not exist yet (triggers read only the store), so the refinery checks
+  master CI itself.
 
 **Phase 4: workflows and runs**
 - Port the formula concepts we use; decide which workflow features to keep.
