@@ -111,6 +111,10 @@ Uses:
   `SO_PEERCRED` on sockets, flock for the controller lock.
 - **procfs**: PID start time so leak reaping never kills a reused PID.
   Already an indirect dependency of the Prometheus exporter.
+- **Prometheus exporter** (added 2026-11-01, issue #14): brings
+  `github.com/prometheus/client_golang` for its registry and `promhttp`
+  handler. `pkg/telemetry` uses a private registry per controller rather
+  than the global one, so tests and restarts do not collide.
 - **errgroup**: controller and host goroutine lifetimes and shutdown.
 - **gitleaks**: its detector and default rule set redact secrets in
   conversation export before records are queued, plus launch-env secret

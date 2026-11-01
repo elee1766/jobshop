@@ -654,6 +654,14 @@ City's `internal/events` JSONL bus for observability purposes.
   ready count per pool, claim latency, lease expiries, ticket closes by
   resolution, store transaction latency, host reconnects and replay size,
   conversation export drops.
+  Built 2026-11-01 (issue #14): `telemetry.metrics_listen` (empty = off)
+  serves `/metrics` from `jobshop serve`. Series: `jobshop_sessions`
+  (gauge, pool and `jobshop.session.state` idle/working/backoff),
+  `jobshop_session_restarts_total`, `jobshop_tickets_ready` (gauge per
+  pool, supervisor tick), `jobshop_claims_total`, `jobshop_closes_total`
+  (pool, kind, `jobshop.resolution`), `jobshop_lease_expiries_total`,
+  `jobshop_rpc_duration_seconds` (histogram by `rpc.method`). Ticket and
+  session ids stay off metrics to keep cardinality bounded.
 - Common attributes: `jobshop.project`, `jobshop.pool`,
   `jobshop.session.id`, `jobshop.ticket.id`, `jobshop.kind`.
 

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // DefaultLease is the claim lease when the config sets none.
@@ -43,6 +45,9 @@ type Options struct {
 	// MessagePoll is how often a running turn checks for interrupt
 	// messages. Default 2s.
 	MessagePoll time.Duration
+	// MetricsReady, if set, receives the /metrics listen address once it
+	// is bound (tests use ":0" in the config).
+	MetricsReady func(addr string)
 }
 
 // Controller serves one Jobshop root.
@@ -54,6 +59,7 @@ type Controller struct {
 	opt   Options
 	log   *slog.Logger
 
+	metrics  *telemetry.Metrics
 	ctx      context.Context
 	cancel   context.CancelFunc
 	mu       sync.Mutex
@@ -110,8 +116,14 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	defer func() { _ = st.Close() }()
 
+	m, err := telemetry.NewMetrics()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = m.Shutdown(context.WithoutCancel(ctx)) }()
+
 	c := &Controller{
-		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: opt.Log,
+		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: opt.Log, metrics: m,
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		drained:      map[string]bool{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
@@ -162,6 +174,11 @@ func (c *Controller) serve() error {
 		return err
 	}
 	c.start(admin, scope{admin: true, actor: "admin"})
+	if err := c.serveMetrics(); err != nil {
+		c.cancel()
+		c.wg.Wait()
+		return err
+	}
 
 	open, err := c.store.List(c.ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
 	if err != nil {
@@ -205,6 +222,39 @@ func (c *Controller) sweep() {
 	for _, id := range ids {
 		c.log.Info("lease expired", "ticket", id)
 	}
+	if len(ids) > 0 {
+		c.metrics.LeaseExpiries.Add(c.ctx, int64(len(ids)))
+	}
+}
+
+// serveMetrics serves Prometheus /metrics on telemetry.metrics_listen
+// until the controller stops. Empty listen address: off.
+func (c *Controller) serveMetrics() error {
+	addr := c.cfg.Telemetry.MetricsListen
+	if addr == "" {
+		return nil
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("metrics listen: %w", err)
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", c.metrics.Handler())
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	c.wg.Go(func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			c.log.Error("metrics server", "err", err)
+		}
+	})
+	c.wg.Go(func() {
+		<-c.ctx.Done()
+		_ = srv.Close()
+	})
+	c.log.Info("serving metrics", "addr", ln.Addr().String())
+	if c.opt.MetricsReady != nil {
+		c.opt.MetricsReady(ln.Addr().String())
+	}
+	return nil
 }
 
 // start serves ln until the controller stops or the returned func is called.
@@ -292,6 +342,7 @@ func (c *Controller) handler(sockCtx context.Context, sc scope) acp.MethodHandle
 		if !ok {
 			return nil, acp.NewMethodNotFound(name)
 		}
+		defer c.metrics.Since(ctx, time.Now(), name)
 		res, err := h(c, ctx, sc, params)
 		if err != nil {
 			if !errors.Is(err, store.ErrNoWork) {
