@@ -226,7 +226,9 @@ Jobshop ticket in this repo, then let that loop do more of the remaining work.
 Until then, development happens by hand (or with an outside agent).
 
 **Phase 0: groundwork**
-- Repo layout, build (plain `go` or Bazel?), CI, lint.
+- Repo layout, CI, lint. Build is plain `go` (`go build`, `go test`), no
+  Bazel (decided 2026-11-01). CI on GitHub Actions: build, `go vet`,
+  `golangci-lint`, `go test -race`.
 - Write down the ticket data model: fields, statuses, edge types, metadata
   conventions.
 
