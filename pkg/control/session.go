@@ -170,7 +170,7 @@ func (r *runner) run() {
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-time.After(2 * time.Second):
+		case <-time.After(r.c.opt.RestartDelay):
 		}
 	}
 }
@@ -198,6 +198,10 @@ func (r *runner) finish(resolution, reason string) {
 	}
 	if reason != "" {
 		_, _ = r.c.store.AddComment(ctx, "controller", r.id, reason)
+	}
+	if resolution == resolutionCrashed {
+		r.c.crashRelease(ctx, r.id)
+		r.c.poolCrashed(r.pool)
 	}
 	r.c.endSession(ctx, r.id, "session "+resolution)
 }
@@ -834,9 +838,9 @@ func (c *Controller) supervise() {
 	}
 	backingOff := c.backingOffPools()
 	for name, p := range c.cfg.Pools {
-		if p.MaxSessions == 0 || c.poolDrained(name) || backingOff[name] {
+		if p.MaxSessions == 0 || c.poolDrained(name) || backingOff[name] || c.poolPaused(name) {
 			// A rate-limited pool would only start more sessions that hit
-			// the same limit.
+			// the same limit; a crash-looping one is paused.
 			continue
 		}
 		open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: name})

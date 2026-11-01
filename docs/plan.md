@@ -283,6 +283,15 @@ development happens by hand (or with an outside agent).
     `drained` once they hold no in_progress ticket. Running turns finish
     normally. State is controller memory only, so a restart undrains;
     `session list` shows `drained` per session.
+  - Quarantine as built (decided 2026-11-01, issue #13): a session that
+    ends `crashed` releases its tickets with reason `session crashed`.
+    After 3 such releases (counted from history since the `quarantined`
+    label was last added or removed) the ticket gets defer_until now+1h,
+    label `quarantined`, and a comment listing the session ids and their
+    exit.json reasons. Undo with `ticket update <id> --defer 0` and
+    `label rm <id> quarantined`. A pool with 3 `crashed` sessions within
+    10 minutes starts no sessions for 15 minutes (controller memory, logged
+    as `pool quarantined`).
 - Observability (section 9): OTel traces and logs, Prometheus metrics,
   conversation export.
 - Messages with queued and interrupt delivery.
