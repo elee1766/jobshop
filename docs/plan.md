@@ -497,9 +497,26 @@ City's `internal/events` JSONL bus for observability purposes.
   `jobshop.session.id`, `jobshop.ticket.id`, `jobshop.kind`.
 
 **Conversation export (opt-in, off by default)**
-Port of our Gas City branch's `internal/convtel`
+Same scope as our Gas City branch's `internal/convtel`
 (`docs/guides/conversation-telemetry.md` in the fork): ACP content as OTLP
-logs and traces for later analysis in a log store.
+logs and traces for later analysis in a log store. Rebuilt on the OTel Go
+SDK, sharing providers and exporters with operational telemetry; convtel's
+hand-rolled OTLP/HTTP code is not reused (decided 2026-11-01). Its doc is a
+reference for record shapes and redaction rules only.
+- Enabled per pool, with a global default (decided 2026-11-01):
+
+  ```yaml
+  telemetry:
+    conversation_export:
+      default: false
+  pools:
+    worker:
+      conversation_export: true   # overrides the default
+  ```
+
+  The controller resolves the setting at spawn and writes it into the
+  session spec, so the host does not read config. Changing it applies to
+  new sessions.
 - Emitted by the session host, which already sees every ACP frame. One
   trace per session, spans per turn and per tool call, log records for
   prompts, assistant messages, provider-exposed reasoning, tool calls and
@@ -516,10 +533,6 @@ logs and traces for later analysis in a log store.
 - The host's journal remains the record of truth; export is best effort.
 
 ### Open questions
-- Copy `internal/convtel` and adapt, or rewrite on the OTel Go SDK? convtel
-  hand-rolls OTLP/HTTP JSON; the SDK would share exporters with operational
-  telemetry.
-- Per-pool opt-in for conversation export, or global only?
 - Log store target (Loki, ClickHouse, Grafana Cloud) only affects the
   collector config, not Jobshop.
 
