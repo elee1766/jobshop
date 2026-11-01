@@ -663,7 +663,12 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		}
 		r.c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
 		r.setTurnTicket(t.ID)
-		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t))
+		comments, err := r.c.store.Comments(ctx, t.ID)
+		if err != nil {
+			r.setTurnTicket("")
+			return err
+		}
+		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t, comments))
 		if err != nil {
 			r.setTurnTicket("")
 			return err
@@ -806,9 +811,21 @@ func ids(ts []store.Ticket) string {
 	return strings.Join(s, ", ")
 }
 
-func (r *runner) ticketPrompt(t store.Ticket) string {
+func (r *runner) ticketPrompt(t store.Ticket, comments []store.Comment) string {
+	return ticketPromptText(r.c.config().Pools[r.pool].Prompt, t, comments)
+}
+
+// Recent comments in a ticket prompt: a routed-back ticket's finding lives
+// in a comment, and an agent that only sees the body redoes the work or
+// stalls (#67, #70).
+const (
+	promptComments    = 3
+	promptCommentSize = 2000
+)
+
+func ticketPromptText(poolPrompt string, t store.Ticket, comments []store.Comment) string {
 	var b strings.Builder
-	if p := r.c.config().Pools[r.pool].Prompt; p != "" {
+	if p := poolPrompt; p != "" {
 		b.WriteString(strings.TrimSpace(p))
 		b.WriteString("\n\n")
 	}
@@ -816,6 +833,17 @@ func (r *runner) ticketPrompt(t store.Ticket) string {
 	if t.Body != "" {
 		b.WriteString(t.Body)
 		b.WriteString("\n\n")
+	}
+	if len(comments) > 0 {
+		b.WriteString("# Recent comments\n\n")
+		for _, c := range comments[max(0, len(comments)-promptComments):] {
+			body := c.Body
+			if len(body) > promptCommentSize {
+				body = strings.ToValidUTF8(body[:promptCommentSize], "") + " [truncated]"
+			}
+			fmt.Fprintf(&b, "[%s] %s:\n%s\n\n", c.CreatedAt.UTC().Format(time.RFC3339), c.Author, body)
+		}
+		b.WriteString("If the latest comment is a refinery finding, address it, push, and hand the ticket back to refinery.\n\n")
 	}
 	b.WriteString(`The jobshop CLI is on your PATH and acts as your session; with no id it uses your current ticket.
 - jobshop ticket show                       ticket details, comments and history

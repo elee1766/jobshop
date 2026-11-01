@@ -123,6 +123,7 @@ Short list; behavior details are in section 7.
 - `jobshop ticket trace` for closed-loop evidence (#53).
 - `jobshop_sessions_ended_total` by resolution, its dashboard panel, and
   the runbook counting `stuck` as a failure (#71).
+- Recent comments in ticket prompts, for routed-back tickets (#70).
 
 ## 5. What's next
 
@@ -258,6 +259,11 @@ All dated 2026-11-01 unless noted.
   telemetry check is a shell script, not a CLI command: it reads
   VictoriaMetrics and VictoriaTraces, which the controller does not know
   about (2026-11-01, #55).
+- Ticket prompts include the last 3 comments, each cut to 2000 chars. The
+  refinery records findings as comments, and an agent prompted with only
+  the title and body redid finished work or stalled. Comments are cheaper
+  than a summary step and the agent can still run `ticket show`
+  (2026-11-01, #70).
 
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
@@ -483,6 +489,15 @@ created while holding it (claim to close, release or lease expiry). The
 second rule links a plan ticket to the dev tickets its planner filed. The
 depth defaults to 5, and a ticket appears once. Store `Filter.CreatedBy`
 backs the lookup.
+
+### 7.12 Ticket prompt (#70)
+
+The claim prompt is the pool prompt, the ticket id, title and body, then
+`# Recent comments` when the ticket has any: the last 3 as
+`[time] author:` and the body, each body capped at 2000 bytes with
+`[truncated]`. A line tells the agent to address a refinery finding, push
+and hand back to refinery. A ticket without comments gets the same
+prompt as before.
 
 ## 8. Chat gateway (future)
 

@@ -1222,3 +1222,35 @@ func TestSessionsEndedMetric(t *testing.T) {
 		})
 	}
 }
+
+// TestRoutedBackPrompt moves a ticket refinery -> dev with a finding in a
+// comment, as the refinery does, and checks the dev session sees it.
+func TestRoutedBackPrompt(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	stop := start()
+	defer stop()
+	ctx := t.Context()
+	admin := dial(t, root.AdminSocket())
+	var tk store.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "routed-back", Pool: "refinery"}, &tk))
+	finding := "Refinery: not merging. Rebase on master and keep section 6 last."
+	require.NoError(t, admin.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{ID: tk.ID, Body: finding}, nil))
+	dev := "dev"
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketUpdate, rpc.UpdateParams{ID: tk.ID, Pool: &dev}, nil))
+
+	var p string
+	require.Eventually(t, func() bool {
+		b, _ := os.ReadFile(filepath.Join(root.Dir, "prompts"))
+		for line := range strings.Lines(string(b)) {
+			var s string
+			if json.Unmarshal([]byte(line), &s) == nil && strings.Contains(s, "routed-back") {
+				p = s
+				return true
+			}
+		}
+		return false
+	}, 20*time.Second, 50*time.Millisecond)
+	assert.Contains(t, p, "# Recent comments")
+	assert.Contains(t, p, "admin:\n"+finding)
+	assert.Contains(t, p, "hand the ticket back to refinery")
+}
