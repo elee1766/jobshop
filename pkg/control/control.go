@@ -220,6 +220,13 @@ func (c *Controller) serve() error {
 
 	open, err := c.store.List(c.ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
 	if err != nil {
+		// Canceled during startup is a clean stop, not a failure (#61).
+		// Checked before stop, which cancels c.ctx itself.
+		canceled := c.ctx.Err() != nil
+		c.stop()
+		if canceled {
+			return nil
+		}
 		return err
 	}
 	for _, t := range open {
@@ -238,10 +245,7 @@ func (c *Controller) serve() error {
 		c.tick()
 		select {
 		case <-c.ctx.Done():
-			c.cancel()
-			c.wg.Wait()
-			_ = os.Remove(c.root.AdminSocket())
-			c.log.Info("controller stopped")
+			c.stop()
 			return nil
 		case <-tick.C:
 		case <-c.opt.Reload:
@@ -250,6 +254,15 @@ func (c *Controller) serve() error {
 			_ = c.reload()
 		}
 	}
+}
+
+// stop cancels the controller, waits for its goroutines and removes the
+// admin socket.
+func (c *Controller) stop() {
+	c.cancel()
+	c.wg.Wait()
+	_ = os.Remove(c.root.AdminSocket())
+	c.log.Info("controller stopped")
 }
 
 // tick runs one supervisor pass under a span.
