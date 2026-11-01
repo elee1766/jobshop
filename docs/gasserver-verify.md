@@ -5,7 +5,23 @@ and rate-limit backoff each verified on gasserver with no session ending
 crashed", and for the 24h run. Behavior being checked is in
 `docs/plan.md` sections 7.1 to 7.3.
 
-Run as the jobshop user so the CLI finds the admin socket:
+Agent sessions already run as `jobshop` (granted 2026-11-01 in
+gasserver.nix `modules/jobshop.nix`):
+
+- `journalctl -u jobshop` works (group `systemd-journal`).
+- `sudo -n /run/current-system/sw/bin/systemctl restart jobshop.service`
+  and `... reload jobshop.service` work without a password. Nothing else
+  runs under sudo. A restart cannot kill the session running it: hosts
+  survive (`KillMode=process`), only CLI calls fail briefly.
+- The admin socket is not reachable from a session socket. Use
+  `JOBSHOP_SOCKET= jobshop ...` (empty) so the CLI falls back to
+  `$JOBSHOP_ROOT/admin.sock`, which `jobshop` owns.
+- A Nix deploy (section 2) and editing `jobshop.yaml` (section 3, it is
+  a Nix store link) need the operator. Ask on the issue with the exact
+  change; `jobshop session restart <id>` covers the env refresh path
+  meanwhile.
+
+An operator shell:
 
 ```sh
 sudo -u jobshop -i          # HOME and JOBSHOP_ROOT are /var/lib/jobshop
@@ -28,7 +44,7 @@ date -u +%FT%TZ > /tmp/verify-start        # start time for journalctl
 ## 1. Controller restart
 
 ```sh
-sudo systemctl restart jobshop
+sudo -n /run/current-system/sw/bin/systemctl restart jobshop.service
 journalctl -u jobshop --since "$(cat /tmp/verify-start)" -o cat \
   | grep -E 'controller stopped|controller serving|resumed conversation|new\+summary|session ended'
 jobshop session list
@@ -124,3 +140,32 @@ of the window, together with:
 jobshop session list --since 24h | jq -r '.[].ticket.resolution' | sort | uniq -c
 journalctl -u jobshop --since -24h -o cat | grep -c 'session ended'
 ```
+
+## 5. Telemetry
+
+Wired 2026-11-01 (gasserver.nix `modules/jobshop.nix`, gascity-city
+`ops/observability/native`):
+
+- Controller: `telemetry.metrics_listen = 127.0.0.1:9464`,
+  `otlp_endpoint = http://127.0.0.1:14318` (the agent-run OTel collector,
+  which forwards traces to VictoriaTraces and logs to VictoriaLogs).
+- VictoriaMetrics (127.0.0.1:18428) scrapes `/metrics` as job `jobshop`.
+- Grafana (127.0.0.1:3300) provisions the deployed
+  `deploy/grafana/jobshop.json` from `/etc/jobshop/grafana`, folder
+  `Jobshop`, uid `jobshop`, datasource pinned to `gc-vm`. A dashboard
+  change ships with the next Jobshop deploy.
+
+Checks, from a session (all endpoints are on loopback):
+
+```sh
+curl -s 127.0.0.1:9464/metrics | grep -c '^jobshop_'
+curl -s 'http://127.0.0.1:18428/api/v1/targets' \
+  | jq -r '.data.activeTargets[] | select(.labels.job=="jobshop") | .health'   # up
+curl -s 'http://127.0.0.1:18428/api/v1/query?query=jobshop_sessions' | jq '.data.result | length'
+curl -s 'http://127.0.0.1:20428/select/jaeger/api/services' | jq .data           # has "jobshop"
+```
+
+Counters such as `jobshop_session_restarts_total` and
+`jobshop_lease_expiries_total` appear only after their first increment.
+Grafana needs a login; panels are checked by an operator or with the
+queries above.
