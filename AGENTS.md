@@ -12,3 +12,21 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
   editing `pkg/store/sqlite/queries/` or `migrations/`.
 - Record design decisions in `docs/` with the date.
 - Plain names, short comments explaining why, no marketing language.
+
+## Nix
+
+CI also runs `nix build .#jobshop` (`nix/package.nix`, `buildGo127Module`).
+
+- Any change to `go.mod` or `go.sum` changes the module vendor hash. Update
+  `vendorHash` in `nix/package.nix` in the same commit, or the nix CI job
+  fails with `hash mismatch in fixed-output derivation`.
+- Get the new hash locally: set `vendorHash = lib.fakeHash;`, run
+  `nix build .#jobshop 2>&1 | grep got:`, paste the `got:` value back. Then
+  `nix build .#jobshop && ./result/bin/jobshop version` must pass.
+- The package source is a fileset of `go.mod`, `go.sum`, `cmd/` and `pkg/`.
+  A new top-level directory the binary needs (embedded files, testdata used
+  by the build) must be added to that fileset.
+- The build has `CGO_ENABLED=0`; do not add cgo dependencies.
+- `nix/module.nix` is the NixOS module. If you add a config field the host
+  sets through Nix, check the module still evaluates:
+  `nix flake check --no-build`.
