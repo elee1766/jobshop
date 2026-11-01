@@ -49,6 +49,8 @@ type Options struct {
 	// MessagePoll is how often a running turn checks for interrupt
 	// messages. Default 2s.
 	MessagePoll time.Duration
+	// Poll is how often an idle session looks for ready work. Default 5s.
+	Poll time.Duration
 	// MetricsReady, if set, receives the /metrics listen address once it
 	// is bound (tests use ":0" in the config).
 	MetricsReady func(addr string)
@@ -108,6 +110,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	if opt.MessagePoll <= 0 {
 		opt.MessagePoll = 2 * time.Second
+	}
+	if opt.Poll <= 0 {
+		opt.Poll = 5 * time.Second
 	}
 	if opt.Log == nil {
 		opt.Log = slog.Default()

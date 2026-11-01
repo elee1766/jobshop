@@ -80,6 +80,7 @@ func triggerController(t *testing.T, root config.Root, clk *clock) func() {
 }
 
 func TestTriggers(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "js")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })

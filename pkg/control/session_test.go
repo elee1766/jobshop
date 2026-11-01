@@ -445,6 +445,9 @@ func poolRoot(t *testing.T, idle string) (config.Root, func() func()) {
 }
 
 func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, func() func()) {
+	// Each root has its own dir, sockets and hosts; the race build spends
+	// ~1s per host spawn, so serial runs are mostly waiting.
+	t.Parallel()
 	t.Helper()
 	dir, err := os.MkdirTemp("", "js")
 	require.NoError(t, err)
@@ -457,6 +460,15 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 		opt.Tick, opt.HostExe = 50*time.Millisecond, os.Args[0]
 		if opt.Backoff == 0 {
 			opt.Backoff = 100 * time.Millisecond
+		}
+		if opt.Poll == 0 {
+			opt.Poll = 50 * time.Millisecond
+		}
+		if opt.RestartDelay == 0 {
+			opt.RestartDelay = 50 * time.Millisecond
+		}
+		if opt.MessagePoll == 0 {
+			opt.MessagePoll = 50 * time.Millisecond
 		}
 		go func() {
 			done <- control.Run(ctx, root, opt)
@@ -484,34 +496,10 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 // agent closes the ticket through its CLI socket, and the idle session ends
 // with its host.
 func TestPoolSession(t *testing.T) {
-	dir, err := os.MkdirTemp("", "js")
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	cfg := fmt.Sprintf(`projects:
-  js: {}
-agents:
-  fake:
-    command: %q
-    args: [fake-agent]
-pools:
-  dev:
-    project: js
-    agent: fake
-    max_sessions: 1
-    idle_timeout: 1s
-    dir: %q
-`, os.Args[0], dir)
-	cfgPath := filepath.Join(dir, config.FileName)
-	require.NoError(t, os.WriteFile(cfgPath, []byte(cfg), 0o600))
-	root := config.Root{Dir: dir}
-
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-	go func() {
-		done <- control.Run(ctx, root, control.Options{Tick: 50 * time.Millisecond, HostExe: os.Args[0]})
-	}()
-	t.Cleanup(func() { cancel(); assert.NoError(t, <-done) })
-
+	root, start := poolRoot(t, "300ms")
+	stop := start()
+	defer stop()
+	ctx := t.Context()
 	admin := dial(t, root.AdminSocket())
 	var task store.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))

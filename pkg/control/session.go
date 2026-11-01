@@ -36,7 +36,6 @@ const (
 	defaultIdle       = 5 * time.Minute
 	defaultTurn       = 2 * time.Hour
 	hostLease         = 30 * time.Minute
-	pollInterval      = 5 * time.Second
 	crashWindow       = 10 * time.Minute
 	maxCrashes        = 3
 	unclosedDeferral  = 10 * time.Minute
@@ -481,7 +480,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			select {
 			case <-ctx.Done():
 				return r.dropped(conn)
-			case <-time.After(pollInterval):
+			case <-time.After(r.c.opt.Poll):
 			}
 			continue
 		case err != nil:

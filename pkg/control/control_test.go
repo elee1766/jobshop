@@ -19,6 +19,7 @@ import (
 // TestSessionScope drives a real controller over its sockets: a session can
 // only act as itself, and closing the session frees its claims.
 func TestSessionScope(t *testing.T) {
+	t.Parallel()
 	// Short path: unix socket paths are limited to 108 bytes.
 	dir, err := os.MkdirTemp("", "js")
 	require.NoError(t, err)
