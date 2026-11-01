@@ -2,6 +2,7 @@ package control_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -163,7 +164,14 @@ func TestConfigShow(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- control.Run(ctx, root, control.Options{Tick: time.Hour}) }()
-	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
+	t.Cleanup(func() {
+		cancel()
+		// The test can end before serve finishes startup, and Run then
+		// returns the canceled context (#61).
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			require.NoError(t, err)
+		}
+	})
 	admin := dial(t, root.AdminSocket())
 
 	var res rpc.ConfigShowResult
