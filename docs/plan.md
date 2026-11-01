@@ -555,7 +555,8 @@ reference for record shapes and redaction rules only.
   a query can pull the full context of how a ticket was worked.
 - Keep convtel's safety properties: separate explicit opt-in from
   operational telemetry, redaction before enqueue (secret-named keys,
-  launch-env secret values, credential patterns), per-field size cap with a
+  launch-env secret values, and credential patterns via gitleaks' detector
+  and default rules), per-field size cap with a
   truncation marker, bounded non-blocking queues with drop counters, export
   failures never affect a session, stable event ids for dedupe.
 - Destination: user-configured OTLP endpoints, not Jobshop's concern which

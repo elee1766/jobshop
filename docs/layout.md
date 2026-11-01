@@ -27,7 +27,8 @@ jobshop/
 │   │   │                     engine kinds and their typed field structs
 │   │   ├── storetest/        conformance suite every backend runs
 │   │   └── sqlite/           modernc.org/sqlite backend
-│   │       └── migrations/   goose *.sql files, embedded
+│   │       ├── migrations/   goose *.sql files, embedded
+│   │       └── queries/      sqlc *.sql queries and generated Go
 │   ├── rpc/                  JSON-RPC method names, request/response types,
 │   │                         client and server helpers over go.lsp.dev/jsonrpc2
 │   ├── control/              controller: tick loop, claims release, lease sweep,
@@ -94,6 +95,46 @@ Subcommands:
 | Prometheus | `go.opentelemetry.io/otel/exporters/prometheus` | v0.69.0 |
 | slog to OTel | `go.opentelemetry.io/contrib/bridges/otelslog` | v0.21.0 |
 | Tests | `github.com/stretchr/testify` | v1.12.1 |
+| Typed SQL (build-time codegen) | `github.com/sqlc-dev/sqlc` | v1.31.1 |
+| Linux syscalls | `golang.org/x/sys/unix` | v0.49.0 |
+| `/proc` parsing (PID start time) | `github.com/prometheus/procfs` | v0.23.0 |
+| Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
+| Secret redaction (conversation export) | `github.com/zricethezav/gitleaks/v8` (`detect`) | v8.30.1 |
+
+Uses:
+- **sqlc**: queries live as plain `.sql` files in `pkg/store/sqlite/queries/`
+  and sqlc generates typed Go next to them. It is a build-time tool, run
+  via `go tool sqlc` (Go 1.24+ `tool` directive in `go.mod`), so the
+  version is pinned and nothing extra lands in the binary. Generated code
+  is committed; CI checks it is up to date (`sqlc diff`). goose
+  migrations are the schema source sqlc reads. Supports Postgres for the
+  later backend.
+- **x/sys/unix**: setsid, `Pdeathsig`, `PR_SET_CHILD_SUBREAPER`,
+  `SO_PEERCRED` on sockets, flock for the controller lock.
+- **procfs**: PID start time so leak reaping never kills a reused PID.
+  Already an indirect dependency of the Prometheus exporter.
+- **errgroup**: controller and host goroutine lifetimes and shutdown.
+- **gitleaks**: its detector and default rule set redact secrets in
+  conversation export before records are queued, plus launch-env secret
+  values (exact match). Large dependency (about 74 modules in its
+  `go.mod`); accepted for rule coverage and maintenance (decided
+  2026-11-01). Only imported by `pkg/telemetry`.
+
+Standard library by choice (decided 2026-11-01):
+- `log/slog` for logging, `net/http` for `/metrics`, `text/tabwriter`
+  for CLI tables, `encoding/base32` for IDs.
+- `encoding/json/v2` for JSON (available in Go 1.27 without an
+  experiment flag; verified 2026-11-01).
+- `testing/synctest` for time-dependent tests (leases, ticks); no fake
+  clock library.
+- Small local helpers for retry/backoff.
+- `os/exec` running `git`; no go-git. Agents use `gh`; the controller does
+  not call GitHub.
+- Host journal is hand-rolled (sequence-numbered append file plus index),
+  so fsync and backpressure stay under our control.
+- Kind field validation is `Validate()` methods on the Go structs; no
+  validation-tag library.
+- Config reload is explicit (`jobshop reload`); no file watcher.
 
 Notes:
 - `coder/acp-go-sdk` was considered for ACP and not used: it is pre-1.0
