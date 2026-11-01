@@ -123,6 +123,33 @@ func TestParseTelemetry(t *testing.T) {
 	c, err = Parse([]byte("projects:\n  js: {}\n"))
 	require.NoError(t, err)
 	assert.Empty(t, c.Telemetry.MetricsListen, "off by default")
+	assert.Empty(t, c.Telemetry.TracesURL())
+	assert.Empty(t, c.Telemetry.LogsURL())
+	assert.Nil(t, c.Telemetry.Headers(func(string) string { return "" }))
+}
+
+func TestTelemetrySignals(t *testing.T) {
+	c, err := Parse([]byte(`
+telemetry:
+  otlp_endpoint: http://127.0.0.1:4318/
+  otlp_logs_endpoint: http://vl:9428/insert/opentelemetry/v1/logs
+  otlp_headers:
+    Authorization: Bearer ${TOKEN}
+    X-Static: plain
+`))
+	require.NoError(t, err)
+	tel := c.Telemetry
+	assert.Equal(t, "http://127.0.0.1:4318/v1/traces", tel.TracesURL(), "base path when no override")
+	assert.Equal(t, "http://vl:9428/insert/opentelemetry/v1/logs", tel.LogsURL())
+	assert.Equal(t, "Bearer ${TOKEN}", tel.OTLPHeaders["Authorization"], "stored unexpanded")
+	env := map[string]string{"TOKEN": "s3cret"}
+	assert.Equal(t, map[string]string{"Authorization": "Bearer s3cret", "X-Static": "plain"},
+		tel.Headers(func(k string) string { return env[k] }))
+
+	c, err = Parse([]byte("telemetry:\n  otlp_traces_endpoint: http://vt/x\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "http://vt/x", c.Telemetry.TracesURL(), "override alone enables traces")
+	assert.Empty(t, c.Telemetry.LogsURL())
 }
 
 func TestDuration(t *testing.T) {

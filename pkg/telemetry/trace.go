@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"strings"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
@@ -27,26 +27,38 @@ type Tracing struct {
 	lp *sdklog.LoggerProvider // nil without an endpoint
 }
 
-// NewTracing builds the providers. endpoint is an OTLP/HTTP base URL such
-// as http://127.0.0.1:4318; empty exports nothing (spans are still made, so
-// trace context still propagates). extra processors are for tests.
-func NewTracing(ctx context.Context, endpoint string, extra ...sdktrace.SpanProcessor) (*Tracing, error) {
+// Export says where to send traces and logs. Empty URLs export nothing for
+// that signal (spans are still made, so trace context still propagates).
+type Export struct {
+	TracesURL string // full OTLP/HTTP URL, e.g. http://127.0.0.1:4318/v1/traces
+	LogsURL   string
+	Headers   map[string]string // sent on both signals
+}
+
+// NewTracing builds the providers. extra processors are for tests.
+func NewTracing(ctx context.Context, ex Export, extra ...sdktrace.SpanProcessor) (*Tracing, error) {
 	res := resource.NewSchemaless(attribute.String("service.name", "jobshop"))
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(res)}
 	for _, p := range extra {
 		opts = append(opts, sdktrace.WithSpanProcessor(p))
 	}
 	t := &Tracing{}
-	if endpoint != "" {
-		base := strings.TrimSuffix(endpoint, "/")
-		te, err := otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(base+"/v1/traces"))
+	var te *otlptrace.Exporter
+	if ex.TracesURL != "" {
+		var err error
+		te, err = otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(ex.TracesURL), otlptracehttp.WithHeaders(ex.Headers))
 		if err != nil {
 			return nil, err
 		}
 		opts = append(opts, sdktrace.WithBatcher(te))
-		le, err := otlploghttp.New(ctx, otlploghttp.WithEndpointURL(base+"/v1/logs"))
+	}
+	if ex.LogsURL != "" {
+		le, err := otlploghttp.New(ctx, otlploghttp.WithEndpointURL(ex.LogsURL), otlploghttp.WithHeaders(ex.Headers))
 		if err != nil {
-			return nil, errors.Join(err, te.Shutdown(ctx))
+			if te != nil {
+				err = errors.Join(err, te.Shutdown(ctx))
+			}
+			return nil, err
 		}
 		t.lp = sdklog.NewLoggerProvider(sdklog.WithResource(res), sdklog.WithProcessor(sdklog.NewBatchProcessor(le)))
 	}
