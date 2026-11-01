@@ -31,8 +31,8 @@ type triggerState struct {
 
 // runTriggers fires every trigger whose conditions hold. Called each tick.
 func (c *Controller) runTriggers() {
-	for _, name := range slices.Sorted(maps.Keys(c.cfg.Triggers)) {
-		tr := c.cfg.Triggers[name]
+	for _, name := range slices.Sorted(maps.Keys(c.config().Triggers)) {
+		tr := c.config().Triggers[name]
 		st, err := c.evalTrigger(c.ctx, name, tr)
 		if err != nil {
 			c.log.Error("trigger", "trigger", name, "err", err)
@@ -179,8 +179,8 @@ func (c *Controller) readyCount(ctx context.Context, w config.TriggerWhen, kind 
 	if !slices.Contains(store.ClaimableKinds, kind) {
 		return 0, nil
 	}
-	projects := slices.Sorted(maps.Keys(c.cfg.Projects))
-	if p, ok := c.cfg.Pools[w.Pool]; ok {
+	projects := slices.Sorted(maps.Keys(c.config().Projects))
+	if p, ok := c.config().Pools[w.Pool]; ok {
 		projects = []string{p.Project}
 	}
 	n := 0
@@ -215,7 +215,7 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 		return nil, err
 	}
 	out := []rpc.TriggerInfo{}
-	for name, tr := range c.cfg.Triggers {
+	for name, tr := range c.config().Triggers {
 		st, err := c.evalTrigger(ctx, name, tr)
 		if err != nil {
 			return nil, err

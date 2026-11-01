@@ -118,7 +118,31 @@ func (c serveCmd) Run(g *Globals) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log})
+	// SIGHUP reloads the config, like `jobshop reload`.
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	defer signal.Stop(hup)
+	reload := make(chan struct{}, 1)
+	go func() {
+		for {
+			select {
+			case <-hup:
+				select {
+				case reload <- struct{}{}:
+				default: // one already pending reads the latest file
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Reload: reload})
+}
+
+type reloadCmd struct{}
+
+func (reloadCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodReload, struct{}{}, nil)
 }
 
 type drainCmd struct {

@@ -40,12 +40,12 @@ func (c *Controller) project(sc scope, asked string) (string, error) {
 		return sc.project, nil
 	}
 	if asked == "" {
-		asked = c.cfg.DefaultProject
+		asked = c.config().DefaultProject
 	}
 	if asked == "" {
 		return "", fmt.Errorf("%w: no project given and no default_project configured", store.ErrInvalid)
 	}
-	if _, ok := c.cfg.Projects[asked]; !ok {
+	if _, ok := c.config().Projects[asked]; !ok {
 		return "", fmt.Errorf("%w: unknown project %q", store.ErrInvalid, asked)
 	}
 	return asked, nil
@@ -277,14 +277,14 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 		err error
 	)
 	if p.ID != "" {
-		r.Ticket, r.Claim, err = c.store.Claim(ctx, p.ID, holder, c.lease)
+		r.Ticket, r.Claim, err = c.store.Claim(ctx, p.ID, holder, c.leaseDur())
 	} else {
 		proj, perr := c.project(sc, p.Project)
 		if perr != nil {
 			return nil, perr
 		}
 		r.Ticket, r.Claim, err = c.store.ClaimNext(ctx, store.ClaimNext{
-			Project: proj, Pool: pool, Holder: holder, Lease: c.lease,
+			Project: proj, Pool: pool, Holder: holder, Lease: c.leaseDur(),
 		})
 	}
 	if err != nil {
@@ -309,7 +309,7 @@ func (c *Controller) heartbeat(ctx context.Context, sc scope, p rpc.IDParams) (a
 	if err != nil {
 		return nil, err
 	}
-	return c.store.Heartbeat(ctx, cl, c.lease)
+	return c.store.Heartbeat(ctx, cl, c.leaseDur())
 }
 
 func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams) (any, error) {
@@ -333,7 +333,7 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 		return nil, err
 	}
 	if p.Pool != "" {
-		if pool, ok := c.cfg.Pools[p.Pool]; ok && p.Agent == "" {
+		if pool, ok := c.config().Pools[p.Pool]; ok && p.Agent == "" {
 			p.Agent = pool.Agent
 		}
 	}
