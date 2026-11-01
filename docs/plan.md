@@ -110,6 +110,8 @@ Short list; behavior details are in section 7.
 - Per-signal OTLP URLs and headers, nix telemetry options, Grafana
   dashboard (#44).
 - Conversation export with redaction (#45).
+- `session/load` fallback from the journal (#43).
+- `session list --state --since` and the gasserver runbook (#52).
 
 ## 5. What's next
 
@@ -118,9 +120,7 @@ Short list; behavior details are in section 7.
   ticket per failing master SHA (#34).
 - Refinery dry run on real PRs, and one full planner cycle on gasserver.
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
-  sessions.
-- `session/load` fallback from the host journal for agents that cannot
-  load a conversation.
+  sessions (runbook: `docs/gasserver-verify.md`, #52).
 - gasserver scrapes `/metrics` and ships traces (dashboard and per-signal
   endpoints are in, #44; deploy pending).
 - Validate meta pack names (#29), `jobshop config show` (#32).
@@ -225,6 +225,8 @@ All dated 2026-11-01 unless noted.
 - OTLP export goes straight to the Victoria backends with no collector, so
   jobshop takes per-signal URLs and headers itself. Header secrets come
   from the environment via `${VAR}`, never from the YAML (#44).
+- Crash evidence is a `session list` filter (`--state`, `--since`) rather
+  than a separate script, so it reads the store the controller uses (#52).
 
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
@@ -322,7 +324,9 @@ permission is not built.
   down.
 - `session list` joins session tickets with their dirs: `alive`, pids,
   current ticket, last journal seq, `exit`, `crashes`, `backoff_until`,
-  orphans.
+  orphans. `--state <resolution>` and `--since <dur>` (#52) list only
+  closed sessions matching both, without orphans:
+  `session list --state crashed --since 24h` is the crash evidence.
 - `session reap` stops hosts with no open session; `--closed` also deletes
   old closed session dirs.
 - `shutdown` leaves sessions running; `shutdown --all` ends them first.

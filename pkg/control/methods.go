@@ -350,9 +350,20 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 	if err := requireAdmin(sc, "session list"); err != nil {
 		return nil, err
 	}
+	if p.Since < 0 {
+		return nil, fmt.Errorf("%w: since must not be negative", store.ErrInvalid)
+	}
+	ended := p.State != "" || p.Since > 0
 	statuses := []store.Status{store.StatusOpen, store.StatusInProgress}
-	if p.All {
+	switch {
+	case ended:
+		statuses = []store.Status{store.StatusClosed}
+	case p.All:
 		statuses = []store.Status{""}
+	}
+	var cutoff time.Time
+	if p.Since > 0 {
+		cutoff = time.Now().Add(-p.Since)
 	}
 	var tickets []store.Ticket
 	for _, s := range statuses {
@@ -367,6 +378,12 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 	seen := map[string]bool{}
 	for i := range tickets {
 		t := tickets[i]
+		if p.State != "" && t.Resolution != p.State {
+			continue
+		}
+		if !cutoff.IsZero() && t.ClosedAt.Before(cutoff) {
+			continue
+		}
 		info, err := c.sessionInfo(ctx, t.ID)
 		if err != nil {
 			return nil, err
@@ -376,6 +393,9 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		info.Orphan = t.Status == store.StatusClosed && info.Alive
 		seen[t.ID] = true
 		out = append(out, info)
+	}
+	if ended {
+		return out, nil
 	}
 
 	entries, err := os.ReadDir(c.root.SessionDir(""))

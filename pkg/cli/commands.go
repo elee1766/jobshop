@@ -507,11 +507,13 @@ func (c sessionAttachCmd) Run(g *Globals) error {
 }
 
 type sessionListCmd struct {
-	All bool `help:"Include closed sessions."`
+	All   bool          `help:"Include closed sessions."`
+	State string        `help:"Only closed sessions with this resolution (e.g. crashed)."`
+	Since time.Duration `help:"Only sessions closed within this long (e.g. 24h)."`
 }
 
 func (c sessionListCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodSessionList, rpc.SessionListParams{All: c.All}, nil)
+	return g.call(rpc.MethodSessionList, rpc.SessionListParams{All: c.All, State: c.State, Since: c.Since}, nil)
 }
 
 // sessionRestartCmd: a busy session restarts after its current turn; the
