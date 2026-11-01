@@ -233,10 +233,21 @@ All dated 2026-11-01 unless noted.
 - Workers hand green PRs to the refinery; only the refinery merges.
   Branch protection is unavailable on this plan, so "merge only on green
   CI" is enforced by prompts.
-- Promotion: bump the `jobshop` flake input in gasserver.nix and switch.
-  Rollback: the previous NixOS generation. Promotion is manual.
-- Prompts ship in `packs/selfdev` inside the deployed source, so prompt
-  and binary versions match.
+- Promotion (2026-11-01, replaces the manual flake bump): the NixOS module's
+  `selfDeploy` timer rebuilds the host with `--override-input jobshop` at
+  the newest master commit whose CI passed, checks that the controller
+  serves and reports that rev, and otherwise switches back to the previous
+  generation and skips that rev. The override is kept for the daily
+  auto-upgrade; the host flake's lock is not edited. gasserver is a dev
+  box and the user approved unattended promotion of agent-merged code.
+- Prompts and pools live in `packs/selfdev`, read from the live checkout
+  (`workspace.livePacks`) instead of the Nix store. `jobshop-workspace-sync`
+  fast-forwards the checkout to the deployed binary's commit and reloads
+  the controller when a pack file changed, so prompt and binary versions
+  still match.
+- Generic host setup (tools on PATH, git identity and credential helper,
+  workspace clone) is module options, so the host config holds only
+  secrets, credentials and host values, and agents change the rest by PR.
 - Triggers and the controller make no GitHub calls. GitHub state is read
   by agents through `gh`, or by a trigger's check command.
 - 2026-11-01: master-red is a generic `when.check` shell command whose
