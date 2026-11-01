@@ -698,8 +698,16 @@ func (c *Controller) supervise() {
 		if err != nil {
 			continue
 		}
-		// Each open session takes one ready ticket; start more only for the rest.
-		want := min(len(ready)-len(open), p.MaxSessions-len(open))
+		// Idle sessions (holding nothing) will claim ready work themselves;
+		// start more only for the rest, up to the cap.
+		idle := 0
+		for _, s := range open {
+			held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: store.StatusInProgress})
+			if err == nil && len(held) == 0 {
+				idle++
+			}
+		}
+		want := min(len(ready)-idle, p.MaxSessions-len(open))
 		for range max(want, 0) {
 			if _, err := c.newSession(ctx, "controller", p.Project, name, p.Agent, "", ""); err != nil {
 				c.log.Error("start session", "pool", name, "err", err)
