@@ -248,7 +248,7 @@ development happens by hand (or with an outside agent).
   `go test -race`, `nix build`.
 - Data model: `docs/data-model.md`.
 
-**Phase 1: store, controller sockets, CLI**
+**Phase 1: store, controller sockets, CLI** (done 2026-11-01)
 - `store` package: interface, types, errors, engine kinds (`task`,
   `session`, `message`) with typed fields.
 - Conformance suite, then the SQLite backend.
@@ -350,7 +350,7 @@ flowchart LR
 
 - The controller runs `exec.Command("/proc/self/exe", "session-host",
   <id>)` with `Args[0] = "jobshop"`, `SysProcAttr{Setsid: true}`, stdin
-  from `/dev/null`, stdout/stderr to `<data>/sessions/<id>/host.log`. It
+  from `/dev/null`, stdout/stderr to `<root>/sessions/<id>/host.log`. It
   does not wait on the child, so the host outlives the controller. No
   tmux, no systemd, no hand-rolled double fork (decided 2026-11-01).
 - New process, not a fork: Go cannot fork safely, and `os/exec` is
@@ -359,7 +359,7 @@ flowchart LR
   exact build of the controller that spawned it, even if the release
   symlink moves. Security comes from users and file ownership (8.6).
 - Before spawning, the controller writes a session spec to
-  `<data>/sessions/<id>/spec.json`: agent command, args, env, working
+  `<root>/sessions/<id>/spec.json`: agent command, args, env, working
   dir, socket paths, host protocol version, binary path.
 - A host keeps running the build it started with. Keep each release
   binary until no live host references it; `session reap` reports which
@@ -393,7 +393,7 @@ hosts started by an old one.
 
 Controller restart sequence:
 1. New binary starts, opens the store, takes the controller lock.
-2. Scans `<data>/sessions/*/` and the sessions table. Reconnects to live
+2. Scans `<root>/sessions/*/` and the sessions table. Reconnects to live
    hosts, renews their lease, replays missed output. Marks unreachable
    ones dead.
 3. Resumes the normal tick. No sessions are started or stopped until
@@ -432,7 +432,7 @@ Recovery below the host:
 
 - Agent-facing `jobshop` commands never open the database. They talk to a
   socket.
-- The host starts the agent with `JOBSHOP_SOCKET=<data>/sessions/<id>/cli.sock`.
+- The host starts the agent with `JOBSHOP_SOCKET=<root>/sessions/<id>/cli.sock`.
   Every `jobshop` call from the agent and its subprocesses inherits it.
 - The socket identifies the session, so calls inherit its holder,
   current ticket, project, pool and worktree. `jobshop close` with no
@@ -442,10 +442,21 @@ Recovery below the host:
   the controller enforces scope: only this session's tickets plus what the
   pool's config allows.
 - Humans and the controller's own tooling use an admin socket
-  (`<data>/admin.sock`, owned by `agent`, `0700`) with full access. The CLI
+  (`<root>/admin.sock`, owned by `agent`, `0700`) with full access. The CLI
   uses it when `JOBSHOP_SOCKET` is unset.
 - Build this in phase 1, since retrofitting direct-DB CLI calls is the
   expensive part.
+- As built in phase 1 (decided 2026-11-01):
+  - Until the session host exists, the controller itself listens on each
+    open session's `cli.sock` and tags calls with that session. In phase 2
+    the host owns the socket and forwards, with the same scope rules.
+  - "Current ticket" is derived, not stored: the session's single
+    in-progress claim. Holding zero or several means the id is required.
+  - Session scope: project and holder are fixed by the socket; sessions
+    cannot assign, reopen, create sessions or shut down. Closing a session
+    ticket removes its socket and releases everything it held.
+  - Exit codes for agents: 3 no work, 4 claim lost / not holder,
+    5 not found, 6 revision conflict, 1 anything else.
 
 ### 8.6 Users and security
 

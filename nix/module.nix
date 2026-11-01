@@ -36,7 +36,7 @@ in
     dataDir = lib.mkOption {
       type = lib.types.path;
       default = "/var/lib/jobshop";
-      description = "Store, sockets, session directories and journals.";
+      description = "Jobshop root directory: jobshop.yaml (linked from settings), database, sockets, session directories and journals.";
     };
 
     settings = lib.mkOption {
@@ -85,6 +85,8 @@ in
 
     systemd.tmpfiles.rules = [
       "d ${cfg.dataDir} 0700 ${cfg.user} ${cfg.group} -"
+      # The root's config is the generated file; L+ replaces the link on each switch.
+      "L+ ${cfg.dataDir}/jobshop.yaml - - - - ${configFile}"
       # Per-host GC roots keep a running session host's binary alive across Nix switches.
       "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${cfg.user} ${cfg.group} -"
     ];
@@ -119,7 +121,7 @@ in
       after = [ "network-online.target" ];
       path = cfg.path;
       environment = {
-        JOBSHOP_CONFIG = toString configFile;
+        JOBSHOP_ROOT = cfg.dataDir;
         HOME = cfg.dataDir;
       };
       serviceConfig = {
@@ -145,7 +147,7 @@ in
       # A Nix switch must never run ExecStop here; that would end every session.
       restartIfChanged = false;
       stopIfChanged = false;
-      environment.JOBSHOP_CONFIG = toString configFile;
+      environment.JOBSHOP_ROOT = cfg.dataDir;
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;

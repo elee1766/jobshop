@@ -87,7 +87,7 @@ Subcommands:
 |---|---|---|
 | SQLite | `modernc.org/sqlite` | v1.61.1 |
 | Migrations | `github.com/pressly/goose/v3` (embedded `*.sql`) | v3.29.0 |
-| JSON-RPC (sockets, ACP framing) | `go.lsp.dev/jsonrpc2` | v1.0.1 |
+| JSON-RPC (sockets, ACP framing) | `go.lsp.dev/jsonrpc2` (NDJSON; own accept loop, since `jsonrpc2.Serve` hardcodes LSP header framing) | v1.0.1 |
 | ACP | own `pkg/acp`, message types only, over jsonrpc2 | |
 | CLI | `github.com/alecthomas/kong` | v1.16.1 |
 | YAML config | `github.com/goccy/go-yaml` | v1.19.2 |
@@ -176,13 +176,35 @@ breakage. No Makefile unless a real need appears.
 - `nixosModules.jobshop`: the deployment unit (below).
 - `devShells.default`: go, gopls, golangci-lint, sqlite.
 
+## Root directory (decided 2026-11-01)
+
+A Jobshop deployment is one directory, the root. The server and CLI find
+it from `--root` / `JOBSHOP_ROOT`, else the nearest ancestor of the cwd
+that contains `jobshop.yaml` (like git and `.git`). Every path derives
+from the root; there are no separate config, data or socket path flags.
+
+```
+<root>/
+├── jobshop.yaml          config; marks the directory as a root
+├── jobshop.db            SQLite store (+ -wal, -shm)
+├── controller.lock       flock held by the running controller
+├── admin.sock            admin socket, 0700 dir keeps it private
+└── sessions/<id>/        spec.json, host.log, journal, acp.sock, cli.sock
+```
+
+Copying or backing up the directory moves the whole deployment, and
+several roots can run side by side for testing. The NixOS module uses
+`dataDir` as the root and links the generated config into it as
+`jobshop.yaml`. Agents get `JOBSHOP_SOCKET` (their session socket), not
+the root.
+
 ## Deployment on gasserver (decided 2026-11-01)
 
 gasserver is an isolated OVH machine; Jobshop runs there next to Gas City
 as its own user, not as `agent`.
 
-- **User `jobshop`**: own home, own data dir (`/var/lib/jobshop` or
-  `~jobshop/data`), own GitHub identity (`cog` credentials via sops).
+- **User `jobshop`**: own home, root directory `/var/lib/jobshop`, own
+  GitHub identity (`cog` credentials via sops).
 - **Resource limit via its own slice** (decided 2026-11-01): `jobshop.slice`
   with `CPUQuota = 600%` (six cores' worth, placed by the scheduler) and
   `MemoryMax = 8G` (plus a lower `MemoryHigh`), `TasksMax`, and oomd

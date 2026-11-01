@@ -125,7 +125,7 @@ CREATE INDEX comments_ticket ON comments(ticket_id, id);
 ```
 
 Live process state (PID, socket path, host log) is not stored here. It is
-derived from `<data>/sessions/<id>/` at runtime. A `session` ticket holds
+derived from `<root>/sessions/<id>/` at runtime. A `session` ticket holds
 only the durable part.
 
 ## Engine kinds (Go)
