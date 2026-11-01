@@ -271,6 +271,8 @@ func (r *runner) finish(resolution, reason string) {
 	r.lifecycle("end", telemetry.AttrResolution.String(resolution))
 	stopHost(r.dir)
 	ctx := context.WithoutCancel(r.ctx)
+	r.c.metrics.SessionsEnded.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
+		telemetry.AttrResolution.String(resolution)))
 	if _, err := r.c.store.CloseTicket(ctx, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
 		r.log.Error("close session ticket", "err", err)
 	} else if err == nil {

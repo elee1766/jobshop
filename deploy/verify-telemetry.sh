@@ -139,11 +139,15 @@ if pools=$(vm_query 'count by (jobshop_pool) (last_over_time(jobshop_sessions[5m
 		done
 	done
 	for name in jobshop_claims_total jobshop_closes_total jobshop_turns_total \
-		jobshop_session_restarts_total jobshop_lease_expiries_total; do
+		jobshop_session_restarts_total jobshop_lease_expiries_total jobshop_sessions_ended_total; do
 		have=$(vm_query "count by (jobshop_pool) ($name)" |
 			jq -r 'map(.metric.jobshop_pool // "all") | join(",")')
 		echo "info  $name: ${have:-not yet incremented}"
 	done
+	# Failed session ends in the window (#71); the runbook wants none.
+	bad=$(vm_query "sum by (jobshop_pool, jobshop_resolution) (increase(jobshop_sessions_ended_total{jobshop_resolution=~\"crashed|stuck\"}[${window}s])) > 0" |
+		jq -r 'map(.metric.jobshop_pool + "/" + .metric.jobshop_resolution) | join(",")')
+	echo "info  crashed or stuck sessions in ${window}s: ${bad:-none}"
 else
 	fail "VictoriaMetrics $vm_url: query failed"
 fi

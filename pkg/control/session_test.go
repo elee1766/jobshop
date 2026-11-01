@@ -1170,3 +1170,55 @@ func TestCancelDuringStartup(t *testing.T) {
 	require.NoError(t, err)
 	assert.NoFileExists(t, root.AdminSocket())
 }
+
+// TestSessionsEndedMetric ends a session crashed (agent dies) and one stuck
+// (agent never closes) and checks jobshop_sessions_ended_total labels (#71).
+func TestSessionsEndedMetric(t *testing.T) {
+	for _, tc := range []struct{ marker, resolution string }{
+		{"crash", "crashed"},
+		{"noclose", "stuck"},
+	} {
+		t.Run(tc.resolution, func(t *testing.T) {
+			root, _ := poolRoot(t, "1m")
+			f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0)
+			require.NoError(t, err)
+			_, err = f.WriteString("telemetry:\n  metrics_listen: 127.0.0.1:0\n")
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, tc.marker), nil, 0o600))
+
+			addr := make(chan string, 1)
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan error, 1)
+			go func() {
+				done <- control.Run(ctx, root, control.Options{
+					Tick: 50 * time.Millisecond, HostExe: os.Args[0],
+					MetricsReady: func(a string) { addr <- a },
+				})
+			}()
+			defer func() { cancel(); assert.NoError(t, <-done) }()
+			var url string
+			select {
+			case a := <-addr:
+				url = "http://" + a + "/metrics"
+			case <-time.After(10 * time.Second):
+				t.Fatal("metrics not served")
+			}
+
+			admin := dial(t, root.AdminSocket())
+			for _, title := range []string{"a", "b", "c"} {
+				require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: title, Pool: "dev"}, nil))
+			}
+			want := `jobshop_sessions_ended_total{jobshop_pool="dev",jobshop_resolution="` + tc.resolution + `"`
+			require.Eventually(t, func() bool {
+				res, err := http.Get(url) //nolint:noctx // test
+				if err != nil {
+					return false
+				}
+				defer func() { _ = res.Body.Close() }()
+				b, _ := io.ReadAll(res.Body)
+				return strings.Contains(string(b), want)
+			}, 20*time.Second, 100*time.Millisecond, want)
+		})
+	}
+}
