@@ -138,6 +138,9 @@ func (h *Host) run() error {
 		return err
 	}
 	defer func() { _ = h.journal.Close() }()
+	if exe, err := os.Executable(); err == nil {
+		defer registerGCRoot(h.log, h.spec, exe)()
+	}
 	h.seq = lastSeq(filepath.Join(h.dir, JournalFile))
 
 	sockPath := filepath.Join(h.dir, ACPSocket)
