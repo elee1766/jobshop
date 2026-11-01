@@ -528,13 +528,40 @@ reference for record shapes and redaction rules only.
   launch-env secret values, credential patterns), per-field size cap with a
   truncation marker, bounded non-blocking queues with drop counters, export
   failures never affect a session, stable event ids for dedupe.
-- Destination: convtel restricts to loopback (local collector forwards).
-  Keep that default; allow non-loopback only with explicit config.
+- Destination: user-configured OTLP endpoints, not Jobshop's concern which
+  backend stores them (decided 2026-11-01). No loopback restriction.
 - The host's journal remains the record of truth; export is best effort.
 
+**Exporter configuration**
+- Per-signal full endpoint URLs (traces, logs, metrics), headers, and
+  protocol (`http/protobuf` default, `grpc` optional). Per-signal URLs are
+  required because some backends use non-standard paths (VictoriaMetrics
+  stack below); the Go SDK's `WithEndpointURL` supports this.
+- Standard `OTEL_EXPORTER_OTLP_*` env vars are honored as fallbacks.
+- Prometheus `/metrics` is always available for scraping regardless.
+
+```yaml
+telemetry:
+  otlp:
+    traces:  { endpoint: http://127.0.0.1:10428/insert/opentelemetry/v1/traces }
+    logs:    { endpoint: http://127.0.0.1:9428/insert/opentelemetry/v1/logs,
+               headers: { VL-Stream-Fields: "service.name,jobshop.pool" } }
+    metrics: { endpoint: http://127.0.0.1:8428/opentelemetry/v1/metrics }
+  prometheus:
+    listen: 127.0.0.1:9464
+  conversation_export:
+    default: false
+```
+
+**Our deployment (gasserver)**: VictoriaLogs for logs and conversation
+export, VictoriaTraces for traces, VictoriaMetrics for metrics (scrape
+`/metrics` or OTLP push). All three accept OTLP/HTTP directly, so no
+collector is required. VictoriaTraces is documented upstream as not yet
+production-ready; acceptable for our own use. Exact paths to verify
+against the installed versions.
+
 ### Open questions
-- Log store target (Loki, ClickHouse, Grafana Cloud) only affects the
-  collector config, not Jobshop.
+- None currently. Backend choice is deployment config, not design.
 
 ## 10. Chat gateway (future, design must not preclude)
 
