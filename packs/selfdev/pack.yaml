@@ -1,0 +1,30 @@
+# Self-development pack: agents that build Jobshop itself.
+# Vars: repo, agent, dev_sessions. See README.md.
+pools:
+  dev:
+    agent: ${agent}
+    repo: ${repo}
+    ref: origin/master
+    max_sessions: ${dev_sessions}
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/dev.md
+  plan:
+    agent: ${agent}
+    repo: ${repo}
+    ref: origin/master
+    max_sessions: 1
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/plan.md
+triggers:
+  replan:
+    when:
+      pool: dev
+      ready_below: 1
+    ticket:
+      pool: plan
+      title: Plan next step
+      priority: 1
+      labels: [plan]
+    cooldown: 10m

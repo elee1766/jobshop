@@ -346,6 +346,22 @@ development happens by hand (or with an outside agent).
   `jobshop trigger list` shows per trigger whether it would fire now (and
   if not, why), its open ticket, last fired time and next cron time.
   Pack names in `meta` are still not validated (#29).
+- Packs as built (decided 2026-11-01, issue #27): `packs:` in jobshop.yaml
+  lists pack directories (`path`, relative to the root, and `vars`). Each
+  holds `pack.yaml` with `agents`, `pools` and `triggers` in the
+  jobshop.yaml schema; other keys are rejected. Merge order: packs in list
+  order, then jobshop.yaml. Later sources win per map key, and inside an
+  agent, pool or trigger per field, recursively through nested maps
+  (`when`, `ticket`, `env`). Lists and scalars replace whole, so a host
+  setting `labels` restates the full list. `${name}` in pack.yaml string
+  values comes from that pack's `vars`; a string that is only `${name}`
+  keeps the var's type (numbers stay numbers), `$$` is a literal `$`, and
+  an unset var is a load error. jobshop.yaml itself is not substituted.
+  `prompt_file` on a pool (pack or jobshop.yaml) is read into `prompt` at
+  load, relative to the declaring file; both set is an error. Prompt
+  changes apply on controller restart. Validation errors name the files
+  that set the failing entry. `packs/selfdev` ships the dev and plan pools
+  and the `replan` trigger.
 
 **Phase 4: workflows and runs**
 - Port the formula concepts we use; decide which workflow features to keep.
