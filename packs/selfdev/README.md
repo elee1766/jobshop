@@ -2,8 +2,10 @@
 
 Jobshop agents that develop Jobshop through GitHub issues and PRs.
 
-- `dev` pool: resolves one issue per ticket (branch, PR, CI, squash merge).
-  Prompt: `prompts/dev.md`.
+- `dev` pool: resolves one issue per ticket (branch, PR, green CI), then
+  hands the ticket to `refinery` instead of merging. Prompt: `prompts/dev.md`.
+- `refinery` pool (1 session): merges handed-off PRs serially, or routes
+  them back to `dev` with findings. Prompt: `prompts/refinery.md`.
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,
   files the next 2-4 issues and dev pointer tickets. Prompt:
   `prompts/plan.md`.
