@@ -3,10 +3,13 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
+	"os/exec"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -27,6 +30,7 @@ type triggerState struct {
 	open     string    // open ticket the trigger created, if any
 	last     time.Time // created_at of its newest ticket
 	nextCron time.Time
+	key      string // check output, stored as meta.trigger.key
 }
 
 // runTriggers fires every trigger whose conditions hold. Called each tick.
@@ -41,7 +45,7 @@ func (c *Controller) runTriggers() {
 		if !st.holds {
 			continue
 		}
-		t, err := c.fireTrigger(c.ctx, name, tr)
+		t, err := c.fireTrigger(c.ctx, name, tr, st.key)
 		if err != nil {
 			c.log.Error("trigger fire", "trigger", name, "err", err)
 			continue
@@ -113,6 +117,26 @@ func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Tri
 	if why, err := c.countsHold(ctx, tr.When); err != nil || why != "" {
 		st.why = why
 		return st, err
+	}
+
+	// Last, so the command runs only when everything else holds.
+	if tr.When.Check != "" {
+		key, why, err := c.runCheck(ctx, tr.When)
+		if err != nil || why != "" {
+			st.why = why
+			return st, err
+		}
+		if key != "" {
+			seen, err := c.store.List(ctx, store.Filter{MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + key, Limit: 1})
+			if err != nil {
+				return st, err
+			}
+			if len(seen) > 0 {
+				st.why = "key " + key + " already filed as " + seen[0].ID
+				return st, nil
+			}
+		}
+		st.key = key
 	}
 	st.holds = true
 	return st, nil
@@ -198,12 +222,45 @@ func (c *Controller) readyCount(ctx context.Context, w config.TriggerWhen, kind 
 	return n, nil
 }
 
-func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Trigger) (store.Ticket, error) {
-	meta, err := json.Marshal(map[string]map[string]string{triggerPack: {"name": name}})
+// runCheck runs w.Check with sh in the root dir. Exit 0: holds, and the
+// trimmed stdout is the dedup key. Non-zero exit: does not hold (why says
+// so); the command failing to start or timing out is an error.
+func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, why string, err error) {
+	ctx, cancel := context.WithTimeout(ctx, config.Duration(w.CheckTimeout, time.Minute))
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", w.Check)
+	cmd.Dir = c.root.Dir
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if ctx.Err() != nil {
+		return "", "", fmt.Errorf("check: %w", ctx.Err())
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return "", fmt.Sprintf("check exited %d", exit.ExitCode()), nil
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("check: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return strings.TrimSpace(string(out)), "", nil
+}
+
+func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Trigger, key string) (store.Ticket, error) {
+	m := map[string]string{"name": name}
+	if key != "" {
+		// Prefixed with the trigger name so keys of different triggers
+		// do not collide in the meta filter.
+		m["key"] = name + "/" + key
+	}
+	meta, err := json.Marshal(map[string]map[string]string{triggerPack: m})
 	if err != nil {
 		return store.Ticket{}, err
 	}
 	tt := tr.Ticket
+	if key != "" {
+		tt.Body = strings.TrimSpace(tt.Body + "\n\nCheck output: " + key)
+	}
 	return c.store.Create(ctx, "controller", store.NewTicket{
 		Project: tt.Project, Kind: store.KindTask, Title: tt.Title, Body: tt.Body,
 		Priority: tt.Priority, Pool: tt.Pool, Labels: tt.Labels, Meta: meta,

@@ -37,3 +37,22 @@ triggers:
       priority: 1
       labels: [plan]
     cooldown: 10m
+  # One fix ticket per failing master SHA. The check runs on every tick
+  # while no master-red ticket is open; gh needs GH_TOKEN in the controller
+  # environment.
+  master-red:
+    when:
+      check: >-
+        gh run list --repo elee1766/jobshop --branch master --workflow ci
+        --status completed --limit 1 --json conclusion,headSha
+        --jq '.[] | select(.conclusion == "failure") | .headSha' | grep .
+      check_timeout: 30s
+    ticket:
+      pool: dev
+      title: "Fix red master CI"
+      body: >-
+        The latest completed master CI run failed. Find or file the fix
+        issue (`gh run list --branch master`, `gh run view --log-failed`),
+        then resolve it like any issue ticket.
+      priority: 0
+      labels: [master-red]

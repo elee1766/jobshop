@@ -103,7 +103,9 @@ func TestParseTriggers(t *testing.T) {
 
 	trig := func(s string) string { return base + "triggers:\n  t:\n" + s }
 	tests := []struct{ name, yaml, want string }{
-		{"empty when", trig("    when: {}\n    ticket: {title: x}\n"), "cron or a count threshold"},
+		{"empty when", trig("    when: {}\n    ticket: {title: x}\n"), "a count threshold or a check"},
+		{"timeout without check", trig("    when: {ready_below: 1, check_timeout: 1s}\n    ticket: {title: x}\n"), "check_timeout needs check"},
+		{"bad check timeout", trig("    when: {check: 'true', check_timeout: 0s}\n    ticket: {title: x}\n"), "positive duration"},
 		{"unknown pool", trig("    when: {pool: nope, ready_below: 1}\n    ticket: {title: x}\n"), `unknown pool "nope"`},
 		{"unknown ticket pool", trig("    when: {ready_below: 1}\n    ticket: {pool: nope, title: x}\n"), `ticket: unknown pool "nope"`},
 		{"bad cron", trig("    when: {cron: \"61 * * * *\"}\n    ticket: {title: x}\n"), "minute"},
