@@ -308,13 +308,16 @@ as a child of the controller (`internal/runtime/acp/acp.go`, `Setpgid`),
 so when the controller exits, the stdio pipes close and the session dies.
 
 **Proposal: a per-session host process (dtach/abduco for ACP).**
-- `jobshop session-host` is a small process started per session that
-  daemonizes itself (double fork + `setsid`, reparented to init, stdio to
-  `/dev/null`), so it outlives the controller. No systemd dependency
-  (decided 2026-11-01). Caveat: a supervisor that kills the controller's
-  whole cgroup (systemd `KillMode=control-group`, container stop) takes the
-  hosts with it, so deployments must not do that. That is a deployment
-  note, not something Jobshop requires.
+- `jobshop session-host` is a small process started per session inside a
+  detached tmux session (`tmux new-session -d -s js-<id> 'jobshop
+  session-host ...'`). The tmux server keeps it alive across controller
+  restarts, so Jobshop does no daemonizing of its own and needs no systemd
+  (decided 2026-11-01). The ACP stream does not go through the tmux pty:
+  the host owns the agent's stdio and serves it on a socket. The pane only
+  shows the host's human-readable log, so `tmux attach` still works for
+  watching a session. Liveness: `tmux has-session` plus the socket.
+  Caveat: anything that kills the tmux server (or its cgroup) kills all
+  sessions; recovery then falls to the layers below.
 - It spawns the agent, owns its stdin/stdout, and listens on a Unix socket
   (`<data>/sessions/<id>.sock`).
 - The controller connects to the socket and speaks ACP through it. On
