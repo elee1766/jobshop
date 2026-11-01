@@ -98,30 +98,31 @@ We do not use most of the gastown patrol machinery as designed.
 
 ## 3. Glossary
 
-Working vocabulary. Names are still negotiable.
+Decided 2026-11-01: plain, descriptive names, no themed vocabulary. Prefer
+the term that says what the thing is; keep Gas City's term only where it is
+already plain. "Jobshop" stays as the project name.
 
 | Gas City | Jobshop | Notes |
 |---|---|---|
-| Project | Jobshop | |
-| Controller loop (incl. health patrol) | Mainshaft | Reconcile, restart, quarantine, idle-kill are Mainshaft behavior, not a separate thing |
-| Control dispatcher | Dispatcher | Runs control tickets (retry, fan-out, tally, drain, ...) |
+| Controller loop (incl. health patrol) | Controller | Reconcile, restart, quarantine, idle-kill |
+| Control dispatcher | Dispatcher | Runs control tickets (retry, fan-out, ...) |
 | Bead | Ticket | |
-| Formula | Blueprint | |
-| Molecule | Workorder | |
-| Wisp | Chit | Ephemeral workorder |
+| Formula | Workflow | Template definition |
+| Molecule | Run | Instantiated workflow (tickets + edges) |
+| Wisp | Ephemeral run | A flag on run, not a separate concept |
 | Agent | Agent | Configured kind of worker |
-| Pool | Crew | |
-| Session | Shift | |
-| Rig | Workcenter | |
-| Pack | Tooling | |
-| Sling | Assign | Puts a ticket in a crew's queue; not a claim |
-| Claim / release | Punch / Relieve | Avoid `assignee` for the claimant; consider `holder` |
-| Gate | Latch | Passive hold until closed |
-| Check | Gauge | Condition evaluated by the Dispatcher |
-| Convoy | Skid | |
-| Order | Docket | |
-| Mail | Memo | |
-| Event log | Timecard | |
+| Pool | Pool | |
+| Session | Session | |
+| Rig | Project | One repo / work area |
+| Pack | Pack | Bundle of agents, prompts, workflows |
+| Sling | Assign | Puts a ticket in a pool's queue; not a claim |
+| Claim / release | Claim / release | Claimant field is `holder`, not `assignee` |
+| Gate | Gate | Passive hold until closed |
+| Check | Check | Condition evaluated by the dispatcher |
+| Convoy | Batch | Group of tickets tracked together |
+| Order | Schedule | Scheduled workflow trigger |
+| Mail | Message | |
+| Event log | Events | |
 
 Roles (mayor, polecat, ...) are configuration, not engine concepts. Jobshop
 keeps Gas City's "zero hardcoded roles" principle.
@@ -132,7 +133,7 @@ Carried over from Gas City's `AGENTS.md` where they still fit:
 
 - No role names in Go. Behavior comes from config and prompts.
 - Go handles transport, not judgment.
-- Work persists in tickets; shifts are disposable. Recovery means re-reading
+- Work persists in tickets; sessions are disposable. Recovery means re-reading
   state, not remembering it.
 - No status files; query live state.
 
@@ -144,12 +145,13 @@ New for Jobshop:
   Jobshop, not for compatibility with `bd`'s flags or JSON.
 - **Backend-neutral SQL** where practical, so Postgres is an implementation,
   not a rewrite.
+- **YAML config** (decided 2026-11-01).
 
 ### Open questions
 - Should the store expose a generic graph (nodes, typed edges, metadata), or
-  first-class types (ticket, memo, shift, docket)? Gas City stores everything
-  as beads plus about 200 `gc.*` metadata keys (`internal/beadmeta`). That is
-  flexible but implicit.
+  first-class types (ticket, message, session, schedule)? Gas City stores
+  everything as beads plus about 200 `gc.*` metadata keys
+  (`internal/beadmeta`). That is flexible but implicit.
 - How strict do we want the schema to be versus a metadata map?
 
 ## 5. Ticket store interface (sketch)
@@ -159,14 +161,14 @@ close, reopen, delete, list and filter, `Ready`, children, metadata, `Tx`,
 `DepAdd`/`DepRemove`/`DepList`). Things Gas City grew later that seem worth
 building in from the start:
 
-- **Atomic punch** (claim) with a lease and a fence, plus heartbeat and relieve
+- **Atomic claim** with a lease and a fence, plus heartbeat and release
   conditioned on the current holder. See `sqlite_store_claim.go`,
   `sqlite_store_fence.go`, `sqlite_store_conditional.go`.
 - **Revision-guarded updates** (compare-and-swap).
 - **Ready frontier query** (open, unblocked, not deferred).
-- **Graph apply**: create a workorder's tickets and edges in one transaction
+- **Graph apply**: create a run's tickets and edges in one transaction
   (`sqlite_store_graph_apply.go`).
-- **Ephemeral tier** for chits.
+- **Ephemeral tier** for ephemeral runs.
 - **Typed edges**: `blocks`, `parent-child`, `tracks`, `waits-for` cover nearly
   all of Gas City's usage.
 
@@ -178,7 +180,7 @@ SQLite implementation.
   separate stores, or a column?
 - Do we need Gas City's "split city" (class bindings across stores) at all?
   It accounts for a lot of complexity (`cmd/gc/bd_split_*`).
-- Multi-workcenter: one database or one per workcenter? We currently run one
+- Multi-project: one database or one per project? We currently run one
   work store per rig plus a shared infra store.
 - Is `modernc.org/sqlite` (pure Go, what Gas City uses) acceptable, or do we
   want cgo?
@@ -188,7 +190,7 @@ SQLite implementation.
 Gas City is MIT-licensed. Dependency scan of `internal/` (non-test lines):
 
 **No beads/Dolt dependency; likely portable:**
-- `internal/formula` (~10k lines): blueprint parsing and compile. Depends on
+- `internal/formula` (~10k lines): workflow parsing and compile. Depends on
   `beadmeta`, `git`, `gitcred`, `remotesource`, `pathutil`, `gchome`.
 - `internal/runtime` (~12k) and `internal/runtime/tmux` (~16k). We use ACP
   (`internal/runtime/acp`); check its dependencies before relying on it.
@@ -197,7 +199,7 @@ Gas City is MIT-licensed. Dependency scan of `internal/` (non-test lines):
 
 **Logically store-neutral but import `internal/beads` (which pulls in the
 upstream beads/Dolt library):**
-- `internal/molecule` (~3.7k): cook a blueprint into a workorder.
+- `internal/molecule` (~3.7k): instantiate a workflow into a run.
 - `internal/dispatch` (~12k): control ticket execution.
 - `internal/readywork`, `internal/convergence`, `internal/orders`.
 - SQLite store code in `internal/beads/sqlite_*.go` (~4.8k).
@@ -232,32 +234,33 @@ Until then, development happens by hand (or with an outside agent).
 - `store` package: interface, types, errors.
 - Conformance suite.
 - SQLite backend (adapt from Gas City `sqlite_*` where it fits).
-- Minimal CLI: `jobshop ticket create/show/list/update/close`, `punch`,
-  `heartbeat`, `relieve`, `ready`, with stable JSON output.
+- Minimal CLI: `jobshop ticket create/show/list/update/close`, `claim`,
+  `heartbeat`, `release`, `ready`, with stable JSON output.
 
-**Phase 2: blueprints and workorders**
-- Port `internal/formula`. Decide which blueprint features to keep.
-- Workorder creation via graph apply.
-- Port the subset of `internal/dispatch` our blueprints need.
+**Phase 2: workflows and runs**
+- Port `internal/formula`. Decide which workflow features to keep.
+- Run creation via graph apply.
+- Port the subset of `internal/dispatch` our workflows need.
 
-**Phase 3: Mainshaft and shifts**
-- Config loader (city/workcenter/agent/crew), probably TOML for continuity.
+**Phase 3: controller and sessions**
+- Config loader (project/agent/pool) in YAML.
 - Runtime provider: ACP first (that's all we use), tmux maybe later.
-- Mainshaft tick: crew demand from queues, start and drain shifts, restart,
-  quarantine, idle-kill.
-- `jobshop assign`, and the hook: `jobshop punch --next` (three-tier query:
-  my in-progress, my pre-assigned, crew queue).
+- Controller tick: pool demand from queues, start and drain sessions,
+  restart, quarantine, idle-kill.
+- `jobshop assign`, and the hook: `jobshop claim --next` (three-tier query:
+  my in-progress, my pre-assigned, pool queue).
 
 **Phase 4: the rest of our surface**
-- Memos (mail), skids (convoys), dockets (scheduled blueprints).
-- Timecard (events), and an API if the dashboard is to be ported.
+- Messages (mail), batches (convoys), schedules (orders).
+- Events, and an API if the dashboard is to be ported.
 
 **Dogfood milestone (target, may land between phases 1 and 3)**
-- Smallest loop that works on itself: one workcenter (this repo), one crew of
-  one agent, `assign`, `punch --next`, `heartbeat`, `close`, and a Mainshaft
-  that starts a shift when the queue is non-empty and restarts it if it dies.
-- No blueprints, dispatcher, memos or skids required. Agents close tickets
-  directly.
+- Smallest loop that works on itself: one project (this repo), one pool of
+  one agent, `assign`, `claim --next`, `heartbeat`, `close`, and a controller
+  that starts a session when the queue is non-empty and restarts it if it
+  dies.
+- No workflows, dispatcher, messages or batches required. Agents close
+  tickets directly.
 - After this, new features are filed as Jobshop tickets and built by Jobshop
   agents, with a human reviewing.
 
@@ -269,9 +272,9 @@ Until then, development happens by hand (or with an outside agent).
 
 ### Open questions
 - Is Phase 3 too large for one phase?
-- Should the dogfood milestone come before blueprints (phase 2)? Probably
+- Should the dogfood milestone come before workflows (phase 2)? Probably
   yes, since a flat ticket queue is enough to start.
-- What safety rails does self-hosting need (agents editing the Mainshaft
+- What safety rails does self-hosting need (agents editing the controller
   that runs them; review before merging; a way to roll back a broken build)?
 - Which runtime does the dogfood loop use: ACP via jcode as in our city, or
   tmux as the simpler first provider?
@@ -281,9 +284,9 @@ Until then, development happens by hand (or with an outside agent).
 - Rebuilding session supervision and claim recovery means rediscovering edge
   cases Gas City already hit. Read its git history and incident notes
   (`engdocs/contributors/reconciler-debugging.md`, `health-patrol.md`) before
-  writing the Mainshaft.
+  writing the controller.
 - Scope creep toward Gas City parity.
-- Self-hosting failure: a bad change to the Mainshaft can stop the agents
+- Self-hosting failure: a bad change to the controller can stop the agents
   that would fix it. Needs a known-good binary to fall back to.
 
 ## 9. Alternatives considered
