@@ -313,6 +313,13 @@ stays an option for later.
 - Agents work in git worktrees, one per ticket, and deliver via PR.
 - Merge policy: branch protection requires CI. `cog` merges when CI passes,
   for all changes (decided 2026-11-01). The pinned binary is the safety net.
+- As set up (2026-11-01): agents use the `elee-agent` GitHub App (the same
+  App as Gas City's `agent`), not `cog`. agent-credd on gasserver mints
+  installation tokens for the `jobshop` user scoped to `elee1766/jobshop`
+  only; a `gh` wrapper and git credential helper use them over https.
+  Branch protection and rulesets are unavailable on this private repo's
+  plan, so "merge only on green CI" is enforced by the pool prompt
+  (`gh pr checks --watch` before `gh pr merge --squash`), not by GitHub.
 
 After the milestone, add what self-hosting shows is missing, in the order
 it hurts. Bring over Gas City features only when a real need appears.
