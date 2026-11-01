@@ -320,6 +320,12 @@ stays an option for later.
   Branch protection and rulesets are unavailable on this private repo's
   plan, so "merge only on green CI" is enforced by the pool prompt
   (`gh pr checks --watch` before `gh pr merge --squash`), not by GitHub.
+- Work specs live in GitHub issues (decided 2026-11-01). Issues are filed by
+  elee-agent; a ticket is a thin pointer ("Resolve elee1766/jobshop#N",
+  `meta.github.issue`) that a session claims, heartbeats and closes. The
+  pool prompt tells workers to read the issue, discuss there, and open a PR
+  with `Closes #N`. No issue-to-ticket sync: agents follow instructions, and
+  dependencies stay as ticket edges.
 
 After the milestone, add what self-hosting shows is missing, in the order
 it hurts. Bring over Gas City features only when a real need appears.
