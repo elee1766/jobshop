@@ -8,8 +8,8 @@ Status: draft for discussion. Companion to `plan.md`.
   CLI and (later) gateway are the same executable, so the host can be
   spawned from `/proc/self/exe` and there is one thing to build, pin and
   roll back.
-- `internal/` for everything. Nothing is a public Go API until something
-  outside this repo needs it.
+- `pkg/` for all packages (decided 2026-11-01). Importable, but no API
+  stability promise until something outside this repo depends on it.
 - Packages follow the architecture boundaries in `plan.md`: store, control
   (controller), session host, rpc (sockets), config, telemetry. Packages
   import downward only; `cmd/` wires them together.
@@ -22,7 +22,7 @@ Status: draft for discussion. Companion to `plan.md`.
 ```
 jobshop/
 ├── cmd/jobshop/              main: subcommand dispatch only
-├── internal/
+├── pkg/
 │   ├── store/                Store interface, Ticket/Edge/Comment types, errors,
 │   │   │                     engine kinds and their typed field structs
 │   │   ├── storetest/        conformance suite every backend runs
