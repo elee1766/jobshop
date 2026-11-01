@@ -807,7 +807,7 @@ func TestTraces(t *testing.T) {
 	assert.True(t, closeSpan.Parent.IsRemote())
 	attrs := map[attribute.Key]string{}
 	for _, kv := range closeSpan.Attributes {
-		attrs[kv.Key] = kv.Value.Emit()
+		attrs[kv.Key] = kv.Value.String()
 	}
 	assert.Equal(t, rpc.MethodTicketClose, attrs[telemetry.AttrMethod])
 	assert.Equal(t, "dev", attrs[telemetry.AttrPool])
