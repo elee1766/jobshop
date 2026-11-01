@@ -4,29 +4,35 @@ Status: draft for discussion. Companion to `plan.md` section 5.
 
 ## Model
 
-Everything is a ticket with a `kind` (task, run, step, session, message,
-gate, batch, ...), connected by edges. Same idea as Gas City beads, with two
-changes:
+Everything is a ticket with a `kind`, connected by edges. Same idea as Gas
+City beads, with these differences (decided 2026-11-01):
 
-- Kinds are declared (YAML, built in or from packs). A declaration lists the
-  kind's fields with types, required fields, indexes, and edge kinds. The
-  store validates writes against it. Gas City has two undeclared kind layers
-  (`issue_type` column + `gc.kind` metadata) and 188 untyped `gc.*` keys.
-- Anything the engine schedules on is a real column (status, pool, holder,
-  lease, fence, parent, revision). Kind-specific data lives in a typed JSON
-  `fields` document, with expression indexes where declared.
+- **Kinds and edge kinds are defined by the engine, in Go.** `task`,
+  `session`, `message`, `run`, `step`, and later control kinds. Each has a
+  Go struct for its kind-specific fields, validated on write. Gas City has
+  two undeclared kind layers (`issue_type` column plus `gc.kind` metadata)
+  and 188 untyped `gc.*` keys; Jobshop has one `kind` and typed fields.
+- **Packs do not declare schemas.** Packs (agents, prompts, workflows) get
+  one free-form `meta` JSON document per ticket for their own data. The
+  engine never reads or validates it. As in Gas City, packs can add
+  behavior without changing the core; unlike Gas City, pack data cannot
+  mix with engine data. A pack that needs engine behavior becomes a
+  Jobshop change and a new typed field.
+- **Anything the engine schedules on is a column** (status, pool, holder,
+  lease, fence, parent, revision). Kind-specific engine data lives in
+  `fields` (typed per kind in Go); pack data lives in `meta`.
 
-SQL below targets SQLite and is written to port to Postgres (notes inline).
-Timestamps are integer unix milliseconds.
+SQL below targets SQLite (`modernc.org/sqlite`) and is written to port to
+Postgres (notes inline). Timestamps are integer unix milliseconds.
 
 ## Tables
 
 ```sql
 -- Core. One row per ticket of any kind.
 CREATE TABLE tickets (
-  id           TEXT PRIMARY KEY,            -- 'js-4f2a9c', random, prefixed
+  id           TEXT PRIMARY KEY,            -- '<project prefix>-<random>', e.g. 'js-4f2a9c'
   project      TEXT NOT NULL,
-  kind         TEXT NOT NULL,               -- must exist in kinds
+  kind         TEXT NOT NULL,               -- engine-defined: task, session, message, run, step, ...
   title        TEXT NOT NULL DEFAULT '',
   body         TEXT NOT NULL DEFAULT '',
   status       TEXT NOT NULL DEFAULT 'open'
@@ -35,19 +41,20 @@ CREATE TABLE tickets (
   priority     INTEGER NOT NULL DEFAULT 2,  -- lower runs first
   pool         TEXT,                        -- queue it is routed to (assign)
   holder       TEXT,                        -- claimant (session id)
-  lease_until  INTEGER,                     -- claim expires at
+  lease_until  INTEGER,                     -- claim expires at (backstop only)
   fence        INTEGER NOT NULL DEFAULT 0,  -- bumped on every claim
   parent_id    TEXT REFERENCES tickets(id),
   defer_until  INTEGER,
   ephemeral    INTEGER NOT NULL DEFAULT 0,  -- no history rows, reaped after close
-  fields       TEXT NOT NULL DEFAULT '{}',  -- JSON, validated against kind schema
+  fields       TEXT NOT NULL DEFAULT '{}',  -- engine data, typed per kind in Go
+  meta         TEXT NOT NULL DEFAULT '{}',  -- pack/user data, never read by the engine
   revision     INTEGER NOT NULL DEFAULT 0,  -- bumped on every write (CAS)
   created_by   TEXT NOT NULL DEFAULT '',
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL,
   closed_at    INTEGER
 );
--- Postgres: fields JSONB, booleans as BOOLEAN.
+-- Postgres: fields/meta JSONB, booleans as BOOLEAN.
 
 CREATE INDEX tickets_queue   ON tickets(project, pool, status, priority, created_at);
 CREATE INDEX tickets_holder  ON tickets(holder) WHERE holder IS NOT NULL;
@@ -55,12 +62,20 @@ CREATE INDEX tickets_lease   ON tickets(lease_until) WHERE status = 'in_progress
 CREATE INDEX tickets_parent  ON tickets(parent_id);
 CREATE INDEX tickets_kind    ON tickets(kind, status);
 
--- Typed relations between tickets.
+-- Engine-owned field indexes. Fixed in migrations, since kinds are in Go.
+CREATE INDEX tickets_message_to ON tickets(json_extract(fields, '$.to'))
+  WHERE kind = 'message';
+CREATE UNIQUE INDEX tickets_session_key ON tickets(json_extract(fields, '$.key'))
+  WHERE kind = 'session' AND status <> 'closed';
+-- Postgres: ON tickets ((fields->>'to')) WHERE kind = 'message'
+
+-- Typed relations between tickets. Edge kinds are engine-defined:
+--   blocks, waits_for  -> block readiness
+--   tracks             -> informational (batches, related work)
 CREATE TABLE edges (
   from_id    TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
   to_id      TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
-  kind       TEXT NOT NULL,                 -- blocks, waits_for, tracks, delivered_to, ...
-  blocking   INTEGER NOT NULL,              -- copied from the edge-kind declaration at insert
+  kind       TEXT NOT NULL CHECK (kind IN ('blocks','waits_for','tracks')),
   created_at INTEGER NOT NULL,
   PRIMARY KEY (from_id, to_id, kind)
 );
@@ -85,14 +100,14 @@ CREATE TABLE history (
   actor      TEXT NOT NULL,                 -- session id, 'controller', or human
   op         TEXT NOT NULL,                 -- create, update, claim, release, close, lease_expired, edge_add, ...
   revision   INTEGER NOT NULL,              -- ticket revision after this op
-  diff       TEXT NOT NULL DEFAULT '{}'     -- JSON: {"status":["open","in_progress"],"fields.pr.state":[...]}
+  diff       TEXT NOT NULL DEFAULT '{}'     -- JSON: {"status":["open","in_progress"],"fields.state":[...]}
 );
 CREATE INDEX history_ticket ON history(ticket_id, seq);
 
--- Comments: append-mostly human/agent notes. Separate from history so
--- history can be compacted without losing them (decided 2026-11-01).
--- Gas City has no comment primitive; bd uses a comments table, our
--- sqlite-work fork packs them into one metadata key (gc.work.comments).
+-- Comments: human/agent notes. Separate from history so history can be
+-- compacted without losing them (decided 2026-11-01). Gas City has no
+-- comment primitive; bd uses a comments table, our sqlite-work fork packs
+-- them into one metadata key (gc.work.comments).
 CREATE TABLE comments (
   id         INTEGER PRIMARY KEY,           -- Postgres: BIGSERIAL
   ticket_id  TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
@@ -103,68 +118,38 @@ CREATE TABLE comments (
   deleted    INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX comments_ticket ON comments(ticket_id, id);
--- Structured notes (handoffs, blocker reports) are a declared kind instead.
-
--- Kind and edge-kind declarations loaded from YAML. Stored so the
--- database is self-describing and old rows can be checked against the
--- schema version they were written under.
-CREATE TABLE kinds (
-  name       TEXT PRIMARY KEY,
-  source     TEXT NOT NULL,                 -- 'builtin' or pack name
-  version    INTEGER NOT NULL,
-  schema     TEXT NOT NULL                  -- JSON Schema for fields, plus flags (ephemeral, statuses)
-);
-CREATE TABLE edge_kinds (
-  name       TEXT PRIMARY KEY,
-  source     TEXT NOT NULL,
-  blocking   INTEGER NOT NULL
-);
 ```
 
 Live process state (PID, socket path, host log) is not stored here. It is
 derived from `<data>/sessions/<id>/` at runtime. A `session` ticket holds
 only the durable part.
 
-## Kind declaration (YAML)
+## Engine kinds (Go)
 
-```yaml
-kinds:
-  - name: pr
-    source: pr-delivery          # pack
-    fields:
-      repo:   { type: string, required: true }
-      number: { type: integer, required: true }
-      state:  { type: string, enum: [open, merged, closed], index: true }
-      ci:     { type: string, enum: [pending, passing, failing] }
+Illustrative; the field structs live in the store package.
 
-  - name: message
-    ephemeral: false
-    fields:
-      to:      { type: string, required: true, index: true }  # session, pool or key
-      from:    { type: string, required: true }
-      interrupt: { type: boolean, default: false }
+```go
+type MessageFields struct {
+    To        string `json:"to"`        // session id, "pool:<name>", or session key
+    From      string `json:"from"`
+    Interrupt bool   `json:"interrupt,omitempty"`
+}
 
-  - name: session
-    fields:
-      key:         { type: string, index: true, unique: true }   # e.g. matrix:<room>
-      agent:       { type: string, required: true }
-      acp_session: { type: string }
-      current:     { type: string }                              # ticket id being worked
-
-edge_kinds:
-  - { name: blocks,    blocking: true }
-  - { name: waits_for, blocking: true }
-  - { name: tracks,    blocking: false }
+type SessionFields struct {
+    Key        string `json:"key,omitempty"` // e.g. matrix:<room>; unique while open
+    Agent      string `json:"agent"`
+    ACPSession string `json:"acp_session,omitempty"`
+    Current    string `json:"current,omitempty"` // ticket id being worked
+}
 ```
 
-`index: true` makes the store create an expression index:
+Adding a field is a Go change. Adding an index on it is a migration.
+Packs that only need to stash data use `meta`:
 
 ```sql
-CREATE INDEX tickets_f_pr_state ON tickets(json_extract(fields, '$.state'))
-  WHERE kind = 'pr';
--- Postgres: ON tickets ((fields->>'state')) WHERE kind = 'pr'
-CREATE UNIQUE INDEX tickets_f_session_key ON tickets(json_extract(fields, '$.key'))
-  WHERE kind = 'session' AND status <> 'closed';
+UPDATE tickets SET meta = json_set(meta, '$.gx.linear_id', 'ENG-123'),
+  revision = revision + 1, updated_at = :now
+WHERE id = :id AND revision = :expected_revision;
 ```
 
 ## Queries
@@ -182,7 +167,8 @@ WHERE t.project = :project
   AND NOT EXISTS (
     SELECT 1 FROM edges e
     JOIN tickets b ON b.id = e.to_id
-    WHERE e.from_id = t.id AND e.blocking = 1 AND b.status <> 'closed'
+    WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
+      AND b.status <> 'closed'
   )
 ORDER BY t.priority, t.created_at;
 ```
@@ -211,7 +197,8 @@ WHERE id = (
     AND (t.defer_until IS NULL OR t.defer_until <= :now)
     AND NOT EXISTS (
       SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
-      WHERE e.from_id = t.id AND e.blocking = 1 AND b.status <> 'closed')
+      WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
+        AND b.status <> 'closed')
   ORDER BY
     CASE WHEN t.status = 'in_progress' THEN 0
          WHEN t.holder = :session THEN 1 ELSE 2 END,
@@ -226,7 +213,7 @@ RETURNING id, fence, revision;
 ### Heartbeat and close (fenced)
 
 Succeed only if the caller still holds the claim. Zero rows affected means
-the lease was lost; the CLI reports that and the agent stops.
+the claim was lost; the CLI reports that and the agent stops.
 
 ```sql
 UPDATE tickets
@@ -245,21 +232,42 @@ RETURNING revision;
 
 ```sql
 UPDATE tickets
-SET fields = json_set(fields, '$.state', :state),   -- Postgres: jsonb_set
+SET fields = json_set(fields, '$.current', :ticket),   -- Postgres: jsonb_set
     revision = revision + 1, updated_at = :now
 WHERE id = :id AND revision = :expected_revision
 RETURNING revision;
 ```
 
-### Lease expiry sweep (controller tick)
+### Releasing claims (decided 2026-11-01)
+
+Primary path: the controller knows when a session dies (host gone, agent
+exited, session stopped) and releases that session's claims immediately.
+
+```sql
+UPDATE tickets
+SET status = 'open', holder = NULL, lease_until = NULL,
+    revision = revision + 1, updated_at = :now
+WHERE holder = :dead_session AND status = 'in_progress'
+RETURNING id;   -- history op='release', actor='controller', reason in diff
+```
+
+Backstop: the lease. The controller sweeps expired leases on every tick (not
+lazily by the next claimer, as in Gas City). This catches a live session
+that stopped heartbeating, e.g. a wedged agent.
 
 ```sql
 UPDATE tickets
 SET status = 'open', holder = NULL, lease_until = NULL,
     revision = revision + 1, updated_at = :now
 WHERE status = 'in_progress' AND lease_until < :now
-RETURNING id, holder;   -- write op='lease_expired' history rows for these
+RETURNING id, holder;   -- history op='lease_expired'
 ```
+
+Both go straight back to `open`. Reopen counts come from history; retry
+limits are a workflow concern (phase 2). Gas City for comparison: a 30-minute
+lease, reclaimed only when a claimer with `AutoReclaimStaleClaims` (off by
+default) trips over it, plus `releaseOrphanedPoolAssignments` for dead
+sessions.
 
 ### Inbox: messages for a session or its pool
 
@@ -294,16 +302,9 @@ client-side so edges can reference steps before insert.
 ```sql
 BEGIN IMMEDIATE;               -- Postgres: BEGIN
 INSERT INTO tickets (...) VALUES (...);   -- run + steps
-INSERT INTO edges (from_id, to_id, kind, blocking, created_at) VALUES (...);
+INSERT INTO edges (from_id, to_id, kind, created_at) VALUES (...);
 INSERT INTO history (...) VALUES (...);
 COMMIT;
-```
-
-### Reap ephemeral tickets
-
-```sql
-DELETE FROM tickets
-WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
 ```
 
 ### Timeline for `jobshop show`
@@ -316,11 +317,15 @@ SELECT created_at, author, 'comment', body FROM comments
 ORDER BY 1;
 ```
 
+### Reap ephemeral tickets
+
+```sql
+DELETE FROM tickets
+WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
+```
+
 ## Open questions
 
-- Lease expiry: straight back to `open`, or a `stale` state the controller
-  reviews first?
-- Kind schema changes: how to migrate existing rows when a pack bumps a
-  kind's version (validate-on-read, migrate-on-write, or explicit migration)?
-- Should `blocking` live on the edge row (fast query, denormalized) or be
-  joined from `edge_kinds` at query time?
+- Lease length and heartbeat interval defaults (Gas City: 30 minute lease).
+- Should `meta` be namespaced by convention (`{"gx": {...}}`) and is that
+  enforced or just documented?
