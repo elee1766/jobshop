@@ -45,19 +45,6 @@ type pendingCall struct {
 	method string
 }
 
-type controllerConn struct {
-	gen int64
-	nc  net.Conn
-	mu  sync.Mutex // serializes writes
-}
-
-func (c *controllerConn) write(line []byte) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	_, err := c.nc.Write(append(line, '\n'))
-	return err
-}
-
 // Host runs one session.
 type Host struct {
 	dir  string
@@ -71,6 +58,8 @@ type Host struct {
 
 	mu           sync.Mutex
 	seq          int64
+	off          int64 // journal size, the offset after frame seq
+	dropped      int64 // agent requests refused at maxAgentReqs
 	nextID       int64
 	gen          int64
 	conn         *controllerConn
@@ -142,6 +131,9 @@ func (h *Host) run() error {
 		defer registerGCRoot(h.log, h.spec, exe)()
 	}
 	h.seq = lastSeq(filepath.Join(h.dir, JournalFile))
+	if st, err := h.journal.Stat(); err == nil {
+		h.off = st.Size()
+	}
 
 	sockPath := filepath.Join(h.dir, ACPSocket)
 	_ = os.Remove(sockPath)
@@ -262,7 +254,9 @@ func (h *Host) record(from string, line []byte) {
 	fmt.Fprintf(&b, `{"seq":%d,"t":%d,"from":%q,"msg":`, h.seq, time.Now().UnixMilli(), from)
 	b.Write(line)
 	b.WriteString("}\n")
-	if _, err := h.journal.Write(b.Bytes()); err != nil {
+	n, err := h.journal.Write(b.Bytes())
+	h.off += int64(n)
+	if err != nil {
 		h.log.Error("journal", "err", err)
 	}
 }
@@ -338,18 +332,22 @@ func (h *Host) readAgent(r io.Reader) error {
 			h.log.Warn("agent wrote non-JSON", "line", truncate(line))
 			continue
 		}
+		// Journal first, then a non-blocking queue send: a slow or absent
+		// controller never stalls the agent's stdout.
 		h.mu.Lock()
 		h.record("agent", line)
 		out, conn := h.routeAgent(f, line)
-		h.mu.Unlock()
 		if out != nil && conn != nil {
-			if err := conn.write(out); err != nil {
-				h.dropConn(conn, err)
-			}
+			// Every agent frame carries its seq so dropped notifications
+			// before it are replayed first; only notifications may drop.
+			conn.send(outItem{line: out, seq: h.seq, end: h.off, drop: isNotificationFrame(f) && bytes.Equal(out, line)})
 		}
+		h.mu.Unlock()
 	}
 	return sc.Err()
 }
+
+func isNotificationFrame(f frame) bool { return f.Method != "" && len(f.ID) == 0 }
 
 // routeAgent decides where an agent frame goes. Holding h.mu.
 func (h *Host) routeAgent(f frame, line []byte) ([]byte, *controllerConn) {
@@ -385,6 +383,16 @@ func (h *Host) routeAgent(f frame, line []byte) ([]byte, *controllerConn) {
 		}
 		return nil, nil
 	case f.isRequest():
+		if len(h.agentReqs) >= maxAgentReqs {
+			// Refuse rather than hold without bound; the agent sees an error
+			// for this request and stays unblocked.
+			h.dropped++
+			h.log.Warn("too many agent requests awaiting a controller", "id", string(f.ID), "refused", h.dropped)
+			msg, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": f.ID,
+				"error": map[string]any{"code": -32000, "message": "session host: too many requests awaiting the controller"}})
+			go func() { _ = h.writeAgent(msg) }()
+			return nil, nil
+		}
 		// Held until a controller answers, and re-sent to a new controller.
 		h.agentReqs[string(f.ID)] = line
 		return line, h.conn
@@ -425,30 +433,43 @@ func (h *Host) serveConn(nc net.Conn) {
 	h.mu.Lock()
 	old := h.conn
 	h.gen++
-	conn := &controllerConn{gen: h.gen, nc: nc}
+	// Live frames start after the current seq. A controller that names an
+	// earlier seq gets the agent notifications since then from the journal
+	// first, through the same gap path an overflow uses.
+	conn := newConn(h.gen, nc, h.seq, h.off)
+	if hello.Since != nil && *hello.Since < h.seq {
+		conn.sentSeq = max(*hello.Since, 0)
+		conn.sentOff = journalOffset(filepath.Join(h.dir, JournalFile), conn.sentSeq)
+		conn.gapSeq, conn.gapOff = h.seq, h.off
+	}
 	h.conn = conn
 	w := Welcome{
 		Protocol: Protocol, Pid: os.Getpid(), AgentPid: h.agent.Process.Pid,
 		Busy: h.prompts > 0, Seq: h.seq, Initialize: h.initResult,
 	}
 	wb, _ := json.Marshal(w)
-	backlog := [][]byte{wb}
-	backlog = append(backlog, h.turnEnds...)
+	// The welcome goes out before the writer starts, so it is first.
+	_ = nc.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	_, err = nc.Write(append(wb, '\n'))
+	_ = nc.SetWriteDeadline(time.Time{})
+	if err != nil {
+		h.conn = nil
+		h.mu.Unlock()
+		return
+	}
+	for _, te := range h.turnEnds {
+		conn.send(outItem{line: te})
+	}
 	h.turnEnds = nil
 	for _, req := range h.agentReqs {
-		backlog = append(backlog, req)
+		conn.send(outItem{line: req})
 	}
 	h.mu.Unlock()
 	if old != nil {
-		_ = old.nc.Close()
+		old.close()
 	}
-	h.log.Info("controller connected", "gen", conn.gen)
-	for _, b := range backlog {
-		if err := conn.write(b); err != nil {
-			h.dropConn(conn, err)
-			return
-		}
-	}
+	h.log.Info("controller connected", "gen", conn.gen, "since", conn.sentSeq)
+	go h.writeLoop(conn)
 
 	for {
 		line, err := rd.ReadBytes('\n')
@@ -473,7 +494,7 @@ func (h *Host) dropConn(c *controllerConn, err error) {
 			h.log.Info("controller disconnected", "gen", c.gen, "err", err)
 		}
 	}
-	_ = c.nc.Close()
+	c.close()
 }
 
 func (h *Host) fromController(c *controllerConn, line []byte) {
@@ -519,9 +540,7 @@ func (h *Host) fromController(c *controllerConn, line []byte) {
 	}
 	h.mu.Unlock()
 	if reply != nil {
-		if err := c.write(reply); err != nil {
-			h.dropConn(c, err)
-		}
+		c.send(outItem{line: reply})
 		return
 	}
 	if err := h.writeAgent(line); err != nil {
