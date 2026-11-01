@@ -36,6 +36,7 @@ const (
 	MethodHeartbeat    = "heartbeat"
 	MethodRelease      = "release"
 	MethodSessionNew   = "session.new"
+	MethodSessionList  = "session.list"
 	MethodWhoami       = "whoami"
 	MethodShutdown     = "controller.shutdown"
 )
@@ -169,6 +170,27 @@ type ShutdownParams struct {
 type SessionNewResult struct {
 	Ticket store.Ticket `json:"ticket"`
 	Socket string       `json:"socket"`
+}
+
+// SessionListParams selects sessions. All includes closed session tickets.
+type SessionListParams struct {
+	All bool `json:"all,omitempty"`
+}
+
+// SessionInfo is a session ticket joined with the live state of its
+// session directory. Ticket is nil for an orphan: a directory with a live
+// host but no open session ticket.
+type SessionInfo struct {
+	ID       string        `json:"id"`
+	Ticket   *store.Ticket `json:"ticket,omitempty"`
+	Orphan   bool          `json:"orphan,omitempty"`
+	Alive    bool          `json:"alive"`
+	HostPid  int           `json:"host_pid,omitempty"`
+	AgentPid int           `json:"agent_pid,omitempty"` // known once a driver connected
+	Current  string        `json:"current,omitempty"`   // ticket the session holds
+	Seq      int64         `json:"seq,omitempty"`       // last journal sequence number
+	SeqTime  *time.Time    `json:"seq_time,omitempty"`
+	Exit     string        `json:"exit,omitempty"` // exit.json reason, for dead hosts
 }
 
 // Whoami describes the caller's scope.

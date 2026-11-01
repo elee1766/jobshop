@@ -418,6 +418,16 @@ Leak prevention, layered:
    spawn-then-crash window.
 5. Visible: `jobshop session list --all` shows store vs live processes;
    `jobshop session reap` cleans up.
+   (2026-11-01) `session list` is implemented (admin socket, method
+   `session.list`). Each session ticket (open and in-progress by default,
+   closed too with `--all`) is joined with its session dir: `alive`
+   (`host.Alive`), `host_pid` (host.pid), `agent_pid` (from the host's
+   welcome, known once this controller connected), `current` (the ticket
+   it holds), `seq` / `seq_time` (last journal frame) and `exit` (exit.json
+   reason, dead hosts only). Directories under `<root>/sessions/` with a
+   live host and no open session ticket are listed with `orphan: true`;
+   so is a closed session whose host still runs. `session reap` is not
+   implemented yet.
 
 Not planned: upgrading a running host in place (re-exec preserving fds).
 Possible later; see the Pdeathsig thread caveat noted in discussion.

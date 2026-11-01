@@ -313,6 +313,7 @@ func init() {
 		rpc.MethodHeartbeat:    bind((*Controller).heartbeat),
 		rpc.MethodRelease:      bind((*Controller).release),
 		rpc.MethodSessionNew:   bind((*Controller).sessionNew),
+		rpc.MethodSessionList:  bind((*Controller).sessionList),
 		rpc.MethodShutdown:     bind((*Controller).shutdown),
 	}
 }

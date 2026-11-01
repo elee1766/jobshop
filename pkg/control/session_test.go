@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -79,6 +80,69 @@ func TestControllerRestart(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(pid), string(pid2), "same host adopted")
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
+}
+
+// TestSessionList joins a running session's ticket with its live host
+// state and reports a locked session directory with no ticket as an orphan.
+func TestSessionList(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+
+	// An orphan: a session directory whose lock is held (here by the test
+	// process) but that no session ticket names. Made after startup so the
+	// controller's startup reaping does not stop it.
+	odir := root.SessionDir("js-orphan")
+	require.NoError(t, os.MkdirAll(odir, 0o700))
+	lf, err := os.Create(filepath.Join(odir, host.LockFile))
+	require.NoError(t, err)
+	defer func() { _ = lf.Close() }()
+	require.NoError(t, syscall.Flock(int(lf.Fd()), syscall.LOCK_EX))
+	// The pid is a throwaway child: reconciliation may signal it.
+	sleeper := exec.Command("sleep", "60")
+	require.NoError(t, sleeper.Start())
+	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
+	require.NoError(t, os.WriteFile(filepath.Join(odir, host.PidFile), fmt.Appendf(nil, "%d\n", sleeper.Process.Pid), 0o600))
+
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "started"))
+		return err == nil
+	}, 20*time.Second, 20*time.Millisecond)
+
+	var list []rpc.SessionInfo
+	require.Eventually(t, func() bool {
+		list = nil
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &list))
+		return len(list) == 2 && list[0].AgentPid != 0
+	}, 10*time.Second, 50*time.Millisecond)
+
+	s := list[0]
+	require.NotNil(t, s.Ticket)
+	assert.False(t, s.Orphan)
+	assert.True(t, s.Alive)
+	assert.Equal(t, task.ID, s.Current)
+	assert.Positive(t, s.HostPid)
+	assert.Positive(t, s.Seq, "journal has frames")
+	assert.NotNil(t, s.SeqTime)
+	assert.Empty(t, s.Exit)
+
+	o := list[1]
+	assert.Equal(t, "js-orphan", o.ID)
+	assert.True(t, o.Orphan)
+	assert.True(t, o.Alive)
+	assert.Nil(t, o.Ticket)
+	assert.Equal(t, sleeper.Process.Pid, o.HostPid)
+
+	// Sessions cannot list sessions.
+	sess := dial(t, filepath.Join(root.SessionDir(s.ID), "cli.sock"))
+	err = sess.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, nil)
+	assert.ErrorIs(t, err, rpc.ErrForbidden)
+
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 }
 
 // poolRoot writes a root with one fake-agent pool. start runs a controller
