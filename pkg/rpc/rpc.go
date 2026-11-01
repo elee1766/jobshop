@@ -40,6 +40,7 @@ const (
 	MethodSessionReap  = "session.reap"
 	MethodWhoami       = "whoami"
 	MethodShutdown     = "controller.shutdown"
+	MethodDrain        = "controller.drain"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -191,7 +192,8 @@ type SessionInfo struct {
 	Current  string        `json:"current,omitempty"`   // ticket the session holds
 	Seq      int64         `json:"seq,omitempty"`       // last journal sequence number
 	SeqTime  *time.Time    `json:"seq_time,omitempty"`
-	Exit     string        `json:"exit,omitempty"` // exit.json reason, for dead hosts
+	Exit     string        `json:"exit,omitempty"`    // exit.json reason, for dead hosts
+	Drained  bool          `json:"drained,omitempty"` // takes no new tickets
 }
 
 // SessionReapParams cleans up session leftovers. Hosts with no open session
@@ -354,4 +356,16 @@ func (c *Client) Close() error {
 		return err
 	}
 	return nil
+}
+
+// DrainParams drains (or with Undrain, undrains) one pool, or every pool
+// and session when Pool is empty. Undrain with no Pool clears all drains.
+type DrainParams struct {
+	Pool    string `json:"pool,omitempty"`
+	Undrain bool   `json:"undrain,omitempty"`
+}
+
+// DrainResult lists drained pools after the call; "*" means all.
+type DrainResult struct {
+	Drained []string `json:"drained"`
 }

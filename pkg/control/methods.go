@@ -380,12 +380,14 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	dir := c.root.SessionDir(id)
 	info := rpc.SessionInfo{ID: id, Alive: host.Alive(dir), HostPid: hostPid(dir)}
 	c.mu.Lock()
-	if r := c.runners[id]; r != nil {
+	r := c.runners[id]
+	if r != nil {
 		r.mu.Lock()
 		info.AgentPid = r.agentPid
 		r.mu.Unlock()
 	}
 	c.mu.Unlock()
+	info.Drained = r != nil && c.poolDrained(r.pool)
 	if !info.Alive {
 		info.AgentPid = 0
 		if ex, ok := host.ReadExit(dir); ok {

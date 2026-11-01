@@ -275,6 +275,14 @@ development happens by hand (or with an outside agent).
 
 **Phase 3: hardening and visibility** (built by Jobshop agents)
 - Quarantine, idle-kill, drain.
+  - Drain as built (decided 2026-11-01, issue #12): `jobshop drain
+    [--pool P]` and `jobshop undrain [--pool P]` (admin, RPC
+    `controller.drain`). No pool means every pool; `undrain` with no pool
+    clears all drains. The supervisor starts no sessions for a drained
+    pool, and its sessions skip `claim --next`, ending with resolution
+    `drained` once they hold no in_progress ticket. Running turns finish
+    normally. State is controller memory only, so a restart undrains;
+    `session list` shows `drained` per session.
 - Observability (section 9): OTel traces and logs, Prometheus metrics,
   conversation export.
 - Messages with queued and interrupt delivery.

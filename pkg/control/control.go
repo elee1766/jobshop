@@ -50,7 +50,8 @@ type Controller struct {
 	mu       sync.Mutex
 	sessions map[string]context.CancelFunc // open session id -> stops its cli.sock
 	runners  map[string]*runner
-	drain    bool // full shutdown in progress: start nothing new
+	drain    bool            // full shutdown in progress: start nothing new
+	drained  map[string]bool // drained pools (drainAll for every pool); memory only
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
@@ -91,6 +92,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	c := &Controller{
 		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: opt.Log,
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
+		drained: map[string]bool{},
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	defer c.cancel()
@@ -319,5 +321,6 @@ func init() {
 		rpc.MethodSessionList:  bind((*Controller).sessionList),
 		rpc.MethodSessionReap:  bind((*Controller).sessionReap),
 		rpc.MethodShutdown:     bind((*Controller).shutdown),
+		rpc.MethodDrain:        bind((*Controller).drainPools),
 	}
 }

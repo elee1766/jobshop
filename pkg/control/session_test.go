@@ -132,6 +132,56 @@ func TestEnvRefresh(t *testing.T) {
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
 }
 
+// TestDrain drains during a blocked turn: the turn finishes and closes its
+// ticket, no other ticket is claimed, the session ends drained, and
+// undrain lets a new session take the waiting work.
+func TestDrain(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
+	stop := start()
+	defer stop()
+
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	var first, second store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "started"))
+		return err == nil
+	}, 20*time.Second, 20*time.Millisecond)
+
+	var dr rpc.DrainResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodDrain, rpc.DrainParams{Pool: "dev"}, &dr))
+	assert.Equal(t, []string{"dev"}, dr.Drained)
+	var infos []rpc.SessionInfo
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+	require.Len(t, infos, 1)
+	assert.True(t, infos[0].Drained)
+	sessID := infos[0].ID
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
+
+	require.Eventually(t, func() bool { return show(sessID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, "drained", show(sessID).Resolution)
+	assert.Equal(t, store.StatusClosed, show(first.ID).Status, "running turn finished")
+	assert.Equal(t, store.StatusOpen, show(second.ID).Status, "no new claim while drained")
+	time.Sleep(300 * time.Millisecond) // several supervisor ticks
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	assert.Len(t, sessions, 1, "no new session while drained")
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodDrain, rpc.DrainParams{Undrain: true}, &dr))
+	assert.Empty(t, dr.Drained)
+	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+}
+
 // TestSessionList joins a running session's ticket with its live host
 // state and reports a locked session directory with no ticket as an orphan.
 func TestSessionList(t *testing.T) {

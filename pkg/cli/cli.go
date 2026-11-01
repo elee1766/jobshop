@@ -42,6 +42,8 @@ type root struct {
 	Serve       serveCmd       `cmd:"" help:"Run the controller for the root."`
 	SessionHost sessionHostCmd `cmd:"" name:"session-host" hidden:"" help:"Run a session host (spawned by the controller)."`
 	Shutdown    shutdownCmd    `cmd:"" help:"Stop the controller. Sessions keep running unless --all."`
+	Drain       drainCmd       `cmd:"" help:"Start no new sessions or tickets; running turns finish (admin)."`
+	Undrain     undrainCmd     `cmd:"" help:"Undo drain (admin)."`
 
 	Ticket    ticketCmd    `cmd:"" help:"Create, show, list, update and close tickets."`
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`
