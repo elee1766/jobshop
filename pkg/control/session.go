@@ -200,8 +200,10 @@ func (r *runner) finish(resolution, reason string) {
 		_, _ = r.c.store.AddComment(ctx, "controller", r.id, reason)
 	}
 	if resolution == resolutionCrashed {
-		r.c.crashRelease(ctx, r.id)
+		// Pause first: the release makes the ticket ready, and a supervisor
+		// tick in between would start another session.
 		r.c.poolCrashed(r.pool)
+		r.c.crashRelease(ctx, r.id)
 	}
 	r.c.endSession(ctx, r.id, "session "+resolution)
 }
