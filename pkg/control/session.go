@@ -72,6 +72,38 @@ type runner struct {
 	restartPending bool
 	restartWake    chan struct{}
 	restartNow     chan struct{}
+	// seed is a journal summary for a conversation that could not be
+	// reloaded; the next turn's prompt starts with it. Memory only.
+	seed string
+}
+
+// newConversation starts a new ACP session in place of one the agent could
+// not reload, and queues a summary of the old one from the host journal.
+func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnection, cwd string, fields *store.SessionFields) error {
+	ns, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
+	if err != nil {
+		return fmt.Errorf("session/new: %w", err)
+	}
+	frames, _, err := host.ReadJournal(filepath.Join(r.dir, host.JournalFile), 0)
+	if err != nil {
+		r.log.Warn("read journal for summary", "err", err)
+	}
+	summary := host.Summarize(frames, host.DefaultSummaryBytes)
+	r.mu.Lock()
+	r.seed = summary
+	r.mu.Unlock()
+	r.log.Warn("started a new conversation", "old", fields.ACPSession, "new", ns.SessionId,
+		"path", "new+summary", "summary_bytes", len(summary))
+	fields.ACPSession = string(ns.SessionId)
+	return r.saveFields(*fields)
+}
+
+func (r *runner) takeSeed() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := r.seed
+	r.seed = ""
+	return s
 }
 
 // rateLimited reports whether a prompt error is the provider refusing
@@ -356,23 +388,27 @@ func (r *runner) session() error {
 		if err := r.saveFields(fields); err != nil {
 			return err
 		}
-	case fresh && init.AgentCapabilities.LoadSession:
-		_, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
-			SessionId: acp.SessionId(fields.ACPSession), Cwd: cwd, McpServers: []acp.McpServer{},
-		})
-		if err != nil {
-			return fmt.Errorf("session/load: %w", err)
-		}
-		r.log.Info("resumed conversation", "acp_session", fields.ACPSession)
 	case fresh:
-		ns, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
-		if err != nil {
-			return fmt.Errorf("session/new: %w", err)
+		loaded := false
+		if init.AgentCapabilities.LoadSession {
+			_, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
+				SessionId: acp.SessionId(fields.ACPSession), Cwd: cwd, McpServers: []acp.McpServer{},
+			})
+			if err == nil {
+				loaded = true
+				r.log.Info("resumed conversation", "acp_session", fields.ACPSession, "path", "load")
+			} else if ctx.Err() != nil {
+				return r.dropped(conn)
+			} else {
+				// A failed load would fail again on every respawn and end
+				// the session as crashed; a new conversation keeps going.
+				r.log.Warn("session/load failed; falling back to a new conversation", "acp_session", fields.ACPSession, "err", err)
+			}
 		}
-		r.log.Warn("agent cannot load sessions; started a new conversation", "old", fields.ACPSession)
-		fields.ACPSession = string(ns.SessionId)
-		if err := r.saveFields(fields); err != nil {
-			return err
+		if !loaded {
+			if err := r.newConversation(ctx, conn, cwd, &fields); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -616,6 +652,10 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		}
 	})
 	defer stop()
+	if seed := r.takeSeed(); seed != "" {
+		// No extra turn: the summary rides on the next prompt.
+		text = seed + "\n\n" + host.SummaryEnd + "\n\n" + text
+	}
 	// A rate limit is not a crash: keep the session and its claims (the
 	// supervisor keeps heartbeating) and retry the same prompt later.
 	wait := r.c.opt.Backoff

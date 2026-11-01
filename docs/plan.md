@@ -183,6 +183,9 @@ All dated 2026-11-01 unless noted.
   `github.com/coder/acp-go-sdk` for both ACP and the CLI/admin sockets.
 - Resume uses the agent's `session/load` (jcode supports it). A journal
   fallback is only for agents without it.
+  (2026-11-01, #43) Built: when load is unsupported or fails, the session
+  starts a new conversation seeded with a journal summary (7.1) instead of
+  starting blank or crash-looping.
 - Backpressure: when the host's buffer is full and no controller is
   connected, it stops reading the agent's stdout, pausing the agent. It
   never drops data.
@@ -253,6 +256,15 @@ and `work/` (git worktree when the pool sets `repo`).
   after 30 minutes with no controller.
 - Controller start: open session tickets are adopted (live host) or
   respawned (`session/load`); hosts with no open session are stopped.
+- Load fallback (#43): if the agent lacks `LoadSession` or `session/load`
+  fails, the controller calls `session/new` and builds a summary from
+  `journal.ndjson` (`host.Summarize`: prompts, agent text, tool call titles,
+  latest plan; at most 16 KiB, keeping the first prompt and the newest
+  items). The summary is prepended to the next turn's prompt, ended by
+  `[end of summary]`, with no extra turn; a later summary skips text
+  before that marker so summaries do not nest. The log says which path
+  (`load` or `new+summary`) was taken. The pending summary is memory only:
+  a controller restart before the next turn loses it.
 - Prompts use `context.WithoutCancel`, and stopping the controller closes
   the connection instead of cancelling requests, so turns keep running in
   the host.

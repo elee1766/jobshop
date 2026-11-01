@@ -542,9 +542,11 @@ type agent struct {
 }
 
 func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
+	// A "noload" file makes the agent one that cannot load sessions.
+	_, err := os.Stat("noload")
 	return acp.InitializeResponse{
 		ProtocolVersion:   acp.ProtocolVersionNumber,
-		AgentCapabilities: acp.AgentCapabilities{LoadSession: true},
+		AgentCapabilities: acp.AgentCapabilities{LoadSession: err != nil},
 	}, nil
 }
 
@@ -556,6 +558,10 @@ func (a *agent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewSessi
 }
 
 func (a *agent) LoadSession(_ context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+	// A "loadfail" file makes session/load fail, like a lost transcript.
+	if _, err := os.Stat("loadfail"); err == nil {
+		return acp.LoadSessionResponse{}, &acp.RequestError{Code: -32603, Message: "session not found"}
+	}
 	a.known[p.SessionId] = true
 	return acp.LoadSessionResponse{}, nil
 }
@@ -988,4 +994,70 @@ func hostPidOf(t *testing.T, dir string) int {
 	var p int
 	_, _ = fmt.Sscan(string(b), &p)
 	return p
+}
+
+// TestLoadFallback respawns a session whose agent cannot reload the old
+// conversation, either because it lacks LoadSession or because
+// session/load fails: the session starts a new conversation and the next
+// prompt opens with a summary of the journal, without crash-looping.
+func TestLoadFallback(t *testing.T) {
+	for _, marker := range []string{"noload", "loadfail"} {
+		t.Run(marker, func(t *testing.T) {
+			root, start := poolRoot(t, "1m")
+			stop := start()
+			defer stop()
+			admin := dial(t, root.AdminSocket())
+			show := func(id string) store.Ticket {
+				var got store.Ticket
+				require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+					Ticket *store.Ticket `json:"ticket"`
+				}{&got}))
+				return got
+			}
+			var first store.Ticket
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "first-ticket-title", Pool: "dev"}, &first))
+			require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+			var sessions []store.Ticket
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+			require.Len(t, sessions, 1)
+			id := sessions[0].ID
+			sdir := root.SessionDir(id)
+			pid := hostPidOf(t, sdir)
+
+			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, marker), nil, 0o600))
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
+			require.Eventually(t, func() bool {
+				p := hostPidOf(t, sdir)
+				return p != 0 && p != pid && host.Alive(sdir)
+			}, 20*time.Second, 50*time.Millisecond)
+
+			var second store.Ticket
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "second-ticket-title", Pool: "dev"}, &second))
+			require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+
+			b, err := os.ReadFile(filepath.Join(root.Dir, "prompts"))
+			require.NoError(t, err)
+			var prompts []string
+			for line := range strings.Lines(string(b)) {
+				var s string
+				require.NoError(t, json.Unmarshal([]byte(line), &s))
+				prompts = append(prompts, s)
+			}
+			idx := slices.IndexFunc(prompts, func(p string) bool { return strings.Contains(p, "second-ticket-title") })
+			require.GreaterOrEqual(t, idx, 0)
+			p := prompts[idx]
+			assert.True(t, strings.HasPrefix(p, "Summary of the earlier conversation"), "summary first: %q", p)
+			before, after, ok := strings.Cut(p, host.SummaryEnd)
+			require.True(t, ok)
+			assert.Contains(t, before, "first-ticket-title", "summary covers the old turn")
+			assert.Contains(t, after, "You have claimed Jobshop ticket "+second.ID)
+			assert.NotContains(t, prompts[idx-1], host.SummaryEnd, "no extra turn for the summary")
+
+			var infos []rpc.SessionInfo
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+			require.Len(t, infos, 1)
+			assert.Zero(t, infos[0].Crashes, "not crash-looping")
+			assert.Equal(t, store.StatusOpen, show(id).Status)
+		})
+	}
 }
