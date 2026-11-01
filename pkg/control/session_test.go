@@ -665,6 +665,15 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	if _, err := os.Stat("crash"); err == nil {
 		os.Exit(3)
 	}
+	// A "busy" file holds a count of prompts to refuse as still processing,
+	// like jcode after a prompt fails mid-stream.
+	if b, err := os.ReadFile("busy"); err == nil {
+		var n int
+		if _, err := fmt.Sscan(string(b), &n); err == nil && n > 0 {
+			_ = os.WriteFile("busy", fmt.Appendf(nil, "%d", n-1), 0o600)
+			return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "Already processing a message"}
+		}
+	}
 	// A "ratelimit" file holding N fails the next N prompts the way a
 	// provider account limit does.
 	if b, err := os.ReadFile("ratelimit"); err == nil {
@@ -739,6 +748,35 @@ func (a *agent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOpti
 
 func (a *agent) SetSessionMode(context.Context, acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {
 	return acp.SetSessionModeResponse{}, nil
+}
+
+// TestAgentBusy has the agent refuse prompts as "Already processing a
+// message", as jcode did on gasserver (2026-11-01, two dev sessions ended
+// crashed). The session cancels, then respawns its host, and the ticket
+// still closes without the session ending crashed.
+func TestAgentBusy(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "busy"), []byte("5"), 0o600))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, 30*time.Second, 20*time.Millisecond)
+	assert.Equal(t, "done", show(task.ID).Resolution)
+
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	assert.Equal(t, store.StatusOpen, sessions[0].Status, "session did not end crashed")
 }
 
 // TestRateLimitBackoff has the agent fail prompts with a 429 a few times:

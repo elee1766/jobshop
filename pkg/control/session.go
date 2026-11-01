@@ -149,6 +149,18 @@ func rateLimited(err error) bool {
 	return false
 }
 
+// agentBusy reports whether the agent refused a prompt because it still
+// considers an earlier one in flight. jcode does this after a prompt fails
+// mid-stream (seen 2026-11-01); a session/cancel clears it, a host restart
+// does not, so restarting only burns the crash budget.
+func agentBusy(err error) bool {
+	var re *acp.RequestError
+	if !errors.As(err, &re) {
+		return false
+	}
+	return strings.Contains(strings.ToLower(fmt.Sprint(re.Message, " ", re.Data)), "already processing")
+}
+
 func (r *runner) setBackoff(until time.Time) {
 	r.mu.Lock()
 	r.backoffUntil = until
@@ -737,12 +749,33 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		r.c.metrics.Turns.Add(context.WithoutCancel(ctx), 1, metric.WithAttributes(
 			telemetry.AttrPool.String(r.pool), telemetry.AttrStopReason.String(reason)))
 	}()
+	busyRetries := 0
 	for {
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
 			SessionId: acp.SessionId(acpSession),
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 			Meta:      r.promptMeta(),
 		})
+		if err != nil && ctx.Err() == nil && agentBusy(err) && busyRetries < 3 {
+			busyRetries++
+			r.log.Warn("agent still busy with an earlier prompt, cancelling it", "attempt", busyRetries, "err", err)
+			_ = conn.Cancel(context.WithoutCancel(ctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
+			select {
+			case <-ctx.Done():
+				return r.dropped(conn)
+			case <-time.After(r.c.opt.Backoff):
+			}
+			continue
+		}
+		if err != nil && ctx.Err() == nil && agentBusy(err) {
+			// Reconnecting keeps the same stuck agent (the crash loop seen
+			// on gasserver); a new host starts a new agent and reloads the
+			// conversation, and the claim survives for the next prompt.
+			r.log.Warn("agent stuck busy, respawning host", "host_pid", hostPid(r.dir))
+			r.lifecycle("agent_stuck_busy")
+			stopHost(r.dir)
+			return errRefresh
+		}
 		if err == nil || ctx.Err() != nil || !rateLimited(err) {
 			break
 		}
