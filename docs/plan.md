@@ -31,10 +31,16 @@ The goal is a smaller system we fully control, where the ticket store is a
 storage interface owned by this project, everything is built on it, and SQLite
 is the first backend (Postgres later).
 
+**Approach: build independently and dogfood.** Jobshop is not a migration
+target for the live Gas City deployment. It is built from scratch, and as soon
+as it can run agents, it runs the agents that work on Jobshop itself. Gas City
+stays as a reference for design and edge cases, not as code we must stay
+compatible with. Section 2 describes how we use Gas City today so readers know
+which features have proven useful, not as a parity checklist.
+
 ### Open questions
-- Is a new project actually better than a hard fork of Gas City that deletes
-  the `bd`/Dolt code? (Alternative considered: fork-and-prune. See section 9.)
 - How much upstream Gas City progress do we expect to want later?
+- At what point, if any, would the live city move onto Jobshop?
 
 ## 2. How we use Gas City today
 
@@ -212,7 +218,10 @@ account for test code or hidden coupling.
 
 ## 7. Phases (rough)
 
-Ordering is a proposal. Each phase ends with something runnable.
+Ordering is a proposal. Each phase ends with something runnable. The ordering
+is driven by dogfooding: get to the smallest loop that can run an agent on a
+Jobshop ticket in this repo, then let that loop do more of the remaining work.
+Until then, development happens by hand (or with an outside agent).
 
 **Phase 0: groundwork**
 - Repo layout, build (plain `go` or Bazel?), CI, lint.
@@ -243,17 +252,29 @@ Ordering is a proposal. Each phase ends with something runnable.
 - Memos (mail), skids (convoys), dockets (scheduled blueprints).
 - Timecard (events), and an API if the dashboard is to be ported.
 
-**Phase 5: migration**
-- Run in parallel on a non-critical workcenter.
-- Port prompts and formulas off `gc bd` to `jobshop`.
-- Importer from the Gas City sqlite stores, if history matters.
+**Dogfood milestone (target, may land between phases 1 and 3)**
+- Smallest loop that works on itself: one workcenter (this repo), one crew of
+  one agent, `assign`, `punch --next`, `heartbeat`, `close`, and a Mainshaft
+  that starts a shift when the queue is non-empty and restarts it if it dies.
+- No blueprints, dispatcher, memos or skids required. Agents close tickets
+  directly.
+- After this, new features are filed as Jobshop tickets and built by Jobshop
+  agents, with a human reviewing.
+
+**Phase 5: hardening from use**
+- Add what dogfooding shows is missing, in the order it hurts.
+- Bring over Gas City features only when a real need appears.
 
 **Later**: Postgres backend, against the same conformance suite.
 
 ### Open questions
 - Is Phase 3 too large for one phase?
-- What is the smallest end-to-end slice that would replace one rig's polecat
-  pool? That might be a better first milestone than a layer-by-layer build.
+- Should the dogfood milestone come before blueprints (phase 2)? Probably
+  yes, since a flat ticket queue is enough to start.
+- What safety rails does self-hosting need (agents editing the Mainshaft
+  that runs them; review before merging; a way to roll back a broken build)?
+- Which runtime does the dogfood loop use: ACP via jcode as in our city, or
+  tmux as the simpler first provider?
 
 ## 8. Risks
 
@@ -262,7 +283,8 @@ Ordering is a proposal. Each phase ends with something runnable.
   (`engdocs/contributors/reconciler-debugging.md`, `health-patrol.md`) before
   writing the Mainshaft.
 - Scope creep toward Gas City parity.
-- Two systems to run during migration.
+- Self-hosting failure: a bad change to the Mainshaft can stop the agents
+  that would fix it. Needs a known-good binary to fall back to.
 
 ## 9. Alternatives considered
 
