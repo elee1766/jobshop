@@ -388,8 +388,10 @@ func (h *Host) routeAgent(f frame, line []byte) ([]byte, *controllerConn) {
 			// for this request and stays unblocked.
 			h.dropped++
 			h.log.Warn("too many agent requests awaiting a controller", "id", string(f.ID), "refused", h.dropped)
-			msg, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": f.ID,
-				"error": map[string]any{"code": -32000, "message": "session host: too many requests awaiting the controller"}})
+			msg, _ := json.Marshal(map[string]any{
+				"jsonrpc": "2.0", "id": f.ID,
+				"error": map[string]any{"code": -32000, "message": "session host: too many requests awaiting the controller"},
+			})
 			go func() { _ = h.writeAgent(msg) }()
 			return nil, nil
 		}
