@@ -279,7 +279,7 @@ All dated 2026-11-01 unless noted.
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
-  `nix build`.
+  shellcheck of `deploy/*.sh`, `nix build`.
 - YAML config. Every new dependency has its reason recorded in
   `docs/layout.md`.
 
@@ -449,8 +449,8 @@ header values print unexpanded.
   deployment: `/metrics` serves `jobshop_*`, the VictoriaMetrics target is
   up, `jobshop_sessions` and `jobshop_tickets_ready` exist per pool, and
   VictoriaTraces has a `session` trace in the last hour. Counters that
-  have not incremented yet are listed, not failed. Shellcheck it with
-  `shellcheck -s sh`; CI does not yet (#65).
+  have not incremented yet are listed, not failed. CI shellchecks it
+  (`shellcheck -s sh`, #65).
   Runbook: `docs/gasserver-verify.md` section 5 (#55).
 - `deploy/verify-sessions.sh` (POSIX sh, jq) fails when any session closed
   `crashed` or `stuck` within `--since` (default 24h), printing id, pool

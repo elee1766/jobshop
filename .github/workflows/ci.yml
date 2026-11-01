@@ -38,6 +38,8 @@ jobs:
       - uses: golangci/golangci-lint-action@v8
         with:
           version: latest
+      - name: shellcheck deploy scripts
+        run: shellcheck -s sh deploy/*.sh
 
   nix:
     runs-on: ubuntu-latest
