@@ -646,7 +646,7 @@ func envHash(inherited, env []string) string {
 	}
 	h := sha256.New()
 	for _, k := range slices.Sorted(maps.Keys(m)) {
-		fmt.Fprintf(h, "%s=%s\x00", k, m[k])
+		_, _ = fmt.Fprintf(h, "%s=%s\x00", k, m[k])
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
