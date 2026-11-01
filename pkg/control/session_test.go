@@ -854,11 +854,18 @@ func TestSessionRestartIdle(t *testing.T) {
 	later := time.Now().Add(time.Hour)
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketUpdate, rpc.UpdateParams{ID: held.ID, DeferUntil: &later}, nil))
 
-	// Make the running host's spec look outdated; the restart rewrites it.
+	// Change the agent's env in the config and reload: the running host
+	// keeps its old spec until the restart.
+	cfgPath := filepath.Join(root.Dir, config.FileName)
+	b, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	b = []byte(strings.Replace(string(b), "    args: [fake-agent]\n", "    args: [fake-agent]\n    env: {RESTART_MARK: \"1\"}\n", 1))
+	require.NoError(t, os.WriteFile(cfgPath, b, 0o600))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	spec, err := host.ReadSpec(sdir)
 	require.NoError(t, err)
-	spec.EnvHash = "old"
-	require.NoError(t, host.WriteSpec(sdir, spec))
+	require.NotContains(t, spec.Env, "RESTART_MARK=1")
+	oldHash := spec.EnvHash
 
 	var res rpc.SessionRestartResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, &res))
@@ -869,7 +876,8 @@ func TestSessionRestartIdle(t *testing.T) {
 	}, 20*time.Second, 50*time.Millisecond, "host respawned")
 	s, err := host.ReadSpec(sdir)
 	require.NoError(t, err)
-	assert.NotEqual(t, "old", s.EnvHash, "fresh spec")
+	assert.NotEqual(t, oldHash, s.EnvHash, "fresh spec")
+	assert.Contains(t, s.Env, "RESTART_MARK=1", "spec reflects the reloaded config")
 
 	got := show(held.ID)
 	assert.Equal(t, store.StatusInProgress, got.Status, "claim kept")
