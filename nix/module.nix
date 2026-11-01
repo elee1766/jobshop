@@ -51,6 +51,12 @@ in
       description = "Tools on PATH for agents (git, gh, jcode, go, ...).";
     };
 
+    environment = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      description = "Extra environment for the controller, inherited by session hosts and agents.";
+    };
+
     cpuQuota = lib.mkOption {
       type = lib.types.str;
       default = "600%";
@@ -120,7 +126,7 @@ in
       wants = [ "network-online.target" ];
       after = [ "network-online.target" ];
       path = cfg.path;
-      environment = {
+      environment = cfg.environment // {
         JOBSHOP_ROOT = cfg.dataDir;
         HOME = cfg.dataDir;
       };
