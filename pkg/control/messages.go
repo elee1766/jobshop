@@ -80,6 +80,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 
 // interruptible runs a turn while watching for interrupt messages. On one
 // it sends session/cancel; the turn then ends and the caller delivers.
+// `session restart --now` cancels the turn the same way.
 func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnection, acpSession, text string) (bool, error) {
 	var interrupted atomic.Bool
 	wctx, stop := context.WithCancel(ctx)
@@ -91,6 +92,10 @@ func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnecti
 		for {
 			select {
 			case <-wctx.Done():
+				return
+			case <-r.restartNow:
+				r.log.Info("restart --now: cancelling turn")
+				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
 				return
 			case <-tick.C:
 			}

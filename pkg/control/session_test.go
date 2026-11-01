@@ -821,3 +821,168 @@ func TestTraces(t *testing.T) {
 	_, ok = find("supervisor tick")
 	assert.True(t, ok, "tick span")
 }
+
+// TestSessionRestartIdle restarts an idle session: the host is replaced
+// with a freshly built spec, a ticket it holds stays claimed, and the crash
+// counter does not move.
+func TestSessionRestartIdle(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	id := sessions[0].ID
+	sdir := root.SessionDir(id)
+	pid := hostPidOf(t, sdir)
+
+	// A ticket the session holds but will not be prompted with (deferred).
+	var held store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "held", Pool: "other", Project: "js"}, &held))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: held.ID, Holder: id}, nil))
+	later := time.Now().Add(time.Hour)
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketUpdate, rpc.UpdateParams{ID: held.ID, DeferUntil: &later}, nil))
+
+	// Change the agent's env in the config and reload: the running host
+	// keeps its old spec until the restart.
+	cfgPath := filepath.Join(root.Dir, config.FileName)
+	b, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	b = []byte(strings.Replace(string(b), "    args: [fake-agent]\n", "    args: [fake-agent]\n    env: {RESTART_MARK: \"1\"}\n", 1))
+	require.NoError(t, os.WriteFile(cfgPath, b, 0o600))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
+	spec, err := host.ReadSpec(sdir)
+	require.NoError(t, err)
+	require.NotContains(t, spec.Env, "RESTART_MARK=1")
+	oldHash := spec.EnvHash
+
+	var res rpc.SessionRestartResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, &res))
+	assert.Equal(t, pid, res.HostPid)
+	require.Eventually(t, func() bool {
+		p := hostPidOf(t, sdir)
+		return p != 0 && p != pid && host.Alive(sdir)
+	}, 20*time.Second, 50*time.Millisecond, "host respawned")
+	s, err := host.ReadSpec(sdir)
+	require.NoError(t, err)
+	assert.NotEqual(t, oldHash, s.EnvHash, "fresh spec")
+	assert.Contains(t, s.Env, "RESTART_MARK=1", "spec reflects the reloaded config")
+
+	got := show(held.ID)
+	assert.Equal(t, store.StatusInProgress, got.Status, "claim kept")
+	assert.Equal(t, id, got.Holder)
+	assert.Equal(t, store.StatusOpen, show(id).Status)
+	var infos []rpc.SessionInfo
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+	require.Len(t, infos, 1)
+	assert.Zero(t, infos[0].Crashes, "not a crash")
+
+	// The resumed conversation takes new work. Release the held ticket
+	// first: the fake agent closes "the current ticket", which needs one.
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRelease, rpc.ReleaseParams{ID: held.ID, Reason: "test"}, nil))
+	var next store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "after", Pool: "dev"}, &next))
+	require.Eventually(t, func() bool { return show(next.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+
+	// Unknown, closed and non-session ids are errors.
+	assert.ErrorIs(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: "js-nope"}, nil), store.ErrNotFound)
+	assert.Error(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: next.ID}, nil))
+	var ext rpc.SessionNewResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "ext"}, &ext))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: ext.Ticket.ID}, nil))
+	assert.Error(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: ext.Ticket.ID}, nil))
+	sess := dial(t, filepath.Join(sdir, "cli.sock"))
+	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil), rpc.ErrForbidden)
+}
+
+// TestSessionRestartBusy: a restart waits for the running turn; --now
+// cancels it and the restarted host gets the still-claimed ticket again.
+func TestSessionRestartBusy(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	started := filepath.Join(root.Dir, "started")
+	waitStarted := func() {
+		require.Eventually(t, func() bool {
+			_, err := os.Stat(started)
+			return err == nil
+		}, 20*time.Second, 20*time.Millisecond)
+	}
+	var first store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
+	waitStarted()
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	id := sessions[0].ID
+	sdir := root.SessionDir(id)
+	pid := hostPidOf(t, sdir)
+
+	// Without --now the turn keeps running.
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
+	time.Sleep(500 * time.Millisecond)
+	assert.Equal(t, pid, hostPidOf(t, sdir), "busy host not restarted")
+	assert.Equal(t, store.StatusInProgress, show(first.ID).Status)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
+	require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool {
+		p := hostPidOf(t, sdir)
+		return p != 0 && p != pid && host.Alive(sdir)
+	}, 20*time.Second, 50*time.Millisecond, "restarted after the turn")
+	pid = hostPidOf(t, sdir)
+
+	// --now cancels a running turn; the ticket stays claimed.
+	require.NoError(t, os.Remove(filepath.Join(root.Dir, "go")))
+	require.NoError(t, os.Remove(started))
+	var second store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
+	waitStarted()
+	require.NoError(t, os.Remove(started))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id, Now: true}, nil))
+	require.Eventually(t, func() bool {
+		p := hostPidOf(t, sdir)
+		return p != 0 && p != pid && host.Alive(sdir)
+	}, 20*time.Second, 50*time.Millisecond, "restarted at once")
+	got := show(second.ID)
+	assert.Equal(t, store.StatusInProgress, got.Status, "claim kept")
+	assert.Equal(t, id, got.Holder)
+	waitStarted() // the new host is prompted with the held ticket
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
+	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, store.StatusOpen, show(id).Status)
+	var infos []rpc.SessionInfo
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+	require.Len(t, infos, 1)
+	assert.Zero(t, infos[0].Crashes)
+}
+
+func hostPidOf(t *testing.T, dir string) int {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, host.PidFile))
+	if err != nil {
+		return 0
+	}
+	var p int
+	_, _ = fmt.Sscan(string(b), &p)
+	return p
+}

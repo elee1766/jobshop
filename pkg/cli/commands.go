@@ -456,10 +456,11 @@ func (c labelRm) Run(g *Globals) error {
 }
 
 type sessionCmd struct {
-	New    sessionNewCmd    `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
-	List   sessionListCmd   `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
-	Reap   sessionReapCmd   `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
-	Attach sessionAttachCmd `cmd:"" help:"Follow a session's conversation, read-only. Ctrl-C detaches."`
+	New     sessionNewCmd     `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
+	List    sessionListCmd    `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
+	Reap    sessionReapCmd    `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
+	Restart sessionRestartCmd `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
+	Attach  sessionAttachCmd  `cmd:"" help:"Follow a session's conversation, read-only. Ctrl-C detaches."`
 }
 
 type sessionAttachCmd struct {
@@ -511,6 +512,17 @@ type sessionListCmd struct {
 
 func (c sessionListCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodSessionList, rpc.SessionListParams{All: c.All}, nil)
+}
+
+// sessionRestartCmd: a busy session restarts after its current turn; the
+// conversation is resumed and held tickets stay claimed.
+type sessionRestartCmd struct {
+	ID  string `arg:"" help:"Session id."`
+	Now bool   `help:"Cancel the running turn instead of waiting for it to end."`
+}
+
+func (c sessionRestartCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: c.ID, Now: c.Now}, nil)
 }
 
 type sessionReapCmd struct {

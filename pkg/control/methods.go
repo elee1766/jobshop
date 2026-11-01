@@ -416,6 +416,7 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 			info.BackoffUntil = &bu
 		}
 		r.mu.Unlock()
+		info.Crashes = r.crashCount()
 	}
 	c.mu.Unlock()
 	info.Drained = r != nil && c.poolDrained(r.pool)
@@ -436,6 +437,37 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 		info.Current = held[0].ID
 	}
 	return info, nil
+}
+
+// sessionRestart stops a session's host so its driver respawns it with a
+// freshly built spec and resumes the conversation (plan 8.4). The
+// session's claims are kept and it is not counted as a crash.
+func (c *Controller) sessionRestart(ctx context.Context, sc scope, p rpc.SessionRestartParams) (any, error) {
+	if err := requireAdmin(sc, "session restart"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+	}
+	t, err := c.store.Get(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if t.Kind != store.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	}
+	if t.Status == store.StatusClosed {
+		return nil, fmt.Errorf("%w: session %s", store.ErrClosed, p.ID)
+	}
+	c.mu.Lock()
+	r := c.runners[p.ID]
+	c.mu.Unlock()
+	if r == nil {
+		return nil, fmt.Errorf("%w: session %s has no controller-driven host", store.ErrInvalid, p.ID)
+	}
+	c.log.Info("session restart requested", "session", p.ID, "now", p.Now)
+	r.requestRestart(p.Now)
+	return rpc.SessionRestartResult{ID: p.ID, HostPid: hostPid(c.root.SessionDir(p.ID)), Now: p.Now}, nil
 }
 
 // sessionReap stops orphaned hosts (the startup reapOrphans rule) and, with
