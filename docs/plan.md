@@ -318,6 +318,14 @@ so when the controller exits, the stdio pipes close and the session dies.
   watching a session. Liveness: `tmux has-session` plus the socket.
   Caveat: anything that kills the tmux server (or its cgroup) kills all
   sessions; recovery then falls to the layers below.
+- One host process per session, all under a single dedicated tmux server
+  (`tmux -L jobshop`), kept apart from Gas City's and any human tmux.
+  Per-session hosts mean a host crash or bug loses one session, and new
+  host versions roll out as sessions turn over instead of restarting
+  everything at once. Cost is ~10 MB per idle Go process, fine at our
+  session counts. A single shared host would itself become a process whose
+  restart kills every session, which is the problem this section exists to
+  remove.
 - It spawns the agent, owns its stdin/stdout, and listens on a Unix socket
   (`<data>/sessions/<id>.sock`).
 - The controller connects to the socket and speaks ACP through it. On
