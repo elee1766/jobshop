@@ -1,6 +1,6 @@
-# Jobshop: ticket data model (draft)
+# Jobshop: ticket data model
 
-Status: draft for discussion. Companion to `plan.md` section 5.
+Companion to `plan.md` (sections 3 and 6).
 
 ## Model
 

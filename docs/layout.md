@@ -1,6 +1,6 @@
-# Jobshop: repo layout and build (draft)
+# Jobshop: repo layout and build
 
-Status: draft for discussion. Companion to `plan.md`.
+Companion to `plan.md`.
 
 ## Principles
 
@@ -228,8 +228,9 @@ the root.
 gasserver is an isolated OVH machine; Jobshop runs there next to Gas City
 as its own user, not as `agent`.
 
-- **User `jobshop`**: own home, root directory `/var/lib/jobshop`, own
-  GitHub identity (`cog` credentials via sops).
+- **User `jobshop`**: own home, root directory `/var/lib/jobshop`. GitHub
+  access is the elee-agent App through agent-credd tokens (plan.md
+  section 6).
 - **Resource limit via its own slice** (decided 2026-11-01): `jobshop.slice`
   with `CPUQuota = 600%` (six cores' worth, placed by the scheduler) and
   `MemoryMax = 8G` (plus a lower `MemoryHigh`), `TasksMax`, and oomd

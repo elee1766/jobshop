@@ -1,937 +1,427 @@
-# Jobshop: draft implementation plan
+# Jobshop plan
 
-Status: **draft for discussion.** This is a starting point, not a decision
-record. Every section lists open questions, and estimates are rough. Challenge
-anything here; where this plan and the evidence disagree, the evidence wins.
+How Jobshop is built, where it stands, and what comes next. Decisions are
+dated. Where this file and the code disagree, the code wins; fix this file.
+Companions: `docs/data-model.md` (tables and queries), `docs/layout.md`
+(repo, build, deployment).
 
-## 1. Why this exists
+## 1. What and why
 
-Jobshop is a multi-agent orchestration layer modeled on
-[Gas City](https://github.com/gastownhall/gascity) (fork:
-`~/repo/github.com/elee1766/gascity`, branch `feat/sqlite-work-provider`).
-Gas City works for us, but:
+Jobshop is multi-agent orchestration on a SQLite ticket store: pools of ACP
+agents claim tickets, work them, and close them, supervised by one
+controller. It replaces our use of [Gas City](https://github.com/gastownhall/gascity).
 
-- Its default store is `bd` (the beads CLI) on Dolt. Dolt was too slow and
-  resource-heavy for our deployment, so we run a fork with a native SQLite
-  store (`[beads] provider = "sqlite-work"`).
-- Gas City's Go domain logic is written against a generic store interface
-  (`internal/beads/beads.go`, `beads.Store`), and SQLite plugs in there.
-  The friction is elsewhere: pack prompts and formulas call `gc bd ...`, which
-  on Dolt cities shells out to the `bd` binary. On `sqlite-work`, `gc bd` is a
-  hand-written native adapter (`cmd/gc/cmd_bd_sqlite_work.go`) that covers only
-  part of the `bd` surface (no `mol wisp`/`burn`, `formula`, `gate`, `blocked`,
-  `--include-infra`, ...).
-- Roughly 18% of non-test Go files reference Dolt (server lifecycle, version
-  gates, proxied transport, split-store guards, doctor checks). Each upstream
-  merge adds more Dolt/`bd` assumptions to work around.
-- We use a small subset of Gas City, and extending it feels at odds with
-  upstream's direction.
+Gas City worked, but its store is `bd` on Dolt (too slow and heavy for us),
+our SQLite fork covers only part of the `bd` CLI that prompts call, about a
+fifth of its Go references Dolt, and we use a small part of it. Jobshop is a
+smaller system we own: the store interface lives here, everything is built
+on it, SQLite first, Postgres later.
 
-The goal is a smaller system we fully control, where the ticket store is a
-storage interface owned by this project, everything is built on it, and SQLite
-is the first backend (Postgres later).
+Approach: build from scratch and dogfood. Gas City is a reference for
+design and edge cases, not a compatibility target. Since 2026-11-01 Jobshop
+runs the agents that develop Jobshop.
 
-**Approach: build independently and dogfood.** Jobshop is not a migration
-target for the live Gas City deployment. It is built from scratch, and as soon
-as it can run agents, it runs the agents that work on Jobshop itself. Gas City
-stays as a reference for design and edge cases, not as code we must stay
-compatible with. Section 2 describes how we use Gas City today so readers know
-which features have proven useful, not as a parity checklist.
+## 2. Where we are
 
-### Open questions
-- How much upstream Gas City progress do we expect to want later?
-- At what point, if any, would the live city move onto Jobshop?
-
-## 2. How we use Gas City today
-
-Snapshot of the live city (`gasserver:/home/agent/gc`, read-only, 2026-11-01).
-Treat as context, not spec; verify before relying on details.
-
-**Storage**
-- `[beads] provider = "sqlite-work"` for work tickets, per city and per rig.
-- `[storage.classes]`: `graph`, `sessions`, `messaging`, `orders`, `nudges`
-  all routed to binding `infra` (`provider = "sqlite-beads"`, `.gc/store`).
-- `event_hooks = false`.
-
-**Runtime**
-- Single provider family: `jcode` via ACP (`session = "acp"`), with variants
-  per model (opus for mayor/workers, sonnet for patrol/emulator, gpt-6.1-sol).
-- `max_active_sessions = 20` city-wide, 14 per rig, pools of 1-6.
-
-**Agents (from the imported `gastown` pack, all re-prompted locally)**
-- `mayor`: coordinator (`prompts/coordinator.md`), on demand.
-- `polecat`: worker pool per rig (`prompts/worker.md`), 1-6 sessions.
-- `refinery`: PR delivery per rig (`prompts/refinery.md`), max 1.
-- `deacon`, `boot`, `witness`: observers (`prompts/observer.md`, 9 lines).
-  The observer prompt explicitly says the controller owns reconciliation; they
-  only report blockers by mail.
-- `dog`: suspended. Several implicit provider pools: suspended.
-- Extra packs: `model-routing`, `android-emulator` (checker pool).
-
-**Rigs**: account, retail, trade, gascity, sap, uniswapgo.
-
-**Formulas in use**: `mol-gfx-pr-work` (default sling formula, one durable
-source plus one step), `mol-gascity-delivery`, `mol-blocker-assess`,
-`mol-main-ci-repair`, `mol-gfx-emulator-check`, `mol-gfx-pilot`, plus the
-gastown patrol formulas.
-
-**Orders**: most built-ins skipped (`jsonl-export`, `reaper`, `wisp-compact`,
-`gate-sweep`, `cross-rig-deps`, ...). Local orders: `blocked-revalidator`
-(hourly), `gascity-delivery`.
-
-**Commands agents actually call** (from our prompts and formulas, approximate):
-`gc hook --claim --json`, `gc bd update --claim`, `gc bd heartbeat`,
-`gc bd show/update`, `gc mail send/reply/peek/archive`, `gc convoy status`,
-`gc sling`, `gc session list/peek/wait`, `gc runtime drain-ack`,
-`gc storage status`, plus our own `gx` CLI (`task context/finish`,
-`pr state`, `mayor brief/record`, `linear sling`, `emulator request`).
-
-**Implication**: our real surface is claim/heartbeat/finish on tickets,
-routing work to pools, a small set of formulas, mail, and session supervision.
-We do not use most of the gastown patrol machinery as designed.
-
-### Decided (2026-11-01)
-- Day-one scope is the phase plan (section 7).
-- Observer agents (deacon/boot/witness): Jobshop ships none. Gas City
-  already moved their patrol duties into the controller (its parity audit
-  maps witness and deacon patrol to the reconciler tick and controller
-  loop), and in the live city they send almost no mail. In Jobshop those
-  duties are deterministic: dead-session release, lease sweep, idle-kill,
-  quarantine, metrics and alerts. The layer for observer-style agents must
-  still exist: roles are config, so any install can define an observer
-  pool, and scheduled judgment work (e.g. stale PR review) runs as a
-  schedule assigning tickets to a coordinator pool. We just do not build
-  or run one ourselves.
-- `gx` stays a separate client of the Jobshop CLI/admin socket.
-
-## 3. Glossary
-
-Decided 2026-11-01: plain, descriptive names, no themed vocabulary. Prefer
-the term that says what the thing is; keep Gas City's term only where it is
-already plain. "Jobshop" stays as the project name.
-
-| Gas City | Jobshop | Notes |
+| Phase | Scope | State |
 |---|---|---|
-| Controller loop (incl. health patrol) | Controller | Reconcile, restart, quarantine, idle-kill |
-| Control dispatcher | Dispatcher | Runs control tickets (retry, fan-out, ...) |
-| Bead | Ticket | |
-| Formula | Workflow | Template definition |
-| Molecule | Run | Instantiated workflow (tickets + edges) |
-| Wisp | Ephemeral run | A flag on run, not a separate concept |
-| Agent | Agent | Configured kind of worker |
-| Pool | Pool | |
-| Session | Session | |
-| Rig | Project | One repo / work area |
-| Pack | Pack | Bundle of agents, prompts, workflows |
-| Sling | Assign | Puts a ticket in a pool's queue; not a claim |
-| Claim / release | Claim / release | Claimant field is `holder`, not `assignee` |
-| Gate | Gate | Passive hold until closed |
-| Check | Check | Condition evaluated by the dispatcher |
-| Convoy | Batch | Group of tickets tracked together |
-| Order | Schedule | Scheduled workflow trigger |
-| Mail | Message | |
-| Event log | (none) | No event bus. Controller sees every write and notifies over the admin socket; ticket `history` is an audit log. Observability is OTel (section 9) |
+| 0 | Repo, CI, lint, data model | done |
+| 1 | Store, controller sockets, CLI | done 2026-11-01 |
+| 2 | Sessions, session host, self-hosting | done 2026-11-01 |
+| 3 | Hardening, visibility, self-development loop | in progress, target issue #36 |
+| 4 | Workflows and runs | not started |
+| 5 | Batches, change subscriptions, API | not started |
 
-Roles (mayor, polecat, ...) are configuration, not engine concepts. Jobshop
-keeps Gas City's "zero hardcoded roles" principle.
+Phase 3 is driven by the target issue (#36): a checklist the planner pool
+works toward. Items built so far are listed in section 4.
 
-## 4. Design principles (proposed)
-
-Carried over from Gas City's `AGENTS.md` where they still fit:
-
-- No role names in Go. Behavior comes from config and prompts.
-- Go handles transport, not judgment.
-- Work persists in tickets; sessions are disposable. Recovery means re-reading
-  state, not remembering it.
-- No status files; query live state.
-
-New for Jobshop:
-
-- **The ticket store is the only persistence interface**, owned by this
-  repo. No CLI passthrough to an external tracker.
-- **One CLI, native on the store.** Agent-facing commands are designed for
-  Jobshop, not for compatibility with `bd`'s flags or JSON.
-- **Backend-neutral SQL** where practical, so Postgres is an implementation,
-  not a rewrite.
-- **YAML config** (decided 2026-11-01).
-
-### Decided (2026-11-01)
-- Generic graph of tickets with an engine-defined `kind`, not separate
-  tables per concept (sessions and messages are kinds too).
-- Kind-specific engine data is typed per kind in Go. Packs get a free-form
-  `meta` document the engine never reads. Packs do not declare schemas.
-  See `docs/data-model.md`.
-
-## 5. Ticket store
-
-Full tables and queries: `docs/data-model.md`.
-
-Starting point: Gas City's `beads.Store` (24 methods: create, get, update,
-close, reopen, delete, list and filter, `Ready`, children, metadata, `Tx`,
-`DepAdd`/`DepRemove`/`DepList`). Things Gas City grew later that seem worth
-building in from the start:
-
-- **Atomic claim** with a lease and a fence, plus heartbeat and release
-  conditioned on the current holder. See `sqlite_store_claim.go`,
-  `sqlite_store_fence.go`, `sqlite_store_conditional.go`.
-- **Revision-guarded updates** (compare-and-swap).
-- **Ready frontier query** (open, unblocked, not deferred).
-- **Graph apply**: create a run's tickets and edges in one transaction
-  (`sqlite_store_graph_apply.go`).
-- **Ephemeral flag** for short-lived tickets, reaped after close.
-- **Engine-defined edges**: `blocks` and `waits_for` block readiness;
-  `tracks` is informational. Parent-child is the `parent_id` column.
-
-A conformance test suite that every backend must pass, written before the
-SQLite implementation.
-
-### Decided (2026-11-01)
-- One database per install. `project` is a column. No storage classes, no
-  split stores.
-- SQLite driver: `modernc.org/sqlite` (pure Go, no cgo).
-- Ticket IDs: per-project prefix plus a Sonyflake ID in 13-character
-  Crockford base32, e.g. `js-0031w02j0r012`. Details: `docs/layout.md`.
-- Claims are released by the controller as soon as it knows a session is
-  dead. The lease is a backstop, swept by the controller every tick, and
-  expiry returns the ticket straight to `open`.
-- Comments have their own table. `history` is an audit log, not an event
-  stream.
-- CLI and admin sockets speak JSON-RPC 2.0 with NDJSON framing, matching
-  ACP, using the connection from `github.com/coder/acp-go-sdk`
-  (decided 2026-11-01; replaced `go.lsp.dev/jsonrpc2`, see
-  `docs/layout.md`).
-
-## 6. What could be reused from Gas City
-
-Gas City is MIT-licensed. Dependency scan of `internal/` (non-test lines):
-
-**No beads/Dolt dependency; likely portable:**
-- `internal/formula` (~10k lines): workflow parsing and compile. Depends on
-  `beadmeta`, `git`, `gitcred`, `remotesource`, `pathutil`, `gchome`.
-- `internal/runtime` (~12k) and `internal/runtime/tmux` (~16k). We use ACP
-  (`internal/runtime/acp`); check its dependencies before relying on it.
-- `internal/events` (~8k), `internal/worktree`, `internal/shellquote`,
-  `internal/fsys`, `internal/clock`.
-
-**Logically store-neutral but import `internal/beads` (which pulls in the
-upstream beads/Dolt library):**
-- `internal/molecule` (~3.7k): instantiate a workflow into a run.
-- `internal/dispatch` (~12k): control ticket execution.
-- `internal/readywork`, `internal/convergence`, `internal/orders`.
-- SQLite store code in `internal/beads/sqlite_*.go` (~4.8k).
-
-**Probably better rewritten, using Gas City as reference:**
-- `internal/session`, `internal/worker`, `internal/sling`, `cmd/gc`
-  controller. They carry a lot of upstream policy and 45-60 internal
-  dependencies each.
-
-Estimates come from `go list -deps` and line counts on 2026-11-01. They do not
-account for test code or hidden coupling.
-
-### Decided (2026-11-01)
-- Copy Gas City code only where its internals are clean (self-contained,
-  few dependencies, readable). Everything else is reference only. No
-  vendoring.
-- Dispatcher scope is decided in phase 4 from the workflows we actually
-  run.
-
-## 7. Phases
-
-Decided 2026-11-01. Each phase ends with something runnable. The order is
-driven by self-hosting: build the smallest loop that can run an agent on a
-Jobshop ticket in this repo, then let that loop build the rest. Until then,
-development happens by hand (or with an outside agent).
-
-**Phase 0: groundwork**
-- Repo layout, CI, lint. Plain `go` for development and CI; Nix flake for
-  the deployable package and NixOS module (`docs/layout.md`). No Bazel.
-  CI on GitHub Actions: build, `go vet`, `golangci-lint`,
-  `go test -race`, `nix build`.
-- Data model: `docs/data-model.md`.
-
-**Phase 1: store, controller sockets, CLI** (done 2026-11-01)
-- `store` package: interface, types, errors, engine kinds (`task`,
-  `session`, `message`) with typed fields.
-- Conformance suite, then the SQLite backend.
-- Controller process skeleton: opens the store, serves the admin socket
-  and per-session CLI sockets over JSON-RPC (section 8.5). All writes go
-  through it.
-- CLI: `jobshop ticket create/show/list/update/close`, `comment`, `assign`,
-  `claim --next` (three tiers), `heartbeat`, `release`, `ready`, with
-  stable JSON output. Never opens SQLite directly.
-
-**Phase 2: sessions and self-hosting**
-- YAML config loader (project, agent, pool).
-- Session host (section 8): spawn via `/proc/self/exe`, ACP proxy, journal,
-  replay, backpressure, leak guards, controller restart and adoption.
-  Required for self-hosting, since agents will redeploy the controller.
-- ACP runtime via jcode, resume with `session/load`.
-- Controller tick: start a session when a pool has ready work, restart it
-  if it dies, release a dead session's claims, sweep expired leases.
-- Pinned release binary and promote/rollback on gasserver.
-- **Milestone: Jobshop runs its own agents.** One project (this repo), one
-  pool, agents claim and close tickets directly and deliver via PR as
-  `cog`. From here, new work is filed as Jobshop tickets.
-
-**Phase 3: hardening and visibility** (built by Jobshop agents)
-- Quarantine, idle-kill, drain.
-  - Drain as built (decided 2026-11-01, issue #12): `jobshop drain
-    [--pool P]` and `jobshop undrain [--pool P]` (admin, RPC
-    `controller.drain`). No pool means every pool; `undrain` with no pool
-    clears all drains. The supervisor starts no sessions for a drained
-    pool, and its sessions skip `claim --next`, ending with resolution
-    `drained` once they hold no in_progress ticket. Running turns finish
-    normally. State is controller memory only, so a restart undrains;
-    `session list` shows `drained` per session.
-  - Quarantine as built (decided 2026-11-01, issue #13): a session that
-    ends `crashed` releases its tickets with reason `session crashed`.
-    After 3 such releases (counted from history since the `quarantined`
-    label was last added or removed) the ticket gets defer_until now+1h,
-    label `quarantined`, and a comment listing the session ids and their
-    exit.json reasons. Undo with `ticket update <id> --defer 0` and
-    `label rm <id> quarantined`. A pool with 3 `crashed` sessions within
-    10 minutes starts no sessions for 15 minutes (controller memory, logged
-    as `pool quarantined`).
-- Observability (section 9): OTel traces and logs, Prometheus metrics,
-  conversation export.
-- Messages with queued and interrupt delivery.
-  - As built (decided 2026-11-01, issue #16): `jobshop send <to> <text>
-    [--interrupt]` creates a `message` ticket (first line is the title).
-    The controller sets `from` to the caller; only admin may set another.
-    `to` is a session id, a session key, or `pool:<name>`. The driver
-    delivers before each `claim --next` (so also after every turn): it
-    claims each open message addressed to it (the first session to claim
-    a pool message wins), closes it `delivered`, and sends all of them as
-    one prompt starting `Messages for you:`. Delivery is at most once: the
-    message is closed before the prompt, so the agent never holds it as
-    its current ticket. While a ticket turn runs the driver polls every 2s
-    for interrupt messages; on one it sends `session/cancel`, waits for
-    the turn to end, delivers, then runs the usual unclosed-ticket
-    reminder. The pool-config interrupt permission below is not built.
-- Human attach.
-  - Read-only attach as built (decided 2026-11-01, issue #17): `jobshop
-    session attach <id> [--since <seq>] [--json] [--no-follow]` prints the
-    session's `journal.ndjson` (default: the last 50 frames), then polls
-    the file for new frames until Ctrl-C. The CLI reads the journal file
-    directly instead of streaming it over a new admin RPC. That is simpler
-    (no new method, no backpressure on the controller), and it keeps
-    working while the controller is down, because the host writes the
-    journal itself. It needs read access to the root's `sessions/`, which
-    an admin has anyway. The renderer joins agent message chunks and
-    prints one line per tool call status change, plan entries, and
-    `=== turn` / `=== turn end <stopReason>` boundaries. Tool output
-    deltas and usage updates are skipped. `--json` prints raw frames.
-    Sending prompts into a session is not built.
-- Triggers as built (decided 2026-11-01, issue #26): `triggers:` in
-  jobshop.yaml. Each has a `when` block, a `ticket` template, and an
-  optional `cooldown`. On every supervisor tick (before session
-  supervision, skipped during a full shutdown) the controller fires each
-  trigger whose conditions all hold: no open or in_progress ticket it
-  created, cooldown elapsed since its last ticket closed, cron slot due,
-  and every count threshold met. Count thresholds are
-  `{ready,open,in_progress}_{below,above}` over tickets of `when.pool`,
-  `when.kind` (default task) and `when.label`. Counts read only the store,
-  never GitHub or anything else external. Created tickets carry
-  `meta.trigger = {"name": "<trigger>"}`. Dedup, cooldown (from that
-  ticket's `closed_at`) and cron state (from its `created_at`) are all
-  read back from the store, so no new table is needed and a restart
-  changes nothing. Cron: 5 fields, UTC unless `when.timezone`. The
-  trigger fires on the first tick at or after the first slot after its
-  last ticket was created. Slots missed while the controller was down
-  collapse into one fire on startup. A cron trigger that never fired
-  counts from controller start, so a new trigger does not fire for past
-  slots. Config errors (unknown pool, empty `when`, bad cron or timezone,
-  negative durations or thresholds, missing title) stop the controller
-  from loading. Each fire logs `trigger fired` with trigger and ticket.
-  `jobshop trigger list` shows per trigger whether it would fire now (and
-  if not, why), its open ticket, last fired time and next cron time.
-  Pack names in `meta` are still not validated (#29).
-- Packs as built (decided 2026-11-01, issue #27): `packs:` in jobshop.yaml
-  lists pack directories (`path`, relative to the root, and `vars`). Each
-  holds `pack.yaml` with `agents`, `pools` and `triggers` in the
-  jobshop.yaml schema; other keys are rejected. Merge order: packs in list
-  order, then jobshop.yaml. Later sources win per map key, and inside an
-  agent, pool or trigger per field, recursively through nested maps
-  (`when`, `ticket`, `env`). Lists and scalars replace whole, so a host
-  setting `labels` restates the full list. `${name}` in pack.yaml string
-  values comes from that pack's `vars`; a string that is only `${name}`
-  keeps the var's type (numbers stay numbers), `$$` is a literal `$`, and
-  an unset var is a load error. jobshop.yaml itself is not substituted.
-  `prompt_file` on a pool (pack or jobshop.yaml) is read into `prompt` at
-  load, relative to the declaring file; both set is an error. Prompt
-  changes apply on `jobshop reload` (see below). Validation errors name the files
-  that set the failing entry. `packs/selfdev` ships the dev and plan pools
-  and the `replan` trigger.
-- Config reload as built (decided 2026-11-01, issue #38): `jobshop
-  reload` (admin method `config.reload`) and SIGHUP to `jobshop serve`
-  re-read jobshop.yaml and its packs. A file that fails to load or
-  validate is rejected: the method returns the error, SIGHUP logs it, and
-  the old config stays active. On success the config and lease swap as
-  one atomic pointer. Pool limits (`max_sessions`, triggers) apply from
-  the next supervisor tick (SIGHUP runs one at once), prompts and turn
-  timeouts from the next turn, agent command, args and env from the next
-  spawned host. Running sessions are never stopped; a lowered
-  `max_sessions` only stops new spawns. Live hosts pick up env changes
-  through the env refresh path on the next adoption. Telemetry settings
-  still need a restart (reload logs a warning). The NixOS unit sets
-  `ExecReload` to send SIGHUP; SIGHUP itself is a manual check
-  (`systemctl reload jobshop`, look for `config reloaded` in the log),
-  while tests drive the same reload channel directly.
-- Refinery handoff (decided 2026-11-01, issue #28): dev workers stop at a
-  green PR, comment its URL and head SHA, move the same ticket to the
-  `refinery` pool and release it. `refinery` has `max_sessions: 1`, so the
-  single session serializes merges. It merges with `--match-head-commit`
-  only on green CI, no open review comments and met acceptance criteria,
-  then waits for master CI before closing. It never edits code: changes
-  go back to `dev` as PR and ticket comments, and dev continues on the
-  existing PR branch. Gas City mapping: this is the `gastown.refinery`
-  handoff; its watched gates are replaced by `--defer 5m` polling until
-  GitHub event wakes exist. The `master-red` check named in the issue does
-  not exist yet (triggers read only the store), so the refinery checks
-  master CI itself.
-
-**Phase 4: workflows and runs**
-- Port the formula concepts we use; decide which workflow features to keep.
-- Run creation via graph apply.
-- Only the dispatcher features our workflows need; retry limits live here.
-
-**Phase 5: the rest of our surface**
-- Batches (convoys). Schedules (orders) are done via triggers (phase 3).
-- Admin-socket change subscriptions and an API if the dashboard is ported.
-- Gateway prerequisites (section 10) are already covered by phases 1-3.
-
-**Later**: Postgres backend, against the same conformance suite.
-
-**Isolation (decided 2026-11-01)**: no bwrap or separate agent user at the
-start. Everything runs as the `jobshop` user on gasserver (an isolated OVH
-machine), in its own cgroup slice. Per-session sandboxing (section 8.6)
-stays an option for later.
-
-**Self-hosting setup (decided 2026-11-01)**
-- Host: `gasserver` (isolated OVH machine), next to the live Gas City.
-  Work happens over SSH. No bwrap at the start. (agent-server is a
-  separate machine and not used.)
-- GitHub identity: the `cog` user, with write access to this repo to push
-  branches, open PRs and merge.
-- Isolation from Gas City: own Linux user `jobshop`, own data dir and
-  SQLite file, own controller process, and its own cgroup slice capped at
-  6 cores and 8 GB (decided 2026-11-01), so it cannot starve the live city.
-  Deployment details: `docs/layout.md`.
-- Known-good binary: the NixOS module pins a specific `jobshop` store path.
-  Promotion is bumping the flake input and switching; rollback is the
-  previous generation.
-- Agents work in git worktrees, one per ticket, and deliver via PR.
-- Merge policy: branch protection requires CI. `cog` merges when CI passes,
-  for all changes (decided 2026-11-01). The pinned binary is the safety net.
-- As set up (2026-11-01): agents use the `elee-agent` GitHub App (the same
-  App as Gas City's `agent`), not `cog`. agent-credd on gasserver mints
-  installation tokens for the `jobshop` user scoped to `elee1766/jobshop`
-  only; a `gh` wrapper and git credential helper use them over https.
-  Branch protection and rulesets are unavailable on this private repo's
-  plan, so "merge only on green CI" is enforced by the pool prompt
-  (`gh pr checks --watch` before `gh pr merge --squash`), not by GitHub.
-- Work specs live in GitHub issues (decided 2026-11-01). Issues are filed by
-  elee-agent; a ticket is a thin pointer ("Resolve elee1766/jobshop#N",
-  `meta.github.issue`) that a session claims, heartbeats and closes. The
-  pool prompt tells workers to read the issue, discuss there, and open a PR
-  with `Closes #N`. No issue-to-ticket sync: agents follow instructions, and
-  dependencies stay as ticket edges.
-
-After the milestone, add what self-hosting shows is missing, in the order
-it hurts. Bring over Gas City features only when a real need appears.
-
-## 8. Sessions: host process, hot restart, CLI socket (proposed)
-
-Goal: restart or upgrade the controller without killing agent sessions or
-losing in-flight turns, with no tmux or systemd dependency, and give agents
-a CLI that knows which session it belongs to.
-
-### 8.1 Shape
+## 3. How it works
 
 ```mermaid
 flowchart LR
-  C[controller<br/>user: agent] -- ACP over acp.sock --> H[session-host<br/>user: agent]
-  H -- stdin/stdout pipes --> A[agent process, e.g. jcode ACP<br/>user: jobshop-agent later]
-  A -- jobshop CLI over cli.sock --> H
-  H -- scoped ticket ops --> C
-  C --> S[(SQLite store)]
-  H --> J[(session journal)]
+  CLI[jobshop CLI] -- admin.sock / cli.sock --> C[controller]
+  C --> S[(SQLite)]
+  C -- ACP over acp.sock --> H[session host, one per session]
+  H -- stdio --> A[agent, e.g. jcode acp]
+  A -- jobshop CLI, JOBSHOP_SOCKET --> C
+  H --> J[(journal.ndjson)]
 ```
 
-- One `session-host` process per session. A host bug or crash loses one
-  session, and host upgrades roll out as sessions turn over. Cost is about
-  10 MB per idle host. A single shared daemon would reintroduce a process
-  whose restart kills every session.
-- Prior art (none in Go): hydra-acp (TypeScript, one shared daemon),
-  karet-agentd proposal (Rust, same proxy shape as this), acpx/acpxd
-  (TypeScript/Swift; their PRs document reconnect bugs worth avoiding),
-  aptove-bridge (Rust). ACP drafts: RFD #533 (multi-client attach,
-  `session/detach`) and the session-resume RFD (proxy that journals
-  messages and serves `session/load`). Read hydra-acp and the acpxd PRs
-  before writing the host.
+**Tickets.** One generic graph: tickets with an engine-defined `kind`
+(`task`, `session`, `message`), typed `fields` per kind, and a free-form
+`meta` for pack data the engine never reads. Edges `blocks` and `waits_for`
+gate readiness; `tracks` is informational; parent-child is `parent_id`.
+Claims are atomic with a lease and a fence. Ready means open, unblocked and
+not deferred. Details: `docs/data-model.md`.
 
-### 8.2 Spawning
+**Controller** (`jobshop serve`). The only writer. Serves `admin.sock` for
+humans and tooling, and a per-session `cli.sock` that fixes the caller's
+project and holder. On each supervisor tick it fires triggers, heartbeats
+claims held by driven sessions, sweeps expired leases, and starts sessions
+for pools with ready work beyond their idle sessions, up to `max_sessions`.
 
-- The controller runs `exec.Command("/proc/self/exe", "session-host",
-  <id>)` with `Args[0] = "jobshop"`, `SysProcAttr{Setsid: true}`, stdin
-  from `/dev/null`, stdout/stderr to `<root>/sessions/<id>/host.log`. It
-  does not wait on the child, so the host outlives the controller. No
-  tmux, no systemd, no hand-rolled double fork (decided 2026-11-01).
-- New process, not a fork: Go cannot fork safely, and `os/exec` is
-  fork+exec. The host inherits nothing except what is passed explicitly.
-- `/proc/self/exe` is for correctness, not security: the host runs the
-  exact build of the controller that spawned it, even if the release
-  symlink moves. Security comes from users and file ownership (8.6).
-- Before spawning, the controller writes a session spec to
-  `<root>/sessions/<id>/spec.json`: agent command, args, env, working
-  dir, socket paths, host protocol version, binary path.
-- A host keeps running the build it started with. Keep each release
-  binary until no live host references it; `session reap` reports which
-  are still in use.
+**Session host** (`jobshop session-host`). One detached process per session
+(setsid, no tmux or systemd). It runs the agent on stdio, proxies ACP to
+the controller, journals every frame, caches `initialize`, holds agent
+requests while no controller is connected, and survives controller
+restarts. A restarted controller adopts live hosts and respawns dead ones
+with `session/load`.
 
-### 8.3 What the host does
+**Driver loop** (per session, in the controller). Deliver queued messages,
+`claim --next`, prompt the ticket, check the session no longer holds it
+(else one reminder turn, then release with a 10 minute defer). Idle past
+`idle_timeout` ends the session `idle`; more than 3 restarts in 10 minutes
+ends it `crashed`; turns past `turn_timeout` get `session/cancel`.
 
-1. Reads the spec, writes a pidfile and takes a lock in its session dir.
-2. Starts the agent with pipes on stdin/stdout, `Pdeathsig: SIGKILL`,
-   in its own process group. Marks itself a child subreaper.
-3. Listens on `acp.sock` (controller) and `cli.sock` (agent CLI).
-4. Proxies ACP between `acp.sock` and the agent's pipes. It is not a full
-   ACP client and mostly forwards frames. It parses only:
-   - `initialize`: caches the agent's response and replays it to a
-     reconnecting controller instead of re-initializing the agent.
-   - Agent-to-client requests (permission prompts, fs/terminal calls):
-     held while no controller is connected.
-   - Every agent frame gets a sequence number and is appended to a
-     journal. A reconnecting controller sends its last seen sequence and
-     the host replays the gap.
-   - Optionally, `session/load` served from the journal, so resume works
-     even if the agent does not advertise `loadSession` (karet's idea).
-5. Serves `cli.sock` for the agent's `jobshop` commands (8.5).
-6. Exits when the agent exits, after flushing the journal.
+**Agents and the CLI.** Agents call `jobshop` with `JOBSHOP_SOCKET` set, so
+`jobshop close` closes their current ticket with no ids or flags. Exit
+codes: 3 no work, 4 claim lost, 5 not found, 6 revision conflict, 1 other.
 
-The host holds no ticket or policy logic, so it rarely needs to change.
-Its protocol to the controller is versioned so a new controller can adopt
-hosts started by an old one.
+**Config.** `jobshop.yaml` holds projects, agents, pools, triggers and
+packs. Packs are directories with `pack.yaml` (agents, pools, triggers) and
+prompt files, filled from `vars`. `jobshop reload` or SIGHUP applies config
+without a restart.
 
-### 8.4 Hot restart and leaks
+**Self-development** (`packs/selfdev`):
+- Work specs are GitHub issues on elee1766/jobshop, filed by elee-agent. A
+  ticket is a pointer ("Resolve elee1766/jobshop#N", `meta.github.issue`).
+- `dev` pool: reads the issue, branches `issue-<n>`, builds and tests,
+  opens a PR with `Closes #N`, waits for green CI, then hands the ticket to
+  `refinery`. Out-of-scope findings become new issues.
+- `refinery` pool (1 session): merges handed-off PRs one at a time with
+  `--match-head-commit` on green CI and resolved review, checks master CI
+  after, or routes findings back to `dev` on the same branch.
+- `plan` pool (1 session): reads the `target` issue, ticks verified items,
+  files the next issues and dev tickets with edges, files nothing while
+  more than 6 issues are open, and sends scope changes to `needs-decision`.
+- `replan` trigger: creates a plan ticket when `dev` has no ready work.
 
-Controller restart sequence:
-1. New binary starts, opens the store, takes the controller lock.
-2. Scans `<root>/sessions/*/` and the sessions table. Reconnects to live
-   hosts, renews their lease, replays missed output. Marks unreachable
-   ones dead.
-3. Resumes the normal tick. No sessions are started or stopped until
-   reconciliation finishes.
+## 4. Built so far (phase 3)
 
-None of the leak guards below fire on a controller restart: they tie the
-agent to its host, not to the controller.
+Short list; behavior details are in section 7.
 
-Leak prevention, layered:
-1. Agent cannot outlive host: `Pdeathsig: SIGKILL`, and the host kills its
-   process group on exit.
-2. Agent's own children cannot escape: host is a child subreaper, so
-   orphans reparent to it and die with the group.
-3. Host cannot outlive its usefulness: exits when the agent exits; holds a
-   lease and shuts down if no controller has connected for a configurable
-   window (default around 30 minutes).
-4. Controller reaps unknowns: each host is recorded with PID, process
-   start time and socket. Reconciliation kills hosts with no record (start
-   time checked against `/proc` to avoid PID reuse) and removes stale
-   records and sockets. The pidfile written before the record covers the
-   spawn-then-crash window.
-5. Visible: `jobshop session list --all` shows store vs live processes;
-   `jobshop session reap` cleans up.
-   (2026-11-01) `session list` is implemented (admin socket, method
-   `session.list`). Each session ticket (open and in-progress by default,
-   closed too with `--all`) is joined with its session dir: `alive`
-   (`host.Alive`), `host_pid` (host.pid), `agent_pid` (from the host's
-   welcome, known once this controller connected), `current` (the ticket
-   it holds), `seq` / `seq_time` (last journal frame) and `exit` (exit.json
-   reason, dead hosts only). Directories under `<root>/sessions/` with a
-   live host and no open session ticket are listed with `orphan: true`;
-   so is a closed session whose host still runs.
-   (2026-11-01) `session reap` is implemented (admin socket, method
-   `session.reap`). It stops every host whose session directory has no
-   open session ticket, the same rule `reapOrphans` applies at startup.
-   With `--closed` it also deletes the directories of sessions closed more
-   than `--older-than` ago (default 24h), removing the pool's git worktree
-   first. A directory whose host is still alive after the stop is kept for
-   a later run. Open sessions are never touched. `--dry-run` reports the
-   same `stopped` / `removed` lists without acting.
-   (2026-11-01, issue #37) `session restart <id>` (admin socket, method
-   `session.restart`) restarts one session's host. The runner stops the
-   host the same way as an env refresh and respawns it at once with a
-   freshly built spec (agent command, args, env), resuming the
-   conversation with `session/load`. Claims the session holds are kept
-   (the supervisor keeps heartbeating them) and the new host is prompted
-   with a held ticket again. A busy session restarts after its current
-   turn, before the end-of-turn reminder; `--now` cancels the turn with
-   `session/cancel` first. It is logged and traced as `session
-   restart_requested`, not counted as a crash (`session list` now shows
-   `crashes`, the unplanned restarts in the crash window). Unknown, closed,
-   non-session and external (no controller-driven host) ids are errors.
-   The spec is built from the live config, so after `jobshop reload`
-   (#38) a restart applies changed agent args or env to one session.
+- Drain and undrain (#12), quarantine of crash-looping tickets and pools
+  (#13), env refresh after deploys (#11), rate-limit backoff (#10).
+- Prometheus metrics (#14), OTel traces and slog bridge (#15).
+- Messages with queued and interrupt delivery (#16), read-only attach (#17).
+- Triggers: store counts, cron, dedup and cooldown (#26).
+- Packs and `packs/selfdev` (#27), refinery handoff (#28).
+- Config reload (#38), `session restart` (#37).
 
-Not planned: upgrading a running host in place (re-exec preserving fds).
-Possible later; see the Pdeathsig thread caveat noted in discussion.
+## 5. What's next
 
-As built in phase 2 (decided 2026-11-01):
-- The CLI socket stays in the controller, not the host. The host only
-  proxies ACP. Agent CLI calls fail while the controller restarts, and
-  agents retry; this kept the host small (one stdio pipe, one socket).
-- Host files in `sessions/<id>/`: `spec.json`, `host.lock` (flock; held
-  means alive), `host.pid`, `host.log`, `acp.sock`, `journal.ndjson` (every
-  frame with a seq), `exit.json`. The host rewrites request ids so a new
-  controller never collides with an old one, caches the `initialize`
-  result, re-sends unanswered agent requests to a new controller, and
-  reports a prompt that finished while detached as `_jobshop/turn_end`.
-- Stopping a host is SIGTERM to its pid (it forwards to the agent group,
-  SIGKILL after 5s); the controller SIGKILLs the host after 10s.
-- Reconciliation on start: open session tickets are adopted (live host) or
-  restarted (new host, `session/load` if advertised, else a new
-  conversation). Hosts in `sessions/` with no open ticket are stopped.
-  Item 4 above (records with PID start time) and `session reap` are not
-  built; the flock replaces the PID-reuse check.
-- Env refresh (decided 2026-11-01, issue #11): `spec.json` carries
-  `env_hash`, a sha256 of the agent's full env (the controller env the host
-  inherits, then the spec env). When adopting a live host the controller
-  computes the hash a new host would get; if it differs and the session is
-  idle (no in_progress ticket, host not busy) it stops the host and the
-  runner respawns it at once with the new spec, resuming the conversation
-  with `session/load`. A busy session is refreshed after its current turn.
-  Refreshes are logged (`refreshing host env`) and do not count as crashes.
-  Hosts spawned before this have no hash, so they are refreshed once.
-- Driver loop per session: `claim --next` as the session, prompt the
-  ticket, then check the session no longer holds it. If it does, one
-  reminder turn, then release with a 10 minute deferral. No work for
-  `idle_timeout` (default 5m) ends a pool session (`idle`); more than 3
-  restarts in 10 minutes ends it (`crashed`). Turns over `turn_timeout`
-  (default 2h) get `session/cancel`.
-- Provider rate limits (decided 2026-11-01, issue #10): a prompt error
-  whose message has `429`, `rate_limit` or `is unavailable` is not a
-  crash. The session keeps its host and claims (heartbeats continue) and
-  retries the same prompt after 1m, doubling to 15m, reset on success.
-  While any session of a pool backs off the supervisor starts no new
-  sessions for that pool. `session list` shows `backoff_until`.
-- Permission requests are auto-approved (allow_always, else allow_once).
-  fs and terminal client methods are not offered.
-- Supervisor tick: heartbeat claims held by driven sessions, then per pool
-  start sessions while ready work exceeds open sessions, up to
-  `max_sessions`. Sessions whose agent is not in the config are external
-  (a human runs an agent with `JOBSHOP_SOCKET`) and are not driven.
-- `jobshop shutdown` leaves sessions running for the next controller;
-  `shutdown --all` ends every session first.
-- With `repo` set, each session gets `git worktree add --detach` of `ref`
-  at `sessions/<id>/work`, removed when the session ends.
-- `jcode acp` by default runs tools in the shared user daemon, which does
-  not inherit the agent's env (`JOBSHOP_SOCKET`, `PATH`). Configure it as
-  `jcode acp --socket ${SESSION_DIR}/jcode.sock`: a private daemon per
-  session that inherits the env and exits with the session (verified
-  2026-11-01). Agent args expand `${SESSION_DIR}`.
-- `defer_until` gates only automatic pickup (`claim --next`, ready). A
-  claim by id ignores it, as in Gas City (decided 2026-11-01): ids are
-  deliberate, usually the session finishing its own work. Clear a hold with
-  `jobshop ticket update <id> --defer 0`.
+**Phase 3** (remaining items on #36):
+- `master-red` check trigger: a command condition that files one fix
+  ticket per failing master SHA (#34).
+- Refinery dry run on real PRs, and one full planner cycle on gasserver.
+- Restart, env refresh and backoff verified on gasserver with no `crashed`
+  sessions.
+- Host backpressure: a slow or absent controller never blocks the agent or
+  grows host memory without bound.
+- `session/load` fallback from the host journal for agents that cannot
+  load a conversation.
+- gasserver scrapes `/metrics` and ships traces; a Grafana dashboard.
+- Conversation export (section 7.8).
+- Validate meta pack names (#29), `jobshop config show` (#32).
+- Done when every box on #36 is checked, master CI is green, and the pool
+  runs 24h without a manual fix.
 
-Recovery below the host:
-- Agent or host died: start a new agent and resume with `session/load`
-  (agent-native if advertised, else from the host journal). Recovers
-  conversation, not in-flight tool calls.
-- Everything lost: work state is in tickets; the replacement session
-  re-claims via `claim --next`.
+**Phase 4: workflows and runs.** Port the formula concepts we actually use
+(PR work, CI repair, blocker assessment), create runs with graph apply, and
+build only the dispatcher features those workflows need. Retry limits live
+here. Decide scope from the workflows we run, not from Gas City.
 
-### 8.5 CLI over sockets
+**Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
+and an API if a dashboard needs one. Schedules are already covered by cron
+triggers.
 
-- Agent-facing `jobshop` commands never open the database. They talk to a
-  socket.
-- The host starts the agent with `JOBSHOP_SOCKET=<root>/sessions/<id>/cli.sock`.
-  Every `jobshop` call from the agent and its subprocesses inherits it.
-- The socket identifies the session, so calls inherit its holder,
-  current ticket, project, pool and worktree. `jobshop close` with no
-  arguments closes the session's current ticket. No `--holder` or
-  `--session` flags in prompts.
-- The host forwards requests to the controller tagged with the session;
-  the controller enforces scope: only this session's tickets plus what the
-  pool's config allows.
-- Humans and the controller's own tooling use an admin socket
-  (`<root>/admin.sock`, owned by `agent`, `0700`) with full access. The CLI
-  uses it when `JOBSHOP_SOCKET` is unset.
-- Build this in phase 1, since retrofitting direct-DB CLI calls is the
-  expensive part.
-- As built in phase 1 (decided 2026-11-01):
-  - Until the session host exists, the controller itself listens on each
-    open session's `cli.sock` and tags calls with that session. In phase 2
-    the host owns the socket and forwards, with the same scope rules.
-  - "Current ticket" is derived, not stored: the session's single
-    in-progress claim. Holding zero or several means the id is required.
-  - Session scope: project and holder are fixed by the socket; sessions
-    cannot assign, reopen, create sessions or shut down. Closing a session
-    ticket removes its socket and releases everything it held.
-  - Exit codes for agents: 3 no work, 4 claim lost / not holder,
-    5 not found, 6 revision conflict, 1 anything else.
+**Later.** Postgres backend against the same conformance suite. A chat
+gateway (section 8). Per-session isolation (section 7.9).
 
-### 8.6 Users and security
+Rule for adding features: add what running the system shows is missing, in
+the order it hurts. Bring over Gas City features only for a real need.
 
-- Now: controller, hosts and agents all run as the `jobshop` user inside
-  its own slice on gasserver (decided 2026-11-01).
-  Accepted risk: an
-  agent can do anything the controller can (edit the store, replace
-  binaries, signal processes, connect to other sessions' sockets). Socket
-  scoping guards against mistakes, not hostile agents.
-- Later, if needed: agents run as a separate user,
-  `jobshop-agent`. The host starts the agent via a narrow sudoers rule
-  (`agent` may run only the agent command as `jobshop-agent`, NOPASSWD;
-  on NixOS via `security.sudo.extraRules`). The data dir, store, binaries
-  and admin socket stay `agent`-owned and `0700`, so agents cannot touch
-  them and cannot ptrace or signal the controller or hosts.
-  Needs: worktrees owned by or group-shared with `jobshop-agent`, and
-  `cog` git credentials and model-provider auth readable by it.
-- Later, if needed: per-session isolation (agents can still read each
-  other's worktrees and sockets under one shared user). Options: the host
-  starts each agent under bubblewrap (no root; read-only system and
-  toolchain, read-write worktree, its own CLI socket, network on),
-  Landlock applied by the host, or a pool of agent users. bwrap also
-  removes the need for the separate `jobshop-agent` user and sudoers rule.
+## 6. Decisions
 
-### 8.7 Libraries
+All dated 2026-11-01 unless noted.
 
-- Decided 2026-11-01: `github.com/coder/acp-go-sdk` on both sides
-  (`AgentLoader` for `session/load`). The same package's `Connection`
-  already carries the CLI and admin sockets, so there is one JSON-RPC
-  implementation in the binary. The host may use only its framing; the
-  controller uses the client side.
-- Gas City's `internal/runtime/acp` is a hand-rolled JSON-RPC client;
-  useful as reference for edge cases, not as a dependency.
+**Scope and principles**
+- No role names in Go. Roles (planner, worker, refinery) are pool config
+  and prompts. Go handles transport, not judgment.
+- Work persists in tickets; sessions are disposable. Recovery re-reads
+  state. No status files.
+- No observer agents shipped. Their Gas City duties (dead-session release,
+  lease sweep, idle-kill, quarantine, alerts) are deterministic controller
+  work. Observer-style pools stay possible as config.
+- Plain names, no themed vocabulary (section 9 maps Gas City terms).
+- `gx` stays a separate client of the CLI and admin socket.
+- Copy Gas City code only where it is self-contained and readable;
+  otherwise reference only. No vendoring.
 
-### 8.8 Build order
+**Store**
+- One database per install; `project` is a column. No storage classes or
+  split stores.
+- Generic ticket graph with engine kinds, typed fields per kind, `meta`
+  grouped by pack name. Packs declare no schemas.
+- Driver `modernc.org/sqlite` (pure Go, no cgo). Queries via sqlc.
+- Ticket ids: project prefix plus a Sonyflake id in 13-character Crockford
+  base32, e.g. `js-0031w02j0r012`.
+- The controller releases a dead session's claims as soon as it knows; the
+  lease is a backstop and expiry returns the ticket to `open`.
+- Comments have their own table; `history` is an audit log, not an event
+  stream. No event bus.
+- `defer_until` gates only automatic pickup. A claim by id ignores it.
+  Clear a hold with `ticket update <id> --defer 0`.
 
-- The CLI socket and the session host are both required for the
-  self-hosting milestone (phase 2), since agents will redeploy the
-  controller.
-
-### Decided (2026-11-01)
-- jcode's ACP server supports `session/load`, so resume after an agent or
-  host death uses it directly. Journal-backed `session/load` in the host is
-  not needed for jcode; keep it only as a fallback for agents without it.
-- When the host's buffer is full and no controller is connected, it stops
-  reading the agent's stdout (backpressure pauses the agent). It never
-  drops data.
+**Controller, host and CLI**
+- Every write goes through the controller; the CLI never opens the
+  database.
+- One host process per session, spawned from `/proc/self/exe` with setsid.
+  No tmux, systemd units or double fork. Upgrading a running host in place
+  is not planned.
+- The CLI socket lives in the controller, not the host. Agent CLI calls
+  fail during a controller restart and agents retry.
+- JSON-RPC 2.0 with NDJSON framing on every socket, using
+  `github.com/coder/acp-go-sdk` for both ACP and the CLI/admin sockets.
+- Resume uses the agent's `session/load` (jcode supports it). A journal
+  fallback is only for agents without it.
+- Backpressure: when the host's buffer is full and no controller is
+  connected, it stops reading the agent's stdout, pausing the agent. It
+  never drops data.
+- A message to an idle session wakes it at once. Interrupt is a pool
+  permission: humans and coordinator pools may interrupt, workers only
+  queue.
 - Orphaned host lease: 30 minutes without a controller connection.
-- CLI socket protocol: JSON-RPC over the acp-go-sdk connection (section 5).
+- Permission requests are auto-approved. fs and terminal client methods
+  are not offered.
+- `jcode acp --socket ${SESSION_DIR}/jcode.sock`: a private jcode daemon
+  per session, because the shared user daemon does not inherit the
+  session's env (`JOBSHOP_SOCKET`, `PATH`).
+- Human attach is read-only: the CLI tails the journal file. Writing into
+  a session is a later, config-gated addition.
 
-- Human attach (decided 2026-11-01): read-only to start (tail the
-  journal). The attach protocol includes an input method from day one,
-  disabled by config, so enabling write access later needs no protocol
-  change.
+**Delivery and self-hosting**
+- Host: gasserver, as Linux user `jobshop` in `jobshop.slice` (6 cores,
+  8 GB), next to the live Gas City. No bwrap or separate agent user yet.
+- GitHub identity: the elee-agent GitHub App. agent-credd mints
+  installation tokens for `jobshop` scoped to elee1766/jobshop; a `gh`
+  wrapper and git credential helper use them over https.
+- Work specs live in GitHub issues; tickets are pointers. No
+  issue-to-ticket sync: agents follow prompt instructions, and
+  dependencies stay as ticket edges.
+- Workers hand green PRs to the refinery; only the refinery merges.
+  Branch protection is unavailable on this plan, so "merge only on green
+  CI" is enforced by prompts.
+- Promotion: bump the `jobshop` flake input in gasserver.nix and switch.
+  Rollback: the previous NixOS generation. Promotion is manual.
+- Prompts ship in `packs/selfdev` inside the deployed source, so prompt
+  and binary versions match.
+- Triggers and the controller make no GitHub calls. GitHub state is read
+  by agents through `gh`, or by a trigger's check command.
 
-### Open questions
-- None currently.
+**Build**
+- Plain `go` for development and CI, Nix flake for the package and NixOS
+  module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, `nix build`.
+- YAML config. Every new dependency has its reason recorded in
+  `docs/layout.md`.
 
-## 9. Observability (proposed)
+## 7. Reference: behavior as built
 
-Decided 2026-11-01: full OpenTelemetry tracing and logging, Prometheus
-metrics, and opt-in export of ACP conversation content. This replaces Gas
-City's `internal/events` JSONL bus for observability purposes.
+### 7.1 Session files and restart
 
-**Operational telemetry (always available, configured in YAML)**
-- Traces: OTel SDK, OTLP exporter. Spans for controller ticks, socket
-  requests (CLI and admin), store transactions, session lifecycle (spawn,
-  adopt, restart, reap), and claim/heartbeat/close. Trace context is
-  propagated over the CLI socket, so an agent's `jobshop close` shows up
-  under its session's trace.
-- Logs: `log/slog` with an OTel bridge, so logs carry trace and span ids.
-  JSON to stderr/file by default, OTLP when configured.
-- Metrics: Prometheus `/metrics` on a configurable listen address (OTel
-  metrics SDK with the Prometheus exporter, so OTLP push is also possible).
-  Starting set: sessions by pool/state, session restarts, queue depth and
-  ready count per pool, claim latency, lease expiries, ticket closes by
-  resolution, store transaction latency, host reconnects and replay size,
-  conversation export drops.
-  Built 2026-11-01 (issue #14): `telemetry.metrics_listen` (empty = off)
-  serves `/metrics` from `jobshop serve`. Series: `jobshop_sessions`
-  (gauge, pool and `jobshop.session.state` idle/working/backoff),
-  `jobshop_session_restarts_total`, `jobshop_tickets_ready` (gauge per
-  pool, supervisor tick), `jobshop_claims_total`, `jobshop_closes_total`
-  (pool, kind, `jobshop.resolution`), `jobshop_lease_expiries_total`,
-  `jobshop_rpc_duration_seconds` (histogram by `rpc.method`). Ticket and
-  session ids stay off metrics to keep cardinality bounded.
-  Traces and logs built 2026-11-01 (issue #15): `telemetry.otlp_endpoint`
-  (OTLP/HTTP base URL, empty = no export) sends spans to `/v1/traces` and,
-  through the otelslog bridge, controller logs to `/v1/logs` with trace
-  and span ids; stderr logging is unchanged. Spans: `supervisor tick`,
-  `rpc <method>` per socket request (`rpc.method`, `jobshop.actor`, and
-  session, pool, project for session sockets), and session lifecycle
-  `session spawn|adopt|restart|end`. Each session gets a trace at
-  creation: a short root span `session` whose traceparent is stored in the
-  session fields (`traceparent`) so lifecycle spans after a controller
-  restart join the same trace, and passed to the agent as
-  `JOBSHOP_TRACEPARENT`. The CLI sends it as `_meta.traceparent` in
-  request params; the controller strips `_meta` before decoding and
-  parents the request span on it. Store transaction spans are not built.
-- Common attributes: `jobshop.project`, `jobshop.pool`,
-  `jobshop.session.id`, `jobshop.ticket.id`, `jobshop.kind`.
+Files in `sessions/<id>/`: `spec.json`, `host.lock` (flock; held means
+alive), `host.pid`, `host.log`, `acp.sock`, `journal.ndjson`, `exit.json`,
+and `work/` (git worktree when the pool sets `repo`).
 
-**Conversation export (opt-in, off by default)**
-Same scope as our Gas City branch's `internal/convtel`
-(`docs/guides/conversation-telemetry.md` in the fork): ACP content as OTLP
-logs and traces for later analysis in a log store. Rebuilt on the OTel Go
-SDK, sharing providers and exporters with operational telemetry; convtel's
-hand-rolled OTLP/HTTP code is not reused (decided 2026-11-01). Its doc is a
-reference for record shapes and redaction rules only.
-- Enabled per pool, with a global default (decided 2026-11-01):
+- The host rewrites request ids so a new controller never collides with an
+  old one, re-sends unanswered agent requests to a new controller, and
+  reports a prompt that finished while detached as `_jobshop/turn_end`.
+- Stopping a host: SIGTERM (forwarded to the agent's group, SIGKILL after
+  5s); the controller SIGKILLs the host after 10s.
+- Leak guards: the agent gets `Pdeathsig: SIGKILL` and its own process
+  group; the host is a child subreaper; the host exits with its agent and
+  after 30 minutes with no controller.
+- Controller start: open session tickets are adopted (live host) or
+  respawned (`session/load`); hosts with no open session are stopped.
+- Prompts use `context.WithoutCancel`, and stopping the controller closes
+  the connection instead of cancelling requests, so turns keep running in
+  the host.
+- Git: `fetch` then `worktree add --detach <ref>` per session, removed when
+  the session ends; git calls on one repo are serialized.
+- `${SESSION_DIR}` expands in agent args.
 
-  ```yaml
-  telemetry:
-    conversation_export:
-      default: false
-  pools:
-    worker:
-      conversation_export: true   # overrides the default
-  ```
+### 7.2 Env refresh and session restart (#11, #37)
 
-  The controller resolves the setting at spawn and writes it into the
-  session spec, so the host does not read config. Changing it applies to
-  new sessions.
-- Emitted by the session host, which already sees every ACP frame. One
-  trace per session, spans per turn and per tool call, log records for
-  prompts, assistant messages, provider-exposed reasoning, tool calls and
-  results, permission requests and replies, lifecycle.
-- Records carry ticket, project, pool, agent, model and ACP session id, so
-  a query can pull the full context of how a ticket was worked.
-- Keep convtel's safety properties: separate explicit opt-in from
-  operational telemetry, redaction before enqueue (secret-named keys,
-  launch-env secret values, and credential patterns via gitleaks' detector
-  and default rules), per-field size cap with a
-  truncation marker, bounded non-blocking queues with drop counters, export
-  failures never affect a session, stable event ids for dedupe.
-- Destination: user-configured OTLP endpoints, not Jobshop's concern which
-  backend stores them (decided 2026-11-01). No loopback restriction.
-- The host's journal remains the record of truth; export is best effort.
+`spec.json` carries `env_hash`, a sha256 of the agent's full env (inherited
+controller env minus per-start systemd variables, then the spec env). When
+adopting a live idle host whose hash differs, the controller stops it and
+respawns it at once with `session/load`; a busy session refreshes after its
+turn. `jobshop session restart <id>` does the same on demand, keeping
+claims; `--now` cancels the running turn first. Neither counts as a crash.
+A respawned host's stale `exit.json` is removed before spawn, and an
+adopted host whose agent never initialized is treated as fresh, so the
+conversation is always loaded.
 
-**Exporter configuration**
-- Per-signal full endpoint URLs (traces, logs, metrics), headers, and
-  protocol (`http/protobuf` default, `grpc` optional). Per-signal URLs are
-  required because some backends use non-standard paths (VictoriaMetrics
-  stack below); the Go SDK's `WithEndpointURL` supports this.
-- Standard `OTEL_EXPORTER_OTLP_*` env vars are honored as fallbacks.
-- Prometheus `/metrics` is always available for scraping regardless.
+### 7.3 Rate limits, drain, quarantine (#10, #12, #13)
 
-```yaml
-telemetry:
-  otlp:
-    traces:  { endpoint: http://127.0.0.1:10428/insert/opentelemetry/v1/traces }
-    logs:    { endpoint: http://127.0.0.1:9428/insert/opentelemetry/v1/logs,
-               headers: { VL-Stream-Fields: "service.name,jobshop.pool" } }
-    metrics: { endpoint: http://127.0.0.1:8428/opentelemetry/v1/metrics }
-  prometheus:
-    listen: 127.0.0.1:9464
-  conversation_export:
-    default: false
-```
+- A prompt error mentioning `429`, `rate_limit` or `is unavailable` is not
+  a crash: the session keeps host and claims and retries the same prompt
+  after 1m, doubling to 15m. While any session of a pool backs off, no new
+  sessions start for it. `session list` shows `backoff_until`.
+- `jobshop drain [--pool P]` / `undrain`: no new sessions or claims for the
+  pool; running turns finish and sessions end `drained`. Controller
+  memory only, so a restart undrains.
+- A `crashed` session releases its tickets with reason `session crashed`.
+  After 3 such releases a ticket is deferred 1h and labeled `quarantined`
+  with a comment listing the exits. Undo: `ticket update <id> --defer 0`
+  and `label rm <id> quarantined`. A pool with 3 crashed sessions in 10
+  minutes starts none for 15 minutes; the pause is set before the release.
 
-**Our deployment (gasserver)**: VictoriaLogs for logs and conversation
-export, VictoriaTraces for traces, VictoriaMetrics for metrics (scrape
-`/metrics` or OTLP push). All three accept OTLP/HTTP directly, so no
-collector is required. VictoriaTraces is documented upstream as not yet
-production-ready; acceptable for our own use. Exact paths to verify
-against the installed versions.
+### 7.4 Messages (#16)
 
-### Open questions
-- None currently. Backend choice is deployment config, not design.
+`jobshop send <to> <text> [--interrupt]` creates a `message` ticket; `to`
+is a session id, a session key, or `pool:<name>`. The driver delivers
+before each `claim --next`: it claims and closes each message (`delivered`,
+at most once) and sends them as one prompt starting `Messages for you:`.
+During a turn it polls for interrupt messages and on one sends
+`session/cancel`, delivers, then continues. The pool-level interrupt
+permission is not built.
 
-## 10. Chat gateway (future, design must not preclude)
+### 7.5 Attach and session admin (#17)
 
-**Not a priority and not scheduled in any phase** (decided 2026-11-01).
-This section exists so the earlier design keeps it implementable. Only the
-"What this requires now" items below affect current work; everything else
-here is a sketch to revisit when the gateway is actually built.
+- `jobshop session attach <id> [--since <seq>] [--json] [--no-follow]`
+  renders the journal file and follows it; works while the controller is
+  down.
+- `session list` joins session tickets with their dirs: `alive`, pids,
+  current ticket, last journal seq, `exit`, `crashes`, `backoff_until`,
+  orphans.
+- `session reap` stops hosts with no open session; `--closed` also deletes
+  old closed session dirs.
+- `shutdown` leaves sessions running; `shutdown --all` ends them first.
 
-A human-facing way into the system, modeled on Hermes Agent's messaging
-gateway: one long-lived session per chat conversation (room, DM or thread).
+### 7.6 Triggers (#26)
 
-- `jobshop gateway` is a separate process and an ordinary client of the
-  controller's admin socket. No gateway code in the controller.
-- Platform adapters (Matrix first, given existing encrypted relays) map a
-  conversation to a session key, e.g. `matrix:<room>`.
-- Chat sessions belong to a pool that is not ticket-driven: the controller
-  keeps one session per active key, starts it on the first message,
-  idle-kills it, and resumes it later via `session/load` / the host
-  journal.
-- The gateway sends "deliver message to session key X" and streams
-  updates back. The controller stays the only ACP client of each host.
-- Permission prompts are relayed to the chat; the host already holds them
-  until answered.
-- A chat session's agent uses the same `jobshop` CLI via its `cli.sock`,
-  with scope from its pool config. A coordinator pool can assign tickets,
-  read status, and send messages (mail) to worker sessions. This is how
-  the mayor role comes back: as config, from chat.
-- Per-adapter user allowlists; YAML maps rooms to pools/agents.
+`triggers:` entries have `when`, a `ticket` template and an optional
+`cooldown`. Each tick the controller fires a trigger when all hold: no open
+ticket it created (`meta.trigger.name`), cooldown passed since its last
+ticket closed, cron slot due, every count threshold met. Thresholds are
+`{ready,open,in_progress}_{below,above}` over `when.pool`, `when.kind`
+(default task) and `when.label`. State is read back from the store, so
+restarts change nothing. Cron is 5-field, UTC unless `when.timezone`;
+missed slots collapse into one fire, and a new trigger does not fire for
+past slots. `jobshop trigger list` shows whether each would fire and why.
+Planned (#34): a `check` command condition with an optional dedup key.
 
-What this requires now, so it can be added later without redesign:
-1. The admin socket API covers: list sessions, start a session by key,
-   send input to a session, subscribe to its updates, answer permission
-   prompts. The gateway, the CLI and any future dashboard all use it.
-2. Pools have a type (ticket-driven vs keyed/on-demand) from the start.
-3. Messages are store-backed and addressed to sessions, pools or keys, so
-   a chat session can mail a worker and a worker's reply can surface in
-   chat.
+### 7.7 Packs and reload (#27, #38)
 
-Message delivery to a busy session (decided 2026-11-01):
-- Default: queue. The message is delivered at the start of the
-  recipient's next turn (or by the host as a new prompt once the current
-  turn ends).
-- Course correction: a sender may mark a message `--interrupt`. The
-  controller sends ACP `session/cancel` for the in-flight turn, waits for
-  the turn to end (falling back to SIGINT after a timeout, as Gas City
-  does), then sends a new prompt carrying the correction plus a short note
-  that the previous turn was interrupted. Work state is unaffected: the
-  ticket stays claimed, and the agent continues from the correction.
-- Interrupt is a permission in pool config: humans and coordinator pools
-  may interrupt; workers may only queue by default.
-- Chat: a plain chat message to a busy session queues; a marked message
-  (e.g. a `/steer` or `!` prefix) interrupts.
+`packs:` lists `path` (relative to the root) and `vars`. `pack.yaml` holds
+`agents`, `pools`, `triggers`; other keys are rejected. Merge: packs in
+order, then jobshop.yaml; later sources win per key and per field through
+nested maps; lists and scalars replace whole. `${name}` comes from the
+pack's vars (a bare `${name}` keeps the var's type, `$$` is a literal `$`,
+unset is an error); jobshop.yaml is not substituted. `prompt_file` is read
+relative to its declaring file. `jobshop reload`/SIGHUP swaps the config
+atomically or keeps the old one on error: pool limits and triggers apply on
+the next tick, prompts and timeouts on the next turn, agent command and env
+on the next host. Telemetry changes need a restart.
 
-- A message to an idle worker wakes it immediately (decided 2026-11-01).
+### 7.8 Observability (#14, #15)
 
-Decided 2026-11-01: one session per room or thread, shared by everyone in
-it.
+- `telemetry.metrics_listen` serves `/metrics`: `jobshop_sessions` (by
+  pool and state idle/working/backoff), `jobshop_session_restarts_total`,
+  `jobshop_tickets_ready`, `jobshop_claims_total`, `jobshop_closes_total`,
+  `jobshop_lease_expiries_total`, `jobshop_rpc_duration_seconds`. No ticket
+  or session ids on metrics.
+- `telemetry.otlp_endpoint` sends traces and slog logs over OTLP/HTTP.
+  Spans: `supervisor tick`, `rpc <method>`, session lifecycle. Each session
+  has one trace; its traceparent is stored on the session and passed to
+  the agent as `JOBSHOP_TRACEPARENT`, and the CLI propagates it.
+- Planned: per-signal endpoint URLs and headers (VictoriaMetrics paths),
+  store transaction spans, and conversation export: opt-in per pool,
+  emitted by the host as OTLP logs, with redaction (secret-named keys,
+  launch-env values, gitleaks rules), per-field caps, bounded queues with
+  drop counters, and failures that never affect a session. Same scope as
+  `internal/convtel` in our Gas City fork, rebuilt on the OTel SDK. The
+  journal stays the record of truth.
+- gasserver backends: VictoriaMetrics, VictoriaLogs, VictoriaTraces, all
+  OTLP/HTTP, no collector.
 
-## 11. Risks
+### 7.9 Users and security
 
-- Rebuilding session supervision and claim recovery means rediscovering edge
-  cases Gas City already hit. Read its git history and incident notes
-  (`engdocs/contributors/reconciler-debugging.md`, `health-patrol.md`) before
-  writing the controller.
+Controller, hosts and agents all run as `jobshop`. Accepted risk: an agent
+can do anything the controller can; socket scoping guards against mistakes,
+not hostile agents. Later options if needed: agents as a separate user via
+a narrow sudoers rule, or per-session bubblewrap or Landlock applied by the
+host (read-only system, writable worktree, own CLI socket).
+
+## 8. Chat gateway (future)
+
+Not scheduled. A separate `jobshop gateway` process, an ordinary
+admin-socket client, maps chat conversations (Matrix first) to keyed
+sessions in a pool that is not ticket-driven, one session per room or
+thread. Messages to a busy session queue; a marked message interrupts. A
+coordinator chat session can assign tickets and message workers, which is
+how a Gas City mayor role would return as config.
+
+To keep it possible: the admin API should cover list sessions, start by
+key, send input, subscribe to updates and answer permission prompts; pools
+gain a keyed type; messages stay store-backed and addressed to sessions,
+pools or keys.
+
+## 9. Gas City mapping
+
+| Gas City | Jobshop |
+|---|---|
+| Bead | Ticket |
+| Controller loop, health patrol | Controller |
+| Rig | Project |
+| Agent, pool, session, pack | same |
+| Formula / molecule | Workflow / run (phase 4) |
+| Sling | Assign |
+| Claim, holder (not assignee) | Claim, `holder` |
+| Order | Trigger |
+| Convoy | Batch (phase 5) |
+| Mail | Message |
+| Refinery | `refinery` pool in `packs/selfdev` |
+| Gate (watched wake) | Defer polling for now |
+| Event log | None: ticket `history` plus OTel |
+
+Live city usage that shaped this (gasserver, 2026-11-01): jcode via ACP for
+every agent; worker pools of 1-6 per rig, a single-session refinery per
+rig, a coordinator on demand; formulas for PR work, CI repair and blocker
+assessment; a few local orders (hourly blocked revalidation, main CI
+repair as a condition check). Agents mostly call claim, heartbeat, update,
+mail and session commands.
+
+## 10. Risks
+
+- Rebuilding supervision rediscovers edge cases Gas City already hit. Read
+  its history (`engdocs/contributors/reconciler-debugging.md`,
+  `health-patrol.md`) before changing the controller.
+- Self-hosting: a bad controller change can stop the agents that would fix
+  it. The pinned binary and NixOS rollback are the fallback.
+- Prompt-only guarantees (merge on green CI, scope, issue caps) depend on
+  agents following instructions.
 - Scope creep toward Gas City parity.
-- Self-hosting failure: a bad change to the controller can stop the agents
-  that would fix it. Needs a known-good binary to fall back to.
 
-## 12. Alternatives considered
+## 11. Alternatives considered
 
-- **Keep extending `sqlite-work` in the Gas City fork.** Lowest short-term
-  cost. Merge drag grows, and the packs still assume `bd`'s CLI.
-- **Hard fork and prune Gas City.** Delete `bd`/Dolt, make sqlite the only
-  store, make `gc bd` native. Keeps the controller's edge-case handling.
-  Medium one-time cost.
-- **Fork `bd` with a SQLite backend.** `bd` has a backend plug-in point
-  (`internal/storage/backends`), but the `DoltStorage` interface is large
-  (about 100 methods across 15 interfaces) and the SQL is Dolt-flavored.
-- **`beads_rust` (`br`).** Maintained, SQLite + JSONL, but follows classic
-  beads: no molecules, different JSON shapes.
-- **Gas City `file` provider.** Same CLI gap as `sqlite-work`, and documented
-  as for local trials only.
+- Keep extending `sqlite-work` in the Gas City fork: cheapest now, but
+  merge drag grows and packs still assume the `bd` CLI.
+- Hard-fork and prune Gas City: keeps its controller edge cases, medium
+  one-time cost.
+- Fork `bd` with a SQLite backend: its storage interface is about 100
+  methods with Dolt-flavored SQL.
+- `beads_rust`, Gas City's `file` provider: no molecules or the same CLI
+  gap.
 
-## 13. References
+## 12. References
 
-Gas City (fork checkout `~/repo/github.com/elee1766/gascity`):
-- `AGENTS.md`: design principles, primitives, layering invariants.
-- `engdocs/architecture/nine-concepts.md`, `controller.md`, `dispatch.md`,
-  `health-patrol.md`, `glossary.md`.
-- `docs/reference/specs/formula-spec-v2.md`: formulas, control tickets, gates.
-- `docs/reference/sqlite-work-provider.md`: our SQLite provider.
-- `internal/beads/beads.go`: `Store` interface and `Bead` type.
-- `internal/beadmeta`: metadata key conventions.
-
-Live city (gasserver, read via `/home/a/gfx/scripts/as-agent.sh`):
-- `/home/agent/gc/city.toml`, `prompts/`, `formulas/`, `ops/`.
+- Gas City fork: `~/repo/github.com/elee1766/gascity`. `AGENTS.md`,
+  `engdocs/architecture/` (nine-concepts, controller, dispatch,
+  health-patrol), `docs/reference/specs/formula-spec-v2.md`,
+  `internal/beads/beads.go`.
+- Live city: gasserver `/home/agent/gc` (`city.toml`, `prompts/`,
+  `formulas/`, `orders/`), read via `/home/a/gfx/scripts/as-agent.sh`.
+- ACP session prior art: hydra-acp, acpx/acpxd PRs (reconnect bugs),
+  karet-agentd, ACP RFD #533 and the session-resume RFD.

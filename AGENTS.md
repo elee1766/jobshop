@@ -10,7 +10,10 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
 - Lint config is `.golangci.yml` (golangci-lint v2).
 - Store queries are sqlc (`pkg/store/sqlite/sqlc.yaml`); regenerate after
   editing `pkg/store/sqlite/queries/` or `migrations/`.
-- Record design decisions in `docs/` with the date.
+- Record design decisions in `docs/` with the date. In `docs/plan.md`: a
+  decision goes in section 6, behavior as built in section 7 (one
+  subsection per feature, short), and update the lists in sections 4 and 5.
+  Do not append long paragraphs to other sections.
 - Plain names, short comments explaining why, no marketing language.
 
 ## Nix
