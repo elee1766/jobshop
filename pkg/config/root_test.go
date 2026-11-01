@@ -26,6 +26,12 @@ func TestFindRoot(t *testing.T) {
 
 	_, err = FindRoot(deep, "/")
 	assert.Error(t, err, "explicit root without jobshop.yaml is rejected")
-	_, err = FindRoot("", t.TempDir())
-	assert.ErrorIs(t, err, ErrNoRoot)
+	// Agents run tests inside a Jobshop root, so the temp dir may have a
+	// jobshop.yaml above it; only expect ErrNoRoot when it does not.
+	empty := t.TempDir()
+	if above, err := FindRoot("", empty); err == nil {
+		assert.NotEqual(t, empty, above.Dir)
+	} else {
+		assert.ErrorIs(t, err, ErrNoRoot)
+	}
 }
