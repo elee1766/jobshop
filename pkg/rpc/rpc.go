@@ -26,6 +26,7 @@ import (
 const (
 	MethodTicketCreate   = "ticket.create"
 	MethodTicketShow     = "ticket.show"
+	MethodTicketTrace    = "ticket.trace"
 	MethodTicketList     = "ticket.list"
 	MethodTicketUpdate   = "ticket.update"
 	MethodTicketClose    = "ticket.close"
@@ -489,6 +490,30 @@ type ReloadResult struct {
 // DrainResult lists drained pools after the call; "*" means all.
 type DrainResult struct {
 	Drained []string `json:"drained"`
+}
+
+// TraceParams selects the ticket to trace.
+type TraceParams struct {
+	ID    string `json:"id,omitempty"`
+	Depth int    `json:"depth,omitempty"` // 0 means 5
+}
+
+// TraceNode is one ticket in a trace: how it came to be, what it links to
+// and the tickets it led to.
+type TraceNode struct {
+	ID         string       `json:"id"`
+	Title      string       `json:"title,omitempty"`
+	Pool       string       `json:"pool,omitempty"`
+	Status     store.Status `json:"status"`
+	Resolution string       `json:"resolution,omitempty"`
+	CreatedBy  string       `json:"created_by,omitempty"`
+	Trigger    string       `json:"trigger,omitempty"` // meta.trigger.name
+	// Sessions that claimed the ticket, oldest first.
+	Holders []string     `json:"holders,omitempty"`
+	Edges   []store.Edge `json:"edges,omitempty"`
+	// GitHub issue and PR URLs found in the body and comments.
+	Links    []string    `json:"links,omitempty"`
+	Children []TraceNode `json:"children,omitempty"`
 }
 
 // TriggerInfo is one configured trigger's state now.

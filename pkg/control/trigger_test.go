@@ -226,3 +226,74 @@ func TestTriggerCheck(t *testing.T) {
 	setSHA("def")
 	require.Eventually(t, func() bool { return len(list()) == 2 }, 5*time.Second, 20*time.Millisecond)
 }
+
+// TestTicketTrace builds trigger -> plan ticket -> dev ticket the way the
+// selfdev loop does and checks that trace links all of it.
+func TestTicketTrace(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, triggerYAML, dir), 0o600))
+	root := config.Root{Dir: dir}
+	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	stop := triggerController(t, root, clk)
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	ctx := t.Context()
+
+	var plan store.Ticket
+	require.Eventually(t, func() bool {
+		var l []store.Ticket
+		require.NoError(t, admin.Call(ctx, rpc.MethodTicketList, rpc.ListParams{Pool: "plan"}, &l))
+		if len(l) == 0 {
+			return false
+		}
+		plan = l[0]
+		return true
+	}, 5*time.Second, 20*time.Millisecond)
+
+	// Planner session claims the plan ticket and files a dev ticket.
+	var ps rpc.SessionNewResult
+	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "fake", Pool: "plan"}, &ps))
+	p := dial(t, ps.Socket)
+	require.NoError(t, p.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{ID: plan.ID}, nil))
+	var dev store.Ticket
+	require.NoError(t, p.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{
+		Title: "Resolve #70", Pool: "dev", Body: "https://github.com/elee1766/jobshop/issues/70",
+	}, &dev))
+	require.NoError(t, p.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{Body: "filed https://github.com/elee1766/jobshop/issues/70"}, nil))
+	require.NoError(t, p.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{}, nil))
+	clk.Advance(time.Second)
+	// Created by the planner after it closed the plan ticket: not a child.
+	require.NoError(t, p.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "later", Pool: "dev"}, nil))
+
+	// Dev session claims it and records the PR.
+	var ds rpc.SessionNewResult
+	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "fake", Pool: "dev"}, &ds))
+	d := dial(t, ds.Socket)
+	require.NoError(t, d.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{ID: dev.ID}, nil))
+	require.NoError(t, d.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{Body: "PR https://github.com/elee1766/jobshop/pull/71 head abc"}, nil))
+
+	var tr rpc.TraceNode
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketTrace, rpc.TraceParams{ID: plan.ID}, &tr))
+	assert.Equal(t, "replan", tr.Trigger)
+	assert.Equal(t, "controller", tr.CreatedBy)
+	assert.Equal(t, store.StatusClosed, tr.Status)
+	assert.Equal(t, []string{ps.Ticket.ID}, tr.Holders)
+	assert.Equal(t, []string{"https://github.com/elee1766/jobshop/issues/70"}, tr.Links)
+	require.Len(t, tr.Children, 1, "only the ticket filed while holding the plan")
+	c := tr.Children[0]
+	assert.Equal(t, dev.ID, c.ID)
+	assert.Equal(t, ps.Ticket.ID, c.CreatedBy)
+	assert.Equal(t, []string{ds.Ticket.ID}, c.Holders)
+	assert.Equal(t, []string{
+		"https://github.com/elee1766/jobshop/issues/70",
+		"https://github.com/elee1766/jobshop/pull/71",
+	}, c.Links)
+
+	// A session traces its current ticket with no id.
+	var own rpc.TraceNode
+	require.NoError(t, d.Call(ctx, rpc.MethodTicketTrace, rpc.TraceParams{}, &own))
+	assert.Equal(t, dev.ID, own.ID)
+}

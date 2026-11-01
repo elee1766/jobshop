@@ -50,6 +50,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"CreateGraphAtomic", testCreateGraphAtomic},
 		{"SessionKeyUnique", testSessionKeyUnique},
 		{"ListMetaNewest", testListMetaNewest},
+		{"ListCreatedBy", testListCreatedBy},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -105,6 +106,16 @@ func testListMetaNewest(t *testing.T, s store.Store, c *Clock) {
 	l, err = s.List(t.Context(), store.Filter{MetaPack: `trigger"."name`, MetaKey: "name", MetaValue: "x"})
 	require.NoError(t, err)
 	assert.Empty(t, l)
+}
+
+func testListCreatedBy(t *testing.T, s store.Store, _ *Clock) {
+	a, err := s.Create(t.Context(), "js-sess1", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "a"})
+	require.NoError(t, err)
+	_, err = s.Create(t.Context(), "admin", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "b"})
+	require.NoError(t, err)
+	l, err := s.List(t.Context(), store.Filter{CreatedBy: "js-sess1"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{a.ID}, ids(l))
 }
 
 func testCreateGet(t *testing.T, s store.Store, _ *Clock) {

@@ -145,6 +145,9 @@ type Filter struct {
 	Holder   string
 	ParentID string
 	Label    string
+	// CreatedBy matches the actor that created the ticket (a session id,
+	// "admin" or "controller").
+	CreatedBy string
 	// MetaPack and MetaKey with MetaValue match tickets whose
 	// meta[MetaPack][MetaKey] is the string MetaValue.
 	MetaPack, MetaKey, MetaValue string

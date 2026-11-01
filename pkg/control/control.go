@@ -442,6 +442,7 @@ func init() {
 		rpc.MethodWhoami:         bind((*Controller).whoami),
 		rpc.MethodTicketCreate:   bind((*Controller).create),
 		rpc.MethodTicketShow:     bind((*Controller).show),
+		rpc.MethodTicketTrace:    bind((*Controller).trace),
 		rpc.MethodTicketList:     bind((*Controller).list),
 		rpc.MethodTicketUpdate:   bind((*Controller).update),
 		rpc.MethodTicketClose:    bind((*Controller).closeTicket),
