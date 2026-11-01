@@ -145,7 +145,12 @@ type Filter struct {
 	Holder   string
 	ParentID string
 	Label    string
-	Limit    int // 0 means DefaultLimit
+	// MetaPack and MetaKey with MetaValue match tickets whose
+	// meta[MetaPack][MetaKey] is the string MetaValue.
+	MetaPack, MetaKey, MetaValue string
+	// Newest orders newest first instead of by priority.
+	Newest bool
+	Limit  int // 0 means DefaultLimit
 }
 
 // DefaultLimit bounds List and Ready when no limit is given.

@@ -182,6 +182,14 @@ func (c shutdownCmd) Run(g *Globals) error {
 	return fmt.Errorf("controller still running after %s", c.Wait)
 }
 
+type triggerCmd struct {
+	List triggerListCmd `cmd:"" help:"Show each trigger: whether it holds now, last fired, open ticket, next cron time."`
+}
+
+type triggerListCmd struct{}
+
+func (triggerListCmd) Run(g *Globals) error { return g.call(rpc.MethodTriggerList, nil, nil) }
+
 type whoamiCmd struct{}
 
 func (whoamiCmd) Run(g *Globals) error { return g.call(rpc.MethodWhoami, nil, nil) }

@@ -45,6 +45,7 @@ const (
 	MethodWhoami       = "whoami"
 	MethodShutdown     = "controller.shutdown"
 	MethodDrain        = "controller.drain"
+	MethodTriggerList  = "trigger.list"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -456,4 +457,14 @@ type DrainParams struct {
 // DrainResult lists drained pools after the call; "*" means all.
 type DrainResult struct {
 	Drained []string `json:"drained"`
+}
+
+// TriggerInfo is one configured trigger's state now.
+type TriggerInfo struct {
+	Name      string     `json:"name"`
+	Holds     bool       `json:"holds"`          // would fire on the next tick
+	Why       string     `json:"why,omitempty"`  // first condition that does not hold
+	Open      string     `json:"open,omitempty"` // open ticket it created
+	LastFired *time.Time `json:"last_fired,omitempty"`
+	NextCron  *time.Time `json:"next_cron,omitempty"`
 }

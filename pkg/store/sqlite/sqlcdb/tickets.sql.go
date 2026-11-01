@@ -207,19 +207,22 @@ WHERE (?1 IS NULL OR project = ?1)
   AND (?6 IS NULL OR parent_id = ?6)
   AND (?7 IS NULL OR EXISTS (
     SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?7))
+  AND (?8 IS NULL OR json_extract(meta, ?8) = ?9)
 ORDER BY priority, created_at, id
-LIMIT ?8
+LIMIT ?10
 `
 
 type ListTicketsParams struct {
-	Project  interface{}
-	Kind     interface{}
-	Status   interface{}
-	Pool     interface{}
-	Holder   interface{}
-	ParentID interface{}
-	Label    interface{}
-	MaxRows  int64
+	Project   interface{}
+	Kind      interface{}
+	Status    interface{}
+	Pool      interface{}
+	Holder    interface{}
+	ParentID  interface{}
+	Label     interface{}
+	MetaPath  interface{}
+	MetaValue sql.NullString
+	MaxRows   int64
 }
 
 func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Ticket, error) {
@@ -231,6 +234,95 @@ func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Tic
 		arg.Holder,
 		arg.ParentID,
 		arg.Label,
+		arg.MetaPath,
+		arg.MetaValue,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ticket{}
+	for rows.Next() {
+		var i Ticket
+		if err := rows.Scan(
+			&i.ID,
+			&i.Project,
+			&i.Kind,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Resolution,
+			&i.Priority,
+			&i.Pool,
+			&i.Holder,
+			&i.LeaseUntil,
+			&i.Fence,
+			&i.ParentID,
+			&i.DeferUntil,
+			&i.Ephemeral,
+			&i.Fields,
+			&i.Meta,
+			&i.Revision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTicketsNewest = `-- name: ListTicketsNewest :many
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+WHERE (?1 IS NULL OR project = ?1)
+  AND (?2 IS NULL OR kind = ?2)
+  AND (?3 IS NULL OR status = ?3)
+  AND (?4 IS NULL OR pool = ?4)
+  AND (?5 IS NULL OR holder = ?5)
+  AND (?6 IS NULL OR parent_id = ?6)
+  AND (?7 IS NULL OR EXISTS (
+    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?7))
+  AND (?8 IS NULL OR json_extract(meta, ?8) = ?9)
+ORDER BY created_at DESC, id DESC
+LIMIT ?10
+`
+
+type ListTicketsNewestParams struct {
+	Project   interface{}
+	Kind      interface{}
+	Status    interface{}
+	Pool      interface{}
+	Holder    interface{}
+	ParentID  interface{}
+	Label     interface{}
+	MetaPath  interface{}
+	MetaValue sql.NullString
+	MaxRows   int64
+}
+
+// ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
+// engine does not bind parameters in ORDER BY, so it is a second query.
+func (q *Queries) ListTicketsNewest(ctx context.Context, arg ListTicketsNewestParams) ([]Ticket, error) {
+	rows, err := q.db.QueryContext(ctx, listTicketsNewest,
+		arg.Project,
+		arg.Kind,
+		arg.Status,
+		arg.Pool,
+		arg.Holder,
+		arg.ParentID,
+		arg.Label,
+		arg.MetaPath,
+		arg.MetaValue,
 		arg.MaxRows,
 	)
 	if err != nil {

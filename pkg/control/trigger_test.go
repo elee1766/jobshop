@@ -1,0 +1,165 @@
+package control_test
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func (c *clock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *clock) Set(t time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = t
+}
+
+func (c *clock) Advance(d time.Duration) { c.Set(c.Now().Add(d)) }
+
+// Pools have max_sessions 0, so nothing claims: tests see raw trigger output.
+const triggerYAML = `projects:
+  js: {}
+agents:
+  fake:
+    command: /bin/false
+pools:
+  dev:
+    agent: fake
+    dir: %[1]q
+  plan:
+    agent: fake
+    dir: %[1]q
+triggers:
+  replan:
+    when:
+      pool: dev
+      ready_below: 1
+    ticket:
+      pool: plan
+      title: Plan next step
+      priority: 1
+      labels: [plan]
+    cooldown: 10m
+  nightly:
+    when:
+      cron: "0 6 * * *"
+    ticket:
+      title: Nightly review
+`
+
+// triggerController runs a controller on root with clock clk until the
+// returned stop is called.
+func triggerController(t *testing.T, root config.Root, clk *clock) func() {
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- control.Run(ctx, root, control.Options{Tick: 20 * time.Millisecond, Now: clk.Now})
+	}()
+	return func() { cancel(); require.NoError(t, <-done) }
+}
+
+func TestTriggers(t *testing.T) {
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, triggerYAML, dir), 0o600))
+	root := config.Root{Dir: dir}
+	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	stop := triggerController(t, root, clk)
+
+	admin := dial(t, root.AdminSocket())
+	byTrigger := func(name string) []store.Ticket {
+		var all []store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{}, &all))
+		var out []store.Ticket
+		for _, tk := range all {
+			if string(tk.Meta) == `{"trigger":{"name":"`+name+`"}}` {
+				out = append(out, tk)
+			}
+		}
+		return out
+	}
+	settle := func() { time.Sleep(150 * time.Millisecond) } // several ticks
+
+	// dev is empty: replan fires once, then waits on its open ticket.
+	require.Eventually(t, func() bool { return len(byTrigger("replan")) == 1 }, 5*time.Second, 20*time.Millisecond)
+	settle()
+	plans := byTrigger("replan")
+	require.Len(t, plans, 1, "no second ticket while the first is open")
+	assert.Equal(t, "plan", plans[0].Pool)
+	assert.Equal(t, "Plan next step", plans[0].Title)
+	assert.Equal(t, []string{"plan"}, plans[0].Labels)
+	assert.Empty(t, byTrigger("nightly"), "cron not due before 06:00")
+
+	var infos []rpc.TriggerInfo
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTriggerList, nil, &infos))
+	require.Len(t, infos, 2)
+	assert.Equal(t, "nightly", infos[0].Name)
+	assert.False(t, infos[0].Holds)
+	require.NotNil(t, infos[0].NextCron)
+	assert.Equal(t, time.Date(2026, 11, 1, 6, 0, 0, 0, time.UTC), infos[0].NextCron.UTC())
+	assert.Equal(t, "replan", infos[1].Name)
+	assert.Equal(t, plans[0].ID, infos[1].Open)
+	require.NotNil(t, infos[1].LastFired)
+
+	// Closing it starts the cooldown.
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: plans[0].ID}, nil))
+	clk.Advance(9 * time.Minute)
+	settle()
+	assert.Len(t, byTrigger("replan"), 1, "still cooling down")
+	clk.Advance(2 * time.Minute)
+	require.Eventually(t, func() bool { return len(byTrigger("replan")) == 2 }, 5*time.Second, 20*time.Millisecond)
+
+	// Work in dev: the condition no longer holds after the ticket closes.
+	var work store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "w", Pool: "dev"}, &work))
+	for _, tk := range byTrigger("replan") {
+		_ = admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: tk.ID}, nil)
+	}
+	clk.Advance(time.Hour)
+	settle()
+	assert.Len(t, byTrigger("replan"), 2, "dev has ready work")
+
+	// Cron: fires once at 06:00, not again in the same slot.
+	clk.Set(time.Date(2026, 11, 1, 6, 0, 30, 0, time.UTC))
+	require.Eventually(t, func() bool { return len(byTrigger("nightly")) == 1 }, 5*time.Second, 20*time.Millisecond)
+	nightly := byTrigger("nightly")[0]
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: nightly.ID}, nil))
+	clk.Advance(time.Hour)
+	settle()
+	assert.Len(t, byTrigger("nightly"), 1, "one ticket per slot")
+
+	// Downtime across three slots: one ticket on startup, not three.
+	stop()
+	clk.Set(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
+	stop = triggerController(t, root, clk)
+	defer stop()
+	admin = dial(t, root.AdminSocket())
+	require.Eventually(t, func() bool { return len(byTrigger("nightly")) == 2 }, 5*time.Second, 20*time.Millisecond)
+	for _, tk := range byTrigger("nightly") {
+		_ = admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: tk.ID}, nil)
+	}
+	settle()
+	assert.Len(t, byTrigger("nightly"), 2, "missed slots collapse into one")
+}

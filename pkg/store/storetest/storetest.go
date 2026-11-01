@@ -49,6 +49,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"LabelsCommentsHistory", testLabelsCommentsHistory},
 		{"CreateGraphAtomic", testCreateGraphAtomic},
 		{"SessionKeyUnique", testSessionKeyUnique},
+		{"ListMetaNewest", testListMetaNewest},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -79,6 +80,31 @@ func ids(ts []store.Ticket) []string {
 		out[i] = t.ID
 	}
 	return out
+}
+
+func testListMetaNewest(t *testing.T, s store.Store, c *Clock) {
+	withMeta := func(m string) func(*store.NewTicket) {
+		return func(n *store.NewTicket) { n.Meta = json.RawMessage(m) }
+	}
+	a := task(t, s, "a", "p", withMeta(`{"trigger":{"name":"x"}}`))
+	c.Advance(time.Second)
+	task(t, s, "b", "p", withMeta(`{"trigger":{"name":"y"}}`))
+	c.Advance(time.Second)
+	b := task(t, s, "c", "p", withMeta(`{"trigger":{"name":"x"}}`), prio(4))
+	task(t, s, "d", "p")
+
+	l, err := s.List(t.Context(), store.Filter{MetaPack: "trigger", MetaKey: "name", MetaValue: "x"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{a.ID, b.ID}, ids(l), "priority order by default")
+
+	l, err = s.List(t.Context(), store.Filter{MetaPack: "trigger", MetaKey: "name", MetaValue: "x", Newest: true, Limit: 1})
+	require.NoError(t, err)
+	assert.Equal(t, []string{b.ID}, ids(l), "newest first")
+
+	// Names are quoted into the JSON path, not interpreted.
+	l, err = s.List(t.Context(), store.Filter{MetaPack: `trigger"."name`, MetaKey: "name", MetaValue: "x"})
+	require.NoError(t, err)
+	assert.Empty(t, l)
 }
 
 func testCreateGet(t *testing.T, s store.Store, _ *Clock) {

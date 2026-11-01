@@ -50,7 +50,24 @@ WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
   AND (sqlc.narg(parent_id) IS NULL OR parent_id = sqlc.narg(parent_id))
   AND (sqlc.narg(label) IS NULL OR EXISTS (
     SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = sqlc.narg(label)))
+  AND (sqlc.narg(meta_path) IS NULL OR json_extract(meta, sqlc.narg(meta_path)) = sqlc.narg(meta_value))
 ORDER BY priority, created_at, id
+LIMIT sqlc.arg(max_rows);
+
+-- ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
+-- engine does not bind parameters in ORDER BY, so it is a second query.
+-- name: ListTicketsNewest :many
+SELECT * FROM tickets
+WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
+  AND (sqlc.narg(kind) IS NULL OR kind = sqlc.narg(kind))
+  AND (sqlc.narg(status) IS NULL OR status = sqlc.narg(status))
+  AND (sqlc.narg(pool) IS NULL OR pool = sqlc.narg(pool))
+  AND (sqlc.narg(holder) IS NULL OR holder = sqlc.narg(holder))
+  AND (sqlc.narg(parent_id) IS NULL OR parent_id = sqlc.narg(parent_id))
+  AND (sqlc.narg(label) IS NULL OR EXISTS (
+    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = sqlc.narg(label)))
+  AND (sqlc.narg(meta_path) IS NULL OR json_extract(meta, sqlc.narg(meta_path)) = sqlc.narg(meta_value))
+ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(max_rows);
 
 -- name: ReadyTickets :many

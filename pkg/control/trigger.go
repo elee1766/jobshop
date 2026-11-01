@@ -1,0 +1,234 @@
+package control
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"maps"
+	"slices"
+	"sort"
+	"time"
+
+	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+// triggerPack is the meta pack on tickets a trigger created:
+// {"trigger": {"name": "<trigger>"}}. Dedup and cooldown read it back, so
+// trigger state lives in the store and survives restarts.
+const triggerPack = "trigger"
+
+// triggerState is what one evaluation found.
+type triggerState struct {
+	holds    bool
+	why      string    // first condition that does not hold
+	open     string    // open ticket the trigger created, if any
+	last     time.Time // created_at of its newest ticket
+	nextCron time.Time
+}
+
+// runTriggers fires every trigger whose conditions hold. Called each tick.
+func (c *Controller) runTriggers() {
+	for _, name := range slices.Sorted(maps.Keys(c.cfg.Triggers)) {
+		tr := c.cfg.Triggers[name]
+		st, err := c.evalTrigger(c.ctx, name, tr)
+		if err != nil {
+			c.log.Error("trigger", "trigger", name, "err", err)
+			continue
+		}
+		if !st.holds {
+			continue
+		}
+		t, err := c.fireTrigger(c.ctx, name, tr)
+		if err != nil {
+			c.log.Error("trigger fire", "trigger", name, "err", err)
+			continue
+		}
+		c.log.Info("trigger fired", "trigger", name, "ticket", t.ID)
+	}
+}
+
+// evalTrigger checks dedup, cooldown, cron and counts, in that order.
+func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Trigger) (triggerState, error) {
+	var st triggerState
+	now := c.now()
+	mine := store.Filter{MetaPack: triggerPack, MetaKey: "name", MetaValue: name}
+
+	newest := mine
+	newest.Newest, newest.Limit = true, 1
+	last, err := c.store.List(ctx, newest)
+	if err != nil {
+		return st, err
+	}
+	var lastT *store.Ticket
+	if len(last) > 0 {
+		lastT = &last[0]
+		st.last = lastT.CreatedAt
+	}
+
+	if tr.When.Cron != "" {
+		// The first slot after the last fire (or, for a trigger that never
+		// fired, after this controller started) is due once now reaches
+		// it. Slots missed while the controller was down collapse into one.
+		base := c.started
+		if lastT != nil {
+			base = lastT.CreatedAt
+		}
+		st.nextCron = cronNext(tr.When, base)
+	}
+
+	for _, s := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+		f := mine
+		f.Status, f.Limit = s, 1
+		open, err := c.store.List(ctx, f)
+		if err != nil {
+			return st, err
+		}
+		if len(open) > 0 {
+			st.open = open[0].ID
+			st.why = "ticket " + open[0].ID + " is still open"
+			return st, nil
+		}
+	}
+
+	if lastT != nil && tr.Cooldown != "" {
+		until := lastT.ClosedAt.Add(config.Duration(tr.Cooldown, 0))
+		if now.Before(until) {
+			st.why = "cooldown until " + until.UTC().Format(time.RFC3339)
+			return st, nil
+		}
+	}
+
+	if tr.When.Cron != "" {
+		if st.nextCron.IsZero() || now.Before(st.nextCron) {
+			st.why = "cron not due"
+			return st, nil
+		}
+		// Due: report the following slot as next.
+		st.nextCron = cronNext(tr.When, now)
+	}
+
+	if why, err := c.countsHold(ctx, tr.When); err != nil || why != "" {
+		st.why = why
+		return st, err
+	}
+	st.holds = true
+	return st, nil
+}
+
+// cronNext is the first slot of w.Cron after t, in w's timezone (Parse
+// already validated both). Zero if it never matches.
+func cronNext(w config.TriggerWhen, t time.Time) time.Time {
+	sched, err := cron.Parse(w.Cron)
+	if err != nil {
+		return time.Time{}
+	}
+	loc, err := time.LoadLocation(w.Timezone) // "" is UTC
+	if err != nil {
+		return time.Time{}
+	}
+	return sched.Next(t.In(loc))
+}
+
+// countsHold returns "" when every count threshold in w holds, else the
+// first that does not. Counts are capped at store.DefaultLimit (500).
+func (c *Controller) countsHold(ctx context.Context, w config.TriggerWhen) (string, error) {
+	if !w.HasCounts() {
+		return "", nil
+	}
+	kind := store.Kind(w.Kind)
+	if kind == "" {
+		kind = store.KindTask
+	}
+	count := func(s store.Status) (int, error) {
+		ts, err := c.store.List(ctx, store.Filter{Kind: kind, Status: s, Pool: w.Pool, Label: w.Label})
+		return len(ts), err
+	}
+	checks := []struct {
+		name         string
+		below, above *int
+		n            func() (int, error)
+	}{
+		{"ready", w.ReadyBelow, w.ReadyAbove, func() (int, error) { return c.readyCount(ctx, w, kind) }},
+		{"open", w.OpenBelow, w.OpenAbove, func() (int, error) { return count(store.StatusOpen) }},
+		{"in_progress", w.InProgressBelow, w.InProgressAbove, func() (int, error) { return count(store.StatusInProgress) }},
+	}
+	for _, ch := range checks {
+		if ch.below == nil && ch.above == nil {
+			continue
+		}
+		n, err := ch.n()
+		if err != nil {
+			return "", err
+		}
+		if ch.below != nil && n >= *ch.below {
+			return fmt.Sprintf("%s %d is not below %d", ch.name, n, *ch.below), nil
+		}
+		if ch.above != nil && n <= *ch.above {
+			return fmt.Sprintf("%s %d is not above %d", ch.name, n, *ch.above), nil
+		}
+	}
+	return "", nil
+}
+
+// readyCount counts claimable tickets: open, unblocked and not deferred.
+// Only claimable kinds (tasks) can be ready, so other kinds count zero.
+func (c *Controller) readyCount(ctx context.Context, w config.TriggerWhen, kind store.Kind) (int, error) {
+	if !slices.Contains(store.ClaimableKinds, kind) {
+		return 0, nil
+	}
+	projects := slices.Sorted(maps.Keys(c.cfg.Projects))
+	if p, ok := c.cfg.Pools[w.Pool]; ok {
+		projects = []string{p.Project}
+	}
+	n := 0
+	for _, proj := range projects {
+		ts, err := c.store.Ready(ctx, proj, w.Pool, store.DefaultLimit)
+		if err != nil {
+			return 0, err
+		}
+		for _, t := range ts {
+			if w.Label == "" || slices.Contains(t.Labels, w.Label) {
+				n++
+			}
+		}
+	}
+	return n, nil
+}
+
+func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Trigger) (store.Ticket, error) {
+	meta, err := json.Marshal(map[string]map[string]string{triggerPack: {"name": name}})
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	tt := tr.Ticket
+	return c.store.Create(ctx, "controller", store.NewTicket{
+		Project: tt.Project, Kind: store.KindTask, Title: tt.Title, Body: tt.Body,
+		Priority: tt.Priority, Pool: tt.Pool, Labels: tt.Labels, Meta: meta,
+	})
+}
+
+func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any, error) {
+	if err := requireAdmin(sc, "trigger list"); err != nil {
+		return nil, err
+	}
+	out := []rpc.TriggerInfo{}
+	for name, tr := range c.cfg.Triggers {
+		st, err := c.evalTrigger(ctx, name, tr)
+		if err != nil {
+			return nil, err
+		}
+		info := rpc.TriggerInfo{Name: name, Holds: st.holds, Why: st.why, Open: st.open}
+		if !st.last.IsZero() {
+			info.LastFired = &st.last
+		}
+		if !st.nextCron.IsZero() {
+			info.NextCron = &st.nextCron
+		}
+		out = append(out, info)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
