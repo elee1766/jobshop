@@ -40,6 +40,7 @@ type Metrics struct {
 	RequestTime   metric.Float64Histogram
 	ConvDropped   metric.Int64Counter
 	ConvTruncated metric.Int64Counter
+	Turns         metric.Int64Counter
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -53,7 +54,7 @@ func NewMetrics() (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [9]error
+	var errs [10]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -66,6 +67,8 @@ func NewMetrics() (*Metrics, error) {
 		metric.WithDescription("Conversation export frames dropped by a full host queue."))
 	m.ConvTruncated, errs[8] = meter.Int64Counter("jobshop.conversation_export.truncated",
 		metric.WithDescription("Conversation export fields cut at the size cap."))
+	m.Turns, errs[9] = meter.Int64Counter("jobshop.turns",
+		metric.WithDescription("Agent turns by pool and stop reason (error: the prompt failed)."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err

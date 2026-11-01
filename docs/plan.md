@@ -115,6 +115,8 @@ Short list; behavior details are in section 7.
 - `session list --state --since` and the gasserver runbook (#52).
 - Meta pack name validation and `meta_packs:` (#29).
 - `jobshop config show` with per-entry sources (#32).
+- `jobshop_turns_total` and its dashboard panel, `deploy/verify-telemetry.sh`
+  (#55).
 
 ## 5. What's next
 
@@ -122,8 +124,9 @@ Short list; behavior details are in section 7.
 - Refinery dry run on real PRs, and one full planner cycle on gasserver.
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
   sessions (runbook: `docs/gasserver-verify.md`, #52).
-- gasserver scrapes `/metrics` and ships traces (dashboard and per-signal
-  endpoints are in, #44; deploy pending).
+- gasserver scrapes `/metrics` and ships traces: wired and passing
+  `deploy/verify-telemetry.sh` (#55); the turns panel ships with the
+  next deploy.
 - Done when every box on #36 is checked, master CI is green, and the pool
   runs 24h without a manual fix.
 
@@ -237,10 +240,16 @@ All dated 2026-11-01 unless noted.
 - `config show` asks the controller for its live config instead of
   reading the file, so it shows what runs after the last good reload
   (2026-11-01, #32).
+- Turns are counted by `jobshop.turn.stop_reason`, the key conversation
+  export already uses, so a turn's logs and metrics share one label. The
+  telemetry check is a shell script, not a CLI command: it reads
+  VictoriaMetrics and VictoriaTraces, which the controller does not know
+  about (2026-11-01, #55).
 
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
-  module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, `nix build`.
+  module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
+  `nix build`.
 - YAML config. Every new dependency has its reason recorded in
   `docs/layout.md`.
 
@@ -379,8 +388,11 @@ header values print unexpanded.
 - `telemetry.metrics_listen` serves `/metrics`: `jobshop_sessions` (by
   pool and state idle/working/backoff), `jobshop_session_restarts_total`,
   `jobshop_tickets_ready`, `jobshop_claims_total`, `jobshop_closes_total`,
-  `jobshop_lease_expiries_total`, `jobshop_rpc_duration_seconds`. No ticket
-  or session ids on metrics.
+  `jobshop_lease_expiries_total`, `jobshop_rpc_duration_seconds`,
+  `jobshop_turns_total` (by pool and `jobshop_turn_stop_reason`: the ACP
+  stop reason, or `error` when the prompt failed; counted once per turn
+  after rate-limit retries, not on shutdown). No ticket or session ids
+  on metrics.
 - `telemetry.otlp_endpoint` sends traces and slog logs over OTLP/HTTP.
   Spans: `supervisor tick`, `rpc <method>`, session lifecycle. Each session
   has one trace; its traceparent is stored on the session and passed to
@@ -392,9 +404,16 @@ header values print unexpanded.
   placeholder. The nix module exposes these as `services.jobshop.telemetry.*`
   plus `environmentFile` for the tokens (#44).
 - Grafana dashboard: `deploy/grafana/jobshop.json` (sessions by pool and
-  state, backoff, restarts, ready queue, claims and closes, rpc p95). A
-  test scrapes `/metrics` and fails if a panel names a series or label
-  that is not exported.
+  state, backoff, restarts, ready queue, claims and closes, rpc p95,
+  turns by stop reason). A test scrapes `/metrics` and fails if a panel
+  names a series or label that is not exported.
+- `deploy/verify-telemetry.sh` (POSIX sh, curl and jq, `--help`) checks a
+  deployment: `/metrics` serves `jobshop_*`, the VictoriaMetrics target is
+  up, `jobshop_sessions` and `jobshop_tickets_ready` exist per pool, and
+  VictoriaTraces has a `session` trace in the last hour. Counters that
+  have not incremented yet are listed, not failed. Shellcheck it with
+  `shellcheck -s sh`; CI does not yet (#65).
+  Runbook: `docs/gasserver-verify.md` section 5 (#55).
 - Planned: store transaction spans.
 - Conversation export (decided 2026-11-01, #45): `conversation_export:
   true` on a pool (default off; needs a logs endpoint, checked at load)
