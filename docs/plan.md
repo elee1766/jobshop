@@ -264,6 +264,21 @@ Until then, development happens by hand (or with an outside agent).
 - After this, new features are filed as Jobshop tickets and built by Jobshop
   agents, with a human reviewing.
 
+**Self-hosting setup (proposed 2026-11-01)**
+- Host: `gasserver`, next to the live Gas City. Work happens over SSH.
+- GitHub identity: the `cog` user, with write access to this repo to push
+  branches, open PRs and merge.
+- Isolation from Gas City: own data dir and SQLite file, own user systemd
+  unit, own session cap so Jobshop cannot starve the live city's 20 slots.
+  Separate Linux user (`jobshop`) vs reusing `agent` is open.
+- Known-good binary: the controller runs a pinned build from a release path
+  (e.g. `~/.local/share/jobshop/bin/jobshop-<sha>`), never the working tree.
+  Promotion is an explicit step, and rollback is repointing a symlink.
+- Agents work in git worktrees, one per ticket, and deliver via PR.
+- Merge policy: branch protection requires CI. `cog` may merge on green
+  for normal changes. Changes under the controller, store schema or
+  migrations need a human approval first.
+
 **Phase 5: hardening from use**
 - Add what dogfooding shows is missing, in the order it hurts.
 - Bring over Gas City features only when a real need appears.
