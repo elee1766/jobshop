@@ -458,7 +458,7 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 // work claims and prompts tickets until the pool has none for idle_timeout.
 // A stale host is refreshed after the first turn that leaves it idle.
 func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc net.Conn, acpSession string, stale bool) error {
-	pool, havePool := r.c.cfg.Pools[r.pool]
+	pool, havePool := r.c.config().Pools[r.pool]
 	idle := config.Duration(pool.IdleTimeout, defaultIdle)
 	idleSince := time.Now()
 	for {
@@ -470,7 +470,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			return errSessionEnd{resolution: resolutionDrained}
 		}
 		t, _, err := r.c.store.ClaimNext(ctx, store.ClaimNext{
-			Project: r.project(), Pool: r.pool, Holder: r.id, Lease: r.c.lease,
+			Project: r.project(), Pool: r.pool, Holder: r.id, Lease: r.c.leaseDur(),
 		})
 		switch {
 		case errors.Is(err, store.ErrNoWork):
@@ -508,19 +508,19 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 }
 
 func (r *runner) project() string {
-	if p, ok := r.c.cfg.Pools[r.pool]; ok {
+	if p, ok := r.c.config().Pools[r.pool]; ok {
 		return p.Project
 	}
 	t, err := r.c.store.Get(r.ctx, r.id)
 	if err != nil {
-		return r.c.cfg.DefaultProject
+		return r.c.config().DefaultProject
 	}
 	return t.Project
 }
 
 // turn sends one prompt and waits for the agent to finish it.
 func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSession, text string) error {
-	timeout := config.Duration(r.c.cfg.Pools[r.pool].TurnTimeout, defaultTurn)
+	timeout := config.Duration(r.c.config().Pools[r.pool].TurnTimeout, defaultTurn)
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	stop := context.AfterFunc(tctx, func() {
@@ -603,7 +603,7 @@ func ids(ts []store.Ticket) string {
 
 func (r *runner) ticketPrompt(t store.Ticket) string {
 	var b strings.Builder
-	if p := r.c.cfg.Pools[r.pool].Prompt; p != "" {
+	if p := r.c.config().Pools[r.pool].Prompt; p != "" {
 		b.WriteString(strings.TrimSpace(p))
 		b.WriteString("\n\n")
 	}
@@ -682,7 +682,7 @@ func (c *client) WaitForTerminalExit(context.Context, acp.WaitForTerminalExitReq
 
 // sessionCwd is where the agent works: the session worktree or pool dir.
 func (c *Controller) sessionCwd(t store.Ticket) string {
-	p, ok := c.cfg.Pools[t.Pool]
+	p, ok := c.config().Pools[t.Pool]
 	if ok && p.Repo != "" {
 		return filepath.Join(c.root.SessionDir(t.ID), "work")
 	}
@@ -696,7 +696,7 @@ func (c *Controller) sessionCwd(t store.Ticket) string {
 // the env the host inherits from this controller, so a deploy that changes
 // either is noticed when a live host is adopted.
 func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec, string, error) {
-	agent, ok := c.cfg.Agents[f.Agent]
+	agent, ok := c.config().Agents[f.Agent]
 	if !ok {
 		return host.Spec{}, "", fmt.Errorf("unknown agent %q", f.Agent)
 	}
@@ -820,7 +820,7 @@ func withoutEnv(env []string, keys ...string) []string {
 }
 
 func (c *Controller) ensureWorktree(t store.Ticket, cwd string) error {
-	p, ok := c.cfg.Pools[t.Pool]
+	p, ok := c.config().Pools[t.Pool]
 	if !ok || p.Repo == "" {
 		return nil
 	}
@@ -846,7 +846,7 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) error {
 }
 
 func (c *Controller) removeWorktree(t store.Ticket) {
-	p, ok := c.cfg.Pools[t.Pool]
+	p, ok := c.config().Pools[t.Pool]
 	if !ok || p.Repo == "" {
 		return
 	}
@@ -873,7 +873,7 @@ func (c *Controller) supervise() {
 		}
 		for _, t := range held {
 			cl := store.Claim{TicketID: t.ID, Holder: id, Fence: t.Fence}
-			if _, err := c.store.Heartbeat(ctx, cl, c.lease); err != nil && !errors.Is(err, store.ErrNotHolder) {
+			if _, err := c.store.Heartbeat(ctx, cl, c.leaseDur()); err != nil && !errors.Is(err, store.ErrNotHolder) {
 				c.log.Warn("heartbeat", "ticket", t.ID, "err", err)
 			}
 		}
@@ -883,7 +883,7 @@ func (c *Controller) supervise() {
 		return
 	}
 	backingOff := c.backingOffPools()
-	for name, p := range c.cfg.Pools {
+	for name, p := range c.config().Pools {
 		if p.MaxSessions == 0 || c.poolDrained(name) || backingOff[name] || c.poolPaused(name) {
 			// A rate-limited pool would only start more sessions that hit
 			// the same limit; a crash-looping one is paused.
@@ -933,7 +933,7 @@ func (c *Controller) recordGauges() {
 		return
 	}
 	counts := map[[2]string]int64{}
-	for name := range c.cfg.Pools {
+	for name := range c.config().Pools {
 		for _, st := range []string{"idle", "working", "backoff"} {
 			counts[[2]string{name, st}] = 0
 		}
@@ -950,7 +950,7 @@ func (c *Controller) recordGauges() {
 	for k, n := range counts {
 		c.metrics.Sessions.Record(ctx, n, metric.WithAttributes(telemetry.AttrPool.String(k[0]), telemetry.AttrState.String(k[1])))
 	}
-	for name, p := range c.cfg.Pools {
+	for name, p := range c.config().Pools {
 		// Ready is capped by the store's default limit; enough for a gauge.
 		if ready, err := c.store.Ready(ctx, p.Project, name, 0); err == nil {
 			c.metrics.Ready.Record(ctx, int64(len(ready)), metric.WithAttributes(
@@ -1039,7 +1039,7 @@ func (c *Controller) drive(t store.Ticket) {
 	if err != nil {
 		return
 	}
-	if _, ok := c.cfg.Agents[f.Agent]; ok {
+	if _, ok := c.config().Agents[f.Agent]; ok {
 		c.startRunner(t)
 	}
 }

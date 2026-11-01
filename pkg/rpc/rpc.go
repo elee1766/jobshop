@@ -45,6 +45,7 @@ const (
 	MethodWhoami       = "whoami"
 	MethodShutdown     = "controller.shutdown"
 	MethodDrain        = "controller.drain"
+	MethodReload       = "config.reload"
 	MethodTriggerList  = "trigger.list"
 )
 
@@ -452,6 +453,13 @@ func (c *Client) Close() error {
 type DrainParams struct {
 	Pool    string `json:"pool,omitempty"`
 	Undrain bool   `json:"undrain,omitempty"`
+}
+
+// ReloadResult counts what the reloaded config defines.
+type ReloadResult struct {
+	Pools    int `json:"pools"`
+	Agents   int `json:"agents"`
+	Triggers int `json:"triggers"`
 }
 
 // DrainResult lists drained pools after the call; "*" means all.

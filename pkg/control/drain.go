@@ -23,7 +23,7 @@ func (c *Controller) drainPools(_ context.Context, sc scope, p rpc.DrainParams) 
 		return nil, err
 	}
 	if p.Pool != "" {
-		if _, ok := c.cfg.Pools[p.Pool]; !ok {
+		if _, ok := c.config().Pools[p.Pool]; !ok {
 			return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
 		}
 	}

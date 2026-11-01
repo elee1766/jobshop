@@ -52,7 +52,7 @@ func (r *runner) inbox(ctx context.Context, interruptOnly bool) []store.Ticket {
 func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, acpSession string) error {
 	var claimed []store.Ticket
 	for _, m := range r.inbox(ctx, false) {
-		t, cl, err := r.c.store.Claim(ctx, m.ID, r.id, r.c.lease)
+		t, cl, err := r.c.store.Claim(ctx, m.ID, r.id, r.c.leaseDur())
 		if err != nil {
 			continue // another session took it
 		}

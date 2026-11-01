@@ -136,6 +136,8 @@ in
         Slice = "jobshop.slice";
         WorkingDirectory = cfg.dataDir;
         ExecStart = "${jobshop} serve";
+        # `systemctl reload jobshop` re-reads jobshop.yaml and packs.
+        ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
         # Restarts and Nix switches restart only the controller; session hosts
         # keep running and are re-adopted. Full stops go through `jobshop shutdown`.
         KillMode = "process";

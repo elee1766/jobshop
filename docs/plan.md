@@ -359,9 +359,24 @@ development happens by hand (or with an outside agent).
   an unset var is a load error. jobshop.yaml itself is not substituted.
   `prompt_file` on a pool (pack or jobshop.yaml) is read into `prompt` at
   load, relative to the declaring file; both set is an error. Prompt
-  changes apply on controller restart. Validation errors name the files
+  changes apply on `jobshop reload` (see below). Validation errors name the files
   that set the failing entry. `packs/selfdev` ships the dev and plan pools
   and the `replan` trigger.
+- Config reload as built (decided 2026-11-01, issue #38): `jobshop
+  reload` (admin method `config.reload`) and SIGHUP to `jobshop serve`
+  re-read jobshop.yaml and its packs. A file that fails to load or
+  validate is rejected: the method returns the error, SIGHUP logs it, and
+  the old config stays active. On success the config and lease swap as
+  one atomic pointer. Pool limits (`max_sessions`, triggers) apply from
+  the next supervisor tick (SIGHUP runs one at once), prompts and turn
+  timeouts from the next turn, agent command, args and env from the next
+  spawned host. Running sessions are never stopped; a lowered
+  `max_sessions` only stops new spawns. Live hosts pick up env changes
+  through the env refresh path on the next adoption. Telemetry settings
+  still need a restart (reload logs a warning). The NixOS unit sets
+  `ExecReload` to send SIGHUP; SIGHUP itself is a manual check
+  (`systemctl reload jobshop`, look for `config reloaded` in the log),
+  while tests drive the same reload channel directly.
 - Refinery handoff (decided 2026-11-01, issue #28): dev workers stop at a
   green PR, comment its URL and head SHA, move the same ticket to the
   `refinery` pool and release it. `refinery` has `max_sessions: 1`, so the

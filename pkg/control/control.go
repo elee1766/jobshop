@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -56,14 +57,16 @@ type Options struct {
 	MetricsReady func(addr string)
 	// SpanProcessor, if set, also receives every span (tests).
 	SpanProcessor sdktrace.SpanProcessor
+	// Reload, if set, triggers a config reload per receive. The serve
+	// command sends on SIGHUP; tests send directly.
+	Reload <-chan struct{}
 }
 
 // Controller serves one Jobshop root.
 type Controller struct {
 	root  config.Root
-	cfg   *config.Config
+	live  *atomic.Pointer[liveConfig] // swapped by reload
 	store store.Store
-	lease time.Duration
 	opt   Options
 	log   *slog.Logger
 
@@ -83,7 +86,9 @@ type Controller struct {
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
-	wg    sync.WaitGroup
+	// reloadMu serializes reloads so the last file read wins.
+	reloadMu sync.Mutex
+	wg       sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -93,12 +98,12 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	if err != nil {
 		return err
 	}
-	lease := DefaultLease
-	if cfg.Lease != "" {
-		if lease, err = time.ParseDuration(cfg.Lease); err != nil || lease <= 0 {
-			return fmt.Errorf("%s: lease %q: must be a positive duration", config.FileName, cfg.Lease)
-		}
+	lc, err := newLiveConfig(cfg)
+	if err != nil {
+		return err
 	}
+	live := new(atomic.Pointer[liveConfig])
+	live.Store(lc)
 	if opt.Tick <= 0 {
 		opt.Tick = 30 * time.Second
 	}
@@ -123,7 +128,10 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	defer unlock()
 
-	st, err := sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Now, Prefix: cfg.Prefix})
+	st, err := sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Now, Prefix: func(p string) string {
+		// Follows reloads, so a project added later gets its prefix.
+		return live.Load().cfg.Prefix(p)
+	}})
 	if err != nil {
 		return err
 	}
@@ -147,7 +155,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	log := slog.New(tr.LogHandler(opt.Log.Handler()))
 
 	c := &Controller{
-		root: root, cfg: cfg, store: st, lease: lease, opt: opt, log: log, metrics: m,
+		root: root, live: live, store: st, opt: opt, log: log, metrics: m,
 		tracer:   tr.Tracer(),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		drained:      map[string]bool{},
@@ -232,6 +240,10 @@ func (c *Controller) serve() error {
 			c.log.Info("controller stopped")
 			return nil
 		case <-tick.C:
+		case <-c.opt.Reload:
+			// Errors are logged and the old config stays active. The
+			// tick below applies new pool limits right away.
+			_ = c.reload()
 		}
 	}
 }
@@ -267,7 +279,7 @@ func (c *Controller) sweep() {
 // serveMetrics serves Prometheus /metrics on telemetry.metrics_listen
 // until the controller stops. Empty listen address: off.
 func (c *Controller) serveMetrics() error {
-	addr := c.cfg.Telemetry.MetricsListen
+	addr := c.config().Telemetry.MetricsListen
 	if addr == "" {
 		return nil
 	}
@@ -445,5 +457,6 @@ func init() {
 		rpc.MethodShutdown:     bind((*Controller).shutdown),
 		rpc.MethodDrain:        bind((*Controller).drainPools),
 		rpc.MethodTriggerList:  bind((*Controller).triggerList),
+		rpc.MethodReload:       bind((*Controller).reloadConfig),
 	}
 }
