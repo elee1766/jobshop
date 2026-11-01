@@ -287,6 +287,11 @@ func (r *runner) session() error {
 	r.mu.Lock()
 	r.agentPid = welcome.AgentPid
 	r.mu.Unlock()
+	// A host whose agent was never initialized has not loaded the
+	// conversation either, even when an earlier attempt spawned it.
+	if welcome.Initialize == nil {
+		fresh = true
+	}
 
 	gate := rpc.NewGate(rd)
 	conn := acp.NewClientSideConnection(&client{r: r}, nc, gate)
@@ -777,6 +782,9 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.Env = hostInheritedEnv()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// The previous host's exit record would make connect() report this
+	// host as exited before it has taken the lock.
+	_ = os.Remove(filepath.Join(dir, host.ExitFile))
 	if err := cmd.Start(); err != nil {
 		return err
 	}

@@ -139,6 +139,12 @@ func TestEnvRefresh(t *testing.T) {
 		return err == nil && s.EnvHash != "old"
 	}, 5*time.Second, 50*time.Millisecond)
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
+
+	// The refreshed host resumed the conversation: a new ticket gets a turn.
+	var next store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "after refresh", Pool: "dev"}, &next))
+	require.Eventually(t, func() bool { return show(next.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status, "same session, not crashed")
 }
 
 // TestDrain drains during a blocked turn: the turn finishes and closes its
@@ -536,13 +542,14 @@ pools:
 
 // fakeAgent speaks ACP on stdio and closes each prompted ticket.
 func fakeAgent() {
-	a := &agent{cancel: make(chan struct{}, 1)}
+	a := &agent{known: map[acp.SessionId]bool{}, cancel: make(chan struct{}, 1)}
 	conn := acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
 	<-conn.Done()
 }
 
 type agent struct {
 	n      int
+	known  map[acp.SessionId]bool // created or loaded in this process
 	cancel chan struct{}
 }
 
@@ -555,14 +562,21 @@ func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.Initiali
 
 func (a *agent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewSessionResponse, error) {
 	a.n++
-	return acp.NewSessionResponse{SessionId: acp.SessionId(fmt.Sprintf("s%d", a.n))}, nil
+	id := acp.SessionId(fmt.Sprintf("s%d", a.n))
+	a.known[id] = true
+	return acp.NewSessionResponse{SessionId: id}, nil
 }
 
-func (a *agent) LoadSession(context.Context, acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+func (a *agent) LoadSession(_ context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
+	a.known[p.SessionId] = true
 	return acp.LoadSessionResponse{}, nil
 }
 
 func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+	// Like jcode: a new process knows only sessions it created or loaded.
+	if !a.known[p.SessionId] {
+		return acp.PromptResponse{}, &acp.RequestError{Code: -32602, Message: "Unknown ACP session id: " + string(p.SessionId)}
+	}
 	// Record every prompt (one JSON string per line) for tests to inspect.
 	var text string
 	for _, b := range p.Prompt {
