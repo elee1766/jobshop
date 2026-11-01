@@ -394,12 +394,13 @@ func (r *runner) session() error {
 			_, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
 				SessionId: acp.SessionId(fields.ACPSession), Cwd: cwd, McpServers: []acp.McpServer{},
 			})
-			if err == nil {
+			switch {
+			case err == nil:
 				loaded = true
 				r.log.Info("resumed conversation", "acp_session", fields.ACPSession, "path", "load")
-			} else if ctx.Err() != nil {
+			case ctx.Err() != nil:
 				return r.dropped(conn)
-			} else {
+			default:
 				// A failed load would fail again on every respawn and end
 				// the session as crashed; a new conversation keeps going.
 				r.log.Warn("session/load failed; falling back to a new conversation", "acp_session", fields.ACPSession, "err", err)
