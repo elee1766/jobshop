@@ -19,6 +19,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // stdout is swapped by tests.
@@ -37,6 +38,8 @@ func (g *Globals) call(method string, params, out any) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	// An agent's calls join its session's trace (set by the controller).
+	ctx = telemetry.WithTraceParent(ctx, os.Getenv("JOBSHOP_TRACEPARENT"))
 	c, err := rpc.Dial(ctx, sock)
 	if err != nil {
 		return err

@@ -675,6 +675,19 @@ City's `internal/events` JSONL bus for observability purposes.
   (pool, kind, `jobshop.resolution`), `jobshop_lease_expiries_total`,
   `jobshop_rpc_duration_seconds` (histogram by `rpc.method`). Ticket and
   session ids stay off metrics to keep cardinality bounded.
+  Traces and logs built 2026-11-01 (issue #15): `telemetry.otlp_endpoint`
+  (OTLP/HTTP base URL, empty = no export) sends spans to `/v1/traces` and,
+  through the otelslog bridge, controller logs to `/v1/logs` with trace
+  and span ids; stderr logging is unchanged. Spans: `supervisor tick`,
+  `rpc <method>` per socket request (`rpc.method`, `jobshop.actor`, and
+  session, pool, project for session sockets), and session lifecycle
+  `session spawn|adopt|restart|end`. Each session gets a trace at
+  creation: a short root span `session` whose traceparent is stored in the
+  session fields (`traceparent`) so lifecycle spans after a controller
+  restart join the same trace, and passed to the agent as
+  `JOBSHOP_TRACEPARENT`. The CLI sends it as `_meta.traceparent` in
+  request params; the controller strips `_meta` before decoding and
+  parents the request span on it. Store transaction spans are not built.
 - Common attributes: `jobshop.project`, `jobshop.pool`,
   `jobshop.session.id`, `jobshop.ticket.id`, `jobshop.kind`.
 

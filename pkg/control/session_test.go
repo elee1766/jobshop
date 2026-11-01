@@ -18,12 +18,16 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // The test binary is also the session host and the agent, so the test runs
@@ -608,6 +612,7 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	}
 	defer func() { _ = c.Close() }()
 	// The current ticket is the session's claim; close it as `jobshop close` would.
+	ctx = telemetry.WithTraceParent(ctx, os.Getenv("JOBSHOP_TRACEPARENT"))
 	_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{}, nil)
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
@@ -759,4 +764,58 @@ func TestMetrics(t *testing.T) {
 	} {
 		assert.Contains(t, body, want)
 	}
+}
+
+// TestTraces checks that the agent's close request is a server span in the
+// session's trace, parented by the traceparent the agent got in its env.
+func TestTraces(t *testing.T) {
+	root, _ := poolRoot(t, "1m")
+	exp := tracetest.NewInMemoryExporter()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		done <- control.Run(ctx, root, control.Options{
+			Tick: 50 * time.Millisecond, HostExe: os.Args[0],
+			SpanProcessor: sdktrace.NewSimpleSpanProcessor(exp),
+		})
+	}()
+	defer func() { cancel(); assert.NoError(t, <-done) }()
+
+	admin := dial(t, root.AdminSocket())
+	var task store.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+
+	find := func(name string) (tracetest.SpanStub, bool) {
+		for _, s := range exp.GetSpans() {
+			if s.Name == name {
+				return s, true
+			}
+		}
+		return tracetest.SpanStub{}, false
+	}
+	var closeSpan tracetest.SpanStub
+	require.Eventually(t, func() bool {
+		s, ok := find("rpc " + rpc.MethodTicketClose)
+		closeSpan = s
+		return ok
+	}, 20*time.Second, 50*time.Millisecond)
+
+	root2, ok := find("session")
+	require.True(t, ok, "session root span")
+	assert.Equal(t, root2.SpanContext.TraceID(), closeSpan.SpanContext.TraceID(), "close joins the session trace")
+	assert.Equal(t, root2.SpanContext.SpanID(), closeSpan.Parent.SpanID(), "parent is the session span")
+	assert.True(t, closeSpan.Parent.IsRemote())
+	attrs := map[attribute.Key]string{}
+	for _, kv := range closeSpan.Attributes {
+		attrs[kv.Key] = kv.Value.String()
+	}
+	assert.Equal(t, rpc.MethodTicketClose, attrs[telemetry.AttrMethod])
+	assert.Equal(t, "dev", attrs[telemetry.AttrPool])
+	assert.NotEmpty(t, attrs[telemetry.AttrSession])
+
+	spawn, ok := find("session spawn")
+	require.True(t, ok, "spawn lifecycle span")
+	assert.Equal(t, root2.SpanContext.TraceID(), spawn.SpanContext.TraceID())
+	_, ok = find("supervisor tick")
+	assert.True(t, ok, "tick span")
 }

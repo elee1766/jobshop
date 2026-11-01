@@ -38,6 +38,9 @@ type SessionFields struct {
 	Agent      string `json:"agent"`
 	ACPSession string `json:"acp_session,omitempty"`
 	Current    string `json:"current,omitempty"` // ticket id being worked
+	// TraceParent is the session trace's W3C traceparent, kept so lifecycle
+	// spans after a controller restart join the same trace.
+	TraceParent string `json:"traceparent,omitempty"`
 }
 
 // Validate implements Fields.

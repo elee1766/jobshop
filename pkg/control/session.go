@@ -21,7 +21,9 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/host"
@@ -50,6 +52,8 @@ type runner struct {
 	pool string // "" for manual sessions
 	dir  string
 	log  *slog.Logger
+	// traceParent is the session trace (SessionFields.TraceParent).
+	traceParent string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -105,6 +109,9 @@ func (c *Controller) startRunner(t store.Ticket) {
 		c: c, id: t.ID, pool: t.Pool, dir: c.root.SessionDir(t.ID),
 		log: c.log.With("session", t.ID, "pool", t.Pool), ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), turnEnd: make(chan struct{}, 1),
+	}
+	if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
+		r.traceParent = f.TraceParent
 	}
 	c.runners[t.ID] = r
 	c.wg.Go(func() {
@@ -165,6 +172,7 @@ func (r *runner) run() {
 			return
 		}
 		r.log.Warn("session interrupted, restarting", "err", err)
+		r.lifecycle("restart", attribute.String("error", err.Error()))
 		r.c.metrics.Restarts.Add(r.ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
 		if r.crashed() {
 			r.finish(resolutionCrashed, fmt.Sprintf("%d restarts in %s: %v", maxCrashes, crashWindow, err))
@@ -194,6 +202,7 @@ func (r *runner) crashed() bool {
 // finish closes the session ticket, which releases its claims and socket.
 func (r *runner) finish(resolution, reason string) {
 	r.log.Info("session ended", "resolution", resolution, "reason", reason)
+	r.lifecycle("end", telemetry.AttrResolution.String(resolution))
 	stopHost(r.dir)
 	ctx := context.WithoutCancel(r.ctx)
 	if _, err := r.c.store.CloseTicket(ctx, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
@@ -265,7 +274,10 @@ func (r *runner) session() error {
 		if err := r.c.spawnHost(t, fields); err != nil {
 			return errSessionEnd{resolution: resolutionCrashed, reason: "spawn: " + err.Error()}
 		}
+		r.lifecycle("spawn")
 		fresh = true
+	} else {
+		r.lifecycle("adopt")
 	}
 	nc, rd, welcome, err := r.connect()
 	if err != nil {
@@ -697,6 +709,10 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec,
 	for k, v := range agent.Env {
 		env = append(env, k+"="+v)
 	}
+	if f.TraceParent != "" {
+		// The agent's `jobshop` calls join the session's trace.
+		env = append(env, "JOBSHOP_TRACEPARENT="+f.TraceParent)
+	}
 	// ${SESSION_DIR} lets an agent keep per-session state, e.g.
 	// `jcode acp --socket ${SESSION_DIR}/jcode.sock` for a private daemon
 	// whose tool shells inherit this env.
@@ -956,6 +972,26 @@ func (c *Controller) draining() bool {
 	return c.drain
 }
 
+// sessionTrace starts the trace a new session's lifecycle spans and its
+// agent's CLI calls join, returning its traceparent. The root span ends at
+// once: a span open for the whole session would be lost on restart.
+func (c *Controller) sessionTrace(ctx context.Context, project, pool, agent string) string {
+	ctx, span := c.tracer.Start(trace.ContextWithSpanContext(ctx, trace.SpanContext{}), "session",
+		trace.WithNewRoot(), trace.WithAttributes(telemetry.AttrProject.String(project),
+			telemetry.AttrPool.String(pool), attribute.String("jobshop.agent", agent)))
+	defer span.End()
+	return telemetry.TraceParent(ctx)
+}
+
+// lifecycle records one session lifecycle event (spawn, adopt, restart,
+// end) as a span in the session's trace.
+func (r *runner) lifecycle(event string, attrs ...attribute.KeyValue) {
+	ctx := telemetry.WithTraceParent(r.ctx, r.traceParent)
+	_, span := r.c.tracer.Start(ctx, "session "+event, trace.WithAttributes(append(attrs,
+		telemetry.AttrSession.String(r.id), telemetry.AttrPool.String(r.pool))...))
+	span.End()
+}
+
 // newSession creates a session ticket, opens its CLI socket and, when its
 // agent is configured, starts its driver. Sessions whose agent is not in
 // the config are external: something else (a human running an agent with
@@ -964,7 +1000,7 @@ func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent
 	if agent == "" {
 		return store.Ticket{}, fmt.Errorf("%w: agent is required", store.ErrInvalid)
 	}
-	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key})
+	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key, TraceParent: c.sessionTrace(ctx, project, pool, agent)})
 	if err != nil {
 		return store.Ticket{}, err
 	}
