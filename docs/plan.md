@@ -475,15 +475,18 @@ Recovery below the host:
 - Add the host once controller restarts cost real work, which should be
   soon after self-hosting begins.
 
+### Decided (2026-11-01)
+- jcode's ACP server supports `session/load`, so resume after an agent or
+  host death uses it directly. Journal-backed `session/load` in the host is
+  not needed for jcode; keep it only as a fallback for agents without it.
+- When the host's buffer is full and no controller is connected, it stops
+  reading the agent's stdout (backpressure pauses the agent). It never
+  drops data.
+- Orphaned host lease: 30 minutes without a controller connection.
+- CLI socket protocol: JSON-RPC via `go.lsp.dev/jsonrpc2` (section 5).
+
 ### Open questions
-- Does jcode's ACP server advertise `loadSession`? If not, journal-backed
-  `session/load` in the host matters more.
-- Host buffer policy when disconnected and full: block the agent's stdout,
-  or spill to the journal only?
-- Lease length before an orphaned host shuts down.
 - Human attach: read-only tail of the journal, or allow injecting input?
-- Which socket protocol for the CLI: decided, JSON-RPC via
-  `go.lsp.dev/jsonrpc2` (section 5).
 
 ## 9. Observability (proposed)
 

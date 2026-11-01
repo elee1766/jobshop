@@ -337,6 +337,12 @@ WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
   `order-run:*`, `read`); in Jobshop those become `kind`, `ephemeral`,
   edges, or typed fields.
 
+## Defaults (decided 2026-11-01)
+
+- Ticket lease: 30 minutes (same as Gas City). Heartbeats renew it; the
+  CLI heartbeats on a fraction of the lease (e.g. every 5 minutes) while a
+  session holds a claim. Configurable per pool.
+
 ## Open questions
 
-- Lease length and heartbeat interval defaults (Gas City: 30 minute lease).
+- None currently.
