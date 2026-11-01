@@ -236,6 +236,27 @@ func TestQuarantine(t *testing.T) {
 	assert.Len(t, sessions, 3, "pool paused")
 }
 
+// TestStuck runs an agent that never closes its ticket: after two unclosed
+// turns the session ends as stuck instead of claiming more work.
+func TestStuck(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "noclose"), nil, 0o600))
+	stop := start()
+	defer stop()
+
+	admin := dial(t, root.AdminSocket())
+	for _, title := range []string{"a", "b", "c"} {
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: title, Pool: "dev"}, nil))
+	}
+	var sessions []store.Ticket
+	require.Eventually(t, func() bool {
+		sessions = nil
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession, Status: store.StatusClosed}, &sessions))
+		return len(sessions) > 0
+	}, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, "stuck", sessions[0].Resolution)
+}
+
 // TestMessages delivers a queued message to an idle pool session, then an
 // interrupt message that cancels a blocked turn and is delivered before the
 // ticket is finished.
@@ -613,6 +634,11 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 			case <-time.After(20 * time.Millisecond):
 			}
 		}
+	}
+	// A "noclose" file makes every turn end without touching the ticket,
+	// like an agent whose tools all fail.
+	if _, err := os.Stat("noclose"); err == nil {
+		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 	}
 	c, err := rpc.Dial(ctx, os.Getenv("JOBSHOP_SOCKET"))
 	if err != nil {

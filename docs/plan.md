@@ -69,7 +69,10 @@ with `session/load`.
 
 **Driver loop** (per session, in the controller). Deliver queued messages,
 `claim --next`, prompt the ticket, check the session no longer holds it
-(else one reminder turn, then release with a 10 minute defer). Idle past
+(else one reminder turn, then release with a 10 minute defer). Two such
+turns in a row end the session `stuck` so a fresh host replaces it
+(2026-11-01: jcode hosts whose bash tool broke kept claiming and dropping
+tickets for hours). Idle past
 `idle_timeout` ends the session `idle`; more than 3 restarts in 10 minutes
 ends it `crashed`; turns past `turn_timeout` get `session/cancel`.
 

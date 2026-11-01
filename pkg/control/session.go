@@ -41,6 +41,10 @@ const (
 	unclosedDeferral  = 10 * time.Minute
 	resolutionIdle    = "idle"
 	resolutionCrashed = "crashed"
+	// resolutionStuck ends a session whose turns keep leaving tickets unclosed
+	// (e.g. a host whose tools all fail), so a fresh host replaces it.
+	resolutionStuck = "stuck"
+	maxUnclosed     = 2
 )
 
 // runner drives one session: keeps its host alive, speaks ACP to the agent
@@ -49,8 +53,10 @@ type runner struct {
 	c    *Controller
 	id   string
 	pool string // "" for manual sessions
-	dir  string
-	log  *slog.Logger
+	// unclosed counts consecutive turns that ended still holding a ticket.
+	unclosed int
+	dir      string
+	log      *slog.Logger
 	// traceParent is the session trace (SessionFields.TraceParent).
 	traceParent string
 
@@ -645,6 +651,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			}
 		}
 		r.afterTurn(ctx, conn, acpSession, t.ID)
+		if r.unclosed >= maxUnclosed {
+			return errSessionEnd{resolution: resolutionStuck, reason: fmt.Sprintf("%d turns in a row ended without closing or releasing", r.unclosed)}
+		}
 		if stale && r.idle() {
 			return r.refresh(nc)
 		}
@@ -732,7 +741,11 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, acpSession, ticketID string) {
 	defer r.setTurnTicket("")
 	held, err := r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
-	if err != nil || len(held) == 0 {
+	if err != nil {
+		return
+	}
+	if len(held) == 0 {
+		r.unclosed = 0
 		return
 	}
 	if ticketID != "" {
@@ -751,6 +764,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		if _, err := r.c.store.Release(ctx, cl, "agent turn ended without closing or releasing"); err != nil {
 			continue
 		}
+		r.unclosed++
 		until := time.Now().Add(unclosedDeferral)
 		_, _ = r.c.store.Update(ctx, "controller", t.ID, store.Update{DeferUntil: &until})
 		r.log.Warn("released unclosed ticket", "ticket", t.ID)
