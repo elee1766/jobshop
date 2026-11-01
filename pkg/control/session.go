@@ -440,6 +440,10 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 	idle := config.Duration(pool.IdleTimeout, defaultIdle)
 	idleSince := time.Now()
 	for {
+		// Queued messages go before the next claim, so also after each turn.
+		if err := r.deliver(ctx, conn, acpSession); err != nil {
+			return err
+		}
 		if r.c.poolDrained(r.pool) && r.idle() {
 			return errSessionEnd{resolution: resolutionDrained}
 		}
@@ -463,8 +467,14 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			}
 			return err
 		}
-		if err := r.turn(ctx, conn, acpSession, r.ticketPrompt(t)); err != nil {
+		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t))
+		if err != nil {
 			return err
+		}
+		if interrupted {
+			if err := r.deliver(ctx, conn, acpSession); err != nil {
+				return err
+			}
 		}
 		r.afterTurn(ctx, conn, acpSession, t.ID)
 		if stale && r.idle() {

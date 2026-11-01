@@ -40,6 +40,9 @@ type Options struct {
 	// RestartDelay is the pause before restarting an interrupted session.
 	// Default 2s.
 	RestartDelay time.Duration
+	// MessagePoll is how often a running turn checks for interrupt
+	// messages. Default 2s.
+	MessagePoll time.Duration
 }
 
 // Controller serves one Jobshop root.
@@ -88,6 +91,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	if opt.RestartDelay <= 0 {
 		opt.RestartDelay = 2 * time.Second
+	}
+	if opt.MessagePoll <= 0 {
+		opt.MessagePoll = 2 * time.Second
 	}
 	if opt.Log == nil {
 		opt.Log = slog.Default()

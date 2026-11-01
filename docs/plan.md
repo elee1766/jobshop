@@ -295,6 +295,19 @@ development happens by hand (or with an outside agent).
 - Observability (section 9): OTel traces and logs, Prometheus metrics,
   conversation export.
 - Messages with queued and interrupt delivery.
+  - As built (decided 2026-11-01, issue #16): `jobshop send <to> <text>
+    [--interrupt]` creates a `message` ticket (first line is the title).
+    The controller sets `from` to the caller; only admin may set another.
+    `to` is a session id, a session key, or `pool:<name>`. The driver
+    delivers before each `claim --next` (so also after every turn): it
+    claims each open message addressed to it (the first session to claim
+    a pool message wins), closes it `delivered`, and sends all of them as
+    one prompt starting `Messages for you:`. Delivery is at most once: the
+    message is closed before the prompt, so the agent never holds it as
+    its current ticket. While a ticket turn runs the driver polls every 2s
+    for interrupt messages; on one it sends `session/cancel`, waits for
+    the turn to end, delivers, then runs the usual unclosed-ticket
+    reminder. The pool-config interrupt permission below is not built.
 - Human attach.
 
 **Phase 4: workflows and runs**

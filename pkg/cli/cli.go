@@ -48,6 +48,7 @@ type root struct {
 	Ticket    ticketCmd    `cmd:"" help:"Create, show, list, update and close tickets."`
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`
 	Comment   commentCmd   `cmd:"" help:"Comment on a ticket."`
+	Send      sendCmd      `cmd:"" help:"Send a message to a session or pool."`
 	Assign    assignCmd    `cmd:"" help:"Pre-assign a ticket to a session (admin)."`
 	Claim     claimCmd     `cmd:"" help:"Claim a ticket, or the next one with --next."`
 	Heartbeat heartbeatCmd `cmd:"" help:"Renew the lease on a held ticket."`
