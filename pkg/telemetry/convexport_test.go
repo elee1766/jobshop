@@ -48,7 +48,7 @@ func (m *memExporter) all() []sdklog.Record {
 func attrs(r sdklog.Record) map[attribute.Key]string {
 	out := map[attribute.Key]string{}
 	r.WalkAttributes(func(kv attribute.KeyValue) bool {
-		out[kv.Key] = kv.Value.Emit()
+		out[kv.Key] = kv.Value.String()
 		return true
 	})
 	return out
