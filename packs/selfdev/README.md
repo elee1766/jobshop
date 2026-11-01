@@ -11,6 +11,9 @@ Jobshop agents that develop Jobshop through GitHub issues and PRs.
   `prompts/plan.md`.
 - `replan` trigger: when `dev` has no ready tickets, creates a planning
   ticket in `plan` (10m cooldown after the last one closes).
+- `master-red` trigger: when the latest completed master CI run failed,
+  creates one priority-0 `dev` ticket per failing SHA (check command via
+  `gh`; the controller needs `GH_TOKEN`).
 
 ## Vars
 

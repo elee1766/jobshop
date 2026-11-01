@@ -164,3 +164,65 @@ func TestTriggers(t *testing.T) {
 	settle()
 	assert.Len(t, byTrigger("nightly"), 2, "missed slots collapse into one")
 }
+
+// The check reads ./sha from the root: missing means green.
+const checkYAML = `projects:
+  js: {}
+agents:
+  fake:
+    command: /bin/false
+pools:
+  dev:
+    agent: fake
+    dir: %[1]q
+triggers:
+  red:
+    when:
+      check: cat sha
+    ticket:
+      pool: dev
+      title: Fix master
+`
+
+func TestTriggerCheck(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, checkYAML, dir), 0o600))
+	root := config.Root{Dir: dir}
+	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	stop := triggerController(t, root, clk)
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	list := func() []store.Ticket {
+		var all []store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{}, &all))
+		return all
+	}
+	settle := func() { time.Sleep(150 * time.Millisecond) }
+	setSHA := func(s string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "sha"), []byte(s+"\n"), 0o600))
+	}
+
+	settle()
+	assert.Empty(t, list(), "check exits non-zero")
+	var infos []rpc.TriggerInfo
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTriggerList, nil, &infos))
+	require.Len(t, infos, 1)
+	assert.Equal(t, "check exited 1", infos[0].Why)
+
+	setSHA("abc")
+	require.Eventually(t, func() bool { return len(list()) == 1 }, 5*time.Second, 20*time.Millisecond)
+	tk := list()[0]
+	assert.JSONEq(t, `{"trigger":{"name":"red","key":"red/abc"}}`, string(tk.Meta))
+	assert.Contains(t, tk.Body, "abc")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: tk.ID}, nil))
+	settle()
+	assert.Len(t, list(), 1, "same key does not fire again")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTriggerList, nil, &infos))
+	assert.Equal(t, "key abc already filed as "+tk.ID, infos[0].Why)
+
+	setSHA("def")
+	require.Eventually(t, func() bool { return len(list()) == 2 }, 5*time.Second, 20*time.Millisecond)
+}

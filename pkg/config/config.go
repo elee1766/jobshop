@@ -65,6 +65,14 @@ type TriggerWhen struct {
 	// scheduled time until the trigger fires for it.
 	Cron     string `yaml:"cron"`
 	Timezone string `yaml:"timezone"` // IANA name, default UTC
+
+	// Check is a shell command (sh -c, run in the root dir) that holds
+	// when it exits 0. Its trimmed stdout, if any, is a dedup key: the
+	// trigger files at most one ticket per key, ever (e.g. a failing SHA).
+	// It runs only after the store conditions hold.
+	Check string `yaml:"check"`
+	// CheckTimeout bounds one check run (Go duration, default 1m).
+	CheckTimeout string `yaml:"check_timeout"`
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -295,8 +303,16 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 		return fmt.Errorf("name must match %s", namePattern)
 	}
 	w := tr.When
-	if w.Cron == "" && !w.HasCounts() {
-		return errors.New("when needs a cron or a count threshold")
+	if w.Cron == "" && !w.HasCounts() && w.Check == "" {
+		return errors.New("when needs a cron, a count threshold or a check")
+	}
+	if w.CheckTimeout != "" {
+		if w.Check == "" {
+			return errors.New("when: check_timeout needs check")
+		}
+		if d, err := time.ParseDuration(w.CheckTimeout); err != nil || d <= 0 {
+			return fmt.Errorf("when: check_timeout %q must be a positive duration", w.CheckTimeout)
+		}
 	}
 	if w.Pool != "" {
 		if _, ok := c.Pools[w.Pool]; !ok {

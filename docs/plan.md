@@ -104,7 +104,8 @@ Short list; behavior details are in section 7.
   (#13), env refresh after deploys (#11), rate-limit backoff (#10).
 - Prometheus metrics (#14), OTel traces and slog bridge (#15).
 - Messages with queued and interrupt delivery (#16), read-only attach (#17).
-- Triggers: store counts, cron, dedup and cooldown (#26).
+- Triggers: store counts, cron, dedup and cooldown (#26), check commands
+  and the selfdev `master-red` trigger (#34).
 - Packs and `packs/selfdev` (#27), refinery handoff (#28).
 - Config reload (#38), `session restart` (#37), host backpressure (#39).
 - Per-signal OTLP URLs and headers, nix telemetry options, Grafana
@@ -117,8 +118,6 @@ Short list; behavior details are in section 7.
 ## 5. What's next
 
 **Phase 3** (remaining items on #36):
-- `master-red` check trigger: a command condition that files one fix
-  ticket per failing master SHA (#34).
 - Refinery dry run on real PRs, and one full planner cycle on gasserver.
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
   sessions (runbook: `docs/gasserver-verify.md`, #52).
@@ -223,6 +222,9 @@ All dated 2026-11-01 unless noted.
   and binary versions match.
 - Triggers and the controller make no GitHub calls. GitHub state is read
   by agents through `gh`, or by a trigger's check command.
+- 2026-11-01: master-red is a generic `when.check` shell command whose
+  stdout is a dedup key, not a built-in GitHub poller, so the controller
+  stays free of GitHub code (#34).
 - OTLP export goes straight to the Victoria backends with no collector, so
   jobshop takes per-signal URLs and headers itself. Header secrets come
   from the environment via `${VAR}`, never from the YAML (#44).
@@ -347,7 +349,10 @@ ticket closed, cron slot due, every count threshold met. Thresholds are
 restarts change nothing. Cron is 5-field, UTC unless `when.timezone`;
 missed slots collapse into one fire, and a new trigger does not fire for
 past slots. `jobshop trigger list` shows whether each would fire and why.
-Planned (#34): a `check` command condition with an optional dedup key.
+`when.check` (#34) is a `sh -c` command run in the root dir after the
+store conditions hold; exit 0 holds. Non-empty trimmed stdout is a dedup
+key (`meta.trigger.key`, prefixed with the trigger name): one ticket per
+key, ever. `check_timeout` defaults to 1m; a timeout logs an error.
 
 ### 7.7 Packs and reload (#27, #38)
 
