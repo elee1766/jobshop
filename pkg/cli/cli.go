@@ -60,17 +60,23 @@ type root struct {
 // Main parses args, runs the selected command and returns a process exit code.
 func Main(args []string) int {
 	var r root
+	// kong calls Exit after --help; a no-op would fall through and run the
+	// command, so record the code and stop before Run.
+	exited := -1
 	parser, err := kong.New(&r,
 		kong.Name("jobshop"),
 		kong.Description("Multi-agent work orchestration."),
 		kong.UsageOnError(),
-		kong.Exit(func(int) {}),
+		kong.Exit(func(code int) { exited = code }),
 	)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
 	ctx, err := parser.Parse(args)
+	if exited >= 0 {
+		return exited
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
