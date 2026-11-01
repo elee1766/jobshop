@@ -22,7 +22,9 @@ func TestTicketPromptComments(t *testing.T) {
 		cs = append(cs, store.Comment{Author: "js-s", Body: b, CreatedAt: at.Add(time.Duration(i) * time.Minute)})
 	}
 	p := ticketPromptText("pool prompt", tk, cs)
-	assert.True(t, strings.HasPrefix(p, plain[:strings.Index(plain, "The jobshop CLI")]), "body before comments")
+	head, _, ok := strings.Cut(plain, "The jobshop CLI")
+	assert.True(t, ok)
+	assert.True(t, strings.HasPrefix(p, head), "body before comments")
 	assert.Contains(t, p, "# Recent comments")
 	assert.NotContains(t, p, "first", "only the last 3")
 	assert.NotContains(t, p, "second")
