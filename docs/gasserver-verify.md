@@ -20,6 +20,12 @@ gasserver.nix `modules/jobshop.nix`):
   a Nix store link) need the operator. Ask on the issue with the exact
   change; `jobshop session restart <id>` covers the env refresh path
   meanwhile.
+- A host started before a grant keeps its old PATH and groups (found
+  2026-11-01, #56). Then `sudo` and `curl` are not found and the journal
+  is unreadable. Use full paths: `/run/wrappers/bin/sudo -n ...`,
+  `/run/current-system/sw/bin/curl`, and
+  `/run/wrappers/bin/sg systemd-journal -c "journalctl -u jobshop ..."`.
+  `jobshop session restart <id>` on that session also picks up the new env.
 
 An operator shell:
 
@@ -138,6 +144,8 @@ of the window, together with:
 
 ```sh
 jobshop session list --since 24h | jq -r '.[].ticket.resolution' | sort | uniq -c
+# before #54 is deployed (no --state/--since):
+jobshop session list --all | jq '[.[] | select(.ticket.resolution=="crashed")]'
 journalctl -u jobshop --since -24h -o cat | grep -c 'session ended'
 ```
 
