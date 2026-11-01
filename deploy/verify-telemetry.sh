@@ -122,14 +122,15 @@ else
 fi
 
 # 3. Series per pool. Pools come from jobshop_sessions, which the supervisor
-# records every tick for each configured pool.
-if pools=$(vm_query 'count by (jobshop_pool) (jobshop_sessions)' | jq -r '.[].metric.jobshop_pool' | sort); then
+# records every tick for each configured pool. last_over_time keeps a
+# controller restart (one missed scrape) from looking like a missing series.
+if pools=$(vm_query 'count by (jobshop_pool) (last_over_time(jobshop_sessions[5m]))' | jq -r '.[].metric.jobshop_pool' | sort); then
 	if [ -z "$pools" ]; then
 		fail "series: jobshop_sessions has no pools"
 	fi
 	for pool in $pools; do
 		for name in jobshop_sessions jobshop_tickets_ready; do
-			n=$(vm_query "count($name{jobshop_pool=\"$pool\"})" | jq -r '.[0].value[1] // "0"')
+			n=$(vm_query "count(last_over_time($name{jobshop_pool=\"$pool\"}[5m]))" | jq -r '.[0].value[1] // "0"')
 			if [ "$n" != 0 ]; then
 				pass "series $name pool=$pool"
 			else
