@@ -441,6 +441,9 @@ header values print unexpanded.
   have not incremented yet are listed, not failed. Shellcheck it with
   `shellcheck -s sh`; CI does not yet (#65).
   Runbook: `docs/gasserver-verify.md` section 5 (#55).
+- `deploy/verify-sessions.sh` (POSIX sh, jq) fails when any session closed
+  `crashed` or `stuck` within `--since` (default 24h), printing id, pool
+  and end reason. Used in runbook section 0 (#77).
 - Planned: store transaction spans.
 - Conversation export (decided 2026-11-01, #45): `conversation_export:
   true` on a pool (default off; needs a logs endpoint, checked at load)
