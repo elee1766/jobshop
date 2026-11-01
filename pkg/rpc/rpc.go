@@ -24,29 +24,30 @@ import (
 
 // Method names.
 const (
-	MethodTicketCreate = "ticket.create"
-	MethodTicketShow   = "ticket.show"
-	MethodTicketList   = "ticket.list"
-	MethodTicketUpdate = "ticket.update"
-	MethodTicketClose  = "ticket.close"
-	MethodTicketReopen = "ticket.reopen"
-	MethodReady        = "ticket.ready"
-	MethodCommentAdd   = "comment.add"
-	MethodEdgeAdd      = "edge.add"
-	MethodEdgeRemove   = "edge.remove"
-	MethodLabelAdd     = "label.add"
-	MethodLabelRemove  = "label.remove"
-	MethodClaim        = "claim"
-	MethodHeartbeat    = "heartbeat"
-	MethodRelease      = "release"
-	MethodSessionNew   = "session.new"
-	MethodSessionList  = "session.list"
-	MethodSessionReap  = "session.reap"
-	MethodWhoami       = "whoami"
-	MethodShutdown     = "controller.shutdown"
-	MethodDrain        = "controller.drain"
-	MethodReload       = "config.reload"
-	MethodTriggerList  = "trigger.list"
+	MethodTicketCreate   = "ticket.create"
+	MethodTicketShow     = "ticket.show"
+	MethodTicketList     = "ticket.list"
+	MethodTicketUpdate   = "ticket.update"
+	MethodTicketClose    = "ticket.close"
+	MethodTicketReopen   = "ticket.reopen"
+	MethodReady          = "ticket.ready"
+	MethodCommentAdd     = "comment.add"
+	MethodEdgeAdd        = "edge.add"
+	MethodEdgeRemove     = "edge.remove"
+	MethodLabelAdd       = "label.add"
+	MethodLabelRemove    = "label.remove"
+	MethodClaim          = "claim"
+	MethodHeartbeat      = "heartbeat"
+	MethodRelease        = "release"
+	MethodSessionNew     = "session.new"
+	MethodSessionList    = "session.list"
+	MethodSessionReap    = "session.reap"
+	MethodSessionRestart = "session.restart"
+	MethodWhoami         = "whoami"
+	MethodShutdown       = "controller.shutdown"
+	MethodDrain          = "controller.drain"
+	MethodReload         = "config.reload"
+	MethodTriggerList    = "trigger.list"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -185,6 +186,20 @@ type SessionListParams struct {
 	All bool `json:"all,omitempty"`
 }
 
+// SessionRestartParams restarts one session's host. Without Now a busy
+// session restarts after its current turn; Now cancels the turn.
+type SessionRestartParams struct {
+	ID  string `json:"id"`
+	Now bool   `json:"now,omitempty"`
+}
+
+// SessionRestartResult reports the host that will be replaced.
+type SessionRestartResult struct {
+	ID      string `json:"id"`
+	HostPid int    `json:"host_pid,omitempty"`
+	Now     bool   `json:"now,omitempty"`
+}
+
 // SessionInfo is a session ticket joined with the live state of its
 // session directory. Ticket is nil for an orphan: a directory with a live
 // host but no open session ticket.
@@ -200,6 +215,8 @@ type SessionInfo struct {
 	SeqTime  *time.Time    `json:"seq_time,omitempty"`
 	Exit     string        `json:"exit,omitempty"`    // exit.json reason, for dead hosts
 	Drained  bool          `json:"drained,omitempty"` // takes no new tickets
+	// Crashes counts unplanned host restarts in the crash window.
+	Crashes int `json:"crashes,omitempty"`
 	// BackoffUntil is set while the session waits out a provider rate limit.
 	BackoffUntil *time.Time `json:"backoff_until,omitempty"`
 }

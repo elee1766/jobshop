@@ -66,6 +66,12 @@ type runner struct {
 	// backoffUntil is set while the agent's provider is rate limited and the
 	// runner waits to retry the same turn.
 	backoffUntil time.Time
+	// restartPending is set by session.restart: the host is stopped and
+	// respawned at the next point where no turn runs. restartWake wakes an
+	// idle wait; restartNow cancels the running turn (--now).
+	restartPending bool
+	restartWake    chan struct{}
+	restartNow     chan struct{}
 }
 
 // rateLimited reports whether a prompt error is the provider refusing
@@ -108,6 +114,7 @@ func (c *Controller) startRunner(t store.Ticket) {
 		c: c, id: t.ID, pool: t.Pool, dir: c.root.SessionDir(t.ID),
 		log: c.log.With("session", t.ID, "pool", t.Pool), ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), turnEnd: make(chan struct{}, 1),
+		restartWake: make(chan struct{}, 1), restartNow: make(chan struct{}, 1),
 	}
 	if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
 		r.traceParent = f.TraceParent
@@ -186,6 +193,8 @@ func (r *runner) run() {
 }
 
 func (r *runner) crashed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	now := time.Now()
 	keep := r.crashes[:0]
 	for _, t := range r.crashes {
@@ -270,6 +279,7 @@ func (r *runner) session() error {
 	}
 	fresh := false
 	if !host.Alive(r.dir) {
+		r.clearRestart()
 		if err := r.c.spawnHost(t, fields); err != nil {
 			return errSessionEnd{resolution: resolutionCrashed, reason: "spawn: " + err.Error()}
 		}
@@ -298,6 +308,9 @@ func (r *runner) session() error {
 	gate.Open()
 	r.log.Info("connected to host", "host_pid", welcome.Pid, "agent_pid", welcome.AgentPid, "fresh", fresh, "busy", welcome.Busy)
 	stale := !fresh && r.staleEnv(t, fields)
+	if r.wantsRestart() && !welcome.Busy {
+		return r.restart(nc)
+	}
 	if stale && !welcome.Busy && r.idle() {
 		return r.refresh(nc)
 	}
@@ -369,6 +382,11 @@ func (r *runner) session() error {
 		case <-r.turnEnd:
 		case <-ctx.Done():
 			return r.dropped(conn)
+		case <-r.restartNow:
+			return r.restart(nc)
+		}
+		if r.wantsRestart() {
+			return r.restart(nc)
 		}
 		r.afterTurn(ctx, conn, fields.ACPSession, "")
 		if stale && r.idle() {
@@ -405,6 +423,67 @@ func (r *runner) staleEnv(t store.Ticket, f store.SessionFields) bool {
 func (r *runner) idle() bool {
 	held, err := r.c.store.List(r.ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
 	return err == nil && len(held) == 0
+}
+
+// requestRestart asks for a host restart. Without now it waits for the
+// running turn, if any, to end.
+func (r *runner) requestRestart(now bool) {
+	r.mu.Lock()
+	r.restartPending = true
+	r.mu.Unlock()
+	select {
+	case r.restartWake <- struct{}{}:
+	default:
+	}
+	if now {
+		select {
+		case r.restartNow <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (r *runner) wantsRestart() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.restartPending
+}
+
+// clearRestart drops a pending request once a new host is about to spawn.
+func (r *runner) clearRestart() {
+	r.mu.Lock()
+	r.restartPending = false
+	r.mu.Unlock()
+	for _, ch := range []chan struct{}{r.restartWake, r.restartNow} {
+		select {
+		case <-ch:
+		default:
+		}
+	}
+}
+
+// restart stops the host on request. Like refresh it returns errRefresh,
+// so run() respawns at once with a fresh spec and counts no crash. It skips
+// afterTurn: held tickets stay claimed (the supervisor keeps heartbeating
+// them) and the new host is prompted with them again.
+func (r *runner) restart(nc net.Conn) error {
+	r.log.Info("restarting host on request", "host_pid", hostPid(r.dir))
+	r.lifecycle("restart_requested")
+	_ = nc.Close()
+	stopHost(r.dir)
+	return errRefresh
+}
+
+func (r *runner) crashCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, t := range r.crashes {
+		if time.Since(t) < crashWindow {
+			n++
+		}
+	}
+	return n
 }
 
 func (r *runner) refresh(nc net.Conn) error {
@@ -462,6 +541,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 	idle := config.Duration(pool.IdleTimeout, defaultIdle)
 	idleSince := time.Now()
 	for {
+		if r.wantsRestart() {
+			return r.restart(nc)
+		}
 		// Queued messages go before the next claim, so also after each turn.
 		if err := r.deliver(ctx, conn, acpSession); err != nil {
 			return err
@@ -480,6 +562,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			select {
 			case <-ctx.Done():
 				return r.dropped(conn)
+			case <-r.restartWake:
 			case <-time.After(r.c.opt.Poll):
 			}
 			continue
@@ -493,6 +576,10 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t))
 		if err != nil {
 			return err
+		}
+		if r.wantsRestart() {
+			// Keep the claim: the restarted host gets the ticket again.
+			return r.restart(nc)
 		}
 		if interrupted {
 			if err := r.deliver(ctx, conn, acpSession); err != nil {

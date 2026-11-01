@@ -558,6 +558,20 @@ Leak prevention, layered:
    first. A directory whose host is still alive after the stop is kept for
    a later run. Open sessions are never touched. `--dry-run` reports the
    same `stopped` / `removed` lists without acting.
+   (2026-11-01, issue #37) `session restart <id>` (admin socket, method
+   `session.restart`) restarts one session's host. The runner stops the
+   host the same way as an env refresh and respawns it at once with a
+   freshly built spec (agent command, args, env), resuming the
+   conversation with `session/load`. Claims the session holds are kept
+   (the supervisor keeps heartbeating them) and the new host is prompted
+   with a held ticket again. A busy session restarts after its current
+   turn, before the end-of-turn reminder; `--now` cancels the turn with
+   `session/cancel` first. It is logged and traced as `session
+   restart_requested`, not counted as a crash (`session list` now shows
+   `crashes`, the unplanned restarts in the crash window). Unknown, closed,
+   non-session and external (no controller-driven host) ids are errors.
+   The spec is built from the live config, so after `jobshop reload`
+   (#38) a restart applies changed agent args or env to one session.
 
 Not planned: upgrading a running host in place (re-exec preserving fds).
 Possible later; see the Pdeathsig thread caveat noted in discussion.
