@@ -5,6 +5,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/alecthomas/kong"
 
@@ -91,8 +92,41 @@ func Main(args []string) int {
 type versionCmd struct{}
 
 func (versionCmd) Run() error {
-	fmt.Printf("jobshop %s (%s)\n", version, commit)
+	bi, _ := debug.ReadBuildInfo()
+	v, c := versionInfo(version, commit, bi)
+	fmt.Printf("jobshop %s (%s)\n", v, c)
 	return nil
+}
+
+// versionInfo fills in version and commit from Go build info when -ldflags
+// left the defaults, so plain `go build` / `go install` builds identify
+// themselves. Values set with -ldflags (the Nix build) win.
+func versionInfo(v, c string, bi *debug.BuildInfo) (string, string) {
+	if bi == nil {
+		return v, c
+	}
+	if v == "dev" && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		v = bi.Main.Version
+	}
+	if c == "unknown" {
+		var rev string
+		var dirty bool
+		for _, s := range bi.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				dirty = s.Value == "true"
+			}
+		}
+		if rev != "" {
+			c = rev[:min(12, len(rev))]
+			if dirty {
+				c += "-dirty"
+			}
+		}
+	}
+	return v, c
 }
 
 type sessionHostCmd struct {

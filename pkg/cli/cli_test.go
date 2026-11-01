@@ -1,0 +1,55 @@
+package cli
+
+import (
+	"runtime/debug"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestVersionInfo(t *testing.T) {
+	const rev = "0123456789abcdef0123456789abcdef01234567"
+	vcs := func(rev, modified string) []debug.BuildSetting {
+		return []debug.BuildSetting{{Key: "vcs.revision", Value: rev}, {Key: "vcs.modified", Value: modified}}
+	}
+	tests := []struct {
+		name                 string
+		version, commit      string
+		bi                   *debug.BuildInfo
+		wantVersion, wantCmt string
+	}{
+		{"no build info", "dev", "unknown", nil, "dev", "unknown"},
+		{
+			"devel build, clean", "dev", "unknown",
+			&debug.BuildInfo{Main: debug.Module{Version: "(devel)"}, Settings: vcs(rev, "false")},
+			"dev", "0123456789ab",
+		},
+		{
+			"dirty tree", "dev", "unknown",
+			&debug.BuildInfo{Main: debug.Module{Version: "(devel)"}, Settings: vcs(rev, "true")},
+			"dev", "0123456789ab-dirty",
+		},
+		{
+			"go install with module version", "dev", "unknown",
+			&debug.BuildInfo{Main: debug.Module{Version: "v0.3.0"}},
+			"v0.3.0", "unknown",
+		},
+		{
+			"short revision", "dev", "unknown",
+			&debug.BuildInfo{Settings: vcs("abc", "false")},
+			"dev", "abc",
+		},
+		{
+			"ldflags win", "1.2.3", "deadbeef",
+			&debug.BuildInfo{Main: debug.Module{Version: "v0.3.0"}, Settings: vcs(rev, "true")},
+			"1.2.3", "deadbeef",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, c := versionInfo(tt.version, tt.commit, tt.bi)
+			assert.Equal(t, tt.wantVersion, v)
+			assert.Equal(t, tt.wantCmt, c)
+		})
+	}
+}
