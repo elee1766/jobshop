@@ -224,61 +224,70 @@ account for test code or hidden coupling.
 - How much of `internal/dispatch` do we use? Our formulas may not need
   fan-out, tally or drain at all.
 
-## 7. Phases (rough)
+## 7. Phases
 
-Ordering is a proposal. Each phase ends with something runnable. The ordering
-is driven by dogfooding: get to the smallest loop that can run an agent on a
-Jobshop ticket in this repo, then let that loop do more of the remaining work.
-Until then, development happens by hand (or with an outside agent).
+Decided 2026-11-01. Each phase ends with something runnable. The order is
+driven by self-hosting: build the smallest loop that can run an agent on a
+Jobshop ticket in this repo, then let that loop build the rest. Until then,
+development happens by hand (or with an outside agent).
 
 **Phase 0: groundwork**
 - Repo layout, CI, lint. Build is plain `go` (`go build`, `go test`), no
-  Bazel (decided 2026-11-01). CI on GitHub Actions: build, `go vet`,
-  `golangci-lint`, `go test -race`.
-- Write down the ticket data model: fields, statuses, edge types, metadata
-  conventions.
+  Bazel. CI on GitHub Actions: build, `go vet`, `golangci-lint`,
+  `go test -race`.
+- Data model: `docs/data-model.md`.
 
-**Phase 1: ticket store**
-- `store` package: interface, types, errors.
-- Conformance suite.
-- SQLite backend (adapt from Gas City `sqlite_*` where it fits).
-- Minimal CLI: `jobshop ticket create/show/list/update/close`, `claim`,
-  `heartbeat`, `release`, `ready`, with stable JSON output. The CLI talks
-  to the controller over a socket, never to SQLite directly (section 8.5).
+**Phase 1: store, controller sockets, CLI**
+- `store` package: interface, types, errors, engine kinds (`task`,
+  `session`, `message`) with typed fields.
+- Conformance suite, then the SQLite backend.
+- Controller process skeleton: opens the store, serves the admin socket
+  and per-session CLI sockets over JSON-RPC (section 8.5). All writes go
+  through it.
+- CLI: `jobshop ticket create/show/list/update/close`, `comment`, `assign`,
+  `claim --next` (three tiers), `heartbeat`, `release`, `ready`, with
+  stable JSON output. Never opens SQLite directly.
 
-**Phase 2: workflows and runs**
-- Port `internal/formula`. Decide which workflow features to keep.
+**Phase 2: sessions and self-hosting**
+- YAML config loader (project, agent, pool).
+- Session host (section 8): spawn via `/proc/self/exe`, ACP proxy, journal,
+  replay, backpressure, leak guards, controller restart and adoption.
+  Required for self-hosting, since agents will redeploy the controller.
+- ACP runtime via jcode, resume with `session/load`.
+- Controller tick: start a session when a pool has ready work, restart it
+  if it dies, release a dead session's claims, sweep expired leases.
+- Pinned release binary and promote/rollback on gasserver.
+- **Milestone: Jobshop runs its own agents.** One project (this repo), one
+  pool, agents claim and close tickets directly and deliver via PR as
+  `cog`. From here, new work is filed as Jobshop tickets.
+
+**Phase 3: hardening and visibility** (built by Jobshop agents)
+- Quarantine, idle-kill, drain.
+- Observability (section 9): OTel traces and logs, Prometheus metrics,
+  conversation export.
+- Messages with queued and interrupt delivery.
+- Human attach.
+
+**Phase 4: workflows and runs**
+- Port the formula concepts we use; decide which workflow features to keep.
 - Run creation via graph apply.
-- Port the subset of `internal/dispatch` our workflows need.
+- Only the dispatcher features our workflows need; retry limits live here.
 
-**Phase 3: controller and sessions**
-- Config loader (project/agent/pool) in YAML.
-- Runtime provider: ACP via a per-session host (section 8). No tmux.
-- Controller tick: pool demand from queues, start and drain sessions,
-  restart, quarantine, idle-kill.
-- `jobshop assign`, and the hook: `jobshop claim --next` (three-tier query:
-  my in-progress, my pre-assigned, pool queue).
+**Phase 5: the rest of our surface**
+- Batches (convoys), schedules (orders).
+- Admin-socket change subscriptions and an API if the dashboard is ported.
+- Gateway prerequisites (section 10) are already covered by phases 1-3.
 
-**Phase 4: the rest of our surface**
-- Messages (mail), batches (convoys), schedules (orders).
-- Admin-socket subscriptions for change notifications, and an API if the
-  dashboard is to be ported.
+**Later**: Postgres backend, against the same conformance suite.
 
-**Dogfood milestone (target, may land between phases 1 and 3)**
-- Smallest loop that works on itself: one project (this repo), one pool of
-  one agent, `assign`, `claim --next`, `heartbeat`, `close`, and a controller
-  that starts a session when the queue is non-empty and restarts it if it
-  dies.
-- No workflows, dispatcher, messages or batches required. Agents close
-  tickets directly.
-- After this, new features are filed as Jobshop tickets and built by Jobshop
-  agents, with a human reviewing.
+**Isolation (decided 2026-11-01)**: no bwrap or separate agent user at the
+start. The isolation boundary is the VM: gasserver is a VM, and everything
+runs as `agent` inside it. Per-session sandboxing (section 8.6) stays an
+option for later.
 
 **Self-hosting setup (decided 2026-11-01)**
-- Host: `gasserver`, next to the live Gas City. Work happens over SSH.
-  Running locally on this workstation under bubblewrap was considered and
-  set aside; bwrap per session remains an option for agent isolation on
-  gasserver (section 8.6).
+- Host: `gasserver` (a VM), next to the live Gas City. Work happens over
+  SSH. The VM is the isolation boundary; no bwrap at the start.
 - GitHub identity: the `cog` user, with write access to this repo to push
   branches, open PRs and merge.
 - Isolation from Gas City: own data dir and SQLite file, own controller
@@ -291,20 +300,8 @@ Until then, development happens by hand (or with an outside agent).
 - Merge policy: branch protection requires CI. `cog` merges when CI passes,
   for all changes (decided 2026-11-01). The pinned binary is the safety net.
 
-**Phase 5: hardening from use**
-- Add what dogfooding shows is missing, in the order it hurts.
-- Bring over Gas City features only when a real need appears.
-
-**Later**: Postgres backend, against the same conformance suite.
-
-### Open questions
-- Is Phase 3 too large for one phase?
-- Should the dogfood milestone come before workflows (phase 2)? Probably
-  yes, since a flat ticket queue is enough to start.
-- What safety rails does self-hosting need (agents editing the controller
-  that runs them; review before merging; a way to roll back a broken build)?
-- Runtime for the dogfood loop: ACP via jcode (decided 2026-11-01; see
-  section 8).
+After the milestone, add what self-hosting shows is missing, in the order
+it hurts. Bring over Gas City features only when a real need appears.
 
 ## 8. Sessions: host process, hot restart, CLI socket (proposed)
 
@@ -439,11 +436,13 @@ Recovery below the host:
 
 ### 8.6 Users and security
 
-- Now: controller, hosts and agents all run as `agent`. Accepted risk: an
+- Now: controller, hosts and agents all run as `agent` inside the
+  gasserver VM, which is the isolation boundary (decided 2026-11-01).
+  Accepted risk: an
   agent can do anything the controller can (edit the store, replace
   binaries, signal processes, connect to other sessions' sockets). Socket
   scoping guards against mistakes, not hostile agents.
-- Next (when self-hosting starts): agents run as a separate user,
+- Later, if needed: agents run as a separate user,
   `jobshop-agent`. The host starts the agent via a narrow sudoers rule
   (`agent` may run only the agent command as `jobshop-agent`, NOPASSWD;
   on NixOS via `security.sudo.extraRules`). The data dir, store, binaries
@@ -467,13 +466,11 @@ Recovery below the host:
 - Gas City's `internal/runtime/acp` is a hand-rolled JSON-RPC client;
   useful as reference for edge cases, not as a dependency.
 
-### 8.8 Dogfood order
+### 8.8 Build order
 
-- The first loop can run with the controller spawning agents directly
-  (restart = sessions restart, recovered via tickets), but the CLI socket
-  must exist from the start.
-- Add the host once controller restarts cost real work, which should be
-  soon after self-hosting begins.
+- The CLI socket and the session host are both required for the
+  self-hosting milestone (phase 2), since agents will redeploy the
+  controller.
 
 ### Decided (2026-11-01)
 - jcode's ACP server supports `session/load`, so resume after an agent or
