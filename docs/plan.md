@@ -270,16 +270,15 @@ Until then, development happens by hand (or with an outside agent).
 - Host: `gasserver`, next to the live Gas City. Work happens over SSH.
 - GitHub identity: the `cog` user, with write access to this repo to push
   branches, open PRs and merge.
-- Isolation from Gas City: own data dir and SQLite file, own user systemd
-  unit, own session cap so Jobshop cannot starve the live city's 20 slots.
-  Separate Linux user (`jobshop`) vs reusing `agent` is open.
+- Isolation from Gas City: own data dir and SQLite file, own controller
+  process, own session cap so Jobshop cannot starve the live city's 20 slots.
+  Runs as the existing `agent` user (decided 2026-11-01).
 - Known-good binary: the controller runs a pinned build from a release path
   (e.g. `~/.local/share/jobshop/bin/jobshop-<sha>`), never the working tree.
   Promotion is an explicit step, and rollback is repointing a symlink.
 - Agents work in git worktrees, one per ticket, and deliver via PR.
-- Merge policy: branch protection requires CI. `cog` may merge on green
-  for normal changes. Changes under the controller, store schema or
-  migrations need a human approval first.
+- Merge policy: branch protection requires CI. `cog` merges when CI passes,
+  for all changes (decided 2026-11-01). The pinned binary is the safety net.
 
 **Phase 5: hardening from use**
 - Add what dogfooding shows is missing, in the order it hurts.
@@ -296,7 +295,71 @@ Until then, development happens by hand (or with an outside agent).
 - Which runtime does the dogfood loop use: ACP via jcode as in our city, or
   tmux as the simpler first provider?
 
-## 8. Risks
+## 8. Session persistence and hot restart (proposed)
+
+Goal: restart or upgrade the controller without killing agent sessions or
+losing in-flight turns.
+
+**Why not tmux directly.** ACP is JSON-RPC over the agent's stdin/stdout.
+A tmux pane is a terminal, so the stream would pass through a pty (echo,
+line discipline, wrapping) and there is no clean way to reattach a
+program to the pane's raw stdio. Gas City's ACP provider spawns the agent
+as a child of the controller (`internal/runtime/acp/acp.go`, `Setpgid`),
+so when the controller exits, the stdio pipes close and the session dies.
+
+**Proposal: a per-session host process (dtach/abduco for ACP).**
+- `jobshop session-host` is a small process started per session that
+  daemonizes itself (double fork + `setsid`, reparented to init, stdio to
+  `/dev/null`), so it outlives the controller. No systemd dependency
+  (decided 2026-11-01). Caveat: a supervisor that kills the controller's
+  whole cgroup (systemd `KillMode=control-group`, container stop) takes the
+  hosts with it, so deployments must not do that. That is a deployment
+  note, not something Jobshop requires.
+- It spawns the agent, owns its stdin/stdout, and listens on a Unix socket
+  (`<data>/sessions/<id>.sock`).
+- The controller connects to the socket and speaks ACP through it. On
+  restart, the new controller lists sockets, reconnects, and re-adopts.
+- While no client is connected, the host keeps reading agent output into
+  a bounded, sequence-numbered buffer and appends it to a transcript file.
+  On reconnect the client sends its last seen sequence number and the host
+  replays the gap. Requests the agent sends to the client (permission
+  prompts, fs/terminal calls) are held until a client is connected.
+- The host is deliberately dumb: framing, buffering, replay, and liveness.
+  No ticket or policy logic, so it rarely needs upgrading. Its protocol is
+  versioned so a new controller can adopt hosts started by an old one.
+- The host can also expose a read-only human attach (tail the transcript),
+  which covers what we use tmux attach for today.
+
+**Second layer: ACP `session/load`.** If the agent process itself dies (or
+the host does), the controller starts a new agent and calls `session/load`
+with the stored ACP session id, when the agent advertises `loadSession`.
+This recovers conversation context, not in-flight tool calls. Check that
+jcode supports it before relying on it.
+
+**Third layer: tickets.** Work state lives in the store, so even a cold
+start (both layers lost) only costs the agent's context: the replacement
+session re-claims its ticket via `claim --next`.
+
+**Controller restart sequence**
+1. New binary starts, opens the store, takes the controller lock.
+2. Scans session sockets and the sessions table, reconnects to live hosts,
+   replays missed output, marks unreachable ones dead.
+3. Resumes the normal tick. No sessions are started or stopped until
+   reconciliation finishes.
+
+**Dogfood order**: the first loop can run without the host (controller
+restart = sessions restart, recovered via tickets). Add the host when
+controller restarts start costing real work, which should be soon after
+self-hosting begins since agents will be redeploying the controller.
+
+### Open questions
+- Does jcode's ACP server support `session/load`? (Determines how much the
+  second layer gives us.)
+- Buffer size and policy when the host's buffer fills while disconnected:
+  block the agent's stdout, or drop to transcript-only?
+- Should a human attach be read/write (inject input) or read-only?
+
+## 9. Risks
 
 - Rebuilding session supervision and claim recovery means rediscovering edge
   cases Gas City already hit. Read its git history and incident notes
@@ -306,7 +369,7 @@ Until then, development happens by hand (or with an outside agent).
 - Self-hosting failure: a bad change to the controller can stop the agents
   that would fix it. Needs a known-good binary to fall back to.
 
-## 9. Alternatives considered
+## 10. Alternatives considered
 
 - **Keep extending `sqlite-work` in the Gas City fork.** Lowest short-term
   cost. Merge drag grows, and the packs still assume `bd`'s CLI.
@@ -321,7 +384,7 @@ Until then, development happens by hand (or with an outside agent).
 - **Gas City `file` provider.** Same CLI gap as `sqlite-work`, and documented
   as for local trials only.
 
-## 10. References
+## 11. References
 
 Gas City (fork checkout `~/repo/github.com/elee1766/gascity`):
 - `AGENTS.md`: design principles, primitives, layering invariants.
