@@ -274,8 +274,11 @@ Until then, development happens by hand (or with an outside agent).
 - After this, new features are filed as Jobshop tickets and built by Jobshop
   agents, with a human reviewing.
 
-**Self-hosting setup (proposed 2026-11-01)**
+**Self-hosting setup (decided 2026-11-01)**
 - Host: `gasserver`, next to the live Gas City. Work happens over SSH.
+  Running locally on this workstation under bubblewrap was considered and
+  set aside; bwrap per session remains an option for agent isolation on
+  gasserver (section 8.6).
 - GitHub identity: the `cog` user, with write access to this repo to push
   branches, open PRs and merge.
 - Isolation from Gas City: own data dir and SQLite file, own controller
@@ -449,8 +452,11 @@ Recovery below the host:
   Needs: worktrees owned by or group-shared with `jobshop-agent`, and
   `cog` git credentials and model-provider auth readable by it.
 - Later, if needed: per-session isolation (agents can still read each
-  other's worktrees and sockets under one shared user). Options: Landlock
-  applied by the host (no root), or a pool of agent users.
+  other's worktrees and sockets under one shared user). Options: the host
+  starts each agent under bubblewrap (no root; read-only system and
+  toolchain, read-write worktree, its own CLI socket, network on),
+  Landlock applied by the host, or a pool of agent users. bwrap also
+  removes the need for the separate `jobshop-agent` user and sudoers rule.
 
 ### 8.7 Libraries
 

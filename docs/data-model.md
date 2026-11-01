@@ -324,8 +324,19 @@ DELETE FROM tickets
 WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
 ```
 
+## Pack data and labels (decided 2026-11-01)
+
+- `meta` is grouped by pack name: `{"gx": {"linear_id": "ENG-123"}}`.
+  The store rejects top-level keys that are not a known pack name. Gas City
+  has only a flat `map[string]string` with an optional dot-prefix
+  convention, and in the live city engine keys (`close_reason`, `state`,
+  `session_id`, ...) and pack keys (`merge_strategy`, `kn.*`) share one
+  namespace; about half of engine keys lack the `gc.` prefix.
+- Labels are user-only. The engine never reads or writes them. Gas City
+  uses labels as engine state (`gc:session`, `gc:wisp`, `hold:mayor`,
+  `order-run:*`, `read`); in Jobshop those become `kind`, `ephemeral`,
+  edges, or typed fields.
+
 ## Open questions
 
 - Lease length and heartbeat interval defaults (Gas City: 30 minute lease).
-- Should `meta` be namespaced by convention (`{"gx": {...}}`) and is that
-  enforced or just documented?
