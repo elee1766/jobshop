@@ -30,7 +30,7 @@ jobshop/
 │   │       ├── migrations/   goose *.sql files, embedded
 │   │       └── queries/      sqlc *.sql queries and generated Go
 │   ├── rpc/                  JSON-RPC method names, request/response types,
-│   │                         client and server helpers over go.lsp.dev/jsonrpc2
+│   │                         client over the acp-go-sdk connection
 │   ├── control/              controller: tick loop, claims release, lease sweep,
 │   │                         session supervision, admin and CLI socket handlers
 │   ├── host/                 session host: spawn agent, ACP proxy, journal,
@@ -87,8 +87,7 @@ Subcommands:
 |---|---|---|
 | SQLite | `modernc.org/sqlite` | v1.61.1 |
 | Migrations | `github.com/pressly/goose/v3` (embedded `*.sql`) | v3.29.0 |
-| JSON-RPC (sockets, ACP framing) | `go.lsp.dev/jsonrpc2` (NDJSON; own accept loop, since `jsonrpc2.Serve` hardcodes LSP header framing) | v1.0.1 |
-| ACP | own `pkg/acp`, message types only, over jsonrpc2 | |
+| JSON-RPC (sockets) and ACP | `github.com/coder/acp-go-sdk` (its `Connection` for the CLI/admin sockets; its types and agent/client sides for ACP) | v0.13.5 |
 | CLI | `github.com/alecthomas/kong` | v1.16.1 |
 | YAML config | `github.com/goccy/go-yaml` | v1.19.2 |
 | IDs | `github.com/sony/sonyflake/v2`, Crockford base32 | v2.2.0 |
@@ -138,8 +137,17 @@ Standard library by choice (decided 2026-11-01):
 - Config reload is explicit (`jobshop reload`); no file watcher.
 
 Notes:
-- `coder/acp-go-sdk` was considered for ACP and not used: it is pre-1.0
-  and brings its own JSON-RPC. Types can be copied from it as needed.
+- JSON-RPC library (decided 2026-11-01, replacing `go.lsp.dev/jsonrpc2`):
+  `coder/acp-go-sdk` for both ACP and the CLI/admin sockets. Its
+  `Connection` is a general NDJSON JSON-RPC peer (method name plus raw
+  params in, `*RequestError` out) with a normal per-request context, and
+  it has no dependencies outside the standard library. Pre-1.0, so pin
+  the version and read the changelog on upgrades. `go.lsp.dev/jsonrpc2`
+  v1.0.1 was dropped: its server helper hardcodes LSP header framing, and
+  its pooled per-request context panics (`cannot create context from nil
+  parent`) when anything, such as `database/sql`'s `Rows.awaitDone`,
+  calls `Done()` after the handler returns. Unfixed on its main branch as
+  of 2026-11-01.
 - Ticket IDs (decided 2026-11-01): `<project prefix>-<13 chars>`, e.g.
   `js-0031w02j0r012`. A Sonyflake 63-bit ID, big-endian, encoded in
   lowercase Crockford base32 (no `i l o u`). Fixed width, so IDs sort by

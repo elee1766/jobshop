@@ -1,6 +1,7 @@
 // Package rpc defines the JSON-RPC protocol between the jobshop CLI and the
 // controller: method names, parameter and result types, error mapping, and
-// a client. Transport is NDJSON over a unix socket (go.lsp.dev/jsonrpc2).
+// a client. Transport is NDJSON over a unix socket, using the JSON-RPC
+// connection from github.com/coder/acp-go-sdk (the same one ACP uses).
 package rpc
 
 import (
@@ -8,11 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"time"
 
-	"go.lsp.dev/jsonrpc2"
+	acp "github.com/coder/acp-go-sdk"
 
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -173,22 +173,22 @@ type Whoami struct {
 
 // Error codes in the JSON-RPC server-defined range, one per store error.
 const (
-	CodeNotFound     jsonrpc2.Code = -32001
-	CodeConflict     jsonrpc2.Code = -32002
-	CodeNotHolder    jsonrpc2.Code = -32003
-	CodeNoWork       jsonrpc2.Code = -32004
-	CodeInvalid      jsonrpc2.Code = -32005
-	CodeCycle        jsonrpc2.Code = -32006
-	CodeClosed       jsonrpc2.Code = -32007
-	CodeAlreadyExist jsonrpc2.Code = -32008
-	CodeForbidden    jsonrpc2.Code = -32009
+	CodeNotFound     = -32001
+	CodeConflict     = -32002
+	CodeNotHolder    = -32003
+	CodeNoWork       = -32004
+	CodeInvalid      = -32005
+	CodeCycle        = -32006
+	CodeClosed       = -32007
+	CodeAlreadyExist = -32008
+	CodeForbidden    = -32009
 )
 
 // ErrForbidden means the caller's scope does not allow the operation.
 var ErrForbidden = errors.New("forbidden")
 
 var codes = []struct {
-	code jsonrpc2.Code
+	code int
 	err  error
 }{
 	{CodeNotFound, store.ErrNotFound},
@@ -203,20 +203,20 @@ var codes = []struct {
 }
 
 // ToWire maps an error to a JSON-RPC error that keeps its kind.
-func ToWire(err error) error {
+func ToWire(err error) *acp.RequestError {
 	if err == nil {
 		return nil
 	}
-	var we *jsonrpc2.Error
-	if errors.As(err, &we) {
-		return we
+	var re *acp.RequestError
+	if errors.As(err, &re) {
+		return re
 	}
 	for _, c := range codes {
 		if errors.Is(err, c.err) {
-			return jsonrpc2.NewError(c.code, err.Error())
+			return &acp.RequestError{Code: c.code, Message: err.Error()}
 		}
 	}
-	return jsonrpc2.NewError(jsonrpc2.InternalError, err.Error())
+	return &acp.RequestError{Code: -32603, Message: err.Error()}
 }
 
 // remoteError is a server error that still matches the store sentinel.
@@ -231,31 +231,25 @@ func (e *remoteError) Unwrap() error { return e.kind }
 // FromWire maps a JSON-RPC error back so callers can use errors.Is with
 // store sentinels.
 func FromWire(err error) error {
-	var we *jsonrpc2.Error
-	if !errors.As(err, &we) {
+	var re *acp.RequestError
+	if !errors.As(err, &re) {
 		return err
 	}
 	for _, c := range codes {
-		if we.Code == c.code {
-			return &remoteError{msg: we.Message, kind: c.err}
+		if re.Code == c.code {
+			return &remoteError{msg: re.Message, kind: c.err}
 		}
 	}
-	return errors.New(we.Message)
+	if re.Data != nil {
+		return fmt.Errorf("%s: %v", re.Message, re.Data)
+	}
+	return errors.New(re.Message)
 }
-
-// Codec is encoding/json, so json.RawMessage fields pass through verbatim.
-type Codec struct{}
-
-// Marshal implements jsonrpc2.Codec.
-func (Codec) Marshal(v any) ([]byte, error) { return json.Marshal(v) }
-
-// Unmarshal implements jsonrpc2.Codec.
-func (Codec) Unmarshal(data []byte, v any) error { return json.Unmarshal(data, v) }
 
 // Client is a connection to a controller or session socket.
 type Client struct {
 	nc   net.Conn
-	conn jsonrpc2.Conn
+	conn *acp.Connection
 }
 
 // Dial connects to a unix socket.
@@ -265,25 +259,26 @@ func Dial(ctx context.Context, path string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect %s: %w (is the controller running?)", path, err)
 	}
-	conn := jsonrpc2.NewConn(jsonrpc2.NewNDJSONStream(nc), jsonrpc2.WithCodec(Codec{}))
-	conn.Go(ctx, jsonrpc2.MethodNotFoundHandler)
-	return &Client{nc: nc, conn: conn}, nil
+	// The controller never calls back, so the client has no handler.
+	return &Client{nc: nc, conn: acp.NewConnection(nil, nc, nc)}, nil
 }
 
 // Call invokes method and decodes the result into out (may be nil).
 func (c *Client) Call(ctx context.Context, method string, params, out any) error {
-	_, err := c.conn.Call(ctx, method, params, out)
-	return FromWire(err)
+	res, err := acp.SendRequest[json.RawMessage](c.conn, ctx, method, params)
+	if err != nil {
+		return FromWire(err)
+	}
+	if out == nil || len(res) == 0 {
+		return nil
+	}
+	return json.Unmarshal(res, out)
 }
 
 // Close closes the connection.
 func (c *Client) Close() error {
-	err := c.conn.Close()
-	if cerr := c.nc.Close(); err == nil && !errors.Is(cerr, net.ErrClosed) {
-		err = cerr
+	if err := c.nc.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		return err
 	}
-	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
-		return nil
-	}
-	return err
+	return nil
 }

@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"go.lsp.dev/jsonrpc2"
+	acp "github.com/coder/acp-go-sdk"
 	"golang.org/x/sys/unix"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -173,8 +173,6 @@ func (c *Controller) sweep() {
 }
 
 // start serves ln until the controller stops or the returned func is called.
-// jsonrpc2.Serve hardcodes LSP header framing, so this loop exists to use
-// NDJSON (matching ACP and the client).
 func (c *Controller) start(ln net.Listener, sc scope) context.CancelFunc {
 	ctx, cancel := context.WithCancel(c.ctx)
 	c.wg.Go(func() {
@@ -194,13 +192,12 @@ func (c *Controller) start(ln net.Listener, sc scope) context.CancelFunc {
 				return
 			}
 			conns.Go(func() {
-				conn := jsonrpc2.NewConn(jsonrpc2.NewNDJSONStream(nc), jsonrpc2.WithCodec(rpc.Codec{}))
-				conn.Go(ctx, c.handler(sc))
+				conn := acp.NewConnection(c.handler(ctx, sc), nc, nc)
+				conn.SetLogger(c.log)
 				select {
-				case <-conn.Done():
-				case <-ctx.Done():
+				case <-conn.Done(): // client hung up
+				case <-ctx.Done(): // socket or controller stopping
 				}
-				_ = conn.Close()
 				_ = nc.Close()
 			})
 		}
@@ -245,19 +242,23 @@ type scope struct {
 	pool    string
 }
 
-func (c *Controller) handler(sc scope) jsonrpc2.Handler {
-	return func(_ context.Context, req *jsonrpc2.Request) (any, error) {
-		// jsonrpc2 v1.0.1 request contexts panic when database/sql watches
-		// them (nil parent in Done), so handlers run on the controller context.
-		ctx := c.ctx
-		h, ok := methods[req.Method()]
+// handler dispatches one socket's requests. The SDK gives each request its
+// own context; it is joined with the socket's so a closing session or
+// controller cancels in-flight work too.
+func (c *Controller) handler(sockCtx context.Context, sc scope) acp.MethodHandler {
+	return func(reqCtx context.Context, name string, params json.RawMessage) (any, *acp.RequestError) {
+		ctx, cancel := context.WithCancel(reqCtx)
+		defer cancel()
+		stop := context.AfterFunc(sockCtx, cancel)
+		defer stop()
+		h, ok := methods[name]
 		if !ok {
-			return nil, jsonrpc2.ErrMethodNotFound
+			return nil, acp.NewMethodNotFound(name)
 		}
-		res, err := h(c, ctx, sc, json.RawMessage(req.Params()))
+		res, err := h(c, ctx, sc, params)
 		if err != nil {
 			if !errors.Is(err, store.ErrNoWork) {
-				c.log.Debug("rpc error", "method", req.Method(), "actor", sc.actor, "err", err)
+				c.log.Debug("rpc error", "method", name, "actor", sc.actor, "err", err)
 			}
 			return nil, rpc.ToWire(err)
 		}
@@ -276,7 +277,7 @@ func bind[P any](fn func(c *Controller, ctx context.Context, sc scope, p P) (any
 			dec := json.NewDecoder(bytesReader(raw))
 			dec.DisallowUnknownFields()
 			if err := dec.Decode(&p); err != nil {
-				return nil, jsonrpc2.Errorf(jsonrpc2.InvalidParams, "%v", err)
+				return nil, acp.NewInvalidParams(err.Error())
 			}
 		}
 		return fn(c, ctx, sc, p)

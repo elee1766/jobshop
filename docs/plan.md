@@ -196,9 +196,10 @@ SQLite implementation.
   expiry returns the ticket straight to `open`.
 - Comments have their own table. `history` is an audit log, not an event
   stream.
-- CLI and admin sockets speak JSON-RPC 2.0 using `go.lsp.dev/jsonrpc2`
-  (github.com/go-language-server/jsonrpc2) with NDJSON framing, matching
-  ACP. Requires Go 1.26+.
+- CLI and admin sockets speak JSON-RPC 2.0 with NDJSON framing, matching
+  ACP, using the connection from `github.com/coder/acp-go-sdk`
+  (decided 2026-11-01; replaced `go.lsp.dev/jsonrpc2`, see
+  `docs/layout.md`).
 
 ## 6. What could be reused from Gas City
 
@@ -483,10 +484,11 @@ Recovery below the host:
 
 ### 8.7 Libraries
 
-- Default candidate: `github.com/coder/acp-go-sdk` (both sides,
-  `AgentLoader` for `session/load`, HTTP transport). Alternative with
-  minimal deps: `github.com/gopact-ai/acp`. The host may need only frame
-  parsing; the controller benefits more from an SDK.
+- Decided 2026-11-01: `github.com/coder/acp-go-sdk` on both sides
+  (`AgentLoader` for `session/load`). The same package's `Connection`
+  already carries the CLI and admin sockets, so there is one JSON-RPC
+  implementation in the binary. The host may use only its framing; the
+  controller uses the client side.
 - Gas City's `internal/runtime/acp` is a hand-rolled JSON-RPC client;
   useful as reference for edge cases, not as a dependency.
 
@@ -504,7 +506,7 @@ Recovery below the host:
   reading the agent's stdout (backpressure pauses the agent). It never
   drops data.
 - Orphaned host lease: 30 minutes without a controller connection.
-- CLI socket protocol: JSON-RPC via `go.lsp.dev/jsonrpc2` (section 5).
+- CLI socket protocol: JSON-RPC over the acp-go-sdk connection (section 5).
 
 - Human attach (decided 2026-11-01): read-only to start (tail the
   journal). The attach protocol includes an input method from day one,
