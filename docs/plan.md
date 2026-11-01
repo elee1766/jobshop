@@ -472,7 +472,44 @@ Recovery below the host:
 - Which socket protocol for the CLI: JSON-RPC (matches ACP), or plain
   JSON lines?
 
-## 9. Risks
+## 9. Chat gateway (future, design must not preclude)
+
+A human-facing way into the system, modeled on Hermes Agent's messaging
+gateway: one long-lived session per chat conversation (room, DM or thread).
+
+- `jobshop gateway` is a separate process and an ordinary client of the
+  controller's admin socket. No gateway code in the controller.
+- Platform adapters (Matrix first, given existing encrypted relays) map a
+  conversation to a session key, e.g. `matrix:<room>`.
+- Chat sessions belong to a pool that is not ticket-driven: the controller
+  keeps one session per active key, starts it on the first message,
+  idle-kills it, and resumes it later via `session/load` / the host
+  journal.
+- The gateway sends "deliver message to session key X" and streams
+  updates back. The controller stays the only ACP client of each host.
+- Permission prompts are relayed to the chat; the host already holds them
+  until answered.
+- A chat session's agent uses the same `jobshop` CLI via its `cli.sock`,
+  with scope from its pool config. A coordinator pool can assign tickets,
+  read status, and send messages (mail) to worker sessions. This is how
+  the mayor role comes back: as config, from chat.
+- Per-adapter user allowlists; YAML maps rooms to pools/agents.
+
+What this requires now, so it can be added later without redesign:
+1. The admin socket API covers: list sessions, start a session by key,
+   send input to a session, subscribe to its updates, answer permission
+   prompts. The gateway, the CLI and any future dashboard all use it.
+2. Pools have a type (ticket-driven vs keyed/on-demand) from the start.
+3. Messages are store-backed and addressed to sessions, pools or keys, so
+   a chat session can mail a worker and a worker's reply can surface in
+   chat.
+
+### Open questions
+- One session per room/thread, or per user inside shared rooms?
+- Delivery of a message to a busy worker: queue until its next turn, or
+  interrupt?
+
+## 10. Risks
 
 - Rebuilding session supervision and claim recovery means rediscovering edge
   cases Gas City already hit. Read its git history and incident notes
@@ -482,7 +519,7 @@ Recovery below the host:
 - Self-hosting failure: a bad change to the controller can stop the agents
   that would fix it. Needs a known-good binary to fall back to.
 
-## 10. Alternatives considered
+## 11. Alternatives considered
 
 - **Keep extending `sqlite-work` in the Gas City fork.** Lowest short-term
   cost. Merge drag grows, and the packs still assume `bd`'s CLI.
@@ -497,7 +534,7 @@ Recovery below the host:
 - **Gas City `file` provider.** Same CLI gap as `sqlite-work`, and documented
   as for local trials only.
 
-## 11. References
+## 12. References
 
 Gas City (fork checkout `~/repo/github.com/elee1766/gascity`):
 - `AGENTS.md`: design principles, primitives, layering invariants.
