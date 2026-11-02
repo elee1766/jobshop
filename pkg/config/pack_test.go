@@ -216,6 +216,8 @@ packs:
 	p := c.Pools["operator"]
 	assert.Equal(t, "/src/widget", p.Repo)
 	assert.Equal(t, 0, p.MaxSessions)
+	assert.Equal(t, []string{"config-reload", "session-list"}, p.Admin)
+	assert.NotContains(t, p.Prompt, "needs the admin socket")
 	for _, s := range []string{"acme/widget", "jobshop ticket create", "gh issue create", "jobshop send", "jobshop run start", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
 		assert.Contains(t, p.Prompt, s)
 	}

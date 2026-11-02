@@ -166,6 +166,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#139).
 - Escalation threads: a gateway with `escalation_room` opens one thread
   per escalation ticket with an operator session ready (#125).
+- Pool `admin` grants: operator sessions run `reload` and `session list`
+  (#126).
 
 ## 5. What's next
 
@@ -516,6 +518,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   `meta.run` and records its thread in `meta.gateway` with a
   compare-and-swap update, which is the dedup. No new controller event
   type or subscription method was needed.
+- Session sockets get admin methods only by a per-pool allow list
+  (2026-11-02, #126), not `admin: true`: a fixed set of read and
+  reload methods is grantable, while reopen, session new/send/reap and
+  shutdown stay admin-socket only.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.

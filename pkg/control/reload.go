@@ -68,7 +68,7 @@ func (c *Controller) reload() error {
 }
 
 func (c *Controller) reloadConfig(_ context.Context, sc scope, _ struct{}) (any, error) {
-	if err := requireAdmin(sc, "config reload"); err != nil {
+	if err := c.requireGrant(sc, "config-reload", "config reload"); err != nil {
 		return nil, err
 	}
 	if err := c.reload(); err != nil {
@@ -81,7 +81,7 @@ func (c *Controller) reloadConfig(_ context.Context, sc scope, _ struct{}) (any,
 // configShow returns the active config, not a fresh read of the file, so
 // it shows what the controller runs with after the last good reload.
 func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, error) {
-	if err := requireAdmin(sc, "config show"); err != nil {
+	if err := c.requireGrant(sc, "config-show", "config show"); err != nil {
 		return nil, err
 	}
 	cfg := c.config()

@@ -305,7 +305,7 @@ func (c *Controller) fireRun(ctx context.Context, r *config.TriggerRun, m map[st
 }
 
 func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any, error) {
-	if err := requireAdmin(sc, "trigger list"); err != nil {
+	if err := c.requireGrant(sc, "trigger-list", "trigger list"); err != nil {
 		return nil, err
 	}
 	out := []rpc.TriggerInfo{}
