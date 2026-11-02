@@ -57,6 +57,7 @@ checks moved from the old numbered sections, in their old order:
 - [CI repair drill](verify/ci-repair-drill.md)
 - [Stale-blocker drill](verify/stale-blocker-drill.md)
 - [Chat pool rw attach](verify/chat-rw-attach.md)
+- [Matrix gateway round trip](verify/matrix-gateway.md)
 
 ## Self-deploy
 

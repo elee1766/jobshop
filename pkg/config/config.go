@@ -28,6 +28,8 @@ type Config struct {
 	Triggers  map[string]Trigger  `yaml:"triggers"`
 	Workflows map[string]Workflow `yaml:"workflows"`
 	Telemetry Telemetry           `yaml:"telemetry"`
+	// Gateway configures `jobshop gateway <name>` processes, by name.
+	Gateway map[string]Gateway `yaml:"gateway"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
@@ -107,6 +109,24 @@ type TriggerTicket struct {
 	Body     string   `yaml:"body"`
 	Priority *int     `yaml:"priority"`
 	Labels   []string `yaml:"labels"`
+}
+
+// GatewayMatrix is Gateway.Network for Matrix.
+const GatewayMatrix = "matrix"
+
+// Gateway connects one chat network account to a chat pool. Messages
+// from rooms or senders not listed are ignored.
+type Gateway struct {
+	Network string `yaml:"network"` // "matrix"
+	// Homeserver is the Matrix client-server base URL.
+	Homeserver string `yaml:"homeserver"`
+	// TokenFile holds the bot access token. Tokens are never in the yaml.
+	TokenFile string   `yaml:"token_file"`
+	Pool      string   `yaml:"pool"`    // a type: chat pool
+	Rooms     []string `yaml:"rooms"`   // allowed room ids
+	Senders   []string `yaml:"senders"` // allowed sender ids
+	// InterruptMarker prefixes a message sent with interrupt. Default "!".
+	InterruptMarker string `yaml:"interrupt_marker"`
 }
 
 // Telemetry configures observability.
@@ -330,6 +350,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		c.Pools[name] = p
 	}
+	for name, g := range c.Gateway {
+		if err := c.checkGateway(g); err != nil {
+			return nil, fmt.Errorf("%s: gateway %s: %w", FileName, name, err)
+		}
+	}
 	for name, tr := range c.Triggers {
 		if err := c.checkTrigger(name, &tr); err != nil {
 			return nil, fmt.Errorf("%s: trigger %s: %w", src("triggers", name), name, err)
@@ -342,6 +367,29 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 	}
 	return &c, nil
+}
+
+func (c *Config) checkGateway(g Gateway) error {
+	if g.Network != GatewayMatrix {
+		return fmt.Errorf("network %q must be %q", g.Network, GatewayMatrix)
+	}
+	if g.Homeserver == "" {
+		return errors.New("homeserver is required")
+	}
+	if g.TokenFile == "" {
+		return errors.New("token_file is required")
+	}
+	p, ok := c.Pools[g.Pool]
+	if !ok {
+		return fmt.Errorf("unknown pool %q", g.Pool)
+	}
+	if !p.Chat() {
+		return fmt.Errorf("pool %s is not a chat pool", g.Pool)
+	}
+	if len(g.Rooms) == 0 || len(g.Senders) == 0 {
+		return errors.New("rooms and senders are required (others are ignored)")
+	}
+	return nil
 }
 
 func (c *Config) checkTrigger(name string, tr *Trigger) error {

@@ -45,6 +45,7 @@ type root struct {
 	Drain       drainCmd       `cmd:"" help:"Start no new sessions or tickets; running turns finish (admin)."`
 	Undrain     undrainCmd     `cmd:"" help:"Undo drain (admin)."`
 	Reload      reloadCmd      `cmd:"" help:"Re-read jobshop.yaml and packs; keeps the old config if invalid (admin)."`
+	Gateway     gatewayCmd     `cmd:"" help:"Run a chat gateway from jobshop.yaml (admin socket client)."`
 
 	Ticket    ticketCmd    `cmd:"" help:"Create, show, list, update and close tickets."`
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`

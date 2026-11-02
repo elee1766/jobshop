@@ -160,6 +160,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - The CI repair drill opens a draft PR so its branch gets CI (#132).
 - Chat pool idle TTL (1h default, reset by messages), `attach: rw` and
   `session attach --rw` (#122).
+- `jobshop gateway` with a Matrix adapter and
+  `services.jobshop.gateway.<name>` (#123).
 
 ## 5. What's next
 
@@ -206,7 +208,7 @@ triggers.
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 (Discord later), read/write attach and the operator pack (section 8).
 `session.send` and `session.subscribe` are built (#121); next are chat
-pool idle TTL and `attach --rw` (#122, built), the gateway (#123), the pack (#124).
+pool idle TTL and `attach --rw` (#122, built), the gateway (#123, built), the pack (#124).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -498,6 +500,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - `attach --rw` is enforced by the controller (2026-11-02, #122): the
   CLI marks its sends `attach: true` and they are refused unless the
   session's pool sets `attach: rw`. Other admin sends are not limited.
+- Gateway replies post once per turn at `turn_end`, not by editing a
+  progress message (2026-11-02, #123): fewer Matrix events and no edit
+  fallbacks; a 👀 reaction shows a message was queued.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -541,6 +546,7 @@ moved from the old 7.x list, oldest first:
 - [session.send and session.subscribe](notes/121-session-send-subscribe.md) (#121)
 - [Chat pools keyed by thread, and rw attach](notes/122-chat-pools-rw-attach.md) (#122)
 - [Operator pack](notes/124-operator-pack.md) (#124)
+- [Gateway, Matrix adapter](notes/123-gateway-matrix.md) (#123)
 
 ## 8. Chat gateway
 

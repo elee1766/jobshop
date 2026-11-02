@@ -36,6 +36,7 @@ jobshop/
 │   ├── host/                 session host: spawn agent, ACP proxy, journal,
 │   │                         replay, backpressure, leak guards
 │   ├── config/               YAML loading, validation, defaults
+│   ├── gateway/              chat gateway: adapter interface, routing, Matrix
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter,
 │   │                         conversation export
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
@@ -98,6 +99,7 @@ Subcommands:
 | Typed SQL (build-time codegen) | `github.com/sqlc-dev/sqlc` | v1.31.1 |
 | Linux syscalls | `golang.org/x/sys/unix` | v0.49.0 |
 | `/proc` parsing (PID start time) | `github.com/prometheus/procfs` | v0.23.0 |
+| Matrix client-server API (gateway) | `maunium.net/go/mautrix` (2026-11-02, #123): the maintained Go Matrix client, used by the mautrix bridges; pure Go without its optional crypto, so `CGO_ENABLED=0` holds | v0.32.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
 | Secret redaction (conversation export) | `github.com/zricethezav/gitleaks/v8` (`detect`) | v8.30.1 |
 
