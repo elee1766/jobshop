@@ -169,6 +169,10 @@ const PoolChat = "chat"
 // Chat reports whether p is a chat pool.
 func (p Pool) Chat() bool { return p.Type == PoolChat }
 
+// AttachRW is Pool.Attach for pools whose sessions accept
+// `session attach --rw`.
+const AttachRW = "rw"
+
 // Pool is a queue of work in one project served by sessions of one agent.
 type Pool struct {
 	Project string `yaml:"project"`
@@ -177,6 +181,9 @@ type Pool struct {
 	// tickets; they are started by session.send for a key and answer
 	// messages only.
 	Type string `yaml:"type"`
+	// Attach "rw" lets `session attach --rw` send messages to the pool's
+	// sessions. Default "" (read-only attach).
+	Attach string `yaml:"attach"`
 	// MaxSessions caps concurrent sessions. 0 means the pool never starts
 	// sessions on its own (manual sessions only).
 	MaxSessions int `yaml:"max_sessions"`
@@ -191,7 +198,8 @@ type Pool struct {
 	// PromptFile is read into Prompt at load time, relative to the file
 	// that declares it. Setting both is an error.
 	PromptFile string `yaml:"prompt_file"`
-	// IdleTimeout ends a session that found no work for this long. Default 5m.
+	// IdleTimeout ends a session that found no work for this long. Default
+	// 5m, or 1h for chat pools (a message resets it).
 	IdleTimeout string `yaml:"idle_timeout"`
 	// TurnTimeout cancels a single agent turn. Default 2h.
 	TurnTimeout string `yaml:"turn_timeout"`
@@ -302,6 +310,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.Type != "" && p.Type != PoolChat {
 			return nil, fmt.Errorf("%s: pool %s: type %q must be empty or %q", src("pools", name), name, p.Type, PoolChat)
+		}
+		if p.Attach != "" && p.Attach != AttachRW {
+			return nil, fmt.Errorf("%s: pool %s: attach %q must be empty or %q", src("pools", name), name, p.Attach, AttachRW)
 		}
 		if p.MaxSessions < 0 {
 			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", src("pools", name), name)

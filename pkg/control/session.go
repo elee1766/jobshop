@@ -37,6 +37,7 @@ import (
 
 const (
 	defaultIdle       = 5 * time.Minute
+	defaultChatIdle   = time.Hour
 	defaultTurn       = 2 * time.Hour
 	hostLease         = 30 * time.Minute
 	crashWindow       = 10 * time.Minute
@@ -87,6 +88,10 @@ type runner struct {
 	// turnTicket is the ticket the current prompt works on, sent in the
 	// prompt's _meta so conversation export can tag records with it.
 	turnTicket string
+	// delivered is when deliver last ran a message turn; it resets the
+	// idle timer, so a chat session lives while its thread is active.
+	// Runner goroutine only.
+	delivered time.Time
 }
 
 func (r *runner) setTurnTicket(id string) {
@@ -698,7 +703,11 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 // A stale host is refreshed after the first turn that leaves it idle.
 func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc net.Conn, acpSession string, stale bool) error {
 	pool, havePool := r.c.config().Pools[r.pool]
-	idle := config.Duration(pool.IdleTimeout, defaultIdle)
+	def := defaultIdle
+	if pool.Chat() {
+		def = defaultChatIdle
+	}
+	idle := config.Duration(pool.IdleTimeout, def)
 	idleSince := time.Now()
 	for {
 		if r.wantsRestart() {
@@ -737,6 +746,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		}
 		switch {
 		case errors.Is(err, store.ErrNoWork):
+			if r.delivered.After(idleSince) {
+				idleSince = r.delivered
+			}
 			if havePool && time.Since(idleSince) > idle {
 				return errSessionEnd{resolution: resolutionIdle}
 			}

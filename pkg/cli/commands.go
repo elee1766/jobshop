@@ -484,7 +484,7 @@ type sessionCmd struct {
 	List    sessionListCmd    `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
 	Reap    sessionReapCmd    `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
 	Restart sessionRestartCmd `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
-	Attach  sessionAttachCmd  `cmd:"" help:"Follow a session's conversation, read-only. Ctrl-C detaches."`
+	Attach  sessionAttachCmd  `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
 }
 
 type sessionAttachCmd struct {
@@ -492,12 +492,16 @@ type sessionAttachCmd struct {
 	Since  *int64 `help:"Start after this journal seq (default: the last 50 frames)."`
 	JSON   bool   `name:"json" help:"Print raw journal frames."`
 	Follow bool   `default:"true" negatable:"" help:"Keep following new frames."`
+	RW     bool   `name:"rw" help:"Send each stdin line as a message (admin; the pool must set attach: rw). A line starting with ! interrupts the turn."`
 }
 
 // Run reads the session's journal file directly rather than asking the
 // controller to stream it: the host writes the journal even while the
 // controller is down, and reading a file needs no new RPC (plan.md phase 3).
 func (c sessionAttachCmd) Run(g *Globals) error {
+	if c.RW {
+		return c.runRW(g)
+	}
 	r, err := g.root()
 	if err != nil {
 		return err

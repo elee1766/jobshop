@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -26,7 +27,9 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	if err := requireAdmin(sc, "session send"); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(p.Text) == "" {
+	// An attach send with no text only checks that rw attach is allowed.
+	probe := p.Attach && p.Text == ""
+	if !probe && strings.TrimSpace(p.Text) == "" {
 		return nil, fmt.Errorf("%w: text is required", store.ErrInvalid)
 	}
 	var (
@@ -41,12 +44,22 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 		if sess, err = c.openSessionTicket(ctx, p.ID); err != nil {
 			return nil, err
 		}
+		if p.Attach {
+			if pl, ok := c.config().Pools[sess.Pool]; !ok || pl.Attach != config.AttachRW {
+				return nil, fmt.Errorf("%w: pool %q of session %s does not allow rw attach (set attach: rw)", store.ErrInvalid, sess.Pool, sess.ID)
+			}
+		}
+	case p.Attach:
+		return nil, fmt.Errorf("%w: rw attach needs a session id", store.ErrInvalid)
 	case p.Pool != "" && p.Key != "":
 		if sess, started, err = c.keyedSession(ctx, sc, p.Pool, p.Key); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("%w: give a session id, or pool and key", store.ErrInvalid)
+	}
+	if probe {
+		return rpc.SessionSendResult{Session: sess.ID}, nil
 	}
 	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt})
 	if err != nil {
