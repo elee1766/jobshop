@@ -198,10 +198,11 @@ gateway:
 	assert.Equal(t, "chat", c.Gateway["ops"].Pool)
 
 	for name, bad := range map[string][2]string{
-		"ticket pool": {"pool: chat", "pool: main"},
-		"no senders":  {`senders: ["@op:x"]`, "senders: []"},
-		"no token":    {"token_file: matrix-token", `token_file: ""`},
-		"network":     {"network: matrix", "network: irc"},
+		"ticket pool":                  {"pool: chat", "pool: main"},
+		"no senders":                   {`senders: ["@op:x"]`, "senders: []"},
+		"no token":                     {"token_file: matrix-token", `token_file: ""`},
+		"network":                      {"network: matrix", "network: irc"},
+		"escalation room not in rooms": {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    escalation_room: \"!other:x\""},
 	} {
 		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
 		assert.Error(t, err, name)

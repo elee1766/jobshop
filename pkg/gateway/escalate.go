@@ -1,0 +1,257 @@
+package gateway
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+// Escalation threads (#125). The controller files an escalation ticket
+// (label needs-human, meta.run.escalation) and does not post anywhere.
+// A gateway with an escalation room polls for those tickets, opens one
+// thread per ticket, records it in the ticket's meta.gateway, and sends
+// the first prompt to its chat pool keyed by that thread. Replies in the
+// thread then reach the same session through Handle.
+
+// EscalationLabel marks escalation tickets.
+const EscalationLabel = "needs-human"
+
+// MetaPack is the ticket meta pack the gateway writes.
+const MetaPack = "gateway"
+
+// Escalation is meta.gateway on an escalation ticket.
+type Escalation struct {
+	Gateway string `json:"gateway"` // gateway name that opened the thread
+	Room    string `json:"room"`
+	Root    string `json:"root"`
+	Key     string `json:"key"`
+	Session string `json:"session,omitempty"` // set once the first prompt is sent
+	Final   bool   `json:"final,omitempty"`   // the closed message was posted
+}
+
+// runMeta is meta.run on an escalation ticket, written by the controller.
+type runMeta struct {
+	ID         string `json:"id"`
+	Workflow   string `json:"workflow"`
+	Escalation string `json:"escalation"`
+}
+
+func ticketMeta(t store.Ticket) map[string]json.RawMessage {
+	m := map[string]json.RawMessage{}
+	if len(t.Meta) > 0 {
+		_ = json.Unmarshal(t.Meta, &m)
+	}
+	return m
+}
+
+func metaRun(t store.Ticket) (runMeta, bool) {
+	var r runMeta
+	raw, ok := ticketMeta(t)["run"]
+	if !ok || json.Unmarshal(raw, &r) != nil || r.Escalation == "" {
+		return r, false
+	}
+	return r, true
+}
+
+func metaEscalation(t store.Ticket) (Escalation, bool) {
+	var e Escalation
+	raw, ok := ticketMeta(t)[MetaPack]
+	if !ok || json.Unmarshal(raw, &e) != nil || e.Root == "" {
+		return e, false
+	}
+	return e, true
+}
+
+// errSkip ends an updateEscalation without writing.
+var errSkip = errors.New("skip")
+
+// updateEscalation reads the ticket, lets fn change its meta.gateway, and
+// writes it conditional on the revision read, retrying on conflicts (the
+// session claiming or commenting moves the revision). This is the dedup:
+// two gateways or two passes cannot both record a thread.
+func (g *Gateway) updateEscalation(ctx context.Context, id string, fn func(t store.Ticket, e *Escalation, ok bool) error) (store.Ticket, error) {
+	for attempt := 0; ; attempt++ {
+		r, err := g.ctl.Show(ctx, id)
+		if err != nil {
+			return store.Ticket{}, err
+		}
+		t := r.Ticket
+		e, ok := metaEscalation(t)
+		if err := fn(t, &e, ok); err != nil {
+			return t, err
+		}
+		m := ticketMeta(t)
+		m[MetaPack], _ = json.Marshal(e)
+		mb, err := json.Marshal(m)
+		if err != nil {
+			return t, err
+		}
+		t, err = g.ctl.Update(ctx, rpc.UpdateParams{ID: id, Meta: mb, IfRevision: t.Revision})
+		if errors.Is(err, store.ErrConflict) && attempt < 5 {
+			continue
+		}
+		return t, err
+	}
+}
+
+// runEscalations polls until ctx ends.
+func (g *Gateway) runEscalations(ctx context.Context) {
+	for {
+		g.Escalations(ctx)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(g.cfg.EscalationPoll):
+		}
+	}
+}
+
+// Escalations does one pass: opens threads for new escalation tickets,
+// resends a missing first prompt, and posts a final message in threads
+// whose ticket closed since it was last seen open.
+func (g *Gateway) Escalations(ctx context.Context) {
+	// Open and in_progress (the session claimed it) separately, so closed
+	// tickets do not count against the list limit.
+	var open []store.Ticket
+	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+		ts, err := g.ctl.List(ctx, rpc.ListParams{Label: EscalationLabel, Status: st})
+		if err != nil {
+			g.log.Warn("gateway: list escalations", "err", err)
+			return
+		}
+		open = append(open, ts...)
+	}
+	seen := map[string]bool{}
+	for _, t := range open {
+		if _, ok := metaRun(t); !ok {
+			continue
+		}
+		seen[t.ID] = true
+		if err := g.escalation(ctx, t); err != nil {
+			g.log.Warn("gateway: escalation", "ticket", t.ID, "err", err)
+		}
+	}
+	g.mu.Lock()
+	var gone []string
+	for id := range g.escalating {
+		if !seen[id] {
+			gone = append(gone, id)
+		}
+	}
+	g.mu.Unlock()
+	for _, id := range gone {
+		if err := g.resolved(ctx, id); err != nil {
+			g.log.Warn("gateway: escalation closed", "ticket", id, "err", err)
+			continue
+		}
+		g.mu.Lock()
+		delete(g.escalating, id)
+		g.mu.Unlock()
+	}
+}
+
+// escalation makes sure the open ticket t has a thread and a session.
+func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
+	e, ok := metaEscalation(t)
+	if ok && e.Gateway != g.cfg.Name {
+		return nil // another gateway owns it
+	}
+	if !ok {
+		th, err := g.ad.Open(ctx, g.cfg.EscalationRoom, openingText(t))
+		if err != nil {
+			return fmt.Errorf("open thread: %w", err)
+		}
+		e = Escalation{Gateway: g.cfg.Name, Room: th.Room, Root: th.Root, Key: g.Key(th)}
+		_, err = g.updateEscalation(ctx, t.ID, func(_ store.Ticket, cur *Escalation, ok bool) error {
+			if ok {
+				return errors.New("another thread was recorded first")
+			}
+			*cur = e
+			return nil
+		})
+		if err != nil {
+			g.post(ctx, th, "jobshop: this thread was not recorded on "+t.ID+" ("+err.Error()+"); it is not used.")
+			return fmt.Errorf("record thread: %w", err)
+		}
+		g.log.Info("gateway: escalation thread", "ticket", t.ID, "key", e.Key)
+	}
+	th := Thread{Room: e.Room, Root: e.Root}
+	g.mu.Lock()
+	g.escalating[t.ID] = th
+	g.mu.Unlock()
+	if e.Session != "" {
+		return nil
+	}
+	sent := time.Now()
+	res, err := g.ctl.Send(ctx, rpc.SessionSendParams{Pool: g.cfg.Pool, Key: e.Key, Text: escalationPrompt(t, g.cfg.Name)})
+	if err != nil {
+		g.post(ctx, th, "jobshop: could not start the session: "+err.Error())
+		return fmt.Errorf("send: %w", err)
+	}
+	g.watch(ctx, res.Session, sent, th)
+	_, err = g.updateEscalation(ctx, t.ID, func(_ store.Ticket, cur *Escalation, _ bool) error {
+		cur.Session = res.Session
+		return nil
+	})
+	if err != nil {
+		// The next pass resends the prompt to the same keyed session.
+		return fmt.Errorf("record session: %w", err)
+	}
+	return nil
+}
+
+// resolved posts the final message once the escalation ticket closed.
+// A ticket that only lost its label keeps its thread and gets no message.
+func (g *Gateway) resolved(ctx context.Context, id string) error {
+	var e Escalation
+	t, err := g.updateEscalation(ctx, id, func(t store.Ticket, cur *Escalation, ok bool) error {
+		if !ok || cur.Gateway != g.cfg.Name || cur.Final || t.Status != store.StatusClosed {
+			return errSkip
+		}
+		cur.Final = true
+		e = *cur
+		return nil
+	})
+	if errors.Is(err, errSkip) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	res := t.Resolution
+	if res == "" {
+		res = "done"
+	}
+	g.post(ctx, Thread{Room: e.Room, Root: e.Root},
+		fmt.Sprintf("jobshop: escalation %s closed (%s). Replies here still reach the same session.", t.ID, res))
+	return nil
+}
+
+func openingText(t store.Ticket) string {
+	r, _ := metaRun(t)
+	return fmt.Sprintf("Escalation %s: run %s (workflow %s) needs a human. Reply in this thread.", t.ID, r.ID, r.Workflow)
+}
+
+// escalationPrompt is the session's first message. Message prompts do
+// not carry the pool prompt, so it says what the session is for.
+func escalationPrompt(t store.Ticket, gateway string) string {
+	r, _ := metaRun(t)
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are handling escalation ticket %s for run %s (workflow %s), opened by gateway %s. ", t.ID, r.ID, r.Workflow, gateway)
+	b.WriteString("This conversation is a chat thread with the operator; each of your turns is posted there, so keep replies short.\n\n")
+	fmt.Fprintf(&b, "Now: read the run (`jobshop run show %s`), its steps' comments and the linked GitHub issue (the run's `issue` var, `gh issue view <n> --comments`). ", r.ID)
+	b.WriteString("Reply with a short summary: what failed, why it is stuck, and the options (resume, resume at a step, reroute, file a follow-up, cancel). Then wait for the operator.\n\n")
+	b.WriteString("When the operator answers, act on it: comment on the issue, ")
+	fmt.Fprintf(&b, "`jobshop run resume %s [--step <name>]` or start another run, file follow-ups. ", r.ID)
+	fmt.Fprintf(&b, "Then `jobshop claim %s` and `jobshop close %s` (closing takes it off the needs-human list), and say in the thread what you did. ", t.ID, t.ID)
+	b.WriteString("Ask before cancelling a run. If a command needs the admin socket, give the operator the command instead.\n\n")
+	b.WriteString("Escalation ticket body:\n\n")
+	b.WriteString(t.Body)
+	return b.String()
+}

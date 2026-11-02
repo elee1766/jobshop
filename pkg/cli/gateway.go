@@ -14,6 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/gateway"
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type gatewayCmd struct {
@@ -52,9 +53,10 @@ func (c gatewayCmd) Run(g *Globals) error {
 		return err
 	}
 	gw := gateway.New(gateway.Config{
-		Pool: gc.Pool, Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker,
+		Name: c.Name, Pool: gc.Pool, Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker,
+		EscalationRoom: gc.EscalationRoom,
 	}, ad, socketController{sock: sock}, log)
-	log.Info("gateway: running", "network", gc.Network, "pool", gc.Pool)
+	log.Info("gateway: running", "network", gc.Network, "pool", gc.Pool, "escalation_room", gc.EscalationRoom)
 	return gw.Run(ctx)
 }
 
@@ -62,17 +64,35 @@ func (c gatewayCmd) Run(g *Globals) error {
 // restart costs one failed call, not a dead gateway.
 type socketController struct{ sock string }
 
-func (s socketController) Send(ctx context.Context, p rpc.SessionSendParams) (rpc.SessionSendResult, error) {
-	var res rpc.SessionSendResult
+func (s socketController) call(ctx context.Context, method string, p, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	c, err := rpc.Dial(ctx, s.sock)
 	if err != nil {
-		return res, err
+		return err
 	}
 	defer func() { _ = c.Close() }()
-	err = c.Call(ctx, rpc.MethodSessionSend, p, &res)
-	return res, err
+	return c.Call(ctx, method, p, out)
+}
+
+func (s socketController) Send(ctx context.Context, p rpc.SessionSendParams) (rpc.SessionSendResult, error) {
+	var res rpc.SessionSendResult
+	return res, s.call(ctx, rpc.MethodSessionSend, p, &res)
+}
+
+func (s socketController) List(ctx context.Context, p rpc.ListParams) ([]store.Ticket, error) {
+	var res []store.Ticket
+	return res, s.call(ctx, rpc.MethodTicketList, p, &res)
+}
+
+func (s socketController) Show(ctx context.Context, id string) (rpc.ShowResult, error) {
+	var res rpc.ShowResult
+	return res, s.call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: id}, &res)
+}
+
+func (s socketController) Update(ctx context.Context, p rpc.UpdateParams) (store.Ticket, error) {
+	var res store.Ticket
+	return res, s.call(ctx, rpc.MethodTicketUpdate, p, &res)
 }
 
 func (s socketController) Subscribe(ctx context.Context, p rpc.SessionSubscribeParams, fn func(rpc.SessionEvent)) (rpc.SessionSubscribeResult, error) {

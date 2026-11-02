@@ -46,6 +46,7 @@ let
       token_file = g.tokenFile;
     }
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
+    // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
   ) cfg.gateway;
   settings =
     cfg.settings
@@ -445,6 +446,11 @@ in
               type = lib.types.str;
               default = "";
               description = "Prefix that sends a message with interrupt. Empty: `!`.";
+            };
+            escalationRoom = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Room (one of `rooms`) that gets one new thread per escalation ticket. Empty: none.";
             };
           };
         }

@@ -127,6 +127,9 @@ type Gateway struct {
 	Senders   []string `yaml:"senders"` // allowed sender ids
 	// InterruptMarker prefixes a message sent with interrupt. Default "!".
 	InterruptMarker string `yaml:"interrupt_marker"`
+	// EscalationRoom gets one new thread per escalation ticket, with a
+	// session of Pool keyed by it. Must be one of Rooms so replies route.
+	EscalationRoom string `yaml:"escalation_room"`
 }
 
 // Telemetry configures observability.
@@ -389,6 +392,9 @@ func (c *Config) checkGateway(g Gateway) error {
 	if len(g.Rooms) == 0 || len(g.Senders) == 0 {
 		return errors.New("rooms and senders are required (others are ignored)")
 	}
+	if g.EscalationRoom != "" && !slices.Contains(g.Rooms, g.EscalationRoom) {
+		return fmt.Errorf("escalation_room %q must be listed in rooms", g.EscalationRoom)
+	}
 	return nil
 }
 
@@ -483,8 +489,9 @@ func (c *Config) Prefix(project string) string {
 	return project
 }
 
-// BuiltinMetaPacks are the meta pack names the controller itself writes.
-var BuiltinMetaPacks = []string{"github", "trigger", "run"}
+// BuiltinMetaPacks are the meta pack names jobshop itself writes (the
+// controller, and the gateway on escalation tickets).
+var BuiltinMetaPacks = []string{"github", "trigger", "run", "gateway"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

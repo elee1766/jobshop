@@ -108,3 +108,14 @@ func (m *Matrix) React(ctx context.Context, t Thread, msgID, key string) error {
 	_, err := m.cli.SendReaction(ctx, id.RoomID(t.Room), id.EventID(msgID), key)
 	return err
 }
+
+// Open implements Adapter: a top-level m.notice whose event id roots the
+// thread.
+func (m *Matrix) Open(ctx context.Context, room, text string) (Thread, error) {
+	c := &event.MessageEventContent{MsgType: event.MsgNotice, Body: strings.TrimSpace(text)}
+	res, err := m.cli.SendMessageEvent(ctx, id.RoomID(room), event.EventMessage, c)
+	if err != nil {
+		return Thread{}, err
+	}
+	return Thread{Room: room, Root: res.EventID.String()}, nil
+}

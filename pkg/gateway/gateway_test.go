@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -12,12 +14,14 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type fakeAdapter struct {
 	mu     sync.Mutex
 	posts  []string
 	reacts []string
+	opened int
 }
 
 func (f *fakeAdapter) Network() string { return "fake" }
@@ -40,6 +44,15 @@ func (f *fakeAdapter) React(_ context.Context, _ Thread, msgID, _ string) error 
 	return nil
 }
 
+func (f *fakeAdapter) Open(_ context.Context, room, text string) (Thread, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.opened++
+	root := fmt.Sprintf("$open%d", f.opened)
+	f.posts = append(f.posts, room+"/"+root+": "+text)
+	return Thread{Room: room, Root: root}, nil
+}
+
 func (f *fakeAdapter) got() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -53,6 +66,42 @@ type fakeController struct {
 	sends  []rpc.SessionSendParams
 	events chan rpc.SessionEvent
 	old    bool
+	ticket map[string]store.Ticket
+}
+
+func (f *fakeController) List(_ context.Context, p rpc.ListParams) ([]store.Ticket, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []store.Ticket
+	for _, t := range f.ticket {
+		if slices.Contains(t.Labels, p.Label) && (p.Status == "" || t.Status == p.Status) {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeController) Show(_ context.Context, id string) (rpc.ShowResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.ticket[id]
+	if !ok {
+		return rpc.ShowResult{}, store.ErrNotFound
+	}
+	return rpc.ShowResult{Ticket: t}, nil
+}
+
+func (f *fakeController) Update(_ context.Context, p rpc.UpdateParams) (store.Ticket, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := f.ticket[p.ID]
+	if p.IfRevision != 0 && p.IfRevision != t.Revision {
+		return t, store.ErrConflict
+	}
+	t.Meta = p.Meta
+	t.Revision++
+	f.ticket[p.ID] = t
+	return t, nil
 }
 
 func (f *fakeController) Send(_ context.Context, p rpc.SessionSendParams) (rpc.SessionSendResult, error) {
