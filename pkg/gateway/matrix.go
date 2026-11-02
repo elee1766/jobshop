@@ -51,7 +51,7 @@ func (m *Matrix) Run(ctx context.Context, fn func(context.Context, Message)) err
 	}
 	syncer := mautrix.NewDefaultSyncer()
 	first := true
-	syncer.OnSync(func(_ context.Context, resp *mautrix.RespSync, _ string) bool {
+	syncer.OnSync(func(_ context.Context, _ *mautrix.RespSync, _ string) bool {
 		if first {
 			first = false
 			return false
