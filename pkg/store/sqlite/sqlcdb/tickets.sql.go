@@ -441,6 +441,77 @@ func (q *Queries) NextClaimCandidate(ctx context.Context, arg NextClaimCandidate
 	return i, err
 }
 
+const orphanedTickets = `-- name: OrphanedTickets :many
+SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at FROM tickets t
+WHERE (?1 IS NULL OR t.project = ?1)
+  AND t.status = 'open'
+  AND t.holder = ''
+  AND t.kind IN (SELECT value FROM json_each(?2))
+  AND (t.pool = '' OR t.pool NOT IN (SELECT value FROM json_each(?3)))
+ORDER BY t.priority, t.created_at, t.id
+LIMIT ?4
+`
+
+type OrphanedTicketsParams struct {
+	Project   interface{}
+	KindsJson interface{}
+	KnownJson interface{}
+	MaxRows   int64
+}
+
+// OrphanedTickets is open, unclaimed claimable work no pool will pick up:
+// no pool, or a pool name not in known_json (the loaded config).
+func (q *Queries) OrphanedTickets(ctx context.Context, arg OrphanedTicketsParams) ([]Ticket, error) {
+	rows, err := q.db.QueryContext(ctx, orphanedTickets,
+		arg.Project,
+		arg.KindsJson,
+		arg.KnownJson,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ticket{}
+	for rows.Next() {
+		var i Ticket
+		if err := rows.Scan(
+			&i.ID,
+			&i.Project,
+			&i.Kind,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Resolution,
+			&i.Priority,
+			&i.Pool,
+			&i.Holder,
+			&i.LeaseUntil,
+			&i.Fence,
+			&i.ParentID,
+			&i.DeferUntil,
+			&i.Ephemeral,
+			&i.Fields,
+			&i.Meta,
+			&i.Revision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const readyTickets = `-- name: ReadyTickets :many
 SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at FROM tickets t
 WHERE t.project = ?1

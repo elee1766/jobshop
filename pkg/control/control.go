@@ -83,6 +83,9 @@ type Controller struct {
 	// Pool crash-loop quarantine, memory only (see quarantine.go).
 	poolCrashLog    map[string][]time.Time
 	poolPausedUntil map[string]time.Time
+	// orphanWarned maps orphaned ticket id -> reason already logged.
+	orphanMu     sync.Mutex
+	orphanWarned map[string]string
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
@@ -275,6 +278,7 @@ func (c *Controller) tick() {
 		c.runTriggers()
 	}
 	c.supervise()
+	c.reportOrphans()
 }
 
 func (c *Controller) sweep() {

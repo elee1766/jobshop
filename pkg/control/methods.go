@@ -159,6 +159,9 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	if !sc.admin {
 		p.Project = sc.project
 	}
+	if p.Orphaned {
+		return c.orphaned(ctx, p.Project, p.Limit)
+	}
 	return c.store.List(ctx, store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
 		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit,

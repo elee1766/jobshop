@@ -125,6 +125,8 @@ Short list; behavior details are in section 7.
   the runbook counting `stuck` as a failure (#71).
 - Recent comments in ticket prompts, for routed-back tickets (#70).
 - Run model design note for phase 4, section 6 (#83).
+- Orphaned ticket report: WARN, `jobshop_tickets_orphaned` and
+  `ticket list --orphaned` (#84).
 
 ## 5. What's next
 
@@ -228,6 +230,11 @@ All dated 2026-11-01 unless noted.
   session's env (`JOBSHOP_SOCKET`, `PATH`).
 - Human attach is read-only: the CLI tails the journal file. Writing into
   a session is a later, config-gated addition.
+- Tickets with no pool or a pool missing from the config are reported, not
+  rejected or moved: create still accepts any pool (a pack may add it on
+  the next reload) and the operator decides where the work goes. The
+  controller warns once per ticket per reason, not every tick
+  (2026-11-02, #84).
 
 **Delivery and self-hosting**
 - Host: gasserver, as Linux user `jobshop` in `jobshop.slice` (6 cores,
@@ -641,6 +648,18 @@ The claim prompt is the pool prompt, the ticket id, title and body, then
 `[truncated]`. A line tells the agent to address a refinery finding, push
 and hand back to refinery. A ticket without comments gets the same
 prompt as before.
+
+### 7.13 Orphaned tickets (#84)
+
+An orphaned ticket is open, unclaimed (no holder), claimable (`task`), and
+has an empty pool or one not in the loaded config. Every supervisor tick
+and every successful reload the controller queries them, logs WARN
+`ticket has no claimable pool` with `reason=no_pool|unknown_pool` the first
+time it sees a ticket with that reason, and sets the gauge
+`jobshop_tickets_orphaned{reason}` (dashboard panel "Orphaned tickets").
+A ticket that gets a configured pool, a holder, or is closed drops out;
+if it is orphaned again later it warns again. `jobshop ticket list
+--orphaned [--project p] [-n N]` lists them through the controller.
 
 ## 8. Chat gateway (future)
 

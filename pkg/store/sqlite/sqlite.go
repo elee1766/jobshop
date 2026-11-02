@@ -414,6 +414,21 @@ func (s *Store) Ready(ctx context.Context, project, pool string, n int) ([]store
 	return s.withLabels(ctx, s.q, toTickets(rows))
 }
 
+// Orphaned returns open, unclaimed tickets with no pool or an unknown one.
+func (s *Store) Orphaned(ctx context.Context, project string, pools []string, n int) ([]store.Ticket, error) {
+	if pools == nil {
+		pools = []string{}
+	}
+	known, _ := json.Marshal(pools) // []string, cannot fail
+	rows, err := s.q.OrphanedTickets(ctx, sqlcdb.OrphanedTicketsParams{
+		Project: narg(project), KindsJson: kindsJSON(nil), KnownJson: string(known), MaxRows: limit(n),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.withLabels(ctx, s.q, toTickets(rows))
+}
+
 func (s *Store) claim(t *store.Ticket, holder string, lease time.Duration) (store.Claim, any) {
 	resumed := t.Status == store.StatusInProgress
 	t.Status = store.StatusInProgress

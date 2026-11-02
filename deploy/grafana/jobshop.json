@@ -152,6 +152,20 @@
           "legendFormat": "{{jobshop_pool}} {{jobshop_resolution}}"
         }
       ]
+    },
+    {
+      "id": 9,
+      "title": "Orphaned tickets (no pool or unknown pool)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 24, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (reason) (jobshop_tickets_orphaned)",
+          "legendFormat": "{{reason}}"
+        }
+      ]
     }
   ]
 }

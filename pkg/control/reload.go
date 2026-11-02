@@ -54,6 +54,8 @@ func (c *Controller) reload() error {
 				c.log.Warn("config reload: telemetry changes need a controller restart")
 			}
 			c.log.Info("config reloaded", "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers))
+			// A removed pool orphans its queue; say so now, not next tick.
+			c.reportOrphans()
 			return nil
 		}
 	}

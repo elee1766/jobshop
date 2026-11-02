@@ -73,6 +73,7 @@ func exportedNames(t *testing.T) map[string]bool {
 	m.Closes.Add(ctx, 1, all)
 	m.Turns.Add(ctx, 1, all)
 	m.SessionsEnded.Add(ctx, 1, all)
+	m.Orphaned.Record(ctx, 1, metric.WithAttributes(AttrReason.String("no_pool")))
 	m.LeaseExpiries.Add(ctx, 1)
 	m.Since(ctx, time.Now(), "ping")
 

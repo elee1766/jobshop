@@ -91,6 +91,9 @@ type ListParams struct {
 	ParentID string       `json:"parent_id,omitempty"`
 	Label    string       `json:"label,omitempty"`
 	Limit    int          `json:"limit,omitempty"`
+	// Orphaned lists open, unclaimed tickets with no pool or a pool not in
+	// the loaded config. Other filters except Project and Limit are ignored.
+	Orphaned bool `json:"orphaned,omitempty"`
 }
 
 // ReadyParams selects the ready frontier.

@@ -303,13 +303,19 @@ type ticketListCmd struct {
 	Parent  string `help:"Parent ticket id."`
 	Label   string `short:"l" help:"Label."`
 	Limit   int    `short:"n" help:"Max results (default 500)."`
+
+	Orphaned bool `help:"Only open, unclaimed tickets with no pool or a pool not in the config."`
+}
+
+func (c ticketListCmd) params() rpc.ListParams {
+	return rpc.ListParams{
+		Project: c.Project, Kind: store.Kind(c.Kind), Status: store.Status(c.Status), Pool: c.Pool,
+		Holder: c.Holder, ParentID: c.Parent, Label: c.Label, Limit: c.Limit, Orphaned: c.Orphaned,
+	}
 }
 
 func (c ticketListCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodTicketList, rpc.ListParams{
-		Project: c.Project, Kind: store.Kind(c.Kind), Status: store.Status(c.Status), Pool: c.Pool,
-		Holder: c.Holder, ParentID: c.Parent, Label: c.Label, Limit: c.Limit,
-	}, nil)
+	return g.call(rpc.MethodTicketList, c.params(), nil)
 }
 
 type ticketUpdateCmd struct {
