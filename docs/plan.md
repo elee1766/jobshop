@@ -742,7 +742,7 @@ runs (dashboard panel "Runs needing a human"). The selfdev planner
 prompt handles escalation tickets: it labels the issue `needs-human`,
 comments mentioning @elee1766, and lists open escalations on the target.
 
-### 7.16 Workspaces in the NixOS module (#92)
+### 7.17 Workspaces in the NixOS module (#92)
 
 `services.jobshop.workspaces.<name>` has `url`, `dir` (default
 `<dataDir>/workspaces/<name>`), `sshCommand`, `livePacks`,
