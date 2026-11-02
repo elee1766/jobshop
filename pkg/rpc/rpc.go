@@ -169,6 +169,8 @@ type ClaimResult struct {
 type ReleaseParams struct {
 	ID     string `json:"id,omitempty"`
 	Reason string `json:"reason,omitempty"`
+	// Until defers the ticket; such a release is not a step failure.
+	Until *time.Time `json:"until,omitempty"`
 }
 
 // SessionNewParams creates a session ticket and its CLI socket. With a

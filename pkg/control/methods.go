@@ -338,7 +338,14 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	if err != nil {
 		return nil, err
 	}
-	t, err := c.store.Release(ctx, cl, p.Reason)
+	var until time.Time
+	if p.Until != nil {
+		if !p.Until.After(time.Now()) {
+			return nil, fmt.Errorf("%w: until must be in the future", store.ErrInvalid)
+		}
+		until = *p.Until
+	}
+	t, err := c.store.Release(ctx, cl, p.Reason, until)
 	if err != nil {
 		return nil, err
 	}

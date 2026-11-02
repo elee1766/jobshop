@@ -202,8 +202,9 @@ type Store interface {
 	Claim(ctx context.Context, id, holder string, lease time.Duration) (Ticket, Claim, error)
 	// Heartbeat extends a lease. It never bumps the revision or writes history.
 	Heartbeat(ctx context.Context, c Claim, lease time.Duration) (Claim, error)
-	// Release returns a held ticket to open.
-	Release(ctx context.Context, c Claim, reason string) (Ticket, error)
+	// Release returns a held ticket to open. A non-zero until defers the
+	// ticket to that time and is not counted as a step failure (#139).
+	Release(ctx context.Context, c Claim, reason string, until time.Time) (Ticket, error)
 	// CloseTicket closes a ticket. A non-nil claim must still hold it; a nil
 	// claim is an administrative close.
 	CloseTicket(ctx context.Context, actor, id string, c *Claim, resolution string) (Ticket, error)

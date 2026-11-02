@@ -333,9 +333,24 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	// Release.
 	_, cl, err := s.Claim(ctx, "js-a", "s1", lease)
 	require.NoError(t, err)
-	_, err = s.Release(ctx, cl, "gave up")
+	_, err = s.Release(ctx, cl, "gave up", time.Time{})
 	require.NoError(t, err)
 	assert.Equal(t, 2, fails())
+
+	// A deferred release is not a failure and hides the step until then (#139).
+	_, cl, err = s.Claim(ctx, "js-a", "s1", lease)
+	require.NoError(t, err)
+	tk, err = s.Release(ctx, cl, "not yet", c.T.Add(time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, store.StatusOpen, tk.Status)
+	assert.Equal(t, 2, fails())
+	r, err := s.Ready(ctx, proj, "dev", 0)
+	require.NoError(t, err)
+	assert.NotContains(t, ids(r), "js-a")
+	c.Advance(time.Hour)
+	r, err = s.Ready(ctx, proj, "dev", 0)
+	require.NoError(t, err)
+	assert.Contains(t, ids(r), "js-a")
 
 	// Dead holder.
 	_, _, err = s.Claim(ctx, "js-a", "s2", lease)
@@ -357,8 +372,9 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, "failed", tk.Resolution)
 	cs, err := s.Comments(ctx, "js-a")
 	require.NoError(t, err)
-	require.Len(t, cs, 4, "one comment per counted failure")
-	assert.Contains(t, cs[3].Body, "Retry limit 4 reached")
+	require.Len(t, cs, 5, "one comment per counted failure plus the deferral note")
+	assert.Contains(t, cs[2].Body, "Released until")
+	assert.Contains(t, cs[4].Body, "Retry limit 4 reached")
 
 	// A step closed failed keeps the next step blocked.
 	ready, err := s.Ready(ctx, proj, "", 0)
@@ -410,7 +426,7 @@ func testFencedClose(t *testing.T, s store.Store, c *Clock) {
 	a := task(t, s, "a", "dev")
 	_, old, err := s.Claim(ctx, a.ID, "s1", lease)
 	require.NoError(t, err)
-	_, err = s.Release(ctx, old, "handoff")
+	_, err = s.Release(ctx, old, "handoff", time.Time{})
 	require.NoError(t, err)
 	_, cur, err := s.Claim(ctx, a.ID, "s1", lease)
 	require.NoError(t, err)

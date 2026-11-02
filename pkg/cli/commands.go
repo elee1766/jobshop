@@ -422,10 +422,31 @@ func (c heartbeatCmd) Run(g *Globals) error {
 type releaseCmd struct {
 	ID     string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
 	Reason string `short:"r" help:"Why the ticket is handed back."`
+	Until  string `help:"Defer the ticket: a duration (2h) or RFC3339 time. Not counted as a step failure."`
 }
 
 func (c releaseCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodRelease, rpc.ReleaseParams{ID: c.ID, Reason: c.Reason}, nil)
+	p := rpc.ReleaseParams{ID: c.ID, Reason: c.Reason}
+	if c.Until != "" {
+		t, err := parseUntil(c.Until, time.Now())
+		if err != nil {
+			return err
+		}
+		p.Until = &t
+	}
+	return g.call(rpc.MethodRelease, p, nil)
+}
+
+// parseUntil reads a duration from now or an RFC3339 time.
+func parseUntil(s string, now time.Time) (time.Time, error) {
+	if d, err := time.ParseDuration(s); err == nil {
+		return now.Add(d), nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("--until %q: want a duration or RFC3339 time", s)
+	}
+	return t, nil
 }
 
 type readyCmd struct {
