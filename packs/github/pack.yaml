@@ -7,6 +7,8 @@ defaults:
   # throwaway red branch (docs/verify/ci-repair-drill.md).
   ci_branch: master
   dev_sessions: 2
+  # post-merge steps wait on CI and deploy in their own pool (#167).
+  deploy_sessions: 1
   # Refinery merge policy (prompts/merge.md, ci-merge.md).
   merge_method: squash
   required_approver: ""
@@ -54,6 +56,16 @@ pools:
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/refinery.md
+  # post-merge steps sleep here until the deploy lands (up to an hour),
+  # so the single refinery session stays free for review-merge (#167).
+  deploy-check:
+    agent: ${agent}
+    repo: ${checkout}
+    ref: origin/master
+    max_sessions: ${deploy_sessions}
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/deploy-check.md
 triggers:
   replan:
     when:
@@ -128,7 +140,7 @@ triggers:
     max_runs: 2
 workflows:
   # One run per issue: implement (dev) -> review-merge (refinery) ->
-  # post-merge (refinery). Started by the planner with --key issue-<n>.
+  # post-merge (deploy-check). Started by the planner with --key issue-<n>.
   pr-work:
     vars: [issue]
     issue: issue
@@ -145,7 +157,7 @@ workflows:
         title: "Review and merge PR for #${issue}"
         prompt_file: prompts/merge.md
       - id: post-merge
-        pool: refinery
+        pool: deploy-check
         retries: 2
         title: "Check master CI and deploy for #${issue}"
         prompt_file: prompts/post-merge.md
