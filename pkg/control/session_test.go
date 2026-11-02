@@ -40,6 +40,16 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "fake-daemon" {
+		// Record this process and the env it holds, then live on.
+		line := fmt.Sprintf("%d %s\n", os.Getpid(), os.Getenv("DEPLOY"))
+		if f, err := os.OpenFile("daemons", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+			_, _ = f.WriteString(line)
+			_ = f.Close()
+		}
+		time.Sleep(time.Minute)
+		os.Exit(0)
+	}
 	if len(os.Args) >= 2 && os.Args[1] == "fake-agent" {
 		fakeAgent()
 		os.Exit(0)
@@ -617,6 +627,13 @@ type agent struct {
 }
 
 func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
+	// A "daemon" file makes the agent start a detached helper that keeps
+	// the agent's env, like jcode's `serve` daemon behind `acp --socket`.
+	if _, err := os.Stat("daemon"); err == nil {
+		cmd := exec.Command(os.Args[0], "fake-daemon")
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		_ = cmd.Start()
+	}
 	// A "noload" file makes the agent one that cannot load sessions.
 	_, err := os.Stat("noload")
 	return acp.InitializeResponse{

@@ -140,7 +140,8 @@ Short list; behavior details are in section 7.
   claims (#100).
 - selfdev `master-red` starts a `ci-repair` run per failing SHA (#99).
 - Live sessions refresh their host when the spawn env changes, not only
-  on adoption (#106).
+  on adoption (#106), and the refresh stops the agent's detached
+  daemons too (#111).
 - Generic `packs/github`; `packs/selfdev` is an instance through pack
   `extends:` and `defaults:` (#107).
 - Refinery merge policy vars in `packs/github`: `merge_method`,
@@ -527,7 +528,11 @@ adopted host whose agent never initialized is treated as fresh, so the
 conversation is always loaded. A live session also re-checks the hash
 before each claim, after every turn and on every idle poll (#106,
 2026-11-02), so a session that stays connected across a deploy or a
-reload that changes agent env refreshes too.
+reload that changes agent env refreshes too. Stopping a host also stops
+any process left with the session's `JOBSHOP_SOCKET` in its environ
+(#111): jcode `acp --socket` runs tools in a detached `jcode serve`
+daemon outside the host's process group, so without this the refreshed
+agent reconnected to a daemon that still had the old PATH.
 
 ### 7.3 Rate limits, drain, quarantine (#10, #12, #13)
 

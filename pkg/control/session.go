@@ -2,6 +2,7 @@ package control
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -318,6 +320,60 @@ func stopHost(dir string) {
 	if host.Alive(dir) {
 		_ = syscall.Kill(pid, syscall.SIGKILL)
 	}
+	stopSessionProcs(dir)
+}
+
+// stopSessionProcs stops processes that still carry the session's env
+// after its host is gone. Agents may start a detached daemon (jcode
+// `acp --socket` runs tools in a `jcode serve` outside the host's process
+// group); it keeps the env it started with, so without this a refreshed
+// session still runs tools with the old PATH (#111).
+func stopSessionProcs(dir string) {
+	if dir == "" {
+		return
+	}
+	pids := sessionProcs(dir)
+	for _, p := range pids {
+		_ = syscall.Kill(p, syscall.SIGTERM)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(pids) > 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+		pids = slices.DeleteFunc(pids, func(p int) bool { return syscall.Kill(p, 0) != nil })
+	}
+	for _, p := range pids {
+		_ = syscall.Kill(p, syscall.SIGKILL)
+	}
+}
+
+// sessionProcs lists processes whose environ has the JOBSHOP_SOCKET the
+// controller gives agents of the session in dir (unique per root, unlike
+// the session id). Linux only; elsewhere it finds none.
+func sessionProcs(dir string) []int {
+	want := []byte("JOBSHOP_SOCKET=" + filepath.Join(dir, "cli.sock"))
+	entries, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	self := os.Getpid()
+	var out []int
+	for _, e := range entries {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid <= 1 || pid == self {
+			continue
+		}
+		env, err := os.ReadFile(filepath.Join("/proc", e.Name(), "environ"))
+		if err != nil {
+			continue
+		}
+		for _, kv := range bytes.Split(env, []byte{0}) {
+			if bytes.Equal(kv, want) {
+				out = append(out, pid)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func hostPid(dir string) int {
