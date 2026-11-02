@@ -1,5 +1,8 @@
 # Stale-blocker drill
 
+Superseded 2026-11-02 by `stall-drill.md`: #143 removed `blocker-check`.
+Kept as the record of #119.
+
 Added 2026-11-02 (#119) for the #82 box "Blocker assessment", stale
 path: a check finds the blocker gone and routes the work back. Make a
 ticket that waits on a deploy that is already live, park it in a pool

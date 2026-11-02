@@ -540,6 +540,8 @@ type TriggerInfo struct {
 	Open      string     `json:"open,omitempty"` // open ticket it created
 	LastFired *time.Time `json:"last_fired,omitempty"`
 	NextCron  *time.Time `json:"next_cron,omitempty"`
+	// Stalls are the stall keys a stall trigger would start runs for.
+	Stalls []string `json:"stalls,omitempty"`
 }
 
 // ConfigShowResult is the active merged config, keyed as in jobshop.yaml,

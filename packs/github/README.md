@@ -26,16 +26,24 @@ retries sets the run to `needs_human` and files "Escalate run <id>" in
 Dependent issues: an edge from the dependent run's `implement` step to the
 dependency's `post-merge` step. `jobshop run show <run>` shows progress.
 
-## Flow: `blocker-check` on blocked claims
+## Flow: `stall-check` on stalled work
 
-When an open issue or ticket says it is blocked or waiting on an operator,
-the planner starts `jobshop run start blocker-check --var ticket=<id>
---var issue=<n> --key blocker-<id>`. One step, `assess` (plan, 1 retry,
-`prompts/blocker.md`), re-checks the claim against current state: is
-deploys live (`deploy_check`), does the pool exist
-(`jobshop ticket list --orphaned`), do the permission or credential
-exist. Stale: it comments the evidence, routes the ticket back to a pool
-and closes `done`. Real: it closes `failed`, which escalates at once.
+The `stall` trigger (`when.stall`, `docs/notes/143-stall-check.md`)
+starts one `stall-check` run per stall with key
+`stall:<signal>:<subject>`: a ready ticket nobody claimed
+(`stall_after`, 1h), a crash-looping pool, a held step with no progress
+(`stall_step_after`, 3h), a session holding work with a silent journal
+(1h), a `needs_human` run or ticket (`stall_human_after`, 4h), a ticket
+labeled `blocked` (1h), and through `gh` checks: an open issue with no
+run, a green PR nobody merged for 2h, no commit on `ci_branch` for 6h
+while PRs are open. One step, `diagnose` (plan, 1 retry,
+`prompts/stall.md`): it fixes what it can in place (start the missing
+run, reroute or requeue, resume, rebase, cancel a stale drill, restart a
+session, file a bug) and closes `done`, or closes `failed` with the
+evidence, which escalates at once. Host config problems always
+escalate. `max_runs: 2` per key, 30m cooldown, at most 3 open at once.
+It replaces `blocker-check`: the planner labels a blocked claim
+`blocked` and the trigger picks it up.
 
 ## Pools and triggers
 
@@ -84,7 +92,8 @@ and file "Escalate run <id>" in `plan`.
 | `ci_branch` | Branch `master-red` watches. Default `master` |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
-| `deploy_check` | How `post-merge` and `blocker-check` tell a commit is deployed. Default: no deploy, the check passes |
+| `deploy_check` | How `post-merge` and `stall-check` tell a commit is deployed. Default: no deploy, the check passes |
+| `stall_after`, `stall_step_after`, `stall_human_after` | Stall thresholds (Go durations). Defaults 1h, 3h, 4h |
 | `merge_method` | `squash` (default) or `merge`: `gh pr merge --<method> --match-head-commit <head>` |
 | `required_approver` | Empty (default): no approval needed. A GitHub login: merge only when that login has an `APPROVED` review whose `commit_id` is the current head; otherwise the merge step closes `failed` and retries |
 | `required_checks` | Empty (default): every check in `statusCheckRollup` must pass. Otherwise comma-separated check names that must be `SUCCESS` on the head |

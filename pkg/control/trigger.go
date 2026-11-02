@@ -37,6 +37,10 @@ type triggerState struct {
 func (c *Controller) runTriggers() {
 	for _, name := range slices.Sorted(maps.Keys(c.config().Triggers)) {
 		tr := c.config().Triggers[name]
+		if len(tr.When.Stall) > 0 {
+			c.runStallTrigger(c.ctx, name, tr)
+			continue
+		}
 		st, err := c.evalTrigger(c.ctx, name, tr)
 		if err != nil {
 			c.log.Error("trigger", "trigger", name, "err", err)
@@ -310,6 +314,18 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 	}
 	out := []rpc.TriggerInfo{}
 	for name, tr := range c.config().Triggers {
+		if len(tr.When.Stall) > 0 {
+			fire, why, err := c.evalStall(ctx, name, tr)
+			if err != nil {
+				return nil, err
+			}
+			info := rpc.TriggerInfo{Name: name, Holds: len(fire) > 0, Why: why}
+			for _, s := range fire {
+				info.Stalls = append(info.Stalls, s.key())
+			}
+			out = append(out, info)
+			continue
+		}
 		st, err := c.evalTrigger(ctx, name, tr)
 		if err != nil {
 			return nil, err

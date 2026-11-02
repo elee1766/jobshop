@@ -171,14 +171,31 @@ packs:
 	assert.Equal(t, "squash", w.PackVars["merge_method"], "selfdev merges by squash")
 	assert.Empty(t, w.PackVars["required_approver"], "selfdev needs no approval")
 	assert.Contains(t, w.Steps[2].Prompt, "${deploy_check}", "filled at run start")
-	b := c.Workflows["blocker-check"]
+	b := c.Workflows["stall-check"]
 	require.Len(t, b.Steps, 1)
 	assert.Equal(t, 1, b.Steps[0].RetryLimit())
 	assert.Equal(t, "plan", b.Steps[0].Pool)
 	assert.Equal(t, "plan", b.EscalatePool)
-	assert.Equal(t, []string{"ticket", "issue"}, b.Vars)
+	assert.Equal(t, []string{"signal", "subject", "detail"}, b.Vars)
 	assert.Contains(t, b.Steps[0].Prompt, "jobshop ticket list --orphaned")
-	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start blocker-check --var ticket=<id> --var issue=<n> --key blocker-<id>")
+	assert.Contains(t, b.Steps[0].Prompt, "Always escalate these")
+	assert.NotContains(t, c.Workflows, "blocker-check", "folded into stall-check")
+	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop label add <id> blocked")
+	assert.Contains(t, c.Pools["plan"].Prompt, "--key stall:blocked:<n>")
+	assert.Contains(t, c.Pools["plan"].Admin, "session-restart")
+	st := c.Triggers["stall"]
+	require.NotNil(t, st.Run)
+	assert.Equal(t, "stall-check", st.Run.Workflow)
+	assert.Equal(t, "${stall_subject}", st.Run.Vars["subject"], "stall vars survive pack substitution")
+	assert.Equal(t, 2, st.StallMaxRuns())
+	sigs := map[string]StallSignal{}
+	for _, s := range st.When.Stall {
+		sigs[s.Signal] = s
+	}
+	assert.Equal(t, "3h", sigs[StallStepStalled].After)
+	assert.Contains(t, sigs[StallIssueNoRun].Check, "gh issue list --repo elee1766/jobshop")
+	assert.Contains(t, sigs["no_merge"].Check, "repos/elee1766/jobshop/commits/master")
+	assert.Contains(t, sigs["pr_unmerged"].Check, "statusCheckRollup")
 	mr := c.Triggers["master-red"]
 	assert.Nil(t, mr.Ticket)
 	require.NotNil(t, mr.Run, "master-red starts a run")
@@ -242,8 +259,8 @@ packs:
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"dev", "plan", "refinery"}, slices.Collect(maps.Keys(c.Pools)))
-	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "blocker-check", "drill"}, slices.Collect(maps.Keys(c.Workflows)))
-	assert.ElementsMatch(t, []string{"replan", "master-red"}, slices.Collect(maps.Keys(c.Triggers)))
+	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "stall-check", "drill"}, slices.Collect(maps.Keys(c.Workflows)))
+	assert.ElementsMatch(t, []string{"replan", "master-red", "stall"}, slices.Collect(maps.Keys(c.Triggers)))
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions, "dev_sessions default")
 	for n, p := range c.Pools {
 		assert.Equal(t, "/src/widget", p.Repo, n)
