@@ -485,9 +485,10 @@ type DrainParams struct {
 
 // ReloadResult counts what the reloaded config defines.
 type ReloadResult struct {
-	Pools    int `json:"pools"`
-	Agents   int `json:"agents"`
-	Triggers int `json:"triggers"`
+	Pools     int `json:"pools"`
+	Agents    int `json:"agents"`
+	Triggers  int `json:"triggers"`
+	Workflows int `json:"workflows"`
 }
 
 // DrainResult lists drained pools after the call; "*" means all.

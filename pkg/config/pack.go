@@ -26,14 +26,15 @@ type PackRef struct {
 
 // packFile is the schema of pack.yaml: the mergeable jobshop.yaml sections.
 type packFile struct {
-	Agents   map[string]Agent   `yaml:"agents"`
-	Pools    map[string]Pool    `yaml:"pools"`
-	Triggers map[string]Trigger `yaml:"triggers"`
+	Agents    map[string]Agent    `yaml:"agents"`
+	Pools     map[string]Pool     `yaml:"pools"`
+	Triggers  map[string]Trigger  `yaml:"triggers"`
+	Workflows map[string]Workflow `yaml:"workflows"`
 }
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
-var mergedSections = []string{"agents", "pools", "triggers"}
+var mergedSections = []string{"agents", "pools", "triggers", "workflows"}
 
 // LoadFile reads a config file, merges the packs it lists, and validates
 // the result. Packs merge in list order, then the file itself.
@@ -80,6 +81,9 @@ func parseFile(path string, b []byte) (*Config, error) {
 		mergeInto(merged, m, filepath.Join(p, PackFileName), sources)
 	}
 	delete(top, "packs")
+	if err := setPackVars(top, nil, name); err != nil {
+		return nil, err
+	}
 	if err := resolvePromptFiles(top, dir, name); err != nil {
 		return nil, err
 	}
@@ -108,13 +112,19 @@ func loadPack(dir string, vars map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
+	// Step titles and prompts keep ${run var} references for run start.
+	restore := holdTemplates(m)
 	v, err := substitute(m, vars, "")
+	restore()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	m, _ = v.(map[string]any)
 	if m == nil {
 		m = map[string]any{}
+	}
+	if err := setPackVars(m, vars, file); err != nil {
+		return nil, err
 	}
 	if err := resolvePromptFiles(m, dir, file); err != nil {
 		return nil, err
@@ -240,7 +250,7 @@ func resolvePromptFiles(m map[string]any, dir, file string) error {
 		delete(p, "prompt_file")
 		p["prompt"] = string(b)
 	}
-	return nil
+	return resolveStepPromptFiles(m, dir, file)
 }
 
 // mergeInto applies src over dst. In the merged sections each entry merges

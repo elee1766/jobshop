@@ -1,0 +1,143 @@
+package config
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// designPack is the three example workflows from docs/plan.md section 6,
+// "Runs and workflows", with the pools they name.
+const designPack = `pools:
+  dev: {agent: a, dir: /w}
+  plan: {agent: a, dir: /w}
+  refinery: {agent: a, dir: /w}
+workflows:
+  pr-work:
+    vars: [issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - {id: implement, pool: dev, retries: 3, prompt_file: prompts/implement.md,
+         title: "Implement #${issue}"}
+      - {id: review-merge, pool: refinery, retries: 2, prompt_file: prompts/merge.md,
+         title: "Review and merge PR for #${issue}"}
+      - {id: post-merge, pool: refinery, retries: 2, prompt_file: prompts/post-merge.md,
+         title: "Check master CI and self-deploy for #${issue}"}
+  ci-repair:
+    vars: [sha]
+    escalate_pool: plan
+    steps:
+      - {id: fix, pool: dev, retries: 2, prompt_file: prompts/ci-fix.md,
+         title: "Fix red master CI at ${sha}"}
+      - {id: merge, pool: refinery, retries: 2, prompt_file: prompts/merge.md,
+         title: "Merge CI fix for ${sha}"}
+  blocker-check:
+    vars: [ticket, issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - {id: assess, pool: plan, retries: 1, prompt_file: prompts/blocker.md,
+         title: "Re-check blocker on ${ticket}"}
+`
+
+func designFiles() map[string]string {
+	return map[string]string{
+		"p/pack.yaml":             designPack,
+		"p/prompts/implement.md":  "Implement issue ${issue} in ${repo}.\n",
+		"p/prompts/merge.md":      "Merge it. Cost: $$5.\n",
+		"p/prompts/post-merge.md": "Check master.\n",
+		"p/prompts/ci-fix.md":     "Fix ${sha}.\n",
+		"p/prompts/blocker.md":    "Re-check ${ticket} (#${issue}).\n",
+		"jobshop.yaml":            hostBase + "packs:\n  - path: p\n    vars: {repo: /src}\n",
+	}
+}
+
+func TestWorkflowsLoad(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, designFiles())
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	require.Len(t, c.Workflows, 3)
+
+	pr := c.Workflows["pr-work"]
+	assert.Equal(t, []string{"issue"}, pr.Vars)
+	assert.Equal(t, "issue", pr.Issue)
+	assert.Equal(t, "plan", pr.EscalatePool)
+	require.Len(t, pr.Steps, 3)
+	assert.Equal(t, []string{"implement", "review-merge", "post-merge"},
+		[]string{pr.Steps[0].ID, pr.Steps[1].ID, pr.Steps[2].ID})
+	assert.Equal(t, "Implement #${issue}", pr.Steps[0].Title, "run vars stay templates")
+	assert.Equal(t, "Implement issue ${issue} in ${repo}.\n", pr.Steps[0].Prompt,
+		"prompt_file read, templates kept for run start")
+	assert.Equal(t, "Merge it. Cost: $$5.\n", pr.Steps[1].Prompt)
+	assert.Empty(t, pr.Steps[0].PromptFile)
+	assert.Equal(t, 3, pr.Steps[0].RetryLimit())
+	assert.Equal(t, map[string]any{"repo": "/src"}, pr.PackVars)
+	assert.Equal(t, 1, c.Workflows["blocker-check"].Steps[0].RetryLimit())
+	assert.Equal(t, []string{filepath.Join(dir, "p", PackFileName)}, c.Sources["workflows.pr-work"])
+}
+
+func TestWorkflowDefaults(t *testing.T) {
+	c, err := Parse([]byte(hostBase + "pools:\n  dev: {agent: a, dir: /w}\nworkflows:\n  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, DefaultStepRetries, c.Workflows["w"].Steps[0].RetryLimit())
+}
+
+func TestWorkflowErrors(t *testing.T) {
+	const pools = "pools:\n  dev: {agent: a, dir: /w}\n"
+	step := "{id: s, pool: dev, title: t, prompt: p}"
+	tests := []struct {
+		name string
+		pack string // workflows section body of p/pack.yaml
+		want string
+	}{
+		{"unknown step pool", "  w:\n    steps:\n      - {id: s, pool: nope, title: t, prompt: p}\n", `step s: unknown pool "nope"`},
+		{"unknown escalate_pool", "  w:\n    escalate_pool: nope\n    steps:\n      - " + step + "\n", `escalate_pool: unknown pool "nope"`},
+		{"duplicate step id", "  w:\n    steps:\n      - " + step + "\n      - " + step + "\n", "step s: duplicate step id"},
+		{"empty steps", "  w:\n    vars: [x]\n", "at least one step"},
+		{"prompt and prompt_file", "  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p, prompt_file: x.md}\n", "steps[0]: set prompt or prompt_file, not both"},
+		{"neither prompt nor prompt_file", "  w:\n    steps:\n      - {id: s, pool: dev, title: t}\n", "step s: set prompt or prompt_file"},
+		{"unknown title var", "  w:\n    steps:\n      - {id: s, pool: dev, title: \"t ${who}\", prompt: p}\n", "title uses ${who}, not in workflow vars or pack vars"},
+		{"unknown prompt var", "  w:\n    vars: [a]\n    steps:\n      - {id: s, pool: dev, title: t, prompt: \"${a} ${b}\"}\n", "prompt uses ${b}"},
+		{"issue not in vars", "  w:\n    vars: [sha]\n    issue: issue\n    steps:\n      - " + step + "\n", `issue "issue" is not in vars`},
+		{"missing step id", "  w:\n    steps:\n      - {pool: dev, title: t, prompt: p}\n", `steps[0]: id ""`},
+		{"missing title", "  w:\n    steps:\n      - {id: s, pool: dev, prompt: p}\n", "step s: title is required"},
+		{"negative retries", "  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p, retries: -1}\n", "retries must be >= 0"},
+		{"unknown key", "  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p, pol: x}\n", "pol"},
+		{"pack_vars set by user", "  w:\n    pack_vars: {x: 1}\n    steps:\n      - " + step + "\n", "pack_vars is set by the loader"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{
+				"p/pack.yaml":  pools + "workflows:\n" + tt.pack,
+				"jobshop.yaml": hostBase + "packs:\n  - path: p\n    vars: {repo: /src}\n",
+			})
+			_, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+			assert.True(t, strings.Contains(err.Error(), filepath.Join("p", PackFileName)), "names the pack: %v", err)
+		})
+	}
+}
+
+// A pack var used in a step template is allowed, and the host can
+// override one workflow field without restating the steps.
+func TestWorkflowPackVarAndOverride(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"p/pack.yaml":  "pools:\n  dev: {agent: a, dir: /w}\n  plan: {agent: a, dir: /w}\nworkflows:\n  w:\n    steps:\n      - {id: s, pool: dev, title: \"in ${repo}\", prompt: p}\n",
+		"jobshop.yaml": hostBase + "packs:\n  - path: p\n    vars: {repo: /src}\nworkflows:\n  w:\n    escalate_pool: plan\n",
+	})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	w := c.Workflows["w"]
+	assert.Equal(t, "plan", w.EscalatePool)
+	assert.Equal(t, "in ${repo}", w.Steps[0].Title)
+	assert.Equal(t, "/src", w.PackVars["repo"])
+	assert.Len(t, c.Sources["workflows.w"], 2)
+}

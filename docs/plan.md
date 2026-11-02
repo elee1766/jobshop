@@ -127,6 +127,7 @@ Short list; behavior details are in section 7.
 - Run model design note for phase 4, section 6 (#83).
 - Orphaned ticket report: WARN, `jobshop_tickets_orphaned` and
   `ticket list --orphaned` (#84).
+- `workflows:` in pack config, validated at load (#88); no runs yet.
 
 ## 5. What's next
 
@@ -152,6 +153,8 @@ through a generic `github` pack that `packs/selfdev` becomes an instance of.
 Which repo goes first, and its credentials and review policy, is the
 user's call. The run model is designed (section 6, "Runs and
 workflows", #83); next are its six follow-up issues listed there.
+`workflows:` config (follow-up 3, first half) is built (#88); `run:` in
+triggers and run start are next.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -660,6 +663,22 @@ time it sees a ticket with that reason, and sets the gauge
 A ticket that gets a configured pool, a holder, or is closed drops out;
 if it is orphaned again later it warns again. `jobshop ticket list
 --orphaned [--project p] [-n N]` lists them through the controller.
+
+### 7.14 Workflow config (#88)
+
+`workflows:` merges like `pools:` (per entry, then per field; `steps` is a
+list and replaces whole). Fields: `vars`, `issue`, `escalate_pool`,
+`steps` (`id`, `pool`, `title`, `prompt` or `prompt_file`, `retries`,
+default 2). Pack var substitution skips step `title` and `prompt`, so
+both stay templates for run start; the loader records the declaring
+pack's vars as `pack_vars` (not user-settable) and `prompt_file` is read
+relative to the declaring file. Load fails on: an unknown step pool or
+`escalate_pool`, a missing or duplicate step id, no steps, a missing
+title, both or neither of `prompt` and `prompt_file`, negative
+`retries`, a `${var}` in a title or prompt that is neither a workflow
+var nor a pack var, and `issue` not in `vars`. `config show` lists
+workflows with `sources["workflows.<name>"]`; `config reload` reports
+their count. Nothing starts runs yet.
 
 ## 8. Chat gateway (future)
 

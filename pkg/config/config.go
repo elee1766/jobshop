@@ -22,18 +22,19 @@ type Config struct {
 	DefaultProject string             `yaml:"default_project"`
 	Projects       map[string]Project `yaml:"projects"`
 	// Lease is the claim lease (Go duration). Default 30m.
-	Lease     string             `yaml:"lease"`
-	Agents    map[string]Agent   `yaml:"agents"`
-	Pools     map[string]Pool    `yaml:"pools"`
-	Triggers  map[string]Trigger `yaml:"triggers"`
-	Telemetry Telemetry          `yaml:"telemetry"`
+	Lease     string              `yaml:"lease"`
+	Agents    map[string]Agent    `yaml:"agents"`
+	Pools     map[string]Pool     `yaml:"pools"`
+	Triggers  map[string]Trigger  `yaml:"triggers"`
+	Workflows map[string]Workflow `yaml:"workflows"`
+	Telemetry Telemetry           `yaml:"telemetry"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
 	// BuiltinMetaPacks.
 	MetaPacks []string `yaml:"meta_packs"`
-	// Sources maps "pools.<name>", "agents.<name>" and "triggers.<name>"
-	// to the files that set the entry, in merge order.
+	// Sources maps "pools.<name>", "agents.<name>", "triggers.<name>" and
+	// "workflows.<name>" to the files that set the entry, in merge order.
 	Sources map[string][]string `yaml:"-"`
 }
 
@@ -186,6 +187,9 @@ type Project struct {
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
+// varName is a ${name} reference name (see varPattern).
+var varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 // Load reads and validates the root's config.
 func Load(r Root) (*Config, error) {
 	return LoadFile(r.Config())
@@ -294,6 +298,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: trigger %s: %w", src("triggers", name), name, err)
 		}
 		c.Triggers[name] = tr
+	}
+	for name, w := range c.Workflows {
+		if err := c.checkWorkflow(name, &w); err != nil {
+			return nil, fmt.Errorf("%s: workflow %s: %w", src("workflows", name), name, err)
+		}
 	}
 	return &c, nil
 }
