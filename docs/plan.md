@@ -189,8 +189,11 @@ boxes get their live evidence from one `drill` run (#114,
 and an API if a dashboard needs one. Schedules are already covered by cron
 triggers.
 
-**Later.** Postgres backend against the same conformance suite. A chat
-gateway (section 8). Per-session isolation (section 7.9).
+**Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
+and Discord, read/write attach and the operator pack (section 8).
+
+**Later.** Postgres backend against the same conformance suite.
+Per-session isolation (section 7.9).
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -914,19 +917,32 @@ in `needs_human` with an "Escalate run <id>" ticket in `plan`, proving
 the 7.16 path live without waiting for a real failure. Runbook:
 `docs/gasserver-verify.md` section 8. Test: `TestSelfdevDrill`.
 
-## 8. Chat gateway (future)
+## 8. Chat gateway
 
-Not scheduled. A separate `jobshop gateway` process, an ordinary
-admin-socket client, maps chat conversations (Matrix first) to keyed
-sessions in a pool that is not ticket-driven, one session per room or
-thread. Messages to a busy session queue; a marked message interrupts. A
-coordinator chat session can assign tickets and message workers, which is
-how a Gas City mayor role would return as config.
+Scheduled 2026-11-02 as a parallel track of phase 4 (target #82), Matrix
+and Discord first. Kept small: the gateway is a translator, and sessions,
+messages and prompts stay in the controller.
 
-To keep it possible: the admin API should cover list sessions, start by
-key, send input, subscribe to updates and answer permission prompts; pools
-gain a keyed type; messages stay store-backed and addressed to sessions,
-pools or keys.
+- Chat pools: `type: chat` pools are not ticket-driven. A session is keyed
+  (`matrix:<room>:<thread>`, `discord:<channel>:<thread>`), started on the
+  first message for its key, idle between messages, and resumed by key
+  after a restart. One chat thread is one session.
+- Admin API: `session.send` (by id or key; starts the keyed session if
+  missing; queued, or interrupt when marked) and `session.subscribe`
+  (stream of a session's turn output and state). Both are what read/write
+  attach also uses.
+- `jobshop session attach --rw`: a terminal is one more client of send and
+  subscribe, allowed per pool by config.
+- `jobshop gateway`: a separate process in the same binary, an ordinary
+  admin-socket client. One adapter per network, behind a small interface
+  (receive message with thread key and sender, post reply, edit or react
+  for progress). Allowed senders and rooms are config; others are ignored.
+  Matrix E2EE is out of the first cut.
+- `packs/operator`: the prompts chat sessions run. They can create and
+  comment on tickets and issues, message sessions and pools, start runs
+  and reload, and turn a correction in the conversation into a PR to a
+  pack prompt or an issue, so self-improvement goes through the refinery
+  like other changes. This is how a Gas City mayor role returns as config.
 
 ## 9. Gas City mapping
 
