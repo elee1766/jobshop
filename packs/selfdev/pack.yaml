@@ -79,3 +79,16 @@ workflows:
         retries: 2
         title: "Check master CI and self-deploy for #${issue}"
         prompt_file: prompts/post-merge.md
+  # Re-check a claimed blocker. Started by the planner with
+  # --key blocker-<ticket>. A real blocker closes failed and, with one
+  # attempt, escalates at once.
+  blocker-check:
+    vars: [ticket, issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - id: assess
+        pool: plan
+        retries: 1
+        title: "Check blocker on ${ticket} (#${issue})"
+        prompt_file: prompts/blocker.md

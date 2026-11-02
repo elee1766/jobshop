@@ -24,6 +24,17 @@ retries sets the run to `needs_human` and files "Escalate run <id>" in
 Dependent issues: an edge from the dependent run's `implement` step to the
 dependency's `post-merge` step. `jobshop run show <run>` shows progress.
 
+## Flow: `blocker-check` on blocked claims
+
+When an open issue or ticket says it is blocked or waiting on an operator,
+the planner starts `jobshop run start blocker-check --var ticket=<id>
+--var issue=<n> --key blocker-<id>`. One step, `assess` (plan, 1 retry,
+`prompts/blocker.md`), re-checks the claim against current state: is
+self-deploy live (master vs `jobshop version`), does the pool exist
+(`jobshop ticket list --orphaned`), do the permission or credential
+exist. Stale: it comments the evidence, routes the ticket back to a pool
+and closes `done`. Real: it closes `failed`, which escalates at once.
+
 ## Pools and triggers
 
 - `dev` pool: works `implement` steps. Tasks that are not run steps (e.g.

@@ -154,6 +154,14 @@ packs:
 	assert.Equal(t, "plan", w.EscalatePool)
 	assert.Contains(t, w.Steps[1].Prompt, "--match-head-commit")
 	assert.Contains(t, w.Steps[2].Prompt, "jobshop version")
+	b := c.Workflows["blocker-check"]
+	require.Len(t, b.Steps, 1)
+	assert.Equal(t, 1, b.Steps[0].RetryLimit())
+	assert.Equal(t, "plan", b.Steps[0].Pool)
+	assert.Equal(t, "plan", b.EscalatePool)
+	assert.Equal(t, []string{"ticket", "issue"}, b.Vars)
+	assert.Contains(t, b.Steps[0].Prompt, "jobshop ticket list --orphaned")
+	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start blocker-check --var ticket=<id> --var issue=<n> --key blocker-<id>")
 	assert.Equal(t, "plan", c.Triggers["replan"].Ticket.Pool)
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
 }
