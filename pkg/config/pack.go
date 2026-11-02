@@ -181,6 +181,9 @@ func loadPack(dir string, given map[string]any, depth int) ([]packLayer, error) 
 	restore := holdTemplates(m)
 	// ${check_output} is filled when a trigger fires, not at load.
 	subVars := map[string]any{CheckOutputVar: "${" + CheckOutputVar + "}"}
+	for _, k := range StallVars { // likewise, per stall
+		subVars[k] = "${" + k + "}"
+	}
 	for k, v := range vars {
 		subVars[k] = v
 	}

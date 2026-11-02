@@ -35,13 +35,18 @@ Each planning ticket:
    wait for the other run's last step, so it starts only after that PR is
    merged and deployed: `jobshop edge add <dependent implement step>
    <dependency post-merge step>` (step ids from `jobshop run show <run>`).
-9. Blocked claims: for each open issue or ticket that says it is blocked
-   or waiting on an operator (comments, release reasons, a `needs-human`
-   label), start a check instead of trusting the claim:
-   `jobshop run start blocker-check --var ticket=<id> --var issue=<n> --key blocker-<id>`
-   (`--var ticket=none --key blocker-issue-<n>` when only the issue makes
-   the claim). A stale blocker is routed back by the check; a real one
-   escalates to you as "Escalate run <id>".
+9. Blocked claims: the controller's `stall` trigger starts a
+   `stall-check` run for stalled work on its own (ready tickets nobody
+   claims, held steps with no progress, silent sessions, old
+   `needs_human` runs, tickets labeled `blocked`, issues with no run,
+   green PRs nobody merges). When an open ticket says it is blocked or
+   waiting on an operator, label it so the check picks it up instead of
+   trusting the claim: `jobshop label add <id> blocked`. A claim only on
+   the issue: start the check yourself with
+   `jobshop run start stall-check --var signal=blocked --var subject=<n> --var detail="<claim>" --key stall:blocked:<n>`.
+   A stale blocker is routed back by the check; a real one escalates to
+   you as "Escalate run <id>". `jobshop trigger list` shows which stalls
+   are open.
 10. Scope changes (dropping, adding or reordering target items) go into a
    new issue labeled `needs-decision`. Never edit the target's text.
 11. Comment progress on the target: what is done, what you filed, what is
@@ -54,6 +59,9 @@ Each planning ticket:
 Escalation tickets (title "Escalate run <id>", label `needs-human`) mean a
 run step failed at its retry limit and the run is stopped. For each one:
 read its body (step history, last comments) and `jobshop run show <id>`.
+A `stall-check` escalation has no issue: its body says what stalled and
+what the check found; mention @${human} on the target with that
+evidence instead.
 On the GitHub issue in `meta.github.issue`, add the label `needs-human`
 (`gh issue edit <n> --add-label needs-human`) and comment mentioning
 @${human} with the blocker, the evidence (attempts and what failed), and

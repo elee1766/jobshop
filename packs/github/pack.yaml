@@ -1,5 +1,5 @@
 # Agents that work a GitHub repo through issues and PRs: plan, dev and
-# refinery pools, and the pr-work, ci-repair and blocker-check workflows.
+# refinery pools, and the pr-work, ci-repair and stall-check workflows.
 # Vars: see README.md. packs/selfdev is an instance of this pack.
 defaults:
   ci_workflow: ci
@@ -14,6 +14,10 @@ defaults:
   guide: >-
     Read the repo's README and contributor docs (AGENTS.md,
     CONTRIBUTING.md) first.
+  # Stall thresholds (#143).
+  stall_after: 1h
+  stall_step_after: 3h
+  stall_human_after: 4h
   deploy_check: >-
     none (these agents do not deploy this repo); treat this check as
     passed.
@@ -39,6 +43,8 @@ pools:
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/plan.md
+    # stall-check steps run here and inspect or restart sessions.
+    admin: [session-list, session-restart, trigger-list]
   refinery:
     agent: ${agent}
     repo: ${checkout}
@@ -73,6 +79,53 @@ triggers:
       workflow: ci-repair
       vars: {sha: "${check_output}"}
       key: "${check_output}"
+  # Work that stopped moving (#143). Store signals are computed by the
+  # controller; the others are gh checks, one subject per output line.
+  stall:
+    when:
+      check_timeout: 1m
+      stall:
+        - {signal: ready_unclaimed, after: "${stall_after}"}
+        - {signal: pool_quarantined}
+        - {signal: step_stalled, after: "${stall_step_after}"}
+        - {signal: session_silent, after: "${stall_after}"}
+        - {signal: needs_human, after: "${stall_human_after}"}
+        - {signal: blocked, after: "${stall_after}"}
+        # Open issues older than 30m that are not targets, decisions,
+        # escalations, tracking or drills; the controller drops those
+        # with an open run.
+        - signal: issue_no_run
+          check: >-
+            gh issue list --repo ${repo} --state open --limit 200
+            --json number,labels,title,createdAt --jq '.[]
+            | select([.labels[].name] | any(. == "target" or . == "needs-decision"
+            or . == "needs-human" or . == "tracking") | not)
+            | select(.title | test("^drill"; "i") | not)
+            | select((now - (.createdAt | fromdateiso8601)) > 1800)
+            | "\(.number) open, no run"'
+        # Non-draft PRs with all checks green, untouched for 2h.
+        - signal: pr_unmerged
+          check: >-
+            gh pr list --repo ${repo} --state open
+            --json number,isDraft,updatedAt,statusCheckRollup --jq '.[]
+            | select(.isDraft | not)
+            | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[];
+            .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL"))
+            | select((now - (.updatedAt | fromdateiso8601)) > 7200)
+            | "\(.number) green, unmerged since \(.updatedAt)"'
+        # No commit on ${ci_branch} for 6h while PRs are open. The subject
+        # is the last commit, so each dry spell is one stall.
+        - signal: no_merge
+          check: >-
+            test "$(gh pr list --repo ${repo} --state open --json number --jq length)" -gt 0 &&
+            gh api repos/${repo}/commits/${ci_branch} --jq
+            'select((now - (.commit.committer.date | fromdateiso8601)) > 21600)
+            | "\(.sha[0:12]) last commit \(.commit.committer.date)"'
+    run:
+      workflow: stall-check
+      vars: {signal: "${stall_signal}", subject: "${stall_subject}", detail: "${stall_detail}"}
+    cooldown: 30m
+    max_runs: 2
 workflows:
   # One run per issue: implement (dev) -> review-merge (refinery) ->
   # post-merge (refinery). Started by the planner with --key issue-<n>.
@@ -96,19 +149,18 @@ workflows:
         retries: 2
         title: "Check master CI and deploy for #${issue}"
         prompt_file: prompts/post-merge.md
-  # Re-check a claimed blocker. Started by the planner with
-  # --key blocker-<ticket>. A real blocker closes failed and, with one
-  # attempt, escalates at once.
-  blocker-check:
-    vars: [ticket, issue]
-    issue: issue
+  # One run per stall, started by the stall trigger with key
+  # stall:<signal>:<subject>. One attempt: a stall it cannot fix
+  # escalates at once.
+  stall-check:
+    vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - id: assess
+      - id: diagnose
         pool: plan
         retries: 1
-        title: "Check blocker on ${ticket} (#${issue})"
-        prompt_file: prompts/blocker.md
+        title: "Stall ${signal}: ${subject}"
+        prompt_file: prompts/stall.md
   # One run per failing master SHA, started by the master-red trigger with
   # the SHA as key: at most 2 fix attempts per SHA, then needs_human.
   ci-repair:

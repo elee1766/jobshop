@@ -168,6 +168,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   per escalation ticket with an operator session ready (#125).
 - Pool `admin` grants: operator sessions run `reload` and `session list`
   (#126).
+- `when.stall` triggers and the `stall-check` workflow, replacing
+  `blocker-check` (#143, `docs/notes/143-stall-check.md`).
 
 ## 5. What's next
 
@@ -206,6 +208,9 @@ boxes get their live evidence from one `drill` run (#114,
 `docs/verify/escalation-drill.md`) linked on #82. The CI repair box
 gets one ci-repair drill run on a red throwaway branch (#117,
 `docs/verify/ci-repair-drill.md`).
+Stall detection (#143) is built: the `stall` trigger starts
+`stall-check`, which replaces `blocker-check`; its box needs one
+`docs/verify/stall-drill.md` run on gasserver linked on #82.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -500,6 +505,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 
 - A release with `--until` is not a step failure (2026-11-02, #139): the
   agent says "not yet", not "cannot". It reuses `defer_until`.
+- Stall detection is a trigger condition, not a new controller loop
+  (2026-11-02, #143): store signals are computed in Go each tick, GitHub
+  signals are check commands. Each stall is its own run keyed
+  `stall:<signal>:<subject>`, so dedup, cooldown and the retry cap reuse
+  run keys and trigger meta. A blocked claim is a `blocked` label, one
+  signal among the rest, so `blocker-check` (follow-up 6) is folded in.
 
 **Build**
 - Session events stream as notifications on the subscribing connection
@@ -567,6 +578,7 @@ moved from the old 7.x list, oldest first:
 - [Operator pack](notes/124-operator-pack.md) (#124)
 - [Gateway, Matrix adapter](notes/123-gateway-matrix.md) (#123)
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
+- [Stall trigger and stall-check](notes/143-stall-check.md) (#143)
 
 ## 8. Chat gateway
 

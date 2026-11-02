@@ -49,6 +49,45 @@ type Trigger struct {
 	// Cooldown is the minimum time after its last ticket closed before the
 	// trigger fires again (Go duration).
 	Cooldown string `yaml:"cooldown"`
+	// MaxRuns caps the runs a stall trigger starts per key (one stall);
+	// after that the stall is left to the escalation of the last run.
+	// Default 3. Stall triggers only.
+	MaxRuns int `yaml:"max_runs"`
+}
+
+// Store stall signals, computed by the controller from the store and its
+// own state. Any other signal name needs a check command.
+const (
+	StallReadyUnclaimed  = "ready_unclaimed"  // ready ticket nobody claimed for After
+	StallPoolQuarantined = "pool_quarantined" // pool paused for crash-looping
+	StallStepStalled     = "step_stalled"     // first unfinished step of a running run with no history or comment for After
+	StallSessionSilent   = "session_silent"   // session holding a ticket with no journal output for After
+	StallNeedsHuman      = "needs_human"      // needs_human run, or needs-human ticket, older than After
+	StallBlocked         = "blocked"          // open ticket labeled blocked, unchanged for After
+	// StallIssueNoRun is a check signal whose subjects are GitHub issue
+	// numbers; the controller drops issues that have an open run
+	// (meta.github.issue), so the check only lists open work issues.
+	StallIssueNoRun = "issue_no_run"
+)
+
+// StoreStallSignals lists the signals the controller computes itself.
+var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked}
+
+// Stall template vars, filled per stall when a stall trigger fires.
+const (
+	StallSignalVar  = "stall_signal"
+	StallSubjectVar = "stall_subject"
+	StallDetailVar  = "stall_detail"
+)
+
+// StallSignal is one stall condition. A store signal (StoreStallSignals)
+// uses After. Any other name runs Check (sh -c in the root dir): exit 0
+// with one stall per stdout line, "<subject> <detail>"; the subject is
+// the first word.
+type StallSignal struct {
+	Signal string `yaml:"signal"`
+	After  string `yaml:"after"` // Go duration threshold
+	Check  string `yaml:"check"`
 }
 
 // TriggerRun starts a workflow run, like `jobshop run start`. Vars and
@@ -89,6 +128,11 @@ type TriggerWhen struct {
 	Check string `yaml:"check"`
 	// CheckTimeout bounds one check run (Go duration, default 1m).
 	CheckTimeout string `yaml:"check_timeout"`
+
+	// Stall lists stall signals. Each stall (signal and subject) starts
+	// its own run with key stall:<signal>:<subject>. A stall trigger has
+	// no other condition and needs run:. check_timeout bounds its checks.
+	Stall []StallSignal `yaml:"stall"`
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -421,6 +465,12 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 		return fmt.Errorf("name must match %s", namePattern)
 	}
 	w := tr.When
+	if len(w.Stall) > 0 {
+		return c.checkStallTrigger(tr)
+	}
+	if tr.MaxRuns != 0 {
+		return errors.New("max_runs needs when.stall")
+	}
 	if w.Cron == "" && !w.HasCounts() && w.Check == "" {
 		return errors.New("when needs a cron, a count threshold or a check")
 	}
