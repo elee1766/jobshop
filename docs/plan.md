@@ -148,6 +148,8 @@ Short list; behavior details are in section 7.
   `required_approver`, `required_checks` (#108).
 - `drill` workflow in `packs/github` to exercise escalation on demand
   (#114).
+- Lowering `max_sessions` by reload never starts a session over the new
+  cap (#102).
 
 ## 5. What's next
 
@@ -267,6 +269,11 @@ All dated 2026-11-01 unless noted.
   the next reload) and the operator decides where the work goes. The
   controller warns once per ticket per reason, not every tick
   (2026-11-02, #84).
+- Reload waits for the running supervisor tick and holds it off while it
+  swaps, so after `config.reload` returns no tick uses the old pool limits.
+  Supervise counts idle sessions before reading ready tickets, so a claim
+  between the two reads cannot count one ticket as both ready and held and
+  start a session over the cap (2026-11-02, #102).
 
 **Delivery and self-hosting**
 - Host: gasserver, as Linux user `jobshop` in `jobshop.slice` (6 cores,
@@ -602,8 +609,8 @@ pack's vars (a bare `${name}` keeps the var's type, `$$` is a literal `$`,
 unset is an error); jobshop.yaml is not substituted. `prompt_file` is read
 relative to its declaring file. `jobshop reload`/SIGHUP swaps the config
 atomically or keeps the old one on error: pool limits and triggers apply on
-the next tick, prompts and timeouts on the next turn, agent command and env
-on the next host. Telemetry changes need a restart. `jobshop config show`
+the next tick (reload waits for a running tick, #102), prompts and timeouts
+on the next turn, agent command and env on the next host. Telemetry changes need a restart. `jobshop config show`
 (admin) prints the live merged config with jobshop.yaml keys, and
 `sources`: for each `agents.<name>`, `pools.<name>` and `triggers.<name>`,
 the files that set it in merge order (packs, then jobshop.yaml). OTLP

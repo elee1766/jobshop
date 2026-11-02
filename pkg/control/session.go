@@ -1260,18 +1260,20 @@ func (c *Controller) supervise() {
 		if err != nil {
 			continue
 		}
-		ready, err := c.store.Ready(ctx, p.Project, name, p.MaxSessions)
-		if err != nil {
-			continue
-		}
 		// Idle sessions (holding nothing) will claim ready work themselves;
-		// start more only for the rest, up to the cap.
+		// start more only for the rest, up to the cap. Count idle before
+		// reading ready: a claim in between then drops the ticket from
+		// ready instead of counting it as both ready and held (#102).
 		idle := 0
 		for _, s := range open {
 			held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: store.StatusInProgress})
 			if err == nil && len(held) == 0 {
 				idle++
 			}
+		}
+		ready, err := c.store.Ready(ctx, p.Project, name, p.MaxSessions)
+		if err != nil {
+			continue
 		}
 		want := min(len(ready)-idle, p.MaxSessions-len(open))
 		for range max(want, 0) {
