@@ -496,6 +496,19 @@ func (r *runner) staleEnv(t store.Ticket, f store.SessionFields) bool {
 	return spec.EnvHash != want.EnvHash
 }
 
+// currentEnvStale is staleEnv for the session as stored now.
+func (r *runner) currentEnvStale() bool {
+	t, err := r.c.store.Get(r.ctx, r.id)
+	if err != nil {
+		return false
+	}
+	f, err := store.DecodeFields[store.SessionFields](t)
+	if err != nil {
+		return false
+	}
+	return r.staleEnv(t, f)
+}
+
 // idle: the session holds no in_progress ticket.
 func (r *runner) idle() bool {
 	held, err := r.c.store.List(r.ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
@@ -648,6 +661,13 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		// Queued messages go before the next claim, so also after each turn.
 		if err := r.deliver(ctx, conn, acpSession); err != nil {
 			return err
+		}
+		// The env a new host would get can change while this one is live
+		// (a deploy restarts the controller with a new binary, a reload
+		// changes agent env). Re-check between turns so the next turn runs
+		// in the current env; refresh keeps the conversation and claims.
+		if r.currentEnvStale() {
+			return r.refresh(nc)
 		}
 		if r.c.poolDrained(r.pool) && r.idle() {
 			return errSessionEnd{resolution: resolutionDrained}
