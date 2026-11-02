@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -266,4 +267,66 @@ func TestEnvRefreshLive(t *testing.T) {
 	waitClosed(t, admin, c.ID)
 	require.Eventually(t, func() bool { return hasEnv("DEPLOY=three") && host.Alive(sdir) }, 20*time.Second, 50*time.Millisecond)
 	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID)
+}
+
+// TestEnvRefreshStopsDaemon: an agent's detached helper (like jcode's
+// `serve` daemon, which runs the agent's tools) keeps the env it started
+// with. Refreshing the host must stop it, or tools keep the old PATH
+// after a deploy (#111). A new controller adopting the live host with a
+// different env refreshes it before the next turn.
+func TestEnvRefreshStopsDaemon(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	writeEnv := func(v string) {
+		cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\n    env: {DEPLOY: %q}\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n",
+			os.Args[0], v, root.Dir)
+		require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "daemon"), nil, 0o600))
+	daemons := func() map[string]int {
+		b, _ := os.ReadFile(filepath.Join(root.Dir, "daemons"))
+		out := map[string]int{}
+		for _, l := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+			var pid int
+			var env string
+			if _, err := fmt.Sscan(l, &pid, &env); err == nil {
+				out[env] = pid
+			}
+		}
+		return out
+	}
+	alive := func(pid int) bool {
+		// A killed child of an exited parent may linger as a zombie.
+		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+		return err == nil && !strings.Contains(string(b), ") Z ")
+	}
+	t.Cleanup(func() {
+		for _, p := range daemons() {
+			_ = syscall.Kill(p, syscall.SIGKILL)
+		}
+	})
+
+	writeEnv("one")
+	stop := start()
+	admin := dial(t, root.AdminSocket())
+	var a store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
+	waitClosed(t, admin, a.ID)
+	require.Eventually(t, func() bool { return daemons()["one"] != 0 }, 10*time.Second, 50*time.Millisecond)
+	old := daemons()["one"]
+	sess := openSessions(t, admin)
+	require.Len(t, sess, 1)
+	stop()
+
+	// A deploy: the next controller spawns hosts with another env.
+	writeEnv("two")
+	stop = start()
+	defer stop()
+	admin = dial(t, root.AdminSocket())
+	require.Eventually(t, func() bool { return daemons()["two"] != 0 }, 20*time.Second, 50*time.Millisecond, "agent respawned with the new env")
+	require.Eventually(t, func() bool { return !alive(old) }, 10*time.Second, 50*time.Millisecond, "old daemon stopped")
+	var b store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
+	waitClosed(t, admin, b.ID)
+	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID, "same session")
+	assert.True(t, alive(daemons()["two"]), "new daemon left running")
 }
