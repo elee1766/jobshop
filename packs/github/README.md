@@ -83,6 +83,17 @@ and file "Escalate run <id>" in `plan`.
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
 | `deploy_check` | How `post-merge` and `blocker-check` tell a commit is deployed. Default: no deploy, the check passes |
+| `merge_method` | `squash` (default) or `merge`: `gh pr merge --<method> --match-head-commit <head>` |
+| `required_approver` | Empty (default): no approval needed. A GitHub login: merge only when that login has an `APPROVED` review whose `commit_id` is the current head; otherwise the merge step closes `failed` and retries |
+| `required_checks` | Empty (default): every check in `statusCheckRollup` must pass. Otherwise comma-separated check names that must be `SUCCESS` on the head |
+
+Approval check the refinery runs (prints the number of matching
+approvals, above 0 to merge):
+
+```sh
+gh api --paginate repos/<repo>/pulls/<n>/reviews --jq \
+  '[.[] | select(.user.login == "<required_approver>" and .state == "APPROVED" and .commit_id == "<headRefOid>")] | length'
+```
 
 ```yaml
 packs:

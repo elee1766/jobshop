@@ -18,8 +18,14 @@ Releasing this step counts as a failed attempt, so wait inside your turn
    comment the findings on the PR and on the `fix` step,
    `jobshop run resume <run> --step fix`, then `jobshop close -r failed`.
    At the retry limit the run escalates to a human.
-3. Ready (CI green on the current head):
-   `gh pr merge <n> --squash --match-head-commit <headRefOid>` (never
+3. Waiting for approval: required approver `${required_approver}` is
+   set and has no APPROVED review on the current head
+   (`gh api --paginate repos/${repo}/pulls/<n>/reviews --jq '[.[] | select(.user.login == "${required_approver}" and .state == "APPROVED" and .commit_id == "<headRefOid>")] | length'`
+   prints 0): comment that on this step and `jobshop close -r failed`;
+   the next attempt checks again. An empty approver needs no approval.
+4. Ready (required checks `${required_checks}` green on the current head,
+   or every check when that is empty; approval present if required):
+   `gh pr merge <n> --${merge_method} --match-head-commit <headRefOid>` (never
    `--delete-branch`). Wait for master CI on the merge commit
    (`gh run list --branch master --commit <merge sha>`, `gh run watch`).
    Green: comment the merge sha on this step and on the issue, then

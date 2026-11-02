@@ -162,6 +162,8 @@ packs:
 	require.Len(t, w.Steps, 3)
 	assert.Equal(t, "plan", w.EscalatePool)
 	assert.Contains(t, w.Steps[1].Prompt, "--match-head-commit")
+	assert.Equal(t, "squash", w.PackVars["merge_method"], "selfdev merges by squash")
+	assert.Empty(t, w.PackVars["required_approver"], "selfdev needs no approval")
 	assert.Contains(t, w.Steps[2].Prompt, "${deploy_check}", "filled at run start")
 	b := c.Workflows["blocker-check"]
 	require.Len(t, b.Steps, 1)
@@ -268,4 +270,51 @@ func TestPackExtends(t *testing.T) {
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: inst\n"})
 	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.ErrorContains(t, err, `var "team" is not set`)
+}
+
+// TestGithubMergePolicy: merge policy vars default to squash with no
+// approver and fill the merge prompts at run start.
+func TestGithubMergePolicy(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	load := func(extra string) *Config {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": "projects:\n  js: {}\nagents:\n  a: {command: x}\npacks:\n  - path: " + pack +
+			"\n    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test" + extra + "}\n"})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		return c
+	}
+	render := func(c *Config, wf, step string) string {
+		w := c.Workflows[wf]
+		vars := map[string]any{"issue": 7, "sha": "abc"}
+		maps.Copy(vars, w.PackVars)
+		for _, s := range w.Steps {
+			if s.ID == step {
+				out, err := FillTemplate(s.Prompt, vars)
+				require.NoError(t, err)
+				return out
+			}
+		}
+		t.Fatalf("no step %s/%s", wf, step)
+		return ""
+	}
+
+	def := load("")
+	pv := def.Workflows["pr-work"].PackVars
+	assert.Equal(t, "squash", pv["merge_method"])
+	assert.Empty(t, pv["required_approver"])
+	assert.Empty(t, pv["required_checks"])
+	m := render(def, "pr-work", "review-merge")
+	assert.Contains(t, m, "gh pr merge <n> --squash --match-head-commit <headRefOid>")
+	assert.Contains(t, m, "Required approver: ``. Empty means no approval")
+	assert.Contains(t, render(def, "ci-repair", "merge"), "--squash --match-head-commit")
+
+	set := load(", merge_method: merge, required_approver: abs3nt-agent, required_checks: \"build, test\"")
+	m = render(set, "pr-work", "review-merge")
+	assert.Contains(t, m, "gh pr merge <n> --merge --match-head-commit <headRefOid>")
+	assert.Contains(t, m, `gh api --paginate repos/acme/widget/pulls/<n>/reviews --jq '[.[] | select(.user.login == "abs3nt-agent" and .state == "APPROVED" and .commit_id == "<headRefOid>")] | length'`)
+	assert.Contains(t, m, "Required checks: `build, test`")
+	assert.Contains(t, render(set, "ci-repair", "merge"), `.user.login == "abs3nt-agent"`)
+	assert.NotContains(t, m, "${")
 }

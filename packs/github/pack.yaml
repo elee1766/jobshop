@@ -4,6 +4,10 @@
 defaults:
   ci_workflow: ci
   dev_sessions: 2
+  # Refinery merge policy (prompts/merge.md, ci-merge.md).
+  merge_method: squash
+  required_approver: ""
+  required_checks: ""
   guide: >-
     Read the repo's README and contributor docs (AGENTS.md,
     CONTRIBUTING.md) first.
