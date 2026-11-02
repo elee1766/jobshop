@@ -207,7 +207,7 @@ packs:
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"dev", "plan", "refinery"}, slices.Collect(maps.Keys(c.Pools)))
-	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "blocker-check"}, slices.Collect(maps.Keys(c.Workflows)))
+	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "blocker-check", "drill"}, slices.Collect(maps.Keys(c.Workflows)))
 	assert.ElementsMatch(t, []string{"replan", "master-red"}, slices.Collect(maps.Keys(c.Triggers)))
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions, "dev_sessions default")
 	for n, p := range c.Pools {

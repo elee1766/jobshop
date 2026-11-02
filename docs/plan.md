@@ -146,6 +146,8 @@ Short list; behavior details are in section 7.
   `extends:` and `defaults:` (#107).
 - Refinery merge policy vars in `packs/github`: `merge_method`,
   `required_approver`, `required_checks` (#108).
+- `drill` workflow in `packs/github` to exercise escalation on demand
+  (#114).
 
 ## 5. What's next
 
@@ -179,7 +181,9 @@ is built; its box needs one run on gasserver (e.g. against #56) linked on
 #82. `ci-repair` (follow-up 5, #99) is built; its box needs one red
 master handled by a run on gasserver. The generic `github` pack (#107),
 which `packs/selfdev` extends, and its merge policy vars (#108) are built
-and stay, but are used only by selfdev.
+and stay, but are used only by selfdev. The retry limit and escalation
+boxes get their live evidence from one `drill` run (#114,
+`docs/gasserver-verify.md` section 8) linked on #82.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -900,6 +904,15 @@ a fix for red master needs the same approval. Empty `required_checks`
 means every check must pass, otherwise the listed names must be
 `SUCCESS`. The rules are prompt text, not controller code, like the rest
 of the refinery's judgment.
+
+### 7.24 Escalation drill (#114)
+
+Added 2026-11-02. `packs/github` has a `drill` workflow (var `issue`,
+`escalate_pool: plan`) with one step `fail` in `dev`, `retries: 1`,
+whose prompt only comments and closes `failed`. One run therefore ends
+in `needs_human` with an "Escalate run <id>" ticket in `plan`, proving
+the 7.16 path live without waiting for a real failure. Runbook:
+`docs/gasserver-verify.md` section 8. Test: `TestSelfdevDrill`.
 
 ## 8. Chat gateway (future)
 

@@ -117,3 +117,16 @@ workflows:
         retries: 2
         title: "Merge CI fix for ${sha}"
         prompt_file: prompts/ci-merge.md
+  # Escalation drill (docs/gasserver-verify.md section 8). One attempt
+  # that always closes failed, so the run reaches needs_human at once.
+  # Started by hand with --key drill-<date>.
+  drill:
+    vars: [issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - id: fail
+        pool: dev
+        retries: 1
+        title: "Escalation drill for #${issue}"
+        prompt_file: prompts/drill.md

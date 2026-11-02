@@ -265,6 +265,47 @@ func TestRunResume(t *testing.T) {
 // does: three steps in dev, refinery, refinery, only implement ready, and
 // a repeated start with the same key returns the same run.
 func TestSelfdevPRWork(t *testing.T) {
+	admin := selfdevRoot(t)
+	p := rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "93"}, Key: "issue-93"}
+	r := startRun(t, admin, p)
+	require.Len(t, r.Steps, 3)
+	var pools, titles []string
+	for _, s := range r.Steps {
+		pools = append(pools, s.Pool)
+		titles = append(titles, s.Title)
+		assert.JSONEq(t, `{"github":{"issue":93}}`, string(s.Meta))
+	}
+	assert.Equal(t, []string{"dev", "refinery", "refinery"}, pools)
+	assert.Equal(t, "Implement #93", titles[0])
+	assert.Contains(t, r.Steps[0].Body, "gh issue view 93 --comments")
+	assert.Contains(t, r.Steps[2].Body, "jobshop version")
+	assert.Equal(t, []string{r.Steps[0].ID}, readyIDs(t, admin), "only implement is ready")
+
+	again := startRun(t, admin, p)
+	assert.True(t, again.Existing)
+	assert.Equal(t, r.Run.ID, again.Run.ID)
+}
+
+// TestSelfdevDrill runs the escalation drill (#114): one failed close of
+// its only step puts the run in needs_human and files the escalation.
+func TestSelfdevDrill(t *testing.T) {
+	admin := selfdevRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "drill", Vars: map[string]string{"issue": "114"}, Key: "drill-test"})
+	require.Len(t, r.Steps, 1)
+	assert.Equal(t, "dev", r.Steps[0].Pool)
+	assert.Contains(t, r.Steps[0].Body, "jobshop close -r failed")
+	closeStep(t, admin, r.Steps[0].ID, "failed")
+
+	assert.Equal(t, store.RunNeedsHuman, runState(t, showRun(t, admin, r.Run.ID)))
+	esc := escalations(t, admin, r.Run.ID)
+	require.Len(t, esc, 1)
+	assert.Equal(t, "plan", esc[0].Pool)
+	assert.Contains(t, esc[0].Body, "Retry limit 1 reached")
+}
+
+// selfdevRoot starts a controller on packs/selfdev that starts no agents.
+func selfdevRoot(t *testing.T) *rpc.Client {
+	t.Helper()
 	t.Parallel()
 	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
 	require.NoError(t, err)
@@ -298,24 +339,5 @@ triggers:
 			require.NoError(t, err)
 		}
 	})
-	admin := dial(t, root.AdminSocket())
-
-	p := rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "93"}, Key: "issue-93"}
-	r := startRun(t, admin, p)
-	require.Len(t, r.Steps, 3)
-	var pools, titles []string
-	for _, s := range r.Steps {
-		pools = append(pools, s.Pool)
-		titles = append(titles, s.Title)
-		assert.JSONEq(t, `{"github":{"issue":93}}`, string(s.Meta))
-	}
-	assert.Equal(t, []string{"dev", "refinery", "refinery"}, pools)
-	assert.Equal(t, "Implement #93", titles[0])
-	assert.Contains(t, r.Steps[0].Body, "gh issue view 93 --comments")
-	assert.Contains(t, r.Steps[2].Body, "jobshop version")
-	assert.Equal(t, []string{r.Steps[0].ID}, readyIDs(t, admin), "only implement is ready")
-
-	again := startRun(t, admin, p)
-	assert.True(t, again.Existing)
-	assert.Equal(t, r.Run.ID, again.Run.ID)
+	return dial(t, root.AdminSocket())
 }
