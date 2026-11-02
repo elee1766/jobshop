@@ -35,6 +35,10 @@
         };
       });
 
+      checks = forAllSystems (pkgs: {
+        module = import ./nix/module-test.nix { inherit self nixpkgs pkgs; };
+      });
+
       formatter = forAllSystems (pkgs: pkgs.nixfmt);
     };
 }

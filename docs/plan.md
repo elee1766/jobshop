@@ -130,6 +130,7 @@ Short list; behavior details are in section 7.
 - `workflows:` in pack config, validated at load (#88).
 - Runs: `run` and `step` kinds, `jobshop run start/show/list/cancel/resume`,
   key dedup, run closes done with its last step (#89).
+- Multiple workspaces in the NixOS module, `workspaces.<name>` (#92).
 
 ## 5. What's next
 
@@ -262,7 +263,7 @@ All dated 2026-11-01 unless noted.
   auto-upgrade; the host flake's lock is not edited. gasserver is a dev
   box and the user approved unattended promotion of agent-merged code.
 - Prompts and pools live in `packs/selfdev`, read from the live checkout
-  (`workspace.livePacks`) instead of the Nix store. `jobshop-workspace-sync`
+  (`workspaces.<name>.livePacks`) instead of the Nix store. `jobshop-workspace-<name>-sync`
   fast-forwards the checkout to the deployed binary's commit and reloads
   the controller when a pack file changed, so prompt and binary versions
   still match.
@@ -709,6 +710,24 @@ lists runs newest first. `run cancel` closes open steps and the run
 first not closed `done`), resets its failures, comments on it, and sets
 the run back to `running`. Until #90, a step closed `failed` unblocks the
 next step like any close.
+
+### 7.16 Workspaces in the NixOS module (#92)
+
+`services.jobshop.workspaces.<name>` has `url`, `dir` (default
+`<dataDir>/workspaces/<name>`), `sshCommand`, `livePacks`,
+`livePackVars`, `syncInterval` and `selfDeploy`. Each workspace with a
+url gets `jobshop-workspace-<name>` (clone before the controller) and
+`jobshop-workspace-<name>-sync` (fast-forward, reload on pack changes;
+timer only with live packs). Live packs of all workspaces go into the
+generated `packs:` with their own vars. At most one workspace sets
+`selfDeploy` (assertion); `selfDeploy.enable` needs one. That workspace
+gives the repo for the green-commit pick, and its packs follow the
+deployed commit. The old `workspace` option still evaluates: it maps to
+`workspaces.default` with the old dir (`<dataDir>/src/<repo>`) and
+`selfDeploy = selfDeploy.enable`, so gasserver keeps its checkout; only
+the unit names change (`jobshop-workspace-default[-sync]`). `checks.module`
+in the flake evaluates a two-workspace config, the two-selfDeploy
+assertion and the old option.
 
 ## 8. Chat gateway (future)
 
