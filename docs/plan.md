@@ -207,9 +207,13 @@ boxes get their live evidence from one `drill` run (#114,
 gets one ci-repair drill run on a red throwaway branch (#117,
 `docs/verify/ci-repair-drill.md`).
 
-**Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
-and an API if a dashboard needs one. Schedules are already covered by cron
-triggers.
+**Phase 5** (target #145, opened 2026-11-02 so the pool has real work
+while #36 and #82 wait out their 24h windows). Reliability fixes from
+the 2026-11-02 incidents (spawn errors quarantine at once, worktree
+deletions, a self-deploy rollback drill, a planner that files issues
+from the last day's warnings), an admin-socket change stream that
+replaces gateway polling, batches (Gas City convoys), and the operator
+using the Matrix room. Schedules are already covered by cron triggers.
 
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 (Discord later), read/write attach and the operator pack (section 8).
