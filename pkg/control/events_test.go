@@ -40,7 +40,7 @@ func (l *eventLog) has(kind, op, id string) bool {
 	return false
 }
 
-func subscribe(t *testing.T, ctx context.Context, sock string, p rpc.EventsSubscribeParams) (*eventLog, <-chan rpc.EventsSubscribeResult) {
+func subscribe(ctx context.Context, t *testing.T, sock string, p rpc.EventsSubscribeParams) (*eventLog, <-chan rpc.EventsSubscribeResult) {
 	t.Helper()
 	c := dial(t, sock)
 	l := &eventLog{}
@@ -78,9 +78,9 @@ func TestEventsSubscribe(t *testing.T) {
 	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
 	admin := dial(t, root.AdminSocket())
 
-	all, _ := subscribe(t, ctx, root.AdminSocket(), rpc.EventsSubscribeParams{})
-	labeled, _ := subscribe(t, ctx, root.AdminSocket(), rpc.EventsSubscribeParams{Labels: []string{"needs-human"}})
-	sessions, _ := subscribe(t, ctx, root.AdminSocket(), rpc.EventsSubscribeParams{Kinds: []string{rpc.EventKindSession}})
+	all, _ := subscribe(ctx, t, root.AdminSocket(), rpc.EventsSubscribeParams{})
+	labeled, _ := subscribe(ctx, t, root.AdminSocket(), rpc.EventsSubscribeParams{Labels: []string{"needs-human"}})
+	sessions, _ := subscribe(ctx, t, root.AdminSocket(), rpc.EventsSubscribeParams{Kinds: []string{rpc.EventKindSession}})
 
 	var a, b store.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
@@ -127,7 +127,7 @@ func TestEventsSubscribe(t *testing.T) {
 		}
 	}
 	require.NotZero(t, first)
-	replay, _ := subscribe(t, ctx, root.AdminSocket(), rpc.EventsSubscribeParams{SinceSeq: first})
+	replay, _ := subscribe(ctx, t, root.AdminSocket(), rpc.EventsSubscribeParams{SinceSeq: first})
 	got := replay.get()
 	require.NotEmpty(t, got)
 	assert.Equal(t, b.ID, got[0].ID, "replay starts after since_seq")

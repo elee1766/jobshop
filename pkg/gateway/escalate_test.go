@@ -133,7 +133,7 @@ func TestEscalationEvents(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- g.Run(ctx) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() { cancel(); assert.NoError(t, <-done) })
 
 	esc := func(id string) store.Ticket {
 		return store.Ticket{

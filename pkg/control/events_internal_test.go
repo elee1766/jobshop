@@ -52,8 +52,11 @@ func TestToEvent(t *testing.T) {
 	at := time.Unix(100, 0)
 	sess := &store.Ticket{ID: "js-s", Kind: store.KindSession, Status: store.StatusClosed, Resolution: "crashed"}
 	ev := toEvent(store.HistoryEntry{Seq: 3, TicketID: "js-s", At: at, Op: "close", Revision: 4, Diff: json.RawMessage(`{"resolution":"crashed"}`)}, sess)
-	assert.Equal(t, rpc.Event{Seq: 3, Time: at, Kind: rpc.EventKindSession, Op: rpc.OpSessionCrash, ID: "js-s", Revision: 4,
-		TicketKind: store.KindSession, Status: store.StatusClosed, Resolution: "crashed"}, ev)
+	want := rpc.Event{
+		Seq: 3, Time: at, Kind: rpc.EventKindSession, Op: rpc.OpSessionCrash, ID: "js-s", Revision: 4,
+		TicketKind: store.KindSession, Status: store.StatusClosed, Resolution: "crashed",
+	}
+	assert.Equal(t, want, ev)
 
 	run := &store.Ticket{ID: "js-r", Kind: store.KindRun, Status: store.StatusOpen, Fields: json.RawMessage(`{"workflow":"w","state":"needs_human"}`)}
 	ev = toEvent(store.HistoryEntry{Seq: 4, TicketID: "js-r", Op: "update", Diff: json.RawMessage(`{"fields":{"workflow":"w","state":"needs_human"}}`)}, run)
