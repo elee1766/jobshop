@@ -173,6 +173,7 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - A permanent spawn error (missing repo or dir, agent not found)
   quarantines the pool at once with one escalation, until reload or
   `jobshop pool unquarantine` (#146).
+- Batches designed, not built: `docs/notes/148-batches.md` (#148).
 
 ## 5. What's next
 
@@ -224,6 +225,8 @@ replaces gateway polling, batches (Gas City convoys), and the operator
 using the Matrix room. Schedules are already covered by cron triggers.
 Spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`).
+Batches are designed (#148); next are its four implementation
+follow-ups listed in the note.
 
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 (Discord later), read/write attach and the operator pack (section 8).
@@ -542,6 +545,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   `meta.run` and records its thread in `meta.gateway` with a
   compare-and-swap update, which is the dedup. No new controller event
   type or subscription method was needed.
+- Batches are a ticket kind `batch` owning pr-work runs as children,
+  created with their cross-run edges in one graph apply; no new store
+  table (2026-11-02, #148, `docs/notes/148-batches.md`).
 - Session sockets get admin methods only by a per-pool allow list
   (2026-11-02, #126), not `admin: true`: a fixed set of read and
   reload methods is grantable, while reopen, session new/send/reap and
