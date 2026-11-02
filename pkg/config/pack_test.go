@@ -1,8 +1,11 @@
 package config
 
 import (
+	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -146,14 +149,20 @@ packs:
 	assert.Equal(t, 1, c.Pools["refinery"].MaxSessions)
 	assert.Contains(t, c.Pools["refinery"].Prompt, "--delete-branch")
 	assert.NotContains(t, c.Pools["dev"].Prompt, "--pool refinery", "no prompt-only handoff")
-	assert.Contains(t, c.Pools["dev"].Prompt, "You work on Jobshop")
+	assert.Contains(t, c.Pools["dev"].Prompt, "You work on elee1766/jobshop")
+	assert.Contains(t, c.Pools["dev"].Prompt, "Read AGENTS.md")
+	assert.Equal(t, "/src/jobshop", c.Pools["dev"].Repo, "selfdev repo var is the checkout")
+	assert.Contains(t, c.Pools["plan"].Prompt, "@elee1766")
+	assert.Contains(t, c.Triggers["master-red"].When.Check, "--repo elee1766/jobshop --branch master --workflow ci")
+	assert.Contains(t, c.Workflows["pr-work"].PackVars["deploy_check"], "jobshop version")
+	assert.Equal(t, "go build ./... && go vet ./... && go test ./...", c.Workflows["pr-work"].PackVars["check_cmd"])
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
 	w := c.Workflows["pr-work"]
 	require.Len(t, w.Steps, 3)
 	assert.Equal(t, "plan", w.EscalatePool)
 	assert.Contains(t, w.Steps[1].Prompt, "--match-head-commit")
-	assert.Contains(t, w.Steps[2].Prompt, "jobshop version")
+	assert.Contains(t, w.Steps[2].Prompt, "${deploy_check}", "filled at run start")
 	b := c.Workflows["blocker-check"]
 	require.Len(t, b.Steps, 1)
 	assert.Equal(t, 1, b.Steps[0].RetryLimit())
@@ -177,4 +186,86 @@ packs:
 	assert.Contains(t, ci.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "plan", c.Triggers["replan"].Ticket.Pool)
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
+}
+
+// TestGithubPackLoads loads packs/github for another repo: no Jobshop
+// values leak in, and the vars reach pools, prompts and the trigger.
+func TestGithubPackLoads(t *testing.T) {
+	dir := t.TempDir()
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test, ci_workflow: build}
+`})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"dev", "plan", "refinery"}, slices.Collect(maps.Keys(c.Pools)))
+	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "blocker-check"}, slices.Collect(maps.Keys(c.Workflows)))
+	assert.ElementsMatch(t, []string{"replan", "master-red"}, slices.Collect(maps.Keys(c.Triggers)))
+	assert.Equal(t, 2, c.Pools["dev"].MaxSessions, "dev_sessions default")
+	for n, p := range c.Pools {
+		assert.Equal(t, "/src/widget", p.Repo, n)
+		assert.NotContains(t, p.Prompt, "elee1766", n)
+		assert.NotContains(t, p.Prompt, "Jobshop", n)
+	}
+	assert.Contains(t, c.Pools["dev"].Prompt, "GitHub issues on acme/widget")
+	assert.Contains(t, c.Pools["plan"].Prompt, "@wile")
+	mr := c.Triggers["master-red"]
+	assert.Contains(t, mr.When.Check, "--repo acme/widget --branch master --workflow build")
+	require.NotNil(t, mr.Run)
+	assert.Equal(t, "ci-repair", mr.Run.Workflow)
+	w := c.Workflows["pr-work"]
+	assert.Equal(t, "make test", w.PackVars["check_cmd"])
+	body, err := FillTemplate(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test"})
+	require.NoError(t, err)
+	assert.Contains(t, body, "`make test`")
+}
+
+// TestGithubPackGeneric: nothing in packs/github names the Jobshop repo.
+func TestGithubPackGeneric(t *testing.T) {
+	err := filepath.WalkDir("../../packs/github", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(path)
+		require.NoError(t, err)
+		assert.NotContains(t, string(b), "elee1766/jobshop", path)
+		return nil
+	})
+	require.NoError(t, err)
+}
+
+func TestPackExtends(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"base/pack.yaml": "defaults: {n: 1}\npools:\n  dev: {agent: a, dir: /w, max_sessions: \"${n}\", prompt_file: p.md}\n",
+		"base/p.md":      "for ${who}\n",
+		"inst/pack.yaml": "extends:\n  - path: ../base\n    vars: {who: \"${team}\"}\npools:\n  dev: {idle_timeout: 3m}\n",
+		"jobshop.yaml":   hostBase + "packs:\n  - path: inst\n    vars: {team: ops}\n",
+	})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	p := c.Pools["dev"]
+	assert.Equal(t, "for ops\n", p.Prompt, "base prompt file gets the instance's value")
+	assert.Equal(t, 1, p.MaxSessions, "base default")
+	assert.Equal(t, "3m", p.IdleTimeout, "instance overrides base")
+	assert.Equal(t, []string{
+		filepath.Join(dir, "base", "pack.yaml"),
+		filepath.Join(dir, "inst", "pack.yaml"),
+	}, c.Sources["pools.dev"])
+
+	writeFiles(t, dir, map[string]string{"loop/pack.yaml": "extends:\n  - path: .\n"})
+	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: loop\n"})
+	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.ErrorContains(t, err, "cycle")
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: inst\n"})
+	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.ErrorContains(t, err, `var "team" is not set`)
 }

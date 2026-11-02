@@ -24,13 +24,33 @@ type PackRef struct {
 	Vars map[string]any `yaml:"vars"`
 }
 
-// packFile is the schema of pack.yaml: the mergeable jobshop.yaml sections.
+// packFile is the schema of pack.yaml: the mergeable jobshop.yaml sections,
+// plus defaults for the pack's vars and the base packs it extends.
 type packFile struct {
 	Agents    map[string]Agent    `yaml:"agents"`
 	Pools     map[string]Pool     `yaml:"pools"`
 	Triggers  map[string]Trigger  `yaml:"triggers"`
 	Workflows map[string]Workflow `yaml:"workflows"`
 }
+
+// packHead is the part of pack.yaml read before substitution.
+type packHead struct {
+	// Defaults are var values used when the including file does not set
+	// them.
+	Defaults map[string]any `yaml:"defaults"`
+	// Extends lists base packs merged before this one, like packs: in
+	// jobshop.yaml. Their vars may reference this pack's vars.
+	Extends []PackRef `yaml:"extends"`
+}
+
+// packLayer is one pack file's contribution after substitution.
+type packLayer struct {
+	file string
+	m    map[string]any
+}
+
+// maxPackDepth bounds extends chains so a cycle fails instead of looping.
+const maxPackDepth = 8
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
@@ -74,17 +94,19 @@ func parseFile(path string, b []byte) (*Config, error) {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(dir, p)
 		}
-		m, err := loadPack(p, ref.Vars)
+		layers, err := loadPack(p, ref.Vars, 0)
 		if err != nil {
 			return nil, err
 		}
-		mergeInto(merged, m, filepath.Join(p, PackFileName), sources)
+		for _, l := range layers {
+			mergeInto(merged, l.m, l.file, sources)
+		}
 	}
 	delete(top, "packs")
 	if err := setPackVars(top, nil, name); err != nil {
 		return nil, err
 	}
-	if err := resolvePromptFiles(top, dir, name); err != nil {
+	if err := resolvePromptFiles(top, dir, name, nil); err != nil {
 		return nil, err
 	}
 	mergeInto(merged, top, path, sources)
@@ -101,9 +123,13 @@ func parseFile(path string, b []byte) (*Config, error) {
 }
 
 // loadPack reads dir/pack.yaml, substitutes vars, resolves prompt_file and
-// checks the schema. Errors name the pack file.
-func loadPack(dir string, vars map[string]any) (map[string]any, error) {
+// checks the schema. It returns the extended packs' layers first, then its
+// own. Errors name the pack file.
+func loadPack(dir string, given map[string]any, depth int) ([]packLayer, error) {
 	file := filepath.Join(dir, PackFileName)
+	if depth > maxPackDepth {
+		return nil, fmt.Errorf("%s: extends nested more than %d deep (a cycle?)", file, maxPackDepth)
+	}
 	b, err := os.ReadFile(file)
 	if err != nil {
 		return nil, fmt.Errorf("pack %s: %w", dir, err)
@@ -111,6 +137,45 @@ func loadPack(dir string, vars map[string]any) (map[string]any, error) {
 	m, err := decodeMap(b)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	var head packHead
+	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"]})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	if err := yaml.UnmarshalWithOptions(raw, &head, yaml.Strict()); err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
+	delete(m, "defaults")
+	delete(m, "extends")
+	// Given vars win over defaults.
+	vars := map[string]any{}
+	for k, v := range head.Defaults {
+		vars[k] = v
+	}
+	for k, v := range given {
+		vars[k] = v
+	}
+	var layers []packLayer
+	for i, ref := range head.Extends {
+		if ref.Path == "" {
+			return nil, fmt.Errorf("%s: extends[%d]: path is required", file, i)
+		}
+		p := ref.Path
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(dir, p)
+		}
+		// The base's vars are templates over this pack's vars.
+		bv, err := substitute(cloneValue(ref.Vars), vars, fmt.Sprintf("extends[%d].vars", i))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+		bvars, _ := bv.(map[string]any)
+		base, err := loadPack(p, bvars, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		layers = append(layers, base...)
 	}
 	// Step titles and prompts keep ${run var} references for run start.
 	restore := holdTemplates(m)
@@ -131,10 +196,10 @@ func loadPack(dir string, vars map[string]any) (map[string]any, error) {
 	if err := setPackVars(m, vars, file); err != nil {
 		return nil, err
 	}
-	if err := resolvePromptFiles(m, dir, file); err != nil {
+	if err := resolvePromptFiles(m, dir, file, subVars); err != nil {
 		return nil, err
 	}
-	raw, err := yaml.Marshal(m)
+	raw, err = yaml.Marshal(m)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
@@ -142,7 +207,27 @@ func loadPack(dir string, vars map[string]any) (map[string]any, error) {
 	if err := yaml.UnmarshalWithOptions(raw, &pf, yaml.Strict()); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return m, nil
+	return append(layers, packLayer{file: file, m: m}), nil
+}
+
+// cloneValue deep-copies maps and lists so substitution does not edit
+// the caller's config.
+func cloneValue(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(x))
+		for k, e := range x {
+			out[k] = cloneValue(e)
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = cloneValue(e)
+		}
+		return out
+	}
+	return v
 }
 
 func decodeMap(b []byte) (map[string]any, error) {
@@ -224,7 +309,9 @@ func joinKey(a, b string) string {
 
 // resolvePromptFiles replaces pools.*.prompt_file with the file's content
 // as prompt, reading relative to dir (the declaring file's directory).
-func resolvePromptFiles(m map[string]any, dir, file string) error {
+// In a pack (vars non-nil) the content gets pack var substitution like an
+// inline prompt; host prompt files stay literal.
+func resolvePromptFiles(m map[string]any, dir, file string, vars map[string]any) error {
 	pools, _ := m["pools"].(map[string]any)
 	names := make([]string, 0, len(pools))
 	for n := range pools {
@@ -253,7 +340,15 @@ func resolvePromptFiles(m map[string]any, dir, file string) error {
 			return fmt.Errorf("%s: %s.prompt_file: %w", file, key, err)
 		}
 		delete(p, "prompt_file")
-		p["prompt"] = string(b)
+		prompt := string(b)
+		if vars != nil {
+			v, err := substitute(prompt, vars, key+".prompt_file")
+			if err != nil {
+				return fmt.Errorf("%s: %w", file, err)
+			}
+			prompt = v.(string)
+		}
+		p["prompt"] = prompt
 	}
 	return resolveStepPromptFiles(m, dir, file)
 }

@@ -17,7 +17,7 @@ SHA starts a new run.
    (`jobshop run show <run>` from this ticket's `parent_id`).
    Otherwise `git switch -c ci-fix-<short sha>`, fix the cause (not the
    test, unless the test is wrong), run
-   `go build ./... && go vet ./... && go test ./...`, commit with
+   `${check_cmd}`, commit with
    `(#<n>)` in the subject, `git push -u origin HEAD`, and
    `gh pr create --base master --title "<summary> (#<n>)" --body "Closes #<n>. Master red at ${sha}. ..."`.
 4. Wait for CI with `gh pr checks --watch`; fix and push again.
