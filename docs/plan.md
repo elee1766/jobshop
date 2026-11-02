@@ -141,6 +141,8 @@ Short list; behavior details are in section 7.
 - selfdev `master-red` starts a `ci-repair` run per failing SHA (#99).
 - Live sessions refresh their host when the spawn env changes, not only
   on adoption (#106).
+- Generic `packs/github`; `packs/selfdev` is an instance through pack
+  `extends:` and `defaults:` (#107).
 
 ## 5. What's next
 
@@ -175,7 +177,9 @@ second half, #98) are built. The pr-work box on #82 needs one issue
 delivered through a run on gasserver. `blocker-check` (follow-up 6, #100)
 is built; its box needs one run on gasserver (e.g. against #56) linked on
 #82. `ci-repair` (follow-up 5, #99) is built; its box needs one red
-master handled by a run on gasserver.
+master handled by a run on gasserver. The generic `github` pack (#107) is
+built; the first other repo, its credentials and review policy, is still
+the user's call.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -322,6 +326,13 @@ All dated 2026-11-01 unless noted.
   PATH. The symlink would fix only PATH; the hash also catches changed
   credentials and agent env, and the refresh path already existed for
   adoption (2026-11-02, #106).
+- Pack composition is `extends:` plus `defaults:` in pack.yaml
+  (2026-11-02, #107), not a template language or Nix-side composition:
+  `packs/selfdev` must stay loadable from a live checkout by the
+  controller, and reusing the `packs:` merge order and per-file `sources`
+  keeps `config show` honest. Base vars are templates over the extending
+  pack's vars so an instance renames vars (`checkout: ${repo}`) without
+  changing its host interface.
 
 **Runs and workflows** (2026-11-02, #83, design for target #82; not built)
 
@@ -575,7 +586,8 @@ A trigger may start a workflow run instead of filing a ticket (7.19).
 ### 7.7 Packs and reload (#27, #38)
 
 `packs:` lists `path` (relative to the root) and `vars`. `pack.yaml` holds
-`agents`, `pools`, `triggers`; other keys are rejected. Merge: packs in
+`agents`, `pools`, `triggers`, `workflows`, and `defaults`/`extends`
+(7.22); other keys are rejected. Merge: packs in
 order, then jobshop.yaml; later sources win per key and per field through
 nested maps; lists and scalars replace whole. `${name}` comes from the
 pack's vars (a bare `${name}` keeps the var's type, `$$` is a literal `$`,
@@ -794,7 +806,7 @@ assertion and the old option.
 
 ### 7.18 selfdev pr-work (#93)
 
-`packs/selfdev/pack.yaml` declares `pr-work` (vars `[issue]`, `issue:
+`packs/github/pack.yaml` (selfdev since #107) declares `pr-work` (vars `[issue]`, `issue:
 issue`, `escalate_pool: plan`): `implement` (dev, 3 retries,
 `prompts/implement.md`), `review-merge` (refinery, 2,
 `prompts/merge.md`) and `post-merge` (refinery, 2,
@@ -850,6 +862,25 @@ find or file the fix issue, `gh run view --log-failed`, open a PR) and
 is red. With the SHA as both run key and trigger key, a SHA gets one run
 and at most two fix attempts, then `needs_human` and an escalation ticket
 (7.16).
+
+### 7.22 Generic github pack and pack extends (#107)
+
+`packs/github` holds the plan, dev and refinery pools, the `replan` and
+`master-red` triggers and the `pr-work`, `ci-repair` and `blocker-check`
+workflows with their prompts. Pack vars: `repo` (owner/repo), `checkout`,
+`agent`, `human`, `check_cmd`, and defaulted `ci_workflow`,
+`dev_sessions`, `guide`, `deploy_check`. `pack.yaml` may set
+`defaults:` (var values the including file did not set) and `extends:`
+(a list like `packs:` whose `vars` are templates over the extending
+pack's vars). Base layers merge before the extending pack, each recorded
+in `sources` under its own file; nesting deeper than 8 fails as a cycle.
+Pool `prompt_file` contents in a pack now get pack var substitution
+(host prompt files stay literal). `packs/selfdev` is `extends: ../github`
+with Jobshop's values; its own vars (`repo` = checkout path, `agent`,
+`dev_sessions`) are unchanged, so hosts and the NixOS module need no
+change. The merged selfdev config has the same pools, triggers,
+workflows, steps and retries; prompt text differs only in wording that
+named Jobshop or self-deploy directly.
 
 ## 8. Chat gateway (future)
 

@@ -11,7 +11,7 @@ address each finding, reply to each review comment you resolve, push and
 wait for green CI.
 
 Otherwise: `git switch -c issue-${issue}`, make the change, run
-`go build ./... && go vet ./... && go test ./...`, commit with
+`${check_cmd}`, commit with
 `(#${issue})` in the subject, `git push -u origin HEAD`, then
 `gh pr create --base master --title "<summary> (#${issue})" --body "Closes #${issue}. ..."`.
 Wait for CI with `gh pr checks --watch`; fix failures and push again.

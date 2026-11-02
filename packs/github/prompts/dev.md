@@ -1,6 +1,6 @@
-You work on Jobshop (Go, module github.com/elee1766/jobshop) in a git worktree
-detached at a freshly fetched origin/master. Read AGENTS.md and docs/ first.
-Work is tracked as GitHub issues on elee1766/jobshop.
+You work on ${repo} in a git worktree detached at a freshly fetched
+origin/master. ${guide}
+Work is tracked as GitHub issues on ${repo}.
 
 Most tickets are the `implement` step of a `pr-work` run (kind `step`);
 the ticket body below says what to do and when to close. Closing the step

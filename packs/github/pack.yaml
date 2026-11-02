@@ -1,0 +1,115 @@
+# Agents that work a GitHub repo through issues and PRs: plan, dev and
+# refinery pools, and the pr-work, ci-repair and blocker-check workflows.
+# Vars: see README.md. packs/selfdev is an instance of this pack.
+defaults:
+  ci_workflow: ci
+  dev_sessions: 2
+  guide: >-
+    Read the repo's README and contributor docs (AGENTS.md,
+    CONTRIBUTING.md) first.
+  deploy_check: >-
+    none (these agents do not deploy this repo); treat this check as
+    passed.
+pools:
+  dev:
+    agent: ${agent}
+    repo: ${checkout}
+    ref: origin/master
+    max_sessions: ${dev_sessions}
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/dev.md
+  plan:
+    agent: ${agent}
+    repo: ${checkout}
+    ref: origin/master
+    max_sessions: 1
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/plan.md
+  refinery:
+    agent: ${agent}
+    repo: ${checkout}
+    ref: origin/master
+    # One session serializes merges.
+    max_sessions: 1
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/refinery.md
+triggers:
+  replan:
+    when:
+      pool: dev
+      ready_below: 1
+    ticket:
+      pool: plan
+      title: Plan next step
+      priority: 1
+      labels: [plan]
+    cooldown: 10m
+  # One ci-repair run per failing master SHA. The check runs on every tick
+  # while no master-red run is open; gh needs GH_TOKEN in the controller
+  # environment.
+  master-red:
+    when:
+      check: >-
+        gh run list --repo ${repo} --branch master --workflow ${ci_workflow}
+        --status completed --limit 1 --json conclusion,headSha
+        --jq '.[] | select(.conclusion == "failure") | .headSha' | grep .
+      check_timeout: 30s
+    run:
+      workflow: ci-repair
+      vars: {sha: "${check_output}"}
+      key: "${check_output}"
+workflows:
+  # One run per issue: implement (dev) -> review-merge (refinery) ->
+  # post-merge (refinery). Started by the planner with --key issue-<n>.
+  pr-work:
+    vars: [issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - id: implement
+        pool: dev
+        retries: 3
+        title: "Implement #${issue}"
+        prompt_file: prompts/implement.md
+      - id: review-merge
+        pool: refinery
+        retries: 2
+        title: "Review and merge PR for #${issue}"
+        prompt_file: prompts/merge.md
+      - id: post-merge
+        pool: refinery
+        retries: 2
+        title: "Check master CI and deploy for #${issue}"
+        prompt_file: prompts/post-merge.md
+  # Re-check a claimed blocker. Started by the planner with
+  # --key blocker-<ticket>. A real blocker closes failed and, with one
+  # attempt, escalates at once.
+  blocker-check:
+    vars: [ticket, issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - id: assess
+        pool: plan
+        retries: 1
+        title: "Check blocker on ${ticket} (#${issue})"
+        prompt_file: prompts/blocker.md
+  # One run per failing master SHA, started by the master-red trigger with
+  # the SHA as key: at most 2 fix attempts per SHA, then needs_human.
+  ci-repair:
+    vars: [sha]
+    escalate_pool: plan
+    steps:
+      - id: fix
+        pool: dev
+        retries: 2
+        title: "Fix red master CI at ${sha}"
+        prompt_file: prompts/ci-fix.md
+      - id: merge
+        pool: refinery
+        retries: 2
+        title: "Merge CI fix for ${sha}"
+        prompt_file: prompts/ci-merge.md

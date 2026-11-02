@@ -8,16 +8,14 @@ ticket says. Read the claim first:
 - `gh issue view ${issue} --comments`
 
 Then check each thing the claim depends on:
-- Self-deploy: is the fix it waits for live? Compare master
-  (`git fetch origin && git rev-parse origin/master`) with the running
-  build (`jobshop version` prints `jobshop <version> (<commit>)`;
-  `git merge-base --is-ancestor <needed sha> <commit>`).
+- Deploys: is the fix it waits for live? How to tell whether a commit
+  is deployed: ${deploy_check}
 - Pools: does the pool it needs exist and run sessions?
   `jobshop ticket list --orphaned` lists tickets whose pool is gone or
   has no sessions.
 - Permissions and credentials: does the token, label, secret or access it
   needs exist now? Try the read-only form of the command that failed
-  (e.g. `gh auth status`, `gh api repos/elee1766/jobshop`, `gh label list`).
+  (e.g. `gh auth status`, `gh api repos/${repo}`, `gh label list`).
 - Any other dependency it names: a merged PR, a closed issue, a run
   (`jobshop run show <run>`).
 
@@ -32,7 +30,7 @@ Then do exactly one:
    needs-human`). Then `jobshop close`.
 2. Real (a check fails): say which one and what would unblock it, then
    `jobshop close -r failed`. This step has one attempt, so the run
-   escalates at once and the planner asks @elee1766.
+   escalates at once and the planner asks @${human}.
 
 Do not fix the blocker yourself and do not release this step (a release
 counts as the failed attempt).
