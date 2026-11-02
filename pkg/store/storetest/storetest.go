@@ -258,11 +258,15 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 	runID, err := s.NewID(proj)
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(runID, proj+"-"))
-	run := store.NewTicket{ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
-		Fields: json.RawMessage(`{"workflow":"w","key":"k1","state":"running"}`)}
+	run := store.NewTicket{
+		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		Fields: json.RawMessage(`{"workflow":"w","key":"k1","state":"running"}`),
+	}
 	step := func(i int, id string) store.NewTicket {
-		return store.NewTicket{ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
-			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"s%d","index":%d,"retries":2}`, runID, i, i))}
+		return store.NewTicket{
+			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"s%d","index":%d,"retries":2}`, runID, i, i)),
+		}
 	}
 	// Inserted out of order: ListChildren orders by fields.index (10 > 2).
 	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{run, step(10, "js-b"), step(2, "js-a")}, nil)

@@ -108,7 +108,9 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 	if r.Existing {
 		line += "  [existing run for key]"
 	}
-	fmt.Fprintln(w, line)
+	if _, err := fmt.Fprintln(w, line); err != nil {
+		return err
+	}
 	if len(f.Vars) > 0 {
 		keys := make([]string, 0, len(f.Vars))
 		for k := range f.Vars {
@@ -119,7 +121,9 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 		for i, k := range keys {
 			parts[i] = k + "=" + f.Vars[k]
 		}
-		fmt.Fprintln(w, "vars", strings.Join(parts, " "))
+		if _, err := fmt.Fprintln(w, "vars", strings.Join(parts, " ")); err != nil {
+			return err
+		}
 	}
 	for _, s := range r.Steps {
 		sf, err := store.DecodeFields[store.StepFields](s)
@@ -133,8 +137,10 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 		if holder == "" {
 			holder = "-"
 		}
-		fmt.Fprintf(w, "%d  %-12s %s  pool %s  %s  %s  holder %s  failures %d/%d\n",
-			sf.Index, sf.Step, s.ID, s.Pool, s.Status, res, holder, sf.Failures, sf.Retries)
+		if _, err := fmt.Fprintf(w, "%d  %-12s %s  pool %s  %s  %s  holder %s  failures %d/%d\n",
+			sf.Index, sf.Step, s.ID, s.Pool, s.Status, res, holder, sf.Failures, sf.Retries); err != nil {
+			return err
+		}
 	}
 	return nil
 }

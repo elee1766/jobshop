@@ -146,7 +146,7 @@ func TestRunStartErrors(t *testing.T) {
 		want string
 	}{
 		{"unknown workflow", rpc.RunStartParams{Workflow: "nope"}, `unknown workflow "nope"`},
-		{"missing var", rpc.RunStartParams{Workflow: "pr"}, "needs --var issue"},
+		{"missing var", rpc.RunStartParams{Workflow: "pr"}, "needs var issue"},
 		{"unknown var", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1", "x": "2"}}, `no var "x"`},
 		{"other project", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1"}, Project: "zz"}, "runs in project js"},
 	} {

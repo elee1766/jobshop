@@ -44,7 +44,7 @@ func (c *Controller) runStart(ctx context.Context, sc scope, p rpc.RunStartParam
 	}
 	for _, k := range w.Vars {
 		if _, ok := vars[k]; !ok {
-			return nil, fmt.Errorf("%w: workflow %s needs --var %s=...", store.ErrInvalid, p.Workflow, k)
+			return nil, fmt.Errorf("%w: workflow %s needs var %s (--var %s=...)", store.ErrInvalid, p.Workflow, k, k)
 		}
 	}
 	meta, err := runMeta(w, vars)
@@ -244,7 +244,8 @@ func (c *Controller) runResume(ctx context.Context, sc scope, p rpc.RunResumePar
 		if err != nil {
 			return nil, err
 		}
-		if (p.Step != "" && sf.Step == p.Step) || (p.Step == "" && !(steps[i].Status == store.StatusClosed && steps[i].Resolution == "done")) {
+		done := steps[i].Status == store.StatusClosed && steps[i].Resolution == "done"
+		if (p.Step != "" && sf.Step == p.Step) || (p.Step == "" && !done) {
 			step = &steps[i]
 			break
 		}
