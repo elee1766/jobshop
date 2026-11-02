@@ -196,7 +196,7 @@ and an API if a dashboard needs one. Schedules are already covered by cron
 triggers.
 
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
-and Discord, read/write attach and the operator pack (section 8).
+(Discord later), read/write attach and the operator pack (section 8).
 `session.send` and `session.subscribe` are built (#121); next are chat
 pool idle TTL and `attach --rw` (#122), the gateway (#123), the pack (#124).
 
@@ -967,7 +967,8 @@ Admin socket only.
 ## 8. Chat gateway
 
 Scheduled 2026-11-02 as a parallel track of phase 4 (target #82), Matrix
-and Discord first. Kept small: the gateway is a translator, and sessions,
+only for now; Discord is a later adapter behind the same interface
+(decided 2026-11-02). Kept small: the gateway is a translator, and sessions,
 messages and prompts stay in the controller.
 
 - Chat pools: `type: chat` pools are not ticket-driven. A session is keyed
@@ -991,13 +992,13 @@ messages and prompts stay in the controller.
   pack prompt or an issue, so self-improvement goes through the refinery
   like other changes. This is how a Gas City mayor role returns as config.
 - Escalation threads (2026-11-02): an escalation also opens a Matrix
-  thread or Discord forum post, created by the gateway from a controller
+  thread, created by the gateway from a controller
   event, with a keyed operator session already holding the escalation
   context. The operator's reply there unblocks the run.
 - Testing: gasserver runs a loopback tuwunel homeserver as the jobshop
   user (`jobshop.localhost`, no federation, token registration), so
   agents register their own bot and test users and verify Matrix end to
-  end. Discord's live check needs a real bot token.
+  end.
 
 ## 9. Gas City mapping
 
