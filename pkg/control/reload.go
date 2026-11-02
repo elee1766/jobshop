@@ -53,7 +53,7 @@ func (c *Controller) reload() error {
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.Warn("config reload: telemetry changes need a controller restart")
 			}
-			c.log.Info("config reloaded", "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers))
+			c.log.Info("config reloaded", "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows))
 			// A removed pool orphans its queue; say so now, not next tick.
 			c.reportOrphans()
 			return nil
@@ -71,7 +71,7 @@ func (c *Controller) reloadConfig(_ context.Context, sc scope, _ struct{}) (any,
 		return nil, err
 	}
 	cfg := c.config()
-	return rpc.ReloadResult{Pools: len(cfg.Pools), Agents: len(cfg.Agents), Triggers: len(cfg.Triggers)}, nil
+	return rpc.ReloadResult{Pools: len(cfg.Pools), Agents: len(cfg.Agents), Triggers: len(cfg.Triggers), Workflows: len(cfg.Workflows)}, nil
 }
 
 // configShow returns the active config, not a fresh read of the file, so
