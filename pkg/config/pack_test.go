@@ -202,7 +202,7 @@ agents:
   a: {command: x}
 packs:
   - path: ` + pack + `
-    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test, ci_workflow: build}
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test, ci_workflow: build, ci_branch: drill/red-ci}
 `})
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
@@ -218,7 +218,7 @@ packs:
 	assert.Contains(t, c.Pools["dev"].Prompt, "GitHub issues on acme/widget")
 	assert.Contains(t, c.Pools["plan"].Prompt, "@wile")
 	mr := c.Triggers["master-red"]
-	assert.Contains(t, mr.When.Check, "--repo acme/widget --branch master --workflow build")
+	assert.Contains(t, mr.When.Check, "--repo acme/widget --branch drill/red-ci --workflow build")
 	require.NotNil(t, mr.Run)
 	assert.Equal(t, "ci-repair", mr.Run.Workflow)
 	w := c.Workflows["pr-work"]
