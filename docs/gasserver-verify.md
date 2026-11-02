@@ -56,6 +56,7 @@ checks moved from the old numbered sections, in their old order:
 - [Escalation drill](verify/escalation-drill.md)
 - [CI repair drill](verify/ci-repair-drill.md)
 - [Stale-blocker drill](verify/stale-blocker-drill.md)
+- [Chat pool rw attach](verify/chat-rw-attach.md)
 
 ## Self-deploy
 

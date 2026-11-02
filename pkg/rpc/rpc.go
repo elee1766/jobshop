@@ -589,6 +589,9 @@ type SessionSendParams struct {
 	Key       string `json:"key,omitempty"`
 	Text      string `json:"text"`
 	Interrupt bool   `json:"interrupt,omitempty"`
+	// Attach marks a send from `session attach --rw`; it is refused
+	// unless the session's pool sets attach: rw.
+	Attach bool `json:"attach,omitempty"`
 }
 
 // SessionSendResult names the session and the message ticket.

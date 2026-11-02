@@ -158,6 +158,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Docs: one file per note in `docs/notes/` and per check in
   `docs/verify/`; refinery resolves docs-only conflicts (#131).
 - The CI repair drill opens a draft PR so its branch gets CI (#132).
+- Chat pool idle TTL (1h default, reset by messages), `attach: rw` and
+  `session attach --rw` (#122).
 
 ## 5. What's next
 
@@ -204,7 +206,7 @@ triggers.
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 (Discord later), read/write attach and the operator pack (section 8).
 `session.send` and `session.subscribe` are built (#121); next are chat
-pool idle TTL and `attach --rw` (#122), the gateway (#123), the pack (#124).
+pool idle TTL and `attach --rw` (#122, built), the gateway (#123), the pack (#124).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -493,6 +495,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   already hold an admin connection. Events are read from the journal, so
   `since_seq` resumes without a controller-side buffer. `session.send`
   is a message ticket to the session id, reusing #16 delivery.
+- `attach --rw` is enforced by the controller (2026-11-02, #122): the
+  CLI marks its sends `attach: true` and they are refused unless the
+  session's pool sets `attach: rw`. Other admin sends are not limited.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -534,6 +539,7 @@ moved from the old 7.x list, oldest first:
 - [CI repair drill](notes/117-ci-repair-drill.md) (#117)
 - [Stale-blocker drill](notes/119-stale-blocker-drill.md) (#119)
 - [session.send and session.subscribe](notes/121-session-send-subscribe.md) (#121)
+- [Chat pools keyed by thread, and rw attach](notes/122-chat-pools-rw-attach.md) (#122)
 - [Operator pack](notes/124-operator-pack.md) (#124)
 
 ## 8. Chat gateway

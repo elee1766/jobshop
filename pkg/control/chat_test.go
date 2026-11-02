@@ -130,3 +130,61 @@ func TestSessionSendSubscribe(t *testing.T) {
 	assert.Equal(t, rpc.EventState, last.Type)
 	assert.Equal(t, store.StatusClosed, last.Status)
 }
+
+// TestChatPoolKeys: two keys get two sessions, a key keeps its session
+// across a controller restart, rw attach sends need attach: rw, and an
+// idle chat session is reaped after its pool's idle TTL.
+func TestChatPoolKeys(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0o600)
+	require.NoError(t, err)
+	_, err = fmt.Fprintf(f, "  chat:\n    project: js\n    agent: fake\n    type: chat\n    attach: rw\n    idle_timeout: 3s\n    dir: %q\n", root.Dir)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	stop := start()
+	ctx := t.Context()
+	admin := dial(t, root.AdminSocket())
+
+	send := func(p rpc.SessionSendParams) (rpc.SessionSendResult, error) {
+		var res rpc.SessionSendResult
+		err := admin.Call(ctx, rpc.MethodSessionSend, p, &res)
+		return res, err
+	}
+	a, err := send(rpc.SessionSendParams{Pool: "chat", Key: "matrix:r:a", Text: "one"})
+	require.NoError(t, err)
+	b, err := send(rpc.SessionSendParams{Pool: "chat", Key: "matrix:r:b", Text: "two"})
+	require.NoError(t, err)
+	assert.True(t, a.Started)
+	assert.True(t, b.Started)
+	assert.NotEqual(t, a.Session, b.Session, "two keys, two sessions")
+
+	// rw attach: allowed on the chat pool, a probe sends nothing.
+	probe, err := send(rpc.SessionSendParams{ID: a.Session, Attach: true})
+	require.NoError(t, err)
+	assert.Empty(t, probe.Message.ID)
+	_, err = send(rpc.SessionSendParams{ID: a.Session, Text: "via attach", Attach: true})
+	require.NoError(t, err)
+
+	// A manual session in no pool refuses rw attach.
+	var manual store.Ticket
+	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Project: "js", Agent: "fake"}, &manual))
+	_, err = send(rpc.SessionSendParams{ID: manual.ID, Attach: true})
+	assert.ErrorIs(t, err, store.ErrInvalid)
+
+	// The same key after a controller restart reaches the same session.
+	stop()
+	stop = start()
+	defer func() { stop() }()
+	admin = dial(t, root.AdminSocket())
+	again, err := send(rpc.SessionSendParams{Pool: "chat", Key: "matrix:r:a", Text: "back"})
+	require.NoError(t, err)
+	assert.Equal(t, a.Session, again.Session, "same key, same session after restart")
+	assert.False(t, again.Started)
+
+	// With no more messages the idle TTL closes it as idle.
+	var s rpc.ShowResult
+	require.Eventually(t, func() bool {
+		return admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: b.Session}, &s) == nil && s.Ticket.Status == store.StatusClosed
+	}, 30*time.Second, 100*time.Millisecond)
+	assert.Equal(t, "idle", s.Ticket.Resolution)
+}
