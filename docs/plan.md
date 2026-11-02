@@ -124,6 +124,7 @@ Short list; behavior details are in section 7.
 - `jobshop_sessions_ended_total` by resolution, its dashboard panel, and
   the runbook counting `stuck` as a failure (#71).
 - Recent comments in ticket prompts, for routed-back tickets (#70).
+- Run model design note for phase 4, section 6 (#83).
 
 ## 5. What's next
 
@@ -147,7 +148,8 @@ phase 4 (decided 2026-11-02): work for other GitHub repos the way Gas City
 handles Retail and Trade, but tracked in GitHub issues instead of Linear,
 through a generic `github` pack that `packs/selfdev` becomes an instance of.
 Which repo goes first, and its credentials and review policy, is the
-user's call.
+user's call. The run model is designed (section 6, "Runs and
+workflows", #83); next are its six follow-up issues listed there.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -281,6 +283,120 @@ All dated 2026-11-01 unless noted.
   the title and body redid finished work or stalled. Comments are cheaper
   than a summary step and the agent can still run `ticket show`
   (2026-11-01, #70).
+
+**Runs and workflows** (2026-11-02, #83, design for target #82; not built)
+
+Derived from the three workflows we run (PR work, CI repair, blocker
+assessment), not from Gas City formulas. Only what they need: a straight
+line of steps, per-step retry limits, one escalation path. No branches,
+loops, fan-out or step outputs; add them when a workflow needs them.
+
+*Definition.* A pack declares `workflows:` next to `pools:` and
+`triggers:`. A workflow has `vars` (required var names; pack vars
+supply defaults), optional `issue` (a var holding a GitHub issue number, copied
+into every ticket's `meta.github.issue`), `escalate_pool`, and ordered
+`steps`. Each step has `id`, `pool`, `title`, `prompt` or `prompt_file`
+(filled from pack vars plus run vars), and `retries` (default 2). A step
+blocks on the previous one. Unknown pools or vars fail config load.
+
+*Start.* `jobshop run start <workflow> --var k=v [--key k]` asks the
+controller, which fills the templates and calls the existing
+`CreateGraph` once:
+- run ticket: kind `run`, no pool (never claimed), title from the
+  workflow, `fields` `{workflow, pack, vars, key, state: "running"}`.
+- one ticket per step: kind `step`, `parent_id` = run, the step's pool,
+  `fields` `{run, step, index, retries, failures: 0}`, body = filled
+  prompt.
+- edges: step i+1 `blocks` on step i, so only the first step is ready.
+- `meta.github.issue` on the run and every step when `issue` is set.
+
+`--key` dedups: a second start with the same workflow and key while a
+run with that key is open returns the open run. Triggers get
+`run: {workflow, vars, key}` as an alternative to `ticket:`; master-red
+uses the failing SHA as key.
+
+*Progress.* Agents work a step like any ticket and `jobshop close` it.
+When the last step closes `done`, the controller closes the run `done`.
+`jobshop run show <id>` prints the run state and vars, then one line per
+step: index, id, pool, status, resolution, holder, `failures/retries`.
+`jobshop run list [--state needs_human]` lists runs.
+
+*Retries.* The controller counts a failure on a step, in the same
+transaction as the event, when the step is closed `failed`, released
+unclosed (`jobshop release`, the driver's reminder release, dead-session
+release) or its lease expires. Below the limit the step goes back to
+`open` (a `failed` close reopens it) with a comment saying which attempt
+failed. At the limit the step closes `failed` and the run becomes
+`needs_human`. This counts across sessions, unlike quarantine, which
+counts crashes per ticket and stays as is.
+
+*needs-human.* The run's `fields.state` becomes `needs_human`; the run
+stays open so later steps stay blocked. The controller makes no GitHub
+calls (decision above), so it creates one task ticket in the workflow's
+`escalate_pool` titled "Escalate run <id>", carrying the issue meta and
+the step history (attempts, resolutions, last 3 comments). That agent
+labels the issue `needs-human` and comments mentioning @elee1766 with the
+blocker, evidence and what would unblock it. `jobshop run resume <id>
+[--step s]` resets the step's failures and reopens it; `run cancel`
+closes the run and its open steps `cancelled`.
+
+*Store and sqlc.* No new tables. `KindRun` and `KindStep` with field
+structs in `pkg/store/kinds.go`. New queries: `ListChildren` (by
+`parent_id`, ordered by `fields.index`; `tickets_parent` exists) and
+`FindOpenRunByKey`; a migration adds a partial index on
+`json_extract(fields,'$.key')` for open runs and one on
+`json_extract(fields,'$.state')` for kind `run`. The failure count is a
+fields update inside the existing release, close and lease-sweep
+transactions, guarded by `revision`. Then regenerate sqlc.
+
+*Examples* (`packs/selfdev/pack.yaml`, later the generic `github` pack):
+
+```yaml
+workflows:
+  pr-work:
+    vars: [issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - {id: implement, pool: dev, retries: 3, prompt_file: prompts/implement.md,
+         title: "Implement #${issue}"}
+      - {id: review-merge, pool: refinery, retries: 2, prompt_file: prompts/merge.md,
+         title: "Review and merge PR for #${issue}"}
+      - {id: post-merge, pool: refinery, retries: 2, prompt_file: prompts/post-merge.md,
+         title: "Check master CI and self-deploy for #${issue}"}
+  ci-repair:
+    vars: [sha]
+    escalate_pool: plan
+    steps:
+      - {id: fix, pool: dev, retries: 2, prompt_file: prompts/ci-fix.md,
+         title: "Fix red master CI at ${sha}"}
+      - {id: merge, pool: refinery, retries: 2, prompt_file: prompts/merge.md,
+         title: "Merge CI fix for ${sha}"}
+  blocker-check:
+    vars: [ticket, issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - {id: assess, pool: plan, retries: 1, prompt_file: prompts/blocker.md,
+         title: "Re-check blocker on ${ticket}"}
+```
+
+PR work: review findings route back by the refinery closing
+`review-merge` `failed`, which counts a failure and reopens it after a
+comment; the refinery prompt reopens `implement` with the findings
+(`run resume --step implement`). CI repair: trigger `master-red` starts
+`ci-repair` with key = SHA, so at most `fix.retries` attempts per SHA.
+Blocker check: the assess step re-reads the blocker against current state
+(deploys, permissions, pools), routes a stale blocker's ticket back to a
+pool and closes `done`, or closes `failed` for a real one, which
+escalates at once with `retries: 1`.
+
+*Follow-up issues:* (1) run and step kinds, `ListChildren`, run
+start/show/list/cancel/resume over `CreateGraph`; (2) failure counting,
+`needs_human` state and the escalation ticket; (3) `workflows:` in pack
+config and `run:` in triggers; (4) selfdev `pr-work` replacing the prompt
+handoff; (5) `master-red` starting `ci-repair`; (6) `blocker-check`
+workflow and who starts it (planner or a trigger on blocked tickets).
 
 **Build**
 - Plain `go` for development and CI, Nix flake for the package and NixOS
