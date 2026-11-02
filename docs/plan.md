@@ -179,6 +179,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Admin `events.subscribe` change stream from ticket history, `jobshop
   events`; the gateway's escalation threads follow it instead of a 10s
   poll (#147).
+- Session worktrees are locked against outside `git worktree remove`;
+  controller removals WARN with session and caller (#154,
+  `docs/notes/154-worktree-deletion.md`).
 
 ## 5. What's next
 
@@ -230,7 +233,8 @@ replaces gateway polling (#147, built; runbook
 `docs/verify/events-subscribe.md`), batches (Gas City convoys), and the operator
 using the Matrix room. Schedules are already covered by cron triggers.
 Spawn-error quarantine is built (#146,
-`docs/notes/146-spawn-quarantine.md`).
+`docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
+it needs a 24h `docs/verify/worktree-deletion.md` run on gasserver.
 Batches are designed (#148); next are its four implementation
 follow-ups listed in the note.
 
@@ -261,6 +265,9 @@ All dated 2026-11-01 unless noted.
   load saved cloud environment", from canonicalizing the deleted cwd) and
   it claimed and dropped tickets for hours. The repo deletes merged head
   branches on GitHub instead.
+- (2026-11-02) Session worktrees are added `--lock`, so gh or any agent
+  running `git worktree remove` in the shared repo cannot delete a live
+  one; only the controller removes them, after the session ended (#154).
 - No observer agents shipped. Their Gas City duties (dead-session release,
   lease sweep, idle-kill, quarantine, alerts) are deterministic controller
   work. Observer-style pools stay possible as config.
@@ -613,6 +620,7 @@ moved from the old 7.x list, oldest first:
 - [Stall trigger and stall-check](notes/143-stall-check.md) (#143)
 - [Spawn-error pool quarantine](notes/146-spawn-quarantine.md) (#146)
 - [events.subscribe change stream](notes/147-events-subscribe.md) (#147)
+- [Session worktree deletion](notes/154-worktree-deletion.md) (#154)
 
 ## 8. Chat gateway
 

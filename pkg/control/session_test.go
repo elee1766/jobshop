@@ -573,6 +573,15 @@ func TestWorktreeDeleted(t *testing.T) {
 	work := filepath.Join(sdir, "work")
 	oldPid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 	require.NoError(t, err)
+
+	// #154: an outside `git worktree remove --force` (gh pr merge deleting
+	// the branch's worktree) must not remove a live session's worktree.
+	out, err := exec.Command("git", "-C", repo, "worktree", "remove", "--force", work).CombinedOutput()
+	require.Error(t, err, "locked worktree removed: %s", out)
+	assert.Contains(t, string(out), "locked")
+	_, err = os.Stat(work)
+	require.NoError(t, err, "worktree still there")
+
 	require.NoError(t, os.RemoveAll(work))
 
 	require.Eventually(t, func() bool {
