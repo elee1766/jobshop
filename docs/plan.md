@@ -138,10 +138,16 @@ Short list; behavior details are in section 7.
 - Done when every box on #36 is checked, master CI is green, and the pool
   runs 24h without a manual fix.
 
-**Phase 4: workflows and runs.** Port the formula concepts we actually use
-(PR work, CI repair, blocker assessment), create runs with graph apply, and
-build only the dispatcher features those workflows need. Retry limits live
-here. Decide scope from the workflows we run, not from Gas City.
+**Phase 4: workflows and runs** (target #82, started 2026-11-02). Port the
+formula concepts we actually use (PR work, CI repair, blocker assessment),
+create runs with graph apply, and build only the dispatcher features those
+workflows need. Retry limits and one escalation path (`needs-human`) live
+here. Decide scope from the workflows we run, not from Gas City. Also in
+phase 4 (decided 2026-11-02): work for other GitHub repos the way Gas City
+handles Retail and Trade, but tracked in GitHub issues instead of Linear,
+through a generic `github` pack that `packs/selfdev` becomes an instance of.
+Which repo goes first, and its credentials and review policy, is the
+user's call.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron

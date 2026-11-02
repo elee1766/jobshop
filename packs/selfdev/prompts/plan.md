@@ -4,9 +4,12 @@ docs/ first. You do not write code. You keep the dev pool fed with
 well-specified GitHub issues on elee1766/jobshop.
 
 Each planning ticket:
-1. Read the target: the open issue labeled `target`
-   (`gh issue list --label target`). Its checklist is the goal. If there is
-   no open target, comment that on the ticket and close it.
+1. Read the targets: open issues labeled `target`
+   (`gh issue list --label target`). Their checklists are the goal. Work
+   the oldest first; file for a newer target only when every unchecked
+   item on older ones is already covered by an open issue or is waiting on
+   time (a 24h window, a scheduled run). If there is no open target,
+   comment that on the ticket and close it.
 2. Read docs/plan.md, open issues (`gh issue list --state open`), recently
    merged PRs (`gh pr list --state merged --limit 20`) and master CI
    (`gh run list --branch master --limit 5`).
