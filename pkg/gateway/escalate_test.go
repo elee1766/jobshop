@@ -87,3 +87,30 @@ func TestEscalationOwnedElsewhere(t *testing.T) {
 	assert.Zero(t, ad.opened)
 	assert.Empty(t, ctl.sent())
 }
+
+// TestPoolEscalationThread: a pool quarantine escalation (#146) opens a
+// thread like a run escalation, with a prompt about the pool.
+func TestPoolEscalationThread(t *testing.T) {
+	ad := &fakeAdapter{}
+	ctl := &fakeController{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{
+		"js-pool": {
+			ID: "js-pool", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
+			Body: "Pool dev starts no sessions.",
+			Meta: []byte(`{"pool":{"name":"dev","quarantine":"spawn: repo /x: no such file"}}`),
+		},
+	}}
+	g := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(func() { cancel(); g.wg.Wait() })
+
+	g.Escalations(ctx)
+	assert.Equal(t, 1, ad.opened)
+	s := ctl.sent()
+	require.Len(t, s, 1)
+	assert.Contains(t, s[0].Text, "jobshop pool unquarantine dev")
+	assert.Contains(t, s[0].Text, "Pool dev starts no sessions.")
+	ctl.mu.Lock()
+	tk := ctl.ticket["js-pool"]
+	ctl.mu.Unlock()
+	assert.Contains(t, openingText(tk), "pool dev is quarantined (spawn: repo /x: no such file)")
+}

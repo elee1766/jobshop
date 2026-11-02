@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -116,5 +119,136 @@ func (c *Controller) poolCrashed(pool string) {
 func (c *Controller) poolPaused(pool string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if _, ok := c.poolQuarantined[pool]; ok {
+		return true
+	}
 	return c.now().Before(c.poolPausedUntil[pool])
+}
+
+// poolMetaPack is the meta pack on a pool quarantine escalation:
+// {"pool": {"name": <pool>, "quarantine": <error>}}.
+const poolMetaPack = "pool"
+
+// quarantinePool pauses pool until reload or unquarantine after a
+// permanent spawn error (#146), and files one open escalation per pool.
+// Retrying would hit the same bad path every time.
+func (c *Controller) quarantinePool(ctx context.Context, pool, reason string) {
+	if pool == "" {
+		return
+	}
+	c.mu.Lock()
+	_, already := c.poolQuarantined[pool]
+	c.poolQuarantined[pool] = reason
+	c.mu.Unlock()
+	if !already {
+		c.log.Warn("pool quarantined: permanent spawn error", "pool", pool, "err", reason)
+	}
+	c.ensurePoolEscalation(ctx, pool, reason)
+}
+
+// ensurePoolEscalation files "Pool <name> quarantined: <error>" unless an
+// open one for the pool exists.
+func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason string) {
+	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+		seen, err := c.store.List(ctx, store.Filter{MetaPack: poolMetaPack, MetaKey: "name", MetaValue: pool, Status: st, Limit: 1})
+		if err != nil || len(seen) > 0 {
+			return
+		}
+	}
+	cfg := c.config()
+	p := cfg.Pools[pool]
+	proj := p.Project
+	if proj == "" {
+		proj = cfg.DefaultProject
+	}
+	// The escalation goes where run escalations go (a workflow's
+	// escalate_pool in the same project), never to the quarantined pool.
+	dest := ""
+	for _, name := range slices.Sorted(maps.Keys(cfg.Workflows)) {
+		ep := cfg.Workflows[name].EscalatePool
+		if q, ok := cfg.Pools[ep]; ok && ep != pool && q.Project == proj {
+			dest = ep
+			break
+		}
+	}
+	meta, err := json.Marshal(map[string]map[string]string{poolMetaPack: {"name": pool, "quarantine": reason}})
+	if err != nil {
+		return
+	}
+	body := fmt.Sprintf("Pool %s starts no sessions: a spawn failed with an error that will repeat on every attempt.\n\n%s\n\n"+
+		"This is a host config problem (a repo or workspace path, an agent command). Fix the config, then `jobshop reload` "+
+		"or `jobshop pool unquarantine %s`, and close this ticket.", pool, reason, pool)
+	prio := 1
+	t, err := c.store.Create(ctx, "controller", store.NewTicket{
+		Project: proj, Kind: store.KindTask, Title: clipTitle(fmt.Sprintf("Pool %s quarantined: %s", pool, reason)),
+		Body: body, Priority: &prio, Pool: dest, Labels: []string{"needs-human"}, Meta: meta,
+	})
+	if err != nil {
+		c.log.Error("create pool escalation", "pool", pool, "err", err)
+		return
+	}
+	c.log.Info("pool escalation filed", "pool", pool, "ticket", t.ID)
+}
+
+// clipTitle keeps the first line of s, at most 200 bytes.
+func clipTitle(s string) string {
+	s, _, _ = strings.Cut(s, "\n")
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	return s
+}
+
+// unquarantinePools clears permanent quarantines: all of them on reload
+// (the config may be fixed), or one by name.
+func (c *Controller) unquarantinePools(pool string) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var out []string
+	for p := range c.poolQuarantined {
+		if pool == "" || p == pool {
+			delete(c.poolQuarantined, p)
+			delete(c.poolPausedUntil, p)
+			out = append(out, p)
+		}
+	}
+	if pool != "" {
+		delete(c.poolPausedUntil, pool)
+		c.poolCrashLog[pool] = nil
+	}
+	return out
+}
+
+func (c *Controller) poolUnquarantine(_ context.Context, sc scope, p rpc.PoolParams) (any, error) {
+	if err := c.requireGrant(sc, "pool-unquarantine", "pool unquarantine"); err != nil {
+		return nil, err
+	}
+	if _, ok := c.config().Pools[p.Pool]; !ok {
+		return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
+	}
+	c.unquarantinePools(p.Pool)
+	c.log.Info("pool unquarantined", "pool", p.Pool)
+	return c.poolStatus(), nil
+}
+
+// poolStatus lists pools that are quarantined or paused.
+func (c *Controller) poolStatus() rpc.PoolStatusResult {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	res := rpc.PoolStatusResult{Quarantined: map[string]string{}, Paused: map[string]time.Time{}}
+	maps.Copy(res.Quarantined, c.poolQuarantined)
+	now := c.now()
+	for p, until := range c.poolPausedUntil {
+		if now.Before(until) {
+			res.Paused[p] = until
+		}
+	}
+	return res
+}
+
+func (c *Controller) poolList(_ context.Context, sc scope, _ struct{}) (any, error) {
+	if err := c.requireGrant(sc, "pool-list", "pool list"); err != nil {
+		return nil, err
+	}
+	return c.poolStatus(), nil
 }

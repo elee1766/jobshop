@@ -43,7 +43,7 @@ const triggerYAML = `projects:
   js: {}
 agents:
   fake:
-    command: /bin/false
+    command: false
 pools:
   dev:
     agent: fake
@@ -171,7 +171,7 @@ const checkYAML = `projects:
   js: {}
 agents:
   fake:
-    command: /bin/false
+    command: false
 pools:
   dev:
     agent: fake
@@ -303,7 +303,7 @@ const runTriggerYAML = `projects:
   js: {}
 agents:
   fake:
-    command: /bin/false
+    command: false
 pools:
   dev:
     agent: fake

@@ -307,7 +307,11 @@ func (c *Controller) stallPoolQuarantined() []stall {
 		if c.poolPaused(p) {
 			c.mu.Lock()
 			until := c.poolPausedUntil[p]
+			_, permanent := c.poolQuarantined[p]
 			c.mu.Unlock()
+			if permanent {
+				continue // already escalated as "Pool <p> quarantined" (#146)
+			}
 			out = append(out, stall{config.StallPoolQuarantined, p + "@" + until.UTC().Format("20060102T150405Z"), "pool " + p + ": sessions crash-looping, paused until " + until.UTC().Format(time.RFC3339)})
 		}
 	}

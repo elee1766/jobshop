@@ -57,6 +57,10 @@ func (c *Controller) reload() error {
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.Warn("config reload: telemetry changes need a controller restart")
 			}
+			// The fix for a permanent spawn error is a config change.
+			if cleared := c.unquarantinePools(""); len(cleared) > 0 {
+				c.log.Info("config reload: pools unquarantined", "pools", cleared)
+			}
 			c.log.Info("config reloaded", "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows))
 			// A removed pool orphans its queue; say so now, not next tick.
 			c.reportOrphans()
