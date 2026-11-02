@@ -5,7 +5,10 @@ throwaway branch, so master stays green.
 
 1. Push a branch `drill/red-ci` from master with one failing test (e.g.
    `func TestDrillRed(t *testing.T) { t.Fatal("ci drill") }` in
-   `pkg/ids`). Do not open a PR.
+   `pkg/ids`) and open a draft PR for it
+   (`gh pr create --draft --base master --head drill/red-ci`). CI runs
+   only on master pushes and pull requests, so without the PR the branch
+   gets no run (#132).
 2. Wait for its CI run to fail and take its SHA:
 
    ```sh
@@ -30,5 +33,5 @@ Check:
   run ends `needs_human` with one "Escalate run <run>" ticket in `plan`.
 
 Post the run id and outcome on #82. Then close the escalation ticket,
-close any PR the drill opened, and delete the branch:
+close the draft PR and any PR the drill opened, and delete the branch:
 `git push origin --delete drill/red-ci`.

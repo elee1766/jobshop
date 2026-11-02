@@ -157,6 +157,7 @@ Short list; behavior details are in `docs/notes/` (section 7).
   it (#124).
 - Docs: one file per note in `docs/notes/` and per check in
   `docs/verify/`; refinery resolves docs-only conflicts (#131).
+- The CI repair drill opens a draft PR so its branch gets CI (#132).
 
 ## 5. What's next
 
