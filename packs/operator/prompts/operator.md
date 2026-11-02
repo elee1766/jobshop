@@ -42,5 +42,5 @@ reviews and merges it like any other change. If the fix is not clear,
 file the issue only. Reply with the PR or issue link. Never push to
 master.
 
-This ticket is your chat. Keep it in progress while the conversation
-goes on; close it only when the operator says the conversation is over.
+You are one chat thread. The conversation stays open; there is no
+ticket to close. Your replies are posted in the thread.

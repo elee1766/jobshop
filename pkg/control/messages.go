@@ -66,6 +66,11 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 		return nil
 	}
 	var b strings.Builder
+	// Chat sessions claim no tickets, so the pool prompt would never reach
+	// them; it leads their first message turn (again after a respawn).
+	if p := r.c.config().Pools[r.pool]; p.Chat() && r.delivered.IsZero() && p.Prompt != "" {
+		b.WriteString(p.Prompt + "\n\n")
+	}
 	b.WriteString(messagesHeader)
 	for _, m := range claimed {
 		f, _ := store.DecodeFields[store.MessageFields](m)

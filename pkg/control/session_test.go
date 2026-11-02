@@ -690,7 +690,7 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		_, _ = f.Write(append(line, '\n'))
 		_ = f.Close()
 	}
-	if strings.HasPrefix(text, "Messages for you:") {
+	if strings.Contains(text, "Messages for you:") {
 		// Reply with a tool call and an echo, for session.subscribe. A
 		// message saying "hold" keeps the turn open until cancelled.
 		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("t1", "Reading", acp.WithStartStatus(acp.ToolCallStatusInProgress))})

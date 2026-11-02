@@ -1,7 +1,7 @@
 # Operator pack: a chat pool whose sessions talk to the operator and
 # manage work (tickets, issues, messages, runs, reload). Vars: see
-# README.md. The pool becomes `type: chat` once #122 lands; until then it
-# starts no sessions on its own and is worked through `session new`.
+# README.md. Sessions are started per chat thread by the gateway (or
+# `jobshop send` with a pool and key), one session per key.
 defaults:
   operator_sessions: 0
   guide: >-
@@ -9,10 +9,11 @@ defaults:
     CONTRIBUTING.md) first.
 pools:
   operator:
+    type: chat
+    attach: rw
     agent: ${agent}
     repo: ${checkout}
     ref: origin/master
-    # 0: no automatic sessions; chat sessions are started by key.
     max_sessions: ${operator_sessions}
     idle_timeout: 12h
     turn_timeout: 1h

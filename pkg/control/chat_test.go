@@ -48,7 +48,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 	root, start := poolRoot(t, "1m")
 	f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0o600)
 	require.NoError(t, err)
-	_, err = fmt.Fprintf(f, "  chat:\n    project: js\n    agent: fake\n    type: chat\n    dir: %q\n", root.Dir)
+	_, err = fmt.Fprintf(f, "  chat:\n    project: js\n    agent: fake\n    type: chat\n    prompt: CHAT-POOL-PROMPT\n    dir: %q\n", root.Dir)
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 	stop := start()
@@ -79,6 +79,14 @@ func TestSessionSendSubscribe(t *testing.T) {
 	require.Eventually(t, func() bool { return ev.has(rpc.EventText, "echo: again") && ev.has(rpc.EventTurnEnd, "end_turn") },
 		20*time.Second, 50*time.Millisecond)
 	got := ev.get()
+	// The pool prompt leads the first message turn only.
+	prompted := 0
+	for _, e := range got {
+		if e.Type == rpc.EventTurnStart && strings.Contains(e.Text, "CHAT-POOL-PROMPT") {
+			prompted++
+		}
+	}
+	assert.Equal(t, 1, prompted, "pool prompt on the first chat turn")
 	assert.Equal(t, rpc.EventState, got[0].Type)
 	assert.Equal(t, store.StatusOpen, got[0].Status)
 	var tool *rpc.ToolSummary

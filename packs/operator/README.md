@@ -9,20 +9,15 @@ prompt (merged by the refinery through a `pr-work` run) or an issue.
 Replies are short; long output goes to an issue or ticket.
 Prompt: `prompts/operator.md`. Design: `docs/plan.md` section 8.
 
-Until chat pools (`type: chat`, #122) and the gateway (#123) land, the
-pool starts no sessions on its own (`max_sessions: 0`). Start one by
-hand and talk to it with `jobshop send` and `session attach`:
+`operator` is a `type: chat` pool with `attach: rw`: one session per
+key, started by the first message for it. The Matrix gateway keys
+sessions by thread; escalation threads (#125) use the same pool. The
+pool prompt leads each session's first message turn. Without a gateway:
 
 ```sh
-JOBSHOP_SOCKET= jobshop session new --agent jcode --pool operator --key operator:cli
-JOBSHOP_SOCKET= jobshop ticket create "Operator chat" --pool operator
-JOBSHOP_SOCKET= jobshop send operator:cli "file an issue for X, and tell the dev pool Y"
-JOBSHOP_SOCKET= jobshop session attach <session id>
+jobshop send --help   # by pool and key via session.send
+jobshop session attach <session id> --rw
 ```
-
-The ticket carries the pool prompt into the conversation (message
-prompts do not include it); the session keeps it in progress for the
-whole chat.
 
 ## Vars
 
