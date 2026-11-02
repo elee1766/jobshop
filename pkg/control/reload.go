@@ -37,14 +37,18 @@ func (c *Controller) config() *config.Config { return c.live.Load().cfg }
 func (c *Controller) leaseDur() time.Duration { return c.live.Load().lease }
 
 // Reload re-reads jobshop.yaml and its packs and swaps them in. On any
-// error the old config stays active. Pool limits apply from the next
-// supervisor tick, prompts and turn timeouts from the next turn, agent
-// command, args and env from the next spawned host (adopted hosts go
+// error the old config stays active. Pool limits apply to every
+// supervisor tick after reload returns, prompts and turn timeouts from
+// the next turn, agent command, args and env from the next spawned host (adopted hosts go
 // through the env refresh path). Running sessions are not stopped.
 // Telemetry settings need a restart.
 func (c *Controller) reload() error {
 	c.reloadMu.Lock()
 	defer c.reloadMu.Unlock()
+	// Swap between passes: a pass that read the old pools must finish
+	// before reload returns (#102).
+	c.tickMu.Lock()
+	defer c.tickMu.Unlock()
 	cfg, err := config.Load(c.root)
 	if err == nil {
 		var lc *liveConfig

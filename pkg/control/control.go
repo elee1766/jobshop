@@ -91,6 +91,9 @@ type Controller struct {
 	gitMu sync.Mutex
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
+	// tickMu is held for a supervisor pass and taken by reload, so once a
+	// reload returns no pass still runs with the old pool limits.
+	tickMu sync.Mutex
 	// runMu serializes run start (key dedup) and run state changes.
 	runMu sync.Mutex
 	wg    sync.WaitGroup
@@ -274,6 +277,8 @@ func (c *Controller) stop() {
 func (c *Controller) tick() {
 	_, span := c.tracer.Start(c.ctx, "supervisor tick")
 	defer span.End()
+	c.tickMu.Lock()
+	defer c.tickMu.Unlock()
 	c.sweep()
 	// Before supervise, so a created ticket can get a session this tick.
 	if !c.draining() {
