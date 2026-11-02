@@ -163,10 +163,20 @@ type Agent struct {
 	Env     map[string]string `yaml:"env"`
 }
 
+// PoolChat is Pool.Type for chat pools.
+const PoolChat = "chat"
+
+// Chat reports whether p is a chat pool.
+func (p Pool) Chat() bool { return p.Type == PoolChat }
+
 // Pool is a queue of work in one project served by sessions of one agent.
 type Pool struct {
 	Project string `yaml:"project"`
 	Agent   string `yaml:"agent"`
+	// Type is "" for a ticket pool or "chat". Chat pool sessions claim no
+	// tickets; they are started by session.send for a key and answer
+	// messages only.
+	Type string `yaml:"type"`
 	// MaxSessions caps concurrent sessions. 0 means the pool never starts
 	// sessions on its own (manual sessions only).
 	MaxSessions int `yaml:"max_sessions"`
@@ -289,6 +299,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.PromptFile != "" {
 			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)
+		}
+		if p.Type != "" && p.Type != PoolChat {
+			return nil, fmt.Errorf("%s: pool %s: type %q must be empty or %q", src("pools", name), name, p.Type, PoolChat)
 		}
 		if p.MaxSessions < 0 {
 			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", src("pools", name), name)

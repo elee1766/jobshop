@@ -357,7 +357,12 @@ func (c *Controller) start(ln net.Listener, sc scope) context.CancelFunc {
 			}
 			conns.Go(func() {
 				gate := rpc.NewGate(nc)
-				conn := acp.NewConnection(c.handler(ctx, sc), nc, gate)
+				// The handler reaches its connection to send subscribe events;
+				// p.conn is set before the gate opens, so before any request.
+				csc := sc
+				csc.peer = &peer{}
+				conn := acp.NewConnection(c.handler(ctx, csc), nc, gate)
+				csc.peer.conn = conn
 				conn.SetLogger(rpc.QuietLogger(c.log))
 				gate.Open()
 				select {
@@ -406,7 +411,11 @@ type scope struct {
 	session string
 	project string
 	pool    string
+	peer    *peer
 }
+
+// peer is the connection a request arrived on.
+type peer struct{ conn *acp.Connection }
 
 // handler dispatches one socket's requests. The SDK gives each request its
 // own context; it is joined with the socket's so a closing session or
@@ -465,36 +474,38 @@ var methods map[string]method
 
 func init() {
 	methods = map[string]method{
-		rpc.MethodWhoami:         bind((*Controller).whoami),
-		rpc.MethodTicketCreate:   bind((*Controller).create),
-		rpc.MethodTicketShow:     bind((*Controller).show),
-		rpc.MethodTicketTrace:    bind((*Controller).trace),
-		rpc.MethodTicketList:     bind((*Controller).list),
-		rpc.MethodTicketUpdate:   bind((*Controller).update),
-		rpc.MethodTicketClose:    bind((*Controller).closeTicket),
-		rpc.MethodTicketReopen:   bind((*Controller).reopen),
-		rpc.MethodReady:          bind((*Controller).ready),
-		rpc.MethodCommentAdd:     bind((*Controller).comment),
-		rpc.MethodEdgeAdd:        bind((*Controller).edgeAdd),
-		rpc.MethodEdgeRemove:     bind((*Controller).edgeRemove),
-		rpc.MethodLabelAdd:       bind((*Controller).labelAdd),
-		rpc.MethodLabelRemove:    bind((*Controller).labelRemove),
-		rpc.MethodClaim:          bind((*Controller).claim),
-		rpc.MethodHeartbeat:      bind((*Controller).heartbeat),
-		rpc.MethodRelease:        bind((*Controller).release),
-		rpc.MethodSessionNew:     bind((*Controller).sessionNew),
-		rpc.MethodSessionList:    bind((*Controller).sessionList),
-		rpc.MethodSessionReap:    bind((*Controller).sessionReap),
-		rpc.MethodSessionRestart: bind((*Controller).sessionRestart),
-		rpc.MethodShutdown:       bind((*Controller).shutdown),
-		rpc.MethodDrain:          bind((*Controller).drainPools),
-		rpc.MethodTriggerList:    bind((*Controller).triggerList),
-		rpc.MethodReload:         bind((*Controller).reloadConfig),
-		rpc.MethodConfigShow:     bind((*Controller).configShow),
-		rpc.MethodRunStart:       bind((*Controller).runStart),
-		rpc.MethodRunShow:        bind((*Controller).runShow),
-		rpc.MethodRunList:        bind((*Controller).runList),
-		rpc.MethodRunCancel:      bind((*Controller).runCancel),
-		rpc.MethodRunResume:      bind((*Controller).runResume),
+		rpc.MethodWhoami:           bind((*Controller).whoami),
+		rpc.MethodTicketCreate:     bind((*Controller).create),
+		rpc.MethodTicketShow:       bind((*Controller).show),
+		rpc.MethodTicketTrace:      bind((*Controller).trace),
+		rpc.MethodTicketList:       bind((*Controller).list),
+		rpc.MethodTicketUpdate:     bind((*Controller).update),
+		rpc.MethodTicketClose:      bind((*Controller).closeTicket),
+		rpc.MethodTicketReopen:     bind((*Controller).reopen),
+		rpc.MethodReady:            bind((*Controller).ready),
+		rpc.MethodCommentAdd:       bind((*Controller).comment),
+		rpc.MethodEdgeAdd:          bind((*Controller).edgeAdd),
+		rpc.MethodEdgeRemove:       bind((*Controller).edgeRemove),
+		rpc.MethodLabelAdd:         bind((*Controller).labelAdd),
+		rpc.MethodLabelRemove:      bind((*Controller).labelRemove),
+		rpc.MethodClaim:            bind((*Controller).claim),
+		rpc.MethodHeartbeat:        bind((*Controller).heartbeat),
+		rpc.MethodRelease:          bind((*Controller).release),
+		rpc.MethodSessionNew:       bind((*Controller).sessionNew),
+		rpc.MethodSessionList:      bind((*Controller).sessionList),
+		rpc.MethodSessionReap:      bind((*Controller).sessionReap),
+		rpc.MethodSessionRestart:   bind((*Controller).sessionRestart),
+		rpc.MethodSessionSend:      bind((*Controller).sessionSend),
+		rpc.MethodSessionSubscribe: bind((*Controller).sessionSubscribe),
+		rpc.MethodShutdown:         bind((*Controller).shutdown),
+		rpc.MethodDrain:            bind((*Controller).drainPools),
+		rpc.MethodTriggerList:      bind((*Controller).triggerList),
+		rpc.MethodReload:           bind((*Controller).reloadConfig),
+		rpc.MethodConfigShow:       bind((*Controller).configShow),
+		rpc.MethodRunStart:         bind((*Controller).runStart),
+		rpc.MethodRunShow:          bind((*Controller).runShow),
+		rpc.MethodRunList:          bind((*Controller).runList),
+		rpc.MethodRunCancel:        bind((*Controller).runCancel),
+		rpc.MethodRunResume:        bind((*Controller).runResume),
 	}
 }

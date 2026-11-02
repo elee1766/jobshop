@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -24,37 +25,39 @@ import (
 
 // Method names.
 const (
-	MethodTicketCreate   = "ticket.create"
-	MethodTicketShow     = "ticket.show"
-	MethodTicketTrace    = "ticket.trace"
-	MethodTicketList     = "ticket.list"
-	MethodTicketUpdate   = "ticket.update"
-	MethodTicketClose    = "ticket.close"
-	MethodTicketReopen   = "ticket.reopen"
-	MethodReady          = "ticket.ready"
-	MethodCommentAdd     = "comment.add"
-	MethodEdgeAdd        = "edge.add"
-	MethodEdgeRemove     = "edge.remove"
-	MethodLabelAdd       = "label.add"
-	MethodLabelRemove    = "label.remove"
-	MethodClaim          = "claim"
-	MethodHeartbeat      = "heartbeat"
-	MethodRelease        = "release"
-	MethodSessionNew     = "session.new"
-	MethodSessionList    = "session.list"
-	MethodSessionReap    = "session.reap"
-	MethodSessionRestart = "session.restart"
-	MethodWhoami         = "whoami"
-	MethodShutdown       = "controller.shutdown"
-	MethodDrain          = "controller.drain"
-	MethodReload         = "config.reload"
-	MethodTriggerList    = "trigger.list"
-	MethodConfigShow     = "config.show"
-	MethodRunStart       = "run.start"
-	MethodRunShow        = "run.show"
-	MethodRunList        = "run.list"
-	MethodRunCancel      = "run.cancel"
-	MethodRunResume      = "run.resume"
+	MethodTicketCreate     = "ticket.create"
+	MethodTicketShow       = "ticket.show"
+	MethodTicketTrace      = "ticket.trace"
+	MethodTicketList       = "ticket.list"
+	MethodTicketUpdate     = "ticket.update"
+	MethodTicketClose      = "ticket.close"
+	MethodTicketReopen     = "ticket.reopen"
+	MethodReady            = "ticket.ready"
+	MethodCommentAdd       = "comment.add"
+	MethodEdgeAdd          = "edge.add"
+	MethodEdgeRemove       = "edge.remove"
+	MethodLabelAdd         = "label.add"
+	MethodLabelRemove      = "label.remove"
+	MethodClaim            = "claim"
+	MethodHeartbeat        = "heartbeat"
+	MethodRelease          = "release"
+	MethodSessionNew       = "session.new"
+	MethodSessionList      = "session.list"
+	MethodSessionReap      = "session.reap"
+	MethodSessionRestart   = "session.restart"
+	MethodSessionSend      = "session.send"
+	MethodSessionSubscribe = "session.subscribe"
+	MethodWhoami           = "whoami"
+	MethodShutdown         = "controller.shutdown"
+	MethodDrain            = "controller.drain"
+	MethodReload           = "config.reload"
+	MethodTriggerList      = "trigger.list"
+	MethodConfigShow       = "config.show"
+	MethodRunStart         = "run.start"
+	MethodRunShow          = "run.show"
+	MethodRunList          = "run.list"
+	MethodRunCancel        = "run.cancel"
+	MethodRunResume        = "run.resume"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -341,8 +344,9 @@ func FromWire(err error) error {
 
 // Client is a connection to a controller or session socket.
 type Client struct {
-	nc   net.Conn
-	conn *acp.Connection
+	nc      net.Conn
+	conn    *acp.Connection
+	onEvent atomic.Pointer[func(SessionEvent)]
 }
 
 // Dial connects to a unix socket.
@@ -352,12 +356,13 @@ func Dial(ctx context.Context, path string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("connect %s: %w (is the controller running?)", path, err)
 	}
-	// The controller never calls back, so the client has no handler.
+	// The controller only sends session.subscribe events back.
 	gate := NewGate(nc)
-	conn := acp.NewConnection(nil, nc, gate)
-	conn.SetLogger(QuietLogger(slog.New(slog.DiscardHandler)))
+	c := &Client{nc: nc}
+	c.conn = acp.NewConnection(c.handle, nc, gate)
+	c.conn.SetLogger(QuietLogger(slog.New(slog.DiscardHandler)))
 	gate.Open()
-	return &Client{nc: nc, conn: conn}, nil
+	return c, nil
 }
 
 // Gate is a reader that blocks until Open. The SDK starts reading in
@@ -572,4 +577,109 @@ type RunListParams struct {
 type RunResumeParams struct {
 	ID   string `json:"id"`
 	Step string `json:"step,omitempty"`
+}
+
+// SessionSendParams delivers text to a session as a message. Name the
+// session by ID, or by Pool and Key; with Pool and Key and no open session
+// for the key, a chat pool starts one. A busy session gets the message
+// after its turn; Interrupt cancels the turn first.
+type SessionSendParams struct {
+	ID        string `json:"id,omitempty"`
+	Pool      string `json:"pool,omitempty"`
+	Key       string `json:"key,omitempty"`
+	Text      string `json:"text"`
+	Interrupt bool   `json:"interrupt,omitempty"`
+}
+
+// SessionSendResult names the session and the message ticket.
+type SessionSendResult struct {
+	Session string       `json:"session"`
+	Message store.Ticket `json:"message"`
+	Started bool         `json:"started,omitempty"` // the send started the session
+}
+
+// SessionSubscribeParams streams a session's events after SinceSeq. The
+// call stays open, sending NotifySessionEvent notifications, until the
+// session closes or the client hangs up. Reconnect with the last seq seen.
+type SessionSubscribeParams struct {
+	ID       string `json:"id"`
+	SinceSeq int64  `json:"since_seq,omitempty"`
+}
+
+// SessionSubscribeResult is sent when the stream ends.
+type SessionSubscribeResult struct {
+	Seq        int64  `json:"seq"` // last journal seq sent
+	Closed     bool   `json:"closed,omitempty"`
+	Resolution string `json:"resolution,omitempty"`
+}
+
+// NotifySessionEvent is the notification session.subscribe sends.
+const NotifySessionEvent = "session.event"
+
+// Session event types.
+const (
+	EventTurnStart = "turn_start" // Text is the prompt
+	EventText      = "text"       // Text is an agent message chunk
+	EventTool      = "tool"       // Tool is set
+	EventTurnEnd   = "turn_end"   // StopReason, or Error
+	EventState     = "state"      // Status and Resolution; Seq is 0
+)
+
+// SessionEvent is one item of a session's output, read from its journal.
+type SessionEvent struct {
+	Session    string       `json:"session"`
+	Seq        int64        `json:"seq,omitempty"`
+	Time       *time.Time   `json:"time,omitempty"`
+	Type       string       `json:"type"`
+	Text       string       `json:"text,omitempty"`
+	Tool       *ToolSummary `json:"tool,omitempty"`
+	StopReason string       `json:"stop_reason,omitempty"`
+	Error      string       `json:"error,omitempty"`
+	Status     store.Status `json:"status,omitempty"`
+	Resolution string       `json:"resolution,omitempty"`
+}
+
+// ToolSummary is one tool call state change.
+type ToolSummary struct {
+	ID     string `json:"id"`
+	Title  string `json:"title,omitempty"`
+	Status string `json:"status"`
+}
+
+// Subscribe calls session.subscribe and passes each event to fn until the
+// stream ends or ctx is done. fn runs on the connection's reader, in order.
+// One subscription per client at a time. The result's Seq is the last seq
+// seen even when ctx ends the call, so it can be passed to the next one.
+func (c *Client) Subscribe(ctx context.Context, p SessionSubscribeParams, fn func(SessionEvent)) (SessionSubscribeResult, error) {
+	var seen atomic.Int64
+	seen.Store(p.SinceSeq)
+	wrap := func(ev SessionEvent) {
+		if ev.Seq > seen.Load() {
+			seen.Store(ev.Seq)
+		}
+		fn(ev)
+	}
+	c.onEvent.Store(&wrap)
+	defer c.onEvent.Store(nil)
+	var res SessionSubscribeResult
+	err := c.Call(ctx, MethodSessionSubscribe, p, &res)
+	res.Seq = max(res.Seq, seen.Load())
+	return res, err
+}
+
+// handle receives notifications from the controller.
+func (c *Client) handle(_ context.Context, method string, params json.RawMessage) (any, *acp.RequestError) {
+	if method != NotifySessionEvent {
+		return nil, acp.NewMethodNotFound(method)
+	}
+	fn := c.onEvent.Load()
+	if fn == nil {
+		return nil, nil
+	}
+	var ev SessionEvent
+	if err := json.Unmarshal(params, &ev); err != nil {
+		return nil, acp.NewInvalidParams(err.Error())
+	}
+	(*fn)(ev)
+	return nil, nil
 }
