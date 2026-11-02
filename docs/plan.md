@@ -943,6 +943,14 @@ messages and prompts stay in the controller.
   and reload, and turn a correction in the conversation into a PR to a
   pack prompt or an issue, so self-improvement goes through the refinery
   like other changes. This is how a Gas City mayor role returns as config.
+- Escalation threads (2026-11-02): an escalation also opens a Matrix
+  thread or Discord forum post, created by the gateway from a controller
+  event, with a keyed operator session already holding the escalation
+  context. The operator's reply there unblocks the run.
+- Testing: gasserver runs a loopback tuwunel homeserver as the jobshop
+  user (`jobshop.localhost`, no federation, token registration), so
+  agents register their own bot and test users and verify Matrix end to
+  end. Discord's live check needs a real bot token.
 
 ## 9. Gas City mapping
 
