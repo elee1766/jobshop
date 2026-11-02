@@ -44,6 +44,8 @@ type Metrics struct {
 	Turns         metric.Int64Counter
 	SessionsEnded metric.Int64Counter
 	Orphaned      metric.Int64Gauge
+	// RunsNeedsHuman is open runs in state needs_human, by project.
+	RunsNeedsHuman metric.Int64Gauge
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -57,7 +59,7 @@ func NewMetrics() (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [12]error
+	var errs [13]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -76,6 +78,8 @@ func NewMetrics() (*Metrics, error) {
 		metric.WithDescription("Sessions ended by pool and resolution (idle, crashed, stuck, ...)."))
 	m.Orphaned, errs[11] = meter.Int64Gauge("jobshop.tickets.orphaned",
 		metric.WithDescription("Open unclaimed tickets no pool will claim, by reason (no_pool, unknown_pool)."))
+	m.RunsNeedsHuman, errs[12] = meter.Int64Gauge("jobshop.runs.needs_human",
+		metric.WithDescription("Open runs waiting on a human (a step failed at its retry limit), by project."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err

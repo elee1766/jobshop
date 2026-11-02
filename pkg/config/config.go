@@ -393,7 +393,7 @@ func (c *Config) Prefix(project string) string {
 }
 
 // BuiltinMetaPacks are the meta pack names the controller itself writes.
-var BuiltinMetaPacks = []string{"github", "trigger"}
+var BuiltinMetaPacks = []string{"github", "trigger", "run"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

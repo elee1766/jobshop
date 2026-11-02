@@ -546,7 +546,9 @@ WHERE t.project = ?1
   AND t.defer_until <= ?5
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
-    WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for') AND b.status <> 'closed')
+    WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
+      -- A step unblocks the next only when it closed done (#90).
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
 ORDER BY
   CASE WHEN t.status = 'in_progress' THEN 0
        WHEN t.holder <> '' THEN 1 -- open with a holder can only be mine here
@@ -680,7 +682,9 @@ WHERE t.project = ?1
   AND t.defer_until <= ?4
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
-    WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for') AND b.status <> 'closed')
+    WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
+      -- A step unblocks the next only when it closed done (#90).
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
 ORDER BY t.priority, t.created_at, t.id
 LIMIT ?5
 `

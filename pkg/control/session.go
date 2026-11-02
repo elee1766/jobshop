@@ -833,6 +833,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		until := time.Now().Add(unclosedDeferral)
 		_, _ = r.c.store.Update(ctx, "controller", t.ID, store.Update{DeferUntil: &until})
 		r.log.Warn("released unclosed ticket", "ticket", t.ID)
+		r.c.stepEvent(ctx, t)
 	}
 }
 

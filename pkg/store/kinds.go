@@ -88,6 +88,9 @@ type RunFields struct {
 	Vars     map[string]string `json:"vars,omitempty"`
 	Key      string            `json:"key,omitempty"` // dedup: one open run per workflow and key
 	State    string            `json:"state"`
+	// Escalations counts needs_human transitions; each files one
+	// escalation ticket keyed on it.
+	Escalations int `json:"escalations,omitempty"`
 }
 
 // Validate implements Fields.
@@ -109,6 +112,35 @@ type StepFields struct {
 	Index    int    `json:"index"`
 	Retries  int    `json:"retries"`
 	Failures int    `json:"failures"`
+}
+
+// StepFailure counts one failed attempt on a step ticket: a close
+// "failed", a release while unclosed, or an expired lease. It bumps
+// fields.failures and reports whether the retry limit is reached (the
+// step then closes failed instead of reopening). Backends call it inside
+// the transaction of the failing event. Non-step tickets are unchanged.
+func StepFailure(t *Ticket) (f StepFields, exhausted, isStep bool, err error) {
+	if t.Kind != KindStep {
+		return f, false, false, nil
+	}
+	if f, err = DecodeFields[StepFields](*t); err != nil {
+		return f, false, true, err
+	}
+	f.Failures++
+	b, err := json.Marshal(f)
+	if err != nil {
+		return f, false, true, err
+	}
+	t.Fields = b
+	return f, f.Failures >= f.Retries, true, nil
+}
+
+// StepFailureComment is the comment a backend adds for a counted failure.
+func StepFailureComment(f StepFields, how string, exhausted bool) string {
+	if exhausted {
+		return fmt.Sprintf("Attempt %d failed (%s). Retry limit %d reached: step closed failed, run needs a human.", f.Failures, how, f.Retries)
+	}
+	return fmt.Sprintf("Attempt %d of %d failed (%s); step reopened for another attempt.", f.Failures, f.Retries, how)
 }
 
 // Validate implements Fields.

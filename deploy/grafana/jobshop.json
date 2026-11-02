@@ -166,6 +166,20 @@
           "legendFormat": "{{reason}}"
         }
       ]
+    },
+    {
+      "id": 10,
+      "title": "Runs needing a human",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 32, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (jobshop_project) (jobshop_runs_needs_human)",
+          "legendFormat": "{{jobshop_project}}"
+        }
+      ]
     }
   ]
 }

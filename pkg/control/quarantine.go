@@ -37,6 +37,7 @@ func (c *Controller) crashRelease(ctx context.Context, sessionID string) {
 			continue
 		}
 		c.maybeQuarantine(ctx, t.ID)
+		c.stepEvent(ctx, t)
 	}
 }
 

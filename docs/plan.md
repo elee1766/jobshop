@@ -131,6 +131,8 @@ Short list; behavior details are in section 7.
 - Runs: `run` and `step` kinds, `jobshop run start/show/list/cancel/resume`,
   key dedup, run closes done with its last step (#89).
 - Multiple workspaces in the NixOS module, `workspaces.<name>` (#92).
+- Step retry limits, `needs_human`, escalation ticket and
+  `jobshop_runs_needs_human` (#90).
 
 ## 5. What's next
 
@@ -156,9 +158,9 @@ through a generic `github` pack that `packs/selfdev` becomes an instance of.
 Which repo goes first, and its credentials and review policy, is the
 user's call. The run model is designed (section 6, "Runs and
 workflows", #83); next are its six follow-up issues listed there.
-`workflows:` config (follow-up 3, first half, #88) and runs (follow-up 1,
-#89) are built; failure counting and escalation (#90) and `run:` in
-triggers are next.
+`workflows:` config (follow-up 3, first half, #88), runs (follow-up 1,
+#89) and failure counting with escalation (follow-up 2, #90) are built;
+`run:` in triggers and the selfdev `pr-work` workflow are next.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -708,10 +710,39 @@ failures/retries); `--json` prints the raw result. `run list [--state]`
 lists runs newest first. `run cancel` closes open steps and the run
 `cancelled`. `run resume [--step s]` reopens the step (default: the
 first not closed `done`), resets its failures, comments on it, and sets
-the run back to `running`. Until #90, a step closed `failed` unblocks the
-next step like any close.
+the run back to `running`. A step that is closed `failed` or still
+unfinished keeps the next step blocked (7.16).
 
-### 7.16 Workspaces in the NixOS module (#92)
+### 7.16 Step retries and escalation (#90)
+
+The store counts a step failure in the same transaction as the event
+that caused it: `close failed`, `release` of a claimed step (CLI, the
+driver's reminder release, crash release), dead-session release of a
+claimed step (a pre-assignment never claimed does not count) and lease
+expiry. Each count bumps `fields.failures`, records `failures` in the
+history diff and adds a controller comment naming the attempt and how it
+failed. `retries: N` allows N failed attempts. Below N the step goes back
+to `open` (a `failed` close is undone). At N it closes `failed`.
+Readiness and `claim` treat a step closed with any resolution but `done`
+as still blocking, so later steps wait.
+
+After each of those calls, and every tick, the controller checks the run.
+If a step is exhausted and the run is `running`, it sets
+`fields.state=needs_human`, bumps `fields.escalations`, and creates one
+task "Escalate run <id>" in the workflow's `escalate_pool`, priority 1,
+label `needs-human`, with the run's `meta.github` and
+`meta.run {id, workflow, escalation: "<run>/<n>"}`. The body lists each
+step's resolution, `failures/retries` and its last 3 comments. The
+escalation key makes a tick or a crash retry file at most one ticket per
+`needs_human` episode, and closing the ticket does not file another.
+`run resume` resets failures and returns the run to `running`, so a later
+exhaustion is a new episode with a new ticket. The gauge
+`jobshop_runs_needs_human{jobshop_project}` counts open `needs_human`
+runs (dashboard panel "Runs needing a human"). The selfdev planner
+prompt handles escalation tickets: it labels the issue `needs-human`,
+comments mentioning @elee1766, and lists open escalations on the target.
+
+### 7.17 Workspaces in the NixOS module (#92)
 
 `services.jobshop.workspaces.<name>` has `url`, `dir` (default
 `<dataDir>/workspaces/<name>`), `sshCommand`, `livePacks`,
