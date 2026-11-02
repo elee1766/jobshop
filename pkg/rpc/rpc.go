@@ -60,6 +60,7 @@ const (
 	MethodRunResume        = "run.resume"
 	MethodPoolList         = "pool.list"
 	MethodPoolUnquarantine = "pool.unquarantine"
+	MethodReportIncidents  = "report.incidents"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -802,4 +803,51 @@ func (c *Client) handle(_ context.Context, method string, params json.RawMessage
 	}
 	(*fn)(ev)
 	return nil, nil
+}
+
+// IncidentsParams selects the report window. Zero Since means 24h.
+type IncidentsParams struct {
+	Since time.Duration `json:"since,omitempty"`
+}
+
+// IncidentsResult is the evidence for a planner reliability pass: grouped
+// controller WARN/ERROR lines (since the controller started, at most),
+// sessions that ended crashed or stuck, and steps with failed attempts.
+type IncidentsResult struct {
+	Since    time.Time         `json:"since"`
+	Logs     []LogGroup        `json:"logs"`
+	Sessions []SessionIncident `json:"sessions"`
+	Steps    []StepIncident    `json:"steps"`
+}
+
+// LogGroup is the controller log lines with one level and message.
+type LogGroup struct {
+	Level   string            `json:"level"`
+	Message string            `json:"message"`
+	Count   int               `json:"count"`
+	First   time.Time         `json:"first"`
+	Last    time.Time         `json:"last"`
+	Sample  map[string]string `json:"sample,omitempty"` // attrs of the last line
+}
+
+// SessionIncident is a session that ended crashed or stuck.
+type SessionIncident struct {
+	ID         string    `json:"id"`
+	Pool       string    `json:"pool,omitempty"`
+	Resolution string    `json:"resolution"`
+	ClosedAt   time.Time `json:"closed_at"`
+	Reason     string    `json:"reason,omitempty"`
+}
+
+// StepIncident is a run step with at least one failed attempt.
+type StepIncident struct {
+	ID         string       `json:"id"`
+	Run        string       `json:"run"`
+	Step       string       `json:"step"`
+	Title      string       `json:"title,omitempty"`
+	Status     store.Status `json:"status"`
+	Resolution string       `json:"resolution,omitempty"`
+	Failures   int          `json:"failures"`
+	Retries    int          `json:"retries"`
+	LastError  string       `json:"last_error,omitempty"` // last comment
 }

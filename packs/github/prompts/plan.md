@@ -15,6 +15,14 @@ Each planning ticket:
 3. Tick a checklist item on the target only when a merged PR delivers it
    and you verified it on master. Comment on the target which PR did it.
 4. If master CI is red, file a fix issue first, before anything else.
+   Then read the last day's incidents: `jobshop report incidents --since 24h`
+   (grouped controller WARN/ERROR lines, sessions that ended crashed or
+   stuck, run steps with failed attempts and their last error). For each
+   cause that recurs (a log group with several lines, or the same error on
+   more than one session or step) and has no open issue
+   (`gh issue list --search "<message>"`), file one issue with the evidence:
+   counts, times, ids. One issue per cause, not per line. These count
+   toward step 6's limit.
 5. Every open issue that is not a target, not labeled `needs-human` or
    `needs-decision`, and not a drill or tracking issue, needs work moving
    on it. Issues filed by the operator or other sessions count the same as

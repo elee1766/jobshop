@@ -72,6 +72,8 @@ type Controller struct {
 	store store.Store
 	opt   Options
 	log   *slog.Logger
+	// incidents keeps recent WARN/ERROR lines for report.incidents.
+	incidents *incidentLog
 
 	metrics  *telemetry.Metrics
 	tracer   trace.Tracer
@@ -173,10 +175,11 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		return err
 	}
 	defer func() { _ = tr.Shutdown(context.WithoutCancel(ctx)) }()
-	log := slog.New(tr.LogHandler(opt.Log.Handler()))
+	incidents := &incidentLog{}
+	log := slog.New(incidentHandler{Handler: tr.LogHandler(opt.Log.Handler()), log: incidents})
 
 	c := &Controller{
-		root: root, live: live, store: st, opt: opt, log: log, metrics: m,
+		root: root, live: live, store: st, opt: opt, log: log, metrics: m, incidents: incidents,
 		tracer:   tr.Tracer(),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		drained:      map[string]bool{},
@@ -527,5 +530,6 @@ func init() {
 		rpc.MethodRunResume:        bind((*Controller).runResume),
 		rpc.MethodPoolList:         bind((*Controller).poolList),
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
+		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
 	}
 }

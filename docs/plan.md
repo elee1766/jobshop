@@ -187,6 +187,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/167-deploy-check-pool.md`).
 - Self-deploy rollback drill marker and a stubbed test of the deploy
   script (#155, `docs/notes/155-rollback-drill.md`).
+- `jobshop report incidents` and a planner step that files issues from
+  it (#156, `docs/notes/156-incident-report.md`).
 
 ## 5. What's next
 
@@ -244,6 +246,8 @@ Batches are designed (#148); next are its four implementation
 follow-ups listed in the note.
 The rollback drill is built (#155); it needs one
 `docs/verify/rollback-drill.md` run on gasserver linked on #145.
+The incident report planner step
+is built (#156); its evidence is one planner pass filing from it.
 
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 (Discord later), read/write attach and the operator pack (section 8).
@@ -586,6 +590,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - The self-deploy rollback drill is a one-shot marker file in the deploy
   state dir, not a module option (2026-11-02, #155): no rebuild to set
   or clear it, and it cannot stay on by accident.
+- Incident report log lines are an in-memory buffer of the last 5000
+  WARN/ERROR records (2026-11-02, #156), not a table: a daily planner
+  pass needs recent causes, and the journal keeps the rest.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
