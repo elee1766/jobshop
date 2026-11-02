@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/host"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -193,4 +195,75 @@ func TestConfigShow(t *testing.T) {
 	require.Len(t, steps, 1)
 	assert.Equal(t, "Do #${issue}", steps[0].(map[string]any)["title"])
 	assert.Equal(t, []string{filepath.Join(pack, config.PackFileName)}, res.Sources["workflows.w"])
+}
+
+// TestEnvRefreshLive changes the agent env while a session is live (as a
+// self-deploy changes PATH): the idle host is respawned with the new env
+// between turns, loads the conversation and keeps working in the same
+// session. A turn running at the change finishes first.
+func TestEnvRefreshLive(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	writeEnv := func(v string) {
+		cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\n    env: {DEPLOY: %q}\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n",
+			os.Args[0], v, root.Dir)
+		require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
+	}
+	writeEnv("one")
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+
+	var a store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
+	waitClosed(t, admin, a.ID)
+	sess := openSessions(t, admin)
+	require.Len(t, sess, 1)
+	sdir := root.SessionDir(sess[0].ID)
+	pid1, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	require.NoError(t, err)
+	hasEnv := func(kv string) bool {
+		s, err := host.ReadSpec(sdir)
+		return err == nil && slices.Contains(s.Env, kv)
+	}
+	require.True(t, hasEnv("DEPLOY=one"))
+
+	// Idle session: the env changes, the host is respawned before the next turn.
+	writeEnv("two")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
+	require.Eventually(t, func() bool {
+		pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+		return err == nil && string(pid) != string(pid1) && host.Alive(sdir) && hasEnv("DEPLOY=two")
+	}, 20*time.Second, 50*time.Millisecond, "idle host respawned with the new env")
+	var b store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
+	waitClosed(t, admin, b.ID) // a prompt to an unloaded conversation would fail
+	now := openSessions(t, admin)
+	require.Len(t, now, 1)
+	assert.Equal(t, sess[0].ID, now[0].ID, "same session, not crashed")
+
+	// Busy session: the claim and turn survive; the refresh waits for it.
+	pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
+	var c store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "c", Pool: "dev"}, &c))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "started"))
+		return err == nil
+	}, 20*time.Second, 50*time.Millisecond)
+	writeEnv("three")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
+	time.Sleep(300 * time.Millisecond)
+	pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	require.NoError(t, err)
+	assert.Equal(t, string(pid2), string(pid), "busy host not stopped mid-turn")
+	var held store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: c.ID}, &struct {
+		Ticket *store.Ticket `json:"ticket"`
+	}{&held}))
+	assert.Equal(t, sess[0].ID, held.Holder, "claim kept")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
+	waitClosed(t, admin, c.ID)
+	require.Eventually(t, func() bool { return hasEnv("DEPLOY=three") && host.Alive(sdir) }, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID)
 }

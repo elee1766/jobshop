@@ -139,6 +139,8 @@ Short list; behavior details are in section 7.
 - selfdev `blocker-check` workflow, started by the planner on blocked
   claims (#100).
 - selfdev `master-red` starts a `ci-repair` run per failing SHA (#99).
+- Live sessions refresh their host when the spawn env changes, not only
+  on adoption (#106).
 
 ## 5. What's next
 
@@ -147,6 +149,8 @@ Short list; behavior details are in section 7.
   (evidence: `deploy/verify-closed-loop.sh <plan ticket>`, #53, #76).
 - Restart, env refresh and backoff verified on gasserver with no `crashed`
   or `stuck` sessions (runbook: `docs/gasserver-verify.md`, #52, #71).
+  After the next self-deploy, `jobshop version` in a plan session must
+  match `/var/lib/jobshop-deploy/deployed` (#106).
 - gasserver scrapes `/metrics` and ships traces: wired and passing
   `deploy/verify-telemetry.sh` (#55); the turns panel ships with the
   next deploy.
@@ -313,6 +317,11 @@ All dated 2026-11-01 unless noted.
   the title and body redid finished work or stalled. Comments are cheaper
   than a summary step and the agent can still run `ticket show`
   (2026-11-01, #70).
+- A live session re-checks its env hash between turns and refreshes when
+  it changed, rather than putting a stable `/run/jobshop/bin` symlink on
+  PATH. The symlink would fix only PATH; the hash also catches changed
+  credentials and agent env, and the refresh path already existed for
+  adoption (2026-11-02, #106).
 
 **Runs and workflows** (2026-11-02, #83, design for target #82; not built)
 
@@ -501,7 +510,10 @@ turn. `jobshop session restart <id>` does the same on demand, keeping
 claims; `--now` cancels the running turn first. Neither counts as a crash.
 A respawned host's stale `exit.json` is removed before spawn, and an
 adopted host whose agent never initialized is treated as fresh, so the
-conversation is always loaded.
+conversation is always loaded. A live session also re-checks the hash
+before each claim, after every turn and on every idle poll (#106,
+2026-11-02), so a session that stays connected across a deploy or a
+reload that changes agent env refreshes too.
 
 ### 7.3 Rate limits, drain, quarantine (#10, #12, #13)
 
