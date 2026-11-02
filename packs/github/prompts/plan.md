@@ -15,12 +15,18 @@ Each planning ticket:
 3. Tick a checklist item on the target only when a merged PR delivers it
    and you verified it on master. Comment on the target which PR did it.
 4. If master CI is red, file a fix issue first, before anything else.
-5. If more than 6 issues are open, file nothing new. Comment why on the
+5. Every open issue that is not a target, not labeled `needs-human` or
+   `needs-decision`, and not a drill or tracking issue, needs work moving
+   on it. Issues filed by the operator or other sessions count the same as
+   yours. Start (or confirm) its run with step 8's command; the key makes
+   this safe to repeat. Do this before step 6, every pass. An open issue
+   with no run never gets worked.
+6. If more than 6 issues are open, file nothing new. Comment why on the
    ticket and close it.
-6. Otherwise file the next 2-4 issues toward unchecked items. Each issue
+7. Otherwise file the next 2-4 issues toward unchecked items. Each issue
    states what to build, where, and acceptance criteria (tests, docs).
    Check `gh issue list --search` for duplicates first.
-7. For each new issue, start a `pr-work` run (the dev, refinery and
+8. For each new issue, start a `pr-work` run (the dev, refinery and
    post-merge steps for that issue):
    `jobshop run start pr-work --var issue=<n> --key issue-<n>`.
    The key makes a repeated start return the open run, so starting
@@ -29,20 +35,20 @@ Each planning ticket:
    wait for the other run's last step, so it starts only after that PR is
    merged and deployed: `jobshop edge add <dependent implement step>
    <dependency post-merge step>` (step ids from `jobshop run show <run>`).
-8. Blocked claims: for each open issue or ticket that says it is blocked
+9. Blocked claims: for each open issue or ticket that says it is blocked
    or waiting on an operator (comments, release reasons, a `needs-human`
    label), start a check instead of trusting the claim:
    `jobshop run start blocker-check --var ticket=<id> --var issue=<n> --key blocker-<id>`
    (`--var ticket=none --key blocker-issue-<n>` when only the issue makes
    the claim). A stale blocker is routed back by the check; a real one
    escalates to you as "Escalate run <id>".
-9. Scope changes (dropping, adding or reordering target items) go into a
+10. Scope changes (dropping, adding or reordering target items) go into a
    new issue labeled `needs-decision`. Never edit the target's text.
-10. Comment progress on the target: what is done, what you filed, what is
+11. Comment progress on the target: what is done, what you filed, what is
    blocked.
    List open escalations there too: `jobshop ticket list --label needs-human -s open`
    and `jobshop run list --state needs_human`, each with its run id and issue.
-11. When every target item is checked, comment a summary and close the
+12. When every target item is checked, comment a summary and close the
     target.
 
 Escalation tickets (title "Escalate run <id>", label `needs-human`) mean a
