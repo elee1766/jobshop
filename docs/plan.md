@@ -150,6 +150,7 @@ Short list; behavior details are in section 7.
   (#114).
 - Lowering `max_sessions` by reload never starts a session over the new
   cap (#102).
+- `ci_branch` pack var and a CI repair drill runbook (#117).
 
 ## 5. What's next
 
@@ -185,7 +186,8 @@ master handled by a run on gasserver. The generic `github` pack (#107),
 which `packs/selfdev` extends, and its merge policy vars (#108) are built
 and stay, but are used only by selfdev. The retry limit and escalation
 boxes get their live evidence from one `drill` run (#114,
-`docs/gasserver-verify.md` section 8) linked on #82.
+`docs/gasserver-verify.md` section 8) linked on #82. The CI repair box
+gets one ci-repair drill run on a red throwaway branch (#117, section 9).
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -923,6 +925,15 @@ whose prompt only comments and closes `failed`. One run therefore ends
 in `needs_human` with an "Escalate run <id>" ticket in `plan`, proving
 the 7.16 path live without waiting for a real failure. Runbook:
 `docs/gasserver-verify.md` section 8. Test: `TestSelfdevDrill`.
+
+### 7.25 CI repair drill (#117)
+
+Added 2026-11-02. `packs/github` var `ci_branch` (default `master`, kept
+by selfdev) is the branch the `master-red` check passes to `gh run list
+--branch`. The drill (`docs/gasserver-verify.md` section 9) starts a
+`ci-repair` run by hand for a red SHA on a throwaway `drill/red-ci`
+branch, so master never goes red. Test: `TestGithubPackLoads` overrides
+`ci_branch`.
 
 ## 8. Chat gateway
 

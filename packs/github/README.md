@@ -80,6 +80,7 @@ and file "Escalate run <id>" in `plan`.
 | `human` | GitHub user mentioned on escalations |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
+| `ci_branch` | Branch `master-red` watches. Default `master` |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
 | `deploy_check` | How `post-merge` and `blocker-check` tell a commit is deployed. Default: no deploy, the check passes |
