@@ -166,12 +166,9 @@ Short list; behavior details are in section 7.
 formula concepts we actually use (PR work, CI repair, blocker assessment),
 create runs with graph apply, and build only the dispatcher features those
 workflows need. Retry limits and one escalation path (`needs-human`) live
-here. Decide scope from the workflows we run, not from Gas City. Also in
-phase 4 (decided 2026-11-02): work for other GitHub repos the way Gas City
-handles Retail and Trade, but tracked in GitHub issues instead of Linear,
-through a generic `github` pack that `packs/selfdev` becomes an instance of.
-Which repo goes first, and its credentials and review policy, is the
-user's call. The run model is designed (section 6, "Runs and
+here. Decide scope from the workflows we run, not from Gas City. Phase 4
+works on Jobshop itself only; no external repo is onboarded (decided
+2026-11-02). The run model is designed (section 6, "Runs and
 workflows", #83); next are its six follow-up issues listed there.
 `workflows:` config (follow-up 3, first half, #88), runs (follow-up 1,
 #89), failure counting with escalation (follow-up 2, #90) and the selfdev
@@ -180,10 +177,9 @@ second half, #98) are built. The pr-work box on #82 needs one issue
 delivered through a run on gasserver. `blocker-check` (follow-up 6, #100)
 is built; its box needs one run on gasserver (e.g. against #56) linked on
 #82. `ci-repair` (follow-up 5, #99) is built; its box needs one red
-master handled by a run on gasserver. The generic `github` pack (#107) is
-built; the first other repo, its credentials and review policy, is still
-the user's call. Merge policy vars (#108) let that repo require an
-approval or a check subset.
+master handled by a run on gasserver. The generic `github` pack (#107),
+which `packs/selfdev` extends, and its merge policy vars (#108) are built
+and stay, but are used only by selfdev.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
