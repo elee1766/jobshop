@@ -59,6 +59,31 @@ func metaRun(t store.Ticket) (runMeta, bool) {
 	return r, true
 }
 
+// poolMeta is meta.pool on a pool quarantine escalation (#146).
+type poolMeta struct {
+	Name       string `json:"name"`
+	Quarantine string `json:"quarantine"`
+}
+
+func metaPool(t store.Ticket) (poolMeta, bool) {
+	var p poolMeta
+	raw, ok := ticketMeta(t)["pool"]
+	if !ok || json.Unmarshal(raw, &p) != nil || p.Name == "" {
+		return p, false
+	}
+	return p, true
+}
+
+// isEscalation reports whether the controller filed t: a run escalation
+// or a pool quarantine.
+func isEscalation(t store.Ticket) bool {
+	if _, ok := metaRun(t); ok {
+		return true
+	}
+	_, ok := metaPool(t)
+	return ok
+}
+
 func metaEscalation(t store.Ticket) (Escalation, bool) {
 	var e Escalation
 	raw, ok := ticketMeta(t)[MetaPack]
@@ -129,7 +154,7 @@ func (g *Gateway) Escalations(ctx context.Context) {
 	}
 	seen := map[string]bool{}
 	for _, t := range open {
-		if _, ok := metaRun(t); !ok {
+		if !isEscalation(t) {
 			continue
 		}
 		seen[t.ID] = true
@@ -234,6 +259,9 @@ func (g *Gateway) resolved(ctx context.Context, id string) error {
 }
 
 func openingText(t store.Ticket) string {
+	if p, ok := metaPool(t); ok {
+		return fmt.Sprintf("Escalation %s: pool %s is quarantined (%s). Reply in this thread.", t.ID, p.Name, p.Quarantine)
+	}
 	r, _ := metaRun(t)
 	return fmt.Sprintf("Escalation %s: run %s (workflow %s) needs a human. Reply in this thread.", t.ID, r.ID, r.Workflow)
 }
@@ -241,6 +269,9 @@ func openingText(t store.Ticket) string {
 // escalationPrompt is the session's first message. Message prompts do
 // not carry the pool prompt, so it says what the session is for.
 func escalationPrompt(t store.Ticket, gateway string) string {
+	if p, ok := metaPool(t); ok {
+		return poolPrompt(t, p, gateway)
+	}
 	r, _ := metaRun(t)
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are handling escalation ticket %s for run %s (workflow %s), opened by gateway %s. ", t.ID, r.ID, r.Workflow, gateway)
@@ -251,6 +282,20 @@ func escalationPrompt(t store.Ticket, gateway string) string {
 	fmt.Fprintf(&b, "`jobshop run resume %s [--step <name>]` or start another run, file follow-ups. ", r.ID)
 	fmt.Fprintf(&b, "Then `jobshop claim %s` and `jobshop close %s` (closing takes it off the needs-human list), and say in the thread what you did. ", t.ID, t.ID)
 	b.WriteString("Ask before cancelling a run. If a command needs the admin socket, give the operator the command instead.\n\n")
+	b.WriteString("Escalation ticket body:\n\n")
+	b.WriteString(t.Body)
+	return b.String()
+}
+
+// poolPrompt is the first message for a pool quarantine escalation.
+func poolPrompt(t store.Ticket, p poolMeta, gateway string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are handling escalation ticket %s, opened by gateway %s: pool %s starts no sessions because a spawn failed with an error that will repeat. ", t.ID, gateway, p.Name)
+	b.WriteString("This conversation is a chat thread with the operator; each of your turns is posted there, so keep replies short.\n\n")
+	b.WriteString("Now: reply with the error and the config it points at (pool repo or dir, agent command), and what the operator should change. ")
+	fmt.Fprintf(&b, "Once the config is fixed, `jobshop reload` (or `jobshop pool unquarantine %s`) lets the pool start sessions again. ", p.Name)
+	fmt.Fprintf(&b, "Then `jobshop claim %s` and `jobshop close %s`, and say in the thread what you did. ", t.ID, t.ID)
+	b.WriteString("If a command needs the admin socket, give the operator the command instead.\n\n")
 	b.WriteString("Escalation ticket body:\n\n")
 	b.WriteString(t.Body)
 	return b.String()

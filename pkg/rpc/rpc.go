@@ -58,6 +58,8 @@ const (
 	MethodRunList          = "run.list"
 	MethodRunCancel        = "run.cancel"
 	MethodRunResume        = "run.resume"
+	MethodPoolList         = "pool.list"
+	MethodPoolUnquarantine = "pool.unquarantine"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -501,6 +503,19 @@ type ReloadResult struct {
 	Agents    int `json:"agents"`
 	Triggers  int `json:"triggers"`
 	Workflows int `json:"workflows"`
+}
+
+// PoolParams names one pool.
+type PoolParams struct {
+	Pool string `json:"pool"`
+}
+
+// PoolStatusResult lists pools that start no sessions: Quarantined until
+// reload or unquarantine (with the spawn error), Paused until a time
+// after crash-looping.
+type PoolStatusResult struct {
+	Quarantined map[string]string    `json:"quarantined"`
+	Paused      map[string]time.Time `json:"paused"`
 }
 
 // DrainResult lists drained pools after the call; "*" means all.

@@ -237,7 +237,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -559,7 +559,7 @@ func (c *Config) Prefix(project string) string {
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
 // controller, and the gateway on escalation tickets).
-var BuiltinMetaPacks = []string{"github", "trigger", "run", "gateway"}
+var BuiltinMetaPacks = []string{"github", "trigger", "run", "gateway", "pool"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

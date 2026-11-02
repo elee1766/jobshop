@@ -170,6 +170,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#126).
 - `when.stall` triggers and the `stall-check` workflow, replacing
   `blocker-check` (#143, `docs/notes/143-stall-check.md`).
+- A permanent spawn error (missing repo or dir, agent not found)
+  quarantines the pool at once with one escalation, until reload or
+  `jobshop pool unquarantine` (#146).
 
 ## 5. What's next
 
@@ -219,6 +222,8 @@ deletions, a self-deploy rollback drill, a planner that files issues
 from the last day's warnings), an admin-socket change stream that
 replaces gateway polling, batches (Gas City convoys), and the operator
 using the Matrix room. Schedules are already covered by cron triggers.
+Spawn-error quarantine is built (#146,
+`docs/notes/146-spawn-quarantine.md`).
 
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 (Discord later), read/write attach and the operator pack (section 8).
@@ -515,6 +520,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   `stall:<signal>:<subject>`, so dedup, cooldown and the retry cap reuse
   run keys and trigger meta. A blocked claim is a `blocked` label, one
   signal among the rest, so `blocker-check` (follow-up 6) is folded in.
+- A permanent spawn error quarantines a pool until reload, not for a
+  time (2026-11-02, #146): the fix is a host config change, so a timer
+  only retries into the same error. The quarantine is in memory like
+  the crash-loop pause; a restart re-detects it on the first spawn.
 
 **Build**
 - Session events stream as notifications on the subscribing connection
@@ -583,6 +592,7 @@ moved from the old 7.x list, oldest first:
 - [Gateway, Matrix adapter](notes/123-gateway-matrix.md) (#123)
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
 - [Stall trigger and stall-check](notes/143-stall-check.md) (#143)
+- [Spawn-error pool quarantine](notes/146-spawn-quarantine.md) (#146)
 
 ## 8. Chat gateway
 

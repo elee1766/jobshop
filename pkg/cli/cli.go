@@ -61,6 +61,7 @@ type root struct {
 	Session   sessionCmd   `cmd:"" help:"Manage sessions."`
 	Run       runCmd       `cmd:"" help:"Start and inspect workflow runs."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
+	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`

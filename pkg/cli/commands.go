@@ -218,6 +218,23 @@ type configShowCmd struct{}
 
 func (configShowCmd) Run(g *Globals) error { return g.call(rpc.MethodConfigShow, nil, nil) }
 
+type poolCmd struct {
+	List         poolListCmd         `cmd:"" help:"Show quarantined and paused pools."`
+	Unquarantine poolUnquarantineCmd `cmd:"" help:"Let a quarantined or paused pool start sessions again."`
+}
+
+type poolListCmd struct{}
+
+func (poolListCmd) Run(g *Globals) error { return g.call(rpc.MethodPoolList, nil, nil) }
+
+type poolUnquarantineCmd struct {
+	Pool string `arg:"" help:"Pool name."`
+}
+
+func (c poolUnquarantineCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodPoolUnquarantine, rpc.PoolParams{Pool: c.Pool}, nil)
+}
+
 type triggerListCmd struct{}
 
 func (triggerListCmd) Run(g *Globals) error { return g.call(rpc.MethodTriggerList, nil, nil) }

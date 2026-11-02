@@ -83,6 +83,9 @@ type Controller struct {
 	// Pool crash-loop quarantine, memory only (see quarantine.go).
 	poolCrashLog    map[string][]time.Time
 	poolPausedUntil map[string]time.Time
+	// poolQuarantined maps a pool to the permanent spawn error that
+	// stopped it; cleared by reload or pool unquarantine (#146).
+	poolQuarantined map[string]string
 	// orphanWarned maps orphaned ticket id -> reason already logged.
 	orphanMu     sync.Mutex
 	orphanWarned map[string]string
@@ -172,6 +175,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		drained:      map[string]bool{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
+		poolQuarantined: map[string]string{},
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	c.started = c.now()
@@ -507,5 +511,7 @@ func init() {
 		rpc.MethodRunList:          bind((*Controller).runList),
 		rpc.MethodRunCancel:        bind((*Controller).runCancel),
 		rpc.MethodRunResume:        bind((*Controller).runResume),
+		rpc.MethodPoolList:         bind((*Controller).poolList),
+		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 	}
 }

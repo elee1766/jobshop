@@ -251,6 +251,11 @@ func (r *runner) run() {
 		}
 		var end errSessionEnd
 		if errors.As(err, &end) {
+			if end.permanent {
+				// Before finish, which releases the ticket: no tick may start
+				// another session into the same error.
+				r.c.quarantinePool(context.WithoutCancel(r.ctx), r.pool, end.reason)
+			}
 			r.finish(end.resolution, end.reason)
 			return
 		}
@@ -393,7 +398,11 @@ func hostPid(dir string) int {
 	return pid
 }
 
-type errSessionEnd struct{ resolution, reason string }
+type errSessionEnd struct {
+	resolution, reason string
+	// permanent marks a spawn error that will repeat (host.Permanent).
+	permanent bool
+}
 
 func (e errSessionEnd) Error() string { return "session ended: " + e.resolution }
 
@@ -414,7 +423,7 @@ func (r *runner) session() error {
 	if !host.Alive(r.dir) {
 		r.clearRestart()
 		if err := r.c.spawnHost(t, fields); err != nil {
-			return errSessionEnd{resolution: resolutionCrashed, reason: "spawn: " + err.Error()}
+			return errSessionEnd{resolution: resolutionCrashed, reason: "spawn: " + err.Error(), permanent: host.Permanent(err)}
 		}
 		r.lifecycle("spawn")
 		fresh = true
@@ -1143,7 +1152,12 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if err := c.ensureWorktree(t, spec.Dir); err != nil {
+	worktree, err := c.ensureWorktree(t, spec.Dir)
+	if err != nil {
+		return err
+	}
+	// A worktree was just made; any other cwd must already exist.
+	if err := host.CheckSpawn(spec, worktree); err != nil {
 		return err
 	}
 	if err := host.WriteSpec(dir, spec); err != nil {
@@ -1198,15 +1212,23 @@ func withoutEnv(env []string, keys ...string) []string {
 	return out
 }
 
-func (c *Controller) ensureWorktree(t store.Ticket, cwd string) error {
+// ensureWorktree makes the session's worktree of the pool repo. It reports
+// whether the pool uses a worktree. A missing repo, or a ref or path git
+// rejects, is a permanent error (#146).
+func (c *Controller) ensureWorktree(t store.Ticket, cwd string) (bool, error) {
 	p, ok := c.config().Pools[t.Pool]
 	if !ok || p.Repo == "" {
-		return nil
+		return false, nil
 	}
 	c.gitMu.Lock()
 	defer c.gitMu.Unlock()
 	if _, err := os.Stat(cwd); err == nil {
-		return nil
+		return true, nil
+	}
+	if st, err := os.Stat(p.Repo); err != nil {
+		return true, host.Permanentf("pool %s repo %s: %w", t.Pool, p.Repo, err)
+	} else if !st.IsDir() {
+		return true, host.Permanentf("pool %s repo %s is not a directory", t.Pool, p.Repo)
 	}
 	ref := p.Ref
 	if ref == "" {
@@ -1224,9 +1246,24 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) error {
 	}
 	out, err := exec.Command("git", "-C", p.Repo, "worktree", "add", "--detach", cwd, ref).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
+		err = fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
+		if worktreeAddPermanent(string(out)) {
+			err = &host.PermanentError{Err: err}
+		}
+		return true, err
 	}
-	return nil
+	return true, nil
+}
+
+// worktreeAddPermanent matches git's messages for a repo or ref that is
+// not there; lock and transient I/O failures are not matched.
+func worktreeAddPermanent(out string) bool {
+	for _, s := range []string{"not a git repository", "invalid reference", "not a valid object name", "Permission denied", "No such file or directory"} {
+		if strings.Contains(out, s) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) removeWorktree(t store.Ticket) {
