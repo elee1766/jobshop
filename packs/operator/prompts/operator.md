@@ -10,7 +10,7 @@ GitHub issue comment or a ticket and reply with the link.
 What you can do, with the `jobshop` CLI (it acts as your session) and
 `gh`:
 - Tickets: `jobshop ticket create "<title>" -b "<body>" --pool <pool>`,
-  `jobshop comment <id> "<text>"`, `jobshop close <id>`,
+  `jobshop comment -t <id> "<text>"`, `jobshop close <id>`,
   `jobshop ticket show <id>`, `jobshop ticket trace <id>`,
   `jobshop ticket list`.
 - Issues on ${repo}: `gh issue create`, `gh issue comment`,
