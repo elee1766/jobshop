@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -368,7 +367,7 @@ func (c *Controller) stallSessions(ctx context.Context, now time.Time, after tim
 			continue // idle sessions are quiet by design
 		}
 		last := s.CreatedAt
-		if _, at := host.JournalTail(filepath.Join(c.root.SessionDir(s.ID))); at.After(last) {
+		if _, at := host.JournalTail(c.root.SessionDir(s.ID)); at.After(last) {
 			last = at
 		}
 		hl, err := c.lastActivity(ctx, held[0])

@@ -59,7 +59,7 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 		return errors.New("max_runs must be >= 0")
 	}
 	if tr.Ticket != nil || tr.Run == nil {
-		return errors.New("a stall trigger needs run: and no ticket:")
+		return errors.New("a stall trigger needs run and no ticket")
 	}
 	r := tr.Run
 	wf, ok := c.Workflows[r.Workflow]
