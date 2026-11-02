@@ -228,6 +228,18 @@ type Store interface {
 
 	// CreateGraph inserts tickets and edges in one transaction.
 	CreateGraph(ctx context.Context, actor string, tickets []NewTicket, edges []Edge) ([]Ticket, error)
+	// NewID mints a ticket id for project, so a caller can wire parent ids
+	// and edges before CreateGraph.
+	NewID(project string) (string, error)
+
+	// ListChildren returns tickets whose parent is id, ordered by
+	// fields.index then age (a run's steps in order).
+	ListChildren(ctx context.Context, id string) ([]Ticket, error)
+	// FindOpenRunByKey returns the open run of workflow with key, or
+	// ErrNotFound.
+	FindOpenRunByKey(ctx context.Context, workflow, key string) (Ticket, error)
+	// ListRuns returns runs newest first. Empty project or state matches all.
+	ListRuns(ctx context.Context, project, state string, limit int) ([]Ticket, error)
 
 	// Close releases backend resources.
 	Close() error

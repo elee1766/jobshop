@@ -145,6 +145,23 @@ type SessionFields struct {
     ACPSession string `json:"acp_session,omitempty"`
     Current    string `json:"current,omitempty"` // ticket id being worked
 }
+
+// Runs (#89). Steps are the run's children; step i+1 blocks on step i.
+type RunFields struct {
+    Workflow string            `json:"workflow"`
+    Pack     string            `json:"pack,omitempty"`
+    Vars     map[string]string `json:"vars,omitempty"`
+    Key      string            `json:"key,omitempty"`   // one open run per workflow and key
+    State    string            `json:"state"`           // running, needs_human, done, cancelled
+}
+
+type StepFields struct {
+    Run      string `json:"run"`
+    Step     string `json:"step"`
+    Index    int    `json:"index"`
+    Retries  int    `json:"retries"`
+    Failures int    `json:"failures"`
+}
 ```
 
 Adding a field is a Go change. Adding an index on it is a migration.

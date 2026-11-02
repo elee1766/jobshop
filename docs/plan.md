@@ -127,7 +127,9 @@ Short list; behavior details are in section 7.
 - Run model design note for phase 4, section 6 (#83).
 - Orphaned ticket report: WARN, `jobshop_tickets_orphaned` and
   `ticket list --orphaned` (#84).
-- `workflows:` in pack config, validated at load (#88); no runs yet.
+- `workflows:` in pack config, validated at load (#88).
+- Runs: `run` and `step` kinds, `jobshop run start/show/list/cancel/resume`,
+  key dedup, run closes done with its last step (#89).
 
 ## 5. What's next
 
@@ -153,8 +155,9 @@ through a generic `github` pack that `packs/selfdev` becomes an instance of.
 Which repo goes first, and its credentials and review policy, is the
 user's call. The run model is designed (section 6, "Runs and
 workflows", #83); next are its six follow-up issues listed there.
-`workflows:` config (follow-up 3, first half) is built (#88); `run:` in
-triggers and run start are next.
+`workflows:` config (follow-up 3, first half, #88) and runs (follow-up 1,
+#89) are built; failure counting and escalation (#90) and `run:` in
+triggers are next.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -678,7 +681,34 @@ title, both or neither of `prompt` and `prompt_file`, negative
 `retries`, a `${var}` in a title or prompt that is neither a workflow
 var nor a pack var, and `issue` not in `vars`. `config show` lists
 workflows with `sources["workflows.<name>"]`; `config reload` reports
-their count. Nothing starts runs yet.
+their count. `jobshop run start` (7.15) uses them.
+
+### 7.15 Runs (#89)
+
+`jobshop run start <workflow> -v k=v [--key k]` (admin, or a session in
+the workflow's project) checks vars (every workflow var set, no others),
+fills step titles and prompts from pack vars plus run vars, and calls
+`CreateGraph` once: a `run` ticket (no pool, project of the first step's
+pool, `fields {workflow, pack, vars, key, state: running}`), one `step`
+ticket per step (`parent_id` = run, step pool, body = prompt, `fields
+{run, step, index, retries, failures: 0}`), and `blocks` edges step i+1 on
+step i. With `issue`, run and steps get `meta.github.issue` (a number when
+numeric). Ids come from `Store.NewID` so edges are wired before insert.
+With `--key`, an open run of the same workflow and key is returned
+(`existing: true`); starts are serialized in the controller. `step` is a
+claimable kind, so pool sessions claim steps like tasks; `ticket create`
+rejects `run` and `step`.
+
+When a step closes through `ticket close` the controller closes its run
+`done` (state `done`) if every step is closed `done`; each tick also
+sweeps running runs for this. `run show <id>` prints the run line, vars,
+and one line per step (index, step, id, pool, status, resolution, holder,
+failures/retries); `--json` prints the raw result. `run list [--state]`
+lists runs newest first. `run cancel` closes open steps and the run
+`cancelled`. `run resume [--step s]` reopens the step (default: the
+first not closed `done`), resets its failures, comments on it, and sets
+the run back to `running`. Until #90, a step closed `failed` unblocks the
+next step like any close.
 
 ## 8. Chat gateway (future)
 

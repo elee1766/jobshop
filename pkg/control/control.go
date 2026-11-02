@@ -91,7 +91,9 @@ type Controller struct {
 	gitMu sync.Mutex
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
-	wg       sync.WaitGroup
+	// runMu serializes run start (key dedup) and run state changes.
+	runMu sync.Mutex
+	wg    sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -279,6 +281,7 @@ func (c *Controller) tick() {
 	}
 	c.supervise()
 	c.reportOrphans()
+	c.sweepRuns()
 }
 
 func (c *Controller) sweep() {
@@ -482,5 +485,10 @@ func init() {
 		rpc.MethodTriggerList:    bind((*Controller).triggerList),
 		rpc.MethodReload:         bind((*Controller).reloadConfig),
 		rpc.MethodConfigShow:     bind((*Controller).configShow),
+		rpc.MethodRunStart:       bind((*Controller).runStart),
+		rpc.MethodRunShow:        bind((*Controller).runShow),
+		rpc.MethodRunList:        bind((*Controller).runList),
+		rpc.MethodRunCancel:      bind((*Controller).runCancel),
+		rpc.MethodRunResume:      bind((*Controller).runResume),
 	}
 }

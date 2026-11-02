@@ -145,6 +145,16 @@ func resolveStepPromptFiles(m map[string]any, dir, file string) error {
 	return nil
 }
 
+// FillTemplate replaces ${name} in s from vars ($$ is a literal $). A
+// missing var is an error.
+func FillTemplate(s string, vars map[string]any) (string, error) {
+	out, err := substitute(s, vars, "")
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprint(out), nil
+}
+
 // templateVars returns the ${name} references in s ($$ is a literal $).
 func templateVars(s string) []string {
 	var out []string
