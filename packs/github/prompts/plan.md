@@ -31,10 +31,11 @@ Each planning ticket:
    `jobshop run start pr-work --var issue=<n> --key issue-<n>`.
    The key makes a repeated start return the open run, so starting
    again is safe. Do not create "Resolve #n" pointer tickets.
-   When one issue depends on another, make the dependent run's first step
-   wait for the other run's last step, so it starts only after that PR is
-   merged and deployed: `jobshop edge add <dependent implement step>
-   <dependency post-merge step>` (step ids from `jobshop run show <run>`).
+   When one issue depends on another, start the dependency's run first,
+   then start the dependent run with `--after <dependency run id>`, so
+   it starts only after that PR is merged and deployed. The edge is
+   created with the run. Do not start the run and then `jobshop edge
+   add`: the dev pool can claim the step in between (#149).
 9. Blocked claims: the controller's `stall` trigger starts a
    `stall-check` run for stalled work on its own (ready tickets nobody
    claims, held steps with no progress, silent sessions, old

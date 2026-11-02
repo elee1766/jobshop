@@ -170,6 +170,24 @@ func TestRunStartErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "run start")
 }
 
+// TestRunStartAfter creates the outside blocker with the run, so the
+// second run's first step is never ready before the first run is done
+// (#149).
+func TestRunStartAfter(t *testing.T) {
+	admin := runRoot(t)
+	a := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1"}})
+	b := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "2"}, After: []string{a.Run.ID}})
+	assert.Equal(t, []string{a.Steps[0].ID}, readyIDs(t, admin), "b waits on run a")
+	for _, s := range a.Steps {
+		closeStep(t, admin, s.ID, "done")
+	}
+	assert.Equal(t, []string{b.Steps[0].ID}, readyIDs(t, admin))
+
+	err := admin.Call(t.Context(), rpc.MethodRunStart, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "3"}, After: []string{"js-nope"}}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "after js-nope")
+}
+
 // TestRunKeyDedup returns the open run for a repeated key, and starts a
 // new one once that run is closed.
 func TestRunKeyDedup(t *testing.T) {

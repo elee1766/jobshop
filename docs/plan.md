@@ -168,6 +168,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   per escalation ticket with an operator session ready (#125).
 - Pool `admin` grants: operator sessions run `reload` and `session list`
   (#126).
+- `run start --after <id>` creates outside blockers with the run; the
+  planner uses it instead of `edge add` (#149).
 - `when.stall` triggers and the `stall-check` workflow, replacing
   `blocker-check` (#143, `docs/notes/143-stall-check.md`).
 - A permanent spawn error (missing repo or dir, agent not found)
@@ -552,6 +554,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Batches are a ticket kind `batch` owning pr-work runs as children,
   created with their cross-run edges in one graph apply; no new store
   table (2026-11-02, #148, `docs/notes/148-batches.md`).
+- Cross-run ordering is set at run start (`--after`), in the same graph
+  apply as the steps; `edge add` on a claimed ticket does not release it
+  (2026-11-02, #149).
 - Session sockets get admin methods only by a per-pool allow list
   (2026-11-02, #126), not `admin: true`: a fixed set of read and
   reload methods is grantable, while reopen, session new/send/reap and
