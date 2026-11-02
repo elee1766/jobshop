@@ -144,10 +144,16 @@ packs:
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions)
 	assert.Equal(t, 1, c.Pools["plan"].MaxSessions)
 	assert.Equal(t, 1, c.Pools["refinery"].MaxSessions)
-	assert.Contains(t, c.Pools["refinery"].Prompt, "--match-head-commit")
-	assert.Contains(t, c.Pools["dev"].Prompt, "--pool refinery")
+	assert.Contains(t, c.Pools["refinery"].Prompt, "--delete-branch")
+	assert.NotContains(t, c.Pools["dev"].Prompt, "--pool refinery", "no prompt-only handoff")
 	assert.Contains(t, c.Pools["dev"].Prompt, "You work on Jobshop")
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")
+	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
+	w := c.Workflows["pr-work"]
+	require.Len(t, w.Steps, 3)
+	assert.Equal(t, "plan", w.EscalatePool)
+	assert.Contains(t, w.Steps[1].Prompt, "--match-head-commit")
+	assert.Contains(t, w.Steps[2].Prompt, "jobshop version")
 	assert.Equal(t, "plan", c.Triggers["replan"].Ticket.Pool)
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
 }

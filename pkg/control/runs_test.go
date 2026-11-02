@@ -260,3 +260,62 @@ func TestRunResume(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `no step "nope"`)
 }
+
+// TestSelfdevPRWork loads packs/selfdev and starts pr-work as the planner
+// does: three steps in dev, refinery, refinery, only implement ready, and
+// a repeated start with the same key returns the same run.
+func TestSelfdevPRWork(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	root := config.Root{Dir: dir}
+	pack, err := filepath.Abs("../../packs/selfdev")
+	require.NoError(t, err)
+	// dev_sessions 0 and no master-red check: the test starts no agents.
+	cfg := fmt.Sprintf(`projects:
+  js: {}
+agents:
+  fake:
+    command: %q
+packs:
+  - path: %s
+    vars: {repo: %q, agent: fake, dev_sessions: 0}
+pools:
+  plan: {max_sessions: 0}
+  refinery: {max_sessions: 0}
+triggers:
+  master-red:
+    when: {check: "false"}
+`, os.Args[0], pack, dir)
+	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- control.Run(ctx, root, control.Options{Tick: time.Hour}) }()
+	t.Cleanup(func() {
+		cancel()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			require.NoError(t, err)
+		}
+	})
+	admin := dial(t, root.AdminSocket())
+
+	p := rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "93"}, Key: "issue-93"}
+	r := startRun(t, admin, p)
+	require.Len(t, r.Steps, 3)
+	var pools, titles []string
+	for _, s := range r.Steps {
+		pools = append(pools, s.Pool)
+		titles = append(titles, s.Title)
+		assert.JSONEq(t, `{"github":{"issue":93}}`, string(s.Meta))
+	}
+	assert.Equal(t, []string{"dev", "refinery", "refinery"}, pools)
+	assert.Equal(t, "Implement #93", titles[0])
+	assert.Contains(t, r.Steps[0].Body, "gh issue view 93 --comments")
+	assert.Contains(t, r.Steps[2].Body, "jobshop version")
+	assert.Equal(t, []string{r.Steps[0].ID}, readyIDs(t, admin), "only implement is ready")
+
+	again := startRun(t, admin, p)
+	assert.True(t, again.Existing)
+	assert.Equal(t, r.Run.ID, again.Run.ID)
+}

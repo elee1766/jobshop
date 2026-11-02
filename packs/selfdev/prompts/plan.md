@@ -21,10 +21,15 @@ Each planning ticket:
 6. Otherwise file the next 2-4 issues toward unchecked items. Each issue
    states what to build, where, and acceptance criteria (tests, docs).
    Check `gh issue list --search` for duplicates first.
-7. For each new issue, create a pointer ticket in the dev pool:
-   `jobshop ticket create "Resolve elee1766/jobshop#<n>: <title>" -b "<issue URL>" --pool dev`.
-   When one issue depends on another, add an edge between their tickets
-   (`jobshop edge --help`) so the dependent waits.
+7. For each new issue, start a `pr-work` run (the dev, refinery and
+   post-merge steps for that issue):
+   `jobshop run start pr-work --var issue=<n> --key issue-<n>`.
+   The key makes a repeated start return the open run, so starting
+   again is safe. Do not create "Resolve #n" pointer tickets.
+   When one issue depends on another, make the dependent run's first step
+   wait for the other run's last step, so it starts only after that PR is
+   merged and deployed: `jobshop edge add <dependent implement step>
+   <dependency post-merge step>` (step ids from `jobshop run show <run>`).
 8. Scope changes (dropping, adding or reordering target items) go into a
    new issue labeled `needs-decision`. Never edit the target's text.
 9. Comment progress on the target: what is done, what you filed, what is
