@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Thread is where a message came from and where replies go.
@@ -42,21 +43,33 @@ type Adapter interface {
 	Post(ctx context.Context, t Thread, text string) error
 	// React marks a received message, to show progress.
 	React(ctx context.Context, t Thread, msgID, key string) error
+	// Open posts text as a new thread root in room and returns the thread.
+	Open(ctx context.Context, room, text string) (Thread, error)
 }
 
 // Controller is the part of the admin API the gateway uses.
 type Controller interface {
 	Send(ctx context.Context, p rpc.SessionSendParams) (rpc.SessionSendResult, error)
 	Subscribe(ctx context.Context, p rpc.SessionSubscribeParams, fn func(rpc.SessionEvent)) (rpc.SessionSubscribeResult, error)
+	// List, Show and Update read and mark escalation tickets.
+	List(ctx context.Context, p rpc.ListParams) ([]store.Ticket, error)
+	Show(ctx context.Context, id string) (rpc.ShowResult, error)
+	Update(ctx context.Context, p rpc.UpdateParams) (store.Ticket, error)
 }
 
 // Config is one gateway's routing.
 type Config struct {
+	Name    string // gateway name, recorded on escalation threads it opens
 	Pool    string
 	Rooms   []string // allowed rooms; empty allows none
 	Senders []string // allowed sender ids; empty allows none
 	// Marker prefixes a message to send it with interrupt. Default "!".
 	Marker string
+	// EscalationRoom gets one new thread per escalation ticket. Empty:
+	// escalations are not posted.
+	EscalationRoom string
+	// EscalationPoll is how often escalation tickets are checked. Default 10s.
+	EscalationPoll time.Duration
 }
 
 // Reaction keys for progress.
@@ -72,9 +85,10 @@ type Gateway struct {
 	log   *slog.Logger
 	retry time.Duration
 
-	mu      sync.Mutex
-	watched map[string]*watch // by session id
-	wg      sync.WaitGroup
+	mu         sync.Mutex
+	watched    map[string]*watch // by session id
+	escalating map[string]Thread // open escalation tickets with a thread, by ticket id
+	wg         sync.WaitGroup
 }
 
 type watch struct {
@@ -87,10 +101,16 @@ func New(cfg Config, ad Adapter, ctl Controller, log *slog.Logger) *Gateway {
 	if cfg.Marker == "" {
 		cfg.Marker = "!"
 	}
+	if cfg.EscalationPoll <= 0 {
+		cfg.EscalationPoll = 10 * time.Second
+	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Gateway{cfg: cfg, ad: ad, ctl: ctl, log: log, retry: 2 * time.Second, watched: map[string]*watch{}}
+	return &Gateway{
+		cfg: cfg, ad: ad, ctl: ctl, log: log, retry: 2 * time.Second,
+		watched: map[string]*watch{}, escalating: map[string]Thread{},
+	}
 }
 
 // Key is the session key for a thread.
@@ -100,6 +120,9 @@ func (g *Gateway) Key(t Thread) string {
 
 // Run receives until ctx ends, then waits for the session watchers.
 func (g *Gateway) Run(ctx context.Context) error {
+	if g.cfg.EscalationRoom != "" {
+		g.wg.Go(func() { g.runEscalations(ctx) })
+	}
 	err := g.ad.Run(ctx, g.Handle)
 	g.wg.Wait()
 	if errors.Is(err, context.Canceled) && ctx.Err() != nil {
