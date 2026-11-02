@@ -226,6 +226,11 @@ type Store interface {
 	AddComment(ctx context.Context, author, id, body string) (Comment, error)
 	Comments(ctx context.Context, id string) ([]Comment, error)
 	History(ctx context.Context, id string) ([]HistoryEntry, error)
+	// Changes returns history rows of all tickets with seq > after, oldest
+	// first, at most n (0 means DefaultLimit). It feeds events.subscribe.
+	Changes(ctx context.Context, after int64, n int) ([]HistoryEntry, error)
+	// LastSeq is the newest history seq.
+	LastSeq(ctx context.Context) (int64, error)
 
 	// CreateGraph inserts tickets and edges in one transaction.
 	CreateGraph(ctx context.Context, actor string, tickets []NewTicket, edges []Edge) ([]Ticket, error)

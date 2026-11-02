@@ -30,6 +30,9 @@ type Options struct {
 	Now func() time.Time
 	// Prefix maps a project to its id prefix. Default: the project name.
 	Prefix func(project string) string
+	// OnCommit, if set, runs after every committed write transaction.
+	// The controller uses it to wake events.subscribe (#147).
+	OnCommit func()
 }
 
 // Store is the SQLite backend. All access goes through one connection: the
@@ -40,6 +43,7 @@ type Store struct {
 	ids    *ids.Generator
 	now    func() time.Time
 	prefix func(string) string
+	commit func()
 }
 
 var _ store.Store = (*Store)(nil)
@@ -66,7 +70,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	s := &Store{db: db, q: sqlcdb.New(db), ids: gen, now: opt.Now, prefix: opt.Prefix}
+	s := &Store{db: db, q: sqlcdb.New(db), ids: gen, now: opt.Now, prefix: opt.Prefix, commit: opt.OnCommit}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -99,7 +103,13 @@ func (s *Store) tx(ctx context.Context, fn func(q *sqlcdb.Queries) error) error 
 	if err := fn(s.q.WithTx(tx)); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if s.commit != nil {
+		s.commit()
+	}
+	return nil
 }
 
 func ms(t time.Time) int64 {
@@ -935,18 +945,28 @@ func (s *Store) RemoveLabel(ctx context.Context, actor, id, label string) error 
 	})
 }
 
-// AddComment appends a comment.
-func (s *Store) AddComment(ctx context.Context, author, id, body string) (store.Comment, error) {
+// AddComment appends a comment and records a "comment" history row (no
+// revision bump), so the change stream sees it.
+func (s *Store) AddComment(ctx context.Context, author, id, body string) (c store.Comment, err error) {
 	if strings.TrimSpace(body) == "" {
 		return store.Comment{}, fmt.Errorf("%w: empty comment", store.ErrInvalid)
 	}
-	r, err := s.q.InsertComment(ctx, sqlcdb.InsertCommentParams{
-		TicketID: id, Author: author, Body: body, CreatedAt: ms(s.now()),
+	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+		now := s.now()
+		r, err := q.InsertComment(ctx, sqlcdb.InsertCommentParams{
+			TicketID: id, Author: author, Body: body, CreatedAt: ms(now),
+		})
+		if err != nil {
+			return classify(err, id)
+		}
+		c = toComment(r)
+		t, err := s.get(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		return history(ctx, q, t, now, author, "comment", map[string]any{"comment": c.ID})
 	})
-	if err != nil {
-		return store.Comment{}, classify(err, id)
-	}
-	return toComment(r), nil
+	return c, err
 }
 
 func toComment(r sqlcdb.Comment) store.Comment {
@@ -972,6 +992,25 @@ func (s *Store) History(ctx context.Context, id string) ([]store.HistoryEntry, e
 	if err != nil {
 		return nil, err
 	}
+	return toHistory(rows), nil
+}
+
+// Changes returns history rows of every ticket after seq, oldest first.
+func (s *Store) Changes(ctx context.Context, after int64, n int) ([]store.HistoryEntry, error) {
+	if n <= 0 {
+		n = store.DefaultLimit
+	}
+	rows, err := s.q.ListChanges(ctx, sqlcdb.ListChangesParams{Seq: after, Limit: int64(n)})
+	if err != nil {
+		return nil, err
+	}
+	return toHistory(rows), nil
+}
+
+// LastSeq is the newest history seq, 0 when there is none.
+func (s *Store) LastSeq(ctx context.Context) (int64, error) { return s.q.LastSeq(ctx) }
+
+func toHistory(rows []sqlcdb.History) []store.HistoryEntry {
 	out := make([]store.HistoryEntry, len(rows))
 	for i, r := range rows {
 		out[i] = store.HistoryEntry{
@@ -979,5 +1018,5 @@ func (s *Store) History(ctx context.Context, id string) ([]store.HistoryEntry, e
 			Op: r.Op, Revision: r.Revision, Diff: json.RawMessage(r.Diff),
 		}
 	}
-	return out, nil
+	return out
 }

@@ -60,6 +60,9 @@ type Options struct {
 	// Reload, if set, triggers a config reload per receive. The serve
 	// command sends on SIGHUP; tests send directly.
 	Reload <-chan struct{}
+	// EventBuffer is the per-subscriber events.subscribe buffer. Default
+	// DefaultEventBuffer; tests shrink it to force lagged.
+	EventBuffer int
 }
 
 // Controller serves one Jobshop root.
@@ -99,7 +102,9 @@ type Controller struct {
 	tickMu sync.Mutex
 	// runMu serializes run start (key dedup) and run state changes.
 	runMu sync.Mutex
-	wg    sync.WaitGroup
+	// events fans store changes out to events.subscribe.
+	events *hub
+	wg     sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -139,7 +144,8 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	defer unlock()
 
-	st, err := sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Now, Prefix: func(p string) string {
+	ev := newHub(opt.EventBuffer)
+	st, err := sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Now, OnCommit: ev.kick, Prefix: func(p string) string {
 		// Follows reloads, so a project added later gets its prefix.
 		return live.Load().cfg.Prefix(p)
 	}})
@@ -176,6 +182,12 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		drained:      map[string]bool{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 		poolQuarantined: map[string]string{},
+		events:          ev,
+	}
+	// The stream starts at the current end of history; older rows are
+	// only sent as replay.
+	if ev.last, err = st.LastSeq(ctx); err != nil {
+		return err
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	c.started = c.now()
@@ -223,6 +235,7 @@ func (c *Controller) serve() error {
 	if err != nil {
 		return err
 	}
+	c.wg.Go(c.pumpEvents)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -501,6 +514,7 @@ func init() {
 		rpc.MethodSessionRestart:   bind((*Controller).sessionRestart),
 		rpc.MethodSessionSend:      bind((*Controller).sessionSend),
 		rpc.MethodSessionSubscribe: bind((*Controller).sessionSubscribe),
+		rpc.MethodEventsSubscribe:  bind((*Controller).eventsSubscribe),
 		rpc.MethodShutdown:         bind((*Controller).shutdown),
 		rpc.MethodDrain:            bind((*Controller).drainPools),
 		rpc.MethodTriggerList:      bind((*Controller).triggerList),

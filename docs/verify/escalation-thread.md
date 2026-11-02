@@ -10,7 +10,7 @@ and a copy of the `drill` workflow whose step was failed by hand.
 2. `jobshop serve`, then `jobshop gateway <name>`.
 3. File a throwaway issue and start the drill on it
    (`docs/verify/escalation-drill.md`). The run goes `needs_human`.
-4. Within 10s the gateway logs `gateway: escalation thread`, the room
+4. Within a few seconds the gateway logs `gateway: escalation thread`, the room
    gets a top-level notice `Escalation <ticket>: run <run> ... needs a
    human`, and the session's summary follows in its thread.
 5. As the test user, reply in the thread with instructions (comment on
