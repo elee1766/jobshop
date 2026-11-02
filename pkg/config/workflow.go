@@ -55,6 +55,45 @@ func (s Step) RetryLimit() int {
 // skips them so run vars survive until run start.
 var templateKeys = []string{"title", "prompt"}
 
+// checkTriggerRun validates a run: trigger. The workflow must exist and
+// every workflow var must be set (by the trigger or by pack vars); vars
+// and key may only reference ${check_output}, and only with a check.
+func (c *Config) checkTriggerRun(tr *Trigger) error {
+	r := tr.Run
+	w, ok := c.Workflows[r.Workflow]
+	if !ok {
+		return fmt.Errorf("run: unknown workflow %q", r.Workflow)
+	}
+	for k := range r.Vars {
+		if !slices.Contains(w.Vars, k) {
+			return fmt.Errorf("run: workflow %s has no var %q", r.Workflow, k)
+		}
+	}
+	for _, k := range w.Vars {
+		if _, ok := r.Vars[k]; ok {
+			continue
+		}
+		if _, ok := w.PackVars[k]; !ok {
+			return fmt.Errorf("run: workflow %s needs var %s", r.Workflow, k)
+		}
+	}
+	templates := map[string]string{"key": r.Key}
+	for k, v := range r.Vars {
+		templates["vars."+k] = v
+	}
+	for where, s := range templates {
+		for _, v := range templateVars(s) {
+			if v != CheckOutputVar {
+				return fmt.Errorf("run: %s uses ${%s}; only ${%s} is available", where, v, CheckOutputVar)
+			}
+			if tr.When.Check == "" {
+				return fmt.Errorf("run: %s uses ${%s}, which needs when.check", where, CheckOutputVar)
+			}
+		}
+	}
+	return nil
+}
+
 // holdTemplates removes step templates from the raw workflows section so
 // pack var substitution leaves them alone. The returned func puts them
 // back.

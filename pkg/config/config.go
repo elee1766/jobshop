@@ -38,15 +38,28 @@ type Config struct {
 	Sources map[string][]string `yaml:"-"`
 }
 
-// Trigger creates a ticket from Ticket while every condition in When
-// holds and no ticket it created is still open.
+// Trigger creates a ticket from Ticket, or starts a workflow run from Run,
+// while every condition in When holds and nothing it created is open.
 type Trigger struct {
-	When   TriggerWhen   `yaml:"when"`
-	Ticket TriggerTicket `yaml:"ticket"`
+	When   TriggerWhen    `yaml:"when"`
+	Ticket *TriggerTicket `yaml:"ticket"`
+	Run    *TriggerRun    `yaml:"run"`
 	// Cooldown is the minimum time after its last ticket closed before the
 	// trigger fires again (Go duration).
 	Cooldown string `yaml:"cooldown"`
 }
+
+// TriggerRun starts a workflow run, like `jobshop run start`. Vars and
+// Key are templates; ${check_output} is the first line of the check's
+// trimmed stdout. An open run with the same workflow and key dedups.
+type TriggerRun struct {
+	Workflow string            `yaml:"workflow"`
+	Vars     map[string]string `yaml:"vars"`
+	Key      string            `yaml:"key"`
+}
+
+// CheckOutputVar is the template var holding a trigger check's output.
+const CheckOutputVar = "check_output"
 
 // TriggerWhen holds the conditions; all set ones must hold. Count
 // thresholds compare the number of tickets matching Pool, Kind and Label.
@@ -354,7 +367,13 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 			return fmt.Errorf("cooldown %q must be a non-negative duration", tr.Cooldown)
 		}
 	}
-	t := &tr.Ticket
+	if (tr.Ticket == nil) == (tr.Run == nil) {
+		return errors.New("set exactly one of ticket and run")
+	}
+	if tr.Run != nil {
+		return c.checkTriggerRun(tr)
+	}
+	t := tr.Ticket
 	if t.Title == "" {
 		return errors.New("ticket: title is required")
 	}

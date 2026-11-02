@@ -135,6 +135,7 @@ Short list; behavior details are in section 7.
   `jobshop_runs_needs_human` (#90).
 - selfdev `pr-work` workflow: the planner starts one run per issue,
   replacing pointer tickets and the prompt-only refinery handoff (#93).
+- `run:` triggers start a workflow run, keyed by `${check_output}` (#98).
 
 ## 5. What's next
 
@@ -162,9 +163,9 @@ user's call. The run model is designed (section 6, "Runs and
 workflows", #83); next are its six follow-up issues listed there.
 `workflows:` config (follow-up 3, first half, #88), runs (follow-up 1,
 #89), failure counting with escalation (follow-up 2, #90) and the selfdev
-`pr-work` workflow (follow-up 4, #93) are built; `run:` in triggers is
-next. The pr-work box on #82 needs one issue delivered through a run on
-gasserver.
+`pr-work` workflow (follow-up 4, #93) and `run:` in triggers (follow-up 3,
+second half, #98) are built. The pr-work box on #82 needs one issue
+delivered through a run on gasserver.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -546,6 +547,7 @@ past slots. `jobshop trigger list` shows whether each would fire and why.
 store conditions hold; exit 0 holds. Non-empty trimmed stdout is a dedup
 key (`meta.trigger.key`, prefixed with the trigger name): one ticket per
 key, ever. `check_timeout` defaults to 1m; a timeout logs an error.
+A trigger may start a workflow run instead of filing a ticket (7.19).
 
 ### 7.7 Packs and reload (#27, #38)
 
@@ -787,6 +789,20 @@ counts as a failed attempt (7.16), the step prompts wait in-turn
 that is not a step (e.g. `master-red`) is turned into a run for its
 issue. The refinery still handles older non-step hand-off tickets the
 old way.
+
+### 7.19 Run triggers (#98)
+
+A trigger has exactly one of `ticket:` and `run: {workflow, vars, key}`.
+Load fails on an unknown workflow, a var the workflow lacks, or a
+workflow var set by neither the trigger nor pack vars. `vars` and `key`
+are templates whose only var is `${check_output}`, the first line of the
+check's trimmed stdout (allowed only with `when.check`); pack vars are
+substituted at load as elsewhere. Firing calls the `run start` code path
+as the controller, with the key, so an open run with that key is reused
+instead of a second one. The run ticket carries `meta.trigger`, so the
+open run holds the trigger, its close starts the cooldown, and the check
+key dedups exactly as for ticket triggers. Steps do not carry the
+trigger meta.
 
 ## 8. Chat gateway (future)
 

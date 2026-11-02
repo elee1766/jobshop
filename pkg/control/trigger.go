@@ -264,7 +264,10 @@ func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Tri
 	if err != nil {
 		return store.Ticket{}, err
 	}
-	tt := tr.Ticket
+	if tr.Run != nil {
+		return c.fireRun(ctx, tr.Run, m, key)
+	}
+	tt := *tr.Ticket
 	if key != "" {
 		tt.Body = strings.TrimSpace(tt.Body + "\n\nCheck output: " + key)
 	}
@@ -272,6 +275,33 @@ func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Tri
 		Project: tt.Project, Kind: store.KindTask, Title: tt.Title, Body: tt.Body,
 		Priority: tt.Priority, Pool: tt.Pool, Labels: tt.Labels, Meta: meta,
 	})
+}
+
+// fireRun starts the trigger's workflow run. meta.trigger goes on the run
+// ticket, so the open run holds the trigger and its key dedups like a
+// ticket's. A run already open under the same run key is not an error;
+// the trigger stays held by that run only if it carries the trigger meta.
+func (c *Controller) fireRun(ctx context.Context, r *config.TriggerRun, m map[string]string, key string) (store.Ticket, error) {
+	out, _, _ := strings.Cut(key, "\n")
+	tv := map[string]any{config.CheckOutputVar: strings.TrimSpace(out)}
+	p := rpc.RunStartParams{Workflow: r.Workflow, Vars: map[string]string{}}
+	for k, v := range r.Vars {
+		s, err := config.FillTemplate(v, tv)
+		if err != nil {
+			return store.Ticket{}, fmt.Errorf("run var %s: %w", k, err)
+		}
+		p.Vars[k] = s
+	}
+	k, err := config.FillTemplate(r.Key, tv)
+	if err != nil {
+		return store.Ticket{}, fmt.Errorf("run key: %w", err)
+	}
+	p.Key = k
+	res, err := c.startRun(ctx, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	return res.(rpc.RunResult).Run, nil
 }
 
 func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any, error) {

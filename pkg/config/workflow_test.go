@@ -141,3 +141,29 @@ func TestWorkflowPackVarAndOverride(t *testing.T) {
 	assert.Equal(t, "/src", w.PackVars["repo"])
 	assert.Len(t, c.Sources["workflows.w"], 2)
 }
+
+func TestTriggerRun(t *testing.T) {
+	base := hostBase + "pools:\n  dev: {agent: a, dir: /w}\nworkflows:\n  fix:\n    vars: [sha, why]\n    steps:\n      - {id: s, pool: dev, title: \"Fix ${sha}\", prompt: p}\ntriggers:\n  t:\n"
+	c, err := Parse([]byte(base + "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: \"${check_output}\", why: red}, key: \"red-${check_output}\"}\n"))
+	require.NoError(t, err)
+	r := c.Triggers["t"].Run
+	require.NotNil(t, r)
+	assert.Nil(t, c.Triggers["t"].Ticket)
+	assert.Equal(t, "red-${check_output}", r.Key, "template kept for fire time")
+
+	tests := []struct{ name, yaml, want string }{
+		{"both", "    when: {check: 'true'}\n    ticket: {title: x}\n    run: {workflow: fix, vars: {sha: a, why: b}}\n", "exactly one of ticket and run"},
+		{"neither", "    when: {check: 'true'}\n", "exactly one of ticket and run"},
+		{"unknown workflow", "    when: {check: 'true'}\n    run: {workflow: nope}\n", `unknown workflow "nope"`},
+		{"missing var", "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: a}}\n", "needs var why"},
+		{"extra var", "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: a, why: b, x: c}}\n", `no var "x"`},
+		{"output without check", "    when: {ready_below: 1}\n    run: {workflow: fix, vars: {sha: a, why: b}, key: \"${check_output}\"}\n", "needs when.check"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse([]byte(base + tt.yaml))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+		})
+	}
+}

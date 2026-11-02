@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strconv"
 
@@ -19,6 +20,12 @@ import (
 // separate (#90).
 
 func (c *Controller) runStart(ctx context.Context, sc scope, p rpc.RunStartParams) (any, error) {
+	return c.startRun(ctx, sc, p, nil)
+}
+
+// startRun is run start for the RPC and for run: triggers. extra is added
+// to the run ticket's meta (the trigger link); steps do not get it.
+func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParams, extra map[string]any) (any, error) {
 	cfg := c.config()
 	w, ok := cfg.Workflows[p.Workflow]
 	if !ok {
@@ -86,7 +93,20 @@ func (c *Controller) runStart(ctx context.Context, sc scope, p rpc.RunStartParam
 	if p.Key != "" {
 		title += " " + p.Key
 	}
-	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: store.KindRun, Title: title, Fields: rf, Meta: meta}}
+	runMetaJSON := meta
+	if extra != nil {
+		m := map[string]any{}
+		if meta != nil {
+			if err := json.Unmarshal(meta, &m); err != nil {
+				return nil, err
+			}
+		}
+		maps.Copy(m, extra)
+		if runMetaJSON, err = json.Marshal(m); err != nil {
+			return nil, err
+		}
+	}
+	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: store.KindRun, Title: title, Fields: rf, Meta: runMetaJSON}}
 	var edges []store.Edge
 	prev := ""
 	for i, s := range w.Steps {
