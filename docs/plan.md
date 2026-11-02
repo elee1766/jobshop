@@ -101,7 +101,7 @@ without a restart.
 
 ## 4. Built so far (phase 3)
 
-Short list; behavior details are in section 7.
+Short list; behavior details are in `docs/notes/` (section 7).
 
 - Drain and undrain (#12), quarantine of crash-looping tickets and pools
   (#13), env refresh after deploys (#11), rate-limit backoff (#10).
@@ -155,6 +155,8 @@ Short list; behavior details are in section 7.
   pools started by key (#121).
 - `packs/operator`: the operator chat pool and prompt; selfdev extends
   it (#124).
+- Docs: one file per note in `docs/notes/` and per check in
+  `docs/verify/`; refinery resolves docs-only conflicts (#131).
 
 ## 5. What's next
 
@@ -190,8 +192,9 @@ master handled by a run on gasserver. The generic `github` pack (#107),
 which `packs/selfdev` extends, and its merge policy vars (#108) are built
 and stay, but are used only by selfdev. The retry limit and escalation
 boxes get their live evidence from one `drill` run (#114,
-`docs/gasserver-verify.md` section 8) linked on #82. The CI repair box
-gets one ci-repair drill run on a red throwaway branch (#117, section 9).
+`docs/verify/escalation-drill.md`) linked on #82. The CI repair box
+gets one ci-repair drill run on a red throwaway branch (#117,
+`docs/verify/ci-repair-drill.md`).
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -203,7 +206,7 @@ triggers.
 pool idle TTL and `attach --rw` (#122), the gateway (#123), the pack (#124).
 
 **Later.** Postgres backend against the same conformance suite.
-Per-session isolation (section 7.9).
+Per-session isolation (`docs/notes/users-security.md`).
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -259,7 +262,7 @@ All dated 2026-11-01 unless noted.
 - Resume uses the agent's `session/load` (jcode supports it). A journal
   fallback is only for agents without it.
   (2026-11-01, #43) Built: when load is unsupported or fails, the session
-  starts a new conversation seeded with a journal summary (7.1) instead of
+  starts a new conversation seeded with a journal summary (`docs/notes/session-files.md`) instead of
   starting blank or crash-looping.
 - Backpressure: when the host's buffer is full and no controller is
   connected, it stops reading the agent's stdout, pausing the agent. It
@@ -285,6 +288,14 @@ All dated 2026-11-01 unless noted.
   Supervise counts idle sessions before reading ready tickets, so a claim
   between the two reads cannot count one ticket as both ready and held and
   start a session over the cap (2026-11-02, #102).
+- Docs layout (2026-11-02, #131): behavior notes are one file each in
+  `docs/notes/<issue>-<slug>.md` and runbook checks one file each in
+  `docs/verify/<slug>.md`, replacing the numbered lists in section 7 and
+  `gasserver-verify.md`. Parallel PRs took the same next number and
+  conflicted (PR #120 escalated over it). Moved text is unchanged; the
+  directory is the index. The refinery resolves a docs-only conflict
+  itself instead of failing its step. The section 4 and 5 lists still
+  take one line per PR; such a conflict is docs-only.
 
 **Delivery and self-hosting**
 - Host: gasserver, as Linux user `jobshop` in `jobshop.slice` (6 cores,
@@ -489,506 +500,40 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 
 ## 7. Reference: behavior as built
 
-### 7.1 Session files and restart
+One file per feature in `docs/notes/`, named `<issue>-<slug>.md`, with
+the date it was added (2026-11-02, #131). The directory listing is the
+index: a new note is a new file, so parallel PRs do not collide on a
+section number or the end of a list. Do not add sections here. Notes
+moved from the old 7.x list, oldest first:
 
-Files in `sessions/<id>/`: `spec.json`, `host.lock` (flock; held means
-alive), `host.pid`, `host.log`, `acp.sock`, `journal.ndjson`, `exit.json`,
-and `work/` (git worktree when the pool sets `repo`).
-
-- The host rewrites request ids so a new controller never collides with an
-  old one, re-sends unanswered agent requests to a new controller, and
-  reports a prompt that finished while detached as `_jobshop/turn_end`.
-- Backpressure (decided 2026-11-01, #39): agent stdout is read and
-  journaled without waiting on the controller. Frames are then queued per
-  connection and one writer goroutine drains the queue, so a controller
-  that stops reading blocks only that goroutine. The queue holds at most
-  8 MiB or 4096 frames. Past that, agent notifications are dropped from
-  memory only: the writer replays them from the journal in seq order
-  before the next live frame and logs the count (`replayed frames from
-  journal`; the host has no metrics). Responses, agent requests and host
-  messages are never dropped. At most 256 agent requests wait for a
-  controller answer; more get a JSON-RPC error back to the agent. With no
-  controller nothing is queued. Optional `Hello.since` replays agent
-  notifications after a seq on connect (protocol unchanged).
-- Stopping a host: SIGTERM (forwarded to the agent's group, SIGKILL after
-  5s); the controller SIGKILLs the host after 10s.
-- Leak guards: the agent gets `Pdeathsig: SIGKILL` and its own process
-  group; the host is a child subreaper; the host exits with its agent and
-  after 30 minutes with no controller.
-- Controller start: open session tickets are adopted (live host) or
-  respawned (`session/load`); hosts with no open session are stopped.
-- Load fallback (#43): if the agent lacks `LoadSession` or `session/load`
-  fails, the controller calls `session/new` and builds a summary from
-  `journal.ndjson` (`host.Summarize`: prompts, agent text, tool call titles,
-  latest plan; at most 16 KiB, keeping the first prompt and the newest
-  items). The summary is prepended to the next turn's prompt, ended by
-  `[end of summary]`, with no extra turn; a later summary skips text
-  before that marker so summaries do not nest. The log says which path
-  (`load` or `new+summary`) was taken. The pending summary is memory only:
-  a controller restart before the next turn loses it.
-- Prompts use `context.WithoutCancel`, and stopping the controller closes
-  the connection instead of cancelling requests, so turns keep running in
-  the host.
-- Git: `fetch` then `worktree add --detach <ref>` per session, removed when
-  the session ends; git calls on one repo are serialized.
-- A worktree deleted under a live session (seen on gasserver 2026-11-01:
-  every tool call failed for five hours, tickets claimed and dropped) makes
-  the runner respawn the host before its next claim. Spawning prunes stale
-  worktree registrations and adds a fresh worktree at `ref`; the
-  conversation and claims are kept, uncommitted work in the old one is lost.
-- `${SESSION_DIR}` expands in agent args.
-
-### 7.2 Env refresh and session restart (#11, #37)
-
-`spec.json` carries `env_hash`, a sha256 of the agent's full env (inherited
-controller env minus per-start systemd variables, then the spec env). When
-adopting a live idle host whose hash differs, the controller stops it and
-respawns it at once with `session/load`; a busy session refreshes after its
-turn. `jobshop session restart <id>` does the same on demand, keeping
-claims; `--now` cancels the running turn first. Neither counts as a crash.
-A respawned host's stale `exit.json` is removed before spawn, and an
-adopted host whose agent never initialized is treated as fresh, so the
-conversation is always loaded. A live session also re-checks the hash
-before each claim, after every turn and on every idle poll (#106,
-2026-11-02), so a session that stays connected across a deploy or a
-reload that changes agent env refreshes too. Stopping a host also stops
-any process left with the session's `JOBSHOP_SOCKET` in its environ
-(#111): jcode `acp --socket` runs tools in a detached `jcode serve`
-daemon outside the host's process group, so without this the refreshed
-agent reconnected to a daemon that still had the old PATH.
-
-### 7.3 Rate limits, drain, quarantine (#10, #12, #13)
-
-- A prompt error mentioning `429`, `rate_limit` or `is unavailable` is not
-  a crash: the session keeps host and claims and retries the same prompt
-  after 1m, doubling to 15m. While any session of a pool backs off, no new
-  sessions start for it. `session list` shows `backoff_until`.
-- `jobshop drain [--pool P]` / `undrain`: no new sessions or claims for the
-  pool; running turns finish and sessions end `drained`. Controller
-  memory only, so a restart undrains.
-- A `crashed` session releases its tickets with reason `session crashed`.
-  After 3 such releases a ticket is deferred 1h and labeled `quarantined`
-  with a comment listing the exits. Undo: `ticket update <id> --defer 0`
-  and `label rm <id> quarantined`. A pool with 3 crashed sessions in 10
-  minutes starts none for 15 minutes; the pause is set before the release.
-
-### 7.4 Messages (#16)
-
-`jobshop send <to> <text> [--interrupt]` creates a `message` ticket; `to`
-is a session id, a session key, or `pool:<name>`. The driver delivers
-before each `claim --next`: it claims and closes each message (`delivered`,
-at most once) and sends them as one prompt starting `Messages for you:`.
-During a turn it polls for interrupt messages and on one sends
-`session/cancel`, delivers, then continues. The pool-level interrupt
-permission is not built.
-
-### 7.5 Attach and session admin (#17)
-
-- `jobshop session attach <id> [--since <seq>] [--json] [--no-follow]`
-  renders the journal file and follows it; works while the controller is
-  down.
-- `session list` joins session tickets with their dirs: `alive`, pids,
-  current ticket, last journal seq, `exit`, `crashes`, `backoff_until`,
-  orphans. `--state <resolution>` and `--since <dur>` (#52) list only
-  closed sessions matching both, without orphans:
-  `session list --state crashed --since 24h` is the crash evidence.
-- `session reap` stops hosts with no open session; `--closed` also deletes
-  old closed session dirs.
-- `shutdown` leaves sessions running; `shutdown --all` ends them first.
-
-### 7.6 Triggers (#26)
-
-`triggers:` entries have `when`, a `ticket` template and an optional
-`cooldown`. Each tick the controller fires a trigger when all hold: no open
-ticket it created (`meta.trigger.name`), cooldown passed since its last
-ticket closed (a last ticket read with no `closed_at`, because it closed
-mid-evaluation, waits for the next tick; #47, 2026-11-01), cron slot due, every count threshold met. Thresholds are
-`{ready,open,in_progress}_{below,above}` over `when.pool`, `when.kind`
-(default task) and `when.label`. State is read back from the store, so
-restarts change nothing. Cron is 5-field, UTC unless `when.timezone`;
-missed slots collapse into one fire, and a new trigger does not fire for
-past slots. `jobshop trigger list` shows whether each would fire and why.
-`when.check` (#34) is a `sh -c` command run in the root dir after the
-store conditions hold; exit 0 holds. Non-empty trimmed stdout is a dedup
-key (`meta.trigger.key`, prefixed with the trigger name): one ticket per
-key, ever. `check_timeout` defaults to 1m; a timeout logs an error.
-A trigger may start a workflow run instead of filing a ticket (7.19).
-
-### 7.7 Packs and reload (#27, #38)
-
-`packs:` lists `path` (relative to the root) and `vars`. `pack.yaml` holds
-`agents`, `pools`, `triggers`, `workflows`, and `defaults`/`extends`
-(7.22); other keys are rejected. Merge: packs in
-order, then jobshop.yaml; later sources win per key and per field through
-nested maps; lists and scalars replace whole. `${name}` comes from the
-pack's vars (a bare `${name}` keeps the var's type, `$$` is a literal `$`,
-unset is an error); jobshop.yaml is not substituted. `prompt_file` is read
-relative to its declaring file. `jobshop reload`/SIGHUP swaps the config
-atomically or keeps the old one on error: pool limits and triggers apply on
-the next tick (reload waits for a running tick, #102), prompts and timeouts
-on the next turn, agent command and env on the next host. Telemetry changes need a restart. `jobshop config show`
-(admin) prints the live merged config with jobshop.yaml keys, and
-`sources`: for each `agents.<name>`, `pools.<name>` and `triggers.<name>`,
-the files that set it in merge order (packs, then jobshop.yaml). OTLP
-header values print unexpanded.
-
-### 7.8 Observability (#14, #15)
-
-- `telemetry.metrics_listen` serves `/metrics`: `jobshop_sessions` (by
-  pool and state idle/working/backoff), `jobshop_session_restarts_total`,
-  `jobshop_tickets_ready`, `jobshop_claims_total`, `jobshop_closes_total`,
-  `jobshop_lease_expiries_total`, `jobshop_rpc_duration_seconds`,
-  `jobshop_turns_total` (by pool and `jobshop_turn_stop_reason`: the ACP
-  stop reason, or `error` when the prompt failed; counted once per turn
-  after rate-limit retries, not on shutdown),
-  `jobshop_sessions_ended_total` (by pool and `jobshop_resolution`: idle,
-  crashed, stuck, ...; counted in `runner.finish`, #71, 2026-11-01). No
-  ticket or session ids on metrics.
-- `telemetry.otlp_endpoint` sends traces and slog logs over OTLP/HTTP.
-  Spans: `supervisor tick`, `rpc <method>`, session lifecycle. Each session
-  has one trace; its traceparent is stored on the session and passed to
-  the agent as `JOBSHOP_TRACEPARENT`, and the CLI propagates it.
-- `otlp_traces_endpoint` and `otlp_logs_endpoint` (full URLs) override
-  the base per signal, and either alone turns that signal on.
-  `otlp_headers` go on both; `${VAR}` in values expands from the
-  controller env at startup, never at parse, so `config show` prints the
-  placeholder. The nix module exposes these as `services.jobshop.telemetry.*`
-  plus `environmentFile` for the tokens (#44).
-- Grafana dashboard: `deploy/grafana/jobshop.json` (sessions by pool and
-  state, backoff, restarts, ready queue, claims and closes, rpc p95,
-  turns by stop reason). A test scrapes `/metrics` and fails if a panel
-  names a series or label that is not exported.
-- `deploy/verify-telemetry.sh` (POSIX sh, curl and jq, `--help`) checks a
-  deployment: `/metrics` serves `jobshop_*`, the VictoriaMetrics target is
-  up, `jobshop_sessions` and `jobshop_tickets_ready` exist per pool, and
-  VictoriaTraces has a `session` trace in the last hour. Counters that
-  have not incremented yet are listed, not failed. CI shellchecks it
-  (`shellcheck -s sh`, #65).
-  Runbook: `docs/gasserver-verify.md` section 5 (#55).
-- `deploy/verify-sessions.sh` (POSIX sh, jq) fails when any session closed
-  `crashed` or `stuck` within `--since` (default 24h), printing id, pool
-  and end reason. Used in runbook section 0 (#77).
-- Planned: store transaction spans.
-- Conversation export (decided 2026-11-01, #45): `conversation_export:
-  true` on a pool (default off; needs a logs endpoint, checked at load)
-  makes its hosts emit OTLP log records named
-  `jobshop.conversation.<event>`: `prompt`, `agent_message`,
-  `agent_thought` (chunks joined), `tool_call` (title, kind, input),
-  `tool_result` (status changes, input, output), `turn_end`. Records carry
-  session, pool, project, the ticket (sent in the prompt's
-  `_meta["jobshop/ticket"]`) and the session traceparent. Redaction runs
-  before a record is built: values under secret-named JSON keys,
-  secret-named launch-env values (8+ bytes, exact match) and gitleaks
-  default-rule findings become `[REDACTED]`. Each text field is capped at
-  8 KiB with `jobshop.conversation.truncated=true`. Frames go to a queue
-  of 1024 frames / 16 MiB; overflow drops and counts, the exporter has no
-  retries and a 10s timeout, and the host gives the final flush 5s.
-  Hosts report counts every 10s; the controller exports
-  `jobshop_conversation_export_dropped_total` and
-  `jobshop_conversation_export_truncated_total` by pool. Code:
-  `pkg/telemetry/convexport.go`. The journal stays the record of truth.
-- gasserver backends: VictoriaMetrics, VictoriaLogs, VictoriaTraces, all
-  OTLP/HTTP, no collector.
-
-### 7.9 Users and security
-
-Controller, hosts and agents all run as `jobshop`. Accepted risk: an agent
-can do anything the controller can; socket scoping guards against mistakes,
-not hostile agents. Later options if needed: agents as a separate user via
-a narrow sudoers rule, or per-session bubblewrap or Landlock applied by the
-host (read-only system, writable worktree, own CLI socket).
-
-### 7.10 Meta pack names (#29)
-
-Top-level `meta` keys on `ticket create`/`update` must be `github`,
-`trigger`, or listed in `meta_packs:` (a string list in jobshop.yaml,
-picked up on reload). Unknown names fail with `invalid`. The store only
-checks the `{"<pack>": {...}}` shape.
-
-### 7.11 Ticket trace (#53)
-
-`jobshop ticket trace [id] [-d depth]` prints a tree as JSON. Each node
-shows the trigger that created the ticket (`meta.trigger.name`), its
-creator, the sessions that claimed it (from history), its edges, and the
-GitHub issue and PR URLs in its body and comments. Children are tickets
-with `parent_id` set to the node, plus tickets that one of its holders
-created while holding it (claim to close, release or lease expiry). The
-second rule links a plan ticket to the dev tickets its planner filed. The
-depth defaults to 5, and a ticket appears once. Store `Filter.CreatedBy`
-backs the lookup.
-
-`deploy/verify-closed-loop.sh <plan-ticket>` (#76) checks one cycle on that
-tree: the plan ticket came from a trigger and is closed, its planner
-session created a dev ticket, one of those reached `refinery`, and it links
-a PR that `gh` reports as merged. It exits 1 naming the first missing link.
-`--trace FILE` reads saved JSON. Tests in `deploy/` run it against
-`deploy/testdata` with a fake `gh`.
-
-### 7.12 Ticket prompt (#70)
-
-The claim prompt is the pool prompt, the ticket id, title and body, then
-`# Recent comments` when the ticket has any: the last 3 as
-`[time] author:` and the body, each body capped at 2000 bytes with
-`[truncated]`. A line tells the agent to address a refinery finding, push
-and hand back to refinery. A ticket without comments gets the same
-prompt as before.
-
-### 7.13 Orphaned tickets (#84)
-
-An orphaned ticket is open, unclaimed (no holder), claimable (`task`), and
-has an empty pool or one not in the loaded config. Every supervisor tick
-and every successful reload the controller queries them, logs WARN
-`ticket has no claimable pool` with `reason=no_pool|unknown_pool` the first
-time it sees a ticket with that reason, and sets the gauge
-`jobshop_tickets_orphaned{reason}` (dashboard panel "Orphaned tickets").
-A ticket that gets a configured pool, a holder, or is closed drops out;
-if it is orphaned again later it warns again. `jobshop ticket list
---orphaned [--project p] [-n N]` lists them through the controller.
-
-### 7.14 Workflow config (#88)
-
-`workflows:` merges like `pools:` (per entry, then per field; `steps` is a
-list and replaces whole). Fields: `vars`, `issue`, `escalate_pool`,
-`steps` (`id`, `pool`, `title`, `prompt` or `prompt_file`, `retries`,
-default 2). Pack var substitution skips step `title` and `prompt`, so
-both stay templates for run start; the loader records the declaring
-pack's vars as `pack_vars` (not user-settable) and `prompt_file` is read
-relative to the declaring file. Load fails on: an unknown step pool or
-`escalate_pool`, a missing or duplicate step id, no steps, a missing
-title, both or neither of `prompt` and `prompt_file`, negative
-`retries`, a `${var}` in a title or prompt that is neither a workflow
-var nor a pack var, and `issue` not in `vars`. `config show` lists
-workflows with `sources["workflows.<name>"]`; `config reload` reports
-their count. `jobshop run start` (7.15) uses them.
-
-### 7.15 Runs (#89)
-
-`jobshop run start <workflow> -v k=v [--key k]` (admin, or a session in
-the workflow's project) checks vars (every workflow var set, no others),
-fills step titles and prompts from pack vars plus run vars, and calls
-`CreateGraph` once: a `run` ticket (no pool, project of the first step's
-pool, `fields {workflow, pack, vars, key, state: running}`), one `step`
-ticket per step (`parent_id` = run, step pool, body = prompt, `fields
-{run, step, index, retries, failures: 0}`), and `blocks` edges step i+1 on
-step i. With `issue`, run and steps get `meta.github.issue` (a number when
-numeric). Ids come from `Store.NewID` so edges are wired before insert.
-With `--key`, an open run of the same workflow and key is returned
-(`existing: true`); starts are serialized in the controller. `step` is a
-claimable kind, so pool sessions claim steps like tasks; `ticket create`
-rejects `run` and `step`.
-
-When a step closes through `ticket close` the controller closes its run
-`done` (state `done`) if every step is closed `done`; each tick also
-sweeps running runs for this. `run show <id>` prints the run line, vars,
-and one line per step (index, step, id, pool, status, resolution, holder,
-failures/retries); `--json` prints the raw result. `run list [--state]`
-lists runs newest first. `run cancel` closes open steps and the run
-`cancelled`. `run resume [--step s]` reopens the step (default: the
-first not closed `done`), resets its failures, comments on it, and sets
-the run back to `running`. A step that is closed `failed` or still
-unfinished keeps the next step blocked (7.16).
-
-### 7.16 Step retries and escalation (#90)
-
-The store counts a step failure in the same transaction as the event
-that caused it: `close failed`, `release` of a claimed step (CLI, the
-driver's reminder release, crash release), dead-session release of a
-claimed step (a pre-assignment never claimed does not count) and lease
-expiry. Each count bumps `fields.failures`, records `failures` in the
-history diff and adds a controller comment naming the attempt and how it
-failed. `retries: N` allows N failed attempts. Below N the step goes back
-to `open` (a `failed` close is undone). At N it closes `failed`.
-Readiness and `claim` treat a step closed with any resolution but `done`
-as still blocking, so later steps wait.
-
-After each of those calls, and every tick, the controller checks the run.
-If a step is exhausted and the run is `running`, it sets
-`fields.state=needs_human`, bumps `fields.escalations`, and creates one
-task "Escalate run <id>" in the workflow's `escalate_pool`, priority 1,
-label `needs-human`, with the run's `meta.github` and
-`meta.run {id, workflow, escalation: "<run>/<n>"}`. The body lists each
-step's resolution, `failures/retries` and its last 3 comments. The
-escalation key makes a tick or a crash retry file at most one ticket per
-`needs_human` episode, and closing the ticket does not file another.
-`run resume` resets failures and returns the run to `running`, so a later
-exhaustion is a new episode with a new ticket. The gauge
-`jobshop_runs_needs_human{jobshop_project}` counts open `needs_human`
-runs (dashboard panel "Runs needing a human"). The selfdev planner
-prompt handles escalation tickets: it labels the issue `needs-human`,
-comments mentioning @elee1766, and lists open escalations on the target.
-
-### 7.17 Workspaces in the NixOS module (#92)
-
-`services.jobshop.workspaces.<name>` has `url`, `dir` (default
-`<dataDir>/workspaces/<name>`), `sshCommand`, `livePacks`,
-`livePackVars`, `syncInterval` and `selfDeploy`. Each workspace with a
-url gets `jobshop-workspace-<name>` (clone before the controller) and
-`jobshop-workspace-<name>-sync` (fast-forward, reload on pack changes;
-timer only with live packs). Live packs of all workspaces go into the
-generated `packs:` with their own vars. At most one workspace sets
-`selfDeploy` (assertion); `selfDeploy.enable` needs one. That workspace
-gives the repo for the green-commit pick, and its packs follow the
-deployed commit. The old `workspace` option still evaluates: it maps to
-`workspaces.default` with the old dir (`<dataDir>/src/<repo>`) and
-`selfDeploy = selfDeploy.enable`, so gasserver keeps its checkout; only
-the unit names change (`jobshop-workspace-default[-sync]`). `checks.module`
-in the flake evaluates a two-workspace config, the two-selfDeploy
-assertion and the old option.
-
-### 7.18 selfdev pr-work (#93)
-
-`packs/github/pack.yaml` (selfdev since #107) declares `pr-work` (vars `[issue]`, `issue:
-issue`, `escalate_pool: plan`): `implement` (dev, 3 retries,
-`prompts/implement.md`), `review-merge` (refinery, 2,
-`prompts/merge.md`) and `post-merge` (refinery, 2,
-`prompts/post-merge.md`). The planner runs `jobshop run start pr-work
---var issue=<n> --key issue-<n>` per new issue, and a dependency is an
-edge from the dependent run's `implement` to the dependency's
-`post-merge`. Pool prompts now only frame the role; the step body is the
-instruction. Review findings: the refinery comments, runs `run resume
-<run> --step implement`, and closes `review-merge` `failed`, so the step
-reopens behind implement and counts an attempt. `post-merge` checks
-master CI on the merge commit and that `jobshop version` reports that
-commit or a descendant (self-deploy picked it up). Because a release
-counts as a failed attempt (7.16), the step prompts wait in-turn
-(`gh run watch`, `sleep`) instead of deferring and releasing. A dev task
-that is not a step (e.g. `master-red`) is turned into a run for its
-issue. The refinery still handles older non-step hand-off tickets the
-old way.
-
-### 7.19 Run triggers (#98)
-
-A trigger has exactly one of `ticket:` and `run: {workflow, vars, key}`.
-Load fails on an unknown workflow, a var the workflow lacks, or a
-workflow var set by neither the trigger nor pack vars. `vars` and `key`
-are templates whose only var is `${check_output}`, the first line of the
-check's trimmed stdout (allowed only with `when.check`); pack vars are
-substituted at load as elsewhere. Firing calls the `run start` code path
-as the controller, with the key, so an open run with that key is reused
-instead of a second one. The run ticket carries `meta.trigger`, so the
-open run holds the trigger, its close starts the cooldown, and the check
-key dedups exactly as for ticket triggers. Steps do not carry the
-trigger meta.
-
-### 7.20 selfdev blocker-check (#100)
-
-`blocker-check` (vars `[ticket, issue]`, `issue: issue`,
-`escalate_pool: plan`) has one step, `assess` (plan, `retries: 1`,
-`prompts/blocker.md`). The planner starts it with `--key blocker-<id>`
-(`ticket=none`, `--key blocker-issue-<n>` when only the issue claims a
-blocker). The step checks self-deploy (master vs `jobshop version`),
-pools (`ticket list --orphaned`) and permissions or credentials, comments
-the evidence on the issue, then either routes the work back (`ticket
-update --pool`, `run resume`, drop `needs-human`) and closes `done`, or
-closes `failed`, which escalates at once.
-
-### 7.21 selfdev ci-repair (#99)
-
-`master-red` is a `run:` trigger: `{workflow: ci-repair, vars: {sha:
-${check_output}}, key: ${check_output}}`. `ci-repair` (vars `[sha]`,
-`escalate_pool: plan`) has `fix` (dev, 2 retries, `prompts/ci-fix.md`:
-find or file the fix issue, `gh run view --log-failed`, open a PR) and
-`merge` (refinery, 2 retries, `prompts/ci-merge.md`). It does not reuse
-`merge.md`, which needs an `issue` var and refuses to merge while master
-is red. With the SHA as both run key and trigger key, a SHA gets one run
-and at most two fix attempts, then `needs_human` and an escalation ticket
-(7.16).
-
-### 7.22 Generic github pack and pack extends (#107)
-
-`packs/github` holds the plan, dev and refinery pools, the `replan` and
-`master-red` triggers and the `pr-work`, `ci-repair` and `blocker-check`
-workflows with their prompts. Pack vars: `repo` (owner/repo), `checkout`,
-`agent`, `human`, `check_cmd`, and defaulted `ci_workflow`,
-`dev_sessions`, `guide`, `deploy_check`. `pack.yaml` may set
-`defaults:` (var values the including file did not set) and `extends:`
-(a list like `packs:` whose `vars` are templates over the extending
-pack's vars). Base layers merge before the extending pack, each recorded
-in `sources` under its own file; nesting deeper than 8 fails as a cycle.
-Pool `prompt_file` contents in a pack now get pack var substitution
-(host prompt files stay literal). `packs/selfdev` is `extends: ../github`
-with Jobshop's values; its own vars (`repo` = checkout path, `agent`,
-`dev_sessions`) are unchanged, so hosts and the NixOS module need no
-change. The merged selfdev config has the same pools, triggers,
-workflows, steps and retries; prompt text differs only in wording that
-named Jobshop or self-deploy directly.
-
-### 7.23 Merge policy vars (#108)
-
-`packs/github` defaults `merge_method: squash`, `required_approver: ""`
-and `required_checks: ""`; selfdev keeps the defaults. `review-merge`
-and ci-repair `merge` run `gh pr merge --${merge_method}
---match-head-commit <head>`. A set approver must have an `APPROVED`
-review whose `commit_id` is the current head (`gh api
-repos/<repo>/pulls/<n>/reviews`, filtered by login, state and commit);
-without it the step comments and closes `failed`, so it reopens and
-checks again until the retry limit escalates. ci-repair gets no waiver:
-a fix for red master needs the same approval. Empty `required_checks`
-means every check must pass, otherwise the listed names must be
-`SUCCESS`. The rules are prompt text, not controller code, like the rest
-of the refinery's judgment.
-
-### 7.24 Escalation drill (#114)
-
-Added 2026-11-02. `packs/github` has a `drill` workflow (var `issue`,
-`escalate_pool: plan`) with one step `fail` in `dev`, `retries: 1`,
-whose prompt only comments and closes `failed`. One run therefore ends
-in `needs_human` with an "Escalate run <id>" ticket in `plan`, proving
-the 7.16 path live without waiting for a real failure. Runbook:
-`docs/gasserver-verify.md` section 8. Test: `TestSelfdevDrill`.
-
-### 7.25 CI repair drill (#117)
-
-Added 2026-11-02. `packs/github` var `ci_branch` (default `master`, kept
-by selfdev) is the branch the `master-red` check passes to `gh run list
---branch`. The drill (`docs/gasserver-verify.md` section 9) starts a
-`ci-repair` run by hand for a red SHA on a throwaway `drill/red-ci`
-branch, so master never goes red. Test: `TestGithubPackLoads` overrides
-`ci_branch`.
-
-### 7.26 session.send and session.subscribe (#121)
-
-Admin socket only.
-
-- `session.send {id | pool+key, text, interrupt}` creates a message
-  ticket to the session id (first line title, rest body; 7.4 delivery).
-  With pool and key and no open session for the key, a `type: chat` pool
-  starts one (`started: true`); a ticket pool is an error. A key open in
-  another pool is a conflict. Message turns are interruptible too.
-- Chat pools claim no tickets and the supervisor starts no sessions for
-  them. Idle TTL and restart by key are #122.
-- `session.subscribe {id, since_seq}` stays open and sends
-  `session.event` notifications on the same connection: `turn_start`
-  (prompt), `text` (message chunk), `tool` (id, title, status),
-  `turn_end` (stop reason or error), each with its journal seq, and
-  `state` (status, resolution; no seq) first and on change. It returns
-  `{seq, closed, resolution}` when the session closes or the client
-  hangs up. Reconnect with the last seq seen; `rpc.Client.Subscribe`
-  tracks it. Test: `TestSessionSendSubscribe`.
-
-### 7.27 Stale-blocker drill (#119)
-
-Added 2026-11-02. Runbook `docs/gasserver-verify.md` section 10 proves
-the blocker-check stale path live: a ticket waiting on an
-already-deployed sha, parked in pool `drill-none`, plus a `needs-human`
-issue. Expected: `assess` closes done, the ticket returns to `dev`, the
-label is removed, no escalation. `prompts/blocker.md` now says how to
-pick the pool to route back to: the pool from before parking (ticket
-history), else `dev` for code and `plan` for decisions.
-
-### 7.28 Operator pack (#124)
-
-Added 2026-11-02. `packs/operator` has one pool, `operator`, with
-`prompts/operator.md`: manage tickets, issues, messages, runs and reload
-for the operator, short replies with links, and turn a correction into
-an issue plus a prompt PR worked by a `pr-work` run. `packs/selfdev`
-extends it, so gasserver gets the pool through its existing live pack.
-Until chat pools (#122) land it has `max_sessions: 0`; a session is
-started by hand with a key and a chat ticket, because message prompts
-do not carry the pool prompt. `reload` and `session list` need the
-admin socket, so from a session socket the prompt says to hand the
-command to the operator. Tests: `TestOperatorPackLoads`,
-`TestSelfdevPackLoads`.
+- [Session files and restart](notes/session-files.md)
+- [Users and security](notes/users-security.md)
+- [Rate limits, drain, quarantine](notes/10-rate-limits-drain-quarantine.md) (#10, #12, #13)
+- [Env refresh and session restart](notes/11-env-refresh.md) (#11, #37)
+- [Observability](notes/14-observability.md) (#14, #15)
+- [Messages](notes/16-messages.md) (#16)
+- [Attach and session admin](notes/17-attach-session-admin.md) (#17)
+- [Triggers](notes/26-triggers.md) (#26)
+- [Packs and reload](notes/27-packs-reload.md) (#27, #38)
+- [Meta pack names](notes/29-meta-pack-names.md) (#29)
+- [Ticket trace](notes/53-ticket-trace.md) (#53)
+- [Ticket prompt](notes/70-ticket-prompt.md) (#70)
+- [Orphaned tickets](notes/84-orphaned-tickets.md) (#84)
+- [Workflow config](notes/88-workflow-config.md) (#88)
+- [Runs](notes/89-runs.md) (#89)
+- [Step retries and escalation](notes/90-step-retries-escalation.md) (#90)
+- [Workspaces in the NixOS module](notes/92-nix-workspaces.md) (#92)
+- [selfdev pr-work](notes/93-selfdev-pr-work.md) (#93)
+- [Run triggers](notes/98-run-triggers.md) (#98)
+- [selfdev ci-repair](notes/99-ci-repair.md) (#99)
+- [selfdev blocker-check](notes/100-blocker-check.md) (#100)
+- [Generic github pack and pack extends](notes/107-github-pack-extends.md) (#107)
+- [Merge policy vars](notes/108-merge-policy-vars.md) (#108)
+- [Escalation drill](notes/114-escalation-drill.md) (#114)
+- [CI repair drill](notes/117-ci-repair-drill.md) (#117)
+- [Stale-blocker drill](notes/119-stale-blocker-drill.md) (#119)
+- [session.send and session.subscribe](notes/121-session-send-subscribe.md) (#121)
+- [Operator pack](notes/124-operator-pack.md) (#124)
 
 ## 8. Chat gateway
 

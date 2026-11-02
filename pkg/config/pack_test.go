@@ -156,6 +156,7 @@ packs:
 	assert.Contains(t, c.Triggers["master-red"].When.Check, "--repo elee1766/jobshop --branch master --workflow ci")
 	assert.Contains(t, c.Workflows["pr-work"].PackVars["deploy_check"], "jobshop version")
 	assert.Equal(t, "go build ./... && go vet ./... && go test ./...", c.Workflows["pr-work"].PackVars["check_cmd"])
+	assert.Contains(t, c.Workflows["pr-work"].PackVars["docs_rule"], "docs/notes/<issue>-<slug>.md")
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
 	op := c.Pools["operator"]
@@ -255,9 +256,13 @@ packs:
 	assert.Equal(t, "ci-repair", mr.Run.Workflow)
 	w := c.Workflows["pr-work"]
 	assert.Equal(t, "make test", w.PackVars["check_cmd"])
-	body, err := FillTemplate(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test"})
+	assert.Contains(t, w.PackVars["docs_rule"], "Never append a numbered section", "docs_rule default (#131)")
+	body, err := FillTemplate(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
 	require.NoError(t, err)
 	assert.Contains(t, body, "`make test`")
+	assert.Contains(t, body, "Docs: put a design note")
+	assert.Contains(t, w.Steps[1].Prompt, "Conflicts only in docs", "refinery resolves docs-only conflicts (#131)")
+	assert.Contains(t, c.Workflows["ci-repair"].Steps[1].Prompt, "Conflicts only in docs")
 }
 
 // TestGithubPackGeneric: nothing in packs/github names the Jobshop repo.

@@ -1,6 +1,6 @@
 #!/bin/sh
-# Closed-loop check for one planner cycle (docs/gasserver-verify.md
-# section 7). Reads `jobshop ticket trace <plan-ticket>` and exits non-zero
+# Closed-loop check for one planner cycle (docs/verify/closed-loop.md).
+# Reads `jobshop ticket trace <plan-ticket>` and exits non-zero
 # naming the first missing link.
 # shellcheck disable=SC2016 # $h, $c and $t are jq variables, not shell
 set -u

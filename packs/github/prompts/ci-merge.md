@@ -14,6 +14,9 @@ Releasing this step counts as a failed attempt, so wait inside your turn
 (`gh pr checks <n> --watch`, `sleep 300`) instead of releasing.
 
 1. Behind master: `gh pr update-branch <n>`, then wait for CI.
+   Conflicts only in docs (`*.md`): rebase on `origin/master`, resolve
+   them here keeping both sides, `git push --force-with-lease`, comment
+   on the PR, and wait for CI. Code conflicts are case 2.
 2. Needs changes (CI failing, conflicts, does not fix the failure):
    comment the findings on the PR and on the `fix` step,
    `jobshop run resume <run> --step fix`, then `jobshop close -r failed`.

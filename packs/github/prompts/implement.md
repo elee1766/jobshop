@@ -16,6 +16,8 @@ Otherwise: `git switch -c issue-${issue}`, make the change, run
 `gh pr create --base master --title "<summary> (#${issue})" --body "Closes #${issue}. ..."`.
 Wait for CI with `gh pr checks --watch`; fix failures and push again.
 
+Docs: ${docs_rule}
+
 Do not merge. When CI is green on the head you pushed:
 `jobshop comment "PR <url> head <sha>"` (sha from `git rev-parse HEAD`),
 then `jobshop close`. Closing `done` makes the `review-merge` step ready

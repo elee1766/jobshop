@@ -1,6 +1,6 @@
 #!/bin/sh
-# Crashed-session check for a deployed Jobshop (docs/gasserver-verify.md
-# section 0). Exits non-zero when any session closed crashed or stuck in
+# Crashed-session check for a deployed Jobshop (docs/verify/baseline.md).
+# Exits non-zero when any session closed crashed or stuck in
 # the window. Stuck counts as a failure (#71).
 set -u
 

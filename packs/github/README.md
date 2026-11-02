@@ -2,13 +2,13 @@
 
 Agents that work one GitHub repo through issues and PRs: a planner, dev
 sessions and a refinery that merges. `packs/selfdev` is this pack with
-Jobshop's values (`extends:`, `docs/plan.md` 7.22).
+Jobshop's values (`extends:`, `docs/notes/107-github-pack-extends.md`).
 
 ## Flow: one `pr-work` run per issue
 
 The planner files an issue and starts
 `jobshop run start pr-work --var issue=<n> --key issue-<n>`. The run has
-three steps, each blocked on the one before (`docs/plan.md` 7.15, 7.16):
+three steps, each blocked on the one before (`docs/notes/89-runs.md`, `90-step-retries-escalation.md`):
 
 1. `implement` (dev, 3 retries, `prompts/implement.md`): branch, PR,
    green CI, comment `PR <url> head <sha>`, close `done`.
@@ -56,7 +56,7 @@ and closes `done`. Real: it closes `failed`, which escalates at once.
 ## Flow: `ci-repair` per failing master SHA
 
 `master-red` runs `jobshop run start ci-repair --var sha=<sha> --key
-<sha>` itself (a `run:` trigger, `docs/plan.md` 7.19). Two steps:
+<sha>` itself (a `run:` trigger, `docs/notes/98-run-triggers.md`). Two steps:
 
 1. `fix` (dev, 2 retries, `prompts/ci-fix.md`): read
    `gh run view --log-failed`, find or file the fix issue, open a PR,
@@ -79,6 +79,7 @@ and file "Escalate run <id>" in `plan`.
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `human` | GitHub user mentioned on escalations |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
+| `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
 | `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
 | `ci_branch` | Branch `master-red` watches. Default `master` |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |

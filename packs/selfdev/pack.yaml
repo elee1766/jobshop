@@ -13,6 +13,12 @@ extends:
       human: elee1766
       ci_workflow: ci
       check_cmd: go build ./... && go vet ./... && go test ./...
+      docs_rule: >-
+        behavior as built goes in a new file
+        `docs/notes/<issue>-<slug>.md` (short, dated), a runbook check in a
+        new file `docs/verify/<slug>.md`. Never append a numbered section
+        to docs/plan.md or docs/gasserver-verify.md; decisions go in
+        plan.md section 6 and the section 4 and 5 lists.
       guide: >-
         Jobshop is Go, module github.com/elee1766/jobshop. Read AGENTS.md
         and docs/ first (docs/plan.md is the plan and decision log).

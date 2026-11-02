@@ -11,8 +11,11 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
 - Store queries are sqlc (`pkg/store/sqlite/sqlc.yaml`); regenerate after
   editing `pkg/store/sqlite/queries/` or `migrations/`.
 - Record design decisions in `docs/` with the date. In `docs/plan.md`: a
-  decision goes in section 6, behavior as built in section 7 (one
-  subsection per feature, short), and update the lists in sections 4 and 5.
+  decision goes in section 6, behavior as built in a new file
+  `docs/notes/<issue>-<slug>.md` (short, dated), a new runbook check in a
+  new file `docs/verify/<slug>.md`, and update the lists in sections 4
+  and 5. Never add a numbered section to plan.md or gasserver-verify.md:
+  parallel PRs take the same number and conflict (#131).
   Do not append long paragraphs to other sections.
 - Plain names, short comments explaining why, no marketing language.
 

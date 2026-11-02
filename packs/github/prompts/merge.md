@@ -19,6 +19,12 @@ releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
    then start over from the top.
 2. Behind master (`mergeStateStatus` BEHIND): `gh pr update-branch <n>`,
    then wait for CI on the new head.
+   Conflicts only in docs (`*.md`; `gh pr checkout <n>`,
+   `git rebase origin/master`, every conflicted file is docs): resolve
+   them here instead of failing the step. Keep both sides; if both added
+   a numbered section, give this PR the next free number. Then
+   `git push --force-with-lease`, comment on the PR what you resolved,
+   and wait for CI on the new head. Any non-docs conflict is case 4.
 3. Waiting (CI pending): wait for it.
 4. Needs code changes (required checks failing after a rerun of a flaky job, merge
    conflicts, unresolved review comments, acceptance criteria not met):

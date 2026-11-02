@@ -247,7 +247,7 @@ as its own user, not as `agent`.
 - **Binary pinning**: the NixOS module points at a specific `jobshop`
   store path. Promote = bump the flake input on gasserver and switch;
   rollback = previous generation. This replaces the symlink scheme in
-  plan section 7.
+  `docs/plan.md`.
 - **Where the module lives**: `nixosModules.jobshop` in this repo, imported
   by `gasserver.nix` as a flake input. Host-specific values (limits,
   secrets) stay in `gasserver.nix`.
