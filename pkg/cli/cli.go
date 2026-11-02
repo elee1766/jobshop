@@ -58,6 +58,7 @@ type root struct {
 	Edge      edgeCmd      `cmd:"" help:"Manage dependencies between tickets."`
 	Label     labelCmd     `cmd:"" help:"Manage labels."`
 	Session   sessionCmd   `cmd:"" help:"Manage sessions."`
+	Run       runCmd       `cmd:"" help:"Start and inspect workflow runs."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`

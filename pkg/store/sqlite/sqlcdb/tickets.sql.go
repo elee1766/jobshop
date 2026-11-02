@@ -39,6 +39,52 @@ func (q *Queries) ExpiredLeases(ctx context.Context, now int64) ([]string, error
 	return items, nil
 }
 
+const findOpenRunByKey = `-- name: FindOpenRunByKey :one
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+WHERE kind = 'run' AND status <> 'closed'
+  AND json_extract(fields, '$.key') = ?1
+  AND json_extract(fields, '$.workflow') = ?2
+ORDER BY created_at, id
+LIMIT 1
+`
+
+type FindOpenRunByKeyParams struct {
+	Key      string
+	Workflow string
+}
+
+// FindOpenRunByKey uses tickets_run_key; at most one open run per
+// workflow and key (the controller serializes starts).
+func (q *Queries) FindOpenRunByKey(ctx context.Context, arg FindOpenRunByKeyParams) (Ticket, error) {
+	row := q.db.QueryRowContext(ctx, findOpenRunByKey, arg.Key, arg.Workflow)
+	var i Ticket
+	err := row.Scan(
+		&i.ID,
+		&i.Project,
+		&i.Kind,
+		&i.Title,
+		&i.Body,
+		&i.Status,
+		&i.Resolution,
+		&i.Priority,
+		&i.Pool,
+		&i.Holder,
+		&i.LeaseUntil,
+		&i.Fence,
+		&i.ParentID,
+		&i.DeferUntil,
+		&i.Ephemeral,
+		&i.Fields,
+		&i.Meta,
+		&i.Revision,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
 const getTicket = `-- name: GetTicket :one
 SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets WHERE id = ?
 `
@@ -195,6 +241,119 @@ func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) erro
 		arg.ClosedAt,
 	)
 	return err
+}
+
+const listChildren = `-- name: ListChildren :many
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+WHERE parent_id = ?1
+ORDER BY CAST(json_extract(fields, '$.index') AS INTEGER), created_at, id
+`
+
+func (q *Queries) ListChildren(ctx context.Context, parentID sql.NullString) ([]Ticket, error) {
+	rows, err := q.db.QueryContext(ctx, listChildren, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ticket{}
+	for rows.Next() {
+		var i Ticket
+		if err := rows.Scan(
+			&i.ID,
+			&i.Project,
+			&i.Kind,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Resolution,
+			&i.Priority,
+			&i.Pool,
+			&i.Holder,
+			&i.LeaseUntil,
+			&i.Fence,
+			&i.ParentID,
+			&i.DeferUntil,
+			&i.Ephemeral,
+			&i.Fields,
+			&i.Meta,
+			&i.Revision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRuns = `-- name: ListRuns :many
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+WHERE kind = 'run'
+  AND (?1 IS NULL OR project = ?1)
+  AND (?2 IS NULL OR json_extract(fields, '$.state') = ?2)
+ORDER BY created_at DESC, id DESC
+LIMIT ?3
+`
+
+type ListRunsParams struct {
+	Project interface{}
+	State   interface{}
+	MaxRows int64
+}
+
+func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, error) {
+	rows, err := q.db.QueryContext(ctx, listRuns, arg.Project, arg.State, arg.MaxRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Ticket{}
+	for rows.Next() {
+		var i Ticket
+		if err := rows.Scan(
+			&i.ID,
+			&i.Project,
+			&i.Kind,
+			&i.Title,
+			&i.Body,
+			&i.Status,
+			&i.Resolution,
+			&i.Priority,
+			&i.Pool,
+			&i.Holder,
+			&i.LeaseUntil,
+			&i.Fence,
+			&i.ParentID,
+			&i.DeferUntil,
+			&i.Ephemeral,
+			&i.Fields,
+			&i.Meta,
+			&i.Revision,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ClosedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listTickets = `-- name: ListTickets :many

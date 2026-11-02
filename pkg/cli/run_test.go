@@ -1,0 +1,55 @@
+package cli
+
+import (
+	"bytes"
+	"encoding/json"
+	"testing"
+
+	"github.com/alecthomas/kong"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+func parse(t *testing.T, args ...string) *root {
+	t.Helper()
+	var r root
+	p, err := kong.New(&r, kong.Exit(func(int) { t.Fatal("exit") }))
+	require.NoError(t, err)
+	_, err = p.Parse(args)
+	require.NoError(t, err)
+	return &r
+}
+
+func TestRunStartParse(t *testing.T) {
+	r := parse(t, "run", "start", "pr-work", "--var", "issue=42", "-v", "x=y", "--key", "sha1")
+	assert.Equal(t, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "42", "x": "y"}, Key: "sha1"},
+		r.Run.Start.params())
+	r = parse(t, "run", "resume", "js-1", "--step", "implement")
+	assert.Equal(t, rpc.RunResumeParams{ID: "js-1", Step: "implement"}, r.Run.Resume.params())
+	r = parse(t, "run", "list", "--state", "needs_human")
+	assert.Equal(t, "needs_human", r.Run.List.State)
+}
+
+func TestPrintRun(t *testing.T) {
+	rf, _ := json.Marshal(store.RunFields{Workflow: "pr", Vars: map[string]string{"issue": "42", "a": "b"}, Key: "k", State: store.RunRunning})
+	s0, _ := json.Marshal(store.StepFields{Run: "js-r", Step: "implement", Index: 0, Retries: 3})
+	s1, _ := json.Marshal(store.StepFields{Run: "js-r", Step: "review", Index: 1, Retries: 2, Failures: 1})
+	res := rpc.RunResult{
+		Run: store.Ticket{ID: "js-r", Kind: store.KindRun, Status: store.StatusOpen, Fields: rf},
+		Steps: []store.Ticket{
+			{ID: "js-s0", Kind: store.KindStep, Pool: "dev", Status: store.StatusClosed, Resolution: "done", Fields: s0},
+			{ID: "js-s1", Kind: store.KindStep, Pool: "refinery", Status: store.StatusInProgress, Holder: "js-sess", Fields: s1},
+		},
+		Existing: true,
+	}
+	var b bytes.Buffer
+	require.NoError(t, printRun(&b, res))
+	assert.Equal(t, `run js-r  workflow pr  state running  (open)  key k  [existing run for key]
+vars a=b issue=42
+0  implement    js-s0  pool dev  closed  done  holder -  failures 0/3
+1  review       js-s1  pool refinery  in_progress  -  holder js-sess  failures 1/2
+`, b.String())
+}

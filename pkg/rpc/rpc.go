@@ -50,6 +50,11 @@ const (
 	MethodReload         = "config.reload"
 	MethodTriggerList    = "trigger.list"
 	MethodConfigShow     = "config.show"
+	MethodRunStart       = "run.start"
+	MethodRunShow        = "run.show"
+	MethodRunList        = "run.list"
+	MethodRunCancel      = "run.cancel"
+	MethodRunResume      = "run.resume"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -536,4 +541,35 @@ type TriggerInfo struct {
 type ConfigShowResult struct {
 	Config  map[string]any      `json:"config"`
 	Sources map[string][]string `json:"sources"`
+}
+
+// RunStartParams starts a workflow run. Key, when set, dedups: an open run
+// of the same workflow and key is returned instead of a new one.
+type RunStartParams struct {
+	Workflow string            `json:"workflow"`
+	Vars     map[string]string `json:"vars,omitempty"`
+	Key      string            `json:"key,omitempty"`
+	Project  string            `json:"project,omitempty"`
+}
+
+// RunResult is a run ticket and its steps in order.
+type RunResult struct {
+	Run   store.Ticket   `json:"run"`
+	Steps []store.Ticket `json:"steps"`
+	// Existing is true when start returned an open run for the key.
+	Existing bool `json:"existing,omitempty"`
+}
+
+// RunListParams selects runs. State is a store.Run* value.
+type RunListParams struct {
+	Project string `json:"project,omitempty"`
+	State   string `json:"state,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+// RunResumeParams reopens a run's step (default: its first unfinished
+// step) with failures reset.
+type RunResumeParams struct {
+	ID   string `json:"id"`
+	Step string `json:"step,omitempty"`
 }

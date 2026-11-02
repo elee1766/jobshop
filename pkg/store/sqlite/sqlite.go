@@ -341,6 +341,45 @@ func (s *Store) CreateGraph(ctx context.Context, actor string, nts []store.NewTi
 	return out, err
 }
 
+// NewID mints an id with the project's prefix.
+func (s *Store) NewID(project string) (string, error) {
+	return s.ids.Next(s.prefix(project))
+}
+
+// ListChildren returns id's children ordered by fields.index.
+func (s *Store) ListChildren(ctx context.Context, id string) ([]store.Ticket, error) {
+	rows, err := s.q.ListChildren(ctx, sql.NullString{String: id, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	return s.withLabels(ctx, s.q, toTickets(rows))
+}
+
+// FindOpenRunByKey returns the open run of workflow with key.
+func (s *Store) FindOpenRunByKey(ctx context.Context, workflow, key string) (store.Ticket, error) {
+	row, err := s.q.FindOpenRunByKey(ctx, sqlcdb.FindOpenRunByKeyParams{Key: key, Workflow: workflow})
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.Ticket{}, fmt.Errorf("%w: open run %s key %q", store.ErrNotFound, workflow, key)
+	}
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	ts, err := s.withLabels(ctx, s.q, toTickets([]sqlcdb.Ticket{row}))
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	return ts[0], nil
+}
+
+// ListRuns returns runs newest first.
+func (s *Store) ListRuns(ctx context.Context, project, state string, n int) ([]store.Ticket, error) {
+	rows, err := s.q.ListRuns(ctx, sqlcdb.ListRunsParams{Project: narg(project), State: narg(state), MaxRows: limit(n)})
+	if err != nil {
+		return nil, err
+	}
+	return s.withLabels(ctx, s.q, toTickets(rows))
+}
+
 func limit(n int) int64 {
 	if n <= 0 {
 		return store.DefaultLimit

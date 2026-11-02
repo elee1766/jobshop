@@ -15,11 +15,14 @@ const (
 	KindTask    Kind = "task"
 	KindSession Kind = "session"
 	KindMessage Kind = "message"
+	KindRun     Kind = "run"
+	KindStep    Kind = "step"
 )
 
 // ClaimableKinds are the kinds ClaimNext and Ready consider by default.
-// Messages are consumed through the inbox, sessions are never claimed.
-var ClaimableKinds = []Kind{KindTask}
+// Messages are consumed through the inbox, sessions are never claimed,
+// runs have no pool and are tracked by the controller.
+var ClaimableKinds = []Kind{KindTask, KindStep}
 
 // Fields is implemented by each kind's typed field struct.
 type Fields interface {
@@ -69,6 +72,56 @@ func (f MessageFields) Validate() error {
 	return nil
 }
 
+// Run states (RunFields.State).
+const (
+	RunRunning    = "running"
+	RunNeedsHuman = "needs_human"
+	RunDone       = "done"
+	RunCancelled  = "cancelled"
+)
+
+// RunFields is the engine state of a workflow run. Its steps are its
+// children (parent_id).
+type RunFields struct {
+	Workflow string            `json:"workflow"`
+	Pack     string            `json:"pack,omitempty"` // file that declared the workflow
+	Vars     map[string]string `json:"vars,omitempty"`
+	Key      string            `json:"key,omitempty"` // dedup: one open run per workflow and key
+	State    string            `json:"state"`
+}
+
+// Validate implements Fields.
+func (f RunFields) Validate() error {
+	if f.Workflow == "" {
+		return fmt.Errorf("%w: run: workflow is required", ErrInvalid)
+	}
+	switch f.State {
+	case RunRunning, RunNeedsHuman, RunDone, RunCancelled:
+		return nil
+	}
+	return fmt.Errorf("%w: run: unknown state %q", ErrInvalid, f.State)
+}
+
+// StepFields places a step ticket in its run.
+type StepFields struct {
+	Run      string `json:"run"`
+	Step     string `json:"step"`
+	Index    int    `json:"index"`
+	Retries  int    `json:"retries"`
+	Failures int    `json:"failures"`
+}
+
+// Validate implements Fields.
+func (f StepFields) Validate() error {
+	if f.Run == "" || f.Step == "" {
+		return fmt.Errorf("%w: step: run and step are required", ErrInvalid)
+	}
+	if f.Index < 0 || f.Retries < 0 || f.Failures < 0 {
+		return fmt.Errorf("%w: step: index, retries and failures must be >= 0", ErrInvalid)
+	}
+	return nil
+}
+
 func (k Kind) newFields() (Fields, bool) {
 	switch k {
 	case KindTask:
@@ -77,6 +130,10 @@ func (k Kind) newFields() (Fields, bool) {
 		return &SessionFields{}, true
 	case KindMessage:
 		return &MessageFields{}, true
+	case KindRun:
+		return &RunFields{}, true
+	case KindStep:
+		return &StepFields{}, true
 	}
 	return nil, false
 }

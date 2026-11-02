@@ -3,6 +3,8 @@ package storetest
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +54,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ListMetaNewest", testListMetaNewest},
 		{"ListCreatedBy", testListCreatedBy},
 		{"Orphaned", testOrphaned},
+		{"Runs", testRuns},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -248,6 +251,48 @@ func testOrphaned(t *testing.T, s store.Store, _ *Clock) {
 	got, err = s.Orphaned(ctx, proj, nil, 0)
 	require.NoError(t, err)
 	assert.Len(t, got, 3, "no known pools: every pool is unknown")
+}
+
+func testRuns(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	runID, err := s.NewID(proj)
+	require.NoError(t, err)
+	assert.True(t, strings.HasPrefix(runID, proj+"-"))
+	run := store.NewTicket{ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		Fields: json.RawMessage(`{"workflow":"w","key":"k1","state":"running"}`)}
+	step := func(i int, id string) store.NewTicket {
+		return store.NewTicket{ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"s%d","index":%d,"retries":2}`, runID, i, i))}
+	}
+	// Inserted out of order: ListChildren orders by fields.index (10 > 2).
+	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{run, step(10, "js-b"), step(2, "js-a")}, nil)
+	require.NoError(t, err)
+	kids, err := s.ListChildren(ctx, runID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"js-a", "js-b"}, ids(kids))
+
+	got, err := s.FindOpenRunByKey(ctx, "w", "k1")
+	require.NoError(t, err)
+	assert.Equal(t, runID, got.ID)
+	_, err = s.FindOpenRunByKey(ctx, "other", "k1")
+	assert.ErrorIs(t, err, store.ErrNotFound)
+
+	r, err := s.ListRuns(ctx, proj, store.RunRunning, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{runID}, ids(r))
+	r, err = s.ListRuns(ctx, "", store.RunNeedsHuman, 0)
+	require.NoError(t, err)
+	assert.Empty(t, r)
+
+	// Steps are claimable; runs are not.
+	ready, err := s.Ready(ctx, proj, "", 0)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"js-a", "js-b"}, ids(ready))
+
+	_, err = s.CloseTicket(ctx, "test", runID, nil, "done")
+	require.NoError(t, err)
+	_, err = s.FindOpenRunByKey(ctx, "w", "k1")
+	assert.ErrorIs(t, err, store.ErrNotFound, "closed runs do not dedup")
 }
 
 func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {

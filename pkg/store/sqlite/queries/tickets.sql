@@ -126,3 +126,26 @@ WHERE (sqlc.narg(project) IS NULL OR t.project = sqlc.narg(project))
   AND (t.pool = '' OR t.pool NOT IN (SELECT value FROM json_each(sqlc.arg(known_json))))
 ORDER BY t.priority, t.created_at, t.id
 LIMIT sqlc.arg(max_rows);
+
+-- name: ListChildren :many
+SELECT * FROM tickets
+WHERE parent_id = sqlc.arg(parent_id)
+ORDER BY CAST(json_extract(fields, '$.index') AS INTEGER), created_at, id;
+
+-- FindOpenRunByKey uses tickets_run_key; at most one open run per
+-- workflow and key (the controller serializes starts).
+-- name: FindOpenRunByKey :one
+SELECT * FROM tickets
+WHERE kind = 'run' AND status <> 'closed'
+  AND json_extract(fields, '$.key') = sqlc.arg(key)
+  AND json_extract(fields, '$.workflow') = sqlc.arg(workflow)
+ORDER BY created_at, id
+LIMIT 1;
+
+-- name: ListRuns :many
+SELECT * FROM tickets
+WHERE kind = 'run'
+  AND (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
+  AND (sqlc.narg(state) IS NULL OR json_extract(fields, '$.state') = sqlc.narg(state))
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg(max_rows);

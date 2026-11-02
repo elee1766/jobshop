@@ -106,6 +106,9 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 	if p.Kind == store.KindSession {
 		return nil, fmt.Errorf("%w: use session new to create sessions", store.ErrInvalid)
 	}
+	if p.Kind == store.KindRun || p.Kind == store.KindStep {
+		return nil, fmt.Errorf("%w: use run start to create runs and steps", store.ErrInvalid)
+	}
 	if p.Holder != "" && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
 	}
@@ -214,6 +217,9 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		return nil, err
 	}
 	c.countClose(ctx, t)
+	if t.Kind == store.KindStep && t.ParentID != "" {
+		c.completeRun(ctx, t.ParentID)
+	}
 	if t.Kind == store.KindSession {
 		c.stopRunner(t.ID)
 		c.endSession(ctx, t.ID, "session closed")
