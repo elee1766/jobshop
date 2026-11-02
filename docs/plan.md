@@ -136,6 +136,8 @@ Short list; behavior details are in section 7.
 - selfdev `pr-work` workflow: the planner starts one run per issue,
   replacing pointer tickets and the prompt-only refinery handoff (#93).
 - `run:` triggers start a workflow run, keyed by `${check_output}` (#98).
+- selfdev `blocker-check` workflow, started by the planner on blocked
+  claims (#100).
 
 ## 5. What's next
 
@@ -165,7 +167,9 @@ workflows", #83); next are its six follow-up issues listed there.
 #89), failure counting with escalation (follow-up 2, #90) and the selfdev
 `pr-work` workflow (follow-up 4, #93) and `run:` in triggers (follow-up 3,
 second half, #98) are built. The pr-work box on #82 needs one issue
-delivered through a run on gasserver.
+delivered through a run on gasserver. `blocker-check` (follow-up 6, #100)
+is built; its box needs one run on gasserver (e.g. against #56) linked on
+#82.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -413,7 +417,12 @@ comment; the refinery prompt reopens `implement` with the findings
 Blocker check: the assess step re-reads the blocker against current state
 (deploys, permissions, pools), routes a stale blocker's ticket back to a
 pool and closes `done`, or closes `failed` for a real one, which
-escalates at once with `retries: 1`.
+escalates at once with `retries: 1`. Who starts it (2026-11-02, #100):
+the planner, from its prompt, for each open issue or ticket that says it
+is blocked or waiting on an operator. Not a trigger: "says it is
+blocked" is in free text (comments, release reasons), which store
+counts and check commands cannot read reliably, and the planner already
+reads every open issue each cycle.
 
 *Follow-up issues:* (1) run and step kinds, `ListChildren`, run
 start/show/list/cancel/resume over `CreateGraph`; (2) failure counting,
@@ -803,6 +812,18 @@ instead of a second one. The run ticket carries `meta.trigger`, so the
 open run holds the trigger, its close starts the cooldown, and the check
 key dedups exactly as for ticket triggers. Steps do not carry the
 trigger meta.
+
+### 7.20 selfdev blocker-check (#100)
+
+`blocker-check` (vars `[ticket, issue]`, `issue: issue`,
+`escalate_pool: plan`) has one step, `assess` (plan, `retries: 1`,
+`prompts/blocker.md`). The planner starts it with `--key blocker-<id>`
+(`ticket=none`, `--key blocker-issue-<n>` when only the issue claims a
+blocker). The step checks self-deploy (master vs `jobshop version`),
+pools (`ticket list --orphaned`) and permissions or credentials, comments
+the evidence on the issue, then either routes the work back (`ticket
+update --pool`, `run resume`, drop `needs-human`) and closes `done`, or
+closes `failed`, which escalates at once.
 
 ## 8. Chat gateway (future)
 

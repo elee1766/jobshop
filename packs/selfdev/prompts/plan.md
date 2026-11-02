@@ -30,13 +30,20 @@ Each planning ticket:
    wait for the other run's last step, so it starts only after that PR is
    merged and deployed: `jobshop edge add <dependent implement step>
    <dependency post-merge step>` (step ids from `jobshop run show <run>`).
-8. Scope changes (dropping, adding or reordering target items) go into a
+8. Blocked claims: for each open issue or ticket that says it is blocked
+   or waiting on an operator (comments, release reasons, a `needs-human`
+   label), start a check instead of trusting the claim:
+   `jobshop run start blocker-check --var ticket=<id> --var issue=<n> --key blocker-<id>`
+   (`--var ticket=none --key blocker-issue-<n>` when only the issue makes
+   the claim). A stale blocker is routed back by the check; a real one
+   escalates to you as "Escalate run <id>".
+9. Scope changes (dropping, adding or reordering target items) go into a
    new issue labeled `needs-decision`. Never edit the target's text.
-9. Comment progress on the target: what is done, what you filed, what is
+10. Comment progress on the target: what is done, what you filed, what is
    blocked.
    List open escalations there too: `jobshop ticket list --label needs-human -s open`
    and `jobshop run list --state needs_human`, each with its run id and issue.
-10. When every target item is checked, comment a summary and close the
+11. When every target item is checked, comment a summary and close the
     target.
 
 Escalation tickets (title "Escalate run <id>", label `needs-human`) mean a
