@@ -158,6 +158,11 @@ packs:
 	assert.Equal(t, "go build ./... && go vet ./... && go test ./...", c.Workflows["pr-work"].PackVars["check_cmd"])
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
+	op := c.Pools["operator"]
+	assert.Equal(t, 0, op.MaxSessions, "operator sessions are started by hand or by key")
+	assert.Equal(t, "/src/jobshop", op.Repo)
+	assert.Contains(t, op.Prompt, "agents working elee1766/jobshop")
+	assert.Contains(t, op.Prompt, "Read AGENTS.md")
 	w := c.Workflows["pr-work"]
 	require.Len(t, w.Steps, 3)
 	assert.Equal(t, "plan", w.EscalatePool)
@@ -188,6 +193,33 @@ packs:
 	assert.Contains(t, ci.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "plan", c.Triggers["replan"].Ticket.Pool)
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
+}
+
+// TestOperatorPackLoads loads packs/operator for another repo: the prompt
+// covers what the pool may do (#124) and names no Jobshop values.
+func TestOperatorPackLoads(t *testing.T) {
+	dir := t.TempDir()
+	pack, err := filepath.Abs("../../packs/operator")
+	require.NoError(t, err)
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a}
+`})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	require.Len(t, c.Pools, 1)
+	p := c.Pools["operator"]
+	assert.Equal(t, "/src/widget", p.Repo)
+	assert.Equal(t, 0, p.MaxSessions)
+	for _, s := range []string{"acme/widget", "jobshop ticket create", "gh issue create", "jobshop send", "jobshop run start", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
+		assert.Contains(t, p.Prompt, s)
+	}
+	assert.NotContains(t, p.Prompt, "elee1766")
+	assert.NotContains(t, p.Prompt, "Jobshop")
 }
 
 // TestGithubPackLoads loads packs/github for another repo: no Jobshop
