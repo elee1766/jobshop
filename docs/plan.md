@@ -133,6 +133,8 @@ Short list; behavior details are in section 7.
 - Multiple workspaces in the NixOS module, `workspaces.<name>` (#92).
 - Step retry limits, `needs_human`, escalation ticket and
   `jobshop_runs_needs_human` (#90).
+- selfdev `pr-work` workflow: the planner starts one run per issue,
+  replacing pointer tickets and the prompt-only refinery handoff (#93).
 
 ## 5. What's next
 
@@ -159,8 +161,10 @@ Which repo goes first, and its credentials and review policy, is the
 user's call. The run model is designed (section 6, "Runs and
 workflows", #83); next are its six follow-up issues listed there.
 `workflows:` config (follow-up 3, first half, #88), runs (follow-up 1,
-#89) and failure counting with escalation (follow-up 2, #90) are built;
-`run:` in triggers and the selfdev `pr-work` workflow are next.
+#89), failure counting with escalation (follow-up 2, #90) and the selfdev
+`pr-work` workflow (follow-up 4, #93) are built; `run:` in triggers is
+next. The pr-work box on #82 needs one issue delivered through a run on
+gasserver.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -256,7 +260,10 @@ All dated 2026-11-01 unless noted.
   dependencies stay as ticket edges.
 - Workers hand green PRs to the refinery; only the refinery merges.
   Branch protection is unavailable on this plan, so "merge only on green
-  CI" is enforced by prompts.
+  CI" is enforced by prompts. (2026-11-02, #93) The handoff is now the
+  `pr-work` run: closing `implement` makes `review-merge` ready for the
+  refinery, instead of a dev agent moving its ticket to the refinery
+  pool.
 - Promotion (2026-11-01, replaces the manual flake bump): the NixOS module's
   `selfDeploy` timer rebuilds the host with `--override-input jobshop` at
   the newest master commit whose CI passed, checks that the controller
@@ -759,6 +766,27 @@ deployed commit. The old `workspace` option still evaluates: it maps to
 the unit names change (`jobshop-workspace-default[-sync]`). `checks.module`
 in the flake evaluates a two-workspace config, the two-selfDeploy
 assertion and the old option.
+
+### 7.18 selfdev pr-work (#93)
+
+`packs/selfdev/pack.yaml` declares `pr-work` (vars `[issue]`, `issue:
+issue`, `escalate_pool: plan`): `implement` (dev, 3 retries,
+`prompts/implement.md`), `review-merge` (refinery, 2,
+`prompts/merge.md`) and `post-merge` (refinery, 2,
+`prompts/post-merge.md`). The planner runs `jobshop run start pr-work
+--var issue=<n> --key issue-<n>` per new issue, and a dependency is an
+edge from the dependent run's `implement` to the dependency's
+`post-merge`. Pool prompts now only frame the role; the step body is the
+instruction. Review findings: the refinery comments, runs `run resume
+<run> --step implement`, and closes `review-merge` `failed`, so the step
+reopens behind implement and counts an attempt. `post-merge` checks
+master CI on the merge commit and that `jobshop version` reports that
+commit or a descendant (self-deploy picked it up). Because a release
+counts as a failed attempt (7.16), the step prompts wait in-turn
+(`gh run watch`, `sleep`) instead of deferring and releasing. A dev task
+that is not a step (e.g. `master-red`) is turned into a run for its
+issue. The refinery still handles older non-step hand-off tickets the
+old way.
 
 ## 8. Chat gateway (future)
 

@@ -56,3 +56,26 @@ triggers:
         then resolve it like any issue ticket.
       priority: 0
       labels: [master-red]
+workflows:
+  # One run per issue: implement (dev) -> review-merge (refinery) ->
+  # post-merge (refinery). Started by the planner with --key issue-<n>.
+  pr-work:
+    vars: [issue]
+    issue: issue
+    escalate_pool: plan
+    steps:
+      - id: implement
+        pool: dev
+        retries: 3
+        title: "Implement #${issue}"
+        prompt_file: prompts/implement.md
+      - id: review-merge
+        pool: refinery
+        retries: 2
+        title: "Review and merge PR for #${issue}"
+        prompt_file: prompts/merge.md
+      - id: post-merge
+        pool: refinery
+        retries: 2
+        title: "Check master CI and self-deploy for #${issue}"
+        prompt_file: prompts/post-merge.md

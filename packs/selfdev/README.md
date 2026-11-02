@@ -2,13 +2,38 @@
 
 Jobshop agents that develop Jobshop through GitHub issues and PRs.
 
-- `dev` pool: resolves one issue per ticket (branch, PR, green CI), then
-  hands the ticket to `refinery` instead of merging. Prompt: `prompts/dev.md`.
-- `refinery` pool (1 session): merges handed-off PRs serially, or routes
-  them back to `dev` with findings. Prompt: `prompts/refinery.md`.
+## Flow: one `pr-work` run per issue
+
+The planner files an issue and starts
+`jobshop run start pr-work --var issue=<n> --key issue-<n>`. The run has
+three steps, each blocked on the one before (`docs/plan.md` 7.15, 7.16):
+
+1. `implement` (dev, 3 retries, `prompts/implement.md`): branch, PR,
+   green CI, comment `PR <url> head <sha>`, close `done`.
+2. `review-merge` (refinery, 2 retries, `prompts/merge.md`): review
+   against the issue, merge with `--match-head-commit`. Findings: comment
+   them, `jobshop run resume <run> --step implement`, and close this step
+   `failed` (it reopens behind implement and counts an attempt).
+3. `post-merge` (refinery, 2 retries, `prompts/post-merge.md`): master CI
+   green on the merge commit and `jobshop version` at that commit or later
+   (self-deploy picked it up), then a "shipped" comment on the issue.
+
+The last step closing `done` closes the run. A step that runs out of
+retries sets the run to `needs_human` and files "Escalate run <id>" in
+`plan`; the planner labels the issue `needs-human` and mentions @elee1766.
+Dependent issues: an edge from the dependent run's `implement` step to the
+dependency's `post-merge` step. `jobshop run show <run>` shows progress.
+
+## Pools and triggers
+
+- `dev` pool: works `implement` steps. Tasks that are not run steps (e.g.
+  `master-red`) are turned into a run for their issue. Prompt:
+  `prompts/dev.md`.
+- `refinery` pool (1 session): works `review-merge` and `post-merge`
+  steps, so merges happen one at a time. Prompt: `prompts/refinery.md`.
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,
-  files the next 2-4 issues and dev pointer tickets. Prompt:
-  `prompts/plan.md`.
+  files the next 2-4 issues and starts their runs, handles escalations.
+  Prompt: `prompts/plan.md`.
 - `replan` trigger: when `dev` has no ready tickets, creates a planning
   ticket in `plan` (10m cooldown after the last one closes).
 - `master-red` trigger: when the latest completed master CI run failed,
