@@ -728,9 +728,13 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		if r.c.poolDrained(r.pool) && r.idle() {
 			return errSessionEnd{resolution: resolutionDrained}
 		}
-		t, _, err := r.c.store.ClaimNext(ctx, store.ClaimNext{
-			Project: r.project(), Pool: r.pool, Holder: r.id, Lease: r.c.leaseDur(),
-		})
+		var t store.Ticket
+		err := store.ErrNoWork
+		if !pool.Chat() { // chat sessions answer messages only
+			t, _, err = r.c.store.ClaimNext(ctx, store.ClaimNext{
+				Project: r.project(), Pool: r.pool, Holder: r.id, Lease: r.c.leaseDur(),
+			})
+		}
 		switch {
 		case errors.Is(err, store.ErrNoWork):
 			if havePool && time.Since(idleSince) > idle {
@@ -1251,7 +1255,8 @@ func (c *Controller) supervise() {
 	}
 	backingOff := c.backingOffPools()
 	for name, p := range c.config().Pools {
-		if p.MaxSessions == 0 || c.poolDrained(name) || backingOff[name] || c.poolPaused(name) {
+		if p.Chat() || p.MaxSessions == 0 || c.poolDrained(name) || backingOff[name] || c.poolPaused(name) {
+			// Chat sessions are started by session.send, not by ready work.
 			// A rate-limited pool would only start more sessions that hit
 			// the same limit; a crash-looping one is paused.
 			continue

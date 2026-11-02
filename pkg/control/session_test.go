@@ -617,11 +617,13 @@ func TestPoolSession(t *testing.T) {
 func fakeAgent() {
 	a := &agent{known: map[acp.SessionId]bool{}, cancel: make(chan struct{}, 1)}
 	conn := acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
+	a.conn = conn
 	<-conn.Done()
 }
 
 type agent struct {
 	n      int
+	conn   *acp.AgentSideConnection
 	known  map[acp.SessionId]bool // created or loaded in this process
 	cancel chan struct{}
 }
@@ -676,6 +678,16 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		_ = f.Close()
 	}
 	if strings.HasPrefix(text, "Messages for you:") {
+		// Reply with a tool call and an echo, for session.subscribe. A
+		// message saying "hold" keeps the turn open until cancelled.
+		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("t1", "Reading", acp.WithStartStatus(acp.ToolCallStatusInProgress))})
+		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall("t1", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
+		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("echo: " + text[strings.LastIndex(text, "\n")+1:])})
+		if strings.Contains(text, "hold") {
+			_ = os.WriteFile("held", nil, 0o600)
+			<-a.cancel
+			return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
+		}
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 	}
 	// With a "crash" file present, die mid-turn like a crashing agent.

@@ -408,3 +408,16 @@ func clipHead(s string, n int) string {
 	}
 	return more + strings.ToValidUTF8(s[len(s)-(n-len(more)):], "")
 }
+
+// ReadFrom returns the complete frames in path after byte offset off and
+// the offset to read from next.
+func ReadFrom(path string, off int64) ([]Frame, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, off, err
+	}
+	defer func() { _ = f.Close() }()
+	var out []Frame
+	off, err = scanFrames(f, off, func(fr Frame) { out = append(out, fr) })
+	return out, off, err
+}

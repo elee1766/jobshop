@@ -75,7 +75,13 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 		}
 	}
 	r.log.Info("delivering messages", "messages", ids(claimed))
-	return r.turn(ctx, conn, acpSession, b.String())
+	// A message turn can be interrupted too (a chat user sending a
+	// correction); the interrupting message is then delivered at once.
+	interrupted, err := r.interruptible(ctx, conn, acpSession, b.String())
+	if err != nil || !interrupted {
+		return err
+	}
+	return r.deliver(ctx, conn, acpSession)
 }
 
 // interruptible runs a turn while watching for interrupt messages. On one

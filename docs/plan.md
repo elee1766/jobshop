@@ -151,6 +151,8 @@ Short list; behavior details are in section 7.
 - Lowering `max_sessions` by reload never starts a session over the new
   cap (#102).
 - `ci_branch` pack var and a CI repair drill runbook (#117).
+- Admin API `session.send` and `session.subscribe`, and `type: chat`
+  pools started by key (#121).
 
 ## 5. What's next
 
@@ -195,6 +197,8 @@ triggers.
 
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 and Discord, read/write attach and the operator pack (section 8).
+`session.send` and `session.subscribe` are built (#121); next are chat
+pool idle TTL and `attach --rw` (#122), the gateway (#123), the pack (#124).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (section 7.9).
@@ -470,6 +474,11 @@ handoff; (5) `master-red` starting `ci-repair`; (6) `blocker-check`
 workflow and who starts it (planner or a trigger on blocked tickets).
 
 **Build**
+- Session events stream as notifications on the subscribing connection
+  (2026-11-02, #121), not a second socket: the gateway and `attach --rw`
+  already hold an admin connection. Events are read from the journal, so
+  `since_seq` resumes without a controller-side buffer. `session.send`
+  is a message ticket to the session id, reusing #16 delivery.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -934,6 +943,26 @@ by selfdev) is the branch the `master-red` check passes to `gh run list
 `ci-repair` run by hand for a red SHA on a throwaway `drill/red-ci`
 branch, so master never goes red. Test: `TestGithubPackLoads` overrides
 `ci_branch`.
+
+### 7.26 session.send and session.subscribe (#121)
+
+Admin socket only.
+
+- `session.send {id | pool+key, text, interrupt}` creates a message
+  ticket to the session id (first line title, rest body; 7.4 delivery).
+  With pool and key and no open session for the key, a `type: chat` pool
+  starts one (`started: true`); a ticket pool is an error. A key open in
+  another pool is a conflict. Message turns are interruptible too.
+- Chat pools claim no tickets and the supervisor starts no sessions for
+  them. Idle TTL and restart by key are #122.
+- `session.subscribe {id, since_seq}` stays open and sends
+  `session.event` notifications on the same connection: `turn_start`
+  (prompt), `text` (message chunk), `tool` (id, title, status),
+  `turn_end` (stop reason or error), each with its journal seq, and
+  `state` (status, resolution; no seq) first and on change. It returns
+  `{seq, closed, resolution}` when the session closes or the client
+  hangs up. Reconnect with the last seq seen; `rpc.Client.Subscribe`
+  tracks it. Test: `TestSessionSendSubscribe`.
 
 ## 8. Chat gateway
 
