@@ -25,6 +25,10 @@ Then do exactly one:
 
 1. Stale (every check passes): route the work back. A ticket parked in a
    pool without sessions: `jobshop ticket update ${ticket} --pool <pool>`.
+   Pick `<pool>`: the pool it held before it was parked (the last
+   `update` in its history that changed `pool`), if that pool exists
+   and runs sessions; else `dev` for code work, `plan` for anything that
+   needs planning or a decision. Comment which pool and why.
    A run in `needs_human`: `jobshop run resume <run>`. Remove the
    `needs-human` label if set (`gh issue edit ${issue} --remove-label
    needs-human`). Then `jobshop close`.
