@@ -162,6 +162,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `session attach --rw` (#122).
 - `jobshop gateway` with a Matrix adapter and
   `services.jobshop.gateway.<name>` (#123).
+- `release --until` defers a ticket without counting a step failure
+  (#139).
 
 ## 5. What's next
 
@@ -490,6 +492,9 @@ start/show/list/cancel/resume over `CreateGraph`; (2) failure counting,
 config and `run:` in triggers; (4) selfdev `pr-work` replacing the prompt
 handoff; (5) `master-red` starting `ci-repair`; (6) `blocker-check`
 workflow and who starts it (planner or a trigger on blocked tickets).
+
+- A release with `--until` is not a step failure (2026-11-02, #139): the
+  agent says "not yet", not "cannot". It reuses `defer_until`.
 
 **Build**
 - Session events stream as notifications on the subscribing connection

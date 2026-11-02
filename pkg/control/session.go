@@ -918,7 +918,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 	}
 	for _, t := range held {
 		cl := store.Claim{TicketID: t.ID, Holder: r.id, Fence: t.Fence}
-		if _, err := r.c.store.Release(ctx, cl, "agent turn ended without closing or releasing"); err != nil {
+		if _, err := r.c.store.Release(ctx, cl, "agent turn ended without closing or releasing", time.Time{}); err != nil {
 			continue
 		}
 		r.unclosed++
@@ -976,6 +976,7 @@ func ticketPromptText(poolPrompt string, t store.Ticket, comments []store.Commen
 - jobshop comment "<text>"                  record progress or findings
 - jobshop close                             when the work is done (-r failed if it cannot be done)
 - jobshop release -r "<why>"                hand the ticket back without finishing it
+- jobshop release --until <2h|RFC3339> -r "<why>"   not workable yet; deferred, not a failure
 - jobshop ticket create "<title>" -b "<body>"   file follow-up work
 Close or release the ticket before you end your turn.`)
 	return b.String()

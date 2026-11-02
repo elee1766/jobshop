@@ -603,7 +603,7 @@ func reopen(t *store.Ticket) {
 }
 
 // Release returns a held ticket to open and unassigned.
-func (s *Store) Release(ctx context.Context, c store.Claim, reason string) (t store.Ticket, err error) {
+func (s *Store) Release(ctx context.Context, c store.Claim, reason string, until time.Time) (t store.Ticket, err error) {
 	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
 		var note string
 		t, err = s.mutate(ctx, q, c.TicketID, c.Holder, "release", func(t *store.Ticket) (any, error) {
@@ -612,6 +612,13 @@ func (s *Store) Release(ctx context.Context, c store.Claim, reason string) (t st
 			}
 			reopen(t)
 			d := map[string]any{"reason": reason}
+			if !until.IsZero() {
+				// A deferred release is "not yet", not a failed attempt.
+				t.DeferUntil = until.UTC().Truncate(time.Millisecond)
+				d["defer_until"] = t.DeferUntil
+				note = fmt.Sprintf("Released until %s: %s", t.DeferUntil.Format(time.RFC3339), reason)
+				return d, nil
+			}
 			var ferr error
 			note, ferr = s.stepFailure(t, "released: "+reason, d)
 			return d, ferr

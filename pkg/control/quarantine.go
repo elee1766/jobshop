@@ -32,7 +32,7 @@ func (c *Controller) crashRelease(ctx context.Context, sessionID string) {
 	}
 	for _, t := range held {
 		cl := store.Claim{TicketID: t.ID, Holder: sessionID, Fence: t.Fence}
-		if _, err := c.store.Release(ctx, cl, crashReleaseReason); err != nil {
+		if _, err := c.store.Release(ctx, cl, crashReleaseReason, time.Time{}); err != nil {
 			c.log.Warn("crash release", "ticket", t.ID, "err", err)
 			continue
 		}
