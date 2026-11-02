@@ -57,3 +57,5 @@ jobs:
           upstream-cache-filter: true
       - run: nix build .#jobshop --print-build-logs
       - run: ./result/bin/jobshop version
+      # NixOS module evaluation checks (nix/module-test.nix).
+      - run: nix build .#checks.x86_64-linux.module --print-build-logs
