@@ -32,9 +32,27 @@ let
       }) w.livePacks
     ) workspaces
   );
+  # services.jobshop.gateway.<name> entries go to settings.gateway.<name>.
+  gatewaySettings = lib.mapAttrs (
+    _: g:
+    {
+      inherit (g)
+        network
+        homeserver
+        pool
+        rooms
+        senders
+        ;
+      token_file = g.tokenFile;
+    }
+    // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
+  ) cfg.gateway;
   settings =
     cfg.settings
-    // lib.optionalAttrs (livePacks != [ ]) { packs = (cfg.settings.packs or [ ]) ++ livePacks; };
+    // lib.optionalAttrs (livePacks != [ ]) { packs = (cfg.settings.packs or [ ]) ++ livePacks; }
+    // lib.optionalAttrs (cfg.gateway != { }) {
+      gateway = (cfg.settings.gateway or { }) // gatewaySettings;
+    };
   configFile = settingsFormat.generate "jobshop.yaml" (
     lib.recursiveUpdate settings (
       lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; }
@@ -395,6 +413,46 @@ in
       description = "Repos cloned before the controller starts, each with its own live packs and sync unit.";
     };
 
+    gateway = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            network = lib.mkOption {
+              type = lib.types.enum [ "matrix" ];
+              default = "matrix";
+            };
+            homeserver = lib.mkOption {
+              type = lib.types.str;
+              example = "http://127.0.0.1:6167";
+            };
+            tokenFile = lib.mkOption {
+              type = lib.types.str;
+              description = "File with the bot access token, readable by the jobshop user. Not a Nix store path.";
+            };
+            pool = lib.mkOption {
+              type = lib.types.str;
+              description = "A `type: chat` pool.";
+            };
+            rooms = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              description = "Allowed room ids; messages elsewhere are ignored.";
+            };
+            senders = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              description = "Allowed sender ids; messages from others are ignored.";
+            };
+            interruptMarker = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Prefix that sends a message with interrupt. Empty: `!`.";
+            };
+          };
+        }
+      );
+      default = { };
+      description = "Chat gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
+    };
+
     # Old single-workspace option. Its definitions go to workspaces.default,
     # with the old dir default and selfDeploy, so existing hosts evaluate
     # unchanged and keep their checkout.
@@ -637,6 +695,31 @@ in
       }
       {
         systemd = lib.mkMerge (lib.mapAttrsToList workspaceUnits workspaces);
+      }
+      {
+        # Admin-socket clients; they retry while the controller restarts.
+        systemd.services = lib.mapAttrs' (
+          name: _:
+          lib.nameValuePair "jobshop-gateway-${name}" {
+            description = "Jobshop chat gateway ${name}";
+            wantedBy = [ "multi-user.target" ];
+            after = [
+              "jobshop.service"
+              "network-online.target"
+            ];
+            wants = [ "network-online.target" ];
+            environment.JOBSHOP_ROOT = cfg.dataDir;
+            serviceConfig = {
+              User = cfg.user;
+              Group = cfg.group;
+              Slice = "jobshop.slice";
+              WorkingDirectory = cfg.dataDir;
+              ExecStart = "${jobshop} gateway ${name}";
+              Restart = "always";
+              RestartSec = 5;
+            };
+          }
+        ) cfg.gateway;
       }
     ]
   );

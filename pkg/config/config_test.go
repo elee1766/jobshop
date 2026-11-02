@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -175,5 +176,34 @@ func TestDuration(t *testing.T) {
 	}
 	for _, tt := range tests {
 		assert.Equal(t, tt.want, Duration(tt.in, def), "%q", tt.in)
+	}
+}
+
+func TestParseGateway(t *testing.T) {
+	base := poolsYAML + `  chat:
+    agent: claude
+    type: chat
+    dir: /work
+gateway:
+  ops:
+    network: matrix
+    homeserver: http://127.0.0.1:6167
+    token_file: matrix-token
+    pool: chat
+    rooms: ["!r:x"]
+    senders: ["@op:x"]
+`
+	c, err := Parse([]byte(base))
+	require.NoError(t, err)
+	assert.Equal(t, "chat", c.Gateway["ops"].Pool)
+
+	for name, bad := range map[string][2]string{
+		"ticket pool": {"pool: chat", "pool: main"},
+		"no senders":  {`senders: ["@op:x"]`, "senders: []"},
+		"no token":    {"token_file: matrix-token", `token_file: ""`},
+		"network":     {"network: matrix", "network: irc"},
+	} {
+		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
+		assert.Error(t, err, name)
 	}
 }
