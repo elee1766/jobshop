@@ -114,3 +114,15 @@ ORDER BY id;
 -- HeldBy covers claimed and pre-assigned tickets, so a dead session strands neither.
 -- name: HeldBy :many
 SELECT id FROM tickets WHERE holder = ? AND status <> 'closed' ORDER BY id;
+
+-- OrphanedTickets is open, unclaimed claimable work no pool will pick up:
+-- no pool, or a pool name not in known_json (the loaded config).
+-- name: OrphanedTickets :many
+SELECT t.* FROM tickets t
+WHERE (sqlc.narg(project) IS NULL OR t.project = sqlc.narg(project))
+  AND t.status = 'open'
+  AND t.holder = ''
+  AND t.kind IN (SELECT value FROM json_each(sqlc.arg(kinds_json)))
+  AND (t.pool = '' OR t.pool NOT IN (SELECT value FROM json_each(sqlc.arg(known_json))))
+ORDER BY t.priority, t.created_at, t.id
+LIMIT sqlc.arg(max_rows);

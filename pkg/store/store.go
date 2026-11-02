@@ -190,6 +190,10 @@ type Store interface {
 
 	// Ready returns open, unblocked, non-deferred claimable tickets.
 	Ready(ctx context.Context, project, pool string, limit int) ([]Ticket, error)
+	// Orphaned returns open, unclaimed claimable tickets whose pool is
+	// empty or not in pools, so no session will ever claim them. Empty
+	// project means every project.
+	Orphaned(ctx context.Context, project string, pools []string, limit int) ([]Ticket, error)
 
 	// ClaimNext atomically claims the next ticket: the holder's in-progress
 	// work, then tickets pre-assigned to it, then the pool queue.

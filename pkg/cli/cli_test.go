@@ -4,7 +4,9 @@ import (
 	"runtime/debug"
 	"testing"
 
+	"github.com/alecthomas/kong"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestVersionInfo(t *testing.T) {
@@ -52,4 +54,21 @@ func TestVersionInfo(t *testing.T) {
 			assert.Equal(t, tt.wantCmt, c)
 		})
 	}
+}
+
+// --orphaned parses and reaches the ticket.list params.
+func TestTicketListOrphaned(t *testing.T) {
+	var r root
+	p, err := kong.New(&r, kong.Exit(func(int) { t.Fatal("exit") }))
+	require.NoError(t, err)
+	_, err = p.Parse([]string{"ticket", "list", "--orphaned", "--project", "js"})
+	require.NoError(t, err)
+	got := r.Ticket.List.params()
+	assert.True(t, got.Orphaned)
+	assert.Equal(t, "js", got.Project)
+
+	r = root{}
+	_, err = p.Parse([]string{"ticket", "list"})
+	require.NoError(t, err)
+	assert.False(t, r.Ticket.List.params().Orphaned)
 }

@@ -51,6 +51,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"SessionKeyUnique", testSessionKeyUnique},
 		{"ListMetaNewest", testListMetaNewest},
 		{"ListCreatedBy", testListCreatedBy},
+		{"Orphaned", testOrphaned},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -224,6 +225,29 @@ func testEdgeCycle(t *testing.T, s store.Store, _ *Clock) {
 	// tracks never gates readiness, so it may close a loop.
 	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: c.ID, To: a.ID, Kind: store.EdgeTracks}))
 	assert.ErrorIs(t, s.AddEdge(ctx, "test", store.Edge{From: a.ID, To: "js-missing", Kind: store.EdgeBlocks}), store.ErrNotFound)
+}
+
+func testOrphaned(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	none := task(t, s, "none", "")
+	gone := task(t, s, "gone", "gone")
+	_ = task(t, s, "queued", "dev")
+	_ = task(t, s, "held", "gone", func(n *store.NewTicket) { n.Holder = "s1" })
+	closed := task(t, s, "closed", "")
+	_, err := s.CloseTicket(ctx, "test", closed.ID, nil, "done")
+	require.NoError(t, err)
+
+	got, err := s.Orphaned(ctx, "", []string{"dev"}, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{none.ID, gone.ID}, ids(got))
+
+	got, err = s.Orphaned(ctx, "other", []string{"dev"}, 0)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	got, err = s.Orphaned(ctx, proj, nil, 0)
+	require.NoError(t, err)
+	assert.Len(t, got, 3, "no known pools: every pool is unknown")
 }
 
 func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {

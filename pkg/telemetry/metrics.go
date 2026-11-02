@@ -23,6 +23,7 @@ const (
 	AttrState      = attribute.Key("jobshop.session.state")
 	AttrResolution = attribute.Key("jobshop.resolution")
 	AttrMethod     = attribute.Key("rpc.method")
+	AttrReason     = attribute.Key("reason")
 )
 
 // Metrics holds the controller's instruments. Each Metrics has its own
@@ -42,6 +43,7 @@ type Metrics struct {
 	ConvTruncated metric.Int64Counter
 	Turns         metric.Int64Counter
 	SessionsEnded metric.Int64Counter
+	Orphaned      metric.Int64Gauge
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -55,7 +57,7 @@ func NewMetrics() (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [11]error
+	var errs [12]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -72,6 +74,8 @@ func NewMetrics() (*Metrics, error) {
 		metric.WithDescription("Agent turns by pool and stop reason (error: the prompt failed)."))
 	m.SessionsEnded, errs[10] = meter.Int64Counter("jobshop.sessions_ended",
 		metric.WithDescription("Sessions ended by pool and resolution (idle, crashed, stuck, ...)."))
+	m.Orphaned, errs[11] = meter.Int64Gauge("jobshop.tickets.orphaned",
+		metric.WithDescription("Open unclaimed tickets no pool will claim, by reason (no_pool, unknown_pool)."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err
