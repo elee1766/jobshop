@@ -1,5 +1,5 @@
 #!/bin/sh
-# Telemetry check for a deployed Jobshop (docs/gasserver-verify.md section 5).
+# Telemetry check for a deployed Jobshop (docs/verify/telemetry.md).
 # Exits non-zero when the scrape target is down, a required series is
 # missing, or VictoriaTraces has no jobshop session trace in the window.
 set -u

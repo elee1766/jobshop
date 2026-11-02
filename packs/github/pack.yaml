@@ -4,7 +4,7 @@
 defaults:
   ci_workflow: ci
   # Branch master-red watches. A drill workspace can point it at a
-  # throwaway red branch (docs/gasserver-verify.md section 9).
+  # throwaway red branch (docs/verify/ci-repair-drill.md).
   ci_branch: master
   dev_sessions: 2
   # Refinery merge policy (prompts/merge.md, ci-merge.md).
@@ -17,6 +17,11 @@ defaults:
   deploy_check: >-
     none (these agents do not deploy this repo); treat this check as
     passed.
+  # Parallel PRs that append numbered sections to one doc take the same
+  # number and conflict (#131).
+  docs_rule: >-
+    put a design note or runbook check in a new file of its own, named by
+    the issue number. Never append a numbered section to a shared doc.
 pools:
   dev:
     agent: ${agent}
@@ -120,7 +125,7 @@ workflows:
         retries: 2
         title: "Merge CI fix for ${sha}"
         prompt_file: prompts/ci-merge.md
-  # Escalation drill (docs/gasserver-verify.md section 8). One attempt
+  # Escalation drill (docs/verify/escalation-drill.md). One attempt
   # that always closes failed, so the run reaches needs_human at once.
   # Started by hand with --key drill-<date>.
   drill:

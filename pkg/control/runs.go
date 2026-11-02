@@ -14,7 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Runs (docs/plan.md section 6 "Runs and workflows", 7.15). A run is a
+// Runs (docs/plan.md section 6 "Runs and workflows", docs/notes/89-runs.md). A run is a
 // kind run ticket with no pool; its steps are kind step children, each
 // blocked on the previous one. Failure counting and needs_human are
 // separate (#90).

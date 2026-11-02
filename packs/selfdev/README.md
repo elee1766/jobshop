@@ -10,6 +10,7 @@ Jobshop's values, through `extends:` in `pack.yaml`:
 | `checkout` | this pack's `repo` var (the host checkout) |
 | `human` | `elee1766` |
 | `check_cmd` | `go build ./... && go vet ./... && go test ./...` |
+| `docs_rule` | notes in `docs/notes/<issue>-<slug>.md`, checks in `docs/verify/<slug>.md` (#131) |
 | `ci_workflow` | `ci` |
 | `guide` | Go module, read AGENTS.md and docs/ (docs/plan.md) |
 | `deploy_check` | `jobshop version` at the merge commit or a descendant (self-deploy) |
