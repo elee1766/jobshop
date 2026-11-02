@@ -32,6 +32,19 @@ func requireAdmin(sc scope, what string) error {
 	return nil
 }
 
+// requireGrant is requireAdmin for methods a pool can grant its sessions
+// with pools.<name>.admin. The live config is read per call, so a reload
+// that removes the grant takes effect at once.
+func (c *Controller) requireGrant(sc scope, method, what string) error {
+	if sc.admin {
+		return nil
+	}
+	if p, ok := c.config().Pools[sc.pool]; ok && p.Allows(method) {
+		return nil
+	}
+	return forbidden("%s needs the admin socket or pool admin grant %q", what, method)
+}
+
 // project picks the request's project: a session is pinned to its own.
 func (c *Controller) project(sc scope, asked string) (string, error) {
 	if !sc.admin {
@@ -376,7 +389,7 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 // sessionList joins session tickets with the live state of their session
 // directories, so store and processes can be compared (plan 8.4 item 5).
 func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionListParams) (any, error) {
-	if err := requireAdmin(sc, "session list"); err != nil {
+	if err := c.requireGrant(sc, "session-list", "session list"); err != nil {
 		return nil, err
 	}
 	if p.Since < 0 {
@@ -492,7 +505,7 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 // freshly built spec and resumes the conversation (plan 8.4). The
 // session's claims are kept and it is not counted as a crash.
 func (c *Controller) sessionRestart(ctx context.Context, sc scope, p rpc.SessionRestartParams) (any, error) {
-	if err := requireAdmin(sc, "session restart"); err != nil {
+	if err := c.requireGrant(sc, "session-restart", "session restart"); err != nil {
 		return nil, err
 	}
 	if p.ID == "" {

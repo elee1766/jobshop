@@ -17,3 +17,5 @@ pools:
     idle_timeout: 12h
     turn_timeout: 1h
     prompt_file: prompts/operator.md
+    # Lets the session socket run `jobshop reload` and `session list`.
+    admin: [config-reload, session-list]

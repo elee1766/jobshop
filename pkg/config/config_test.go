@@ -67,6 +67,7 @@ func TestParseErrors(t *testing.T) {
 		{"bad timeout", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    idle_timeout: soon\n", "idle_timeout"},
 		{"unknown telemetry key", base + "telemetry:\n  metrics: x\n", "metrics"},
 		{"export without logs endpoint", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n", "conversation_export needs"},
+		{"ungrantable admin method", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    admin: [shutdown]\n", `admin method "shutdown"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -82,6 +83,13 @@ func TestParseConversationExport(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, c.Pools["p"].ConversationExport)
 	assert.False(t, c.Pools["q"].ConversationExport, "default off")
+}
+
+func TestParsePoolAdmin(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  p:\n    agent: a\n    dir: /w\n    admin: [config-reload, session-list]\n"))
+	require.NoError(t, err)
+	assert.True(t, c.Pools["p"].Allows("session-list"))
+	assert.False(t, c.Pools["p"].Allows("drain"))
 }
 
 func TestParseTriggers(t *testing.T) {

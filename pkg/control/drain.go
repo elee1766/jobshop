@@ -19,7 +19,7 @@ const resolutionDrained = "drained"
 // their sessions claim no new tickets, ending once they hold nothing. The
 // state is in memory only; a controller restart undrains everything.
 func (c *Controller) drainPools(_ context.Context, sc scope, p rpc.DrainParams) (any, error) {
-	if err := requireAdmin(sc, "drain"); err != nil {
+	if err := c.requireGrant(sc, "drain", "drain"); err != nil {
 		return nil, err
 	}
 	if p.Pool != "" {

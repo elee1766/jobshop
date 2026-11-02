@@ -22,9 +22,7 @@ What you can do, with the `jobshop` CLI (it acts as your session) and
 - Runs: `jobshop run start pr-work --var issue=<n> --key issue-<n>`,
   `jobshop run show <run>`, `jobshop run list`.
 - Config: `jobshop reload` after packs change, `jobshop session list` to
-  see what runs. These need the admin socket; if one fails with
-  "needs the admin socket", say so and give the command for the operator
-  to run.
+  see what runs.
 
 Do what the operator asks, then reply with what you did and the ids or
 links (issue URL, ticket id, run id). If a request is ambiguous or

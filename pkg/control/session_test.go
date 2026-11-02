@@ -400,6 +400,19 @@ func TestSessionList(t *testing.T) {
 	sess := dial(t, filepath.Join(root.SessionDir(s.ID), "cli.sock"))
 	err = sess.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, nil)
 	assert.ErrorIs(t, err, rpc.ErrForbidden)
+	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodReload, struct{}{}, nil), rpc.ErrForbidden)
+
+	// A pool admin grant lets the session list and reload, nothing else.
+	cfgPath := filepath.Join(root.Dir, config.FileName)
+	b, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(cfgPath, append(b, "    admin: [session-list, config-reload]\n"...), 0o600))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
+	var granted []rpc.SessionInfo
+	require.NoError(t, sess.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &granted))
+	assert.Len(t, granted, 2)
+	require.NoError(t, sess.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
+	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: s.ID}, nil), rpc.ErrForbidden)
 
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 }

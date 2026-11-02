@@ -189,6 +189,15 @@ type Agent struct {
 // PoolChat is Pool.Type for chat pools.
 const PoolChat = "chat"
 
+// PoolAdminMethods are the admin-socket methods a pool's sessions may be
+// granted with Pool.Admin. Ticket mutation and session lifecycle methods
+// that act on other work (reopen, session new/send/reap, shutdown) are not
+// grantable.
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list"}
+
+// Allows reports whether the pool's sessions may call admin method m.
+func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
+
 // Chat reports whether p is a chat pool.
 func (p Pool) Chat() bool { return p.Type == PoolChat }
 
@@ -230,6 +239,10 @@ type Pool struct {
 	// messages and tool calls as OTLP log records to the telemetry logs
 	// endpoint, redacted and capped. Default off.
 	ConversationExport bool `yaml:"conversation_export"`
+	// Admin lists admin methods (PoolAdminMethods) this pool's session
+	// sockets may call, e.g. [config-reload, session-list] for an
+	// operator chat pool. Default none.
+	Admin []string `yaml:"admin"`
 }
 
 // Project is one repo / work area.
@@ -336,6 +349,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.Attach != "" && p.Attach != AttachRW {
 			return nil, fmt.Errorf("%s: pool %s: attach %q must be empty or %q", src("pools", name), name, p.Attach, AttachRW)
+		}
+		for _, m := range p.Admin {
+			if !slices.Contains(PoolAdminMethods, m) {
+				return nil, fmt.Errorf("%s: pool %s: admin method %q must be one of %s", src("pools", name), name, m, strings.Join(PoolAdminMethods, ", "))
+			}
 		}
 		if p.MaxSessions < 0 {
 			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", src("pools", name), name)
