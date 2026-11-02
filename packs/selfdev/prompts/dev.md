@@ -7,7 +7,7 @@ the ticket body below says what to do and when to close. Closing the step
 `done` hands the PR to the refinery through the run; do not change the
 ticket's pool and do not merge.
 
-Other tickets (kind `task`, e.g. `master-red`) are not runs yet. Find or
+Other tickets (kind `task`) are not runs yet. Find or
 file the issue they are about (`gh issue list --search`; the body says
 how), then start its run and close the task with a comment naming it:
 `jobshop run start pr-work --var issue=<n> --key issue-<n>`. The run's

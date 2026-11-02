@@ -37,8 +37,8 @@ triggers:
       priority: 1
       labels: [plan]
     cooldown: 10m
-  # One fix ticket per failing master SHA. The check runs on every tick
-  # while no master-red ticket is open; gh needs GH_TOKEN in the controller
+  # One ci-repair run per failing master SHA. The check runs on every tick
+  # while no master-red run is open; gh needs GH_TOKEN in the controller
   # environment.
   master-red:
     when:
@@ -47,15 +47,10 @@ triggers:
         --status completed --limit 1 --json conclusion,headSha
         --jq '.[] | select(.conclusion == "failure") | .headSha' | grep .
       check_timeout: 30s
-    ticket:
-      pool: dev
-      title: "Fix red master CI"
-      body: >-
-        The latest completed master CI run failed. Find or file the fix
-        issue (`gh run list --branch master`, `gh run view --log-failed`),
-        then resolve it like any issue ticket.
-      priority: 0
-      labels: [master-red]
+    run:
+      workflow: ci-repair
+      vars: {sha: "${check_output}"}
+      key: "${check_output}"
 workflows:
   # One run per issue: implement (dev) -> review-merge (refinery) ->
   # post-merge (refinery). Started by the planner with --key issue-<n>.
@@ -92,3 +87,19 @@ workflows:
         retries: 1
         title: "Check blocker on ${ticket} (#${issue})"
         prompt_file: prompts/blocker.md
+  # One run per failing master SHA, started by the master-red trigger with
+  # the SHA as key: at most 2 fix attempts per SHA, then needs_human.
+  ci-repair:
+    vars: [sha]
+    escalate_pool: plan
+    steps:
+      - id: fix
+        pool: dev
+        retries: 2
+        title: "Fix red master CI at ${sha}"
+        prompt_file: prompts/ci-fix.md
+      - id: merge
+        pool: refinery
+        retries: 2
+        title: "Merge CI fix for ${sha}"
+        prompt_file: prompts/ci-merge.md

@@ -37,19 +37,36 @@ and closes `done`. Real: it closes `failed`, which escalates at once.
 
 ## Pools and triggers
 
-- `dev` pool: works `implement` steps. Tasks that are not run steps (e.g.
-  `master-red`) are turned into a run for their issue. Prompt:
-  `prompts/dev.md`.
-- `refinery` pool (1 session): works `review-merge` and `post-merge`
-  steps, so merges happen one at a time. Prompt: `prompts/refinery.md`.
+- `dev` pool: works `implement` and `fix` steps. Tasks that are not run
+  steps are turned into a run for their issue. Prompt: `prompts/dev.md`.
+- `refinery` pool (1 session): works `review-merge`, `post-merge` and
+  `merge` steps, so merges happen one at a time. Prompt:
+  `prompts/refinery.md`.
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,
   files the next 2-4 issues and starts their runs, handles escalations.
   Prompt: `prompts/plan.md`.
 - `replan` trigger: when `dev` has no ready tickets, creates a planning
   ticket in `plan` (10m cooldown after the last one closes).
 - `master-red` trigger: when the latest completed master CI run failed,
-  creates one priority-0 `dev` ticket per failing SHA (check command via
+  starts a `ci-repair` run keyed by the failing SHA (check command via
   `gh`; the controller needs `GH_TOKEN`).
+
+## Flow: `ci-repair` per failing master SHA
+
+`master-red` runs `jobshop run start ci-repair --var sha=<sha> --key
+<sha>` itself (a `run:` trigger, `docs/plan.md` 7.19). Two steps:
+
+1. `fix` (dev, 2 retries, `prompts/ci-fix.md`): read
+   `gh run view --log-failed`, find or file the fix issue, open a PR,
+   green CI, comment `PR <url> head <sha>`, close `done`.
+2. `merge` (refinery, 2 retries, `prompts/ci-merge.md`): check the PR
+   fixes the failure, merge with `--match-head-commit`, wait for master
+   CI on the merge commit. Findings: `run resume <run> --step fix` and
+   close `failed`.
+
+The key makes one run per SHA: once it closes, the same SHA does not
+start another. Two failed `fix` attempts set the run to `needs_human`
+and file "Escalate run <id>" in `plan`.
 
 ## Vars
 
