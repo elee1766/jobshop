@@ -251,6 +251,27 @@ as its own user, not as `agent`.
 - **Where the module lives**: `nixosModules.jobshop` in this repo, imported
   by `gasserver.nix` as a flake input. Host-specific values (limits,
   secrets) stay in `gasserver.nix`.
+- **Workspaces** (2026-11-02, #92): each repo the agents work on is
+  `services.jobshop.workspaces.<name>`; a second repo needs only host
+  values:
+
+  ```nix
+  services.jobshop.workspaces = {
+    jobshop = {
+      url = "https://github.com/elee1766/jobshop.git";
+      livePacks = [ "packs/selfdev" ];
+      livePackVars = { repo = "/var/lib/jobshop/workspaces/jobshop"; };
+      selfDeploy = true; # the repo self-deploy follows; at most one
+    };
+    other = {
+      url = "https://github.com/elee1766/other.git";
+      livePacks = [ "packs/github" ];
+    };
+  };
+  ```
+
+  The old `services.jobshop.workspace` still works and means
+  `workspaces.default`.
 - **Restart vs full stop** (decided 2026-11-01): `systemctl restart` and a
   Nix switch restart only the controller; hosts keep running and are
   re-adopted. A full stop cleans up session hosts too. systemd's ExecStop
