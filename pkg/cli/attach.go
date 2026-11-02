@@ -85,9 +85,10 @@ func (c sessionAttachCmd) runRW(g *Globals) error {
 			return err
 		case line, ok := <-lines:
 			if !ok {
-				// EOF detaches; the session keeps running.
+				// EOF detaches; the session keeps running. The canceled
+				// subscribe's error is expected.
 				cancel()
-				<-done
+				_ = <-done
 				return nil
 			}
 			text, interrupt := strings.CutPrefix(line, "!")
