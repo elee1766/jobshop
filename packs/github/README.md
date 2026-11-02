@@ -1,0 +1,102 @@
+# github pack
+
+Agents that work one GitHub repo through issues and PRs: a planner, dev
+sessions and a refinery that merges. `packs/selfdev` is this pack with
+Jobshop's values (`extends:`, `docs/plan.md` 7.22).
+
+## Flow: one `pr-work` run per issue
+
+The planner files an issue and starts
+`jobshop run start pr-work --var issue=<n> --key issue-<n>`. The run has
+three steps, each blocked on the one before (`docs/plan.md` 7.15, 7.16):
+
+1. `implement` (dev, 3 retries, `prompts/implement.md`): branch, PR,
+   green CI, comment `PR <url> head <sha>`, close `done`.
+2. `review-merge` (refinery, 2 retries, `prompts/merge.md`): review
+   against the issue, merge with `--match-head-commit`. Findings: comment
+   them, `jobshop run resume <run> --step implement`, and close this step
+   `failed` (it reopens behind implement and counts an attempt).
+3. `post-merge` (refinery, 2 retries, `prompts/post-merge.md`): master CI
+   green on the merge commit and the deploy check (`deploy_check`), then
+   a "shipped" comment on the issue.
+
+The last step closing `done` closes the run. A step that runs out of
+retries sets the run to `needs_human` and files "Escalate run <id>" in
+`plan`; the planner labels the issue `needs-human` and mentions `@${human}`.
+Dependent issues: an edge from the dependent run's `implement` step to the
+dependency's `post-merge` step. `jobshop run show <run>` shows progress.
+
+## Flow: `blocker-check` on blocked claims
+
+When an open issue or ticket says it is blocked or waiting on an operator,
+the planner starts `jobshop run start blocker-check --var ticket=<id>
+--var issue=<n> --key blocker-<id>`. One step, `assess` (plan, 1 retry,
+`prompts/blocker.md`), re-checks the claim against current state: is
+deploys live (`deploy_check`), does the pool exist
+(`jobshop ticket list --orphaned`), do the permission or credential
+exist. Stale: it comments the evidence, routes the ticket back to a pool
+and closes `done`. Real: it closes `failed`, which escalates at once.
+
+## Pools and triggers
+
+- `dev` pool: works `implement` and `fix` steps. Tasks that are not run
+  steps are turned into a run for their issue. Prompt: `prompts/dev.md`.
+- `refinery` pool (1 session): works `review-merge`, `post-merge` and
+  `merge` steps, so merges happen one at a time. Prompt:
+  `prompts/refinery.md`.
+- `plan` pool (1 session): reads the `target` issue, ticks verified items,
+  files the next 2-4 issues and starts their runs, handles escalations.
+  Prompt: `prompts/plan.md`.
+- `replan` trigger: when `dev` has no ready tickets, creates a planning
+  ticket in `plan` (10m cooldown after the last one closes).
+- `master-red` trigger: when the latest completed master CI run failed,
+  starts a `ci-repair` run keyed by the failing SHA (check command via
+  `gh`; the controller needs `GH_TOKEN`).
+
+## Flow: `ci-repair` per failing master SHA
+
+`master-red` runs `jobshop run start ci-repair --var sha=<sha> --key
+<sha>` itself (a `run:` trigger, `docs/plan.md` 7.19). Two steps:
+
+1. `fix` (dev, 2 retries, `prompts/ci-fix.md`): read
+   `gh run view --log-failed`, find or file the fix issue, open a PR,
+   green CI, comment `PR <url> head <sha>`, close `done`.
+2. `merge` (refinery, 2 retries, `prompts/ci-merge.md`): check the PR
+   fixes the failure, merge with `--match-head-commit`, wait for master
+   CI on the merge commit. Findings: `run resume <run> --step fix` and
+   close `failed`.
+
+The key makes one run per SHA: once it closes, the same SHA does not
+start another. Two failed `fix` attempts set the run to `needs_human`
+and file "Escalate run <id>" in `plan`.
+
+## Vars
+
+| Var | Meaning |
+| --- | --- |
+| `repo` | GitHub `owner/repo`; issues, PRs and the `master-red` check use it |
+| `checkout` | Main checkout of the repo on the host (pool `repo:`); sessions get worktrees of it |
+| `agent` | Agent name defined in the host's jobshop.yaml |
+| `human` | GitHub user mentioned on escalations |
+| `check_cmd` | Build and test command run before pushing, e.g. `make test` |
+| `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
+| `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
+| `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
+| `deploy_check` | How `post-merge` and `blocker-check` tell a commit is deployed. Default: no deploy, the check passes |
+
+```yaml
+packs:
+  - path: /var/lib/jobshop/src/jobshop/packs/github
+    vars:
+      repo: acme/widget
+      checkout: /var/lib/jobshop/workspaces/widget
+      agent: jcode
+      human: wile
+      check_cmd: make test
+agents:
+  jcode: {command: jcode, args: [acp]}
+```
+
+Pools use the host's `default_project`. Prompts are read when the
+controller loads config, so a merged prompt change applies on restart.
+Pool prompts get pack vars at load; step prompts get them at run start.
