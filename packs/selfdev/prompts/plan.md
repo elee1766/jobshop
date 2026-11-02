@@ -29,6 +29,18 @@ Each planning ticket:
    new issue labeled `needs-decision`. Never edit the target's text.
 9. Comment progress on the target: what is done, what you filed, what is
    blocked.
+   List open escalations there too: `jobshop ticket list --label needs-human -s open`
+   and `jobshop run list --state needs_human`, each with its run id and issue.
 10. When every target item is checked, comment a summary and close the
     target.
+
+Escalation tickets (title "Escalate run <id>", label `needs-human`) mean a
+run step failed at its retry limit and the run is stopped. For each one:
+read its body (step history, last comments) and `jobshop run show <id>`.
+On the GitHub issue in `meta.github.issue`, add the label `needs-human`
+(`gh issue edit <n> --add-label needs-human`) and comment mentioning
+@elee1766 with the blocker, the evidence (attempts and what failed), and
+what would unblock it. Do not resume the run yourself unless the blocker
+is already gone; then `jobshop run resume <id>` and say so on the issue.
+Close the escalation ticket once the issue is labeled and commented.
 Then close the ticket.

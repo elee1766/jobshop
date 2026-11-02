@@ -2,7 +2,6 @@ package control_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -22,6 +21,12 @@ import (
 // runRoot starts a controller whose pools never spawn sessions, with a
 // pack declaring a three-step workflow.
 func runRoot(t *testing.T) *rpc.Client {
+	t.Helper()
+	return runRootLease(t, "")
+}
+
+// runRootLease is runRoot with a lease (Go duration, "" for the default).
+func runRootLease(t *testing.T, lease string) *rpc.Client {
 	t.Helper()
 	t.Parallel()
 	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
@@ -44,6 +49,7 @@ func runRoot(t *testing.T) *rpc.Client {
 	cfg := fmt.Sprintf(`packs:
   - path: pk
     vars: {repo: /src}
+lease: %q
 projects:
   js: {}
 agents:
@@ -52,7 +58,7 @@ agents:
 pools:
   dev: {project: js, agent: fake, max_sessions: 0, dir: %q}
   refinery: {project: js, agent: fake, max_sessions: 0, dir: %q}
-`, os.Args[0], dir, dir)
+`, lease, os.Args[0], dir, dir)
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
@@ -73,13 +79,16 @@ func startRun(t *testing.T, admin *rpc.Client, p rpc.RunStartParams) rpc.RunResu
 	return r
 }
 
+// readyIDs lists ready step tickets (escalation tasks are left out).
 func readyIDs(t *testing.T, admin *rpc.Client) []string {
 	t.Helper()
 	var ts []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReady, rpc.ReadyParams{Project: "js"}, &ts))
 	out := []string{}
 	for _, x := range ts {
-		out = append(out, x.ID)
+		if x.Kind == store.KindStep {
+			out = append(out, x.ID)
+		}
 	}
 	return out
 }
@@ -217,32 +226,30 @@ func TestRunCancel(t *testing.T) {
 	assert.Error(t, err, "cancel twice")
 }
 
-// TestRunResume reopens a failed step with failures reset, by default the
-// first unfinished one or a named step.
+// TestRunResume escalates at the limit, then resume reopens the failed
+// step with failures reset and the run back to running.
 func TestRunResume(t *testing.T) {
 	admin := runRoot(t)
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1"}})
 	closeStep(t, admin, r.Steps[0].ID, "done")
+	// review has the default 2 retries.
 	closeStep(t, admin, r.Steps[1].ID, "failed")
-	assert.Equal(t, store.StatusOpen, showRun(t, admin, r.Run.ID).Run.Status, "a failed step does not complete the run")
-	// Until #90, a failed close unblocks the next step like any close; park
-	// it so readiness below shows only what resume reopens.
-	closeStep(t, admin, r.Steps[2].ID, "failed")
+	closeStep(t, admin, r.Steps[1].ID, "failed")
+	got := showRun(t, admin, r.Run.ID)
+	require.Equal(t, store.RunNeedsHuman, runState(t, got))
+	assert.Empty(t, readyIDs(t, admin), "later steps stay blocked")
 
-	// Pretend failures were counted (#90 does that) to check the reset.
-	f, err := store.DecodeFields[store.StepFields](r.Steps[1])
-	require.NoError(t, err)
-	f.Failures = 2
-	b, _ := json.Marshal(f)
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketUpdate, rpc.UpdateParams{ID: r.Steps[1].ID, Fields: b}, nil))
-
-	var got rpc.RunResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: r.Run.ID}, &got))
+	assert.Equal(t, store.RunRunning, runState(t, got))
 	assert.Equal(t, store.StatusOpen, got.Steps[1].Status)
-	f, err = store.DecodeFields[store.StepFields](got.Steps[1])
+	f, err := store.DecodeFields[store.StepFields](got.Steps[1])
 	require.NoError(t, err)
 	assert.Equal(t, 0, f.Failures)
 	assert.Equal(t, []string{r.Steps[1].ID}, readyIDs(t, admin))
+
+	// A resumed step gets its full retries again: one failure only reopens.
+	closeStep(t, admin, r.Steps[1].ID, "failed")
+	assert.Equal(t, store.RunRunning, runState(t, showRun(t, admin, r.Run.ID)))
 
 	// --step reopens a finished step; the step after it is blocked again.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: r.Run.ID, Step: "implement"}, &got))

@@ -317,15 +317,19 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 	c.log.Info("run done", "run", runID, "workflow", f.Workflow)
 }
 
-// sweepRuns completes running runs whose steps all closed done.
+// sweepRuns completes or escalates running runs and repairs escalations
+// for needs_human runs, then sets the needs_human gauge.
 func (c *Controller) sweepRuns() {
-	runs, err := c.store.ListRuns(c.ctx, "", store.RunRunning, 0)
-	if err != nil {
-		return
-	}
-	for _, r := range runs {
-		if r.Status != store.StatusClosed {
-			c.completeRun(c.ctx, r.ID)
+	defer c.recordRunGauges(c.ctx)
+	for _, state := range []string{store.RunRunning, store.RunNeedsHuman} {
+		runs, err := c.store.ListRuns(c.ctx, "", state, 0)
+		if err != nil {
+			return
+		}
+		for _, r := range runs {
+			if r.Status != store.StatusClosed {
+				c.checkRun(c.ctx, r.ID)
+			}
 		}
 	}
 }

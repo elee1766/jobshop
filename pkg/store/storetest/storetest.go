@@ -55,6 +55,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ListCreatedBy", testListCreatedBy},
 		{"Orphaned", testOrphaned},
 		{"Runs", testRuns},
+		{"StepFailures", testStepFailures},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -297,6 +298,80 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	_, err = s.FindOpenRunByKey(ctx, "w", "k1")
 	assert.ErrorIs(t, err, store.ErrNotFound, "closed runs do not dedup")
+}
+
+// testStepFailures: each failure source bumps fields.failures in its own
+// write; below retries the step reopens, at the limit it closes failed and
+// keeps the next step blocked.
+func testStepFailures(t *testing.T, s store.Store, c *Clock) {
+	ctx := t.Context()
+	mk := func(id string, i int) store.NewTicket {
+		return store.NewTicket{
+			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+			Fields: json.RawMessage(fmt.Sprintf(`{"run":"js-run","step":"s%d","index":%d,"retries":4}`, i, i)),
+		}
+	}
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)}
+	_, err := s.CreateGraph(ctx, "test", []store.NewTicket{run, mk("js-a", 0), mk("js-b", 1)},
+		[]store.Edge{{From: "js-b", To: "js-a", Kind: store.EdgeBlocks}})
+	require.NoError(t, err)
+	fails := func() int {
+		t.Helper()
+		tk, err := s.Get(ctx, "js-a")
+		require.NoError(t, err)
+		f, err := store.DecodeFields[store.StepFields](tk)
+		require.NoError(t, err)
+		return f.Failures
+	}
+
+	// Close failed reopens below the limit.
+	tk, err := s.CloseTicket(ctx, "test", "js-a", nil, "failed")
+	require.NoError(t, err)
+	assert.Equal(t, store.StatusOpen, tk.Status)
+	assert.Equal(t, 1, fails())
+
+	// Release.
+	_, cl, err := s.Claim(ctx, "js-a", "s1", lease)
+	require.NoError(t, err)
+	_, err = s.Release(ctx, cl, "gave up")
+	require.NoError(t, err)
+	assert.Equal(t, 2, fails())
+
+	// Dead holder.
+	_, _, err = s.Claim(ctx, "js-a", "s2", lease)
+	require.NoError(t, err)
+	_, err = s.ReleaseHolder(ctx, "controller", "s2", "session died")
+	require.NoError(t, err)
+	assert.Equal(t, 3, fails())
+
+	// Lease expiry reaches the limit: closed failed.
+	_, _, err = s.Claim(ctx, "js-a", "s3", lease)
+	require.NoError(t, err)
+	c.Advance(2 * lease)
+	_, err = s.SweepLeases(ctx, "controller")
+	require.NoError(t, err)
+	assert.Equal(t, 4, fails())
+	tk, err = s.Get(ctx, "js-a")
+	require.NoError(t, err)
+	assert.Equal(t, store.StatusClosed, tk.Status)
+	assert.Equal(t, "failed", tk.Resolution)
+	cs, err := s.Comments(ctx, "js-a")
+	require.NoError(t, err)
+	require.Len(t, cs, 4, "one comment per counted failure")
+	assert.Contains(t, cs[3].Body, "Retry limit 4 reached")
+
+	// A step closed failed keeps the next step blocked.
+	ready, err := s.Ready(ctx, proj, "", 0)
+	require.NoError(t, err)
+	assert.Empty(t, ids(ready))
+	_, _, err = s.Claim(ctx, "js-b", "s4", lease)
+	assert.ErrorIs(t, err, store.ErrNoWork)
+
+	// Tasks are not counted.
+	task := task(t, s, "plain", "dev")
+	tk, err = s.CloseTicket(ctx, "test", task.ID, nil, "failed")
+	require.NoError(t, err)
+	assert.Equal(t, store.StatusClosed, tk.Status)
 }
 
 func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {

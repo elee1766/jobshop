@@ -218,7 +218,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 	}
 	c.countClose(ctx, t)
 	if t.Kind == store.KindStep && t.ParentID != "" {
-		c.completeRun(ctx, t.ParentID)
+		c.checkRun(ctx, t.ParentID)
 	}
 	if t.Kind == store.KindSession {
 		c.stopRunner(t.ID)
@@ -239,6 +239,7 @@ func (c *Controller) endSession(ctx context.Context, id, reason string) {
 		c.log.Error("release session claims", "session", id, "err", err)
 		return
 	}
+	c.stepEvents(ctx, released)
 	if len(released) > 0 {
 		c.log.Info("released session claims", "session", id, "tickets", released)
 	}
@@ -337,7 +338,12 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	if err != nil {
 		return nil, err
 	}
-	return c.store.Release(ctx, cl, p.Reason)
+	t, err := c.store.Release(ctx, cl, p.Reason)
+	if err != nil {
+		return nil, err
+	}
+	c.stepEvent(ctx, t)
+	return t, nil
 }
 
 func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewParams) (any, error) {

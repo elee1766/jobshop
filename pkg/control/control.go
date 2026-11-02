@@ -295,6 +295,7 @@ func (c *Controller) sweep() {
 	for _, id := range ids {
 		c.log.Info("lease expired", "ticket", id)
 	}
+	c.stepEvents(c.ctx, ids)
 	if len(ids) > 0 {
 		c.metrics.LeaseExpiries.Add(c.ctx, int64(len(ids)))
 	}

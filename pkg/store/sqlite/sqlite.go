@@ -561,6 +561,11 @@ func (s *Store) blocked(ctx context.Context, q *sqlcdb.Queries, id string) (bool
 		if b.Status != string(store.StatusClosed) {
 			return true, nil
 		}
+		// A step unblocks the next only when it closed done (matches
+		// ReadyTickets and NextClaimCandidate).
+		if b.Kind == string(store.KindStep) && b.Resolution != "done" {
+			return true, nil
+		}
 	}
 	return false, nil
 }
@@ -600,21 +605,63 @@ func reopen(t *store.Ticket) {
 // Release returns a held ticket to open and unassigned.
 func (s *Store) Release(ctx context.Context, c store.Claim, reason string) (t store.Ticket, err error) {
 	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+		var note string
 		t, err = s.mutate(ctx, q, c.TicketID, c.Holder, "release", func(t *store.Ticket) (any, error) {
 			if err := holds(t, c); err != nil {
 				return nil, err
 			}
 			reopen(t)
-			return map[string]any{"reason": reason}, nil
+			d := map[string]any{"reason": reason}
+			var ferr error
+			note, ferr = s.stepFailure(t, "released: "+reason, d)
+			return d, ferr
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		return s.note(ctx, q, t.ID, note)
 	})
 	return t, err
+}
+
+// stepFailure counts a failure when t is a step, in the caller's
+// transaction. At the retry limit the step is closed failed. It returns
+// the comment to add, or "" for non-steps, and records the count in d.
+func (s *Store) stepFailure(t *store.Ticket, how string, d map[string]any) (string, error) {
+	f, exhausted, isStep, err := store.StepFailure(t)
+	if err != nil || !isStep {
+		return "", err
+	}
+	d["failures"] = f.Failures
+	if exhausted && t.Status != store.StatusClosed {
+		t.Status = store.StatusClosed
+		t.Resolution = "failed"
+		t.Holder = ""
+		t.LeaseUntil = time.Time{}
+		t.ClosedAt = s.now().UTC().Truncate(time.Millisecond)
+	}
+	if !exhausted && t.Status == store.StatusClosed {
+		// Below the limit a failed close becomes another attempt.
+		reopen(t)
+		t.Resolution = ""
+		t.ClosedAt = time.Time{}
+	}
+	return store.StepFailureComment(f, how, exhausted), nil
+}
+
+// note adds a controller comment inside a transaction; empty is a no-op.
+func (s *Store) note(ctx context.Context, q *sqlcdb.Queries, id, body string) error {
+	if body == "" {
+		return nil
+	}
+	_, err := q.InsertComment(ctx, sqlcdb.InsertCommentParams{TicketID: id, Author: "controller", Body: body, CreatedAt: ms(s.now())})
+	return err
 }
 
 // CloseTicket closes a ticket, fenced by c when non-nil.
 func (s *Store) CloseTicket(ctx context.Context, actor, id string, c *store.Claim, resolution string) (t store.Ticket, err error) {
 	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+		var note string
 		t, err = s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
 			if t.Status == store.StatusClosed {
 				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
@@ -628,9 +675,18 @@ func (s *Store) CloseTicket(ctx context.Context, actor, id string, c *store.Clai
 			t.Resolution = resolution
 			t.LeaseUntil = time.Time{}
 			t.ClosedAt = s.now().UTC().Truncate(time.Millisecond)
-			return map[string]any{"resolution": resolution}, nil
+			d := map[string]any{"resolution": resolution}
+			if resolution == "failed" {
+				var ferr error
+				note, ferr = s.stepFailure(t, "closed failed", d)
+				return d, ferr
+			}
+			return d, nil
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		return s.note(ctx, q, t.ID, note)
 	})
 	return t, err
 }
@@ -660,6 +716,7 @@ func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q *sql
 		}
 		out = list
 		for _, id := range list {
+			var note string
 			_, err := s.mutate(ctx, q, id, actor, op, func(t *store.Ticket) (any, error) {
 				d := map[string]any{"holder": t.Holder, "status": t.Status}
 				if m, ok := diff.(map[string]any); ok {
@@ -667,10 +724,24 @@ func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q *sql
 						d[k] = v
 					}
 				}
+				// A pre-assigned step that was never claimed has not failed.
+				claimed := t.Status == store.StatusInProgress
 				reopen(t)
-				return d, nil
+				if !claimed {
+					return d, nil
+				}
+				how := op
+				if r, ok := d["reason"].(string); ok && r != "" {
+					how += ": " + r
+				}
+				var ferr error
+				note, ferr = s.stepFailure(t, how, d)
+				return d, ferr
 			})
 			if err != nil {
+				return err
+			}
+			if err := s.note(ctx, q, id, note); err != nil {
 				return err
 			}
 		}
