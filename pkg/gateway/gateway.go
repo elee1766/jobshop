@@ -189,6 +189,9 @@ func (g *Gateway) follow(ctx context.Context, session string, after time.Time, w
 		buf   strings.Builder
 		since int64
 		skip  bool // the current turn predates the watch
+		// broken is set by a tool call: text chunks stream one message, so
+		// only a tool call between them starts a new one (#164).
+		broken bool
 	)
 	thread := func() Thread { w.mu.Lock(); defer w.mu.Unlock(); return w.thread }
 	for ctx.Err() == nil {
@@ -196,8 +199,16 @@ func (g *Gateway) follow(ctx context.Context, session string, after time.Time, w
 			switch ev.Type {
 			case rpc.EventTurnStart:
 				buf.Reset()
+				broken = false
 				skip = ev.Time != nil && ev.Time.Before(after)
+			case rpc.EventTool:
+				broken = true
 			case rpc.EventText:
+				if broken && strings.TrimSpace(buf.String()) != "" {
+					buf.WriteString("\n\n")
+					ev.Text = strings.TrimLeft(ev.Text, " \t\n")
+				}
+				broken = false
 				buf.WriteString(ev.Text)
 			case rpc.EventTurnEnd:
 				out := strings.TrimSpace(buf.String())
