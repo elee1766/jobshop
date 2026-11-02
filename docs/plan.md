@@ -185,6 +185,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `post-merge` steps run in a `deploy-check` pool, so a deploy wait no
   longer queues reviews in the refinery (#167,
   `docs/notes/167-deploy-check-pool.md`).
+- Self-deploy rollback drill marker and a stubbed test of the deploy
+  script (#155, `docs/notes/155-rollback-drill.md`).
 
 ## 5. What's next
 
@@ -240,6 +242,8 @@ Spawn-error quarantine is built (#146,
 it needs a 24h `docs/verify/worktree-deletion.md` run on gasserver.
 Batches are designed (#148); next are its four implementation
 follow-ups listed in the note.
+The rollback drill is built (#155); it needs one
+`docs/verify/rollback-drill.md` run on gasserver linked on #145.
 
 **Phase 4, chat track** (parallel, 2026-11-02): chat gateway for Matrix
 (Discord later), read/write attach and the operator pack (section 8).
@@ -579,6 +583,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   already records a row with a global seq, so `since_seq` replay needs no
   new log. Slow subscribers are dropped with `lagged` and resync, so a
   write never waits on a client.
+- The self-deploy rollback drill is a one-shot marker file in the deploy
+  state dir, not a module option (2026-11-02, #155): no rebuild to set
+  or clear it, and it cannot stay on by accident.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -628,6 +635,7 @@ moved from the old 7.x list, oldest first:
 - [Spawn-error pool quarantine](notes/146-spawn-quarantine.md) (#146)
 - [events.subscribe change stream](notes/147-events-subscribe.md) (#147)
 - [Session worktree deletion](notes/154-worktree-deletion.md) (#154)
+- [Self-deploy rollback drill](notes/155-rollback-drill.md) (#155)
 
 ## 8. Chat gateway
 

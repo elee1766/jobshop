@@ -73,6 +73,80 @@ let
     };
   };
 
+  # The self-deploy script run against stubs: host paths are rewritten to a
+  # temp dir, gh/nixos-rebuild/nix-env/systemctl and the controller binary are
+  # shell stubs that log their calls.
+  deployScript = pkgs.writeText "self-deploy" (
+    lib.replaceStrings
+      [
+        "state=/var/lib/jobshop-deploy"
+        "${pkgs.util-linux}/bin/runuser"
+        "gh run list"
+        ''readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe"''
+        "/nix/var/nix/profiles/system"
+        "sleep 2"
+      ]
+      [
+        "state=$T/state"
+        "runuser"
+        "$T/bin/gh run list"
+        "echo $T/bin/jobshop"
+        "$T/system"
+        ":"
+      ]
+      legacy.config.systemd.services.jobshop-self-deploy.script
+  );
+  rollbackTest = ''
+    export T=$PWD/t
+    mkdir -p $T/bin $T/state $T/gen1/bin
+    stub() { printf '#!${pkgs.runtimeShell}\n%s\n' "$2" > $T/bin/$1; chmod +x $T/bin/$1; }
+    stub runuser 'shift 3; exec "$@"'
+    stub gh 'cat $T/green'
+    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; exit 0'
+    stub systemctl 'exit 0'
+    stub nixos-rebuild 'echo "rebuild $*" >> $T/log; [ -n "$(cat $T/shipbad 2>/dev/null)" ] || cat $T/green > $T/cur'
+    stub nix-env 'echo "nix-env $*" >> $T/log'
+    printf '#!${pkgs.runtimeShell}\necho "switch gen1 $1" >> $T/log\n' > $T/gen1/bin/switch-to-configuration
+    chmod +x $T/gen1/bin/switch-to-configuration
+    ln -s $T/gen1 $T/system
+    export PATH=$T/bin:$PATH
+    run() { : > $T/log; rc=0; ${pkgs.bash}/bin/bash ${deployScript} || rc=$?; }
+    fail() { echo "rollback test: $*"; cat $T/log; exit 1; }
+
+    echo 0000000 > $T/cur
+    echo abcdef1234 > $T/green
+
+    # Drill: the switch succeeds, the drill marks it unhealthy.
+    touch $T/state/drill
+    run
+    [ $rc = 1 ] || fail "drill run exit $rc"
+    [ ! -e $T/state/drill ] || fail "drill marker not cleared"
+    [ "$(cat $T/state/failed)" = abcdef1234 ] || fail "rev not written to failed"
+    grep -q "nix-env -p $T/system --set $T/gen1" $T/log || fail "no rollback to prev"
+    grep -q "switch gen1 switch" $T/log || fail "prev not switched to"
+    [ ! -e $T/state/deployed ] || fail "deployed written on rollback"
+
+    # The same rev is not retried.
+    echo 0000000 > $T/cur
+    run
+    [ $rc = 0 ] || fail "retry run exit $rc"
+    ! grep -q rebuild $T/log || fail "failed rev rebuilt again"
+
+    # Without the drill, a controller still on the old binary is unhealthy too.
+    echo bbbbbbb999 > $T/green
+    echo 1 > $T/shipbad
+    run
+    [ $rc = 1 ] || fail "unhealthy run exit $rc"
+    [ "$(cat $T/state/failed)" = bbbbbbb999 ] || fail "unhealthy rev not in failed"
+
+    # A newer healthy rev deploys.
+    rm $T/shipbad
+    echo ccccccc777 > $T/green
+    run
+    [ $rc = 0 ] || fail "healthy run exit $rc"
+    [ "$(cat $T/state/deployed)" = ccccccc777 ] || fail "deployed not written"
+  '';
+
   units = c: lib.attrNames c.config.systemd.services;
   expect = name: cond: if cond then true else throw "module-test: ${name} failed";
   checks = [
@@ -101,6 +175,7 @@ in
 # the pack paths in the generated file are checked when the check builds.
 assert lib.all lib.id checks;
 pkgs.runCommand "jobshop-module-test" { } ''
+  ${rollbackTest}
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
   grep -q '/var/lib/jobshop/workspaces/other/packs/github' ${yamlPacks two}
   grep -q 'repo: elee1766/other' ${yamlPacks two}

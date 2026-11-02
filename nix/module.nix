@@ -653,6 +653,16 @@ in
               echo "$rev failed before, waiting for a newer green commit"; exit 0
             fi
 
+            # Rollback drill (docs/verify/rollback-drill.md): with $state/drill
+            # present, this deploy reports the new controller unhealthy. The
+            # marker is removed first so it applies to one deploy only.
+            drill=
+            if [ -e $state/drill ]; then
+              rm -f $state/drill
+              drill=1
+              echo "<4>rollback drill: $rev will be reported unhealthy"
+            fi
+
             echo "deploying ${sd.inputName} $current -> $rev"
             prev=$(readlink -f /nix/var/nix/profiles/system)
             if ! nixos-rebuild switch --flake ${lib.escapeShellArg sd.hostFlake} --refresh \
@@ -667,6 +677,7 @@ in
             # Health: the new binary answers and the controller is serving.
             ok=
             for _ in $(seq 30); do
+              [ -z "$drill" ] || break
               if systemctl is-active --quiet jobshop.service \
                  && runuser -u ${cfg.user} -- env JOBSHOP_ROOT=${cfg.dataDir} "$(running)" session list >/dev/null 2>&1 \
                  && "$(running)" version | grep -q "(''${rev:0:7}"; then
