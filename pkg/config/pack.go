@@ -114,7 +114,12 @@ func loadPack(dir string, vars map[string]any) (map[string]any, error) {
 	}
 	// Step titles and prompts keep ${run var} references for run start.
 	restore := holdTemplates(m)
-	v, err := substitute(m, vars, "")
+	// ${check_output} is filled when a trigger fires, not at load.
+	subVars := map[string]any{CheckOutputVar: "${" + CheckOutputVar + "}"}
+	for k, v := range vars {
+		subVars[k] = v
+	}
+	v, err := substitute(m, subVars, "")
 	restore()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)

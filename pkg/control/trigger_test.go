@@ -2,6 +2,7 @@ package control_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -296,4 +297,71 @@ func TestTicketTrace(t *testing.T) {
 	var own rpc.TraceNode
 	require.NoError(t, d.Call(ctx, rpc.MethodTicketTrace, rpc.TraceParams{}, &own))
 	assert.Equal(t, dev.ID, own.ID)
+}
+
+const runTriggerYAML = `projects:
+  js: {}
+agents:
+  fake:
+    command: /bin/false
+pools:
+  dev:
+    agent: fake
+    dir: %[1]q
+workflows:
+  fix:
+    vars: [sha]
+    steps:
+      - {id: fix, pool: dev, title: "Fix ${sha}", prompt: "Fix master at ${sha}"}
+triggers:
+  red:
+    when:
+      check: cat sha
+    run:
+      workflow: fix
+      vars: {sha: "${check_output}"}
+      key: "red-${check_output}"
+`
+
+// A check trigger with run: starts one run per check output.
+func TestTriggerRun(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, runTriggerYAML, dir), 0o600))
+	root := config.Root{Dir: dir}
+	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	stop := triggerController(t, root, clk)
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	runs := func() []store.Ticket {
+		var out []store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &out))
+		return out
+	}
+	settle := func() { time.Sleep(150 * time.Millisecond) }
+	setSHA := func(s string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "sha"), []byte(s+"\nextra\n"), 0o600))
+	}
+
+	setSHA("abc")
+	require.Eventually(t, func() bool { return len(runs()) == 1 }, 5*time.Second, 20*time.Millisecond)
+	var r rpc.RunResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunShow, rpc.IDParams{ID: runs()[0].ID}, &r))
+	assert.Contains(t, string(r.Run.Meta), `"key":"red/abc`)
+	require.Len(t, r.Steps, 1)
+	assert.Equal(t, "Fix abc", r.Steps[0].Title, "first line of the output")
+	var f store.RunFields
+	require.NoError(t, json.Unmarshal(r.Run.Fields, &f))
+	assert.Equal(t, "red-abc", f.Key)
+
+	settle()
+	assert.Len(t, runs(), 1, "open run holds the trigger")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunCancel, rpc.IDParams{ID: r.Run.ID}, nil))
+	settle()
+	assert.Len(t, runs(), 1, "same output does not start another run")
+
+	setSHA("def")
+	require.Eventually(t, func() bool { return len(runs()) == 2 }, 5*time.Second, 20*time.Millisecond)
 }
