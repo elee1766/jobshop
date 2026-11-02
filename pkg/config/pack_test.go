@@ -162,6 +162,19 @@ packs:
 	assert.Equal(t, []string{"ticket", "issue"}, b.Vars)
 	assert.Contains(t, b.Steps[0].Prompt, "jobshop ticket list --orphaned")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start blocker-check --var ticket=<id> --var issue=<n> --key blocker-<id>")
+	mr := c.Triggers["master-red"]
+	assert.Nil(t, mr.Ticket)
+	require.NotNil(t, mr.Run, "master-red starts a run")
+	assert.Equal(t, "ci-repair", mr.Run.Workflow)
+	assert.Equal(t, "${check_output}", mr.Run.Key)
+	assert.Equal(t, map[string]string{"sha": "${check_output}"}, mr.Run.Vars)
+	ci := c.Workflows["ci-repair"]
+	require.Len(t, ci.Steps, 2)
+	assert.Equal(t, "plan", ci.EscalatePool)
+	assert.Equal(t, 2, ci.Steps[0].RetryLimit())
+	assert.Equal(t, []string{"dev", "refinery"}, []string{ci.Steps[0].Pool, ci.Steps[1].Pool})
+	assert.Contains(t, ci.Steps[0].Prompt, "--log-failed")
+	assert.Contains(t, ci.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "plan", c.Triggers["replan"].Ticket.Pool)
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
 }

@@ -138,6 +138,7 @@ Short list; behavior details are in section 7.
 - `run:` triggers start a workflow run, keyed by `${check_output}` (#98).
 - selfdev `blocker-check` workflow, started by the planner on blocked
   claims (#100).
+- selfdev `master-red` starts a `ci-repair` run per failing SHA (#99).
 
 ## 5. What's next
 
@@ -169,7 +170,8 @@ workflows", #83); next are its six follow-up issues listed there.
 second half, #98) are built. The pr-work box on #82 needs one issue
 delivered through a run on gasserver. `blocker-check` (follow-up 6, #100)
 is built; its box needs one run on gasserver (e.g. against #56) linked on
-#82.
+#82. `ci-repair` (follow-up 5, #99) is built; its box needs one red
+master handled by a run on gasserver.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -824,6 +826,18 @@ pools (`ticket list --orphaned`) and permissions or credentials, comments
 the evidence on the issue, then either routes the work back (`ticket
 update --pool`, `run resume`, drop `needs-human`) and closes `done`, or
 closes `failed`, which escalates at once.
+
+### 7.21 selfdev ci-repair (#99)
+
+`master-red` is a `run:` trigger: `{workflow: ci-repair, vars: {sha:
+${check_output}}, key: ${check_output}}`. `ci-repair` (vars `[sha]`,
+`escalate_pool: plan`) has `fix` (dev, 2 retries, `prompts/ci-fix.md`:
+find or file the fix issue, `gh run view --log-failed`, open a PR) and
+`merge` (refinery, 2 retries, `prompts/ci-merge.md`). It does not reuse
+`merge.md`, which needs an `issue` var and refuses to merge while master
+is red. With the SHA as both run key and trigger key, a SHA gets one run
+and at most two fix attempts, then `needs_human` and an escalation ticket
+(7.16).
 
 ## 8. Chat gateway (future)
 
