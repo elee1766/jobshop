@@ -104,7 +104,7 @@ func TestPoolEscalationThread(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- g.Run(ctx) }()
-	t.Cleanup(func() { cancel(); <-done })
+	t.Cleanup(func() { cancel(); assert.NoError(t, <-done) })
 
 	// Created with the label: the event alone opens the thread, no poll.
 	ctl.changes <- rpc.Event{Kind: rpc.EventKindTicket, Op: "create", ID: "js-pool", Status: store.StatusOpen}
