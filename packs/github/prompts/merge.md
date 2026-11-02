@@ -20,7 +20,7 @@ releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
 2. Behind master (`mergeStateStatus` BEHIND): `gh pr update-branch <n>`,
    then wait for CI on the new head.
 3. Waiting (CI pending): wait for it.
-4. Needs code changes (CI failing after a rerun of a flaky job, merge
+4. Needs code changes (required checks failing after a rerun of a flaky job, merge
    conflicts, unresolved review comments, acceptance criteria not met):
    comment concrete findings on the PR and on the `implement` step, then
    `jobshop run resume <run> --step implement` (reopens implement for a
@@ -28,9 +28,26 @@ releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
    findings as the reason. The failed close reopens this step blocked
    behind implement and counts one attempt; at the retry limit the run
    escalates to a human instead.
-5. Ready (CI green on the current head, no unresolved review comments,
-   criteria met): `gh pr merge <n> --squash --match-head-commit <headRefOid>`.
+5. Waiting for approval (step 6 needs an approval that is missing or is
+   for an older head): comment on this step which approval is missing,
+   then `jobshop close -r failed`. The step reopens and the next attempt
+   checks again; at the retry limit the run escalates to a human.
+6. Ready (required checks green on the current head, required approval
+   present, no unresolved review comments, criteria met):
+   `gh pr merge <n> --${merge_method} --match-head-commit <headRefOid>`.
    Never pass `--delete-branch` (gh then removes the dev session's
    worktree; GitHub deletes the remote branch on merge). Comment the merge
    commit sha on this step, then `jobshop close`. `post-merge` checks CI
    and the deploy.
+
+Merge policy for this repo:
+- Merge method: `${merge_method}`.
+- Required checks: `${required_checks}`. Empty means every check in
+  `statusCheckRollup` must pass. Otherwise each listed check name
+  (comma-separated) must be SUCCESS on `headRefOid`; others may fail:
+  `gh pr checks <n> --required=false --json name,state`.
+- Required approver: `${required_approver}`. Empty means no approval is
+  needed. Otherwise that login must have an APPROVED review on the
+  current head; an approval of an older commit does not count:
+  `gh api --paginate repos/${repo}/pulls/<n>/reviews --jq '[.[] | select(.user.login == "${required_approver}" and .state == "APPROVED" and .commit_id == "<headRefOid>")] | length'`
+  must print a number above 0.

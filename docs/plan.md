@@ -143,6 +143,8 @@ Short list; behavior details are in section 7.
   on adoption (#106).
 - Generic `packs/github`; `packs/selfdev` is an instance through pack
   `extends:` and `defaults:` (#107).
+- Refinery merge policy vars in `packs/github`: `merge_method`,
+  `required_approver`, `required_checks` (#108).
 
 ## 5. What's next
 
@@ -179,7 +181,8 @@ is built; its box needs one run on gasserver (e.g. against #56) linked on
 #82. `ci-repair` (follow-up 5, #99) is built; its box needs one red
 master handled by a run on gasserver. The generic `github` pack (#107) is
 built; the first other repo, its credentials and review policy, is still
-the user's call.
+the user's call. Merge policy vars (#108) let that repo require an
+approval or a check subset.
 
 **Phase 5.** Batches (Gas City convoys), admin-socket change subscriptions,
 and an API if a dashboard needs one. Schedules are already covered by cron
@@ -881,6 +884,21 @@ with Jobshop's values; its own vars (`repo` = checkout path, `agent`,
 change. The merged selfdev config has the same pools, triggers,
 workflows, steps and retries; prompt text differs only in wording that
 named Jobshop or self-deploy directly.
+
+### 7.23 Merge policy vars (#108)
+
+`packs/github` defaults `merge_method: squash`, `required_approver: ""`
+and `required_checks: ""`; selfdev keeps the defaults. `review-merge`
+and ci-repair `merge` run `gh pr merge --${merge_method}
+--match-head-commit <head>`. A set approver must have an `APPROVED`
+review whose `commit_id` is the current head (`gh api
+repos/<repo>/pulls/<n>/reviews`, filtered by login, state and commit);
+without it the step comments and closes `failed`, so it reopens and
+checks again until the retry limit escalates. ci-repair gets no waiver:
+a fix for red master needs the same approval. Empty `required_checks`
+means every check must pass, otherwise the listed names must be
+`SUCCESS`. The rules are prompt text, not controller code, like the rest
+of the refinery's judgment.
 
 ## 8. Chat gateway (future)
 
