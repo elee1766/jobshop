@@ -27,7 +27,10 @@ type Config struct {
 	Pools     map[string]Pool     `yaml:"pools"`
 	Triggers  map[string]Trigger  `yaml:"triggers"`
 	Workflows map[string]Workflow `yaml:"workflows"`
-	Telemetry Telemetry           `yaml:"telemetry"`
+	// PromptRules add operator guidance to matching sessions' prompts
+	// (#205): packs' rules in pack order, then this file's.
+	PromptRules []PromptRule `yaml:"prompt_rules"`
+	Telemetry   Telemetry    `yaml:"telemetry"`
 	// Attention configures `jobshop attention` (#185).
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
@@ -39,8 +42,9 @@ type Config struct {
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
 	// BuiltinMetaPacks.
 	MetaPacks []string `yaml:"meta_packs"`
-	// Sources maps "pools.<name>", "agents.<name>", "triggers.<name>" and
-	// "workflows.<name>" to the files that set the entry, in merge order.
+	// Sources maps "pools.<name>", "agents.<name>", "triggers.<name>",
+	// "workflows.<name>" and "prompt_rules.<name>" to the files that set
+	// the entry, in merge order.
 	Sources map[string][]string `yaml:"-"`
 }
 
@@ -463,6 +467,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if err := c.checkWorkflow(name, &w); err != nil {
 			return nil, fmt.Errorf("%s: workflow %s: %w", src("workflows", name), name, err)
 		}
+	}
+	if err := c.checkRules(); err != nil {
+		return nil, err
 	}
 	return &c, nil
 }

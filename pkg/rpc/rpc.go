@@ -45,6 +45,7 @@ const (
 	MethodSessionList      = "session.list"
 	MethodSessionReap      = "session.reap"
 	MethodSessionRestart   = "session.restart"
+	MethodSessionPrompt    = "session.prompt"
 	MethodSessionSend      = "session.send"
 	MethodSessionSubscribe = "session.subscribe"
 	MethodWhoami           = "whoami"
@@ -229,6 +230,31 @@ type SessionListParams struct {
 type SessionRestartParams struct {
 	ID  string `json:"id"`
 	Now bool   `json:"now,omitempty"`
+}
+
+// SessionPromptParams names the session whose next prompt to show.
+type SessionPromptParams struct {
+	ID string `json:"id"`
+}
+
+// PromptPart is one labeled piece of a prompt. Source is "pool",
+// "rule:<name>", "ticket" or "messages".
+type PromptPart struct {
+	Source string `json:"source"`
+	Text   string `json:"text"`
+}
+
+// SessionPromptResult is the prompt the session's next turn would get,
+// in order, with each part labeled. Turn is "ticket" or "message";
+// Ticket is the ticket it held or would claim. Text is the parts
+// rendered under "=== <source> ===" lines.
+type SessionPromptResult struct {
+	Session string       `json:"session"`
+	Turn    string       `json:"turn"`
+	Ticket  string       `json:"ticket,omitempty"`
+	Rules   []string     `json:"rules"`
+	Parts   []PromptPart `json:"parts"`
+	Text    string       `json:"text"`
 }
 
 // SessionRestartResult reports the host that will be replaced.
