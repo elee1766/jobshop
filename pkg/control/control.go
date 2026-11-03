@@ -25,6 +25,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -100,6 +101,8 @@ type Controller struct {
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
+	// minter caches identity tokens (#200).
+	minter *identity.Minter
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
 	// tickMu is held for a supervisor pass and taken by reload, so once a
@@ -185,6 +188,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		root: root, live: live, store: st, opt: opt, log: log, metrics: m, incidents: incidents,
 		tracer:   tr.Tracer(),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
+		minter:       identity.NewMinter(),
 		drained:      map[string]bool{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 		poolQuarantined: map[string]string{},
@@ -503,6 +507,9 @@ func init() {
 	methods = map[string]method{
 		rpc.MethodWhoami:           bind((*Controller).whoami),
 		rpc.MethodVersion:          bind((*Controller).version),
+		rpc.MethodIdentityList:     bind((*Controller).identityList),
+		rpc.MethodIdentityCheck:    bind((*Controller).identityCheck),
+		rpc.MethodIdentityToken:    bind((*Controller).identityToken),
 		rpc.MethodTicketCreate:     bind((*Controller).create),
 		rpc.MethodTicketShow:       bind((*Controller).show),
 		rpc.MethodTicketTrace:      bind((*Controller).trace),
