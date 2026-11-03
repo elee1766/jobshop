@@ -1230,6 +1230,10 @@ func TestLoadFallback(t *testing.T) {
 			require.True(t, ok)
 			assert.Contains(t, before, "first-ticket-title", "summary covers the old turn")
 			assert.Contains(t, after, "You have claimed Jobshop ticket "+second.ID)
+			const note = "this session was resumed"
+			assert.Contains(t, after, note, "resumed session gets the recovery note")
+			assert.NotContains(t, prompts[0], note, "a new session gets no recovery note")
+			assert.Equal(t, 1, strings.Count(string(b), note), "note once per respawn")
 			assert.NotContains(t, prompts[idx-1], host.SummaryEnd, "no extra turn for the summary")
 
 			var infos []rpc.SessionInfo

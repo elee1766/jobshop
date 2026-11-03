@@ -85,6 +85,10 @@ type runner struct {
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
+	// resumed is set when a new host takes over an existing conversation
+	// (restart, crash, respawn, self-deploy); the next prompt starts with
+	// recoveryNote. Memory only.
+	resumed bool
 	// turnTicket is the ticket the current prompt works on, sent in the
 	// prompt's _meta so conversation export can tag records with it.
 	turnTicket string
@@ -129,6 +133,22 @@ func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnec
 		"path", "new+summary", "summary_bytes", len(summary))
 	fields.ACPSession = string(ns.SessionId)
 	return r.saveFields(*fields)
+}
+
+// recoveryNote opens the first prompt after a host respawn. The agent may
+// have pushed, commented or closed before it stopped, and repeating that
+// (a second PR, a duplicate comment) is worse than checking first.
+const recoveryNote = "Note: this session was resumed after a restart, crash, respawn or deploy. " +
+	"Before repeating any outside action (push, PR, issue or ticket comment, close), " +
+	"check your worktree (`git status`, `git log`), the remote branch and GitHub, " +
+	"and `jobshop ticket show` for what already happened."
+
+func (r *runner) takeResumed() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v := r.resumed
+	r.resumed = false
+	return v
 }
 
 func (r *runner) takeSeed() string {
@@ -499,6 +519,9 @@ func (r *runner) session() error {
 			return err
 		}
 	case fresh:
+		r.mu.Lock()
+		r.resumed = true
+		r.mu.Unlock()
 		loaded := false
 		if init.AgentCapabilities.LoadSession {
 			_, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
@@ -829,6 +852,9 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		}
 	})
 	defer stop()
+	if r.takeResumed() {
+		text = recoveryNote + "\n\n" + text
+	}
 	if seed := r.takeSeed(); seed != "" {
 		// No extra turn: the summary rides on the next prompt.
 		text = seed + "\n\n" + host.SummaryEnd + "\n\n" + text
