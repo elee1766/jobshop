@@ -19,6 +19,8 @@
           rev = self.shortRev or self.dirtyShortRev or "unknown";
         };
         default = jobshop;
+        # Same linter version for CI, the dev shell and agents on the host.
+        golangci-lint = pkgs.callPackage ./nix/golangci-lint.nix { };
       });
 
       nixosModules.jobshop = import ./nix/module.nix self;
@@ -29,7 +31,7 @@
           packages = [
             pkgs.go_1_27
             pkgs.gopls
-            pkgs.golangci-lint
+            self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
             pkgs.sqlite
           ];
         };

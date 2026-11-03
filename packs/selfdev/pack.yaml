@@ -14,7 +14,7 @@ extends:
       refinery_sessions: ${refinery_sessions}
       human: elee1766
       ci_workflow: ci
-      check_cmd: go build ./... && go vet ./... && go test ./...
+      check_cmd: go build ./... && go vet ./... && go test ./... && golangci-lint run ./...
       docs_rule: >-
         behavior as built goes in a new file
         `docs/notes/<issue>-<slug>.md` (short, dated), a runbook check in a

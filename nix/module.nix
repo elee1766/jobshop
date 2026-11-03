@@ -84,6 +84,8 @@ let
     openssh
     coreutils
     bash
+    # From this flake's nixpkgs, so agents lint with the version CI uses.
+    self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
   ];
   path = cfg.path ++ lib.optionals cfg.defaultPath defaultTools;
 
