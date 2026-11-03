@@ -228,3 +228,36 @@ func TestEscalationRethread(t *testing.T) {
 	g2.Escalations(ctx)
 	assert.Equal(t, "fake:!esc:$open1", g2.threadKey(Thread{Room: "!esc", Root: "$open2"}))
 }
+
+func TestQuestionThread(t *testing.T) {
+	ad := &fakeAdapter{}
+	ctl := &fakeController{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{
+		"js-q": {
+			ID: "js-q", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
+			Body: "Which base branch?",
+			Meta: []byte(`{"question":{"ticket":"js-step","session":"js-s1"}}`),
+		},
+	}}
+	g := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(func() { cancel(); g.wg.Wait() })
+
+	g.Escalations(ctx)
+	assert.Equal(t, 1, ad.opened)
+	assert.Empty(t, ctl.sent(), "a question starts no chat session")
+	require.Len(t, ad.got(), 1)
+	assert.Contains(t, ad.got()[0], "Question js-q from js-s1 on js-step")
+	assert.Contains(t, ad.got()[0], "Which base branch?")
+
+	// The reply is the answer, not a chat message.
+	g.Handle(ctx, Message{Thread: Thread{Room: "!esc", Root: "$open1"}, ID: "$r", Sender: "@op", Text: "use main"})
+	assert.Empty(t, ctl.sent())
+	ctl.mu.Lock()
+	ans := ctl.answers
+	ctl.mu.Unlock()
+	assert.Equal(t, []rpc.AnswerParams{{ID: "js-q", Text: "use main", From: "@op"}}, ans)
+
+	g.Escalations(ctx) // the fake closed the question
+	got := ad.got()
+	assert.Equal(t, "!esc/$open1: jobshop: question js-q closed (answered); the answer went to js-s1 and is a comment on js-step.", got[len(got)-1])
+}

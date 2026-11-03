@@ -101,14 +101,33 @@ func metaPool(t store.Ticket) (poolMeta, bool) {
 	return p, true
 }
 
-// isEscalation reports whether the controller filed t: a run escalation
-// or a pool quarantine.
+// isEscalation reports whether the controller filed t: a run escalation,
+// a pool quarantine or a worker question (#186).
 func isEscalation(t store.Ticket) bool {
 	if _, ok := metaRun(t); ok {
 		return true
 	}
+	if _, ok := metaQuestion(t); ok {
+		return true
+	}
 	_, ok := metaPool(t)
 	return ok
+}
+
+// questionMeta is meta.question on a worker question, written by the
+// controller on `jobshop report --question`.
+type questionMeta struct {
+	Ticket  string `json:"ticket"`
+	Session string `json:"session"`
+}
+
+func metaQuestion(t store.Ticket) (questionMeta, bool) {
+	var q questionMeta
+	raw, ok := ticketMeta(t)["question"]
+	if !ok || json.Unmarshal(raw, &q) != nil || q.Ticket == "" {
+		return q, false
+	}
+	return q, true
 }
 
 func metaEscalation(t store.Ticket) (Escalation, bool) {
@@ -195,6 +214,7 @@ func (g *Gateway) escalationEvent(ctx context.Context, ev rpc.Event) {
 		}
 		g.mu.Lock()
 		delete(g.escalating, ev.ID)
+		g.forgetQuestion(ev.ID)
 		g.mu.Unlock()
 	case ev.Op == "create" || ev.Op == "reopen" || (ev.Op == "label_add" && ev.Label == EscalationLabel):
 		if ev.Status == store.StatusClosed {
@@ -255,6 +275,7 @@ func (g *Gateway) Escalations(ctx context.Context) {
 		}
 		g.mu.Lock()
 		delete(g.escalating, id)
+		g.forgetQuestion(id)
 		g.mu.Unlock()
 	}
 }
@@ -291,6 +312,14 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 		g.keys[th] = e.Key // a replacement thread (#197)
 	}
 	g.mu.Unlock()
+	if _, ok := metaQuestion(t); ok {
+		// A question needs no chat session: a reply in the thread is the
+		// answer, delivered to the asking session by Handle.
+		g.mu.Lock()
+		g.questions[e.Key] = t.ID
+		g.mu.Unlock()
+		return nil
+	}
 	if e.Session != "" {
 		return nil
 	}
@@ -386,12 +415,18 @@ func (g *Gateway) resolved(ctx context.Context, id string) error {
 	if res == "" {
 		res = "done"
 	}
-	g.post(ctx, Thread{Room: e.Room, Root: e.Root},
-		fmt.Sprintf("jobshop: escalation %s closed (%s). Replies here still reach the same session.", t.ID, res))
+	msg := fmt.Sprintf("jobshop: escalation %s closed (%s). Replies here still reach the same session.", t.ID, res)
+	if q, ok := metaQuestion(t); ok {
+		msg = fmt.Sprintf("jobshop: question %s closed (%s); the answer went to %s and is a comment on %s.", t.ID, res, q.Session, q.Ticket)
+	}
+	g.post(ctx, Thread{Room: e.Room, Root: e.Root}, msg)
 	return nil
 }
 
 func openingText(t store.Ticket) string {
+	if q, ok := metaQuestion(t); ok {
+		return fmt.Sprintf("Question %s from %s on %s. Reply in this thread; the reply is the answer and goes to the asking session.\n\n%s", t.ID, q.Session, q.Ticket, t.Body)
+	}
 	if p, ok := metaPool(t); ok {
 		return fmt.Sprintf("Escalation %s: pool %s is quarantined (%s). Reply in this thread.", t.ID, p.Name, p.Quarantine)
 	}
@@ -432,4 +467,34 @@ func poolPrompt(t store.Ticket, p poolMeta, gateway string) string {
 	b.WriteString("Escalation ticket body:\n\n")
 	b.WriteString(t.Body)
 	return b.String()
+}
+
+// forgetQuestion drops the thread of question id. g.mu must be held.
+func (g *Gateway) forgetQuestion(id string) {
+	for k, q := range g.questions {
+		if q == id {
+			delete(g.questions, k)
+		}
+	}
+}
+
+// answer sends a reply in a question thread as the answer. The first
+// reply closes the question; later replies start a chat session as in
+// any thread, since the map entry is gone once the close event arrives.
+func (g *Gateway) answer(ctx context.Context, m Message, id, text string) {
+	res, err := g.ctl.Answer(ctx, rpc.AnswerParams{ID: id, Text: text, From: m.Sender})
+	if err != nil {
+		g.log.Warn("gateway: answer", "question", id, "err", err)
+		g.post(ctx, m.Thread, "jobshop: answer not delivered: "+err.Error())
+		return
+	}
+	g.mu.Lock()
+	g.forgetQuestion(id)
+	g.mu.Unlock()
+	if err := g.ad.React(ctx, m.Thread, m.ID, ReactQueued); err != nil {
+		g.log.Debug("gateway: react", "err", err)
+	}
+	if res.Message == nil {
+		g.post(ctx, m.Thread, "jobshop: the asking session has ended; the answer is a comment on the ticket for the next one.")
+	}
 }

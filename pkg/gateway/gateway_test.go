@@ -75,12 +75,25 @@ type fakeController struct {
 	changes chan rpc.Event
 	// attention is returned by Attention.
 	attention []rpc.AttentionItem
+	answers   []rpc.AnswerParams
 }
 
 func (f *fakeController) Attention(context.Context) (rpc.AttentionResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return rpc.AttentionResult{Items: f.attention}, nil
+}
+
+// Answer records the answer and closes the question, as the controller does.
+func (f *fakeController) Answer(_ context.Context, p rpc.AnswerParams) (rpc.AnswerResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.answers = append(f.answers, p)
+	t := f.ticket[p.ID]
+	t.Status, t.Resolution = store.StatusClosed, "answered"
+	t.Revision++
+	f.ticket[p.ID] = t
+	return rpc.AnswerResult{Question: t, Message: &store.Ticket{ID: "js-msg"}}, nil
 }
 
 func (f *fakeController) Events(ctx context.Context, _ rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error) {

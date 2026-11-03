@@ -268,6 +268,18 @@ func (c *Controller) lastActivity(ctx context.Context, t store.Ticket) (time.Tim
 
 func ago(now, t time.Time) string { return now.Sub(t).Truncate(time.Second).String() }
 
+// waitsOnQuestion: the ticket's last report is waiting on a question that
+// is still open. The question itself is a needs-human ticket, so the
+// needs_human signal covers it and the step or session is not stalled.
+func (c *Controller) waitsOnQuestion(ctx context.Context, t store.Ticket) bool {
+	rm, ok := reportOf(t)
+	if !ok || rm.State != rpc.ReportWaiting || rm.Question == "" {
+		return false
+	}
+	q, err := c.store.Get(ctx, rm.Question)
+	return err == nil && q.Status != store.StatusClosed
+}
+
 // stallReadyUnclaimed: ready tickets in a configured pool nobody claimed
 // for after. Chat pools are left out: their tickets wait for a person.
 func (c *Controller) stallReadyUnclaimed(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
@@ -339,7 +351,7 @@ func (c *Controller) stallSteps(ctx context.Context, now time.Time, after time.D
 			if s.Status == store.StatusClosed {
 				continue
 			}
-			if s.Status == store.StatusInProgress {
+			if s.Status == store.StatusInProgress && !c.waitsOnQuestion(ctx, s) {
 				last, err := c.lastActivity(ctx, s)
 				if err != nil {
 					return nil, err
@@ -369,6 +381,9 @@ func (c *Controller) stallSessions(ctx context.Context, now time.Time, after tim
 		}
 		if len(held) == 0 {
 			continue // idle sessions are quiet by design
+		}
+		if c.waitsOnQuestion(ctx, held[0]) {
+			continue // waiting for an answer is quiet by design
 		}
 		last := s.CreatedAt
 		if _, at := host.JournalTail(c.root.SessionDir(s.ID)); at.After(last) {

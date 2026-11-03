@@ -64,6 +64,8 @@ type Controller interface {
 	Events(ctx context.Context, p rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error)
 	// Attention lists what waits on a human, for the daily digest.
 	Attention(ctx context.Context) (rpc.AttentionResult, error)
+	// Answer delivers a reply in a question thread to the asking session.
+	Answer(ctx context.Context, p rpc.AnswerParams) (rpc.AnswerResult, error)
 }
 
 // Config is one gateway's routing.
@@ -100,8 +102,9 @@ type Gateway struct {
 	escalating map[string]Thread // open escalation tickets with a thread, by ticket id
 	// keys maps a replacement escalation thread to the session key of the
 	// thread it replaced, so replies reach the same session (#197).
-	keys map[Thread]string
-	wg   sync.WaitGroup
+	keys      map[Thread]string
+	questions map[string]string // open question tickets by thread key
+	wg        sync.WaitGroup
 }
 
 type watch struct {
@@ -120,6 +123,7 @@ func New(cfg Config, ad Adapter, ctl Controller, log *slog.Logger) *Gateway {
 	return &Gateway{
 		cfg: cfg, ad: ad, ctl: ctl, log: log, retry: 2 * time.Second,
 		watched: map[string]*watch{}, escalating: map[string]Thread{}, keys: map[Thread]string{},
+		questions: map[string]string{},
 	}
 }
 
@@ -173,6 +177,13 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 		return
 	}
 	key := g.threadKey(m.Thread)
+	g.mu.Lock()
+	q, isQuestion := g.questions[key]
+	g.mu.Unlock()
+	if isQuestion {
+		g.answer(ctx, m, q, text)
+		return
+	}
 	sent := time.Now()
 	p := rpc.SessionSendParams{Pool: g.cfg.Pool, Key: key, Text: text, Interrupt: interrupt}
 	res, err := g.ctl.Send(ctx, p)

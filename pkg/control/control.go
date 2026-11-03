@@ -568,5 +568,7 @@ func init() {
 		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
 		rpc.MethodGuard:            bind((*Controller).guard),
 		rpc.MethodSubscribe:        bind((*Controller).subscribe),
+		rpc.MethodReport:           bind((*Controller).report),
+		rpc.MethodQuestionAnswer:   bind((*Controller).answerQuestion),
 	}
 }

@@ -53,7 +53,7 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 			}
 			seen[t.ID] = true
 			kind := rpc.AttentionTicket
-			if label == questionLabel && !slices.Contains(t.Labels, needsHumanLabel) {
+			if (label == questionLabel && !slices.Contains(t.Labels, needsHumanLabel)) || metaString(t.Meta, questionMetaPack, "ticket") != "" {
 				kind = rpc.AttentionQuestion
 			}
 			items = append(items, ticketItem(kind, t))

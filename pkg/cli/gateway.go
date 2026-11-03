@@ -107,6 +107,11 @@ func (s socketController) Update(ctx context.Context, p rpc.UpdateParams) (store
 	return res, s.call(ctx, rpc.MethodTicketUpdate, p, &res)
 }
 
+func (s socketController) Answer(ctx context.Context, p rpc.AnswerParams) (rpc.AnswerResult, error) {
+	var res rpc.AnswerResult
+	return res, s.call(ctx, rpc.MethodQuestionAnswer, p, &res)
+}
+
 func (s socketController) Events(ctx context.Context, p rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error) {
 	c, err := rpc.Dial(ctx, s.sock)
 	if err != nil {
