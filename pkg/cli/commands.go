@@ -618,3 +618,15 @@ func (c sessionNewCmd) Run(g *Globals) error {
 		Project: c.Project, Pool: c.Pool, Agent: c.Agent, Key: c.Key, Title: c.Title,
 	}, nil)
 }
+
+type reportCmd struct {
+	Incidents reportIncidentsCmd `cmd:"" help:"Group controller WARN/ERROR lines, crashed or stuck sessions and failed run steps."`
+}
+
+type reportIncidentsCmd struct {
+	Since time.Duration `default:"24h" help:"How far back to look. Log lines go back to the controller start at most."`
+}
+
+func (c reportIncidentsCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodReportIncidents, rpc.IncidentsParams{Since: c.Since}, nil)
+}

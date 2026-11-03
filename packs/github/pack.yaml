@@ -46,7 +46,7 @@ pools:
     turn_timeout: 2h
     prompt_file: prompts/plan.md
     # stall-check steps run here and inspect or restart sessions.
-    admin: [session-list, session-restart, trigger-list]
+    admin: [session-list, session-restart, trigger-list, report-incidents]
   refinery:
     agent: ${agent}
     repo: ${checkout}

@@ -62,6 +62,7 @@ type root struct {
 	Run       runCmd       `cmd:"" help:"Start and inspect workflow runs."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
+	Report    reportCmd    `cmd:"" help:"Reliability reports for planner passes (admin)."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Events    eventsCmd    `cmd:"" help:"Print the change stream as JSON lines (admin, for debugging)."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
