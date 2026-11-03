@@ -3,6 +3,7 @@
 # dev_sessions. See README.md.
 defaults:
   dev_sessions: 2
+  refinery_sessions: 1
 extends:
   - path: ../github
     vars:
@@ -10,6 +11,7 @@ extends:
       checkout: ${repo}
       agent: ${agent}
       dev_sessions: ${dev_sessions}
+      refinery_sessions: ${refinery_sessions}
       human: elee1766
       ci_workflow: ci
       check_cmd: go build ./... && go vet ./... && go test ./...

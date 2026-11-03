@@ -38,7 +38,7 @@ form of what failed, e.g. `gh auth status`, `gh api repos/${repo}`),
 and any merged PR, closed issue or run it names.
 
 Fix in place when you can, one or more of:
-- Start a missing run: `jobshop run start pr-work --var issue=<n> --key
+- Start a missing run: `jobshop run start ${pack_prefix}pr-work --var issue=<n> --key
   issue-<n>` (skip issues labeled `target`, `needs-decision`, drills and
   tracking issues; comment why instead).
 - Requeue or reroute a ticket: `jobshop ticket update <id> --pool

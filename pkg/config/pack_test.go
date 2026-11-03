@@ -396,3 +396,46 @@ func TestSelfdevPoolCaps(t *testing.T) {
 	assert.Equal(t, 4, c.Pools["dev"].MaxSessions)
 	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "github pack default")
 }
+
+// TestGithubPackTwoRepos: two packs/github instances with prefixes load
+// side by side, each with its own pools, workflows and triggers (#184).
+func TestGithubPackTwoRepos(t *testing.T) {
+	dir := t.TempDir()
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test}
+  - path: ` + pack + `
+    prefix: gz-
+    vars: {repo: acme/gizmo, checkout: /src/gizmo, agent: a, human: wile, check_cmd: make check}
+`})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"dev", "plan", "refinery", "deploy-check", "gz-dev", "gz-plan", "gz-refinery", "gz-deploy-check"}, slices.Collect(maps.Keys(c.Pools)))
+	assert.Equal(t, "/src/widget", c.Pools["dev"].Repo)
+	assert.Equal(t, "/src/gizmo", c.Pools["gz-dev"].Repo)
+	assert.Equal(t, "a", c.Pools["gz-dev"].Agent, "host agent is not renamed")
+	w := c.Workflows["gz-pr-work"]
+	assert.Equal(t, "acme/gizmo", w.Repo)
+	assert.Equal(t, "gz-plan", w.EscalatePool)
+	assert.Equal(t, []string{"gz-dev", "gz-refinery", "gz-deploy-check"}, []string{w.Steps[0].Pool, w.Steps[1].Pool, w.Steps[2].Pool})
+	mr := c.Triggers["gz-master-red"]
+	assert.Equal(t, "gz-ci-repair", mr.Run.Workflow)
+	assert.Contains(t, mr.When.Check, "--repo acme/gizmo")
+	assert.Equal(t, "gz-dev", c.Triggers["gz-replan"].When.Pool)
+	assert.Equal(t, "gz-plan", c.Triggers["gz-replan"].Ticket.Pool)
+	assert.Equal(t, "gz-stall-check", c.Triggers["gz-stall"].Run.Workflow)
+	assert.Contains(t, c.Pools["gz-plan"].Prompt, "jobshop run start gz-pr-work --var")
+	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var")
+	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--pool gz-dev`")
+	assert.Equal(t, "gz-", w.PackVars[PackPrefixVar])
+
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    prefix: Bad\n"})
+	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.ErrorContains(t, err, "prefix")
+}
