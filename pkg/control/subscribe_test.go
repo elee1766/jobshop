@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -226,4 +231,76 @@ func TestParseGHLines(t *testing.T) {
 	require.Len(t, out, 2, "empty COMMENTED review dropped")
 	assert.Equal(t, "APPROVED", out[0].State)
 	assert.True(t, out[1].Bot)
+}
+
+// TestSubscriptionsLinear: a ticket with meta.linear follows the Linear
+// issue through the team's identity. Comments by the identity's own user
+// (isMe) and bots advance the read position; a human comment reaches the
+// working session.
+func TestSubscriptionsLinear(t *testing.T) {
+	c, clk, gh := subController(t)
+	ctx := t.Context()
+	tokFile := filepath.Join(t.TempDir(), "tok")
+	require.NoError(t, os.WriteFile(tokFile, []byte("lin_api_x\n"), 0o600))
+	cfg := *c.config()
+	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: tokFile, Workspace: "acme", Teams: []string{"ENG"}}}
+	lc, err := newLiveConfig(&cfg)
+	require.NoError(t, err)
+	c.live.Store(lc)
+	c.minter = identity.NewMinter()
+
+	var mu sync.Mutex
+	var nodes []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "lin_api_x", r.Header.Get("Authorization"))
+		mu.Lock()
+		defer mu.Unlock()
+		// Linear lists newest first.
+		rev := slices.Clone(nodes)
+		slices.Reverse(rev)
+		_, _ = fmt.Fprintf(w, `{"data":{"issue":{"id":"iss-1","identifier":"ENG-5","url":"https://linear.app/acme/issue/ENG-5","team":{"id":"t","key":"ENG"},"comments":{"nodes":[%s]}}}}`, strings.Join(rev, ","))
+	}))
+	t.Cleanup(srv.Close)
+	addNode := func(body, user string, me bool, at time.Time) {
+		mu.Lock()
+		defer mu.Unlock()
+		u := "null"
+		if user != "" {
+			u = fmt.Sprintf(`{"name":%q,"isMe":%t}`, user, me)
+		}
+		nodes = append(nodes, fmt.Sprintf(`{"id":"c%d","body":%q,"url":"","createdAt":%q,"user":%s}`, len(nodes), body, at.Format(time.RFC3339Nano), u))
+	}
+	src := muxSource{gh: gh, linear: linearSource{c: c, url: srv.URL}}
+
+	sess := mkSession(t, c)
+	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"linear":{"workspace":"acme","issue":"ENG-5"},"github":{"repo":"acme/app"}}`)})
+	_, _, err = c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
+	require.NoError(t, err)
+	addNode("old", "Ann", false, clk.now().Add(-time.Hour))
+
+	c.pollSubscriptions(ctx, src)
+	assert.Equal(t, []thread{{Linear: "ENG-5", Seen: clk.now()}}, threadsOf(t, c, tk.ID))
+	assert.Empty(t, messagesTo(t, c, sess.ID), "older comments are not news")
+
+	clk.advance(time.Minute)
+	addNode("PR https://github.com/acme/app/pull/9", "jobshop", true, clk.now())
+	addNode("synced", "", false, clk.now())
+	c.pollSubscriptions(ctx, src)
+	assert.Empty(t, messagesTo(t, c, sess.ID), "own and bot comments dropped")
+	assert.Equal(t, clk.now(), threadsOf(t, c, tk.ID)[0].Seen)
+
+	clk.advance(time.Minute)
+	addNode("please also fix logout", "Ann", false, clk.now())
+	c.pollSubscriptions(ctx, src)
+	msgs := messagesTo(t, c, sess.ID)
+	require.Len(t, msgs, 1)
+	assert.Contains(t, msgs[0].Body, "New on Linear issue ENG-5")
+	assert.Contains(t, msgs[0].Body, "please also fix logout")
+	assert.Contains(t, msgs[0].Body, "https://linear.app/acme/issue/ENG-5")
+	cs, err := c.store.Comments(ctx, tk.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "linear:Ann", cs[len(cs)-1].Author)
+
+	c.pollSubscriptions(ctx, src)
+	assert.Len(t, messagesTo(t, c, sess.ID), 1, "delivered once")
 }

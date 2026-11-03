@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -34,21 +35,35 @@ const (
 	defaultSubResume      = 7 * 24 * time.Hour
 	subCommentBodyMax     = 4000
 	subscribeAuthorPrefix = "github:"
+	linearAuthorPrefix    = "linear:"
 )
 
 // prLink finds PR URLs in comments, e.g. the pr-work "PR <url> head <sha>".
 var prLink = regexp.MustCompile(`https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)`)
 
-// thread is one followed GitHub thread and its read position.
+// thread is one followed GitHub thread, or a Linear issue when Linear is
+// set (#233), and its read position.
 type thread struct {
-	Repo   string    `json:"repo"`
-	Number int       `json:"number"`
+	Repo   string    `json:"repo,omitempty"`
+	Number int       `json:"number,omitempty"`
 	PR     bool      `json:"pr,omitempty"`
+	Linear string    `json:"linear,omitempty"`
 	Seen   time.Time `json:"seen"`
 }
 
 func (t thread) key() string {
+	if t.Linear != "" {
+		return "linear:" + t.Linear
+	}
 	return fmt.Sprintf("%s#%d", t.Repo, t.Number)
+}
+
+// authorPrefix marks ticket comments quoted from the thread's tracker.
+func (t thread) authorPrefix() string {
+	if t.Linear != "" {
+		return linearAuthorPrefix
+	}
+	return subscribeAuthorPrefix
 }
 
 // ghComment is a comment or review on a thread.
@@ -87,7 +102,8 @@ func decodeSubMeta(meta json.RawMessage) (subMeta, map[string]json.RawMessage) {
 }
 
 // implicitThreads are the threads a ticket follows without asking: its
-// meta.github issue or pr, and PRs linked in its comments.
+// meta.github issue or pr, its meta.linear issue, and PRs linked in its
+// comments.
 func implicitThreads(t store.Ticket, comments []store.Comment) []thread {
 	var out []thread
 	var m struct {
@@ -96,6 +112,12 @@ func implicitThreads(t store.Ticket, comments []store.Comment) []thread {
 			Issue any    `json:"issue"`
 			PR    any    `json:"pr"`
 		} `json:"github"`
+		Linear struct {
+			Issue string `json:"issue"`
+		} `json:"linear"`
+	}
+	if len(t.Meta) > 0 && json.Unmarshal(t.Meta, &m) == nil && linear.KeyPattern.MatchString(m.Linear.Issue) {
+		out = append(out, thread{Linear: m.Linear.Issue})
 	}
 	if len(t.Meta) > 0 && json.Unmarshal(t.Meta, &m) == nil && m.GitHub.Repo != "" {
 		if n := refNumber(m.GitHub.Issue); n > 0 {
@@ -106,8 +128,8 @@ func implicitThreads(t store.Ticket, comments []store.Comment) []thread {
 		}
 	}
 	for _, c := range comments {
-		if strings.HasPrefix(c.Author, subscribeAuthorPrefix) {
-			continue // quoted GitHub text, not the ticket's own links
+		if strings.HasPrefix(c.Author, subscribeAuthorPrefix) || strings.HasPrefix(c.Author, linearAuthorPrefix) {
+			continue // quoted tracker text, not the ticket's own links
 		}
 		for _, sm := range prLink.FindAllStringSubmatch(c.Body, -1) {
 			n, _ := strconv.Atoi(sm[2])
@@ -257,12 +279,14 @@ func (c *Controller) follow(ctx context.Context, t store.Ticket, now time.Time) 
 // among followers.
 func threadOf(fs []*follower, k string) (thread, time.Time) {
 	var th thread
+	found := false
 	for _, f := range fs {
 		for _, x := range f.threads {
 			if x.key() != k {
 				continue
 			}
-			if th.Repo == "" || x.Seen.After(th.Seen) {
+			if !found || x.Seen.After(th.Seen) {
+				found = true
 				pr := th.PR || x.PR
 				th = x
 				th.PR = pr
@@ -343,11 +367,14 @@ func owner(fs []*follower) *follower {
 
 func threadText(th thread, cs []ghComment) string {
 	var b strings.Builder
-	what := "issue"
-	if th.PR {
-		what = "PR"
+	switch {
+	case th.Linear != "":
+		fmt.Fprintf(&b, "New on Linear issue %s:\n", th.Linear)
+	case th.PR:
+		fmt.Fprintf(&b, "New on GitHub PR %s:\n", th.key())
+	default:
+		fmt.Fprintf(&b, "New on GitHub issue %s:\n", th.key())
 	}
-	fmt.Fprintf(&b, "New on GitHub %s %s:\n", what, th.key())
 	for _, cm := range cs {
 		body := cm.Body
 		if len(body) > subCommentBodyMax {
@@ -370,7 +397,7 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 		return err
 	}
 	text := threadText(th, cs)
-	author := subscribeAuthorPrefix + cs[len(cs)-1].Author
+	author := th.authorPrefix() + cs[len(cs)-1].Author
 	if _, err := c.store.AddComment(ctx, author, t.ID, text); err != nil {
 		return err
 	}
@@ -384,7 +411,7 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 		}
 		_, err = c.store.Create(ctx, "controller", store.NewTicket{
 			Project: t.Project, Kind: store.KindMessage,
-			Title: fmt.Sprintf("GitHub %s has new comments for %s", th.key(), t.ID),
+			Title: fmt.Sprintf("%s has new comments for %s", threadName(th), t.ID),
 			Body:  text, Fields: fields,
 		})
 		return err
@@ -469,7 +496,7 @@ func (c *Controller) subscribe(ctx context.Context, sc scope, p rpc.SubscribePar
 func (c *Controller) pumpSubscriptions() {
 	src := c.subSource
 	if src == nil {
-		src = ghSource{}
+		src = muxSource{gh: ghSource{}, linear: linearSource{c: c}}
 	}
 	for {
 		every := defaultSubInterval
@@ -483,6 +510,65 @@ func (c *Controller) pumpSubscriptions() {
 		case <-time.After(every):
 		}
 	}
+}
+
+func threadName(th thread) string {
+	if th.Linear != "" {
+		return "Linear " + th.Linear
+	}
+	return "GitHub " + th.key()
+}
+
+// muxSource sends Linear threads to linear and the rest to gh.
+type muxSource struct{ gh, linear threadSource }
+
+func (m muxSource) Comments(ctx context.Context, th thread, since time.Time) ([]ghComment, error) {
+	if th.Linear != "" {
+		return m.linear.Comments(ctx, th, since)
+	}
+	return m.gh.Comments(ctx, th, since)
+}
+
+// linearSource reads a Linear issue's comments as the identity covering
+// its team (#200). Comments by that identity's own user are jobshop's
+// sessions talking, so they count as bot comments: seen, not delivered.
+type linearSource struct {
+	c   *Controller
+	url string // "" is linear.DefaultAPIURL; tests set a fake
+}
+
+func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) ([]ghComment, error) {
+	team, ok := linear.Team(th.Linear)
+	if !ok {
+		return nil, fmt.Errorf("linear: bad issue key %q", th.Linear)
+	}
+	cfg := s.c.config()
+	name, ok := cfg.IdentityFor(cfg.IdentityNames(), team)
+	if !ok {
+		return nil, fmt.Errorf("linear: no identity covers team %s", team)
+	}
+	tok, err := s.c.minter.Token(ctx, name, cfg.Identities[name], team)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	is, err := linear.New(s.url, tok.Token).GetIssue(ctx, th.Linear)
+	if err != nil {
+		return nil, err
+	}
+	var out []ghComment
+	for _, cm := range is.Comments {
+		if !cm.CreatedAt.After(since) {
+			continue
+		}
+		url := cm.URL
+		if url == "" {
+			url = is.URL
+		}
+		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot || cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt})
+	}
+	return out, nil
 }
 
 // ghSource reads threads with the gh CLI, which has the host's token.
