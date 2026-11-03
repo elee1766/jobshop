@@ -268,6 +268,9 @@ func (c *Controller) serve() error {
 		c.drive(t)
 	}
 	c.reapOrphans(open)
+	if err := c.backfillGitHubRepo(c.ctx); err != nil {
+		c.log.Warn("backfill github repo", "err", err)
+	}
 	c.log.Info("controller serving", "root", c.root.Dir, "sessions", len(open))
 
 	tick := time.NewTicker(c.opt.Tick)

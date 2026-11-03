@@ -42,6 +42,12 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 		case !builtin && s.Check == "":
 			return fmt.Errorf("when.stall: %s is not a store signal %v and needs a check", s.Signal, StoreStallSignals)
 		}
+		switch {
+		case s.Signal == StallIssueNoRun && !RepoPattern.MatchString(s.Repo):
+			return fmt.Errorf("when.stall: %s needs repo (owner/name), got %q", s.Signal, s.Repo)
+		case s.Signal != StallIssueNoRun && s.Repo != "":
+			return fmt.Errorf("when.stall: repo is only for %s", StallIssueNoRun)
+		}
 		if s.After != "" {
 			if d, err := time.ParseDuration(s.After); err != nil || d < 0 {
 				return fmt.Errorf("when.stall: %s after %q must be a non-negative duration", s.Signal, s.After)

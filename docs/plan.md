@@ -184,6 +184,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `batch show` on the target (#171, `docs/notes/171-planner-batches.md`).
 - `jobshop version --server` reports the controller's commit; the
   selfdev deploy check uses it (#180, `docs/notes/180-server-version.md`).
+- Work references carry the repo: `meta.github = {repo, issue|pr}`,
+  repo-scoped `issue_no_run`, startup backfill (#183,
+  `docs/notes/183-github-repo-refs.md`, `docs/verify/github-repo-refs.md`).
 - Admin `events.subscribe` change stream from ticket history, `jobshop
   events`; the gateway's escalation threads follow it instead of a 10s
   poll (#147).
@@ -478,8 +481,9 @@ loops, fan-out or step outputs; add them when a workflow needs them.
 
 *Definition.* A pack declares `workflows:` next to `pools:` and
 `triggers:`. A workflow has `vars` (required var names; pack vars
-supply defaults), optional `issue` (a var holding a GitHub issue number, copied
-into every ticket's `meta.github.issue`), `escalate_pool`, and ordered
+supply defaults), optional `issue` or `pr` (a var holding a GitHub issue or PR
+number) with `repo` (owner/name), copied into every ticket's
+`meta.github` (#183), `escalate_pool`, and ordered
 `steps`. Each step has `id`, `pool`, `title`, `prompt` or `prompt_file`
 (filled from pack vars plus run vars), and `retries` (default 2). A step
 blocks on the previous one. Unknown pools or vars fail config load.
@@ -493,7 +497,8 @@ controller, which fills the templates and calls the existing
   `fields` `{run, step, index, retries, failures: 0}`, body = filled
   prompt.
 - edges: step i+1 `blocks` on step i, so only the first step is ready.
-- `meta.github.issue` on the run and every step when `issue` is set.
+- `meta.github` `{repo, issue|pr}` on the run and every step when `issue`
+  or `pr` is set.
 
 `--key` dedups: a second start with the same workflow and key while a
 run with that key is open returns the open run. Triggers get
@@ -651,6 +656,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - The human slot is a cap of `max_sessions + 1` on human starts, not a
   per-session flag (2026-11-03, #190): counting open sessions needs no
   new state, and the supervisor's cap is unchanged.
+- Work references name their repo (2026-11-03, #183): `meta.github.repo`
+  is set from workflow config, not inferred, and old tickets get it from
+  a startup backfill rather than SQL, since only config knows the repo.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.

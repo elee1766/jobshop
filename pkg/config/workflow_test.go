@@ -19,6 +19,7 @@ workflows:
   pr-work:
     vars: [issue]
     issue: issue
+    repo: acme/widget
     escalate_pool: plan
     steps:
       - {id: implement, pool: dev, retries: 3, prompt_file: prompts/implement.md,
@@ -38,6 +39,7 @@ workflows:
   blocker-check:
     vars: [ticket, issue]
     issue: issue
+    repo: acme/widget
     escalate_pool: plan
     steps:
       - {id: assess, pool: plan, retries: 1, prompt_file: prompts/blocker.md,
@@ -104,6 +106,10 @@ func TestWorkflowErrors(t *testing.T) {
 		{"unknown title var", "  w:\n    steps:\n      - {id: s, pool: dev, title: \"t ${who}\", prompt: p}\n", "title uses ${who}, not in workflow vars or pack vars"},
 		{"unknown prompt var", "  w:\n    vars: [a]\n    steps:\n      - {id: s, pool: dev, title: t, prompt: \"${a} ${b}\"}\n", "prompt uses ${b}"},
 		{"issue not in vars", "  w:\n    vars: [sha]\n    issue: issue\n    steps:\n      - " + step + "\n", `issue "issue" is not in vars`},
+		{"issue without repo", "  w:\n    vars: [issue]\n    issue: issue\n    steps:\n      - " + step + "\n", "repo (owner/name) is required"},
+		{"bad repo", "  w:\n    vars: [issue]\n    issue: issue\n    repo: /src\n    steps:\n      - " + step + "\n", `repo "/src" must be owner/name`},
+		{"issue and pr", "  w:\n    vars: [issue, pr]\n    issue: issue\n    pr: pr\n    repo: a/b\n    steps:\n      - " + step + "\n", "set issue or pr, not both"},
+		{"pr not in vars", "  w:\n    vars: [x]\n    pr: pr\n    repo: a/b\n    steps:\n      - " + step + "\n", `pr "pr" is not in vars`},
 		{"missing step id", "  w:\n    steps:\n      - {pool: dev, title: t, prompt: p}\n", `steps[0]: id ""`},
 		{"missing title", "  w:\n    steps:\n      - {id: s, pool: dev, prompt: p}\n", "step s: title is required"},
 		{"negative retries", "  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p, retries: -1}\n", "retries must be >= 0"},

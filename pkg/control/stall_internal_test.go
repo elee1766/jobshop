@@ -37,6 +37,8 @@ workflows:
       - {id: diagnose, pool: plan, retries: 1, title: "Stall ${signal} ${subject}", prompt: "Check ${subject}: ${detail}"}
   work:
     vars: [n]
+    issue: n
+    repo: acme/widget
     steps:
       - {id: a, pool: dev, retries: 1, title: "A ${n}", prompt: a}
       - {id: b, pool: dev, title: "B ${n}", prompt: b}
@@ -50,7 +52,7 @@ triggers:
         - {signal: session_silent, after: 30m}
         - {signal: needs_human, after: 2h}
         - {signal: blocked, after: 1h}
-        - {signal: issue_no_run, check: "cat %[1]s/issues"}
+        - {signal: issue_no_run, repo: acme/widget, check: "cat %[1]s/issues"}
     run:
       workflow: stall-check
       vars: {signal: "${stall_signal}", subject: "${stall_subject}", detail: "${stall_detail}"}
@@ -203,9 +205,11 @@ func TestStallCheckSignal(t *testing.T) {
 	assert.Equal(t, stall{"issue_no_run", "issue-7", "open, no run"}, found[0])
 	assert.Equal(t, "issue-9", found[1].subject)
 
-	// An issue with an open run (meta.github.issue) is not a stall.
+	// An issue with an open run in the same repo (meta.github) is not a
+	// stall; the same number in another repo still is (#183).
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("#12\n13\n"), 0o600))
-	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"issue":12}}`)})
+	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":12}}`)})
+	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r2", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"other/repo","issue":13}}`)})
 	assert.Equal(t, []string{"stall:issue_no_run:13"}, stallKeys(t, c))
 }
 

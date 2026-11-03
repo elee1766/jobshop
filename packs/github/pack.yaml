@@ -107,6 +107,7 @@ triggers:
         # escalations, tracking or drills; the controller drops those
         # with an open run.
         - signal: issue_no_run
+          repo: ${repo}
           check: >-
             gh issue list --repo ${repo} --state open --limit 200
             --json number,labels,title,createdAt --jq '.[]
@@ -144,6 +145,7 @@ workflows:
   pr-work:
     vars: [issue]
     issue: issue
+    repo: ${repo}
     escalate_pool: plan
     steps:
       - id: implement
@@ -195,6 +197,7 @@ workflows:
   drill:
     vars: [issue]
     issue: issue
+    repo: ${repo}
     escalate_pool: plan
     steps:
       - id: fail

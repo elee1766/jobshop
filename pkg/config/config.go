@@ -88,6 +88,9 @@ type StallSignal struct {
 	Signal string `yaml:"signal"`
 	After  string `yaml:"after"` // Go duration threshold
 	Check  string `yaml:"check"`
+	// Repo (owner/name) is the repo an issue_no_run check lists; only
+	// runs whose meta.github.repo matches hide an issue (#183).
+	Repo string `yaml:"repo"`
 }
 
 // TriggerRun starts a workflow run, like `jobshop run start`. Vars and
@@ -301,6 +304,9 @@ type Project struct {
 }
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
+
+// RepoPattern is a GitHub owner/name.
+var RepoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
 // varName is a ${name} reference name (see varPattern).
 var varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

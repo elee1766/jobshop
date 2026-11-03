@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -186,17 +187,21 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 	return store.Graph{Tickets: nts, Edges: edges}, nil
 }
 
-// runMeta is meta.github.issue when the workflow names an issue var. A
-// numeric value is stored as a number.
+// runMeta is meta.github = {repo, issue|pr} when the workflow names an
+// issue or pr var (#183). A numeric value is stored as a number.
 func runMeta(w config.Workflow, vars map[string]any) (json.RawMessage, error) {
-	if w.Issue == "" {
+	key, name := "issue", w.Issue
+	if w.PR != "" {
+		key, name = "pr", w.PR
+	}
+	if name == "" {
 		return nil, nil
 	}
-	var issue any = fmt.Sprint(vars[w.Issue])
-	if n, err := strconv.Atoi(issue.(string)); err == nil {
-		issue = n
+	var ref any = strings.TrimPrefix(fmt.Sprint(vars[name]), "#")
+	if n, err := strconv.Atoi(ref.(string)); err == nil {
+		ref = n
 	}
-	return json.Marshal(map[string]map[string]any{"github": {"issue": issue}})
+	return json.Marshal(map[string]map[string]any{"github": {"repo": w.Repo, key: ref}})
 }
 
 func (c *Controller) runResult(ctx context.Context, run store.Ticket) (rpc.RunResult, error) {
