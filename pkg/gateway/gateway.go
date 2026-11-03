@@ -55,6 +55,8 @@ type Controller interface {
 	List(ctx context.Context, p rpc.ListParams) ([]store.Ticket, error)
 	Show(ctx context.Context, id string) (rpc.ShowResult, error)
 	Update(ctx context.Context, p rpc.UpdateParams) (store.Ticket, error)
+	// Events follows events.subscribe; escalation threads are driven by it.
+	Events(ctx context.Context, p rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error)
 }
 
 // Config is one gateway's routing.
@@ -68,8 +70,6 @@ type Config struct {
 	// EscalationRoom gets one new thread per escalation ticket. Empty:
 	// escalations are not posted.
 	EscalationRoom string
-	// EscalationPoll is how often escalation tickets are checked. Default 10s.
-	EscalationPoll time.Duration
 }
 
 // Reaction keys for progress.
@@ -100,9 +100,6 @@ type watch struct {
 func New(cfg Config, ad Adapter, ctl Controller, log *slog.Logger) *Gateway {
 	if cfg.Marker == "" {
 		cfg.Marker = "!"
-	}
-	if cfg.EscalationPoll <= 0 {
-		cfg.EscalationPoll = 10 * time.Second
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)

@@ -67,6 +67,23 @@ type fakeController struct {
 	events chan rpc.SessionEvent
 	old    bool
 	ticket map[string]store.Ticket
+	// changes feeds Events; each Events call first sends ready.
+	changes chan rpc.Event
+}
+
+func (f *fakeController) Events(ctx context.Context, _ rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error) {
+	fn(rpc.Event{Kind: rpc.EventKindReady})
+	for {
+		select {
+		case <-ctx.Done():
+			return rpc.EventsSubscribeResult{}, nil
+		case ev := <-f.changes:
+			if ev.Kind == rpc.EventKindLagged {
+				return rpc.EventsSubscribeResult{Lagged: true}, nil
+			}
+			fn(ev)
+		}
+	}
 }
 
 func (f *fakeController) List(_ context.Context, p rpc.ListParams) ([]store.Ticket, error) {

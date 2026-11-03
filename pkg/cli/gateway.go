@@ -95,6 +95,15 @@ func (s socketController) Update(ctx context.Context, p rpc.UpdateParams) (store
 	return res, s.call(ctx, rpc.MethodTicketUpdate, p, &res)
 }
 
+func (s socketController) Events(ctx context.Context, p rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error) {
+	c, err := rpc.Dial(ctx, s.sock)
+	if err != nil {
+		return rpc.EventsSubscribeResult{Seq: p.SinceSeq}, err
+	}
+	defer func() { _ = c.Close() }()
+	return c.Events(ctx, p, fn)
+}
+
 func (s socketController) Subscribe(ctx context.Context, p rpc.SessionSubscribeParams, fn func(rpc.SessionEvent)) (rpc.SessionSubscribeResult, error) {
 	c, err := rpc.Dial(ctx, s.sock)
 	if err != nil {

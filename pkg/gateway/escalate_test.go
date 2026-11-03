@@ -99,12 +99,19 @@ func TestPoolEscalationThread(t *testing.T) {
 			Meta: []byte(`{"pool":{"name":"dev","quarantine":"spawn: repo /x: no such file"}}`),
 		},
 	}}
+	ctl.changes = make(chan rpc.Event)
 	g := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
 	ctx, cancel := context.WithCancel(t.Context())
-	t.Cleanup(func() { cancel(); g.wg.Wait() })
+	done := make(chan error, 1)
+	go func() { done <- g.Run(ctx) }()
+	t.Cleanup(func() { cancel(); assert.NoError(t, <-done) })
 
-	g.Escalations(ctx)
+	// Created with the label: the event alone opens the thread, no poll.
+	ctl.changes <- rpc.Event{Kind: rpc.EventKindTicket, Op: "create", ID: "js-pool", Status: store.StatusOpen}
+	require.Eventually(t, func() bool { return len(ctl.sent()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	ad.mu.Lock()
 	assert.Equal(t, 1, ad.opened)
+	ad.mu.Unlock()
 	s := ctl.sent()
 	require.Len(t, s, 1)
 	assert.Contains(t, s[0].Text, "jobshop pool unquarantine dev")
@@ -113,4 +120,55 @@ func TestPoolEscalationThread(t *testing.T) {
 	tk := ctl.ticket["js-pool"]
 	ctl.mu.Unlock()
 	assert.Contains(t, openingText(tk), "pool dev is quarantined (spawn: repo /x: no such file)")
+}
+
+// TestEscalationEvents drives threads from events.subscribe through Run,
+// with no poll: ready resyncs, label_add opens a thread, close posts the
+// final message, and lagged reconnects and resyncs.
+func TestEscalationEvents(t *testing.T) {
+	ad := &fakeAdapter{}
+	ctl := &fakeController{events: make(chan rpc.SessionEvent, 16), changes: make(chan rpc.Event), ticket: map[string]store.Ticket{}}
+	g := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
+	g.retry = 10 * time.Millisecond
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- g.Run(ctx) }()
+	t.Cleanup(func() { cancel(); assert.NoError(t, <-done) })
+
+	esc := func(id string) store.Ticket {
+		return store.Ticket{
+			ID: id, Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
+			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"}}`),
+		}
+	}
+	ctl.mu.Lock()
+	ctl.ticket["js-a"] = esc("js-a")
+	ctl.mu.Unlock()
+	ctl.changes <- rpc.Event{Kind: rpc.EventKindTicket, Op: "label_add", ID: "js-a", Label: "needs-human", Status: store.StatusOpen}
+	opened := func() int { ad.mu.Lock(); defer ad.mu.Unlock(); return ad.opened }
+	require.Eventually(t, func() bool { return opened() == 1 }, 5*time.Second, 10*time.Millisecond)
+
+	// Close event: final message.
+	ctl.mu.Lock()
+	tk := ctl.ticket["js-a"]
+	tk.Status, tk.Resolution = store.StatusClosed, "done"
+	tk.Revision++
+	ctl.ticket["js-a"] = tk
+	ctl.mu.Unlock()
+	ctl.changes <- rpc.Event{Kind: rpc.EventKindTicket, Op: "close", ID: "js-a", Status: store.StatusClosed}
+	require.Eventually(t, func() bool {
+		for _, p := range ad.got() {
+			if strings.Contains(p, "escalation js-a closed (done)") {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// A ticket filed while the stream lagged is found by the resync.
+	ctl.mu.Lock()
+	ctl.ticket["js-b"] = esc("js-b")
+	ctl.mu.Unlock()
+	ctl.changes <- rpc.Event{Kind: rpc.EventKindLagged}
+	require.Eventually(t, func() bool { return opened() == 2 }, 5*time.Second, 10*time.Millisecond)
 }

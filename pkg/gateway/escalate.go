@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -125,19 +126,70 @@ func (g *Gateway) updateEscalation(ctx context.Context, id string, fn func(t sto
 	}
 }
 
-// runEscalations polls until ctx ends.
+// runEscalations follows events.subscribe until ctx ends. Each connect
+// sends a ready event, which triggers one resync pass over the open
+// escalation tickets; after that only change events drive threads. A
+// lagged stream or an error reconnects and resyncs.
 func (g *Gateway) runEscalations(ctx context.Context) {
-	for {
-		g.Escalations(ctx)
+	for ctx.Err() == nil {
+		res, err := g.ctl.Events(ctx, rpc.EventsSubscribeParams{Labels: []string{EscalationLabel}}, func(ev rpc.Event) {
+			g.escalationEvent(ctx, ev)
+		})
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			g.log.Warn("gateway: events", "err", err)
+		} else if res.Lagged {
+			g.log.Info("gateway: events lagged, resyncing")
+		}
 		select {
 		case <-ctx.Done():
-			return
-		case <-time.After(g.cfg.EscalationPoll):
+		case <-time.After(g.retry):
 		}
 	}
 }
 
-// Escalations does one pass: opens threads for new escalation tickets,
+// escalationEvent handles one change to a needs-human ticket.
+func (g *Gateway) escalationEvent(ctx context.Context, ev rpc.Event) {
+	switch {
+	case ev.Kind == rpc.EventKindReady:
+		g.Escalations(ctx)
+	case ev.Kind != rpc.EventKindTicket:
+	case ev.Op == "close":
+		g.mu.Lock()
+		_, ok := g.escalating[ev.ID]
+		g.mu.Unlock()
+		if !ok {
+			return
+		}
+		if err := g.resolved(ctx, ev.ID); err != nil {
+			g.log.Warn("gateway: escalation closed", "ticket", ev.ID, "err", err)
+			return
+		}
+		g.mu.Lock()
+		delete(g.escalating, ev.ID)
+		g.mu.Unlock()
+	case ev.Op == "create" || ev.Op == "reopen" || (ev.Op == "label_add" && ev.Label == EscalationLabel):
+		if ev.Status == store.StatusClosed {
+			return
+		}
+		r, err := g.ctl.Show(ctx, ev.ID)
+		if err != nil {
+			g.log.Warn("gateway: escalation", "ticket", ev.ID, "err", err)
+			return
+		}
+		t := r.Ticket
+		if !isEscalation(t) || t.Status == store.StatusClosed || !slices.Contains(t.Labels, EscalationLabel) {
+			return
+		}
+		if err := g.escalation(ctx, t); err != nil {
+			g.log.Warn("gateway: escalation", "ticket", t.ID, "err", err)
+		}
+	}
+}
+
+// Escalations does one resync pass: opens threads for new escalation tickets,
 // resends a missing first prompt, and posts a final message in threads
 // whose ticket closed since it was last seen open.
 func (g *Gateway) Escalations(ctx context.Context) {

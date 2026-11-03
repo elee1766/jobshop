@@ -203,6 +203,57 @@ func (q *Queries) LabelsFor(ctx context.Context, ids []string) ([]Label, error) 
 	return items, nil
 }
 
+const lastSeq = `-- name: LastSeq :one
+SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM history
+`
+
+func (q *Queries) LastSeq(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, lastSeq)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const listChanges = `-- name: ListChanges :many
+SELECT seq, ticket_id, at, actor, op, revision, diff FROM history WHERE seq > ? ORDER BY seq LIMIT ?
+`
+
+type ListChangesParams struct {
+	Seq   int64
+	Limit int64
+}
+
+func (q *Queries) ListChanges(ctx context.Context, arg ListChangesParams) ([]History, error) {
+	rows, err := q.db.QueryContext(ctx, listChanges, arg.Seq, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []History{}
+	for rows.Next() {
+		var i History
+		if err := rows.Scan(
+			&i.Seq,
+			&i.TicketID,
+			&i.At,
+			&i.Actor,
+			&i.Op,
+			&i.Revision,
+			&i.Diff,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listComments = `-- name: ListComments :many
 SELECT id, ticket_id, author, body, created_at, edited_at, deleted FROM comments WHERE ticket_id = ? AND deleted = 0 ORDER BY id
 `

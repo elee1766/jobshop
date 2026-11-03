@@ -174,6 +174,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   quarantines the pool at once with one escalation, until reload or
   `jobshop pool unquarantine` (#146).
 - Batches designed, not built: `docs/notes/148-batches.md` (#148).
+- Admin `events.subscribe` change stream from ticket history, `jobshop
+  events`; the gateway's escalation threads follow it instead of a 10s
+  poll (#147).
 
 ## 5. What's next
 
@@ -221,7 +224,8 @@ while #36 and #82 wait out their 24h windows). Reliability fixes from
 the 2026-11-02 incidents (spawn errors quarantine at once, worktree
 deletions, a self-deploy rollback drill, a planner that files issues
 from the last day's warnings), an admin-socket change stream that
-replaces gateway polling, batches (Gas City convoys), and the operator
+replaces gateway polling (#147, built; runbook
+`docs/verify/events-subscribe.md`), batches (Gas City convoys), and the operator
 using the Matrix room. Schedules are already covered by cron triggers.
 Spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`).
@@ -552,6 +556,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-02, #126), not `admin: true`: a fixed set of read and
   reload methods is grantable, while reopen, session new/send/reap and
   shutdown stay admin-socket only.
+- The change stream is the history table (2026-11-02, #147): every write
+  already records a row with a global seq, so `since_seq` replay needs no
+  new log. Slow subscribers are dropped with `lagged` and resync, so a
+  write never waits on a client.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -599,6 +607,7 @@ moved from the old 7.x list, oldest first:
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
 - [Stall trigger and stall-check](notes/143-stall-check.md) (#143)
 - [Spawn-error pool quarantine](notes/146-spawn-quarantine.md) (#146)
+- [events.subscribe change stream](notes/147-events-subscribe.md) (#147)
 
 ## 8. Chat gateway
 

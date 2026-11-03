@@ -348,9 +348,10 @@ func FromWire(err error) error {
 
 // Client is a connection to a controller or session socket.
 type Client struct {
-	nc      net.Conn
-	conn    *acp.Connection
-	onEvent atomic.Pointer[func(SessionEvent)]
+	nc       net.Conn
+	conn     *acp.Connection
+	onEvent  atomic.Pointer[func(SessionEvent)]
+	onChange atomic.Pointer[func(Event)]
 }
 
 // Dial connects to a unix socket.
@@ -689,8 +690,101 @@ func (c *Client) Subscribe(ctx context.Context, p SessionSubscribeParams, fn fun
 	return res, err
 }
 
+// MethodEventsSubscribe streams store change events (#147).
+const MethodEventsSubscribe = "events.subscribe"
+
+// NotifyEvent is the notification events.subscribe sends.
+const NotifyEvent = "events.event"
+
+// Change event kinds. Ready and Lagged are stream control: Ready is sent
+// once replay is done and live events follow; Lagged means the subscriber
+// fell behind, the stream ends and the client must resync.
+const (
+	EventKindTicket  = "ticket"
+	EventKindRun     = "run"
+	EventKindSession = "session"
+	EventKindReady   = "ready"
+	EventKindLagged  = "lagged"
+)
+
+// Session event ops; other session history ops (claim, update) keep their
+// history name.
+const (
+	OpSessionStart = "start"
+	OpSessionStop  = "stop"
+	OpSessionCrash = "crash"
+	OpRunState     = "state"
+)
+
+// EventsSubscribeParams selects change events. SinceSeq > 0 replays
+// history rows after that seq first, so a reconnect misses nothing.
+// Kinds and Labels filter: an event matches if its kind is in Kinds and
+// its ticket has (or the label op names) one of Labels; empty matches all.
+type EventsSubscribeParams struct {
+	SinceSeq int64    `json:"since_seq,omitempty"`
+	Kinds    []string `json:"kinds,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
+}
+
+// EventsSubscribeResult is sent when the stream ends.
+type EventsSubscribeResult struct {
+	Seq    int64 `json:"seq"` // last history seq sent
+	Lagged bool  `json:"lagged,omitempty"`
+}
+
+// Event is one store change, derived from a ticket history row. Seq is the
+// history seq. Ticket fields (Status, Labels, State) are read when the
+// event is sent, so they can be newer than the row.
+type Event struct {
+	Seq        int64        `json:"seq"`
+	Time       time.Time    `json:"time,omitzero"`
+	Kind       string       `json:"kind"`
+	Op         string       `json:"op,omitempty"`
+	ID         string       `json:"id,omitempty"`
+	Revision   int64        `json:"revision,omitempty"`
+	Actor      string       `json:"actor,omitempty"`
+	TicketKind store.Kind   `json:"ticket_kind,omitempty"`
+	Label      string       `json:"label,omitempty"` // label_add, label_remove
+	Status     store.Status `json:"status,omitempty"`
+	Resolution string       `json:"resolution,omitempty"`
+	State      string       `json:"state,omitempty"` // run state
+	Labels     []string     `json:"labels,omitempty"`
+}
+
+// Events calls events.subscribe and passes each event to fn until the
+// stream ends or ctx is done. fn runs on the connection's reader, in
+// order. The result's Seq is the last seq seen.
+func (c *Client) Events(ctx context.Context, p EventsSubscribeParams, fn func(Event)) (EventsSubscribeResult, error) {
+	var seen atomic.Int64
+	seen.Store(p.SinceSeq)
+	wrap := func(ev Event) {
+		if ev.Seq > seen.Load() {
+			seen.Store(ev.Seq)
+		}
+		fn(ev)
+	}
+	c.onChange.Store(&wrap)
+	defer c.onChange.Store(nil)
+	var res EventsSubscribeResult
+	err := c.Call(ctx, MethodEventsSubscribe, p, &res)
+	res.Seq = max(res.Seq, seen.Load())
+	return res, err
+}
+
 // handle receives notifications from the controller.
 func (c *Client) handle(_ context.Context, method string, params json.RawMessage) (any, *acp.RequestError) {
+	if method == NotifyEvent {
+		fn := c.onChange.Load()
+		if fn == nil {
+			return nil, nil
+		}
+		var ev Event
+		if err := json.Unmarshal(params, &ev); err != nil {
+			return nil, acp.NewInvalidParams(err.Error())
+		}
+		(*fn)(ev)
+		return nil, nil
+	}
 	if method != NotifySessionEvent {
 		return nil, acp.NewMethodNotFound(method)
 	}

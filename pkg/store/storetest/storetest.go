@@ -560,7 +560,19 @@ func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	for i, e := range h {
 		ops[i] = e.Op
 	}
-	assert.Equal(t, []string{"create", "label_add"}, ops)
+	assert.Equal(t, []string{"create", "label_add", "comment", "comment"}, ops)
+
+	// Changes is the global history after a seq, in order.
+	ch, err := s.Changes(ctx, h[0].Seq, 0)
+	require.NoError(t, err)
+	require.Len(t, ch, 3)
+	assert.Equal(t, h[1:], ch)
+	last, err := s.LastSeq(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, h[3].Seq, last)
+	ch, err = s.Changes(ctx, 0, 1)
+	require.NoError(t, err)
+	assert.Len(t, ch, 1)
 }
 
 func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {
