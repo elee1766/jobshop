@@ -523,6 +523,7 @@ func init() {
 		rpc.MethodSessionList:      bind((*Controller).sessionList),
 		rpc.MethodSessionReap:      bind((*Controller).sessionReap),
 		rpc.MethodSessionRestart:   bind((*Controller).sessionRestart),
+		rpc.MethodSessionPrompt:    bind((*Controller).sessionPrompt),
 		rpc.MethodSessionSend:      bind((*Controller).sessionSend),
 		rpc.MethodSessionSubscribe: bind((*Controller).sessionSubscribe),
 		rpc.MethodEventsSubscribe:  bind((*Controller).eventsSubscribe),

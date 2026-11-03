@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 
 	"github.com/goccy/go-yaml"
@@ -31,10 +32,11 @@ type PackRef struct {
 // packFile is the schema of pack.yaml: the mergeable jobshop.yaml sections,
 // plus defaults for the pack's vars and the base packs it extends.
 type packFile struct {
-	Agents    map[string]Agent    `yaml:"agents"`
-	Pools     map[string]Pool     `yaml:"pools"`
-	Triggers  map[string]Trigger  `yaml:"triggers"`
-	Workflows map[string]Workflow `yaml:"workflows"`
+	Agents      map[string]Agent    `yaml:"agents"`
+	Pools       map[string]Pool     `yaml:"pools"`
+	Triggers    map[string]Trigger  `yaml:"triggers"`
+	Workflows   map[string]Workflow `yaml:"workflows"`
+	PromptRules []PromptRule        `yaml:"prompt_rules"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -117,6 +119,9 @@ func parseFile(path string, b []byte) (*Config, error) {
 		return nil, err
 	}
 	if err := resolvePromptFiles(top, dir, name, nil); err != nil {
+		return nil, err
+	}
+	if err := resolveRuleFiles(top, dir, name); err != nil {
 		return nil, err
 	}
 	mergeInto(merged, top, path, sources)
@@ -214,6 +219,9 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		return nil, err
 	}
 	if err := resolvePromptFiles(m, dir, file, subVars); err != nil {
+		return nil, err
+	}
+	if err := resolveRuleFiles(m, dir, file); err != nil {
 		return nil, err
 	}
 	raw, err = yaml.Marshal(m)
@@ -376,6 +384,22 @@ func resolvePromptFiles(m map[string]any, dir, file string, vars map[string]any)
 // section entry, as "section.name".
 func mergeInto(dst, src map[string]any, file string, sources map[string][]string) {
 	for k, v := range src {
+		if k == "prompt_rules" {
+			// Appended, not replaced: a later file adds rules and cannot
+			// drop earlier ones. Duplicate names fail validation.
+			rules, _ := v.([]any)
+			old, _ := dst[k].([]any)
+			dst[k] = append(slices.Clone(old), rules...)
+			for _, r := range rules {
+				if rm, ok := r.(map[string]any); ok {
+					if n, ok := rm["name"].(string); ok && n != "" {
+						key := "prompt_rules." + n
+						sources[key] = append(sources[key], file)
+					}
+				}
+			}
+			continue
+		}
 		if !isMergedSection(k) {
 			dst[k] = v
 			continue

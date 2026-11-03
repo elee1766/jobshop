@@ -225,6 +225,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   fail as not found (#197, `docs/notes/197-escalation-rethread.md`).
 - Guardrail hooks on claim and `jobshop guard <action>` with allow, deny
   and ask-human (#188, `docs/notes/188-guardrail-hooks.md`).
+- Prompt rules: operator guidance from `prompt_rules` config, matched per
+  session and turn, and `jobshop session prompt` (#205,
+  `docs/notes/205-prompt-rules.md`).
 
 ## 5. What's next
 
@@ -288,7 +291,7 @@ example a Jev decision, #188), and prompt rules (#205): operator guidance
 and guardrails from config, injected into the sessions a rule matches
 (pools, agents, repos, workflow steps, chat), as text, a file or a hook
 command's output, with `jobshop session prompt` showing the assembled
-result (decided 2026-11-03). Independent: recovery note on resume
+result (decided 2026-11-03; built, see section 4). Independent: recovery note on resume
 (#189), a reserved human slot per pool (#190), and an outbox design note
 only (#191; decided: no outbox, retry Matrix 429/5xx instead, #196).
 Discord adapter: #182, unit tests only.
@@ -703,6 +706,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-03, #188): the controller cannot see a push or a `gh` call,
   so outside actions are reported by the agent; claim hooks run in the
   controller. Ask-human is a needs-human ticket, closed done to allow.
+- Prompt rules are one list that packs and the host file append to, with
+  unique names (2026-11-03, #205): a host guardrail cannot be dropped or
+  replaced by a pack, and order is plain file order. Rules go in the
+  prompt text, not a separate ACP system message: agents differ in what
+  they do with one, and text with `_meta` naming the rules is journaled
+  the same way for every agent.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -757,6 +766,7 @@ moved from the old 7.x list, oldest first:
 - [Self-deploy rollback drill](notes/155-rollback-drill.md) (#155)
 - [Reserved human slot per pool](notes/190-human-slot.md) (#190)
 - [Outbox for side effects, design note](notes/191-outbox.md) (#191)
+- [Prompt rules](notes/205-prompt-rules.md) (#205)
 
 ## 8. Chat gateway
 

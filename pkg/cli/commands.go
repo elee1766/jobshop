@@ -526,6 +526,26 @@ type sessionCmd struct {
 	Reap    sessionReapCmd    `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
 	Restart sessionRestartCmd `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
 	Attach  sessionAttachCmd  `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
+	Prompt  sessionPromptCmd  `cmd:"" help:"Print the prompt a session's next turn would get, each part labeled by source (admin)."`
+}
+
+// sessionPromptCmd shows pool prompt, prompt rules and ticket as the
+// session's next turn would get them. Rule commands run.
+type sessionPromptCmd struct {
+	ID   string `arg:"" help:"Session id."`
+	JSON bool   `name:"json" help:"Print the parts as JSON."`
+}
+
+func (c sessionPromptCmd) Run(g *Globals) error {
+	if c.JSON {
+		return g.call(rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: c.ID}, nil)
+	}
+	var res rpc.SessionPromptResult
+	if err := g.call(rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: c.ID}, &res); err != nil {
+		return err
+	}
+	_, err := fmt.Print(res.Text)
+	return err
 }
 
 type sessionAttachCmd struct {

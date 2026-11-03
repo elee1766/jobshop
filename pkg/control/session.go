@@ -63,6 +63,14 @@ type runner struct {
 	log      *slog.Logger
 	// traceParent is the session trace (SessionFields.TraceParent).
 	traceParent string
+	// agent and projectName are the session's, for prompt rule matching.
+	agent, projectName string
+	// systemDue is set when a host starts (new or respawned): its next
+	// turn carries the system prompt rules. Guarded by mu.
+	systemDue bool
+	// turnRules are the prompt rules in the current prompt, sent in its
+	// _meta so the host journal records which applied (#205).
+	turnRules []string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -94,7 +102,8 @@ type runner struct {
 	turnTicket string
 	// delivered is when deliver last ran a message turn; it resets the
 	// idle timer, so a chat session lives while its thread is active.
-	// Runner goroutine only.
+	// Written under mu (session.prompt reads it); the runner goroutine
+	// reads it without.
 	delivered time.Time
 }
 
@@ -104,14 +113,32 @@ func (r *runner) setTurnTicket(id string) {
 	r.mu.Unlock()
 }
 
-// promptMeta is the session/prompt _meta: the ticket, if any.
+// promptMeta is the session/prompt _meta: the ticket and the prompt rules
+// in the prompt, if any.
 func (r *runner) promptMeta() map[string]any {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.turnTicket == "" {
+	m := map[string]any{}
+	if r.turnTicket != "" {
+		m[telemetry.MetaTicket] = r.turnTicket
+	}
+	if len(r.turnRules) > 0 {
+		m[metaRules] = r.turnRules
+	}
+	if len(m) == 0 {
 		return nil
 	}
-	return map[string]any{telemetry.MetaTicket: r.turnTicket}
+	return m
+}
+
+// metaRules is the session/prompt _meta key listing the prompt rules the
+// prompt carries; the host journals it with the prompt.
+const metaRules = "jobshop/rules"
+
+func (r *runner) setTurnRules(names []string) {
+	r.mu.Lock()
+	r.turnRules = names
+	r.mu.Unlock()
 }
 
 // newConversation starts a new ACP session in place of one the agent could
@@ -215,7 +242,9 @@ func (c *Controller) startRunner(t store.Ticket) {
 	}
 	if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
 		r.traceParent = f.TraceParent
+		r.agent = f.Agent
 	}
+	r.projectName = t.Project
 	c.runners[t.ID] = r
 	c.wg.Go(func() {
 		defer close(r.done)
@@ -447,6 +476,9 @@ func (r *runner) session() error {
 		}
 		r.lifecycle("spawn")
 		fresh = true
+		r.mu.Lock()
+		r.systemDue = true
+		r.mu.Unlock()
 	} else {
 		r.lifecycle("adopt")
 	}
@@ -974,7 +1006,31 @@ func ids(ts []store.Ticket) string {
 }
 
 func (r *runner) ticketPrompt(t store.Ticket, comments []store.Comment) string {
-	return ticketPromptText(r.c.config().Pools[r.pool].Prompt, t, comments)
+	parts := r.c.assemble(r.ctx, r.turnSpec(turnTicket, &t, true), PromptPart{Source: "ticket", Text: ticketPromptText("", t, comments)})
+	return r.useParts(parts)
+}
+
+// turnSpec describes this session's next turn. It takes the pending
+// system flag: system rules go out once per host.
+func (r *runner) turnSpec(kind string, t *store.Ticket, poolPrompt bool) turnSpec {
+	r.mu.Lock()
+	sys := r.systemDue
+	r.systemDue = false
+	r.mu.Unlock()
+	return turnSpec{
+		session: r.id, pool: r.pool, agent: r.agent, project: r.projectName,
+		kind: kind, ticket: t, system: sys, poolPrompt: poolPrompt,
+	}
+}
+
+// useParts records which rules the prompt carries and returns its text.
+func (r *runner) useParts(parts []PromptPart) string {
+	names := ruleNames(parts)
+	r.setTurnRules(names)
+	if len(names) > 0 {
+		r.log.Info("prompt rules applied", "rules", strings.Join(names, ","))
+	}
+	return joinParts(parts)
 }
 
 // Recent comments in a ticket prompt: a routed-back ticket's finding lives
