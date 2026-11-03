@@ -6,8 +6,13 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
 
 - Packages live in `pkg/`; `cmd/jobshop` only calls `cli.Main`.
 - Every write goes through the controller; the CLI never opens the database.
-- Check: `go build ./... && go vet ./... && go test ./...`.
-- Lint config is `.golangci.yml` (golangci-lint v2).
+- Check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
+- Lint: golangci-lint v2.15.0 with `.golangci.yml`, the same version CI runs
+  (on PATH for agents on gasserver; elsewhere `nix develop` or
+  `nix run .#golangci-lint -- run ./...`). Fix every finding in the code you
+  touched before pushing; do not add `//nolint` or relax `.golangci.yml`
+  to pass. A finding in code you did not touch that blocks CI: fix it in
+  the same PR and say so in the PR body.
 - Store queries are sqlc (`pkg/store/sqlite/sqlc.yaml`); regenerate after
   editing `pkg/store/sqlite/queries/` or `migrations/`.
 - Record design decisions in `docs/` with the date. In `docs/plan.md`: a
