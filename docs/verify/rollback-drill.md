@@ -34,3 +34,5 @@ rev without waiting for a newer green commit, delete
 `/var/lib/jobshop-deploy/failed` and start the unit again.
 
 Evidence: the journal lines and `failed` contents, posted on #145.
+
+Operator run 2026-11-03: see #145 for the evidence.
