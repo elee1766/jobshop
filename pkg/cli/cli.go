@@ -72,6 +72,7 @@ type root struct {
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Events    eventsCmd    `cmd:"" help:"Print the change stream as JSON lines (admin, for debugging)."`
 	Identity  identityCmd  `cmd:"" help:"GitHub App and Linear identities: list, check, tokens and the git credential helper."`
+	Linear    linearCmd    `cmd:"" help:"Read, comment on and move Linear issues as the identity for their team."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
 }

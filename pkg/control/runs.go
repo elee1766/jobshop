@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -196,6 +197,19 @@ func runMeta(w config.Workflow, vars map[string]any) (json.RawMessage, error) {
 	}
 	if name == "" {
 		return nil, nil
+	}
+	if w.Tracker == config.TrackerLinear {
+		// The issue is a Linear key; meta.github keeps only the code repo,
+		// so GitHub readers (subscriptions, issue_no_run) do not take
+		// ENG-123 for a GitHub issue (#201).
+		key := strings.ToUpper(strings.TrimSpace(fmt.Sprint(vars[name])))
+		if !linear.KeyPattern.MatchString(key) {
+			return nil, fmt.Errorf("%w: %s %q is not a Linear issue key like ENG-123", store.ErrInvalid, name, key)
+		}
+		return json.Marshal(map[string]map[string]any{
+			"linear": {"workspace": w.LinearWorkspace, "issue": key},
+			"github": {"repo": w.Repo},
+		})
 	}
 	var ref any = strings.TrimPrefix(fmt.Sprint(vars[name]), "#")
 	if n, err := strconv.Atoi(ref.(string)); err == nil {
