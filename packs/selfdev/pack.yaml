@@ -25,8 +25,11 @@ extends:
       # Self-deploy promotes the newest green master commit every 10
       # minutes, so a merged change is live once jobshop reports it.
       deploy_check: >-
-        `jobshop version` prints `jobshop <version> (<commit>)`; the
-        commit must be the merge commit (or the needed SHA) or a
+        `jobshop version --server` prints the running controller's
+        `jobshop <version> (<commit>)`. Plain `jobshop version` is this
+        session's binary, fixed when the session started, so it is stale
+        after a self-deploy (#180). The commit must be the merge commit (or
+        the needed SHA) or a
         descendant: `git fetch origin && git merge-base --is-ancestor
         <sha> <commit>`. Self-deploy rebuilds with the newest green master
         commit every 10 minutes.

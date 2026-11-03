@@ -63,6 +63,9 @@ type Options struct {
 	// EventBuffer is the per-subscriber events.subscribe buffer. Default
 	// DefaultEventBuffer; tests shrink it to force lagged.
 	EventBuffer int
+	// Version and Commit identify the running binary for the version
+	// method (#180).
+	Version, Commit string
 }
 
 // Controller serves one Jobshop root.
@@ -496,6 +499,7 @@ var methods map[string]method
 func init() {
 	methods = map[string]method{
 		rpc.MethodWhoami:           bind((*Controller).whoami),
+		rpc.MethodVersion:          bind((*Controller).version),
 		rpc.MethodTicketCreate:     bind((*Controller).create),
 		rpc.MethodTicketShow:       bind((*Controller).show),
 		rpc.MethodTicketTrace:      bind((*Controller).trace),

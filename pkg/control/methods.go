@@ -108,6 +108,12 @@ func (c *Controller) whoami(_ context.Context, sc scope, _ struct{}) (any, error
 	return rpc.Whoami{Actor: sc.actor, Admin: sc.admin, Session: sc.session, Project: sc.project, Pool: sc.pool}, nil
 }
 
+// version is open to every caller: post-merge sessions check the deploy
+// with it.
+func (c *Controller) version(_ context.Context, _ scope, _ struct{}) (any, error) {
+	return rpc.VersionResult{Version: c.opt.Version, Commit: c.opt.Commit}, nil
+}
+
 func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (any, error) {
 	proj, err := c.project(sc, p.Project)
 	if err != nil {

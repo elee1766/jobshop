@@ -182,6 +182,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `batch list` (#170, `docs/notes/170-batch-state.md`).
 - Planner prompt starts dependent issues with `batch start` and quotes
   `batch show` on the target (#171, `docs/notes/171-planner-batches.md`).
+- `jobshop version --server` reports the controller's commit; the
+  selfdev deploy check uses it (#180, `docs/notes/180-server-version.md`).
 - Admin `events.subscribe` change stream from ticket history, `jobshop
   events`; the gateway's escalation threads follow it instead of a 10s
   poll (#147).
