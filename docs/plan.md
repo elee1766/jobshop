@@ -264,7 +264,11 @@ carry the repo (#183) before anything else, so nothing assumes one repo;
 then several repos on one host (#184), the attention view and rule (#185),
 structured worker reports and questions (#186), subscriptions to issue and
 PR threads in any repo (#187), guardrail hooks (allow, deny, ask-human; for
-example a Jev decision, #188). Independent: recovery note on resume
+example a Jev decision, #188), and prompt rules (#205): operator guidance
+and guardrails from config, injected into the sessions a rule matches
+(pools, agents, repos, workflow steps, chat), as text, a file or a hook
+command's output, with `jobshop session prompt` showing the assembled
+result (decided 2026-11-03). Independent: recovery note on resume
 (#189), a reserved human slot per pool (#190), and an outbox design note
 only (#191), since whether to build side-effect retry in is still open.
 Discord adapter: #182, unit tests only.
