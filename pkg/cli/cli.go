@@ -47,6 +47,7 @@ type root struct {
 	Undrain     undrainCmd     `cmd:"" help:"Undo drain (admin)."`
 	Reload      reloadCmd      `cmd:"" help:"Re-read jobshop.yaml and packs; keeps the old config if invalid (admin)."`
 	Gateway     gatewayCmd     `cmd:"" help:"Run a chat gateway from jobshop.yaml (admin socket client)."`
+	Desk        deskCmd        `cmd:"" help:"Serve Jobshop Desk, the read-only dashboard (admin socket client)."`
 
 	Ticket    ticketCmd    `cmd:"" help:"Create, show, list, update and close tickets."`
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`

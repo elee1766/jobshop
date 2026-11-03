@@ -37,12 +37,15 @@ jobshop/
 │   │                         replay, backpressure, leak guards
 │   ├── config/               YAML loading, validation, defaults
 │   ├── gateway/              chat gateway: adapter interface, routing, Matrix, Discord
+│   ├── desk/                 Jobshop Desk HTTP server over the admin API;
+│   │                         dist/ is the built UI, embedded
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter,
 │   │                         conversation export
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
 │   ├── cron/                 5-field cron parser for triggers (no dependency)
 │   └── ids/                  ticket ids: per-project prefix + sonyflake base32
 ├── docs/                     plan.md, data-model.md, layout.md
+├── ui/                       Desk UI source (Svelte 5, Vite); builds into pkg/desk/dist
 ├── examples/                 sample jobshop.yaml, agent prompts
 ├── nix/
 │   ├── package.nix           buildGo127Module derivation
@@ -103,6 +106,7 @@ Subcommands:
 | Discord bot API (gateway) | `github.com/bwmarrin/discordgo` (2026-11-03, #182): the most used Go Discord library, REST plus gateway websocket with resume; pure Go | v0.29.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
 | Secret redaction (conversation export) | `github.com/zricethezav/gitleaks/v8` (`detect`) | v8.30.1 |
+| Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency | svelte 5.57.3, vite 8.3.5 |
 
 Uses:
 - **sqlc**: queries live as plain `.sql` files in `pkg/store/sqlite/queries/`
