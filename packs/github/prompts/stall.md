@@ -48,8 +48,11 @@ Fix in place when you can, one or more of:
   drop `needs-human` from its issue (`gh issue edit <n> --remove-label
   needs-human`).
 - A time-gated step that is waiting on purpose (a 24h window, a
-  scheduled run): leave it and say until when; `jobshop release --until`
-  belongs to the session holding it.
+  scheduled run): never escalate it. If it is deferred, leave it and say
+  until when. If it is not (open and ready, or its run is `needs_human`
+  only because of the clock), `jobshop run resume <run>` if needed and
+  `jobshop ticket update <step> --defer <duration until then>`, then
+  close this check `done`.
 - Rebase a conflicted PR: `gh pr checkout <n>`, `git rebase
   origin/master`, push with `--force-with-lease`.
 - Cancel a stale drill run: `jobshop run cancel <run>`.

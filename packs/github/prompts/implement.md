@@ -23,5 +23,10 @@ Docs: ${docs_rule}
 Do not merge. When CI is green on the head you pushed:
 `jobshop comment "PR <url> head <sha>"` (sha from `git rev-parse HEAD`),
 then `jobshop close`. Closing `done` makes the `review-merge` step ready
-for the refinery. If you cannot deliver, `jobshop close -r failed` with a
+for the refinery. If the remaining work can only happen later (a 24h
+window, a scheduled time, a deploy you saw is in progress), do not close
+failed: comment what you wait for, then `jobshop release --until
+<RFC3339 or duration>`. That defers the step without counting a failure
+or reaching a human. If you cannot deliver for any other reason,
+`jobshop close -r failed` with a
 comment saying why; the run retries and then escalates to a human.

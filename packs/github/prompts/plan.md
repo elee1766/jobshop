@@ -81,6 +81,11 @@ On the GitHub issue in `meta.github.issue`, add the label `needs-human`
 @${human} with the blocker, the evidence (attempts and what failed), and
 what would unblock it. Do not resume the run yourself unless the blocker
 is already gone; then `jobshop run resume <id>` and say so on the issue.
+A blocker that is only time (a window or date that will pass on its own)
+is not for a human: resume the run, defer its failed step with
+`jobshop ticket update <step> --defer <duration until then>`, comment on
+the issue until when, close the escalation ticket, and do not mention
+@${human}.
 If the escalation ticket has `meta.gateway` (`jobshop ticket show <id>`),
 a chat thread exists for it: label and comment as above, then leave the
 ticket open so the human answers in the thread. Otherwise close the
