@@ -208,6 +208,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/189-recovery-note.md`).
 - Human-started sessions get one slot over `max_sessions` per pool
   (#190, `docs/notes/190-human-slot.md`).
+- Outbox design note: no outbox for gateway posts (#191,
+  `docs/notes/191-outbox.md`).
 
 ## 5. What's next
 
@@ -273,7 +275,7 @@ and guardrails from config, injected into the sessions a rule matches
 command's output, with `jobshop session prompt` showing the assembled
 result (decided 2026-11-03). Independent: recovery note on resume
 (#189), a reserved human slot per pool (#190), and an outbox design note
-only (#191), since whether to build side-effect retry in is still open.
+only (#191; decided: no outbox, retry Matrix 429/5xx instead, #196).
 Discord adapter: #182, unit tests only.
 
 **Phase 7** (target #204, decided 2026-11-03). Semi-native GitHub and
@@ -659,6 +661,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Work references name their repo (2026-11-03, #183): `meta.github.repo`
   is set from workflow config, not inferred, and old tickets get it from
   a startup backfill rather than SQL, since only config knows the repo.
+- No outbox for gateway posts (2026-11-03, #191): the only post failures
+  on gasserver were permanent 400s a retry cannot fix; transient errors
+  get client retries instead (#196).
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -711,6 +716,7 @@ moved from the old 7.x list, oldest first:
 - [Session worktree deletion](notes/154-worktree-deletion.md) (#154)
 - [Self-deploy rollback drill](notes/155-rollback-drill.md) (#155)
 - [Reserved human slot per pool](notes/190-human-slot.md) (#190)
+- [Outbox for side effects, design note](notes/191-outbox.md) (#191)
 
 ## 8. Chat gateway
 
