@@ -112,13 +112,13 @@ func (c versionCmd) Run(g *Globals) error {
 		if err := g.call(rpc.MethodVersion, nil, &r); err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "jobshop %s (%s)\n", r.Version, r.Commit)
-		return nil
+		_, err := fmt.Fprintf(stdout, "jobshop %s (%s)\n", r.Version, r.Commit)
+		return err
 	}
 	bi, _ := debug.ReadBuildInfo()
 	v, cm := versionInfo(version, commit, bi)
-	fmt.Fprintf(stdout, "jobshop %s (%s)\n", v, cm)
-	return nil
+	_, err := fmt.Fprintf(stdout, "jobshop %s (%s)\n", v, cm)
+	return err
 }
 
 // versionInfo fills in version and commit from Go build info when -ldflags
