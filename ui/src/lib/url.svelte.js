@@ -3,7 +3,7 @@
 
 /** @typedef {{ view: string, ticket: string, session: string, state: string }} UrlState */
 
-const VIEWS = ['attention', 'work', 'sessions', 'pools', 'deploys'];
+const VIEWS = ['attention', 'chat', 'work', 'sessions', 'pools', 'deploys'];
 
 /** @returns {UrlState} */
 function read() {
