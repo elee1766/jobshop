@@ -169,6 +169,14 @@ let
     (expect "self-deploy uses the selfDeploy workspace's repo" (
       lib.hasInfix "--repo elee1766/jobshop " legacy.config.systemd.services.jobshop-self-deploy.script
     ))
+    # A live pack extends packs outside livePacks, so the sync reloads on
+    # any checkout move, not on a diff of the live paths only (#177).
+    (expect "sync reloads on any checkout move" (
+      let
+        s = legacy.config.systemd.services.jobshop-workspace-default-sync.script;
+      in
+      lib.hasInfix ''if [ "$before" != "$after" ]; then'' s && !(lib.hasInfix "git diff --quiet" s)
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;

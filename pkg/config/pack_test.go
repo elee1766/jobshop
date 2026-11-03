@@ -379,3 +379,18 @@ func TestGithubMergePolicy(t *testing.T) {
 	assert.Contains(t, render(set, "ci-repair", "merge"), `.user.login == "abs3nt-agent"`)
 	assert.NotContains(t, m, "${")
 }
+
+// TestSelfdevPoolCaps: selfdev extends packs/github without passing
+// deploy_sessions, so the base default applies (#177). The gasserver bug
+// was a missed reload, not this.
+func TestSelfdevPoolCaps(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/selfdev")
+	require.NoError(t, err)
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack +
+		"\n    vars: {repo: /src/jobshop, agent: a, dev_sessions: 4}\n"})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, 4, c.Pools["dev"].MaxSessions)
+	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "github pack default")
+}

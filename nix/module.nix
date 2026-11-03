@@ -171,7 +171,7 @@ let
         syncInterval = lib.mkOption {
           type = lib.types.str;
           default = "2min";
-          description = "How often the sync unit fast-forwards the checkout to origin and reloads the controller if packs changed.";
+          description = "How often the sync unit fast-forwards the checkout to origin and reloads the controller when it moved.";
         };
         selfDeploy = lib.mkOption {
           type = lib.types.bool;
@@ -251,8 +251,11 @@ let
             exit 0
           fi
           after=$(git rev-parse HEAD)
-          if [ "$before" != "$after" ] && ! git diff --quiet "$before" "$after" -- ${lib.escapeShellArgs w.livePacks}; then
-            echo "packs changed $before..$after, reloading"
+          # Reload on any move, not only a diff under livePacks: a live pack
+          # extends packs outside that list (selfdev extends ../github), and
+          # a missed reload leaves the controller on old pools (#177).
+          if [ "$before" != "$after" ]; then
+            echo "checkout moved $before..$after, reloading"
             ${jobshop} reload
           fi
         '';
