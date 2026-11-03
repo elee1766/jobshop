@@ -30,6 +30,8 @@ type Config struct {
 	Telemetry Telemetry           `yaml:"telemetry"`
 	// Attention configures `jobshop attention` (#185).
 	Attention Attention `yaml:"attention"`
+	// Hooks are guardrail commands (#188). Default none.
+	Hooks []Hook `yaml:"hooks"`
 	// Gateway configures `jobshop gateway <name>` processes, by name.
 	Gateway map[string]Gateway `yaml:"gateway"`
 	// Packs are pack directories merged before this file (see LoadFile).
@@ -452,6 +454,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		c.Triggers[name] = tr
 	}
+	for i, h := range c.Hooks {
+		if err := c.checkHook(h); err != nil {
+			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
+		}
+	}
 	for name, w := range c.Workflows {
 		if err := c.checkWorkflow(name, &w); err != nil {
 			return nil, fmt.Errorf("%s: workflow %s: %w", src("workflows", name), name, err)
@@ -596,7 +603,7 @@ func (c *Config) Prefix(project string) string {
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
 // controller, and the gateway on escalation tickets).
-var BuiltinMetaPacks = []string{"github", "trigger", "run", "gateway", "pool"}
+var BuiltinMetaPacks = []string{"github", "trigger", "run", "gateway", "pool", "hook"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

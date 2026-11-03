@@ -637,3 +637,29 @@ func (c reportIncidentsCmd) Run(g *Globals) error {
 type attentionCmd struct{}
 
 func (attentionCmd) Run(g *Globals) error { return g.call(rpc.MethodAttention, nil, nil) }
+
+type guardCmd struct {
+	Action string `arg:"" help:"Action about to happen: push, pr-create, merge, comment, message, or any name a hook knows."`
+	Target string `help:"What it acts on, such as a PR url or branch."`
+	Detail string `help:"Free text for the hook, such as the message body."`
+}
+
+// Run prints the answer and exits 0 only on allow, so an agent can write
+// `jobshop guard push --target x && git push`.
+func (c guardCmd) Run(g *Globals) error {
+	var r rpc.GuardResult
+	if err := g.call(rpc.MethodGuard, rpc.GuardParams{Action: c.Action, Target: c.Target, Detail: c.Detail}, &r); err != nil {
+		return err
+	}
+	b, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	if err := printJSON(b); err != nil {
+		return err
+	}
+	if r.Decision != rpc.GuardAllow {
+		return fmt.Errorf("guard %s: %s: %s", c.Action, r.Decision, r.Reason)
+	}
+	return nil
+}

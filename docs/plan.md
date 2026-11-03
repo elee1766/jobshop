@@ -223,6 +223,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/202-desk.md`, runbook `docs/verify/desk.md`).
 - Gateway opens a new escalation thread when posts to the recorded root
   fail as not found (#197, `docs/notes/197-escalation-rethread.md`).
+- Guardrail hooks on claim and `jobshop guard <action>` with allow, deny
+  and ask-human (#188, `docs/notes/188-guardrail-hooks.md`).
 
 ## 5. What's next
 
@@ -697,6 +699,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   run state, pool quarantines and the self-deploy `failed` file on each
   call, so nothing has to be kept in sync. An escalated run or pool is
   listed once, as its ticket.
+- Guardrail hooks fail closed and the session asks with `jobshop guard`
+  (2026-11-03, #188): the controller cannot see a push or a `gh` call,
+  so outside actions are reported by the agent; claim hooks run in the
+  controller. Ask-human is a needs-human ticket, closed done to allow.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
