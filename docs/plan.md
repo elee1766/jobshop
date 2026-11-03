@@ -178,6 +178,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Batches designed: `docs/notes/148-batches.md` (#148). `batch start`
   with kind `batch` tickets and ordered cross-run edges in one
   transaction is built (#169, `docs/notes/169-batch-start.md`).
+- Batch state derivation, close on last run, `batch show` and
+  `batch list` (#170, `docs/notes/170-batch-state.md`).
 - Admin `events.subscribe` change stream from ticket history, `jobshop
   events`; the gateway's escalation threads follow it instead of a 10s
   poll (#147).
@@ -246,9 +248,9 @@ using the Matrix room. Schedules are already covered by cron triggers.
 Spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
 it needs a 24h `docs/verify/worktree-deletion.md` run on gasserver.
-Batches are designed (#148) and `batch start` is built (#169); next are
-state derivation, `batch show`/`list` and the planner prompt (note
-follow-ups 2-4), then one `docs/verify/batch-start.md` run on gasserver.
+Batches are designed (#148); `batch start` (#169), state, show and list
+(#170) are built. Next is the planner prompt (note follow-up 4), then
+`docs/verify/batch-start.md` and `docs/verify/batches.md` runs on gasserver.
 The rollback drill is built (#155); it needs one
 `docs/verify/rollback-drill.md` run on gasserver linked on #145.
 The incident report planner step
@@ -581,6 +583,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Batches are a ticket kind `batch` owning pr-work runs as children,
   created with their cross-run edges in one graph apply; no new store
   table (2026-11-02, #148, `docs/notes/148-batches.md`).
+- A batch closes `failed` as soon as any member run closes without
+  `done` (cancelled); a member in `needs_human` keeps the batch open in
+  `needs_human` until resumed (2026-11-03, #170).
 - Cross-run ordering is set at run start (`--after`), in the same graph
   apply as the steps; `edge add` on a claimed ticket does not release it
   (2026-11-02, #149).

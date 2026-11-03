@@ -307,6 +307,7 @@ func (c *Controller) tick() {
 	c.supervise()
 	c.reportOrphans()
 	c.sweepRuns()
+	c.sweepBatches()
 }
 
 func (c *Controller) sweep() {
@@ -529,6 +530,8 @@ func init() {
 		rpc.MethodRunCancel:        bind((*Controller).runCancel),
 		rpc.MethodRunResume:        bind((*Controller).runResume),
 		rpc.MethodBatchStart:       bind((*Controller).batchStart),
+		rpc.MethodBatchShow:        bind((*Controller).batchShow),
+		rpc.MethodBatchList:        bind((*Controller).batchList),
 		rpc.MethodPoolList:         bind((*Controller).poolList),
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),

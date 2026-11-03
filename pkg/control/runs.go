@@ -254,6 +254,14 @@ func (c *Controller) setRunState(ctx context.Context, actor string, t store.Tick
 }
 
 func (c *Controller) runCancel(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
+	res, err := c.cancelRun(ctx, sc, p)
+	if err == nil {
+		c.runBatchEvent(ctx, p.ID)
+	}
+	return res, err
+}
+
+func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	t, f, err := c.getRun(ctx, sc, p.ID)
@@ -288,6 +296,14 @@ func (c *Controller) runCancel(ctx context.Context, sc scope, p rpc.IDParams) (a
 }
 
 func (c *Controller) runResume(ctx context.Context, sc scope, p rpc.RunResumeParams) (any, error) {
+	res, err := c.resumeRun(ctx, sc, p)
+	if err == nil {
+		c.runBatchEvent(ctx, p.ID)
+	}
+	return res, err
+}
+
+func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumeParams) (any, error) {
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	t, f, err := c.getRun(ctx, sc, p.ID)

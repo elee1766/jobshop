@@ -148,6 +148,34 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 
 type batchCmd struct {
 	Start batchStartCmd `cmd:"" help:"Start one run per issue under a batch, with ordered cross-run edges."`
+	Show  batchShowCmd  `cmd:"" help:"Show a batch's state and one line per member run."`
+	List  batchListCmd  `cmd:"" help:"List open batches."`
+}
+
+type batchShowCmd struct {
+	ID   string `arg:"" help:"Batch id or key."`
+	JSON bool   `help:"Print JSON."`
+}
+
+func (c batchShowCmd) Run(g *Globals) error {
+	p := rpc.IDParams{ID: c.ID}
+	if c.JSON {
+		return g.call(rpc.MethodBatchShow, p, nil)
+	}
+	var r rpc.BatchResult
+	if err := g.call(rpc.MethodBatchShow, p, &r); err != nil {
+		return err
+	}
+	return printBatch(os.Stdout, r)
+}
+
+type batchListCmd struct {
+	Project string `help:"Project."`
+	Limit   int    `short:"n" help:"Max results (default 500)."`
+}
+
+func (c batchListCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodBatchList, rpc.BatchListParams{Project: c.Project, Limit: c.Limit}, nil)
 }
 
 type batchStartCmd struct {
@@ -175,7 +203,7 @@ func (c batchStartCmd) Run(g *Globals) error {
 }
 
 // printBatch writes the batch line, its order, then one line per member
-// run: issue, run id, run state, adopted.
+// run: issue, run id, run state, current step, blocking issues, adopted.
 func printBatch(w io.Writer, r rpc.BatchResult) error {
 	f, err := store.DecodeFields[store.BatchFields](r.Batch)
 	if err != nil {
@@ -203,12 +231,33 @@ func printBatch(w io.Writer, r rpc.BatchResult) error {
 			return err
 		}
 		extra := ""
+		if s := currentStepName(run.Steps); s != "" {
+			extra += "  step " + s
+		}
+		if bl := r.BlockedBy[run.Run.ID]; len(bl) > 0 {
+			extra += "  blocked by " + strings.Join(bl, ",")
+		}
 		if slices.Contains(r.Adopted, run.Run.ID) {
-			extra = "  [adopted]"
+			extra += "  [adopted]"
 		}
 		if _, err := fmt.Fprintf(w, "%s  run %s  state %s%s\n", rf.Key, run.Run.ID, rf.State, extra); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// currentStepName is the workflow step name of the first step not closed
+// done, or "" when all are done.
+func currentStepName(steps []store.Ticket) string {
+	for _, s := range steps {
+		if s.Status == store.StatusClosed && s.Resolution == "done" {
+			continue
+		}
+		if sf, err := store.DecodeFields[store.StepFields](s); err == nil {
+			return sf.Step
+		}
+		return s.ID
+	}
+	return ""
 }

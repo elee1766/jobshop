@@ -324,6 +324,9 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 		return nil, err
 	}
 	c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.Ticket.Pool)))
+	if r.Ticket.Kind == store.KindStep && r.Ticket.ParentID != "" {
+		c.runBatchEvent(ctx, r.Ticket.ParentID) // a batch is running once a member step is claimed
+	}
 	return r, nil
 }
 

@@ -230,3 +230,201 @@ func (c *Controller) batchResult(ctx context.Context, b store.Ticket) (rpc.Batch
 	}
 	return res, nil
 }
+
+// deriveBatch sets the batch fields.state from its member runs, the way
+// runs derive theirs from steps (#170): failed if a member run closed
+// without done (cancelled), done when every member is done, needs_human if
+// any member needs a human, running once any member step was claimed.
+// A batch that reaches done or failed is closed with that resolution. It
+// files no escalation of its own: needs_human points at the member run.
+func (c *Controller) deriveBatch(ctx context.Context, batchID string) {
+	c.runMu.Lock()
+	defer c.runMu.Unlock()
+	b, err := c.store.Get(ctx, batchID)
+	if err != nil || b.Kind != store.KindBatch || b.Status == store.StatusClosed {
+		return
+	}
+	f, err := store.DecodeFields[store.BatchFields](b)
+	if err != nil {
+		return
+	}
+	kids, err := c.store.ListChildren(ctx, batchID)
+	if err != nil {
+		return
+	}
+	state, err := c.batchState(ctx, f.State, kids)
+	if err != nil || state == f.State {
+		return
+	}
+	f.State = state
+	raw, err := json.Marshal(f)
+	if err != nil {
+		return
+	}
+	if b, err = c.store.Update(ctx, "controller", b.ID, store.Update{Fields: raw, IfRevision: b.Revision}); err != nil {
+		c.log.Error("batch state", "batch", batchID, "err", err)
+		return
+	}
+	if state == store.BatchDone || state == store.BatchFailed {
+		if _, err := c.store.CloseTicket(ctx, "controller", b.ID, nil, state); err != nil {
+			c.log.Error("close batch", "batch", batchID, "err", err)
+			return
+		}
+	}
+	c.log.Info("batch state", "batch", batchID, "key", f.Key, "state", state)
+}
+
+// batchState computes the state from the member runs. cur is the stored
+// state: a batch that left open does not return to it (a resumed step is
+// open again, but the batch has been running).
+func (c *Controller) batchState(ctx context.Context, cur string, kids []store.Ticket) (string, error) {
+	members, done, needsHuman, started := 0, 0, false, cur != store.BatchOpen
+	for _, k := range kids {
+		if k.Kind != store.KindRun {
+			continue
+		}
+		members++
+		rf, err := store.DecodeFields[store.RunFields](k)
+		if err != nil {
+			return "", err
+		}
+		switch {
+		case k.Status == store.StatusClosed && rf.State == store.RunDone:
+			done++
+			started = true
+			continue
+		case k.Status == store.StatusClosed:
+			return store.BatchFailed, nil
+		case rf.State == store.RunNeedsHuman:
+			needsHuman = true
+		}
+		if started {
+			continue
+		}
+		steps, err := c.store.ListChildren(ctx, k.ID)
+		if err != nil {
+			return "", err
+		}
+		for _, s := range steps {
+			if s.Status != store.StatusOpen || s.Holder != "" {
+				started = true
+				break
+			}
+		}
+	}
+	switch {
+	case members == 0:
+		return cur, nil
+	case done == members:
+		return store.BatchDone, nil
+	case needsHuman:
+		return store.BatchNeedsHuman, nil
+	case started:
+		return store.BatchRunning, nil
+	}
+	return store.BatchOpen, nil
+}
+
+// runBatchEvent derives the state of the batch a run belongs to, if any.
+func (c *Controller) runBatchEvent(ctx context.Context, runID string) {
+	run, err := c.store.Get(ctx, runID)
+	if err != nil || run.ParentID == "" {
+		return
+	}
+	c.deriveBatch(ctx, run.ParentID)
+}
+
+// sweepBatches re-derives every open batch each tick, catching changes
+// made by paths that do not call runBatchEvent.
+func (c *Controller) sweepBatches() {
+	bs, err := c.store.List(c.ctx, store.Filter{Kind: store.KindBatch, Status: store.StatusOpen})
+	if err != nil {
+		return
+	}
+	for _, b := range bs {
+		c.deriveBatch(c.ctx, b.ID)
+	}
+}
+
+func (c *Controller) batchShow(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
+	b, err := c.store.Get(ctx, p.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		proj, perr := c.project(sc, "")
+		if perr != nil {
+			return nil, err
+		}
+		b, err = c.store.FindOpenBatchByKey(ctx, proj, p.ID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if b.Kind != store.KindBatch {
+		return nil, fmt.Errorf("%w: %s is a %s, not a batch", store.ErrInvalid, p.ID, b.Kind)
+	}
+	if !sc.admin && b.Project != sc.project {
+		return nil, forbidden("session is scoped to project %s", sc.project)
+	}
+	res, err := c.batchResult(ctx, b)
+	if err != nil {
+		return nil, err
+	}
+	return res, c.batchBlocked(ctx, &res)
+}
+
+// batchBlocked fills BlockedBy: for each member run, the issues of other
+// members whose open steps block the run's current step.
+func (c *Controller) batchBlocked(ctx context.Context, res *rpc.BatchResult) error {
+	issueOf := map[string]string{} // step id -> issue
+	for _, r := range res.Runs {
+		rf, err := store.DecodeFields[store.RunFields](r.Run)
+		if err != nil {
+			return err
+		}
+		for _, s := range r.Steps {
+			issueOf[s.ID] = strings.TrimPrefix(rf.Key, "issue-")
+		}
+	}
+	open := map[string]bool{}
+	for _, r := range res.Runs {
+		for _, s := range r.Steps {
+			open[s.ID] = s.Status != store.StatusClosed
+		}
+	}
+	res.BlockedBy = map[string][]string{}
+	for _, r := range res.Runs {
+		cur := currentStep(r.Steps)
+		if cur == nil || r.Run.Status == store.StatusClosed {
+			continue
+		}
+		edges, err := c.store.Edges(ctx, cur.ID)
+		if err != nil {
+			return err
+		}
+		for _, e := range edges {
+			if e.From != cur.ID || !e.Kind.Blocking() || !open[e.To] {
+				continue
+			}
+			if n, ok := issueOf[e.To]; ok && !slices.Contains(res.BlockedBy[r.Run.ID], n) {
+				res.BlockedBy[r.Run.ID] = append(res.BlockedBy[r.Run.ID], n)
+			}
+		}
+	}
+	return nil
+}
+
+// currentStep is the first step not closed done, or nil.
+func currentStep(steps []store.Ticket) *store.Ticket {
+	for i := range steps {
+		if steps[i].Status != store.StatusClosed || steps[i].Resolution != "done" {
+			return &steps[i]
+		}
+	}
+	return nil
+}
+
+func (c *Controller) batchList(ctx context.Context, sc scope, p rpc.BatchListParams) (any, error) {
+	if !sc.admin {
+		p.Project = sc.project
+	}
+	return c.store.List(ctx, store.Filter{Project: p.Project, Kind: store.KindBatch, Status: store.StatusOpen, Newest: true, Limit: p.Limit})
+}
