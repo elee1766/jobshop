@@ -64,6 +64,7 @@ const (
 	MethodPoolList         = "pool.list"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
+	MethodVersion          = "version"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -188,6 +189,14 @@ type SessionNewParams struct {
 	Agent   string `json:"agent,omitempty"` // default: the pool's agent
 	Key     string `json:"key,omitempty"`
 	Title   string `json:"title,omitempty"`
+}
+
+// VersionResult is the controller binary's version and commit. Sessions
+// read it to see what is deployed: their own binary is fixed when they
+// start (#180).
+type VersionResult struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
 }
 
 // ShutdownParams stops the controller. All also ends every session; without

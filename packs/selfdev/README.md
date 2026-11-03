@@ -13,7 +13,7 @@ Jobshop's values, through `extends:` in `pack.yaml`:
 | `docs_rule` | notes in `docs/notes/<issue>-<slug>.md`, checks in `docs/verify/<slug>.md` (#131) |
 | `ci_workflow` | `ci` |
 | `guide` | Go module, read AGENTS.md and docs/ (docs/plan.md) |
-| `deploy_check` | `jobshop version` at the merge commit or a descendant (self-deploy) |
+| `deploy_check` | `jobshop version --server` (the controller's commit, #180) at the merge commit or a descendant (self-deploy) |
 
 ## Vars
 

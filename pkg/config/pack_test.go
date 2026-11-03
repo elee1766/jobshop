@@ -155,7 +155,7 @@ packs:
 	assert.Equal(t, "/src/jobshop", c.Pools["dev"].Repo, "selfdev repo var is the checkout")
 	assert.Contains(t, c.Pools["plan"].Prompt, "@elee1766")
 	assert.Contains(t, c.Triggers["master-red"].When.Check, "--repo elee1766/jobshop --branch master --workflow ci")
-	assert.Contains(t, c.Workflows["pr-work"].PackVars["deploy_check"], "jobshop version")
+	assert.Contains(t, c.Workflows["pr-work"].PackVars["deploy_check"], "jobshop version --server", "controller's commit, not the session binary (#180)")
 	assert.Equal(t, "go build ./... && go vet ./... && go test ./...", c.Workflows["pr-work"].PackVars["check_cmd"])
 	assert.Contains(t, c.Workflows["pr-work"].PackVars["docs_rule"], "docs/notes/<issue>-<slug>.md")
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")

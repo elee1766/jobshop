@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
 // Set at build time with -ldflags "-X github.com/elee1766/jobshop/pkg/cli.version=...".
@@ -101,13 +102,23 @@ func Main(args []string) int {
 	return 0
 }
 
-type versionCmd struct{}
+type versionCmd struct {
+	Server bool `help:"Print the running controller's version instead of this binary's. A session's own binary is fixed when it starts, so deploy checks use this (#180)."`
+}
 
-func (versionCmd) Run() error {
+func (c versionCmd) Run(g *Globals) error {
+	if c.Server {
+		var r rpc.VersionResult
+		if err := g.call(rpc.MethodVersion, nil, &r); err != nil {
+			return err
+		}
+		_, err := fmt.Fprintf(stdout, "jobshop %s (%s)\n", r.Version, r.Commit)
+		return err
+	}
 	bi, _ := debug.ReadBuildInfo()
-	v, c := versionInfo(version, commit, bi)
-	fmt.Printf("jobshop %s (%s)\n", v, c)
-	return nil
+	v, cm := versionInfo(version, commit, bi)
+	_, err := fmt.Fprintf(stdout, "jobshop %s (%s)\n", v, cm)
+	return err
 }
 
 // versionInfo fills in version and commit from Go build info when -ldflags

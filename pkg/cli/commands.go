@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -136,7 +137,9 @@ func (c serveCmd) Run(g *Globals) error {
 			}
 		}
 	}()
-	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Reload: reload})
+	bi, _ := debug.ReadBuildInfo()
+	v, cm := versionInfo(version, commit, bi)
+	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Reload: reload, Version: v, Commit: cm})
 }
 
 type reloadCmd struct{}
