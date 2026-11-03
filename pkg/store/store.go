@@ -120,6 +120,14 @@ type NewTicket struct {
 // DefaultPriority is used when NewTicket.Priority is nil. Lower runs first.
 const DefaultPriority = 2
 
+// Graph is the input to ApplyGraph.
+type Graph struct {
+	Tickets   []NewTicket
+	Reparent  map[string]string // existing ticket id -> new parent id
+	Edges     []Edge
+	Unclaimed []string
+}
+
 // Update changes mutable, non-claim fields. Nil pointers are left unchanged.
 // Claim state (status, holder, lease, fence) changes only through Claim*,
 // Release* and Close.
@@ -234,6 +242,11 @@ type Store interface {
 
 	// CreateGraph inserts tickets and edges in one transaction.
 	CreateGraph(ctx context.Context, actor string, tickets []NewTicket, edges []Edge) ([]Ticket, error)
+	// ApplyGraph is CreateGraph that may also re-parent existing tickets,
+	// in one transaction. Each Unclaimed id must be open and unheld inside
+	// that transaction, or nothing is written and the error wraps
+	// ErrNotHolder (#169: an edge added to a claimed step has no effect).
+	ApplyGraph(ctx context.Context, actor string, g Graph) ([]Ticket, error)
 	// NewID mints a ticket id for project, so a caller can wire parent ids
 	// and edges before CreateGraph.
 	NewID(project string) (string, error)
@@ -244,6 +257,9 @@ type Store interface {
 	// FindOpenRunByKey returns the open run of workflow with key, or
 	// ErrNotFound.
 	FindOpenRunByKey(ctx context.Context, workflow, key string) (Ticket, error)
+	// FindOpenBatchByKey returns the open batch of project with key, or
+	// ErrNotFound.
+	FindOpenBatchByKey(ctx context.Context, project, key string) (Ticket, error)
 	// ListRuns returns runs newest first. Empty project or state matches all.
 	ListRuns(ctx context.Context, project, state string, limit int) ([]Ticket, error)
 

@@ -60,6 +60,7 @@ type root struct {
 	Label     labelCmd     `cmd:"" help:"Manage labels."`
 	Session   sessionCmd   `cmd:"" help:"Manage sessions."`
 	Run       runCmd       `cmd:"" help:"Start and inspect workflow runs."`
+	Batch     batchCmd     `cmd:"" help:"Start ordered groups of runs."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
 	Report    reportCmd    `cmd:"" help:"Reliability reports for planner passes (admin)."`

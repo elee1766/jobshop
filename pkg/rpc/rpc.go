@@ -58,6 +58,7 @@ const (
 	MethodRunList          = "run.list"
 	MethodRunCancel        = "run.cancel"
 	MethodRunResume        = "run.resume"
+	MethodBatchStart       = "batch.start"
 	MethodPoolList         = "pool.list"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
@@ -588,6 +589,27 @@ type RunResult struct {
 	Steps []store.Ticket `json:"steps"`
 	// Existing is true when start returned an open run for the key.
 	Existing bool `json:"existing,omitempty"`
+}
+
+// BatchStartParams starts one run per issue under a batch ticket (#169).
+// Order holds "a>b" or "a>b>c" chains: b's first step waits on a's last.
+// A repeated start with the same key returns the open batch.
+type BatchStartParams struct {
+	Key      string   `json:"key"`
+	Issues   []string `json:"issues"`
+	Order    []string `json:"order,omitempty"`
+	Workflow string   `json:"workflow,omitempty"` // default pr-work
+	Project  string   `json:"project,omitempty"`
+}
+
+// BatchResult is a batch ticket and its member runs in issue order.
+type BatchResult struct {
+	Batch store.Ticket `json:"batch"`
+	Runs  []RunResult  `json:"runs"`
+	// Existing is true when start returned an open batch for the key.
+	Existing bool `json:"existing,omitempty"`
+	// Adopted lists runs that existed and were re-parented.
+	Adopted []string `json:"adopted,omitempty"`
 }
 
 // RunListParams selects runs. State is a store.Run* value.

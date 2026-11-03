@@ -145,3 +145,70 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 	}
 	return nil
 }
+
+type batchCmd struct {
+	Start batchStartCmd `cmd:"" help:"Start one run per issue under a batch, with ordered cross-run edges."`
+}
+
+type batchStartCmd struct {
+	Key      string   `short:"k" required:"" help:"Batch key: returns the open batch with this key instead of starting another."`
+	Issues   []string `required:"" sep:"," help:"Issue numbers, comma separated (122,123,125)."`
+	Order    []string `help:"Order chain a>b>c: b's first step waits on a's last (repeatable)."`
+	Workflow string   `help:"Workflow each member runs (default pr-work)."`
+	Project  string   `help:"Project (default: the workflow's)."`
+	JSON     bool     `help:"Print JSON."`
+}
+
+func (c batchStartCmd) params() rpc.BatchStartParams {
+	return rpc.BatchStartParams{Key: c.Key, Issues: c.Issues, Order: c.Order, Workflow: c.Workflow, Project: c.Project}
+}
+
+func (c batchStartCmd) Run(g *Globals) error {
+	if c.JSON {
+		return g.call(rpc.MethodBatchStart, c.params(), nil)
+	}
+	var r rpc.BatchResult
+	if err := g.call(rpc.MethodBatchStart, c.params(), &r); err != nil {
+		return err
+	}
+	return printBatch(os.Stdout, r)
+}
+
+// printBatch writes the batch line, its order, then one line per member
+// run: issue, run id, run state, adopted.
+func printBatch(w io.Writer, r rpc.BatchResult) error {
+	f, err := store.DecodeFields[store.BatchFields](r.Batch)
+	if err != nil {
+		return err
+	}
+	line := fmt.Sprintf("batch %s  key %s  state %s  (%s)", r.Batch.ID, f.Key, f.State, r.Batch.Status)
+	if r.Existing {
+		line += "  [existing batch for key]"
+	}
+	if _, err := fmt.Fprintln(w, line); err != nil {
+		return err
+	}
+	if len(f.Order) > 0 {
+		parts := make([]string, len(f.Order))
+		for i, p := range f.Order {
+			parts[i] = p[0] + ">" + p[1]
+		}
+		if _, err := fmt.Fprintln(w, "order", strings.Join(parts, " ")); err != nil {
+			return err
+		}
+	}
+	for _, run := range r.Runs {
+		rf, err := store.DecodeFields[store.RunFields](run.Run)
+		if err != nil {
+			return err
+		}
+		extra := ""
+		if slices.Contains(r.Adopted, run.Run.ID) {
+			extra = "  [adopted]"
+		}
+		if _, err := fmt.Fprintf(w, "%s  run %s  state %s%s\n", rf.Key, run.Run.ID, rf.State, extra); err != nil {
+			return err
+		}
+	}
+	return nil
+}

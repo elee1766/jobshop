@@ -26,48 +26,10 @@ func (c *Controller) runStart(ctx context.Context, sc scope, p rpc.RunStartParam
 // startRun is run start for the RPC and for run: triggers. extra is added
 // to the run ticket's meta (the trigger link); steps do not get it.
 func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParams, extra map[string]any) (any, error) {
-	cfg := c.config()
-	w, ok := cfg.Workflows[p.Workflow]
-	if !ok {
-		return nil, fmt.Errorf("%w: unknown workflow %q", store.ErrInvalid, p.Workflow)
-	}
-	// Steps live in their pools' projects; the run goes with the first.
-	proj := cfg.Pools[w.Steps[0].Pool].Project
-	if p.Project != "" && p.Project != proj {
-		return nil, fmt.Errorf("%w: workflow %s runs in project %s", store.ErrInvalid, p.Workflow, proj)
-	}
-	if !sc.admin && sc.project != proj {
-		return nil, forbidden("session is scoped to project %s", sc.project)
-	}
-	vars := map[string]any{}
-	for k, v := range w.PackVars {
-		vars[k] = v
-	}
-	for k, v := range p.Vars {
-		if !slices.Contains(w.Vars, k) {
-			return nil, fmt.Errorf("%w: workflow %s has no var %q (vars: %v)", store.ErrInvalid, p.Workflow, k, w.Vars)
-		}
-		vars[k] = v
-	}
-	for _, k := range w.Vars {
-		if _, ok := vars[k]; !ok {
-			return nil, fmt.Errorf("%w: workflow %s needs var %s (--var %s=...)", store.ErrInvalid, p.Workflow, k, k)
-		}
-	}
-	meta, err := runMeta(w, vars)
+	plan, err := c.planRun(ctx, sc, p)
 	if err != nil {
 		return nil, err
 	}
-	for _, id := range p.After {
-		t, err := c.store.Get(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("after %s: %w", id, err)
-		}
-		if !sc.admin && t.Project != sc.project {
-			return nil, forbidden("after %s: session is scoped to project %s", id, sc.project)
-		}
-	}
-
 	// Serialize starts so two starts with one key cannot both miss.
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
@@ -85,10 +47,81 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 			return nil, err
 		}
 	}
-
-	runID, err := c.store.NewID(proj)
+	g, err := c.buildRun(plan, p, extra, "")
 	if err != nil {
 		return nil, err
+	}
+	out, err := c.store.CreateGraph(ctx, sc.actor, g.Tickets, g.Edges)
+	if err != nil {
+		return nil, err
+	}
+	c.log.Info("run started", "run", out[0].ID, "workflow", p.Workflow, "key", p.Key, "steps", len(out)-1)
+	return rpc.RunResult{Run: out[0], Steps: out[1:]}, nil
+}
+
+// runPlan is a validated run start: workflow, project, filled vars and meta.
+type runPlan struct {
+	w    config.Workflow
+	proj string
+	vars map[string]any
+	meta json.RawMessage
+}
+
+// planRun checks p against the config and the caller's scope.
+func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams) (runPlan, error) {
+	cfg := c.config()
+	w, ok := cfg.Workflows[p.Workflow]
+	if !ok {
+		return runPlan{}, fmt.Errorf("%w: unknown workflow %q", store.ErrInvalid, p.Workflow)
+	}
+	// Steps live in their pools' projects; the run goes with the first.
+	proj := cfg.Pools[w.Steps[0].Pool].Project
+	if p.Project != "" && p.Project != proj {
+		return runPlan{}, fmt.Errorf("%w: workflow %s runs in project %s", store.ErrInvalid, p.Workflow, proj)
+	}
+	if !sc.admin && sc.project != proj {
+		return runPlan{}, forbidden("session is scoped to project %s", sc.project)
+	}
+	vars := map[string]any{}
+	for k, v := range w.PackVars {
+		vars[k] = v
+	}
+	for k, v := range p.Vars {
+		if !slices.Contains(w.Vars, k) {
+			return runPlan{}, fmt.Errorf("%w: workflow %s has no var %q (vars: %v)", store.ErrInvalid, p.Workflow, k, w.Vars)
+		}
+		vars[k] = v
+	}
+	for _, k := range w.Vars {
+		if _, ok := vars[k]; !ok {
+			return runPlan{}, fmt.Errorf("%w: workflow %s needs var %s (--var %s=...)", store.ErrInvalid, p.Workflow, k, k)
+		}
+	}
+	meta, err := runMeta(w, vars)
+	if err != nil {
+		return runPlan{}, err
+	}
+	for _, id := range p.After {
+		t, err := c.store.Get(ctx, id)
+		if err != nil {
+			return runPlan{}, fmt.Errorf("after %s: %w", id, err)
+		}
+		if !sc.admin && t.Project != sc.project {
+			return runPlan{}, forbidden("after %s: session is scoped to project %s", id, sc.project)
+		}
+	}
+	return runPlan{w: w, proj: proj, vars: vars, meta: meta}, nil
+}
+
+// buildRun returns the run ticket (first), its steps in order and their
+// edges, without writing. parent is the run's parent_id (a batch, or "").
+func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[string]any, parent string) (store.Graph, error) {
+	cfg := c.config()
+	w, proj, vars, meta := plan.w, plan.proj, plan.vars, plan.meta
+	var g store.Graph
+	runID, err := c.store.NewID(proj)
+	if err != nil {
+		return g, err
 	}
 	pack := ""
 	if s := cfg.Sources["workflows."+p.Workflow]; len(s) > 0 {
@@ -96,7 +129,7 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 	}
 	rf, err := json.Marshal(store.RunFields{Workflow: p.Workflow, Pack: pack, Vars: p.Vars, Key: p.Key, State: store.RunRunning})
 	if err != nil {
-		return nil, err
+		return g, err
 	}
 	title := "Run " + p.Workflow
 	if p.Key != "" {
@@ -107,33 +140,33 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 		m := map[string]any{}
 		if meta != nil {
 			if err := json.Unmarshal(meta, &m); err != nil {
-				return nil, err
+				return g, err
 			}
 		}
 		maps.Copy(m, extra)
 		if runMetaJSON, err = json.Marshal(m); err != nil {
-			return nil, err
+			return g, err
 		}
 	}
-	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: store.KindRun, Title: title, Fields: rf, Meta: runMetaJSON}}
+	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: store.KindRun, Title: title, ParentID: parent, Fields: rf, Meta: runMetaJSON}}
 	var edges []store.Edge
 	prev := ""
 	for i, s := range w.Steps {
 		title, err := config.FillTemplate(s.Title, vars)
 		if err != nil {
-			return nil, fmt.Errorf("%w: step %s title: %w", store.ErrInvalid, s.ID, err)
+			return g, fmt.Errorf("%w: step %s title: %w", store.ErrInvalid, s.ID, err)
 		}
 		body, err := config.FillTemplate(s.Prompt, vars)
 		if err != nil {
-			return nil, fmt.Errorf("%w: step %s prompt: %w", store.ErrInvalid, s.ID, err)
+			return g, fmt.Errorf("%w: step %s prompt: %w", store.ErrInvalid, s.ID, err)
 		}
 		id, err := c.store.NewID(cfg.Pools[s.Pool].Project)
 		if err != nil {
-			return nil, err
+			return g, err
 		}
 		sf, err := json.Marshal(store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit()})
 		if err != nil {
-			return nil, err
+			return g, err
 		}
 		nts = append(nts, store.NewTicket{
 			ID: id, Project: cfg.Pools[s.Pool].Project, Kind: store.KindStep, Title: title, Body: body,
@@ -150,12 +183,7 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 		}
 		prev = id
 	}
-	out, err := c.store.CreateGraph(ctx, sc.actor, nts, edges)
-	if err != nil {
-		return nil, err
-	}
-	c.log.Info("run started", "run", runID, "workflow", p.Workflow, "key", p.Key, "steps", len(w.Steps))
-	return rpc.RunResult{Run: out[0], Steps: out[1:]}, nil
+	return store.Graph{Tickets: nts, Edges: edges}, nil
 }
 
 // runMeta is meta.github.issue when the workflow names an issue var. A

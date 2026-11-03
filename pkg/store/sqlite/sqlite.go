@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -349,6 +350,66 @@ func (s *Store) CreateGraph(ctx context.Context, actor string, nts []store.NewTi
 		return nil
 	})
 	return out, err
+}
+
+// ApplyGraph checks Unclaimed, inserts tickets, re-parents and adds edges
+// in one transaction.
+func (s *Store) ApplyGraph(ctx context.Context, actor string, g store.Graph) (out []store.Ticket, err error) {
+	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+		for _, id := range g.Unclaimed {
+			t, err := s.get(ctx, q, id)
+			if err != nil {
+				return err
+			}
+			if t.Status != store.StatusOpen || t.Holder != "" {
+				return fmt.Errorf("%w: %s is %s (holder %q)", store.ErrNotHolder, id, t.Status, t.Holder)
+			}
+		}
+		out = make([]store.Ticket, 0, len(g.Tickets))
+		for _, nt := range g.Tickets {
+			t, err := s.insert(ctx, q, actor, nt)
+			if err != nil {
+				return err
+			}
+			out = append(out, t)
+		}
+		ids := slices.Sorted(maps.Keys(g.Reparent))
+		for _, id := range ids {
+			parent := g.Reparent[id]
+			if _, err := s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
+				t.ParentID = parent
+				return map[string]any{"parent_id": parent}, nil
+			}); err != nil {
+				return err
+			}
+			if err := q.SetParent(ctx, sqlcdb.SetParentParams{ParentID: sql.NullString{String: parent, Valid: parent != ""}, ID: id}); err != nil {
+				return err
+			}
+		}
+		for _, e := range g.Edges {
+			if err := s.addEdge(ctx, q, actor, e); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return out, err
+}
+
+// FindOpenBatchByKey returns the open batch of project with key.
+func (s *Store) FindOpenBatchByKey(ctx context.Context, project, key string) (store.Ticket, error) {
+	row, err := s.q.FindOpenBatchByKey(ctx, sqlcdb.FindOpenBatchByKeyParams{Project: project, Key: key})
+	if errors.Is(err, sql.ErrNoRows) {
+		return store.Ticket{}, fmt.Errorf("%w: open batch %s key %q", store.ErrNotFound, project, key)
+	}
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	ts, err := s.withLabels(ctx, s.q, toTickets([]sqlcdb.Ticket{row}))
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	return ts[0], nil
 }
 
 // NewID mints an id with the project's prefix.

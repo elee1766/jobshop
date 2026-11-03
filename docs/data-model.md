@@ -8,7 +8,7 @@ Everything is a ticket with a `kind`, connected by edges. Same idea as Gas
 City beads, with these differences (decided 2026-11-01):
 
 - **Kinds and edge kinds are defined by the engine, in Go.** `task`,
-  `session`, `message`, `run`, `step`, and later control kinds. Each has a
+  `session`, `message`, `run`, `step`, `batch`, and later control kinds. Each has a
   Go struct for its kind-specific fields, validated on write. Gas City has
   two undeclared kind layers (`issue_type` column plus `gc.kind` metadata)
   and 188 untyped `gc.*` keys; Jobshop has one `kind` and typed fields.
@@ -161,6 +161,15 @@ type StepFields struct {
     Index    int    `json:"index"`
     Retries  int    `json:"retries"`
     Failures int    `json:"failures"`
+}
+
+// Batches (#169, 2026-11-03). No pool, never claimed; member runs are its
+// children. Order pair [a, b]: b's first step is blocked by a's last.
+type BatchFields struct {
+    Key    string      `json:"key"`    // one open batch per project and key
+    Issues []string    `json:"issues"`
+    Order  [][2]string `json:"order,omitempty"`
+    State  string      `json:"state"`  // open, running, needs_human, done, failed
 }
 ```
 
