@@ -219,6 +219,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#210, `docs/notes/210-nix-yaml-reload.md`).
 - NixOS `workspaces.<name>.livePackPrefix` (#213,
   `docs/notes/213-live-pack-prefix.md`).
+- A live pack the installed binary cannot load keeps the controller on
+  its last good config; the sync follows the installed package (#227,
+  `docs/notes/227-pack-binary-skew.md`).
 - Outbox design note: no outbox for gateway posts (#191,
   `docs/notes/191-outbox.md`).
 - `jobshop desk`: read-only Svelte dashboard over the admin API (#202,
@@ -693,6 +696,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Yaml changes reach the controller through systemd `reloadTriggers`
   (2026-11-03, #210), not a file watcher: switches already drive
   restarts, and SIGHUP reload exists.
+- A pack load failure at start serves the last good merged config, saved
+  in the root, instead of exiting (2026-11-03, #227): a crash loop stops
+  all work, while stale packs only delay new behavior. Host config
+  errors still fail fast.
 - Work references name their repo (2026-11-03, #183): `meta.github.repo`
   is set from workflow config, not inferred, and old tickets get it from
   a startup backfill rather than SQL, since only config knows the repo.

@@ -921,6 +921,7 @@ const (
 	AttentionQuestion = "question" // open ticket labeled question: a worker asks a human
 	AttentionPool     = "pool"     // quarantined pool with no open escalation
 	AttentionRollback = "rollback" // self-deploy rolled back a commit
+	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
 )
 
 // AttentionItem is one thing waiting on a human.

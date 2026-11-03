@@ -69,6 +69,9 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 		}
 	}
 	c.mu.Lock()
+	if c.configErr != "" {
+		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})
+	}
 	for p, why := range c.poolQuarantined {
 		if !escalatedPools[p] {
 			items = append(items, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: p, Title: "pool " + p + " quarantined: " + why, Since: c.started})

@@ -260,11 +260,17 @@ let
           branch=$(git symbolic-ref --short HEAD)
           target="origin/$branch"
           ${lib.optionalString (sd.enable && w.selfDeploy) ''
-            # Packs follow the deployed binary, so a pack that needs newer code
-            # never loads into an older controller (a restart would then fail).
-            deployed=$("$(readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe")" version \
-              | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
-            [ -n "$deployed" ] && git cat-file -e "$deployed^{commit}" 2>/dev/null && target=$deployed
+            # Packs follow the installed binary, so a pack that needs newer code
+            # never loads into an older controller (#227). The commit comes from
+            # this generation's package, not the running process, so a stopped
+            # or crash-looping controller still holds the checkout back. An
+            # unknown commit leaves the checkout where it is.
+            installed=$(${jobshop} version | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
+            if [ -z "$installed" ] || ! git cat-file -e "$installed^{commit}" 2>/dev/null; then
+              echo "<4>workspace ${name}: installed jobshop commit '$installed' not in the checkout, not moving it"
+              exit 0
+            fi
+            target=$installed
           ''}
           before=$(git rev-parse HEAD)
           # Only fast-forward: a hand-edited checkout is left alone and logged.
@@ -688,6 +694,14 @@ in
             # which is the version from before the last self-deploy.
             running() { readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe"; }
             current=$("$(running)" version | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
+            # A manual switch to an older jobshop than the last self-deploy is a
+            # rollback; say so, since live packs may then need the newer code (#227).
+            last=$(cat $state/deployed 2>/dev/null || true)
+            if [ -n "$last" ] && [ -n "$current" ]; then
+              case "$last" in "$current"*) ;; *)
+                echo "<4>jobshop switched outside self-deploy (a rollback if older): running $current, last deployed $last" ;;
+              esac
+            fi
             case "$rev" in "$current"*) echo "already at $current"; exit 0 ;; esac
             if [ "$(cat $state/failed 2>/dev/null)" = "$rev" ]; then
               echo "$rev failed before, waiting for a newer green commit"; exit 0
