@@ -49,7 +49,7 @@ var errBadRequest = errors.New("bad request")
 func (s *Server) decode(r *http.Request, v any) error {
 	r.Body = http.MaxBytesReader(nil, r.Body, maxChatText+4096)
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
-		return fmt.Errorf("%w: %v", errBadRequest, err)
+		return fmt.Errorf("%w: %w", errBadRequest, err)
 	}
 	return nil
 }
@@ -120,7 +120,7 @@ func (s *Server) chatAccess(r *http.Request) (any, error) {
 	return ChatAccess{Write: true}, nil
 }
 
-// ChatSessions is GET /api/chat: open sessions of the chat pool, with keys.
+// ChatSession is one open session of the chat pool, for GET /api/chat.
 type ChatSession struct {
 	ID    string `json:"id"`
 	Key   string `json:"key"`
