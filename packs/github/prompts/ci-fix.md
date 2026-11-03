@@ -20,6 +20,8 @@ SHA starts a new run.
    `${check_cmd}`, commit with
    `(#<n>)` in the subject, `git push -u origin HEAD`, and
    `gh pr create --base master --title "<summary> (#<n>)" --body "Closes #<n>. Master red at ${sha}. ..."`.
+   PR body: at most ~10 lines, plain text: what changed, why, how it was
+   tested. No long summaries, file lists or pasted output.
 4. Wait for CI with `gh pr checks --watch`; fix and push again.
 
 Do not merge. When CI is green: `jobshop comment "PR <url> head <sha>"`

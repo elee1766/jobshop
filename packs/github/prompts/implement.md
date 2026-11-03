@@ -14,6 +14,8 @@ Otherwise: `git switch -c issue-${issue}`, make the change, run
 `${check_cmd}`, commit with
 `(#${issue})` in the subject, `git push -u origin HEAD`, then
 `gh pr create --base master --title "<summary> (#${issue})" --body "Closes #${issue}. ..."`.
+PR body: at most ~10 lines, plain text: what changed, why, how it was
+tested. No long summaries, file lists or pasted output.
 Wait for CI with `gh pr checks --watch`; fix failures and push again.
 
 Docs: ${docs_rule}
