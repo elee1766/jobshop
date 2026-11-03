@@ -109,8 +109,10 @@ func (c *Controller) guard(ctx context.Context, sc scope, p rpc.GuardParams) (an
 	if p.Action == config.HookMerge {
 		on = config.HookMerge
 	}
-	ev := hookEvent{On: on, Action: p.Action, Target: p.Target, Detail: p.Detail,
-		Session: sc.session, Pool: sc.pool, Project: sc.project, Extra: p.Extra}
+	ev := hookEvent{
+		On: on, Action: p.Action, Target: p.Target, Detail: p.Detail,
+		Session: sc.session, Pool: sc.pool, Project: sc.project, Extra: p.Extra,
+	}
 	if !sc.admin {
 		if id, err := c.current(ctx, sc, ""); err == nil {
 			if t, err := c.store.Get(ctx, id); err == nil {
