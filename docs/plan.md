@@ -249,6 +249,19 @@ from the last day's warnings), an admin-socket change stream that
 replaces gateway polling (#147, built; runbook
 `docs/verify/events-subscribe.md`), batches (Gas City convoys), and the operator
 using the Matrix room. Schedules are already covered by cron triggers.
+
+**Phase 6** (target #192, decided 2026-11-03). Take as little operator
+attention as possible, work across several GitHub repos at once, and let
+humans and other tools steer work. Adapted from
+deepseek-ai/dsh-superagent-prototype where it fits. Order: work references
+carry the repo (#183) before anything else, so nothing assumes one repo;
+then several repos on one host (#184), the attention view and rule (#185),
+structured worker reports and questions (#186), subscriptions to issue and
+PR threads in any repo (#187), guardrail hooks (allow, deny, ask-human; for
+example a Jev decision, #188). Independent: recovery note on resume
+(#189), a reserved human slot per pool (#190), and an outbox design note
+only (#191), since whether to build side-effect retry in is still open.
+Discord adapter: #182, unit tests only.
 Spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
 it needs a 24h `docs/verify/worktree-deletion.md` run on gasserver.
