@@ -51,6 +51,10 @@ func TestSessionScope(t *testing.T) {
 	err = s.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{}, &cl)
 	require.NoError(t, err, "claim --next resumes held work")
 
+	var follow store.Ticket
+	require.NoError(t, s.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "follow-up"}, &follow))
+	assert.Equal(t, "dev", follow.Pool, "a session's task with no pool goes to its own pool")
+
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: sess.Ticket.ID}, nil))
 	var got store.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &struct {

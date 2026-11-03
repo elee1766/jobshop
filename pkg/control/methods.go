@@ -134,6 +134,11 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 	if p.Holder != "" && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
 	}
+	// A session's follow-up task with no pool would never be claimed (#244);
+	// it goes to the creator's pool, which can reroute it.
+	if p.Kind == store.KindTask && p.Pool == "" && !sc.admin {
+		p.Pool = sc.pool
+	}
 	if err := c.checkMetaPacks(p.Meta); err != nil {
 		return nil, err
 	}
