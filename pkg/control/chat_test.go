@@ -196,3 +196,29 @@ func TestChatPoolKeys(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond)
 	assert.Equal(t, "idle", s.Ticket.Resolution)
 }
+
+// TestHumanSlot: a chat pool with max_sessions 1 starts one session over
+// the cap for a human send, then refuses the next new key (#190).
+func TestHumanSlot(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0o600)
+	require.NoError(t, err)
+	_, err = fmt.Fprintf(f, "  chat:\n    project: js\n    agent: fake\n    type: chat\n    max_sessions: 1\n    dir: %q\n", root.Dir)
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+	stop := start()
+	defer stop()
+	ctx := t.Context()
+	admin := dial(t, root.AdminSocket())
+	send := func(key string) error {
+		var res rpc.SessionSendResult
+		return admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{Pool: "chat", Key: key, Text: "hi"}, &res)
+	}
+	require.NoError(t, send("a"))
+	require.NoError(t, send("b"), "the reserved human slot")
+	assert.ErrorIs(t, send("c"), store.ErrConflict)
+	require.NoError(t, send("a"), "an open key still reaches its session")
+	var res rpc.SessionNewResult
+	err = admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Project: "js", Pool: "chat"}, &res)
+	assert.ErrorIs(t, err, store.ErrConflict)
+}

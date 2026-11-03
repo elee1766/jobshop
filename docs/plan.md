@@ -203,6 +203,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/182-gateway-discord.md`).
 - A respawned session's first prompt carries a recovery note (#189,
   `docs/notes/189-recovery-note.md`).
+- Human-started sessions get one slot over `max_sessions` per pool
+  (#190, `docs/notes/190-human-slot.md`).
 
 ## 5. What's next
 
@@ -642,6 +644,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Discord escalations go to a forum channel when `escalation_room` is
   one (2026-11-03, #182): one post per escalation is easier to browse
   than threads in a text channel; text channels still work.
+- The human slot is a cap of `max_sessions + 1` on human starts, not a
+  per-session flag (2026-11-03, #190): counting open sessions needs no
+  new state, and the supervisor's cap is unchanged.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -693,6 +698,7 @@ moved from the old 7.x list, oldest first:
 - [events.subscribe change stream](notes/147-events-subscribe.md) (#147)
 - [Session worktree deletion](notes/154-worktree-deletion.md) (#154)
 - [Self-deploy rollback drill](notes/155-rollback-drill.md) (#155)
+- [Reserved human slot per pool](notes/190-human-slot.md) (#190)
 
 ## 8. Chat gateway
 

@@ -119,6 +119,9 @@ func (c *Controller) keyedSession(ctx context.Context, sc scope, pool, key strin
 	if !p.Chat() {
 		return store.Ticket{}, false, fmt.Errorf("%w: pool %s is not a chat pool; send to a session id", store.ErrInvalid, pool)
 	}
+	if err := c.humanSlot(ctx, pool); err != nil {
+		return store.Ticket{}, false, err
+	}
 	t, err := c.newSession(ctx, sc.actor, p.Project, pool, p.Agent, key, pool+" "+key)
 	if errors.Is(err, store.ErrAlreadyExist) {
 		// A concurrent send created it; the key index allows one open.
@@ -308,4 +311,24 @@ func (e *eventer) event(fr host.Frame) (rpc.SessionEvent, bool) {
 		return out, true
 	}
 	return out, false
+}
+
+// humanSlot checks that a human-initiated session (a chat send by key, a
+// manual session.new in a pool) may start in pool. The supervisor fills a
+// pool up to max_sessions; humans get one slot over that, so queued work
+// never blocks a human from reaching a session (#190). Pools with
+// max_sessions 0 are manual-only and stay uncapped.
+func (c *Controller) humanSlot(ctx context.Context, pool string) error {
+	p, ok := c.config().Pools[pool]
+	if !ok || p.MaxSessions == 0 {
+		return nil
+	}
+	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: pool})
+	if err != nil {
+		return err
+	}
+	if len(open) >= p.MaxSessions+1 {
+		return fmt.Errorf("%w: pool %s has %d open sessions, max_sessions %d plus one reserved human slot", store.ErrConflict, pool, len(open), p.MaxSessions)
+	}
+	return nil
 }
