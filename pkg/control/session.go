@@ -726,7 +726,8 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			// Every tool call fails in a deleted cwd, so turns would only
 			// claim and drop tickets. Respawning recreates the worktree
 			// (spawnHost) and keeps the conversation and claims.
-			r.log.Warn("session worktree missing, respawning host", "host_pid", hostPid(r.dir))
+			r.log.Warn("session worktree missing, respawning host", "session", r.id,
+				"caller", "runner.worktreeMissing", "host_pid", hostPid(r.dir))
 			r.lifecycle("worktree_missing")
 			_ = nc.Close()
 			stopHost(r.dir)
@@ -1240,11 +1241,14 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) (bool, error) {
 		c.log.Warn("git fetch", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
 	}
 	// A worktree deleted without git (rm -rf) stays registered and makes
-	// `worktree add` refuse the same path.
+	// `worktree add` refuse the same path. It is locked (below) and prune
+	// skips locked entries, so unlock it first.
+	_ = exec.Command("git", "-C", p.Repo, "worktree", "unlock", cwd).Run()
 	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "prune").CombinedOutput(); err != nil {
 		c.log.Warn("git worktree prune", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
 	}
-	out, err := exec.Command("git", "-C", p.Repo, "worktree", "add", "--detach", cwd, ref).CombinedOutput()
+	out, err := exec.Command("git", "-C", p.Repo, "worktree", "add", "--detach",
+		"--lock", "--reason", "jobshop session "+t.ID, cwd, ref).CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
 		if worktreeAddPermanent(string(out)) {
@@ -1266,7 +1270,10 @@ func worktreeAddPermanent(out string) bool {
 	return false
 }
 
-func (c *Controller) removeWorktree(t store.Ticket) {
+// removeWorktree deletes a session's worktree. caller names the code path
+// for the WARN (#154). It refuses while the ticket is open or the host is
+// alive: a live session's worktree must never go.
+func (c *Controller) removeWorktree(t store.Ticket, caller string) {
 	p, ok := c.config().Pools[t.Pool]
 	if !ok || p.Repo == "" {
 		return
@@ -1275,9 +1282,18 @@ func (c *Controller) removeWorktree(t store.Ticket) {
 	if _, err := os.Stat(cwd); err != nil {
 		return
 	}
+	if t.Status != store.StatusClosed || host.Alive(c.root.SessionDir(t.ID)) {
+		c.log.Warn("refusing to remove worktree of live session", "session", t.ID, "caller", caller,
+			"status", t.Status, "cwd", cwd)
+		return
+	}
+	c.log.Warn("removing session worktree", "session", t.ID, "caller", caller, "cwd", cwd)
 	c.gitMu.Lock()
 	defer c.gitMu.Unlock()
-	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "remove", "--force", cwd).CombinedOutput(); err != nil {
+	// The worktree is locked so outside `git worktree remove` (gh pr merge
+	// removing the worktree of a deleted branch) fails; two --force
+	// override the lock.
+	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "remove", "--force", "--force", cwd).CombinedOutput(); err != nil {
 		c.log.Warn("git worktree remove", "session", t.ID, "err", err, "out", strings.TrimSpace(string(out)))
 	}
 }

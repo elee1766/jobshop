@@ -245,7 +245,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 func (c *Controller) endSession(ctx context.Context, id, reason string) {
 	c.closeSession(id)
 	if t, err := c.store.Get(ctx, id); err == nil {
-		c.removeWorktree(t)
+		c.removeWorktree(t, "endSession: "+reason)
 	}
 	released, err := c.store.ReleaseHolder(ctx, "controller", id, reason)
 	if err != nil {
@@ -578,7 +578,8 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 			continue
 		}
 		if !p.DryRun {
-			c.removeWorktree(t)
+			c.removeWorktree(t, "session reap")
+			c.log.Warn("reap: removing session dir", "session", t.ID, "dir", dir)
 			if err := os.RemoveAll(dir); err != nil {
 				return res, fmt.Errorf("remove %s: %w", dir, err)
 			}
