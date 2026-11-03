@@ -42,6 +42,9 @@ type Config struct {
 	// DeployState is the self-deploy state dir (deployed, failed files).
 	// Empty: the Deploys view shows the controller version only.
 	DeployState string
+	// ChatPool is the type: chat pool Desk chats with (escalation keys and
+	// new desk:<id> sessions). Empty: chat is read-only.
+	ChatPool string
 }
 
 // Server is the Desk HTTP handler.
@@ -95,6 +98,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/ticket/{id}", s.json(s.ticket))
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/session/{id}/stream", s.sessionStream)
+	mux.HandleFunc("GET /api/session/{id}/access", s.json(s.chatAccess))
+	mux.HandleFunc("GET /api/chat", s.json(s.chatList))
+	mux.HandleFunc("POST /api/chat/send", s.json(s.chatSend))
+	mux.HandleFunc("POST /api/chat/new", s.json(s.chatNew))
 	mux.Handle("GET /", s.static())
 	return s.guard(mux)
 }
@@ -110,7 +117,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(w, "host not allowed", http.StatusMisdirectedRequest)
 			return
 		}
-		if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Header.Get(CSRFHeader) == "" {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && (r.Header.Get(CSRFHeader) == "" || !s.sameOrigin(r)) {
 			http.Error(w, "missing "+CSRFHeader+" header", http.StatusForbidden)
 			return
 		}
@@ -156,8 +163,13 @@ func (s *Server) json(fn func(*http.Request) (any, error)) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-store")
 		if err != nil {
 			code := http.StatusBadGateway
-			if errors.Is(err, store.ErrNotFound) {
+			switch {
+			case errors.Is(err, store.ErrNotFound):
 				code = http.StatusNotFound
+			case errors.Is(err, errBadRequest), errors.Is(err, store.ErrInvalid), errors.Is(err, store.ErrClosed):
+				code = http.StatusBadRequest
+			case errors.Is(err, store.ErrConflict):
+				code = http.StatusConflict
 			}
 			s.log.Warn("desk: api", "path", r.URL.Path, "err", err)
 			w.WriteHeader(code)

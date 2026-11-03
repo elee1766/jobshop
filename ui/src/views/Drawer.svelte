@@ -1,13 +1,16 @@
 <script>
   import { go } from '../lib/url.svelte.js';
   import { resource } from '../lib/api.svelte.js';
-  import { ago, fields, tone, links } from '../lib/format.js';
+  import { ago, fields, tone, links, meta } from '../lib/format.js';
   import Trace from './Trace.svelte';
+  import Chat from './Chat.svelte';
 
   /** @type {{ id: string }} */
   let { id } = $props();
   const v = resource(() => '/api/ticket/' + encodeURIComponent(id));
   const close = () => go({ ticket: '' });
+  /** meta.gateway on an escalation: the thread's session and key (#125). @param {any} t */
+  const gw = (t) => meta(t).gateway || null;
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') close(); }} />
@@ -37,6 +40,12 @@
     </div>
     {#if t.parent_id}
       <div class="row"><span class="muted">parent</span> <a href={'?ticket=' + t.parent_id} class="mono" onclick={(e) => { e.preventDefault(); go({ ticket: t.parent_id }); }}>{t.parent_id}</a></div>
+    {/if}
+
+    {#if gw(t)?.session}
+      <h3>Escalation thread</h3>
+      <div class="faint">Same session as the {gw(t).gateway} gateway thread; replies here reach it too.</div>
+      <div class="panel" data-testid="escalation-chat"><Chat id={gw(t).session} key={gw(t).key} /></div>
     {/if}
 
     {#if v.data.run}
@@ -91,5 +100,6 @@
   .steps li { margin: 4px 0; }
   .body { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; max-height: 320px; overflow: auto; }
   .comment { border-left: 2px solid var(--border); padding: 4px 10px; margin: 8px 0; }
+  .panel { border: 1px solid var(--border); border-radius: 6px; margin-top: 6px; }
   .err { color: var(--bad); padding: 12px 0; }
 </style>

@@ -7,6 +7,7 @@
   import Sessions from './views/Sessions.svelte';
   import Pools from './views/Pools.svelte';
   import Deploys from './views/Deploys.svelte';
+  import ChatView from './views/ChatView.svelte';
   import Drawer from './views/Drawer.svelte';
 
   onMount(connect);
@@ -15,7 +16,7 @@
   const count = $derived(attention.data?.length ?? 0);
 
   /** @type {Record<string, string>} */
-  const names = { attention: 'Attention', work: 'Work', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
+  const names = { attention: 'Attention', chat: 'Chat', work: 'Work', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
 
   let light = $state(localStorage.getItem('desk-theme') === 'light');
   $effect(() => {
@@ -46,6 +47,7 @@
   </nav>
   <main>
     {#if url.view === 'attention'}<Attention items={attention} />
+    {:else if url.view === 'chat'}<ChatView />
     {:else if url.view === 'work'}<Work />
     {:else if url.view === 'sessions'}<Sessions />
     {:else if url.view === 'pools'}<Pools />

@@ -20,6 +20,7 @@ type deskCmd struct {
 	Host        []string `help:"Extra Host header values to accept (e.g. a tailnet name); loopback is always accepted."`
 	DeployState string   `help:"Self-deploy state dir with deployed and failed files." default:"/var/lib/jobshop-deploy"`
 	AllowRemote bool     `help:"Allow a non-loopback listen address. Desk has no login; expose it only on a trusted network."`
+	ChatPool    string   `help:"type: chat pool for Desk chat (escalation threads, new sessions). Empty disables sending." default:"operator"`
 }
 
 // Run serves Jobshop Desk over the admin socket (#202).
@@ -36,7 +37,7 @@ func (c deskCmd) Run(g *Globals) error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "desk")
 	srv := &http.Server{
-		Handler:           desk.New(desk.Config{Hosts: c.Host, DeployState: c.DeployState}, desk.Socket{Path: sock}, log).Handler(),
+		Handler:           desk.New(desk.Config{Hosts: c.Host, DeployState: c.DeployState, ChatPool: c.ChatPool}, desk.Socket{Path: sock}, log).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	ln, err := net.Listen("tcp", c.Listen)

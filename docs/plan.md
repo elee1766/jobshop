@@ -234,6 +234,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/205-prompt-rules.md`).
 - Identities: several GitHub Apps and Linear tokens mapped to repos and
   teams, served by the controller (#200, `docs/notes/200-identities.md`).
+- Desk chat: escalation panels, new `desk:<id>` operator sessions, rw
+  attach (#203, `docs/notes/203-desk-chat.md`, runbook
+  `docs/verify/desk-chat.md`).
 
 ## 5. What's next
 
@@ -313,8 +316,8 @@ Chat in Desk on the same session API as the Matrix gateway: escalation
 threads, new operator sessions for debugging and unblocking, attach
 (#203). Prompt and config changes made from Desk or chat go through PRs.
 Order: #200 after #183, #201 after #200; #202 now, #203 after it.
-Desk (#202) is built read-only; running it on gasserver as a unit is
-left to the operator.
+Desk (#202) and its chat (#203) are built; running Desk on gasserver as
+a unit is left to the operator.
 #200 is built; gasserver still uses agent-credd until the module wires
 `jobshop identity git-credential` (`docs/verify/identities.md`).
 
@@ -705,6 +708,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-03, #202): Go and nix builds stay Node-free; a CI drift
   check is #208. Desk is its own process, not a
   controller listener, so a UI bug cannot take the controller down.
+- Desk escalation panels send by the gateway's key, not to a session of
+  their own (2026-11-03, #203): one session per escalation, so the
+  operator sees the same conversation from Matrix and Desk. Desk shows
+  the session's turns, not other messages in the Matrix room.
 - A replacement escalation thread keeps the original session key
   (2026-11-03, #197): the operator's conversation continues in the same
   session, and the key is already recorded in `meta.gateway`.
@@ -775,6 +782,7 @@ moved from the old 7.x list, oldest first:
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
 - [Gateway, Discord adapter](notes/182-gateway-discord.md) (#182)
 - [Jobshop Desk](notes/202-desk.md) (#202)
+- [Chat in Desk](notes/203-desk-chat.md) (#203)
 - [Stall trigger and stall-check](notes/143-stall-check.md) (#143)
 - [Spawn-error pool quarantine](notes/146-spawn-quarantine.md) (#146)
 - [events.subscribe change stream](notes/147-events-subscribe.md) (#147)
