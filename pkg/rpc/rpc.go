@@ -575,6 +575,10 @@ type RunStartParams struct {
 	Vars     map[string]string `json:"vars,omitempty"`
 	Key      string            `json:"key,omitempty"`
 	Project  string            `json:"project,omitempty"`
+	// After lists tickets (often other runs) the first step waits on. The
+	// edges are created with the steps, so no step is claimable before
+	// them (#149). A repeated start with a key adds no edges.
+	After []string `json:"after,omitempty"`
 }
 
 // RunResult is a run ticket and its steps in order.

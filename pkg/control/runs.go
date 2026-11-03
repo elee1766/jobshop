@@ -58,6 +58,15 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 	if err != nil {
 		return nil, err
 	}
+	for _, id := range p.After {
+		t, err := c.store.Get(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("after %s: %w", id, err)
+		}
+		if !sc.admin && t.Project != sc.project {
+			return nil, forbidden("after %s: session is scoped to project %s", id, sc.project)
+		}
+	}
 
 	// Serialize starts so two starts with one key cannot both miss.
 	c.runMu.Lock()
@@ -132,6 +141,12 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 		})
 		if prev != "" {
 			edges = append(edges, store.Edge{From: id, To: prev, Kind: store.EdgeBlocks})
+		} else {
+			// Same graph apply as the step: no window where it is
+			// claimable without its outside blockers (#149).
+			for _, a := range p.After {
+				edges = append(edges, store.Edge{From: id, To: a, Kind: store.EdgeBlocks})
+			}
 		}
 		prev = id
 	}
