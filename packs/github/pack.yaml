@@ -7,6 +7,9 @@ defaults:
   # throwaway red branch (docs/verify/ci-repair-drill.md).
   ci_branch: master
   dev_sessions: 2
+  # More than 1 needs branch protection that requires up-to-date checks
+  # (strict), so a merge after another merge waits for CI on the new base.
+  refinery_sessions: 1
   # post-merge steps wait on CI and deploy in their own pool (#167).
   deploy_sessions: 3
   # Refinery merge policy (prompts/merge.md, ci-merge.md).
@@ -51,8 +54,7 @@ pools:
     agent: ${agent}
     repo: ${checkout}
     ref: origin/master
-    # One session serializes merges.
-    max_sessions: 1
+    max_sessions: ${refinery_sessions}
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/refinery.md

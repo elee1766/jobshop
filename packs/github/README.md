@@ -49,8 +49,8 @@ It replaces `blocker-check`: the planner labels a blocked claim
 
 - `dev` pool: works `implement` and `fix` steps. Tasks that are not run
   steps are turned into a run for their issue. Prompt: `prompts/dev.md`.
-- `refinery` pool (1 session): works `review-merge` and `merge` steps,
-  so merges happen one at a time. Prompt: `prompts/refinery.md`.
+- `refinery` pool (`refinery_sessions`, default 1): works `review-merge` and `merge` steps.
+  More than 1 needs branch protection with required, up-to-date checks. Prompt: `prompts/refinery.md`.
 - `deploy-check` pool (`deploy_sessions`, default 3): works `post-merge`
   steps, which wait up to an hour for the deploy, so they never queue a
   review behind them (#167). Prompt: `prompts/deploy-check.md`.
@@ -93,6 +93,7 @@ and file "Escalate run <id>" in `plan`.
 | `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
 | `ci_branch` | Branch `master-red` watches. Default `master` |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
+| `refinery_sessions` | `max_sessions` for the refinery. Default 1; more needs strict branch protection |
 | `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
 | `deploy_check` | How `post-merge` and `stall-check` tell a commit is deployed. Default: no deploy, the check passes |
 | `stall_after`, `stall_step_after`, `stall_human_after` | Stall thresholds (Go durations). Defaults 1h, 3h, 4h |
