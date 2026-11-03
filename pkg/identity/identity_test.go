@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -35,7 +36,7 @@ func fakeGitHub(t *testing.T, ttl time.Duration, now func() time.Time) (*httptes
 		inst := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/app/installations/"), "/access_tokens")
 		c := n.Add(1)
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"token":"tok-` + inst + `-` + string(rune('0'+c)) + `","expires_at":"` + now().Add(ttl).UTC().Format(time.RFC3339) + `"}`))
+		_, _ = w.Write([]byte(`{"token":"tok-` + inst + `-` + strconv.Itoa(int(c)) + `","expires_at":"` + now().Add(ttl).UTC().Format(time.RFC3339) + `"}`))
 	}))
 	t.Cleanup(srv.Close)
 	return srv, &n
