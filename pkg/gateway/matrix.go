@@ -21,12 +21,20 @@ type Matrix struct {
 	rooms []string
 }
 
+// matrixRetries is how often a failed Matrix request is retried. With
+// mautrix's 4s doubling backoff that is about a minute in total.
+const matrixRetries = 4
+
 // NewMatrix logs in with an access token and checks it with whoami.
 func NewMatrix(ctx context.Context, homeserver, token string, rooms []string, log *slog.Logger) (*Matrix, error) {
 	cli, err := mautrix.NewClient(homeserver, "", token)
 	if err != nil {
 		return nil, err
 	}
+	// mautrix defaults to no retries, so a 429 or a homeserver restart
+	// during a turn end dropped the reply (#196). With retries it backs
+	// off on 429 and 5xx, honoring Retry-After.
+	cli.DefaultHTTPRetries = matrixRetries
 	who, err := cli.Whoami(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("matrix whoami: %w", err)
