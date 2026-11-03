@@ -634,8 +634,10 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"issue-1","state":"running"}`)}
-	step := store.NewTicket{ID: "js-s", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
-		Fields: json.RawMessage(`{"run":"js-run","step":"s","index":0,"retries":1}`)}
+	step := store.NewTicket{
+		ID: "js-s", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+		Fields: json.RawMessage(`{"run":"js-run","step":"s","index":0,"retries":1}`),
+	}
 	_, err := s.CreateGraph(ctx, "test", []store.NewTicket{run, step}, nil)
 	require.NoError(t, err)
 	other := task(t, s, "other", "dev")
