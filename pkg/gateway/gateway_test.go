@@ -73,6 +73,14 @@ type fakeController struct {
 	ticket map[string]store.Ticket
 	// changes feeds Events; each Events call first sends ready.
 	changes chan rpc.Event
+	// attention is returned by Attention.
+	attention []rpc.AttentionItem
+}
+
+func (f *fakeController) Attention(context.Context) (rpc.AttentionResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return rpc.AttentionResult{Items: f.attention}, nil
 }
 
 func (f *fakeController) Events(ctx context.Context, _ rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error) {

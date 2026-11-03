@@ -540,6 +540,7 @@ func init() {
 		rpc.MethodBatchShow:        bind((*Controller).batchShow),
 		rpc.MethodBatchList:        bind((*Controller).batchList),
 		rpc.MethodPoolList:         bind((*Controller).poolList),
+		rpc.MethodAttention:        bind((*Controller).attention),
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
 	}

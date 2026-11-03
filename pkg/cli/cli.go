@@ -66,6 +66,7 @@ type root struct {
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
 	Report    reportCmd    `cmd:"" help:"Reliability reports for planner passes (admin)."`
+	Attention attentionCmd `cmd:"" help:"List what waits on a human, oldest first; empty when healthy (admin)."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Events    eventsCmd    `cmd:"" help:"Print the change stream as JSON lines (admin, for debugging)."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`

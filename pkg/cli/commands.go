@@ -633,3 +633,7 @@ type reportIncidentsCmd struct {
 func (c reportIncidentsCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodReportIncidents, rpc.IncidentsParams{Since: c.Since}, nil)
 }
+
+type attentionCmd struct{}
+
+func (attentionCmd) Run(g *Globals) error { return g.call(rpc.MethodAttention, nil, nil) }

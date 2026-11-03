@@ -204,6 +204,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   call (#164, `docs/notes/164-chat-reply-separator.md`).
 - Matrix gateway posts retry 429 and 5xx with backoff (#196,
   `docs/notes/196-matrix-retries.md`).
+- `jobshop attention` lists what waits on a human; the gateway posts a
+  digest only when it is not empty; planner attention rule (#185,
+  `docs/notes/185-attention.md`, `docs/verify/attention.md`).
 - Gateway Discord adapter, unit-tested only (#182,
   `docs/notes/182-gateway-discord.md`).
 - A respawned session's first prompt carries a recovery note (#189,
@@ -684,6 +687,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - A replacement escalation thread keeps the original session key
   (2026-11-03, #197): the operator's conversation continues in the same
   session, and the key is already recorded in `meta.gateway`.
+- Attention is computed, not stored (2026-11-03, #185): `jobshop
+  attention` derives its list from labels (`needs-human`, `question`),
+  run state, pool quarantines and the self-deploy `failed` file on each
+  call, so nothing has to be kept in sync. An escalated run or pool is
+  listed once, as its ticket.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.

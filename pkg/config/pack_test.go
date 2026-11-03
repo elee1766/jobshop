@@ -187,6 +187,8 @@ packs:
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop label add <id> blocked")
 	assert.Contains(t, c.Pools["plan"].Prompt, "--key stall:blocked:<n>")
 	assert.Contains(t, c.Pools["plan"].Admin, "session-restart")
+	assert.Contains(t, c.Pools["plan"].Admin, "attention", "planner reads jobshop attention (#185)")
+	assert.Contains(t, c.Pools["plan"].Prompt, "what happens if nobody answers", "attention rule (#185)")
 	st := c.Triggers["stall"]
 	require.NotNil(t, st.Run)
 	assert.Equal(t, "stall-check", st.Run.Workflow)
@@ -239,7 +241,7 @@ packs:
 	p := c.Pools["operator"]
 	assert.Equal(t, "/src/widget", p.Repo)
 	assert.Equal(t, 0, p.MaxSessions)
-	assert.Equal(t, []string{"config-reload", "session-list"}, p.Admin)
+	assert.Equal(t, []string{"config-reload", "session-list", "attention"}, p.Admin)
 	assert.NotContains(t, p.Prompt, "needs the admin socket")
 	for _, s := range []string{"acme/widget", "jobshop ticket create", "gh issue create", "jobshop send", "jobshop run start", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
 		assert.Contains(t, p.Prompt, s)
