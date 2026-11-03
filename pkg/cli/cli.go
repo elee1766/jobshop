@@ -53,6 +53,7 @@ type root struct {
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`
 	Comment   commentCmd   `cmd:"" help:"Comment on a ticket."`
 	Guard     guardCmd     `cmd:"" help:"Ask the guardrail hooks before an outside action; exits 1 unless allowed."`
+	Subscribe subscribeCmd `cmd:"" help:"Follow a GitHub issue or PR thread from a ticket; new human comments come back to it."`
 	Send      sendCmd      `cmd:"" help:"Send a message to a session or pool."`
 	Assign    assignCmd    `cmd:"" help:"Pre-assign a ticket to a session (admin)."`
 	Claim     claimCmd     `cmd:"" help:"Claim a ticket, or the next one with --next."`

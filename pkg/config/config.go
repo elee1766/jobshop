@@ -39,6 +39,9 @@ type Config struct {
 	Gateway map[string]Gateway `yaml:"gateway"`
 	// Identities are GitHub Apps and Linear tokens sessions act as (#200).
 	Identities map[string]Identity `yaml:"identities"`
+	// Subscriptions polls GitHub threads that tickets follow (#187).
+	// Absent: off.
+	Subscriptions *Subscriptions `yaml:"subscriptions"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
@@ -166,6 +169,18 @@ type TriggerTicket struct {
 	Body     string   `yaml:"body"`
 	Priority *int     `yaml:"priority"`
 	Labels   []string `yaml:"labels"`
+}
+
+// Subscriptions configures the GitHub thread poller (#187).
+type Subscriptions struct {
+	// Interval between polls (Go duration). Default 1m.
+	Interval string `yaml:"interval"`
+	// ResumeWindow is how long after a ticket closed a new human comment
+	// still reopens it (Go duration). Older: the comment is only recorded.
+	// Default 168h.
+	ResumeWindow string `yaml:"resume_window"`
+	// Ignore lists logins whose comments are dropped, beyond bots.
+	Ignore []string `yaml:"ignore"`
 }
 
 // Gateway.Network values.
@@ -474,6 +489,16 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		c.Pools[name] = p
 	}
+	if s := c.Subscriptions; s != nil {
+		for _, d := range []struct{ key, v string }{{"interval", s.Interval}, {"resume_window", s.ResumeWindow}} {
+			if d.v == "" {
+				continue
+			}
+			if v, err := time.ParseDuration(d.v); err != nil || v <= 0 {
+				return nil, fmt.Errorf("%s: subscriptions: %s %q must be a positive duration", FileName, d.key, d.v)
+			}
+		}
+	}
 	for name, g := range c.Gateway {
 		if err := c.checkGateway(g); err != nil {
 			return nil, fmt.Errorf("%s: gateway %s: %w", FileName, name, err)
@@ -637,7 +662,7 @@ func (c *Config) Prefix(project string) string {
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
 // controller, and the gateway on escalation tickets).
-var BuiltinMetaPacks = []string{"github", "trigger", "run", "gateway", "pool", "hook"}
+var BuiltinMetaPacks = []string{"github", "trigger", "run", "gateway", "pool", "hook", "subscribe"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

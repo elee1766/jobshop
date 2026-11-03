@@ -238,6 +238,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Desk chat: escalation panels, new `desk:<id>` operator sessions, rw
   attach (#203, `docs/notes/203-desk-chat.md`, runbook
   `docs/verify/desk-chat.md`).
+- Subscriptions: tickets follow GitHub issue and PR threads in any repo;
+  human comments reach the working session or resume the ticket (#187,
+  `docs/notes/187-subscriptions.md`).
 
 ## 5. What's next
 
@@ -296,7 +299,7 @@ deepseek-ai/dsh-superagent-prototype where it fits. Order: work references
 carry the repo (#183) before anything else, so nothing assumes one repo;
 then several repos on one host (#184), the attention view and rule (#185),
 structured worker reports and questions (#186), subscriptions to issue and
-PR threads in any repo (#187), guardrail hooks (allow, deny, ask-human; for
+PR threads in any repo (#187, built; runbook `docs/verify/subscriptions.md`), guardrail hooks (allow, deny, ask-human; for
 example a Jev decision, #188), and prompt rules (#205): operator guidance
 and guardrails from config, injected into the sessions a rule matches
 (pools, agents, repos, workflow steps, chat), as text, a file or a hook
@@ -737,6 +740,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   session socket (`identity token`, `identity git-credential`), so a
   session never sees a key and only gets identities its project or pool
   names. App JWTs are signed with the stdlib, no new dependency.
+- Subscriptions poll with `gh api` from the controller (2026-11-03,
+  #187), not webhooks: gasserver has no public endpoint and gh already
+  holds the App token. The read position lives in ticket meta, not a
+  table, so it moves with the ticket and needs no migration.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
