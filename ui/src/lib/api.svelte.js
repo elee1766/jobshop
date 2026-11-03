@@ -16,6 +16,23 @@ export async function get(path) {
 }
 
 /**
+ * POST JSON with the CSRF header Desk requires on writes.
+ * @param {string} path
+ * @param {any} data
+ * @returns {Promise<any>}
+ */
+export async function post(path, data) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Jobshop-Desk': '1' },
+    body: JSON.stringify(data),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || res.status + ' ' + res.statusText);
+  return body;
+}
+
+/**
  * A reactive resource: refetches when deps change or a change event arrives.
  * @param {() => string} path
  */

@@ -37,6 +37,8 @@ type Config struct {
 	Hooks []Hook `yaml:"hooks"`
 	// Gateway configures `jobshop gateway <name>` processes, by name.
 	Gateway map[string]Gateway `yaml:"gateway"`
+	// Identities are GitHub Apps and Linear tokens sessions act as (#200).
+	Identities map[string]Identity `yaml:"identities"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
@@ -316,6 +318,9 @@ type Pool struct {
 	// sockets may call, e.g. [config-reload, session-list] for an
 	// operator chat pool. Default none.
 	Admin []string `yaml:"admin"`
+	// Identities the pool's sessions may act as, on top of their
+	// project's (#200). Lets a pack name the identity it needs.
+	Identities []string `yaml:"identities"`
 }
 
 // Project is one repo / work area.
@@ -323,6 +328,8 @@ type Project struct {
 	// Prefix starts every ticket id, e.g. "js" gives js-0031w02j0r012.
 	// Default: the project name.
 	Prefix string `yaml:"prefix"`
+	// Identities the project's sessions may act as (#200).
+	Identities []string `yaml:"identities"`
 }
 
 var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
@@ -383,6 +390,21 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		seen[p.Prefix] = name
 	}
+	for name, i := range c.Identities {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: identity name %q must match %s", FileName, name, namePattern)
+		}
+		if err := checkIdentity(i); err != nil {
+			return nil, fmt.Errorf("%s: identity %s: %w", FileName, name, err)
+		}
+	}
+	for name, p := range c.Projects {
+		for _, id := range p.Identities {
+			if _, ok := c.Identities[id]; !ok {
+				return nil, fmt.Errorf("%s: project %s: unknown identity %q", FileName, name, id)
+			}
+		}
+	}
 	if c.DefaultProject == "" && len(c.Projects) == 1 {
 		for name := range c.Projects {
 			c.DefaultProject = name
@@ -429,6 +451,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		for _, m := range p.Admin {
 			if !slices.Contains(PoolAdminMethods, m) {
 				return nil, fmt.Errorf("%s: pool %s: admin method %q must be one of %s", src("pools", name), name, m, strings.Join(PoolAdminMethods, ", "))
+			}
+		}
+		for _, id := range p.Identities {
+			if _, ok := c.Identities[id]; !ok {
+				return nil, fmt.Errorf("%s: pool %s: unknown identity %q", src("pools", name), name, id)
 			}
 		}
 		if p.MaxSessions < 0 {

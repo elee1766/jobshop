@@ -58,7 +58,7 @@ test('session journal tail streams', async ({ page }) => {
   await row.click();
   await expect(page).toHaveURL(/session=/);
   await expect(page.getByTestId('journal')).toBeVisible();
-  await expect(page.getByText(/journal tail · (live|closed)/)).toBeVisible();
+  await expect(page.locator('.chat .head')).toHaveText(/^(live|closed)/);
 });
 
 test('no horizontal page overflow', async ({ page }) => {

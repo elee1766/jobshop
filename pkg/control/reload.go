@@ -57,6 +57,10 @@ func (c *Controller) reload() error {
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.Warn("config reload: telemetry changes need a controller restart")
 			}
+			if !reflect.DeepEqual(old.Identities, cfg.Identities) {
+				// A rotated key or moved installation must not serve old tokens.
+				c.minter.Forget()
+			}
 			// The fix for a permanent spawn error is a config change.
 			if cleared := c.unquarantinePools(""); len(cleared) > 0 {
 				c.log.Info("config reload: pools unquarantined", "pools", cleared)

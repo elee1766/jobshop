@@ -68,6 +68,9 @@ const (
 	MethodGuard            = "guard"
 	MethodVersion          = "version"
 	MethodAttention        = "attention"
+	MethodIdentityList     = "identity.list"
+	MethodIdentityCheck    = "identity.check"
+	MethodIdentityToken    = "identity.token"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -200,6 +203,42 @@ type SessionNewParams struct {
 type VersionResult struct {
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
+}
+
+// IdentityParams names a target: an owner/repo or a Linear team key.
+type IdentityParams struct {
+	Target string `json:"target"`
+}
+
+// IdentityInfo describes one identity, without secrets.
+type IdentityInfo struct {
+	Name      string   `json:"name"`
+	Kind      string   `json:"kind"`
+	AppID     int64    `json:"app_id,omitempty"`
+	Owners    []string `json:"owners,omitempty"`
+	Repos     []string `json:"repos,omitempty"`
+	Workspace string   `json:"workspace,omitempty"`
+	Teams     []string `json:"teams,omitempty"`
+	// Projects and Pools that may act as the identity.
+	Projects []string `json:"projects,omitempty"`
+	Pools    []string `json:"pools,omitempty"`
+}
+
+// IdentityCheckResult says which identity covers a target; a check also
+// obtains a credential, so a bad key or installation fails here.
+type IdentityCheckResult struct {
+	Target   string    `json:"target"`
+	Identity string    `json:"identity"`
+	Kind     string    `json:"kind"`
+	Expires  time.Time `json:"expires,omitzero"`
+}
+
+// IdentityTokenResult is a credential for a target.
+type IdentityTokenResult struct {
+	Identity string    `json:"identity"`
+	Kind     string    `json:"kind"`
+	Token    string    `json:"token"`
+	Expires  time.Time `json:"expires,omitzero"`
 }
 
 // ShutdownParams stops the controller. All also ends every session; without
