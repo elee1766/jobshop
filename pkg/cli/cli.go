@@ -70,6 +70,7 @@ type root struct {
 	Attention attentionCmd `cmd:"" help:"List what waits on a human, oldest first; empty when healthy (admin)."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Events    eventsCmd    `cmd:"" help:"Print the change stream as JSON lines (admin, for debugging)."`
+	Identity  identityCmd  `cmd:"" help:"GitHub App and Linear identities: list, check, tokens and the git credential helper."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
 }
