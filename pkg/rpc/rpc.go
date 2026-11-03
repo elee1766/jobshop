@@ -71,6 +71,7 @@ const (
 	MethodIdentityList     = "identity.list"
 	MethodIdentityCheck    = "identity.check"
 	MethodIdentityToken    = "identity.token"
+	MethodSubscribe        = "subscribe"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -176,6 +177,15 @@ type ClaimParams struct {
 type ClaimResult struct {
 	Ticket store.Ticket `json:"ticket"`
 	Claim  store.Claim  `json:"claim"`
+}
+
+// SubscribeParams makes a ticket (default: the session's current one)
+// follow a GitHub issue or PR thread (#187).
+type SubscribeParams struct {
+	ID     string `json:"id,omitempty"`
+	Repo   string `json:"repo"`
+	Number int    `json:"number"`
+	PR     bool   `json:"pr,omitempty"`
 }
 
 // ReleaseParams releases a held ticket.

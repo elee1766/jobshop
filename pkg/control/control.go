@@ -116,7 +116,9 @@ type Controller struct {
 	runMu sync.Mutex
 	// events fans store changes out to events.subscribe.
 	events *hub
-	wg     sync.WaitGroup
+	// subSource reads GitHub threads; nil means gh (tests set a fake).
+	subSource threadSource
+	wg        sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -258,6 +260,7 @@ func (c *Controller) serve() error {
 		return err
 	}
 	c.wg.Go(c.pumpEvents)
+	c.wg.Go(c.pumpSubscriptions)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -564,5 +567,6 @@ func init() {
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
 		rpc.MethodGuard:            bind((*Controller).guard),
+		rpc.MethodSubscribe:        bind((*Controller).subscribe),
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -682,4 +683,38 @@ func (c guardCmd) Run(g *Globals) error {
 		return fmt.Errorf("guard %s: %s: %s", c.Action, r.Decision, r.Reason)
 	}
 	return nil
+}
+
+type subscribeCmd struct {
+	Thread string `arg:"" help:"owner/name#<n>, or an issue or pull request URL."`
+	PR     bool   `help:"The thread is a pull request (also read reviews). Implied by a /pull/ URL."`
+	ID     string `short:"t" name:"ticket" help:"Ticket id (default: the session's current ticket)."`
+}
+
+func (c subscribeCmd) Run(g *Globals) error {
+	repo, n, pr, err := parseThread(c.Thread)
+	if err != nil {
+		return err
+	}
+	return g.call(rpc.MethodSubscribe, rpc.SubscribeParams{ID: c.ID, Repo: repo, Number: n, PR: pr || c.PR}, nil)
+}
+
+// parseThread reads owner/name#n or a github.com issue or pull URL.
+func parseThread(s string) (repo string, n int, pr bool, err error) {
+	s = strings.TrimSpace(s)
+	if rest, ok := strings.CutPrefix(s, "https://github.com/"); ok {
+		parts := strings.Split(strings.Trim(rest, "/"), "/")
+		if len(parts) >= 4 && (parts[2] == "issues" || parts[2] == "pull") {
+			n, err = strconv.Atoi(parts[3])
+			if err == nil && n > 0 {
+				return parts[0] + "/" + parts[1], n, parts[2] == "pull", nil
+			}
+		}
+		return "", 0, false, fmt.Errorf("not an issue or pull request URL: %s", s)
+	}
+	repo, num, ok := strings.Cut(s, "#")
+	if n, err = strconv.Atoi(num); !ok || err != nil || n <= 0 || !strings.Contains(repo, "/") {
+		return "", 0, false, fmt.Errorf("thread must be owner/name#<n> or a URL: %s", s)
+	}
+	return repo, n, false, nil
 }
