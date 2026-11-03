@@ -1,0 +1,67 @@
+/* Linear-like: warm greys, soft borders, violet accent. Dark by default. */
+:root {
+  --bg: #121113;
+  --panel: #19181b;
+  --raised: #211f23;
+  --border: #2c2a2f;
+  --text: #e8e6e3;
+  --muted: #9a958f;
+  --faint: #6c6863;
+  --accent: #8b7cf6;
+  --accent-soft: rgba(139, 124, 246, 0.14);
+  --ok: #4cb782;
+  --warn: #e2a03f;
+  --bad: #eb5757;
+  --radius: 8px;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+:root[data-theme='light'] {
+  --bg: #fbfaf9;
+  --panel: #ffffff;
+  --raised: #f4f2f0;
+  --border: #e6e2de;
+  --text: #24211f;
+  --muted: #6f6a64;
+  --faint: #9b958e;
+  --accent: #6e5ce6;
+  --accent-soft: rgba(110, 92, 230, 0.1);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 Inter, -apple-system, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button {
+  font: inherit; color: inherit; background: var(--raised);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+code, .mono { font-family: var(--mono); font-size: 12px; }
+.muted { color: var(--muted); }
+.faint { color: var(--faint); }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 500; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--raised); }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); }
+.pill {
+  display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 11px;
+  border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.pill.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.pill.accent { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: var(--mono); font-size: 12px; }
+.scroll { overflow-x: auto; }
+@media (max-width: 720px) {
+  .hide-sm { display: none; }
+}

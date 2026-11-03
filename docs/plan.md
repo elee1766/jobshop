@@ -212,6 +212,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#190, `docs/notes/190-human-slot.md`).
 - Outbox design note: no outbox for gateway posts (#191,
   `docs/notes/191-outbox.md`).
+- `jobshop desk`: read-only Svelte dashboard over the admin API (#202,
+  `docs/notes/202-desk.md`, runbook `docs/verify/desk.md`).
 
 ## 5. What's next
 
@@ -291,6 +293,8 @@ Chat in Desk on the same session API as the Matrix gateway: escalation
 threads, new operator sessions for debugging and unblocking, attach
 (#203). Prompt and config changes made from Desk or chat go through PRs.
 Order: #200 after #183, #201 after #200; #202 now, #203 after it.
+Desk (#202) is built read-only; running it on gasserver as a unit is
+left to the operator.
 
 Phase 5 status: spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
@@ -666,6 +670,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - No outbox for gateway posts (2026-11-03, #191): the only post failures
   on gasserver were permanent 400s a retry cannot fix; transient errors
   get client retries instead (#196).
+- Desk's built UI is committed in `pkg/desk/dist` and embedded
+  (2026-11-03, #202): Go and nix builds stay Node-free; a CI drift
+  check is #208. Desk is its own process, not a
+  controller listener, so a UI bug cannot take the controller down.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -712,6 +720,7 @@ moved from the old 7.x list, oldest first:
 - [Gateway, Matrix adapter](notes/123-gateway-matrix.md) (#123)
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
 - [Gateway, Discord adapter](notes/182-gateway-discord.md) (#182)
+- [Jobshop Desk](notes/202-desk.md) (#202)
 - [Stall trigger and stall-check](notes/143-stall-check.md) (#143)
 - [Spawn-error pool quarantine](notes/146-spawn-quarantine.md) (#146)
 - [events.subscribe change stream](notes/147-events-subscribe.md) (#147)
