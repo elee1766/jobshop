@@ -12,6 +12,12 @@ import (
 // DefaultStepRetries is a step's retry limit when retries is unset.
 const DefaultStepRetries = 2
 
+// Workflow trackers (#201).
+const (
+	TrackerGitHub = "github"
+	TrackerLinear = "linear"
+)
+
 // Workflow is an ordered list of steps started as one run (docs/plan.md
 // section 6, "Runs and workflows"). Step titles and prompts are templates
 // filled at run start from PackVars plus the run's vars.
@@ -26,6 +32,13 @@ type Workflow struct {
 	// Repo is the GitHub repo (owner/name) the issue or PR lives in,
 	// copied into meta.github.repo. Required with issue or pr (#183).
 	Repo string `yaml:"repo"`
+	// Tracker is where the issue var's issue lives: "github" (default)
+	// or "linear" (#201). With linear, the issue var holds a key such as
+	// ENG-123, runs get meta.linear = {workspace, issue}, and Repo is the
+	// code repo for PRs (meta.github.repo).
+	Tracker string `yaml:"tracker"`
+	// LinearWorkspace names the Linear workspace; required with linear.
+	LinearWorkspace string `yaml:"linear_workspace"`
 	// EscalatePool gets the escalation ticket when a run needs a human.
 	EscalatePool string `yaml:"escalate_pool"`
 	Steps        []Step `yaml:"steps"`
@@ -233,6 +246,18 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 	}
 	if w.Repo != "" && !RepoPattern.MatchString(w.Repo) {
 		return fmt.Errorf("repo %q must be owner/name", w.Repo)
+	}
+	switch w.Tracker {
+	case "", TrackerGitHub:
+		if w.LinearWorkspace != "" {
+			return errors.New("linear_workspace needs tracker: linear")
+		}
+	case TrackerLinear:
+		if w.Issue == "" || w.LinearWorkspace == "" {
+			return errors.New("tracker linear needs issue and linear_workspace")
+		}
+	default:
+		return fmt.Errorf("tracker %q must be %q or %q", w.Tracker, TrackerGitHub, TrackerLinear)
 	}
 	if w.EscalatePool != "" {
 		if _, ok := c.Pools[w.EscalatePool]; !ok {

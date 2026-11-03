@@ -235,6 +235,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/205-prompt-rules.md`).
 - Identities: several GitHub Apps and Linear tokens mapped to repos and
   teams, served by the controller (#200, `docs/notes/200-identities.md`).
+- Linear as a tracker: `tracker: linear` workflows and `jobshop linear`
+  (#201, `docs/notes/201-linear-tracker.md`).
 - Desk chat: escalation panels, new `desk:<id>` operator sessions, rw
   attach (#203, `docs/notes/203-desk-chat.md`, runbook
   `docs/verify/desk-chat.md`).
@@ -324,6 +326,7 @@ threads, new operator sessions for debugging and unblocking, attach
 Order: #200 after #183, #201 after #200; #202 now, #203 after it.
 Desk (#202) and its chat (#203) are built; running Desk on gasserver as
 a unit is left to the operator.
+#201 is built; pack prompts (#232) and Linear subscriptions (#233) are next.
 #200 is built; gasserver still uses agent-credd until the module wires
 `jobshop identity git-credential` (`docs/verify/identities.md`).
 
@@ -742,6 +745,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   session socket (`identity token`, `identity git-credential`), so a
   session never sees a key and only gets identities its project or pool
   names. App JWTs are signed with the stdlib, no new dependency.
+- Linear workflows keep `meta.github = {repo}` beside `meta.linear`
+  (2026-11-03, #201): code still goes through GitHub PRs, and GitHub
+  readers skip a run with no GitHub issue number.
 - Subscriptions poll with `gh api` from the controller (2026-11-03,
   #187), not webhooks: gasserver has no public endpoint and gh already
   holds the App token. The read position lives in ticket meta, not a

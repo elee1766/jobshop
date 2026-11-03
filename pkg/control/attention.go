@@ -103,10 +103,15 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 			Issue any    `json:"issue"`
 			PR    any    `json:"pr"`
 		} `json:"github"`
+		Linear struct {
+			Issue string `json:"issue"`
+		} `json:"linear"`
 	}
 	if len(t.Meta) > 0 && json.Unmarshal(t.Meta, &m) == nil {
 		it.Repo = m.GitHub.Repo
 		switch {
+		case m.Linear.Issue != "":
+			it.Ref = m.Linear.Issue
 		case m.GitHub.Issue != nil:
 			it.Ref = fmt.Sprintf("#%v", m.GitHub.Issue)
 		case m.GitHub.PR != nil:
