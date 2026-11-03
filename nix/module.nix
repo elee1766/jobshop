@@ -590,6 +590,10 @@ in
           wants = [ "network-online.target" ];
           after = [ "network-online.target" ];
           inherit path environment;
+          # A switch that changes only jobshop.yaml reloads the controller
+          # (SIGHUP); otherwise it kept the old config until a manual
+          # reload (#210). A binary change still restarts it.
+          reloadTriggers = [ configFile ];
           serviceConfig = {
             User = cfg.user;
             Group = cfg.group;

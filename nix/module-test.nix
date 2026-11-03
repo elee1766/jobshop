@@ -177,6 +177,31 @@ let
       in
       lib.hasInfix ''if [ "$before" != "$after" ]; then'' s && !(lib.hasInfix "git diff --quiet" s)
     ))
+    # A yaml-only change must reload the controller (#210): the unit's
+    # X-Reload-Triggers follow the generated file, and the binary does not.
+    (expect "yaml-only change reloads the controller" (
+      let
+        trig = c: c.config.systemd.services.jobshop.reloadTriggers;
+        start = c: c.config.systemd.services.jobshop.serviceConfig.ExecStart;
+        more = eval {
+          workspaces.jobshop = {
+            url = "https://github.com/elee1766/jobshop.git";
+            livePacks = [ "packs/selfdev" ];
+            livePackVars.dev_sessions = 8;
+          };
+        };
+        base = eval {
+          workspaces.jobshop = {
+            url = "https://github.com/elee1766/jobshop.git";
+            livePacks = [ "packs/selfdev" ];
+            livePackVars.dev_sessions = 4;
+          };
+        };
+      in
+      map toString (trig base) == [ (yamlPacks base) ]
+      && map toString (trig base) != map toString (trig more)
+      && start base == start more
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;

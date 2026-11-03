@@ -215,6 +215,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#190, `docs/notes/190-human-slot.md`).
 - Pack `prefix:` so packs/github can be included once per repo (#184,
   `docs/notes/184-pack-prefix.md`, `docs/verify/pack-prefix.md`).
+- A NixOS switch that changes only jobshop.yaml reloads the controller
+  (#210, `docs/notes/210-nix-yaml-reload.md`).
 - Outbox design note: no outbox for gateway posts (#191,
   `docs/notes/191-outbox.md`).
 - `jobshop desk`: read-only Svelte dashboard over the admin API (#202,
@@ -676,6 +678,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Several repos on one host are separate pack instances with a name
   `prefix:` (2026-11-03, #184), not pools keyed by repo: no new runtime
   state, and each repo keeps its own planner and checkout.
+- Yaml changes reach the controller through systemd `reloadTriggers`
+  (2026-11-03, #210), not a file watcher: switches already drive
+  restarts, and SIGHUP reload exists.
 - Work references name their repo (2026-11-03, #183): `meta.github.repo`
   is set from workflow config, not inferred, and old tickets get it from
   a startup backfill rather than SQL, since only config knows the repo.
