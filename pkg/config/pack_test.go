@@ -147,7 +147,7 @@ packs:
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions)
 	assert.Equal(t, 1, c.Pools["plan"].MaxSessions)
 	assert.Equal(t, 1, c.Pools["refinery"].MaxSessions)
-	assert.Equal(t, 1, c.Pools["deploy-check"].MaxSessions, "post-merge has its own session (#167)")
+	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "post-merge has its own pool (#167), several sessions (#174)")
 	assert.Contains(t, c.Pools["refinery"].Prompt, "--delete-branch")
 	assert.NotContains(t, c.Pools["dev"].Prompt, "--pool refinery", "no prompt-only handoff")
 	assert.Contains(t, c.Pools["dev"].Prompt, "You work on elee1766/jobshop")
