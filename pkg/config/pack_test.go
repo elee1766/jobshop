@@ -160,6 +160,8 @@ packs:
 	assert.Contains(t, c.Workflows["pr-work"].PackVars["docs_rule"], "docs/notes/<issue>-<slug>.md")
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
+	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch start --key <slug>", "dependent issues start as a batch (#171)")
+	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch show <key>")
 	op := c.Pools["operator"]
 	assert.Equal(t, 0, op.MaxSessions, "operator sessions are started by hand or by key")
 	assert.Equal(t, "/src/jobshop", op.Repo)
