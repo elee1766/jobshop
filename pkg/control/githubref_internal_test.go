@@ -16,14 +16,22 @@ import (
 func TestBackfillGitHubRepo(t *testing.T) {
 	c, _, _ := stallController(t)
 	ctx := t.Context()
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r",
-		Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"issue":7}}`)})
-	step := mkTicket(t, c, store.NewTicket{Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
-		Fields: json.RawMessage(`{"run":"` + run.ID + `","step":"a","index":0}`), Meta: json.RawMessage(`{"github":{"issue":7}}`)})
-	esc := mkTicket(t, c, store.NewTicket{Title: "e",
-		Meta: json.RawMessage(`{"github":{"issue":7},"run":{"id":"` + run.ID + `","workflow":"work","escalation":"x"}}`)})
-	gone := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "g",
-		Fields: json.RawMessage(`{"workflow":"removed","state":"running"}`), Meta: json.RawMessage(`{"github":{"issue":8}}`)})
+	run := mkTicket(t, c, store.NewTicket{
+		Kind: store.KindRun, Title: "r",
+		Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"issue":7}}`),
+	})
+	step := mkTicket(t, c, store.NewTicket{
+		Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
+		Fields: json.RawMessage(`{"run":"` + run.ID + `","step":"a","index":0}`), Meta: json.RawMessage(`{"github":{"issue":7}}`),
+	})
+	esc := mkTicket(t, c, store.NewTicket{
+		Title: "e",
+		Meta:  json.RawMessage(`{"github":{"issue":7},"run":{"id":"` + run.ID + `","workflow":"work","escalation":"x"}}`),
+	})
+	gone := mkTicket(t, c, store.NewTicket{
+		Kind: store.KindRun, Title: "g",
+		Fields: json.RawMessage(`{"workflow":"removed","state":"running"}`), Meta: json.RawMessage(`{"github":{"issue":8}}`),
+	})
 
 	require.NoError(t, c.backfillGitHubRepo(ctx))
 	require.NoError(t, c.backfillGitHubRepo(ctx), "idempotent")
