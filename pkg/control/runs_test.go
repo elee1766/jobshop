@@ -293,7 +293,7 @@ func TestSelfdevPRWork(t *testing.T) {
 		titles = append(titles, s.Title)
 		assert.JSONEq(t, `{"github":{"issue":93}}`, string(s.Meta))
 	}
-	assert.Equal(t, []string{"dev", "refinery", "refinery"}, pools)
+	assert.Equal(t, []string{"dev", "refinery", "deploy-check"}, pools)
 	assert.Equal(t, "Implement #93", titles[0])
 	assert.Contains(t, r.Steps[0].Body, "gh issue view 93 --comments")
 	assert.Contains(t, r.Steps[2].Body, "jobshop version")
@@ -302,6 +302,25 @@ func TestSelfdevPRWork(t *testing.T) {
 	again := startRun(t, admin, p)
 	assert.True(t, again.Existing)
 	assert.Equal(t, r.Run.ID, again.Run.ID)
+}
+
+// TestPostMergeOwnPool (#167): while one run's post-merge step is held
+// waiting on a deploy, another run's review-merge is still claimable in
+// the refinery pool.
+func TestPostMergeOwnPool(t *testing.T) {
+	admin := selfdevRoot(t)
+	a := startRun(t, admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "146"}, Key: "issue-146"})
+	b := startRun(t, admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "147"}, Key: "issue-147"})
+	closeStep(t, admin, a.Steps[0].ID, "done")
+	closeStep(t, admin, a.Steps[1].ID, "done")
+	var held rpc.ClaimResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{Project: "js", Pool: "deploy-check", Holder: "js-deploy"}, &held))
+	require.Equal(t, a.Steps[2].ID, held.Ticket.ID, "post-merge is claimed in deploy-check")
+
+	closeStep(t, admin, b.Steps[0].ID, "done")
+	var cl rpc.ClaimResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{Project: "js", Pool: "refinery", Holder: "js-refinery"}, &cl))
+	assert.Equal(t, b.Steps[1].ID, cl.Ticket.ID, "review-merge is not queued behind the deploy wait")
 }
 
 // TestSelfdevDrill runs the escalation drill (#114): one failed close of
@@ -343,6 +362,7 @@ packs:
 pools:
   plan: {max_sessions: 0}
   refinery: {max_sessions: 0}
+  deploy-check: {max_sessions: 0}
 triggers:
   master-red:
     when: {check: "false"}

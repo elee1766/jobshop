@@ -16,7 +16,7 @@ three steps, each blocked on the one before (`docs/notes/89-runs.md`, `90-step-r
    against the issue, merge with `--match-head-commit`. Findings: comment
    them, `jobshop run resume <run> --step implement`, and close this step
    `failed` (it reopens behind implement and counts an attempt).
-3. `post-merge` (refinery, 2 retries, `prompts/post-merge.md`): master CI
+3. `post-merge` (deploy-check, 2 retries, `prompts/post-merge.md`): master CI
    green on the merge commit and the deploy check (`deploy_check`), then
    a "shipped" comment on the issue.
 
@@ -49,9 +49,11 @@ It replaces `blocker-check`: the planner labels a blocked claim
 
 - `dev` pool: works `implement` and `fix` steps. Tasks that are not run
   steps are turned into a run for their issue. Prompt: `prompts/dev.md`.
-- `refinery` pool (1 session): works `review-merge`, `post-merge` and
-  `merge` steps, so merges happen one at a time. Prompt:
-  `prompts/refinery.md`.
+- `refinery` pool (1 session): works `review-merge` and `merge` steps,
+  so merges happen one at a time. Prompt: `prompts/refinery.md`.
+- `deploy-check` pool (`deploy_sessions`, default 1): works `post-merge`
+  steps, which wait up to an hour for the deploy, so they never queue a
+  review behind them (#167). Prompt: `prompts/deploy-check.md`.
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,
   files the next 2-4 issues and starts their runs, handles escalations.
   Prompt: `prompts/plan.md`.

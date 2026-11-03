@@ -182,6 +182,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Session worktrees are locked against outside `git worktree remove`;
   controller removals WARN with session and caller (#154,
   `docs/notes/154-worktree-deletion.md`).
+- `post-merge` steps run in a `deploy-check` pool, so a deploy wait no
+  longer queues reviews in the refinery (#167,
+  `docs/notes/167-deploy-check-pool.md`).
 
 ## 5. What's next
 
@@ -540,6 +543,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   time (2026-11-02, #146): the fix is a host config change, so a timer
   only retries into the same error. The quarantine is in memory like
   the crash-loop pause; a restart re-detects it on the first spawn.
+- `post-merge` runs in its own `deploy-check` pool (2026-11-02, #167),
+  not by deferring with `release --until`: the step's wait is short
+  polling inside one turn, and a separate pool keeps the single
+  refinery session free for merges with no prompt or controller change.
 
 **Build**
 - Session events stream as notifications on the subscribing connection
