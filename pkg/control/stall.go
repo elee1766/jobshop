@@ -280,6 +280,29 @@ func (c *Controller) waitsOnQuestion(ctx context.Context, t store.Ticket) bool {
 	return err == nil && q.Status != store.StatusClosed
 }
 
+// lastUnblocked moves last to the newest close of a ticket blocking t: a
+// ready ticket waits from when its last blocker closed, and nothing is
+// written on t itself when that happens (#235).
+func (c *Controller) lastUnblocked(ctx context.Context, t store.Ticket, last time.Time) (time.Time, error) {
+	edges, err := c.store.Edges(ctx, t.ID)
+	if err != nil {
+		return last, err
+	}
+	for _, e := range edges {
+		if e.From != t.ID || !e.Kind.Blocking() {
+			continue
+		}
+		b, err := c.store.Get(ctx, e.To)
+		if err != nil {
+			return last, err
+		}
+		if b.ClosedAt.After(last) {
+			last = b.ClosedAt
+		}
+	}
+	return last, nil
+}
+
 // stallReadyUnclaimed: ready tickets in a configured pool nobody claimed
 // for after. Chat pools are left out: their tickets wait for a person.
 func (c *Controller) stallReadyUnclaimed(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
@@ -300,6 +323,9 @@ func (c *Controller) stallReadyUnclaimed(ctx context.Context, now time.Time, aft
 			}
 			last, err := c.lastActivity(ctx, t)
 			if err != nil {
+				return nil, err
+			}
+			if last, err = c.lastUnblocked(ctx, t, last); err != nil {
 				return nil, err
 			}
 			if now.Sub(last) >= after {

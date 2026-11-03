@@ -141,6 +141,30 @@ func TestStallReadyUnclaimed(t *testing.T) {
 	assert.Equal(t, []string{"stall:ready_unclaimed:" + tk.ID}, stallKeys(t, c), "orphans are not ready_unclaimed")
 }
 
+func TestStallReadyUnclaimedSinceUnblock(t *testing.T) {
+	c, clk, _ := stallController(t)
+	ctx := t.Context()
+	blocked := func() (store.Ticket, store.Ticket) {
+		step := mkTicket(t, c, store.NewTicket{Title: "step", Pool: "dev"})
+		b := mkTicket(t, c, store.NewTicket{Title: "blocker"})
+		require.NoError(t, c.store.AddEdge(ctx, "admin", store.Edge{From: step.ID, To: b.ID, Kind: store.EdgeBlocks}))
+		return step, b
+	}
+	// Blocker closed 2h ago: the step is stalled.
+	old, ob := blocked()
+	_, err := c.store.CloseTicket(ctx, "admin", ob.ID, nil, "done")
+	require.NoError(t, err)
+	// Created 2h ago, blocker closes 1m ago: not stalled.
+	fresh, fb := blocked()
+	clk.advance(2*time.Hour - time.Minute)
+	_, err = c.store.CloseTicket(ctx, "admin", fb.ID, nil, "done")
+	require.NoError(t, err)
+	clk.advance(time.Minute)
+	keys := stallKeys(t, c)
+	assert.Contains(t, keys, "stall:ready_unclaimed:"+old.ID)
+	assert.NotContains(t, keys, "stall:ready_unclaimed:"+fresh.ID)
+}
+
 func TestStallPoolQuarantined(t *testing.T) {
 	c, _, _ := stallController(t)
 	assert.Empty(t, stallKeys(t, c))
