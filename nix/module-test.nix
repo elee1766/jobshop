@@ -61,6 +61,16 @@ let
       selfDeploy = true;
     };
   };
+  ident = eval {
+    gitIdentity.jobshopIdentities = true;
+    identities.elee-agent = {
+      kind = "github-app";
+      app_id = 1;
+      private_key_file = "/run/secrets/k.pem";
+      installations.elee1766 = 2;
+      repos = [ "elee1766/*" ];
+    };
+  };
   # The old option, as gasserver sets it.
   legacy = eval {
     workspace = {
@@ -230,6 +240,25 @@ let
     (expect "self-deploy logs a switch outside it" (
       lib.hasInfix "switched outside self-deploy" legacy.config.systemd.services.jobshop-self-deploy.script
     ))
+    # #216: identities go to the yaml, git and gh get tokens from jobshop.
+    (expect "jobshopIdentities wires git and gh" (
+      let
+        env = ident.config.systemd.services.jobshop.environment;
+        vals = lib.filter (v: v != null) (lib.genList (i: env."GIT_CONFIG_VALUE_${toString i}" or null) 4);
+      in
+      failed ident == [ ]
+      && lib.any (lib.hasSuffix "identity git-credential") vals
+      && lib.elem "true" vals
+      && (lib.head ident.config.systemd.services.jobshop.path).name == "gh"
+    ))
+    (expect "jobshopIdentities and credentialHelper conflict" (
+      lib.any (lib.hasInfix "not both") (
+        failed (eval {
+          gitIdentity.jobshopIdentities = true;
+          gitIdentity.credentialHelper = "x";
+        })
+      )
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;
@@ -238,6 +267,8 @@ assert lib.all lib.id checks;
 pkgs.runCommand "jobshop-module-test" { } ''
   ${rollbackTest}
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
+  grep -q 'private_key_file: /run/secrets/k.pem' ${yamlPacks ident}
+  grep -q 'identity token' ${lib.head ident.config.systemd.services.jobshop.path}/bin/gh
   grep -q '/var/lib/jobshop/workspaces/other/packs/github' ${yamlPacks two}
   grep -q 'repo: elee1766/other' ${yamlPacks two}
   grep -q 'prefix: ot-' ${yamlPacks two}
