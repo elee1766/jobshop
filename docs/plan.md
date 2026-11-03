@@ -219,6 +219,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#210, `docs/notes/210-nix-yaml-reload.md`).
 - Outbox design note: no outbox for gateway posts (#191,
   `docs/notes/191-outbox.md`).
+- Live pack sync reads the deployed commit from the unit's binary and
+  holds packs when it is unknown (#223, `docs/notes/223-pack-sync-binary.md`).
 - `jobshop desk`: read-only Svelte dashboard over the admin API (#202,
   `docs/notes/202-desk.md`, runbook `docs/verify/desk.md`).
 - Gateway opens a new escalation thread when posts to the recorded root
@@ -687,6 +689,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - No outbox for gateway posts (2026-11-03, #191): the only post failures
   on gasserver were permanent 400s a retry cannot fix; transient errors
   get client retries instead (#196).
+- Pack sync never falls back to origin when the deployed commit is
+  unknown (2026-11-03, #223): packs ahead of the binary crash-loop the
+  controller, packs behind it only delay a feature.
 - Desk's built UI is committed in `pkg/desk/dist` and embedded
   (2026-11-03, #202): Go and nix builds stay Node-free; a CI drift
   check is #208. Desk is its own process, not a

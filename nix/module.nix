@@ -248,9 +248,15 @@ let
           ${lib.optionalString (sd.enable && w.selfDeploy) ''
             # Packs follow the deployed binary, so a pack that needs newer code
             # never loads into an older controller (a restart would then fail).
-            deployed=$("$(readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe")" version \
-              | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
-            [ -n "$deployed" ] && git cat-file -e "$deployed^{commit}" 2>/dev/null && target=$deployed
+            # Read the commit from the unit's ExecStart binary, not
+            # /proc/MainPID: with the controller down there is no MainPID,
+            # and falling back to origin moved packs past the binary (#223).
+            deployed=$(${jobshop} version | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
+            if [ -z "$deployed" ] || ! git cat-file -e "$deployed^{commit}" 2>/dev/null; then
+              echo "<4>workspace ${name}: deployed commit '$deployed' unknown, not moving packs"
+              exit 0
+            fi
+            target=$deployed
           ''}
           before=$(git rev-parse HEAD)
           # Only fast-forward: a hand-edited checkout is left alone and logged.
