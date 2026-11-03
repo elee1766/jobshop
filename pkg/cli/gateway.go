@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/cron"
 	"github.com/elee1766/jobshop/pkg/gateway"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -57,9 +58,15 @@ func (c gatewayCmd) Run(g *Globals) error {
 	if err != nil {
 		return err
 	}
+	var digest *cron.Schedule
+	if gc.AttentionDigest != "" {
+		if digest, err = cron.Parse(gc.AttentionDigest); err != nil {
+			return err
+		}
+	}
 	gw := gateway.New(gateway.Config{
 		Name: c.Name, Pool: gc.Pool, Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker,
-		EscalationRoom: gc.EscalationRoom,
+		EscalationRoom: gc.EscalationRoom, Digest: digest,
 	}, ad, socketController{sock: sock}, log)
 	log.Info("gateway: running", "network", gc.Network, "pool", gc.Pool, "escalation_room", gc.EscalationRoom)
 	return gw.Run(ctx)
@@ -116,4 +123,9 @@ func (s socketController) Subscribe(ctx context.Context, p rpc.SessionSubscribeP
 	}
 	defer func() { _ = c.Close() }()
 	return c.Subscribe(ctx, p, fn)
+}
+
+func (s socketController) Attention(ctx context.Context) (rpc.AttentionResult, error) {
+	var res rpc.AttentionResult
+	return res, s.call(ctx, rpc.MethodAttention, nil, &res)
 }

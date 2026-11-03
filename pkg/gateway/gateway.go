@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/cron"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -61,6 +62,8 @@ type Controller interface {
 	Update(ctx context.Context, p rpc.UpdateParams) (store.Ticket, error)
 	// Events follows events.subscribe; escalation threads are driven by it.
 	Events(ctx context.Context, p rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error)
+	// Attention lists what waits on a human, for the daily digest.
+	Attention(ctx context.Context) (rpc.AttentionResult, error)
 }
 
 // Config is one gateway's routing.
@@ -74,6 +77,9 @@ type Config struct {
 	// EscalationRoom gets one new thread per escalation ticket. Empty:
 	// escalations are not posted.
 	EscalationRoom string
+	// Digest posts the attention list to EscalationRoom on this schedule,
+	// only when it is not empty (#185). Nil: no digest.
+	Digest *cron.Schedule
 }
 
 // Reaction keys for progress.
@@ -138,6 +144,9 @@ func (g *Gateway) threadKey(t Thread) string {
 func (g *Gateway) Run(ctx context.Context) error {
 	if g.cfg.EscalationRoom != "" {
 		g.wg.Go(func() { g.runEscalations(ctx) })
+		if g.cfg.Digest != nil {
+			g.wg.Go(func() { g.runDigest(ctx) })
+		}
 	}
 	err := g.ad.Run(ctx, g.Handle)
 	g.wg.Wait()

@@ -221,6 +221,8 @@ gateway:
 		"no token":                     {"token_file: matrix-token", `token_file: ""`},
 		"network":                      {"network: matrix", "network: irc"},
 		"escalation room not in rooms": {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    escalation_room: \"!other:x\""},
+		"digest without room":          {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    attention_digest: \"0 9 * * *\""},
+		"bad digest cron":              {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    escalation_room: \"!r:x\"\n    attention_digest: \"daily\""},
 	} {
 		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
 		assert.Error(t, err, name)

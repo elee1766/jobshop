@@ -65,6 +65,7 @@ const (
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
 	MethodVersion          = "version"
+	MethodAttention        = "attention"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -845,6 +846,33 @@ func (c *Client) handle(_ context.Context, method string, params json.RawMessage
 	}
 	(*fn)(ev)
 	return nil, nil
+}
+
+// Attention item kinds (#185).
+const (
+	AttentionRun      = "run"      // run in needs_human with no open escalation ticket
+	AttentionTicket   = "ticket"   // open ticket labeled needs-human (escalations, pool quarantines)
+	AttentionQuestion = "question" // open ticket labeled question: a worker asks a human
+	AttentionPool     = "pool"     // quarantined pool with no open escalation
+	AttentionRollback = "rollback" // self-deploy rolled back a commit
+)
+
+// AttentionItem is one thing waiting on a human.
+type AttentionItem struct {
+	Kind    string    `json:"kind"`
+	ID      string    `json:"id"` // ticket id, pool name or rolled-back commit
+	Project string    `json:"project,omitempty"`
+	Title   string    `json:"title"`
+	Since   time.Time `json:"since"`
+	// Repo and Ref are meta.github's repo and issue or PR, when set.
+	Repo string `json:"repo,omitempty"`
+	Ref  string `json:"ref,omitempty"`
+}
+
+// AttentionResult lists what waits on a human, oldest first. Empty when
+// healthy.
+type AttentionResult struct {
+	Items []AttentionItem `json:"items"`
 }
 
 // IncidentsParams selects the report window. Zero Since means 24h.

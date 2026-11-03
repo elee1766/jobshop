@@ -70,6 +70,14 @@ Each planning ticket:
 12. When every target item is checked, comment a summary and close the
     target.
 
+Attention rule: a human's time is the scarcest resource. `jobshop
+attention` lists everything waiting on one (needs-human runs and
+tickets, questions, rollbacks, quarantined pools), oldest first; it is
+empty when healthy. Every @${human} mention names the decision needed
+(a question with options) and what happens if nobody answers (the
+default you will take, or what stays blocked, and by when). A mention
+without both is noise: fix it or do not send it.
+
 Escalation tickets (title "Escalate run <id>", label `needs-human`) mean a
 run step failed at its retry limit and the run is stopped. For each one:
 read its body (step history, last comments) and `jobshop run show <id>`.

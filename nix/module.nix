@@ -47,12 +47,20 @@ let
     // lib.optionalAttrs (g.homeserver != "") { inherit (g) homeserver; }
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
     // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
+    // lib.optionalAttrs (g.attentionDigest != "") { attention_digest = g.attentionDigest; }
   ) cfg.gateway;
   settings =
     cfg.settings
     // lib.optionalAttrs (livePacks != [ ]) { packs = (cfg.settings.packs or [ ]) ++ livePacks; }
     // lib.optionalAttrs (cfg.gateway != { }) {
       gateway = (cfg.settings.gateway or { }) // gatewaySettings;
+    }
+    # Self-deploy rollbacks show in `jobshop attention` (#185).
+    // lib.optionalAttrs cfg.selfDeploy.enable {
+      attention = {
+        rollback_file = "${deployState}/failed";
+      }
+      // (cfg.settings.attention or { });
     };
   configFile = settingsFormat.generate "jobshop.yaml" (
     lib.recursiveUpdate settings (
@@ -459,6 +467,12 @@ in
               type = lib.types.str;
               default = "";
               description = "Room (one of `rooms`) that gets one new thread per escalation ticket. Empty: none.";
+            };
+            attentionDigest = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              example = "0 9 * * *";
+              description = "Cron (UTC) for a digest of `jobshop attention` in `escalationRoom`, posted only when the list is not empty. Empty: none.";
             };
           };
         }

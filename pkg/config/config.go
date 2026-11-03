@@ -28,6 +28,8 @@ type Config struct {
 	Triggers  map[string]Trigger  `yaml:"triggers"`
 	Workflows map[string]Workflow `yaml:"workflows"`
 	Telemetry Telemetry           `yaml:"telemetry"`
+	// Attention configures `jobshop attention` (#185).
+	Attention Attention `yaml:"attention"`
 	// Gateway configures `jobshop gateway <name>` processes, by name.
 	Gateway map[string]Gateway `yaml:"gateway"`
 	// Packs are pack directories merged before this file (see LoadFile).
@@ -181,6 +183,20 @@ type Gateway struct {
 	// EscalationRoom gets one new thread per escalation ticket, with a
 	// session of Pool keyed by it. Must be one of Rooms so replies route.
 	EscalationRoom string `yaml:"escalation_room"`
+	// AttentionDigest is a 5-field cron (UTC) at which the gateway posts
+	// `jobshop attention` to EscalationRoom as a new thread, only when the
+	// list is not empty (#185). Empty: no digest.
+	AttentionDigest string `yaml:"attention_digest"`
+}
+
+// Attention configures the attention view: what waits on a human.
+type Attention struct {
+	// RollbackFile is the self-deploy state file holding the commit that
+	// was rolled back (the NixOS module's /var/lib/jobshop-deploy/failed).
+	// The rollback is listed while it is newer than the "deployed" file
+	// beside it, so a later successful deploy clears it. Empty:
+	// rollbacks are not checked.
+	RollbackFile string `yaml:"rollback_file"`
 }
 
 // Telemetry configures observability.
@@ -244,7 +260,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "report-incidents"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "report-incidents", "attention"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -469,6 +485,14 @@ func (c *Config) checkGateway(g Gateway) error {
 	}
 	if g.EscalationRoom != "" && !slices.Contains(g.Rooms, g.EscalationRoom) {
 		return fmt.Errorf("escalation_room %q must be listed in rooms", g.EscalationRoom)
+	}
+	if g.AttentionDigest != "" {
+		if g.EscalationRoom == "" {
+			return errors.New("attention_digest needs escalation_room")
+		}
+		if _, err := cron.Parse(g.AttentionDigest); err != nil {
+			return fmt.Errorf("attention_digest: %w", err)
+		}
 	}
 	return nil
 }
