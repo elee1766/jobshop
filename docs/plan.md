@@ -217,6 +217,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/184-pack-prefix.md`, `docs/verify/pack-prefix.md`).
 - A NixOS switch that changes only jobshop.yaml reloads the controller
   (#210, `docs/notes/210-nix-yaml-reload.md`).
+- NixOS `workspaces.<name>.livePackPrefix` (#213,
+  `docs/notes/213-live-pack-prefix.md`).
 - Outbox design note: no outbox for gateway posts (#191,
   `docs/notes/191-outbox.md`).
 - `jobshop desk`: read-only Svelte dashboard over the admin API (#202,

@@ -48,6 +48,7 @@ let
       url = "git@github.com:elee1766/other.git";
       livePacks = [ "packs/github" ];
       livePackVars.repo = "elee1766/other";
+      livePackPrefix = "ot-";
     };
   };
   bothDeploy = eval {
@@ -212,5 +213,7 @@ pkgs.runCommand "jobshop-module-test" { } ''
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
   grep -q '/var/lib/jobshop/workspaces/other/packs/github' ${yamlPacks two}
   grep -q 'repo: elee1766/other' ${yamlPacks two}
+  grep -q 'prefix: ot-' ${yamlPacks two}
+  [ "$(grep -c 'prefix:' ${yamlPacks two})" = 1 ] || { echo 'selfdev got a prefix'; exit 1; }
   touch $out
 ''
