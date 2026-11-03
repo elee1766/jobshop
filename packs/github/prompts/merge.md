@@ -8,6 +8,13 @@ Find the PR in the comments of the run's `implement` step
 - the diff (`gh pr diff <n>`)
 - master CI (`gh run list --branch master --limit 3`)
 
+Run the repo's checks on the PR head yourself before deciding (the repo's
+contributor docs name them, e.g. a linter): `gh pr checkout <n>` in your
+worktree, then `${check_cmd}`. A failure, a lint finding, or a new
+`//nolint` or relaxed linter config without a reason in the PR body is
+case 4: put the exact output in your findings. You do not fix code
+yourself.
+
 Then do exactly one of these. Releasing this step counts as a failed
 attempt (like a failed close), so wait inside your turn instead of
 releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
