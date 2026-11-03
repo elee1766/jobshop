@@ -189,6 +189,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   script (#155, `docs/notes/155-rollback-drill.md`).
 - `jobshop report incidents` and a planner step that files issues from
   it (#156, `docs/notes/156-incident-report.md`).
+- Gateway replies put a blank line between text before and after a tool
+  call (#164, `docs/notes/164-chat-reply-separator.md`).
 
 ## 5. What's next
 

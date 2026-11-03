@@ -129,7 +129,16 @@ func (f *fakeController) Send(_ context.Context, p rpc.SessionSendParams) (rpc.S
 	go func() {
 		f.events <- rpc.SessionEvent{Type: rpc.EventTurnStart, Time: &now, Text: p.Text}
 		f.events <- rpc.SessionEvent{Type: rpc.EventText, Text: "echo: "}
-		f.events <- rpc.SessionEvent{Type: rpc.EventText, Text: p.Text}
+		if p.Text == "tool" {
+			// A tool call splits the turn into two messages (#164).
+			f.events <- rpc.SessionEvent{Type: rpc.EventText, Text: "Now cancel."}
+			f.events <- rpc.SessionEvent{Type: rpc.EventTool, Tool: &rpc.ToolSummary{}}
+			f.events <- rpc.SessionEvent{Type: rpc.EventTool, Tool: &rpc.ToolSummary{}}
+			f.events <- rpc.SessionEvent{Type: rpc.EventText, Text: "I cancelled"}
+			f.events <- rpc.SessionEvent{Type: rpc.EventText, Text: " it."}
+		} else {
+			f.events <- rpc.SessionEvent{Type: rpc.EventText, Text: p.Text}
+		}
 		f.events <- rpc.SessionEvent{Type: rpc.EventTurnEnd, StopReason: "end_turn"}
 	}()
 	return rpc.SessionSendResult{Session: "s-" + p.Key}, nil
@@ -201,6 +210,13 @@ func TestOldTurnsNotReposted(t *testing.T) {
 	g.Handle(ctx, Message{Thread: Thread{Room: "!room", Root: "$r"}, ID: "$m", Sender: "@op", Text: "new"})
 	require.Eventually(t, func() bool { return len(ad.got()) == 1 }, 5*time.Second, 10*time.Millisecond)
 	assert.Equal(t, "!room/$r: echo: new", ad.got()[0])
+}
+
+func TestToolCallSeparatesText(t *testing.T) {
+	g, ad, _, ctx := setup(t, false)
+	g.Handle(ctx, Message{Thread: Thread{Room: "!room", Root: "$r"}, ID: "$m", Sender: "@op", Text: "tool"})
+	require.Eventually(t, func() bool { return len(ad.got()) == 1 }, 5*time.Second, 10*time.Millisecond)
+	assert.Equal(t, "!room/$r: echo: Now cancel.\n\nI cancelled it.", ad.got()[0])
 }
 
 func TestMatrixMessage(t *testing.T) {
