@@ -155,14 +155,18 @@ type TriggerTicket struct {
 	Labels   []string `yaml:"labels"`
 }
 
-// GatewayMatrix is Gateway.Network for Matrix.
-const GatewayMatrix = "matrix"
+// Gateway.Network values.
+const (
+	GatewayMatrix  = "matrix"
+	GatewayDiscord = "discord"
+)
 
 // Gateway connects one chat network account to a chat pool. Messages
 // from rooms or senders not listed are ignored.
 type Gateway struct {
-	Network string `yaml:"network"` // "matrix"
-	// Homeserver is the Matrix client-server base URL.
+	Network string `yaml:"network"` // "matrix" or "discord"
+	// Homeserver is the Matrix client-server base URL (matrix only).
+	// For discord, rooms are channel ids (text or forum), senders user ids.
 	Homeserver string `yaml:"homeserver"`
 	// TokenFile holds the bot access token. Tokens are never in the yaml.
 	TokenFile string   `yaml:"token_file"`
@@ -435,11 +439,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 }
 
 func (c *Config) checkGateway(g Gateway) error {
-	if g.Network != GatewayMatrix {
-		return fmt.Errorf("network %q must be %q", g.Network, GatewayMatrix)
-	}
-	if g.Homeserver == "" {
-		return errors.New("homeserver is required")
+	switch g.Network {
+	case GatewayMatrix:
+		if g.Homeserver == "" {
+			return errors.New("homeserver is required")
+		}
+	case GatewayDiscord:
+	default:
+		return fmt.Errorf("network %q must be %q or %q", g.Network, GatewayMatrix, GatewayDiscord)
 	}
 	if g.TokenFile == "" {
 		return errors.New("token_file is required")

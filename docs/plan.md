@@ -199,6 +199,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   it (#156, `docs/notes/156-incident-report.md`).
 - Gateway replies put a blank line between text before and after a tool
   call (#164, `docs/notes/164-chat-reply-separator.md`).
+- Gateway Discord adapter, unit-tested only (#182,
+  `docs/notes/182-gateway-discord.md`).
 
 ## 5. What's next
 
@@ -279,6 +281,7 @@ is built (#156); its evidence is one planner pass filing from it.
 `session.send` and `session.subscribe` are built (#121); next are chat
 pool idle TTL and `attach --rw` (#122, built), the gateway (#123, built), the pack (#124),
 escalation threads (#125, built; runbook `docs/verify/escalation-thread.md`).
+The Discord adapter is built (#182); it needs a live check with a bot token.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -622,6 +625,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Incident report log lines are an in-memory buffer of the last 5000
   WARN/ERROR records (2026-11-02, #156), not a table: a daily planner
   pass needs recent causes, and the journal keeps the rest.
+- Discord escalations go to a forum channel when `escalation_room` is
+  one (2026-11-03, #182): one post per escalation is easier to browse
+  than threads in a text channel; text channels still work.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
@@ -667,6 +673,7 @@ moved from the old 7.x list, oldest first:
 - [Operator pack](notes/124-operator-pack.md) (#124)
 - [Gateway, Matrix adapter](notes/123-gateway-matrix.md) (#123)
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
+- [Gateway, Discord adapter](notes/182-gateway-discord.md) (#182)
 - [Stall trigger and stall-check](notes/143-stall-check.md) (#143)
 - [Spawn-error pool quarantine](notes/146-spawn-quarantine.md) (#146)
 - [events.subscribe change stream](notes/147-events-subscribe.md) (#147)

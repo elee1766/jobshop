@@ -205,6 +205,16 @@ gateway:
 	require.NoError(t, err)
 	assert.Equal(t, "chat", c.Gateway["ops"].Pool)
 
+	// discord needs no homeserver; the escalation room is a forum channel id.
+	discord := strings.Replace(base, "network: matrix\n    homeserver: http://127.0.0.1:6167\n", "network: discord\n", 1)
+	discord = strings.Replace(discord, `rooms: ["!r:x"]`, `rooms: ["111", "222"]`+"\n    escalation_room: \"222\"", 1)
+	c, err = Parse([]byte(discord))
+	require.NoError(t, err)
+	assert.Equal(t, "discord", c.Gateway["ops"].Network)
+	assert.Equal(t, "222", c.Gateway["ops"].EscalationRoom)
+	_, err = Parse([]byte(strings.Replace(base, "    homeserver: http://127.0.0.1:6167\n", "", 1)))
+	assert.Error(t, err, "matrix without homeserver")
+
 	for name, bad := range map[string][2]string{
 		"ticket pool":                  {"pool: chat", "pool: main"},
 		"no senders":                   {`senders: ["@op:x"]`, "senders: []"},

@@ -38,13 +38,13 @@ let
     {
       inherit (g)
         network
-        homeserver
         pool
         rooms
         senders
         ;
       token_file = g.tokenFile;
     }
+    // lib.optionalAttrs (g.homeserver != "") { inherit (g) homeserver; }
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
     // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
   ) cfg.gateway;
@@ -422,12 +422,17 @@ in
         lib.types.submodule {
           options = {
             network = lib.mkOption {
-              type = lib.types.enum [ "matrix" ];
+              type = lib.types.enum [
+                "matrix"
+                "discord"
+              ];
               default = "matrix";
             };
             homeserver = lib.mkOption {
               type = lib.types.str;
+              default = "";
               example = "http://127.0.0.1:6167";
+              description = "Matrix client-server URL. Unused for discord.";
             };
             tokenFile = lib.mkOption {
               type = lib.types.str;
