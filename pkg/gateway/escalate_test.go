@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -181,4 +182,49 @@ func TestGitHubRef(t *testing.T) {
 	assert.Equal(t, "its GitHub PR (`gh pr view 9 --repo acme/widget --comments`)",
 		githubRef(store.Ticket{Meta: []byte(`{"github":{"repo":"acme/widget","pr":9}}`)}))
 	assert.Contains(t, githubRef(store.Ticket{}), "run's vars")
+}
+
+// TestEscalationRethread: posts to a thread whose root the network
+// rejects (#197) open a new thread, recorded on the ticket, and replies
+// there reach the same session.
+func TestEscalationRethread(t *testing.T) {
+	ad := &fakeAdapter{gone: map[string]bool{"$open1": true}}
+	ctl := &fakeController{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{
+		"js-esc": {
+			ID: "js-esc", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
+			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"}}`),
+		},
+	}}
+	g := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(func() { cancel(); g.wg.Wait() })
+
+	g.Escalations(ctx)
+	// The summary fails on $open1 and lands in $open2.
+	require.Eventually(t, func() bool {
+		for _, p := range ad.got() {
+			if strings.HasPrefix(p, "!esc/$open2: echo: You are handling") {
+				return true
+			}
+		}
+		return false
+	}, 5*time.Second, 10*time.Millisecond)
+	ctl.mu.Lock()
+	e, _ := metaEscalation(ctl.ticket["js-esc"])
+	ctl.mu.Unlock()
+	assert.Equal(t, "$open2", e.Root)
+	assert.Equal(t, "fake:!esc:$open1", e.Key, "the session key stays")
+
+	g.Handle(ctx, Message{Thread: Thread{Room: "!esc", Root: "$open2"}, ID: "$r", Sender: "@op", Text: "resume it"})
+	s := ctl.sent()
+	require.Len(t, s, 2)
+	assert.Equal(t, "fake:!esc:$open1", s[1].Key)
+	require.Eventually(t, func() bool {
+		return slices.Contains(ad.got(), "!esc/$open2: echo: resume it")
+	}, 5*time.Second, 10*time.Millisecond)
+
+	// A restarted gateway maps the recorded thread back to the key.
+	g2 := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
+	g2.Escalations(ctx)
+	assert.Equal(t, "fake:!esc:$open1", g2.threadKey(Thread{Room: "!esc", Root: "$open2"}))
 }

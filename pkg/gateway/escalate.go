@@ -287,6 +287,9 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 	th := Thread{Room: e.Room, Root: e.Root}
 	g.mu.Lock()
 	g.escalating[t.ID] = th
+	if e.Key != g.Key(th) {
+		g.keys[th] = e.Key // a replacement thread (#197)
+	}
 	g.mu.Unlock()
 	if e.Session != "" {
 		return nil
@@ -307,6 +310,58 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 		return fmt.Errorf("record session: %w", err)
 	}
 	return nil
+}
+
+// rethread replaces an escalation thread whose root the network rejects
+// (#197): it opens a new thread, records its room and root on the ticket
+// (the session key stays, so it is the same session), moves the watches
+// to it, and posts text there. Posts to other threads are only logged.
+func (g *Gateway) rethread(ctx context.Context, old Thread, text string) {
+	g.mu.Lock()
+	var id string
+	for tid, th := range g.escalating {
+		if th == old {
+			id = tid
+			break
+		}
+	}
+	g.mu.Unlock()
+	if id == "" {
+		return
+	}
+	th, err := g.ad.Open(ctx, g.cfg.EscalationRoom, fmt.Sprintf("Escalation %s continues here: the previous thread (root %s) was not found.", id, old.Root))
+	if err != nil {
+		g.log.Warn("gateway: rethread", "ticket", id, "err", err)
+		return
+	}
+	var key string
+	_, err = g.updateEscalation(ctx, id, func(_ store.Ticket, cur *Escalation, ok bool) error {
+		if !ok || cur.Gateway != g.cfg.Name || cur.Room != old.Room || cur.Root != old.Root {
+			return errSkip
+		}
+		cur.Room, cur.Root = th.Room, th.Root
+		key = cur.Key
+		return nil
+	})
+	if err != nil {
+		g.log.Warn("gateway: rethread", "ticket", id, "err", err)
+		return
+	}
+	g.log.Info("gateway: escalation rethreaded", "ticket", id, "old_root", old.Root, "root", th.Root)
+	g.mu.Lock()
+	g.escalating[id] = th
+	g.keys[th] = key
+	for _, w := range g.watched {
+		w.mu.Lock()
+		if w.thread == old {
+			w.thread = th
+		}
+		w.mu.Unlock()
+	}
+	g.mu.Unlock()
+	if err := g.ad.Post(ctx, th, text); err != nil {
+		g.log.Warn("gateway: post", "room", th.Room, "root", th.Root, "err", fmt.Sprint(err))
+	}
 }
 
 // resolved posts the final message once the escalation ticket closed.
