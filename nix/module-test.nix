@@ -111,8 +111,8 @@ let
     chmod +x $T/gen1/bin/switch-to-configuration
     ln -s $T/gen1 $T/system
     export PATH=$T/bin:$PATH
-    run() { : > $T/log; rc=0; ${pkgs.bash}/bin/bash ${deployScript} || rc=$?; }
-    fail() { echo "rollback test: $*"; cat $T/log; exit 1; }
+    run() { : > $T/log; rc=0; ${pkgs.bash}/bin/bash ${deployScript} > $T/out 2>&1 || rc=$?; }
+    fail() { echo "rollback test: $*"; cat $T/log $T/out; exit 1; }
 
     echo 0000000 > $T/cur
     echo abcdef1234 > $T/green
@@ -146,6 +146,18 @@ let
     run
     [ $rc = 0 ] || fail "healthy run exit $rc"
     [ "$(cat $T/state/deployed)" = ccccccc777 ] || fail "deployed not written"
+
+    # The unit runs another commit than deployed says (#225): the next run
+    # rewrites deployed with a WARN and keeps its mtime.
+    echo 53b6b27 > $T/cur
+    echo 53b6b27 > $T/green
+    touch -d @1000000000 $T/state/deployed
+    run
+    [ $rc = 0 ] || fail "reconcile run exit $rc"
+    [ "$(cat $T/state/deployed)" = 53b6b27 ] || fail "deployed not reconciled"
+    [ "$(stat -c %Y $T/state/deployed)" = 1000000000 ] || fail "deployed mtime changed"
+    [ "$(grep -c 'switched outside self-deploy.*deployed rewritten' $T/out)" = 1 ] || fail "want one WARN"
+    ! grep -q rebuild $T/log || fail "reconcile rebuilt"
   '';
 
   units = c: lib.attrNames c.config.systemd.services;

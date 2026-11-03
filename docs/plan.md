@@ -243,6 +243,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Subscriptions: tickets follow GitHub issue and PR threads in any repo;
   human comments reach the working session or resume the ticket (#187,
   `docs/notes/187-subscriptions.md`).
+- Self-deploy rewrites a stale `deployed` file from the running binary,
+  with a WARN (#225, `docs/notes/225-deploy-state.md`).
 
 ## 5. What's next
 
