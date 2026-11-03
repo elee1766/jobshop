@@ -67,8 +67,9 @@ type root struct {
 	Batch     batchCmd     `cmd:"" help:"Start ordered groups of runs."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
-	Report    reportCmd    `cmd:"" help:"Reliability reports for planner passes (admin)."`
 	Attention attentionCmd `cmd:"" help:"List what waits on a human, oldest first; empty when healthy (admin)."`
+	Report    reportCmd    `cmd:"" help:"Report your ticket's state (progress, waiting, ready, blocked, failed, dropped), or reliability reports (admin)."`
+	Answer    answerCmd    `cmd:"" help:"Answer a worker's question; the answer goes to the asking session (admin)."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Events    eventsCmd    `cmd:"" help:"Print the change stream as JSON lines (admin, for debugging)."`
 	Identity  identityCmd  `cmd:"" help:"GitHub App and Linear identities: list, check, tokens and the git credential helper."`

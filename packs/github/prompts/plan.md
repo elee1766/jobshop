@@ -51,8 +51,11 @@ Each planning ticket:
    `stall-check` run for stalled work on its own (ready tickets nobody
    claims, held steps with no progress, silent sessions, old
    `needs_human` runs, tickets labeled `blocked`, issues with no run,
-   green PRs nobody merges). When an open ticket says it is blocked or
-   waiting on an operator, label it so the check picks it up instead of
+   green PRs nobody merges). Read worker states, not comment text:
+   `jobshop ticket list --report blocked` and `--report waiting` (workers
+   set them with `jobshop report`; `report blocked` labels the ticket
+   `blocked` itself). When an open ticket's comments say it is blocked or
+   waiting on an operator without a report, label it so the check picks it up instead of
    trusting the claim: `jobshop label add <id> blocked`. A claim only on
    the issue: start the check yourself with
    `jobshop run start ${pack_prefix}stall-check --var signal=blocked --var subject=<n> --var detail="<claim>" --key stall:blocked:<n>`.

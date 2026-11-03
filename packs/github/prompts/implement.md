@@ -30,3 +30,11 @@ failed: comment what you wait for, then `jobshop release --until
 or reaching a human. If you cannot deliver for any other reason,
 `jobshop close -r failed` with a
 comment saying why; the run retries and then escalates to a human.
+
+Report state as you go, so stall-check and the planner read it instead
+of your comments: `jobshop report progress "<what is done>"`, `jobshop
+report blocked "<on what>"`, `jobshop report failed "<why>"` before
+`close -r failed`. When only a person can decide, ask once with
+`jobshop report waiting "<what>" --question "<the decision needed, the
+options, what you do if nobody answers>"`; the answer arrives as a
+message in this session.

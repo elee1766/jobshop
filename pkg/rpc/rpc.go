@@ -72,6 +72,8 @@ const (
 	MethodIdentityCheck    = "identity.check"
 	MethodIdentityToken    = "identity.token"
 	MethodSubscribe        = "subscribe"
+	MethodReport           = "report"
+	MethodQuestionAnswer   = "question.answer"
 )
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -112,7 +114,9 @@ type ListParams struct {
 	Holder   string       `json:"holder,omitempty"`
 	ParentID string       `json:"parent_id,omitempty"`
 	Label    string       `json:"label,omitempty"`
-	Limit    int          `json:"limit,omitempty"`
+	// Report matches tickets whose last worker report has this state (#186).
+	Report string `json:"report,omitempty"`
+	Limit  int    `json:"limit,omitempty"`
 	// Orphaned lists open, unclaimed tickets with no pool or a pool not in
 	// the loaded config. Other filters except Project and Limit are ignored.
 	Orphaned bool `json:"orphaned,omitempty"`
@@ -1021,4 +1025,50 @@ type GuardResult struct {
 	Decision string `json:"decision"`
 	Reason   string `json:"reason,omitempty"`
 	Ticket   string `json:"ticket,omitempty"`
+}
+
+// Report states (#186). failed and dropped record why before the worker
+// closes the ticket; report does not close.
+const (
+	ReportProgress = "progress"
+	ReportWaiting  = "waiting"
+	ReportReady    = "ready"
+	ReportBlocked  = "blocked"
+	ReportFailed   = "failed"
+	ReportDropped  = "dropped"
+)
+
+// ReportStates lists the valid report states.
+var ReportStates = []string{ReportProgress, ReportWaiting, ReportReady, ReportBlocked, ReportFailed, ReportDropped}
+
+// ReportParams records a worker's state on a ticket it holds (meta.report).
+type ReportParams struct {
+	ID    string `json:"id,omitempty"`
+	State string `json:"state"`
+	Note  string `json:"note,omitempty"`
+	// Question files a needs-human question whose answer is delivered to
+	// the reporting session.
+	Question string `json:"question,omitempty"`
+	// Until (waiting only) releases the ticket deferred until then.
+	Until *time.Time `json:"until,omitempty"`
+}
+
+// ReportResult is the reported ticket and the question filed, if any.
+type ReportResult struct {
+	Ticket   store.Ticket  `json:"ticket"`
+	Question *store.Ticket `json:"question,omitempty"`
+}
+
+// AnswerParams answers a question ticket (admin).
+type AnswerParams struct {
+	ID   string `json:"id"`
+	Text string `json:"text"`
+	From string `json:"from,omitempty"` // who answered, e.g. a chat sender; default the caller
+}
+
+// AnswerResult is the closed question and the message to the asking
+// session (nil when that session has ended).
+type AnswerResult struct {
+	Question store.Ticket  `json:"question"`
+	Message  *store.Ticket `json:"message,omitempty"`
 }

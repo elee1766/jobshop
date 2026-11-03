@@ -187,10 +187,14 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	if p.Orphaned {
 		return c.orphaned(ctx, p.Project, p.Limit)
 	}
-	return c.store.List(ctx, store.Filter{
+	f := store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
 		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit,
-	})
+	}
+	if p.Report != "" {
+		f.MetaPack, f.MetaKey, f.MetaValue = reportMetaPack, "state", p.Report
+	}
+	return c.store.List(ctx, f)
 }
 
 func (c *Controller) ready(ctx context.Context, sc scope, p rpc.ReadyParams) (any, error) {

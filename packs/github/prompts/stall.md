@@ -24,7 +24,10 @@ What the signal means and where to start:
   a long time. Read the escalation (`jobshop ticket list --label
   needs-human`), `jobshop run show`, the issue. The blocker may be gone.
 - `blocked`: ticket `${subject}` is labeled `blocked`. Re-check the
-  claim (below).
+  claim (below). Its last worker report (`meta.report` in `jobshop
+  ticket show`) says what it waits on; read that, not comment text.
+  A `needs_human` subject that is a question (`meta.question`) waits on
+  the operator's answer: remind in its thread, do not answer for them.
 - `issue_no_run`: issue #${subject} is open with no run. `gh issue view
   ${subject} --comments`.
 - `pr_unmerged`: PR #${subject} has green checks but is not merged.

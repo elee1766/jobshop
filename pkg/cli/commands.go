@@ -323,6 +323,7 @@ type ticketListCmd struct {
 	Holder  string `help:"Holder session id."`
 	Parent  string `help:"Parent ticket id."`
 	Label   string `short:"l" help:"Label."`
+	Report  string `help:"Last worker report state (progress, waiting, ready, blocked, failed, dropped)."`
 	Limit   int    `short:"n" help:"Max results (default 500)."`
 
 	Orphaned bool `help:"Only open, unclaimed tickets with no pool or a pool not in the config."`
@@ -331,7 +332,7 @@ type ticketListCmd struct {
 func (c ticketListCmd) params() rpc.ListParams {
 	return rpc.ListParams{
 		Project: c.Project, Kind: store.Kind(c.Kind), Status: store.Status(c.Status), Pool: c.Pool,
-		Holder: c.Holder, ParentID: c.Parent, Label: c.Label, Limit: c.Limit, Orphaned: c.Orphaned,
+		Holder: c.Holder, ParentID: c.Parent, Label: c.Label, Report: c.Report, Limit: c.Limit, Orphaned: c.Orphaned,
 	}
 }
 
@@ -645,6 +646,14 @@ func (c sessionNewCmd) Run(g *Globals) error {
 
 type reportCmd struct {
 	Incidents reportIncidentsCmd `cmd:"" help:"Group controller WARN/ERROR lines, crashed or stuck sessions and failed run steps."`
+
+	// Worker reports on the held ticket (#186).
+	Progress reportProgressCmd `cmd:"" help:"Report progress on your ticket."`
+	Waiting  reportWaitingCmd  `cmd:"" help:"Report waiting (on a question, a time, another change)."`
+	Ready    reportReadyCmd    `cmd:"" help:"Report the work ready for the next step."`
+	Blocked  reportBlockedCmd  `cmd:"" help:"Report blocked; labels the ticket blocked for stall-check."`
+	Failed   reportFailedCmd   `cmd:"" help:"Report failure and why (then close -r failed)."`
+	Dropped  reportDroppedCmd  `cmd:"" help:"Report the work dropped and why (then close)."`
 }
 
 type reportIncidentsCmd struct {

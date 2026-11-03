@@ -245,6 +245,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/187-subscriptions.md`).
 - Self-deploy rewrites a stale `deployed` file from the running binary,
   with a WARN (#225, `docs/notes/225-deploy-state.md`).
+- Structured worker reports and questions: `jobshop report <state>`,
+  `--question`, `jobshop answer`, question threads in the gateway (#186,
+  `docs/notes/186-worker-reports.md`).
 
 ## 5. What's next
 
@@ -752,6 +755,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   #187), not webhooks: gasserver has no public endpoint and gh already
   holds the App token. The read position lives in ticket meta, not a
   table, so it moves with the ticket and needs no migration.
+- Worker reports live in ticket `meta.report`, and a question is a
+  needs-human message to `human` with `meta.question` (2026-11-03,
+  #186): no new kind or table, a message is never claimed or orphaned,
+  and the existing escalation thread path carries it.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
