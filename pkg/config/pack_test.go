@@ -441,3 +441,53 @@ packs:
 	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.ErrorContains(t, err, "prefix")
 }
+
+// TestGithubPackLinearTracker: tracker: linear swaps the plan, dev and
+// pr-work prompts for ones that use jobshop linear, and the workflow
+// carries the tracker and workspace (#232).
+func TestGithubPackLinearTracker(t *testing.T) {
+	dir := t.TempDir()
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: ` + pack + `
+    prefix: eng-
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test, tracker: linear, linear_workspace: acme, linear_team: ENG, linear_target: ENG-1}
+`})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	w := c.Workflows["eng-pr-work"]
+	assert.Equal(t, TrackerLinear, w.Tracker)
+	assert.Equal(t, "acme", w.LinearWorkspace)
+	assert.Equal(t, "acme/widget", w.Repo)
+	assert.Contains(t, c.Pools["eng-plan"].Prompt, "jobshop linear issue ENG-1")
+	assert.Contains(t, c.Pools["eng-plan"].Prompt, "jobshop run start eng-pr-work --var issue=<KEY>")
+	assert.Contains(t, c.Pools["eng-dev"].Prompt, "Linear issues of team ENG")
+	for _, n := range []string{"eng-plan", "eng-dev"} {
+		assert.NotContains(t, c.Pools[n].Prompt, "gh issue", n)
+	}
+	vars := maps.Clone(w.PackVars)
+	vars["issue"] = "ENG-7"
+	var bodies []string
+	for _, s := range w.Steps {
+		b, err := FillTemplate(s.Prompt, vars)
+		require.NoError(t, err, s.ID)
+		assert.NotContains(t, b, "gh issue", s.ID)
+		bodies = append(bodies, b)
+	}
+	assert.Contains(t, bodies[0], "jobshop linear issue ENG-7")
+	assert.Contains(t, bodies[0], `jobshop linear comment ENG-7 "PR <url>"`)
+	assert.Contains(t, bodies[2], `jobshop linear state ENG-7 "Done"`)
+
+	// The github default keeps the gh prompts and no Linear workspace.
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test}\n"})
+	c, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, TrackerGitHub, c.Workflows["pr-work"].Tracker)
+	assert.Empty(t, c.Workflows["pr-work"].LinearWorkspace)
+	assert.Contains(t, c.Workflows["pr-work"].Steps[0].Prompt, "gh issue view")
+}

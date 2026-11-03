@@ -237,6 +237,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
   teams, served by the controller (#200, `docs/notes/200-identities.md`).
 - Linear as a tracker: `tracker: linear` workflows and `jobshop linear`
   (#201, `docs/notes/201-linear-tracker.md`).
+- packs/github `tracker: linear`: plan, dev and pr-work prompts read and
+  update Linear through `jobshop linear` (#232,
+  `docs/notes/232-linear-pack-prompts.md`, runbook
+  `docs/verify/linear-pack.md`).
 - Desk chat: escalation panels, new `desk:<id>` operator sessions, rw
   attach (#203, `docs/notes/203-desk-chat.md`, runbook
   `docs/verify/desk-chat.md`).
@@ -332,7 +336,8 @@ threads, new operator sessions for debugging and unblocking, attach
 Order: #200 after #183, #201 after #200; #202 now, #203 after it.
 Desk (#202) and its chat (#203) are built; running Desk on gasserver as
 a unit is left to the operator.
-#201 and Linear subscriptions (#233) are built; pack prompts (#232) are next.
+#201, Linear subscriptions (#233) and pack prompts (#232) are built;
+the live check of #232 waits on a Linear token.
 #200 is built; gasserver still uses agent-credd until the module wires
 `jobshop identity git-credential` (`docs/verify/identities.md`).
 
@@ -759,6 +764,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   backgrounded commands, which is not a failed attempt.
 - Linear subscriptions (2026-11-03, #233) drop comments by the polling
   identity's own user (`isMe`): sessions comment with that same key.
+- Linear pack prompts are a `tracker` var on packs/github choosing
+  `prompts/<tracker>/` (2026-11-03, #232), not a separate pack: pools,
+  triggers and refinery stay shared. One instance (with a prefix) maps
+  one Linear team to one repo; the planner reads a Linear target issue
+  since `jobshop linear` has no list or create.
 - Subscriptions poll with `gh api` from the controller (2026-11-03,
   #187), not webhooks: gasserver has no public endpoint and gh already
   holds the App token. The read position lives in ticket meta, not a
