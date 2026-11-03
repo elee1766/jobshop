@@ -44,5 +44,5 @@ Built:
 - `jobshop identity list` and `identity check <target>` (admin). Check
   mints a token, so a bad key or installation id fails there.
 
-Not yet: the NixOS module still points git at agent-credd; switching
-gasserver is the live check in `docs/verify/identities.md`.
+The NixOS module wires this since #216
+(`docs/notes/216-module-identities.md`).

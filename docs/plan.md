@@ -340,8 +340,8 @@ Desk (#202) and its chat (#203) are built; running Desk on gasserver as
 a unit is left to the operator.
 #201, Linear subscriptions (#233) and pack prompts (#232) are built;
 the live check of #232 waits on a Linear token.
-#200 is built; gasserver still uses agent-credd until the module wires
-`jobshop identity git-credential` (`docs/verify/identities.md`).
+#200 is built; the module wires it with `gitIdentity.jobshopIdentities`
+(#216); switching gasserver off agent-credd is `docs/verify/identities.md`.
 
 Phase 5 status: spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
