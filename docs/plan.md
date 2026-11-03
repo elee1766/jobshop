@@ -255,6 +255,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Structured worker reports and questions: `jobshop report <state>`,
   `--question`, `jobshop answer`, question threads in the gateway (#186,
   `docs/notes/186-worker-reports.md`).
+- Stall `ready_unclaimed` ages a ticket from its last blocker's close
+  too (#235, `docs/notes/235-stall-ready-since-unblock.md`).
 
 ## 5. What's next
 
