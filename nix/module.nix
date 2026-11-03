@@ -29,7 +29,9 @@ let
       map (p: {
         path = "${w.dir}/${p}";
         vars = w.livePackVars;
-      }) w.livePacks
+      }
+      // lib.optionalAttrs (w.livePackPrefix != "") { prefix = w.livePackPrefix; }
+      ) w.livePacks
     ) workspaces
   );
   # services.jobshop.gateway.<name> entries go to settings.gateway.<name>.
@@ -82,6 +84,8 @@ let
     openssh
     coreutils
     bash
+    # From this flake's nixpkgs, so agents lint with the version CI uses.
+    self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
   ];
   path = cfg.path ++ lib.optionals cfg.defaultPath defaultTools;
 
@@ -175,6 +179,16 @@ let
         livePackVars = lib.mkOption {
           type = lib.types.attrsOf lib.types.anything;
           default = { };
+        };
+        livePackPrefix = lib.mkOption {
+          type = lib.types.str;
+          default = "";
+          example = "dr-";
+          description = ''
+            Pack prefix (#184) for this workspace's live packs, so a second
+            packs/github workspace gets its own pool, trigger and workflow
+            names next to selfdev's.
+          '';
         };
         syncInterval = lib.mkOption {
           type = lib.types.str;

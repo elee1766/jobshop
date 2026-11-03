@@ -37,7 +37,8 @@ jobs:
         if: hashFiles('pkg/store/sqlite/sqlc.yaml') != ''
       - uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          # Keep equal to the flake's golangci-lint (nix eval .#golangci-lint.version).
+          version: v2.15.0
       - name: shellcheck deploy scripts
         run: shellcheck -s sh deploy/*.sh
 

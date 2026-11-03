@@ -66,11 +66,6 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 		return nil
 	}
 	var b strings.Builder
-	// Chat sessions claim no tickets, so the pool prompt would never reach
-	// them; it leads their first message turn (again after a respawn).
-	if p := r.c.config().Pools[r.pool]; p.Chat() && r.delivered.IsZero() && p.Prompt != "" {
-		b.WriteString(p.Prompt + "\n\n")
-	}
 	b.WriteString(messagesHeader)
 	for _, m := range claimed {
 		f, _ := store.DecodeFields[store.MessageFields](m)
@@ -79,11 +74,17 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 			b.WriteString("\n" + m.Body)
 		}
 	}
+	// Chat sessions claim no tickets, so the pool prompt would never reach
+	// them; it leads their first message turn (again after a respawn).
+	poolPrompt := r.c.config().Pools[r.pool].Chat() && r.delivered.IsZero()
+	text := r.useParts(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: b.String()}))
 	r.log.Info("delivering messages", "messages", ids(claimed))
 	// A message turn can be interrupted too (a chat user sending a
 	// correction); the interrupting message is then delivered at once.
-	interrupted, err := r.interruptible(ctx, conn, acpSession, b.String())
+	interrupted, err := r.interruptible(ctx, conn, acpSession, text)
+	r.mu.Lock()
 	r.delivered = time.Now()
+	r.mu.Unlock()
 	if err != nil || !interrupted {
 		return err
 	}
