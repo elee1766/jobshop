@@ -390,6 +390,9 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 		if pool, ok := c.config().Pools[p.Pool]; ok && p.Agent == "" {
 			p.Agent = pool.Agent
 		}
+		if err := c.humanSlot(ctx, p.Pool); err != nil {
+			return nil, err
+		}
 	}
 	t, err := c.newSession(ctx, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title)
 	if err != nil {
