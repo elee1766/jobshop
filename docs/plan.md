@@ -201,6 +201,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   call (#164, `docs/notes/164-chat-reply-separator.md`).
 - Gateway Discord adapter, unit-tested only (#182,
   `docs/notes/182-gateway-discord.md`).
+- A respawned session's first prompt carries a recovery note (#189,
+  `docs/notes/189-recovery-note.md`).
 
 ## 5. What's next
 
