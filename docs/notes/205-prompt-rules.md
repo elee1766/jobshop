@@ -22,11 +22,13 @@ prompt_rules:
   lists are concatenated in pack order, host last. Names must be unique,
   so a pack cannot replace or remove a host rule (a duplicate name is a
   load error). `config show` lists the rules, and its sources include
-  `prompt_rules.<name>`.
+  `prompt_rules.<name>`. A pack included with `prefix:` (#184) gets its
+  rule names and the pools, agents and workflows it declares in `match`
+  prefixed, so each copy matches its own pools.
 - Match: each set field must match, and a list matches when any glob
   (`path.Match`) does. An empty match is every session. Fields: `pools`,
   `agents`, `packs` (dir names of the packs that set the session's
-  pool), `projects`, `repos` (`meta.github.repo`, set by #183),
+  pool), `projects`, `repos` (`meta.github.repo`, #183),
   `workflows`, `steps`, `labels`, `chat`. Repos, workflows, steps and
   labels describe the turn's ticket, so they never match message turns
   or a ticket without that field.
@@ -53,7 +55,8 @@ prompt_rules:
   `--json` prints the parts.
 - Reload: config is read each turn, so added, changed or removed rules
   apply from the next turn. Rule files are read again on reload.
-- Tests: `TestRuleMatch`, `TestPromptRulesMerge`, `TestPromptRuleErrors`
+- Tests: `TestRuleMatch`, `TestPromptRulesMerge`, `TestPromptRulesPrefix`,
+  `TestPromptRuleErrors`
   (config). `TestAssembleOrder`, `TestRuleCommand` and `TestPromptRules`
   (control) cover respawn, journal, `session prompt`, reload and
   `config show`.

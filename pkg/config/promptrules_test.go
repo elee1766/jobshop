@@ -79,6 +79,24 @@ func TestPromptRulesMerge(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate name")
 }
 
+// TestPromptRulesPrefix: a pack included twice with prefixes (#184) gets
+// its rule names and its own pool names in matches prefixed, so the two
+// copies do not collide and each matches its own pools.
+func TestPromptRulesPrefix(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"gh/pack.yaml": "pools:\n  dev:\n    agent: a\n    dir: /tmp\nprompt_rules:\n  - name: dev-rule\n    text: x\n    match: {pools: [dev, other]}\n",
+		FileName:       hostBase + "packs:\n  - path: gh\n  - path: gh\n    prefix: gz-\n",
+	})
+	c, err := LoadFile(filepath.Join(dir, FileName))
+	require.NoError(t, err)
+	require.Len(t, c.PromptRules, 2)
+	assert.Equal(t, "dev-rule", c.PromptRules[0].Name)
+	assert.Equal(t, []string{"dev", "other"}, c.PromptRules[0].Match.Pools)
+	assert.Equal(t, "gz-dev-rule", c.PromptRules[1].Name)
+	assert.Equal(t, []string{"gz-dev", "other"}, c.PromptRules[1].Match.Pools, "host pools stay")
+}
+
 func TestPromptRuleErrors(t *testing.T) {
 	for _, tc := range []struct{ rules, want string }{
 		{"  - text: x\n", "name"},

@@ -514,5 +514,26 @@ func prefixLayers(layers []packLayer, prefix string) {
 			}
 			l.m[s] = out
 		}
+		// Prompt rules are a list: prefix their names (unique across
+		// files) and the pack's own pools, agents and workflows they match.
+		rules, _ := l.m["prompt_rules"].([]any)
+		for _, r := range rules {
+			rm, _ := r.(map[string]any)
+			if rm == nil {
+				continue
+			}
+			if n, ok := rm["name"].(string); ok && n != "" {
+				rm["name"] = prefix + n
+			}
+			match, _ := rm["match"].(map[string]any)
+			for key, section := range map[string]string{"pools": "pools", "agents": "agents", "workflows": "workflows"} {
+				list, _ := match[key].([]any)
+				for i, v := range list {
+					if s, ok := v.(string); ok && declared[section][s] {
+						list[i] = prefix + s
+					}
+				}
+			}
+		}
 	}
 }
