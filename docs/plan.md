@@ -257,6 +257,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/186-worker-reports.md`).
 - Stall `ready_unclaimed` ages a ticket from its last blocker's close
   too (#235, `docs/notes/235-stall-ready-since-unblock.md`).
+- A session's task created with no pool goes to the session's pool (#244,
+  `docs/notes/244-orphan-tickets.md`).
 
 ## 5. What's next
 
@@ -360,6 +362,7 @@ is built (#156); its evidence is one planner pass filing from it.
 pool idle TTL and `attach --rw` (#122, built), the gateway (#123, built), the pack (#124),
 escalation threads (#125, built; runbook `docs/verify/escalation-thread.md`).
 The Discord adapter is built (#182); it needs a live check with a bot token.
+Respawn env check after the next self-deploy: `docs/verify/respawn-env.md` (#244).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -441,7 +444,8 @@ All dated 2026-11-01 unless noted.
   rejected or moved: create still accepts any pool (a pack may add it on
   the next reload) and the operator decides where the work goes. The
   controller warns once per ticket per reason, not every tick
-  (2026-11-02, #84).
+  (2026-11-02, #84). Exception: a session's task with no pool gets the
+  session's pool, since nobody reads the report in time (2026-11-03, #244).
 - Reload waits for the running supervisor tick and holds it off while it
   swaps, so after `config.reload` returns no tick uses the old pool limits.
   Supervise counts idle sessions before reading ready tickets, so a claim
