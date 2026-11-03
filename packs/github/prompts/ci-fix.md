@@ -22,7 +22,9 @@ SHA starts a new run.
    `gh pr create --base master --title "<summary> (#<n>)" --body "Closes #<n>. Master red at ${sha}. ..."`.
    PR body: at most ~10 lines, plain text: what changed, why, how it was
    tested. No long summaries, file lists or pasted output.
-4. Wait for CI with `gh pr checks --watch`; fix and push again.
+4. Wait for CI with `gh pr checks --watch`; fix and push again. Do not
+   end the turn to wait: if a long command is moved to the background,
+   keep polling (`gh pr checks <n>`, `sleep 60`) until CI finishes.
 
 Do not merge. When CI is green: `jobshop comment "PR <url> head <sha>"`
 (sha from `git rev-parse HEAD`), then `jobshop close`. Releasing this

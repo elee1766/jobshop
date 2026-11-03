@@ -245,6 +245,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/187-subscriptions.md`).
 - Self-deploy rewrites a stale `deployed` file from the running binary,
   with a WARN (#225, `docs/notes/225-deploy-state.md`).
+- A turn that ends holding a ticket is released without a failure the
+  first time (#241, `docs/notes/241-unclosed-turns.md`).
 - Structured worker reports and questions: `jobshop report <state>`,
   `--question`, `jobshop answer`, question threads in the gateway (#186,
   `docs/notes/186-worker-reports.md`).
@@ -751,6 +753,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Linear workflows keep `meta.github = {repo}` beside `meta.linear`
   (2026-11-03, #201): code still goes through GitHub PRs, and GitHub
   readers skip a run with no GitHub issue number.
+- The first unclosed-turn release of a ticket is a deferral, later ones
+  count as failures (2026-11-03, #241): harnesses end turns to wait on
+  backgrounded commands, which is not a failed attempt.
 - Subscriptions poll with `gh api` from the controller (2026-11-03,
   #187), not webhooks: gasserver has no public endpoint and gh already
   holds the App token. The read position lives in ticket meta, not a
