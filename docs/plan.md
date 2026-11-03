@@ -210,6 +210,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/189-recovery-note.md`).
 - Human-started sessions get one slot over `max_sessions` per pool
   (#190, `docs/notes/190-human-slot.md`).
+- Pack `prefix:` so packs/github can be included once per repo (#184,
+  `docs/notes/184-pack-prefix.md`, `docs/verify/pack-prefix.md`).
 - Outbox design note: no outbox for gateway posts (#191,
   `docs/notes/191-outbox.md`).
 - `jobshop desk`: read-only Svelte dashboard over the admin API (#202,
@@ -664,6 +666,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - The human slot is a cap of `max_sessions + 1` on human starts, not a
   per-session flag (2026-11-03, #190): counting open sessions needs no
   new state, and the supervisor's cap is unchanged.
+- Several repos on one host are separate pack instances with a name
+  `prefix:` (2026-11-03, #184), not pools keyed by repo: no new runtime
+  state, and each repo keeps its own planner and checkout.
 - Work references name their repo (2026-11-03, #183): `meta.github.repo`
   is set from workflow config, not inferred, and old tickets get it from
   a startup backfill rather than SQL, since only config knows the repo.
