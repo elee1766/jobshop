@@ -24,6 +24,10 @@ type Thread struct {
 	Root string // thread root id
 }
 
+// ErrThreadGone is returned by Adapter.Post when the thread root does not
+// exist in the room, so a retry fails the same way (#197).
+var ErrThreadGone = errors.New("thread root not found")
+
 // Message is one received chat message.
 type Message struct {
 	Thread Thread
@@ -88,7 +92,10 @@ type Gateway struct {
 	mu         sync.Mutex
 	watched    map[string]*watch // by session id
 	escalating map[string]Thread // open escalation tickets with a thread, by ticket id
-	wg         sync.WaitGroup
+	// keys maps a replacement escalation thread to the session key of the
+	// thread it replaced, so replies reach the same session (#197).
+	keys map[Thread]string
+	wg   sync.WaitGroup
 }
 
 type watch struct {
@@ -106,13 +113,25 @@ func New(cfg Config, ad Adapter, ctl Controller, log *slog.Logger) *Gateway {
 	}
 	return &Gateway{
 		cfg: cfg, ad: ad, ctl: ctl, log: log, retry: 2 * time.Second,
-		watched: map[string]*watch{}, escalating: map[string]Thread{},
+		watched: map[string]*watch{}, escalating: map[string]Thread{}, keys: map[Thread]string{},
 	}
 }
 
 // Key is the session key for a thread.
 func (g *Gateway) Key(t Thread) string {
 	return g.ad.Network() + ":" + t.Room + ":" + t.Root
+}
+
+// threadKey is the session key for messages in t: Key, unless t replaced
+// an escalation thread.
+func (g *Gateway) threadKey(t Thread) string {
+	g.mu.Lock()
+	k, ok := g.keys[t]
+	g.mu.Unlock()
+	if ok {
+		return k
+	}
+	return g.Key(t)
 }
 
 // Run receives until ctx ends, then waits for the session watchers.
@@ -144,7 +163,7 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 	if text == "" {
 		return
 	}
-	key := g.Key(m.Thread)
+	key := g.threadKey(m.Thread)
 	sent := time.Now()
 	p := rpc.SessionSendParams{Pool: g.cfg.Pool, Key: key, Text: text, Interrupt: interrupt}
 	res, err := g.ctl.Send(ctx, p)
@@ -240,7 +259,12 @@ func (g *Gateway) follow(ctx context.Context, session string, after time.Time, w
 }
 
 func (g *Gateway) post(ctx context.Context, t Thread, text string) {
-	if err := g.ad.Post(ctx, t, text); err != nil {
-		g.log.Warn("gateway: post", "room", t.Room, "err", fmt.Sprint(err))
+	err := g.ad.Post(ctx, t, text)
+	if err == nil {
+		return
+	}
+	g.log.Warn("gateway: post", "room", t.Room, "root", t.Root, "err", fmt.Sprint(err))
+	if errors.Is(err, ErrThreadGone) {
+		g.rethread(ctx, t, text)
 	}
 }

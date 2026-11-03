@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -108,6 +109,9 @@ func (m *Matrix) Post(ctx context.Context, t Thread, text string) error {
 	root := id.EventID(t.Root)
 	c.RelatesTo = (&event.RelatesTo{}).SetThread(root, root)
 	_, err := m.cli.SendMessageEvent(ctx, id.RoomID(t.Room), event.EventMessage, c)
+	if err != nil && threadGone(err) {
+		return fmt.Errorf("%w: %w", ErrThreadGone, err)
+	}
 	return err
 }
 
@@ -126,4 +130,23 @@ func (m *Matrix) Open(ctx context.Context, room, text string) (Thread, error) {
 		return Thread{}, err
 	}
 	return Thread{Room: room, Root: res.EventID.String()}, nil
+}
+
+// threadGone reports a post rejected because the thread root does not
+// exist in the room (#197). Synapse answers M_INVALID_PARAM "Invalid
+// event_id in thread message: M_NOT_FOUND"; retrying gets the same error.
+func threadGone(err error) bool {
+	var re mautrix.RespError
+	if he := (mautrix.HTTPError{}); errors.As(err, &he) && he.RespError != nil {
+		re = *he.RespError
+	} else if !errors.As(err, &re) {
+		return false
+	}
+	switch re.ErrCode {
+	case "M_NOT_FOUND":
+		return true
+	case "M_INVALID_PARAM":
+		return strings.Contains(re.Err, "event_id") || strings.Contains(re.Err, "M_NOT_FOUND")
+	}
+	return false
 }

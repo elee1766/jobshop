@@ -214,6 +214,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/191-outbox.md`).
 - `jobshop desk`: read-only Svelte dashboard over the admin API (#202,
   `docs/notes/202-desk.md`, runbook `docs/verify/desk.md`).
+- Gateway opens a new escalation thread when posts to the recorded root
+  fail as not found (#197, `docs/notes/197-escalation-rethread.md`).
 
 ## 5. What's next
 
@@ -674,6 +676,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-03, #202): Go and nix builds stay Node-free; a CI drift
   check is #208. Desk is its own process, not a
   controller listener, so a UI bug cannot take the controller down.
+- A replacement escalation thread keeps the original session key
+  (2026-11-03, #197): the operator's conversation continues in the same
+  session, and the key is already recorded in `meta.gateway`.
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.

@@ -22,6 +22,7 @@ type fakeAdapter struct {
 	posts  []string
 	reacts []string
 	opened int
+	gone   map[string]bool // roots whose posts fail with ErrThreadGone
 }
 
 func (f *fakeAdapter) Network() string { return "fake" }
@@ -33,6 +34,9 @@ func (f *fakeAdapter) Run(ctx context.Context, _ func(context.Context, Message))
 func (f *fakeAdapter) Post(_ context.Context, t Thread, text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.gone[t.Root] {
+		return ErrThreadGone
+	}
 	f.posts = append(f.posts, t.Room+"/"+t.Root+": "+text)
 	return nil
 }

@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"maunium.net/go/mautrix"
 )
 
 // TestMatrixPostRetries: a 429 on send is retried, so the reply is
@@ -41,4 +44,11 @@ func TestMatrixPostRetries(t *testing.T) {
 	m.cli.DefaultHTTPBackoff = 10 * time.Millisecond
 	require.NoError(t, m.Post(t.Context(), Thread{Room: "!r:x", Root: "$root"}, "hi"))
 	assert.Equal(t, int32(2), sends.Load())
+}
+
+func TestThreadGone(t *testing.T) {
+	gone := mautrix.HTTPError{RespError: &mautrix.RespError{ErrCode: "M_INVALID_PARAM", Err: "Invalid event_id in thread message: M_NOT_FOUND", StatusCode: 400}}
+	assert.True(t, threadGone(fmt.Errorf("send: %w", gone)))
+	assert.False(t, threadGone(mautrix.HTTPError{RespError: &mautrix.RespError{ErrCode: "M_LIMIT_EXCEEDED"}}))
+	assert.False(t, threadGone(errors.New("dial tcp: refused")))
 }
