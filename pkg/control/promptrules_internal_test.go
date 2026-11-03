@@ -74,11 +74,15 @@ func TestAssembleOrder(t *testing.T) {
   - {name: chatonly, text: CHAT, match: {chat: true}}
 `)
 	ctx := t.Context()
-	run, err := c.store.Create(ctx, "t", store.NewTicket{Project: "js", Kind: store.KindRun, Title: "r",
-		Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`)})
+	run, err := c.store.Create(ctx, "t", store.NewTicket{
+		Project: "js", Kind: store.KindRun, Title: "r",
+		Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`),
+	})
 	require.NoError(t, err)
-	step, err := c.store.Create(ctx, "t", store.NewTicket{Project: "js", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
-		Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"implement"}`, run.ID))})
+	step, err := c.store.Create(ctx, "t", store.NewTicket{
+		Project: "js", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
+		Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"implement"}`, run.ID)),
+	})
 	require.NoError(t, err)
 	body := PromptPart{Source: "ticket", Text: "BODY"}
 
@@ -114,8 +118,10 @@ func TestRuleCommand(t *testing.T) {
   - {name: big, command: "head -c %d /dev/zero | tr '\\0' x"}
 `, config.MaxRuleOutput+100))
 	ctx := t.Context()
-	tk, err := c.store.Create(ctx, "t", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "x", Pool: "dev",
-		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":205}}`)})
+	tk, err := c.store.Create(ctx, "t", store.NewTicket{
+		Project: "js", Kind: store.KindTask, Title: "x", Pool: "dev",
+		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":205}}`),
+	})
 	require.NoError(t, err)
 	start := time.Now()
 	parts := c.assemble(ctx, turnSpec{session: "js-s", pool: "dev", agent: "fake", project: "js", kind: turnTicket, ticket: &tk}, PromptPart{Source: "ticket"})
@@ -128,8 +134,10 @@ func TestRuleCommand(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(c.root.Dir, "event.json"))
 	require.NoError(t, err)
 	require.NoError(t, json.Unmarshal(b, &ev))
-	assert.Equal(t, RuleEvent{Rule: "echo", At: config.RuleTurn, Session: "js-s", Pool: "dev", Agent: "fake", Project: "js",
-		Turn: turnTicket, Ticket: tk.ID, Repo: "elee1766/jobshop"}, ev)
+	assert.Equal(t, RuleEvent{
+		Rule: "echo", At: config.RuleTurn, Session: "js-s", Pool: "dev", Agent: "fake", Project: "js",
+		Turn: turnTicket, Ticket: tk.ID, Repo: "elee1766/jobshop",
+	}, ev)
 
 	out := logs.b.String()
 	assert.Contains(t, out, `msg="prompt rule command failed" rule=fails`)
