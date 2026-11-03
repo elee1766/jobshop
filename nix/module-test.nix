@@ -203,6 +203,21 @@ let
       && map toString (trig base) != map toString (trig more)
       && start base == start more
     ))
+    # The sync never moves the checkout past the installed binary, even
+    # with the controller down: the commit comes from the package, not
+    # /proc/<MainPID>, and an unknown commit stops the sync (#227).
+    (expect "sync follows the installed binary" (
+      let
+        s = builtins.unsafeDiscardStringContext legacy.config.systemd.services.jobshop-workspace-default-sync.script;
+      in
+      lib.hasInfix "installed=$(${builtins.unsafeDiscardStringContext (lib.getExe legacy.config.services.jobshop.package)} version" s
+      && lib.hasInfix "target=$installed" s
+      && lib.hasInfix "not moving it" s
+      && !(lib.hasInfix "MainPID" s)
+    ))
+    (expect "self-deploy logs a switch outside it" (
+      lib.hasInfix "switched outside self-deploy" legacy.config.systemd.services.jobshop-self-deploy.script
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;

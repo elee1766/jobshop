@@ -2,12 +2,14 @@ package config
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 )
@@ -15,6 +17,19 @@ import (
 // PackFileName is the file in a pack directory that declares its pools,
 // agents and triggers.
 const PackFileName = "pack.yaml"
+
+// ErrPack marks a load error in a pack, not in the host's own config. A
+// live pack can need a newer binary than the one running (#227); the
+// controller then keeps its last good config instead of exiting.
+var ErrPack = errors.New("pack error")
+
+// packErr wraps err as ErrPack, keeping its message.
+func packErr(err error) error { return packError{err} }
+
+type packError struct{ err error }
+
+func (e packError) Error() string   { return e.err.Error() }
+func (e packError) Unwrap() []error { return []error{e.err, ErrPack} }
 
 // PackRef includes a pack directory from jobshop.yaml.
 type PackRef struct {
@@ -105,7 +120,7 @@ func parseFile(path string, b []byte) (*Config, error) {
 		}
 		layers, err := loadPack(p, ref.Vars, ref.Prefix, 0)
 		if err != nil {
-			return nil, err
+			return nil, packErr(err)
 		}
 		if ref.Prefix != "" {
 			prefixLayers(layers, ref.Prefix)
@@ -131,6 +146,11 @@ func parseFile(path string, b []byte) (*Config, error) {
 	}
 	c, err := parse(out, sources)
 	if err != nil {
+		// Validation errors name the files that set the entry; one naming
+		// a pack file is the pack's.
+		if len(head.Packs) > 0 && strings.Contains(err.Error(), PackFileName) {
+			return nil, packErr(err)
+		}
 		return nil, err
 	}
 	c.Packs = head.Packs

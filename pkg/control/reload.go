@@ -62,6 +62,10 @@ func (c *Controller) reload() error {
 				c.log.Info("config reload: pools unquarantined", "pools", cleared)
 			}
 			c.log.Info("config reloaded", "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows))
+			c.saveLastGood(cfg)
+			c.mu.Lock()
+			c.configErr = ""
+			c.mu.Unlock()
 			// A removed pool orphans its queue; say so now, not next tick.
 			c.reportOrphans()
 			return nil
@@ -69,6 +73,13 @@ func (c *Controller) reload() error {
 	}
 	c.log.Error("config reload failed, keeping old config", "err", err)
 	return err
+}
+
+// saveLastGood records cfg for a later start whose live packs fail (#227).
+func (c *Controller) saveLastGood(cfg *config.Config) {
+	if err := config.SaveLastGood(c.root.LastGood(), cfg); err != nil {
+		c.log.Warn("config: save last good", "err", err)
+	}
 }
 
 func (c *Controller) reloadConfig(_ context.Context, sc scope, _ struct{}) (any, error) {

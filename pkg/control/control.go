@@ -94,6 +94,10 @@ type Controller struct {
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
+	// configErr is the pack load error the controller started past,
+	// serving the last good config (#227); cleared by a good reload.
+	configErr   string
+	configErrAt time.Time
 	// orphanWarned maps orphaned ticket id -> reason already logged.
 	orphanMu     sync.Mutex
 	orphanWarned map[string]string
@@ -115,9 +119,11 @@ type Controller struct {
 // Run opens the root, serves until ctx ends or a shutdown request, and
 // cleans up. It holds an exclusive lock so one root has one controller.
 func Run(ctx context.Context, root config.Root, opt Options) error {
-	cfg, err := config.Load(root)
-	if err != nil {
-		return err
+	// A live pack that needs a newer binary must not crash-loop the
+	// controller: serve the last good config and report it (#227).
+	cfg, loadErr := config.LoadOrLastGood(root)
+	if cfg == nil {
+		return loadErr
 	}
 	lc, err := newLiveConfig(cfg)
 	if err != nil {
@@ -197,6 +203,12 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	c.started = c.now()
+	if loadErr != nil {
+		c.configErr, c.configErrAt = loadErr.Error(), c.started
+		c.log.Error("config load failed in a pack, serving the last good config", "err", loadErr, "last_good", root.LastGood())
+	} else {
+		c.saveLastGood(cfg)
+	}
 	defer c.cancel()
 	return c.serve()
 }
