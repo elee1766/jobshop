@@ -694,12 +694,23 @@ in
             # which is the version from before the last self-deploy.
             running() { readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe"; }
             current=$("$(running)" version | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
-            # A manual switch to an older jobshop than the last self-deploy is a
-            # rollback; say so, since live packs may then need the newer code (#227).
+            # deployed is only written after a good switch, so a manual
+            # rollback, a host rebuild or auto-upgrade can leave it naming
+            # another commit than the unit runs. Say so once (a rollback if
+            # older: live packs may need the newer code, #227), then make it
+            # follow the running binary (#225). The old mtime is kept:
+            # attention compares it with failed, and a fix-up is not a deploy.
             last=$(cat $state/deployed 2>/dev/null || true)
             if [ -n "$last" ] && [ -n "$current" ]; then
-              case "$last" in "$current"*) ;; *)
-                echo "<4>jobshop switched outside self-deploy (a rollback if older): running $current, last deployed $last" ;;
+              case "$last" in
+                "$current"*) ;;
+                *)
+                  echo "<4>jobshop switched outside self-deploy (a rollback if older): running $current, last deployed $last; deployed rewritten"
+                  touch -r $state/deployed $state/deployed.mtime
+                  echo "$current" > $state/deployed
+                  touch -r $state/deployed.mtime $state/deployed
+                  rm -f $state/deployed.mtime
+                  ;;
               esac
             fi
             case "$rev" in "$current"*) echo "already at $current"; exit 0 ;; esac
