@@ -382,7 +382,8 @@ All dated 2026-11-01 unless noted.
 - Prompts and pools live in `packs/selfdev`, read from the live checkout
   (`workspaces.<name>.livePacks`) instead of the Nix store. `jobshop-workspace-<name>-sync`
   fast-forwards the checkout to the deployed binary's commit and reloads
-  the controller when a pack file changed, so prompt and binary versions
+  the controller when the checkout moved (any change: live packs extend
+  packs outside the list, 2026-11-03, #177), so prompt and binary versions
   still match.
 - Generic host setup (tools on PATH, git identity and credential helper,
   workspace clone) is module options, so the host config holds only
