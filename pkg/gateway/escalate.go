@@ -60,6 +60,32 @@ func metaRun(t store.Ticket) (runMeta, bool) {
 	return r, true
 }
 
+// githubMeta is meta.github, the work reference with its repo (#183).
+type githubMeta struct {
+	Repo  string `json:"repo"`
+	Issue any    `json:"issue"`
+	PR    any    `json:"pr"`
+}
+
+// githubRef tells the session which issue or PR to read, with its repo.
+func githubRef(t store.Ticket) string {
+	var g githubMeta
+	if raw, ok := ticketMeta(t)["github"]; ok {
+		_ = json.Unmarshal(raw, &g)
+	}
+	repo := ""
+	if g.Repo != "" {
+		repo = " --repo " + g.Repo
+	}
+	switch {
+	case g.Issue != nil:
+		return fmt.Sprintf("its GitHub issue (`gh issue view %v%s --comments`)", g.Issue, repo)
+	case g.PR != nil:
+		return fmt.Sprintf("its GitHub PR (`gh pr view %v%s --comments`)", g.PR, repo)
+	}
+	return "any GitHub issue it names (the run's vars)"
+}
+
 // poolMeta is meta.pool on a pool quarantine escalation (#146).
 type poolMeta struct {
 	Name       string `json:"name"`
@@ -328,7 +354,7 @@ func escalationPrompt(t store.Ticket, gateway string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are handling escalation ticket %s for run %s (workflow %s), opened by gateway %s. ", t.ID, r.ID, r.Workflow, gateway)
 	b.WriteString("This conversation is a chat thread with the operator; each of your turns is posted there, so keep replies short.\n\n")
-	fmt.Fprintf(&b, "Now: read the run (`jobshop run show %s`), its steps' comments and the linked GitHub issue (the run's `issue` var, `gh issue view <n> --comments`). ", r.ID)
+	fmt.Fprintf(&b, "Now: read the run (`jobshop run show %s`), its steps' comments and %s. ", r.ID, githubRef(t))
 	b.WriteString("Reply with a short summary: what failed, why it is stuck, and the options (resume, resume at a step, reroute, file a follow-up, cancel). Then wait for the operator.\n\n")
 	b.WriteString("When the operator answers, act on it: comment on the issue, ")
 	fmt.Fprintf(&b, "`jobshop run resume %s [--step <name>]` or start another run, file follow-ups. ", r.ID)

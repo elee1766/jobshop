@@ -40,6 +40,7 @@ func runRootLease(t *testing.T, lease string) *rpc.Client {
   pr:
     vars: [issue]
     issue: issue
+    repo: acme/widget
     escalate_pool: dev
     steps:
       - {id: implement, pool: dev, retries: 3, prompt_file: prompts/impl.md, title: "Implement #${issue}"}
@@ -128,8 +129,8 @@ func TestRunStart(t *testing.T) {
 	assert.Equal(t, r.Run.ID, s0.ParentID)
 	assert.Equal(t, "Implement #42", s0.Title)
 	assert.Equal(t, "Implement #42 in /src.\n", s0.Body, "run vars and pack vars filled")
-	assert.JSONEq(t, `{"github":{"issue":42}}`, string(s0.Meta))
-	assert.JSONEq(t, `{"github":{"issue":42}}`, string(r.Run.Meta))
+	assert.JSONEq(t, `{"github":{"repo":"acme/widget","issue":42}}`, string(s0.Meta))
+	assert.JSONEq(t, `{"github":{"repo":"acme/widget","issue":42}}`, string(r.Run.Meta))
 	sf, err := store.DecodeFields[store.StepFields](s0)
 	require.NoError(t, err)
 	assert.Equal(t, store.StepFields{Run: r.Run.ID, Step: "implement", Index: 0, Retries: 3}, sf)
@@ -291,7 +292,7 @@ func TestSelfdevPRWork(t *testing.T) {
 	for _, s := range r.Steps {
 		pools = append(pools, s.Pool)
 		titles = append(titles, s.Title)
-		assert.JSONEq(t, `{"github":{"issue":93}}`, string(s.Meta))
+		assert.JSONEq(t, `{"github":{"repo":"elee1766/jobshop","issue":93}}`, string(s.Meta))
 	}
 	assert.Equal(t, []string{"dev", "refinery", "deploy-check"}, pools)
 	assert.Equal(t, "Implement #93", titles[0])

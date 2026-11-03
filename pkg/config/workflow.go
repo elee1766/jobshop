@@ -21,6 +21,11 @@ type Workflow struct {
 	// Issue names the var holding a GitHub issue number, copied into
 	// every ticket's meta.github.issue.
 	Issue string `yaml:"issue"`
+	// PR names the var holding a GitHub PR number (meta.github.pr).
+	PR string `yaml:"pr"`
+	// Repo is the GitHub repo (owner/name) the issue or PR lives in,
+	// copied into meta.github.repo. Required with issue or pr (#183).
+	Repo string `yaml:"repo"`
 	// EscalatePool gets the escalation ticket when a run needs a human.
 	EscalatePool string `yaml:"escalate_pool"`
 	Steps        []Step `yaml:"steps"`
@@ -216,6 +221,18 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 	}
 	if w.Issue != "" && !slices.Contains(w.Vars, w.Issue) {
 		return fmt.Errorf("issue %q is not in vars", w.Issue)
+	}
+	if w.PR != "" && !slices.Contains(w.Vars, w.PR) {
+		return fmt.Errorf("pr %q is not in vars", w.PR)
+	}
+	if w.Issue != "" && w.PR != "" {
+		return errors.New("set issue or pr, not both")
+	}
+	if (w.Issue != "" || w.PR != "") && w.Repo == "" {
+		return errors.New("repo (owner/name) is required with issue or pr")
+	}
+	if w.Repo != "" && !RepoPattern.MatchString(w.Repo) {
+		return fmt.Errorf("repo %q must be owner/name", w.Repo)
 	}
 	if w.EscalatePool != "" {
 		if _, ok := c.Pools[w.EscalatePool]; !ok {

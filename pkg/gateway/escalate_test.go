@@ -172,3 +172,13 @@ func TestEscalationEvents(t *testing.T) {
 	ctl.changes <- rpc.Event{Kind: rpc.EventKindLagged}
 	require.Eventually(t, func() bool { return opened() == 2 }, 5*time.Second, 10*time.Millisecond)
 }
+
+// TestGitHubRef: the escalation prompt names the issue or PR with its
+// repo (#183), and falls back when meta.github is missing.
+func TestGitHubRef(t *testing.T) {
+	assert.Equal(t, "its GitHub issue (`gh issue view 7 --repo acme/widget --comments`)",
+		githubRef(store.Ticket{Meta: []byte(`{"github":{"repo":"acme/widget","issue":7}}`)}))
+	assert.Equal(t, "its GitHub PR (`gh pr view 9 --repo acme/widget --comments`)",
+		githubRef(store.Ticket{Meta: []byte(`{"github":{"repo":"acme/widget","pr":9}}`)}))
+	assert.Contains(t, githubRef(store.Ticket{}), "run's vars")
+}

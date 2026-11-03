@@ -137,7 +137,7 @@ func TestStepEscalation(t *testing.T) {
 	e := esc[0]
 	assert.Equal(t, "dev", e.Pool, "escalate_pool")
 	assert.Equal(t, store.KindTask, e.Kind)
-	assert.JSONEq(t, `{"github":{"issue":77},"run":{"id":"`+r.Run.ID+`","workflow":"pr","escalation":"`+r.Run.ID+`/1"}}`, string(e.Meta))
+	assert.JSONEq(t, `{"github":{"repo":"acme/widget","issue":77},"run":{"id":"`+r.Run.ID+`","workflow":"pr","escalation":"`+r.Run.ID+`/1"}}`, string(e.Meta))
 	assert.Contains(t, e.Body, "Step 1 review")
 	assert.Contains(t, e.Body, "failed, failures 2/2")
 	assert.Contains(t, e.Body, "CI red on lint")

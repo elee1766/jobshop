@@ -469,7 +469,7 @@ func (c *Controller) stallCheck(ctx context.Context, w config.TriggerWhen, sig c
 	var found []stall
 	var busy map[string]bool
 	if sig.Signal == config.StallIssueNoRun {
-		if busy, err = c.issuesWithOpenRun(ctx); err != nil {
+		if busy, err = c.issuesWithOpenRun(ctx, sig.Repo); err != nil {
 			return nil, err
 		}
 	}
@@ -484,8 +484,9 @@ func (c *Controller) stallCheck(ctx context.Context, w config.TriggerWhen, sig c
 	return found, nil
 }
 
-// issuesWithOpenRun is the meta.github.issue of every open run, as text.
-func (c *Controller) issuesWithOpenRun(ctx context.Context) (map[string]bool, error) {
+// issuesWithOpenRun is the meta.github.issue, as text, of every open run
+// in repo. A run of another repo with the same number does not count.
+func (c *Controller) issuesWithOpenRun(ctx context.Context, repo string) (map[string]bool, error) {
 	out := map[string]bool{}
 	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
 		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Status: st})
@@ -495,10 +496,11 @@ func (c *Controller) issuesWithOpenRun(ctx context.Context) (map[string]bool, er
 		for _, r := range runs {
 			var m struct {
 				GitHub struct {
-					Issue any `json:"issue"`
+					Repo  string `json:"repo"`
+					Issue any    `json:"issue"`
 				} `json:"github"`
 			}
-			if json.Unmarshal(r.Meta, &m) == nil && m.GitHub.Issue != nil {
+			if json.Unmarshal(r.Meta, &m) == nil && m.GitHub.Issue != nil && strings.EqualFold(m.GitHub.Repo, repo) {
 				out[fmt.Sprint(m.GitHub.Issue)] = true
 			}
 		}

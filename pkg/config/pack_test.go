@@ -198,6 +198,8 @@ packs:
 	}
 	assert.Equal(t, "3h", sigs[StallStepStalled].After)
 	assert.Contains(t, sigs[StallIssueNoRun].Check, "gh issue list --repo elee1766/jobshop")
+	assert.Equal(t, "elee1766/jobshop", sigs[StallIssueNoRun].Repo, "issue_no_run matches runs of its repo (#183)")
+	assert.Equal(t, "elee1766/jobshop", c.Workflows["pr-work"].Repo)
 	assert.Contains(t, sigs["no_merge"].Check, "repos/elee1766/jobshop/commits/master")
 	assert.Contains(t, sigs["pr_unmerged"].Check, "statusCheckRollup")
 	mr := c.Triggers["master-red"]
