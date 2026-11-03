@@ -8,7 +8,7 @@ defaults:
   ci_branch: master
   dev_sessions: 2
   # post-merge steps wait on CI and deploy in their own pool (#167).
-  deploy_sessions: 1
+  deploy_sessions: 3
   # Refinery merge policy (prompts/merge.md, ci-merge.md).
   merge_method: squash
   required_approver: ""

@@ -14,7 +14,9 @@ Releasing this step counts as a failed attempt, so wait inside your turn
    (`gh issue list --search` first) and a dev ticket for it, comment
    both here, and `jobshop close -r failed`.
 2. Deploy: is the merge commit live? How to tell: ${deploy_check}
-   Not yet: sleep 5 minutes and check again. Still not after an hour of
+   Run the check fresh on every loop. Do not reuse an earlier result or
+   version, the deploy may have moved since. Not yet: sleep 5 minutes
+   and check again. Still not after an hour of
    green CI: comment what you saw and `jobshop close -r failed`.
 3. Both good: comment on the issue (`gh issue comment ${issue}`) that it
    shipped in <sha> (and is deployed, if step 2 applies), then

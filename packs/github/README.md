@@ -51,7 +51,7 @@ It replaces `blocker-check`: the planner labels a blocked claim
   steps are turned into a run for their issue. Prompt: `prompts/dev.md`.
 - `refinery` pool (1 session): works `review-merge` and `merge` steps,
   so merges happen one at a time. Prompt: `prompts/refinery.md`.
-- `deploy-check` pool (`deploy_sessions`, default 1): works `post-merge`
+- `deploy-check` pool (`deploy_sessions`, default 3): works `post-merge`
   steps, which wait up to an hour for the deploy, so they never queue a
   review behind them (#167). Prompt: `prompts/deploy-check.md`.
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,

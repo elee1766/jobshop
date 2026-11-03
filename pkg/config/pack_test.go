@@ -147,7 +147,7 @@ packs:
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions)
 	assert.Equal(t, 1, c.Pools["plan"].MaxSessions)
 	assert.Equal(t, 1, c.Pools["refinery"].MaxSessions)
-	assert.Equal(t, 1, c.Pools["deploy-check"].MaxSessions, "post-merge has its own session (#167)")
+	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "post-merge has its own pool (#167), several sessions (#174)")
 	assert.Contains(t, c.Pools["refinery"].Prompt, "--delete-branch")
 	assert.NotContains(t, c.Pools["dev"].Prompt, "--pool refinery", "no prompt-only handoff")
 	assert.Contains(t, c.Pools["dev"].Prompt, "You work on elee1766/jobshop")
@@ -264,6 +264,7 @@ packs:
 	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "stall-check", "drill"}, slices.Collect(maps.Keys(c.Workflows)))
 	assert.ElementsMatch(t, []string{"replan", "master-red", "stall"}, slices.Collect(maps.Keys(c.Triggers)))
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions, "dev_sessions default")
+	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "deploy_sessions default: one sleeping post-merge must not block the rest (#174)")
 	for n, p := range c.Pools {
 		assert.Equal(t, "/src/widget", p.Repo, n)
 		assert.NotContains(t, p.Prompt, "elee1766", n)
