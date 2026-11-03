@@ -28,6 +28,17 @@ defaults:
   deploy_check: >-
     none (these agents do not deploy this repo); treat this check as
     passed.
+  # Where pr-work issues live (#232): github, or linear with the
+  # linear_* vars below. Prompts come from prompts/<tracker>/.
+  tracker: github
+  linear_workspace: ""
+  # Team key (ENG) this instance works; one instance (with a prefix)
+  # per Linear team and repo.
+  linear_team: ""
+  # Linear issue the planner reads as its target (ENG-1).
+  linear_target: ""
+  # State post-merge moves a shipped issue to.
+  linear_done_state: Done
   # Parallel PRs that append numbered sections to one doc take the same
   # number and conflict (#131).
   docs_rule: >-
@@ -41,7 +52,7 @@ pools:
     max_sessions: ${dev_sessions}
     idle_timeout: 10m
     turn_timeout: 2h
-    prompt_file: prompts/dev.md
+    prompt_file: prompts/${tracker}/dev.md
   plan:
     agent: ${agent}
     repo: ${checkout}
@@ -49,7 +60,7 @@ pools:
     max_sessions: 1
     idle_timeout: 10m
     turn_timeout: 2h
-    prompt_file: prompts/plan.md
+    prompt_file: prompts/${tracker}/plan.md
     # stall-check steps run here and inspect or restart sessions.
     admin: [session-list, session-restart, trigger-list, report-incidents, attention]
   refinery:
@@ -150,23 +161,25 @@ workflows:
     vars: [issue]
     issue: issue
     repo: ${repo}
+    tracker: ${tracker}
+    linear_workspace: ${linear_workspace}
     escalate_pool: plan
     steps:
       - id: implement
         pool: dev
         retries: 3
         title: "Implement #${issue}"
-        prompt_file: prompts/implement.md
+        prompt_file: prompts/${tracker}/implement.md
       - id: review-merge
         pool: refinery
         retries: 2
         title: "Review and merge PR for #${issue}"
-        prompt_file: prompts/merge.md
+        prompt_file: prompts/${tracker}/merge.md
       - id: post-merge
         pool: deploy-check
         retries: 2
         title: "Check master CI and deploy for #${issue}"
-        prompt_file: prompts/post-merge.md
+        prompt_file: prompts/${tracker}/post-merge.md
   # One run per stall, started by the stall trigger with key
   # stall:<signal>:<subject>. One attempt: a stall it cannot fix
   # escalates at once.
