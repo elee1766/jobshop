@@ -39,11 +39,14 @@ Each planning ticket:
    `jobshop run start pr-work --var issue=<n> --key issue-<n>`.
    The key makes a repeated start return the open run, so starting
    again is safe. Do not create "Resolve #n" pointer tickets.
-   When one issue depends on another, start the dependency's run first,
-   then start the dependent run with `--after <dependency run id>`, so
-   it starts only after that PR is merged and deployed. The edge is
-   created with the run. Do not start the run and then `jobshop edge
-   add`: the dev pool can claim the step in between (#149).
+   Keep single independent issues on `run start pr-work`.
+   When the issues you file depend on each other, start them together
+   as one batch instead of separate runs:
+   `jobshop batch start --key <slug> --issues 12,13,14 --order '12>13>14'`.
+   Each dependent run starts only after its dependency's PR is merged
+   and deployed. The edges are created with the runs. Do not start runs
+   and then `jobshop edge add`: the dev pool can claim the step in
+   between (#149). The key makes a repeated start return the open batch.
 9. Blocked claims: the controller's `stall` trigger starts a
    `stall-check` run for stalled work on its own (ready tickets nobody
    claims, held steps with no progress, silent sessions, old
@@ -60,6 +63,8 @@ Each planning ticket:
    new issue labeled `needs-decision`. Never edit the target's text.
 11. Comment progress on the target: what is done, what you filed, what is
    blocked.
+   For a batch, quote `jobshop batch show <key>` instead of listing its
+   runs one by one.
    List open escalations there too: `jobshop ticket list --label needs-human -s open`
    and `jobshop run list --state needs_human`, each with its run id and issue.
 12. When every target item is checked, comment a summary and close the

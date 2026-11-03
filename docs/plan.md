@@ -180,6 +180,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   transaction is built (#169, `docs/notes/169-batch-start.md`).
 - Batch state derivation, close on last run, `batch show` and
   `batch list` (#170, `docs/notes/170-batch-state.md`).
+- Planner prompt starts dependent issues with `batch start` and quotes
+  `batch show` on the target (#171, `docs/notes/171-planner-batches.md`).
 - Admin `events.subscribe` change stream from ticket history, `jobshop
   events`; the gateway's escalation threads follow it instead of a 10s
   poll (#147).
@@ -249,8 +251,8 @@ Spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
 it needs a 24h `docs/verify/worktree-deletion.md` run on gasserver.
 Batches are designed (#148); `batch start` (#169), state, show and list
-(#170) are built. Next is the planner prompt (note follow-up 4), then
-`docs/verify/batch-start.md` and `docs/verify/batches.md` runs on gasserver.
+(#170) and the planner prompt (#171) are built. Next are one planner
+pass that starts a batch, and `docs/verify/batch-start.md` and `docs/verify/batches.md` runs on gasserver.
 The rollback drill is built (#155); it needs one
 `docs/verify/rollback-drill.md` run on gasserver linked on #145.
 The incident report planner step
