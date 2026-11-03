@@ -316,15 +316,34 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 		err error
 	)
 	if p.ID != "" {
+		if t, gerr := c.store.Get(ctx, p.ID); gerr == nil && (t.Status != store.StatusInProgress || t.Holder != holder) {
+			if err := c.claimHook(ctx, sc, t); err != nil {
+				return nil, err
+			}
+		}
 		r.Ticket, r.Claim, err = c.store.Claim(ctx, p.ID, holder, c.leaseDur())
 	} else {
 		proj, perr := c.project(sc, p.Project)
 		if perr != nil {
 			return nil, perr
 		}
+		// Resuming held work is not a new claim, so it skips claim hooks.
+		held, _ := c.store.List(ctx, store.Filter{Holder: holder, Status: store.StatusInProgress, Limit: 1})
 		r.Ticket, r.Claim, err = c.store.ClaimNext(ctx, store.ClaimNext{
 			Project: proj, Pool: pool, Holder: holder, Lease: c.leaseDur(),
 		})
+		if err == nil && len(held) == 0 {
+			if herr := c.claimHook(ctx, sc, r.Ticket); herr != nil {
+				// ClaimNext picks atomically, so the hook sees the ticket
+				// after the pick. A refused pick is deferred, not failed,
+				// so the next claim moves on to other work.
+				until := c.now().Add(claimDenyDefer)
+				if _, rerr := c.store.Release(ctx, r.Claim, herr.Error(), until); rerr != nil {
+					c.log.ErrorContext(ctx, "release after claim hook", "ticket", r.Ticket.ID, "err", rerr)
+				}
+				return nil, herr
+			}
+		}
 	}
 	if err != nil {
 		return nil, err

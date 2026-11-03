@@ -543,5 +543,6 @@ func init() {
 		rpc.MethodAttention:        bind((*Controller).attention),
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
+		rpc.MethodGuard:            bind((*Controller).guard),
 	}
 }

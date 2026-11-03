@@ -64,6 +64,7 @@ const (
 	MethodPoolList         = "pool.list"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
+	MethodGuard            = "guard"
 	MethodVersion          = "version"
 	MethodAttention        = "attention"
 )
@@ -920,4 +921,28 @@ type StepIncident struct {
 	Failures   int          `json:"failures"`
 	Retries    int          `json:"retries"`
 	LastError  string       `json:"last_error,omitempty"` // last comment
+}
+
+// Guard decisions (#188).
+const (
+	GuardAllow    = "allow"
+	GuardDeny     = "deny"
+	GuardAskHuman = "ask_human"
+)
+
+// GuardParams asks the guardrail hooks before an outside action such as
+// push, pr-create, merge, comment or message.
+type GuardParams struct {
+	Action string          `json:"action"`
+	Target string          `json:"target,omitempty"` // e.g. a PR url or branch
+	Detail string          `json:"detail,omitempty"`
+	Extra  json.RawMessage `json:"extra,omitempty"`
+}
+
+// GuardResult is the hooks' answer. Ticket is the needs-human ticket an
+// ask_human answer filed or read.
+type GuardResult struct {
+	Decision string `json:"decision"`
+	Reason   string `json:"reason,omitempty"`
+	Ticket   string `json:"ticket,omitempty"`
 }
