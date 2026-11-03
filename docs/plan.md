@@ -199,6 +199,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   it (#156, `docs/notes/156-incident-report.md`).
 - Gateway replies put a blank line between text before and after a tool
   call (#164, `docs/notes/164-chat-reply-separator.md`).
+- Matrix gateway posts retry 429 and 5xx with backoff (#196,
+  `docs/notes/196-matrix-retries.md`).
 - Gateway Discord adapter, unit-tested only (#182,
   `docs/notes/182-gateway-discord.md`).
 - A respawned session's first prompt carries a recovery note (#189,
