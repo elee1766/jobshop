@@ -111,8 +111,12 @@ func TestPromptRules(t *testing.T) {
 	admin = dial(t, root.AdminSocket())
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "third", Pool: "dev"}, &next))
 	var pr rpc.SessionPromptResult
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, &pr))
-	assert.Equal(t, "ticket", pr.Turn)
+	// Right after the restart the session can briefly show neither a held
+	// nor a ready ticket (a message turn); wait for the ticket turn (#230).
+	require.Eventually(t, func() bool {
+		pr = rpc.SessionPromptResult{}
+		return admin.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, &pr) == nil && pr.Turn == "ticket"
+	}, 20*time.Second, 50*time.Millisecond, "last turn %q", pr.Turn)
 	assert.Equal(t, next.ID, pr.Ticket)
 	assert.Equal(t, []string{"dev-only", "hook"}, pr.Rules)
 	var srcs []string
