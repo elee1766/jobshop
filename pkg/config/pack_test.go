@@ -264,6 +264,7 @@ packs:
 	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "stall-check", "drill"}, slices.Collect(maps.Keys(c.Workflows)))
 	assert.ElementsMatch(t, []string{"replan", "master-red", "stall"}, slices.Collect(maps.Keys(c.Triggers)))
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions, "dev_sessions default")
+	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "deploy_sessions default: one sleeping post-merge must not block the rest (#174)")
 	for n, p := range c.Pools {
 		assert.Equal(t, "/src/widget", p.Repo, n)
 		assert.NotContains(t, p.Prompt, "elee1766", n)
