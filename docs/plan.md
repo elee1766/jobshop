@@ -267,6 +267,18 @@ example a Jev decision, #188). Independent: recovery note on resume
 only (#191), since whether to build side-effect retry in is still open.
 Discord adapter: #182, unit tests only.
 
+**Phase 7** (target #204, decided 2026-11-03). Semi-native GitHub and
+Linear: several GitHub App installations and Linear tokens, each mapped
+to the repos, workspaces and teams it may act on (#200), and Linear as a
+tracker beside GitHub issues, with code still going through GitHub PRs
+(#201). Jobshop Desk: a Svelte 5 dashboard in the jobshop binary,
+following Gas City Desk's design (Linear-styled theme, URL state,
+loopback, CSP, CSRF), over the admin API and `events.subscribe` (#202).
+Chat in Desk on the same session API as the Matrix gateway: escalation
+threads, new operator sessions for debugging and unblocking, attach
+(#203). Prompt and config changes made from Desk or chat go through PRs.
+Order: #200 after #183, #201 after #200; #202 now, #203 after it.
+
 Phase 5 status: spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
 it needs a 24h `docs/verify/worktree-deletion.md` run on gasserver.
