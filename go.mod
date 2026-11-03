@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/alecthomas/kong v1.16.1
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/goccy/go-yaml v1.19.2
 	github.com/pressly/goose/v3 v3.29.0
@@ -61,6 +62,7 @@ require (
 	github.com/go-sql-driver/mysql v1.10.1 // indirect
 	github.com/google/cel-go v0.28.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/h2non/filetype v1.1.3 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect

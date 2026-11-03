@@ -48,7 +48,12 @@ func (c gatewayCmd) Run(g *Globals) error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("gateway", c.Name)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	ad, err := gateway.NewMatrix(ctx, gc.Homeserver, strings.TrimSpace(string(tok)), gc.Rooms, log)
+	var ad gateway.Adapter
+	if gc.Network == config.GatewayDiscord {
+		ad, err = gateway.NewDiscord(strings.TrimSpace(string(tok)), log)
+	} else {
+		ad, err = gateway.NewMatrix(ctx, gc.Homeserver, strings.TrimSpace(string(tok)), gc.Rooms, log)
+	}
 	if err != nil {
 		return err
 	}
