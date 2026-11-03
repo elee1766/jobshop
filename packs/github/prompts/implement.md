@@ -17,6 +17,10 @@ Otherwise: `git switch -c issue-${issue}`, make the change, run
 PR body: at most ~10 lines, plain text: what changed, why, how it was
 tested. No long summaries, file lists or pasted output.
 Wait for CI with `gh pr checks --watch`; fix failures and push again.
+Wait inside your turn: ending the turn while holding this step releases
+it and, the second time, counts a failed attempt. If your tool moves a
+long command to the background, keep polling (`gh pr checks <n>`,
+`sleep 60`) until CI finishes; do not end the turn to wait for it.
 
 Docs: ${docs_rule}
 

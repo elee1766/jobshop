@@ -18,7 +18,9 @@ yourself.
 Then do exactly one of these. Releasing this step counts as a failed
 attempt (like a failed close), so wait inside your turn instead of
 releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
-`sleep 300` between checks. Release only if a wait passes an hour.
+`sleep 300` between checks. Do not end the turn to wait: if a long
+command is moved to the background, keep polling until it finishes.
+Release only if a wait passes an hour.
 
 1. Master CI red: merge nothing. Make sure an open fix issue exists
    (`gh issue list --search`); file it at priority 0 if not. Wait for

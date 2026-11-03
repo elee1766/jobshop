@@ -988,15 +988,43 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 	}
 	for _, t := range held {
 		cl := store.Claim{TicketID: t.ID, Holder: r.id, Fence: t.Fence}
-		if _, err := r.c.store.Release(ctx, cl, "agent turn ended without closing or releasing", time.Time{}); err != nil {
+		until := time.Now().Add(unclosedDeferral)
+		// Agents end turns to wait (a harness that backgrounds a long CI
+		// watch, #241); the first such release of a ticket is a deferral,
+		// not a failed attempt. A repeat counts, so a ticket no agent
+		// finishes still reaches its retry limit.
+		repeat := r.releasedUnclosedBefore(ctx, t.ID)
+		release := until
+		if repeat {
+			release = time.Time{}
+		}
+		if _, err := r.c.store.Release(ctx, cl, unclosedReason, release); err != nil {
 			continue
 		}
 		r.unclosed++
-		until := time.Now().Add(unclosedDeferral)
-		_, _ = r.c.store.Update(ctx, "controller", t.ID, store.Update{DeferUntil: &until})
-		r.log.Warn("released unclosed ticket", "ticket", t.ID)
+		if repeat {
+			_, _ = r.c.store.Update(ctx, "controller", t.ID, store.Update{DeferUntil: &until})
+		}
+		r.log.Warn("released unclosed ticket", "ticket", t.ID, "failure", repeat)
 		r.c.stepEvent(ctx, t)
 	}
+}
+
+const unclosedReason = "agent turn ended without closing or releasing"
+
+// releasedUnclosedBefore reports whether the controller already released
+// id for an unclosed turn.
+func (r *runner) releasedUnclosedBefore(ctx context.Context, id string) bool {
+	hist, err := r.c.store.History(ctx, id)
+	if err != nil {
+		return false
+	}
+	for _, h := range hist {
+		if h.Op == "release" && strings.Contains(string(h.Diff), unclosedReason) {
+			return true
+		}
+	}
+	return false
 }
 
 func ids(ts []store.Ticket) string {
@@ -1072,7 +1100,11 @@ func ticketPromptText(poolPrompt string, t store.Ticket, comments []store.Commen
 - jobshop release -r "<why>"                hand the ticket back without finishing it
 - jobshop release --until <2h|RFC3339> -r "<why>"   not workable yet; deferred, not a failure
 - jobshop ticket create "<title>" -b "<body>"   file follow-up work
-Close or release the ticket before you end your turn.`)
+Close or release the ticket before you end your turn. Ending a turn while
+you hold it releases it, and a repeat counts as a failed attempt. To wait (CI, a
+rebase, a deploy), stay in the turn: if a long command is moved to the
+background, keep polling it (` + "`gh pr checks <n>`, `sleep 60`" + `) until it
+finishes. For longer waits, ` + "`jobshop release --until <duration>`" + ` instead.`)
 	return b.String()
 }
 
