@@ -175,7 +175,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - A permanent spawn error (missing repo or dir, agent not found)
   quarantines the pool at once with one escalation, until reload or
   `jobshop pool unquarantine` (#146).
-- Batches designed, not built: `docs/notes/148-batches.md` (#148).
+- Batches designed: `docs/notes/148-batches.md` (#148). `batch start`
+  with kind `batch` tickets and ordered cross-run edges in one
+  transaction is built (#169, `docs/notes/169-batch-start.md`).
 - Admin `events.subscribe` change stream from ticket history, `jobshop
   events`; the gateway's escalation threads follow it instead of a 10s
   poll (#147).
@@ -240,8 +242,9 @@ using the Matrix room. Schedules are already covered by cron triggers.
 Spawn-error quarantine is built (#146,
 `docs/notes/146-spawn-quarantine.md`). Worktree locking is built (#154);
 it needs a 24h `docs/verify/worktree-deletion.md` run on gasserver.
-Batches are designed (#148); next are its four implementation
-follow-ups listed in the note.
+Batches are designed (#148) and `batch start` is built (#169); next are
+state derivation, `batch show`/`list` and the planner prompt (note
+follow-ups 2-4), then one `docs/verify/batch-start.md` run on gasserver.
 The rollback drill is built (#155); it needs one
 `docs/verify/rollback-drill.md` run on gasserver linked on #145.
 

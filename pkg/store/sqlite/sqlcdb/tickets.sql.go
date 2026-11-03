@@ -39,6 +39,52 @@ func (q *Queries) ExpiredLeases(ctx context.Context, now int64) ([]string, error
 	return items, nil
 }
 
+const findOpenBatchByKey = `-- name: FindOpenBatchByKey :one
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+WHERE kind = 'batch' AND status <> 'closed'
+  AND project = ?1
+  AND json_extract(fields, '$.key') = ?2
+ORDER BY created_at, id
+LIMIT 1
+`
+
+type FindOpenBatchByKeyParams struct {
+	Project string
+	Key     string
+}
+
+// FindOpenBatchByKey: at most one open batch per project and key (the
+// controller serializes starts).
+func (q *Queries) FindOpenBatchByKey(ctx context.Context, arg FindOpenBatchByKeyParams) (Ticket, error) {
+	row := q.db.QueryRowContext(ctx, findOpenBatchByKey, arg.Project, arg.Key)
+	var i Ticket
+	err := row.Scan(
+		&i.ID,
+		&i.Project,
+		&i.Kind,
+		&i.Title,
+		&i.Body,
+		&i.Status,
+		&i.Resolution,
+		&i.Priority,
+		&i.Pool,
+		&i.Holder,
+		&i.LeaseUntil,
+		&i.Fence,
+		&i.ParentID,
+		&i.DeferUntil,
+		&i.Ephemeral,
+		&i.Fields,
+		&i.Meta,
+		&i.Revision,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
 const findOpenRunByKey = `-- name: FindOpenRunByKey :one
 SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
 WHERE kind = 'run' AND status <> 'closed'
@@ -747,6 +793,22 @@ func (q *Queries) ReadyTickets(ctx context.Context, arg ReadyTicketsParams) ([]T
 		return nil, err
 	}
 	return items, nil
+}
+
+const setParent = `-- name: SetParent :exec
+UPDATE tickets SET parent_id = ?1 WHERE id = ?2
+`
+
+type SetParentParams struct {
+	ParentID sql.NullString
+	ID       string
+}
+
+// SetParent re-parents a ticket (batch adoption, #169). The caller bumps
+// the revision and writes history through mutate.
+func (q *Queries) SetParent(ctx context.Context, arg SetParentParams) error {
+	_, err := q.db.ExecContext(ctx, setParent, arg.ParentID, arg.ID)
+	return err
 }
 
 const writeTicket = `-- name: WriteTicket :execrows

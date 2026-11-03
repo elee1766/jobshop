@@ -153,3 +153,18 @@ WHERE kind = 'run'
   AND (sqlc.narg(state) IS NULL OR json_extract(fields, '$.state') = sqlc.narg(state))
 ORDER BY created_at DESC, id DESC
 LIMIT sqlc.arg(max_rows);
+
+-- SetParent re-parents a ticket (batch adoption, #169). The caller bumps
+-- the revision and writes history through mutate.
+-- name: SetParent :exec
+UPDATE tickets SET parent_id = sqlc.narg(parent_id) WHERE id = sqlc.arg(id);
+
+-- FindOpenBatchByKey: at most one open batch per project and key (the
+-- controller serializes starts).
+-- name: FindOpenBatchByKey :one
+SELECT * FROM tickets
+WHERE kind = 'batch' AND status <> 'closed'
+  AND project = sqlc.arg(project)
+  AND json_extract(fields, '$.key') = sqlc.arg(key)
+ORDER BY created_at, id
+LIMIT 1;

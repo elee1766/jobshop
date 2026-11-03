@@ -525,6 +525,7 @@ func init() {
 		rpc.MethodRunList:          bind((*Controller).runList),
 		rpc.MethodRunCancel:        bind((*Controller).runCancel),
 		rpc.MethodRunResume:        bind((*Controller).runResume),
+		rpc.MethodBatchStart:       bind((*Controller).batchStart),
 		rpc.MethodPoolList:         bind((*Controller).poolList),
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 	}

@@ -53,3 +53,32 @@ vars a=b issue=42
 1  review       js-s1  pool refinery  in_progress  -  holder js-sess  failures 1/2
 `, b.String())
 }
+
+func TestBatchStartParse(t *testing.T) {
+	r := parse(t, "batch", "start", "--key", "chat", "--issues", "122,123,125", "--order", "122>123>125", "--order", "122>125")
+	assert.Equal(t, rpc.BatchStartParams{Key: "chat", Issues: []string{"122", "123", "125"}, Order: []string{"122>123>125", "122>125"}},
+		r.Batch.Start.params())
+}
+
+func TestPrintBatch(t *testing.T) {
+	bf, _ := json.Marshal(store.BatchFields{Key: "chat", Issues: []string{"1", "2"}, Order: [][2]string{{"1", "2"}}, State: store.BatchOpen})
+	rf := func(k string) json.RawMessage {
+		b, _ := json.Marshal(store.RunFields{Workflow: "pr-work", Key: k, State: store.RunRunning})
+		return b
+	}
+	res := rpc.BatchResult{
+		Batch: store.Ticket{ID: "js-b", Kind: store.KindBatch, Status: store.StatusOpen, Fields: bf},
+		Runs: []rpc.RunResult{
+			{Run: store.Ticket{ID: "js-r1", Kind: store.KindRun, Fields: rf("issue-1")}},
+			{Run: store.Ticket{ID: "js-r2", Kind: store.KindRun, Fields: rf("issue-2")}},
+		},
+		Adopted: []string{"js-r2"},
+	}
+	var b bytes.Buffer
+	require.NoError(t, printBatch(&b, res))
+	assert.Equal(t, `batch js-b  key chat  state open  (open)
+order 1>2
+issue-1  run js-r1  state running
+issue-2  run js-r2  state running  [adopted]
+`, b.String())
+}

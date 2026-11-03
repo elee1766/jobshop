@@ -56,6 +56,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"Orphaned", testOrphaned},
 		{"Runs", testRuns},
 		{"StepFailures", testStepFailures},
+		{"ApplyGraph", testApplyGraph},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -626,4 +627,50 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 		Fields: json.RawMessage(`{"agent":"jcode"}`),
 	})
 	assert.NoError(t, err, "sessions without a key never collide")
+}
+
+// testApplyGraph: re-parent, insert and edges land together; a held
+// Unclaimed ticket aborts the whole apply.
+func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"issue-1","state":"running"}`)}
+	step := store.NewTicket{ID: "js-s", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+		Fields: json.RawMessage(`{"run":"js-run","step":"s","index":0,"retries":1}`)}
+	_, err := s.CreateGraph(ctx, "test", []store.NewTicket{run, step}, nil)
+	require.NoError(t, err)
+	other := task(t, s, "other", "dev")
+	batch := func(id string) store.NewTicket {
+		return store.NewTicket{ID: id, Project: proj, Kind: store.KindBatch, Fields: json.RawMessage(`{"key":"k","issues":["1"],"state":"open"}`)}
+	}
+
+	// Held: nothing is written.
+	_, _, err = s.Claim(ctx, "js-s", "sess", time.Minute)
+	require.NoError(t, err)
+	_, err = s.ApplyGraph(ctx, "test", store.Graph{
+		Tickets: []store.NewTicket{batch("js-b1")}, Reparent: map[string]string{"js-run": "js-b1"},
+		Edges: []store.Edge{{From: "js-s", To: other.ID, Kind: store.EdgeBlocks}}, Unclaimed: []string{"js-s"},
+	})
+	require.ErrorIs(t, err, store.ErrNotHolder)
+	_, err = s.Get(ctx, "js-b1")
+	require.ErrorIs(t, err, store.ErrNotFound)
+	_, err = s.FindOpenBatchByKey(ctx, proj, "k")
+	require.ErrorIs(t, err, store.ErrNotFound)
+
+	out, err := s.ApplyGraph(ctx, "test", store.Graph{
+		Tickets: []store.NewTicket{batch("js-b2")}, Reparent: map[string]string{"js-run": "js-b2"},
+	})
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	got, err := s.Get(ctx, "js-run")
+	require.NoError(t, err)
+	assert.Equal(t, "js-b2", got.ParentID)
+	kids, err := s.ListChildren(ctx, "js-b2")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"js-run"}, ids(kids))
+	b, err := s.FindOpenBatchByKey(ctx, proj, "k")
+	require.NoError(t, err)
+	assert.Equal(t, "js-b2", b.ID)
+	ready, err := s.Ready(ctx, proj, "", 0)
+	require.NoError(t, err)
+	assert.NotContains(t, ids(ready), "js-b2", "batches are never claimable")
 }

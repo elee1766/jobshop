@@ -17,6 +17,7 @@ const (
 	KindMessage Kind = "message"
 	KindRun     Kind = "run"
 	KindStep    Kind = "step"
+	KindBatch   Kind = "batch"
 )
 
 // ClaimableKinds are the kinds ClaimNext and Ready consider by default.
@@ -105,6 +106,37 @@ func (f RunFields) Validate() error {
 	return fmt.Errorf("%w: run: unknown state %q", ErrInvalid, f.State)
 }
 
+// Batch states (BatchFields.State).
+const (
+	BatchOpen       = "open"
+	BatchRunning    = "running"
+	BatchNeedsHuman = "needs_human"
+	BatchDone       = "done"
+	BatchFailed     = "failed"
+)
+
+// BatchFields is an ordered set of runs started together (#148, #169).
+// The member runs are its children. A batch has no pool and is never
+// claimed.
+type BatchFields struct {
+	Key    string      `json:"key"` // one open batch per project and key
+	Issues []string    `json:"issues"`
+	Order  [][2]string `json:"order,omitempty"` // [a, b]: b starts after a's last step
+	State  string      `json:"state"`
+}
+
+// Validate implements Fields.
+func (f BatchFields) Validate() error {
+	if f.Key == "" {
+		return fmt.Errorf("%w: batch: key is required", ErrInvalid)
+	}
+	switch f.State {
+	case BatchOpen, BatchRunning, BatchNeedsHuman, BatchDone, BatchFailed:
+		return nil
+	}
+	return fmt.Errorf("%w: batch: unknown state %q", ErrInvalid, f.State)
+}
+
 // StepFields places a step ticket in its run.
 type StepFields struct {
 	Run      string `json:"run"`
@@ -166,6 +198,8 @@ func (k Kind) newFields() (Fields, bool) {
 		return &RunFields{}, true
 	case KindStep:
 		return &StepFields{}, true
+	case KindBatch:
+		return &BatchFields{}, true
 	}
 	return nil, false
 }
