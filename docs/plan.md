@@ -242,7 +242,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/verify/desk-chat.md`).
 - Subscriptions: tickets follow GitHub issue and PR threads in any repo;
   human comments reach the working session or resume the ticket (#187,
-  `docs/notes/187-subscriptions.md`).
+  `docs/notes/187-subscriptions.md`). Linear issues too (#233,
+  `docs/notes/233-linear-subscriptions.md`).
 - Self-deploy rewrites a stale `deployed` file from the running binary,
   with a WARN (#225, `docs/notes/225-deploy-state.md`).
 - A turn that ends holding a ticket is released without a failure the
@@ -331,7 +332,7 @@ threads, new operator sessions for debugging and unblocking, attach
 Order: #200 after #183, #201 after #200; #202 now, #203 after it.
 Desk (#202) and its chat (#203) are built; running Desk on gasserver as
 a unit is left to the operator.
-#201 is built; pack prompts (#232) and Linear subscriptions (#233) are next.
+#201 and Linear subscriptions (#233) are built; pack prompts (#232) are next.
 #200 is built; gasserver still uses agent-credd until the module wires
 `jobshop identity git-credential` (`docs/verify/identities.md`).
 
@@ -756,6 +757,8 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - The first unclosed-turn release of a ticket is a deferral, later ones
   count as failures (2026-11-03, #241): harnesses end turns to wait on
   backgrounded commands, which is not a failed attempt.
+- Linear subscriptions (2026-11-03, #233) drop comments by the polling
+  identity's own user (`isMe`): sessions comment with that same key.
 - Subscriptions poll with `gh api` from the controller (2026-11-03,
   #187), not webhooks: gasserver has no public endpoint and gh already
   holds the App token. The read position lives in ticket meta, not a

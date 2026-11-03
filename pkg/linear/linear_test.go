@@ -16,7 +16,7 @@ import (
 
 // Responses recorded from the Linear GraphQL API (ids shortened).
 const (
-	issueResp   = `{"data":{"issue":{"id":"iss-1","identifier":"ENG-123","title":"Fix login","description":"Steps...","url":"https://linear.app/acme/issue/ENG-123/fix-login","state":{"id":"st-todo","name":"Todo","type":"unstarted"},"team":{"id":"team-1","key":"ENG"},"comments":{"nodes":[{"body":"second","createdAt":"2026-11-02T10:00:00.000Z","user":{"name":"Ann"}},{"body":"first","createdAt":"2026-11-01T10:00:00.000Z","user":null}]}}}}`
+	issueResp   = `{"data":{"issue":{"id":"iss-1","identifier":"ENG-123","title":"Fix login","description":"Steps...","url":"https://linear.app/acme/issue/ENG-123/fix-login","state":{"id":"st-todo","name":"Todo","type":"unstarted"},"team":{"id":"team-1","key":"ENG"},"comments":{"nodes":[{"id":"c-2","body":"second","url":"https://linear.app/acme/issue/ENG-123#comment-c2","createdAt":"2026-11-02T10:00:00.000Z","user":{"name":"Ann","isMe":true},"botActor":null},{"body":"first","createdAt":"2026-11-01T10:00:00.000Z","user":null}]}}}}`
 	statesResp  = `{"data":{"team":{"states":{"nodes":[{"id":"st-todo","name":"Todo","type":"unstarted"},{"id":"st-review","name":"In Review","type":"started"},{"id":"st-done","name":"Done","type":"completed"}]}}}}`
 	commentResp = `{"data":{"commentCreate":{"success":true}}}`
 	updateResp  = `{"data":{"issueUpdate":{"success":true}}}`
@@ -68,6 +68,9 @@ func TestIssueCommentState(t *testing.T) {
 	require.Len(t, is.Comments, 2)
 	assert.Equal(t, "first", is.Comments[0].Body, "oldest first")
 	assert.Equal(t, "Ann", is.Comments[1].Author)
+	assert.True(t, is.Comments[1].Self, "isMe: the key's own user")
+	assert.Equal(t, "c-2", is.Comments[1].ID)
+	assert.True(t, is.Comments[0].Bot, "no user")
 
 	require.NoError(t, c.AddComment(ctx, "ENG-123", "PR https://github.com/a/b/pull/1"))
 	last := (*calls)[len(*calls)-1]

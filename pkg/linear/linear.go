@@ -71,10 +71,16 @@ type TeamInfo struct {
 	Key string `json:"key"`
 }
 
-// Comment is one issue comment.
+// Comment is one issue comment. Self marks comments by the API key's own
+// user (jobshop's sessions); Bot marks comments with no user
+// (integrations).
 type Comment struct {
+	ID        string    `json:"id,omitempty"`
 	Body      string    `json:"body"`
 	Author    string    `json:"author"`
+	URL       string    `json:"url,omitempty"`
+	Self      bool      `json:"self,omitempty"`
+	Bot       bool      `json:"bot,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -122,7 +128,7 @@ const issueQuery = `query($id: String!) { issue(id: $id) {
   id identifier title description url
   state { id name type }
   team { id key }
-  comments(first: 100) { nodes { body createdAt user { name } } }
+  comments(first: 100) { nodes { id body url createdAt user { name isMe } botActor { name } } }
 } }`
 
 // GetIssue reads an issue by key (ENG-123) with its comments, oldest first.
@@ -132,11 +138,17 @@ func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
 			Issue
 			Comments struct {
 				Nodes []struct {
+					ID        string    `json:"id"`
 					Body      string    `json:"body"`
+					URL       string    `json:"url"`
 					CreatedAt time.Time `json:"createdAt"`
 					User      *struct {
 						Name string `json:"name"`
+						IsMe bool   `json:"isMe"`
 					} `json:"user"`
+					BotActor *struct {
+						Name string `json:"name"`
+					} `json:"botActor"`
 				} `json:"nodes"`
 			} `json:"comments"`
 		} `json:"issue"`
@@ -150,9 +162,14 @@ func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
 	is := r.Issue.Issue
 	is.Comments = nil
 	for _, n := range r.Issue.Comments.Nodes {
-		cm := Comment{Body: n.Body, CreatedAt: n.CreatedAt}
-		if n.User != nil {
-			cm.Author = n.User.Name
+		cm := Comment{ID: n.ID, Body: n.Body, URL: n.URL, CreatedAt: n.CreatedAt}
+		switch {
+		case n.User != nil:
+			cm.Author, cm.Self = n.User.Name, n.User.IsMe
+		case n.BotActor != nil:
+			cm.Author, cm.Bot = n.BotActor.Name, true
+		default:
+			cm.Bot = true
 		}
 		is.Comments = append(is.Comments, cm)
 	}
