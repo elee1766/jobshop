@@ -114,3 +114,101 @@ func TestBatchStartInvalid(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
 	assert.Empty(t, runs)
 }
+
+func showBatch(t *testing.T, admin *rpc.Client, id string) rpc.BatchResult {
+	t.Helper()
+	var r rpc.BatchResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodBatchShow, rpc.IDParams{ID: id}, &r))
+	return r
+}
+
+func batchState(t *testing.T, r rpc.BatchResult) string {
+	t.Helper()
+	f, err := store.DecodeFields[store.BatchFields](r.Batch)
+	require.NoError(t, err)
+	return f.State
+}
+
+func finishRun(t *testing.T, admin *rpc.Client, r rpc.RunResult) {
+	t.Helper()
+	for _, s := range r.Steps {
+		closeStep(t, admin, s.ID, "done")
+	}
+}
+
+// TestBatchStateDone: open, running on first claim, blocked-by shown,
+// done and closed with the last run.
+func TestBatchStateDone(t *testing.T) {
+	admin := runRoot(t)
+	r := startBatch(t, admin, rpc.BatchStartParams{Key: "track", Workflow: "pr", Issues: []string{"1", "2"}, Order: []string{"1>2"}})
+	a, b := r.Runs[0], r.Runs[1]
+
+	s := showBatch(t, admin, "track")
+	assert.Equal(t, store.BatchOpen, batchState(t, s))
+	assert.Equal(t, []string{"1"}, s.BlockedBy[b.Run.ID])
+	assert.Empty(t, s.BlockedBy[a.Run.ID])
+
+	require.NoError(t, claimID(t, admin, a.Steps[0].ID))
+	assert.Equal(t, store.BatchRunning, batchState(t, showBatch(t, admin, r.Batch.ID)))
+
+	finishRun(t, admin, a)
+	s = showBatch(t, admin, r.Batch.ID)
+	assert.Equal(t, store.BatchRunning, batchState(t, s))
+	assert.Empty(t, s.BlockedBy[b.Run.ID])
+	assert.Equal(t, store.StatusOpen, s.Batch.Status)
+
+	finishRun(t, admin, b)
+	s = showBatch(t, admin, r.Batch.ID)
+	assert.Equal(t, store.BatchDone, batchState(t, s))
+	assert.Equal(t, store.StatusClosed, s.Batch.Status)
+	assert.Equal(t, "done", s.Batch.Resolution)
+
+	var open []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodBatchList, rpc.BatchListParams{Project: "js"}, &open))
+	assert.Empty(t, open)
+}
+
+// TestBatchStateNeedsHuman: an exhausted member step makes the batch
+// needs_human with no escalation of its own; run resume recovers it.
+func TestBatchStateNeedsHuman(t *testing.T) {
+	admin := runRoot(t)
+	r := startBatch(t, admin, rpc.BatchStartParams{Key: "k", Workflow: "pr", Issues: []string{"1", "2"}})
+	a := r.Runs[0]
+	for range 3 {
+		require.NoError(t, claimID(t, admin, a.Steps[0].ID))
+		closeStep(t, admin, a.Steps[0].ID, "failed")
+	}
+	assert.Equal(t, store.RunNeedsHuman, runState(t, showRun(t, admin, a.Run.ID)))
+	s := showBatch(t, admin, r.Batch.ID)
+	assert.Equal(t, store.BatchNeedsHuman, batchState(t, s))
+	assert.Equal(t, store.StatusOpen, s.Batch.Status)
+
+	var esc []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Project: "js", Label: "needs-human"}, &esc))
+	require.Len(t, esc, 1, "one escalation, for the run only")
+	assert.Equal(t, "Escalate run "+a.Run.ID, esc[0].Title)
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: a.Run.ID}, nil))
+	assert.Equal(t, store.BatchRunning, batchState(t, showBatch(t, admin, r.Batch.ID)))
+}
+
+// TestBatchStateFailed: a member run cancelled closes the batch failed.
+func TestBatchStateFailed(t *testing.T) {
+	admin := runRoot(t)
+	r := startBatch(t, admin, rpc.BatchStartParams{Key: "k", Workflow: "pr", Issues: []string{"1", "2"}})
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunCancel, rpc.IDParams{ID: r.Runs[1].Run.ID}, nil))
+	s := showBatch(t, admin, r.Batch.ID)
+	assert.Equal(t, store.BatchFailed, batchState(t, s))
+	assert.Equal(t, store.StatusClosed, s.Batch.Status)
+	assert.Equal(t, "failed", s.Batch.Resolution)
+}
+
+// TestBatchList lists open batches only.
+func TestBatchList(t *testing.T) {
+	admin := runRoot(t)
+	r := startBatch(t, admin, rpc.BatchStartParams{Key: "k", Workflow: "pr", Issues: []string{"1"}})
+	var open []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodBatchList, rpc.BatchListParams{}, &open))
+	require.Len(t, open, 1)
+	assert.Equal(t, r.Batch.ID, open[0].ID)
+}

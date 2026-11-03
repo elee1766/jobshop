@@ -59,6 +59,8 @@ const (
 	MethodRunCancel        = "run.cancel"
 	MethodRunResume        = "run.resume"
 	MethodBatchStart       = "batch.start"
+	MethodBatchShow        = "batch.show"
+	MethodBatchList        = "batch.list"
 	MethodPoolList         = "pool.list"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
@@ -610,6 +612,15 @@ type BatchResult struct {
 	Existing bool `json:"existing,omitempty"`
 	// Adopted lists runs that existed and were re-parented.
 	Adopted []string `json:"adopted,omitempty"`
+	// BlockedBy maps a member run id to the issues of other members whose
+	// open steps block its current step (batch.show only).
+	BlockedBy map[string][]string `json:"blocked_by,omitempty"`
+}
+
+// BatchListParams selects open batches.
+type BatchListParams struct {
+	Project string `json:"project,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
 }
 
 // RunListParams selects runs. State is a store.Run* value.

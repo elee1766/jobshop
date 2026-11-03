@@ -45,10 +45,10 @@ func (c *Controller) stepEvents(ctx context.Context, ids []string) {
 // checkRun escalates a running run with an exhausted step, then completes
 // it when every step closed done.
 func (c *Controller) checkRun(ctx context.Context, runID string) {
-	if c.escalateRun(ctx, runID) {
-		return
+	if !c.escalateRun(ctx, runID) {
+		c.completeRun(ctx, runID)
 	}
-	c.completeRun(ctx, runID)
+	c.runBatchEvent(ctx, runID)
 }
 
 // exhaustedStep is a step closed failed at its retry limit.
