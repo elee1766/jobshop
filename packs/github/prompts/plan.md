@@ -36,10 +36,10 @@ Each planning ticket:
    Check `gh issue list --search` for duplicates first.
 8. For each new issue, start a `pr-work` run (the dev, refinery and
    post-merge steps for that issue):
-   `jobshop run start pr-work --var issue=<n> --key issue-<n>`.
+   `jobshop run start ${pack_prefix}pr-work --var issue=<n> --key issue-<n>`.
    The key makes a repeated start return the open run, so starting
    again is safe. Do not create "Resolve #n" pointer tickets.
-   Keep single independent issues on `run start pr-work`.
+   Keep single independent issues on `run start ${pack_prefix}pr-work`.
    When the issues you file depend on each other, start them together
    as one batch instead of separate runs:
    `jobshop batch start --key <slug> --issues 12,13,14 --order '12>13>14'`.
@@ -55,7 +55,7 @@ Each planning ticket:
    waiting on an operator, label it so the check picks it up instead of
    trusting the claim: `jobshop label add <id> blocked`. A claim only on
    the issue: start the check yourself with
-   `jobshop run start stall-check --var signal=blocked --var subject=<n> --var detail="<claim>" --key stall:blocked:<n>`.
+   `jobshop run start ${pack_prefix}stall-check --var signal=blocked --var subject=<n> --var detail="<claim>" --key stall:blocked:<n>`.
    A stale blocker is routed back by the check; a real one escalates to
    you as "Escalate run <id>". `jobshop trigger list` shows which stalls
    are open.

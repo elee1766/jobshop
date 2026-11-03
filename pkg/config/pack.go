@@ -22,6 +22,10 @@ type PackRef struct {
 	Path string `yaml:"path"`
 	// Vars fill ${name} references in the pack's string values.
 	Vars map[string]any `yaml:"vars"`
+	// Prefix renames everything the pack and its bases declare (see
+	// prefixLayers), so one pack can be included once per repo. Only
+	// in jobshop.yaml's packs list; bases inherit it.
+	Prefix string `yaml:"prefix,omitempty"`
 }
 
 // packFile is the schema of pack.yaml: the mergeable jobshop.yaml sections,
@@ -94,9 +98,15 @@ func parseFile(path string, b []byte) (*Config, error) {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(dir, p)
 		}
-		layers, err := loadPack(p, ref.Vars, 0)
+		if ref.Prefix != "" && !prefixPattern.MatchString(ref.Prefix) {
+			return nil, fmt.Errorf("%s: packs[%d]: prefix %q must match %s", name, i, ref.Prefix, prefixPattern)
+		}
+		layers, err := loadPack(p, ref.Vars, ref.Prefix, 0)
 		if err != nil {
 			return nil, err
+		}
+		if ref.Prefix != "" {
+			prefixLayers(layers, ref.Prefix)
 		}
 		for _, l := range layers {
 			mergeInto(merged, l.m, l.file, sources)
@@ -125,7 +135,7 @@ func parseFile(path string, b []byte) (*Config, error) {
 // loadPack reads dir/pack.yaml, substitutes vars, resolves prompt_file and
 // checks the schema. It returns the extended packs' layers first, then its
 // own. Errors name the pack file.
-func loadPack(dir string, given map[string]any, depth int) ([]packLayer, error) {
+func loadPack(dir string, given map[string]any, prefix string, depth int) ([]packLayer, error) {
 	file := filepath.Join(dir, PackFileName)
 	if depth > maxPackDepth {
 		return nil, fmt.Errorf("%s: extends nested more than %d deep (a cycle?)", file, maxPackDepth)
@@ -156,10 +166,14 @@ func loadPack(dir string, given map[string]any, depth int) ([]packLayer, error) 
 	for k, v := range given {
 		vars[k] = v
 	}
+	vars[PackPrefixVar] = prefix
 	var layers []packLayer
 	for i, ref := range head.Extends {
 		if ref.Path == "" {
 			return nil, fmt.Errorf("%s: extends[%d]: path is required", file, i)
+		}
+		if ref.Prefix != "" {
+			return nil, fmt.Errorf("%s: extends[%d]: prefix is only allowed in jobshop.yaml packs", file, i)
 		}
 		p := ref.Path
 		if !filepath.IsAbs(p) {
@@ -171,7 +185,7 @@ func loadPack(dir string, given map[string]any, depth int) ([]packLayer, error) 
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
 		bvars, _ := bv.(map[string]any)
-		base, err := loadPack(p, bvars, depth+1)
+		base, err := loadPack(p, bvars, prefix, depth+1)
 		if err != nil {
 			return nil, err
 		}
@@ -407,4 +421,74 @@ func isMergedSection(k string) bool {
 		}
 	}
 	return false
+}
+
+// PackPrefixVar is set in every pack layer to the including reference's
+// prefix ("" without one), so prompts name the pack's own pools and
+// workflows (#184).
+const PackPrefixVar = "pack_prefix"
+
+// prefixPattern keeps prefixed names within namePattern's charset.
+var prefixPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,15}$`)
+
+// prefixLayers renames the pools, agents, triggers and workflows the
+// layers declare to prefix+name, and rewrites the references between
+// them (pool agent, step pool, escalate_pool, trigger when.pool,
+// ticket.pool and run.workflow). Names the pack does not declare (host
+// pools and agents) are left alone. This lets one pack, such as
+// packs/github, be included once per repo (#184).
+func prefixLayers(layers []packLayer, prefix string) {
+	declared := map[string]map[string]bool{}
+	for _, s := range mergedSections {
+		declared[s] = map[string]bool{}
+	}
+	for _, l := range layers {
+		for _, s := range mergedSections {
+			sm, _ := l.m[s].(map[string]any)
+			for n := range sm {
+				declared[s][n] = true
+			}
+		}
+	}
+	ren := func(m map[string]any, key, section string) {
+		if v, ok := m[key].(string); ok && declared[section][v] {
+			m[key] = prefix + v
+		}
+	}
+	for _, l := range layers {
+		for _, s := range mergedSections {
+			sm, ok := l.m[s].(map[string]any)
+			if !ok {
+				continue
+			}
+			out := make(map[string]any, len(sm))
+			for n, e := range sm {
+				em, _ := e.(map[string]any)
+				switch {
+				case em == nil:
+				case s == "pools":
+					ren(em, "agent", "agents")
+				case s == "workflows":
+					ren(em, "escalate_pool", "pools")
+					steps, _ := em["steps"].([]any)
+					for _, st := range steps {
+						if sm, ok := st.(map[string]any); ok {
+							ren(sm, "pool", "pools")
+						}
+					}
+				case s == "triggers":
+					for _, k := range []string{"when", "ticket"} {
+						if m, ok := em[k].(map[string]any); ok {
+							ren(m, "pool", "pools")
+						}
+					}
+					if m, ok := em["run"].(map[string]any); ok {
+						ren(m, "workflow", "workflows")
+					}
+				}
+				out[prefix+n] = e
+			}
+			l.m[s] = out
+		}
+	}
 }
