@@ -344,6 +344,11 @@ func (r *runner) finish(resolution, reason string) {
 	r.lifecycle("end", telemetry.AttrResolution.String(resolution))
 	stopHost(r.dir)
 	ctx := context.WithoutCancel(r.ctx)
+	if resolution == resolutionCrashed {
+		// Pause before closing: a closed session frees a pool slot, and a
+		// supervisor tick before the pause would start another (#237).
+		r.c.poolCrashed(r.pool)
+	}
 	r.c.metrics.SessionsEnded.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
 		telemetry.AttrResolution.String(resolution)))
 	if _, err := r.c.store.CloseTicket(ctx, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
@@ -356,9 +361,6 @@ func (r *runner) finish(resolution, reason string) {
 		_, _ = r.c.store.AddComment(ctx, "controller", r.id, reason)
 	}
 	if resolution == resolutionCrashed {
-		// Pause first: the release makes the ticket ready, and a supervisor
-		// tick in between would start another session.
-		r.c.poolCrashed(r.pool)
 		r.c.crashRelease(ctx, r.id)
 	}
 	r.c.endSession(ctx, r.id, "session "+resolution)
