@@ -6,6 +6,11 @@ defaults:
   refinery_sessions: 1
   memory_dir: ""
   memory_cap: 2200
+  # Curator (#273): start a curate pass once this many open learnings
+  # were recorded since the last pass, or daily when at least one was.
+  curate_min_learnings: 10
+  curate_every: 24h
+  learn_sessions: 1
 extends:
   - path: ../github
     vars:
@@ -41,6 +46,35 @@ extends:
 # memory/global.md, memory/repo/<owner>__<name>.md, memory/pool/<name>.md
 # and skills/<name>/SKILL.md. Empty (the default) adds nothing. On
 # gasserver it is a clone of elee1766/jobshop (its memory/ and skills/).
+# Curator (#273): a learn pool and a curate workflow, started by the
+# curate trigger. Selfdev, not operator: the edits land in this repo's
+# memory/ and packs/ through its pr-work. The open run holds the trigger
+# and its key dedups, so one curate run is open at a time.
+pools:
+  learn:
+    agent: ${agent}
+    repo: ${repo}
+    ref: origin/master
+    max_sessions: ${learn_sessions}
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/learn.md
+workflows:
+  curate:
+    escalate_pool: plan
+    steps:
+      - id: curate
+        pool: learn
+        retries: 1
+        title: "Curate learnings"
+        prompt_file: prompts/curate.md
+triggers:
+  curate:
+    when:
+      learnings: {min: "${curate_min_learnings}", every: "${curate_every}"}
+    run:
+      workflow: curate
+      key: curate
 prompt_rules:
   - name: selfdev-memory
     at: system

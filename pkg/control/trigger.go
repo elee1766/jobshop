@@ -130,6 +130,18 @@ func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Tri
 		return st, err
 	}
 
+	if l := tr.When.Learnings; l != nil {
+		var since time.Time
+		if lastT != nil {
+			since = lastT.CreatedAt
+		}
+		why, err := c.learningsHold(ctx, *l, since, now)
+		if err != nil || why != "" {
+			st.why = why
+			return st, err
+		}
+	}
+
 	// Last, so the command runs only when everything else holds.
 	if tr.When.Check != "" {
 		key, why, err := c.runCheck(ctx, tr.When)
@@ -165,6 +177,30 @@ func cronNext(w config.TriggerWhen, t time.Time) time.Time {
 		return time.Time{}
 	}
 	return sched.Next(t.In(loc))
+}
+
+// learningsHold returns "" when enough open learnings were recorded since
+// the last fire (#273): at least l.Min, or at least one once l.Every has
+// passed. A trigger that never fired (zero since) counts every open one
+// and its every is due.
+func (c *Controller) learningsHold(ctx context.Context, l config.LearningsWhen, since, now time.Time) (string, error) {
+	from := since
+	if !from.IsZero() {
+		// Strictly after the last fire: one recorded in the same
+		// millisecond belongs to that pass.
+		from = from.Add(time.Millisecond)
+	}
+	n, err := c.store.CountLearnings(ctx, from, store.LearningOpen)
+	if err != nil {
+		return "", err
+	}
+	if n >= l.Min {
+		return "", nil
+	}
+	if l.Every != "" && n > 0 && !now.Before(since.Add(config.Duration(l.Every, 0))) {
+		return "", nil
+	}
+	return fmt.Sprintf("open learnings %d is below %d", n, l.Min), nil
 }
 
 // countsHold returns "" when every count threshold in w holds, else the

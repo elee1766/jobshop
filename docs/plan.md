@@ -289,6 +289,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/265-recall.md`).
 - Reverted pr-work PRs recorded as `correction` learnings from the
   activity feed (#272, `docs/notes/272-revert-learnings.md`).
+- Curator: `learn` pool, `curate` workflow and learnings trigger in
+  selfdev, `jobshop learn update` (#273, `docs/notes/273-curator.md`).
 
 ## 5. What's next
 
@@ -397,8 +399,9 @@ Activity feed live check and rate-limit measurement on gasserver:
 `docs/verify/activity-feed.md` (#255).
 Pre-switch config check on the next pack var change:
 `docs/verify/deploy-config-check.md` (#261).
-Learning loop (#247 B): capture (#264) and the nudge (#271) are built; next memory files and
-skills, then the curator. Reverted PRs as learnings are built (#272).
+Learning loop (#247 B): capture (#264), the nudge (#271), memory,
+recall, reverted PRs as learnings (#272) and the curator are built;
+curator live check `docs/verify/curator.md` (#273).
 Recall live check after the next self-deploy: `docs/verify/recall.md` (#265).
 
 **Later.** Postgres backend against the same conformance suite.
@@ -861,6 +864,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   here cannot see them; a check before the switch is cheaper and clearer
   than a switch and rollback. A pack var rename keeps the old name for a
   release through `renamed_vars`.
+- The curator (2026-11-04, #273) is a selfdev workflow fired by a
+  `when.learnings` trigger condition, not a cron plus check: the count
+  is a store query, so no shell. Learning outcomes are set by the next
+  pass (`learn update`), not by a merge hook, so reverts are seen too.
 
 ## 7. Reference: behavior as built
 

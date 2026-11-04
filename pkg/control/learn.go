@@ -57,6 +57,47 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 	return c.store.Learnings(ctx, f)
 }
 
+// learnUpdate sets status and PR on learnings (#273). Open to every
+// session: the curator marks the PR it opened, the refinery or the next
+// curate pass marks the outcome. A rejected learning must name its PR, so
+// the curator can see what was turned down.
+func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdateParams) (any, error) {
+	if len(p.IDs) == 0 {
+		return nil, fmt.Errorf("%w: learn update needs at least one id", store.ErrInvalid)
+	}
+	if p.Status == "" && strings.TrimSpace(p.PR) == "" {
+		return nil, fmt.Errorf("%w: learn update needs --status or --pr", store.ErrInvalid)
+	}
+	cur := make([]store.Learning, 0, len(p.IDs))
+	for _, id := range p.IDs {
+		l, err := c.store.GetLearning(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		st, pr := l.Status, l.PR
+		if p.Status != "" {
+			st = p.Status
+		}
+		if strings.TrimSpace(p.PR) != "" {
+			pr = p.PR
+		}
+		if st == store.LearningRejected && strings.TrimSpace(pr) == "" {
+			return nil, fmt.Errorf("%w: learning %d: rejected needs --pr", store.ErrInvalid, id)
+		}
+		l.Status, l.PR = st, pr
+		cur = append(cur, l)
+	}
+	out := make([]store.Learning, 0, len(cur))
+	for _, l := range cur {
+		u, err := c.store.UpdateLearning(ctx, l.ID, l.Status, l.PR)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
 // learnScope is the narrowest scope a ticket names: its repo (from its
 // meta or its run's), else its pool, else global.
 func (c *Controller) learnScope(ctx context.Context, t store.Ticket) string {

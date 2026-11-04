@@ -22,6 +22,9 @@ Jobshop's values, through `extends:` in `pack.yaml`:
 | `repo` | Main checkout of github.com/elee1766/jobshop; sessions get worktrees of it |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
+| `learn_sessions` | `max_sessions` for the curator's `learn` pool. Default 1 |
+| `curate_min_learnings` | Open learnings since the last pass that start a `curate` run. Default 10 |
+| `curate_every` | Start a pass after this long when at least one learning is open. Default 24h |
 
 ```yaml
 packs:

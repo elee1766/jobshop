@@ -87,11 +87,12 @@ func TestRecallBackfill(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	// Roll the index back to before 00004, as on a database from an older
-	// release, then reopen to migrate forward.
+	// Roll the index back to before 00004 (and later migrations), as on a
+	// database from an older release, then reopen to migrate forward.
 	db, err := sql.Open("sqlite", "file:"+path)
 	require.NoError(t, err)
 	for _, q := range []string{
+		"ALTER TABLE learnings DROP COLUMN pr", "DELETE FROM goose_db_version WHERE version_id = 5",
 		"DROP TRIGGER recall_learning_delete", "DROP TRIGGER recall_learning_update",
 		"DROP TRIGGER recall_learning_insert",
 		"DROP TRIGGER recall_comment_delete", "DROP TRIGGER recall_comment_update",
