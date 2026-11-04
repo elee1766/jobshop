@@ -26,6 +26,10 @@ type linearCmd struct {
 	Search   linearSearchCmd   `cmd:"" help:"Search a team's issues as JSON, one page at a time."`
 	Catalog  linearCatalogCmd  `cmd:"" help:"List a team's projects, labels, states or users as JSON."`
 	Eligible linearEligibleCmd `cmd:"" help:"Intake gate: print whether an issue may start a run and why not. Exits 1 when not eligible."`
+	Create   linearCreateCmd   `cmd:"" help:"Create an issue. --key makes a retry return the first result."`
+	Update   linearUpdateCmd   `cmd:"" help:"Change title, state, assignee or labels; reads the issue back to verify."`
+	Ask      linearAskCmd      `cmd:"" help:"Comment a question, mentioning users so they are notified."`
+	Relate   linearRelateCmd   `cmd:"" help:"Mark an issue as blocking or related to another."`
 }
 
 type linearIssueCmd struct {

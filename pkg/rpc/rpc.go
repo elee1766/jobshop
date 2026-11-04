@@ -82,6 +82,8 @@ const (
 	MethodLearnUpdate      = "learn.update"
 	MethodLearnEvaluate    = "learn.evaluate"
 	MethodLearnEdits       = "learn.edits"
+	MethodWriteKeyClaim    = "writekey.claim"
+	MethodWriteKeyFinish   = "writekey.finish"
 )
 
 // Activity sources (#255).
@@ -1195,4 +1197,14 @@ type LearnEvaluateParams struct {
 type LearnEditsParams struct {
 	State string `json:"state,omitempty"`
 	Limit int    `json:"limit,omitempty"`
+}
+
+// WriteKeyParams claims or finishes an idempotency key for a tracker
+// write (#280). Claim needs Key and Op; Finish needs Key and Result. The
+// result of both is the stored store.WriteKey. Keys are namespaced by
+// project, so two projects may use the same key.
+type WriteKeyParams struct {
+	Key    string `json:"key"`
+	Op     string `json:"op,omitempty"`
+	Result string `json:"result,omitempty"`
 }

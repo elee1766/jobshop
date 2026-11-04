@@ -330,6 +330,12 @@ type Store interface {
 	// SetMemoryEditResult stores the gate's decision and writes it on
 	// each cited learning's gate.
 	SetMemoryEditResult(ctx context.Context, id int64, state string, after PoolMetrics, reason string) (MemoryEdit, error)
+	// ClaimWriteKey returns the write stored under key, inserting it
+	// pending when new (#280).
+	ClaimWriteKey(ctx context.Context, key, op, actor string) (WriteKey, error)
+	// FinishWriteKey stores a pending write's result; a done key keeps
+	// its first result.
+	FinishWriteKey(ctx context.Context, key, result string) (WriteKey, error)
 	// IndexRecall adds or replaces (by kind and ref) one document in the
 	// recall index. Comments are indexed by the backend itself.
 	IndexRecall(ctx context.Context, d RecallDoc) error
