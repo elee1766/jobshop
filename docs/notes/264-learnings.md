@@ -30,5 +30,6 @@
   - a stall trigger firing: one `failure` with signal, subject and detail.
 - The operator prompt records every operator correction with
   `jobshop learn correction` before making it durable.
-- Follow-up: reverted PRs as learnings need a revert detector (a
-  subscription or the activity feed); not built here.
+- Reverted PRs (#272, `docs/notes/272-revert-learnings.md`): the
+  activity feed records one `correction` when a merged PR reverts a PR
+  merged through a pr-work run.

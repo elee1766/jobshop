@@ -287,6 +287,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   learnings,
   with a pack prompt rule to use it on failures (#265,
   `docs/notes/265-recall.md`).
+- Reverted pr-work PRs recorded as `correction` learnings from the
+  activity feed (#272, `docs/notes/272-revert-learnings.md`).
 
 ## 5. What's next
 
@@ -396,7 +398,7 @@ Activity feed live check and rate-limit measurement on gasserver:
 Pre-switch config check on the next pack var change:
 `docs/verify/deploy-config-check.md` (#261).
 Learning loop (#247 B): capture (#264) and the nudge (#271) are built; next memory files and
-skills, then the curator. Reverted PRs as learnings are a follow-up.
+skills, then the curator. Reverted PRs as learnings are built (#272).
 Recall live check after the next self-deploy: `docs/verify/recall.md` (#265).
 
 **Later.** Postgres backend against the same conformance suite.
@@ -820,6 +822,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Learnings are rows of a `learnings` store table (2026-11-04, #264),
   not non-claimable tickets: no pool, ready list or stall check can see
   them, and they add no history rows or change events.
+- Reverts are detected from the activity feed's merge items (2026-11-04,
+  #272), not subscriptions: the feed already polls every worked repo with
+  ETags and sees merges by anyone.
 - Recall (2026-11-04, #265) is one FTS5 table in the store, not a
   separate index file: comments stay current through SQL triggers in the
   same transaction, and journals are summarized (`acphost.Summarize`)

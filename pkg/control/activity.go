@@ -105,6 +105,19 @@ func (s *activityState) save() error {
 	return os.Rename(tmp, s.path)
 }
 
+// unseen returns the items not yet in the cache.
+func (s *activityState) unseen(items []rpc.ActivityItem) []rpc.ActivityItem {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []rpc.ActivityItem
+	for _, it := range items {
+		if _, ok := s.seen[it.ID]; !ok {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
 // add merges new items and trims to the window and per-source bound.
 // It returns how many were new.
 func (s *activityState) add(items []rpc.ActivityItem, now time.Time, window time.Duration, maxPer int) int {
@@ -177,7 +190,11 @@ func (c *Controller) pollActivity(ctx context.Context, s *activityState, src act
 		}
 		items, err := src.GitHub(ctx, repo, rp)
 		c.activityErr(s, "github:"+repo, err)
+		fresh := s.unseen(items)
 		added += s.add(items, now, window, maxPer)
+		if rs, ok := src.(revertSource); ok {
+			c.checkReverts(ctx, rs, fresh)
+		}
 	}
 	for _, team := range cfg.ActivityTeams() {
 		since, ok := s.Teams[team]
@@ -488,6 +505,43 @@ func (l *liveActivity) fetchGitHub(ctx context.Context, base, tok, repo string, 
 		}
 		out = append(out, items...)
 		st.RunsETag = h.Get("ETag")
+	}
+	return out, nil
+}
+
+// PullRequest reads one PR for revert detection (#272).
+func (l *liveActivity) PullRequest(ctx context.Context, repo string, n int) (ghPR, error) {
+	base, tok, err := l.githubAuth(ctx, repo)
+	if err != nil {
+		return ghPR{}, err
+	}
+	b, _, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, n), tok, "")
+	if err != nil {
+		return ghPR{}, err
+	}
+	var pr ghPR
+	return pr, json.Unmarshal(b, &pr)
+}
+
+// CommitPulls lists the PRs a commit is associated with.
+func (l *liveActivity) CommitPulls(ctx context.Context, repo, sha string) ([]int, error) {
+	base, tok, err := l.githubAuth(ctx, repo)
+	if err != nil {
+		return nil, err
+	}
+	b, _, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/commits/%s/pulls", base, repo, url.PathEscape(sha)), tok, "")
+	if err != nil {
+		return nil, err
+	}
+	var prs []struct {
+		Number int `json:"number"`
+	}
+	if err := json.Unmarshal(b, &prs); err != nil {
+		return nil, err
+	}
+	out := make([]int, len(prs))
+	for i, p := range prs {
+		out[i] = p.Number
 	}
 	return out, nil
 }
