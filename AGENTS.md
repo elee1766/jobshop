@@ -26,13 +26,16 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
 
 ## Nix
 
-CI also runs `nix build .#jobshop` (`nix/package.nix`, `buildGo127Module`).
+CI also runs `nix build .#jobshop` (`nix/package.nix`). With go2nix's plugin
+loaded (`plugin-files`, from `nix build .#go2nix-plugin`, Nix 2.34+) it builds
+one derivation per Go package; without it, one `buildGo127Module` derivation.
 
-- Any change to `go.mod` or `go.sum` changes the module vendor hash. Update
-  `vendorHash` in `nix/package.nix` in the same commit, or the nix CI job
-  fails with `hash mismatch in fixed-output derivation`.
-- Get the new hash locally: set `vendorHash = lib.fakeHash;`, run
-  `nix build .#jobshop 2>&1 | grep got:`, paste the `got:` value back. Then
+- Any change to `go.mod` or `go.sum` changes the fallback builder's vendor
+  hash. Update `vendorHash` in `nix/package.nix` in the same commit, or the
+  nix CI job fails with `hash mismatch in fixed-output derivation`. go2nix
+  needs nothing: it reads `go.sum`.
+- Get the new hash locally, without the plugin: set `vendorHash =
+  lib.fakeHash;`, run `nix build .#jobshop.goModules 2>&1 | grep got:`, paste the `got:` value back. Then
   `nix build .#jobshop && ./result/bin/jobshop version` must pass.
 - The package source is a fileset of `go.mod`, `go.sum`, `cmd/` and `pkg/`.
   A new top-level directory the binary needs (embedded files, testdata used

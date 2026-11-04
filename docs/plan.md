@@ -343,6 +343,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   its own path, secret and GitHub repo allowlist, spooled into a
   separate SQLite database; the controller's Linear webhook shares the
   handler (#334, #339, `docs/notes/334-ingest-spool.md`).
+- go2nix per-package Nix build with a buildGoModule fallback; CI on
+  Ubicloud runners (`docs/notes/go2nix.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).

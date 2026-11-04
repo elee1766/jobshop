@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   go:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-8
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -43,19 +43,30 @@ jobs:
         run: shellcheck -s sh deploy/*.sh
 
   nix:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-8
     permissions:
       contents: read
       actions: read # hestia: detect evicted cache entries upfront
     steps:
       - uses: actions/checkout@v5
       - uses: cachix/install-nix-action@v31
+        with:
+          # go2nix's plugin needs Nix 2.34, the Nix it is built against.
+          install_url: https://releases.nixos.org/nix/nix-2.34.9/install
       # Binary cache in the GitHub Actions cache: uploads each path this job
       # builds (the vendored-modules derivation, jobshop) and substitutes them
       # next run. Paths cache.nixos.org already serves are not stored.
       - uses: Mic92/hestia/action@v3
         with:
           upstream-cache-filter: true
+      # The fallback builder (hosts without the plugin) pins a vendorHash.
+      # Building only its vendored modules checks the pin; it is cached
+      # until go.sum changes.
+      - run: nix build .#jobshop.goModules --print-build-logs
+      # Loads go2nix's plugin so jobshop builds one derivation per Go package,
+      # each cached on its own by hestia.
+      - name: go2nix plugin
+        run: echo "plugin-files = $(nix build --no-link --print-out-paths .#go2nix-plugin)/lib/nix/plugins/libgo2nix_plugin.so" | sudo tee -a /etc/nix/nix.conf
       - run: nix build .#jobshop --print-build-logs
       - run: ./result/bin/jobshop version
       # NixOS module evaluation checks (nix/module-test.nix).
@@ -64,7 +75,7 @@ jobs:
   # Desk's built UI is committed in pkg/desk/dist and embedded (#208):
   # svelte-check must pass and the committed build must match ui/src.
   ui:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     defaults:
       run:
         working-directory: ui
