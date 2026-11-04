@@ -1122,18 +1122,28 @@ func TestSessionRestartIdle(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketUpdate, rpc.UpdateParams{ID: held.ID, DeferUntil: &later}, nil))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: held.ID, Holder: id}, nil))
 
-	// Change the agent's env in the config and reload: the running host
-	// keeps its old spec until the restart.
+	// Change the agent's env in the config and reload. The idle runner
+	// re-checks the env hash on every poll (#106) and refreshes the host
+	// by itself, so wait for that before restarting: asserting the old
+	// spec right after the reload raced the refresh (#327).
+	oldSpec, err := hostspec.Read(sdir)
+	require.NoError(t, err)
+	require.NotContains(t, oldSpec.Env, "RESTART_MARK=1")
 	cfgPath := filepath.Join(root.Dir, config.FileName)
 	b, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
 	b = []byte(strings.Replace(string(b), "    args: [fake-agent]\n", "    args: [fake-agent]\n    env: {RESTART_MARK: \"1\"}\n", 1))
 	require.NoError(t, os.WriteFile(cfgPath, b, 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
-	spec, err := hostspec.Read(sdir)
+	require.Eventually(t, func() bool {
+		s, err := hostspec.Read(sdir)
+		p := hostPidOf(t, sdir)
+		return err == nil && slices.Contains(s.Env, "RESTART_MARK=1") && p != 0 && p != pid && host.Alive(sdir)
+	}, 20*time.Second, 50*time.Millisecond, "reload refreshed the host")
+	refreshed, err := hostspec.Read(sdir)
 	require.NoError(t, err)
-	require.NotContains(t, spec.Env, "RESTART_MARK=1")
-	oldHash := spec.EnvHash
+	assert.NotEqual(t, oldSpec.EnvHash, refreshed.EnvHash, "fresh spec")
+	pid = hostPidOf(t, sdir)
 
 	var res rpc.SessionRestartResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, &res))
@@ -1144,7 +1154,6 @@ func TestSessionRestartIdle(t *testing.T) {
 	}, 20*time.Second, 50*time.Millisecond, "host respawned")
 	s, err := hostspec.Read(sdir)
 	require.NoError(t, err)
-	assert.NotEqual(t, oldHash, s.EnvHash, "fresh spec")
 	assert.Contains(t, s.Env, "RESTART_MARK=1", "spec reflects the reloaded config")
 
 	got := show(held.ID)
