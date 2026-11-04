@@ -119,3 +119,18 @@ func TestBatchShowListParse(t *testing.T) {
 	r = parse(t, "batch", "list", "--project", "js")
 	assert.Equal(t, "js", r.Batch.List.Project)
 }
+
+// TestPrintRunGraph renders needs, when and outcome (#385).
+func TestPrintRunGraph(t *testing.T) {
+	rf, _ := json.Marshal(store.RunFields{Workflow: "g", State: store.RunRunning})
+	s0, _ := json.Marshal(store.StepFields{Step: "review", Index: 1, Needs: []string{"build"}, Outcome: "approve"})
+	s1, _ := json.Marshal(store.StepFields{Step: "rollout", Index: 2, Needs: []string{"review", "device"},
+		When: &store.StepWhen{Step: "review", Outcome: "approve"}})
+	var buf bytes.Buffer
+	require.NoError(t, printRun(&buf, rpc.RunResult{
+		Run:   store.Ticket{ID: "js-r", Fields: rf},
+		Steps: []store.Ticket{{ID: "js-a", Fields: s0}, {ID: "js-b", Fields: s1}},
+	}))
+	assert.Contains(t, buf.String(), "needs build  outcome approve")
+	assert.Contains(t, buf.String(), "needs review,device  when review=approve")
+}

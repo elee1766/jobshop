@@ -138,8 +138,19 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 		if holder == "" {
 			holder = "-"
 		}
-		if _, err := fmt.Fprintf(w, "%d  %-12s %s  pool %s  %s  %s  holder %s  failures %d/%d\n",
-			sf.Index, sf.Step, s.ID, s.Pool, s.Status, res, holder, sf.Failures, sf.Retries); err != nil {
+		line := fmt.Sprintf("%d  %-12s %s  pool %s  %s  %s  holder %s  failures %d/%d",
+			sf.Index, sf.Step, s.ID, s.Pool, s.Status, res, holder, sf.Failures, sf.Retries)
+		// The graph (#385): what the step waits on, its gate and outcome.
+		if len(sf.Needs) > 0 {
+			line += "  needs " + strings.Join(sf.Needs, ",")
+		}
+		if sf.When != nil {
+			line += fmt.Sprintf("  when %s=%s", sf.When.Step, sf.When.Outcome)
+		}
+		if sf.Outcome != "" {
+			line += "  outcome " + sf.Outcome
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
 		}
 		if len(sf.Resources) > 0 {
@@ -270,7 +281,7 @@ func printBatch(w io.Writer, r rpc.BatchResult) error {
 // done, or "" when all are done.
 func currentStepName(steps []store.Ticket) string {
 	for _, s := range steps {
-		if s.Status == store.StatusClosed && s.Resolution == "done" {
+		if store.StepFinished(s) {
 			continue
 		}
 		if sf, err := store.DecodeFields[store.StepFields](s); err == nil {

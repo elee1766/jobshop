@@ -84,8 +84,8 @@ WHERE t.project = sqlc.arg(project)
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
-      -- A step unblocks the next only when it closed done (#90).
-      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
+      -- A step unblocks the next only when it closed done or skipped (#90, #385).
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution NOT IN ('done','skipped'))))
   -- Every resource the ticket needs has a free slot (#400). Occupancy
   -- is in-progress tickets naming the same key; a key "name:..." takes
   -- the cap of "name"; a key with no cap is unlimited.
@@ -115,8 +115,8 @@ WHERE t.project = sqlc.arg(project)
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
-      -- A step unblocks the next only when it closed done (#90).
-      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
+      -- A step unblocks the next only when it closed done or skipped (#90, #385).
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution NOT IN ('done','skipped'))))
   -- Resource slots, as in ReadyTickets (#400). My own in-progress
   -- ticket already holds its slots: h.id <> t.id leaves it out.
   AND NOT EXISTS (

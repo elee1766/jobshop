@@ -45,6 +45,8 @@ func (c *Controller) stepEvents(ctx context.Context, ids []string) {
 // checkRun escalates a running run with an exhausted step, then completes
 // it when every step closed done.
 func (c *Controller) checkRun(ctx context.Context, runID string) {
+	// Gated steps are decided first: a skip may finish the run.
+	c.gateSteps(ctx, runID)
 	if !c.escalateRun(ctx, runID) {
 		c.completeRun(ctx, runID)
 	}

@@ -241,6 +241,9 @@ type UpdateParams struct {
 type CloseParams struct {
 	ID         string `json:"id,omitempty"`
 	Resolution string `json:"resolution,omitempty"` // default "done"
+	// Outcome is a step's result word (approve, reject, ...), stored in
+	// its fields for later steps' when conditions (#385). Steps only.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 // CommentParams adds a comment.
