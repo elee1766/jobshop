@@ -414,6 +414,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/404-store-core-split.md`).
 - Tests: `Options.Hosts` runs session hosts in-process for
   controller-logic tests (#361, `docs/notes/361-inproc-hosts.md`).
+- Admission releases a held inbox item back to pending once its
+  needs-human ticket is closed (#353,
+  `docs/notes/353-admission-release-held.md`).
 
 ## 5. What's next
 

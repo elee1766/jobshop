@@ -362,6 +362,10 @@ type Store interface {
 	InboxGet(ctx context.Context, id int64) (InboxItem, error)
 	// InboxList lists items newest first.
 	InboxList(ctx context.Context, f InboxFilter) ([]InboxItem, error)
+	// InboxRequeue moves an item that no one leases from state from to
+	// state to (held -> pending once a human answered, #353).
+	// ErrConflict if it is not in from or is leased.
+	InboxRequeue(ctx context.Context, id int64, from, to string) (InboxItem, error)
 	// InboxPrune deletes terminal items received before before and
 	// returns how many.
 	InboxPrune(ctx context.Context, before time.Time) (int64, error)

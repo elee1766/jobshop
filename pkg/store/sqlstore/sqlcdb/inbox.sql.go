@@ -317,6 +317,54 @@ func (q *Queries) InboxRenew(ctx context.Context, arg InboxRenewParams) (Inbox, 
 	return i, err
 }
 
+const inboxRequeue = `-- name: InboxRequeue :one
+UPDATE inbox SET state = ?1, updated_at = ?2
+WHERE id = ?3 AND state = ?4 AND (holder = '' OR lease_until <= ?2)
+RETURNING id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint, natural_key
+`
+
+type InboxRequeueParams struct {
+	ToState   string
+	Now       int64
+	ID        int64
+	FromState string
+}
+
+// Moves an unleased item from one state to another (held -> pending
+// once its needs-human ticket is answered, #353). Guarded by the
+// current state so a racing stage cannot be overwritten.
+func (q *Queries) InboxRequeue(ctx context.Context, arg InboxRequeueParams) (Inbox, error) {
+	row := q.db.QueryRowContext(ctx, inboxRequeue,
+		arg.ToState,
+		arg.Now,
+		arg.ID,
+		arg.FromState,
+	)
+	var i Inbox
+	err := row.Scan(
+		&i.ID,
+		&i.Source,
+		&i.DeliveryID,
+		&i.Kind,
+		&i.RepoOrTeam,
+		&i.Number,
+		&i.CommentID,
+		&i.Actor,
+		&i.ReceivedAt,
+		&i.Payload,
+		&i.Admitted,
+		&i.State,
+		&i.HookResults,
+		&i.Holder,
+		&i.LeaseUntil,
+		&i.Attempts,
+		&i.UpdatedAt,
+		&i.Endpoint,
+		&i.NaturalKey,
+	)
+	return i, err
+}
+
 const inboxSetState = `-- name: InboxSetState :one
 UPDATE inbox SET state = ?1,
   admitted = COALESCE(?2, admitted),
