@@ -251,7 +251,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Self-deploy rewrites a stale `deployed` file from the running binary,
   with a WARN (#225, `docs/notes/225-deploy-state.md`).
 - A turn that ends holding a ticket is released without a failure the
-  first time (#241, `docs/notes/241-unclosed-turns.md`).
+  first time (#241, `docs/notes/241-unclosed-turns.md`). The reminder
+  says no background wake comes, and the stuck reason records the last
+  turn's end (#301, `docs/notes/301-turn-end-stuck.md`).
 - Structured worker reports and questions: `jobshop report <state>`,
   `--question`, `jobshop answer`, question threads in the gateway (#186,
   `docs/notes/186-worker-reports.md`).

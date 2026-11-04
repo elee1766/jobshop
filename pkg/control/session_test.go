@@ -266,6 +266,17 @@ func TestStuck(t *testing.T) {
 		return len(sessions) > 0
 	}, 20*time.Second, 50*time.Millisecond)
 	assert.Equal(t, "stuck", sessions[0].Resolution)
+	// #301: the reminder says no wake will come, and the stuck reason
+	// records how the last turn ended.
+	b, _ := os.ReadFile(filepath.Join(root.Dir, "prompts"))
+	assert.Contains(t, string(b), "Nothing will wake you")
+	var got rpc.ShowResult
+	require.Eventually(t, func() bool {
+		return admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: sessions[0].ID}, &got) == nil && len(got.Comments) > 0
+	}, 5*time.Second, 50*time.Millisecond)
+	reason := got.Comments[len(got.Comments)-1].Body
+	assert.Contains(t, reason, "stop_reason end_turn")
+	assert.Contains(t, reason, "Waiting on the CI wake.")
 }
 
 // TestMessages delivers a queued message to an idle pool session, then an
@@ -753,6 +764,7 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	// A "noclose" file makes every turn end without touching the ticket,
 	// like an agent whose tools all fail.
 	if _, err := os.Stat("noclose"); err == nil {
+		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("Waiting on the CI wake.")})
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 	}
 	c, err := rpc.Dial(ctx, os.Getenv("JOBSHOP_SOCKET"))
