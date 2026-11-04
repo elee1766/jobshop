@@ -535,8 +535,8 @@ triggers:
     run:
       workflow: acphost-ci-repair
       vars:
-        sha: ${check_output}
-      key: ${check_output}
+        sha: <check_output>
+      key: <check_output>
     cooldown: ""
     max_runs: 0
   acphost-replan:
@@ -680,9 +680,9 @@ triggers:
     run:
       workflow: acphost-stall-check
       vars:
-        detail: ${stall_detail}
-        signal: ${stall_signal}
-        subject: ${stall_subject}
+        detail: <stall_detail>
+        signal: <stall_signal>
+        subject: <stall_subject>
       key: ""
     cooldown: 30m
     max_runs: 2
@@ -735,8 +735,8 @@ triggers:
     run:
       workflow: eng-ci-repair
       vars:
-        sha: ${check_output}
-      key: ${check_output}
+        sha: <check_output>
+      key: <check_output>
     cooldown: ""
     max_runs: 0
   eng-replan:
@@ -880,9 +880,9 @@ triggers:
     run:
       workflow: eng-stall-check
       vars:
-        detail: ${stall_detail}
-        signal: ${stall_signal}
-        subject: ${stall_subject}
+        detail: <stall_detail>
+        signal: <stall_signal>
+        subject: <stall_subject>
       key: ""
     cooldown: 30m
     max_runs: 2
@@ -935,8 +935,8 @@ triggers:
     run:
       workflow: ci-repair
       vars:
-        sha: ${check_output}
-      key: ${check_output}
+        sha: <check_output>
+      key: <check_output>
     cooldown: ""
     max_runs: 0
   replan:
@@ -1080,9 +1080,9 @@ triggers:
     run:
       workflow: stall-check
       vars:
-        detail: ${stall_detail}
-        signal: ${stall_signal}
-        subject: ${stall_subject}
+        detail: <stall_detail>
+        signal: <stall_signal>
+        subject: <stall_subject>
       key: ""
     cooldown: 30m
     max_runs: 2

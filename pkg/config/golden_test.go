@@ -65,6 +65,27 @@ packs:
 			steps[n] = append(steps[n], map[string]string{"id": s.ID, "title": title, "prompt": body})
 		}
 	}
+	// Trigger run vars and key render when the trigger fires.
+	fire := map[string]any{CheckOutputVar: "<check_output>"}
+	for _, k := range StallVars {
+		fire[k] = "<" + k + ">"
+	}
+	for n, tr := range c.Triggers {
+		if tr.Run == nil {
+			continue
+		}
+		r := *tr.Run
+		r.Vars = map[string]string{}
+		for k, v := range tr.Run.Vars {
+			r.Vars[k], err = tr.Run.Fill(v, fire)
+			require.NoError(t, err, n)
+		}
+		r.Key, err = tr.Run.Fill(r.Key, fire)
+		require.NoError(t, err, n)
+		r.Template = ""
+		tr.Run = &r
+		c.Triggers[n] = tr
+	}
 	out, err := yaml.Marshal(map[string]any{
 		"pools": c.Pools, "triggers": c.Triggers, "steps": steps,
 		"prompt_rules": c.PromptRules, "hooks": c.Hooks,

@@ -334,13 +334,13 @@ func (c *Controller) fireRun(ctx context.Context, r *config.TriggerRun, m map[st
 	tv := map[string]any{config.CheckOutputVar: strings.TrimSpace(out)}
 	p := rpc.RunStartParams{Workflow: r.Workflow, Vars: map[string]string{}}
 	for k, v := range r.Vars {
-		s, err := config.FillTemplate(v, tv)
+		s, err := r.Fill(v, tv)
 		if err != nil {
 			return store.Ticket{}, fmt.Errorf("run var %s: %w", k, err)
 		}
 		p.Vars[k] = s
 	}
-	k, err := config.FillTemplate(r.Key, tv)
+	k, err := r.Fill(r.Key, tv)
 	if err != nil {
 		return store.Ticket{}, fmt.Errorf("run key: %w", err)
 	}

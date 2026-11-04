@@ -16,14 +16,22 @@ packs:
     vars: {agent: jcode, checkout: /srv/widget}
 ```
 
-- **Vars.** `${name}` anywhere in `pack.yaml` is filled from the entry's
-  `vars`, else from the pack's `defaults:`. A var with neither is an
-  error at load. Step `title` and `prompt` keep `${...}` until run
-  start, where run vars (`--var issue=12`) fill them.
+- **Vars.** With `template: go` at the top of `pack.yaml` (#383), every
+  string in the pack and its prompt files is a Go `text/template`:
+  `{{.name}}` is filled from the entry's `vars`, else from the pack's
+  `defaults:`. A var with neither is an error at load naming the field.
+  `{{if .team}}...{{end}}`, `{{.cmd | default "make test"}}`,
+  `{{range .repos}}` and `join`, `quote`, `lower`, `indent`, `toYAML`
+  work. A value that is only `{{.n}}` keeps its type (a number stays a
+  number); quote it in YAML, since a bare `{{` starts a mapping. Write a
+  literal `{{` as `{{"{{"}}`. Step `title`, `prompt` and `pool` keep
+  their templates until run start, where run vars (`--var issue=12`) fill
+  them. Packs without `template: go` use the older `${name}` form (`$$`
+  is a literal `$`), which will be removed.
 - **`prefix:`** on a `packs:` entry renames every pool, agent, trigger
   and workflow the pack declares to `<prefix><name>` and rewrites the
   references between them. Use it to load one pack several times (one
-  instance per repo). Prompts see `${pack_prefix}`.
+  instance per repo). Prompts see `{{.pack_prefix}}`.
 - **`extends:`** in `pack.yaml` lists base packs (`path` relative to the
   pack, plus `vars`). The base loads first; the pack's own keys override
   it. `packs/selfdev` is `packs/github` with Jobshop's values.
@@ -72,14 +80,15 @@ One `work` pool, one prompt and a `change` workflow with `implement` and
 ```yaml
 # A minimal pack: one pool, one workflow with two steps.
 # Vars: agent, checkout.
+template: go
 defaults:
   sessions: 1
 pools:
   work:
-    agent: ${agent}
-    repo: ${checkout}
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
     ref: origin/main
-    max_sessions: ${sessions}
+    max_sessions: "{{.sessions}}"
     prompt_file: prompts/work.md
 workflows:
   change:
@@ -87,12 +96,12 @@ workflows:
     steps:
       - id: implement
         pool: work
-        title: "Implement: ${task}"
-        prompt: "Make this change on a new branch and push it: ${task}. Close when pushed."
+        title: "Implement: {{.task}}"
+        prompt: "Make this change on a new branch and push it: {{.task}}. Close when pushed."
       - id: review
         pool: work
-        title: "Review: ${task}"
-        prompt: "Review the branch pushed for: ${task}. Close done if it is right, failed if not."
+        title: "Review: {{.task}}"
+        prompt: "Review the branch pushed for: {{.task}}. Close done if it is right, failed if not."
 ```
 
 `packs/main/prompts/work.md`:

@@ -178,7 +178,7 @@ packs:
 	assert.Contains(t, w.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "squash", w.PackVars["merge_method"], "selfdev merges by squash")
 	assert.Empty(t, w.PackVars["required_approver"], "selfdev needs no approval")
-	assert.Contains(t, w.Steps[2].Prompt, "${deploy_check}", "filled at run start")
+	assert.Contains(t, w.Steps[2].Prompt, "{{.deploy_check}}", "filled at run start")
 	assert.Equal(t, "deploy-check", w.Steps[2].Pool, "post-merge leaves the refinery free (#167)")
 	b := c.Workflows["stall-check"]
 	require.Len(t, b.Steps, 1)
@@ -197,7 +197,7 @@ packs:
 	st := c.Triggers["stall"]
 	require.NotNil(t, st.Run)
 	assert.Equal(t, "stall-check", st.Run.Workflow)
-	assert.Equal(t, "${stall_subject}", st.Run.Vars["subject"], "stall vars survive pack substitution")
+	assert.Equal(t, "{{.stall_subject}}", st.Run.Vars["subject"], "stall vars survive pack substitution")
 	assert.Equal(t, 2, st.StallMaxRuns())
 	sigs := map[string]StallSignal{}
 	for _, s := range st.When.Stall {
@@ -213,8 +213,8 @@ packs:
 	assert.Nil(t, mr.Ticket)
 	require.NotNil(t, mr.Run, "master-red starts a run")
 	assert.Equal(t, "ci-repair", mr.Run.Workflow)
-	assert.Equal(t, "${check_output}", mr.Run.Key)
-	assert.Equal(t, map[string]string{"sha": "${check_output}"}, mr.Run.Vars)
+	assert.Equal(t, "{{.check_output}}", mr.Run.Key)
+	assert.Equal(t, map[string]string{"sha": "{{.check_output}}"}, mr.Run.Vars)
 	ci := c.Workflows["ci-repair"]
 	require.Len(t, ci.Steps, 2)
 	assert.Equal(t, "plan", ci.EscalatePool)
@@ -351,7 +351,7 @@ packs:
 	w := c.Workflows["pr-work"]
 	assert.Equal(t, "make test", w.PackVars["check_cmd"])
 	assert.Contains(t, w.PackVars["docs_rule"], "Never append a numbered section", "docs_rule default (#131)")
-	body, err := FillTemplate(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
+	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
 	require.NoError(t, err)
 	assert.Contains(t, body, "`make test`")
 	assert.Contains(t, body, "Docs: put a design note")
@@ -422,7 +422,7 @@ func TestGithubMergePolicy(t *testing.T) {
 		maps.Copy(vars, w.PackVars)
 		for _, s := range w.Steps {
 			if s.ID == step {
-				out, err := FillTemplate(s.Prompt, vars)
+				out, err := w.Render(s.Prompt, vars)
 				require.NoError(t, err)
 				return out
 			}
@@ -540,7 +540,7 @@ packs:
 	vars["issue"] = "ENG-7"
 	var bodies []string
 	for _, s := range w.Steps {
-		b, err := FillTemplate(s.Prompt, vars)
+		b, err := w.Render(s.Prompt, vars)
 		require.NoError(t, err, s.ID)
 		assert.NotContains(t, b, "gh issue", s.ID)
 		bodies = append(bodies, b)

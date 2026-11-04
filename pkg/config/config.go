@@ -152,6 +152,9 @@ type TriggerRun struct {
 	Workflow string            `yaml:"workflow"`
 	Vars     map[string]string `yaml:"vars"`
 	Key      string            `yaml:"key"`
+	// Template is the declaring pack's syntax (SyntaxGo or ""), set by
+	// the loader.
+	Template string `yaml:"template,omitempty"`
 }
 
 // CheckOutputVar is the template var holding a trigger check's output.
