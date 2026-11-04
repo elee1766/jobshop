@@ -59,6 +59,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ApplyGraph", testApplyGraph},
 		{"Resources", testResources},
 		{"PruneWriteKeys", testPruneWriteKeys},
+		{"ConcurrentClaims", testConcurrentClaims},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -405,6 +405,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Workflow step graphs: `needs:` for parallel steps, `when:` for steps
   gated on an outcome set with `close --outcome` (#385,
   `docs/notes/385-step-needs-when.md`).
+- Claims and lease sweeps are guarded single statements; ClaimNext
+  retries lost races; the store suite also runs with deferred
+  transactions on several connections (#406,
+  `docs/notes/406-store-guarded-claims.md`).
 
 ## 5. What's next
 

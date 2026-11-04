@@ -47,6 +47,53 @@ UPDATE tickets SET
   closed_at   = sqlc.arg(closed_at)
 WHERE id = sqlc.arg(id) AND revision = sqlc.arg(expected_revision);
 
+-- ClaimWriteTicket is WriteTicket for a claim (#406): the not-blocked
+-- check runs in the same statement as the write, so a blocker that
+-- reopens between the caller's read and this write fails the claim
+-- instead of leaving a blocked ticket claimed. Blockers are other rows,
+-- which the revision check alone does not cover.
+-- name: ClaimWriteTicket :execrows
+UPDATE tickets SET
+  status      = sqlc.arg(status),
+  holder      = sqlc.arg(holder),
+  lease_until = sqlc.arg(lease_until),
+  fence       = sqlc.arg(fence),
+  revision    = sqlc.arg(revision),
+  updated_at  = sqlc.arg(updated_at)
+WHERE tickets.id = sqlc.arg(id) AND tickets.revision = sqlc.arg(expected_revision)
+  AND tickets.status IN ('open', 'in_progress')
+  AND NOT EXISTS (
+    SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
+    WHERE e.from_id = tickets.id AND e.kind IN ('blocks','waits_for')
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
+  -- An open ticket also needs a free slot for each resource (#400), so
+  -- two claimers cannot both take the last slot. An in-progress resume
+  -- already holds its slots.
+  AND (tickets.status = 'in_progress' OR NOT EXISTS (
+    SELECT 1 FROM json_each(tickets.fields, '$.resources') r
+    JOIN resource_caps c ON c.name = r.value
+      OR (instr(r.value, ':') > 0 AND c.name = substr(r.value, 1, instr(r.value, ':') - 1))
+    WHERE c.capacity <= (
+      SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
+      WHERE h.status = 'in_progress' AND h.id <> tickets.id AND hr.value = r.value)));
+
+-- ExpireWriteTicket reopens a ticket only if its lease is still expired
+-- at write time (#406). Heartbeat renews a lease without a revision
+-- bump, so the revision check alone would let a sweep reopen a ticket
+-- whose holder just renewed.
+-- name: ExpireWriteTicket :execrows
+UPDATE tickets SET
+  status      = sqlc.arg(status),
+  resolution  = sqlc.arg(resolution),
+  holder      = sqlc.arg(holder),
+  lease_until = sqlc.arg(lease_until),
+  fields      = sqlc.arg(fields),
+  revision    = sqlc.arg(revision),
+  updated_at  = sqlc.arg(updated_at),
+  closed_at   = sqlc.arg(closed_at)
+WHERE id = sqlc.arg(id) AND revision = sqlc.arg(expected_revision)
+  AND status = 'in_progress' AND lease_until > 0 AND lease_until < sqlc.arg(now);
+
 -- Heartbeat renews a lease without a revision bump or history row.
 -- name: Heartbeat :execrows
 UPDATE tickets SET lease_until = sqlc.arg(lease_until), updated_at = sqlc.arg(now)
