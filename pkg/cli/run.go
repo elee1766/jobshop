@@ -142,6 +142,11 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 			sf.Index, sf.Step, s.ID, s.Pool, s.Status, res, holder, sf.Failures, sf.Retries); err != nil {
 			return err
 		}
+		if len(sf.Resources) > 0 {
+			if _, err := fmt.Fprintln(w, "   resources", strings.Join(sf.Resources, " ")); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

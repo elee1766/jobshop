@@ -386,6 +386,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
 - Generic HMAC ingest endpoints with a payload map, and `jobshop ingest
   put` for local senders (#399, `docs/notes/399-generic-ingest.md`).
+- Resource slots: `resources:` (counted or keyed) and step
+  `needs_resources`, enforced in the ready and claim queries (#400,
+  `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
 
 ## 5. What's next
 
@@ -533,6 +536,9 @@ Per-session isolation (`docs/notes/users-security.md`).
 
 **Test speed (#359).** In-process agent (#361), then move the
 process-tree tests onto the fake clock; sqlite template DB (#363).
+
+**Resource pools (#400).** Provider-owned slots, waiting visibility and
+placement build on the keyed and counted slots.
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1132,6 +1138,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   the ready and claim queries skip a ticket with a wait. The controller
   evaluates them, not the agent; a moved head or closed PR clears a
   review or checks wait as invalidated so the agent re-decides.
+- Resource occupancy is derived, not stored (2026-11-04, #400): a slot
+  is held by an in-progress ticket naming its key, so every claim end
+  frees it in the same write and there is no slot row to leak. Only
+  capacities are stored, synced from config.
 
 ## 7. Reference: behavior as built
 

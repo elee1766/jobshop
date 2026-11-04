@@ -94,6 +94,7 @@ func TestRecallBackfill(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+path)
 	require.NoError(t, err)
 	for _, q := range []string{
+		"DROP TABLE resource_caps", "DELETE FROM goose_db_version WHERE version_id = 12",
 		"DELETE FROM goose_db_version WHERE version_id = 11",
 		"DROP INDEX inbox_natural_key", "DELETE FROM goose_db_version WHERE version_id = 10",
 		"DELETE FROM goose_db_version WHERE version_id = 9",

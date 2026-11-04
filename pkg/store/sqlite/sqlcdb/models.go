@@ -100,6 +100,11 @@ type Recall struct {
 	At       string
 }
 
+type ResourceCap struct {
+	Name     string
+	Capacity int64
+}
+
 type Ticket struct {
 	ID         string
 	Project    string

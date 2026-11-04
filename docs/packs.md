@@ -72,6 +72,15 @@ goes for a human decision. `jobshop run resume <run> --step <id>` reopens
 an earlier step, for example to send a PR back from review to implement.
 An intake to implement to review flow is three steps in three pools.
 
+**Resources** cap how many steps hold something at once (#400). They
+are host-wide, so they are declared in `jobshop.yaml`, not in a pack:
+`resources: {emulator: {max: 8}, pr: {keyed: true}}`. A pack step lists
+`needs_resources: [emulator, "pr:{{.repo}}#{{.issue}}"]`; the config
+fails to load if a named resource is not declared. A keyed resource
+has `capacity_per_key` slots (default 1) per key. A step whose
+resource is full is not ready, so no session starts for it; the slot
+frees when the step's claim ends.
+
 ## A minimal pack
 
 One `work` pool, one prompt and a `change` workflow with `implement` and

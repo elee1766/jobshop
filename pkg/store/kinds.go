@@ -183,6 +183,9 @@ type StepFields struct {
 	Failures int    `json:"failures"`
 	// Wait parks the step until outside state holds (#381).
 	Wait *Wait `json:"wait,omitempty"`
+	// Resources are the resource keys the step holds while in progress
+	// (#400). It is ready only when each has a free slot.
+	Resources []string `json:"resources,omitempty"`
 }
 
 // StepFailure counts one failed attempt on a step ticket: a close
@@ -221,6 +224,11 @@ func (f StepFields) Validate() error {
 	}
 	if f.Index < 0 || f.Retries < 0 || f.Failures < 0 {
 		return fmt.Errorf("%w: step: index, retries and failures must be >= 0", ErrInvalid)
+	}
+	for _, r := range f.Resources {
+		if r == "" {
+			return fmt.Errorf("%w: step: empty resource key", ErrInvalid)
+		}
 	}
 	return f.Wait.Validate()
 }
