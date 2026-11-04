@@ -1,0 +1,1 @@
+When a command, test, CI run or step fails, and before asking a human (jobshop report waiting), run `jobshop recall <words from the error or question>` to search earlier ticket comments, session journals and learnings for the same problem and its fix.

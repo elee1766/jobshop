@@ -3,10 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
-	"sort"
 )
 
 // DefaultStepRetries is a step's retry limit when retries is unset.
@@ -157,46 +154,6 @@ func setPackVars(m map[string]any, vars map[string]any, file string) error {
 		}
 		if vars != nil {
 			wm["pack_vars"] = vars
-		}
-	}
-	return nil
-}
-
-// resolveStepPromptFiles replaces workflows.*.steps[i].prompt_file with
-// the file's content as prompt, reading relative to dir.
-func resolveStepPromptFiles(m map[string]any, dir, file string) error {
-	wfs, _ := m["workflows"].(map[string]any)
-	names := make([]string, 0, len(wfs))
-	for n := range wfs {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		wm, _ := wfs[n].(map[string]any)
-		steps, _ := wm["steps"].([]any)
-		for i, s := range steps {
-			sm, _ := s.(map[string]any)
-			pf, ok := sm["prompt_file"]
-			if !ok {
-				continue
-			}
-			key := fmt.Sprintf("workflows.%s.steps[%d]", n, i)
-			if _, both := sm["prompt"]; both {
-				return fmt.Errorf("%s: %s: set prompt or prompt_file, not both", file, key)
-			}
-			p, ok := pf.(string)
-			if !ok || p == "" {
-				return fmt.Errorf("%s: %s.prompt_file must be a path", file, key)
-			}
-			if !filepath.IsAbs(p) {
-				p = filepath.Join(dir, p)
-			}
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return fmt.Errorf("%s: %s.prompt_file: %w", file, key, err)
-			}
-			delete(sm, "prompt_file")
-			sm["prompt"] = string(b)
 		}
 	}
 	return nil

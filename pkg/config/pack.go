@@ -76,6 +76,8 @@ type packLayer struct {
 	m        map[string]any
 	vars     map[string]any // the layer's vars after defaults
 	warnings []string       // deprecated var names the includer set
+	// textSources maps "<entry>.<field>" to the file a *_file field read.
+	textSources map[string][]string
 }
 
 // PackInstance is one entry of jobshop.yaml's packs list as loaded: what
@@ -191,10 +193,16 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 		}
 		if ref.Prefix != "" {
 			prefixLayers(layers, ref.Prefix)
+			for i := range layers {
+				layers[i].textSources = prefixSources(layers[i].textSources, ref.Prefix)
+			}
 		}
 		instances = append(instances, packInstance(ref.Path, ref.Prefix, layers))
 		for _, l := range layers {
 			mergeInto(merged, l.m, l.file, sources)
+			for k, v := range l.textSources {
+				sources[k] = v
+			}
 			warnings = append(warnings, l.warnings...)
 		}
 	}
@@ -202,10 +210,7 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	if err := setPackVars(top, nil, name); err != nil {
 		return nil, err
 	}
-	if err := resolvePromptFiles(top, dir, name, nil); err != nil {
-		return nil, err
-	}
-	if err := resolveRuleFiles(top, dir, name); err != nil {
+	if err := resolveTextFiles(top, textFiles{dir: dir, file: name, sources: sources}); err != nil {
 		return nil, err
 	}
 	mergeInto(merged, top, path, sources)
@@ -311,10 +316,8 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := setPackVars(m, vars, file); err != nil {
 		return nil, err
 	}
-	if err := resolvePromptFiles(m, dir, file, subVars); err != nil {
-		return nil, err
-	}
-	if err := resolveRuleFiles(m, dir, file); err != nil {
+	textSources := map[string][]string{}
+	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: subVars, sources: textSources}); err != nil {
 		return nil, err
 	}
 	raw, err = yaml.Marshal(m)
@@ -325,7 +328,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := yaml.UnmarshalWithOptions(raw, &pf, yaml.Strict()); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings}), nil
+	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings, textSources: textSources}), nil
 }
 
 // renameVars returns given with old names from renamed moved to their new
@@ -454,52 +457,6 @@ func joinKey(a, b string) string {
 		return b
 	}
 	return a + "." + b
-}
-
-// resolvePromptFiles replaces pools.*.prompt_file with the file's content
-// as prompt, reading relative to dir (the declaring file's directory).
-// In a pack (vars non-nil) the content gets pack var substitution like an
-// inline prompt; host prompt files stay literal.
-func resolvePromptFiles(m map[string]any, dir, file string, vars map[string]any) error {
-	pools, _ := m["pools"].(map[string]any)
-	names := make([]string, 0, len(pools))
-	for n := range pools {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		p, _ := pools[n].(map[string]any)
-		pf, ok := p["prompt_file"]
-		if !ok {
-			continue
-		}
-		key := "pools." + n
-		if _, both := p["prompt"]; both {
-			return fmt.Errorf("%s: %s: set prompt or prompt_file, not both", file, key)
-		}
-		s, ok := pf.(string)
-		if !ok || s == "" {
-			return fmt.Errorf("%s: %s.prompt_file must be a path", file, key)
-		}
-		if !filepath.IsAbs(s) {
-			s = filepath.Join(dir, s)
-		}
-		b, err := os.ReadFile(s)
-		if err != nil {
-			return fmt.Errorf("%s: %s.prompt_file: %w", file, key, err)
-		}
-		delete(p, "prompt_file")
-		prompt := string(b)
-		if vars != nil {
-			v, err := substitute(prompt, vars, key+".prompt_file")
-			if err != nil {
-				return fmt.Errorf("%s: %w", file, err)
-			}
-			prompt = v.(string)
-		}
-		p["prompt"] = prompt
-	}
-	return resolveStepPromptFiles(m, dir, file)
 }
 
 // mergeInto applies src over dst. In the merged sections each entry merges

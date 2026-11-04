@@ -190,22 +190,13 @@ triggers:
 prompt_rules:
   - name: recall
     at: system
-    text: >-
-      When a command, test, CI run or step fails, and before asking a
-      human (jobshop report waiting), run `jobshop recall <words from the
-      error or question>` to search earlier ticket comments, session
-      journals and learnings for the same problem and its fix.
+    file: prompts/rules/recall.md
   # Nudge (#271): every pool, after the pool prompt, so it sits with the
   # step's close instructions. Chat sessions get it on their first turn
   # too: operator improvement sessions close runs and hit corrections.
   - name: learn-nudge
     at: after
-    text: >-
-      Before `jobshop close` or `jobshop release`: if this turn hit a
-      correction (a human or reviewer told you to do it differently), a
-      failure, or a workaround, record it with `jobshop learn
-      correction|failure|workaround "<summary>" --fix "<what to do next
-      time>"`. Do not record a learning for routine success.
+    file: prompts/rules/learn-nudge.md
 workflows:
   # One run per issue: implement (dev) -> review-merge (refinery) ->
   # post-merge (deploy-check). Started by the planner with --key issue-<n>.

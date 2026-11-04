@@ -1,0 +1,1 @@
+Before `jobshop close` or `jobshop release`: if this turn hit a correction (a human or reviewer told you to do it differently), a failure, or a workaround, record it with `jobshop learn correction|failure|workaround "<summary>" --fix "<what to do next time>"`. Do not record a learning for routine success.

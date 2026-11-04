@@ -94,6 +94,11 @@ defaults:
 | `packs/selfdev` | `packs/github` with Jobshop's values. It builds this repo. |
 | `packs/operator` | A chat pool for the operator: it manages tickets, issues and runs, and turns corrections into prompt PRs. |
 
+Long text can live in files, relative to the file that declares it:
+pool and step `prompt_file`, trigger ticket `body_file`, prompt rule
+`file`. Set the inline field or the file field, not both
+([notes](docs/notes/382-text-files.md)).
+
 ## Run
 
 ```
