@@ -908,7 +908,9 @@ in
               newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
               if ! check=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- \
                    "$newpkg/bin/jobshop" config check --file ${cfg.dataDir}/jobshop.yaml \
-                   --replace ${lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir}="$src" 2>&1); then
+                   --replace ${
+                     lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir
+                   }="$src" 2>&1); then
                 echo "<3>config check failed for $rev, not switching: $check"
                 printf '%s\n' "$check" > $state/failed.reason
                 echo "$rev" > $state/failed
