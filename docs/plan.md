@@ -405,6 +405,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/379-escalation-chat.md`, `docs/verify/escalation-chat.md`).
 - Command and http workflow steps run by the controller, no session
   (#396, `docs/notes/396-command-http-steps.md`).
+- Command steps run in their pool's sandbox; `worktree: true` gives a
+  run one worktree, removed at run close (#419,
+  `docs/notes/419-command-step-sandbox.md`,
+  `docs/verify/command-step-sandbox.md`).
 - `close -r rebase` reopens a step without counting a failure; the
   refinery uses it for a PR that only conflicts with master (#424,
   `docs/notes/424-rebase-no-failure.md`).

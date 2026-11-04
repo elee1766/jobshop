@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	host "github.com/elee1766/acphost"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -200,7 +202,7 @@ func (c *Controller) runAutoAttempt(t store.Ticket, cl store.Claim, s config.Ste
 		actx, cancel := context.WithTimeout(ctx, s.TimeoutDur())
 		switch s.Type {
 		case config.StepCommand:
-			res = c.runCommandStep(actx, t, s, st, attemptKey)
+			res = c.runCommandStep(actx, t, s, sf, st, attemptKey)
 		case config.StepHTTP:
 			res = c.runHTTPStep(actx, s, st, attemptKey)
 		}
@@ -357,35 +359,105 @@ func jsonPath(text, path string) (string, bool) {
 	return string(b), err == nil
 }
 
-// stepEnv is the env of a command step: the controller's, plus the run
-// vars as JOBSHOP_VAR_<NAME> and the attempt key.
+// stepEnv is what a command step gets on top of the controller's env:
+// the run vars as JOBSHOP_VAR_<NAME> and the attempt key.
 func stepEnv(vars map[string]any, attemptKey string, t store.Ticket) []string {
-	env := os.Environ()
+	var env []string
 	for k, v := range vars {
 		env = append(env, "JOBSHOP_VAR_"+strings.ToUpper(k)+"="+fmt.Sprint(v))
 	}
 	return append(env, "JOBSHOP_STEP_KEY="+attemptKey, "JOBSHOP_TICKET="+t.ID)
 }
 
-// stepDir is where a command step runs: its pool's dir, else its repo,
-// else the root.
-func (c *Controller) stepDir(s config.Step, st stepTemplates) string {
-	cfg := c.config()
-	if s.Pool != "" {
-		if name, err := cfg.ResolvePool(&st.w, s.Pool, st.vars); err == nil {
-			p := cfg.Pools[name]
-			if p.Dir != "" {
-				return p.Dir
-			}
-			if p.Repo != "" {
-				return p.Repo
-			}
-		}
-	}
-	return c.root.Dir
+// runDir is a run's scratch dir for its command steps: the sandbox's own
+// writable dir and the parent of the run worktree (#419).
+func (c *Controller) runDir(runID string) string {
+	return filepath.Join(c.root.Dir, "runs", runID)
 }
 
-func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s config.Step, st stepTemplates, attemptKey string) autoResult {
+// stepPlace is where and how a command step runs.
+type stepPlace struct {
+	pool string
+	dir  string
+	// own is the run dir when the step is sandboxed or has a worktree.
+	own string
+}
+
+// stepPlace resolves a command step's pool and working dir: the run
+// worktree when the step asks for one, else the pool's dir, else its
+// repo, else the root. It makes the worktree.
+func (c *Controller) stepPlace(s config.Step, sf store.StepFields, st stepTemplates) (stepPlace, error) {
+	cfg := c.config()
+	pl := stepPlace{dir: c.root.Dir}
+	if s.Pool == "" {
+		return pl, nil
+	}
+	name, err := cfg.ResolvePool(&st.w, s.Pool, st.vars)
+	if err != nil {
+		return pl, err
+	}
+	pl.pool = name
+	p := cfg.Pools[name]
+	switch {
+	case p.Dir != "":
+		pl.dir = p.Dir
+	case p.Repo != "":
+		pl.dir = p.Repo
+	}
+	if s.Worktree || cfg.SandboxFor(name).Backend != "" {
+		pl.own = c.runDir(sf.Run)
+		if err := os.MkdirAll(pl.own, 0o700); err != nil {
+			return pl, err
+		}
+	}
+	if s.Worktree {
+		if p.Repo == "" {
+			return pl, fmt.Errorf("worktree: pool %s has no repo", name)
+		}
+		pl.dir = filepath.Join(pl.own, "work")
+		if err := c.addWorktree(p.Repo, p.Ref, pl.dir, "jobshop run "+sf.Run, "pool "+name); err != nil {
+			return pl, err
+		}
+	}
+	return pl, nil
+}
+
+// removeRunDir deletes a closed run's worktree and scratch dir.
+func (c *Controller) removeRunDir(runID string) {
+	dir := c.runDir(runID)
+	if _, err := os.Stat(dir); err != nil {
+		return
+	}
+	work := filepath.Join(dir, "work")
+	if gd := gitCommonDir(work); gd != "" {
+		c.gitMu.Lock()
+		// Locked at add; two --force override the lock.
+		if out, err := exec.Command("git", "--git-dir", gd, "worktree", "remove", "--force", "--force", work).CombinedOutput(); err != nil {
+			c.log.Warn("git worktree remove", "run", runID, "err", err, "out", strings.TrimSpace(string(out)))
+		}
+		c.gitMu.Unlock()
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		c.log.Warn("remove run dir", "run", runID, "err", err)
+	}
+}
+
+// sweepRunDirs removes run dirs whose run is closed or gone: a close
+// that raced a running attempt, or a restart between close and removal.
+func (c *Controller) sweepRunDirs() {
+	ents, err := os.ReadDir(filepath.Join(c.root.Dir, "runs"))
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		t, err := c.store.Get(c.ctx, e.Name())
+		if errors.Is(err, store.ErrNotFound) || (err == nil && t.Status == store.StatusClosed) {
+			c.removeRunDir(e.Name())
+		}
+	}
+}
+
+func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s config.Step, sf store.StepFields, st stepTemplates, attemptKey string) autoResult {
 	argv, err := s.Argv()
 	if err != nil {
 		return autoResult{result: resultFailed, err: err.Error()}
@@ -395,10 +467,23 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 			return autoResult{result: resultFailed, err: err.Error()}
 		}
 	}
-	env := append(stepEnv(st.vars, attemptKey, t), c.slotEnv(ctx, t)...)
+	extra := append(stepEnv(st.vars, attemptKey, t), c.slotEnv(ctx, t)...)
+	env := append(os.Environ(), extra...)
 	res := autoResult{command: telemetry.RedactText(strings.Join(argv, " "), env)}
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Dir = c.stepDir(s, st)
+	pl, err := c.stepPlace(s, sf, st)
+	if err != nil {
+		res.result, res.err = resultFailed, err.Error()
+		return res
+	}
+	run := argv
+	if pl.pool != "" {
+		if run, err = c.sandboxArgv(pl, argv, extra); err != nil {
+			res.result, res.err = resultFailed, err.Error()
+			return res
+		}
+	}
+	cmd := exec.CommandContext(ctx, run[0], run[1:]...)
+	cmd.Dir = pl.dir
 	cmd.Env = env
 	var out, errOut limitedBuffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
@@ -422,6 +507,30 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 		}
 	}
 	return res
+}
+
+// sandboxArgv wraps argv in the pool's bubblewrap sandbox, with the step
+// env set inside it. Unsandboxed pools return argv.
+func (c *Controller) sandboxArgv(pl stepPlace, argv, env []string) ([]string, error) {
+	if c.config().SandboxFor(pl.pool).Backend == "" {
+		return argv, nil
+	}
+	exe, err := c.hostExe()
+	if err != nil {
+		return nil, err
+	}
+	sb, err := c.poolSandbox(pl.pool, pl.own, exe, pl.dir)
+	if err != nil || sb == nil {
+		return argv, err
+	}
+	// bwrap clears the env and PATH is not in sandboxEnvKeep (sessions
+	// set their own), so pass the controller's.
+	for _, kv := range append([]string{"PATH=" + os.Getenv("PATH")}, env...) {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			sb.ExtraArgs = append(sb.ExtraArgs, "--setenv", k, v)
+		}
+	}
+	return host.SandboxArgs(*sb, argv[0], argv[1:], pl.dir)
 }
 
 func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemplates, attemptKey string) autoResult {

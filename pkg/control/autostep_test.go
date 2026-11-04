@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -378,4 +379,106 @@ func TestAutoStepHTTPRestart(t *testing.T) {
 	require.Len(t, keys, 2)
 	assert.Equal(t, keys[0], keys[1], "same Idempotency-Key after restart")
 	assert.Equal(t, r.Run.ID+"/call/1", keys[0])
+}
+
+// worktreeRoot writes a root whose pool dev has a git repo, and a
+// workflow of two command steps sharing the run worktree. sandbox adds
+// the bubblewrap sandbox to the pool.
+func worktreeRoot(t *testing.T, sandbox bool) (config.Root, string) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	root := config.Root{Dir: dir}
+	repo := filepath.Join(dir, "repo")
+	require.NoError(t, os.MkdirAll(repo, 0o750))
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"},
+	} {
+		out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	pack := filepath.Join(dir, "pk")
+	require.NoError(t, os.MkdirAll(pack, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), []byte(`workflows:
+  wt:
+    vars: [issue]
+    steps:
+      - id: write
+        type: command
+        pool: dev
+        worktree: true
+        run: 'echo "$JOBSHOP_VAR_ISSUE" > note; pwd'
+      - id: read
+        type: command
+        pool: dev
+        worktree: true
+        run: 'cat note; test ! -e ../../../jobshop.db || echo db-visible'
+`), 0o600))
+	sb := ""
+	if sandbox {
+		sb = ", sandbox: {backend: bubblewrap}"
+	}
+	cfg := fmt.Sprintf(`packs:
+  - path: pk
+projects:
+  js: {}
+agents:
+  fake:
+    command: %q
+pools:
+  dev: {project: js, agent: fake, max_sessions: 0, repo: %q%s}
+`, os.Args[0], repo, sb)
+	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
+	return root, repo
+}
+
+// TestCommandStepWorktree runs two command steps in one run worktree
+// (#419): the second sees the first's file, and the worktree goes when
+// the run closes.
+func TestCommandStepWorktree(t *testing.T) {
+	t.Parallel()
+	testCommandStepWorktree(t, false)
+}
+
+// TestCommandStepSandbox is TestCommandStepWorktree under the pool's
+// bubblewrap sandbox: the root's jobshop.db is not visible.
+func TestCommandStepSandbox(t *testing.T) {
+	bwrapWorks(t)
+	t.Parallel()
+	testCommandStepWorktree(t, true)
+}
+
+func testCommandStepWorktree(t *testing.T, sandbox bool) {
+	t.Helper()
+	root, repo := worktreeRoot(t, sandbox)
+	clk := clock.NewFake(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
+	admin, _ := startAuto(t, root, clk)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "wt", Vars: map[string]string{"issue": "9"}})
+	passUntilWall(t, root, func() bool {
+		return showRun(t, admin, r.Run.ID).Steps[1].Status == store.StatusClosed
+	}, "steps done")
+	res := showRun(t, admin, r.Run.ID)
+	work := filepath.Join(root.Dir, "runs", r.Run.ID, "work")
+	w, rd := stepFields(t, res.Steps[0]), stepFields(t, res.Steps[1])
+	require.Equal(t, "ok", w.Result, w.Output)
+	assert.Equal(t, work, strings.TrimSpace(w.Output))
+	require.Equal(t, "ok", rd.Result, rd.Output)
+	if sandbox {
+		assert.Equal(t, "9", strings.TrimSpace(rd.Output), "jobshop.db hidden")
+	} else {
+		assert.Equal(t, "9\ndb-visible", strings.TrimSpace(rd.Output))
+	}
+	_, err := os.Stat(filepath.Join(repo, "note"))
+	assert.True(t, os.IsNotExist(err), "main checkout untouched")
+
+	// State is written before the close that removes the dir.
+	passUntilWall(t, root, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "runs", r.Run.ID))
+		return runState(t, showRun(t, admin, r.Run.ID)) == store.RunDone && os.IsNotExist(err)
+	}, "run done and run dir removed")
+	out, err := exec.Command("git", "-C", repo, "worktree", "list").Output()
+	require.NoError(t, err)
+	assert.NotContains(t, string(out), work)
 }
