@@ -491,7 +491,7 @@ func TestSessionReap(t *testing.T) {
 	exited := make(chan struct{})
 	go func() { _ = holder.Wait(); close(exited) }()
 	t.Cleanup(func() { _ = holder.Process.Kill(); <-exited })
-	require.Eventually(t, func() bool { return host.Alive(odir) }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return host.Alive(odir) }, dialWait, 10*time.Millisecond)
 
 	params := rpc.SessionReapParams{Closed: true, OlderThan: time.Nanosecond, DryRun: true}
 	var res rpc.SessionReapResult
@@ -928,7 +928,7 @@ func TestAgentBusy(t *testing.T) {
 		}{&got}))
 		return got
 	}
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, 30*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, dialWait, 20*time.Millisecond)
 	assert.Equal(t, "done", show(task.ID).Resolution)
 
 	var sessions []store.Ticket
@@ -1000,7 +1000,7 @@ func TestRateLimitBackoff(t *testing.T) {
 			assert.Equal(t, hostPid, s.HostPid, "no restart")
 		}
 		return show(task.ID).Status == store.StatusClosed
-	}, 30*time.Second, 20*time.Millisecond)
+	}, dialWait, 20*time.Millisecond)
 	assert.Equal(t, int32(3), backoffs.Load(), "one backoff per 429")
 	assert.Equal(t, "done", show(task.ID).Resolution)
 

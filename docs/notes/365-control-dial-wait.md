@@ -9,6 +9,10 @@ took longer than that, and about ten tests failed in `dial`. The wait is
 now `dialWait` (2m). It only matters when a test fails: `dial` returns as
 soon as the socket answers, so passing runs do not get slower.
 
+With dial fixed, the same run then failed TestTriggers, TestTicketTrace and
+TestRateLimitBackoff on their own fixed 5s and 30s `Eventually` waits. Every
+fixed-wall-time `Eventually` in `pkg/control` tests now uses `dialWait` too.
+
 A readiness callback on `control.Options` was considered. It would need
 all 21 `control.Run` call sites and session sockets to change, and the
 test would still need a failure timeout, so it was not done.
