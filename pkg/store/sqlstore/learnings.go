@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
 // AddLearning inserts a learning (#264). It is not ticket history: learnings
@@ -16,7 +16,7 @@ func (s *Store) AddLearning(ctx context.Context, l store.Learning) (out store.Le
 	if err := store.ValidLearning(&l); err != nil {
 		return out, err
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		r, err := q.InsertLearning(ctx, sqlcdb.InsertLearningParams{
 			Kind: l.Kind, Summary: l.Summary, Fix: l.Fix, Scope: l.Scope, Ticket: l.Ticket,
 			Session: l.Session, Source: l.Source, Status: l.Status, CreatedAt: ms(s.now()),
@@ -54,7 +54,7 @@ func (s *Store) UpdateLearning(ctx context.Context, id int64, status, pr string)
 	if status != store.LearningOpen && status != store.LearningApplied && status != store.LearningRejected {
 		return out, fmt.Errorf("%w: learning status %q", store.ErrInvalid, status)
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		r, err := q.UpdateLearning(ctx, sqlcdb.UpdateLearningParams{Status: status, Pr: strings.TrimSpace(pr), ID: id})
 		if err != nil {
 			return notFound(err, fmt.Sprintf("learning %d", id))

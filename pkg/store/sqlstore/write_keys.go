@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
 // ClaimWriteKey returns the stored write for key, inserting it pending
@@ -19,7 +19,7 @@ func (s *Store) ClaimWriteKey(ctx context.Context, key, op, actor string) (out s
 	if key == "" || op == "" {
 		return out, fmt.Errorf("%w: write key needs a key and an op", store.ErrInvalid)
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		now := ms(s.now())
 		n, err := q.InsertWriteKey(ctx, sqlcdb.InsertWriteKeyParams{Key: key, Op: op, Actor: actor, Now: now})
 		if err != nil {
@@ -42,7 +42,7 @@ func (s *Store) ClaimWriteKey(ctx context.Context, key, op, actor string) (out s
 // FinishWriteKey stores the result of a pending write. A key already done
 // keeps its first result, which is returned.
 func (s *Store) FinishWriteKey(ctx context.Context, key, result string) (out store.WriteKey, err error) {
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		r, err := q.FinishWriteKey(ctx, sqlcdb.FinishWriteKeyParams{Result: result, Now: ms(s.now()), Key: key})
 		if errors.Is(err, sql.ErrNoRows) {
 			r, err = q.GetWriteKey(ctx, key)
@@ -62,7 +62,7 @@ func (s *Store) FinishWriteKey(ctx context.Context, key, result string) (out sto
 // (#415): the local table is a cache, the remote key or marker is the
 // record.
 func (s *Store) PruneWriteKeys(ctx context.Context, before time.Time) (n int64, err error) {
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		n, err = q.PruneWriteKeys(ctx, ms(before))
 		return err
 	})

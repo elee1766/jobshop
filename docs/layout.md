@@ -67,7 +67,7 @@ flowchart TD
   config --> cron
   control --> store & rpc & config & telemetry & acp & acphost & hostspec & cron
   hostspec --> acphost & telemetry
-  sqlite[store/sqlite] --> store
+  sqlite[store/sqlite] --> sqlstore[store/sqlstore] --> store
   storetest[store/storetest] --> store
   rpc --> store
 ```
@@ -120,7 +120,8 @@ Subcommands:
 
 Uses:
 - **sqlc**: queries live as plain `.sql` files in `pkg/store/sqlite/queries/`
-  and sqlc generates typed Go next to them. It is a build-time tool, run
+  and sqlc generates typed Go into `pkg/store/sqlstore/sqlcdb`, the
+  shared core's query interface (#404). It is a build-time tool, run
   via `go tool sqlc` (Go 1.24+ `tool` directive in `go.mod`), so the
   version is pinned and nothing extra lands in the binary. Generated code
   is committed; CI checks it is up to date (`sqlc diff`). goose

@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
 // columns are the fields keys queries filter and sort on, copied to
@@ -45,7 +45,7 @@ func fieldColumns(fields json.RawMessage) columns {
 
 // syncMeta rewrites ticket_meta, the lookup rows for List's meta filter,
 // from meta: one row per string value meta[pack][key].
-func syncMeta(ctx context.Context, q *sqlcdb.Queries, id string, meta json.RawMessage) error {
+func syncMeta(ctx context.Context, q sqlcdb.Querier, id string, meta json.RawMessage) error {
 	if err := q.ClearTicketMeta(ctx, id); err != nil {
 		return err
 	}

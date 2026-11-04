@@ -409,6 +409,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   retries lost races; the store suite also runs with deferred
   transactions on several connections (#406,
   `docs/notes/406-store-guarded-claims.md`).
+- Store split: backend-neutral core `pkg/store/sqlstore` over sqlc's
+  Querier; `pkg/store/sqlite` is a thin driver (#404,
+  `docs/notes/404-store-core-split.md`).
 
 ## 5. What's next
 
