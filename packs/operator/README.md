@@ -56,3 +56,25 @@ packs:
 the entry to `settings.packs` with the jobshop workspace's directory as
 the path (not to `livePacks`: those share the workspace's vars and
 prefix).
+
+## Improvement sessions
+
+A session keyed `improve:<slug>` works on improving Jobshop or a pack
+(#249). It gets `prompts/improve.md` after the pool prompt (prompt rule
+`operator-improve`, `match.keys`) and its own worktree of `checkout`:
+
+```sh
+jobshop send pool:operator --key improve:dev-prompt "the dev prompt should say X"
+```
+
+It either files the issue on the right repo and starts that instance's
+`<prefix>pr-work`, or branches, pushes and opens the PR itself, then
+starts `pr-work` and comments `PR <url> head <sha>` on the run's
+`implement` step so the dev session adopts it and the refinery merges
+it. Example: `jobshop run start pr-work --var issue=301 --key issue-301`,
+`jobshop run show <run>`, `jobshop comment -t <implement step> "PR
+https://github.com/elee1766/jobshop/pull/302 head 1a2b3c4"`.
+
+The pack's `push` action hook denies `jobshop guard push --target`
+master or main (any ref form) and a push with no target for the
+`operator` pool. Notes: `docs/notes/249-improvement-sessions.md`.

@@ -266,6 +266,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Activity feed: recent GitHub and Linear activity for all worked repos
   and teams in Desk, the run drawer and `jobshop activity` (#255,
   `docs/notes/255-activity-feed.md`).
+- Operator improvement sessions (`improve:<slug>` key, prompt rule
+  `match.keys`, pack hooks, `send --key`) that never push master (#249,
+  `docs/notes/249-improvement-sessions.md`).
 
 ## 5. What's next
 
@@ -731,6 +734,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   instances from `config show` (2026-11-04, #248), not one operator per
   repo: one chat thread can steer every repo, and the prompt stays free
   of repo names.
+- Improvement sessions are operator sessions keyed `improve:<slug>`
+  with a key-matched prompt rule (2026-11-04, #249), not a new pool:
+  they share the operator's grant and worktree. Packs may declare
+  `hooks:` (appended, never replacing the host's) so the operator pack
+  ships its own push-to-master deny.
 - Yaml changes reach the controller through systemd `reloadTriggers`
   (2026-11-03, #210), not a file watcher: switches already drive
   restarts, and SIGHUP reload exists.
