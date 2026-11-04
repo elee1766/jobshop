@@ -333,6 +333,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Gateway re-reads rooms, senders, marker and escalation room from
   `config.show` every 30s, no restart (#307,
   `docs/notes/307-gateway-config-follow.md`).
+- Bubblewrap sandbox per session from `sandbox:` config, mounts computed
+  by the controller, `session sandbox`, NixOS `sandbox.enable` (#262,
+  `docs/notes/262-sandbox.md`).
 
 ## 5. What's next
 
@@ -456,6 +459,9 @@ Linear communication live check: `docs/verify/linear-communication.md`
 (#293).
 Linear webhook live check: "Webhook" section of
 `docs/verify/linear-pack.md`; needs a reverse proxy or tunnel (#300).
+
+Sandbox rollout on gasserver, `acphost-dev` first:
+`docs/verify/sandbox.md` (#262).
 
 Pool scaling live check: `docs/verify/pool-scaling.md` (#281); Desk
 scale and cordon buttons are a follow-up.
@@ -981,6 +987,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   applies between turns without a respawn and keeps the conversation.
   A rejected value ends the session `config_failed` rather than running
   a turn on the wrong model.
+- Sandbox (2026-11-04, #262) mounts an allow list, not the root with
+  holes: anything not listed (admin.sock, the db, secrets, other
+  sessions) is absent. A missing bwrap or mount is a permanent spawn
+  error that quarantines the pool; there is no unsandboxed fallback.
 - Second repo is elee1766/acphost (2026-11-04, #213): the session host
   library extracted from `pkg/host`, worked by an `acphost-` instance of
   packs/github. A real dependency instead of a throwaway drill repo, so

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -34,6 +35,11 @@ type Config struct {
 	Telemetry   Telemetry    `yaml:"telemetry"`
 	// Limits are host-wide caps across pools (#281).
 	Limits Limits `yaml:"limits"`
+	// Defaults hold settings agents and pools inherit (#262).
+	Defaults Defaults `yaml:"defaults"`
+	// SharedTools are dirs mounted read-only into every sandboxed
+	// session (#262).
+	SharedTools []string `yaml:"shared_tools"`
 	// Attention configures `jobshop attention` (#185).
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
@@ -364,6 +370,8 @@ type Agent struct {
 	Model         string            `yaml:"model"`
 	Effort        string            `yaml:"effort"`
 	ConfigOptions map[string]string `yaml:"config_options"`
+	// Sandbox confines the agent (#262); pools add to it.
+	Sandbox *Sandbox `yaml:"sandbox"`
 }
 
 // ACP session config option ids for the model and effort shorthands.
@@ -473,6 +481,8 @@ type Pool struct {
 	Model         string            `yaml:"model"`
 	Effort        string            `yaml:"effort"`
 	ConfigOptions map[string]string `yaml:"config_options"`
+	// Sandbox overrides and adds to the agent's sandbox (#262).
+	Sandbox *Sandbox `yaml:"sandbox"`
 }
 
 // Project is one repo / work area.
@@ -574,6 +584,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if a.Command == "" {
 			return nil, fmt.Errorf("%s: agent %s: command is required", src("agents", name), name)
 		}
+		if err := a.Sandbox.check(); err != nil {
+			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
+		}
 	}
 	for name, p := range c.Pools {
 		if !namePattern.MatchString(name) {
@@ -593,6 +606,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if p.PromptFile != "" {
 			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)
+		}
+		if err := p.Sandbox.check(); err != nil {
+			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
 		if p.Type != "" && p.Type != PoolChat {
 			return nil, fmt.Errorf("%s: pool %s: type %q must be empty or %q", src("pools", name), name, p.Type, PoolChat)
@@ -631,6 +647,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			}
 		}
 		c.Pools[name] = p
+	}
+	if err := c.Defaults.Sandbox.check(); err != nil {
+		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
+	}
+	for _, d := range c.SharedTools {
+		if !filepath.IsAbs(d) {
+			return nil, fmt.Errorf("%s: shared_tools: %q must be absolute", FileName, d)
+		}
 	}
 	if c.Limits.MaxSessions < 0 {
 		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)
