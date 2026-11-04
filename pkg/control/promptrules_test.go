@@ -29,7 +29,7 @@ func setRules(t *testing.T, root config.Root, base []byte, rules string) {
 // turn labeled; a respawn sends the system rule again; a reload that
 // removes a rule drops it from the next turn.
 func TestPromptRules(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	base, err := os.ReadFile(root.Config())
 	require.NoError(t, err)
 	base = []byte(strings.Replace(string(base), "    max_sessions: 1\n", "    max_sessions: 1\n    prompt: POOL-DEV\n", 1))

@@ -31,7 +31,7 @@ func bwrapWorks(t *testing.T) {
 // still closes its ticket over cli.sock.
 func TestSandboxedSession(t *testing.T) {
 	bwrapWorks(t)
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	other := filepath.Join(root.Dir, "sessions", "js-other")
 	require.NoError(t, os.MkdirAll(other, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(other, "secret"), []byte("x"), 0o600))

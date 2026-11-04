@@ -311,7 +311,7 @@ func (c *Controller) stopRunner(id string) {
 		r.cancel()
 		<-r.done
 	}
-	stopHost(c.root.SessionDir(id))
+	c.stopHost(c.root.SessionDir(id))
 }
 
 func (r *runner) run() {
@@ -378,7 +378,7 @@ func (r *runner) crashed() bool {
 func (r *runner) finish(resolution, reason string) {
 	r.log.Info("session ended", "resolution", resolution, "reason", reason)
 	r.lifecycle("end", telemetry.AttrResolution.String(resolution))
-	stopHost(r.dir)
+	r.c.stopHost(r.dir)
 	ctx := context.WithoutCancel(r.ctx)
 	if resolution == resolutionCrashed || resolution == resolutionConfigFailed {
 		// Pause before closing: a closed session frees a pool slot, and a
@@ -405,7 +405,10 @@ func (r *runner) finish(resolution, reason string) {
 
 // stopHost asks a host to stop (it forwards SIGTERM to the agent's group)
 // and kills it if it is still alive after 10 seconds.
-func stopHost(dir string) {
+func (c *Controller) stopHost(dir string) {
+	if c.opt.Hosts != nil && c.opt.Hosts.Stop(dir) {
+		return
+	}
 	pid := hostPid(dir)
 	if pid <= 1 || !host.Alive(dir) {
 		return
@@ -733,7 +736,7 @@ func (r *runner) restart(nc net.Conn) error {
 	r.log.Info("restarting host on request", "host_pid", hostPid(r.dir))
 	r.lifecycle("restart_requested")
 	_ = nc.Close()
-	stopHost(r.dir)
+	r.c.stopHost(r.dir)
 	return errRefresh
 }
 
@@ -766,7 +769,7 @@ func (r *runner) worktreeMissing() bool {
 func (r *runner) refresh(nc net.Conn) error {
 	r.log.Info("refreshing host env", "host_pid", hostPid(r.dir))
 	_ = nc.Close()
-	stopHost(r.dir)
+	r.c.stopHost(r.dir)
 	return errRefresh
 }
 
@@ -833,7 +836,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				"caller", "runner.worktreeMissing", "host_pid", hostPid(r.dir))
 			r.lifecycle("worktree_missing")
 			_ = nc.Close()
-			stopHost(r.dir)
+			r.c.stopHost(r.dir)
 			return errRefresh
 		}
 		// Config options (#304) change only between turns: jcode refuses
@@ -1034,7 +1037,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 			// conversation, and the claim survives for the next prompt.
 			r.log.Warn("agent stuck busy, respawning host", "host_pid", hostPid(r.dir))
 			r.lifecycle("agent_stuck_busy")
-			stopHost(r.dir)
+			r.c.stopHost(r.dir)
 			return errRefresh
 		}
 		if err == nil || ctx.Err() != nil || !rateLimited(err) {
@@ -1436,6 +1439,16 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	}
 	if err := hostspec.Write(dir, spec); err != nil {
 		return err
+	}
+	// The previous host's exit record would make connect() report this
+	// host as exited before it has taken the lock.
+	_ = os.Remove(filepath.Join(dir, host.ExitFile))
+	if c.opt.Hosts != nil {
+		if err := c.opt.Hosts.Start(dir); err != nil {
+			return err
+		}
+		c.log.Info("spawned host", "session", t.ID, "in_process", true, "agent", f.Agent)
+		return nil
 	}
 	logf, err := os.OpenFile(filepath.Join(dir, host.LogFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {

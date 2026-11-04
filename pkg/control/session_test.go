@@ -3,6 +3,7 @@ package control_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -71,7 +72,7 @@ func TestMain(m *testing.M) {
 // agent survive, the new controller adopts them, and the turn's result
 // still closes the ticket.
 func TestControllerRestart(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	stop := start()
 
@@ -122,7 +123,7 @@ func TestControllerRestart(t *testing.T) {
 // TestEnvRefresh adopts an idle host whose spec env no longer matches what
 // the controller would write: it is respawned and the session stays open.
 func TestEnvRefresh(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	stop := start()
 
 	admin := dial(t, root.AdminSocket())
@@ -224,7 +225,7 @@ func TestDrain(t *testing.T) {
 // TestQuarantine runs an agent that dies on every prompt: three crashed
 // sessions quarantine the ticket and pause the pool.
 func TestQuarantine(t *testing.T) {
-	root, start := poolRootOpt(t, "1m", control.Options{RestartDelay: 10 * time.Millisecond})
+	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, RestartDelay: 10 * time.Millisecond})
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "crash"), nil, 0o600))
 	stop := start()
 	defer stop()
@@ -263,7 +264,7 @@ func TestQuarantine(t *testing.T) {
 // TestStuck runs an agent that never closes its ticket: after two unclosed
 // turns the session ends as stuck instead of claiming more work.
 func TestStuck(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "noclose"), nil, 0o600))
 	stop := start()
 	defer stop()
@@ -520,9 +521,24 @@ func TestSessionReap(t *testing.T) {
 }
 
 // poolRoot writes a root with one fake-agent pool. start runs a controller
-// and returns a func that stops it (leaving sessions running).
+// and returns a func that stops it (leaving sessions running). Hosts run
+// in-process (inProcHosts) unless the test uses poolRootReal.
 func poolRoot(t *testing.T, idle string) (config.Root, func() func()) {
 	return poolRootOpt(t, idle, control.Options{})
+}
+
+// realHosts in Options.Hosts asks poolRootOpt for detached host processes.
+// Tests about the process tree use it: restart and adopt, crash and
+// quarantine, sandbox, env refresh, stuck and busy, and any test that
+// detects a respawn by a new host pid (an in-process host has the test's).
+type realHosts struct{}
+
+func (realHosts) Start(string) error { return errors.New("realHosts is a marker") }
+func (realHosts) Stop(string) bool   { return false }
+
+// poolRootReal is poolRoot with real controller -> host -> agent trees.
+func poolRootReal(t *testing.T, idle string) (config.Root, func() func()) {
+	return poolRootOpt(t, idle, control.Options{Hosts: realHosts{}})
 }
 
 func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, func() func()) {
@@ -535,6 +551,14 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	root := config.Root{Dir: dir}
 	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: %s\n    dir: %q\n", os.Args[0], idle, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte(cfg), 0o600))
+	var inproc *inProcHosts
+	switch opt.Hosts.(type) {
+	case realHosts:
+		opt.Hosts = nil
+	case nil:
+		inproc = newInProcHosts()
+		opt.Hosts = inproc
+	}
 	start := func() func() {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
@@ -559,12 +583,16 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	}
 	t.Cleanup(func() {
 		// Stop leftover hosts so the test leaves no processes behind.
+		if inproc != nil {
+			inproc.stopAll()
+		}
 		entries, _ := os.ReadDir(root.SessionDir(""))
 		var pids []int
 		for _, e := range entries {
 			if b, err := os.ReadFile(filepath.Join(root.SessionDir(e.Name()), host.PidFile)); err == nil {
 				var p int
-				if _, err := fmt.Sscan(string(b), &p); err == nil && p > 1 {
+				// An in-process host's pid is this process.
+				if _, err := fmt.Sscan(string(b), &p); err == nil && p > 1 && p != selfPid {
 					if syscall.Kill(p, syscall.SIGTERM) == nil {
 						pids = append(pids, p)
 					}
@@ -590,7 +618,7 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 // gasserver (2026-11-01): the session respawns its host with a new worktree
 // and keeps working instead of failing every tool call.
 func TestWorktreeDeleted(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	repo := filepath.Join(root.Dir, "repo")
 	for _, args := range [][]string{
 		{"init", "-q", "-b", "master", repo},
@@ -913,7 +941,7 @@ func (a *agent) SetSessionMode(context.Context, acp.SetSessionModeRequest) (acp.
 // crashed). The session cancels, then respawns its host, and the ticket
 // still closes without the session ending crashed.
 func TestAgentBusy(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "busy"), []byte("5"), 0o600))
 	stop := start()
 	defer stop()
@@ -965,7 +993,7 @@ func (h backoffLog) WithGroup(g string) slog.Handler {
 // the retried turn closes the ticket.
 func TestRateLimitBackoff(t *testing.T) {
 	backoffs := new(atomic.Int32)
-	root, start := poolRootOpt(t, "1m", control.Options{Log: slog.New(backoffLog{slog.Default().Handler(), backoffs})})
+	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, Log: slog.New(backoffLog{slog.Default().Handler(), backoffs})})
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "ratelimit"), []byte("3"), 0o600))
 	stop := start()
 	defer stop()
@@ -1140,7 +1168,7 @@ func TestTraces(t *testing.T) {
 // with a freshly built spec, a ticket it holds stays claimed, and the crash
 // counter does not move.
 func TestSessionRestartIdle(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
@@ -1235,7 +1263,7 @@ func TestSessionRestartIdle(t *testing.T) {
 // TestSessionRestartBusy: a restart waits for the running turn; --now
 // cancels it and the restarted host gets the still-claimed ticket again.
 func TestSessionRestartBusy(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	stop := start()
 	defer stop()
@@ -1320,7 +1348,7 @@ func hostPidOf(t *testing.T, dir string) int {
 func TestLoadFallback(t *testing.T) {
 	for _, marker := range []string{"noload", "loadfail"} {
 		t.Run(marker, func(t *testing.T) {
-			root, start := poolRoot(t, "1m")
+			root, start := poolRootReal(t, "1m")
 			stop := start()
 			defer stop()
 			admin := dial(t, root.AdminSocket())

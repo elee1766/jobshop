@@ -20,7 +20,7 @@ import (
 // 2026-11-02 01:32-05:40 (#146): the first spawn quarantines the pool,
 // files one escalation, and starts no second session until reload.
 func TestSpawnQuarantine(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	missing := filepath.Join(root.Dir, "no-such-repo")
 	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    repo: %q\n", os.Args[0], missing)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
@@ -75,7 +75,7 @@ func TestSpawnQuarantine(t *testing.T) {
 // TestSpawnQuarantineAgentMissing: an agent command that is not there is
 // permanent too.
 func TestSpawnQuarantineAgentMissing(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: no-such-agent-146\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n", root.Dir)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	stop := start()

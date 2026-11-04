@@ -39,7 +39,7 @@ func configSets(t *testing.T, root config.Root) string {
 // unadvertised id is skipped, a reload applies between turns and never
 // during one, and `session config` overrides and resets one session.
 func TestSessionConfig(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "configopts"), nil, 0o600))
 	setPoolConfig(t, root, "    model: m1\n    config_options: {other_id: x}\n")
 	stop := start()
