@@ -449,6 +449,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/443-ingest-workers.md`, check `docs/verify/ingest-workers.md`).
 - Ingest end-to-end tests: webhook to session prompt through spool,
   drain, admission and dispatch (#453, `docs/notes/453-ingest-e2e-tests.md`).
+- Ingest end-to-end runbook for gasserver: receiver to session, dedupe,
+  gap fill, split mode (#444, check `docs/verify/ingest.md`).
 
 ## 5. What's next
 
@@ -591,6 +593,8 @@ the spool and `ingest serve` in #334 and #339, the drain, poller rows
 and reconcile in #335, admission in #348, held release in #353,
 dispatch from admitted rows in #442, GitHub polling sources in #341,
 the split `ingest work` process in #443, end-to-end tests in #453.
+Live check: `docs/verify/ingest.md` on gasserver (#444); step 1 was
+dry run; 2 to 8 write live inbox rows or change config, left for the operator.
 Next: dispatch in a worker too, if one controller is not enough.
 
 **Later.** Postgres backend against the same conformance suite.
