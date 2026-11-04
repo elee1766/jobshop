@@ -11,6 +11,7 @@ import (
 )
 
 func TestAutoDesired(t *testing.T) {
+	t.Parallel()
 	t0 := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
 	p := config.Pool{MaxSessions: 8, MinSessions: 1, ScaleDownAfter: "10m"}
 	type step struct {
@@ -48,6 +49,7 @@ func TestAutoDesired(t *testing.T) {
 }
 
 func TestPlanPool(t *testing.T) {
+	t.Parallel()
 	t0 := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
 	at := func(m int) time.Time { return t0.Add(time.Duration(m) * time.Minute) }
 	for _, tc := range []struct {
@@ -95,6 +97,7 @@ func TestPlanPool(t *testing.T) {
 }
 
 func TestCapStarts(t *testing.T) {
+	t.Parallel()
 	reqs := func() []capRequest {
 		return []capRequest{
 			{Pool: "dev", Priority: 2, Start: 5},

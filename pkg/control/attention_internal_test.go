@@ -29,6 +29,7 @@ func attentionKinds(t *testing.T, c *Controller) []string {
 // questions, unescalated needs_human runs, quarantined pools and a
 // rollback, oldest first, with each escalated run or pool once (#185).
 func TestAttention(t *testing.T) {
+	t.Parallel()
 	c, clk, dir := stallController(t)
 	// Healthy: a running run and an ordinary ticket are not listed.
 	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "ok", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`)})

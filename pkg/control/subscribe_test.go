@@ -128,6 +128,7 @@ func mkSession(t *testing.T, c *Controller) store.Ticket {
 // interrupt message and a ticket comment; bots and ignored logins do not;
 // the read position is stored and used on the next pass.
 func TestSubscriptionsWorkingSession(t *testing.T) {
+	t.Parallel()
 	c, clk, src := subController(t)
 	c.config().Subscriptions.Authors = []string{"Alice"}
 	ctx := t.Context()
@@ -177,6 +178,7 @@ func TestSubscriptionsWorkingSession(t *testing.T) {
 // reopens it and assigns it to the session that last held it; once the
 // ticket is closed longer than the resume window it is not followed.
 func TestSubscriptionsResume(t *testing.T) {
+	t.Parallel()
 	c, clk, src := subController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
@@ -209,6 +211,7 @@ func TestSubscriptionsResume(t *testing.T) {
 
 // TestSubscribeMethod: a session adds a thread to its current ticket.
 func TestSubscribeMethod(t *testing.T) {
+	t.Parallel()
 	c, clk, src := subController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
@@ -230,6 +233,7 @@ func TestSubscribeMethod(t *testing.T) {
 }
 
 func TestParseGHLines(t *testing.T) {
+	t.Parallel()
 	out, err := parseGHLines([]byte(`{"id":"r1","kind":"review","state":"COMMENTED","body":"","at":"2026-11-03T00:00:00Z","author":"a"}
 {"id":"r2","kind":"review","state":"APPROVED","body":"","at":"2026-11-03T00:00:01Z","author":"a"}
 {"id":"c1","kind":"comment","body":"x","at":"2026-11-03T00:00:02Z","author":"b","bot":true}
@@ -245,6 +249,7 @@ func TestParseGHLines(t *testing.T) {
 // (isMe) and bots advance the read position; a human comment reaches the
 // working session.
 func TestSubscriptionsLinear(t *testing.T) {
+	t.Parallel()
 	c, clk, gh := subController(t)
 	ctx := t.Context()
 	tokFile := filepath.Join(t.TempDir(), "tok")
@@ -316,6 +321,7 @@ func TestSubscriptionsLinear(t *testing.T) {
 // the repo, comments by the token's own login (GET /user) are filtered
 // like an App bot's; other humans still arrive (#340).
 func TestSubscriptionsGitHubTokenSelf(t *testing.T) {
+	t.Parallel()
 	c, clk, src := subController(t)
 	ctx := t.Context()
 	pat := filepath.Join(t.TempDir(), "pat")
@@ -354,6 +360,7 @@ func TestSubscriptionsGitHubTokenSelf(t *testing.T) {
 // whose natural key matches the drained webhook copy, so the second
 // copy dedupes (#335).
 func TestSubscriptionsWriteInbox(t *testing.T) {
+	t.Parallel()
 	c, clk, src := subController(t)
 	ctx := t.Context()
 	mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
@@ -384,6 +391,7 @@ func TestSubscriptionsWriteInbox(t *testing.T) {
 // advance the read position; the host's own App login is dropped even
 // when listed; a listed bot reopens a closed ticket (#402).
 func TestSubscriptionsBots(t *testing.T) {
+	t.Parallel()
 	c, clk, src := subController(t)
 	ctx := t.Context()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

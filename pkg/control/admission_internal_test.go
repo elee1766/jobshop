@@ -74,6 +74,7 @@ func val(name, cmd string) config.AdmissionHook {
 }
 
 func TestAdmissionNoHooksAdmits(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, nil)
 	it := putInbox(t, c, store.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
@@ -86,6 +87,7 @@ func TestAdmissionNoHooksAdmits(t *testing.T) {
 }
 
 func TestAdmissionOrderAndMutation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "log")
 	// Validating is listed first but runs after both mutating hooks, and
@@ -120,6 +122,7 @@ func TestAdmissionOrderAndMutation(t *testing.T) {
 }
 
 func TestAdmissionDeny(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{
 		val("ok", ""+`echo '{"decision":"allow"}'`),
 		val("no", `echo '{"decision":"deny","reason":"spam"}'`),
@@ -132,6 +135,7 @@ func TestAdmissionDeny(t *testing.T) {
 }
 
 func TestAdmissionAskHumanHolds(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{val("ask", `echo '{"decision":"ask_human","reason":"unsure"}'`)})
 	it := putInbox(t, c, store.InboxItem{RepoOrTeam: "acme/app", Number: 7, Actor: "mallory"})
 	got, _ := admitOne(t, c, it.ID)
@@ -148,6 +152,7 @@ func TestAdmissionAskHumanHolds(t *testing.T) {
 // the held item back to pending, and the next admission applies the
 // answer without re-running the validating hook.
 func TestAdmissionHeldReleased(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		resolution, want string
 	}{{"done", store.InboxAdmitted}, {"wontfix", store.InboxDenied}} {
@@ -183,6 +188,7 @@ func TestAdmissionHeldReleased(t *testing.T) {
 }
 
 func TestAdmissionTimeout(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		policy, typ, state, decision string
 	}{
@@ -208,6 +214,7 @@ func TestAdmissionTimeout(t *testing.T) {
 }
 
 func TestAdmissionBadJSONDenies(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{val("bad", "echo nope")})
 	it := putInbox(t, c, store.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
@@ -216,6 +223,7 @@ func TestAdmissionBadJSONDenies(t *testing.T) {
 }
 
 func TestAdmissionMatch(t *testing.T) {
+	t.Parallel()
 	yes, no := true, false
 	base := store.InboxItem{Source: "github", Kind: "issue_comment", RepoOrTeam: "acme/app", Actor: "bob"}
 	for name, tc := range map[string]struct {
@@ -256,6 +264,7 @@ func TestAdmissionMatch(t *testing.T) {
 }
 
 func TestAdmissionIntakeHooksCoverLinear(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	c, _ := admissionController(t, nil, "cat > "+filepath.Join(dir, "ev.json")+`; echo '{"decision":"deny","reason":"inj"}'`)
 	gh := putInbox(t, c, store.InboxItem{Source: "github", DeliveryID: "g"})
@@ -270,6 +279,7 @@ func TestAdmissionIntakeHooksCoverLinear(t *testing.T) {
 }
 
 func TestAdmissionURLSignature(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	secret := []byte("topsecret")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sec"), append(secret, '\n'), 0o600))
@@ -318,6 +328,7 @@ func TestAdmissionURLSignature(t *testing.T) {
 }
 
 func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "log")
 	c, clk := admissionController(t, []config.AdmissionHook{val("v", `grep -o '"delivery_id":"[^"]*"' >> `+log)})
@@ -340,6 +351,7 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 }
 
 func TestApplyJSONPatch(t *testing.T) {
+	t.Parallel()
 	out, err := applyJSONPatch([]byte(`{"a":[1,2],"b":{"c":"x"}}`), []byte(`[
 		{"op":"add","path":"/a/1","value":9},
 		{"op":"remove","path":"/b/c"},

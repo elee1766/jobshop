@@ -10,6 +10,7 @@ import (
 )
 
 func TestGroupLogs(t *testing.T) {
+	t.Parallel()
 	t0 := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
 	recs := []logRecord{
 		{At: t0, Level: slog.LevelWarn, Msg: "crash release", Attrs: map[string]string{"ticket": "a"}},
@@ -33,6 +34,7 @@ func TestGroupLogs(t *testing.T) {
 }
 
 func TestIncidentLogSince(t *testing.T) {
+	t.Parallel()
 	il := &incidentLog{}
 	log := slog.New(incidentHandler{Handler: slog.DiscardHandler, log: il}).With("pool", "dev")
 	t0 := time.Date(2026, 11, 2, 0, 0, 0, 0, time.UTC)
@@ -52,6 +54,7 @@ func TestIncidentLogSince(t *testing.T) {
 }
 
 func TestIncidentLogCap(t *testing.T) {
+	t.Parallel()
 	il := &incidentLog{}
 	t0 := time.Now()
 	for i := range incidentCap + 10 {

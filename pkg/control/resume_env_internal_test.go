@@ -24,6 +24,7 @@ fi
 // -lc`, which reads /etc/profile. The host spec env must survive that
 // with the session PATH (jobshop first) and JOBSHOP_* intact.
 func TestResumeShellEnv(t *testing.T) {
+	t.Parallel()
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("no bash")

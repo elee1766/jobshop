@@ -31,6 +31,7 @@ func fxStep(id, run, pool string, at time.Time, failures int, failed bool) store
 // the window and the scoped pools; recurrence matches the cited
 // learnings by kind and wording.
 func TestGateMetrics(t *testing.T) {
+	t.Parallel()
 	h := time.Hour
 	steps := []store.Ticket{
 		fxStep("s1", "r1", "dev", gateT0.Add(h), 2, false),
@@ -62,6 +63,7 @@ func TestGateMetrics(t *testing.T) {
 }
 
 func TestGateDecide(t *testing.T) {
+	t.Parallel()
 	base := store.PoolMetrics{Steps: 20, Retries: 4, Escalations: 1, Findings: 1, Recurrence: 3}
 	for _, tc := range []struct {
 		name  string
@@ -90,6 +92,7 @@ func TestGateDecide(t *testing.T) {
 // baseline, the edits trigger condition waits for runs or age, and
 // evaluate writes the result on the edit and its learnings.
 func TestCuratorGate(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
@@ -180,6 +183,7 @@ func TestCuratorGate(t *testing.T) {
 // TestCuratorGateAge: an edit with no runs is due after age, and with no
 // steps since the merge it counts as helped.
 func TestCuratorGateAge(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}

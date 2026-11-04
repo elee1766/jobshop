@@ -102,6 +102,7 @@ func runCount(t *testing.T, c *Controller) int {
 }
 
 func TestIntakeNoHookAllows(t *testing.T) {
+	t.Parallel()
 	c, f := intakeController(t, "")
 	require.NoError(t, startLinearRun(t, c))
 	assert.Equal(t, 1, runCount(t, c))
@@ -109,6 +110,7 @@ func TestIntakeNoHookAllows(t *testing.T) {
 }
 
 func TestIntakeAllow(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	c, f := intakeController(t, "cat > "+filepath.Join(dir, "ev.json"))
 	require.NoError(t, startLinearRun(t, c))
@@ -128,6 +130,7 @@ func TestIntakeAllow(t *testing.T) {
 }
 
 func TestIntakeDeny(t *testing.T) {
+	t.Parallel()
 	for name, hook := range map[string]string{
 		"deny":  `echo '{"decision":"deny","reason":"injection"}'`,
 		"error": "exit 3",

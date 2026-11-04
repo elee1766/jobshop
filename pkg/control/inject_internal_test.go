@@ -15,6 +15,7 @@ import (
 // turn; a reset (context loss) sends everything again; inject once and
 // always (#397).
 func TestDedupeTurns(t *testing.T) {
+	t.Parallel()
 	rules := func(extra string) string {
 		return rulesBase + "prompt_rules:\n  - {name: keep, text: KEEP}\n" + extra
 	}
