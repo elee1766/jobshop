@@ -39,7 +39,7 @@ type Identity struct {
 	// globs (path.Match) the identity covers. APIURL defaults to
 	// https://api.github.com (tests point it at a fake).
 	AppID          int64            `yaml:"app_id"`
-	PrivateKeyFile string           `yaml:"private_key_file"`
+	PrivateKeyFile Secret           `yaml:"private_key_file"`
 	Installations  map[string]int64 `yaml:"installations"`
 	Repos          []string         `yaml:"repos"`
 	APIURL         string           `yaml:"api_url"`
@@ -47,19 +47,19 @@ type Identity struct {
 	// for an App, no installations.
 	// Linear: TokenFile holds the API key, Workspace names the workspace,
 	// Teams are the team keys covered ("*" for all).
-	TokenFile string   `yaml:"token_file"`
+	TokenFile Secret   `yaml:"token_file"`
 	Workspace string   `yaml:"workspace"`
 	Teams     []string `yaml:"teams"`
 	// Linear App (#278): ClientIDFile and ClientSecretFile hold the OAuth
 	// app credentials; Scopes default to DefaultLinearAppScopes. TokenURL
 	// defaults to Linear's token endpoint (tests point it at a fake).
-	ClientIDFile     string   `yaml:"client_id_file"`
-	ClientSecretFile string   `yaml:"client_secret_file"`
+	ClientIDFile     Secret   `yaml:"client_id_file"`
+	ClientSecretFile Secret   `yaml:"client_secret_file"`
 	Scopes           []string `yaml:"scopes"`
 	TokenURL         string   `yaml:"token_url"`
 	// WebhookSecretFile holds the Linear webhook signing secret (#300):
 	// the App's, or a workspace webhook's for kind linear (#340).
-	WebhookSecretFile string `yaml:"webhook_secret_file"`
+	WebhookSecretFile Secret `yaml:"webhook_secret_file"`
 }
 
 // LinearScopes is Scopes or the default set.
@@ -102,7 +102,7 @@ func checkIdentity(i Identity) error {
 		if i.AppID <= 0 {
 			return errors.New("app_id is required")
 		}
-		if i.PrivateKeyFile == "" {
+		if i.PrivateKeyFile.IsZero() {
 			return errors.New("private_key_file is required")
 		}
 		if len(i.Installations) == 0 || len(i.Repos) == 0 {
@@ -111,24 +111,24 @@ func checkIdentity(i Identity) error {
 		if err := checkRepoGlobs(i.Repos); err != nil {
 			return err
 		}
-		if i.TokenFile != "" || i.Workspace != "" || len(i.Teams) > 0 || i.linearAppSet() || i.WebhookSecretFile != "" {
+		if !i.TokenFile.IsZero() || i.Workspace != "" || len(i.Teams) > 0 || i.linearAppSet() || !i.WebhookSecretFile.IsZero() {
 			return errors.New("token_file, workspace, teams, webhook_secret_file and client_* are not for kind github-app")
 		}
 	case IdentityGitHubToken:
-		if i.TokenFile == "" || len(i.Repos) == 0 {
+		if i.TokenFile.IsZero() || len(i.Repos) == 0 {
 			return errors.New("token_file and repos are required")
 		}
 		if err := checkRepoGlobs(i.Repos); err != nil {
 			return err
 		}
-		if i.AppID != 0 || i.PrivateKeyFile != "" || len(i.Installations) > 0 {
+		if i.AppID != 0 || !i.PrivateKeyFile.IsZero() || len(i.Installations) > 0 {
 			return errors.New("app_id, private_key_file and installations are for kind github-app")
 		}
-		if i.Workspace != "" || len(i.Teams) > 0 || i.linearAppSet() || i.WebhookSecretFile != "" {
+		if i.Workspace != "" || len(i.Teams) > 0 || i.linearAppSet() || !i.WebhookSecretFile.IsZero() {
 			return errors.New("workspace, teams, webhook_secret_file and client_* are for Linear kinds")
 		}
 	case IdentityLinear:
-		if i.TokenFile == "" || i.Workspace == "" || len(i.Teams) == 0 {
+		if i.TokenFile.IsZero() || i.Workspace == "" || len(i.Teams) == 0 {
 			return errors.New("token_file, workspace and teams are required")
 		}
 		if i.githubSet() {
@@ -138,10 +138,10 @@ func checkIdentity(i Identity) error {
 			return errors.New("client_id_file, client_secret_file, scopes and token_url are for kind linear-app")
 		}
 	case IdentityLinearApp:
-		if i.ClientIDFile == "" || i.ClientSecretFile == "" || i.Workspace == "" || len(i.Teams) == 0 {
+		if i.ClientIDFile.IsZero() || i.ClientSecretFile.IsZero() || i.Workspace == "" || len(i.Teams) == 0 {
 			return errors.New("client_id_file, client_secret_file, workspace and teams are required")
 		}
-		if i.TokenFile != "" {
+		if !i.TokenFile.IsZero() {
 			return errors.New("token_file is for kind linear; linear-app mints its own token")
 		}
 		if i.githubSet() {
@@ -168,11 +168,11 @@ func checkRepoGlobs(repos []string) error {
 }
 
 func (i Identity) githubSet() bool {
-	return i.AppID != 0 || i.PrivateKeyFile != "" || len(i.Installations) > 0 || len(i.Repos) > 0 || i.APIURL != ""
+	return i.AppID != 0 || !i.PrivateKeyFile.IsZero() || len(i.Installations) > 0 || len(i.Repos) > 0 || i.APIURL != ""
 }
 
 func (i Identity) linearAppSet() bool {
-	return i.ClientIDFile != "" || i.ClientSecretFile != "" || len(i.Scopes) > 0 || i.TokenURL != ""
+	return !i.ClientIDFile.IsZero() || !i.ClientSecretFile.IsZero() || len(i.Scopes) > 0 || i.TokenURL != ""
 }
 
 // IdentityFor returns the first identity, in sorted name order, among

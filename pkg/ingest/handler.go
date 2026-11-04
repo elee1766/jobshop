@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -235,15 +235,18 @@ func (h *Handler) serveLinear(w http.ResponseWriter, r *http.Request, ep config.
 // errNoSecret is returned by ReadSecret for an empty file.
 var errNoSecret = errors.New("empty secret")
 
-// ReadSecret reads a secret file, trimming surrounding space.
-func ReadSecret(identity, path string) (Secret, error) {
-	b, err := os.ReadFile(path)
+// ReadSecret reads a secret file or runs a secret command (config.ReadSecret),
+// trimming surrounding space.
+func ReadSecret(ctx context.Context, identity string, src config.Secret) (Secret, error) {
+	b, err := config.ReadSecret(ctx, src)
 	if err != nil {
 		return Secret{}, err
 	}
 	k := strings.TrimSpace(string(b))
 	if k == "" {
-		return Secret{}, fmt.Errorf("%s: %w", path, errNoSecret)
+		// src.String() is the path, or "secret command": a command line
+		// may hold a token, so it stays out of logs.
+		return Secret{}, fmt.Errorf("%s: %w", src, errNoSecret)
 	}
 	return Secret{Identity: identity, Key: []byte(k)}, nil
 }

@@ -302,7 +302,7 @@ func TestAdmissionURLSignature(t *testing.T) {
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
-	h := config.AdmissionHook{Name: "remote", Type: config.AdmissionValidating, URL: srv.URL, SecretFile: filepath.Join(dir, "sec")}
+	h := config.AdmissionHook{Name: "remote", Type: config.AdmissionValidating, URL: srv.URL, SecretFile: config.SecretPath(filepath.Join(dir, "sec"))}
 	c, _ := admissionController(t, []config.AdmissionHook{h})
 	it := putInbox(t, c, store.InboxItem{})
 	got, _ := admitOne(t, c, it.ID)

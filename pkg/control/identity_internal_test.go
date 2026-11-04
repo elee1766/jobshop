@@ -184,7 +184,7 @@ identities:
 	bad := *cfg
 	bad.Identities = map[string]config.Identity{"lapp": cfg.Identities["lapp"]}
 	id := bad.Identities["lapp"]
-	id.ClientSecretFile = write("bad", "nope")
+	id.ClientSecretFile = config.SecretPath(write("bad", "nope"))
 	bad.Identities["lapp"] = id
 	lc, err = newLiveConfig(&bad)
 	require.NoError(t, err)

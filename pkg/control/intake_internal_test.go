@@ -71,7 +71,7 @@ func intakeController(t *testing.T, hook string) (*Controller, *fakeLinear) {
 	tokFile := filepath.Join(t.TempDir(), "tok")
 	require.NoError(t, os.WriteFile(tokFile, []byte("lin_api_x\n"), 0o600))
 	cfg := *c.config()
-	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: tokFile, Workspace: "acme", Teams: []string{"ENG"}}}
+	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: config.SecretPath(tokFile), Workspace: "acme", Teams: []string{"ENG"}}}
 	cfg.Workflows = map[string]config.Workflow{"lw": {
 		Vars: []string{"issue"}, Issue: "issue", Repo: "acme/app", Tracker: config.TrackerLinear, LinearWorkspace: "acme",
 		Steps: []config.Step{{ID: "implement", Pool: "dev", Title: "Implement ${issue}", Prompt: "do ${issue}"}},

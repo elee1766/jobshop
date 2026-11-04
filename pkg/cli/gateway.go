@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -37,11 +36,7 @@ func (c gatewayCmd) Run(g *Globals) error {
 	if !ok {
 		return fmt.Errorf("no gateway %q in %s", c.Name, r.Config())
 	}
-	tokenFile := gc.TokenFile
-	if !filepath.IsAbs(tokenFile) {
-		tokenFile = filepath.Join(r.Dir, tokenFile)
-	}
-	tok, err := os.ReadFile(tokenFile)
+	tok, err := config.ReadSecret(context.Background(), gc.TokenFile.In(r.Dir))
 	if err != nil {
 		return fmt.Errorf("gateway %s: token: %w", c.Name, err)
 	}

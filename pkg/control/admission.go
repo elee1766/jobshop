@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -364,7 +363,7 @@ func admissionSignature(secret, body []byte) string {
 }
 
 func (c *Controller) postAdmission(ctx context.Context, h config.AdmissionHook, delivery string, body []byte) ([]byte, error) {
-	secret, err := os.ReadFile(c.root.Path(h.SecretFile))
+	secret, err := config.ReadSecret(ctx, h.SecretFile.In(c.root.Dir))
 	if err != nil {
 		return nil, fmt.Errorf("secret: %w", err)
 	}

@@ -176,6 +176,18 @@ projects:
   js: {identities: [me-gh, me-lin]}
 ```
 
+Any `*_file` value (identity `token_file`, `private_key_file`,
+`client_id_file`, `client_secret_file`, `webhook_secret_file`, ingest
+and admission `secret_file`, gateway `token_file`) is a path, or a
+mapping `{type: file, path: ...}` or `{type: command, command: ...}`. A
+command runs with `sh -c` as the jobshop user, each time the secret is
+read (30s timeout), and its stdout is the secret:
+
+```yaml
+  me-gh: {kind: github-token, token_file: {type: command, command: "pass show gh/jobshop"}, repos: ["acme/*"]}
+  me-lin: {kind: linear, token_file: {type: command, command: "op read op://ci/linear/key"}, ...}
+```
+
 The PAT (fine-grained or classic) is used wherever an App installation
 token would be: `jobshop identity token`, the git credential helper, the
 gh wrapper and controller reads. Agents post as you, so comments by the

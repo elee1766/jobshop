@@ -20,7 +20,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -80,7 +79,7 @@ func (m *Minter) Token(ctx context.Context, name string, id config.Identity, tar
 		m.cache[key] = t
 		return t, nil
 	case config.IdentityLinear, config.IdentityGitHubToken:
-		b, err := os.ReadFile(id.TokenFile)
+		b, err := config.ReadSecret(ctx, id.TokenFile)
 		if err != nil {
 			return Token{}, fmt.Errorf("identity %s: %w", name, err)
 		}
@@ -188,7 +187,7 @@ func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (st
 }
 
 func (m *Minter) mint(ctx context.Context, id config.Identity, inst int64, now time.Time) (Token, error) {
-	pemBytes, err := os.ReadFile(id.PrivateKeyFile)
+	pemBytes, err := config.ReadSecret(ctx, id.PrivateKeyFile)
 	if err != nil {
 		return Token{}, err
 	}
@@ -241,11 +240,11 @@ const DefaultLinearTokenURL = "https://api.linear.app/oauth/token"
 // (#278). Error bodies are included (Linear returns error and
 // error_description), never the secret or a token.
 func (m *Minter) mintLinear(ctx context.Context, id config.Identity, scopes []string, now time.Time) (Token, error) {
-	cid, err := os.ReadFile(id.ClientIDFile)
+	cid, err := config.ReadSecret(ctx, id.ClientIDFile)
 	if err != nil {
 		return Token{}, err
 	}
-	secret, err := os.ReadFile(id.ClientSecretFile)
+	secret, err := config.ReadSecret(ctx, id.ClientSecretFile)
 	if err != nil {
 		return Token{}, err
 	}
@@ -301,7 +300,7 @@ func JWTFor(id config.Identity, now time.Time) (string, error) {
 	if id.Kind != config.IdentityGitHubApp {
 		return "", fmt.Errorf("app jwt: kind %s is not %s", id.Kind, config.IdentityGitHubApp)
 	}
-	b, err := os.ReadFile(id.PrivateKeyFile)
+	b, err := config.ReadSecret(context.Background(), id.PrivateKeyFile)
 	if err != nil {
 		return "", err
 	}

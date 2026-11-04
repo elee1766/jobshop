@@ -555,7 +555,7 @@ in
           };
         }
       '';
-      description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file, webhook_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets.";
+      description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file, webhook_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets. Each may instead be `{ type = \"command\"; command = \"...\"; }`, whose stdout is the secret (#435).";
     };
 
     workspaces = lib.mkOption {
@@ -592,8 +592,8 @@ in
               description = "Matrix client-server URL. Unused for discord.";
             };
             tokenFile = lib.mkOption {
-              type = lib.types.str;
-              description = "File with the bot access token, readable by the jobshop user. Not a Nix store path.";
+              type = lib.types.either lib.types.str (lib.types.attrsOf lib.types.str);
+              description = "File with the bot access token, readable by the jobshop user (not a Nix store path), or a secret mapping such as `{ type = \"command\"; command = \"pass show matrix/bot\"; }` (#435).";
             };
             pool = lib.mkOption {
               type = lib.types.str;
