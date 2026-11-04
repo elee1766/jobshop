@@ -80,6 +80,45 @@ type Comment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Recall source kinds (#265).
+const (
+	RecallComment  = "comment"
+	RecallJournal  = "journal"
+	RecallLearning = "learning"
+)
+
+// RecallDoc is one searchable document. Ref identifies it within Kind: a
+// comment id, "<session>:<seq>" for a journal turn, a learning id.
+type RecallDoc struct {
+	Kind     string
+	Ref      string
+	TicketID string
+	Project  string
+	At       time.Time
+	Body     string
+}
+
+// RecallQuery selects recall hits. Empty fields match everything.
+type RecallQuery struct {
+	Text     string
+	Project  string
+	Kind     string
+	TicketID string
+	Limit    int // 0 means 10
+}
+
+// RecallHit is one ranked search result. Lower Score is a better match
+// (SQLite bm25).
+type RecallHit struct {
+	Kind     string    `json:"kind"`
+	Ref      string    `json:"ref"`
+	TicketID string    `json:"ticket_id,omitempty"`
+	Project  string    `json:"project,omitempty"`
+	At       time.Time `json:"at,omitzero"`
+	Snippet  string    `json:"snippet"`
+	Score    float64   `json:"score"`
+}
+
 // HistoryEntry is one audit-log row.
 type HistoryEntry struct {
 	Seq      int64           `json:"seq"`
@@ -268,6 +307,11 @@ type Store interface {
 	AddLearning(ctx context.Context, l Learning) (Learning, error)
 	// Learnings returns learnings newest first.
 	Learnings(ctx context.Context, f LearningFilter) ([]Learning, error)
+	// IndexRecall adds or replaces (by kind and ref) one document in the
+	// recall index. Comments are indexed by the backend itself.
+	IndexRecall(ctx context.Context, d RecallDoc) error
+	// Recall searches the index, best match first.
+	Recall(ctx context.Context, q RecallQuery) ([]RecallHit, error)
 
 	// Close releases backend resources.
 	Close() error

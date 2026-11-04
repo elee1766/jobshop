@@ -68,6 +68,7 @@ const (
 	MethodReportIncidents  = "report.incidents"
 	MethodGuard            = "guard"
 	MethodVersion          = "version"
+	MethodRecall           = "recall"
 	MethodAttention        = "attention"
 	MethodIdentityList     = "identity.list"
 	MethodIdentityCheck    = "identity.check"
@@ -666,6 +667,16 @@ type PoolStatusResult struct {
 // DrainResult lists drained pools after the call; "*" means all.
 type DrainResult struct {
 	Drained []string `json:"drained"`
+}
+
+// RecallParams is a recall search (#265). Sessions always search their own
+// project; admin may set Project or leave it empty for all.
+type RecallParams struct {
+	Query    string `json:"query"`
+	Limit    int    `json:"limit,omitempty"`
+	Project  string `json:"project,omitempty"`
+	Kind     string `json:"kind,omitempty"` // comment, journal or learning
+	TicketID string `json:"ticket_id,omitempty"`
 }
 
 // TraceParams selects the ticket to trace.

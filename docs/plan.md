@@ -278,6 +278,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Learnings capture: `jobshop learn`, a `learnings` table, and
   controller-recorded failures, review findings, escalations, answers
   and stalls (#264, `docs/notes/264-learnings.md`).
+- `jobshop recall`: FTS5 search over comments, session journals and
+  learnings,
+  with a pack prompt rule to use it on failures (#265,
+  `docs/notes/265-recall.md`).
 
 ## 5. What's next
 
@@ -388,6 +392,7 @@ Pre-switch config check on the next pack var change:
 `docs/verify/deploy-config-check.md` (#261).
 Learning loop (#247 B): capture is built (#264); next memory files and
 skills, then the curator. Reverted PRs as learnings are a follow-up.
+Recall live check after the next self-deploy: `docs/verify/recall.md` (#265).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -810,6 +815,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Learnings are rows of a `learnings` store table (2026-11-04, #264),
   not non-claimable tickets: no pool, ready list or stall check can see
   them, and they add no history rows or change events.
+- Recall (2026-11-04, #265) is one FTS5 table in the store, not a
+  separate index file: comments stay current through SQL triggers in the
+  same transaction, and journals are summarized (`acphost.Summarize`)
+  into one document per session after each turn, since raw frames are
+  mostly tool JSON. Learnings (#264) are indexed by triggers on their
+  table like comments.
 - The activity feed (2026-11-04, #255) is a cache file under the root,
   not a store table: the items are external and refetchable, and store
   writes would add history rows and change events for each one. Links to

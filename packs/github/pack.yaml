@@ -154,6 +154,16 @@ triggers:
       vars: {signal: "${stall_signal}", subject: "${stall_subject}", detail: "${stall_detail}"}
     cooldown: 30m
     max_runs: 2
+# Workers check what earlier sessions learned before retrying blind or
+# reaching a human (#265).
+prompt_rules:
+  - name: recall
+    at: system
+    text: >-
+      When a command, test, CI run or step fails, and before asking a
+      human (jobshop report waiting), run `jobshop recall <words from the
+      error or question>` to search earlier ticket comments, session
+      journals and learnings for the same problem and its fix.
 workflows:
   # One run per issue: implement (dev) -> review-merge (refinery) ->
   # post-merge (deploy-check). Started by the planner with --key issue-<n>.
