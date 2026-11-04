@@ -702,8 +702,15 @@ func TestPoolSession(t *testing.T) {
 
 	var sessions []store.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
-	require.Len(t, sessions, 1)
+	// Under load the first session can go idle and a new one spawn before
+	// this list runs (#455), so check the oldest: it ran the task.
+	require.NotEmpty(t, sessions)
 	sess := sessions[0]
+	for _, s := range sessions[1:] {
+		if s.CreatedAt.Before(sess.CreatedAt) {
+			sess = s
+		}
+	}
 	assert.Equal(t, "dev", sess.Pool)
 
 	passEventually(t, root.Dir, func() bool { return show(sess.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
