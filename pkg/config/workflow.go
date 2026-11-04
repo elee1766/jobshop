@@ -127,6 +127,9 @@ type Step struct {
 	// When gates the step on an earlier step's recorded outcome; when it
 	// does not match, the step closes skipped instead of running.
 	When *StepWhen `yaml:"when"`
+	// Placement replaces pool and needs_resources with weighted options
+	// (#409).
+	Placement *Placement `yaml:"placement,omitempty"`
 }
 
 // StepWhen is a step condition: run only if step closed with outcome.
@@ -214,8 +217,9 @@ func (s Step) RetryLimit() int {
 // skips them so run vars survive until run start.
 // pool is one too, so a run var can route a step to a pool (#384).
 // run, url, body and headers are filled when a command or http step runs
-// (#396).
-var templateKeys = []string{"title", "prompt", "pool", "needs_resources", "run", "url", "body", "headers"}
+// (#396). placement holds pools, keys and when conditions filled at run
+// start (#409).
+var templateKeys = []string{"title", "prompt", "pool", "needs_resources", "placement", "run", "url", "body", "headers"}
 
 // checkTriggerRun validates a run: trigger. The workflow must exist and
 // every workflow var must be set (by the trigger or by pack vars); vars
@@ -455,7 +459,11 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		} else if s.Type != StepAgent {
 			return fmt.Errorf("%s: type %q must be agent, command or http", where, s.Type)
 		}
-		if s.Pool != "" || !s.Auto() {
+		if s.Placement != nil {
+			if err := c.checkPlacement(w, s); err != nil {
+				return fmt.Errorf("%s: %w", where, err)
+			}
+		} else if s.Pool != "" || !s.Auto() {
 			if err := c.checkStepPool(w, s.Pool); err != nil {
 				return fmt.Errorf("%s: %w", where, err)
 			}

@@ -68,6 +68,8 @@ type runPlan struct {
 	proj string
 	vars map[string]any
 	meta json.RawMessage
+	// placements are the resolved placements by step index (#409).
+	placements map[int]*store.StepPlacement
 }
 
 // planRun checks p against the config and the caller's scope.
@@ -95,7 +97,19 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 	// A step pool may name a run var (#384): resolve every one before
 	// any ticket exists, so a bad pool fails the start.
 	w.Steps = slices.Clone(w.Steps)
+	placements := map[int]*store.StepPlacement{}
 	for i, s := range w.Steps {
+		if s.Placement != nil {
+			// Placement (#409): the step starts on its top option.
+			sp, err := resolvePlacement(cfg, &w, s.Placement, vars)
+			if err != nil {
+				return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+			}
+			placements[i] = sp
+			w.Steps[i].Pool = sp.Options[0].Pool
+			w.Steps[i].NeedsResources = sp.Options[0].Resources
+			continue
+		}
 		if s.Auto() && s.Pool == "" {
 			continue
 		}
@@ -132,7 +146,7 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 			return runPlan{}, forbidden("after %s: session is scoped to project %s", id, sc.project)
 		}
 	}
-	plan := runPlan{w: w, proj: proj, vars: vars, meta: meta}
+	plan := runPlan{w: w, proj: proj, vars: vars, meta: meta, placements: placements}
 	if err := c.intakeRun(ctx, plan); err != nil {
 		return runPlan{}, err
 	}
@@ -191,7 +205,7 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 			return g, err
 		}
 		needs := w.StepNeeds(i)
-		stepF := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs}
+		stepF := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs, Placement: plan.placements[i]}
 		pool := s.Pool
 		if s.Auto() {
 			// No pool on the ticket: no session may claim it; the

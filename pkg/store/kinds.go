@@ -208,7 +208,35 @@ type StepFields struct {
 	// is created deferred; the controller opens or skips it once its
 	// needs are finished.
 	When *StepWhen `json:"when,omitempty"`
+	// Placement is the step's resolved placement (#409): its options by
+	// weight and which one the ticket is on now.
+	Placement *StepPlacement `json:"placement,omitempty"`
 }
+
+// StepPlacement records a step's placement options. The ticket's pool
+// and Resources are the chosen option's; the controller moves the step
+// to another option while it is open and unclaimed.
+type StepPlacement struct {
+	Options []PlacementOption `json:"options"`
+	// Chosen indexes Options. Fallback is Chosen > 0.
+	Chosen int `json:"chosen"`
+	// PreferMS is prefer_for in milliseconds.
+	PreferMS int64 `json:"prefer_ms,omitempty"`
+	// Since is when the step first could start (its blockers finished),
+	// set by the controller; prefer_for counts from it.
+	Since time.Time `json:"since,omitzero"`
+}
+
+// PlacementOption is one resolved option: a pool and every resource key
+// it needs (required keys included).
+type PlacementOption struct {
+	Pool      string   `json:"pool"`
+	Resources []string `json:"resources,omitempty"`
+	Weight    int      `json:"weight"`
+}
+
+// Fallback reports whether the step is on an option below the top one.
+func (p *StepPlacement) Fallback() bool { return p != nil && p.Chosen > 0 }
 
 // StepWhen is a step condition: step closed with outcome.
 type StepWhen struct {
@@ -269,6 +297,11 @@ func (f StepFields) Validate() error {
 	for _, r := range f.Resources {
 		if r == "" {
 			return fmt.Errorf("%w: step: empty resource key", ErrInvalid)
+		}
+	}
+	if p := f.Placement; p != nil {
+		if len(p.Options) == 0 || p.Chosen < 0 || p.Chosen >= len(p.Options) {
+			return fmt.Errorf("%w: step: placement chosen out of range", ErrInvalid)
 		}
 	}
 	return f.Wait.Validate()

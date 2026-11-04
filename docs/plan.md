@@ -422,6 +422,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/353-admission-release-held.md`).
 - Secret settings take a path or `{type: file|command, ...}`; a command's
   stdout is the secret (#435, PR #366, `docs/notes/435-secret-commands.md`).
+- Step `placement`: weighted pool options with `when` and `prefer_for`;
+  the controller moves an unclaimed step to a free option (#409,
+  `docs/notes/409-step-placement.md`, check `docs/verify/step-placement.md`).
 
 ## 5. What's next
 
@@ -570,8 +573,8 @@ Per-session isolation (`docs/notes/users-security.md`).
 **Test speed (#359).** In-process agent (#361), then move the
 process-tree tests onto the fake clock; sqlite template DB (#363).
 
-**Resource pools (#400).** Provider-owned slots and placement build on
-the keyed and counted slots (waiting visibility done, #408).
+**Resource pools (#400).** Provider-owned slots build on the keyed and
+counted slots (waiting visibility done, #408; placement done, #409).
 
 **Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
 misjudge conflicts: let the controller check mergeStateStatus itself.
@@ -1178,6 +1181,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   is held by an in-progress ticket naming its key, so every claim end
   frees it in the same write and there is no slot row to leak. Only
   capacities are stored, synced from config.
+- Placement moves the step ticket, not a scheduler queue (2026-11-04,
+  #409): the controller rewrites an unclaimed step's pool and resource
+  keys to the chosen option, so the ready and claim queries stay as
+  #400 built them. `when` is decided once at run start.
 - Store SQL is portable except recall and DDL types (2026-11-04, #405):
   queried fields keys are columns the store writes from `fields`, which
   stays the source of record; meta filters use `ticket_meta`. Recall
