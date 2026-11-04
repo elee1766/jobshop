@@ -100,6 +100,17 @@ func TestReloadMaxSessions(t *testing.T) {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &tickets[i]))
 	}
 	require.Eventually(t, func() bool { return len(openSessions(t, admin)) == 2 }, dialWait, 50*time.Millisecond)
+	// Both must be mid-turn: an idle session over the lowered cap is
+	// scaled down, which is correct but not what this test checks.
+	for i := range 2 {
+		require.Eventually(t, func() bool {
+			var got store.Ticket
+			err := admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: tickets[i].ID}, &struct {
+				Ticket *store.Ticket `json:"ticket"`
+			}{&got})
+			return err == nil && got.Status == store.StatusInProgress
+		}, dialWait, 50*time.Millisecond, "both sessions working")
+	}
 
 	writePoolConfig(t, root, 1, "")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
