@@ -306,3 +306,41 @@ func TestSubscriptionsLinear(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 	assert.Len(t, messagesTo(t, c, sess.ID), 1, "delivered once")
 }
+
+// TestSubscriptionsGitHubTokenSelf: with a github-token identity covering
+// the repo, comments by the token's own login (GET /user) are filtered
+// like an App bot's; other humans still arrive (#340).
+func TestSubscriptionsGitHubTokenSelf(t *testing.T) {
+	c, clk, src := subController(t)
+	ctx := t.Context()
+	pat := filepath.Join(t.TempDir(), "pat")
+	require.NoError(t, os.WriteFile(pat, []byte("ghp_x\n"), 0o600))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer ghp_x", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"login":"Alice"}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := *c.config()
+	cfg.Identities = map[string]config.Identity{"me": {Kind: config.IdentityGitHubToken, TokenFile: pat, Repos: []string{"acme/*"}, APIURL: srv.URL}}
+	lc, err := newLiveConfig(&cfg)
+	require.NoError(t, err)
+	c.live.Store(lc)
+	c.minter = identity.NewMinter()
+
+	sess := mkSession(t, c)
+	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
+	_, _, err = c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
+	require.NoError(t, err)
+	c.pollSubscriptions(ctx, src)
+
+	at := clk.now().Add(time.Minute)
+	src.add("acme/widget#7", ghComment{Author: "alice", Body: "my own PR note", At: at})
+	c.pollSubscriptions(ctx, src)
+	assert.Empty(t, messagesTo(t, c, sess.ID), "own comments are filtered")
+
+	src.add("acme/widget#7", ghComment{Author: "bob", Body: "please rename", At: at.Add(time.Minute)})
+	c.pollSubscriptions(ctx, src)
+	msgs := messagesTo(t, c, sess.ID)
+	require.Len(t, msgs, 1)
+	assert.Contains(t, msgs[0].Body, "please rename")
+}

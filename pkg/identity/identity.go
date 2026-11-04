@@ -1,6 +1,7 @@
 // Package identity mints and caches credentials for configured identities
 // (#200): GitHub App installation tokens, Linear App client_credentials
-// tokens (#278), and Linear API keys read from files. Secrets never come
+// tokens (#278), and GitHub tokens (#340) and Linear API keys read from
+// files. Secrets never come
 // from yaml.
 package identity
 
@@ -47,8 +48,9 @@ type Minter struct {
 	HTTP *http.Client
 	Now  func() time.Time
 
-	mu    sync.Mutex
-	cache map[string]Token // identity/owner -> token
+	mu     sync.Mutex
+	cache  map[string]Token  // identity/owner -> token
+	logins map[string]string // github-token identity -> its login
 }
 
 // NewMinter returns a Minter with a 30s HTTP timeout.
@@ -77,7 +79,7 @@ func (m *Minter) Token(ctx context.Context, name string, id config.Identity, tar
 		t.Identity, t.Kind = name, id.Kind
 		m.cache[key] = t
 		return t, nil
-	case config.IdentityLinear:
+	case config.IdentityLinear, config.IdentityGitHubToken:
 		b, err := os.ReadFile(id.TokenFile)
 		if err != nil {
 			return Token{}, fmt.Errorf("identity %s: %w", name, err)
@@ -107,11 +109,64 @@ func (m *Minter) Token(ctx context.Context, name string, id config.Identity, tar
 	return Token{}, fmt.Errorf("identity %s: unknown kind %q", name, id.Kind)
 }
 
-// Forget drops cached tokens, e.g. after a reload changed keys.
+// Forget drops cached tokens and logins, e.g. after a reload changed keys.
 func (m *Minter) Forget() {
 	m.mu.Lock()
 	m.cache = map[string]Token{}
+	m.logins = nil
 	m.mu.Unlock()
+}
+
+// Login returns the GitHub login a github-token identity acts as (GET
+// /user), cached until Forget. Its comments are filtered like an App
+// bot's so they are not delivered back to itself (#340).
+func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (string, error) {
+	if id.Kind != config.IdentityGitHubToken {
+		return "", fmt.Errorf("identity %s: login is for kind %s", name, config.IdentityGitHubToken)
+	}
+	m.mu.Lock()
+	l, ok := m.logins[name]
+	m.mu.Unlock()
+	if ok {
+		return l, nil
+	}
+	tok, err := m.Token(ctx, name, id, "")
+	if err != nil {
+		return "", err
+	}
+	base := id.APIURL
+	if base == "" {
+		base = DefaultAPIURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/user", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	resp, err := m.HTTP.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("identity %s: %w", name, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("identity %s: GET /user: %s: %s", name, resp.Status, strings.TrimSpace(string(body)))
+	}
+	var u struct {
+		Login string `json:"login"`
+	}
+	if err := json.Unmarshal(body, &u); err != nil || u.Login == "" {
+		return "", fmt.Errorf("identity %s: GET /user: no login", name)
+	}
+	m.mu.Lock()
+	if m.logins == nil {
+		m.logins = map[string]string{}
+	}
+	m.logins[name] = u.Login
+	m.mu.Unlock()
+	return u.Login, nil
 }
 
 func (m *Minter) mint(ctx context.Context, id config.Identity, inst int64, now time.Time) (Token, error) {

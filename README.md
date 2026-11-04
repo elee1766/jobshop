@@ -103,6 +103,33 @@ jobshop desk                             # web UI on 127.0.0.1:7480
 `jobshop --help` lists the rest (tickets, edges, labels, send, batches,
 reports, events, identities).
 
+### Running as your own user
+
+No GitHub App or Linear App is needed. Give jobshop a personal access
+token and a Linear API key, each in a file only the jobshop user reads:
+
+```yaml
+identities:
+  me-gh: {kind: github-token, token_file: /secrets/gh-pat, repos: ["acme/*"]}
+  me-lin:
+    kind: linear
+    token_file: /secrets/linear-key
+    workspace: acme
+    teams: [ENG]
+    webhook_secret_file: /secrets/linear-webhook   # optional workspace webhook
+projects:
+  js: {identities: [me-gh, me-lin]}
+```
+
+The PAT (fine-grained or classic) is used wherever an App installation
+token would be: `jobshop identity token`, the git credential helper, the
+gh wrapper and controller reads. Agents post as you, so comments by the
+token's own login (`GET /user`) are ignored like the App bot's. Check
+with `jobshop identity check acme/widget`. App-only features, such as
+reconciling missed App webhook deliveries, are off; point a repo
+webhook at an `ingest.endpoints` entry with its own `secret_file`. See
+`docs/notes/340-user-tokens.md`.
+
 ### Webhooks: `jobshop ingest serve`
 
 `jobshop ingest serve` receives GitHub and Linear webhooks, checks the

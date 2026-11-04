@@ -338,7 +338,7 @@ type IngestEndpoint struct {
 	Name   string `yaml:"name"`
 	Source string `yaml:"source"`
 	// SecretFile is relative to the root. Identity instead names a
-	// linear-app identity whose webhook_secret_file signs.
+	// Linear identity (app or API key, #340) whose webhook_secret_file signs.
 	SecretFile string `yaml:"secret_file"`
 	Identity   string `yaml:"identity"`
 	// Path defaults to /<source>/<name>.
@@ -356,7 +356,7 @@ const LinearWebhookPath = "/linear/webhook"
 var endpointName = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // IngestEndpoints is ingest.endpoints plus an implicit endpoint
-// linear-<identity> at /linear/webhook for every linear-app identity
+// linear-<identity> at /linear/webhook for every Linear identity
 // with a webhook secret that no endpoint names, so #300 setups keep
 // working.
 func (c *Config) IngestEndpoints() []IngestEndpoint {
@@ -369,7 +369,7 @@ func (c *Config) IngestEndpoints() []IngestEndpoint {
 	}
 	for _, name := range c.IdentityNames() {
 		id := c.Identities[name]
-		if id.Kind != IdentityLinearApp || id.WebhookSecretFile == "" || named[name] {
+		if !IsLinear(id.Kind) || id.WebhookSecretFile == "" || named[name] {
 			continue
 		}
 		out = append(out, IngestEndpoint{
@@ -414,8 +414,8 @@ func (c *Config) validateIngest() error {
 		}
 		if e.Identity != "" {
 			id, ok := c.Identities[e.Identity]
-			if !ok || id.Kind != IdentityLinearApp || id.WebhookSecretFile == "" || e.Source != IngestLinear {
-				return fmt.Errorf("%s: identity %q must be a linear-app identity with webhook_secret_file, on a linear endpoint", where, e.Identity)
+			if !ok || !IsLinear(id.Kind) || id.WebhookSecretFile == "" || e.Source != IngestLinear {
+				return fmt.Errorf("%s: identity %q must be a Linear identity with webhook_secret_file, on a linear endpoint", where, e.Identity)
 			}
 		}
 		if len(e.Repos) > 0 && e.Source != IngestGitHub {
