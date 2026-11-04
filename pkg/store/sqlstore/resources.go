@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -7,12 +7,12 @@ import (
 	"slices"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
 // SetResourceCaps replaces the resource capacities in one transaction.
 func (s *Store) SetResourceCaps(ctx context.Context, caps map[string]int) error {
-	return s.tx(ctx, func(q *sqlcdb.Queries) error {
+	return s.tx(ctx, func(q sqlcdb.Querier) error {
 		if err := q.DeleteResourceCaps(ctx); err != nil {
 			return err
 		}

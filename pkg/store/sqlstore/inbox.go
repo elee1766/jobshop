@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"cmp"
@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
 // InboxPut stores an ingested item, deduped by delivery id and natural
@@ -20,7 +20,7 @@ func (s *Store) InboxPut(ctx context.Context, it store.InboxItem) (out store.Inb
 	if err := checkInbox(it); err != nil {
 		return out, false, err
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		out, dup, err = s.inboxPut(ctx, q, it)
 		return err
 	})
@@ -34,7 +34,7 @@ func (s *Store) InboxPutBatch(ctx context.Context, its []store.InboxItem) (fresh
 			return 0, err
 		}
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		fresh = 0
 		for _, it := range its {
 			_, dup, err := s.inboxPut(ctx, q, it)
@@ -62,7 +62,7 @@ func checkInbox(it store.InboxItem) error {
 
 // inboxPut inserts it, or returns the row it clashes with: same delivery
 // id first, else same natural key.
-func (s *Store) inboxPut(ctx context.Context, q *sqlcdb.Queries, it store.InboxItem) (store.InboxItem, bool, error) {
+func (s *Store) inboxPut(ctx context.Context, q sqlcdb.Querier, it store.InboxItem) (store.InboxItem, bool, error) {
 	now := s.now()
 	recv := it.ReceivedAt
 	if recv.IsZero() {
@@ -102,7 +102,7 @@ func (s *Store) InboxClaim(ctx context.Context, states []string, holder string, 
 			return out, fmt.Errorf("%w: unknown inbox state %q", store.ErrInvalid, st)
 		}
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		for range 10 {
 			now := s.now()
 			r, err := q.InboxNextClaimable(ctx, sqlcdb.InboxNextClaimableParams{States: states, Now: ms(now)})
@@ -126,7 +126,7 @@ func (s *Store) InboxClaim(ctx context.Context, states []string, holder string, 
 
 // InboxRenew extends holder's live lease on id.
 func (s *Store) InboxRenew(ctx context.Context, id int64, holder string, lease time.Duration) (out store.InboxItem, err error) {
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		now := s.now()
 		r, err := q.InboxRenew(ctx, sqlcdb.InboxRenewParams{LeaseUntil: ms(now.Add(lease)), Now: ms(now), ID: id, Holder: holder})
 		if err != nil {
@@ -143,7 +143,7 @@ func (s *Store) InboxSetState(ctx context.Context, id int64, holder string, u st
 	if !slices.Contains(store.InboxStates, u.State) {
 		return out, fmt.Errorf("%w: unknown inbox state %q", store.ErrInvalid, u.State)
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		r, err := q.InboxSetState(ctx, sqlcdb.InboxSetStateParams{
 			State: u.State, Admitted: nullJSON(u.Admitted), HookResults: nullJSON(u.HookResults),
 			Now: ms(s.now()), ID: id, Holder: holder,
@@ -159,7 +159,7 @@ func (s *Store) InboxSetState(ctx context.Context, id int64, holder string, u st
 
 // inboxFenced turns a fenced update that matched no row into ErrNotFound
 // (no such item) or ErrConflict (another holder, or the lease expired).
-func (s *Store) inboxFenced(ctx context.Context, q *sqlcdb.Queries, err error, id int64, holder string) error {
+func (s *Store) inboxFenced(ctx context.Context, q sqlcdb.Querier, err error, id int64, holder string) error {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
@@ -193,7 +193,7 @@ func (s *Store) InboxList(ctx context.Context, f store.InboxFilter) ([]store.Inb
 
 // InboxPrune deletes terminal items received before before.
 func (s *Store) InboxPrune(ctx context.Context, before time.Time) (n int64, err error) {
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		n, err = q.InboxPrune(ctx, ms(before))
 		return err
 	})

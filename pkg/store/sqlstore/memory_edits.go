@@ -1,4 +1,4 @@
-package sqlite
+package sqlstore
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
 // AddMemoryEdit records a merged curator PR (#274). A PR already
@@ -35,7 +35,7 @@ func (s *Store) AddMemoryEdit(ctx context.Context, e store.MemoryEdit) (out stor
 	if err != nil {
 		return out, err
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		if r, err := q.GetMemoryEditByPR(ctx, e.PR); err == nil {
 			out, err = toMemoryEdit(r)
 			return err
@@ -82,7 +82,7 @@ func (s *Store) SetMemoryEditResult(ctx context.Context, id int64, state string,
 	if err != nil {
 		return out, err
 	}
-	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		r, err := q.SetMemoryEditResult(ctx, sqlcdb.SetMemoryEditResultParams{
 			State: state, After: string(a), Reason: reason, EvaluatedAt: ms(s.now()), ID: id,
 		})
