@@ -1,7 +1,7 @@
 -- name: InboxInsert :execrows
-INSERT INTO inbox (source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, updated_at)
+INSERT INTO inbox (source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, updated_at, endpoint)
 VALUES (sqlc.arg(source), sqlc.arg(delivery_id), sqlc.arg(kind), sqlc.arg(repo_or_team), sqlc.arg(number),
-        sqlc.arg(comment_id), sqlc.arg(actor), sqlc.arg(received_at), sqlc.arg(payload), sqlc.arg(now))
+        sqlc.arg(comment_id), sqlc.arg(actor), sqlc.arg(received_at), sqlc.arg(payload), sqlc.arg(now), sqlc.arg(endpoint))
 ON CONFLICT (delivery_id) DO NOTHING;
 
 -- name: InboxGetByDelivery :one

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,12 +16,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/config"
 )
 
-const (
-	ghSecret  = "gh-secret"
-	linSecret = "lin-secret"
-)
+var secrets = map[string]string{
+	"gh-a": "secret-a", "gh-b": "secret-b", "gh-only": "secret-only",
+	"lin": "lin-secret", "linear-app1": "app1-secret", "linear-app2": "app2-secret",
+}
+
+var testEndpoints = []config.IngestEndpoint{
+	{Name: "gh-a", Source: config.IngestGitHub},
+	{Name: "gh-b", Source: config.IngestGitHub},
+	{Name: "gh-only", Source: config.IngestGitHub, Repos: []string{"acme/app"}},
+	{Name: "lin", Source: config.IngestLinear},
+	// Two implicit identity endpoints share /linear/webhook.
+	{Name: "linear-app1", Source: config.IngestLinear, Identity: "app1", Path: config.LinearWebhookPath, Implicit: true},
+	{Name: "linear-app2", Source: config.IngestLinear, Identity: "app2", Path: config.LinearWebhookPath, Implicit: true},
+}
 
 func mac(secret string, b []byte) string {
 	m := hmac.New(sha256.New, []byte(secret))
@@ -28,22 +41,36 @@ func mac(secret string, b []byte) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
-func testHandler(t *testing.T, now time.Time) (*Handler, Spool, *[]string) {
+func openSpool(t *testing.T, path string) *Spool {
 	t.Helper()
-	sp := Spool{Dir: filepath.Join(t.TempDir(), "spool")}
-	var seen []string
+	sp, err := OpenSpool(t.Context(), path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sp.Close() })
+	return sp
+}
+
+type seen struct{ signers []string }
+
+func testHandler(t *testing.T, now time.Time) (*Handler, *Spool, *seen) {
+	t.Helper()
+	sp := openSpool(t, filepath.Join(t.TempDir(), "ingest", "spool.db"))
+	s := &seen{}
 	h := &Handler{
-		Spool:  sp,
-		GitHub: func() []Secret { return []Secret{{Key: []byte(ghSecret)}} },
-		Linear: func() []Secret {
-			return []Secret{{Name: "other", Key: []byte("x")}, {Name: "lin", Key: []byte(linSecret)}}
+		Spool:     sp,
+		Endpoints: testEndpoints,
+		Secret: func(e config.IngestEndpoint) (Secret, error) {
+			k, ok := secrets[e.Name]
+			if !ok {
+				return Secret{}, errors.New("no secret")
+			}
+			return Secret{Identity: e.Identity, Key: []byte(k)}, nil
 		},
 		Now: func() time.Time { return now },
 		OnLinear: func(signer string, ev LinearEvent) {
-			seen = append(seen, signer+":"+ev.IssueKey())
+			s.signers = append(s.signers, signer+":"+ev.IssueKey())
 		},
 	}
-	return h, sp, &seen
+	return h, sp, s
 }
 
 func linearBody(t *testing.T, at time.Time, typ, actorType string) []byte {
@@ -67,142 +94,148 @@ func post(h *Handler, path string, body []byte, hdr map[string]string) int {
 	return rec.Code
 }
 
-func TestGitHubSignature(t *testing.T) {
-	h, sp, _ := testHandler(t, time.Now())
-	body := []byte(`{"action":"opened"}`)
-	hdr := func(sig string) map[string]string {
-		return map[string]string{"X-GitHub-Event": "issues", "X-GitHub-Delivery": "d-1", "X-Hub-Signature-256": sig}
+func ghHeaders(secret, delivery string, body []byte) map[string]string {
+	return map[string]string{
+		"X-GitHub-Event": "issues", "X-GitHub-Delivery": delivery,
+		"X-Hub-Signature-256": "sha256=" + mac(secret, body),
 	}
-	assert.Equal(t, http.StatusUnauthorized, post(h, GitHubPath, body, hdr("sha256="+mac("wrong", body))))
-	assert.Equal(t, http.StatusUnauthorized, post(h, GitHubPath, body, hdr("")))
-	names, err := sp.List()
+}
+
+func rows(t *testing.T, sp *Spool) []Delivery {
+	t.Helper()
+	ds, err := sp.List(t.Context(), 0)
 	require.NoError(t, err)
-	assert.Empty(t, names)
-	assert.Equal(t, http.StatusAccepted, post(h, GitHubPath, body, hdr("sha256="+mac(ghSecret, body))))
-	names, err = sp.List()
-	require.NoError(t, err)
-	assert.Equal(t, []string{"github-d-1.json"}, names)
+	return ds
+}
+
+// TestEndpointSecrets: two GitHub endpoints with different secrets each
+// accept only their own signature.
+func TestEndpointSecrets(t *testing.T) {
+	h, sp, _ := testHandler(t, time.Now())
+	body := []byte(`{"action":"opened","repository":{"full_name":"acme/x"}}`)
+	assert.Equal(t, http.StatusUnauthorized, post(h, "/github/gh-a", body, ghHeaders("secret-b", "d-1", body)), "b's secret on a")
+	assert.Equal(t, http.StatusUnauthorized, post(h, "/github/gh-b", body, ghHeaders("secret-a", "d-1", body)), "a's secret on b")
+	assert.Equal(t, http.StatusUnauthorized, post(h, "/github/gh-a", body, map[string]string{"X-GitHub-Event": "issues"}), "no signature")
+	assert.Empty(t, rows(t, sp))
+	assert.Equal(t, http.StatusAccepted, post(h, "/github/gh-a", body, ghHeaders("secret-a", "d-1", body)))
+	assert.Equal(t, http.StatusAccepted, post(h, "/github/gh-b", body, ghHeaders("secret-b", "d-2", body)))
+	got := rows(t, sp)
+	require.Len(t, got, 2)
+	assert.Equal(t, "gh-a", got[0].Endpoint)
+	assert.Equal(t, "gh-b", got[1].Endpoint)
 
 	ping := []byte(`{"zen":"x"}`)
-	assert.Equal(t, http.StatusNoContent, post(h, GitHubPath, ping, map[string]string{
-		"X-GitHub-Event": "ping", "X-GitHub-Delivery": "d-2", "X-Hub-Signature-256": "sha256=" + mac(ghSecret, ping),
-	}), "ping filtered")
-	names, err = sp.List()
-	require.NoError(t, err)
-	assert.Len(t, names, 1)
+	hdr := ghHeaders("secret-a", "d-3", ping)
+	hdr["X-GitHub-Event"] = "ping"
+	assert.Equal(t, http.StatusNoContent, post(h, "/github/gh-a", ping, hdr), "ping filtered")
+	assert.Equal(t, http.StatusNotFound, post(h, "/github/webhook", body, ghHeaders("secret-a", "d-4", body)), "no default path")
+	assert.Len(t, rows(t, sp), 2)
+}
+
+func TestRepoAllowlist(t *testing.T) {
+	h, sp, _ := testHandler(t, time.Now())
+	other := []byte(`{"repository":{"full_name":"acme/other"}}`)
+	assert.Equal(t, http.StatusForbidden, post(h, "/github/gh-only", other, ghHeaders("secret-only", "o-1", other)))
+	org := []byte(`{"organization":{"login":"acme"}}`)
+	assert.Equal(t, http.StatusForbidden, post(h, "/github/gh-only", org, ghHeaders("secret-only", "o-2", org)), "no repository with an allowlist")
+	assert.Empty(t, rows(t, sp))
+	listed := []byte(`{"repository":{"full_name":"Acme/App"}}`)
+	assert.Equal(t, http.StatusAccepted, post(h, "/github/gh-only", listed, ghHeaders("secret-only", "o-3", listed)))
+	// No allowlist: org-level deliveries pass.
+	assert.Equal(t, http.StatusAccepted, post(h, "/github/gh-a", org, ghHeaders("secret-a", "o-4", org)))
+	assert.Len(t, rows(t, sp), 2)
 }
 
 func TestLinearSignatureAndFilters(t *testing.T) {
 	now := time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC)
-	h, sp, seen := testHandler(t, now)
+	h, sp, s := testHandler(t, now)
 	good := linearBody(t, now, "Issue", "user")
-	sig := func(b []byte) map[string]string {
-		return map[string]string{"Linear-Signature": mac(linSecret, b), "Linear-Delivery": "ld-" + mac("id", b)[:12]}
+	sig := func(secret string, b []byte) map[string]string {
+		return map[string]string{"Linear-Signature": mac(secret, b), "Linear-Delivery": "ld-" + mac("id", b)[:12]}
 	}
-	assert.Equal(t, http.StatusUnauthorized, post(h, LinearPath, good, map[string]string{"Linear-Signature": mac("wrong", good)}), "bad signature")
+	assert.Equal(t, http.StatusUnauthorized, post(h, "/linear/lin", good, sig("wrong", good)), "bad signature")
+	assert.Equal(t, http.StatusUnauthorized, post(h, "/linear/lin", good, sig("app1-secret", good)), "another endpoint's secret")
 	stale := linearBody(t, now.Add(-2*time.Minute), "Issue", "user")
-	assert.Equal(t, http.StatusUnauthorized, post(h, LinearPath, stale, sig(stale)), "stale")
+	assert.Equal(t, http.StatusUnauthorized, post(h, "/linear/lin", stale, sig("lin-secret", stale)), "stale")
 	future := linearBody(t, now.Add(2*time.Minute), "Issue", "user")
-	assert.Equal(t, http.StatusUnauthorized, post(h, LinearPath, future, sig(future)), "future")
+	assert.Equal(t, http.StatusUnauthorized, post(h, "/linear/lin", future, sig("lin-secret", future)), "future")
 	bot := linearBody(t, now, "Issue", "app")
-	assert.Equal(t, http.StatusNoContent, post(h, LinearPath, bot, sig(bot)), "bot filtered")
+	assert.Equal(t, http.StatusNoContent, post(h, "/linear/lin", bot, sig("lin-secret", bot)), "bot filtered")
 	other := linearBody(t, now, "Project", "user")
-	assert.Equal(t, http.StatusNoContent, post(h, LinearPath, other, sig(other)), "type filtered")
-	names, err := sp.List()
-	require.NoError(t, err)
-	assert.Empty(t, names)
-	assert.Empty(t, *seen)
+	assert.Equal(t, http.StatusNoContent, post(h, "/linear/lin", other, sig("lin-secret", other)), "type filtered")
+	assert.Empty(t, rows(t, sp))
+	assert.Empty(t, s.signers)
 
-	assert.Equal(t, http.StatusAccepted, post(h, LinearPath, good, sig(good)))
-	assert.Equal(t, []string{"lin:ENG-5"}, *seen, "signer named")
+	assert.Equal(t, http.StatusAccepted, post(h, "/linear/lin", good, sig("lin-secret", good)))
+	assert.Equal(t, []string{":ENG-5"}, s.signers, "plain secret: no identity")
+}
+
+// TestImplicitLinearEndpoints: identity endpoints share /linear/webhook
+// and the secret that signed names the endpoint and identity (#300).
+func TestImplicitLinearEndpoints(t *testing.T) {
+	now := time.Now()
+	h, sp, s := testHandler(t, now)
+	b := linearBody(t, now, "Issue", "user")
+	require.Equal(t, http.StatusAccepted, post(h, config.LinearWebhookPath, b, map[string]string{"Linear-Signature": mac("app2-secret", b)}))
+	got := rows(t, sp)
+	require.Len(t, got, 1)
+	assert.Equal(t, "linear-app2", got[0].Endpoint)
+	assert.Equal(t, []string{"app2:ENG-5"}, s.signers)
+	assert.Equal(t, http.StatusUnauthorized, post(h, config.LinearWebhookPath, b, map[string]string{"Linear-Signature": mac("lin-secret", b)}), "only the path's endpoints")
 }
 
 func TestDuplicateWritesOnce(t *testing.T) {
 	now := time.Now()
-	h, sp, seen := testHandler(t, now)
+	h, sp, s := testHandler(t, now)
 	b := linearBody(t, now, "Comment", "user")
-	hdr := map[string]string{"Linear-Signature": mac(linSecret, b), "Linear-Delivery": "same"}
-	require.Equal(t, http.StatusAccepted, post(h, LinearPath, b, hdr))
-	info1, err := os.Stat(filepath.Join(sp.Dir, "linear-same.json"))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusAccepted, post(h, LinearPath, b, hdr), "redelivery is accepted")
-	info2, err := os.Stat(filepath.Join(sp.Dir, "linear-same.json"))
-	require.NoError(t, err)
-	assert.True(t, os.SameFile(info1, info2), "file not rewritten")
-	assert.Len(t, *seen, 1, "consumer runs once")
-	names, err := sp.List()
-	require.NoError(t, err)
-	assert.Len(t, names, 1)
-
-	ok, err := sp.Write(Delivery{Source: SourceLinear, DeliveryID: "same", Payload: json.RawMessage(`{}`)})
-	require.NoError(t, err)
-	assert.False(t, ok)
-}
-
-// TestPartialWriteInvisible: a crash between the temp write and the
-// link leaves a dot file that List skips; the next Write succeeds.
-func TestPartialWriteInvisible(t *testing.T) {
-	sp := Spool{Dir: t.TempDir()}
-	require.NoError(t, os.WriteFile(filepath.Join(sp.Dir, ".tmp-123"), []byte(`{"source":"git`), 0o600))
-	names, err := sp.List()
-	require.NoError(t, err)
-	assert.Empty(t, names)
-	ok, err := sp.Write(Delivery{Source: SourceGitHub, DeliveryID: "a", Kind: "push", Payload: json.RawMessage(`{}`)})
-	require.NoError(t, err)
-	assert.True(t, ok)
-	names, err = sp.List()
-	require.NoError(t, err)
-	assert.Equal(t, []string{"github-a.json"}, names)
-	ents, err := os.ReadDir(sp.Dir)
-	require.NoError(t, err)
-	assert.Len(t, ents, 2, "no temp file left by a finished write")
-}
-
-func TestSpoolRejectsBadIDs(t *testing.T) {
-	sp := Spool{Dir: t.TempDir()}
-	for _, id := range []string{"", "../x", ".hidden", "a/b"} {
-		_, err := sp.Write(Delivery{Source: SourceGitHub, DeliveryID: id})
-		require.ErrorIs(t, err, ErrBadDelivery, id)
-	}
-	_, err := sp.Write(Delivery{Source: "other", DeliveryID: "a"})
-	require.ErrorIs(t, err, ErrBadDelivery)
-	_, err = sp.Read("../etc")
-	require.ErrorIs(t, err, ErrBadDelivery)
+	hdr := map[string]string{"Linear-Signature": mac("lin-secret", b), "Linear-Delivery": "same"}
+	require.Equal(t, http.StatusAccepted, post(h, "/linear/lin", b, hdr))
+	require.Equal(t, http.StatusAccepted, post(h, "/linear/lin", b, hdr), "redelivery is accepted")
+	assert.Len(t, rows(t, sp), 1)
+	assert.Len(t, s.signers, 1, "consumer runs once")
+	// Without a delivery header, the body hash dedupes.
+	nohdr := map[string]string{"Linear-Signature": mac("lin-secret", b)}
+	require.Equal(t, http.StatusAccepted, post(h, "/linear/lin", b, nohdr))
+	require.Equal(t, http.StatusAccepted, post(h, "/linear/lin", b, nohdr))
+	assert.Len(t, rows(t, sp), 2)
 }
 
 func TestSpoolWriteError(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "notadir")
-	require.NoError(t, os.WriteFile(file, nil, 0o600))
-	h, _, _ := testHandler(t, time.Now())
-	h.Spool = Spool{Dir: file}
+	h, sp, _ := testHandler(t, time.Now())
+	require.NoError(t, sp.Close())
 	body := []byte(`{}`)
-	assert.Equal(t, http.StatusInternalServerError, post(h, GitHubPath, body, map[string]string{
-		"X-GitHub-Event": "push", "X-GitHub-Delivery": "d", "X-Hub-Signature-256": "sha256=" + mac(ghSecret, body),
-	}))
+	assert.Equal(t, http.StatusInternalServerError, post(h, "/github/gh-a", body, ghHeaders("secret-a", "d", body)))
 }
 
-// TestEndToEnd: a real server, POST, then the spooled file decodes.
-func TestEndToEnd(t *testing.T) {
-	h, sp, _ := testHandler(t, time.Now())
-	srv := httptest.NewServer(h.Mux())
-	defer srv.Close()
-	body := []byte(`{"action":"opened","number":7}`)
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+GitHubPath, bytes.NewReader(body))
+// TestDurableAfterAccept: a row acknowledged with 202 is there when the
+// database is opened fresh, as after a kill right after the response.
+func TestDurableAfterAccept(t *testing.T) {
+	h, _, _ := testHandler(t, time.Now())
+	path := filepath.Join(t.TempDir(), "spool.db")
+	sp2, err := OpenSpool(t.Context(), path)
 	require.NoError(t, err)
+	h.Spool = sp2
+	srv := httptest.NewServer(h.Mux())
+	body := []byte(`{"action":"opened","number":7,"repository":{"full_name":"acme/app"}}`)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, srv.URL+"/github/gh-a", bytes.NewReader(body))
+	require.NoError(t, err)
+	for k, v := range ghHeaders("secret-a", "abc-123", body) {
+		req.Header.Set(k, v)
+	}
 	req.Header.Set("X-GitHub-Event", "pull_request")
-	req.Header.Set("X-GitHub-Delivery", "abc-123")
-	req.Header.Set("X-Hub-Signature-256", "sha256="+mac(ghSecret, body))
 	req.Header.Set("Authorization", "not kept")
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusAccepted, resp.StatusCode)
+	srv.Close()
+	require.NoError(t, sp2.Close())
 
-	names, err := sp.List()
-	require.NoError(t, err)
-	require.Equal(t, []string{"github-abc-123.json"}, names)
-	d, err := sp.Read(names[0])
-	require.NoError(t, err)
+	fresh := openSpool(t, path)
+	got := rows(t, fresh)
+	require.Len(t, got, 1)
+	d := got[0]
+	assert.Equal(t, "gh-a", d.Endpoint)
 	assert.Equal(t, SourceGitHub, d.Source)
 	assert.Equal(t, "abc-123", d.DeliveryID)
 	assert.Equal(t, "pull_request", d.Kind)
@@ -210,14 +243,47 @@ func TestEndToEnd(t *testing.T) {
 	assert.Equal(t, "pull_request", d.Headers["X-GitHub-Event"])
 	assert.NotContains(t, d.Headers, "Authorization")
 	assert.JSONEq(t, string(body), string(d.Payload))
-	require.NoError(t, sp.Remove(names[0]))
-	names, err = sp.List()
-	require.NoError(t, err)
-	assert.Empty(t, names)
-	require.NoError(t, sp.Remove("github-abc-123.json"), "missing is fine")
+
+	require.NoError(t, fresh.Delete(t.Context(), []int64{d.ID, 999}))
+	assert.Empty(t, rows(t, fresh))
 }
 
-func TestSourceOff(t *testing.T) {
-	h := &Handler{Spool: Spool{Dir: t.TempDir()}, Linear: func() []Secret { return nil }}
-	assert.Equal(t, http.StatusNotFound, post(h, GitHubPath, []byte(`{}`), nil))
+func TestSpoolBasics(t *testing.T) {
+	ctx := t.Context()
+	sp := openSpool(t, filepath.Join(t.TempDir(), "s.db"))
+	_, err := sp.Write(ctx, Delivery{Source: "jira", DeliveryID: "a", Endpoint: "e"})
+	require.ErrorIs(t, err, ErrBadDelivery)
+	_, err = sp.Write(ctx, Delivery{Source: SourceGitHub, Endpoint: "e"})
+	require.ErrorIs(t, err, ErrBadDelivery)
+	for i := range 3 {
+		ok, err := sp.Write(ctx, Delivery{Source: SourceGitHub, DeliveryID: string(rune('a' + i)), Endpoint: "e"})
+		require.NoError(t, err)
+		assert.True(t, ok)
+	}
+	got, err := sp.List(ctx, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2, "limit")
+	assert.Equal(t, "a", got[0].DeliveryID, "oldest first")
+	require.NoError(t, sp.Delete(ctx, nil))
+}
+
+func TestSpoolNewerSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "s.db")
+	sp := openSpool(t, path)
+	_, err := sp.db.ExecContext(t.Context(), "PRAGMA user_version = 99")
+	require.NoError(t, err)
+	require.NoError(t, sp.Close())
+	_, err = OpenSpool(t.Context(), path)
+	require.ErrorContains(t, err, "newer than this binary")
+}
+
+func TestReadSecret(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "s"), []byte("  k\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty"), []byte("\n"), 0o600))
+	s, err := ReadSecret("id", filepath.Join(dir, "s"))
+	require.NoError(t, err)
+	assert.Equal(t, "k", string(s.Key))
+	_, err = ReadSecret("", filepath.Join(dir, "empty"))
+	require.ErrorIs(t, err, errNoSecret)
 }

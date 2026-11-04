@@ -105,22 +105,36 @@ reports, events, identities).
 
 ### Webhooks: `jobshop ingest serve`
 
-`jobshop ingest serve` receives GitHub (`POST /github/webhook`) and
-Linear (`POST /linear/webhook`) webhooks, checks the signature, and
-writes each delivery to a spool directory. It needs no controller or
-database. Set `ingest.github_secret_file` and/or `ingest.linear_secret_file`
-in jobshop.yaml; a source with no secret is off. It listens on
-`ingest.listen` (default `127.0.0.1:8740`), so put a reverse proxy in
-front that terminates TLS and forwards only those two paths:
+`jobshop ingest serve` receives GitHub and Linear webhooks, checks the
+signature, and writes each delivery to a spool database
+(`ingest.spool`, default `<root>/ingest/spool.db`). It needs no
+controller and does not touch jobshop.db. List one endpoint per hook,
+each with its own secret; GitHub endpoints can limit which repos they
+accept:
+
+```yaml
+ingest:
+  endpoints:
+    - {name: app, source: github, secret_file: secrets/gh-app, repos: [acme/app]}
+    - {name: eng, source: linear, secret_file: secrets/linear-eng}
+```
+
+Each is served at `/<source>/<name>` unless `path` is set. A linear-app
+identity with `webhook_secret_file` is also served at `/linear/webhook`.
+It listens on `ingest.listen` (default `127.0.0.1:8740`), so put a
+reverse proxy in front that terminates TLS and forwards only the
+endpoint paths:
 
 ```
-location /github/webhook { proxy_pass http://127.0.0.1:8740; }
-location /linear/webhook { proxy_pass http://127.0.0.1:8740; }
+location /github/ { proxy_pass http://127.0.0.1:8740; }
+location /linear/ { proxy_pass http://127.0.0.1:8740; }
 ```
 
 It answers 202 when spooled, 204 for an event jobshop ignores, 401 for a
-bad signature, and 500 when the spool write fails so the sender retries.
-See `docs/notes/334-ingest-spool.md`.
+bad signature, 403 for a repo not on the endpoint's list, and 500 when
+the spool write fails so the sender retries. Adding an endpoint needs a
+restart; rotating a secret file does not. See
+`docs/notes/334-ingest-spool.md`.
 
 ### NixOS
 

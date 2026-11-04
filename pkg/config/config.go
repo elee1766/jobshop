@@ -310,15 +310,139 @@ type Ingest struct {
 	// Listen is the TCP address `jobshop ingest serve` listens on
 	// (#334). Empty: 127.0.0.1:8740.
 	Listen string `yaml:"listen"`
-	// SpoolDir holds received deliveries until the drain. Relative to
-	// the root; empty: ingest/spool.
-	SpoolDir string `yaml:"spool_dir"`
-	// GitHubSecretFile and LinearSecretFile hold webhook signing
-	// secrets, relative to the root. A source with no secret is off.
-	// Linear also accepts every linear-app identity's
-	// webhook_secret_file.
-	GitHubSecretFile string `yaml:"github_secret_file"`
-	LinearSecretFile string `yaml:"linear_secret_file"`
+	// Spool is the SQLite database received deliveries wait in until
+	// the drain (#339). Relative to the root; empty: ingest/spool.db.
+	Spool string `yaml:"spool"`
+	// Endpoints are the webhook endpoints, each with its own path and
+	// secret (#339).
+	Endpoints []IngestEndpoint `yaml:"endpoints"`
+
+	// Removed in #339; set only to fail the load with a pointer to the
+	// replacement instead of silently turning a source off.
+	OldSpoolDir         string `yaml:"spool_dir"`
+	OldGitHubSecretFile string `yaml:"github_secret_file"`
+	OldLinearSecretFile string `yaml:"linear_secret_file"`
+}
+
+// Ingest endpoint sources.
+const (
+	IngestGitHub = "github"
+	IngestLinear = "linear"
+)
+
+// IngestEndpoint is one webhook endpoint (#339).
+type IngestEndpoint struct {
+	Name   string `yaml:"name"`
+	Source string `yaml:"source"`
+	// SecretFile is relative to the root. Identity instead names a
+	// linear-app identity whose webhook_secret_file signs.
+	SecretFile string `yaml:"secret_file"`
+	Identity   string `yaml:"identity"`
+	// Path defaults to /<source>/<name>.
+	Path string `yaml:"path"`
+	// Repos, GitHub only, allows deliveries for these owner/name repos.
+	// Empty allows all, including deliveries with no repository.
+	Repos []string `yaml:"repos"`
+	// Implicit marks an endpoint made for an identity's webhook secret.
+	Implicit bool `yaml:"-"`
+}
+
+// LinearWebhookPath is the shared path of implicit identity endpoints.
+const LinearWebhookPath = "/linear/webhook"
+
+var endpointName = regexp.MustCompile(`^[a-z0-9-]+$`)
+
+// IngestEndpoints is ingest.endpoints plus an implicit endpoint
+// linear-<identity> at /linear/webhook for every linear-app identity
+// with a webhook secret that no endpoint names, so #300 setups keep
+// working.
+func (c *Config) IngestEndpoints() []IngestEndpoint {
+	out := slices.Clone(c.Ingest.Endpoints)
+	named := map[string]bool{}
+	for _, e := range out {
+		if e.Identity != "" {
+			named[e.Identity] = true
+		}
+	}
+	for _, name := range c.IdentityNames() {
+		id := c.Identities[name]
+		if id.Kind != IdentityLinearApp || id.WebhookSecretFile == "" || named[name] {
+			continue
+		}
+		out = append(out, IngestEndpoint{
+			Name: "linear-" + name, Source: IngestLinear, Identity: name,
+			Path: LinearWebhookPath, Implicit: true,
+		})
+	}
+	return out
+}
+
+// EndpointPath is Path or the default /<source>/<name>.
+func (e IngestEndpoint) EndpointPath() string {
+	if e.Path != "" {
+		return e.Path
+	}
+	return "/" + e.Source + "/" + e.Name
+}
+
+func (c *Config) validateIngest() error {
+	i := c.Ingest
+	if i.OldGitHubSecretFile != "" || i.OldLinearSecretFile != "" {
+		return fmt.Errorf("%s: ingest.github_secret_file and ingest.linear_secret_file were replaced by ingest.endpoints (#339): list one endpoint per secret", FileName)
+	}
+	if i.OldSpoolDir != "" {
+		return fmt.Errorf("%s: ingest.spool_dir was replaced by ingest.spool, a SQLite database path, and ingest.endpoints (#339)", FileName)
+	}
+	names, paths := map[string]bool{}, map[string]string{}
+	for _, e := range i.Endpoints {
+		where := fmt.Sprintf("%s: ingest.endpoints %q", FileName, e.Name)
+		if !endpointName.MatchString(e.Name) {
+			return fmt.Errorf("%s: name must match [a-z0-9-]+", where)
+		}
+		if names[e.Name] {
+			return fmt.Errorf("%s: duplicate name", where)
+		}
+		names[e.Name] = true
+		if e.Source != IngestGitHub && e.Source != IngestLinear {
+			return fmt.Errorf("%s: source must be github or linear", where)
+		}
+		if (e.SecretFile == "") == (e.Identity == "") {
+			return fmt.Errorf("%s: set exactly one of secret_file and identity", where)
+		}
+		if e.Identity != "" {
+			id, ok := c.Identities[e.Identity]
+			if !ok || id.Kind != IdentityLinearApp || id.WebhookSecretFile == "" || e.Source != IngestLinear {
+				return fmt.Errorf("%s: identity %q must be a linear-app identity with webhook_secret_file, on a linear endpoint", where, e.Identity)
+			}
+		}
+		if len(e.Repos) > 0 && e.Source != IngestGitHub {
+			return fmt.Errorf("%s: repos is for github endpoints", where)
+		}
+		for _, r := range e.Repos {
+			if !RepoPattern.MatchString(r) {
+				return fmt.Errorf("%s: repo %q must be owner/name", where, r)
+			}
+		}
+		p := e.EndpointPath()
+		if !strings.HasPrefix(p, "/") || strings.ContainsAny(p, " {}") {
+			return fmt.Errorf("%s: path %q must start with / and hold no spaces or braces", where, p)
+		}
+		if other, ok := paths[p]; ok {
+			return fmt.Errorf("%s: path %s already used by %q", where, p, other)
+		}
+		paths[p] = e.Name
+	}
+	// Implicit endpoints share /linear/webhook; an explicit endpoint
+	// there would shadow them.
+	for _, e := range c.IngestEndpoints() {
+		if e.Implicit {
+			if other, ok := paths[LinearWebhookPath]; ok {
+				return fmt.Errorf("%s: ingest.endpoints %q uses %s, which identity %q's webhook secret also serves; name the identity in that endpoint instead", FileName, other, LinearWebhookPath, e.Identity)
+			}
+			break
+		}
+	}
+	return nil
 }
 
 // DefaultIngestListen is the ingest serve address when unset.
@@ -332,12 +456,12 @@ func (i Ingest) ListenAddr() string {
 	return i.Listen
 }
 
-// Spool is the spool dir under root.
-func (i Ingest) Spool(r Root) string {
-	if i.SpoolDir == "" {
-		return filepath.Join(r.Dir, "ingest", "spool")
+// SpoolPath is the spool database path under root.
+func (i Ingest) SpoolPath(r Root) string {
+	if i.Spool == "" {
+		return filepath.Join(r.Dir, "ingest", "spool.db")
 	}
-	return r.Path(i.SpoolDir)
+	return r.Path(i.Spool)
 }
 
 // RetentionDuration is Retention parsed, or the default.
@@ -728,6 +852,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if !filepath.IsAbs(d) {
 			return nil, fmt.Errorf("%s: shared_tools: %q must be absolute", FileName, d)
 		}
+	}
+	if err := c.validateIngest(); err != nil {
+		return nil, err
 	}
 	if r := c.Ingest.Retention; r != "" {
 		if d, err := parseDays(r); err != nil || d <= 0 {

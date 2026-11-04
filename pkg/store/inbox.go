@@ -21,9 +21,12 @@ var InboxStates = []string{InboxPending, InboxAdmitted, InboxDenied, InboxHeld, 
 
 // InboxItem is one ingested webhook delivery or poller find (#318).
 type InboxItem struct {
-	ID         int64           `json:"id"`
-	Source     string          `json:"source"` // github or linear
-	DeliveryID string          `json:"delivery_id"`
+	ID         int64  `json:"id"`
+	Source     string `json:"source"` // github or linear
+	DeliveryID string `json:"delivery_id"`
+	// Endpoint is the ingest endpoint the delivery came in on (#339);
+	// empty for poller finds.
+	Endpoint   string          `json:"endpoint,omitempty"`
 	Kind       string          `json:"kind,omitempty"`
 	RepoOrTeam string          `json:"repo_or_team,omitempty"`
 	Number     int64           `json:"number,omitempty"`
