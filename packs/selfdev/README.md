@@ -34,7 +34,8 @@ packs:
   - path: /var/lib/jobshop/src/jobshop/packs/operator
     vars: {jobshop_repo: elee1766/jobshop, checkout: /var/lib/jobshop/src/jobshop, agent: jcode}
 agents:
-  jcode: {command: jcode, args: [acp]}
+  # jcode's own memory is off: learnings come from jobshop (#320).
+  jcode: {command: jcode, args: [acp], env: {JCODE_MEMORY_ENABLED: "0"}}
 ```
 
 `jobshop config show` lists both `packs/github/pack.yaml` and
