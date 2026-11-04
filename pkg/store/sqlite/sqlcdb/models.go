@@ -35,6 +35,26 @@ type History struct {
 	Diff     string
 }
 
+type Inbox struct {
+	ID          int64
+	Source      string
+	DeliveryID  string
+	Kind        string
+	RepoOrTeam  string
+	Number      int64
+	CommentID   string
+	Actor       string
+	ReceivedAt  int64
+	Payload     string
+	Admitted    sql.NullString
+	State       string
+	HookResults string
+	Holder      string
+	LeaseUntil  int64
+	Attempts    int64
+	UpdatedAt   int64
+}
+
 type Label struct {
 	TicketID string
 	Label    string
