@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -22,11 +23,12 @@ import (
 // pack declaring a three-step workflow.
 func runRoot(t *testing.T) *rpc.Client {
 	t.Helper()
-	return runRootLease(t, "")
+	return runRootLease(t, "", nil)
 }
 
-// runRootLease is runRoot with a lease (Go duration, "" for the default).
-func runRootLease(t *testing.T, lease string) *rpc.Client {
+// runRootLease is runRoot with a lease (Go duration, "" for the default)
+// and clock (nil for the real one).
+func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
 	t.Helper()
 	t.Parallel()
 	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
@@ -46,10 +48,14 @@ func runRootLease(t *testing.T, lease string) *rpc.Client {
       - {id: implement, pool: dev, retries: 3, prompt_file: prompts/impl.md, title: "Implement #${issue}"}
       - {id: review, pool: refinery, prompt: "Review #${issue}", title: "Review #${issue}"}
       - {id: deploy, pool: refinery, prompt: "Deploy", title: "Deploy #${issue}"}
+  routed:
+    vars: [review_pool]
+    steps:
+      - {id: review, pool: "${review_pool}", prompt: "Review", title: "Review"}
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
-    vars: {repo: /src}
+    vars: {repo: /src, review_pool: refinery}
 lease: %q
 projects:
   js: {}
@@ -63,7 +69,9 @@ pools:
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: 50 * time.Millisecond})) }()
+	go func() {
+		done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: 50 * time.Millisecond, Clock: clk}))
+	}()
 	t.Cleanup(func() {
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {
@@ -150,6 +158,24 @@ func TestRunStart(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{State: store.RunRunning}, &runs))
 	require.Len(t, runs, 1)
 	assert.Equal(t, r.Run.ID, runs[0].ID)
+}
+
+// TestRunStepPoolVar routes one workflow's step to two pools by a run
+// var, defaults it from pack vars and rejects an unknown pool (#384).
+func TestRunStepPoolVar(t *testing.T) {
+	admin := runRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "routed", Vars: map[string]string{"review_pool": "dev"}})
+	assert.Equal(t, "dev", r.Steps[0].Pool)
+	assert.Equal(t, "dev", showRun(t, admin, r.Run.ID).Steps[0].Pool)
+	r = startRun(t, admin, rpc.RunStartParams{Workflow: "routed"})
+	assert.Equal(t, "refinery", r.Steps[0].Pool, "pack var default")
+
+	err := admin.Call(t.Context(), rpc.MethodRunStart, rpc.RunStartParams{Workflow: "routed", Vars: map[string]string{"review_pool": "nope"}}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown pool "nope"`)
+	var runs []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
+	assert.Len(t, runs, 2, "a bad pool creates no ticket")
 }
 
 func TestRunStartErrors(t *testing.T) {

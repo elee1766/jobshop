@@ -375,6 +375,20 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `jobshop gh`: gh with the identity token, a guard check before
   writes and an activity record, replacing the module's shell wrapper
   (#349, `docs/notes/349-jobshop-gh.md`).
+- TestStepFailureSources runs on the fake clock (#375,
+  `docs/notes/375-step-failure-fake-clock.md`).
+- NixOS module `sandbox.mise.tools`: host-installed mise tools shared
+  read-only with sandboxes (#316, `docs/notes/316-sandbox-mise-shared.md`).
+- Step `pool:` may name a run var, resolved and checked at run start, so
+  a router can pick the pool per run (#384, `docs/notes/384-step-pool-var.md`).
+- Pack-writing guide `docs/packs.md`, `jobshop docs` and an init hint
+  (#352, `docs/notes/352-pack-docs.md`).
+- Pack templates in Go `text/template` behind `template: go`; in-repo
+  packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
+- `jobshop wait add|list|clear`: tickets park on a PR review, checks,
+  PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
+- Generic HMAC ingest endpoints with a payload map, and `jobshop ingest
+  put` for local senders (#399, `docs/notes/399-generic-ingest.md`).
 
 ## 5. What's next
 
@@ -509,6 +523,8 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 (#307).
 
 Model config live check: `docs/verify/model-config.md` (#304).
+Shared mise live check: `docs/verify/sandbox-mise-shared.md` (#316).
+Waits live check: `docs/verify/waits.md` (#381).
 
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
@@ -1112,6 +1128,22 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (`workflows.<name>.escalate`), and a gateway only mirrors it. No pack
   config: ticket only. Agents escalate only when a human is required
   (prompt rule `escalation-policy`).
+- A step pool is a run-start template (2026-11-04, #384): routing picks
+  a pool, so model and effort, per run without one workflow per pool.
+  A bad pool fails the start rather than creating an unclaimable step.
+- Packs are user-written (2026-11-04, #352): a root has its own pack
+  under `<root>/packs/`; `packs/` in this repo are examples of how we
+  run Jobshop on itself, not defaults. The repo layout does not change.
+- Pack templates (2026-11-04, #383): Go `text/template`, opted in per
+  pack with `template: go`, keeping the two passes (pack vars at load,
+  run and trigger vars later) with one flat var map instead of
+  `.pack`/`.vars` namespaces, so prompts read `{{.issue}}` and the
+  migration is a mechanical rewrite. Whole-value `{{.x}}` keeps its type.
+- Waits on outside state are `fields.wait` on tasks and steps
+  (2026-11-04, #381), typed engine data, not labels or a new column:
+  the ready and claim queries skip a ticket with a wait. The controller
+  evaluates them, not the agent; a moved head or closed PR clears a
+  review or checks wait as invalidated so the agent re-decides.
 
 ## 7. Reference: behavior as built
 
@@ -1164,7 +1196,9 @@ moved from the old 7.x list, oldest first:
 - [Reserved human slot per pool](notes/190-human-slot.md) (#190)
 - [Outbox for side effects, design note](notes/191-outbox.md) (#191)
 - [Prompt rules](notes/205-prompt-rules.md) (#205)
+- [Prompt rule injection dedup](notes/397-inject-dedup.md) (#397)
 - [TestSessionRestartIdle flake](notes/327-restart-idle-flake.md) (#327)
+- [Prompt text from files](notes/382-text-files.md) (#382)
 
 ## 8. Chat gateway
 

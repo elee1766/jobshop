@@ -1,6 +1,7 @@
 # Agents that work a GitHub repo through issues and PRs: plan, dev and
 # refinery pools, and the pr-work, ci-repair and stall-check workflows.
 # Vars: see README.md. packs/selfdev is an instance of this pack.
+template: go
 defaults:
   ci_workflow: ci
   # Branch master-red watches. A drill workspace can point it at a
@@ -25,7 +26,7 @@ defaults:
   stall_after: 1h
   stall_step_after: 3h
   stall_human_after: 4h
-  # GitHub logins besides ${human} whose issues start work (#340).
+  # GitHub logins besides {{.human}} whose issues start work (#340).
   # Comma-separated. Others need the accepted label.
   authors: ""
   deploy_check: >-
@@ -69,38 +70,38 @@ defaults:
     the issue number. Never append a numbered section to a shared doc.
 pools:
   dev:
-    agent: ${agent}
-    repo: ${checkout}
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
     ref: origin/master
-    max_sessions: ${dev_sessions}
+    max_sessions: "{{.dev_sessions}}"
     idle_timeout: 10m
     turn_timeout: 2h
-    prompt_file: prompts/${tracker}/dev.md
+    prompt_file: prompts/{{.tracker}}/dev.md
   plan:
-    agent: ${agent}
-    repo: ${checkout}
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
     ref: origin/master
     max_sessions: 1
     idle_timeout: 10m
     turn_timeout: 2h
-    prompt_file: prompts/${tracker}/plan.md
+    prompt_file: prompts/{{.tracker}}/plan.md
     # stall-check steps run here and inspect or restart sessions.
     admin: [session-list, session-restart, trigger-list, report-incidents, attention, activity]
   refinery:
-    agent: ${agent}
-    repo: ${checkout}
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
     ref: origin/master
-    max_sessions: ${refinery_sessions}
+    max_sessions: "{{.refinery_sessions}}"
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/refinery.md
   # post-merge steps sleep here until the deploy lands (up to an hour),
   # so the single refinery session stays free for review-merge (#167).
   deploy-check:
-    agent: ${agent}
-    repo: ${checkout}
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
     ref: origin/master
-    max_sessions: ${deploy_sessions}
+    max_sessions: "{{.deploy_sessions}}"
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/deploy-check.md
@@ -121,36 +122,36 @@ triggers:
   master-red:
     when:
       check: >-
-        gh run list --repo ${repo} --branch ${ci_branch} --workflow ${ci_workflow}
+        gh run list --repo {{.repo}} --branch {{.ci_branch}} --workflow {{.ci_workflow}}
         --status completed --limit 1 --json conclusion,headSha
         --jq '.[] | select(.conclusion == "failure") | .headSha' | grep .
       check_timeout: 30s
     run:
       workflow: ci-repair
-      vars: {sha: "${check_output}"}
-      key: "${check_output}"
+      vars: {sha: "{{.check_output}}"}
+      key: "{{.check_output}}"
   # Work that stopped moving (#143). Store signals are computed by the
   # controller; the others are gh checks, one subject per output line.
   stall:
     when:
       check_timeout: 1m
       stall:
-        - {signal: ready_unclaimed, after: "${stall_after}"}
+        - {signal: ready_unclaimed, after: "{{.stall_after}}"}
         - {signal: pool_quarantined}
-        - {signal: step_stalled, after: "${stall_step_after}"}
-        - {signal: session_silent, after: "${stall_after}"}
-        - {signal: needs_human, after: "${stall_human_after}"}
-        - {signal: blocked, after: "${stall_after}"}
+        - {signal: step_stalled, after: "{{.stall_step_after}}"}
+        - {signal: session_silent, after: "{{.stall_after}}"}
+        - {signal: needs_human, after: "{{.stall_human_after}}"}
+        - {signal: blocked, after: "{{.stall_after}}"}
         # Open issues older than 30m that are not targets, decisions,
         # escalations, tracking or drills, filed by an App (the planner),
-        # ${human} or a login in ${authors}, or labeled accepted (#340);
+        # {{.human}} or a login in {{.authors}}, or labeled accepted (#340);
         # the controller drops those with an open run.
         - signal: issue_no_run
-          repo: ${repo}
+          repo: "{{.repo}}"
           check: >-
-            gh issue list --repo ${repo} --state open --limit 200
+            gh issue list --repo {{.repo}} --state open --limit 200
             --json number,labels,title,createdAt,author --jq '
-            ("${human},${authors}" | ascii_downcase | split(",") | map(select(. != ""))) as $ok
+            ("{{.human}},{{.authors}}" | ascii_downcase | split(",") | map(select(. != ""))) as $ok
             | .[]
             | select(.author.is_bot or ([.author.login | ascii_downcase] | inside($ok))
             or ([.labels[].name] | any(. == "accepted")))
@@ -162,32 +163,32 @@ triggers:
         # Linear issues ready for work with no run (#287). Off while
         # linear_team is empty.
         - signal: linear_issue_no_run
-          team: ${linear_team}
-          states: ${linear_intake_states}
-          labels: ${linear_intake_labels}
-          skip_labels: ${linear_skip_labels}
-          poll: ${linear_poll}
+          team: "{{.linear_team}}"
+          states: "{{.linear_intake_states}}"
+          labels: "{{.linear_intake_labels}}"
+          skip_labels: "{{.linear_skip_labels}}"
+          poll: "{{.linear_poll}}"
         # Non-draft PRs with all checks green, untouched for 2h.
         - signal: pr_unmerged
           check: >-
-            gh pr list --repo ${repo} --state open
+            gh pr list --repo {{.repo}} --state open
             --json number,isDraft,updatedAt,statusCheckRollup --jq '.[]
             | select(.isDraft | not)
             | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[];
             .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL"))
             | select((now - (.updatedAt | fromdateiso8601)) > 7200)
             | "\(.number) green, unmerged since \(.updatedAt)"'
-        # No commit on ${ci_branch} for 6h while PRs are open. The subject
+        # No commit on {{.ci_branch}} for 6h while PRs are open. The subject
         # is the last commit, so each dry spell is one stall.
         - signal: no_merge
           check: >-
-            test "$(gh pr list --repo ${repo} --state open --json number --jq length)" -gt 0 &&
-            gh api repos/${repo}/commits/${ci_branch} --jq
+            test "$(gh pr list --repo {{.repo}} --state open --json number --jq length)" -gt 0 &&
+            gh api repos/{{.repo}}/commits/{{.ci_branch}} --jq
             'select((now - (.commit.committer.date | fromdateiso8601)) > 21600)
             | "\(.sha[0:12]) last commit \(.commit.committer.date)"'
     run:
       workflow: stall-check
-      vars: {signal: "${stall_signal}", subject: "${stall_subject}", detail: "${stall_detail}"}
+      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
     cooldown: 30m
     max_runs: 2
 # Workers check what earlier sessions learned before retrying blind or
@@ -205,52 +206,43 @@ prompt_rules:
       `jobshop release --until`. Run `jobshop recall` before asking.
   - name: recall
     at: system
-    text: >-
-      When a command, test, CI run or step fails, and before asking a
-      human (jobshop report waiting), run `jobshop recall <words from the
-      error or question>` to search earlier ticket comments, session
-      journals and learnings for the same problem and its fix.
+    file: prompts/rules/recall.md
   # Nudge (#271): every pool, after the pool prompt, so it sits with the
   # step's close instructions. Chat sessions get it on their first turn
   # too: operator improvement sessions close runs and hit corrections.
   - name: learn-nudge
     at: after
-    text: >-
-      Before `jobshop close` or `jobshop release`: if this turn hit a
-      correction (a human or reviewer told you to do it differently), a
-      failure, or a workaround, record it with `jobshop learn
-      correction|failure|workaround "<summary>" --fix "<what to do next
-      time>"`. Do not record a learning for routine success.
+    file: prompts/rules/learn-nudge.md
 workflows:
   # One run per issue: implement (dev) -> review-merge (refinery) ->
   # post-merge (deploy-check). Started by the planner with --key issue-<n>.
   pr-work:
     vars: [issue]
     issue: issue
-    repo: ${repo}
-    tracker: ${tracker}
-    linear_workspace: ${linear_workspace}
+    repo: "{{.repo}}"
+    tracker: "{{.tracker}}"
+    linear_workspace: "{{.linear_workspace}}"
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: implement
         pool: dev
         retries: 3
-        title: "Implement #${issue}"
-        prompt_file: prompts/${tracker}/implement.md
+        title: "Implement #{{.issue}}"
+        prompt_file: prompts/{{.tracker}}/implement.md
       - id: review-merge
         pool: refinery
         retries: 2
-        title: "Review and merge PR for #${issue}"
-        prompt_file: prompts/${tracker}/merge.md
+        title: "Review and merge PR for #{{.issue}}"
+        prompt_file: prompts/{{.tracker}}/merge.md
       - id: post-merge
         pool: deploy-check
         retries: 2
-        title: "Check master CI and deploy for #${issue}"
-        prompt_file: prompts/${tracker}/post-merge.md
+        title: "Check master CI and deploy for #{{.issue}}"
+        prompt_file: prompts/{{.tracker}}/post-merge.md
   # One run per stall, started by the stall trigger with key
   # stall:<signal>:<subject>. One attempt: a stall it cannot fix
   # escalates at once.
@@ -258,14 +250,14 @@ workflows:
     vars: [signal, subject, detail]
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: diagnose
         pool: plan
         retries: 1
-        title: "Stall ${signal}: ${subject}"
+        title: "Stall {{.signal}}: {{.subject}}"
         prompt_file: prompts/stall.md
   # One run per failing master SHA, started by the master-red trigger with
   # the SHA as key: at most 2 fix attempts per SHA, then needs_human.
@@ -273,19 +265,19 @@ workflows:
     vars: [sha]
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: fix
         pool: dev
         retries: 2
-        title: "Fix red master CI at ${sha}"
+        title: "Fix red master CI at {{.sha}}"
         prompt_file: prompts/ci-fix.md
       - id: merge
         pool: refinery
         retries: 2
-        title: "Merge CI fix for ${sha}"
+        title: "Merge CI fix for {{.sha}}"
         prompt_file: prompts/ci-merge.md
   # Escalation drill (docs/verify/escalation-drill.md). One attempt
   # that always closes failed, so the run reaches needs_human at once.
@@ -293,15 +285,15 @@ workflows:
   drill:
     vars: [issue]
     issue: issue
-    repo: ${repo}
+    repo: "{{.repo}}"
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: fail
         pool: dev
         retries: 1
-        title: "Escalation drill for #${issue}"
+        title: "Escalation drill for #{{.issue}}"
         prompt_file: prompts/drill.md

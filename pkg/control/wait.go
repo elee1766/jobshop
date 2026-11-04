@@ -1,0 +1,682 @@
+package control
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"os/exec"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+// Waits (#381). A task or step with fields.wait is out of the ready
+// frontier. The controller evaluates its conditions on the subscription
+// poll interval and when the ingest drain moves a webhook delivery, then
+// clears the wait: the ticket becomes ready, pre-assigned to the session
+// that parked it when resume is set. A PR that merges, closes or moves
+// its head invalidates review and checks conditions bound to the old
+// head; that also clears the wait, with the reason, so the agent decides
+// again. Past its timeout a wait is labeled needs-human once.
+
+// waitSource reads PR state from GitHub. Tests replace it.
+type waitSource interface {
+	PR(ctx context.Context, repo string, n int) (prInfo, error)
+	Reviews(ctx context.Context, repo string, n int) ([]prReview, error)
+	// Checks lists the checks of a PR's current head (required only when
+	// asked), or of sha when n is 0.
+	Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error)
+}
+
+type prInfo struct {
+	Head   string
+	State  string // open or closed
+	Merged bool
+}
+
+type prReview struct {
+	Login  string
+	State  string // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
+	Commit string
+	At     time.Time
+}
+
+// prCheck bucket is gh's: pass, fail, pending, skipping, cancel.
+type prCheck struct {
+	Name   string
+	Bucket string
+}
+
+// waitEvery is the poll interval: the subscriptions interval when set.
+func (c *Controller) waitEvery() time.Duration {
+	if s := c.config().Subscriptions; s != nil {
+		return config.Duration(s.Interval, defaultSubInterval)
+	}
+	return defaultSubInterval
+}
+
+// wakeWaits asks the wait pump for a pass now (a webhook arrived).
+func (c *Controller) wakeWaits() {
+	if c.waitWake == nil {
+		return
+	}
+	select {
+	case c.waitWake <- struct{}{}:
+	default:
+	}
+}
+
+// pumpWaits evaluates waits on an interval and on wakeups.
+func (c *Controller) pumpWaits() {
+	for {
+		c.pollWaits(c.ctx, c.waitSrc(), c.threadSrc())
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-c.after(c.waitEvery()):
+		case <-c.waitWake:
+		}
+	}
+}
+
+func (c *Controller) waitSrc() waitSource {
+	if c.waitSource != nil {
+		return c.waitSource
+	}
+	return ghWaitSource{}
+}
+
+func (c *Controller) threadSrc() threadSource {
+	if c.subSource != nil {
+		return c.subSource
+	}
+	return muxSource{gh: ghSource{}, linear: linearSource{c: c, url: c.linearURL}}
+}
+
+// waitOf returns fields.wait of a task or step, nil for none.
+func waitOf(t store.Ticket) *store.Wait {
+	if t.Kind != store.KindTask && t.Kind != store.KindStep || len(t.Fields) == 0 {
+		return nil
+	}
+	var f struct {
+		Wait *store.Wait `json:"wait"`
+	}
+	if json.Unmarshal(t.Fields, &f) != nil {
+		return nil
+	}
+	return f.Wait
+}
+
+// withWait returns t's fields with wait set (nil removes it), keeping
+// the other fields.
+func withWait(t store.Ticket, w *store.Wait) (json.RawMessage, error) {
+	m := map[string]json.RawMessage{}
+	if len(t.Fields) > 0 {
+		if err := json.Unmarshal(t.Fields, &m); err != nil {
+			return nil, err
+		}
+	}
+	if w == nil {
+		delete(m, "wait")
+	} else {
+		b, err := json.Marshal(w)
+		if err != nil {
+			return nil, err
+		}
+		m["wait"] = b
+	}
+	return json.Marshal(m)
+}
+
+// waitAdd parks a ticket. A held ticket is released as a deferral, not a
+// failed attempt; with resume the wait remembers the session.
+func (c *Controller) waitAdd(ctx context.Context, sc scope, p rpc.WaitAddParams) (any, error) {
+	id, err := c.current(ctx, sc, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	t, err := c.store.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if t.Kind != store.KindTask && t.Kind != store.KindStep {
+		return nil, fmt.Errorf("%w: only tasks and steps wait (%s is a %s)", store.ErrInvalid, id, t.Kind)
+	}
+	if t.Status == store.StatusClosed {
+		return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
+	}
+	if !sc.admin && t.Project != sc.project {
+		return nil, forbidden("%s is in another project", id)
+	}
+	var held *store.Claim
+	if t.Status == store.StatusInProgress {
+		cl, err := c.heldClaim(ctx, sc, id)
+		if err != nil {
+			return nil, err
+		}
+		held = &cl
+	}
+	now := c.now().UTC()
+	w := &store.Wait{Conds: p.Conds, Reason: strings.TrimSpace(p.Reason), Owner: p.Owner, Resume: p.Resume, Since: now, By: sc.actor}
+	if p.Any {
+		w.Mode = store.WaitAny
+	}
+	if p.Timeout != nil {
+		if !p.Timeout.After(now) {
+			return nil, fmt.Errorf("%w: timeout must be in the future", store.ErrInvalid)
+		}
+		w.Timeout = p.Timeout.UTC()
+	}
+	if p.Resume {
+		w.Session = t.Holder
+		if w.Session == "" {
+			w.Session = sc.session
+		}
+	}
+	if err := w.Validate(); err != nil {
+		return nil, err
+	}
+	fields, err := withWait(t, w)
+	if err != nil {
+		return nil, err
+	}
+	if t, err = c.store.Update(ctx, sc.actor, id, store.Update{Fields: fields, IfRevision: t.Revision}); err != nil {
+		return nil, err
+	}
+	if held != nil {
+		held.Fence = t.Fence
+		// A release with until is a deferral: not a failed attempt.
+		if t, err = c.store.Release(ctx, *held, "waiting: "+w.Reason, now); err != nil {
+			return nil, err
+		}
+	}
+	c.wakeWaits()
+	return t, nil
+}
+
+// waitList lists waiting tickets.
+func (c *Controller) waitList(ctx context.Context, sc scope, p rpc.WaitListParams) (any, error) {
+	proj := p.Project
+	if !sc.admin {
+		proj = sc.project
+	}
+	ts, err := c.waiting(ctx, proj)
+	if err != nil {
+		return nil, err
+	}
+	out := []rpc.WaitItem{}
+	for _, t := range ts {
+		out = append(out, rpc.WaitItem{ID: t.ID, Project: t.Project, Title: t.Title, Wait: *waitOf(t)})
+	}
+	return out, nil
+}
+
+// waitClear removes a wait by hand.
+func (c *Controller) waitClear(ctx context.Context, sc scope, p rpc.WaitClearParams) (any, error) {
+	if p.ID == "" {
+		return nil, fmt.Errorf("%w: ticket id is required", store.ErrInvalid)
+	}
+	t, err := c.store.Get(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	if !sc.admin && t.Project != sc.project {
+		return nil, forbidden("%s is in another project", p.ID)
+	}
+	w := waitOf(t)
+	if w == nil {
+		return t, nil
+	}
+	why := "cleared by " + sc.actor
+	if p.Reason != "" {
+		why += ": " + p.Reason
+	}
+	return c.clearWait(ctx, t, w, why)
+}
+
+// waiting is every open task or step with a wait, in project (empty: all).
+func (c *Controller) waiting(ctx context.Context, project string) ([]store.Ticket, error) {
+	var out []store.Ticket
+	for _, k := range []store.Kind{store.KindTask, store.KindStep} {
+		ts, err := c.store.List(ctx, store.Filter{Project: project, Kind: k, Status: store.StatusOpen, Limit: math.MaxInt32})
+		if err != nil {
+			return nil, err
+		}
+		for _, t := range ts {
+			if waitOf(t) != nil {
+				out = append(out, t)
+			}
+		}
+	}
+	return out, nil
+}
+
+// clearWait removes the wait, notes why on the ticket and, with resume,
+// pre-assigns it to the session that parked it while that is open.
+func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wait, why string) (store.Ticket, error) {
+	fields, err := withWait(t, nil)
+	if err != nil {
+		return t, err
+	}
+	u := store.Update{Fields: fields, IfRevision: t.Revision}
+	if w.Resume && w.Session != "" && t.Holder == "" {
+		if s, err := c.store.Get(ctx, w.Session); err == nil && s.Kind == store.KindSession && s.Status != store.StatusClosed {
+			u.Holder = &w.Session
+		}
+	}
+	if t, err = c.store.Update(ctx, "controller", t.ID, u); err != nil {
+		return t, err
+	}
+	if w.TimedOut && slices.Contains(t.Labels, needsHumanLabel) {
+		_ = c.store.RemoveLabel(ctx, "controller", t.ID, needsHumanLabel)
+	}
+	_, _ = c.store.AddComment(ctx, "controller", t.ID, fmt.Sprintf("Wait (%s) ended: %s", w.Reason, why))
+	c.log.Info("wait cleared", "ticket", t.ID, "why", why)
+	return t, nil
+}
+
+// waitPass caches GitHub reads within one pass, so waits on one PR
+// share a fetch.
+type waitPass struct {
+	src     waitSource
+	threads threadSource
+	prs     map[string]prInfo
+	reviews map[string][]prReview
+	checks  map[string][]prCheck
+}
+
+func prKey(repo string, n int) string { return fmt.Sprintf("%s#%d", repo, n) }
+
+func (p *waitPass) pr(ctx context.Context, repo string, n int) (prInfo, error) {
+	k := prKey(repo, n)
+	if v, ok := p.prs[k]; ok {
+		return v, nil
+	}
+	v, err := p.src.PR(ctx, repo, n)
+	if err == nil {
+		p.prs[k] = v
+	}
+	return v, err
+}
+
+func (p *waitPass) reviewsOf(ctx context.Context, repo string, n int) ([]prReview, error) {
+	k := prKey(repo, n)
+	if v, ok := p.reviews[k]; ok {
+		return v, nil
+	}
+	v, err := p.src.Reviews(ctx, repo, n)
+	if err == nil {
+		p.reviews[k] = v
+	}
+	return v, err
+}
+
+func (p *waitPass) checksOf(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error) {
+	k := fmt.Sprintf("%s#%d@%s/%t", repo, n, sha, required)
+	if v, ok := p.checks[k]; ok {
+		return v, nil
+	}
+	v, err := p.src.Checks(ctx, repo, n, sha, required)
+	if err == nil {
+		p.checks[k] = v
+	}
+	return v, err
+}
+
+// pollWaits runs one pass over every waiting ticket.
+func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads threadSource) {
+	c.waitMu.Lock()
+	defer c.waitMu.Unlock()
+	ts, err := c.waiting(ctx, "")
+	if err != nil {
+		if ctx.Err() == nil {
+			c.log.Warn("waits: list", "err", err)
+		}
+		return
+	}
+	pass := &waitPass{src: src, threads: threads, prs: map[string]prInfo{}, reviews: map[string][]prReview{}, checks: map[string][]prCheck{}}
+	for _, t := range ts {
+		if err := c.evalWait(ctx, pass, t); err != nil && ctx.Err() == nil {
+			c.log.Warn("waits: evaluate", "ticket", t.ID, "err", err)
+		}
+	}
+}
+
+// errInvalidated means a condition can no longer hold as stated.
+type errInvalidated struct{ why string }
+
+func (e errInvalidated) Error() string { return e.why }
+
+// evalWait evaluates one ticket's wait and clears, times out or saves it.
+func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticket) error {
+	w := waitOf(t)
+	if w == nil {
+		return nil
+	}
+	now := c.now().UTC()
+	before, _ := json.Marshal(w)
+	var errs []error
+	for i := range w.Conds {
+		cd := &w.Conds[i]
+		if cd.Met {
+			continue
+		}
+		met, note, err := c.evalCond(ctx, pass, w, cd, now)
+		var inv errInvalidated
+		if errors.As(err, &inv) {
+			_, cerr := c.clearWait(ctx, t, w, "invalidated: "+inv.why)
+			return cerr
+		}
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		cd.Note = note
+		if met {
+			cd.Met, cd.MetAt = true, now
+		}
+	}
+	if w.Satisfied() {
+		var notes []string
+		for _, cd := range w.Conds {
+			if cd.Met && cd.Note != "" {
+				notes = append(notes, cd.Note)
+			}
+		}
+		_, err := c.clearWait(ctx, t, w, "condition met: "+strings.Join(notes, "; "))
+		return err
+	}
+	timedOut := !w.Timeout.IsZero() && !now.Before(w.Timeout) && !w.TimedOut
+	if timedOut {
+		w.TimedOut = true
+	}
+	if after, _ := json.Marshal(w); !bytes.Equal(before, after) {
+		fields, err := withWait(t, w)
+		if err != nil {
+			return err
+		}
+		if t, err = c.store.Update(ctx, "controller", t.ID, store.Update{Fields: fields, IfRevision: t.Revision}); err != nil {
+			return err
+		}
+	}
+	if timedOut {
+		if err := c.store.AddLabel(ctx, "controller", t.ID, needsHumanLabel); err != nil {
+			return err
+		}
+		owner := w.Owner
+		if owner == "" {
+			owner = "unset"
+		}
+		_, _ = c.store.AddComment(ctx, "controller", t.ID, fmt.Sprintf("Wait (%s) passed its timeout %s; owner %s. Clear it with `jobshop wait clear %s`.", w.Reason, w.Timeout.Format(time.RFC3339), owner, t.ID))
+		c.log.Warn("wait timed out", "ticket", t.ID, "reason", w.Reason, "owner", w.Owner)
+	}
+	return errors.Join(errs...)
+}
+
+// evalCond reports whether cd holds now. It records cd.Head the first
+// time a PR condition is evaluated without one.
+func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait, cd *store.WaitCond, now time.Time) (bool, string, error) {
+	switch cd.Type {
+	case store.WaitTime:
+		return !now.Before(cd.At), "time " + cd.At.Format(time.RFC3339), nil
+	case store.WaitReply:
+		return c.evalReply(ctx, pass, w, cd)
+	case store.WaitChecks:
+		if cd.PR == 0 {
+			return evalChecks(ctx, pass, cd, cd.SHA)
+		}
+	}
+	pr, err := pass.pr(ctx, cd.Repo, cd.PR)
+	if err != nil {
+		return false, "", err
+	}
+	ref := prKey(cd.Repo, cd.PR)
+	if cd.Head == "" {
+		cd.Head = pr.Head
+	}
+	if cd.Type == store.WaitPR {
+		switch cd.State {
+		case "merged":
+			if pr.State == "closed" && !pr.Merged {
+				return false, "", errInvalidated{ref + " closed without merging"}
+			}
+			return pr.Merged, ref + " merged", nil
+		case "closed":
+			return pr.State == "closed", ref + " closed", nil
+		}
+		return pr.Head != cd.Head || pr.State == "closed", fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head)), nil
+	}
+	if pr.Merged {
+		return false, "", errInvalidated{ref + " merged"}
+	}
+	if pr.State == "closed" {
+		return false, "", errInvalidated{ref + " closed"}
+	}
+	if pr.Head != cd.Head {
+		return false, "", errInvalidated{fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head))}
+	}
+	if cd.Type == store.WaitChecks {
+		return evalChecks(ctx, pass, cd, pr.Head)
+	}
+	rs, err := pass.reviewsOf(ctx, cd.Repo, cd.PR)
+	if err != nil {
+		return false, "", err
+	}
+	want := strings.ToUpper(cd.State)
+	if want == "" {
+		want = "APPROVED"
+	}
+	// The login's latest review on the exact head decides.
+	var last *prReview
+	for i := range rs {
+		r := &rs[i]
+		if !strings.EqualFold(r.Login, cd.Login) || r.Commit != cd.Head {
+			continue
+		}
+		if last == nil || !r.At.Before(last.At) {
+			last = r
+		}
+	}
+	return last != nil && last.State == want, fmt.Sprintf("%s %s by %s on %s", ref, strings.ToLower(want), cd.Login, short(cd.Head)), nil
+}
+
+// evalChecks: success needs at least one check and none pending or
+// failed; failure is any failed or cancelled check.
+func evalChecks(ctx context.Context, pass *waitPass, cd *store.WaitCond, head string) (bool, string, error) {
+	cs, err := pass.checksOf(ctx, cd.Repo, cd.PR, head, cd.Required)
+	if err != nil {
+		return false, "", err
+	}
+	what := "checks"
+	if cd.Required {
+		what = "required checks"
+	}
+	var failed, pending []string
+	for _, ch := range cs {
+		switch ch.Bucket {
+		case "fail", "cancel":
+			failed = append(failed, ch.Name)
+		case "pending":
+			pending = append(pending, ch.Name)
+		}
+	}
+	at := short(head)
+	if cd.State == "failure" {
+		return len(failed) > 0, fmt.Sprintf("%s failed on %s: %s", what, at, strings.Join(failed, ", ")), nil
+	}
+	return len(cs) > 0 && len(failed) == 0 && len(pending) == 0, fmt.Sprintf("%s green on %s", what, at), nil
+}
+
+// evalReply: a human comment on the thread after the wait started, from
+// From when set. It reads through the subscription source, so the same
+// filters (bots, ignore, authors) apply.
+func (c *Controller) evalReply(ctx context.Context, pass *waitPass, w *store.Wait, cd *store.WaitCond) (bool, string, error) {
+	th := thread{Linear: cd.Thread}
+	if repo, num, ok := strings.Cut(cd.Thread, "#"); ok {
+		n, _ := strconv.Atoi(num)
+		th = thread{Repo: repo, Number: n, PR: true}
+	}
+	cs, err := pass.threads.Comments(ctx, th, w.Since)
+	if err != nil {
+		return false, "", err
+	}
+	for _, cm := range cs {
+		if !cm.At.After(w.Since) || c.ignored(cm) {
+			continue
+		}
+		if cd.From != "" && !strings.EqualFold(cd.From, cm.Author) {
+			continue
+		}
+		return true, fmt.Sprintf("%s replied on %s", cm.Author, cd.Thread), nil
+	}
+	return false, "", nil
+}
+
+func short(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
+
+// ghWaitSource reads PRs with the gh CLI, like ghSource.
+type ghWaitSource struct{}
+
+func ghRun(ctx context.Context, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	b, err := cmd.Output()
+	if err != nil {
+		return b, fmt.Errorf("gh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return b, nil
+}
+
+func (ghWaitSource) PR(ctx context.Context, repo string, n int) (prInfo, error) {
+	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/pulls/%d", repo, n))
+	if err != nil {
+		return prInfo{}, err
+	}
+	return parsePR(b)
+}
+
+func (ghWaitSource) Reviews(ctx context.Context, repo string, n int) ([]prReview, error) {
+	b, err := ghRun(ctx, "api", "--paginate", "--slurp", fmt.Sprintf("repos/%s/pulls/%d/reviews?per_page=100", repo, n))
+	if err != nil {
+		return nil, err
+	}
+	return parseReviews(b)
+}
+
+func (ghWaitSource) Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error) {
+	if n == 0 {
+		b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/commits/%s/check-runs?per_page=100", repo, sha))
+		if err != nil {
+			return nil, err
+		}
+		return parseCheckRuns(b)
+	}
+	args := []string{"pr", "checks", strconv.Itoa(n), "--repo", repo, "--json", "name,bucket"}
+	if required {
+		args = append(args, "--required")
+	}
+	// gh pr checks exits non-zero while checks are pending or failing;
+	// its JSON is still the answer.
+	b, err := ghRun(ctx, args...)
+	if cs, perr := parsePRChecks(b); perr == nil && len(bytes.TrimSpace(b)) > 0 {
+		return cs, nil
+	}
+	if err != nil && (strings.Contains(err.Error(), "no required checks") || strings.Contains(err.Error(), "no checks reported")) {
+		return nil, nil // nothing reported yet: not green
+	}
+	return nil, err
+}
+
+// parsePR reads GET /repos/{repo}/pulls/{n}.
+func parsePR(b []byte) (prInfo, error) {
+	var r struct {
+		State  string `json:"state"`
+		Merged bool   `json:"merged"`
+		Head   struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return prInfo{}, fmt.Errorf("pull request: %w", err)
+	}
+	return prInfo{Head: r.Head.SHA, State: r.State, Merged: r.Merged}, nil
+}
+
+// parseReviews reads the slurped pages of GET .../pulls/{n}/reviews.
+func parseReviews(b []byte) ([]prReview, error) {
+	var pages [][]struct {
+		State       string    `json:"state"`
+		CommitID    string    `json:"commit_id"`
+		SubmittedAt time.Time `json:"submitted_at"`
+		User        struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	}
+	if err := json.Unmarshal(b, &pages); err != nil {
+		return nil, fmt.Errorf("reviews: %w", err)
+	}
+	var out []prReview
+	for _, p := range pages {
+		for _, r := range p {
+			out = append(out, prReview{Login: r.User.Login, State: r.State, Commit: r.CommitID, At: r.SubmittedAt})
+		}
+	}
+	return out, nil
+}
+
+// parsePRChecks reads `gh pr checks --json name,bucket`.
+func parsePRChecks(b []byte) ([]prCheck, error) {
+	var out []prCheck
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, fmt.Errorf("pr checks: %w", err)
+	}
+	return out, nil
+}
+
+// parseCheckRuns reads GET .../commits/{sha}/check-runs into gh buckets.
+func parseCheckRuns(b []byte) ([]prCheck, error) {
+	var r struct {
+		CheckRuns []struct {
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+		} `json:"check_runs"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("check runs: %w", err)
+	}
+	var out []prCheck
+	for _, cr := range r.CheckRuns {
+		bucket := "pending"
+		if cr.Status == "completed" {
+			switch cr.Conclusion {
+			case "success", "neutral":
+				bucket = "pass"
+			case "skipped":
+				bucket = "skipping"
+			case "cancelled":
+				bucket = "cancel"
+			default:
+				bucket = "fail"
+			}
+		}
+		out = append(out, prCheck{Name: cr.Name, Bucket: bucket})
+	}
+	return out, nil
+}

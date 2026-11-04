@@ -105,6 +105,7 @@ func (c initCmd) Run() error {
 	_, err = f.WriteString(body)
 	if err == nil {
 		fmt.Fprintln(os.Stderr, "created", r.Config())
+		fmt.Fprint(os.Stderr, initHint(c.Dir))
 	}
 	return err
 }

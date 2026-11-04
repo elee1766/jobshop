@@ -1,6 +1,7 @@
 # Self-development pack: agents that build Jobshop itself. An instance of
 # packs/github with Jobshop's values. Vars: repo (checkout path), agent,
 # dev_sessions. See README.md.
+template: go
 defaults:
   dev_sessions: 2
   refinery_sessions: 1
@@ -20,11 +21,11 @@ extends:
   - path: ../github
     vars:
       repo: elee1766/jobshop
-      checkout: ${repo}
-      agent: ${agent}
-      dev_sessions: ${dev_sessions}
-      escalation_chat_pool: ${escalation_chat_pool}
-      refinery_sessions: ${refinery_sessions}
+      checkout: "{{.repo}}"
+      agent: "{{.agent}}"
+      dev_sessions: "{{.dev_sessions}}"
+      escalation_chat_pool: "{{.escalation_chat_pool}}"
+      refinery_sessions: "{{.refinery_sessions}}"
       human: elee1766
       # Contributors whose issue reports are picked up (#340).
       authors: zexoverz
@@ -60,10 +61,10 @@ extends:
 # and its key dedups, so one curate run is open at a time.
 pools:
   learn:
-    agent: ${agent}
-    repo: ${repo}
+    agent: "{{.agent}}"
+    repo: "{{.repo}}"
     ref: origin/master
-    max_sessions: ${learn_sessions}
+    max_sessions: "{{.learn_sessions}}"
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/learn.md
@@ -71,7 +72,7 @@ workflows:
   curate:
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: ../github/prompts/escalation.md
       pool_prompt_file: ../github/prompts/escalation-pool.md
     steps:
@@ -84,7 +85,7 @@ workflows:
   evaluate:
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: ../github/prompts/escalation.md
       pool_prompt_file: ../github/prompts/escalation-pool.md
     steps:
@@ -96,13 +97,13 @@ workflows:
 triggers:
   evaluate:
     when:
-      edits: {runs: "${evaluate_runs}", age: "${evaluate_age}"}
+      edits: {runs: "{{.evaluate_runs}}", age: "{{.evaluate_age}}"}
     run:
       workflow: evaluate
       key: evaluate
   curate:
     when:
-      learnings: {min: "${curate_min_learnings}", every: "${curate_every}"}
+      learnings: {min: "{{.curate_min_learnings}}", every: "{{.curate_every}}"}
     run:
       workflow: curate
       key: curate
@@ -111,4 +112,4 @@ prompt_rules:
     at: system
     # Ticket pools of every instance; the operator pack's rule covers chat.
     match: {chat: false}
-    memory: {dir: "${memory_dir}", cap: "${memory_cap}"}
+    memory: {dir: "{{.memory_dir}}", cap: "{{.memory_cap}}"}

@@ -4,7 +4,7 @@ baseline (retries, escalations, review findings and recurrence of the
 cited learnings in the scoped pools before the merge). Enough runs or
 days have passed to compare.
 
-1. `jobshop learn evaluate --runs ${evaluate_runs} --age ${evaluate_age}`
+1. `jobshop learn evaluate --runs {{.evaluate_runs}} --age {{.evaluate_age}}`
    decides every due edit and prints each with `state` (`helped` or
    `not_helped`), `reason`, `baseline` and `after`. It also writes the
    result on each cited learning (`jobshop learn list` shows `gate`).

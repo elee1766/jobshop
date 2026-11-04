@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/elee1766/jobshop/pkg/config/tmpl"
 )
 
 // PackFileName is the file in a pack directory that declares its pools,
@@ -68,6 +70,9 @@ type packHead struct {
 	// so a rename on master does not fail the deploy of hosts not yet
 	// updated.
 	RenamedVars map[string]string `yaml:"renamed_vars"`
+	// Template is the pack's template syntax: "" for ${name}, or "go"
+	// for Go text/template (#383). Per pack during the migration.
+	Template string `yaml:"template"`
 }
 
 // packLayer is one pack file's contribution after substitution.
@@ -76,6 +81,8 @@ type packLayer struct {
 	m        map[string]any
 	vars     map[string]any // the layer's vars after defaults
 	warnings []string       // deprecated var names the includer set
+	// textSources maps "<entry>.<field>" to the file a *_file field read.
+	textSources map[string][]string
 }
 
 // PackInstance is one entry of jobshop.yaml's packs list as loaded: what
@@ -191,10 +198,16 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 		}
 		if ref.Prefix != "" {
 			prefixLayers(layers, ref.Prefix)
+			for i := range layers {
+				layers[i].textSources = prefixSources(layers[i].textSources, ref.Prefix)
+			}
 		}
 		instances = append(instances, packInstance(ref.Path, ref.Prefix, layers))
 		for _, l := range layers {
 			mergeInto(merged, l.m, l.file, sources)
+			for k, v := range l.textSources {
+				sources[k] = v
+			}
 			warnings = append(warnings, l.warnings...)
 		}
 	}
@@ -202,10 +215,7 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	if err := setPackVars(top, nil, name); err != nil {
 		return nil, err
 	}
-	if err := resolvePromptFiles(top, dir, name, nil); err != nil {
-		return nil, err
-	}
-	if err := resolveRuleFiles(top, dir, name); err != nil {
+	if err := resolveTextFiles(top, textFiles{dir: dir, file: name, sources: sources}); err != nil {
 		return nil, err
 	}
 	mergeInto(merged, top, path, sources)
@@ -245,7 +255,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	var head packHead
-	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"], "renamed_vars": m["renamed_vars"]})
+	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"], "renamed_vars": m["renamed_vars"], "template": m["template"]})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
@@ -255,6 +265,11 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	delete(m, "defaults")
 	delete(m, "extends")
 	delete(m, "renamed_vars")
+	delete(m, "template")
+	syn := head.Template
+	if err := checkSyntax(syn); err != nil {
+		return nil, fmt.Errorf("%s: template: %w", file, err)
+	}
 	given, warnings := renameVars(given, head.RenamedVars, file)
 	// Given vars win over defaults.
 	vars := map[string]any{}
@@ -278,7 +293,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 			p = filepath.Join(dir, p)
 		}
 		// The base's vars are templates over this pack's vars.
-		bv, err := substitute(cloneValue(ref.Vars), vars, fmt.Sprintf("extends[%d].vars", i))
+		bv, err := substitute(cloneValue(ref.Vars), vars, fmt.Sprintf("extends[%d].vars", i), syn)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
@@ -292,14 +307,14 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	// Step titles and prompts keep ${run var} references for run start.
 	restore := holdTemplates(m)
 	// ${check_output} is filled when a trigger fires, not at load.
-	subVars := map[string]any{CheckOutputVar: "${" + CheckOutputVar + "}"}
+	subVars := map[string]any{CheckOutputVar: placeholder(CheckOutputVar, syn)}
 	for _, k := range StallVars { // likewise, per stall
-		subVars[k] = "${" + k + "}"
+		subVars[k] = placeholder(k, syn)
 	}
 	for k, v := range vars {
 		subVars[k] = v
 	}
-	v, err := substitute(m, subVars, "")
+	v, err := substitute(m, subVars, "", syn)
 	restore()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
@@ -311,11 +326,13 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := setPackVars(m, vars, file); err != nil {
 		return nil, err
 	}
-	if err := resolvePromptFiles(m, dir, file, subVars); err != nil {
+	setSyntax(m, syn)
+	textSources := map[string][]string{}
+	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: subVars, syn: syn, sources: textSources}); err != nil {
 		return nil, err
 	}
-	if err := resolveRuleFiles(m, dir, file); err != nil {
-		return nil, err
+	if syn == SyntaxGo {
+		warnings = append(warnings, leftoverVars(m, file)...)
 	}
 	raw, err = yaml.Marshal(m)
 	if err != nil {
@@ -325,7 +342,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := yaml.UnmarshalWithOptions(raw, &pf, yaml.Strict()); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings}), nil
+	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings, textSources: textSources}), nil
 }
 
 // renameVars returns given with old names from renamed moved to their new
@@ -398,11 +415,11 @@ var varPattern = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // substitute replaces ${name} in string values. A string that is exactly
 // one reference takes the var's value with its type, so numbers stay
 // numbers. "$$" is a literal "$" (for ${SESSION_DIR} style agent args).
-func substitute(v any, vars map[string]any, key string) (any, error) {
+func substitute(v any, vars map[string]any, key, syn string) (any, error) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, e := range x {
-			r, err := substitute(e, vars, joinKey(key, k))
+			r, err := substitute(e, vars, joinKey(key, k), syn)
 			if err != nil {
 				return nil, err
 			}
@@ -411,7 +428,7 @@ func substitute(v any, vars map[string]any, key string) (any, error) {
 		return x, nil
 	case []any:
 		for i, e := range x {
-			r, err := substitute(e, vars, fmt.Sprintf("%s[%d]", key, i))
+			r, err := substitute(e, vars, fmt.Sprintf("%s[%d]", key, i), syn)
 			if err != nil {
 				return nil, err
 			}
@@ -419,6 +436,13 @@ func substitute(v any, vars map[string]any, key string) (any, error) {
 		}
 		return x, nil
 	case string:
+		if syn == SyntaxGo {
+			r, err := tmpl.Value(x, vars)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", key, err)
+			}
+			return r, nil
+		}
 		if m := varPattern.FindStringSubmatch(x); m != nil && m[0] == x && m[1] != "" {
 			val, ok := vars[m[1]]
 			if !ok {
@@ -454,55 +478,6 @@ func joinKey(a, b string) string {
 		return b
 	}
 	return a + "." + b
-}
-
-// resolvePromptFiles replaces pools.*.prompt_file with the file's content
-// as prompt, reading relative to dir (the declaring file's directory).
-// In a pack (vars non-nil) the content gets pack var substitution like an
-// inline prompt; host prompt files stay literal.
-func resolvePromptFiles(m map[string]any, dir, file string, vars map[string]any) error {
-	pools, _ := m["pools"].(map[string]any)
-	names := make([]string, 0, len(pools))
-	for n := range pools {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		p, _ := pools[n].(map[string]any)
-		pf, ok := p["prompt_file"]
-		if !ok {
-			continue
-		}
-		key := "pools." + n
-		if _, both := p["prompt"]; both {
-			return fmt.Errorf("%s: %s: set prompt or prompt_file, not both", file, key)
-		}
-		s, ok := pf.(string)
-		if !ok || s == "" {
-			return fmt.Errorf("%s: %s.prompt_file must be a path", file, key)
-		}
-		if !filepath.IsAbs(s) {
-			s = filepath.Join(dir, s)
-		}
-		b, err := os.ReadFile(s)
-		if err != nil {
-			return fmt.Errorf("%s: %s.prompt_file: %w", file, key, err)
-		}
-		delete(p, "prompt_file")
-		prompt := string(b)
-		if vars != nil {
-			v, err := substitute(prompt, vars, key+".prompt_file")
-			if err != nil {
-				return fmt.Errorf("%s: %w", file, err)
-			}
-			prompt = v.(string)
-		}
-		p["prompt"] = prompt
-	}
-	if err := resolveStepPromptFiles(m, dir, file); err != nil {
-		return err
-	}
-	return resolveEscalatePromptFiles(m, dir, file)
 }
 
 // mergeInto applies src over dst. In the merged sections each entry merges

@@ -84,6 +84,13 @@ let
     };
   };
 
+  # Shared read-only mise installs (#316).
+  miseShared = eval {
+    sandbox.enable = true;
+    sandbox.mise.tools = [ "node@24" ];
+  };
+  miseOff = eval { sandbox.enable = true; };
+
   # The self-deploy script run against stubs: host paths are rewritten to a
   # temp dir, gh/nixos-rebuild/nix-env/systemctl and the controller binary are
   # shell stubs that log their calls.
@@ -188,6 +195,17 @@ let
   units = c: lib.attrNames c.config.systemd.services;
   expect = name: cond: if cond then true else throw "module-test: ${name} failed";
   checks = [
+    (expect "shared mise unit, env and mount" (
+      let
+        svc = miseShared.config.systemd.services;
+      in
+      svc.jobshop.environment.MISE_SHARED_INSTALL_DIRS == "/var/lib/jobshop-mise/installs"
+      && svc.jobshop-mise.environment.MISE_DATA_DIR == "/var/lib/jobshop-mise"
+      && lib.hasInfix "mise install --yes node@24" svc.jobshop-mise.script
+      && miseShared.config.systemd.timers ? jobshop-mise
+      && !(miseOff.config.systemd.services ? jobshop-mise)
+      && !(miseOff.config.systemd.services.jobshop.environment ? MISE_SHARED_INSTALL_DIRS)
+    ))
     (expect "two workspaces pass assertions" (failed two == [ ]))
     (expect "two workspaces have clone units" (
       lib.all (u: lib.elem u (units two)) [
@@ -288,5 +306,6 @@ pkgs.runCommand "jobshop-module-test" { } ''
   grep -q 'repo: elee1766/other' ${yamlPacks two}
   grep -q 'prefix: ot-' ${yamlPacks two}
   [ "$(grep -c 'prefix:' ${yamlPacks two})" = 1 ] || { echo 'selfdev got a prefix'; exit 1; }
+  grep -q -- '- /var/lib/jobshop-mise' ${yamlPacks miseShared}
   touch $out
 ''

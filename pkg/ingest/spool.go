@@ -41,7 +41,7 @@ var ErrBadDelivery = errors.New("ingest: bad delivery")
 // schemaVersion is PRAGMA user_version once schema is applied. One
 // table needs no migration tool; a later change bumps this and adds a
 // step in OpenSpool.
-const schemaVersion = 2
+const schemaVersion = 3
 
 const schema = `
 CREATE TABLE IF NOT EXISTS spool (
@@ -74,6 +74,26 @@ CREATE TABLE IF NOT EXISTS spool_bad (
   moved_at    INTEGER NOT NULL
 );
 PRAGMA user_version = 2;
+`
+
+// schemaV3 lets source be generic (#399). SQLite cannot change a CHECK
+// in place, so the table is rebuilt.
+const schemaV3 = `
+CREATE TABLE spool_new (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint    TEXT NOT NULL,
+  source      TEXT NOT NULL CHECK (source IN ('github', 'linear', 'generic')),
+  delivery_id TEXT NOT NULL,
+  kind        TEXT NOT NULL DEFAULT '',
+  received_at INTEGER NOT NULL,
+  headers     TEXT NOT NULL DEFAULT '{}',
+  payload     TEXT NOT NULL,
+  UNIQUE (source, delivery_id)
+);
+INSERT INTO spool_new SELECT id, endpoint, source, delivery_id, kind, received_at, headers, payload FROM spool;
+DROP TABLE spool;
+ALTER TABLE spool_new RENAME TO spool;
+PRAGMA user_version = 3;
 `
 
 // Spool is the receiver's own SQLite database (#339). Only the receiver
@@ -115,7 +135,27 @@ func OpenSpool(ctx context.Context, path string) (*Spool, error) {
 			return nil, fmt.Errorf("ingest spool %s: %w", path, err)
 		}
 	}
+	if v < 3 {
+		if err := migrateV3(ctx, db); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("ingest spool %s: %w", path, err)
+		}
+	}
 	return &Spool{db: db}, nil
+}
+
+// migrateV3 runs schemaV3 in one transaction, so a crash mid-rebuild
+// leaves the old table.
+func migrateV3(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, schemaV3); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // Close closes the database.
@@ -124,7 +164,7 @@ func (s *Spool) Close() error { return s.db.Close() }
 // Write stores d. It returns false when a delivery with the same source
 // and delivery id is already spooled; nothing changes then.
 func (s *Spool) Write(ctx context.Context, d Delivery) (bool, error) {
-	if (d.Source != SourceGitHub && d.Source != SourceLinear) || d.DeliveryID == "" || d.Endpoint == "" {
+	if (d.Source != SourceGitHub && d.Source != SourceLinear && d.Source != SourceGeneric) || d.DeliveryID == "" || d.Endpoint == "" {
 		return false, fmt.Errorf("%w: endpoint %q source %q id %q", ErrBadDelivery, d.Endpoint, d.Source, d.DeliveryID)
 	}
 	hdr, err := json.Marshal(d.Headers)

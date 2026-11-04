@@ -146,6 +146,11 @@ type Controller struct {
 	// subPollMu serializes subscription passes: the pump and webhook
 	// passes for one thread (#300).
 	subPollMu sync.Mutex
+	// waitSource reads PR state for waits; nil means gh (#381). waitWake
+	// asks for a pass now; waitMu serializes passes.
+	waitSource waitSource
+	waitWake   chan struct{}
+	waitMu     sync.Mutex
 	// activitySrc reads GitHub and Linear activity; nil means live APIs
 	// (tests set a fake). activity is the cache, loaded on first poll.
 	activitySrc activitySource
@@ -234,6 +239,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		minter:       identity.NewMinter(),
 		ingest:       ingestDrain{wake: make(chan struct{}, 1)},
+		waitWake:     make(chan struct{}, 1),
 		drained:      map[string]bool{},
 		scaleTargets: map[string]int{}, scaleHist: map[string][]scaleSample{}, scaleViews: map[string]poolScaleView{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
@@ -300,6 +306,7 @@ func (c *Controller) serve() error {
 	}
 	c.wg.Go(c.pumpEvents)
 	c.wg.Go(c.pumpSubscriptions)
+	c.wg.Go(c.pumpWaits)
 	c.wg.Go(c.pumpActivity)
 	c.wg.Go(c.pumpDrain)
 	c.wg.Go(c.pumpReconcile)
@@ -666,5 +673,8 @@ func init() {
 		rpc.MethodLearnEdits:       bind((*Controller).learnEdits),
 		rpc.MethodWriteKeyClaim:    bind((*Controller).writeKeyClaim),
 		rpc.MethodWriteKeyFinish:   bind((*Controller).writeKeyFinish),
+		rpc.MethodWaitAdd:          bind((*Controller).waitAdd),
+		rpc.MethodWaitList:         bind((*Controller).waitList),
+		rpc.MethodWaitClear:        bind((*Controller).waitClear),
 	}
 }

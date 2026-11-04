@@ -31,11 +31,14 @@ type Fields interface {
 	Validate() error
 }
 
-// TaskFields has no engine fields yet.
-type TaskFields struct{}
+// TaskFields is the engine state of a task.
+type TaskFields struct {
+	// Wait parks the task until outside state holds (#381).
+	Wait *Wait `json:"wait,omitempty"`
+}
 
 // Validate implements Fields.
-func (TaskFields) Validate() error { return nil }
+func (f TaskFields) Validate() error { return f.Wait.Validate() }
 
 // SessionFields is the engine state of a session ticket.
 type SessionFields struct {
@@ -178,6 +181,8 @@ type StepFields struct {
 	Index    int    `json:"index"`
 	Retries  int    `json:"retries"`
 	Failures int    `json:"failures"`
+	// Wait parks the step until outside state holds (#381).
+	Wait *Wait `json:"wait,omitempty"`
 }
 
 // StepFailure counts one failed attempt on a step ticket: a close
@@ -217,7 +222,7 @@ func (f StepFields) Validate() error {
 	if f.Index < 0 || f.Retries < 0 || f.Failures < 0 {
 		return fmt.Errorf("%w: step: index, retries and failures must be >= 0", ErrInvalid)
 	}
-	return nil
+	return f.Wait.Validate()
 }
 
 func (k Kind) newFields() (Fields, bool) {

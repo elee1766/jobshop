@@ -40,7 +40,7 @@ func TestSpawnQuarantine(t *testing.T) {
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool { return status().Quarantined["dev"] != "" }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return status().Quarantined["dev"] != "" }, dialWait, 50*time.Millisecond)
 	assert.Contains(t, status().Quarantined["dev"], "no-such-repo")
 	pass(t, root.Dir, 3)
 	sessions := list(rpc.ListParams{Kind: store.KindSession})
@@ -54,8 +54,8 @@ func TestSpawnQuarantine(t *testing.T) {
 
 	// A second quarantine while the first escalation is open files none.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolUnquarantine, rpc.PoolParams{Pool: "dev"}, nil))
-	require.Eventually(t, func() bool { return len(list(rpc.ListParams{Kind: store.KindSession})) == 2 }, 20*time.Second, 50*time.Millisecond)
-	require.Eventually(t, func() bool { return status().Quarantined["dev"] != "" }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return len(list(rpc.ListParams{Kind: store.KindSession})) == 2 }, dialWait, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return status().Quarantined["dev"] != "" }, dialWait, 50*time.Millisecond)
 	assert.Len(t, list(rpc.ListParams{Label: "needs-human"}), 1, "escalation deduped per pool")
 
 	// Reload clears it; the fixed config starts a session that does work.
@@ -69,7 +69,7 @@ func TestSpawnQuarantine(t *testing.T) {
 		}
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &got))
 		return got.Ticket.Status == store.StatusClosed
-	}, 20*time.Second, 50*time.Millisecond)
+	}, dialWait, 50*time.Millisecond)
 }
 
 // TestSpawnQuarantineAgentMissing: an agent command that is not there is
@@ -86,6 +86,6 @@ func TestSpawnQuarantineAgentMissing(t *testing.T) {
 	require.Eventually(t, func() bool {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolList, nil, &st))
 		return st.Quarantined["dev"] != ""
-	}, 20*time.Second, 50*time.Millisecond)
+	}, dialWait, 50*time.Millisecond)
 	assert.Contains(t, st.Quarantined["dev"], "no-such-agent-146")
 }

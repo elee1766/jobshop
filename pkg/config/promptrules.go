@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"time"
@@ -48,7 +47,18 @@ type PromptRule struct {
 	// Memory adds the memory files and skills index from a git directory
 	// (#266), read each turn so a pull is live without a reload.
 	Memory *RuleMemory `yaml:"memory,omitempty"`
+	// Inject is changed (default: send when new to the session or its
+	// text changed), once (send once per conversation) or always (every
+	// matching turn) (#397).
+	Inject string `yaml:"inject,omitempty"`
 }
+
+// PromptRule.Inject values.
+const (
+	InjectChanged = "changed"
+	InjectOnce    = "once"
+	InjectAlways  = "always"
+)
 
 // RuleMemory points a prompt rule at a memory directory (pkg/memory).
 type RuleMemory struct {
@@ -139,37 +149,6 @@ func anyOf(globs, vs []string) bool {
 	return false
 }
 
-// resolveRuleFiles reads prompt_rules[].file into text, relative to dir
-// (the declaring file's directory), like a pool's prompt_file.
-func resolveRuleFiles(m map[string]any, dir, file string) error {
-	rules, _ := m["prompt_rules"].([]any)
-	for i, r := range rules {
-		rm, _ := r.(map[string]any)
-		if rm == nil {
-			return fmt.Errorf("%s: prompt_rules[%d] must be a mapping", file, i)
-		}
-		if f, ok := rm["file"]; ok {
-			if _, both := rm["text"]; both {
-				return fmt.Errorf("%s: prompt_rules[%d]: set text or file, not both", file, i)
-			}
-			s, _ := f.(string)
-			if s == "" {
-				return fmt.Errorf("%s: prompt_rules[%d].file must be a path", file, i)
-			}
-			if !filepath.IsAbs(s) {
-				s = filepath.Join(dir, s)
-			}
-			b, err := os.ReadFile(s)
-			if err != nil {
-				return fmt.Errorf("%s: prompt_rules[%d].file: %w", file, i, err)
-			}
-			delete(rm, "file")
-			rm["text"] = string(b)
-		}
-	}
-	return nil
-}
-
 // checkRules validates c.PromptRules: names unique and valid, a known
 // position, text or a command, and a valid timeout.
 func (c *Config) checkRules() error {
@@ -201,6 +180,13 @@ func (c *Config) checkRules() error {
 		}
 		if r.Text == "" && r.Command == "" && r.Memory == nil {
 			return fmt.Errorf("%s: set text, file, command or memory", where)
+		}
+		switch r.Inject {
+		case "":
+			c.PromptRules[i].Inject = InjectChanged
+		case InjectChanged, InjectOnce, InjectAlways:
+		default:
+			return fmt.Errorf("%s: inject %q must be changed, once or always", where, r.Inject)
 		}
 		if r.Memory != nil && r.Memory.Cap < 0 {
 			return fmt.Errorf("%s: memory.cap must not be negative", where)

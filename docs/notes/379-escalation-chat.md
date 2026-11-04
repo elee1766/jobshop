@@ -6,11 +6,17 @@
   chat and the first message:
   `escalate: {chat_pool, prompt | prompt_file, pool_prompt | pool_prompt_file}`.
   `chat_pool` is a `type: chat` pool. Prompt files are read at load,
-  relative to the declaring file, like step prompts. No `chat_pool`: the
-  ticket is filed and no chat starts.
-- Prompt vars (`${name}`, filled when the ticket is filed, besides the
-  pack vars): run escalations `ticket`, `run`, `workflow`, `issue_ref`
-  (how to read the issue), `body`; pool quarantine escalations (the
+  relative to the declaring file and loaded by the #382 loader
+  (`pkg/config/textfile.go`, `workflows.<n>.escalate.prompt` and
+  `.pool_prompt`, sources shown by `config show`). Like step prompts they
+  are not pack-substituted at load: the vars wait for the ticket. Setting
+  both a prompt and its file is a load error. No `chat_pool`: the ticket
+  is filed and no chat starts.
+- Prompt vars (written in the pack's template syntax, `{{.name}}` in a
+  `template: go` pack as #383 defines, filled by `Workflow.Render` when
+  the ticket is filed, besides the pack vars): run escalations
+  `ticket`, `run`, `workflow`, `issue_ref` (how to read the issue),
+  `body`; pool quarantine escalations (the
   workflow whose `escalate_pool` receives the ticket, needs
   `pool_prompt`) `ticket`, `pool`, `quarantine`, `body`.
 - `packs/github` ships `prompts/escalation.md` and

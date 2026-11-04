@@ -91,7 +91,7 @@ func escalationPolicy(cfg *config.Config, t store.Ticket) (pool, text string, ok
 		vars = map[string]any{}
 	}
 	maps.Copy(vars, extras)
-	text, err = config.FillTemplate(tmpl, vars)
+	text, err = w.Render(tmpl, vars)
 	return w.Escalate.ChatPool, text, err == nil, err
 }
 

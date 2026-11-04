@@ -3,10 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
-	"sort"
 )
 
 // DefaultStepRetries is a step's retry limit when retries is unset.
@@ -48,15 +45,18 @@ type Workflow struct {
 	// PackVars are the vars of the pack that declared the workflow, set by
 	// the loader, not by users.
 	PackVars map[string]any `yaml:"pack_vars,omitempty"`
+	// Template is the declaring pack's syntax (SyntaxGo or ""), set by
+	// the loader.
+	Template string `yaml:"template,omitempty"`
 }
 
 // Escalate is the escalation chat policy of a workflow (#379). With
 // ChatPool set, the controller starts a session of that chat pool keyed
 // escalation:<ticket id> for each escalation ticket and sends the
 // rendered prompt as its first message. Empty ChatPool: ticket only.
-// Prompts are templates: ${name} from the pack vars and the escalation
-// vars (EscalationRunVars, EscalationPoolVars), filled when the ticket
-// is filed.
+// Prompts are templates in the pack's syntax: the pack vars and the
+// escalation vars (EscalationRunVars, EscalationPoolVars), filled when
+// the ticket is filed.
 type Escalate struct {
 	ChatPool string `yaml:"chat_pool,omitempty"`
 	// Prompt is the first message for a run escalation. PromptFile is
@@ -101,7 +101,8 @@ func (s Step) RetryLimit() int {
 
 // templateKeys are the step fields kept as templates: pack substitution
 // skips them so run vars survive until run start.
-var templateKeys = []string{"title", "prompt"}
+// pool is one too, so a run var can route a step to a pool (#384).
+var templateKeys = []string{"title", "prompt", "pool"}
 
 // checkTriggerRun validates a run: trigger. The workflow must exist and
 // every workflow var must be set (by the trigger or by pack vars); vars
@@ -130,12 +131,16 @@ func (c *Config) checkTriggerRun(tr *Trigger) error {
 		templates["vars."+k] = v
 	}
 	for where, s := range templates {
-		for _, v := range templateVars(s) {
+		vs, err := refs(s, r.Template)
+		if err != nil {
+			return fmt.Errorf("run: %s: %w", where, err)
+		}
+		for _, v := range vs {
 			if v != CheckOutputVar {
-				return fmt.Errorf("run: %s uses ${%s}; only ${%s} is available", where, v, CheckOutputVar)
+				return fmt.Errorf("run: %s uses %s; only %s is available", where, placeholder(v, r.Template), placeholder(CheckOutputVar, r.Template))
 			}
 			if tr.When.Check == "" {
-				return fmt.Errorf("run: %s uses ${%s}, which needs when.check", where, CheckOutputVar)
+				return fmt.Errorf("run: %s uses %s, which needs when.check", where, placeholder(CheckOutputVar, r.Template))
 			}
 		}
 	}
@@ -200,46 +205,6 @@ func setPackVars(m map[string]any, vars map[string]any, file string) error {
 	return nil
 }
 
-// resolveEscalatePromptFiles replaces workflows.*.escalate.prompt_file and
-// pool_prompt_file with the file's content, reading relative to dir. Like
-// step prompts, the content stays a template until the ticket is filed.
-func resolveEscalatePromptFiles(m map[string]any, dir, file string) error {
-	wfs, _ := m["workflows"].(map[string]any)
-	names := make([]string, 0, len(wfs))
-	for n := range wfs {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		wm, _ := wfs[n].(map[string]any)
-		em, _ := wm["escalate"].(map[string]any)
-		for _, k := range []string{"prompt", "pool_prompt"} {
-			pf, ok := em[k+"_file"]
-			if !ok {
-				continue
-			}
-			key := fmt.Sprintf("workflows.%s.escalate.%s_file", n, k)
-			if _, both := em[k]; both {
-				return fmt.Errorf("%s: workflows.%s.escalate: set %s or %s_file, not both", file, n, k, k)
-			}
-			p, ok := pf.(string)
-			if !ok || p == "" {
-				return fmt.Errorf("%s: %s must be a path", file, key)
-			}
-			if !filepath.IsAbs(p) {
-				p = filepath.Join(dir, p)
-			}
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return fmt.Errorf("%s: %s: %w", file, key, err)
-			}
-			delete(em, k+"_file")
-			em[k] = string(b)
-		}
-	}
-	return nil
-}
-
 // checkEscalate validates the escalation chat policy of w.
 func (c *Config) checkEscalate(w *Workflow) error {
 	e := w.Escalate
@@ -262,50 +227,14 @@ func (c *Config) checkEscalate(w *Workflow) error {
 		key, v string
 		vars   []string
 	}{{"prompt", e.Prompt, EscalationRunVars}, {"pool_prompt", e.PoolPrompt, EscalationPoolVars}} {
-		for _, v := range templateVars(t.v) {
-			if _, ok := w.PackVars[v]; !ok && !slices.Contains(t.vars, v) {
-				return fmt.Errorf("%s uses ${%s}, not in %v or pack vars", t.key, v, t.vars)
-			}
+		vs, err := refs(t.v, w.Template)
+		if err != nil {
+			return fmt.Errorf("%s: %w", t.key, err)
 		}
-	}
-	return nil
-}
-
-// resolveStepPromptFiles replaces workflows.*.steps[i].prompt_file with
-// the file's content as prompt, reading relative to dir.
-func resolveStepPromptFiles(m map[string]any, dir, file string) error {
-	wfs, _ := m["workflows"].(map[string]any)
-	names := make([]string, 0, len(wfs))
-	for n := range wfs {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		wm, _ := wfs[n].(map[string]any)
-		steps, _ := wm["steps"].([]any)
-		for i, s := range steps {
-			sm, _ := s.(map[string]any)
-			pf, ok := sm["prompt_file"]
-			if !ok {
-				continue
+		for _, v := range vs {
+			if _, ok := w.PackVars[v]; !ok && !slices.Contains(t.vars, v) {
+				return fmt.Errorf("%s uses %s, not in %v or pack vars", t.key, placeholder(v, w.Template), t.vars)
 			}
-			key := fmt.Sprintf("workflows.%s.steps[%d]", n, i)
-			if _, both := sm["prompt"]; both {
-				return fmt.Errorf("%s: %s: set prompt or prompt_file, not both", file, key)
-			}
-			p, ok := pf.(string)
-			if !ok || p == "" {
-				return fmt.Errorf("%s: %s.prompt_file must be a path", file, key)
-			}
-			if !filepath.IsAbs(p) {
-				p = filepath.Join(dir, p)
-			}
-			b, err := os.ReadFile(p)
-			if err != nil {
-				return fmt.Errorf("%s: %s.prompt_file: %w", file, key, err)
-			}
-			delete(sm, "prompt_file")
-			sm["prompt"] = string(b)
 		}
 	}
 	return nil
@@ -314,11 +243,60 @@ func resolveStepPromptFiles(m map[string]any, dir, file string) error {
 // FillTemplate replaces ${name} in s from vars ($$ is a literal $). A
 // missing var is an error.
 func FillTemplate(s string, vars map[string]any) (string, error) {
-	out, err := substitute(s, vars, "")
+	out, err := substitute(s, vars, "", SyntaxDollar)
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprint(out), nil
+}
+
+// checkStepPool checks a step's pool. A pool naming a run var is checked
+// at run start (ResolvePool); one filled from pack vars alone is checked
+// here.
+func (c *Config) checkStepPool(w *Workflow, pool string) error {
+	runVar := false
+	vs, err := refs(pool, w.Template)
+	if err != nil {
+		return fmt.Errorf("pool: %w", err)
+	}
+	for _, v := range vs {
+		_, packed := w.PackVars[v]
+		switch {
+		case slices.Contains(w.Vars, v):
+			runVar = true
+		case !packed:
+			return fmt.Errorf("pool uses %s, not in workflow vars or pack vars", placeholder(v, w.Template))
+		}
+	}
+	if runVar {
+		return nil
+	}
+	_, err = c.ResolvePool(w, pool, w.PackVars)
+	return err
+}
+
+// ResolvePool fills a step's pool template of w from vars and checks the
+// pool exists.
+func (c *Config) ResolvePool(w *Workflow, pool string, vars map[string]any) (string, error) {
+	name, err := w.Render(pool, vars)
+	if err != nil {
+		return "", fmt.Errorf("pool: %w", err)
+	}
+	if _, ok := c.Pools[name]; !ok {
+		return "", fmt.Errorf("unknown pool %q", name)
+	}
+	return name, nil
+}
+
+// Render fills a step title, prompt or pool template of w from vars, in
+// the declaring pack's syntax.
+func (w *Workflow) Render(s string, vars map[string]any) (string, error) {
+	return Fill(s, w.Template, vars)
+}
+
+// Fill fills a trigger run var or key template from vars.
+func (r *TriggerRun) Fill(s string, vars map[string]any) (string, error) {
+	return Fill(s, r.Template, vars)
 }
 
 // templateVars returns the ${name} references in s ($$ is a literal $).
@@ -393,8 +371,8 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 			return fmt.Errorf("%s: duplicate step id", where)
 		}
 		ids[s.ID] = true
-		if _, ok := c.Pools[s.Pool]; !ok {
-			return fmt.Errorf("%s: unknown pool %q", where, s.Pool)
+		if err := c.checkStepPool(w, s.Pool); err != nil {
+			return fmt.Errorf("%s: %w", where, err)
 		}
 		if s.Title == "" {
 			return fmt.Errorf("%s: title is required", where)
@@ -409,9 +387,13 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 			return fmt.Errorf("%s: retries must be >= 0", where)
 		}
 		for _, f := range []struct{ key, v string }{{"title", s.Title}, {"prompt", s.Prompt}} {
-			for _, v := range templateVars(f.v) {
+			vs, err := refs(f.v, w.Template)
+			if err != nil {
+				return fmt.Errorf("%s: %s: %w", where, f.key, err)
+			}
+			for _, v := range vs {
 				if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) {
-					return fmt.Errorf("%s: %s uses ${%s}, not in workflow vars or pack vars", where, f.key, v)
+					return fmt.Errorf("%s: %s uses %s, not in workflow vars or pack vars", where, f.key, placeholder(v, w.Template))
 				}
 			}
 		}

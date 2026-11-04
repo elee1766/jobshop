@@ -77,7 +77,10 @@ let
         }
         // ((cfg.settings.defaults or { }).sandbox or { });
       };
-      shared_tools = (cfg.settings.shared_tools or [ ]) ++ cfg.sandbox.sharedTools;
+      shared_tools =
+        (cfg.settings.shared_tools or [ ])
+        ++ cfg.sandbox.sharedTools
+        ++ lib.optional sharedMise cfg.sandbox.mise.dir;
     };
   configFile = settingsFormat.generate "jobshop.yaml" (
     lib.recursiveUpdate settings (
@@ -85,6 +88,7 @@ let
     )
   );
   jobshop = lib.getExe cfg.package;
+  sharedMise = cfg.sandbox.enable && cfg.sandbox.mise.tools != [ ];
 
   defaultTools = with pkgs; [
     git
@@ -167,6 +171,10 @@ let
       NIX_LD_LIBRARY_PATH = "/run/current-system/sw/share/nix-ld/lib";
       NIX_LD = "/run/current-system/sw/share/nix-ld/lib/ld.so";
       MISE_TRUSTED_CONFIG_PATHS = "${cfg.dataDir}/sessions:${cfg.dataDir}/workspaces";
+    }
+    # Sessions use the host's installs before their own (#316).
+    // lib.optionalAttrs sharedMise {
+      MISE_SHARED_INSTALL_DIRS = "${cfg.sandbox.mise.dir}/installs";
     }
     // cfg.environment
     // {
@@ -467,6 +475,28 @@ in
         ];
         description = "Read-write dirs for every sandboxed session (defaults.sandbox.rw): build caches, agent state, mise data.";
       };
+      # Host-level mise installs shared read-only with sandboxed sessions (#316).
+      mise = {
+        tools = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [
+            "node@24"
+            "python@3.13"
+          ];
+          description = "mise tools installed outside the sandbox into <dir>/installs, mounted read-only into every sandboxed session and listed in MISE_SHARED_INSTALL_DIRS. Empty: no shared install unit.";
+        };
+        dir = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/jobshop-mise";
+          description = "mise data dir for the shared installs; added to sandbox.sharedTools.";
+        };
+        interval = lib.mkOption {
+          type = lib.types.str;
+          default = "daily";
+          description = "systemd OnCalendar for re-running the shared mise install.";
+        };
+      };
     };
 
     defaultPath = lib.mkOption {
@@ -686,7 +716,39 @@ in
           "L+ ${cfg.dataDir}/jobshop.yaml - - - - ${configFile}"
           # Per-host GC roots keep a running session host's binary alive across Nix switches.
           "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${cfg.user} ${cfg.group} -"
-        ];
+        ]
+        ++ lib.optional sharedMise "d ${cfg.sandbox.mise.dir} 0755 ${cfg.user} ${cfg.group} -";
+
+        systemd.services.jobshop-mise = lib.mkIf sharedMise {
+          description = "Install shared mise tools for Jobshop sandboxes";
+          wantedBy = [ "multi-user.target" ];
+          before = [ "jobshop.service" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
+          inherit path;
+          # Outside the sandbox and outside the sessions' own mise data dir,
+          # so sessions only ever read these installs.
+          environment = environment // {
+            MISE_DATA_DIR = cfg.sandbox.mise.dir;
+            MISE_CACHE_DIR = "${cfg.sandbox.mise.dir}/cache";
+            MISE_SHARED_INSTALL_DIRS = "";
+          };
+          serviceConfig = {
+            Type = "oneshot";
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.sandbox.mise.dir;
+          };
+          script = "mise install --yes ${lib.escapeShellArgs cfg.sandbox.mise.tools}";
+        };
+        systemd.timers.jobshop-mise = lib.mkIf sharedMise {
+          wantedBy = [ "timers.target" ];
+          timerConfig = {
+            OnCalendar = cfg.sandbox.mise.interval;
+            Persistent = true;
+          };
+        };
 
         systemd.slices.jobshop = {
           description = "Jobshop controller, session hosts and agents";
@@ -846,7 +908,9 @@ in
               newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
               if ! check=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- \
                    "$newpkg/bin/jobshop" config check --file ${cfg.dataDir}/jobshop.yaml \
-                   --replace ${lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir}="$src" 2>&1); then
+                   --replace ${
+                     lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir
+                   }="$src" 2>&1); then
                 echo "<3>config check failed for $rev, not switching: $check"
                 printf '%s\n' "$check" > $state/failed.reason
                 echo "$rev" > $state/failed

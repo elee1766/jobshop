@@ -39,7 +39,9 @@ flowchart LR
   a human. Batches group runs in an order.
 - **Packs.** A pack is a directory of pools, prompts, triggers and
   workflows filled from vars. It can extend another pack, and several
-  instances can sit side by side with a `prefix:`.
+  instances can sit side by side with a `prefix:`. Templates are Go
+  `text/template` (`{{.repo}}`, `{{if}}`, `default`) with `template: go`;
+  packs without it still use `${repo}` for now.
 - **Trackers.** GitHub issues and PRs, or Linear issues. Tickets subscribe
   to issue threads, so new human comments come back to them. Identities
   map GitHub App installations and Linear tokens to repos and teams.
@@ -86,13 +88,36 @@ defaults:
     rw: [~/.cache/go-build]
 ```
 
-## Packs in this repo
+## Packs
 
-| Pack | What it is |
-| --- | --- |
-| `packs/github` | Works one GitHub repo (or Linear team) through issues and PRs. A planner reads a `target` issue and files work, `pr-work` runs implement, review-merge and post-merge, `ci-repair` fixes red master, and `stall-check` unsticks work. See its README. |
-| `packs/selfdev` | `packs/github` with Jobshop's values. It builds this repo. |
-| `packs/operator` | A chat pool for the operator: it manages tickets, issues and runs, and turns corrections into prompt PRs. |
+A pack is a directory you write in your root (`packs/<name>/`) with a
+`pack.yaml` and its prompts. A minimal one:
+
+```yaml
+template: go
+pools:
+  work:
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/main
+    max_sessions: 1
+    prompt_file: prompts/work.md
+workflows:
+  change:
+    vars: [task]
+    steps:
+      - {id: implement, pool: work, title: "Implement: {{.task}}", prompt: "Make the change: {{.task}}"}
+      - {id: review, pool: work, title: "Review: {{.task}}", prompt: "Review the change: {{.task}}"}
+```
+
+`docs/packs.md` is the guide (`jobshop docs packs` prints its link).
+`packs/` in this repo holds the packs we use to develop Jobshop, as
+examples.
+
+Long text can live in files, relative to the file that declares it:
+pool and step `prompt_file`, trigger ticket `body_file`, prompt rule
+`file`. Set the inline field or the file field, not both
+([notes](docs/notes/382-text-files.md)).
 
 ## Run
 
@@ -102,7 +127,7 @@ jobshop init ./root          # writes root/jobshop.yaml
 cd root && jobshop serve     # controller
 ```
 
-A small `jobshop.yaml` with one GitHub repo:
+A small `jobshop.yaml` using a pack in the root:
 
 ```yaml
 default_project: js
@@ -111,20 +136,17 @@ projects:
 agents:
   jcode: {command: jcode, args: [acp]}
 packs:
-  - path: /path/to/jobshop/packs/github
+  - path: packs/main               # relative to the root
     vars:
-      repo: acme/widget
       checkout: /srv/widget        # main checkout; sessions get worktrees
       agent: jcode
-      human: wile                  # GitHub user mentioned on escalations
-      check_cmd: make test
 ```
 
 The controller needs `gh` authenticated (`GH_TOKEN`) for triggers. Then:
 
 ```
 jobshop config show                      # resolved pools, triggers, workflows
-jobshop run start pr-work --var issue=12 --key issue-12
+jobshop run start change --var task="add a --verbose flag" --key verbose
 jobshop run list
 jobshop session list
 jobshop session attach <id> [--rw]
@@ -195,6 +217,23 @@ bad signature, 403 for a repo not on the endpoint's list, and 500 when
 the spool write fails so the sender retries. Adding an endpoint needs a
 restart; rotating a secret file does not. See
 `docs/notes/334-ingest-spool.md`.
+
+Any other sender (a queue puller, CI, monitoring) uses a `generic`
+endpoint: HMAC-SHA256 of the raw body in a header you name, and `map`
+paths that fill the inbox fields. Trusted local senders skip HTTP with
+`jobshop ingest put --endpoint hints [--delivery-id ID] < payload.json`,
+which exits 0 for new or duplicate deliveries. See
+`docs/notes/399-generic-ingest.md`.
+
+```yaml
+    - name: hints
+      source: generic
+      secret_file: secrets/hints
+      signature_header: X-Hint-Signature
+      signature_prefix: "sha256="
+      delivery_id_header: X-Hint-Delivery
+      map: {kind: event, repo_or_team: repo, number: prs.0, natural_key: "{repo}:{head}"}
+```
 
 ### NixOS
 

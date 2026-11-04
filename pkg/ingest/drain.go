@@ -75,16 +75,19 @@ func InboxItem(r Row) (store.InboxItem, error) {
 	if err != nil {
 		return store.InboxItem{}, err
 	}
-	if d.Source != SourceGitHub && d.Source != SourceLinear {
+	if d.Source != SourceGitHub && d.Source != SourceLinear && d.Source != SourceGeneric {
 		return store.InboxItem{}, fmt.Errorf("unknown source %q", d.Source)
 	}
 	it := store.InboxItem{
 		Source: d.Source, DeliveryID: d.Source + ":" + d.DeliveryID, Endpoint: d.Endpoint,
 		Kind: d.Kind, ReceivedAt: d.ReceivedAt, Payload: d.Payload,
 	}
-	if d.Source == SourceGitHub {
+	switch d.Source {
+	case SourceGitHub:
 		err = githubSubject(&it, d.Payload)
-	} else {
+	case SourceGeneric:
+		err = genericSubject(&it, d)
+	default:
 		err = linearSubject(&it, d.Payload)
 	}
 	return it, err

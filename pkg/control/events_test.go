@@ -96,9 +96,9 @@ func TestEventsSubscribe(t *testing.T) {
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: sess.Ticket.ID}, nil))
 
 	for _, op := range []string{"create", "label_add", "comment", "claim", "release", "label_remove", "close"} {
-		require.Eventually(t, func() bool { return all.has(rpc.EventKindTicket, op, a.ID) }, 5*time.Second, 10*time.Millisecond, op)
+		require.Eventually(t, func() bool { return all.has(rpc.EventKindTicket, op, a.ID) }, dialWait, 10*time.Millisecond, op)
 	}
-	require.Eventually(t, func() bool { return all.has(rpc.EventKindSession, rpc.OpSessionStop, sess.Ticket.ID) }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return all.has(rpc.EventKindSession, rpc.OpSessionStop, sess.Ticket.ID) }, dialWait, 10*time.Millisecond)
 	assert.True(t, all.has(rpc.EventKindSession, rpc.OpSessionStart, sess.Ticket.ID))
 	evs := all.get()
 	for i := 1; i < len(evs); i++ {
@@ -107,13 +107,13 @@ func TestEventsSubscribe(t *testing.T) {
 
 	// Label filter: label_add and label_remove name the label; other
 	// events of a only match while it still had the label.
-	require.Eventually(t, func() bool { return labeled.has(rpc.EventKindTicket, "label_remove", a.ID) }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return labeled.has(rpc.EventKindTicket, "label_remove", a.ID) }, dialWait, 10*time.Millisecond)
 	for _, ev := range labeled.get() {
 		assert.NotEqual(t, b.ID, ev.ID, "b never had the label")
 	}
 	assert.True(t, labeled.has(rpc.EventKindTicket, "label_add", a.ID))
 	// Kind filter.
-	require.Eventually(t, func() bool { return sessions.has(rpc.EventKindSession, rpc.OpSessionStop, sess.Ticket.ID) }, 5*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool { return sessions.has(rpc.EventKindSession, rpc.OpSessionStop, sess.Ticket.ID) }, dialWait, 10*time.Millisecond)
 	for _, ev := range sessions.get() {
 		assert.Equal(t, rpc.EventKindSession, ev.Kind)
 	}
