@@ -389,6 +389,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Resource slots: `resources:` (counted or keyed) and step
   `needs_resources`, enforced in the ready and claim queries (#400,
   `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
+- Command and http workflow steps run by the controller, no session
+  (#396, `docs/notes/396-command-http-steps.md`).
 
 ## 5. What's next
 
@@ -1138,10 +1140,18 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   the ready and claim queries skip a ticket with a wait. The controller
   evaluates them, not the agent; a moved head or closed PR clears a
   review or checks wait as invalidated so the agent re-decides.
+<<<<<<< HEAD
 - Resource occupancy is derived, not stored (2026-11-04, #400): a slot
   is held by an in-progress ticket naming its key, so every claim end
   frees it in the same write and there is no slot row to leak. Only
   capacities are stored, synced from config.
+=======
+- Command and http steps (2026-11-04, #396) are step tickets with no
+  pool, claimed by the controller as holder `controller`, so retries,
+  escalation and run completion stay the agent-step code paths. The
+  attempt key is run/step/fence: a restart with `on_restart: retry`
+  resumes the same claim and key; a new claim is a new attempt.
+>>>>>>> c1e1a4a (Command and http workflow steps run by the controller (#396))
 
 ## 7. Reference: behavior as built
 

@@ -147,6 +147,20 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 				return err
 			}
 		}
+		if sf.Auto() && sf.Command != "" {
+			// Command and http steps (#396): what ran and what it said.
+			if _, err := fmt.Fprintf(w, "   %s %s -> %s\n", sf.Type, sf.Command, sf.Result); err != nil {
+				return err
+			}
+			if out := strings.TrimSpace(sf.Output); out != "" {
+				if len(out) > 400 {
+					out = out[:400] + "..."
+				}
+				if _, err := fmt.Fprintf(w, "   output: %s\n", strings.ReplaceAll(out, "\n", "\n           ")); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }

@@ -24,6 +24,9 @@ const (
 	AttrResolution = attribute.Key("jobshop.resolution")
 	AttrMethod     = attribute.Key("rpc.method")
 	AttrReason     = attribute.Key("reason")
+	AttrStep       = attribute.Key("jobshop.step")
+	AttrStepType   = attribute.Key("jobshop.step.type")
+	AttrResult     = attribute.Key("jobshop.step.result")
 )
 
 // Metrics holds the controller's instruments. Each Metrics has its own
@@ -52,6 +55,9 @@ type Metrics struct {
 	ScaleEvents  metric.Int64Counter
 	// InjectedBytes is prompt rule bytes per status (#397).
 	InjectedBytes metric.Int64Counter
+	// Command and http steps (#396): attempt duration and results.
+	StepDuration metric.Float64Histogram
+	StepResults  metric.Int64Counter
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -65,7 +71,7 @@ func NewMetrics() (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [17]error
+	var errs [19]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -94,6 +100,10 @@ func NewMetrics() (*Metrics, error) {
 		metric.WithDescription("Pool scale changes by pool and reason (up, cordon, uncordon, manual, auto)."))
 	m.InjectedBytes, errs[16] = meter.Int64Counter("jobshop.prompt.injected_bytes", metric.WithUnit("By"),
 		metric.WithDescription("Prompt rule bytes by pool and reason: new, changed, always, removed, or unchanged (skipped)."))
+	m.StepDuration, errs[17] = meter.Float64Histogram("jobshop.step.duration", metric.WithUnit("s"),
+		metric.WithDescription("Command and http step attempts by step, type and result."))
+	m.StepResults, errs[18] = meter.Int64Counter("jobshop.step.results",
+		metric.WithDescription("Command and http step attempts by step, type and result (ok, not_yet, failed)."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err

@@ -24,7 +24,20 @@ func (c *Controller) orphaned(ctx context.Context, project string, limit int) ([
 		pools = append(pools, name)
 	}
 	sort.Strings(pools)
-	return c.store.Orphaned(ctx, project, pools, limit)
+	ts, err := c.store.Orphaned(ctx, project, pools, limit)
+	if err != nil {
+		return nil, err
+	}
+	// Command and http steps have no pool on purpose: the controller
+	// runs them (#396).
+	out := ts[:0]
+	for _, t := range ts {
+		if f, err := store.DecodeFields[store.StepFields](t); t.Kind == store.KindStep && err == nil && f.Auto() {
+			continue
+		}
+		out = append(out, t)
+	}
+	return out, nil
 }
 
 func orphanReason(t store.Ticket) string {

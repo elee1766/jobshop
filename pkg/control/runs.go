@@ -95,6 +95,9 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 	// any ticket exists, so a bad pool fails the start.
 	w.Steps = slices.Clone(w.Steps)
 	for i, s := range w.Steps {
+		if s.Auto() && s.Pool == "" {
+			continue
+		}
 		name, err := cfg.ResolvePool(&w, s.Pool, vars)
 		if err != nil {
 			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
@@ -108,7 +111,7 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 		w.Steps[i].NeedsResources = rs
 	}
 	// Steps live in their pools' projects; the run goes with the first.
-	proj := cfg.Pools[w.Steps[0].Pool].Project
+	proj := stepProject(cfg, w.Steps[0])
 	if p.Project != "" && p.Project != proj {
 		return runPlan{}, fmt.Errorf("%w: workflow %s runs in project %s", store.ErrInvalid, p.Workflow, proj)
 	}
@@ -182,17 +185,24 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 		if err != nil {
 			return g, fmt.Errorf("%w: step %s prompt: %w", store.ErrInvalid, s.ID, err)
 		}
-		id, err := c.store.NewID(cfg.Pools[s.Pool].Project)
+		id, err := c.store.NewID(stepProject(cfg, s))
 		if err != nil {
 			return g, err
 		}
-		sf, err := json.Marshal(store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources})
+		stepFields := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources}
+		pool := s.Pool
+		if s.Auto() {
+			// No pool on the ticket: no session may claim it; the
+			// controller runs it (#396).
+			stepFields.Type, pool = s.Type, ""
+		}
+		sf, err := json.Marshal(stepFields)
 		if err != nil {
 			return g, err
 		}
 		nts = append(nts, store.NewTicket{
-			ID: id, Project: cfg.Pools[s.Pool].Project, Kind: store.KindStep, Title: title, Body: body,
-			Pool: s.Pool, ParentID: runID, Fields: sf, Meta: meta,
+			ID: id, Project: stepProject(cfg, s), Kind: store.KindStep, Title: title, Body: body,
+			Pool: pool, ParentID: runID, Fields: sf, Meta: meta,
 		})
 		if prev != "" {
 			edges = append(edges, store.Edge{From: id, To: prev, Kind: store.EdgeBlocks})
@@ -206,6 +216,15 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 		prev = id
 	}
 	return store.Graph{Tickets: nts, Edges: edges}, nil
+}
+
+// stepProject is the step's pool's project, or the default project for
+// a command or http step with no pool.
+func stepProject(cfg *config.Config, s config.Step) string {
+	if p, ok := cfg.Pools[s.Pool]; ok {
+		return p.Project
+	}
+	return cfg.DefaultProject
 }
 
 // runMeta is meta.github = {repo, issue|pr} when the workflow names an
