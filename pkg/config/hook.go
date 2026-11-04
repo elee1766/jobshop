@@ -13,10 +13,13 @@ const (
 	HookClaim  = "claim"  // before a session claims a ticket
 	HookAction = "action" // before push, pr-create, merge, comment, message
 	HookMerge  = "merge"  // before a merge (also an action)
+	// HookIntake runs on untrusted Linear issue text before it reaches a
+	// prompt: run start for a Linear issue, subscription delivery (#288).
+	HookIntake = "intake"
 )
 
 // HookPoints lists the valid Hook.On values.
-var HookPoints = []string{HookClaim, HookAction, HookMerge}
+var HookPoints = []string{HookClaim, HookAction, HookMerge, HookIntake}
 
 // Hook is a guardrail command run at a fixed point (#188). It gets a JSON
 // event on stdin and answers on stdout with one JSON object
@@ -52,7 +55,7 @@ func (c *Config) checkHook(h Hook) error {
 	if h.Command == "" {
 		return errors.New("command is required")
 	}
-	if len(h.Actions) > 0 && h.On == HookClaim {
+	if len(h.Actions) > 0 && (h.On == HookClaim || h.On == HookIntake) {
 		return errors.New("actions needs on: action or merge")
 	}
 	for _, p := range h.Pools {
