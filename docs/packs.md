@@ -56,7 +56,7 @@ first turn. `prompt_rules` add text to many pools at once: `text` or
 `when:` holds:
 - count: `pool` with `ready_below`, `open_above` and so on;
 - `cron` (with `timezone`);
-- `check`: a shell command; non-empty output fires, `${check_output}`
+- `check`: a shell command; non-empty output fires, `{{.check_output}}`
   holds it;
 - `stall`: stall signals (`ready_unclaimed`, `step_stalled`,
   `needs_human`, ...) each with an `after` threshold.
