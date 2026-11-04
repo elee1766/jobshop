@@ -9,7 +9,9 @@ turn the recurring ones into small edits that stop them happening again.
    `gh pr view <url> --json state,mergedAt,mergeCommit`:
    - merged and not reverted (`gh pr list --state all --search "Revert
      <title>"` finds no merged revert): `jobshop learn update <ids>
-     --status applied`;
+     --status applied --merged-at <mergedAt>`. That records the edit for
+     the curator gate (#274), which later compares its pools before and
+     after the merge;
    - closed unmerged, or merged and then reverted:
      `jobshop learn update <ids> --status rejected --pr <url>`;
    - still open: leave them; do not propose them again.

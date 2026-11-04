@@ -162,6 +162,17 @@ type TriggerWhen struct {
 	// Learnings holds on open learnings recorded since the trigger last
 	// fired (#273).
 	Learnings *LearningsWhen `yaml:"learnings"`
+
+	// Edits holds when a pending memory edit is due for the curator
+	// gate (#274).
+	Edits *EditsWhen `yaml:"edits"`
+}
+
+// EditsWhen holds when a merged curator edit saw Runs runs in its pools
+// or Age passed since its merge (defaults 20 and 72h).
+type EditsWhen struct {
+	Runs int    `yaml:"runs"`
+	Age  string `yaml:"age"` // Go duration
 }
 
 // LearningsWhen holds when at least Min open learnings were recorded
@@ -628,8 +639,18 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 	if tr.MaxRuns != 0 {
 		return errors.New("max_runs needs when.stall")
 	}
-	if w.Cron == "" && !w.HasCounts() && w.Check == "" && w.Learnings == nil {
-		return errors.New("when needs a cron, a count threshold, a check or learnings")
+	if w.Cron == "" && !w.HasCounts() && w.Check == "" && w.Learnings == nil && w.Edits == nil {
+		return errors.New("when needs a cron, a count threshold, a check, learnings or edits")
+	}
+	if e := w.Edits; e != nil {
+		if e.Runs < 0 {
+			return errors.New("when: edits.runs must be >= 0")
+		}
+		if e.Age != "" {
+			if d, err := time.ParseDuration(e.Age); err != nil || d <= 0 {
+				return fmt.Errorf("when: edits.age %q must be a positive duration", e.Age)
+			}
+		}
 	}
 	if l := w.Learnings; l != nil {
 		if l.Min < 1 {

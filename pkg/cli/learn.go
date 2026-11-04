@@ -14,6 +14,8 @@ type learnCmd struct {
 	Workaround learnWorkaroundCmd `cmd:"" help:"Record a workaround for a tool or environment problem."`
 	List       learnListCmd       `cmd:"" help:"List learnings, newest first."`
 	Update     learnUpdateCmd     `cmd:"" help:"Set the status or PR of learnings (curator, #273)."`
+	Evaluate   learnEvaluateCmd   `cmd:"" help:"Curator gate: decide whether merged memory edits helped (#274)."`
+	Edits      learnEditsCmd      `cmd:"" help:"List merged memory edits with their baseline and evaluation (#274)."`
 }
 
 type learnKindCmd struct {
@@ -62,11 +64,33 @@ func (c learnListCmd) Run(g *Globals) error {
 // the PR addressing learnings, then applied (merged) or rejected (closed
 // unmerged or reverted; needs the PR).
 type learnUpdateCmd struct {
-	IDs    []int64 `arg:"" name:"id" help:"Learning ids."`
-	Status string  `enum:",open,applied,rejected" default:"" help:"open, applied or rejected."`
-	PR     string  `name:"pr" help:"PR URL that addresses them."`
+	IDs      []int64   `arg:"" name:"id" help:"Learning ids."`
+	Status   string    `enum:",open,applied,rejected" default:"" help:"open, applied or rejected."`
+	PR       string    `name:"pr" help:"PR URL that addresses them."`
+	MergedAt time.Time `name:"merged-at" help:"With --status applied: when the PR merged (RFC3339, default now). Starts the curator gate's window."`
 }
 
 func (c learnUpdateCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodLearnUpdate, rpc.LearnUpdateParams{IDs: c.IDs, Status: c.Status, PR: c.PR}, nil)
+	return g.call(rpc.MethodLearnUpdate, rpc.LearnUpdateParams{IDs: c.IDs, Status: c.Status, PR: c.PR, MergedAt: c.MergedAt}, nil)
+}
+
+// learnEvaluateCmd is `jobshop learn evaluate` (#274): the evaluate
+// step's decision on pending memory edits.
+type learnEvaluateCmd struct {
+	ID   int64         `arg:"" optional:"" help:"Memory edit id: evaluate it even when not due."`
+	Runs int           `default:"20" help:"An edit is due after this many runs in its pools since the merge."`
+	Age  time.Duration `default:"72h" help:"Or after this long since the merge."`
+}
+
+func (c learnEvaluateCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodLearnEvaluate, rpc.LearnEvaluateParams{ID: c.ID, Runs: c.Runs, Age: c.Age}, nil)
+}
+
+type learnEditsCmd struct {
+	State string `enum:",pending,helped,not_helped" default:"" help:"pending, helped or not_helped."`
+	Limit int    `default:"50" help:"Most edits to print."`
+}
+
+func (c learnEditsCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodLearnEdits, rpc.LearnEditsParams{State: c.State, Limit: c.Limit}, nil)
 }

@@ -314,6 +314,22 @@ type Store interface {
 	// CountLearnings counts learnings created at or after since with
 	// status (empty: any).
 	CountLearnings(ctx context.Context, since time.Time, status string) (int, error)
+	// LearningsBetween returns learnings recorded in [since, until),
+	// oldest first (#274).
+	LearningsBetween(ctx context.Context, since, until time.Time) ([]Learning, error)
+	// LearningsByPR returns the learnings whose pr is pr (#274).
+	LearningsByPR(ctx context.Context, pr string) ([]Learning, error)
+	// StepsCreated returns step tickets created in [since, until),
+	// oldest first (#274).
+	StepsCreated(ctx context.Context, since, until time.Time) ([]Ticket, error)
+	// AddMemoryEdit records a merged curator PR; an already recorded PR
+	// returns its row unchanged (#274).
+	AddMemoryEdit(ctx context.Context, e MemoryEdit) (MemoryEdit, error)
+	// MemoryEdits lists memory edits newest merge first; empty state is all.
+	MemoryEdits(ctx context.Context, state string, limit int) ([]MemoryEdit, error)
+	// SetMemoryEditResult stores the gate's decision and writes it on
+	// each cited learning's gate.
+	SetMemoryEditResult(ctx context.Context, id int64, state string, after PoolMetrics, reason string) (MemoryEdit, error)
 	// IndexRecall adds or replaces (by kind and ref) one document in the
 	// recall index. Comments are indexed by the backend itself.
 	IndexRecall(ctx context.Context, d RecallDoc) error
@@ -355,7 +371,10 @@ type Learning struct {
 	Status  string `json:"status"`
 	// PR is the curator's PR that addresses it (#273): pending while
 	// open, kept when applied or rejected.
-	PR        string    `json:"pr,omitempty"`
+	PR string `json:"pr,omitempty"`
+	// Gate is the curator gate's result on the edit that cited it
+	// (#274): "helped: ..." or "not_helped: ...".
+	Gate      string    `json:"gate,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
