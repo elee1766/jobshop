@@ -52,6 +52,7 @@ type packFile struct {
 	Triggers    map[string]Trigger  `yaml:"triggers"`
 	Workflows   map[string]Workflow `yaml:"workflows"`
 	PromptRules []PromptRule        `yaml:"prompt_rules"`
+	Hooks       []Hook              `yaml:"hooks"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -454,6 +455,14 @@ func resolvePromptFiles(m map[string]any, dir, file string, vars map[string]any)
 // section entry, as "section.name".
 func mergeInto(dst, src map[string]any, file string, sources map[string][]string) {
 	for k, v := range src {
+		if k == "hooks" {
+			// Appended like prompt_rules: a pack adds guardrails and cannot
+			// drop the host's or another pack's (#249).
+			hooks, _ := v.([]any)
+			old, _ := dst[k].([]any)
+			dst[k] = append(slices.Clone(old), hooks...)
+			continue
+		}
 		if k == "prompt_rules" {
 			// Appended, not replaced: a later file adds rules and cannot
 			// drop earlier ones. Duplicate names fail validation.
@@ -602,6 +611,17 @@ func prefixLayers(layers []packLayer, prefix string) {
 					if s, ok := v.(string); ok && declared[section][s] {
 						list[i] = prefix + s
 					}
+				}
+			}
+		}
+		// Hooks name the pools they guard; the pack's own get the prefix.
+		hooks, _ := l.m["hooks"].([]any)
+		for _, h := range hooks {
+			hm, _ := h.(map[string]any)
+			list, _ := hm["pools"].([]any)
+			for i, v := range list {
+				if s, ok := v.(string); ok && declared["pools"][s] {
+					list[i] = prefix + s
 				}
 			}
 		}

@@ -42,6 +42,7 @@ type RuleEvent struct {
 	Rule    string `json:"rule"`
 	At      string `json:"at"`
 	Session string `json:"session"`
+	Key     string `json:"key,omitempty"` // the session key, e.g. improve:<slug>
 	Pool    string `json:"pool,omitempty"`
 	Agent   string `json:"agent,omitempty"`
 	Project string `json:"project,omitempty"`
@@ -72,6 +73,13 @@ func (c *Controller) ruleSubject(ctx context.Context, cfg *config.Config, ts tur
 		Packs: cfg.PoolPacks(ts.pool), Chat: p.Chat(),
 	}
 	ev := RuleEvent{Session: ts.session, Pool: ts.pool, Agent: ts.agent, Project: ts.project, Turn: ts.kind}
+	if ts.session != "" {
+		if st, err := c.store.Get(ctx, ts.session); err == nil {
+			if f, err := store.DecodeFields[store.SessionFields](st); err == nil {
+				s.Key, ev.Key = f.Key, f.Key
+			}
+		}
+	}
 	if ts.ticket == nil {
 		return s, ev
 	}

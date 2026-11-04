@@ -61,6 +61,9 @@ type RuleMatch struct {
 	Steps     []string `yaml:"steps,omitempty"`
 	Labels    []string `yaml:"labels,omitempty"`
 	Chat      *bool    `yaml:"chat,omitempty"`
+	// Keys match the session key (a chat thread such as matrix:<room>, or
+	// improve:<slug> for an improvement session, #249).
+	Keys []string `yaml:"keys,omitempty"`
 }
 
 // RuleSubject is what a rule matches against for one turn.
@@ -68,6 +71,7 @@ type RuleSubject struct {
 	Pool, Agent, Project string
 	Packs                []string // pack dir names that declared the pool
 	Chat                 bool
+	Key                  string // the session key, "" for none
 	// Ticket is false for system and message turns.
 	Ticket               bool
 	Repo, Workflow, Step string
@@ -81,6 +85,9 @@ func (m RuleMatch) Matches(s RuleSubject) bool {
 	}
 	one := func(globs []string, v string) bool { return len(globs) == 0 || globAny(globs, v) }
 	if !one(m.Pools, s.Pool) || !one(m.Agents, s.Agent) || !one(m.Projects, s.Project) {
+		return false
+	}
+	if len(m.Keys) > 0 && !globAny(m.Keys, s.Key) {
 		return false
 	}
 	if len(m.Packs) > 0 && !anyOf(m.Packs, s.Packs) {
@@ -202,7 +209,7 @@ func (c *Config) checkRules() error {
 
 func ruleGlobs(m RuleMatch) []string {
 	var out []string
-	for _, l := range [][]string{m.Pools, m.Agents, m.Packs, m.Projects, m.Repos, m.Workflows, m.Steps, m.Labels} {
+	for _, l := range [][]string{m.Pools, m.Agents, m.Packs, m.Projects, m.Repos, m.Workflows, m.Steps, m.Labels, m.Keys} {
 		out = append(out, l...)
 	}
 	return out
