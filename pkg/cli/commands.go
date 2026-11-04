@@ -631,12 +631,12 @@ func (c labelRm) Run(g *Globals) error {
 }
 
 type sessionCmd struct {
-	New     sessionNewCmd     `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
-	List    sessionListCmd    `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
-	Reap    sessionReapCmd    `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
-	Restart sessionRestartCmd `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
-	Attach  sessionAttachCmd  `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
-	Prompt  sessionPromptCmd  `cmd:"" help:"Print the prompt a session's next turn would get, each part labeled by source (admin)."`
+	New      sessionNewCmd      `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
+	List     sessionListCmd     `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
+	Reap     sessionReapCmd     `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
+	Restart  sessionRestartCmd  `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
+	Attach   sessionAttachCmd   `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
+	Prompt   sessionPromptCmd   `cmd:"" help:"Print the prompt a session's next turn would get, each part labeled by source (admin)."`
 	Cordon   sessionCordonCmd   `cmd:"" help:"Take a session out of rotation: it finishes its ticket and claims nothing new, but stays open (admin or session-cordon grant)."`
 	Uncordon sessionUncordonCmd `cmd:"" help:"Return a cordoned session to rotation."`
 	Drain    sessionDrainCmd    `cmd:"" help:"Cordon a session and end it once it holds nothing."`

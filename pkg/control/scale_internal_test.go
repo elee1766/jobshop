@@ -60,8 +60,10 @@ func TestPlanPool(t *testing.T) {
 		{
 			"scale down picks idle first, never a working session", 1,
 			[]scaleSession{
-				{ID: "w1", LastClaim: at(1)}, {ID: "i1", Idle: true, LastClaim: at(5)},
-				{ID: "w2", LastClaim: at(2)}, {ID: "i2", Idle: true, LastClaim: at(3)},
+				{ID: "w1", LastClaim: at(1)},
+				{ID: "i1", Idle: true, LastClaim: at(5)},
+				{ID: "w2", LastClaim: at(2)},
+				{ID: "i2", Idle: true, LastClaim: at(3)},
 			},
 			scalePlan{Cordon: []string{"i2", "i1", "w1"}},
 		},
@@ -76,8 +78,10 @@ func TestPlanPool(t *testing.T) {
 		{
 			"cordoned sessions do not count; scale cordons are lifted before starting", 3,
 			[]scaleSession{
-				{ID: "a"}, {ID: "m", Cordon: store.CordonManual},
-				{ID: "s1", Cordon: store.CordonScale, Idle: true}, {ID: "s2", Cordon: store.CordonScale},
+				{ID: "a"},
+				{ID: "m", Cordon: store.CordonManual},
+				{ID: "s1", Cordon: store.CordonScale, Idle: true},
+				{ID: "s2", Cordon: store.CordonScale},
 			},
 			scalePlan{Uncordon: []string{"s2", "s1"}},
 		},

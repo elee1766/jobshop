@@ -227,7 +227,7 @@ func (c *Controller) reconcile() {
 		if err != nil {
 			continue
 		}
-		desired := c.desired(name, p, len(ready)+working, now)
+		desired := c.desired(name, p, len(ready)+working, len(sessions), now)
 		c.metrics.PoolDesired.Record(ctx, int64(desired), metric.WithAttributes(telemetry.AttrPool.String(name)))
 		cordoned := 0
 		for _, s := range sessions {
@@ -307,9 +307,16 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string) ([]scaleSes
 
 // desired is the pool's target this tick: 0 when drained, the manual
 // target (capped by max_sessions) when set, else autoDesired.
-func (c *Controller) desired(name string, p config.Pool, demand int, now time.Time) int {
+//
+// The first tick for a pool (a controller start or a new pool) seeds the
+// window with the open count, so adopted sessions get the same
+// scale_down_after grace as after a burst.
+func (c *Controller) desired(name string, p config.Pool, demand, open int, now time.Time) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if _, seen := c.scaleHist[name]; !seen {
+		c.scaleHist[name] = []scaleSample{{at: now, n: min(open, p.MaxSessions)}}
+	}
 	var d int
 	target, manual := c.scaleTargets[name]
 	switch {
@@ -508,8 +515,10 @@ func (c *Controller) poolStatusCtx(ctx context.Context) rpc.PoolStatusResult {
 		if p.Chat() {
 			continue
 		}
-		row := rpc.PoolScale{Name: name, Min: p.MinSessions, Max: p.MaxSessions, Priority: p.Priority,
-			Desired: c.poolScale(name).desired, Drained: c.poolDrained(name)}
+		row := rpc.PoolScale{
+			Name: name, Min: p.MinSessions, Max: p.MaxSessions, Priority: p.Priority,
+			Desired: c.poolScale(name).desired, Drained: c.poolDrained(name),
+		}
 		c.mu.Lock()
 		if t, ok := c.scaleTargets[name]; ok {
 			row.Target = &t

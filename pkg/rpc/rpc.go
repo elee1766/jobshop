@@ -951,8 +951,8 @@ const (
 	EventKindReady   = "ready"
 	// EventKindPool: a pool scale or session cordon change (#281); Op is
 	// up, cordon, uncordon, manual or auto.
-	EventKindPool    = "pool"
-	EventKindLagged  = "lagged"
+	EventKindPool   = "pool"
+	EventKindLagged = "lagged"
 	// EventKindActivity: new external activity items (#255); refetch
 	// activity.list. Seq is 0: it is not a history row.
 	EventKindActivity = "activity"
