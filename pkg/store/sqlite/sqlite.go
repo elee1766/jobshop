@@ -48,6 +48,10 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		return nil, err
 	}
 	db.SetMaxOpenConns(conns)
+	// database/sql keeps 2 idle connections by default: with more open,
+	// each extra one was closed after use and reopened, rerunning the
+	// pragmas and every statement prepare (#433).
+	db.SetMaxIdleConns(conns)
 	db.SetConnMaxIdleTime(0)
 	db.SetConnMaxLifetime(0)
 	if err := migrate(ctx, db); err != nil {
