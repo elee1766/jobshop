@@ -128,6 +128,9 @@ type Controller struct {
 	events *hub
 	// subSource reads GitHub threads; nil means gh (tests set a fake).
 	subSource threadSource
+	// subPollMu serializes subscription passes: the pump and webhook
+	// passes for one thread (#300).
+	subPollMu sync.Mutex
 	// activitySrc reads GitHub and Linear activity; nil means live APIs
 	// (tests set a fake). activity is the cache, loaded on first poll.
 	activitySrc activitySource
@@ -281,6 +284,11 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpActivity)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
+		c.cancel()
+		c.wg.Wait()
+		return err
+	}
+	if err := c.serveLinearWebhook(); err != nil {
 		c.cancel()
 		c.wg.Wait()
 		return err

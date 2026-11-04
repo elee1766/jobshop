@@ -319,6 +319,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Questions and escalations of Linear runs asked on the Linear issue,
   replies become answers, `Blocked` while waiting (#293,
   `docs/notes/293-linear-communication.md`).
+- Linear webhook: signed `POST /linear/webhook` on
+  `linear.webhook_listen` runs intake and replies early; polling stays
+  (#300, `docs/notes/300-linear-webhook.md`).
 
 ## 5. What's next
 
@@ -440,6 +443,8 @@ Linear planner live check: steps 3 and 6 of `docs/verify/linear-pack.md` (#292).
 Linear questions live check: step 7 of `docs/verify/linear-pack.md` (#298).
 Linear communication live check: `docs/verify/linear-communication.md`
 (#293).
+Linear webhook live check: "Webhook" section of
+`docs/verify/linear-pack.md`; needs a reverse proxy or tunnel (#300).
 
 Pool scaling live check: `docs/verify/pool-scaling.md` (#281); Desk
 scale and cordon buttons are a follow-up.
@@ -950,6 +955,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   and the post is retried each tick under one write key. Only a reply
   threaded under the ask comment answers: a top-level comment may be
   about something else, and a wrong answer would unblock the worker.
+- Linear webhook (2026-11-04, #300) is a wake-up, not a second intake:
+  after the signature, 60s age, org and human-actor checks it re-reads
+  the issue and runs the polling code early (drop the intake cache and
+  run triggers, or one subscription pass for that thread). Polling
+  stays, so a lost event costs only latency. Off by default; gasserver
+  has no public endpoint (#187), so it needs a proxy or tunnel.
 
 ## 7. Reference: behavior as built
 

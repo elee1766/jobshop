@@ -49,6 +49,9 @@ type Identity struct {
 	ClientSecretFile string   `yaml:"client_secret_file"`
 	Scopes           []string `yaml:"scopes"`
 	TokenURL         string   `yaml:"token_url"`
+	// WebhookSecretFile holds the App's webhook signing secret (#300),
+	// used when linear.webhook_listen is set.
+	WebhookSecretFile string `yaml:"webhook_secret_file"`
 }
 
 // LinearScopes is Scopes or the default set.
@@ -113,7 +116,7 @@ func checkIdentity(i Identity) error {
 			return errors.New("app_id, private_key_file, installations, repos and api_url are for kind github-app")
 		}
 		if i.linearAppSet() {
-			return errors.New("client_id_file, client_secret_file, scopes and token_url are for kind linear-app")
+			return errors.New("client_id_file, client_secret_file, scopes, token_url and webhook_secret_file are for kind linear-app")
 		}
 	case IdentityLinearApp:
 		if i.ClientIDFile == "" || i.ClientSecretFile == "" || i.Workspace == "" || len(i.Teams) == 0 {
@@ -141,7 +144,7 @@ func (i Identity) githubSet() bool {
 }
 
 func (i Identity) linearAppSet() bool {
-	return i.ClientIDFile != "" || i.ClientSecretFile != "" || len(i.Scopes) > 0 || i.TokenURL != ""
+	return i.ClientIDFile != "" || i.ClientSecretFile != "" || len(i.Scopes) > 0 || i.TokenURL != "" || i.WebhookSecretFile != ""
 }
 
 // IdentityFor returns the first identity, in sorted name order, among
