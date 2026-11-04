@@ -169,7 +169,7 @@ packs:
 	assert.Equal(t, RuleMemory{Dir: "", Cap: 2200}, *mem, "off unless memory_dir is set")
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
-	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch start --workflow pr-work --key <slug>", "dependent issues start as a batch (#171)")
+	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch start --workflow pr-work --key <slug>", "dependent issues start as a batch (#171) of this pack's workflow (#308)")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch show <key>")
 	assert.NotContains(t, c.Pools, "operator", "the operator pack is included once by the host (#248)")
 	w := c.Workflows["pr-work"]
