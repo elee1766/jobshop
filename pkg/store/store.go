@@ -336,6 +336,24 @@ type Store interface {
 	// FinishWriteKey stores a pending write's result; a done key keeps
 	// its first result.
 	FinishWriteKey(ctx context.Context, key, result string) (WriteKey, error)
+	// InboxPut stores an ingested item (#321). A delivery id already
+	// stored is a no-op that returns the existing row and dup true.
+	InboxPut(ctx context.Context, it InboxItem) (out InboxItem, dup bool, err error)
+	// InboxClaim leases the oldest item in one of states whose lease is
+	// empty or expired, adding one to attempts. ErrNotFound if none.
+	InboxClaim(ctx context.Context, states []string, holder string, lease time.Duration) (InboxItem, error)
+	// InboxRenew extends holder's live lease; ErrConflict if not held.
+	InboxRenew(ctx context.Context, id int64, holder string, lease time.Duration) (InboxItem, error)
+	// InboxSetState moves a held item to a new state and drops the
+	// lease. ErrConflict if holder no longer holds a live lease.
+	InboxSetState(ctx context.Context, id int64, holder string, u InboxUpdate) (InboxItem, error)
+	// InboxGet returns one item.
+	InboxGet(ctx context.Context, id int64) (InboxItem, error)
+	// InboxList lists items newest first.
+	InboxList(ctx context.Context, f InboxFilter) ([]InboxItem, error)
+	// InboxPrune deletes terminal items received before before and
+	// returns how many.
+	InboxPrune(ctx context.Context, before time.Time) (int64, error)
 	// IndexRecall adds or replaces (by kind and ref) one document in the
 	// recall index. Comments are indexed by the backend itself.
 	IndexRecall(ctx context.Context, d RecallDoc) error

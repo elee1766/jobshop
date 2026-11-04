@@ -42,7 +42,7 @@ Each planning ticket:
    Keep single independent issues on `run start ${pack_prefix}pr-work`.
    When the issues you file depend on each other, start them together
    as one batch instead of separate runs:
-   `jobshop batch start --key <slug> --issues 12,13,14 --order '12>13>14'`.
+   `jobshop batch start --workflow ${pack_prefix}pr-work --key <slug> --issues 12,13,14 --order '12>13>14'`.
    Each dependent run starts only after its dependency's PR is merged
    and deployed. The edges are created with the runs. Do not start runs
    and then `jobshop edge add`: the dev pool can claim the step in

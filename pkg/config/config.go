@@ -35,6 +35,8 @@ type Config struct {
 	Telemetry   Telemetry    `yaml:"telemetry"`
 	// Limits are host-wide caps across pools (#281).
 	Limits Limits `yaml:"limits"`
+	// Ingest configures the ingest inbox (#321).
+	Ingest Ingest `yaml:"ingest"`
 	// Defaults hold settings agents and pools inherit (#262).
 	Defaults Defaults `yaml:"defaults"`
 	// SharedTools are dirs mounted read-only into every sandboxed
@@ -295,6 +297,37 @@ type Attention struct {
 	// beside it, so a later successful deploy clears it. Empty:
 	// rollbacks are not checked.
 	RollbackFile string `yaml:"rollback_file"`
+}
+
+// DefaultInboxRetention is how long terminal inbox items are kept.
+const DefaultInboxRetention = 14 * 24 * time.Hour
+
+// Ingest configures the ingest inbox (#321).
+type Ingest struct {
+	// Retention keeps dispatched, denied and failed items this long (Go
+	// duration, or Nd for days). Default 14d.
+	Retention string `yaml:"retention"`
+}
+
+// RetentionDuration is Retention parsed, or the default.
+func (i Ingest) RetentionDuration() time.Duration {
+	d, _ := parseDays(i.Retention)
+	if d <= 0 {
+		return DefaultInboxRetention
+	}
+	return d
+}
+
+// parseDays is time.ParseDuration that also takes "Nd".
+func parseDays(s string) (time.Duration, error) {
+	if n, ok := strings.CutSuffix(s, "d"); ok {
+		var days int
+		if _, err := fmt.Sscanf(n, "%d", &days); err != nil || fmt.Sprint(days) != n {
+			return 0, fmt.Errorf("bad day count %q", s)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
 }
 
 // Limits are host-wide caps (#281).
@@ -654,6 +687,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	for _, d := range c.SharedTools {
 		if !filepath.IsAbs(d) {
 			return nil, fmt.Errorf("%s: shared_tools: %q must be absolute", FileName, d)
+		}
+	}
+	if r := c.Ingest.Retention; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: ingest.retention %q must be a positive duration (e.g. 14d, 72h)", FileName, r)
 		}
 	}
 	if c.Limits.MaxSessions < 0 {
