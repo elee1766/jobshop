@@ -440,11 +440,25 @@ func stopSessionProcs(dir string) {
 	deadline := time.Now().Add(5 * time.Second)
 	for len(pids) > 0 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
-		pids = slices.DeleteFunc(pids, func(p int) bool { return syscall.Kill(p, 0) != nil })
+		pids = slices.DeleteFunc(pids, procGone)
 	}
 	for _, p := range pids {
 		_ = syscall.Kill(p, syscall.SIGKILL)
 	}
+}
+
+// procGone reports whether pid has exited. A zombie counts as gone:
+// kill(pid, 0) succeeds on it until its parent reaps it, and a detached
+// daemon's parent (init or a subreaper) may take a while, which held
+// every env refresh for the full 5s deadline (#433).
+func procGone(pid int) bool {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return syscall.Kill(pid, 0) != nil
+	}
+	// The state follows the parenthesized command, which may hold spaces.
+	i := bytes.LastIndexByte(b, ')')
+	return i >= 0 && i+2 < len(b) && (b[i+2] == 'Z' || b[i+2] == 'X')
 }
 
 // sessionProcs lists processes whose environ has the JOBSHOP_SOCKET the
