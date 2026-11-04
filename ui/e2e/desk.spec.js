@@ -62,7 +62,7 @@ test('session journal tail streams', async ({ page }) => {
 });
 
 test('no horizontal page overflow', async ({ page }) => {
-  for (const view of ['attention', 'work', 'sessions', 'pools', 'deploys']) {
+  for (const view of ['attention', 'chat', 'work', 'activity', 'sessions', 'pools', 'deploys']) {
     await page.goto('/?view=' + view);
     // The SSE stream stays open, so networkidle never comes.
     await expect(page.locator('main h1')).toBeVisible();

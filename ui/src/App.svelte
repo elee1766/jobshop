@@ -3,6 +3,17 @@
   import { url, go, VIEWS } from './lib/url.svelte.js';
   import { live, connect, resource } from './lib/api.svelte.js';
   import { push, initPush, enablePush, disablePush, testPush } from './lib/push.svelte.js';
+  import Inbox from '@lucide/svelte/icons/inbox';
+  import MessageSquare from '@lucide/svelte/icons/message-square';
+  import ListChecks from '@lucide/svelte/icons/list-checks';
+  import ActivityIcon from '@lucide/svelte/icons/activity';
+  import Terminal from '@lucide/svelte/icons/terminal';
+  import Boxes from '@lucide/svelte/icons/boxes';
+  import Rocket from '@lucide/svelte/icons/rocket';
+  import Bell from '@lucide/svelte/icons/bell';
+  import BellOff from '@lucide/svelte/icons/bell-off';
+  import Sun from '@lucide/svelte/icons/sun';
+  import Moon from '@lucide/svelte/icons/moon';
   import Attention from './views/Attention.svelte';
   import Work from './views/Work.svelte';
   import Sessions from './views/Sessions.svelte';
@@ -14,6 +25,22 @@
 
   onMount(connect);
   onMount(() => { initPush(); });
+
+  // Keep the shell as tall as the visible viewport so the chat composer
+  // stays above the on-screen keyboard (iOS does not resize the layout viewport).
+  onMount(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement.style;
+    const fit = () => {
+      root.setProperty('--vvh', vv.height + 'px');
+      root.setProperty('--vvtop', vv.offsetTop + 'px');
+    };
+    fit();
+    vv.addEventListener('resize', fit);
+    vv.addEventListener('scroll', fit);
+    return () => { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
+  });
 
   /** @type {Record<string, string>} */
   const pushTitle = {
@@ -27,47 +54,81 @@
   const attention = resource(() => '/api/attention');
   const count = $derived(attention.data?.length ?? 0);
 
-  /** @type {Record<string, string>} */
-  const names = { attention: 'Attention', chat: 'Chat', work: 'Work', activity: 'Activity', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
+  /** @type {Record<string, { name: string, icon: any, key: string }>} */
+  const nav = {
+    attention: { name: 'Attention', icon: Inbox, key: 'a' },
+    chat: { name: 'Chat', icon: MessageSquare, key: 'c' },
+    work: { name: 'Work', icon: ListChecks, key: 'w' },
+    activity: { name: 'Activity', icon: ActivityIcon, key: 'y' },
+    sessions: { name: 'Sessions', icon: Terminal, key: 's' },
+    pools: { name: 'Pools', icon: Boxes, key: 'p' },
+    deploys: { name: 'Deploys', icon: Rocket, key: 'd' },
+  };
 
   let light = $state(localStorage.getItem('desk-theme') === 'light');
   $effect(() => {
     document.documentElement.dataset.theme = light ? 'light' : 'dark';
     localStorage.setItem('desk-theme', light ? 'light' : 'dark');
   });
+
+  // "g" then a letter jumps to a view, as in Linear.
+  let armed = 0;
+  /** @param {KeyboardEvent} e */
+  function onkey(e) {
+    const el = /** @type {HTMLElement} */ (e.target);
+    if (e.metaKey || e.ctrlKey || e.altKey || el.closest('input, textarea, select, [contenteditable]')) return;
+    if (armed && Date.now() - armed < 1200) {
+      armed = 0;
+      const v = VIEWS.find((x) => nav[x].key === e.key);
+      if (v) { e.preventDefault(); go({ view: v, ticket: '', session: '' }); }
+    } else if (e.key === 'g') {
+      armed = Date.now();
+    }
+  }
 </script>
 
+<svelte:window onkeydown={onkey} />
+
 <div class="shell">
-  <nav>
-    <div class="brand">Jobshop <span class="muted">Desk</span></div>
+  <div class="brand"><span class="mark"></span>Jobshop <span class="faint">Desk</span></div>
+  <nav aria-label="views">
     {#each VIEWS as v (v)}
+      {@const Icon = nav[v].icon}
       <a
         href={'?view=' + v}
         class:active={url.view === v}
         data-view={v}
+        title={'Go to ' + nav[v].name + ' (g ' + nav[v].key + ')'}
         onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '', session: '' }); }}
       >
-        {names[v]}
-        {#if v === 'attention' && count > 0}<span class="pill warn">{count}</span>{/if}
+        <span class="ico"><Icon size={14} />{#if v === 'attention' && count > 0}<span class="tabdot"></span>{/if}</span>
+        <span class="lbl">{nav[v].name}</span>
+        {#if v === 'attention' && count > 0}<span class="badge">{count}</span>{/if}
       </a>
     {/each}
-    <div class="foot">
-      <span class="dot" class:on={live.connected} title={live.connected ? 'live' : 'disconnected'}></span>
+  </nav>
+  <div class="foot">
+    <span class="live" title={live.connected ? 'live' : 'disconnected'}>
+      <span class="dot" class:ok={live.connected} class:bad={!live.connected}></span>
       <span class="faint">{live.connected ? 'live' : 'offline'}</span>
+    </span>
+    <span class="tools">
       {#if push.state === 'on' || push.state === 'off'}
+        {#if push.state === 'on'}<button class="ghost test" title="send a test notification" onclick={testPush}>test</button>{/if}
         <button
-          class="bell"
-          class:on={push.state === 'on'}
+          class="ghost icon bell"
+          class:lit={push.state === 'on'}
           data-testid="push-toggle"
           title={pushTitle[push.state]}
           aria-label={pushTitle[push.state]}
           onclick={() => (push.state === 'on' ? disablePush() : enablePush())}
-        >{push.state === 'on' ? '🔔' : '🔕'}</button>
-        {#if push.state === 'on'}<button class="bell" title="send a test notification" onclick={testPush}>test</button>{/if}
+        >{#if push.state === 'on'}<Bell size={14} />{:else}<BellOff size={14} />{/if}</button>
       {/if}
-      <button class="theme" onclick={() => (light = !light)} aria-label="toggle theme">{light ? '☾' : '☀'}</button>
-    </div>
-  </nav>
+      <button class="ghost icon" onclick={() => (light = !light)} aria-label="toggle theme" title="toggle theme">
+        {#if light}<Moon size={14} />{:else}<Sun size={14} />{/if}
+      </button>
+    </span>
+  </div>
   <main>
     {#if url.view === 'attention'}<Attention items={attention} />
     {:else if url.view === 'chat'}<ChatView />
@@ -82,33 +143,64 @@
 </div>
 
 <style>
-  .shell { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; }
-  nav {
-    border-right: 1px solid var(--border); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px;
-    position: sticky; top: 0; height: 100vh; background: var(--bg);
+  .shell {
+    position: fixed; left: 0; right: 0; top: var(--vvtop, 0px); height: var(--vvh, 100dvh);
+    display: grid; grid-template-columns: 212px minmax(0, 1fr); grid-template-rows: auto 1fr auto;
+    grid-template-areas: 'brand main' 'nav main' 'foot main';
+    align-content: start;
   }
-  .brand { font-weight: 600; padding: 4px 10px 14px; }
+  .shell > * { min-width: 0; }
+  .brand, nav, .foot { background: var(--side); border-right: 1px solid var(--border); }
+  .brand { grid-area: brand; display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; font-weight: 600; font-size: 13px; }
+  .mark { width: 14px; height: 14px; border-radius: 4px; background: var(--accent); }
+  nav { grid-area: nav; padding: 4px 8px; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
   nav a {
-    color: var(--muted); padding: 5px 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;
+    display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 8px; border-radius: var(--radius);
+    color: var(--muted); font-size: 13px;
   }
-  nav a:hover { background: var(--raised); text-decoration: none; color: var(--text); }
-  nav a.active { background: var(--accent-soft); color: var(--text); }
-  .foot { margin-top: auto; display: flex; align-items: center; gap: 6px; padding: 0 10px; }
-  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
-  .dot.on { background: var(--ok); }
-  .theme { margin-left: auto; padding: 0 7px; }
-  .bell { padding: 0 6px; opacity: 0.6; }
-  .bell.on { opacity: 1; }
-  main { padding: 20px 28px; min-width: 0; }
+  nav a:hover { background: var(--hover); text-decoration: none; color: var(--text); }
+  nav a.active { background: var(--raised); color: var(--text); }
+  nav a.active .ico { color: var(--accent); }
+  .ico { position: relative; display: inline-flex; flex: none; }
+  .lbl { flex: 1; min-width: 0; }
+  .badge {
+    min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px; font-size: 11px; line-height: 16px; text-align: center;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .tabdot { display: none; }
+  .foot { grid-area: foot; display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-top: 1px solid var(--border); }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+  .tools { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
+  .test { font-size: 11px; padding: 0 6px; }
+  .bell.lit { color: var(--accent); }
+  main { grid-area: main; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; background: var(--bg); }
+  /* The sidebar rows stay compact; the main column takes the full height. */
+  .shell { grid-template-rows: auto 1fr auto; }
+
   @media (max-width: 720px) {
-    .shell { grid-template-columns: 1fr; }
-    nav {
-      position: sticky; height: auto; flex-direction: row; overflow-x: auto; border-right: 0;
-      border-bottom: 1px solid var(--border); padding: 8px; z-index: 5;
+    .shell {
+      grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
+      grid-template-areas: 'top' 'main' 'tabs'; align-content: stretch;
     }
-    .brand { display: none; }
-    nav a { white-space: nowrap; gap: 6px; }
-    .foot { margin: 0 0 0 auto; }
-    main { padding: 14px 12px; }
+    /* Brand and the foot controls share the top bar cell. */
+    .brand, .foot { grid-area: top; background: transparent; border: 0; z-index: 6; }
+    .shell::before { content: ''; grid-area: top; background: var(--side); border-bottom: 1px solid var(--border); }
+    .brand { padding: calc(env(safe-area-inset-top) + 0px) 12px 0; justify-self: start; align-self: center; height: 40px; }
+    .foot { justify-self: end; align-self: center; padding: calc(env(safe-area-inset-top) + 0px) 4px 0 0; height: 40px; }
+    .tools .ghost.icon { width: 40px; height: 40px; }
+    .test { height: 40px; }
+    main { grid-area: main; }
+    nav {
+      grid-area: tabs; flex-direction: row; justify-content: space-around; gap: 0; padding: 0 4px env(safe-area-inset-bottom);
+      border-right: 0; border-top: 1px solid var(--border); overflow: visible;
+    }
+    nav a {
+      flex: 1 1 0; min-width: 0; height: var(--tabbar); flex-direction: column; justify-content: center; gap: 3px;
+      padding: 0; border-radius: 8px; font-size: 10px;
+    }
+    nav a .lbl { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    nav a.active { background: transparent; color: var(--text); }
+    .badge { display: none; }
+    .tabdot { display: block; position: absolute; top: -2px; right: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
   }
 </style>

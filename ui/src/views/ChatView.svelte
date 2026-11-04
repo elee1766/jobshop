@@ -2,9 +2,10 @@
   import { url, go } from '../lib/url.svelte.js';
   import { resource, post } from '../lib/api.svelte.js';
   import Chat from './Chat.svelte';
+  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
+  import Plus from '@lucide/svelte/icons/plus';
 
-  // Operator chat: sessions of the chat pool (escalation threads from the
-  // gateway and desk:<id> sessions), and a button for a fresh one.
+  // Operator chat: the sessions of the chat pool, and a form for a fresh one.
   const chats = resource(() => '/api/chat');
   let first = $state('');
   let starting = $state(false);
@@ -27,67 +28,88 @@
     }
   }
 
-  /** @param {string} k */
-  const label = (k) => (k.startsWith('desk:') ? 'Desk' : k.startsWith('matrix:') ? 'Matrix' : k.split(':')[0] || 'session');
+  /** Name for a session key: escalation:<ticket> and desk:<id> read plainly, anything else by its prefix. @param {string} k */
+  function label(k) {
+    if (k.startsWith('escalation:')) return 'Escalation ' + k.slice('escalation:'.length);
+    if (k.startsWith('desk:')) return 'Desk chat';
+    return k.split(':')[0] || 'Session';
+  }
 </script>
 
-<h1>Chat</h1>
-<p class="muted sub">Operator sessions in pool <span class="mono">{chats.data?.pool ?? '…'}</span>. Desk and Matrix share sessions by key.</p>
+<header class="vh">
+  {#if url.session}
+    <button class="ghost icon back" aria-label="back to sessions" onclick={() => go({ session: '' })}><ArrowLeft size={14} /></button>
+  {/if}
+  <h1>Chat</h1>
+  <span class="sub">pool <span class="mono">{chats.data?.pool ?? '…'}</span></span>
+  <div class="actions">
+    <button class="primary" onclick={() => go({ session: '' })}><Plus size={13} /> <span class="lbl">New chat</span></button>
+  </div>
+</header>
 
-<div class="card new">
-  <form onsubmit={(e) => { e.preventDefault(); start(); }}>
-    <textarea bind:value={first} rows="2" placeholder="Start a new operator session: what should it look at?" data-testid="chat-new-input"></textarea>
-    <button type="submit" disabled={starting || !first.trim()} data-testid="chat-new">New session</button>
-  </form>
-  {#if error}<div class="err">{error}</div>{/if}
-</div>
-
-<div class="split">
-  <div class="card list">
+<div class="split" class:open={!!url.session}>
+  <div class="list">
+    {#if !url.session}
+      <form class="new" onsubmit={(e) => { e.preventDefault(); start(); }}>
+        <textarea bind:value={first} rows="3" placeholder="What should the operator look at?" data-testid="chat-new-input"></textarea>
+        <div class="row">
+          <button type="submit" class="primary" disabled={starting || !first.trim()} data-testid="chat-new">New session</button>
+        </div>
+        {#if error}<div class="err">{error}</div>{/if}
+      </form>
+    {/if}
     {#if chats.error}<div class="err">{chats.error}</div>{/if}
     {#each chats.data?.sessions ?? [] as s (s.id)}
       <a
         href={'?view=chat&session=' + s.id}
+        class="item"
         class:active={url.session === s.id}
         onclick={(e) => { e.preventDefault(); go({ session: s.id }); }}
       >
-        <span class="pill accent">{label(s.key)}</span>
-        <span class="mono">{s.id}</span>
-        <div class="faint key">{s.key}</div>
+        <span class="dot accent"></span>
+        <span class="name">{label(s.key)}</span>
+        <span class="mono faint id">{s.id}</span>
       </a>
     {:else}
-      <div class="faint pad">No open operator sessions.</div>
+      <div class="faint pad0">No open operator sessions.</div>
     {/each}
   </div>
-  <div class="card pane">
+  <div class="pane">
     {#if url.session}
       {#key url.session}
         <Chat id={url.session} key={current?.key ?? ''} />
       {/key}
     {:else}
-      <div class="faint pad">Pick a session or start one.</div>
+      <div class="faint empty">Pick a session or start one.</div>
     {/if}
   </div>
 </div>
 
 <style>
-  h1 { font-size: 18px; font-weight: 600; margin: 0; }
-  .sub { margin: 2px 0 12px; }
-  .new { padding: 10px; margin-bottom: 12px; }
-  .new form { display: flex; gap: 8px; align-items: flex-end; }
-  textarea {
-    flex: 1; font: inherit; color: inherit; background: var(--raised); border: 1px solid var(--border);
-    border-radius: 6px; padding: 6px 8px; resize: vertical;
+  .vh .back { display: none; }
+  .split { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px minmax(0, 1fr); }
+  .list { border-right: 1px solid var(--border); overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 1px; }
+  .item { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 8px; border-radius: var(--radius); color: var(--muted); min-width: 0; }
+  .item:hover { background: var(--hover); text-decoration: none; color: var(--text); }
+  .item.active { background: var(--raised); color: var(--text); }
+  .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .id { flex: none; font-size: 11px; }
+  .pane { min-width: 0; min-height: 0; }
+  .empty { text-align: center; padding: 48px 16px; }
+  .pad0 { padding: 8px; }
+  .new { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 10px; }
+  .new textarea { resize: vertical; }
+  .new .row { display: flex; justify-content: flex-end; }
+  .err { color: var(--bad); padding: 4px 2px; font-size: 12px; }
+
+  @media (max-width: 720px) {
+    .split { grid-template-columns: minmax(0, 1fr); }
+    .list { border-right: 0; padding: 8px 8px 16px; }
+    .item { height: 48px; padding: 0 10px; font-size: 14px; border-bottom: 1px solid var(--border); border-radius: 0; }
+    .split.open .list { display: none; }
+    .split:not(.open) .pane { display: none; }
+    .vh .back { display: inline-flex; }
+    .vh .sub, .vh .lbl { display: none; }
+    .vh .actions button { width: 40px; padding: 0; }
   }
-  .split { display: grid; grid-template-columns: 260px 1fr; gap: 12px; }
-  .list { padding: 4px; max-height: 70vh; overflow: auto; }
-  .list a { display: block; padding: 6px 8px; border-radius: 6px; color: var(--text); }
-  .list a:hover { background: var(--raised); text-decoration: none; }
-  .list a.active { background: var(--accent-soft); }
-  .key { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pane { min-width: 0; }
-  .pad { padding: 12px; }
-  .err { color: var(--bad); padding: 6px 2px; }
-  button:disabled { opacity: 0.5; cursor: default; }
-  @media (max-width: 720px) { .split { grid-template-columns: 1fr; } .list { max-height: 30vh; } }
 </style>

@@ -90,70 +90,69 @@
   });
 </script>
 
-<h1>Activity</h1>
-<div class="filters" data-testid="activity-filters">
-  {#each whos as w (w)}
-    <button class:on={who === w} onclick={() => go({ who: w === 'humans' ? '' : w })}>{w}</button>
-  {/each}
-  <span class="sep"></span>
-  <button class:on={!url.source && !url.repo} onclick={() => go({ source: '', repo: '' })}>all sources</button>
-  {#each feed.data?.sources ?? [] as s (s)}
-    {@const p = split(s)}
-    <button class:on={url.repo === p.repo} onclick={() => go({ source: p.source, repo: p.repo })}>{p.repo}</button>
-  {/each}
-  <span class="sep"></span>
-  <select aria-label="kind" value={url.kind} onchange={(e) => go({ kind: e.currentTarget.value })}>
-    {#each kinds as k (k)}<option value={k}>{k || 'all kinds'}</option>{/each}
-  </select>
+<header class="vh">
+  <h1>Activity</h1>
+  <div class="chips actions" data-testid="activity-filters">
+    {#each whos as w (w)}
+      <button class:on={who === w} onclick={() => go({ who: w === 'humans' ? '' : w })}>{w}</button>
+    {/each}
+    <span class="sep"></span>
+    <button class:on={!url.source && !url.repo} onclick={() => go({ source: '', repo: '' })}>all sources</button>
+    {#each feed.data?.sources ?? [] as s (s)}
+      {@const p = split(s)}
+      <button class:on={url.repo === p.repo} onclick={() => go({ source: p.source, repo: p.repo })}>{p.repo}</button>
+    {/each}
+    <span class="sep"></span>
+    <select aria-label="kind" value={url.kind} onchange={(e) => go({ kind: e.currentTarget.value })}>
+      {#each kinds as k (k)}<option value={k}>{k || 'all kinds'}</option>{/each}
+    </select>
+  </div>
+</header>
+
+<div class="pad">
+  {#if feed.error}
+    <div class="card err">{feed.error}</div>
+  {:else if feed.data}
+    {#if !feed.data.sources.length}
+      <div class="card empty faint">Activity is off. Set <span class="mono">activity: {'{}'}</span> in jobshop.yaml.</div>
+    {/if}
+    {#each days as g (g.day)}
+      <h2 class="st">{g.day}</h2>
+      <ul class="card feed" data-testid="activity">
+        {#each g.items as it (it.id)}
+          {@const Icon = icon(it)}
+          <li>
+            <span class="icon {ciTone(it)}" title={it.kind}><Icon size={14} /></span>
+            <div class="main">
+              <div class="line">
+                <span class="actor">{it.actor || 'unknown'}</span>
+                {#if it.bot}<span class="pill">bot</span>{/if}
+                <span class="title">{it.title}</span>
+              </div>
+              {#if it.body}<div class="body muted">{short(it.body)}</div>{/if}
+              <div class="meta faint">
+                <span class="mono">{it.repo}</span>
+                <span title={it.at}>{ago(it.at)}</span>
+                {#if it.url && safe(it.url)}<a href={it.url} target="_blank" rel="noopener noreferrer">open</a>{/if}
+                {#each it.tickets ?? [] as id (id)}
+                  <a href={'?ticket=' + id} class="mono" onclick={(e) => { e.preventDefault(); go({ ticket: id }); }}>{id}</a>
+                {/each}
+              </div>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      {#if feed.data.sources.length}<div class="card empty faint">Nothing in the last 7 days for these filters.</div>{/if}
+    {/each}
+  {/if}
 </div>
 
-{#if feed.error}
-  <div class="card err">{feed.error}</div>
-{:else if feed.data}
-  {#if !feed.data.sources.length}
-    <div class="card empty faint">Activity is off. Set <span class="mono">activity: {'{}'}</span> in jobshop.yaml.</div>
-  {/if}
-  {#each days as g (g.day)}
-    <h2>{g.day}</h2>
-    <ul class="card feed" data-testid="activity">
-      {#each g.items as it (it.id)}
-        {@const Icon = icon(it)}
-        <li>
-          <span class="icon {ciTone(it)}" title={it.kind}><Icon size={16} /></span>
-          <div class="main">
-            <div class="line">
-              <span class="actor">{it.actor || 'unknown'}</span>
-              {#if it.bot}<span class="pill">bot</span>{/if}
-              <span class="title">{it.title}</span>
-            </div>
-            {#if it.body}<div class="body muted">{short(it.body)}</div>{/if}
-            <div class="meta faint">
-              <span class="mono">{it.repo}</span>
-              <span title={it.at}>{ago(it.at)}</span>
-              {#if it.url && safe(it.url)}<a href={it.url} target="_blank" rel="noopener noreferrer">open</a>{/if}
-              {#each it.tickets ?? [] as id (id)}
-                <a href={'?ticket=' + id} class="mono" onclick={(e) => { e.preventDefault(); go({ ticket: id }); }}>{id}</a>
-              {/each}
-            </div>
-          </div>
-        </li>
-      {/each}
-    </ul>
-  {:else}
-    {#if feed.data.sources.length}<div class="card empty faint">Nothing in the last 7 days for these filters.</div>{/if}
-  {/each}
-{/if}
-
 <style>
-  h1 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
-  h2 { font-size: 13px; font-weight: 500; color: var(--muted); margin: 18px 0 8px; }
-  .filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .filters .on { background: var(--accent-soft); border-color: var(--accent); }
-  .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
-  .err, .empty { padding: 12px; margin-top: 12px; }
-  .err { color: var(--bad); }
+  .vh .chips { min-width: 0; }
+  .empty { margin-top: 12px; }
   .feed { list-style: none; margin: 0; padding: 0; }
-  .feed li { display: flex; gap: 10px; padding: 10px 12px; border-top: 1px solid var(--border); }
+  .feed li { display: flex; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--border); }
   .feed li:first-child { border-top: none; }
   .icon { color: var(--muted); padding-top: 2px; flex: none; }
   .icon.ok { color: var(--ok); }
@@ -162,6 +161,12 @@
   .line { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
   .actor { font-weight: 600; }
   .title { overflow-wrap: anywhere; }
-  .body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4px; font-size: 13px; }
-  .meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; }
+  .body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 3px; }
+  .meta { display: flex; gap: 4px 12px; flex-wrap: wrap; margin-top: 3px; font-size: 12px; }
+  .meta a { padding: 2px 0; }
+  @media (max-width: 720px) {
+    .vh { flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
+    .vh .chips { flex: 1 0 100%; margin-left: 0; order: 3; }
+    .meta a { padding: 8px 0; }
+  }
 </style>

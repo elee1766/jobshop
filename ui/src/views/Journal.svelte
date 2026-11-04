@@ -16,4 +16,8 @@
   });
 </script>
 
-<Chat {id} write={access.write} reason={access.reason} />
+<div class="journal-box"><Chat {id} write={access.write} reason={access.reason} /></div>
+
+<style>
+  .journal-box { height: min(560px, 70dvh); }
+</style>
