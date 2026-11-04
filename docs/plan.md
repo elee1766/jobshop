@@ -1071,6 +1071,7 @@ moved from the old 7.x list, oldest first:
 - [Reserved human slot per pool](notes/190-human-slot.md) (#190)
 - [Outbox for side effects, design note](notes/191-outbox.md) (#191)
 - [Prompt rules](notes/205-prompt-rules.md) (#205)
+- [TestSessionRestartIdle flake](notes/327-restart-idle-flake.md) (#327)
 
 ## 8. Chat gateway
 
