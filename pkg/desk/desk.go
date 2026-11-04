@@ -245,6 +245,19 @@ func (s *Server) attention(r *http.Request) (any, error) {
 	if err := s.ctl.Call(ctx, rpc.MethodPoolList, struct{}{}, &pools); err != nil {
 		return nil, err
 	}
+	var waits []rpc.WaitItem
+	if err := s.ctl.Call(ctx, rpc.MethodWaitList, rpc.WaitListParams{}, &waits); err != nil {
+		return nil, err
+	}
+	for _, w := range waits {
+		if w.Wait.TimedOut {
+			why := "wait past timeout: " + w.Wait.Reason
+			if w.Wait.Owner != "" {
+				why += " (owner " + w.Wait.Owner + ")"
+			}
+			out = append(out, AttentionItem{Kind: "wait", ID: w.ID, Title: w.Title, Why: why, Since: w.Wait.Timeout})
+		}
+	}
 	for name, why := range pools.Quarantined {
 		out = append(out, AttentionItem{Kind: "pool", ID: name, Title: "pool " + name + " quarantined", Why: why})
 	}

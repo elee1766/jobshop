@@ -1141,6 +1141,8 @@ type AttentionItem struct {
 	// Repo and Ref are meta.github's repo and issue or PR, when set.
 	Repo string `json:"repo,omitempty"`
 	Ref  string `json:"ref,omitempty"`
+	// Owner is who must act, for a wait past its timeout (#381).
+	Owner string `json:"owner,omitempty"`
 }
 
 // AttentionResult lists what waits on a human, oldest first. Empty when
@@ -1326,4 +1328,46 @@ type WriteKeyParams struct {
 	Key    string `json:"key"`
 	Op     string `json:"op,omitempty"`
 	Result string `json:"result,omitempty"`
+}
+
+// Waits (#381).
+const (
+	MethodWaitAdd   = "wait.add"
+	MethodWaitList  = "wait.list"
+	MethodWaitClear = "wait.clear"
+	// AttentionWait is a wait past its timeout.
+	AttentionWait = "wait"
+)
+
+// WaitAddParams parks a ticket (default: the session's current one)
+// until the conditions hold. A held ticket is released without counting
+// a step failure.
+type WaitAddParams struct {
+	ID      string           `json:"id,omitempty"`
+	Conds   []store.WaitCond `json:"conds"`
+	Any     bool             `json:"any,omitempty"`
+	Reason  string           `json:"reason"`
+	Owner   string           `json:"owner,omitempty"`
+	Resume  bool             `json:"resume,omitempty"`
+	Timeout *time.Time       `json:"timeout,omitempty"`
+}
+
+// WaitListParams lists waiting tickets; Project empty is all (admin) or
+// the session's.
+type WaitListParams struct {
+	Project string `json:"project,omitempty"`
+}
+
+// WaitItem is one waiting ticket.
+type WaitItem struct {
+	ID      string     `json:"id"`
+	Project string     `json:"project"`
+	Title   string     `json:"title"`
+	Wait    store.Wait `json:"wait"`
+}
+
+// WaitClearParams removes a ticket's wait; the ticket becomes ready.
+type WaitClearParams struct {
+	ID     string `json:"id,omitempty"`
+	Reason string `json:"reason,omitempty"`
 }

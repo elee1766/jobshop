@@ -382,6 +382,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#352, `docs/notes/352-pack-docs.md`).
 - Pack templates in Go `text/template` behind `template: go`; in-repo
   packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
+- `jobshop wait add|list|clear`: tickets park on a PR review, checks,
+  PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
 
 ## 5. What's next
 
@@ -516,6 +518,7 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 
 Model config live check: `docs/verify/model-config.md` (#304).
 Shared mise live check: `docs/verify/sandbox-mise-shared.md` (#316).
+Waits live check: `docs/verify/waits.md` (#381).
 
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
@@ -1122,6 +1125,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   run and trigger vars later) with one flat var map instead of
   `.pack`/`.vars` namespaces, so prompts read `{{.issue}}` and the
   migration is a mechanical rewrite. Whole-value `{{.x}}` keeps its type.
+- Waits on outside state are `fields.wait` on tasks and steps
+  (2026-11-04, #381), typed engine data, not labels or a new column:
+  the ready and claim queries skip a ticket with a wait. The controller
+  evaluates them, not the agent; a moved head or closed PR clears a
+  review or checks wait as invalidated so the agent re-decides.
 
 ## 7. Reference: behavior as built
 

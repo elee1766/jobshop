@@ -590,6 +590,8 @@ WHERE t.project = ?1
     OR (t.status = 'open' AND t.holder = '' AND t.pool = ?4)
   )
   AND t.defer_until <= ?5
+  -- fields.wait parks a ticket until the controller clears it (#381).
+  AND json_extract(t.fields, '$.wait') IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
@@ -726,6 +728,8 @@ WHERE t.project = ?1
   AND t.kind IN (SELECT value FROM json_each(?2))
   AND (?3 IS NULL OR t.pool = ?3)
   AND t.defer_until <= ?4
+  -- fields.wait parks a ticket until the controller clears it (#381).
+  AND json_extract(t.fields, '$.wait') IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
