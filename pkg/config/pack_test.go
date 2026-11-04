@@ -627,3 +627,87 @@ func TestMinimalPackDoc(t *testing.T) {
 	require.Equal(t, 1, c.Pools["work"].MaxSessions)
 	require.Len(t, c.Workflows["change"].Steps, 2)
 }
+
+// TestGithubPackEscalationChat (#379): with escalation_chat_pool set,
+// every workflow's escalate block points at it, with the pack's prompts
+// keeping the escalation vars for the controller; the policy rule is a
+// system rule for every pool. Unset: no chat.
+func TestGithubPackEscalationChat(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	load := func(extra string) *Config {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+pools:
+  esc: {agent: a, type: chat, dir: /w}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile` + extra + `}
+`})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		return c
+	}
+	c := load(", escalation_chat_pool: esc")
+	for n, w := range c.Workflows {
+		require.NotNil(t, w.Escalate, n)
+		assert.Equal(t, "esc", w.Escalate.ChatPool, n)
+	}
+	e := c.Workflows["pr-work"].Escalate
+	out, err := Fill(e.Prompt, e.Template, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	require.NoError(t, err)
+	assert.Contains(t, out, "escalation ticket js-e for run js-r (workflow pr-work)")
+	assert.Contains(t, out, "`jobshop run resume js-r")
+	assert.Contains(t, out, "issue 7")
+	assert.True(t, strings.HasSuffix(strings.TrimSpace(out), "BODY"))
+	assert.NotContains(t, out, "gateway")
+	assert.NotContains(t, out, "thread")
+	pout, err := Fill(e.PoolPrompt, e.Template, map[string]any{"ticket": "js-e", "pool": "dev", "error": "boom", "body": "B"})
+	require.NoError(t, err)
+	assert.Contains(t, pout, "pool dev starts no sessions")
+	assert.Contains(t, pout, "jobshop pool unquarantine dev")
+
+	var policy *PromptRule
+	for i := range c.PromptRules {
+		if c.PromptRules[i].Name == "escalate-policy" {
+			policy = &c.PromptRules[i]
+		}
+	}
+	require.NotNil(t, policy, "escalation policy rule")
+	assert.Equal(t, "system", policy.At)
+	assert.Contains(t, policy.Text, "only for a decision, a credential")
+	assert.Contains(t, policy.Text, "jobshop report progress")
+
+	for n, w := range load("").Workflows {
+		require.NotNil(t, w.Escalate, n)
+		assert.Empty(t, w.Escalate.ChatPool, "no chat by default: "+n)
+	}
+}
+
+// TestEscalationConfig: chat_pool must be a chat pool with a prompt, and
+// prompts may only use the escalation vars.
+func TestEscalationConfig(t *testing.T) {
+	base := "projects:\n  js: {}\nagents:\n  a: {command: x}\npools:\n  dev: {agent: a, dir: /w}\n  chat: {agent: a, type: chat, dir: /w}\n"
+	for name, tc := range map[string]struct{ yaml, err string }{
+		"ok":        {"escalation: {chat_pool: chat, prompt: \"t ${ticket} ${body}\", pool_prompt: \"p ${pool} ${error}\"}\n", ""},
+		"not chat":  {"escalation: {chat_pool: dev, prompt: x}\n", "not a chat pool"},
+		"unknown":   {"escalation: {chat_pool: nope, prompt: x}\n", "unknown pool"},
+		"no prompt": {"escalation: {chat_pool: chat}\n", "needs prompt"},
+		"bad var":   {"escalation: {chat_pool: chat, prompt: \"${issue}\"}\n", "uses ${issue}"},
+		"pool var":  {"escalation: {chat_pool: chat, pool_prompt: \"${run}\"}\n", "uses ${run}"},
+		"empty":     {"escalation: {}\n", ""},
+	} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": base + tc.yaml})
+		_, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		if tc.err == "" {
+			assert.NoError(t, err, name)
+		} else {
+			require.Error(t, err, name)
+			assert.Contains(t, err.Error(), tc.err, name)
+		}
+	}
+}

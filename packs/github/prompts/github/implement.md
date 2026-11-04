@@ -39,7 +39,8 @@ comment saying why; the run retries and then escalates to a human.
 Report state as you go, so stall-check and the planner read it instead
 of your comments: `jobshop report progress "<what is done>"`, `jobshop
 report blocked "<on what>"`, `jobshop report failed "<why>"` before
-`close -r failed`. When only a person can decide, ask once with
+`close -r failed`. When only a person can decide (a decision, a
+credential or access, a host config problem you cannot fix), ask once with
 `jobshop report waiting "<what>" --question "<the decision needed, the
 options, what you do if nobody answers>"`; the answer arrives as a
-message in this session.
+message in this session. Never ask a person for status or to say done.

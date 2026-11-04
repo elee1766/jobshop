@@ -72,5 +72,5 @@ the blocker is already gone; then `jobshop run resume <id>` and say so on
 the issue. A blocker that is only time: resume the run, defer its failed
 step with `jobshop ticket update <step> --defer <duration>`, comment
 until when, and do not mention anyone. If the escalation ticket has
-`meta.gateway`, leave it open so the human answers in the thread;
-otherwise close it once the issue is commented.
+`meta.escalation`, leave it open so the human answers in the escalation
+chat; otherwise close it once the issue is commented.

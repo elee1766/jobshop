@@ -188,6 +188,7 @@ func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason stri
 		return
 	}
 	c.log.Info("pool escalation filed", "pool", pool, "ticket", t.ID)
+	c.ensureEscalationChat(ctx, t)
 }
 
 // clipTitle keeps the first line of s, at most 200 bytes.

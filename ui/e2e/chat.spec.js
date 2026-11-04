@@ -35,21 +35,21 @@ test('sessions view attaches: composer only where the pool allows rw', async ({ 
   else await expect(page.getByText(/^Read-only:/)).toBeVisible();
 });
 
-test('escalation drawer shows the gateway thread session', async ({ page }) => {
+test('escalation drawer shows the escalation chat', async ({ page }) => {
   const items = await (await page.request.get('/api/attention')).json();
   const esc = items.find((/** @type {any} */ i) => i.kind === 'ticket');
   test.skip(!esc, 'no open escalation on this controller');
   const t = await (await page.request.get('/api/ticket/' + esc.id)).json();
-  const gw = t.ticket.meta?.gateway;
-  test.skip(!gw?.session, 'escalation has no gateway thread yet');
+  const chat = t.ticket.meta?.escalation;
+  test.skip(!chat?.session, 'escalation has no chat (no escalation chat config)');
   await page.goto('/?ticket=' + esc.id);
   const panel = page.getByTestId('escalation-chat');
   await expect(panel).toBeVisible();
-  await expect(panel).toContainText(gw.key);
-  // The panel streams the gateway's session: its turns are the thread's.
+  await expect(panel).toContainText(chat.key);
+  // The panel streams the escalation chat session.
   await expect(panel.locator('.line.turn').first()).toBeVisible({ timeout: 30_000 });
   if (!process.env.DESK_CHAT_ESC_SEND) return;
-  // A reply from Desk goes by the same key, so it is one more turn there.
+  // A reply from Desk goes by the chat's key, so it is one more turn there.
   const before = await panel.locator('.line.turn').count();
   await panel.getByTestId('chat-input').fill('desk reply\nDESK-HELLO');
   await panel.getByTestId('chat-send').click();

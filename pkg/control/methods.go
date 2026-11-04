@@ -267,6 +267,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		c.stopRunner(t.ID)
 		c.endSession(ctx, t.ID, "session closed")
 	}
+	c.escalationClosed(ctx, t)
 	return t, nil
 }
 

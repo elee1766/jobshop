@@ -392,6 +392,14 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Store ticket queries are portable SQL: hot fields keys and meta
   lookups are plain columns and a `ticket_meta` table, lists are
   `sqlc.slice` (#405, `docs/notes/405-portable-sql.md`).
+- Escalation chat: the controller opens one chat per escalation ticket
+  from pack config; Desk shows it; the gateway mirrors (#379,
+  `docs/notes/379-escalation-chat.md`, `docs/verify/escalation-chat.md`).
+- Command and http workflow steps run by the controller, no session
+  (#396, `docs/notes/396-command-http-steps.md`).
+- `close -r rebase` reopens a step without counting a failure; the
+  refinery uses it for a PR that only conflicts with master (#424,
+  `docs/notes/424-rebase-no-failure.md`).
 
 ## 5. What's next
 
@@ -542,6 +550,9 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 
 **Resource pools (#400).** Provider-owned slots, waiting visibility and
 placement build on the keyed and counted slots.
+
+**Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
+misjudge conflicts: let the controller check mergeStateStatus itself.
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1150,6 +1161,19 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   stays the source of record; meta filters use `ticket_meta`. Recall
   stays the one per-engine module. This prepares for Postgres; it is not
   a decision to build it.
+- Desk is the operator UI; Matrix and Discord are paused, alternatives
+  not companions; the escalation chat is gateway-independent
+  (2026-11-04, #379). The controller opens it from pack policy
+  (`escalate:` / `escalation:`), and gateways only mirror it.
+- Command and http steps (2026-11-04, #396) are step tickets with no
+  pool, claimed by the controller as holder `controller`, so retries,
+  escalation and run completion stay the agent-step code paths. The
+  attempt key is run/step/fence: a restart with `on_restart: retry`
+  resumes the same claim and key; a new claim is a new attempt.
+- A step sent back only because master moved closes `-r rebase`
+  (2026-11-04, #424): the store reopens it like `failed` but leaves
+  fields.failures alone. A resolution, not a pack rule, so any workflow
+  can use it and the refinery decides what counts as a finding.
 
 ## 7. Reference: behavior as built
 
@@ -1236,7 +1260,8 @@ messages and prompts stay in the controller.
 - Escalation threads (2026-11-02): an escalation also opens a Matrix
   thread, created by the gateway from a controller
   event, with a keyed operator session already holding the escalation
-  context. The operator's reply there unblocks the run.
+  context. The operator's reply there unblocks the run. Superseded by
+  #379: the controller owns the chat, Matrix and Discord are paused.
 - Testing: gasserver runs a loopback tuwunel homeserver as the jobshop
   user (`jobshop.localhost`, no federation, token registration), so
   agents register their own bot and test users and verify Matrix end to

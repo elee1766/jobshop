@@ -485,7 +485,7 @@ func (c ticketUpdateCmd) Run(g *Globals) error {
 
 type closeCmd struct {
 	ID         string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
-	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, cancelled, ..."`
+	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, rebase (reopen a step without counting a failure), cancelled, ..."`
 }
 
 func (c closeCmd) Run(g *Globals) error {

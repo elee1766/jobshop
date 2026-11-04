@@ -120,6 +120,7 @@ func TestChatList(t *testing.T) {
 	}
 	ctl := &fakeCtl{results: map[string]any{rpc.MethodSessionList: []rpc.SessionInfo{
 		sess("s1", "operator", "matrix:!r:$e"), sess("s2", "dev", ""), sess("s3", "operator", "desk:abc"),
+		sess("s4", "esc-chat", "escalation:js-e"),
 	}}}
 	h := New(Config{ChatPool: "operator"}, ctl, nil).Handler()
 	var out struct {
@@ -128,7 +129,29 @@ func TestChatList(t *testing.T) {
 	}
 	get(t, h, "/api/chat", &out)
 	assert.Equal(t, "operator", out.Pool)
-	require.Len(t, out.Sessions, 2)
+	require.Len(t, out.Sessions, 3)
 	assert.Equal(t, "matrix:!r:$e", out.Sessions[0].Key)
 	assert.Equal(t, "desk:abc", out.Sessions[1].Key)
+	assert.Equal(t, "escalation:js-e", out.Sessions[2].Key, "escalation chats in any pool")
+}
+
+// TestChatSendEscalation: an escalation:<ticket> key goes to the chat
+// pool the controller recorded in meta.escalation (#379), not Desk's.
+func TestChatSendEscalation(t *testing.T) {
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodSessionSend: rpc.SessionSendResult{Session: "s1"},
+		rpc.MethodTicketShow: rpc.ShowResult{Ticket: store.Ticket{
+			ID:   "js-e",
+			Meta: []byte(`{"escalation":{"key":"escalation:js-e","pool":"esc-chat","session":"s1"}}`),
+		}},
+	}}
+	h := New(Config{ChatPool: "operator"}, ctl, nil).Handler()
+	w := postJSON(h, "/api/chat/send", `{"key":"escalation:js-e","text":"resume it"}`, nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, rpc.MethodSessionSend+` {"pool":"esc-chat","key":"escalation:js-e","text":"resume it"}`, ctl.calls[len(ctl.calls)-1])
+
+	// A ticket without that chat is refused.
+	ctl.results[rpc.MethodTicketShow] = rpc.ShowResult{Ticket: store.Ticket{ID: "js-x"}}
+	w = postJSON(h, "/api/chat/send", `{"key":"escalation:js-x","text":"x"}`, nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
