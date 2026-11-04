@@ -78,12 +78,12 @@ func subController(t *testing.T) (*Controller, *stallClock, *fakeThreads) {
 	require.NoError(t, err)
 	live := new(atomic.Pointer[liveConfig])
 	live.Store(lc)
-	clk := &stallClock{t: time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC)}
+	clk := newStallClock(time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC))
 	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "db"), sqlite.Options{Now: clk.now, Prefix: func(p string) string { return p }})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = st.Close() })
 	c := &Controller{
-		root: root, live: live, store: st, opt: Options{Now: clk.now}, log: slog.New(slog.DiscardHandler),
+		root: root, live: live, store: st, opt: Options{Clock: clk}, log: slog.New(slog.DiscardHandler),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 	}
 	c.ctx = t.Context()

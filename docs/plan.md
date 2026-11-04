@@ -363,6 +363,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   serve`; ingress is host config (#344, `docs/notes/344-ingest-unit.md`).
 - Tests: `Options.Pass` supervisor pass hook, `time.Sleep` banned in
   tests (#359, `docs/notes/359-test-clock.md`).
+- Controller clock: `Options.Clock` (`pkg/clock`, with a `Fake` for
+  tests) drives every controller timer; `Options.Now` is gone (#362,
+  `docs/notes/362-controller-clock.md`).
 
 ## 5. What's next
 
@@ -506,8 +509,8 @@ admitted rows (item 5).
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
 
-**Test speed (#359).** Fake clock (#362), in-process agent (#361),
-sqlite template DB (#363).
+**Test speed (#359).** In-process agent (#361), then move the
+process-tree tests onto the fake clock; sqlite template DB (#363).
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1078,6 +1081,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   only its own endpoint.
 - Tests do not depend on wall time (2026-11-04, #359): no sleeps
   (lint-enforced), run a supervisor pass or wait on an event instead.
+- Fake time is an injected `clock.Clock`, not `testing/synctest`
+  (2026-11-04, #362): controller tests use unix sockets and real host
+  processes, which a synctest bubble cannot hold. Waits on real
+  processes stay on wall time.
 
 ## 7. Reference: behavior as built
 

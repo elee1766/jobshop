@@ -24,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sys/unix"
 
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -37,9 +38,11 @@ const DefaultLease = 30 * time.Minute
 
 // Options tune a controller. Zero values use defaults.
 type Options struct {
-	Tick time.Duration    // lease sweep interval, default 30s
-	Now  func() time.Time // clock, for tests
-	Log  *slog.Logger
+	Tick time.Duration // lease sweep interval, default 30s
+	// Clock is the time source for every controller timer and timestamp.
+	// Default the wall clock; tests pass a clock.Fake (#362).
+	Clock clock.Clock
+	Log   *slog.Logger
 	// HostExe is the binary started as session-host. Default /proc/self/exe.
 	HostExe string
 	// Backoff is the first wait after a provider rate limit, doubling to
@@ -182,6 +185,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	if opt.Log == nil {
 		opt.Log = slog.Default()
 	}
+	if opt.Clock == nil {
+		opt.Clock = clock.Real{}
+	}
 	unlock, err := lock(root.Lock())
 	if err != nil {
 		return err
@@ -189,7 +195,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	defer unlock()
 
 	ev := newHub(opt.EventBuffer)
-	st, err := sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Now, OnCommit: ev.kick, Prefix: func(p string) string {
+	st, err := sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Clock.Now, OnCommit: ev.kick, Prefix: func(p string) string {
 		// Follows reloads, so a project added later gets its prefix.
 		return live.Load().cfg.Prefix(p)
 	}})
@@ -331,7 +337,7 @@ func (c *Controller) serve() error {
 	}
 	c.log.Info("controller serving", "root", c.root.Dir, "sessions", len(open))
 
-	tick := time.NewTicker(c.opt.Tick)
+	tick := c.opt.Clock.NewTicker(c.opt.Tick)
 	defer tick.Stop()
 	var passDone chan struct{}
 	for {
@@ -344,7 +350,7 @@ func (c *Controller) serve() error {
 		case <-c.ctx.Done():
 			c.stop()
 			return nil
-		case <-tick.C:
+		case <-tick.C():
 		case <-c.opt.Reload:
 			// Errors are logged and the old config stays active. The
 			// tick below applies new pool limits right away.

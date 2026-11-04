@@ -16,7 +16,7 @@ import (
 // holding a step releases it deferred without counting a failure; a
 // second unclosed release of the same step counts one.
 func TestUnclosedTurnFirstReleaseNoFailure(t *testing.T) {
-	c, _, _ := subController(t)
+	c, clk, _ := subController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
 	step := mkTicket(t, c, store.NewTicket{Kind: store.KindStep, Title: "implement", Pool: "dev", Fields: json.RawMessage(`{"run":"x","step":"implement","retries":3}`)})
@@ -42,11 +42,11 @@ func TestUnclosedTurnFirstReleaseNoFailure(t *testing.T) {
 
 	got := turn()
 	assert.Equal(t, store.StatusOpen, got.Status)
-	assert.True(t, got.DeferUntil.After(time.Now()), "deferred")
+	assert.True(t, got.DeferUntil.After(clk.now()), "deferred")
 	assert.Equal(t, 0, failures(), "first unclosed turn is not a failure")
 
 	got = turn()
 	assert.Equal(t, store.StatusOpen, got.Status)
-	assert.True(t, got.DeferUntil.After(time.Now()), "deferred")
+	assert.True(t, got.DeferUntil.After(clk.now()), "deferred")
 	assert.Equal(t, 1, failures(), "a repeat counts")
 }

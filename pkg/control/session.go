@@ -344,7 +344,7 @@ func (r *runner) run() {
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-time.After(r.c.opt.RestartDelay):
+		case <-r.c.after(r.c.opt.RestartDelay):
 		}
 	}
 }
@@ -352,7 +352,7 @@ func (r *runner) run() {
 func (r *runner) crashed() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	now := time.Now()
+	now := r.c.now()
 	keep := r.crashes[:0]
 	for _, t := range r.crashes {
 		if now.Sub(t) < crashWindow {
@@ -727,7 +727,7 @@ func (r *runner) crashCount() int {
 	defer r.mu.Unlock()
 	n := 0
 	for _, t := range r.crashes {
-		if time.Since(t) < crashWindow {
+		if r.c.since(t) < crashWindow {
 			n++
 		}
 	}
@@ -805,7 +805,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		def = defaultChatIdle
 	}
 	idle := config.Duration(pool.IdleTimeout, def)
-	idleSince := time.Now()
+	idleSince := r.c.now()
 	for {
 		if r.wantsRestart() {
 			return r.restart(nc)
@@ -878,12 +878,12 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			if r.delivered.After(idleSince) {
 				idleSince = r.delivered
 			}
-			if havePool && time.Since(idleSince) > idle {
+			if havePool && r.c.since(idleSince) > idle {
 				// A manually cordoned session stays for whoever cordoned
 				// it; a warm pool keeps min_sessions (or the manual
 				// target) open with no work.
 				if cordon != nil || r.c.keepWarm(ctx, r.pool) {
-					idleSince = time.Now()
+					idleSince = r.c.now()
 				} else {
 					return errSessionEnd{resolution: resolutionIdle}
 				}
@@ -892,7 +892,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			case <-ctx.Done():
 				return r.dropped(conn)
 			case <-r.restartWake:
-			case <-time.After(r.c.opt.Poll):
+			case <-r.c.after(r.c.opt.Poll):
 			}
 			continue
 		case err != nil:
@@ -903,7 +903,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		}
 		r.c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
 		r.mu.Lock()
-		r.lastClaim = time.Now()
+		r.lastClaim = r.c.now()
 		r.mu.Unlock()
 		r.setTurnTicket(t.ID)
 		comments, err := r.c.store.Comments(ctx, t.ID)
@@ -932,7 +932,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		if stale && r.idle() {
 			return r.refresh(nc)
 		}
-		idleSince = time.Now()
+		idleSince = r.c.now()
 	}
 }
 
@@ -1009,7 +1009,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 			select {
 			case <-ctx.Done():
 				return r.dropped(conn)
-			case <-time.After(r.c.opt.Backoff):
+			case <-r.c.after(r.c.opt.Backoff):
 			}
 			continue
 		}
@@ -1026,12 +1026,12 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 			break
 		}
 		r.log.Warn("provider rate limited, backing off", "wait", wait, "err", err)
-		r.setBackoff(time.Now().Add(wait))
+		r.setBackoff(r.c.now().Add(wait))
 		select {
 		case <-ctx.Done():
 			r.setBackoff(time.Time{})
 			return r.dropped(conn)
-		case <-time.After(wait):
+		case <-r.c.after(wait):
 		}
 		wait = min(wait*2, 15*r.c.opt.Backoff)
 	}
@@ -1070,7 +1070,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 	}
 	for _, t := range held {
 		cl := store.Claim{TicketID: t.ID, Holder: r.id, Fence: t.Fence}
-		until := time.Now().Add(unclosedDeferral)
+		until := r.c.now().Add(unclosedDeferral)
 		// Agents end turns to wait (a harness that backgrounds a long CI
 		// watch, #241); the first such release of a ticket is a deferral,
 		// not a failed attempt. A repeat counts, so a ticket no agent

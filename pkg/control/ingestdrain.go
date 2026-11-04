@@ -77,7 +77,7 @@ func (c *Controller) drainOnce(ctx context.Context) (ingest.DrainResult, error) 
 // pumpDrain drains on a timer and on wakeups until the controller stops.
 // stop closes the spool once every writer is done.
 func (c *Controller) pumpDrain() {
-	t := time.NewTicker(drainEvery)
+	t := c.clk().NewTicker(drainEvery)
 	defer t.Stop()
 	for {
 		if _, err := c.drainOnce(c.ctx); err != nil && c.ctx.Err() == nil {
@@ -86,7 +86,7 @@ func (c *Controller) pumpDrain() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case <-t.C:
+		case <-t.C():
 		case <-c.ingest.wake:
 		}
 	}

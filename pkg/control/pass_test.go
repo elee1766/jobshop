@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/elee1766/jobshop/pkg/control"
 )
 
@@ -17,6 +19,19 @@ func withPass(dir string, opt control.Options) control.Options {
 	passChans.Store(dir, ch)
 	opt.Pass = ch
 	return opt
+}
+
+// passUntil runs supervisor passes until cond holds, failing after 50.
+// For controllers on a fake clock, whose ticker never fires by itself.
+func passUntil(t *testing.T, key any, cond func() bool, msg string) {
+	t.Helper()
+	for range 50 {
+		if cond() {
+			return
+		}
+		pass(t, key, 1)
+	}
+	require.True(t, cond(), msg)
 }
 
 // pass runs n whole supervisor passes on the controller registered under

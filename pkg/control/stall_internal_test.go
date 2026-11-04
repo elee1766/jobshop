@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	host "github.com/elee1766/acphost"
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -60,22 +60,14 @@ triggers:
     max_runs: 2
 `
 
-type stallClock struct {
-	mu sync.Mutex
-	t  time.Time
-}
+// stallClock is a clock.Fake with the lower-case helpers these tests use.
+type stallClock struct{ *clock.Fake }
 
-func (c *stallClock) now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.t
-}
+func newStallClock(t time.Time) *stallClock { return &stallClock{clock.NewFake(t)} }
 
-func (c *stallClock) advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.t = c.t.Add(d)
-}
+func (c *stallClock) now() time.Time { return c.Now() }
+
+func (c *stallClock) advance(d time.Duration) { c.Advance(d) }
 
 // stallController builds a controller without serving: the test calls the
 // stall functions directly with a fake clock.
@@ -97,12 +89,12 @@ func stallControllerYAML(t *testing.T, yaml string) (*Controller, *stallClock, s
 	require.NoError(t, err)
 	live := new(atomic.Pointer[liveConfig])
 	live.Store(lc)
-	clk := &stallClock{t: time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC)}
+	clk := newStallClock(time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC))
 	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "db"), sqlite.Options{Now: clk.now, Prefix: func(p string) string { return p }})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = st.Close() })
 	c := &Controller{
-		root: root, live: live, store: st, opt: Options{Now: clk.now}, log: slog.New(slog.DiscardHandler),
+		root: root, live: live, store: st, opt: Options{Clock: clk}, log: slog.New(slog.DiscardHandler),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		drained: map[string]bool{}, poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 	}

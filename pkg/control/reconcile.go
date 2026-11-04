@@ -29,7 +29,7 @@ func (c *Controller) pumpReconcile() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case <-time.After(every):
+		case <-c.after(every):
 		}
 	}
 }
