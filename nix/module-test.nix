@@ -113,7 +113,9 @@ let
     stub() { printf '#!${pkgs.runtimeShell}\n%s\n' "$2" > $T/bin/$1; chmod +x $T/bin/$1; }
     stub runuser 'shift 3; exec "$@"'
     stub gh 'cat $T/green'
-    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; exit 0'
+    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; exit 0'
+    stub nix 'case "$1" in flake) echo "{\"path\":\"$T/src\"}" ;; build) echo $T ;; esac'
+    stub jq 'sed -n "s/.*\"path\":\"\([^\"]*\)\".*/\1/p"'
     stub systemctl 'exit 0'
     stub nixos-rebuild 'echo "rebuild $*" >> $T/log; [ -n "$(cat $T/shipbad 2>/dev/null)" ] || cat $T/green > $T/cur'
     stub nix-env 'echo "nix-env $*" >> $T/log'
@@ -125,6 +127,19 @@ let
     fail() { echo "rollback test: $*"; cat $T/log $T/out; exit 1; }
 
     echo 0000000 > $T/cur
+    echo abcdef1234 > $T/green
+
+    # Config check (#261): a pack var the host config misses fails before
+    # any switch, marks the rev failed and keeps the reason for attention.
+    touch $T/badcheck
+    echo 9999999aaa > $T/green
+    run
+    [ $rc = 1 ] || fail "bad check exit $rc"
+    ! grep -q rebuild $T/log || fail "switched despite a failed config check"
+    grep -q "check config check --file /var/lib/jobshop/jobshop.yaml --replace /var/lib/jobshop/src/jobshop=$T/src" $T/log || fail "config check not run against the new source"
+    [ "$(cat $T/state/failed)" = 9999999aaa ] || fail "failed rev not recorded"
+    grep -q 'jobshop_repo' $T/state/failed.reason || fail "reason not kept"
+    rm $T/badcheck $T/state/failed $T/state/failed.reason
     echo abcdef1234 > $T/green
 
     # Drill: the switch succeeds, the drill marks it unhealthy.

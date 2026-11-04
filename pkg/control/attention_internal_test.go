@@ -78,6 +78,11 @@ func TestAttention(t *testing.T) {
 	it, ok := rollbackItem(filepath.Join(state, "failed"))
 	require.True(t, ok)
 	assert.Equal(t, rpc.AttentionItem{Kind: rpc.AttentionRollback, ID: "abc123", Title: "self-deploy rolled back abc123", Since: it.Since}, it)
+	// A failed pre-switch config check names the error (#261).
+	require.NoError(t, os.WriteFile(filepath.Join(state, "failed.reason"), []byte(`pools.operator.prompt_file: var "jobshop_repo" is not set`+"\n"), 0o600))
+	it, ok = rollbackItem(filepath.Join(state, "failed"))
+	require.True(t, ok)
+	assert.Equal(t, `self-deploy skipped abc123, config check failed: pools.operator.prompt_file: var "jobshop_repo" is not set`, it.Title)
 	require.NoError(t, os.WriteFile(filepath.Join(state, "deployed"), []byte("new\n"), 0o600))
 	_, ok = rollbackItem(filepath.Join(state, "failed"))
 	assert.False(t, ok, "a later deploy clears it")

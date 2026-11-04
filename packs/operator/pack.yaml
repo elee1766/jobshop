@@ -6,6 +6,10 @@
 # session per key.
 defaults:
   operator_sessions: 0
+# #248 renamed repo to jobshop_repo; hosts that still set repo keep
+# working with a warning (#261). Remove after the next release.
+renamed_vars:
+  repo: jobshop_repo
 pools:
   operator:
     type: chat

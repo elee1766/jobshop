@@ -63,13 +63,19 @@ type packHead struct {
 	// Extends lists base packs merged before this one, like packs: in
 	// jobshop.yaml. Their vars may reference this pack's vars.
 	Extends []PackRef `yaml:"extends"`
+	// RenamedVars maps an old var name to its new one (#261). A host that
+	// still sets the old name keeps working for a release, with a warning,
+	// so a rename on master does not fail the deploy of hosts not yet
+	// updated.
+	RenamedVars map[string]string `yaml:"renamed_vars"`
 }
 
 // packLayer is one pack file's contribution after substitution.
 type packLayer struct {
-	file string
-	m    map[string]any
-	vars map[string]any // the layer's vars after defaults
+	file     string
+	m        map[string]any
+	vars     map[string]any // the layer's vars after defaults
+	warnings []string       // deprecated var names the includer set
 }
 
 // PackInstance is one entry of jobshop.yaml's packs list as loaded: what
@@ -128,14 +134,22 @@ var mergedSections = []string{"agents", "pools", "triggers", "workflows"}
 // LoadFile reads a config file, merges the packs it lists, and validates
 // the result. Packs merge in list order, then the file itself.
 func LoadFile(path string) (*Config, error) {
+	return LoadFileWith(path, nil)
+}
+
+// LoadFileWith is LoadFile with packs[].path entries passed through
+// rewrite first (nil keeps them). `jobshop config check` uses it to load
+// the host's config against another checkout's packs before a deploy
+// switches to it (#261).
+func LoadFileWith(path string, rewrite func(string) string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return parseFile(path, b)
+	return parseFile(path, b, rewrite)
 }
 
-func parseFile(path string, b []byte) (*Config, error) {
+func parseFile(path string, b []byte, rewrite func(string) string) (*Config, error) {
 	name := filepath.Base(path)
 	dir := filepath.Dir(path)
 	top, err := decodeMap(b)
@@ -156,11 +170,15 @@ func parseFile(path string, b []byte) (*Config, error) {
 	merged := map[string]any{}
 	sources := map[string][]string{}
 	var instances []PackInstance
+	var warnings []string
 	for i, ref := range head.Packs {
 		if ref.Path == "" {
 			return nil, fmt.Errorf("%s: packs[%d]: path is required", name, i)
 		}
 		p := ref.Path
+		if rewrite != nil {
+			p = rewrite(p)
+		}
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(dir, p)
 		}
@@ -177,6 +195,7 @@ func parseFile(path string, b []byte) (*Config, error) {
 		instances = append(instances, packInstance(ref.Path, ref.Prefix, layers))
 		for _, l := range layers {
 			mergeInto(merged, l.m, l.file, sources)
+			warnings = append(warnings, l.warnings...)
 		}
 	}
 	delete(top, "packs")
@@ -205,6 +224,7 @@ func parseFile(path string, b []byte) (*Config, error) {
 	}
 	c.Packs = head.Packs
 	c.Instances = instances
+	c.Warnings = warnings
 	return c, nil
 }
 
@@ -225,7 +245,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	var head packHead
-	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"]})
+	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"], "renamed_vars": m["renamed_vars"]})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
@@ -234,6 +254,8 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	}
 	delete(m, "defaults")
 	delete(m, "extends")
+	delete(m, "renamed_vars")
+	given, warnings := renameVars(given, head.RenamedVars, file)
 	// Given vars win over defaults.
 	vars := map[string]any{}
 	for k, v := range head.Defaults {
@@ -303,7 +325,38 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := yaml.UnmarshalWithOptions(raw, &pf, yaml.Strict()); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return append(layers, packLayer{file: file, m: m, vars: vars}), nil
+	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings}), nil
+}
+
+// renameVars returns given with old names from renamed moved to their new
+// names, and a warning per old name used. A new name set as well wins.
+func renameVars(given map[string]any, renamed map[string]string, file string) (map[string]any, []string) {
+	if len(renamed) == 0 {
+		return given, nil
+	}
+	out := make(map[string]any, len(given))
+	for k, v := range given {
+		out[k] = v
+	}
+	var warnings []string
+	olds := make([]string, 0, len(renamed))
+	for o := range renamed {
+		olds = append(olds, o)
+	}
+	sort.Strings(olds)
+	for _, o := range olds {
+		v, ok := out[o]
+		if !ok {
+			continue
+		}
+		n := renamed[o]
+		delete(out, o)
+		if _, set := out[n]; !set {
+			out[n] = v
+		}
+		warnings = append(warnings, fmt.Sprintf("%s: var %q is renamed to %q; set %q in the host config, the old name will stop working", file, o, n, n))
+	}
+	return out, warnings
 }
 
 // cloneValue deep-copies maps and lists so substitution does not edit

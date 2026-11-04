@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -533,4 +534,48 @@ packs:
 	assert.Equal(t, TrackerGitHub, c.Workflows["pr-work"].Tracker)
 	assert.Empty(t, c.Workflows["pr-work"].LinearWorkspace)
 	assert.Contains(t, c.Workflows["pr-work"].Steps[0].Prompt, "gh issue view")
+}
+
+func TestPackRenamedVars(t *testing.T) {
+	pack := "renamed_vars: {repo: jobshop_repo}\npools:\n  op:\n    agent: a\n    repo: /src\n    prompt_file: p.md\n    idle_timeout: ${jobshop_repo}\n"
+	for _, tc := range []struct {
+		name, vars, want string
+		warn             bool
+	}{
+		{"old name", "{repo: 1m}", "1m", true},
+		{"new name", "{jobshop_repo: 2m}", "2m", false},
+		{"both, new wins", "{repo: 1m, jobshop_repo: 2m}", "2m", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFiles(t, dir, map[string]string{
+				"op/pack.yaml": pack,
+				"op/p.md":      "x\n",
+				"jobshop.yaml": hostBase + "packs:\n  - path: op\n    vars: " + tc.vars + "\n",
+			})
+			c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, c.Pools["op"].IdleTimeout)
+			if tc.warn {
+				require.Len(t, c.Warnings, 1)
+				assert.Contains(t, c.Warnings[0], `var "repo" is renamed to "jobshop_repo"`)
+			} else {
+				assert.Empty(t, c.Warnings)
+			}
+		})
+	}
+}
+
+func TestLoadFileWithRewrite(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"old/op/pack.yaml": "pools:\n  op:\n    agent: a\n    repo: /src\n    idle_timeout: 1m\n",
+		"new/op/pack.yaml": "pools:\n  op:\n    agent: a\n    repo: ${jobshop_repo}\n    idle_timeout: 1m\n",
+		"jobshop.yaml":     hostBase + "packs:\n  - path: old/op\n",
+	})
+	f := filepath.Join(dir, "jobshop.yaml")
+	_, err := LoadFile(f)
+	require.NoError(t, err)
+	_, err = LoadFileWith(f, func(p string) string { return strings.Replace(p, "old", "new", 1) })
+	require.ErrorContains(t, err, `var "jobshop_repo" is not set`)
 }

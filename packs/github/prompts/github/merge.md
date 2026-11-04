@@ -15,6 +15,12 @@ worktree, then `${check_cmd}`. A failure, a lint finding, or a new
 case 4: put the exact output in your findings. You do not fix code
 yourself.
 
+A PR that removes or renames a pack var (a var reference a pack.yaml or its
+prompts stop reading, or a `defaults:` key dropped) breaks every host
+config that still sets it (#261). It must either keep the old name with
+`renamed_vars: {old: new}` in pack.yaml, or list in the PR body the hosts
+that set the var and the config change each needs. Doing neither is case 4.
+
 Then do exactly one of these. Releasing this step counts as a failed
 attempt (like a failed close), so wait inside your turn instead of
 releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or

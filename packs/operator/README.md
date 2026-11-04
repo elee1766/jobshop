@@ -41,6 +41,9 @@ no grant.
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `operator_sessions` | `max_sessions` for the pool. Default 0 (manual) |
 
+`repo` is the old name of `jobshop_repo`; it still works for one
+release and logs a warning (`renamed_vars` in pack.yaml, #261).
+
 ```yaml
 packs:
   - path: /var/lib/jobshop/src/jobshop/packs/selfdev

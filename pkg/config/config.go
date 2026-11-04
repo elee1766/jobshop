@@ -50,6 +50,9 @@ type Config struct {
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
 	// the last good config.
 	Instances []PackInstance `yaml:"-"`
+	// Warnings are non-fatal load findings, such as a deprecated pack var
+	// name the host still sets (#261). The controller logs them.
+	Warnings []string `yaml:"-"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
 	// BuiltinMetaPacks.
 	MetaPacks []string `yaml:"meta_packs"`

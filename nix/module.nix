@@ -800,6 +800,24 @@ in
             fi
 
             echo "deploying ${sd.inputName} $current -> $rev"
+            ${lib.optionalString (deployWorkspaces != [ ]) ''
+              # Config check before the switch (#261): the new build loads this
+              # host's jobshop.yaml with the live packs read from the new commit's
+              # source. A pack var the host no longer satisfies fails here, with
+              # the error kept for `jobshop attention`, instead of after a switch.
+              rm -f $state/failed.reason
+              src=$(nix flake metadata --json --refresh ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$rev" | jq -r .path)
+              newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
+              if ! check=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- \
+                   "$newpkg/bin/jobshop" config check --file ${cfg.dataDir}/jobshop.yaml \
+                   --replace ${lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir}="$src" 2>&1); then
+                echo "<3>config check failed for $rev, not switching: $check"
+                printf '%s\n' "$check" > $state/failed.reason
+                echo "$rev" > $state/failed
+                exit 1
+              fi
+              echo "config check: $check"
+            ''}
             prev=$(readlink -f /nix/var/nix/profiles/system)
             if ! nixos-rebuild switch --flake ${lib.escapeShellArg sd.hostFlake} --refresh \
                  --override-input ${sd.inputName} ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$rev"; then

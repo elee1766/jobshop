@@ -269,6 +269,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Operator improvement sessions (`improve:<slug>` key, prompt rule
   `match.keys`, pack hooks, `send --key`) that never push master (#249,
   `docs/notes/249-improvement-sessions.md`).
+- Self-deploy checks the host config against the new commit's packs
+  before switching; pack `renamed_vars` (#261,
+  `docs/notes/261-deploy-config-check.md`).
 
 ## 5. What's next
 
@@ -375,6 +378,8 @@ The Discord adapter is built (#182); it needs a live check with a bot token.
 Respawn env check after the next self-deploy: `docs/verify/respawn-env.md` (#244).
 Activity feed live check and rate-limit measurement on gasserver:
 `docs/verify/activity-feed.md` (#255).
+Pre-switch config check on the next pack var change:
+`docs/verify/deploy-config-check.md` (#261).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -813,6 +818,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   shellcheck of `deploy/*.sh`, `nix build`.
 - YAML config. Every new dependency has its reason recorded in
   `docs/layout.md`.
+- Self-deploy runs `jobshop config check` from the new build, against the
+  host's jobshop.yaml with live packs read from the new commit, before it
+  switches (2026-11-04, #261). Host pack vars live in another repo, so CI
+  here cannot see them; a check before the switch is cheaper and clearer
+  than a switch and rollback. A pack var rename keeps the old name for a
+  release through `renamed_vars`.
 
 ## 7. Reference: behavior as built
 
