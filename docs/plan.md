@@ -372,6 +372,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `jobshop gh`: gh with the identity token, a guard check before
   writes and an activity record, replacing the module's shell wrapper
   (#349, `docs/notes/349-jobshop-gh.md`).
+- TestStepFailureSources runs on the fake clock (#375,
+  `docs/notes/375-step-failure-fake-clock.md`).
 
 ## 5. What's next
 

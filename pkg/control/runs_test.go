@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -22,11 +23,12 @@ import (
 // pack declaring a three-step workflow.
 func runRoot(t *testing.T) *rpc.Client {
 	t.Helper()
-	return runRootLease(t, "")
+	return runRootLease(t, "", nil)
 }
 
-// runRootLease is runRoot with a lease (Go duration, "" for the default).
-func runRootLease(t *testing.T, lease string) *rpc.Client {
+// runRootLease is runRoot with a lease (Go duration, "" for the default)
+// and clock (nil for the real one).
+func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
 	t.Helper()
 	t.Parallel()
 	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
@@ -63,7 +65,9 @@ pools:
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: 50 * time.Millisecond})) }()
+	go func() {
+		done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: 50 * time.Millisecond, Clock: clk}))
+	}()
 	t.Cleanup(func() {
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {
