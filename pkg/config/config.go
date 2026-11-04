@@ -35,6 +35,8 @@ type Config struct {
 	Telemetry   Telemetry    `yaml:"telemetry"`
 	// Limits are host-wide caps across pools (#281).
 	Limits Limits `yaml:"limits"`
+	// Resources are named slots steps hold while in progress (#400).
+	Resources map[string]Resource `yaml:"resources"`
 	// Ingest configures the ingest inbox (#321).
 	Ingest Ingest `yaml:"ingest"`
 	// Defaults hold settings agents and pools inherit (#262).
@@ -978,6 +980,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if err := c.checkHook(h); err != nil {
 			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
 		}
+	}
+	if err := c.checkResources(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	for name, w := range c.Workflows {
 		if err := c.checkWorkflow(name, &w); err != nil {

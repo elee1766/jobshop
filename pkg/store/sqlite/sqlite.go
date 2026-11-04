@@ -596,6 +596,10 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 		if err != nil {
 			return err
 		}
+		full, err := q.ResourceFull(ctx, id)
+		if err != nil {
+			return err
+		}
 		t, err = s.mutate(ctx, q, id, holder, "claim", func(t *store.Ticket) (any, error) {
 			switch {
 			case t.Status == store.StatusClosed:
@@ -606,6 +610,8 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 				return nil, fmt.Errorf("%w: %s is assigned to %s", store.ErrNotHolder, id, t.Holder)
 			case blocked:
 				return nil, fmt.Errorf("%w: %s is blocked", store.ErrNoWork, id)
+			case full != 0 && t.Status == store.StatusOpen:
+				return nil, fmt.Errorf("%w: %s waits for a resource slot", store.ErrNoWork, id)
 			}
 			var d any
 			c, d = s.claim(t, holder, lease)

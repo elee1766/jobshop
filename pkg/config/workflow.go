@@ -59,6 +59,10 @@ type Step struct {
 	// Retries is how many failures the step takes before the run needs a
 	// human. Nil means DefaultStepRetries.
 	Retries *int `yaml:"retries"`
+	// NeedsResources are resource keys the step holds while in progress
+	// (#400): a resource name, or "name:<key>" for a keyed resource.
+	// Run vars fill them at run start.
+	NeedsResources []string `yaml:"needs_resources"`
 }
 
 // RetryLimit is Retries or the default.
@@ -72,7 +76,7 @@ func (s Step) RetryLimit() int {
 // templateKeys are the step fields kept as templates: pack substitution
 // skips them so run vars survive until run start.
 // pool is one too, so a run var can route a step to a pool (#384).
-var templateKeys = []string{"title", "prompt", "pool"}
+var templateKeys = []string{"title", "prompt", "pool", "needs_resources"}
 
 // checkTriggerRun validates a run: trigger. The workflow must exist and
 // every workflow var must be set (by the trigger or by pack vars); vars
@@ -296,6 +300,9 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		}
 		ids[s.ID] = true
 		if err := c.checkStepPool(w, s.Pool); err != nil {
+			return fmt.Errorf("%s: %w", where, err)
+		}
+		if err := c.checkStepResources(w, s.NeedsResources); err != nil {
 			return fmt.Errorf("%s: %w", where, err)
 		}
 		if s.Title == "" {

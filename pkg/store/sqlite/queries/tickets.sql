@@ -86,6 +86,16 @@ WHERE t.project = sqlc.arg(project)
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
       -- A step unblocks the next only when it closed done (#90).
       AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
+  -- Every resource the ticket needs has a free slot (#400). Occupancy
+  -- is in-progress tickets naming the same key; a key "name:..." takes
+  -- the cap of "name"; a key with no cap is unlimited.
+  AND NOT EXISTS (
+    SELECT 1 FROM json_each(t.fields, '$.resources') r
+    JOIN resource_caps c ON c.name = r.value
+      OR (instr(r.value, ':') > 0 AND c.name = substr(r.value, 1, instr(r.value, ':') - 1))
+    WHERE c.capacity <= (
+      SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
+      WHERE h.status = 'in_progress' AND h.id <> t.id AND hr.value = r.value))
 ORDER BY t.priority, t.created_at, t.id
 LIMIT sqlc.arg(max_rows);
 
@@ -107,6 +117,15 @@ WHERE t.project = sqlc.arg(project)
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
       -- A step unblocks the next only when it closed done (#90).
       AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
+  -- Resource slots, as in ReadyTickets (#400). My own in-progress
+  -- ticket already holds its slots: h.id <> t.id leaves it out.
+  AND NOT EXISTS (
+    SELECT 1 FROM json_each(t.fields, '$.resources') r
+    JOIN resource_caps c ON c.name = r.value
+      OR (instr(r.value, ':') > 0 AND c.name = substr(r.value, 1, instr(r.value, ':') - 1))
+    WHERE c.capacity <= (
+      SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
+      WHERE h.status = 'in_progress' AND h.id <> t.id AND hr.value = r.value))
 ORDER BY
   CASE WHEN t.status = 'in_progress' THEN 0
        WHEN t.holder <> '' THEN 1 -- open with a holder can only be mine here
