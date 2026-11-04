@@ -417,6 +417,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Admission releases a held inbox item back to pending once its
   needs-human ticket is closed (#353,
   `docs/notes/353-admission-release-held.md`).
+- Secret settings take a path or `{type: file|command, ...}`; a command's
+  stdout is the secret (#435, PR #366, `docs/notes/435-secret-commands.md`).
 
 ## 5. What's next
 
@@ -1191,6 +1193,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-04, #424): the store reopens it like `failed` but leaves
   fields.failures alone. A resolution, not a pack rule, so any workflow
   can use it and the refinery decides what counts as a finding.
+- Secret commands use an explicit type, not a prefix (2026-11-04, #435):
+  `{type: command, command: ...}` beside a path string, as the operator
+  asked on #366, so no path is ever run by accident and the form can
+  grow (other types) without new magic characters.
 
 ## 7. Reference: behavior as built
 

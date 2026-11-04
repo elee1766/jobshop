@@ -282,9 +282,9 @@ func TestReadSecret(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "s"), []byte("  k\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "empty"), []byte("\n"), 0o600))
-	s, err := ReadSecret(context.Background(), "id", filepath.Join(dir, "s"))
+	s, err := ReadSecret(context.Background(), "id", config.SecretPath(filepath.Join(dir, "s")))
 	require.NoError(t, err)
 	assert.Equal(t, "k", string(s.Key))
-	_, err = ReadSecret(context.Background(), "", filepath.Join(dir, "empty"))
+	_, err = ReadSecret(context.Background(), "", config.SecretPath(filepath.Join(dir, "empty")))
 	require.ErrorIs(t, err, errNoSecret)
 }

@@ -237,23 +237,16 @@ var errNoSecret = errors.New("empty secret")
 
 // ReadSecret reads a secret file or runs a secret command (config.ReadSecret),
 // trimming surrounding space.
-func ReadSecret(ctx context.Context, identity, path string) (Secret, error) {
-	b, err := config.ReadSecret(ctx, path)
+func ReadSecret(ctx context.Context, identity string, src config.Secret) (Secret, error) {
+	b, err := config.ReadSecret(ctx, src)
 	if err != nil {
 		return Secret{}, err
 	}
 	k := strings.TrimSpace(string(b))
 	if k == "" {
-		return Secret{}, fmt.Errorf("%s: %w", secretName(path), errNoSecret)
+		// src.String() is the path, or "secret command": a command line
+		// may hold a token, so it stays out of logs.
+		return Secret{}, fmt.Errorf("%s: %w", src, errNoSecret)
 	}
 	return Secret{Identity: identity, Key: []byte(k)}, nil
-}
-
-// secretName is path for errors, or "secret command" so a command line,
-// which may hold a token, stays out of logs.
-func secretName(path string) string {
-	if config.IsSecretCommand(path) {
-		return "secret command"
-	}
-	return path
 }

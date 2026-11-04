@@ -250,7 +250,7 @@ func TestSubscriptionsLinear(t *testing.T) {
 	tokFile := filepath.Join(t.TempDir(), "tok")
 	require.NoError(t, os.WriteFile(tokFile, []byte("lin_api_x\n"), 0o600))
 	cfg := *c.config()
-	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: tokFile, Workspace: "acme", Teams: []string{"ENG"}}}
+	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: config.SecretPath(tokFile), Workspace: "acme", Teams: []string{"ENG"}}}
 	lc, err := newLiveConfig(&cfg)
 	require.NoError(t, err)
 	c.live.Store(lc)
@@ -326,7 +326,7 @@ func TestSubscriptionsGitHubTokenSelf(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	cfg := *c.config()
-	cfg.Identities = map[string]config.Identity{"me": {Kind: config.IdentityGitHubToken, TokenFile: pat, Repos: []string{"acme/*"}, APIURL: srv.URL}}
+	cfg.Identities = map[string]config.Identity{"me": {Kind: config.IdentityGitHubToken, TokenFile: config.SecretPath(pat), Repos: []string{"acme/*"}, APIURL: srv.URL}}
 	lc, err := newLiveConfig(&cfg)
 	require.NoError(t, err)
 	c.live.Store(lc)
@@ -396,7 +396,7 @@ func TestSubscriptionsBots(t *testing.T) {
 	subs.Bots = []string{"kody[bot]", "jobshop-host[bot]"}
 	cfg.Subscriptions = &subs
 	cfg.Identities = map[string]config.Identity{"app": {
-		Kind: config.IdentityGitHubApp, AppID: 1, PrivateKeyFile: writeRSAKey(t), Repos: []string{"acme/*"},
+		Kind: config.IdentityGitHubApp, AppID: 1, PrivateKeyFile: config.SecretPath(writeRSAKey(t)), Repos: []string{"acme/*"},
 		Installations: map[string]int64{"acme": 2}, APIURL: srv.URL,
 	}}
 	lc, err := newLiveConfig(&cfg)

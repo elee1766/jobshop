@@ -292,7 +292,7 @@ type Gateway struct {
 	// For discord, rooms are channel ids (text or forum), senders user ids.
 	Homeserver string `yaml:"homeserver"`
 	// TokenFile holds the bot access token. Tokens are never in the yaml.
-	TokenFile string   `yaml:"token_file"`
+	TokenFile Secret   `yaml:"token_file"`
 	Pool      string   `yaml:"pool"`    // a type: chat pool
 	Rooms     []string `yaml:"rooms"`   // allowed room ids
 	Senders   []string `yaml:"senders"` // allowed sender ids
@@ -366,7 +366,7 @@ type IngestEndpoint struct {
 	Source string `yaml:"source"`
 	// SecretFile is relative to the root. Identity instead names a
 	// Linear identity (app or API key, #340) whose webhook_secret_file signs.
-	SecretFile string `yaml:"secret_file"`
+	SecretFile Secret `yaml:"secret_file"`
 	Identity   string `yaml:"identity"`
 	// Path defaults to /<source>/<name>.
 	Path string `yaml:"path"`
@@ -420,7 +420,7 @@ func (c *Config) IngestEndpoints() []IngestEndpoint {
 	}
 	for _, name := range c.IdentityNames() {
 		id := c.Identities[name]
-		if !IsLinear(id.Kind) || id.WebhookSecretFile == "" || named[name] {
+		if !IsLinear(id.Kind) || id.WebhookSecretFile.IsZero() || named[name] {
 			continue
 		}
 		out = append(out, IngestEndpoint{
@@ -472,12 +472,12 @@ func (c *Config) validateIngest() error {
 		} else if e.SignatureHeader != "" || e.SignaturePrefix != "" || e.DeliveryIDHeader != "" || e.Map != (IngestMap{}) {
 			return fmt.Errorf("%s: signature_header, signature_prefix, delivery_id_header and map are for generic endpoints", where)
 		}
-		if (e.SecretFile == "") == (e.Identity == "") {
+		if e.SecretFile.IsZero() == (e.Identity == "") {
 			return fmt.Errorf("%s: set exactly one of secret_file and identity", where)
 		}
 		if e.Identity != "" {
 			id, ok := c.Identities[e.Identity]
-			if !ok || !IsLinear(id.Kind) || id.WebhookSecretFile == "" || e.Source != IngestLinear {
+			if !ok || !IsLinear(id.Kind) || id.WebhookSecretFile.IsZero() || e.Source != IngestLinear {
 				return fmt.Errorf("%s: identity %q must be a Linear identity with webhook_secret_file, on a linear endpoint", where, e.Identity)
 			}
 		}
@@ -1045,7 +1045,7 @@ func (c *Config) checkGateway(g Gateway) error {
 	default:
 		return fmt.Errorf("network %q must be %q or %q", g.Network, GatewayMatrix, GatewayDiscord)
 	}
-	if g.TokenFile == "" {
+	if g.TokenFile.IsZero() {
 		return errors.New("token_file is required")
 	}
 	p, ok := c.Pools[g.Pool]

@@ -14,6 +14,6 @@ func SecretFor(r config.Root, cfg *config.Config) func(config.IngestEndpoint) (S
 		if e.Identity != "" {
 			return ReadSecret(context.Background(), e.Identity, cfg.Identities[e.Identity].WebhookSecretFile)
 		}
-		return ReadSecret(context.Background(), "", r.SecretPath(e.SecretFile))
+		return ReadSecret(context.Background(), "", e.SecretFile.In(r.Dir))
 	}
 }
