@@ -19,6 +19,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -660,6 +661,9 @@ type TriggerInfo struct {
 type ConfigShowResult struct {
 	Config  map[string]any      `json:"config"`
 	Sources map[string][]string `json:"sources"`
+	// Instances are the packs entries with their vars and the pools,
+	// workflows and triggers each declares, prefix applied (#248).
+	Instances []config.PackInstance `json:"instances"`
 }
 
 // RunStartParams starts a workflow run. Key, when set, dedups: an open run

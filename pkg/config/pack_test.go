@@ -162,11 +162,7 @@ packs:
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch start --key <slug>", "dependent issues start as a batch (#171)")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch show <key>")
-	op := c.Pools["operator"]
-	assert.Equal(t, 0, op.MaxSessions, "operator sessions are started by hand or by key")
-	assert.Equal(t, "/src/jobshop", op.Repo)
-	assert.Contains(t, op.Prompt, "agents working elee1766/jobshop")
-	assert.Contains(t, op.Prompt, "Read AGENTS.md")
+	assert.NotContains(t, c.Pools, "operator", "the operator pack is included once by the host (#248)")
 	w := c.Workflows["pr-work"]
 	require.Len(t, w.Steps, 3)
 	assert.Equal(t, "plan", w.EscalatePool)
@@ -221,33 +217,62 @@ packs:
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
 }
 
-// TestOperatorPackLoads loads packs/operator for another repo: the prompt
-// covers what the pool may do (#124) and names no Jobshop values.
+// TestOperatorPackLoads loads packs/operator at host scope next to
+// selfdev and a prefixed packs/github (#248): one operator pool, a
+// prompt that reads every instance from config show instead of naming
+// one repo, and instances that say which pools and workflows are whose.
 func TestOperatorPackLoads(t *testing.T) {
 	dir := t.TempDir()
-	pack, err := filepath.Abs("../../packs/operator")
-	require.NoError(t, err)
+	abs := func(p string) string {
+		a, err := filepath.Abs("../../packs/" + p)
+		require.NoError(t, err)
+		return a
+	}
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
   js: {}
 agents:
   a: {command: x}
 packs:
-  - path: ` + pack + `
-    vars: {repo: acme/widget, checkout: /src/widget, agent: a}
+  - path: ` + abs("selfdev") + `
+    vars: {repo: /src/jobshop, agent: a}
+  - path: ` + abs("github") + `
+    prefix: acphost-
+    vars: {repo: elee1766/acphost, checkout: /src/acphost, agent: a, human: wile, check_cmd: make test}
+  - path: ` + abs("operator") + `
+    vars: {jobshop_repo: acme/jobshop-fork, checkout: /src/jobshop, agent: a}
 `})
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
-	require.Len(t, c.Pools, 1)
+	var ops []string
+	for n, p := range c.Pools {
+		if p.Chat() {
+			ops = append(ops, n)
+		}
+	}
+	assert.Equal(t, []string{"operator"}, ops, "one operator pool for the host")
 	p := c.Pools["operator"]
-	assert.Equal(t, "/src/widget", p.Repo)
+	assert.Equal(t, "/src/jobshop", p.Repo)
 	assert.Equal(t, 0, p.MaxSessions)
-	assert.Equal(t, []string{"config-reload", "session-list", "attention"}, p.Admin)
-	assert.NotContains(t, p.Prompt, "needs the admin socket")
-	for _, s := range []string{"acme/widget", "jobshop ticket create", "gh issue create", "jobshop send", "jobshop run start", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
+	assert.Equal(t, []string{"config-reload", "config-show", "session-list", "pool-list", "trigger-list", "attention"}, p.Admin)
+	for _, s := range []string{"acme/jobshop-fork", "jobshop config show", "instances", "<prefix>pr-work", "acphost-pr-work", "tracker", "linear_team", "gh issue create -R <repo>", "jobshop ticket create", "jobshop send", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
 		assert.Contains(t, p.Prompt, s)
 	}
-	assert.NotContains(t, p.Prompt, "elee1766")
-	assert.NotContains(t, p.Prompt, "Jobshop")
+	assert.NotContains(t, p.Prompt, "${")
+	assert.NotContains(t, p.Prompt, "elee1766/jobshop", "the Jobshop repo comes from the var")
+
+	require.Len(t, c.Instances, 3)
+	sd, gh, op := c.Instances[0], c.Instances[1], c.Instances[2]
+	assert.Equal(t, "elee1766/jobshop", sd.Vars["repo"], "the github base's repo, not selfdev's checkout path")
+	assert.Equal(t, "/src/jobshop", sd.Vars["checkout"])
+	assert.Equal(t, "github", sd.Vars["tracker"])
+	assert.Contains(t, sd.Pools, "dev")
+	assert.Contains(t, sd.Workflows, "pr-work")
+	assert.Equal(t, "acphost-", gh.Prefix)
+	assert.Equal(t, "elee1766/acphost", gh.Vars["repo"])
+	assert.Contains(t, gh.Pools, "acphost-dev")
+	assert.Contains(t, gh.Workflows, "acphost-pr-work")
+	assert.Contains(t, gh.Triggers, "acphost-master-red")
+	assert.Equal(t, []string{"operator"}, op.Pools)
 }
 
 // TestGithubPackLoads loads packs/github for another repo: no Jobshop
