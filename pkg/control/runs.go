@@ -76,14 +76,6 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 	if !ok {
 		return runPlan{}, fmt.Errorf("%w: unknown workflow %q", store.ErrInvalid, p.Workflow)
 	}
-	// Steps live in their pools' projects; the run goes with the first.
-	proj := cfg.Pools[w.Steps[0].Pool].Project
-	if p.Project != "" && p.Project != proj {
-		return runPlan{}, fmt.Errorf("%w: workflow %s runs in project %s", store.ErrInvalid, p.Workflow, proj)
-	}
-	if !sc.admin && sc.project != proj {
-		return runPlan{}, forbidden("session is scoped to project %s", sc.project)
-	}
 	vars := map[string]any{}
 	for k, v := range w.PackVars {
 		vars[k] = v
@@ -98,6 +90,24 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 		if _, ok := vars[k]; !ok {
 			return runPlan{}, fmt.Errorf("%w: workflow %s needs var %s (--var %s=...)", store.ErrInvalid, p.Workflow, k, k)
 		}
+	}
+	// A step pool may name a run var (#384): resolve every one before
+	// any ticket exists, so a bad pool fails the start.
+	w.Steps = slices.Clone(w.Steps)
+	for i, s := range w.Steps {
+		name, err := cfg.ResolvePool(s.Pool, vars)
+		if err != nil {
+			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+		}
+		w.Steps[i].Pool = name
+	}
+	// Steps live in their pools' projects; the run goes with the first.
+	proj := cfg.Pools[w.Steps[0].Pool].Project
+	if p.Project != "" && p.Project != proj {
+		return runPlan{}, fmt.Errorf("%w: workflow %s runs in project %s", store.ErrInvalid, p.Workflow, proj)
+	}
+	if !sc.admin && sc.project != proj {
+		return runPlan{}, forbidden("session is scoped to project %s", sc.project)
 	}
 	meta, err := runMeta(w, vars)
 	if err != nil {

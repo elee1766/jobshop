@@ -71,7 +71,8 @@ func (s Step) RetryLimit() int {
 
 // templateKeys are the step fields kept as templates: pack substitution
 // skips them so run vars survive until run start.
-var templateKeys = []string{"title", "prompt"}
+// pool is one too, so a run var can route a step to a pool (#384).
+var templateKeys = []string{"title", "prompt", "pool"}
 
 // checkTriggerRun validates a run: trigger. The workflow must exist and
 // every workflow var must be set (by the trigger or by pack vars); vars
@@ -212,6 +213,40 @@ func FillTemplate(s string, vars map[string]any) (string, error) {
 	return fmt.Sprint(out), nil
 }
 
+// checkStepPool checks a step's pool. A pool naming a run var is checked
+// at run start (ResolvePool); one filled from pack vars alone is checked
+// here.
+func (c *Config) checkStepPool(w *Workflow, pool string) error {
+	runVar := false
+	for _, v := range templateVars(pool) {
+		_, packed := w.PackVars[v]
+		switch {
+		case slices.Contains(w.Vars, v):
+			runVar = true
+		case !packed:
+			return fmt.Errorf("pool uses ${%s}, not in workflow vars or pack vars", v)
+		}
+	}
+	if runVar {
+		return nil
+	}
+	_, err := c.ResolvePool(pool, w.PackVars)
+	return err
+}
+
+// ResolvePool fills a step's pool template from vars and checks the pool
+// exists.
+func (c *Config) ResolvePool(pool string, vars map[string]any) (string, error) {
+	name, err := FillTemplate(pool, vars)
+	if err != nil {
+		return "", fmt.Errorf("pool: %w", err)
+	}
+	if _, ok := c.Pools[name]; !ok {
+		return "", fmt.Errorf("unknown pool %q", name)
+	}
+	return name, nil
+}
+
 // templateVars returns the ${name} references in s ($$ is a literal $).
 func templateVars(s string) []string {
 	var out []string
@@ -281,8 +316,8 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 			return fmt.Errorf("%s: duplicate step id", where)
 		}
 		ids[s.ID] = true
-		if _, ok := c.Pools[s.Pool]; !ok {
-			return fmt.Errorf("%s: unknown pool %q", where, s.Pool)
+		if err := c.checkStepPool(w, s.Pool); err != nil {
+			return fmt.Errorf("%s: %w", where, err)
 		}
 		if s.Title == "" {
 			return fmt.Errorf("%s: title is required", where)
