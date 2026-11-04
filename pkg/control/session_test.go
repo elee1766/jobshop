@@ -208,7 +208,7 @@ func TestDrain(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 
-	require.Eventually(t, func() bool { return show(sessID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(sessID).Status == store.StatusClosed }, "drained session closes")
 	assert.Equal(t, "drained", show(sessID).Resolution)
 	assert.Equal(t, store.StatusClosed, show(first.ID).Status, "running turn finished")
 	assert.Equal(t, store.StatusOpen, show(second.ID).Status, "no new claim while drained")
@@ -219,7 +219,7 @@ func TestDrain(t *testing.T) {
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodDrain, rpc.DrainParams{Undrain: true}, &dr))
 	assert.Empty(t, dr.Drained)
-	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(second.ID).Status == store.StatusClosed }, "undrained pool runs b")
 }
 
 // TestQuarantine runs an agent that dies on every prompt: three crashed
@@ -240,7 +240,7 @@ func TestQuarantine(t *testing.T) {
 	}
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool { return slices.Contains(show(task.ID).Labels, "quarantined") }, dialWait, 100*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return slices.Contains(show(task.ID).Labels, "quarantined") }, "ticket quarantined")
 	got := show(task.ID)
 	assert.Equal(t, store.StatusOpen, got.Status)
 	assert.True(t, got.DeferUntil.After(time.Now().Add(50*time.Minute)), "deferred about an hour")
@@ -563,7 +563,7 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		opt = withPass(dir, opt)
-		opt.Tick, opt.HostExe = 50*time.Millisecond, os.Args[0]
+		opt.Tick, opt.HostExe = time.Hour, os.Args[0]
 		if opt.Backoff == 0 {
 			opt.Backoff = 100 * time.Millisecond
 		}
@@ -1540,17 +1540,17 @@ func TestScaleDownCordon(t *testing.T) {
 	zero := 0
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Target: &zero}, nil))
 	var infos []rpc.SessionInfo
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		infos = nil
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
 		return len(infos) == 1 && infos[0].Cordon == store.CordonScale
-	}, dialWait, 50*time.Millisecond)
+	}, "session cordoned")
 	sessID := infos[0].ID
 	assert.Equal(t, store.StatusInProgress, show(admin, first.ID).Status, "working session is not stopped")
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(admin, sessID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(admin, sessID).Status == store.StatusClosed }, "scaled session closes")
 	assert.Equal(t, "scaled_down", show(admin, sessID).Resolution)
 	assert.Equal(t, store.StatusClosed, show(admin, first.ID).Status, "running turn finished")
 	assert.Equal(t, store.StatusOpen, show(admin, second.ID).Status, "no new claim while scaled to 0")
@@ -1568,5 +1568,5 @@ func TestScaleDownCordon(t *testing.T) {
 	assert.Equal(t, store.StatusOpen, show(admin, second.ID).Status)
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Auto: true}, nil))
-	require.Eventually(t, func() bool { return show(admin, second.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(admin, second.ID).Status == store.StatusClosed }, "auto scale runs b")
 }
