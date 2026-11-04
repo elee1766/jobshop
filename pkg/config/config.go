@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
@@ -357,6 +358,45 @@ type Agent struct {
 	Command string            `yaml:"command"`
 	Args    []string          `yaml:"args"`
 	Env     map[string]string `yaml:"env"`
+	// Model, Effort and ConfigOptions are ACP session config options set
+	// on every session of the agent (#304); see SessionOptions. They are
+	// not part of the host spec, so changing them never respawns a host.
+	Model         string            `yaml:"model"`
+	Effort        string            `yaml:"effort"`
+	ConfigOptions map[string]string `yaml:"config_options"`
+}
+
+// ACP session config option ids for the model and effort shorthands.
+const (
+	OptionModel  = "model"
+	OptionEffort = "reasoning_effort"
+)
+
+// Options merges extra with the model and effort shorthands.
+func Options(model, effort string, extra map[string]string) map[string]string {
+	out := map[string]string{}
+	maps.Copy(out, extra)
+	if model != "" {
+		out[OptionModel] = model
+	}
+	if effort != "" {
+		out[OptionEffort] = effort
+	}
+	return out
+}
+
+// SessionOptions is the ACP config options a session of pool running
+// agent gets: the agent's, overridden per id by the pool's. Values are
+// passed to the agent as given (any jcode route), not validated.
+func (c *Config) SessionOptions(pool, agent string) map[string]string {
+	out := map[string]string{}
+	if a, ok := c.Agents[agent]; ok {
+		maps.Copy(out, Options(a.Model, a.Effort, a.ConfigOptions))
+	}
+	if p, ok := c.Pools[pool]; ok {
+		maps.Copy(out, Options(p.Model, p.Effort, p.ConfigOptions))
+	}
+	return out
 }
 
 // PoolChat is Pool.Type for chat pools.
@@ -366,7 +406,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "report-incidents", "attention", "activity"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -428,6 +468,11 @@ type Pool struct {
 	// Identities the pool's sessions may act as, on top of their
 	// project's (#200). Lets a pack name the identity it needs.
 	Identities []string `yaml:"identities"`
+	// Model, Effort and ConfigOptions override the agent's per option id
+	// (#304). A reload applies a change to live sessions between turns.
+	Model         string            `yaml:"model"`
+	Effort        string            `yaml:"effort"`
+	ConfigOptions map[string]string `yaml:"config_options"`
 }
 
 // Project is one repo / work area.

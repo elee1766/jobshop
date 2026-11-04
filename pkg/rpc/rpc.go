@@ -66,6 +66,7 @@ const (
 	MethodPoolList         = "pool.list"
 	MethodPoolScale        = "pool.scale"
 	MethodSessionCordon    = "session.cordon"
+	MethodSessionConfig    = "session.config"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
 	MethodGuard            = "guard"
@@ -404,6 +405,11 @@ type SessionInfo struct {
 	Crashes int `json:"crashes,omitempty"`
 	// BackoffUntil is set while the session waits out a provider rate limit.
 	BackoffUntil *time.Time `json:"backoff_until,omitempty"`
+	// Model and Effort are the agent's current values (#304); Override is
+	// the session's `session config` override, if any.
+	Model    string            `json:"model,omitempty"`
+	Effort   string            `json:"effort,omitempty"`
+	Override map[string]string `json:"override,omitempty"`
 }
 
 // SessionReapParams cleans up session leftovers. Hosts with no open session
@@ -717,6 +723,16 @@ type SessionCordonParams struct {
 	Uncordon bool   `json:"uncordon,omitempty"`
 }
 
+// SessionConfigParams sets ACP config options on one session (#304),
+// applied between turns. Options keys are option ids; "effort" means
+// reasoning_effort. Reset drops the override first, back to the pool's
+// values.
+type SessionConfigParams struct {
+	ID      string            `json:"id"`
+	Options map[string]string `json:"options,omitempty"`
+	Reset   bool              `json:"reset,omitempty"`
+}
+
 // DrainResult lists drained pools after the call; "*" means all.
 type DrainResult struct {
 	Drained []string `json:"drained"`
@@ -964,7 +980,10 @@ const (
 	OpSessionStart = "start"
 	OpSessionStop  = "stop"
 	OpSessionCrash = "crash"
-	OpRunState     = "state"
+	// OpSessionConfig: the controller set an ACP config option on a live
+	// session (#304); Option, Old and New say which.
+	OpSessionConfig = "config"
+	OpRunState      = "state"
 )
 
 // EventsSubscribeParams selects change events. SinceSeq > 0 replays
@@ -1002,6 +1021,9 @@ type Event struct {
 	Labels     []string     `json:"labels,omitempty"`
 	Pool       string       `json:"pool,omitempty"`    // pool events
 	Desired    int          `json:"desired,omitempty"` // pool events
+	Option     string       `json:"option,omitempty"`  // session config events
+	Old        string       `json:"old,omitempty"`
+	New        string       `json:"new,omitempty"`
 }
 
 // Events calls events.subscribe and passes each event to fn until the

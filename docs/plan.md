@@ -326,6 +326,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Linear webhook: signed `POST /linear/webhook` on
   `linear.webhook_listen` runs intake and replies early; polling stays
   (#300, `docs/notes/300-linear-webhook.md`).
+- Model and effort per agent and pool, set through ACP
+  `session/set_config_option` at session start and between turns after a
+  reload, `session config` override (#304,
+  `docs/notes/304-model-config.md`).
 
 ## 5. What's next
 
@@ -452,6 +456,8 @@ Linear webhook live check: "Webhook" section of
 
 Pool scaling live check: `docs/verify/pool-scaling.md` (#281); Desk
 scale and cordon buttons are a follow-up.
+
+Model config live check: `docs/verify/model-config.md` (#304).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -965,6 +971,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   run triggers, or one subscription pass for that thread). Polling
   stays, so a lost event costs only latency. Off by default; gasserver
   has no public endpoint (#187), so it needs a proxy or tunnel.
+- Model and effort (2026-11-04, #304) are ACP session config options,
+  not agent args: they stay out of the host spec hash, so a change
+  applies between turns without a respawn and keeps the conversation.
+  A rejected value ends the session `config_failed` rather than running
+  a turn on the wrong model.
 
 ## 7. Reference: behavior as built
 
