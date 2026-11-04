@@ -617,3 +617,13 @@ func TestLoadFileWithRewrite(t *testing.T) {
 	_, err = LoadFileWith(f, func(p string) string { return strings.Replace(p, "old", "new", 1) })
 	require.ErrorContains(t, err, `var "jobshop_repo" is not set`)
 }
+
+// TestMinimalPackDoc loads the minimal pack from docs/packs.md and the
+// README (a copy in testdata/minimal; keep them in sync).
+func TestMinimalPackDoc(t *testing.T) {
+	c, err := LoadFile(filepath.Join("testdata", "minimal", "jobshop.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, "/srv/widget", c.Pools["work"].Repo)
+	require.Equal(t, 1, c.Pools["work"].MaxSessions)
+	require.Len(t, c.Workflows["change"].Steps, 2)
+}
