@@ -289,6 +289,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/265-recall.md`).
 - Reverted pr-work PRs recorded as `correction` learnings from the
   activity feed (#272, `docs/notes/272-revert-learnings.md`).
+- `kind: linear-app` identity minting client_credentials tokens, cached
+  until 10m before expiry (#278, `docs/notes/278-linear-app.md`).
 - Curator: `learn` pool, `curate` workflow and learnings trigger in
   selfdev, `jobshop learn update` (#273, `docs/notes/273-curator.md`).
 - `jobshop linear context|list|search|catalog|eligible` read commands and
@@ -405,6 +407,8 @@ Learning loop (#247 B): capture (#264), the nudge (#271), memory,
 recall, reverted PRs as learnings (#272) and the curator are built;
 curator live check `docs/verify/curator.md` (#273).
 Recall live check after the next self-deploy: `docs/verify/recall.md` (#265).
+Linear App identity live check, with an OAuth app in a throwaway
+workspace: `docs/verify/linear-pack.md` (#278).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -827,6 +831,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Learnings are rows of a `learnings` store table (2026-11-04, #264),
   not non-claimable tickets: no pool, ready list or stall check can see
   them, and they add no history rows or change events.
+- A Linear OAuth token goes in `Authorization: Bearer`, a `lin_api_` key
+  as is (2026-11-04, #278): the prefix tells them apart, so callers keep
+  passing one token string and need not know the identity kind.
 - Reverts are detected from the activity feed's merge items (2026-11-04,
   #272), not subscriptions: the feed already polls every worked repo with
   ETags and sees merges by anyone.

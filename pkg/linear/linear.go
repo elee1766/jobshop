@@ -85,6 +85,26 @@ type Comment struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// Viewer is the user (or app actor) a token acts as.
+type Viewer struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Viewer reads the token's own user, so a bad token fails here.
+func (c *Client) Viewer(ctx context.Context) (Viewer, error) {
+	var r struct {
+		Viewer Viewer `json:"viewer"`
+	}
+	if err := c.do(ctx, `query { viewer { id name } }`, nil, &r); err != nil {
+		return Viewer{}, err
+	}
+	if r.Viewer.ID == "" {
+		return Viewer{}, fmt.Errorf("linear: viewer: empty response")
+	}
+	return r.Viewer, nil
+}
+
 func (c *Client) do(ctx context.Context, query string, vars map[string]any, out any) error {
 	b, err := json.Marshal(map[string]any{"query": query, "variables": vars})
 	if err != nil {
@@ -94,8 +114,13 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 	if err != nil {
 		return err
 	}
-	// Personal API keys go in Authorization without "Bearer".
-	req.Header.Set("Authorization", c.Token)
+	// Personal API keys (lin_api_...) go in Authorization as they are;
+	// OAuth tokens, such as a linear-app identity's (#278), need Bearer.
+	auth := c.Token
+	if !strings.HasPrefix(auth, "lin_api_") && !strings.HasPrefix(auth, "Bearer ") {
+		auth = "Bearer " + auth
+	}
+	req.Header.Set("Authorization", auth)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := c.HTTP.Do(req)
 	if err != nil {

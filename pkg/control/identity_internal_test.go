@@ -120,3 +120,76 @@ func TestIdentityToken(t *testing.T) {
 	assert.Equal(t, []string{"linear"}, infos[1].Pools)
 	assert.Equal(t, int32(2), calls.Load(), "one mint per installation")
 }
+
+// TestLinearAppCheck: identity check mints a linear-app token, reads
+// viewer with Bearer auth, fails on a bad secret, and never logs the
+// token (#278).
+func TestLinearAppCheck(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, s string) string {
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(p, []byte(s+"\n"), 0o600))
+		return p
+	}
+	oauth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.PostForm.Get("client_secret") != "good" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid_client"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"access_token":"oauth-tok-1","expires_in":86400}`))
+	}))
+	t.Cleanup(oauth.Close)
+	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer oauth-tok-1" {
+			_, _ = w.Write([]byte(`{"errors":[{"message":"Authentication required"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":{"viewer":{"id":"u1","name":"elee-agent"}}}`))
+	}))
+	t.Cleanup(gql.Close)
+	yaml := fmt.Sprintf(`
+projects: {js: {}}
+identities:
+  lapp:
+    kind: linear-app
+    client_id_file: %s
+    client_secret_file: %s
+    token_url: %s
+    workspace: acme
+    teams: [ENG]
+`, write("cid", "cid"), write("secret", "good"), oauth.URL)
+	cfg, err := config.Parse([]byte(yaml))
+	require.NoError(t, err)
+	lc, err := newLiveConfig(cfg)
+	require.NoError(t, err)
+	var logs strings.Builder
+	c := &Controller{
+		live: new(atomic.Pointer[liveConfig]), log: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		minter: identity.NewMinter(), linearURL: gql.URL,
+	}
+	c.live.Store(lc)
+	admin := scope{admin: true, actor: "admin"}
+
+	r, err := c.identityCheck(t.Context(), admin, rpc.IdentityParams{Target: "ENG"})
+	require.NoError(t, err)
+	res := r.(rpc.IdentityCheckResult)
+	assert.Equal(t, "elee-agent", res.Viewer)
+	assert.Equal(t, config.IdentityLinearApp, res.Kind)
+	_, err = c.identityToken(t.Context(), admin, rpc.IdentityParams{Target: "ENG"})
+	require.NoError(t, err)
+	assert.NotContains(t, logs.String(), "oauth-tok-1", "the token is never logged")
+
+	bad := *cfg
+	bad.Identities = map[string]config.Identity{"lapp": cfg.Identities["lapp"]}
+	id := bad.Identities["lapp"]
+	id.ClientSecretFile = write("bad", "nope")
+	bad.Identities["lapp"] = id
+	lc, err = newLiveConfig(&bad)
+	require.NoError(t, err)
+	c.live.Store(lc)
+	c.minter.Forget()
+	_, err = c.identityCheck(t.Context(), admin, rpc.IdentityParams{Target: "ENG"})
+	require.ErrorContains(t, err, "invalid_client")
+}

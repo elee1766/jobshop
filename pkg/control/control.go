@@ -107,6 +107,9 @@ type Controller struct {
 	gitMu sync.Mutex
 	// minter caches identity tokens (#200).
 	minter *identity.Minter
+	// linearURL is the Linear GraphQL endpoint for identity check; "" is
+	// linear.DefaultAPIURL (tests set a fake).
+	linearURL string
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
 	// tickMu is held for a supervisor pass and taken by reload, so once a
