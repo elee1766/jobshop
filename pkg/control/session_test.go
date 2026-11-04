@@ -79,10 +79,10 @@ func TestControllerRestart(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, dialWait, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 
 	var sessions []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
@@ -113,7 +113,7 @@ func TestControllerRestart(t *testing.T) {
 		}{&got}))
 		return got
 	}
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 	require.NoError(t, err)
 	assert.Equal(t, string(pid), string(pid2), "same host adopted")
@@ -136,7 +136,7 @@ func TestEnvRefresh(t *testing.T) {
 		}{&got}))
 		return got
 	}
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	var sessions []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	require.Len(t, sessions, 1)
@@ -155,20 +155,20 @@ func TestEnvRefresh(t *testing.T) {
 	stop = start()
 	defer stop()
 	admin = dial(t, root.AdminSocket())
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 		return err == nil && string(pid2) != string(pid) && host.Alive(sdir)
-	}, dialWait, 50*time.Millisecond, "host respawned")
-	require.Eventually(t, func() bool {
+	}, "host respawned")
+	passEventually(t, root.Dir, func() bool {
 		s, err := hostspec.Read(sdir)
 		return err == nil && s.EnvHash != "old"
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
 
 	// The refreshed host resumed the conversation: a new ticket gets a turn.
 	var next store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "after refresh", Pool: "dev"}, &next))
-	require.Eventually(t, func() bool { return show(next.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(next.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status, "same session, not crashed")
 }
 
@@ -191,10 +191,10 @@ func TestDrain(t *testing.T) {
 	}
 	var first, second store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, dialWait, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 
 	var dr rpc.DrainResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodDrain, rpc.DrainParams{Pool: "dev"}, &dr))
@@ -274,20 +274,20 @@ func TestStuck(t *testing.T) {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: title, Pool: "dev"}, nil))
 	}
 	var sessions []store.Ticket
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		sessions = nil
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession, Status: store.StatusClosed}, &sessions))
 		return len(sessions) > 0
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	assert.Equal(t, "stuck", sessions[0].Resolution)
 	// #301: the reminder says no wake will come, and the stuck reason
 	// records how the last turn ended.
 	b, _ := os.ReadFile(filepath.Join(root.Dir, "prompts"))
 	assert.Contains(t, string(b), "Nothing will wake you")
 	var got rpc.ShowResult
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		return admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: sessions[0].ID}, &got) == nil && len(got.Comments) > 0
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	reason := got.Comments[len(got.Comments)-1].Body
 	assert.Contains(t, reason, "stop_reason end_turn")
 	assert.Contains(t, reason, "Waiting on the CI wake.")
@@ -330,41 +330,41 @@ func TestMessages(t *testing.T) {
 	// Start a session with a first ticket, then queue a message to the pool.
 	var first store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
-	require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(first.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	queued := send("pool:dev", "hello queued", false)
-	require.Eventually(t, func() bool { return show(queued.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(queued.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, "delivered", show(queued.ID).Resolution)
 	var msg store.MessageFields
 	require.NoError(t, json.Unmarshal(show(queued.ID).Fields, &msg))
 	assert.Equal(t, "admin", msg.From)
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		p := prompts()
 		return len(p) > 0 && strings.HasPrefix(p[len(p)-1], "Messages for you:") && strings.Contains(p[len(p)-1], "hello queued")
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 
 	// A blocked turn is cancelled by an interrupt message.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	var second store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, dialWait, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	var sessions []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	require.Len(t, sessions, 1)
 	urgent := send(sessions[0].ID, "stop that", true)
-	require.Eventually(t, func() bool { return show(urgent.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(urgent.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, store.StatusInProgress, show(second.ID).Status, "cancelled turn keeps its ticket")
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		return slices.ContainsFunc(prompts(), func(p string) bool {
 			return strings.HasPrefix(p, "Messages for you:") && strings.Contains(p, "stop that")
 		})
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 
 	// The reminder turn finishes the ticket once unblocked.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(second.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 }
 
 // TestSessionList joins a running session's ticket with its live host
@@ -393,17 +393,17 @@ func TestSessionList(t *testing.T) {
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, dialWait, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 
 	var list []rpc.SessionInfo
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		list = nil
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &list))
 		return len(list) == 2 && list[0].AgentPid != 0
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 
 	s := list[0]
 	require.NotNil(t, s.Ticket)
@@ -642,7 +642,7 @@ func TestWorktreeDeleted(t *testing.T) {
 	}
 	var first store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
-	require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(first.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 
 	var sessions []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
@@ -662,15 +662,15 @@ func TestWorktreeDeleted(t *testing.T) {
 
 	require.NoError(t, os.RemoveAll(work))
 
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 		_, werr := os.Stat(work)
 		return err == nil && string(pid) != string(oldPid) && werr == nil
-	}, dialWait, 50*time.Millisecond, "host respawned with a new worktree")
+	}, "host respawned with a new worktree")
 
 	var second store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
-	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(second.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	sessions = nil
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	assert.Len(t, sessions, 1, "same session, not a new one")
@@ -696,7 +696,7 @@ func TestPoolSession(t *testing.T) {
 		}{&got}))
 		return got
 	}
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	got := show(task.ID)
 	assert.Equal(t, "done", got.Resolution)
 
@@ -706,7 +706,7 @@ func TestPoolSession(t *testing.T) {
 	sess := sessions[0]
 	assert.Equal(t, "dev", sess.Pool)
 
-	require.Eventually(t, func() bool { return show(sess.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(sess.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, "idle", show(sess.ID).Resolution)
 	assert.False(t, host.Alive(root.SessionDir(sess.ID)), "host stopped with the session")
 	_, ok := host.ReadExit(root.SessionDir(sess.ID))
@@ -956,7 +956,7 @@ func TestAgentBusy(t *testing.T) {
 		}{&got}))
 		return got
 	}
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, dialWait, 20*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, "done", show(task.ID).Resolution)
 
 	var sessions []store.Ticket
@@ -1010,7 +1010,7 @@ func TestRateLimitBackoff(t *testing.T) {
 	}
 
 	hostPid := 0
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		var list []rpc.SessionInfo
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &list))
 		for _, s := range list {
@@ -1028,7 +1028,7 @@ func TestRateLimitBackoff(t *testing.T) {
 			assert.Equal(t, hostPid, s.HostPid, "no restart")
 		}
 		return show(task.ID).Status == store.StatusClosed
-	}, dialWait, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	assert.Equal(t, int32(3), backoffs.Load(), "one backoff per 429")
 	assert.Equal(t, "done", show(task.ID).Resolution)
 
@@ -1181,7 +1181,7 @@ func TestSessionRestartIdle(t *testing.T) {
 	}
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	var sessions []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	require.Len(t, sessions, 1)
@@ -1212,11 +1212,11 @@ func TestSessionRestartIdle(t *testing.T) {
 	b = []byte(strings.Replace(string(b), "    args: [fake-agent]\n", "    args: [fake-agent]\n    env: {RESTART_MARK: \"1\"}\n", 1))
 	require.NoError(t, os.WriteFile(cfgPath, b, 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		s, err := hostspec.Read(sdir)
 		p := hostPidOf(t, sdir)
 		return err == nil && slices.Contains(s.Env, "RESTART_MARK=1") && p != 0 && p != pid && host.Alive(sdir)
-	}, dialWait, 50*time.Millisecond, "reload refreshed the host")
+	}, "reload refreshed the host")
 	refreshed, err := hostspec.Read(sdir)
 	require.NoError(t, err)
 	assert.NotEqual(t, oldSpec.EnvHash, refreshed.EnvHash, "fresh spec")
@@ -1225,10 +1225,10 @@ func TestSessionRestartIdle(t *testing.T) {
 	var res rpc.SessionRestartResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, &res))
 	assert.Equal(t, pid, res.HostPid)
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
 		return p != 0 && p != pid && host.Alive(sdir)
-	}, dialWait, 50*time.Millisecond, "host respawned")
+	}, "host respawned")
 	s, err := hostspec.Read(sdir)
 	require.NoError(t, err)
 	assert.Contains(t, s.Env, "RESTART_MARK=1", "spec reflects the reloaded config")
@@ -1247,7 +1247,7 @@ func TestSessionRestartIdle(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRelease, rpc.ReleaseParams{ID: held.ID, Reason: "test"}, nil))
 	var next store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "after", Pool: "dev"}, &next))
-	require.Eventually(t, func() bool { return show(next.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(next.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 
 	// Unknown, closed and non-session ids are errors.
 	assert.ErrorIs(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: "js-nope"}, nil), store.ErrNotFound)
@@ -1277,10 +1277,10 @@ func TestSessionRestartBusy(t *testing.T) {
 	}
 	started := filepath.Join(root.Dir, "started")
 	waitStarted := func() {
-		require.Eventually(t, func() bool {
+		passEventually(t, root.Dir, func() bool {
 			_, err := os.Stat(started)
 			return err == nil
-		}, dialWait, 20*time.Millisecond)
+		}, "condition not met after supervisor passes")
 	}
 	var first store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
@@ -1298,11 +1298,11 @@ func TestSessionRestartBusy(t *testing.T) {
 	assert.Equal(t, pid, hostPidOf(t, sdir), "busy host not restarted")
 	assert.Equal(t, store.StatusInProgress, show(first.ID).Status)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool { return show(first.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
 		return p != 0 && p != pid && host.Alive(sdir)
-	}, dialWait, 50*time.Millisecond, "restarted after the turn")
+	}, "restarted after the turn")
 	pid = hostPidOf(t, sdir)
 
 	// --now cancels a running turn; the ticket stays claimed.
@@ -1313,16 +1313,16 @@ func TestSessionRestartBusy(t *testing.T) {
 	waitStarted()
 	require.NoError(t, os.Remove(started))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id, Now: true}, nil))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
 		return p != 0 && p != pid && host.Alive(sdir)
-	}, dialWait, 50*time.Millisecond, "restarted at once")
+	}, "restarted at once")
 	got := show(second.ID)
 	assert.Equal(t, store.StatusInProgress, got.Status, "claim kept")
 	assert.Equal(t, id, got.Holder)
 	waitStarted() // the new host is prompted with the held ticket
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(second.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, store.StatusOpen, show(id).Status)
 	var infos []rpc.SessionInfo
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
@@ -1361,7 +1361,7 @@ func TestLoadFallback(t *testing.T) {
 			}
 			var first store.Ticket
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "first-ticket-title", Pool: "dev"}, &first))
-			require.Eventually(t, func() bool { return show(first.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+			passEventually(t, root.Dir, func() bool { return show(first.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 			var sessions []store.Ticket
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 			require.Len(t, sessions, 1)
@@ -1371,14 +1371,14 @@ func TestLoadFallback(t *testing.T) {
 
 			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, marker), nil, 0o600))
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
-			require.Eventually(t, func() bool {
+			passEventually(t, root.Dir, func() bool {
 				p := hostPidOf(t, sdir)
 				return p != 0 && p != pid && host.Alive(sdir)
-			}, dialWait, 50*time.Millisecond)
+			}, "condition not met after supervisor passes")
 
 			var second store.Ticket
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "second-ticket-title", Pool: "dev"}, &second))
-			require.Eventually(t, func() bool { return show(second.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+			passEventually(t, root.Dir, func() bool { return show(second.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 
 			b, err := os.ReadFile(filepath.Join(root.Dir, "prompts"))
 			require.NoError(t, err)
@@ -1498,7 +1498,7 @@ func TestRoutedBackPrompt(t *testing.T) {
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketUpdate, rpc.UpdateParams{ID: tk.ID, Pool: &dev}, nil))
 
 	var p string
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		b, _ := os.ReadFile(filepath.Join(root.Dir, "prompts"))
 		for line := range strings.Lines(string(b)) {
 			var s string
@@ -1508,7 +1508,7 @@ func TestRoutedBackPrompt(t *testing.T) {
 			}
 		}
 		return false
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	assert.Contains(t, p, "# Recent comments")
 	assert.Contains(t, p, "admin:\n"+finding)
 	assert.Contains(t, p, "hand the ticket back to refinery")
@@ -1532,10 +1532,10 @@ func TestScaleDownCordon(t *testing.T) {
 	}
 	var first, second store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, dialWait, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 
 	zero := 0
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Target: &zero}, nil))

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -83,9 +82,9 @@ func TestSpawnQuarantineAgentMissing(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, nil))
 	var st rpc.PoolStatusResult
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolList, nil, &st))
 		return st.Quarantined["dev"] != ""
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	assert.Contains(t, st.Quarantined["dev"], "no-such-agent-146")
 }

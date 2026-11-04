@@ -31,15 +31,15 @@ func writePoolConfig(t *testing.T, root config.Root, maxSessions int, prompt str
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 }
 
-func waitClosed(t *testing.T, admin *rpc.Client, id string) {
+func waitClosed(t *testing.T, root config.Root, admin *rpc.Client, id string) {
 	t.Helper()
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		var got store.Ticket
 		err := admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
 			Ticket *store.Ticket `json:"ticket"`
 		}{&got})
 		return err == nil && got.Status == store.StatusClosed
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 }
 
 func openSessions(t *testing.T, admin *rpc.Client) []store.Ticket {
@@ -61,7 +61,7 @@ func TestReloadPrompt(t *testing.T) {
 
 	var a, b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
-	waitClosed(t, admin, a.ID)
+	waitClosed(t, root, admin, a.ID)
 	sess := openSessions(t, admin)
 	require.Len(t, sess, 1)
 
@@ -71,7 +71,7 @@ func TestReloadPrompt(t *testing.T) {
 	assert.Equal(t, 1, res.Pools)
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
-	waitClosed(t, admin, b.ID)
+	waitClosed(t, root, admin, b.ID)
 	prompts, err := os.ReadFile(filepath.Join(root.Dir, "prompts"))
 	require.NoError(t, err)
 	lines := strings.Split(strings.TrimSpace(string(prompts)), "\n")
@@ -99,17 +99,17 @@ func TestReloadMaxSessions(t *testing.T) {
 	for i := range 2 {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &tickets[i]))
 	}
-	require.Eventually(t, func() bool { return len(openSessions(t, admin)) == 2 }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return len(openSessions(t, admin)) == 2 }, "condition not met after supervisor passes")
 	// Both must be mid-turn: an idle session over the lowered cap is
 	// scaled down, which is correct but not what this test checks.
 	for i := range 2 {
-		require.Eventually(t, func() bool {
+		passEventually(t, root.Dir, func() bool {
 			var got store.Ticket
 			err := admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: tickets[i].ID}, &struct {
 				Ticket *store.Ticket `json:"ticket"`
 			}{&got})
 			return err == nil && got.Status == store.StatusInProgress
-		}, dialWait, 50*time.Millisecond, "both sessions working")
+		}, "both sessions working")
 	}
 
 	writePoolConfig(t, root, 1, "")
@@ -121,7 +121,7 @@ func TestReloadMaxSessions(t *testing.T) {
 	// The running sessions finish their turns and drain the queue.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	for _, tk := range tickets {
-		waitClosed(t, admin, tk.ID)
+		waitClosed(t, root, admin, tk.ID)
 	}
 }
 
@@ -144,7 +144,7 @@ func TestReloadInvalid(t *testing.T) {
 
 	var a store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
-	waitClosed(t, admin, a.ID)
+	waitClosed(t, root, admin, a.ID)
 	prompts, err := os.ReadFile(filepath.Join(root.Dir, "prompts"))
 	require.NoError(t, err)
 	assert.Contains(t, string(prompts), "OLD-PROMPT", "old config still active")
@@ -156,7 +156,7 @@ func TestReloadInvalid(t *testing.T) {
 	reload <- struct{}{}
 	var b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
-	waitClosed(t, admin, b.ID)
+	waitClosed(t, root, admin, b.ID)
 	prompts, err = os.ReadFile(filepath.Join(root.Dir, "prompts"))
 	require.NoError(t, err)
 	assert.Contains(t, string(prompts), "NEW-PROMPT")
@@ -228,7 +228,7 @@ func TestEnvRefreshLive(t *testing.T) {
 
 	var a store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
-	waitClosed(t, admin, a.ID)
+	waitClosed(t, root, admin, a.ID)
 	sess := openSessions(t, admin)
 	require.Len(t, sess, 1)
 	sdir := root.SessionDir(sess[0].ID)
@@ -243,13 +243,13 @@ func TestEnvRefreshLive(t *testing.T) {
 	// Idle session: the env changes, the host is respawned before the next turn.
 	writeEnv("two")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 		return err == nil && string(pid) != string(pid1) && host.Alive(sdir) && hasEnv("DEPLOY=two")
-	}, dialWait, 50*time.Millisecond, "idle host respawned with the new env")
+	}, "idle host respawned with the new env")
 	var b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
-	waitClosed(t, admin, b.ID) // a prompt to an unloaded conversation would fail
+	waitClosed(t, root, admin, b.ID) // a prompt to an unloaded conversation would fail
 	now := openSessions(t, admin)
 	require.Len(t, now, 1)
 	assert.Equal(t, sess[0].ID, now[0].ID, "same session, not crashed")
@@ -260,10 +260,10 @@ func TestEnvRefreshLive(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	var c store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "c", Pool: "dev"}, &c))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	writeEnv("three")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
 	pass(t, root.Dir, 3)
@@ -276,8 +276,8 @@ func TestEnvRefreshLive(t *testing.T) {
 	}{&held}))
 	assert.Equal(t, sess[0].ID, held.Holder, "claim kept")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	waitClosed(t, admin, c.ID)
-	require.Eventually(t, func() bool { return hasEnv("DEPLOY=three") && host.Alive(sdir) }, dialWait, 50*time.Millisecond)
+	waitClosed(t, root, admin, c.ID)
+	passEventually(t, root.Dir, func() bool { return hasEnv("DEPLOY=three") && host.Alive(sdir) }, "condition not met after supervisor passes")
 	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID)
 }
 
@@ -322,8 +322,8 @@ func TestEnvRefreshStopsDaemon(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	var a store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
-	waitClosed(t, admin, a.ID)
-	require.Eventually(t, func() bool { return daemons()["one"] != 0 }, dialWait, 50*time.Millisecond)
+	waitClosed(t, root, admin, a.ID)
+	passEventually(t, root.Dir, func() bool { return daemons()["one"] != 0 }, "condition not met after supervisor passes")
 	old := daemons()["one"]
 	sess := openSessions(t, admin)
 	require.Len(t, sess, 1)
@@ -334,11 +334,11 @@ func TestEnvRefreshStopsDaemon(t *testing.T) {
 	stop = start()
 	defer stop()
 	admin = dial(t, root.AdminSocket())
-	require.Eventually(t, func() bool { return daemons()["two"] != 0 }, dialWait, 50*time.Millisecond, "agent respawned with the new env")
-	require.Eventually(t, func() bool { return !alive(old) }, dialWait, 50*time.Millisecond, "old daemon stopped")
+	passEventually(t, root.Dir, func() bool { return daemons()["two"] != 0 }, "agent respawned with the new env")
+	passEventually(t, root.Dir, func() bool { return !alive(old) }, "old daemon stopped")
 	var b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
-	waitClosed(t, admin, b.ID)
+	waitClosed(t, root, admin, b.ID)
 	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID, "same session")
 	assert.True(t, alive(daemons()["two"]), "new daemon left running")
 }

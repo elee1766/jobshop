@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +48,7 @@ func TestSandboxedSession(t *testing.T) {
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	var endedWhy string
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		var got []store.Ticket
 		err := admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindTask}, &got)
 		if err == nil && len(got) == 1 && got[0].ID == task.ID {
@@ -65,7 +64,7 @@ func TestSandboxedSession(t *testing.T) {
 			return true
 		}
 		return false
-	}, dialWait, 50*time.Millisecond, "ticket closed over cli.sock from inside the sandbox")
+	}, "ticket closed over cli.sock from inside the sandbox")
 	require.Empty(t, endedWhy)
 
 	b, err := os.ReadFile(filepath.Join(work, "probe"))
