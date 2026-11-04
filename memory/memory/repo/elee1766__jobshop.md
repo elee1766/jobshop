@@ -21,11 +21,6 @@ output: when changing nix/module.nix or removing strings, grep it and run
 `jobshop run resume <run>` reopens only the first unfinished step. If a
 later step (review-merge) failed, pass `--step <that step>` or the run
 escalates again.
-GitHub 5xx on push or merge often still lands. Check `git ls-remote
-origin <branch>` or `gh api repos/elee1766/jobshop/pulls/<n> --jq .merged`
-before retrying. If githubstatus.com shows Git Operations degraded, comment
-the branch and sha and `jobshop release --until 20m` instead. A PR with no checks usually conflicts with master: run
+A PR with no checks usually conflicts with master: run
 `git merge-tree --write-tree origin/master HEAD` and rebase before
 pushing an empty commit.
-Find post-merge CI by sha (`gh run list --branch master --commit <sha>`);
-if none ran, a green run on a descendant commit counts.
