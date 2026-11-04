@@ -8,3 +8,8 @@ with the Write tool, check it is non-empty, then pass the file.
 After `gh pr checkout`, check `git rev-parse HEAD` equals the PR's
 headRefOid; if the branch is checked out elsewhere it silently stays put.
 Use `git checkout --detach <headRefOid>` instead.
+`jobshop close <id>` on a ticket you do not hold fails: `jobshop claim
+<id>` first, or leave it to the operator.
+If the jobshop CLI socket goes away mid-turn (controller restart), write
+the PR head and CI state on the GitHub issue so the next attempt can
+verify and close instead of redoing the work.
