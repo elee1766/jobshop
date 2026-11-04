@@ -71,6 +71,7 @@ type ghComment struct {
 	ID     string
 	Author string
 	Bot    bool
+	Self   bool   // the host's own identity; always dropped (#402)
 	Kind   string // comment, review, review comment
 	State  string // review state
 	Body   string
@@ -244,7 +245,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 				last = cm.At
 			}
 			if self != "" && strings.EqualFold(cm.Author, self) {
-				cm.Bot = true
+				cm.Self = true
 			}
 			c.inboxComment(ctx, th, cm)
 			if !c.ignored(cm) {
@@ -362,14 +363,19 @@ func (c *Controller) saveThreads(ctx context.Context, f *follower) {
 	f.threads = sm.Threads
 }
 
-// githubSelf is the login of the github-token identity covering repo, "" for
-// none or an App (whose comments are [bot]). A user's token comments
-// as that user, so without this its own posts would come back as human
-// news (#340). A failed lookup is logged and filters nothing.
+// githubSelf is the login of the GitHub identity covering repo: a
+// github-token's user, or a github-app's "<slug>[bot]" (#402). Without
+// it the host's own posts would come back as news (#340), and listing
+// the app in subscriptions.bots would wake sessions on their own
+// comments. "" for none; a failed lookup is logged and filters nothing.
 func (c *Controller) githubSelf(ctx context.Context, repo string) string {
 	cfg := c.config()
 	name, ok := cfg.IdentityFor(cfg.IdentityNames(), repo)
-	if !ok || cfg.Identities[name].Kind != config.IdentityGitHubToken {
+	if !ok || !config.IsGitHub(cfg.Identities[name].Kind) {
+		return ""
+	}
+	// An App's comments are [bot] and dropped anyway unless bots is set.
+	if cfg.Identities[name].Kind == config.IdentityGitHubApp && (cfg.Subscriptions == nil || len(cfg.Subscriptions.Bots) == 0) {
 		return ""
 	}
 	l, err := c.minter.Login(ctx, name, cfg.Identities[name])
@@ -380,18 +386,24 @@ func (c *Controller) githubSelf(ctx context.Context, repo string) string {
 	return l
 }
 
-// ignored drops bots, CI, configured logins and, when authors is set,
-// everyone not on it.
+// ignored drops the host's own comments, bots not on subscriptions.bots,
+// CI, configured logins and, when authors is set, every human not on it.
 func (c *Controller) ignored(cm ghComment) bool {
-	if cm.Bot || strings.HasSuffix(cm.Author, "[bot]") || cm.Author == "" {
+	if cm.Self || cm.Author == "" {
 		return true
 	}
 	s := c.config().Subscriptions
+	is := func(l string) bool { return strings.EqualFold(l, cm.Author) }
+	if s != nil && slices.ContainsFunc(s.Ignore, is) {
+		return true
+	}
+	if cm.Bot || strings.HasSuffix(cm.Author, "[bot]") {
+		return s == nil || !slices.Contains(s.Bots, cm.Author)
+	}
 	if s == nil {
 		return false
 	}
-	is := func(l string) bool { return strings.EqualFold(l, cm.Author) }
-	return slices.ContainsFunc(s.Ignore, is) || len(s.Authors) > 0 && !slices.ContainsFunc(s.Authors, is)
+	return len(s.Authors) > 0 && !slices.ContainsFunc(s.Authors, is)
 }
 
 // owner picks the follower that gets a thread's news: the one being
@@ -617,15 +629,28 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 		return nil, err
 	}
 	var out []ghComment
+	// A linear-app's own comments can arrive as its app actor, not isMe:
+	// match the viewer's name so a listed bot never wakes on itself (#402).
+	appSelf := ""
+	if cfg.Identities[name].Kind == config.IdentityLinearApp && cfg.Subscriptions != nil && len(cfg.Subscriptions.Bots) > 0 {
+		v, err := linear.New(s.url, tok.Token).Viewer(ctx)
+		if err != nil {
+			return nil, err
+		}
+		appSelf = v.Name
+	}
 	for _, cm := range is.Comments {
 		if !cm.CreatedAt.After(since) {
 			continue
+		}
+		if cm.Bot && appSelf != "" && cm.Author == appSelf {
+			cm.Self = true
 		}
 		url := cm.URL
 		if url == "" {
 			url = is.URL
 		}
-		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot || cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt, Parent: cm.ParentID})
+		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot, Self: cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt, Parent: cm.ParentID})
 	}
 	return out, nil
 }

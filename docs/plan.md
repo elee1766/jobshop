@@ -1183,6 +1183,7 @@ moved from the old 7.x list, oldest first:
 - [Prompt rules](notes/205-prompt-rules.md) (#205)
 - [TestSessionRestartIdle flake](notes/327-restart-idle-flake.md) (#327)
 - [Prompt text from files](notes/382-text-files.md) (#382)
+- [Subscription bot allowlist](notes/402-subscription-bots.md) (#402)
 
 ## 8. Chat gateway
 

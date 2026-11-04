@@ -246,6 +246,11 @@ type Subscriptions struct {
 	ResumeWindow string `yaml:"resume_window"`
 	// Ignore lists logins whose comments are dropped, beyond bots.
 	Ignore []string `yaml:"ignore"`
+	// Bots lists bot logins (exact, with the [bot] suffix on GitHub, the
+	// app actor name on Linear) whose comments and reviews are delivered
+	// like a human's (#402). The host's own identities are dropped even
+	// when listed. Authors does not apply to them.
+	Bots []string `yaml:"bots"`
 	// Authors, when set, are the only logins whose comments are
 	// delivered (#340); the public repo's other commenters are dropped.
 	Authors []string `yaml:"authors"`

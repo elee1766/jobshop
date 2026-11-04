@@ -211,3 +211,20 @@ func TestLinearApp(t *testing.T) {
 	assert.NotContains(t, err.Error(), "s3cret-wrong")
 	assert.NotContains(t, err.Error(), "lin_oauth")
 }
+
+// TestGitHubAppLogin: an App's login is its slug plus [bot], from GET
+// /app with the App JWT (#402).
+func TestGitHubAppLogin(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/app" || strings.Count(r.Header.Get("Authorization"), ".") != 2 {
+			http.Error(w, "bad", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"slug":"my-app"}`))
+	}))
+	t.Cleanup(srv.Close)
+	id := config.Identity{Kind: config.IdentityGitHubApp, AppID: 7, PrivateKeyFile: WriteKey(t), APIURL: srv.URL}
+	l, err := identity.NewMinter().Login(t.Context(), "app", id)
+	require.NoError(t, err)
+	assert.Equal(t, "my-app[bot]", l)
+}
