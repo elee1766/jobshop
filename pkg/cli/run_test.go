@@ -124,8 +124,8 @@ func TestBatchShowListParse(t *testing.T) {
 func TestPrintRunGraph(t *testing.T) {
 	rf, _ := json.Marshal(store.RunFields{Workflow: "g", State: store.RunRunning})
 	s0, _ := json.Marshal(store.StepFields{Step: "review", Index: 1, Needs: []string{"build"}, Outcome: "approve"})
-	s1, _ := json.Marshal(store.StepFields{Step: "rollout", Index: 2, Needs: []string{"review", "device"},
-		When: &store.StepWhen{Step: "review", Outcome: "approve"}})
+	when := &store.StepWhen{Step: "review", Outcome: "approve"}
+	s1, _ := json.Marshal(store.StepFields{Step: "rollout", Index: 2, Needs: []string{"review", "device"}, When: when})
 	var buf bytes.Buffer
 	require.NoError(t, printRun(&buf, rpc.RunResult{
 		Run:   store.Ticket{ID: "js-r", Fields: rf},
