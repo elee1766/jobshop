@@ -122,6 +122,31 @@ It answers 202 when spooled, 204 for an event jobshop ignores, 401 for a
 bad signature, and 500 when the spool write fails so the sender retries.
 See `docs/notes/334-ingest-spool.md`.
 
+### Running as your own user
+
+Identities can be a person's own credentials instead of Apps (#341):
+
+```yaml
+identities:
+  me-github:
+    kind: github-token        # fine-grained or classic PAT
+    token_file: /run/secrets/github-pat
+    repos: ["me/*"]
+  me-linear:
+    kind: linear              # personal API key
+    token_file: /run/secrets/linear-key
+    workspace: acme
+    teams: [ENG]
+projects:
+  js: {identities: [me-github, me-linear]}
+```
+
+Sessions get the token through `jobshop identity token` and the git
+credential helper, as with an App. `jobshop identity check me/repo`
+reads `GET /user` to prove the PAT works. Comments by the PAT's login
+are jobshop's own and are not delivered back to sessions. App-only
+features (redelivering failed App webhooks) do not apply.
+
 ### NixOS
 
 The flake exports `nixosModules.default`. It gives `services.jobshop` with

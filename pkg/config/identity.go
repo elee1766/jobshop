@@ -12,6 +12,9 @@ import (
 // Identity kinds.
 const (
 	IdentityGitHubApp = "github-app"
+	// IdentityGitHubToken is a personal access token read from a file
+	// (#341), so jobshop can act as a person's own GitHub user.
+	IdentityGitHubToken = "github-token"
 	IdentityLinear    = "linear"
 	// IdentityLinearApp is a Linear OAuth app that mints its own tokens
 	// with client_credentials (#278).
@@ -23,6 +26,9 @@ var DefaultLinearAppScopes = []string{"read", "write", "issues:create", "comment
 
 // IsLinear reports whether kind is a Linear identity (key or app).
 func IsLinear(kind string) bool { return kind == IdentityLinear || kind == IdentityLinearApp }
+
+// IsGitHub reports whether kind is a GitHub identity (App or token).
+func IsGitHub(kind string) bool { return kind == IdentityGitHubApp || kind == IdentityGitHubToken }
 
 // Identity is a credential jobshop acts as, and what it may act on (#200).
 // Secrets come only from files; the yaml holds paths.
@@ -38,7 +44,8 @@ type Identity struct {
 	Repos          []string         `yaml:"repos"`
 	APIURL         string           `yaml:"api_url"`
 	// Linear: TokenFile holds the API key, Workspace names the workspace,
-	// Teams are the team keys covered ("*" for all).
+	// Teams are the team keys covered ("*" for all). github-token: TokenFile
+	// holds the PAT, with Repos and APIURL as for the App.
 	TokenFile string   `yaml:"token_file"`
 	Workspace string   `yaml:"workspace"`
 	Teams     []string `yaml:"teams"`
@@ -62,14 +69,15 @@ func (i Identity) LinearScopes() []string {
 	return i.Scopes
 }
 
-// CoversRepo reports whether a GitHub App identity covers owner/repo and
-// has an installation for its owner.
+// CoversRepo reports whether a GitHub identity covers owner/repo: a
+// repos glob matches and, for an App, it has an installation for the
+// owner.
 func (i Identity) CoversRepo(repo string) bool {
-	if i.Kind != IdentityGitHubApp || !RepoPattern.MatchString(repo) {
+	if !IsGitHub(i.Kind) || !RepoPattern.MatchString(repo) {
 		return false
 	}
 	owner, _, _ := strings.Cut(repo, "/")
-	if _, ok := i.Installations[owner]; !ok {
+	if _, ok := i.Installations[owner]; !ok && i.Kind == IdentityGitHubApp {
 		return false
 	}
 	for _, g := range i.Repos {
@@ -100,13 +108,24 @@ func checkIdentity(i Identity) error {
 		if len(i.Installations) == 0 || len(i.Repos) == 0 {
 			return errors.New("installations and repos are required")
 		}
-		for _, g := range i.Repos {
-			if _, err := path.Match(g, ""); err != nil {
-				return fmt.Errorf("repos: bad glob %q", g)
-			}
+		if err := checkRepoGlobs(i.Repos); err != nil {
+			return err
 		}
 		if i.TokenFile != "" || i.Workspace != "" || len(i.Teams) > 0 || i.linearAppSet() {
 			return errors.New("token_file, workspace, teams and client_* are for Linear kinds")
+		}
+	case IdentityGitHubToken:
+		if i.TokenFile == "" || len(i.Repos) == 0 {
+			return errors.New("token_file and repos are required")
+		}
+		if err := checkRepoGlobs(i.Repos); err != nil {
+			return err
+		}
+		if i.AppID != 0 || i.PrivateKeyFile != "" || len(i.Installations) > 0 {
+			return errors.New("app_id, private_key_file and installations are for kind github-app")
+		}
+		if i.Workspace != "" || len(i.Teams) > 0 || i.linearAppSet() {
+			return errors.New("workspace, teams and client_* are for Linear kinds")
 		}
 	case IdentityLinear:
 		if i.TokenFile == "" || i.Workspace == "" || len(i.Teams) == 0 {
@@ -134,7 +153,16 @@ func checkIdentity(i Identity) error {
 			}
 		}
 	default:
-		return fmt.Errorf("kind %q must be %q, %q or %q", i.Kind, IdentityGitHubApp, IdentityLinear, IdentityLinearApp)
+		return fmt.Errorf("kind %q must be %q, %q, %q or %q", i.Kind, IdentityGitHubApp, IdentityGitHubToken, IdentityLinear, IdentityLinearApp)
+	}
+	return nil
+}
+
+func checkRepoGlobs(repos []string) error {
+	for _, g := range repos {
+		if _, err := path.Match(g, ""); err != nil {
+			return fmt.Errorf("repos: bad glob %q", g)
+		}
 	}
 	return nil
 }

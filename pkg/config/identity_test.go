@@ -33,10 +33,20 @@ identities:
 		"inline token":       "identities: {x: {kind: linear, token: abc}}",
 		"mixed fields":       "identities: {x: {kind: linear, token_file: /t, workspace: w, teams: [A], app_id: 3}}",
 		"unknown in project": "projects: {js: {identities: [nope]}}",
+		"pat no repos":       "identities: {x: {kind: github-token, token_file: /t}}",
+		"pat with app_id":    "identities: {x: {kind: github-token, token_file: /t, repos: [a/b], app_id: 1}}",
+		"pat with teams":     "identities: {x: {kind: github-token, token_file: /t, repos: [a/b], teams: [A]}}",
 	} {
 		_, err := config.Parse([]byte(bad))
 		assert.Error(t, err, name)
 	}
+
+	// A PAT needs no installation for the owner (#341).
+	c, err = config.Parse([]byte(`identities: {pat: {kind: github-token, token_file: /t, repos: ["zed/*"]}}`))
+	require.NoError(t, err)
+	n, found = c.IdentityFor(c.IdentityNames(), "zed/x")
+	assert.True(t, found)
+	assert.Equal(t, "pat", n)
 }
 
 func TestLinearAppConfig(t *testing.T) {

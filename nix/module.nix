@@ -541,6 +541,11 @@ in
             workspace = "acme";
             teams = [ "ENG" ];
           };
+          me-github = {
+            kind = "github-token";
+            token_file = "/run/secrets/github-pat";
+            repos = [ "me/*" ];
+          };
         }
       '';
       description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file, webhook_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets.";

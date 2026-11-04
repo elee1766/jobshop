@@ -104,6 +104,14 @@ func (c *Controller) identityCheck(ctx context.Context, sc scope, p rpc.Identity
 		}
 		res.Viewer = v.Name
 	}
+	if id.Kind == config.IdentityGitHubToken {
+		// A PAT does not expire visibly; GET /user proves it works (#341).
+		l, err := c.minter.GitHubLogin(ctx, name, id)
+		if err != nil {
+			return nil, err
+		}
+		res.Viewer = l
+	}
 	return res, nil
 }
 

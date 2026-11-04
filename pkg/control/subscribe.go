@@ -232,6 +232,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 		}
 		var human []ghComment
 		last := seen
+		self := c.selfLogins(ctx, th)
 		for _, cm := range cs {
 			if !cm.At.After(seen) {
 				continue
@@ -239,7 +240,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 			if cm.At.After(last) {
 				last = cm.At
 			}
-			if !c.ignored(cm) {
+			if !c.ignored(cm) && !slices.ContainsFunc(self, func(l string) bool { return strings.EqualFold(l, cm.Author) }) {
 				human = append(human, cm)
 			}
 		}
@@ -352,6 +353,30 @@ func (c *Controller) saveThreads(ctx context.Context, f *follower) {
 	}
 	f.t = t
 	f.threads = sm.Threads
+}
+
+// selfLogins are the users of github-token identities covering th's repo
+// (#341). jobshop posts as them, so their comments are its own and are
+// not delivered back. A lookup failure is logged and skipped.
+func (c *Controller) selfLogins(ctx context.Context, th thread) []string {
+	if th.Linear != "" || c.minter == nil {
+		return nil
+	}
+	cfg := c.config()
+	var out []string
+	for _, n := range cfg.IdentityNames() {
+		id := cfg.Identities[n]
+		if id.Kind != config.IdentityGitHubToken || !id.CoversRepo(th.Repo) {
+			continue
+		}
+		l, err := c.minter.GitHubLogin(ctx, n, id)
+		if err != nil {
+			c.log.Warn("subscriptions: self login", "identity", n, "err", err)
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
 }
 
 // ignored drops bots, CI and configured logins.

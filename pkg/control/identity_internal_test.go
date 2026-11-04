@@ -53,6 +53,11 @@ identities:
     token_file: %[1]s/linear
     workspace: acme
     teams: [ENG]
+  pat:
+    kind: github-token
+    token_file: %[1]s/pat
+    api_url: %[2]s
+    repos: [zed/*]
 `
 
 // TestIdentityToken: sessions get tokens only through their project and
@@ -64,8 +69,17 @@ func TestIdentityToken(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "key.pem"), pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "linear"), []byte("lin_api_1\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pat"), []byte("ghp_1\n"), 0o600))
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/user" {
+			if r.Header.Get("Authorization") != "Bearer ghp_1" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"login":"zed"}`))
+			return
+		}
 		calls.Add(1)
 		inst := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/app/installations/"), "/access_tokens")
 		w.WriteHeader(http.StatusCreated)
@@ -105,6 +119,16 @@ func TestIdentityToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "lin_api_1", r.(rpc.IdentityTokenResult).Token)
 
+	// A PAT is passed through as is; check reads its login (#341).
+	r, err = c.identityToken(ctx, scope{admin: true}, rpc.IdentityParams{Target: "zed/repo"})
+	require.NoError(t, err)
+	assert.Equal(t, rpc.IdentityTokenResult{Identity: "pat", Kind: config.IdentityGitHubToken, Token: "ghp_1"}, r)
+	r, err = c.identityCheck(ctx, scope{admin: true}, rpc.IdentityParams{Target: "zed/repo"})
+	require.NoError(t, err)
+	assert.Equal(t, "zed", r.(rpc.IdentityCheckResult).Viewer)
+	assert.Equal(t, []string{"zed"}, c.selfLogins(ctx, thread{Repo: "zed/repo", Number: 1}))
+	assert.Empty(t, c.selfLogins(ctx, thread{Repo: "elee1766/jobshop", Number: 1}))
+
 	admin := scope{admin: true}
 	r, err = c.identityCheck(ctx, admin, rpc.IdentityParams{Target: "acme/site"})
 	require.NoError(t, err)
@@ -115,7 +139,7 @@ func TestIdentityToken(t *testing.T) {
 	l, err := c.identityList(ctx, admin, struct{}{})
 	require.NoError(t, err)
 	infos := l.([]rpc.IdentityInfo)
-	require.Len(t, infos, 3)
+	require.Len(t, infos, 4)
 	assert.Equal(t, []string{"js"}, infos[0].Projects)
 	assert.Equal(t, []string{"linear"}, infos[1].Pools)
 	assert.Equal(t, int32(2), calls.Load(), "one mint per installation")

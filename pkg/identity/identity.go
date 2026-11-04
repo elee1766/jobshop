@@ -1,6 +1,7 @@
 // Package identity mints and caches credentials for configured identities
 // (#200): GitHub App installation tokens, Linear App client_credentials
-// tokens (#278), and Linear API keys read from files. Secrets never come
+// tokens (#278), Linear API keys and GitHub personal access tokens (#341)
+// read from files. Secrets never come
 // from yaml.
 package identity
 
@@ -47,8 +48,9 @@ type Minter struct {
 	HTTP *http.Client
 	Now  func() time.Time
 
-	mu    sync.Mutex
-	cache map[string]Token // identity/owner -> token
+	mu     sync.Mutex
+	cache  map[string]Token  // identity/owner -> token
+	logins map[string]string // github-token identity -> login
 }
 
 // NewMinter returns a Minter with a 30s HTTP timeout.
@@ -77,7 +79,7 @@ func (m *Minter) Token(ctx context.Context, name string, id config.Identity, tar
 		t.Identity, t.Kind = name, id.Kind
 		m.cache[key] = t
 		return t, nil
-	case config.IdentityLinear:
+	case config.IdentityLinear, config.IdentityGitHubToken:
 		b, err := os.ReadFile(id.TokenFile)
 		if err != nil {
 			return Token{}, fmt.Errorf("identity %s: %w", name, err)
@@ -111,7 +113,55 @@ func (m *Minter) Token(ctx context.Context, name string, id config.Identity, tar
 func (m *Minter) Forget() {
 	m.mu.Lock()
 	m.cache = map[string]Token{}
+	m.logins = nil
 	m.mu.Unlock()
+}
+
+// GitHubLogin returns the user a github-token identity acts as (GET
+// /user), cached until Forget. Comments by that login are jobshop's own.
+func (m *Minter) GitHubLogin(ctx context.Context, name string, id config.Identity) (string, error) {
+	m.mu.Lock()
+	if l, ok := m.logins[name]; ok {
+		m.mu.Unlock()
+		return l, nil
+	}
+	m.mu.Unlock()
+	t, err := m.Token(ctx, name, id, "")
+	if err != nil {
+		return "", err
+	}
+	base := id.APIURL
+	if base == "" {
+		base = DefaultAPIURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/user", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+t.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := m.HTTP.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("identity %s: %w", name, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("identity %s: GET /user: %s", name, resp.Status)
+	}
+	var u struct {
+		Login string `json:"login"`
+	}
+	if err := json.Unmarshal(body, &u); err != nil || u.Login == "" {
+		return "", fmt.Errorf("identity %s: GET /user: no login", name)
+	}
+	m.mu.Lock()
+	if m.logins == nil {
+		m.logins = map[string]string{}
+	}
+	m.logins[name] = u.Login
+	m.mu.Unlock()
+	return u.Login, nil
 }
 
 func (m *Minter) mint(ctx context.Context, id config.Identity, inst int64, now time.Time) (Token, error) {

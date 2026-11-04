@@ -348,6 +348,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/320-jcode-memory-off.md`).
 - Unknown pool admin methods warn and are dropped instead of failing
   the load (#325, #328, `docs/notes/325-unknown-admin-method.md`).
+- Identity kind `github-token` (personal access token) next to the App
+  (#341, `docs/notes/341-github-token.md`).
 
 ## 5. What's next
 
