@@ -18,7 +18,7 @@ import (
 // pollComment is a subscription poller row's payload: the thread and the
 // comment, as admission hooks see and may rewrite them.
 type pollComment struct {
-	Thread  thread      `json:"thread"`
+	Thread  thread          `json:"thread"`
 	Comment pollCommentBody `json:"comment"`
 }
 
@@ -37,7 +37,7 @@ type pollCommentBody struct {
 }
 
 func (b pollCommentBody) comment() ghComment {
-	return ghComment{ID: b.ID, Author: b.Author, Bot: b.Bot, Self: b.Self, Kind: b.Kind, State: b.State, Body: b.Body, URL: b.URL, At: b.At, Parent: b.Parent}
+	return ghComment(b)
 }
 
 // inboxComment records a subscription poller comment. A webhook copy
@@ -48,10 +48,7 @@ func (c *Controller) inboxComment(ctx context.Context, th thread, cm ghComment) 
 	it := store.InboxItem{ReceivedAt: c.now(), Actor: cm.Author}
 	seenless := th
 	seenless.Seen = time.Time{}
-	p := pollComment{Thread: seenless, Comment: pollCommentBody{
-		ID: cm.ID, Author: cm.Author, Bot: cm.Bot, Self: cm.Self, Kind: cm.Kind, State: cm.State,
-		Body: cm.Body, URL: cm.URL, At: cm.At, Parent: cm.Parent,
-	}}
+	p := pollComment{Thread: seenless, Comment: pollCommentBody(cm)}
 	if th.Linear != "" {
 		team, num, _ := strings.Cut(th.Linear, "-")
 		it.Source, it.RepoOrTeam, it.Kind, it.CommentID = ingest.SourceLinear, team, "Comment", cm.ID
