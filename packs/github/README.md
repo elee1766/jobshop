@@ -189,7 +189,8 @@ packs:
       human: wile
       check_cmd: make test
 agents:
-  jcode: {command: jcode, args: [acp]}
+  # jcode's own memory is off: learnings come from jobshop (#320).
+  jcode: {command: jcode, args: [acp], env: {JCODE_MEMORY_ENABLED: "0"}}
 ```
 
 Pools use the host's `default_project`. Prompts are read when the

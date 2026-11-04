@@ -336,6 +336,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Bubblewrap sandbox per session from `sandbox:` config, mounts computed
   by the controller, `session sandbox`, NixOS `sandbox.enable` (#262,
   `docs/notes/262-sandbox.md`).
+- jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
+  worthwhile entries imported as learnings (#320,
+  `docs/notes/320-jcode-memory-off.md`).
 
 ## 5. What's next
 
