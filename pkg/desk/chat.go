@@ -15,8 +15,8 @@ import (
 
 // Chat (#203): Desk sends to sessions with session.send, the same call
 // the gateway makes, and reads replies from /api/session/<id>/stream
-// (session.subscribe). Escalation panels send by the key the gateway
-// recorded in meta.gateway, so Matrix and Desk feed one session.
+// (session.subscribe). Escalation panels send by meta.escalation.key, the
+// controller's escalation chat (#379), in the pool it recorded.
 
 // maxChatText bounds one message; the agent prompt has its own limits.
 const maxChatText = 32 << 10
@@ -68,10 +68,11 @@ func (s *Server) chatSend(r *http.Request) (any, error) {
 		// Attach to an arbitrary session: the controller enforces attach: rw.
 		p.ID, p.Attach = b.Session, true
 	case b.Key != "" && b.Session == "":
-		if s.cfg.ChatPool == "" {
-			return nil, fmt.Errorf("%w: no chat pool configured (--chat-pool)", errBadRequest)
+		pool, err := s.keyPool(r, b.Key)
+		if err != nil {
+			return nil, err
 		}
-		p.Pool, p.Key = s.cfg.ChatPool, b.Key
+		p.Pool, p.Key = pool, b.Key
 	default:
 		return nil, fmt.Errorf("%w: give session or key", errBadRequest)
 	}
@@ -80,6 +81,36 @@ func (s *Server) chatSend(r *http.Request) (any, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+// escalationKeyPrefix keys the controller's escalation chats (#379).
+const escalationKeyPrefix = "escalation:"
+
+// keyPool is the pool a keyed send goes to: an escalation:<ticket> key
+// goes to the chat pool recorded on the ticket, others to Desk's chat
+// pool.
+func (s *Server) keyPool(r *http.Request, key string) (string, error) {
+	if id, ok := strings.CutPrefix(key, escalationKeyPrefix); ok {
+		var res rpc.ShowResult
+		if err := s.ctl.Call(r.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &res); err != nil {
+			return "", err
+		}
+		var m struct {
+			Escalation struct {
+				Key  string `json:"key"`
+				Pool string `json:"pool"`
+			} `json:"escalation"`
+		}
+		_ = json.Unmarshal(res.Ticket.Meta, &m)
+		if m.Escalation.Key != key || m.Escalation.Pool == "" {
+			return "", fmt.Errorf("%w: %s has no escalation chat", errBadRequest, id)
+		}
+		return m.Escalation.Pool, nil
+	}
+	if s.cfg.ChatPool == "" {
+		return "", fmt.Errorf("%w: no chat pool configured (--chat-pool)", errBadRequest)
+	}
+	return s.cfg.ChatPool, nil
 }
 
 // chatNew starts a fresh operator session keyed desk:<id> with a first
@@ -135,10 +166,15 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 	}
 	out := []ChatSession{}
 	for _, si := range list {
-		if si.Ticket == nil || si.Ticket.Pool != s.cfg.ChatPool {
+		if si.Ticket == nil {
 			continue
 		}
 		f, _ := store.DecodeFields[store.SessionFields](*si.Ticket)
+		// Escalation chats live in the pack's chat pool, which may not be
+		// Desk's (#379).
+		if si.Ticket.Pool != s.cfg.ChatPool && !strings.HasPrefix(f.Key, escalationKeyPrefix) {
+			continue
+		}
 		out = append(out, ChatSession{ID: si.ID, Key: f.Key, Title: si.Ticket.Title, Alive: si.Alive})
 	}
 	return map[string]any{"pool": s.cfg.ChatPool, "sessions": out}, nil

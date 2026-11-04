@@ -401,6 +401,7 @@ func (c *Controller) tick() {
 	c.runAutoSteps()
 	c.reportOrphans()
 	c.sweepRuns()
+	c.sweepEscalationChats(c.ctx)
 	c.sweepBatches()
 	c.sweepLinearAsks(c.ctx)
 	c.pruneInbox()

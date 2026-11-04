@@ -41,7 +41,13 @@ func setSyntax(m map[string]any, syn string) {
 	for _, w := range wfs {
 		if wm, ok := w.(map[string]any); ok {
 			wm["template"] = syn
+			if e, ok := wm["escalate"].(map[string]any); ok {
+				e["template"] = syn
+			}
 		}
+	}
+	if e, ok := m["escalation"].(map[string]any); ok {
+		e["template"] = syn
 	}
 	trs, _ := m["triggers"].(map[string]any)
 	for _, t := range trs {

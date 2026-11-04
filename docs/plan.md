@@ -389,6 +389,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Resource slots: `resources:` (counted or keyed) and step
   `needs_resources`, enforced in the ready and claim queries (#400,
   `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
+- Escalation chat: the controller opens one chat per escalation ticket
+  from pack config; Desk shows it; the gateway mirrors (#379,
+  `docs/notes/379-escalation-chat.md`, `docs/verify/escalation-chat.md`).
 - Command and http workflow steps run by the controller, no session
   (#396, `docs/notes/396-command-http-steps.md`).
 - `close -r rebase` reopens a step without counting a failure; the
@@ -1150,6 +1153,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   is held by an in-progress ticket naming its key, so every claim end
   frees it in the same write and there is no slot row to leak. Only
   capacities are stored, synced from config.
+- Desk is the operator UI; Matrix and Discord are paused, alternatives
+  not companions; the escalation chat is gateway-independent
+  (2026-11-04, #379). The controller opens it from pack policy
+  (`escalate:` / `escalation:`), and gateways only mirror it.
 - Command and http steps (2026-11-04, #396) are step tickets with no
   pool, claimed by the controller as holder `controller`, so retries,
   escalation and run completion stay the agent-step code paths. The
@@ -1245,7 +1252,8 @@ messages and prompts stay in the controller.
 - Escalation threads (2026-11-02): an escalation also opens a Matrix
   thread, created by the gateway from a controller
   event, with a keyed operator session already holding the escalation
-  context. The operator's reply there unblocks the run.
+  context. The operator's reply there unblocks the run. Superseded by
+  #379: the controller owns the chat, Matrix and Discord are paused.
 - Testing: gasserver runs a loopback tuwunel homeserver as the jobshop
   user (`jobshop.localhost`, no federation, token registration), so
   agents register their own bot and test users and verify Matrix end to

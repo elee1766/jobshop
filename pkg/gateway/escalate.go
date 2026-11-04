@@ -6,19 +6,20 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Escalation threads (#125). The controller files an escalation ticket
-// (label needs-human, meta.run.escalation) and does not post anywhere.
-// A gateway with an escalation room polls for those tickets, opens one
-// thread per ticket, records it in the ticket's meta.gateway, and sends
-// the first prompt to its chat pool keyed by that thread. Replies in the
-// thread then reach the same session through Handle.
+// Escalation threads (#125, #379). The controller files an escalation
+// ticket (label needs-human, meta.run.escalation) and, when the pack sets
+// an escalation chat, opens the chat session itself and records it in
+// meta.escalation. A gateway with an escalation room mirrors it: it opens
+// one thread per ticket, records the thread in meta.gateway, binds the
+// thread to meta.escalation.key so replies reach the same session, and
+// posts the session's turns. It never sends a first prompt. Matrix and
+// Discord are paused (2026-11-04): Desk is the operator UI.
 
 // EscalationLabel marks escalation tickets.
 const EscalationLabel = "needs-human"
@@ -58,32 +59,6 @@ func metaRun(t store.Ticket) (runMeta, bool) {
 		return r, false
 	}
 	return r, true
-}
-
-// githubMeta is meta.github, the work reference with its repo (#183).
-type githubMeta struct {
-	Repo  string `json:"repo"`
-	Issue any    `json:"issue"`
-	PR    any    `json:"pr"`
-}
-
-// githubRef tells the session which issue or PR to read, with its repo.
-func githubRef(t store.Ticket) string {
-	var g githubMeta
-	if raw, ok := ticketMeta(t)["github"]; ok {
-		_ = json.Unmarshal(raw, &g)
-	}
-	repo := ""
-	if g.Repo != "" {
-		repo = " --repo " + g.Repo
-	}
-	switch {
-	case g.Issue != nil:
-		return fmt.Sprintf("its GitHub issue (`gh issue view %v%s --comments`)", g.Issue, repo)
-	case g.PR != nil:
-		return fmt.Sprintf("its GitHub PR (`gh pr view %v%s --comments`)", g.PR, repo)
-	}
-	return "any GitHub issue it names (the run's vars)"
 }
 
 // poolMeta is meta.pool on a pool quarantine escalation (#146).
@@ -137,6 +112,22 @@ func metaEscalation(t store.Ticket) (Escalation, bool) {
 		return e, false
 	}
 	return e, true
+}
+
+// chatMeta is meta.escalation, the controller's escalation chat (#379).
+type chatMeta struct {
+	Key     string `json:"key"`
+	Pool    string `json:"pool"`
+	Session string `json:"session"`
+}
+
+func metaChat(t store.Ticket) (chatMeta, bool) {
+	var c chatMeta
+	raw, ok := ticketMeta(t)["escalation"]
+	if !ok || json.Unmarshal(raw, &c) != nil || c.Key == "" || c.Session == "" {
+		return c, false
+	}
+	return c, true
 }
 
 // errSkip ends an updateEscalation without writing.
@@ -216,7 +207,7 @@ func (g *Gateway) escalationEvent(ctx context.Context, ev rpc.Event) {
 		delete(g.escalating, ev.ID)
 		g.forgetQuestion(ev.ID)
 		g.mu.Unlock()
-	case ev.Op == "create" || ev.Op == "reopen" || (ev.Op == "label_add" && ev.Label == EscalationLabel):
+	case ev.Op == "create" || ev.Op == "reopen" || ev.Op == "update" || (ev.Op == "label_add" && ev.Label == EscalationLabel):
 		if ev.Status == store.StatusClosed {
 			return
 		}
@@ -280,18 +271,35 @@ func (g *Gateway) Escalations(ctx context.Context) {
 	}
 }
 
-// escalation makes sure the open ticket t has a thread and a session.
+// escalation makes sure the open ticket t has a thread bound to its chat.
 func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 	e, ok := metaEscalation(t)
 	if ok && e.Gateway != g.cfg.Name {
 		return nil // another gateway owns it
+	}
+	_, isQuestion := metaQuestion(t)
+	chat, hasChat := metaChat(t)
+	if !isQuestion && !hasChat {
+		return nil // no chat yet (or none configured): nothing to mirror
+	}
+	if ok && e.Session != "" {
+		g.mu.Lock()
+		_, seen := g.escalating[t.ID]
+		g.mu.Unlock()
+		if seen {
+			return nil
+		}
 	}
 	if !ok {
 		th, err := g.ad.Open(ctx, g.settings().EscalationRoom, openingText(t))
 		if err != nil {
 			return fmt.Errorf("open thread: %w", err)
 		}
-		e = Escalation{Gateway: g.cfg.Name, Room: th.Room, Root: th.Root, Key: g.Key(th)}
+		key := g.Key(th)
+		if hasChat {
+			key = chat.Key
+		}
+		e = Escalation{Gateway: g.cfg.Name, Room: th.Room, Root: th.Root, Key: key}
 		_, err = g.updateEscalation(ctx, t.ID, func(_ store.Ticket, cur *Escalation, ok bool) error {
 			if ok {
 				return errors.New("another thread was recorded first")
@@ -309,10 +317,13 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 	g.mu.Lock()
 	g.escalating[t.ID] = th
 	if e.Key != g.Key(th) {
-		g.keys[th] = e.Key // a replacement thread (#197)
+		g.keys[th] = e.Key // the chat's key, or a replacement thread (#197)
+	}
+	if hasChat && chat.Pool != "" {
+		g.pools[th] = chat.Pool
 	}
 	g.mu.Unlock()
-	if _, ok := metaQuestion(t); ok {
+	if isQuestion {
 		// A question needs no chat session: a reply in the thread is the
 		// answer, delivered to the asking session by Handle.
 		g.mu.Lock()
@@ -320,22 +331,18 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 		g.mu.Unlock()
 		return nil
 	}
-	if e.Session != "" {
+	// Mirror the controller's chat: post its turns in the thread. The
+	// first prompt predates the watch, so the summary turn and later
+	// ones are posted.
+	g.watch(ctx, chat.Session, t.CreatedAt, th)
+	if e.Session == chat.Session {
 		return nil
 	}
-	sent := time.Now()
-	res, err := g.ctl.Send(ctx, rpc.SessionSendParams{Pool: g.cfg.Pool, Key: e.Key, Text: escalationPrompt(t, g.cfg.Name)})
-	if err != nil {
-		g.post(ctx, th, "jobshop: could not start the session: "+err.Error())
-		return fmt.Errorf("send: %w", err)
-	}
-	g.watch(ctx, res.Session, sent, th)
-	_, err = g.updateEscalation(ctx, t.ID, func(_ store.Ticket, cur *Escalation, _ bool) error {
-		cur.Session = res.Session
+	_, err := g.updateEscalation(ctx, t.ID, func(_ store.Ticket, cur *Escalation, _ bool) error {
+		cur.Session = chat.Session
 		return nil
 	})
 	if err != nil {
-		// The next pass resends the prompt to the same keyed session.
 		return fmt.Errorf("record session: %w", err)
 	}
 	return nil
@@ -380,6 +387,9 @@ func (g *Gateway) rethread(ctx context.Context, old Thread, text string) {
 	g.mu.Lock()
 	g.escalating[id] = th
 	g.keys[th] = key
+	if p, ok := g.pools[old]; ok {
+		g.pools[th] = p
+	}
 	for _, w := range g.watched {
 		w.mu.Lock()
 		if w.thread == old {
@@ -432,41 +442,6 @@ func openingText(t store.Ticket) string {
 	}
 	r, _ := metaRun(t)
 	return fmt.Sprintf("Escalation %s: run %s (workflow %s) needs a human. Reply in this thread.", t.ID, r.ID, r.Workflow)
-}
-
-// escalationPrompt is the session's first message. Message prompts do
-// not carry the pool prompt, so it says what the session is for.
-func escalationPrompt(t store.Ticket, gateway string) string {
-	if p, ok := metaPool(t); ok {
-		return poolPrompt(t, p, gateway)
-	}
-	r, _ := metaRun(t)
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are handling escalation ticket %s for run %s (workflow %s), opened by gateway %s. ", t.ID, r.ID, r.Workflow, gateway)
-	b.WriteString("This conversation is a chat thread with the operator; each of your turns is posted there, so keep replies short.\n\n")
-	fmt.Fprintf(&b, "Now: read the run (`jobshop run show %s`), its steps' comments and %s. ", r.ID, githubRef(t))
-	b.WriteString("Reply with a short summary: what failed, why it is stuck, and the options (resume, resume at a step, reroute, file a follow-up, cancel). Then wait for the operator.\n\n")
-	b.WriteString("When the operator answers, act on it: comment on the issue, ")
-	fmt.Fprintf(&b, "`jobshop run resume %s [--step <name>]` or start another run, file follow-ups. ", r.ID)
-	fmt.Fprintf(&b, "Then `jobshop claim %s` and `jobshop close %s` (closing takes it off the needs-human list), and say in the thread what you did. ", t.ID, t.ID)
-	b.WriteString("Ask before cancelling a run. If a command needs the admin socket, give the operator the command instead.\n\n")
-	b.WriteString("Escalation ticket body:\n\n")
-	b.WriteString(t.Body)
-	return b.String()
-}
-
-// poolPrompt is the first message for a pool quarantine escalation.
-func poolPrompt(t store.Ticket, p poolMeta, gateway string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are handling escalation ticket %s, opened by gateway %s: pool %s starts no sessions because a spawn failed with an error that will repeat. ", t.ID, gateway, p.Name)
-	b.WriteString("This conversation is a chat thread with the operator; each of your turns is posted there, so keep replies short.\n\n")
-	b.WriteString("Now: reply with the error and the config it points at (pool repo or dir, agent command), and what the operator should change. ")
-	fmt.Fprintf(&b, "Once the config is fixed, `jobshop reload` (or `jobshop pool unquarantine %s`) lets the pool start sessions again. ", p.Name)
-	fmt.Fprintf(&b, "Then `jobshop claim %s` and `jobshop close %s`, and say in the thread what you did. ", t.ID, t.ID)
-	b.WriteString("If a command needs the admin socket, give the operator the command instead.\n\n")
-	b.WriteString("Escalation ticket body:\n\n")
-	b.WriteString(t.Body)
-	return b.String()
 }
 
 // forgetQuestion drops the thread of question id. g.mu must be held.

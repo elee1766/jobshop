@@ -63,6 +63,10 @@ defaults:
   docs_rule: >-
     put a design note or runbook check in a new file of its own, named by
     the issue number. Never append a numbered section to a shared doc.
+  # Chat pool (type: chat, e.g. the operator pack's operator) where the
+  # controller opens one escalation chat per escalation ticket (#379).
+  # Empty: escalation tickets only, no chat.
+  escalation_chat_pool: ""
 pools:
   dev:
     agent: "{{.agent}}"
@@ -192,6 +196,10 @@ prompt_rules:
   - name: recall
     at: system
     file: prompts/rules/recall.md
+  # Escalation policy (#379): a human is reached only when one is needed.
+  - name: escalate-policy
+    at: system
+    file: prompts/rules/escalate-policy.md
   # Nudge (#271): every pool, after the pool prompt, so it sits with the
   # step's close instructions. Chat sessions get it on their first turn
   # too: operator improvement sessions close runs and hit corrections.
@@ -208,6 +216,10 @@ workflows:
     tracker: "{{.tracker}}"
     linear_workspace: "{{.linear_workspace}}"
     escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: implement
         pool: dev
@@ -230,6 +242,10 @@ workflows:
   stall-check:
     vars: [signal, subject, detail]
     escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: diagnose
         pool: plan
@@ -241,6 +257,10 @@ workflows:
   ci-repair:
     vars: [sha]
     escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: fix
         pool: dev
@@ -260,6 +280,10 @@ workflows:
     issue: issue
     repo: "{{.repo}}"
     escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: fail
         pool: dev
