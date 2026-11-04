@@ -361,6 +361,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   App failed-delivery reconcile (#335, `docs/notes/335-ingest-drain.md`).
 - NixOS module `ingest.enable`: `jobshop-ingest.service` for `ingest
   serve`; ingress is host config (#344, `docs/notes/344-ingest-unit.md`).
+- Tests: `Options.Pass` supervisor pass hook, `time.Sleep` banned in
+  tests (#359, `docs/notes/359-test-clock.md`).
 
 ## 5. What's next
 
@@ -503,6 +505,9 @@ admitted rows (item 5).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
+
+**Test speed (#359).** Fake clock (#362), in-process agent (#361),
+sqlite template DB (#363).
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1071,6 +1076,8 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   Endpoints are a list, each with its own secret and, for GitHub, a
   repo allowlist, so one leaked secret or a misconfigured hook reaches
   only its own endpoint.
+- Tests do not depend on wall time (2026-11-04, #359): no sleeps
+  (lint-enforced), run a supervisor pass or wait on an event instead.
 
 ## 7. Reference: behavior as built
 

@@ -78,7 +78,7 @@ func TestSessionConfig(t *testing.T) {
 	}, 20*time.Second, 20*time.Millisecond)
 	setPoolConfig(t, root, "    model: m2\n    effort: high\n")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
-	time.Sleep(300 * time.Millisecond)
+	pass(t, root.Dir, 3)
 	assert.NotContains(t, configSets(t, root), "m2", "not applied mid-turn")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	require.Eventually(t, func() bool { return show(busy.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)

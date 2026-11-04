@@ -42,7 +42,7 @@ func TestSpawnQuarantine(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	require.Eventually(t, func() bool { return status().Quarantined["dev"] != "" }, 20*time.Second, 50*time.Millisecond)
 	assert.Contains(t, status().Quarantined["dev"], "no-such-repo")
-	time.Sleep(500 * time.Millisecond) // several ticks
+	pass(t, root.Dir, 3)
 	sessions := list(rpc.ListParams{Kind: store.KindSession})
 	require.Len(t, sessions, 1, "one spawn, no retries")
 	assert.Equal(t, "crashed", sessions[0].Resolution)

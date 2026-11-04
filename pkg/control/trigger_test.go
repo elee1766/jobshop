@@ -75,7 +75,7 @@ func triggerController(t *testing.T, root config.Root, clk *clock) func() {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- control.Run(ctx, root, control.Options{Tick: 20 * time.Millisecond, Now: clk.Now})
+		done <- control.Run(ctx, root, withPass(root.Dir, control.Options{Tick: 20 * time.Millisecond, Now: clk.Now}))
 	}()
 	return func() { cancel(); require.NoError(t, <-done) }
 }
@@ -102,7 +102,7 @@ func TestTriggers(t *testing.T) {
 		}
 		return out
 	}
-	settle := func() { time.Sleep(150 * time.Millisecond) } // several ticks
+	settle := func() { pass(t, root.Dir, 3) }
 
 	// dev is empty: replan fires once, then waits on its open ticket.
 	require.Eventually(t, func() bool { return len(byTrigger("replan")) == 1 }, 5*time.Second, 20*time.Millisecond)
@@ -201,7 +201,7 @@ func TestTriggerCheck(t *testing.T) {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{}, &all))
 		return all
 	}
-	settle := func() { time.Sleep(150 * time.Millisecond) }
+	settle := func() { pass(t, root.Dir, 3) }
 	setSHA := func(s string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "sha"), []byte(s+"\n"), 0o600))
 	}
@@ -340,7 +340,7 @@ func TestTriggerRun(t *testing.T) {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &out))
 		return out
 	}
-	settle := func() { time.Sleep(150 * time.Millisecond) }
+	settle := func() { pass(t, root.Dir, 3) }
 	setSHA := func(s string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "sha"), []byte(s+"\nextra\n"), 0o600))
 	}
@@ -412,7 +412,7 @@ func TestTriggerLearnings(t *testing.T) {
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodLearnAdd, rpc.LearnParams{Kind: store.LearningFailure, Summary: fmt.Sprint("l", i)}, nil))
 		}
 	}
-	settle := func() { time.Sleep(150 * time.Millisecond) }
+	settle := func() { pass(t, root.Dir, 3) }
 
 	learn(2)
 	settle()

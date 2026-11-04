@@ -63,14 +63,18 @@ pools:
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- control.Run(ctx, root, control.Options{Tick: 50 * time.Millisecond}) }()
+	go func() { done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: 50 * time.Millisecond})) }()
 	t.Cleanup(func() {
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {
 			require.NoError(t, err)
 		}
 	})
-	return dial(t, root.AdminSocket())
+	admin := dial(t, root.AdminSocket())
+	if ch, ok := passChans.Load(dir); ok {
+		passChans.Store(admin, ch)
+	}
+	return admin
 }
 
 func startRun(t *testing.T, admin *rpc.Client, p rpc.RunStartParams) rpc.RunResult {

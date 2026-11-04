@@ -72,7 +72,7 @@ func TestOrphanedTickets(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return warned(none.ID, "no_pool") == 1 && warned(gone.ID, "unknown_pool") == 1
 	}, 5*time.Second, 20*time.Millisecond)
-	time.Sleep(300 * time.Millisecond) // several ticks
+	pass(t, root.Dir, 3)
 	assert.Equal(t, 1, warned(none.ID, "no_pool"), "warn once, not every tick")
 	assert.Equal(t, 1, warned(gone.ID, "unknown_pool"))
 

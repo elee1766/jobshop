@@ -48,11 +48,25 @@ func TestSandboxedSession(t *testing.T) {
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	var endedWhy string
 	require.Eventually(t, func() bool {
 		var got []store.Ticket
 		err := admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindTask}, &got)
-		return err == nil && len(got) == 1 && got[0].ID == task.ID
+		if err == nil && len(got) == 1 && got[0].ID == task.ID {
+			return true
+		}
+		// A session that failed to spawn or ended fails the test now,
+		// with its reason, instead of waiting out the timeout (#359).
+		var ended []store.Ticket
+		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindSession}, &ended) == nil && len(ended) > 0 {
+			var res rpc.SessionSandboxResult
+			_ = admin.Call(t.Context(), rpc.MethodSessionSandbox, rpc.SessionSandboxParams{ID: ended[0].ID}, &res)
+			endedWhy = fmt.Sprintf("session %s ended %q before the ticket closed: %s", ended[0].ID, ended[0].Resolution, res.Error)
+			return true
+		}
+		return false
 	}, 30*time.Second, 50*time.Millisecond, "ticket closed over cli.sock from inside the sandbox")
+	require.Empty(t, endedWhy)
 
 	b, err := os.ReadFile(filepath.Join(work, "probe"))
 	require.NoError(t, err)

@@ -7,6 +7,9 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
 - Packages live in `pkg/`; `cmd/jobshop` only calls `cli.Main`.
 - Every write goes through the controller; the CLI never opens the database.
 - Check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
+- Tests must not depend on wall time: no `time.Sleep` (lint bans it),
+  run a supervisor pass (`pass` / `Options.Pass`) or wait on an event.
+  New controller-logic tests use the in-process agent once #361 lands.
 - Lint: golangci-lint v2.15.0 with `.golangci.yml`, the same version CI runs
   (on PATH for agents on gasserver; elsewhere `nix develop` or
   `nix run .#golangci-lint -- run ./...`). Fix every finding in the code you

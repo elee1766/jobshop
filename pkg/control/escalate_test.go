@@ -148,11 +148,11 @@ func TestStepEscalation(t *testing.T) {
 		"last 3 comments of the step")
 
 	// Ticks repair but never duplicate.
-	time.Sleep(300 * time.Millisecond)
+	pass(t, admin, 3)
 	assert.Len(t, escalations(t, admin, r.Run.ID), 1)
 	// Closing the escalation does not file another for the same episode.
 	closeStep(t, admin, e.ID, "done")
-	time.Sleep(200 * time.Millisecond)
+	pass(t, admin, 2)
 	assert.Len(t, escalations(t, admin, r.Run.ID), 1)
 
 	// A resumed run that exhausts again is a new episode: one more ticket.
