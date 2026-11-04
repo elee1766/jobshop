@@ -339,6 +339,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest inbox table and store API: put deduped by delivery id, lease
   claim, fenced state changes, `ingest.retention` prune; no writers yet
   (#321, `docs/notes/321-ingest-inbox.md`).
+- jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
+  worthwhile entries imported as learnings (#320,
+  `docs/notes/320-jcode-memory-off.md`).
 
 ## 5. What's next
 
