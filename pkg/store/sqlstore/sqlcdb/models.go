@@ -158,6 +158,12 @@ type TicketMetum struct {
 	Value    string
 }
 
+type TicketResource struct {
+	TicketID string
+	Rkey     string
+	Rname    string
+}
+
 type WriteKey struct {
 	Key       string
 	Op        string

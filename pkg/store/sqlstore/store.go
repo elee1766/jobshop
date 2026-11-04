@@ -292,6 +292,9 @@ func (s *Store) mutateWith(ctx context.Context, q sqlcdb.Querier, id, actor, op 
 	if err := syncMeta(ctx, q, id, t.Meta); err != nil {
 		return store.Ticket{}, err
 	}
+	if err := syncResources(ctx, q, id, t.Fields); err != nil {
+		return store.Ticket{}, err
+	}
 	if err := history(ctx, q, t, now, actor, op, diff); err != nil {
 		return store.Ticket{}, err
 	}
@@ -339,6 +342,9 @@ func (s *Store) insert(ctx context.Context, q sqlcdb.Querier, actor string, nt s
 		return store.Ticket{}, s.classify(err, id)
 	}
 	if err := syncMeta(ctx, q, id, meta); err != nil {
+		return store.Ticket{}, err
+	}
+	if err := syncResources(ctx, q, id, fields); err != nil {
 		return store.Ticket{}, err
 	}
 	for _, l := range nt.Labels {

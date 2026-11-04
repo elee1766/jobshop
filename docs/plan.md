@@ -400,6 +400,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Store ticket queries are portable SQL: hot fields keys and meta
   lookups are plain columns and a `ticket_meta` table, lists are
   `sqlc.slice` (#405, `docs/notes/405-portable-sql.md`).
+- Resource slot queries join `ticket_resources` instead of `json_each`
+  (#426, `docs/notes/426-portable-resources.md`).
 - Escalation chat: the controller opens one chat per escalation ticket
   from pack config; Desk shows it; the gateway mirrors (#379,
   `docs/notes/379-escalation-chat.md`, `docs/verify/escalation-chat.md`).

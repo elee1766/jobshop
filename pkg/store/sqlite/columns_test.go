@@ -14,10 +14,10 @@ import (
 )
 
 // undo00013 returns a database to its schema before 00013 (#405), as on a
-// database from an older release.
+// database from an older release. Later migrations are undone first:
+// goose refuses a gap below the top.
 func undo00013() []string {
-	return []string{
-		// 00014 (#407) is undone first: goose refuses a gap below the top.
+	return append(undo00015(), []string{
 		"DROP TABLE resource_slots", "DROP TABLE resource_providers",
 		"DELETE FROM goose_db_version WHERE version_id = 14",
 		"DROP TABLE ticket_meta", "DROP INDEX tickets_children",
@@ -31,7 +31,12 @@ func undo00013() []string {
 		"CREATE INDEX tickets_run_key ON tickets(json_extract(fields, '$.key')) WHERE kind = 'run' AND status <> 'closed'",
 		"CREATE INDEX tickets_run_state ON tickets(json_extract(fields, '$.state')) WHERE kind = 'run'",
 		"DELETE FROM goose_db_version WHERE version_id = 13",
-	}
+	}...)
+}
+
+// undo00015 returns a database to its schema before 00015 (#426).
+func undo00015() []string {
+	return []string{"DROP TABLE ticket_resources", "DELETE FROM goose_db_version WHERE version_id = 15"}
 }
 
 // TestPortableColumnsBackfill: rows written before 00013 get their
@@ -90,4 +95,47 @@ func TestPortableColumnsBackfill(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, byMeta, 1)
 	assert.Equal(t, run.ID, byMeta[0].ID)
+}
+
+// TestTicketResourcesBackfill: steps written before 00015 get their
+// ticket_resources rows from the migration, so a full resource still
+// holds them out of Ready (#426).
+func TestTicketResourcesBackfill(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	path := testPath(t)
+	s, err := sqlite.Open(ctx, path, sqlite.Options{})
+	require.NoError(t, err)
+	require.NoError(t, s.SetResourceCaps(ctx, map[string]int{"pr": 1}))
+	rf, _ := json.Marshal(store.RunFields{Workflow: "w", State: store.RunRunning})
+	run, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf})
+	require.NoError(t, err)
+	var ids []string
+	for range 2 {
+		sf, _ := json.Marshal(store.StepFields{Run: run.ID, Step: "s", Resources: []string{"pr:x#1"}})
+		st, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
+		require.NoError(t, err)
+		ids = append(ids, st.ID)
+	}
+	_, _, err = s.Claim(ctx, ids[0], "h", time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	require.NoError(t, err)
+	for _, q := range undo00015() {
+		_, err = db.ExecContext(ctx, q)
+		require.NoError(t, err, q)
+	}
+	require.NoError(t, db.Close())
+
+	s, err = sqlite.Open(ctx, path, sqlite.Options{})
+	require.NoError(t, err)
+	defer func() { _ = s.Close() }()
+	ready, err := s.Ready(ctx, "p", "dev", 0)
+	require.NoError(t, err)
+	assert.Empty(t, ready, "pr:x#1 is held by the backfilled claim")
+	use, err := s.Resources(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []store.ResourceUse{{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1}}, use)
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"sort"
 
+	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
@@ -67,6 +68,26 @@ func syncMeta(ctx context.Context, q sqlcdb.Querier, id string, meta json.RawMes
 			if err := q.AddTicketMeta(ctx, sqlcdb.AddTicketMetaParams{TicketID: id, Pack: p, Mkey: k, Value: s}); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// syncResources rewrites ticket_resources from fields.resources (#426),
+// so the slot queries join a table instead of reading JSON.
+func syncResources(ctx context.Context, q sqlcdb.Querier, id string, fields json.RawMessage) error {
+	if err := q.ClearTicketResources(ctx, id); err != nil {
+		return err
+	}
+	var f struct {
+		Resources []string `json:"resources"`
+	}
+	if len(fields) == 0 || json.Unmarshal(fields, &f) != nil {
+		return nil
+	}
+	for _, k := range f.Resources {
+		if err := q.AddTicketResource(ctx, sqlcdb.AddTicketResourceParams{TicketID: id, Rkey: k, Rname: store.ResourceName(k)}); err != nil {
+			return err
 		}
 	}
 	return nil
