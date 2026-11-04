@@ -99,7 +99,7 @@ pools:
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: 50 * time.Millisecond, Clock: clk}))
+		done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: time.Hour, Clock: clk}))
 	}()
 	t.Cleanup(func() {
 		cancel()
