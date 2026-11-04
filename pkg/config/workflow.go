@@ -55,8 +55,8 @@ type Workflow struct {
 // escalation:<ticket id> for each escalation ticket and sends the
 // rendered prompt as its first message. Empty ChatPool: ticket only.
 // Prompts are templates in the pack's syntax: the pack vars and the
-// escalation vars (EscalationRunVars, EscalationPoolVars), filled when
-// the ticket is filed.
+// escalation vars (EscalationVars), filled when the ticket is filed.
+// Every var is always set, empty when the cause has none.
 type Escalate struct {
 	ChatPool string `yaml:"chat_pool,omitempty"`
 	// Prompt is the first message for a run escalation. PromptFile is
@@ -68,14 +68,25 @@ type Escalate struct {
 	// those.
 	PoolPrompt     string `yaml:"pool_prompt,omitempty"`
 	PoolPromptFile string `yaml:"pool_prompt_file,omitempty"`
+	// HoldPrompt is the first message for every other hold that needs a
+	// human: a wait past its timeout, a guard ask_human, a worker's
+	// needs-human label. Empty: no chat for those.
+	HoldPrompt     string `yaml:"hold_prompt,omitempty"`
+	HoldPromptFile string `yaml:"hold_prompt_file,omitempty"`
 }
 
-// Template vars of an escalation chat's first message, besides the
-// pack vars.
-var (
-	EscalationRunVars  = []string{"ticket", "run", "workflow", "issue_ref", "body"}
-	EscalationPoolVars = []string{"ticket", "pool", "quarantine", "body"}
-)
+// EscalationVars are the template vars of an escalation chat's first
+// message, besides the pack vars (#379). ticket and title are the
+// escalation ticket, cause is run, pool, wait, guard or label, reason
+// the short cause text and body the ticket body. held and held_title are
+// the held ticket (the failed step, the waiting ticket, the labeled
+// ticket), worker the session that raised the hold, run, workflow and
+// step its place in a run, issue_ref how to read the issue, pool and
+// quarantine a quarantined pool.
+var EscalationVars = []string{
+	"ticket", "title", "cause", "reason", "body", "held", "held_title", "worker",
+	"run", "workflow", "step", "issue_ref", "pool", "quarantine",
+}
 
 // Step is one ticket of a run, blocked on the previous step.
 type Step struct {
@@ -161,7 +172,7 @@ func holdTemplates(m map[string]any) func() {
 	for _, w := range wfs {
 		wm, _ := w.(map[string]any)
 		if em, ok := wm["escalate"].(map[string]any); ok {
-			for _, k := range []string{"prompt", "pool_prompt"} {
+			for _, k := range []string{"prompt", "pool_prompt", "hold_prompt"} {
 				if v, ok := em[k]; ok {
 					hs = append(hs, held{em, k, v})
 					delete(em, k)
@@ -208,7 +219,7 @@ func setPackVars(m map[string]any, vars map[string]any, file string) error {
 // checkEscalate validates the escalation chat policy of w.
 func (c *Config) checkEscalate(w *Workflow) error {
 	e := w.Escalate
-	if e.PromptFile != "" || e.PoolPromptFile != "" {
+	if e.PromptFile != "" || e.PoolPromptFile != "" || e.HoldPromptFile != "" {
 		return errors.New("prompt_file needs a config file location")
 	}
 	if e.ChatPool != "" {
@@ -226,7 +237,7 @@ func (c *Config) checkEscalate(w *Workflow) error {
 	for _, t := range []struct {
 		key, v string
 		vars   []string
-	}{{"prompt", e.Prompt, EscalationRunVars}, {"pool_prompt", e.PoolPrompt, EscalationPoolVars}} {
+	}{{"prompt", e.Prompt, EscalationVars}, {"pool_prompt", e.PoolPrompt, EscalationVars}, {"hold_prompt", e.HoldPrompt, EscalationVars}} {
 		vs, err := refs(t.v, w.Template)
 		if err != nil {
 			return fmt.Errorf("%s: %w", t.key, err)

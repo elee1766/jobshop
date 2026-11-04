@@ -276,7 +276,7 @@ packs:
 	p := c.Pools["operator"]
 	assert.Equal(t, "/src/jobshop", p.Repo)
 	assert.Equal(t, 0, p.MaxSessions)
-	assert.Equal(t, []string{"config-reload", "config-show", "session-list", "pool-list", "pool-scale", "session-cordon", "session-config", "trigger-list", "attention", "activity"}, p.Admin)
+	assert.Equal(t, []string{"config-reload", "config-show", "session-list", "pool-list", "pool-scale", "session-cordon", "session-config", "trigger-list", "attention", "activity", "ticket-release"}, p.Admin)
 	for _, s := range []string{"acme/jobshop-fork", "jobshop config show", "instances", "<prefix>pr-work", "acphost-pr-work", "tracker", "linear_team", "gh issue create -R <repo>", "jobshop ticket create", "jobshop send", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
 		assert.Contains(t, p.Prompt, s)
 	}

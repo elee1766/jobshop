@@ -1,12 +1,15 @@
 package control
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -34,6 +37,10 @@ type escalationChat struct {
 	Key     string `json:"key"`
 	Session string `json:"session"`
 	Pool    string `json:"pool,omitempty"`
+	// Cause is why the chat exists (cause* constants) and Held the ticket
+	// on hold, for Desk's list.
+	Cause string `json:"cause,omitempty"`
+	Held  string `json:"held,omitempty"`
 	// Final is set once the closed message was sent (or the session was
 	// already gone).
 	Final bool `json:"final,omitempty"`
@@ -51,48 +58,162 @@ func escalationChatOf(t store.Ticket) (escalationChat, bool) {
 // escalationAs is the identity the chat's messages come from.
 var escalationAs = scope{admin: true, actor: "controller"}
 
-// escalationPolicy returns the chat pool and the rendered first message
-// for escalation ticket t, or ok false when its workflow has no
-// escalation chat (or t is not a run or pool escalation).
-func escalationPolicy(cfg *config.Config, t store.Ticket) (pool, text string, ok bool, err error) {
-	var (
-		w      config.Workflow
-		tmpl   string
-		extras map[string]any
-	)
+// Escalation causes (meta.escalation.cause, the {{.cause}} template var).
+const (
+	causeRun   = "run"   // a run step failed at its retry limit
+	causePool  = "pool"  // a pool is quarantined
+	causeWait  = "wait"  // a wait passed its timeout
+	causeGuard = "guard" // a guardrail hook asked a human
+	causeLabel = "label" // anything else labeled needs-human
+)
+
+// escCause is what put work on hold for a human, as the prompt template
+// sees it (config.EscalationVars). Strings are empty when the cause has
+// no such part.
+type escCause struct {
+	kind, reason, held, heldTitle, worker      string
+	run, workflow, step, issueRef, pool, quarn string
+}
+
+// maxReason bounds the reason text a prompt carries.
+const maxReason = 1000
+
+// holdTicket reports whether t is a hold that wants an escalation chat:
+// an open task labeled needs-human that is not a question. Questions
+// (report --question, admission and intake approvals) keep their own
+// answer path and get no chat.
+func holdTicket(t store.Ticket) bool {
+	return (t.Kind == store.KindTask || t.Kind == store.KindStep) && slices.Contains(t.Labels, needsHumanLabel) &&
+		!slices.Contains(t.Labels, questionLabel) && metaString(t.Meta, questionMetaPack, "ticket") == ""
+}
+
+// causeOf classifies the hold ticket t and gathers its cause. A run
+// escalation names the failed step and the session that last held it; a
+// timed-out wait, a guard ask and a plain label name the held ticket.
+func (c *Controller) causeOf(ctx context.Context, t store.Ticket) escCause {
 	switch {
 	case metaString(t.Meta, runMetaPack, "escalation") != "":
-		w = cfg.Workflows[metaString(t.Meta, runMetaPack, "workflow")]
-		tmpl = w.Escalate.Prompt
-		extras = map[string]any{
-			"ticket": t.ID, "run": metaString(t.Meta, runMetaPack, "id"), "workflow": metaString(t.Meta, runMetaPack, "workflow"),
-			"issue_ref": issueRef(t), "body": t.Body,
+		x := escCause{
+			kind: causeRun, run: metaString(t.Meta, runMetaPack, "id"), workflow: metaString(t.Meta, runMetaPack, "workflow"),
+			issueRef: issueRef(t), reason: "a step failed at its retry limit",
 		}
-	case metaString(t.Meta, poolMetaPack, "name") != "":
-		// The workflow whose escalate_pool received the ticket owns the
-		// policy, as it does for the quarantine ticket's destination.
-		for _, name := range slices.Sorted(maps.Keys(cfg.Workflows)) {
-			x := cfg.Workflows[name]
-			if t.Pool != "" && x.EscalatePool == t.Pool && x.Escalate.ChatPool != "" && x.Escalate.PoolPrompt != "" {
-				w, tmpl = x, x.Escalate.PoolPrompt
+		if steps, err := c.store.ListChildren(ctx, x.run); err == nil {
+			for i := len(steps) - 1; i >= 0; i-- {
+				if !exhaustedStep(steps[i]) {
+					continue
+				}
+				st := steps[i]
+				x.held, x.heldTitle, x.worker = st.ID, st.Title, c.lastHolder(ctx, st.ID)
+				if sf, err := store.DecodeFields[store.StepFields](st); err == nil {
+					x.step = sf.Step
+					x.reason = fmt.Sprintf("step %s failed %d/%d times", sf.Step, sf.Failures, sf.Retries)
+				}
+				if r := failedReason(st); r != "" {
+					x.reason += ": " + clip(r, maxReason)
+				} else if cs, err := c.store.Comments(ctx, st.ID); err == nil && len(cs) > 0 {
+					x.reason += ". Last comment by " + cs[len(cs)-1].Author + ": " + clip(cs[len(cs)-1].Body, maxReason)
+				}
 				break
 			}
 		}
-		extras = map[string]any{
-			"ticket": t.ID, "pool": metaString(t.Meta, poolMetaPack, "name"),
-			"quarantine": metaString(t.Meta, poolMetaPack, "quarantine"), "body": t.Body,
+		return x
+	case metaString(t.Meta, poolMetaPack, "name") != "":
+		q := metaString(t.Meta, poolMetaPack, "quarantine")
+		return escCause{kind: causePool, pool: metaString(t.Meta, poolMetaPack, "name"), quarn: q, reason: q}
+	case metaString(t.Meta, hookMetaPack, "session") != "":
+		x := escCause{
+			kind: causeGuard, worker: metaString(t.Meta, hookMetaPack, "session"), held: metaString(t.Meta, hookMetaPack, "ticket"),
+			reason: metaString(t.Meta, hookMetaPack, "reason"), issueRef: issueRef(t),
+		}
+		if x.held != "" {
+			if h, err := c.store.Get(ctx, x.held); err == nil {
+				x.heldTitle = h.Title
+			}
+		}
+		return x
+	}
+	x := escCause{kind: causeLabel, held: t.ID, heldTitle: t.Title, worker: t.Holder, issueRef: issueRef(t), reason: clip(t.Body, maxReason)}
+	if w := waitOf(t); w != nil && w.TimedOut {
+		x.kind = causeWait
+		x.reason = fmt.Sprintf("wait (%s) passed its timeout %s; owner %s", w.Reason, w.Timeout.Format(time.RFC3339), cmp.Or(w.Owner, "unset"))
+		x.worker = cmp.Or(w.Session, x.worker)
+	} else if hist, err := c.store.History(ctx, t.ID); err == nil {
+		for i := len(hist) - 1; i >= 0; i-- {
+			if hist[i].Op == "label_add" && strings.Contains(string(hist[i].Diff), needsHumanLabel) {
+				if hist[i].Actor != "controller" && hist[i].Actor != "admin" {
+					x.worker = hist[i].Actor
+				}
+				break
+			}
+		}
+		if cs, err := c.store.Comments(ctx, t.ID); err == nil && len(cs) > 0 {
+			x.reason = clip(cs[len(cs)-1].Body, maxReason)
+		}
+	}
+	if x.worker != "" {
+		if s, err := c.store.Get(ctx, x.worker); err != nil || s.Kind != store.KindSession {
+			x.worker = "" // an actor like admin, not a session to message
+		}
+	}
+	return x
+}
+
+// escalationOpening returns the chat pool and the rendered context for
+// hold ticket t, or ok false when the workflow that owns it has no chat
+// for this cause.
+func (c *Controller) escalationOpening(ctx context.Context, t store.Ticket) (pool, text string, x escCause, ok bool, err error) {
+	cfg := c.config()
+	x = c.causeOf(ctx, t)
+	var w config.Workflow
+	var tmpl string
+	pick := func(w config.Workflow) string {
+		switch x.kind {
+		case causeRun:
+			return w.Escalate.Prompt
+		case causePool:
+			return w.Escalate.PoolPrompt
+		}
+		return w.Escalate.HoldPrompt
+	}
+	switch x.kind {
+	case causeRun:
+		w = cfg.Workflows[x.workflow]
+		tmpl = pick(w)
+	default:
+		// No run names the workflow, so the first one (by name) with a
+		// chat for this cause in the ticket's project owns the policy: for
+		// a quarantine the one whose escalate_pool received the ticket.
+		for _, name := range slices.Sorted(maps.Keys(cfg.Workflows)) {
+			cand := cfg.Workflows[name]
+			cp, has := cfg.Pools[cand.Escalate.ChatPool]
+			if !has || pick(cand) == "" {
+				continue
+			}
+			if x.kind == causePool && (t.Pool == "" || cand.EscalatePool != t.Pool) {
+				continue
+			}
+			if x.kind != causePool && cp.Project != t.Project {
+				continue
+			}
+			w, tmpl = cand, pick(cand)
+			break
 		}
 	}
 	if w.Escalate.ChatPool == "" || tmpl == "" {
-		return "", "", false, nil
+		return "", "", x, false, nil
 	}
 	vars := maps.Clone(w.PackVars)
 	if vars == nil {
 		vars = map[string]any{}
 	}
-	maps.Copy(vars, extras)
+	maps.Copy(vars, map[string]any{
+		"ticket": t.ID, "title": t.Title, "cause": x.kind, "reason": x.reason, "body": t.Body,
+		"held": x.held, "held_title": x.heldTitle, "worker": x.worker,
+		"run": x.run, "workflow": x.workflow, "step": x.step, "issue_ref": x.issueRef,
+		"pool": x.pool, "quarantine": x.quarn,
+	})
 	text, err = w.Render(tmpl, vars)
-	return w.Escalate.ChatPool, text, err == nil, err
+	return w.Escalate.ChatPool, text, x, err == nil, err
 }
 
 // issueRef tells the chat session which issue to read, with its repo.
@@ -126,13 +247,13 @@ func (c *Controller) openEscalationChat(ctx context.Context, t store.Ticket) err
 	if err != nil {
 		return err
 	}
-	if t.Status == store.StatusClosed {
+	if t.Status == store.StatusClosed || !slices.Contains(t.Labels, needsHumanLabel) {
 		return nil
 	}
 	if _, ok := escalationChatOf(t); ok {
 		return nil
 	}
-	pool, text, ok, err := escalationPolicy(c.config(), t)
+	pool, text, cause, ok, err := c.escalationOpening(ctx, t)
 	if err != nil {
 		return fmt.Errorf("render first message: %w", err)
 	}
@@ -140,13 +261,28 @@ func (c *Controller) openEscalationChat(ctx context.Context, t store.Ticket) err
 		return nil
 	}
 	key := escalationKeyPrefix + t.ID
-	out, err := c.sessionSend(ctx, escalationAs, rpc.SessionSendParams{Pool: pool, Key: key, Text: text})
+	// The pack prompt is context for the model, not a visible message: the
+	// session's first visible turn is its own summary.
+	out, err := c.sessionSend(ctx, escalationAs, rpc.SessionSendParams{Pool: pool, Key: key, Context: text})
 	if err != nil {
 		return fmt.Errorf("send: %w", err)
 	}
 	res := out.(rpc.SessionSendResult)
 	c.log.Info("escalation chat opened", "ticket", t.ID, "pool", pool, "session", res.Session)
-	return c.setMetaPack(ctx, t.ID, escalationMetaPack, escalationChat{Key: key, Session: res.Session, Pool: pool})
+	return c.setMetaPack(ctx, t.ID, escalationMetaPack, escalationChat{Key: key, Session: res.Session, Pool: pool, Cause: cause.kind, Held: cause.held})
+}
+
+// holdChat opens the chat for ticket id after something put it on hold
+// (a needs-human label, a guard ask). A failure is logged: the sweep
+// retries it.
+func (c *Controller) holdChat(ctx context.Context, id string) {
+	t, err := c.store.Get(ctx, id)
+	if err != nil || !holdTicket(t) || !c.escalationChatsConfigured() {
+		return
+	}
+	if err := c.openEscalationChat(ctx, t); err != nil {
+		c.log.Warn("escalation chat", "ticket", id, "err", err)
+	}
 }
 
 // finishEscalationChat sends the one closed message to the chat of a
@@ -200,21 +336,27 @@ func (c *Controller) sweepEscalationChats(ctx context.Context) {
 	if c.draining() || !c.escalationChatsConfigured() {
 		return
 	}
-	for _, f := range []store.Filter{
-		{Kind: store.KindTask, Status: store.StatusOpen, Label: needsHumanLabel, Limit: escalationChatSweepLimit},
-		{Kind: store.KindTask, Status: store.StatusInProgress, Label: needsHumanLabel, Limit: escalationChatSweepLimit},
-		{Kind: store.KindTask, Status: store.StatusClosed, Label: needsHumanLabel, Newest: true, Limit: escalationChatSweepLimit},
-	} {
+	var filters []store.Filter
+	for _, k := range []store.Kind{store.KindTask, store.KindStep} {
+		filters = append(filters,
+			store.Filter{Kind: k, Status: store.StatusOpen, Label: needsHumanLabel, Limit: escalationChatSweepLimit},
+			store.Filter{Kind: k, Status: store.StatusInProgress, Label: needsHumanLabel, Limit: escalationChatSweepLimit},
+			store.Filter{Kind: k, Status: store.StatusClosed, Label: needsHumanLabel, Newest: true, Limit: escalationChatSweepLimit})
+	}
+	for _, f := range filters {
 		ts, err := c.store.List(ctx, f)
 		if err != nil {
 			c.log.Warn("escalation chat: list", "err", err)
 			return
 		}
 		for _, t := range ts {
-			if t.Status == store.StatusClosed {
+			switch {
+			case t.Status == store.StatusClosed:
 				err = c.finishEscalationChat(ctx, t)
-			} else {
+			case holdTicket(t):
 				err = c.openEscalationChat(ctx, t)
+			default:
+				continue
 			}
 			if err != nil {
 				c.log.Warn("escalation chat", "ticket", t.ID, "err", err)

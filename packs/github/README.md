@@ -174,8 +174,31 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `linear_done_state` | With `linear`: state post-merge moves a shipped issue to. Default `Done` |
 | `linear_human` | With `linear`: the Linear user worker questions and run escalations mention when posted on the run's issue (#293). Replies under that comment answer the question |
 | `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` stall starts stall-check for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
-| `escalation_chat_pool` | Empty (default): an escalation is only a ticket. A `type: chat` pool (e.g. `operator`): the controller opens a chat session there, key `escalation:<ticket id>`, whose first message is `prompts/escalation.md` (run escalations) or `prompts/escalation-pool.md` (pool quarantines), and records it in `meta.escalation`. Desk's chat pool should be the same (#379) |
+| `escalation_chat_pool` | Empty (default): an escalation is only a ticket. A `type: chat` pool (e.g. `operator`): the controller opens a chat session there, key `escalation:<ticket id>`, whose first message (model context) is picked by cause, see Escalation chat prompts below, and records it in `meta.escalation`. Desk's chat pool should be the same (#379) |
 | `linear_intake_assignee` | Planner `linear list --assignee` filter: a name, `me`, or empty for any (#292) |
+
+### Escalation chat prompts
+
+With `escalation_chat_pool` set, a hold that needs a human opens a chat
+session keyed `escalation:<ticket id>` (#379). Its first message is
+context for the model, not a visible message: the session answers with a
+summary. A workflow's `escalate` block picks the prompt by cause:
+`prompt` (run escalation, `prompts/escalation.md`), `pool_prompt` (pool
+quarantine, `prompts/escalation-pool.md`) and `hold_prompt` (a wait past
+its timeout, a guard ask_human, any task or step labeled `needs-human`,
+`prompts/escalation-hold.md`). Questions get no chat. Template vars,
+besides the pack vars, always set and empty when the cause has none:
+
+| Var | Meaning |
+| --- | --- |
+| `ticket`, `title`, `body` | The escalation ticket |
+| `cause` | `run`, `pool`, `wait`, `guard` or `label` |
+| `reason` | Short cause text: the failed step and its last reason, the quarantine error, the wait or guard reason, the last comment |
+| `held`, `held_title` | The held ticket: the failed step, the waiting or labeled ticket, the guard session's ticket |
+| `worker` | The session that raised the hold (last holder of the step, who added the label, who asked the guard) |
+| `run`, `workflow`, `step` | The run, its workflow and the failed step name (run escalations) |
+| `issue_ref` | How to read the issue (`gh issue view ...` or Linear) |
+| `pool`, `quarantine` | The quarantined pool and its error (pool escalations) |
 
 Approval check the refinery runs (prints the number of matching
 approvals, above 0 to merge):

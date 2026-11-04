@@ -227,6 +227,7 @@ workflows:
       chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
+      hold_prompt_file: prompts/escalation-hold.md
     steps:
       - id: implement
         pool: dev
@@ -253,6 +254,7 @@ workflows:
       chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
+      hold_prompt_file: prompts/escalation-hold.md
     steps:
       - id: diagnose
         pool: plan
@@ -268,6 +270,7 @@ workflows:
       chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
+      hold_prompt_file: prompts/escalation-hold.md
     steps:
       - id: fix
         pool: dev
@@ -291,6 +294,7 @@ workflows:
       chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
+      hold_prompt_file: prompts/escalation-hold.md
     steps:
       - id: fail
         pool: dev

@@ -1,6 +1,7 @@
 package control_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,7 +24,8 @@ func escChatRoot(t *testing.T, chat string) (config.Root, func() func()) {
 	root, start := poolRoot(t, "1m")
 	pack := filepath.Join(root.Dir, "pk")
 	require.NoError(t, os.MkdirAll(filepath.Join(pack, "prompts"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "esc.md"), []byte("ESC-RUN ${ticket} run ${run} wf ${workflow} site ${site}; read ${issue_ref}.\n${body}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "esc.md"), []byte("ESC-RUN ${ticket} run ${run} wf ${workflow} step ${step} held ${held} (${held_title}) cause ${cause}: ${reason} site ${site}; read ${issue_ref}.\n${body}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "hold.md"), []byte("ESC-HOLD ${ticket} (${title}) cause ${cause} held ${held} (${held_title}) worker ${worker} site ${site}: ${reason}\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "pool.md"), []byte("ESC-POOL ${ticket} pool ${pool} site ${site}: ${quarantine}\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), fmt.Appendf(nil, `workflows:
   pr:
@@ -45,11 +47,14 @@ agents:
   fake:
     command: %q
     args: [fake-agent]
+hooks:
+  - on: action
+    command: 'echo "{\"decision\":\"ask_human\",\"reason\":\"merges need a person\"}"'
 pools:
   dev: {project: js, agent: fake, max_sessions: 0, dir: %q}
   ops: {project: js, agent: fake, max_sessions: 0, dir: %q}
   bad: {project: js, agent: fake, max_sessions: 1, idle_timeout: 1m, repo: %q}
-  escalations: {project: js, agent: fake, type: chat, dir: %q}
+  escalations: {project: js, agent: fake, type: chat, dir: %q, admin: [ticket-release]}
 `, os.Args[0], root.Dir, root.Dir, missing, root.Dir)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	return root, start
@@ -58,7 +63,8 @@ pools:
 const escChatBlock = `    escalate:
       chat_pool: escalations
       prompt_file: prompts/esc.md
-      pool_prompt_file: prompts/pool.md`
+      pool_prompt_file: prompts/pool.md
+      hold_prompt_file: prompts/hold.md`
 
 func chatSessions(t *testing.T, admin *rpc.Client) []store.Ticket {
 	t.Helper()
@@ -116,9 +122,30 @@ func TestEscalationChat(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, key, f.Key)
 
-	first := "ESC-RUN " + id + " run " + r.Run.ID + " wf pr site acme; read its GitHub issue (`gh issue view 7 --repo acme/widget --comments`)."
+	first := "ESC-RUN " + id + " run " + r.Run.ID + " wf pr step implement held " + r.Steps[0].ID + " (Implement #7) cause run: step implement failed 1/1 times"
 	require.Eventually(t, func() bool { return strings.Contains(promptsFile(t, root), first) }, 20*time.Second, 50*time.Millisecond)
+	assert.Contains(t, promptsFile(t, root), "site acme; read its GitHub issue (`gh issue view 7 --repo acme/widget --comments`).")
+	assert.Equal(t, "run", m["cause"])
+	assert.Equal(t, r.Steps[0].ID, m["held"])
 	assert.Contains(t, promptsFile(t, root), "Run "+r.Run.ID+" (workflow pr) needs a human", "the ticket body is in the prompt")
+
+	// The pack prompt is model-only context, not a visible message: the
+	// session's journal shows the turn with empty text and the prompt as
+	// its context.
+	var turn rpc.SessionEvent
+	subCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	sub := dial(t, root.AdminSocket())
+	go func() {
+		_, _ = sub.Subscribe(subCtx, rpc.SessionSubscribeParams{ID: sessions[0].ID}, func(ev rpc.SessionEvent) {
+			if ev.Type == rpc.EventTurnStart && turn.Type == "" {
+				turn = ev
+			}
+		})
+	}()
+	require.Eventually(t, func() bool { return turn.Type != "" }, 20*time.Second, 20*time.Millisecond)
+	assert.Empty(t, turn.Text, "no visible operator message")
+	assert.Contains(t, turn.Context, "ESC-RUN "+id)
 
 	// A restart opens no second chat and sends no second first message.
 	stop()
@@ -165,6 +192,117 @@ func TestEscalationChatPool(t *testing.T) {
 	}, 20*time.Second, 50*time.Millisecond)
 	pass(t, root.Dir, 3)
 	assert.Len(t, chatSessions(t, admin), 1, "one chat per ticket")
+}
+
+// holdTask files a task as session sess (a worker) and returns its id.
+func holdTask(t *testing.T, sess *rpc.Client, title string) string {
+	t.Helper()
+	var tk store.Ticket
+	require.NoError(t, sess.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: title}, &tk))
+	return tk.ID
+}
+
+func newWorker(t *testing.T, admin *rpc.Client) (rpc.SessionNewResult, *rpc.Client) {
+	t.Helper()
+	var s rpc.SessionNewResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &s))
+	return s, dial(t, s.Socket)
+}
+
+// TestEscalationChatHolds (#379): every path that holds work for a
+// human mints one escalation chat through the pack's hold prompt, with
+// the hold's cause in the template vars. A worker's needs-human label
+// names the worker and its last comment; a guard ask_human names the
+// session and the reason; a question gets none.
+func TestEscalationChatHolds(t *testing.T) {
+	root, start := escChatRoot(t, escChatBlock)
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	ctx := t.Context()
+	worker, w := newWorker(t, admin)
+
+	// 1. A worker labels its own ticket.
+	id := holdTask(t, w, "Needs the staging key")
+	require.NoError(t, w.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{ID: id, Body: "blocked: no access to the staging key"}, nil))
+	require.NoError(t, w.Call(ctx, rpc.MethodLabelAdd, rpc.LabelParams{ID: id, Label: "needs-human"}, nil))
+	m := metaEsc(t, getTicket(t, admin, id).Ticket)
+	require.NotNil(t, m, "the label opened a chat")
+	assert.Equal(t, "label", m["cause"])
+	assert.Equal(t, id, m["held"])
+	want := "ESC-HOLD " + id + " (Needs the staging key) cause label held " + id + " (Needs the staging key) worker " + worker.Ticket.ID + " site acme: blocked: no access to the staging key"
+	require.Eventually(t, func() bool { return strings.Contains(promptsFile(t, root), want) }, 20*time.Second, 50*time.Millisecond)
+
+	// 2. A guard ask_human files an approval ticket that gets a chat.
+	var g rpc.GuardResult
+	require.NoError(t, w.Call(ctx, rpc.MethodGuard, rpc.GuardParams{Action: "merge", Target: "PR 5"}, &g))
+	require.Equal(t, rpc.GuardAskHuman, g.Decision)
+	gm := metaEsc(t, getTicket(t, admin, g.Ticket).Ticket)
+	require.NotNil(t, gm, "the guard ask opened a chat")
+	assert.Equal(t, "guard", gm["cause"])
+	require.Eventually(t, func() bool {
+		return strings.Contains(promptsFile(t, root), "ESC-HOLD "+g.Ticket+" (Approve merge by "+worker.Ticket.ID+") cause guard held  () worker "+worker.Ticket.ID+" site acme: merges need a person")
+	}, 20*time.Second, 50*time.Millisecond)
+
+	// 3. A question gets no chat; neither does a ticket labeled twice.
+	require.NoError(t, w.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{ID: id}, nil))
+	require.NoError(t, w.Call(ctx, rpc.MethodReport, rpc.ReportParams{State: rpc.ReportWaiting, Note: "waiting", Question: "which key?"}, nil))
+	require.NoError(t, w.Call(ctx, rpc.MethodLabelAdd, rpc.LabelParams{ID: id, Label: "needs-human"}, nil))
+	pass(t, root.Dir, 3)
+	assert.Len(t, chatSessions(t, admin), 2, "one chat per hold, none for the question")
+	assert.Equal(t, 1, strings.Count(promptsFile(t, root), "ESC-HOLD "+id+" "))
+}
+
+// TestEscalationChatPowers: the escalation session, with the
+// ticket-release grant only, can hand back a ticket another session
+// holds, message the worker and comment; a plain worker cannot release
+// another's ticket.
+func TestEscalationChatPowers(t *testing.T) {
+	root, start := escChatRoot(t, escChatBlock)
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	ctx := t.Context()
+	worker, w := newWorker(t, admin)
+	other, o := newWorker(t, admin)
+	id := holdTask(t, w, "held work")
+	require.NoError(t, admin.Call(ctx, rpc.MethodTicketUpdate, rpc.UpdateParams{ID: id, Pool: new("dev")}, nil))
+	claimAs(t, admin, id, worker.Ticket.ID)
+	require.NoError(t, w.Call(ctx, rpc.MethodLabelAdd, rpc.LabelParams{ID: id, Label: "needs-human"}, nil))
+	m := metaEsc(t, getTicket(t, admin, id).Ticket)
+	require.NotNil(t, m)
+	chat := dial(t, filepath.Join(root.SessionDir(m["session"].(string)), "cli.sock"))
+
+	assert.ErrorIs(t, o.Call(ctx, rpc.MethodRelease, rpc.ReleaseParams{ID: id}, nil), store.ErrNotHolder, "no grant, not the holder")
+	_ = other
+	require.NoError(t, chat.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{ID: id, Body: "operator says use the sandbox key"}, nil))
+	require.NoError(t, chat.Call(ctx, rpc.MethodRelease, rpc.ReleaseParams{ID: id, Reason: "operator unblocked"}, nil))
+	got := getTicket(t, admin, id).Ticket
+	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Empty(t, got.Holder)
+	// Other admin methods stay closed to the chat.
+	assert.ErrorIs(t, chat.Call(ctx, rpc.MethodTicketReopen, rpc.IDParams{ID: id}, nil), rpc.ErrForbidden)
+	assert.ErrorIs(t, chat.Call(ctx, rpc.MethodDrain, struct{}{}, nil), rpc.ErrForbidden)
+	// It reaches the worker session with send (interrupt allowed).
+	var msg store.Ticket
+	require.NoError(t, chat.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{
+		Kind: store.KindMessage, Title: "use the sandbox key",
+		Fields: json.RawMessage(`{"to":"` + worker.Ticket.ID + `","interrupt":true}`),
+	}, &msg))
+	assert.Equal(t, store.KindMessage, msg.Kind)
+}
+
+// TestEscalationChatSweepsLabel: a ticket labeled needs-human by the
+// admin (no event path) gets its chat from the sweep.
+func TestEscalationChatSweepsLabel(t *testing.T) {
+	root, start := escChatRoot(t, escChatBlock)
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	var tk store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "stuck", Pool: "ops", Labels: []string{"needs-human"}}, &tk))
+	passUntil(t, root.Dir, func() bool { return metaEsc(t, getTicket(t, admin, tk.ID).Ticket) != nil }, "the sweep opens a chat")
+	assert.Equal(t, "label", metaEsc(t, getTicket(t, admin, tk.ID).Ticket)["cause"])
 }
 
 // TestEscalationNoChat: a workflow without an escalate chat pool files the

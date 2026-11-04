@@ -75,6 +75,7 @@ workflows:
       chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: ../github/prompts/escalation.md
       pool_prompt_file: ../github/prompts/escalation-pool.md
+      hold_prompt_file: ../github/prompts/escalation-hold.md
     steps:
       - id: curate
         pool: learn
@@ -88,6 +89,7 @@ workflows:
       chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: ../github/prompts/escalation.md
       pool_prompt_file: ../github/prompts/escalation-pool.md
+      hold_prompt_file: ../github/prompts/escalation-hold.md
     steps:
       - id: evaluate
         pool: learn

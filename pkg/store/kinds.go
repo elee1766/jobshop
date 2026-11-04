@@ -97,6 +97,9 @@ type MessageFields struct {
 	To        string `json:"to"` // session id, "pool:<name>", or session key
 	From      string `json:"from"`
 	Interrupt bool   `json:"interrupt,omitempty"`
+	// Context is delivered with the message as a prompt block for the
+	// model only (session.send context).
+	Context string `json:"context,omitempty"`
 }
 
 // Validate implements Fields.

@@ -79,6 +79,9 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 			if err := t.load(em, "pool_prompt", "pool_prompt_file", key, false); err != nil {
 				return err
 			}
+			if err := t.load(em, "hold_prompt", "hold_prompt_file", key, false); err != nil {
+				return err
+			}
 		}
 		steps, _ := wm["steps"].([]any)
 		for i, s := range steps {
