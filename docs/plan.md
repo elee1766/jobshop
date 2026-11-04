@@ -351,6 +351,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - GitHub author allowlist: pack var `authors` and the `accepted` label
   gate `issue_no_run`; `subscriptions.authors` gates comments (#340,
   `docs/notes/340-author-allowlist.md`).
+- Running as your own user: identity kind `github-token` (PAT, self
+  login filtered) and `webhook_secret_file` on kind `linear` (#340,
+  `docs/notes/340-user-tokens.md`).
 
 ## 5. What's next
 
@@ -1002,6 +1005,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   run triggers, or one subscription pass for that thread). Polling
   stays, so a lost event costs only latency. Off by default; gasserver
   has no public endpoint (#187), so it needs a proxy or tunnel.
+- User tokens (2026-11-04, #340): a `github-token` identity is used
+  wherever an App installation token is, and its own login (GET /user)
+  is filtered like the App bot, since a PAT posts as a human. It gets no
+  App-only features: no missed-delivery reconcile (#335), webhooks only
+  through a repo webhook secret (#339).
 - Model and effort (2026-11-04, #304) are ACP session config options,
   not agent args: they stay out of the host spec hash, so a change
   applies between turns without a respawn and keeps the conversation.

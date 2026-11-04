@@ -21,7 +21,7 @@ import (
 
 const maxBody = 1 << 20
 
-// Secret is one webhook signing secret. Identity names the linear-app
+// Secret is one webhook signing secret. Identity names the Linear
 // identity it belongs to, "" for a plain secret_file.
 type Secret struct {
 	Identity string

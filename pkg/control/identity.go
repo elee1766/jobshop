@@ -104,6 +104,13 @@ func (c *Controller) identityCheck(ctx context.Context, sc scope, p rpc.Identity
 		}
 		res.Viewer = v.Name
 	}
+	if id.Kind == config.IdentityGitHubToken {
+		l, err := c.minter.Login(ctx, name, id)
+		if err != nil {
+			return nil, err
+		}
+		res.Viewer = l
+	}
 	return res, nil
 }
 

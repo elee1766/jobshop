@@ -232,12 +232,19 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 		}
 		var human []ghComment
 		last := seen
+		self := ""
+		if th.Linear == "" {
+			self = c.githubSelf(ctx, th.Repo)
+		}
 		for _, cm := range cs {
 			if !cm.At.After(seen) {
 				continue
 			}
 			if cm.At.After(last) {
 				last = cm.At
+			}
+			if self != "" && strings.EqualFold(cm.Author, self) {
+				cm.Bot = true
 			}
 			if !c.ignored(cm) {
 				human = append(human, cm)
@@ -352,6 +359,24 @@ func (c *Controller) saveThreads(ctx context.Context, f *follower) {
 	}
 	f.t = t
 	f.threads = sm.Threads
+}
+
+// githubSelf is the login of the github-token identity covering repo, "" for
+// none or an App (whose comments are [bot]). A user's token comments
+// as that user, so without this its own posts would come back as human
+// news (#340). A failed lookup is logged and filters nothing.
+func (c *Controller) githubSelf(ctx context.Context, repo string) string {
+	cfg := c.config()
+	name, ok := cfg.IdentityFor(cfg.IdentityNames(), repo)
+	if !ok || cfg.Identities[name].Kind != config.IdentityGitHubToken {
+		return ""
+	}
+	l, err := c.minter.Login(ctx, name, cfg.Identities[name])
+	if err != nil {
+		c.log.Warn("identity: self login", "identity", name, "err", err)
+		return ""
+	}
+	return l
 }
 
 // ignored drops bots, CI, configured logins and, when authors is set,

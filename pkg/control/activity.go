@@ -458,7 +458,16 @@ func (l *liveActivity) GitHub(ctx context.Context, repo string, st *repoPoll) ([
 	if err != nil {
 		return nil, err
 	}
-	return l.fetchGitHub(ctx, base, tok, repo, st)
+	items, err := l.fetchGitHub(ctx, base, tok, repo, st)
+	// A github-token acts as a user, not a [bot]: mark its own events (#340).
+	if self := l.c.githubSelf(ctx, repo); self != "" {
+		for i := range items {
+			if strings.EqualFold(items[i].Actor, self) {
+				items[i].Bot = true
+			}
+		}
+	}
+	return items, err
 }
 
 // fetchGitHub reads repo events and completed default-branch runs, each
