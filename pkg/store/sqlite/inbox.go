@@ -14,40 +14,80 @@ import (
 	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
 )
 
-// InboxPut stores an ingested item, deduped by delivery id (#321).
+// InboxPut stores an ingested item, deduped by delivery id and natural
+// key (#321, #335).
 func (s *Store) InboxPut(ctx context.Context, it store.InboxItem) (out store.InboxItem, dup bool, err error) {
-	if it.DeliveryID == "" {
-		return out, false, fmt.Errorf("%w: inbox item needs a delivery id", store.ErrInvalid)
-	}
-	if it.Source != "github" && it.Source != "linear" {
-		return out, false, fmt.Errorf("%w: inbox source %q must be github or linear", store.ErrInvalid, it.Source)
+	if err := checkInbox(it); err != nil {
+		return out, false, err
 	}
 	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
-		now := s.now()
-		recv := it.ReceivedAt
-		if recv.IsZero() {
-			recv = now
-		}
-		payload := string(it.Payload)
-		if payload == "" {
-			payload = "{}"
-		}
-		n, err := q.InboxInsert(ctx, sqlcdb.InboxInsertParams{
-			Source: it.Source, DeliveryID: it.DeliveryID, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam,
-			Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, ReceivedAt: ms(recv),
-			Payload: payload, Now: ms(now), Endpoint: it.Endpoint,
-		})
-		if err != nil {
-			return err
-		}
-		r, err := q.InboxGetByDelivery(ctx, it.DeliveryID)
-		if err != nil {
-			return err
-		}
-		out, dup = toInbox(r), n == 0
-		return nil
+		out, dup, err = s.inboxPut(ctx, q, it)
+		return err
 	})
 	return out, dup, err
+}
+
+// InboxPutBatch stores its in one transaction: all or none (#335).
+func (s *Store) InboxPutBatch(ctx context.Context, its []store.InboxItem) (fresh int, err error) {
+	for _, it := range its {
+		if err := checkInbox(it); err != nil {
+			return 0, err
+		}
+	}
+	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+		fresh = 0
+		for _, it := range its {
+			_, dup, err := s.inboxPut(ctx, q, it)
+			if err != nil {
+				return err
+			}
+			if !dup {
+				fresh++
+			}
+		}
+		return nil
+	})
+	return fresh, err
+}
+
+func checkInbox(it store.InboxItem) error {
+	if it.DeliveryID == "" {
+		return fmt.Errorf("%w: inbox item needs a delivery id", store.ErrInvalid)
+	}
+	if it.Source != "github" && it.Source != "linear" {
+		return fmt.Errorf("%w: inbox source %q must be github or linear", store.ErrInvalid, it.Source)
+	}
+	return nil
+}
+
+// inboxPut inserts it, or returns the row it clashes with: same delivery
+// id first, else same natural key.
+func (s *Store) inboxPut(ctx context.Context, q *sqlcdb.Queries, it store.InboxItem) (store.InboxItem, bool, error) {
+	now := s.now()
+	recv := it.ReceivedAt
+	if recv.IsZero() {
+		recv = now
+	}
+	payload := string(it.Payload)
+	if payload == "" {
+		payload = "{}"
+	}
+	n, err := q.InboxInsert(ctx, sqlcdb.InboxInsertParams{
+		Source: it.Source, DeliveryID: it.DeliveryID, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam,
+		Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, ReceivedAt: ms(recv),
+		Payload: payload, Now: ms(now), Endpoint: it.Endpoint, NaturalKey: it.NaturalKey,
+	})
+	if err != nil {
+		return store.InboxItem{}, false, err
+	}
+	r, err := q.InboxGetByDelivery(ctx, it.DeliveryID)
+	if errors.Is(err, sql.ErrNoRows) && n == 0 && it.NaturalKey != "" {
+		r, err = q.InboxGetByNaturalKey(ctx, it.NaturalKey)
+	}
+	if err != nil {
+		return store.InboxItem{}, false, err
+	}
+	return toInbox(r), n == 0, nil
 }
 
 // InboxClaim leases the oldest claimable item in states. The take is
@@ -169,7 +209,7 @@ func nullJSON(b json.RawMessage) sql.NullString {
 
 func toInbox(r sqlcdb.Inbox) store.InboxItem {
 	it := store.InboxItem{
-		ID: r.ID, Source: r.Source, DeliveryID: r.DeliveryID, Endpoint: r.Endpoint, Kind: r.Kind, RepoOrTeam: r.RepoOrTeam,
+		ID: r.ID, Source: r.Source, DeliveryID: r.DeliveryID, Endpoint: r.Endpoint, NaturalKey: r.NaturalKey, Kind: r.Kind, RepoOrTeam: r.RepoOrTeam,
 		Number: r.Number, CommentID: r.CommentID, Actor: r.Actor, ReceivedAt: fromMS(r.ReceivedAt),
 		Payload: json.RawMessage(r.Payload), State: r.State, HookResults: json.RawMessage(r.HookResults),
 		Holder: r.Holder, LeaseUntil: fromMS(r.LeaseUntil), Attempts: r.Attempts, UpdatedAt: fromMS(r.UpdatedAt),

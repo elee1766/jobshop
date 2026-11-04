@@ -319,6 +319,11 @@ type Ingest struct {
 	// Endpoints are the webhook endpoints, each with its own path and
 	// secret (#339).
 	Endpoints []IngestEndpoint `yaml:"endpoints"`
+	// GitHubReconcile is how often failed GitHub App webhook deliveries
+	// are redelivered (#335): a Go duration, "off", or empty for 15m.
+	// Only github-app identities have a deliveries API; with none it is
+	// off.
+	GitHubReconcile string `yaml:"github_reconcile"`
 
 	// Removed in #339; set only to fail the load with a pointer to the
 	// replacement instead of silently turning a source off.
@@ -338,7 +343,7 @@ type IngestEndpoint struct {
 	Name   string `yaml:"name"`
 	Source string `yaml:"source"`
 	// SecretFile is relative to the root. Identity instead names a
-	// linear-app identity whose webhook_secret_file signs.
+	// Linear identity (app or API key, #340) whose webhook_secret_file signs.
 	SecretFile string `yaml:"secret_file"`
 	Identity   string `yaml:"identity"`
 	// Path defaults to /<source>/<name>.
@@ -356,7 +361,7 @@ const LinearWebhookPath = "/linear/webhook"
 var endpointName = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // IngestEndpoints is ingest.endpoints plus an implicit endpoint
-// linear-<identity> at /linear/webhook for every linear-app identity
+// linear-<identity> at /linear/webhook for every Linear identity
 // with a webhook secret that no endpoint names, so #300 setups keep
 // working.
 func (c *Config) IngestEndpoints() []IngestEndpoint {
@@ -369,7 +374,7 @@ func (c *Config) IngestEndpoints() []IngestEndpoint {
 	}
 	for _, name := range c.IdentityNames() {
 		id := c.Identities[name]
-		if id.Kind != IdentityLinearApp || id.WebhookSecretFile == "" || named[name] {
+		if !IsLinear(id.Kind) || id.WebhookSecretFile == "" || named[name] {
 			continue
 		}
 		out = append(out, IngestEndpoint{
@@ -390,6 +395,11 @@ func (e IngestEndpoint) EndpointPath() string {
 
 func (c *Config) validateIngest() error {
 	i := c.Ingest
+	if r := i.GitHubReconcile; r != "" && r != "off" {
+		if d, err := time.ParseDuration(r); err != nil || d < time.Minute {
+			return fmt.Errorf("%s: ingest.github_reconcile %q must be a duration of at least 1m, or off", FileName, r)
+		}
+	}
 	if i.OldGitHubSecretFile != "" || i.OldLinearSecretFile != "" {
 		return fmt.Errorf("%s: ingest.github_secret_file and ingest.linear_secret_file were replaced by ingest.endpoints (#339): list one endpoint per secret", FileName)
 	}
@@ -414,8 +424,8 @@ func (c *Config) validateIngest() error {
 		}
 		if e.Identity != "" {
 			id, ok := c.Identities[e.Identity]
-			if !ok || id.Kind != IdentityLinearApp || id.WebhookSecretFile == "" || e.Source != IngestLinear {
-				return fmt.Errorf("%s: identity %q must be a linear-app identity with webhook_secret_file, on a linear endpoint", where, e.Identity)
+			if !ok || !IsLinear(id.Kind) || id.WebhookSecretFile == "" || e.Source != IngestLinear {
+				return fmt.Errorf("%s: identity %q must be a Linear identity with webhook_secret_file, on a linear endpoint", where, e.Identity)
 			}
 		}
 		if len(e.Repos) > 0 && e.Source != IngestGitHub {
@@ -465,6 +475,20 @@ func (i Ingest) SpoolPath(r Root) string {
 		return filepath.Join(r.Dir, "ingest", "spool.db")
 	}
 	return r.Path(i.Spool)
+}
+
+// DefaultGitHubReconcile is the reconcile interval when unset.
+const DefaultGitHubReconcile = 15 * time.Minute
+
+// ReconcileEvery is the GitHub reconcile interval; 0 is off.
+func (i Ingest) ReconcileEvery() time.Duration {
+	if i.GitHubReconcile == "off" {
+		return 0
+	}
+	if d, err := time.ParseDuration(i.GitHubReconcile); err == nil && d > 0 {
+		return d
+	}
+	return DefaultGitHubReconcile
 }
 
 // RetentionDuration is Retention parsed, or the default.

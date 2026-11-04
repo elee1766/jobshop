@@ -14,10 +14,42 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
 type ingestCmd struct {
 	Serve ingestServeCmd `cmd:"" help:"Serve the webhook endpoints: verify, filter and spool deliveries. Needs no controller or main database."`
+	Drain ingestDrainCmd `cmd:"" help:"Move spooled deliveries into the inbox through the controller (admin). The controller also drains on its own."`
+}
+
+type ingestDrainCmd struct {
+	Once  bool          `help:"Drain once and exit."`
+	Spool string        `help:"Spool database to drain (default the controller's ingest.spool)."`
+	Every time.Duration `default:"5s" help:"Pause between passes without --once."`
+}
+
+func (c ingestDrainCmd) Run(g *Globals) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	for {
+		var r rpc.IngestDrainResult
+		if err := g.call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: c.Spool}, &r); err != nil {
+			return err
+		}
+		if r.Moved > 0 || r.Bad > 0 || c.Once {
+			if _, err := fmt.Fprintf(stdout, "moved %d (new %d), bad %d\n", r.Moved, r.Fresh, r.Bad); err != nil {
+				return err
+			}
+		}
+		if c.Once {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(c.Every):
+		}
+	}
 }
 
 type ingestServeCmd struct {

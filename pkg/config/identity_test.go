@@ -39,6 +39,45 @@ identities:
 	}
 }
 
+func TestGitHubTokenConfig(t *testing.T) {
+	c, err := config.Parse([]byte(`
+identities:
+  me: {kind: github-token, token_file: /pat, repos: ["me/*"]}
+  lin: {kind: linear, token_file: /t, workspace: w, teams: [ENG], webhook_secret_file: /ws}
+`))
+	require.NoError(t, err)
+	n, ok := c.IdentityFor(c.IdentityNames(), "me/proj")
+	assert.True(t, ok)
+	assert.Equal(t, "me", n)
+	_, ok = c.IdentityFor(c.IdentityNames(), "other/proj")
+	assert.False(t, ok)
+	assert.Equal(t, "/ws", c.Identities["lin"].WebhookSecretFile)
+	eps := c.IngestEndpoints()
+	require.Len(t, eps, 1, "a Linear API key's webhook secret gets an endpoint")
+	assert.Equal(t, "lin", eps[0].Identity)
+	_, err = config.Parse([]byte(`
+identities:
+  lin: {kind: linear, token_file: /t, workspace: w, teams: [ENG], webhook_secret_file: /ws}
+ingest:
+  endpoints: [{name: ws, source: linear, identity: lin}]
+`))
+	require.NoError(t, err, "an endpoint may name a linear identity")
+	for name, bad := range map[string]string{
+		"no token":        "identities: {x: {kind: github-token, repos: [a/b]}}",
+		"no repos":        "identities: {x: {kind: github-token, token_file: /p}}",
+		"bad glob":        "identities: {x: {kind: github-token, token_file: /p, repos: [\"[\"]}}",
+		"installations":   "identities: {x: {kind: github-token, token_file: /p, repos: [a/b], installations: {a: 1}}}",
+		"app_id":          "identities: {x: {kind: github-token, token_file: /p, repos: [a/b], app_id: 1}}",
+		"teams":           "identities: {x: {kind: github-token, token_file: /p, repos: [a/b], teams: [A]}}",
+		"webhook secret":  "identities: {x: {kind: github-token, token_file: /p, repos: [a/b], webhook_secret_file: /s}}",
+		"app with secret": "identities: {x: {kind: github-app, app_id: 1, private_key_file: /k, installations: {a: 1}, repos: [a/b], webhook_secret_file: /s}}",
+		"linear repos":    "identities: {x: {kind: linear, token_file: /t, workspace: w, teams: [A], repos: [a/b]}}",
+	} {
+		_, err := config.Parse([]byte(bad))
+		assert.Error(t, err, name)
+	}
+}
+
 func TestLinearAppConfig(t *testing.T) {
 	c, err := config.Parse([]byte(`identities: {la: {kind: linear-app, client_id_file: /i, client_secret_file: /s, workspace: w, teams: [ENG]}}`))
 	require.NoError(t, err)
