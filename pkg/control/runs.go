@@ -210,8 +210,13 @@ func runMeta(w config.Workflow, vars map[string]any) (json.RawMessage, error) {
 		if !linear.KeyPattern.MatchString(key) {
 			return nil, fmt.Errorf("%w: %s %q is not a Linear issue key like ENG-123", store.ErrInvalid, name, key)
 		}
+		lm := map[string]any{"workspace": w.LinearWorkspace, "issue": key}
+		// Who questions and escalations mention on the issue (#293).
+		if h, _ := w.PackVars["linear_human"].(string); strings.TrimSpace(h) != "" {
+			lm["human"] = strings.TrimSpace(h)
+		}
 		return json.Marshal(map[string]map[string]any{
-			"linear": {"workspace": w.LinearWorkspace, "issue": key},
+			"linear": lm,
 			"github": {"repo": w.Repo},
 		})
 	}

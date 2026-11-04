@@ -313,6 +313,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   with the intake's `linear-<KEY>` key, files new work and out-of-scope
   findings with `linear create` and `relate` (#292,
   `docs/notes/292-linear-planner.md`).
+- Questions and escalations of Linear runs asked on the Linear issue,
+  replies become answers, `Blocked` while waiting (#293,
+  `docs/notes/293-linear-communication.md`).
 
 ## 5. What's next
 
@@ -431,6 +434,8 @@ workspace: `docs/verify/linear-pack.md` (#278).
 Linear intake live check with a Linear token on gasserver:
 `docs/verify/linear-intake.md` (#287).
 Linear planner live check: steps 3 and 6 of `docs/verify/linear-pack.md` (#292).
+Linear communication live check: `docs/verify/linear-communication.md`
+(#293).
 
 Pool scaling live check: `docs/verify/pool-scaling.md` (#281); Desk
 scale and cordon buttons are a follow-up.
@@ -936,6 +941,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   `<root>/scale.json`, not the store, since they are controller state
   like the last good config; the cordon lives in session fields so it
   shows in `ticket show` and history.
+- Linear questions (2026-11-04, #293) are posted by a controller sweep,
+  not by `report`, so a Linear outage does not fail the worker's report
+  and the post is retried each tick under one write key. Only a reply
+  threaded under the ask comment answers: a top-level comment may be
+  about something else, and a wrong answer would unblock the worker.
 
 ## 7. Reference: behavior as built
 

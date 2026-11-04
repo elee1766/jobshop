@@ -40,8 +40,12 @@ defaults:
   # State post-merge moves a shipped issue to.
   linear_done_state: Done
   # Labels that keep a Linear issue out of intake (`jobshop linear
-  # eligible --skip-labels`, #279). Comma-separated.
-  linear_skip_labels: ""
+  # eligible --skip-labels`, #279). Comma-separated. Blocked is set while
+  # a worker question waits on the issue (#293).
+  linear_skip_labels: Blocked
+  # Linear user (name, display name or email) mentioned by questions and
+  # escalations posted on a run's Linear issue (#293). Empty: no mention.
+  linear_human: ""
   # Intake (#287): open issues of linear_team in these states (and with
   # one of these labels, if set) and no open run start pr-work through
   # stall-check. Comma-separated; empty labels match any.
