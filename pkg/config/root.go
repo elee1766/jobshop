@@ -29,6 +29,14 @@ func (r Root) Lock() string { return filepath.Join(r.Dir, "controller.lock") }
 // SessionDir returns a session's directory (host record, journal, sockets).
 func (r Root) SessionDir(id string) string { return filepath.Join(r.Dir, "sessions", id) }
 
+// Path resolves a config path: absolute as is, else relative to the root.
+func (r Root) Path(p string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(r.Dir, p)
+}
+
 // ErrNoRoot means no root was given and none was found above the cwd.
 var ErrNoRoot = errors.New("no jobshop root: pass --root, set JOBSHOP_ROOT, or run inside a directory containing " + FileName)
 

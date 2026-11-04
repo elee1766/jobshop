@@ -307,6 +307,37 @@ type Ingest struct {
 	// Retention keeps dispatched, denied and failed items this long (Go
 	// duration, or Nd for days). Default 14d.
 	Retention string `yaml:"retention"`
+	// Listen is the TCP address `jobshop ingest serve` listens on
+	// (#334). Empty: 127.0.0.1:8740.
+	Listen string `yaml:"listen"`
+	// SpoolDir holds received deliveries until the drain. Relative to
+	// the root; empty: ingest/spool.
+	SpoolDir string `yaml:"spool_dir"`
+	// GitHubSecretFile and LinearSecretFile hold webhook signing
+	// secrets, relative to the root. A source with no secret is off.
+	// Linear also accepts every linear-app identity's
+	// webhook_secret_file.
+	GitHubSecretFile string `yaml:"github_secret_file"`
+	LinearSecretFile string `yaml:"linear_secret_file"`
+}
+
+// DefaultIngestListen is the ingest serve address when unset.
+const DefaultIngestListen = "127.0.0.1:8740"
+
+// ListenAddr is Listen or the default.
+func (i Ingest) ListenAddr() string {
+	if i.Listen == "" {
+		return DefaultIngestListen
+	}
+	return i.Listen
+}
+
+// Spool is the spool dir under root.
+func (i Ingest) Spool(r Root) string {
+	if i.SpoolDir == "" {
+		return filepath.Join(r.Dir, "ingest", "spool")
+	}
+	return r.Path(i.SpoolDir)
 }
 
 // RetentionDuration is Retention parsed, or the default.
