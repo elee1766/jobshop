@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/cron"
@@ -82,6 +83,10 @@ type Config struct {
 	// Digest posts the attention list to EscalationRoom on this schedule,
 	// only when it is not empty (#185). Nil: no digest.
 	Digest *cron.Schedule
+	// Fetch, when set, is called every FetchEvery for the current config
+	// (the controller's config.show), applied with Apply (#307).
+	Fetch      func(context.Context) (Config, error)
+	FetchEvery time.Duration
 }
 
 // Reaction keys for progress.
@@ -91,7 +96,11 @@ const (
 
 // Gateway routes messages between one adapter and the controller.
 type Gateway struct {
-	cfg   Config
+	cfg Config
+	// live holds the settings Apply can change while running (#307):
+	// Rooms, Senders, Marker and EscalationRoom. Read with settings().
+	live  atomic.Pointer[Config]
+	start sync.Once // starts escalations when a room is first set
 	ad    Adapter
 	ctl   Controller
 	log   *slog.Logger
@@ -120,11 +129,82 @@ func New(cfg Config, ad Adapter, ctl Controller, log *slog.Logger) *Gateway {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	return &Gateway{
+	g := &Gateway{
 		cfg: cfg, ad: ad, ctl: ctl, log: log, retry: 2 * time.Second,
 		watched: map[string]*watch{}, escalating: map[string]Thread{}, keys: map[Thread]string{},
 		questions: map[string]string{},
 	}
+	g.live.Store(&cfg)
+	return g
+}
+
+// settings is the current config, with changes from Apply.
+func (g *Gateway) settings() *Config { return g.live.Load() }
+
+// Joiner is an adapter that must join a room before it receives from it.
+type Joiner interface {
+	Join(ctx context.Context, room string) error
+}
+
+// Apply takes new rooms, senders, marker and escalation room without a
+// restart (#307). Name, Pool and Digest stay as started: they key
+// sessions and goroutines. Added rooms are joined when the adapter needs
+// it.
+func (g *Gateway) Apply(ctx context.Context, c Config) {
+	if c.Marker == "" {
+		c.Marker = "!"
+	}
+	old := g.settings()
+	next := *old
+	next.Rooms, next.Senders, next.Marker, next.EscalationRoom = c.Rooms, c.Senders, c.Marker, c.EscalationRoom
+	if slices.Equal(old.Rooms, next.Rooms) && slices.Equal(old.Senders, next.Senders) &&
+		old.Marker == next.Marker && old.EscalationRoom == next.EscalationRoom {
+		return
+	}
+	if j, ok := g.ad.(Joiner); ok {
+		for _, r := range next.Rooms {
+			if !slices.Contains(old.Rooms, r) {
+				if err := j.Join(ctx, r); err != nil {
+					g.log.Warn("gateway: join", "room", r, "err", err)
+				}
+			}
+		}
+	}
+	g.live.Store(&next)
+	g.log.Info("gateway: config applied", "rooms", len(next.Rooms), "senders", len(next.Senders), "escalation_room", next.EscalationRoom)
+}
+
+// followConfig calls cfg.Fetch every cfg.FetchEvery and applies what it
+// returns, until ctx ends. A fetch error keeps the current settings. An
+// escalation room set after start starts escalations then.
+func (g *Gateway) followConfig(ctx context.Context) {
+	t := time.NewTicker(g.cfg.FetchEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		c, err := g.cfg.Fetch(ctx)
+		if err != nil {
+			g.log.Debug("gateway: config fetch", "err", err)
+			continue
+		}
+		g.Apply(ctx, c)
+		if g.settings().EscalationRoom != "" {
+			g.startEscalations(ctx)
+		}
+	}
+}
+
+func (g *Gateway) startEscalations(ctx context.Context) {
+	g.start.Do(func() {
+		g.wg.Go(func() { g.runEscalations(ctx) })
+		if g.cfg.Digest != nil {
+			g.wg.Go(func() { g.runDigest(ctx) })
+		}
+	})
 }
 
 // Key is the session key for a thread.
@@ -146,11 +226,11 @@ func (g *Gateway) threadKey(t Thread) string {
 
 // Run receives until ctx ends, then waits for the session watchers.
 func (g *Gateway) Run(ctx context.Context) error {
-	if g.cfg.EscalationRoom != "" {
-		g.wg.Go(func() { g.runEscalations(ctx) })
-		if g.cfg.Digest != nil {
-			g.wg.Go(func() { g.runDigest(ctx) })
-		}
+	if g.settings().EscalationRoom != "" {
+		g.startEscalations(ctx)
+	}
+	if g.cfg.Fetch != nil && g.cfg.FetchEvery > 0 {
+		g.wg.Go(func() { g.followConfig(ctx) })
 	}
 	err := g.ad.Run(ctx, g.Handle)
 	g.wg.Wait()
@@ -162,7 +242,8 @@ func (g *Gateway) Run(ctx context.Context) error {
 
 // Allowed reports whether a message passes the room and sender allowlists.
 func (g *Gateway) Allowed(m Message) bool {
-	return slices.Contains(g.cfg.Rooms, m.Thread.Room) && slices.Contains(g.cfg.Senders, m.Sender)
+	c := g.settings()
+	return slices.Contains(c.Rooms, m.Thread.Room) && slices.Contains(c.Senders, m.Sender)
 }
 
 // Handle routes one message. Messages from others are ignored.
@@ -171,7 +252,7 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 		g.log.Debug("gateway: ignored", "room", m.Thread.Room, "sender", m.Sender)
 		return
 	}
-	text, interrupt := strings.CutPrefix(strings.TrimSpace(m.Text), g.cfg.Marker)
+	text, interrupt := strings.CutPrefix(strings.TrimSpace(m.Text), g.settings().Marker)
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return
