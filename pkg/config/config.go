@@ -324,6 +324,8 @@ type Ingest struct {
 	// Only github-app identities have a deliveries API; with none it is
 	// off.
 	GitHubReconcile string `yaml:"github_reconcile"`
+	// Admission hooks run on pending inbox items (#348).
+	Admission []AdmissionHook `yaml:"admission"`
 
 	// Removed in #339; set only to fail the load with a pointer to the
 	// replacement instead of silently turning a source off.
@@ -881,6 +883,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 	}
 	if err := c.validateIngest(); err != nil {
+		return nil, err
+	}
+	if err := c.validateAdmission(); err != nil {
 		return nil, err
 	}
 	if r := c.Ingest.Retention; r != "" {

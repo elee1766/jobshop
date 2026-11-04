@@ -1,0 +1,404 @@
+package control
+
+import (
+	"bytes"
+	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+// Ingest admission (#348): a stage that lease-claims pending inbox items,
+// runs the mutating hooks in config order and then the validating hooks
+// on the final event, and moves the item to admitted, denied or held.
+
+const (
+	admissionHolder = "admission"
+	// admissionIdle is how long the pump sleeps when nothing is pending.
+	admissionIdle = time.Second
+	// admissionOn is the "on" field of an admission event; on: intake
+	// hooks run as validating hooks get "intake".
+	admissionOn = "admission"
+)
+
+// admissionEvent is what an admission hook reads. DeliveryID lets a hook
+// dedupe: an item whose lease expired is claimed and admitted again.
+type admissionEvent struct {
+	On         string          `json:"on"`
+	DeliveryID string          `json:"delivery_id"`
+	Source     string          `json:"source"`
+	Kind       string          `json:"kind,omitempty"`
+	RepoOrTeam string          `json:"repo_or_team,omitempty"`
+	Number     int64           `json:"number,omitempty"`
+	CommentID  string          `json:"comment_id,omitempty"`
+	Actor      string          `json:"actor,omitempty"`
+	Project    string          `json:"project,omitempty"`
+	ReceivedAt time.Time       `json:"received_at"`
+	Payload    json.RawMessage `json:"payload"`
+}
+
+// mutateAnswer is a mutating hook's answer: a full event or an RFC 6902
+// patch against the event. Neither is no change.
+type mutateAnswer struct {
+	Event  json.RawMessage `json:"event"`
+	Patch  json.RawMessage `json:"patch"`
+	Reason string          `json:"reason"`
+}
+
+// admissionResult is one hook's entry in an item's hook_results.
+type admissionResult struct {
+	Name       string          `json:"name"`
+	Type       string          `json:"type"`
+	Decision   string          `json:"decision"` // allow, deny, ask_human, mutated, unchanged, failed, ignored
+	Reason     string          `json:"reason,omitempty"`
+	Diff       json.RawMessage `json:"diff,omitempty"`
+	DurationMS int64           `json:"duration_ms"`
+	Error      string          `json:"error,omitempty"`
+}
+
+// Result decisions beyond the validating ones.
+const (
+	admitMutated   = "mutated"
+	admitUnchanged = "unchanged"
+	admitFailed    = "failed"
+	admitIgnored   = "ignored"
+)
+
+// admissionHooks is ingest.admission plus every on: intake hook as a
+// validating hook for Linear events, so #288 setups keep their guard.
+func admissionHooks(cfg *config.Config) []config.AdmissionHook {
+	out := append([]config.AdmissionHook(nil), cfg.Ingest.Admission...)
+	n := 0
+	for _, h := range cfg.Hooks {
+		if h.On != config.HookIntake {
+			continue
+		}
+		n++
+		out = append(out, config.AdmissionHook{
+			Name: fmt.Sprintf("on-intake-%d", n), Type: config.AdmissionValidating, Command: h.Command, Intake: true,
+			Timeout: h.Timeout, Match: config.AdmissionMatch{Sources: []string{config.IngestLinear}},
+		})
+	}
+	return out
+}
+
+// pumpAdmission admits pending items until the controller stops.
+func (c *Controller) pumpAdmission() {
+	for c.ctx.Err() == nil {
+		ok, err := c.admitNext(c.ctx)
+		if err != nil && c.ctx.Err() == nil {
+			c.log.Error("admission", "err", err)
+		}
+		if ok && err == nil {
+			continue
+		}
+		select {
+		case <-c.ctx.Done():
+		case <-time.After(admissionIdle):
+		}
+	}
+}
+
+// admitNext claims one pending item and admits it. false: none pending.
+func (c *Controller) admitNext(ctx context.Context) (bool, error) {
+	cfg := c.config()
+	hooks := admissionHooks(cfg)
+	lease := time.Minute
+	for _, h := range hooks {
+		lease += config.Duration(h.Timeout, 30*time.Second)
+	}
+	it, err := c.store.InboxClaim(ctx, []string{store.InboxPending}, admissionHolder, lease)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	state, admitted, results := c.admit(ctx, cfg, hooks, it)
+	raw, err := json.Marshal(results)
+	if err != nil {
+		return true, err
+	}
+	u := store.InboxUpdate{State: state, HookResults: raw}
+	if state == store.InboxAdmitted {
+		u.Admitted = admitted
+	}
+	_, err = c.store.InboxSetState(ctx, it.ID, admissionHolder, u)
+	if err == nil {
+		c.log.InfoContext(ctx, "inbox admission", "delivery", it.DeliveryID, "state", state)
+	}
+	return true, err
+}
+
+// admit runs the hooks on it and returns the new state, the admitted
+// payload and every hook's result.
+func (c *Controller) admit(ctx context.Context, cfg *config.Config, hooks []config.AdmissionHook, it store.InboxItem) (string, json.RawMessage, []admissionResult) {
+	ev := admissionEvent{
+		On: admissionOn, DeliveryID: it.DeliveryID, Source: it.Source, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam,
+		Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, Project: cfg.DefaultProject,
+		ReceivedAt: it.ReceivedAt, Payload: it.Payload,
+	}
+	subj := config.AdmissionSubject{
+		Source: it.Source, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam, Actor: it.Actor,
+		Project: ev.Project, Bot: strings.HasSuffix(it.Actor, "[bot]"),
+	}
+	results := []admissionResult{}
+	for _, h := range hooks {
+		if h.Type == config.AdmissionMutating && h.Match.Matches(subj) {
+			var r admissionResult
+			ev, r = c.mutate(ctx, h, ev)
+			results = append(results, r)
+		}
+	}
+	key := "admission/" + it.DeliveryID
+	if a, ok := c.askedHuman(ctx, key); ok && a.Decision != rpc.GuardAskHuman {
+		// A human answered an earlier hold: their answer stands.
+		results = append(results, admissionResult{Name: "human", Type: config.AdmissionValidating, Decision: a.Decision, Reason: a.Reason})
+		if a.Decision == rpc.GuardAllow {
+			return store.InboxAdmitted, ev.Payload, results
+		}
+		return store.InboxDenied, nil, results
+	}
+	state := store.InboxAdmitted
+	var ask []string
+	for _, h := range hooks {
+		if h.Type != config.AdmissionValidating || !h.Match.Matches(subj) {
+			continue
+		}
+		r := c.validate(ctx, h, ev)
+		results = append(results, r)
+		switch r.Decision {
+		case rpc.GuardDeny:
+			state = store.InboxDenied
+		case rpc.GuardAskHuman:
+			ask = append(ask, h.Name+": "+r.Reason)
+		}
+	}
+	switch {
+	case state == store.InboxDenied:
+		return state, nil, results
+	case len(ask) > 0:
+		c.holdForHuman(ctx, key, ev, strings.Join(ask, "\n"))
+		return store.InboxHeld, nil, results
+	}
+	return state, ev.Payload, results
+}
+
+// mutate runs a mutating hook. Any failure leaves ev unchanged.
+func (c *Controller) mutate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) (admissionEvent, admissionResult) {
+	r := admissionResult{Name: h.Name, Type: h.Type}
+	start := time.Now()
+	out, err := c.callAdmission(ctx, h, ev)
+	r.DurationMS = time.Since(start).Milliseconds()
+	fail := func(err error) (admissionEvent, admissionResult) {
+		r.Decision, r.Error = admitFailed, err.Error()
+		if h.Policy() == config.FailurePolicyIgnore {
+			r.Decision = admitIgnored
+		}
+		return ev, r
+	}
+	if err != nil {
+		return fail(err)
+	}
+	r.Decision = admitUnchanged
+	if len(out) == 0 {
+		return ev, r
+	}
+	var a mutateAnswer
+	if err := json.Unmarshal(out, &a); err != nil {
+		return fail(fmt.Errorf("answer is not JSON: %w", err))
+	}
+	r.Reason = a.Reason
+	before, err := json.Marshal(ev)
+	if err != nil {
+		return fail(err)
+	}
+	var after []byte
+	switch {
+	case len(a.Event) > 0 && len(a.Patch) > 0:
+		return fail(errors.New("answer has both event and patch"))
+	case len(a.Event) > 0:
+		after = a.Event
+	case len(a.Patch) > 0:
+		after, err = applyJSONPatch(before, a.Patch)
+		if err != nil {
+			return fail(err)
+		}
+		r.Diff = a.Patch
+	default:
+		return ev, r
+	}
+	next := ev
+	next.Payload = nil
+	if err := json.Unmarshal(after, &next); err != nil {
+		return fail(fmt.Errorf("mutated event: %w", err))
+	}
+	// Identity fields stay: a hook may not move an item to another delivery.
+	next.On, next.DeliveryID, next.Source = ev.On, ev.DeliveryID, ev.Source
+	if len(next.Payload) == 0 {
+		next.Payload = json.RawMessage("null")
+	}
+	if r.Diff == nil {
+		r.Diff = topLevelDiff(before, after)
+	}
+	r.Decision = admitMutated
+	return next, r
+}
+
+// validate runs a validating hook. Under failure_policy fail an error,
+// timeout or bad answer denies; under ignore it is skipped.
+func (c *Controller) validate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) admissionResult {
+	r := admissionResult{Name: h.Name, Type: h.Type}
+	if h.Intake {
+		ev.On = config.HookIntake
+	}
+	start := time.Now()
+	out, err := c.callAdmission(ctx, h, ev)
+	r.DurationMS = time.Since(start).Milliseconds()
+	var a hookAnswer
+	if err == nil && len(out) > 0 {
+		if jerr := json.Unmarshal(out, &a); jerr != nil {
+			err = fmt.Errorf("answer is not JSON: %w", jerr)
+		} else if a.Decision != rpc.GuardAllow && a.Decision != rpc.GuardDeny && a.Decision != rpc.GuardAskHuman {
+			err = fmt.Errorf("decision %q is not allow, deny or ask_human", a.Decision)
+		}
+	}
+	if err != nil {
+		r.Error = err.Error()
+		if h.Policy() == config.FailurePolicyIgnore {
+			r.Decision = admitIgnored
+		} else {
+			r.Decision, r.Reason = rpc.GuardDeny, "hook failed: "+err.Error()
+		}
+		return r
+	}
+	if len(out) == 0 {
+		a.Decision = rpc.GuardAllow
+	}
+	r.Decision, r.Reason = a.Decision, a.Reason
+	return r
+}
+
+// callAdmission sends ev to the hook and returns its trimmed answer.
+func (c *Controller) callAdmission(ctx context.Context, h config.AdmissionHook, ev admissionEvent) ([]byte, error) {
+	body, err := json.Marshal(ev)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, config.Duration(h.Timeout, 30*time.Second))
+	defer cancel()
+	var out []byte
+	if h.URL != "" {
+		out, err = c.postAdmission(ctx, h, ev.DeliveryID, body)
+	} else {
+		out, err = c.execAdmission(ctx, h, body)
+	}
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("timed out after %s", config.Duration(h.Timeout, 30*time.Second))
+	}
+	return bytes.TrimSpace(out), err
+}
+
+func (c *Controller) execAdmission(ctx context.Context, h config.AdmissionHook, body []byte) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", h.Command)
+	cmd.Dir = c.root.Dir
+	cmd.Stdin = bytes.NewReader(body)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return nil, fmt.Errorf("exited %d: %s", exit.ExitCode(), strings.TrimSpace(stderr.String()))
+	}
+	return out, err
+}
+
+// admissionSignature is the X-Jobshop-Signature-256 value for body.
+func admissionSignature(secret, body []byte) string {
+	m := hmac.New(sha256.New, secret)
+	m.Write(body)
+	return "sha256=" + hex.EncodeToString(m.Sum(nil))
+}
+
+func (c *Controller) postAdmission(ctx context.Context, h config.AdmissionHook, delivery string, body []byte) ([]byte, error) {
+	secret, err := os.ReadFile(c.root.Path(h.SecretFile))
+	if err != nil {
+		return nil, fmt.Errorf("secret: %w", err)
+	}
+	secret = bytes.TrimSpace(secret)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.URL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	reqID := make([]byte, 16)
+	_, _ = rand.Read(reqID)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Jobshop-Request-Id", hex.EncodeToString(reqID))
+	req.Header.Set("X-Jobshop-Delivery", delivery)
+	req.Header.Set("X-Jobshop-Signature-256", admissionSignature(secret, body))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	out, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(out[:min(len(out), 200)])))
+	}
+	return out, nil
+}
+
+// holdForHuman files one needs-human ticket per held delivery, like a
+// refused intake (#288). Closing it done admits the item when it is
+// next claimed; any other resolution denies it.
+func (c *Controller) holdForHuman(ctx context.Context, key string, ev admissionEvent, reason string) {
+	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Newest: true, Limit: 1})
+	if err == nil && len(open) > 0 && open[0].Status != store.StatusClosed {
+		return
+	}
+	meta, err := json.Marshal(map[string]map[string]string{hookMetaPack: {"key": key}})
+	if err != nil {
+		return
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "An admission hook asks a human about %s %s delivery %s", ev.Source, ev.Kind, ev.DeliveryID)
+	if ev.RepoOrTeam != "" {
+		fmt.Fprintf(&b, " in %s", ev.RepoOrTeam)
+		if ev.Number != 0 {
+			fmt.Fprintf(&b, "#%d", ev.Number)
+		}
+	}
+	if ev.Actor != "" {
+		fmt.Fprintf(&b, " by %s", ev.Actor)
+	}
+	fmt.Fprintf(&b, ".\n\nReason:\n%s\n\nQuestion: may this event reach an agent?\n", reason)
+	b.WriteString("Close done to allow it, close with any other resolution to keep it out.")
+	project := ev.Project
+	if project == "" {
+		project = c.config().DefaultProject
+	}
+	prio := 1
+	if _, err := c.store.Create(ctx, "controller", store.NewTicket{
+		Project: project, Kind: store.KindTask, Title: "Admission held " + ev.Source + " delivery " + ev.DeliveryID,
+		Body: b.String(), Priority: &prio, Labels: []string{needsHumanLabel, questionLabel}, Meta: meta,
+	}); err != nil {
+		c.log.WarnContext(ctx, "admission: file ticket", "delivery", ev.DeliveryID, "err", err)
+	}
+}
