@@ -16,9 +16,6 @@ before `jobshop close`.
 If the jobshop CLI socket goes away mid-turn (controller restart), write
 the PR head and CI state on the GitHub issue so the next attempt can
 verify and close instead of redoing the work.
-On an issue_no_run stall, run `gh pr list --state all --search <n>` first:
-if a merged PR delivered it, close the issue instead of starting pr-work.
-The search can return another issue's PR: confirm `(#<n>)` in its title.
 An umbrella or tracking issue whose sub-issues carry the work gets no
 pr-work run: comment that on it instead of starting one.
 `jobshop close -r failed` takes no reason text: comment first, then close.
