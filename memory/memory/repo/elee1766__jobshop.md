@@ -12,3 +12,6 @@ counts as a failed attempt). Comment on another ticket with
 pkg/config/pack_test.go asserts pack prompt substrings and admin lists.
 When editing anything under packs/, grep it for the old text and update
 the assertions in the same commit.
+`jobshop run resume <run>` reopens only the first unfinished step. If a
+later step (review-merge) failed, pass `--step <that step>` or the run
+escalates again.

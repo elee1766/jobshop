@@ -5,9 +5,10 @@ instead of fixing it in the current PR.
 Never pipe into `gh issue edit --body-file -`: a failed command upstream
 (python3 and awk may be missing) blanks the body. Write the body to a file
 with the Write tool, check it is non-empty, then pass the file.
-After `gh pr checkout`, check `git rev-parse HEAD` equals the PR's
-headRefOid; if the branch is checked out elsewhere it silently stays put.
-Use `git checkout --detach <headRefOid>` instead.
+Do not trust `gh pr checkout` when the branch is checked out in another
+worktree: it silently stays on the old HEAD. Run
+`git fetch origin pull/<n>/head && git checkout --detach FETCH_HEAD`,
+then check `git rev-parse HEAD` equals the PR's headRefOid.
 `jobshop close <id>` on a ticket you do not hold fails: `jobshop claim
 <id>` first, or leave it to the operator.
 If the jobshop CLI socket goes away mid-turn (controller restart), write
