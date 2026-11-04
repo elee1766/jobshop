@@ -144,6 +144,44 @@ func TestAdmissionAskHumanHolds(t *testing.T) {
 	assert.Contains(t, ts[0].Body, "acme/app#7")
 }
 
+// TestAdmissionHeldReleased (#353): closing the needs-human ticket moves
+// the held item back to pending, and the next admission applies the
+// answer without re-running the validating hook.
+func TestAdmissionHeldReleased(t *testing.T) {
+	for _, tc := range []struct {
+		resolution, want string
+	}{{"done", store.InboxAdmitted}, {"wontfix", store.InboxDenied}} {
+		t.Run(tc.resolution, func(t *testing.T) {
+			c, _ := admissionController(t, []config.AdmissionHook{val("ask", `echo '{"decision":"ask_human","reason":"unsure"}'`)})
+			it := putInbox(t, c, store.InboxItem{})
+			got, _ := admitOne(t, c, it.ID)
+			require.Equal(t, store.InboxHeld, got.State)
+
+			// Unanswered: stays held.
+			require.NoError(t, c.releaseAnswered(t.Context()))
+			got, err := c.store.InboxGet(t.Context(), it.ID)
+			require.NoError(t, err)
+			assert.Equal(t, store.InboxHeld, got.State)
+
+			ts, err := c.store.List(t.Context(), store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: "admission/d1"})
+			require.NoError(t, err)
+			require.Len(t, ts, 1)
+			_, err = c.store.CloseTicket(t.Context(), "human", ts[0].ID, nil, tc.resolution)
+			require.NoError(t, err)
+
+			require.NoError(t, c.releaseAnswered(t.Context()))
+			got, err = c.store.InboxGet(t.Context(), it.ID)
+			require.NoError(t, err)
+			assert.Equal(t, store.InboxPending, got.State)
+
+			got, rs := admitOne(t, c, it.ID)
+			assert.Equal(t, tc.want, got.State)
+			require.Len(t, rs, 1, "the human's answer, not the hook again")
+			assert.Equal(t, "human", rs[0].Name)
+		})
+	}
+}
+
 func TestAdmissionTimeout(t *testing.T) {
 	for _, tc := range []struct {
 		policy, typ, state, decision string

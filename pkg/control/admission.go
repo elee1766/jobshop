@@ -99,6 +99,9 @@ func admissionHooks(cfg *config.Config) []config.AdmissionHook {
 // pumpAdmission admits pending items until the controller stops.
 func (c *Controller) pumpAdmission() {
 	for c.ctx.Err() == nil {
+		if err := c.releaseAnswered(c.ctx); err != nil && c.ctx.Err() == nil {
+			c.log.Error("admission release", "err", err)
+		}
 		ok, err := c.admitNext(c.ctx)
 		if err != nil && c.ctx.Err() == nil {
 			c.log.Error("admission", "err", err)
@@ -111,6 +114,32 @@ func (c *Controller) pumpAdmission() {
 		case <-time.After(admissionIdle):
 		}
 	}
+}
+
+// releaseAnswered moves held items whose needs-human ticket is closed
+// back to pending (#353). Admission only claims pending items; on the
+// next claim admit reads the answer through askedHuman: done admits,
+// any other resolution denies. Held is not pruned, so without this an
+// answered item would stay held forever.
+func (c *Controller) releaseAnswered(ctx context.Context) error {
+	held, err := c.store.InboxList(ctx, store.InboxFilter{State: store.InboxHeld, Limit: 200})
+	if err != nil {
+		return err
+	}
+	for _, it := range held {
+		a, ok := c.askedHuman(ctx, "admission/"+it.DeliveryID)
+		if !ok || a.Decision == rpc.GuardAskHuman {
+			continue
+		}
+		if _, err := c.store.InboxRequeue(ctx, it.ID, store.InboxHeld, store.InboxPending); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				continue // moved or leased meanwhile
+			}
+			return err
+		}
+		c.log.InfoContext(ctx, "inbox admission released", "delivery", it.DeliveryID, "ticket", a.Ticket, "answer", a.Decision)
+	}
+	return nil
 }
 
 // admitNext claims one pending item and admits it. false: none pending.

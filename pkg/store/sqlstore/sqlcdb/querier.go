@@ -59,6 +59,10 @@ type Querier interface {
 	InboxNextClaimable(ctx context.Context, arg InboxNextClaimableParams) (Inbox, error)
 	InboxPrune(ctx context.Context, before int64) (int64, error)
 	InboxRenew(ctx context.Context, arg InboxRenewParams) (Inbox, error)
+	// Moves an unleased item from one state to another (held -> pending
+	// once its needs-human ticket is answered, #353). Guarded by the
+	// current state so a racing stage cannot be overwritten.
+	InboxRequeue(ctx context.Context, arg InboxRequeueParams) (Inbox, error)
 	// Fenced by holder and a live lease. The lease is dropped so the next
 	// stage can claim the row in its new state.
 	InboxSetState(ctx context.Context, arg InboxSetStateParams) (Inbox, error)

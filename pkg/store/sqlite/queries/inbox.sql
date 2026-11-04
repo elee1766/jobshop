@@ -57,3 +57,11 @@ LIMIT sqlc.arg(lim);
 -- name: InboxPrune :execrows
 DELETE FROM inbox
 WHERE state IN ('dispatched', 'denied', 'failed') AND received_at < sqlc.arg(before);
+
+-- name: InboxRequeue :one
+-- Moves an unleased item from one state to another (held -> pending
+-- once its needs-human ticket is answered, #353). Guarded by the
+-- current state so a racing stage cannot be overwritten.
+UPDATE inbox SET state = sqlc.arg(to_state), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND state = sqlc.arg(from_state) AND (holder = '' OR lease_until <= sqlc.arg(now))
+RETURNING *;

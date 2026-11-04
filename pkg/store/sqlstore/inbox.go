@@ -191,6 +191,28 @@ func (s *Store) InboxList(ctx context.Context, f store.InboxFilter) ([]store.Inb
 	return out, nil
 }
 
+// InboxRequeue moves an unleased item from state from to state to.
+func (s *Store) InboxRequeue(ctx context.Context, id int64, from, to string) (out store.InboxItem, err error) {
+	if !slices.Contains(store.InboxStates, from) || !slices.Contains(store.InboxStates, to) {
+		return out, fmt.Errorf("%w: unknown inbox state %q or %q", store.ErrInvalid, from, to)
+	}
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+		r, err := q.InboxRequeue(ctx, sqlcdb.InboxRequeueParams{ToState: to, Now: ms(s.now()), ID: id, FromState: from})
+		if errors.Is(err, sql.ErrNoRows) {
+			if _, gerr := q.InboxGet(ctx, id); gerr != nil {
+				return notFound(gerr, fmt.Sprintf("inbox item %d", id))
+			}
+			return fmt.Errorf("%w: inbox item %d is not %s or is leased", store.ErrConflict, id, from)
+		}
+		if err != nil {
+			return err
+		}
+		out = toInbox(r)
+		return nil
+	})
+	return out, err
+}
+
 // InboxPrune deletes terminal items received before before.
 func (s *Store) InboxPrune(ctx context.Context, before time.Time) (n int64, err error) {
 	err = s.tx(ctx, func(q sqlcdb.Querier) error {
