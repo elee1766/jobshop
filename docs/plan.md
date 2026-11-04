@@ -384,6 +384,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
 - `jobshop wait add|list|clear`: tickets park on a PR review, checks,
   PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
+- Generic HMAC ingest endpoints with a payload map, and `jobshop ingest
+  put` for local senders (#399, `docs/notes/399-generic-ingest.md`).
 
 ## 5. What's next
 
@@ -1181,6 +1183,7 @@ moved from the old 7.x list, oldest first:
 - [Reserved human slot per pool](notes/190-human-slot.md) (#190)
 - [Outbox for side effects, design note](notes/191-outbox.md) (#191)
 - [Prompt rules](notes/205-prompt-rules.md) (#205)
+- [Prompt rule injection dedup](notes/397-inject-dedup.md) (#397)
 - [TestSessionRestartIdle flake](notes/327-restart-idle-flake.md) (#327)
 - [Prompt text from files](notes/382-text-files.md) (#382)
 - [Subscription bot allowlist](notes/402-subscription-bots.md) (#402)

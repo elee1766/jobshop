@@ -73,7 +73,7 @@ func TestPromptRules(t *testing.T) {
 	runTicket("second")
 	p = prompts()
 	require.Len(t, p, 2)
-	assert.True(t, strings.HasPrefix(p[1], "POOL-DEV\n\nDEV-RULE\n\nHOOK-OK\n\nYou have claimed"), "system rule once per host: %s", p[1])
+	assert.True(t, strings.HasPrefix(p[1], "POOL-DEV\n\nYou have claimed"), "unchanged rules not resent: %s", p[1])
 
 	sessions := openSessions(t, admin)
 	require.Len(t, sessions, 1)
@@ -101,7 +101,7 @@ func TestPromptRules(t *testing.T) {
 		}
 		applied = append(applied, names)
 	}
-	assert.Equal(t, [][]string{{"global", "dev-only", "hook"}, {"dev-only", "hook"}}, applied)
+	assert.Equal(t, [][]string{{"global", "dev-only", "hook"}, nil}, applied, "unchanged rules are not resent (#397)")
 
 	// session prompt: the next ready ticket, labeled, nothing claimed.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
@@ -124,7 +124,8 @@ func TestPromptRules(t *testing.T) {
 		srcs = append(srcs, part.Source)
 	}
 	assert.Equal(t, []string{"pool", "rule:dev-only", "rule:hook", "ticket"}, srcs)
-	assert.Contains(t, pr.Text, "=== rule:dev-only ===\nDEV-RULE\n")
+	// A new controller has no record of what the session holds: new.
+	assert.Contains(t, pr.Text, "=== rule:dev-only (new) ===\nDEV-RULE\n")
 	assert.Contains(t, pr.Text, "=== ticket ===\nYou have claimed Jobshop ticket "+next.ID)
 	sess := dial(t, filepath.Join(sdir, "cli.sock"))
 	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, nil), rpc.ErrForbidden)
@@ -152,7 +153,8 @@ func TestPromptRules(t *testing.T) {
 	last = p[len(p)-1]
 	assert.NotContains(t, last, "DEV-RULE")
 	assert.NotContains(t, last, "HOOK-OK")
-	assert.True(t, strings.HasPrefix(last, "POOL-DEV\n\nYou have claimed"), last)
+	assert.True(t, strings.HasPrefix(last, "POOL-DEV\n\nPrompt rule \"dev-only\" no longer applies.\n\n"+
+		"Prompt rule \"hook\" no longer applies.\n\nYou have claimed"), last)
 
 	// config show lists the rules.
 	var cs rpc.ConfigShowResult

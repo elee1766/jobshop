@@ -54,8 +54,8 @@ func checkInbox(it store.InboxItem) error {
 	if it.DeliveryID == "" {
 		return fmt.Errorf("%w: inbox item needs a delivery id", store.ErrInvalid)
 	}
-	if it.Source != "github" && it.Source != "linear" {
-		return fmt.Errorf("%w: inbox source %q must be github or linear", store.ErrInvalid, it.Source)
+	if it.Source == "" {
+		return fmt.Errorf("%w: inbox item needs a source", store.ErrInvalid)
 	}
 	return nil
 }

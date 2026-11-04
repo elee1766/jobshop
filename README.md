@@ -218,6 +218,23 @@ the spool write fails so the sender retries. Adding an endpoint needs a
 restart; rotating a secret file does not. See
 `docs/notes/334-ingest-spool.md`.
 
+Any other sender (a queue puller, CI, monitoring) uses a `generic`
+endpoint: HMAC-SHA256 of the raw body in a header you name, and `map`
+paths that fill the inbox fields. Trusted local senders skip HTTP with
+`jobshop ingest put --endpoint hints [--delivery-id ID] < payload.json`,
+which exits 0 for new or duplicate deliveries. See
+`docs/notes/399-generic-ingest.md`.
+
+```yaml
+    - name: hints
+      source: generic
+      secret_file: secrets/hints
+      signature_header: X-Hint-Signature
+      signature_prefix: "sha256="
+      delivery_id_header: X-Hint-Delivery
+      map: {kind: event, repo_or_team: repo, number: prs.0, natural_key: "{repo}:{head}"}
+```
+
 ### NixOS
 
 The flake exports `nixosModules.default`. It gives `services.jobshop` with

@@ -140,8 +140,8 @@ func (c *Config) checkAdmission(h AdmissionHook, names map[string]bool) error {
 		return fmt.Errorf("failure_policy %q must be fail or ignore", p)
 	}
 	for _, s := range h.Match.Sources {
-		if s != IngestGitHub && s != IngestLinear {
-			return fmt.Errorf("match.sources %q must be github or linear", s)
+		if !slices.Contains(IngestSources, s) {
+			return fmt.Errorf("match.sources %q must be github, linear or generic", s)
 		}
 	}
 	for _, g := range slices.Concat(h.Match.Repos, h.Match.Teams) {
