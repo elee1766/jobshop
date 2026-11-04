@@ -95,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/sessions", s.json(s.sessions))
 	mux.HandleFunc("GET /api/pools", s.json(s.pools))
 	mux.HandleFunc("GET /api/deploys", s.json(s.deploys))
+	mux.HandleFunc("GET /api/activity", s.json(s.activity))
 	mux.HandleFunc("GET /api/ticket/{id}", s.json(s.ticket))
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/session/{id}/stream", s.sessionStream)
@@ -178,6 +179,35 @@ func (s *Server) json(fn func(*http.Request) (any, error)) http.HandlerFunc {
 		}
 		_ = json.NewEncoder(w).Encode(v)
 	}
+}
+
+// activity proxies activity.list (#255). Query: since (Go duration),
+// source, repo, kind, actor, bots, ticket, limit.
+func (s *Server) activity(r *http.Request) (any, error) {
+	q := r.URL.Query()
+	p := rpc.ActivityListParams{
+		Source: q.Get("source"), Repo: q.Get("repo"), Kind: q.Get("kind"),
+		Actor: q.Get("actor"), Bots: q.Get("bots"), Ticket: q.Get("ticket"),
+	}
+	if v := q.Get("since"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("%w: since: %w", errBadRequest, err)
+		}
+		p.Since = d
+	}
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("%w: limit: %w", errBadRequest, err)
+		}
+		p.Limit = n
+	}
+	var res rpc.ActivityListResult
+	if err := s.ctl.Call(r.Context(), rpc.MethodActivityList, p, &res); err != nil {
+		return nil, err
+	}
+	return res, nil
 }
 
 // AttentionItem is one thing waiting on a human.

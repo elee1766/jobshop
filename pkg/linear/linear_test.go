@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -97,4 +98,38 @@ func TestTeam(t *testing.T) {
 		_, ok := linear.Team(bad)
 		assert.False(t, ok, bad)
 	}
+}
+
+// changesResp is shaped like the activity query's answer (#255).
+const changesResp = `{"data":{"issues":{"nodes":[{"id":"iss-1","identifier":"ENG-7","title":"Fix","url":"https://linear.app/acme/issue/ENG-7","createdAt":"2026-11-03T09:00:00.000Z","creator":{"name":"Ann","isMe":false},
+ "comments":{"nodes":[{"id":"c-1","body":"looks good","url":"https://linear.app/acme/issue/ENG-7#c1","createdAt":"2026-11-03T09:30:00.000Z","user":{"name":"jobshop","isMe":true},"botActor":null}]},
+ "history":{"nodes":[{"id":"h-1","createdAt":"2026-11-03T09:40:00.000Z","actor":{"name":"Ann","isMe":false},"fromState":{"name":"Todo"},"toState":{"name":"Done"},"fromAssignee":null,"toAssignee":null},
+  {"id":"h-2","createdAt":"2026-11-03T09:45:00.000Z","actor":null,"fromState":null,"toState":null,"fromAssignee":null,"toAssignee":{"name":"Bo"}},
+  {"id":"h-old","createdAt":"2026-11-01T00:00:00.000Z","actor":null,"fromState":{"name":"a"},"toState":{"name":"b"}},
+  {"id":"h-3","createdAt":"2026-11-03T09:50:00.000Z","actor":null}]}}]}}}`
+
+func TestChanges(t *testing.T) {
+	var got call
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		require.NoError(t, json.Unmarshal(b, &got))
+		_, _ = io.WriteString(w, changesResp)
+	}))
+	defer srv.Close()
+	since, _ := time.Parse(time.RFC3339, "2026-11-02T00:00:00Z")
+	chs, err := linear.New(srv.URL, "lin_api_x").Changes(t.Context(), "ENG", since)
+	require.NoError(t, err)
+	assert.Equal(t, "ENG", got.Variables["team"])
+	assert.Equal(t, "2026-11-02T00:00:00Z", got.Variables["since"])
+	require.Len(t, chs, 4)
+	assert.Equal(t, "issue", chs[0].Kind)
+	assert.Equal(t, "Ann", chs[0].Actor)
+	assert.Equal(t, "comment", chs[1].Kind)
+	assert.True(t, chs[1].Self)
+	assert.Equal(t, "https://linear.app/acme/issue/ENG-7#c1", chs[1].URL)
+	assert.Equal(t, "state", chs[2].Kind)
+	assert.Equal(t, "Todo -> Done", chs[2].Text)
+	assert.Equal(t, "assignee", chs[3].Kind)
+	assert.Equal(t, "none -> Bo", chs[3].Text)
+	assert.True(t, chs[3].Bot)
 }

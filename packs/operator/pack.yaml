@@ -21,4 +21,4 @@ pools:
     # What the operator reads and does across instances: the merged
     # config and its instances, sessions, pools, triggers, attention, and
     # reload. Run list/show and tickets need no grant.
-    admin: [config-reload, config-show, session-list, pool-list, trigger-list, attention]
+    admin: [config-reload, config-show, session-list, pool-list, trigger-list, attention, activity]

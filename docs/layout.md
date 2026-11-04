@@ -106,7 +106,7 @@ Subcommands:
 | Discord bot API (gateway) | `github.com/bwmarrin/discordgo` (2026-11-03, #182): the most used Go Discord library, REST plus gateway websocket with resume; pure Go | v0.29.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
 | Secret redaction (conversation export) | `github.com/zricethezav/gitleaks/v8` (`detect`) | v8.30.1 |
-| Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency | svelte 5.57.3, vite 8.3.5 |
+| Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency. @lucide/svelte for the activity view's icons (2026-11-04, #255); tree-shaken per icon | svelte 5.57.3, vite 8.3.5, @lucide/svelte 1.67.0 |
 | Lint (tool, not a module) | golangci-lint, built by `nix/golangci-lint.nix` with Go 1.27 because nixpkgs builds it with Go 1.26, which refuses go 1.27 modules (2026-11-03). Same version in CI, the dev shell and agents' PATH | v2.15.0 |
 
 Uses:

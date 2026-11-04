@@ -68,6 +68,7 @@ type root struct {
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
 	Attention attentionCmd `cmd:"" help:"List what waits on a human, oldest first; empty when healthy (admin)."`
+	Activity  activityCmd  `cmd:"" help:"Recent GitHub and Linear activity in the repos and teams jobshop works, newest first (admin or pool grant activity)."`
 	Report    reportCmd    `cmd:"" help:"Report your ticket's state (progress, waiting, ready, blocked, failed, dropped), or reliability reports (admin)."`
 	Answer    answerCmd    `cmd:"" help:"Answer a worker's question; the answer goes to the asking session (admin)."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`

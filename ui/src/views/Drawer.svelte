@@ -1,13 +1,15 @@
 <script>
   import { go } from '../lib/url.svelte.js';
   import { resource } from '../lib/api.svelte.js';
-  import { ago, fields, tone, links, meta } from '../lib/format.js';
+  import { ago, fields, tone, links, meta, safe } from '../lib/format.js';
   import Trace from './Trace.svelte';
   import Chat from './Chat.svelte';
 
   /** @type {{ id: string }} */
   let { id } = $props();
   const v = resource(() => '/api/ticket/' + encodeURIComponent(id));
+  // External activity linked to this run or ticket (#255).
+  const ext = resource(() => '/api/activity?limit=20&ticket=' + encodeURIComponent(id));
   const close = () => go({ ticket: '' });
   /** meta.gateway on an escalation: the thread's session and key (#125). @param {any} t */
   const gw = (t) => meta(t).gateway || null;
@@ -72,6 +74,19 @@
       <Trace node={v.data.trace} />
     {/if}
 
+    {#if ext.data?.items?.length}
+      <h3>External activity</h3>
+      <ul class="ext" data-testid="drawer-activity">
+        {#each ext.data.items as it (it.id)}
+          <li>
+            <span class="mono">{it.actor}</span> {it.title}
+            <span class="faint">· {ago(it.at)}</span>
+            {#if it.url && safe(it.url)}<a href={it.url} target="_blank" rel="noopener noreferrer">open</a>{/if}
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
     {#if v.data.comments?.length}
       <h3>Comments</h3>
       {#each v.data.comments as c (c.id)}
@@ -101,5 +116,7 @@
   .body { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; max-height: 320px; overflow: auto; }
   .comment { border-left: 2px solid var(--border); padding: 4px 10px; margin: 8px 0; }
   .panel { border: 1px solid var(--border); border-radius: 6px; margin-top: 6px; }
+  .ext { margin: 0; padding-left: 18px; }
+  .ext li { margin: 4px 0; overflow-wrap: anywhere; }
   .err { color: var(--bad); padding: 12px 0; }
 </style>

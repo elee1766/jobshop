@@ -251,3 +251,20 @@ func TestSessionStream(t *testing.T) {
 	assert.Equal(t, int64(400), ctl.since)
 	assert.Equal(t, []string{"session", "end"}, readSSE(t, w.Body.String()))
 }
+
+func TestActivity(t *testing.T) {
+	ctl := &fakeCtl{results: map[string]any{rpc.MethodActivityList: rpc.ActivityListResult{
+		Items:   []rpc.ActivityItem{{ID: "gh:o/r:1", Source: rpc.ActivityGitHub, Repo: "o/r", Kind: "comment", Actor: "elee1766", Tickets: []string{"js-1"}}},
+		Sources: []string{"github:o/r"},
+	}}}
+	h := New(Config{}, ctl, nil).Handler()
+	var res rpc.ActivityListResult
+	get(t, h, "/api/activity?since=1h&repo=o/r&bots=humans&ticket=js-1&limit=5", &res)
+	require.Len(t, res.Items, 1)
+	assert.Equal(t, []string{"js-1"}, res.Items[0].Tickets)
+	assert.Contains(t, ctl.calls[0], `"since":3600000000000`)
+	assert.Contains(t, ctl.calls[0], `"bots":"humans"`)
+	assert.Contains(t, ctl.calls[0], `"limit":5`)
+	w := get(t, h, "/api/activity?since=soon", nil)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}

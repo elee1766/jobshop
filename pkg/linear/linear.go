@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -245,4 +246,132 @@ func (c *Client) SetState(ctx context.Context, key, name string) (State, error) 
 		return State{}, errors.New("linear: state not updated")
 	}
 	return *st, nil
+}
+
+// Change is one thing that happened on an issue (#255): created, a
+// comment, a state change or an assignee change.
+type Change struct {
+	Issue  string    `json:"issue"` // key, ENG-123
+	Title  string    `json:"title"` // issue title
+	Kind   string    `json:"kind"`  // issue, comment, state, assignee
+	Actor  string    `json:"actor"`
+	Self   bool      `json:"self,omitempty"` // by the API key's own user
+	Bot    bool      `json:"bot,omitempty"`  // no user (integration)
+	Text   string    `json:"text"`           // comment body, or "Todo -> Done"
+	URL    string    `json:"url"`
+	At     time.Time `json:"at"`
+	ItemID string    `json:"item_id"` // stable id of the comment or history entry
+}
+
+const activityQuery = `query($team: String!, $since: DateTimeOrDuration!) {
+  issues(first: 50, orderBy: updatedAt, filter: {team: {key: {eq: $team}}, updatedAt: {gt: $since}}) { nodes {
+    id identifier title url createdAt
+    creator { name isMe }
+    comments(first: 50, filter: {createdAt: {gt: $since}}) { nodes { id body url createdAt user { name isMe } botActor { name } } }
+    history(first: 50) { nodes { id createdAt actor { name isMe } fromState { name } toState { name } fromAssignee { name } toAssignee { name } } }
+  } }
+}`
+
+type actor struct {
+	Name string `json:"name"`
+	IsMe bool   `json:"isMe"`
+}
+
+type named struct {
+	Name string `json:"name"`
+}
+
+// Changes lists what happened in the team's issues after since, oldest
+// first. It reads the 50 most recently updated issues and up to 50
+// comments and history entries each.
+func (c *Client) Changes(ctx context.Context, team string, since time.Time) ([]Change, error) {
+	var r struct {
+		Issues struct {
+			Nodes []struct {
+				Identifier string    `json:"identifier"`
+				Title      string    `json:"title"`
+				URL        string    `json:"url"`
+				CreatedAt  time.Time `json:"createdAt"`
+				Creator    *actor    `json:"creator"`
+				Comments   struct {
+					Nodes []struct {
+						ID        string    `json:"id"`
+						Body      string    `json:"body"`
+						URL       string    `json:"url"`
+						CreatedAt time.Time `json:"createdAt"`
+						User      *actor    `json:"user"`
+						BotActor  *named    `json:"botActor"`
+					} `json:"nodes"`
+				} `json:"comments"`
+				History struct {
+					Nodes []struct {
+						ID           string    `json:"id"`
+						CreatedAt    time.Time `json:"createdAt"`
+						Actor        *actor    `json:"actor"`
+						FromState    *named    `json:"fromState"`
+						ToState      *named    `json:"toState"`
+						FromAssignee *named    `json:"fromAssignee"`
+						ToAssignee   *named    `json:"toAssignee"`
+					} `json:"nodes"`
+				} `json:"history"`
+			} `json:"nodes"`
+		} `json:"issues"`
+	}
+	vars := map[string]any{"team": team, "since": since.UTC().Format(time.RFC3339Nano)}
+	if err := c.do(ctx, activityQuery, vars, &r); err != nil {
+		return nil, err
+	}
+	who := func(a *actor) (string, bool, bool) {
+		if a == nil {
+			return "", false, true
+		}
+		return a.Name, a.IsMe, false
+	}
+	name := func(n *named) string {
+		if n == nil {
+			return "none"
+		}
+		return n.Name
+	}
+	var out []Change
+	for _, is := range r.Issues.Nodes {
+		base := Change{Issue: is.Identifier, Title: is.Title, URL: is.URL}
+		if is.CreatedAt.After(since) {
+			ch := base
+			ch.Kind, ch.At, ch.ItemID, ch.Text = "issue", is.CreatedAt, "issue-"+is.Identifier, is.Title
+			ch.Actor, ch.Self, ch.Bot = who(is.Creator)
+			out = append(out, ch)
+		}
+		for _, cm := range is.Comments.Nodes {
+			ch := base
+			ch.Kind, ch.At, ch.ItemID, ch.Text = "comment", cm.CreatedAt, cm.ID, cm.Body
+			if cm.URL != "" {
+				ch.URL = cm.URL
+			}
+			ch.Actor, ch.Self, ch.Bot = who(cm.User)
+			if cm.User == nil && cm.BotActor != nil {
+				ch.Actor = cm.BotActor.Name
+			}
+			out = append(out, ch)
+		}
+		for _, h := range is.History.Nodes {
+			if !h.CreatedAt.After(since) {
+				continue
+			}
+			ch := base
+			ch.At, ch.ItemID = h.CreatedAt, h.ID
+			ch.Actor, ch.Self, ch.Bot = who(h.Actor)
+			switch {
+			case h.ToState != nil || h.FromState != nil:
+				ch.Kind, ch.Text = "state", name(h.FromState)+" -> "+name(h.ToState)
+			case h.ToAssignee != nil || h.FromAssignee != nil:
+				ch.Kind, ch.Text = "assignee", name(h.FromAssignee)+" -> "+name(h.ToAssignee)
+			default:
+				continue
+			}
+			out = append(out, ch)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
+	return out, nil
 }
