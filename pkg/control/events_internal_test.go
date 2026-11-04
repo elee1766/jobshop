@@ -16,6 +16,7 @@ import (
 // pump, so every write's wake-up) never waits on it, and other
 // subscribers still get every event.
 func TestHubLaggedDoesNotBlock(t *testing.T) {
+	t.Parallel()
 	h := newHub(2)
 	slow, _ := h.add()
 	fast, _ := h.add()
@@ -49,6 +50,7 @@ func TestHubLaggedDoesNotBlock(t *testing.T) {
 }
 
 func TestToEvent(t *testing.T) {
+	t.Parallel()
 	at := time.Unix(100, 0)
 	sess := &store.Ticket{ID: "js-s", Kind: store.KindSession, Status: store.StatusClosed, Resolution: "crashed"}
 	ev := toEvent(store.HistoryEntry{Seq: 3, TicketID: "js-s", At: at, Op: "close", Revision: 4, Diff: json.RawMessage(`{"resolution":"crashed"}`)}, sess)

@@ -127,6 +127,7 @@ func mkTicket(t *testing.T, c *Controller, nt store.NewTicket) store.Ticket {
 }
 
 func TestStallReadyUnclaimed(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	tk := mkTicket(t, c, store.NewTicket{Title: "x", Pool: "dev"})
 	mkTicket(t, c, store.NewTicket{Title: "orphan", Pool: "gone"})
@@ -141,6 +142,7 @@ func TestStallReadyUnclaimed(t *testing.T) {
 }
 
 func TestStallReadyUnclaimedSinceUnblock(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	ctx := t.Context()
 	blocked := func() (store.Ticket, store.Ticket) {
@@ -165,6 +167,7 @@ func TestStallReadyUnclaimedSinceUnblock(t *testing.T) {
 }
 
 func TestStallPoolQuarantined(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	assert.Empty(t, stallKeys(t, c))
 	for range poolCrashes {
@@ -174,6 +177,7 @@ func TestStallPoolQuarantined(t *testing.T) {
 }
 
 func TestStallStepAndSession(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	res, err := c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
@@ -197,6 +201,7 @@ func TestStallStepAndSession(t *testing.T) {
 }
 
 func TestStallNeedsHumanAndBlocked(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	res, err := c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
@@ -219,6 +224,7 @@ func TestStallNeedsHumanAndBlocked(t *testing.T) {
 }
 
 func TestStallCheckSignal(t *testing.T) {
+	t.Parallel()
 	c, _, dir := stallController(t)
 	assert.Empty(t, stallKeys(t, c), "check fails without the file: no stall")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 open, no run\n\nissue-9\n"), 0o600))
@@ -239,6 +245,7 @@ func TestStallCheckSignal(t *testing.T) {
 // TestStallFire covers the run per key, its exclusion from detection,
 // cooldown and max_runs.
 func TestStallFire(t *testing.T) {
+	t.Parallel()
 	c, clk, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
 	runs := func() []store.Ticket {
@@ -298,6 +305,7 @@ func TestStallFire(t *testing.T) {
 }
 
 func TestStallMaxOpen(t *testing.T) {
+	t.Parallel()
 	c, _, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\n"), 0o600))
 	c.runTriggers()
@@ -308,6 +316,7 @@ func TestStallMaxOpen(t *testing.T) {
 }
 
 func TestStallConfig(t *testing.T) {
+	t.Parallel()
 	base := `projects: {js: {}}
 agents: {a: {command: x}}
 pools: {plan: {agent: a, dir: /w}}

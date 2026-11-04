@@ -14,6 +14,7 @@ import (
 // TestRunMetaLinear: a linear workflow stores meta.linear with the key
 // and only the code repo in meta.github, so GitHub readers ignore it.
 func TestRunMetaLinear(t *testing.T) {
+	t.Parallel()
 	w := config.Workflow{Issue: "issue", Repo: "acme/app", Tracker: config.TrackerLinear, LinearWorkspace: "acme"}
 	mb, err := runMeta(w, map[string]any{"issue": "eng-42"})
 	require.NoError(t, err)

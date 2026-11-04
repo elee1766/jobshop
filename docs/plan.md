@@ -450,6 +450,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   waiting 5s for it (#433, `docs/notes/433-zombie-wait.md`).
 - runRoot and the metrics and trace tests tick hourly and use passes;
   pkg/control -race 41s to 28s (#433, `docs/notes/433-remaining-fast-ticks.md`).
+- pkg/control internal tests call `t.Parallel()`; -race 31s to 21s
+  (#433, `docs/notes/433-parallel-internal-tests.md`).
 - In-process test hosts report agent exits (`control.HostExits`), so
   crash tests skip host spawns (#467, `docs/notes/467-inproc-host-exit.md`).
 - Ingest split mode: `ingest.workers: external` moves admission to

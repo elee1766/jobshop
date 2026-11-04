@@ -17,6 +17,7 @@ import (
 // resource is a resource_wait stall and an attention item once it has
 // waited long enough (#408).
 func TestResourceWaitStallAndAttention(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := subController(t)
 	ctx := t.Context()
 	require.NoError(t, c.store.SetResourceCaps(ctx, map[string]int{"emu": 1}))

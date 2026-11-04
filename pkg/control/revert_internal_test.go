@@ -47,6 +47,7 @@ func revertLearnings(t *testing.T, c *Controller) []store.Learning {
 }
 
 func TestRevertLearning(t *testing.T) {
+	t.Parallel()
 	c, clk, fa := activityController(t)
 	now := clk.now()
 	run := mkTicket(t, c, store.NewTicket{
@@ -100,6 +101,7 @@ func TestRevertLearning(t *testing.T) {
 }
 
 func TestRevertedPRByNumber(t *testing.T) {
+	t.Parallel()
 	src := &fakeReverts{prs: map[int]ghPR{
 		5: {Number: 5, Merged: true, MergeCommitSHA: "x"},
 		6: {Number: 6, Merged: false},

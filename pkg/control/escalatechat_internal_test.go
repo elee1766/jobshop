@@ -148,6 +148,7 @@ func chatSessions(t *testing.T, c *Controller, id string) []store.Ticket {
 // filled, across a controller restart; closing the ticket sends one final
 // message.
 func TestEscalationChatRun(t *testing.T) {
+	t.Parallel()
 	dir := escDir(t)
 	c := escController(t, dir)
 	esc := escalateRunNow(t, c, "work")
@@ -197,6 +198,7 @@ func TestEscalationChatRun(t *testing.T) {
 // (a crash between the two writes) is started by the next sweep with the
 // prompt, and only once.
 func TestEscalationChatRepair(t *testing.T) {
+	t.Parallel()
 	dir := escDir(t)
 	c := escController(t, dir)
 	esc := escalateRunNow(t, c, "work")
@@ -227,6 +229,7 @@ func TestEscalationChatRepair(t *testing.T) {
 // TestEscalationChatNoConfig: a workflow without escalate (and no
 // top-level escalation block) files the ticket only.
 func TestEscalationChatNoConfig(t *testing.T) {
+	t.Parallel()
 	c := escController(t, escDir(t))
 	esc := escalateRunNow(t, c, "plain")
 	c.sweepEscalationChats(t.Context())
@@ -240,6 +243,7 @@ func TestEscalationChatNoConfig(t *testing.T) {
 // TestEscalationChatPool: a pool quarantine escalation filed in plan gets
 // the chat with the pool prompt of the workflow escalating to plan.
 func TestEscalationChatPool(t *testing.T) {
+	t.Parallel()
 	c := escController(t, escDir(t))
 	c.quarantinePool(t.Context(), "dev", "spawn: repo /x: no such file")
 	esc, err := c.store.List(t.Context(), store.Filter{MetaPack: poolMetaPack, MetaKey: "name", MetaValue: "dev"})

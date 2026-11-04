@@ -56,6 +56,7 @@ func worker(c *Controller, id string) IngestWorker {
 }
 
 func TestIngestWorkerAdmitsControllerDoesNot(t *testing.T) {
+	t.Parallel()
 	c, _ := workerController(t, []config.AdmissionHook{
 		mut("upper", `echo '{"patch":[{"op":"replace","path":"/payload/body","value":"HELLO"}]}'`),
 		val("deny-bad", `grep -q '"actor":"bad"' && echo '{"decision":"deny","reason":"bad actor"}' || true`),
@@ -87,6 +88,7 @@ func TestIngestWorkerAdmitsControllerDoesNot(t *testing.T) {
 }
 
 func TestIngestWorkerClaimRefusedInternal(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, nil)
 	putInbox(t, c, store.InboxItem{})
 	_, err := worker(c, "w1").Once(t.Context())
@@ -97,6 +99,7 @@ func TestIngestWorkerClaimRefusedInternal(t *testing.T) {
 // the item leased; after the lease another worker admits it, and the
 // dead worker's late report is refused.
 func TestIngestWorkerDeadLeaseExpires(t *testing.T) {
+	t.Parallel()
 	c, clk := workerController(t, nil, nil)
 	it := putInbox(t, c, store.InboxItem{})
 	var cl rpc.IngestClaimResult
@@ -135,6 +138,7 @@ func attentionIDs(t *testing.T, c *Controller) []string {
 }
 
 func TestIngestMissingWorkerAttention(t *testing.T) {
+	t.Parallel()
 	c, clk := workerController(t, nil, func(i *config.Ingest) { i.WorkerMissing = "5m" })
 	assert.Empty(t, attentionIDs(t, c))
 	clk.advance(6 * time.Minute)
@@ -156,6 +160,7 @@ func TestIngestMissingWorkerAttention(t *testing.T) {
 }
 
 func TestIngestBacklogAttention(t *testing.T) {
+	t.Parallel()
 	c, clk := workerController(t, nil, func(i *config.Ingest) {
 		i.BacklogAfter, i.BacklogMax, i.WorkerMissing = "10m", 1, "1h"
 	})

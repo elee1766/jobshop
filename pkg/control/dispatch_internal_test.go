@@ -50,6 +50,7 @@ func inboxStates(t *testing.T, c *Controller) []string {
 // TestDispatchMutatedPayload: what the session receives is the mutating
 // hook's rewrite, not the raw poll.
 func TestDispatchMutatedPayload(t *testing.T) {
+	t.Parallel()
 	c, clk, src, sess := dispatchController(t,
 		mut("redact", `printf '{"patch":[{"op":"replace","path":"/payload/comment/body","value":"[redacted]"}]}'`))
 	src.add("acme/widget#7", comment(clk, "c1", "the password is hunter2"))
@@ -64,6 +65,7 @@ func TestDispatchMutatedPayload(t *testing.T) {
 // TestDispatchDenied: a validating deny means no delivery, and the read
 // position still moves on.
 func TestDispatchDenied(t *testing.T) {
+	t.Parallel()
 	c, clk, src, sess := dispatchController(t, val("nope", `echo '{"decision":"deny","reason":"spam"}'`))
 	src.add("acme/widget#7", comment(clk, "c1", "buy now"))
 	c.pollSubscriptions(t.Context(), src)
@@ -75,6 +77,7 @@ func TestDispatchDenied(t *testing.T) {
 // TestDispatchHeldThenReleased: a held row is not delivered; once the
 // human answers it is delivered, once.
 func TestDispatchHeldThenReleased(t *testing.T) {
+	t.Parallel()
 	c, clk, src, sess := dispatchController(t, val("ask", `echo '{"decision":"ask_human","reason":"check"}'`))
 	src.add("acme/widget#7", comment(clk, "c1", "hello"))
 	c.pollSubscriptions(t.Context(), src)
@@ -96,6 +99,7 @@ func TestDispatchHeldThenReleased(t *testing.T) {
 // rows, or after delivering but before marking them, leaves them to be
 // claimed again; the write key makes the second pass deliver nothing new.
 func TestDispatchCrashAfterAdmit(t *testing.T) {
+	t.Parallel()
 	c, clk, src, sess := dispatchController(t)
 	src.add("acme/widget#7", comment(clk, "c1", "hello"))
 	// Write and admit only: the crash happens before dispatch.
@@ -124,6 +128,7 @@ func TestDispatchCrashAfterAdmit(t *testing.T) {
 // TestDispatchWebhookFirst: when a webhook copy of a comment is in the
 // inbox first, the poller still gets its own row delivered.
 func TestDispatchWebhookFirst(t *testing.T) {
+	t.Parallel()
 	c, clk, src, sess := dispatchController(t)
 	cm := comment(clk, "c42", "hi")
 	putInbox(t, c, store.InboxItem{DeliveryID: "github:w1", NaturalKey: "github:comment:acme/widget:42:" + cm.At.UTC().Format(time.RFC3339)})

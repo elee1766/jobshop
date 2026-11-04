@@ -25,6 +25,7 @@ const (
 )
 
 func TestWaitParseRecorded(t *testing.T) {
+	t.Parallel()
 	pr, err := parsePR([]byte(recPR))
 	require.NoError(t, err)
 	assert.Equal(t, prInfo{Head: "aaaa1111bbbb", State: "open"}, pr)
@@ -100,6 +101,7 @@ func readyIDs(t *testing.T, c *Controller) []string {
 // stays out of the frontier while either is missing, and becomes ready,
 // pre-assigned to the session, once both hold.
 func TestWaitApprovalAndChecks(t *testing.T) {
+	t.Parallel()
 	c, clk, prs, threads := waitController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
@@ -165,6 +167,7 @@ func mustGet(t *testing.T, c *Controller, id string) store.Ticket {
 // TestWaitHeadMoved: an approval wait on a head is invalidated when the
 // PR head moves, and a merged wait resolves on merge.
 func TestWaitHeadMoved(t *testing.T) {
+	t.Parallel()
 	c, _, prs, threads := waitController(t)
 	ctx := t.Context()
 	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
@@ -202,6 +205,7 @@ func TestWaitHeadMoved(t *testing.T) {
 // needs-human once and listed in attention with reason and owner; a
 // time condition and a reply clear waits.
 func TestWaitTimeoutAttention(t *testing.T) {
+	t.Parallel()
 	c, clk, prs, threads := waitController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
@@ -255,6 +259,7 @@ func TestWaitTimeoutAttention(t *testing.T) {
 }
 
 func TestWaitValidate(t *testing.T) {
+	t.Parallel()
 	c, _, _, _ := waitController(t)
 	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
 	admin := scope{admin: true, actor: "admin"}
