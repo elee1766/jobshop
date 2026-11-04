@@ -47,6 +47,7 @@ type Querier interface {
 	FinishWriteKey(ctx context.Context, arg FinishWriteKeyParams) (WriteKey, error)
 	GetLearning(ctx context.Context, id int64) (Learning, error)
 	GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit, error)
+	GetPollCursor(ctx context.Context, arg GetPollCursorParams) (PollCursor, error)
 	GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error)
 	GetTicket(ctx context.Context, id string) (Ticket, error)
 	GetWriteKey(ctx context.Context, key string) (WriteKey, error)
@@ -152,6 +153,7 @@ type Querier interface {
 	TicketSlots(ctx context.Context, ticket string) ([]ResourceSlot, error)
 	UpdateLearning(ctx context.Context, arg UpdateLearningParams) (Learning, error)
 	UpdateSlot(ctx context.Context, arg UpdateSlotParams) error
+	UpsertPollCursor(ctx context.Context, arg UpsertPollCursorParams) error
 	// WriteTicket stores every mutable column, guarded by the previous revision.
 	WriteTicket(ctx context.Context, arg WriteTicketParams) (int64, error)
 }

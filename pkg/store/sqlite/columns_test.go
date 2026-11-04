@@ -36,7 +36,11 @@ func undo00013() []string {
 
 // undo00015 returns a database to its schema before 00015 (#426).
 func undo00015() []string {
-	return []string{"DROP TABLE ticket_resources", "DELETE FROM goose_db_version WHERE version_id = 15"}
+	return []string{
+		// 00016 (#341) is undone first.
+		"DROP TABLE poll_cursors", "DELETE FROM goose_db_version WHERE version_id = 16",
+		"DROP TABLE ticket_resources", "DELETE FROM goose_db_version WHERE version_id = 15",
+	}
 }
 
 // TestPortableColumnsBackfill: rows written before 00013 get their
