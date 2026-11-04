@@ -15,9 +15,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
-	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -223,7 +224,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	pid1, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 	require.NoError(t, err)
 	hasEnv := func(kv string) bool {
-		s, err := host.ReadSpec(sdir)
+		s, err := hostspec.Read(sdir)
 		return err == nil && slices.Contains(s.Env, kv)
 	}
 	require.True(t, hasEnv("DEPLOY=one"))

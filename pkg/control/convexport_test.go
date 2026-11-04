@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -37,7 +37,7 @@ func TestConversationExportDeadEndpoint(t *testing.T) {
 	waitClosed(t, admin, a.ID)
 	sessions := openSessions(t, admin)
 	require.Len(t, sessions, 1)
-	spec, err := host.ReadSpec(root.SessionDir(sessions[0].ID))
+	spec, err := hostspec.Read(root.SessionDir(sessions[0].ID))
 	require.NoError(t, err)
 	require.NotNil(t, spec.ConvExport)
 	assert.Equal(t, dead, spec.ConvExport.LogsURL)

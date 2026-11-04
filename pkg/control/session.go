@@ -28,8 +28,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -612,7 +613,7 @@ var errRefresh = errors.New("host env refresh")
 // staleEnv reports whether the adopted host's spec env differs from what a
 // new host would get, e.g. after a deploy changed PATH or credentials.
 func (r *runner) staleEnv(t store.Ticket, f store.SessionFields) bool {
-	spec, err := host.ReadSpec(r.dir)
+	spec, err := hostspec.Read(r.dir)
 	if err != nil {
 		return false
 	}
@@ -1191,14 +1192,14 @@ func (c *Controller) sessionCwd(t store.Ticket) string {
 // hostSpec builds the spec a new host for t would get. EnvHash also covers
 // the env the host inherits from this controller, so a deploy that changes
 // either is noticed when a live host is adopted.
-func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec, string, error) {
+func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (hostspec.Spec, string, error) {
 	agent, ok := c.config().Agents[f.Agent]
 	if !ok {
-		return host.Spec{}, "", fmt.Errorf("unknown agent %q", f.Agent)
+		return hostspec.Spec{}, "", fmt.Errorf("unknown agent %q", f.Agent)
 	}
 	exe, err := c.hostExe()
 	if err != nil {
-		return host.Spec{}, "", err
+		return hostspec.Spec{}, "", err
 	}
 	dir := c.root.SessionDir(t.ID)
 	env := []string{
@@ -1225,15 +1226,15 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec,
 	for i, a := range agent.Args {
 		args[i] = strings.ReplaceAll(a, "${SESSION_DIR}", dir)
 	}
-	spec := host.Spec{
+	spec := hostspec.Spec{Spec: host.Spec{
 		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
 		Env: env, EnvHash: envHash(hostInheritedEnv(), env), Dir: c.sessionCwd(t),
 		LeaseMS: hostLease.Milliseconds(),
-	}
+	}}
 	// Config validation guarantees a logs endpoint when a pool exports.
 	if p, ok := c.config().Pools[t.Pool]; ok && p.ConversationExport {
 		tel := c.config().Telemetry
-		spec.ConvExport = &host.ConvExport{
+		spec.ConvExport = &hostspec.ConvExport{
 			LogsURL: tel.LogsURL(), Headers: tel.Headers(os.Getenv), Pool: t.Pool, Project: t.Project,
 			TraceParent: f.TraceParent,
 		}
@@ -1279,10 +1280,10 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 		return err
 	}
 	// A worktree was just made; any other cwd must already exist.
-	if err := host.CheckSpawn(spec, worktree); err != nil {
+	if err := host.CheckSpawn(spec.Spec, worktree); err != nil {
 		return err
 	}
-	if err := host.WriteSpec(dir, spec); err != nil {
+	if err := hostspec.Write(dir, spec); err != nil {
 		return err
 	}
 	logf, err := os.OpenFile(filepath.Join(dir, host.LogFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
