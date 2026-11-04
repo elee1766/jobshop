@@ -351,6 +351,7 @@ func (c *Controller) tick() {
 	c.reportOrphans()
 	c.sweepRuns()
 	c.sweepBatches()
+	c.sweepLinearAsks(c.ctx)
 }
 
 func (c *Controller) sweep() {

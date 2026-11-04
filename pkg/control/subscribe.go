@@ -76,6 +76,8 @@ type ghComment struct {
 	Body   string
 	URL    string
 	At     time.Time
+	// Parent is the comment replied to (Linear threads only).
+	Parent string
 }
 
 // threadSource reads a thread's comments newer than since. Tests replace
@@ -396,7 +398,8 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 	if err != nil {
 		return err
 	}
-	if cs = c.intakeComments(ctx, t.Project, th, cs); len(cs) == 0 {
+	cs = c.intakeComments(ctx, t.Project, th, cs)
+	if cs = c.linearAnswers(ctx, th, cs); len(cs) == 0 {
 		return nil
 	}
 	text := threadText(th, cs)
@@ -569,7 +572,7 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 		if url == "" {
 			url = is.URL
 		}
-		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot || cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt})
+		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot || cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt, Parent: cm.ParentID})
 	}
 	return out, nil
 }

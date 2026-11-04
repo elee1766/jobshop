@@ -83,6 +83,8 @@ type Comment struct {
 	Self      bool      `json:"self,omitempty"`
 	Bot       bool      `json:"bot,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+	// ParentID is the comment this one replies to (GetIssue only).
+	ParentID string `json:"parent_id,omitempty"`
 }
 
 // Viewer is the user (or app actor) a token acts as.
@@ -154,7 +156,7 @@ const issueQuery = `query($id: String!) { issue(id: $id) {
   id identifier title description url
   state { id name type }
   team { id key }
-  comments(first: 100) { nodes { id body url createdAt user { name isMe } botActor { name } } }
+  comments(first: 100) { nodes { id body url createdAt parent { id } user { name isMe } botActor { name } } }
 } }`
 
 // GetIssue reads an issue by key (ENG-123) with its comments, oldest first.
@@ -168,6 +170,7 @@ func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
 					Body      string    `json:"body"`
 					URL       string    `json:"url"`
 					CreatedAt time.Time `json:"createdAt"`
+					Parent    *TeamID   `json:"parent"`
 					User      *struct {
 						Name string `json:"name"`
 						IsMe bool   `json:"isMe"`
@@ -189,6 +192,9 @@ func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
 	is.Comments = nil
 	for _, n := range r.Issue.Comments.Nodes {
 		cm := Comment{ID: n.ID, Body: n.Body, URL: n.URL, CreatedAt: n.CreatedAt}
+		if n.Parent != nil {
+			cm.ParentID = n.Parent.ID
+		}
 		switch {
 		case n.User != nil:
 			cm.Author, cm.Self = n.User.Name, n.User.IsMe
@@ -457,6 +463,46 @@ func (c *Client) AddLabel(ctx context.Context, key, name string) error {
 	}
 	if !ar.IssueAddLabel.Success {
 		return errors.New("linear: label not added")
+	}
+	return nil
+}
+
+const removeLabelMutation = `mutation($id: String!, $labelId: String!) { issueRemoveLabel(id: $id, labelId: $labelId) { success } }`
+
+const issueLabelsQuery = `query($id: String!) { issue(id: $id) { id labels { nodes { id name } } } }`
+
+// RemoveLabel takes the label named name (case-insensitive) off the
+// issue. A label the issue does not have is not an error.
+func (c *Client) RemoveLabel(ctx context.Context, key, name string) error {
+	var r struct {
+		Issue *struct {
+			ID     string `json:"id"`
+			Labels struct {
+				Nodes []Entry `json:"nodes"`
+			} `json:"labels"`
+		} `json:"issue"`
+	}
+	if err := c.do(ctx, issueLabelsQuery, map[string]any{"id": key}, &r); err != nil {
+		return err
+	}
+	if r.Issue == nil {
+		return fmt.Errorf("linear: issue %s not found", key)
+	}
+	for _, l := range r.Issue.Labels.Nodes {
+		if !strings.EqualFold(l.Name, name) {
+			continue
+		}
+		var rr struct {
+			IssueRemoveLabel struct {
+				Success bool `json:"success"`
+			} `json:"issueRemoveLabel"`
+		}
+		if err := c.do(ctx, removeLabelMutation, map[string]any{"id": r.Issue.ID, "labelId": l.ID}, &rr); err != nil {
+			return err
+		}
+		if !rr.IssueRemoveLabel.Success {
+			return errors.New("linear: label not removed")
+		}
 	}
 	return nil
 }

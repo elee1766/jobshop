@@ -281,5 +281,6 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 	if res.Question, err = c.store.CloseTicket(ctx, sc.actor, qt.ID, nil, resolutionAnswered); err != nil {
 		return nil, err
 	}
+	c.unblockLinear(ctx, qt)
 	return res, nil
 }
