@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -637,6 +638,7 @@ type sessionCmd struct {
 	Restart  sessionRestartCmd  `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
 	Attach   sessionAttachCmd   `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
 	Prompt   sessionPromptCmd   `cmd:"" help:"Print the prompt a session's next turn would get, each part labeled by source (admin)."`
+	Sandbox  sessionSandboxCmd  `cmd:"" help:"Print the sandbox mounts and bwrap argv a session's next spawn would use (admin)."`
 	Cordon   sessionCordonCmd   `cmd:"" help:"Take a session out of rotation: it finishes its ticket and claims nothing new, but stays open (admin or session-cordon grant)."`
 	Uncordon sessionUncordonCmd `cmd:"" help:"Return a cordoned session to rotation."`
 	Drain    sessionDrainCmd    `cmd:"" help:"Cordon a session and end it once it holds nothing."`
@@ -702,6 +704,45 @@ func (c sessionPromptCmd) Run(g *Globals) error {
 	}
 	_, err := fmt.Print(res.Text)
 	return err
+}
+
+// sessionSandboxCmd prints the mounts and bwrap argv the session's next
+// spawn would use (#262).
+type sessionSandboxCmd struct {
+	ID   string `arg:"" help:"Session id."`
+	JSON bool   `name:"json" help:"Print the result as JSON."`
+}
+
+func (c sessionSandboxCmd) Run(g *Globals) error {
+	if c.JSON {
+		return g.call(rpc.MethodSessionSandbox, rpc.SessionSandboxParams{ID: c.ID}, nil)
+	}
+	var res rpc.SessionSandboxResult
+	if err := g.call(rpc.MethodSessionSandbox, rpc.SessionSandboxParams{ID: c.ID}, &res); err != nil {
+		return err
+	}
+	if res.Sandbox == nil {
+		fmt.Printf("session %s (pool %s): not sandboxed\n", res.Session, res.Pool)
+		return nil
+	}
+	s := res.Sandbox
+	fmt.Printf("session %s (pool %s): %s, network %s\n", res.Session, res.Pool, s.Backend, cmp.Or(s.Network, "host"))
+	for _, m := range s.RO {
+		fmt.Println("ro  ", m.Src)
+	}
+	for _, m := range s.RW {
+		fmt.Println("rw  ", m.Src)
+	}
+	for _, h := range s.Hide {
+		fmt.Println("hide", h)
+	}
+	fmt.Println("env ", strings.Join(s.EnvKeep, " "))
+	if res.Error != "" {
+		fmt.Println("error:", res.Error)
+		return nil
+	}
+	fmt.Println("argv:", strings.Join(res.Argv, " "))
+	return nil
 }
 
 type sessionAttachCmd struct {

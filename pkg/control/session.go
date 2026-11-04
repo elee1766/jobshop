@@ -1350,9 +1350,11 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (hostspec.S
 	for i, a := range agent.Args {
 		args[i] = strings.ReplaceAll(a, "${SESSION_DIR}", dir)
 	}
+	// The sandbox config is hashed with the env, so a reload that changes
+	// it refreshes idle sessions like an env change (#262).
 	spec := hostspec.Spec{Spec: host.Spec{
 		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
-		Env: env, EnvHash: envHash(hostInheritedEnv(), env), Dir: c.sessionCwd(t),
+		Env: env, EnvHash: envHash(hostInheritedEnv(), append(slices.Clone(env), c.sandboxKey(t.Pool)...)), Dir: c.sessionCwd(t),
 		LeaseMS: hostLease.Milliseconds(),
 	}}
 	// Config validation guarantees a logs endpoint when a pool exports.
@@ -1401,6 +1403,9 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	}
 	worktree, err := c.ensureWorktree(t, spec.Dir)
 	if err != nil {
+		return err
+	}
+	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir); err != nil {
 		return err
 	}
 	// A worktree was just made; any other cwd must already exist.
