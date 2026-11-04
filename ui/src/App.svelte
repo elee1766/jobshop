@@ -1,7 +1,8 @@
 <script>
   import { onMount } from 'svelte';
-  import { url, go, VIEWS } from './lib/url.svelte.js';
+  import { url, go, closeSession, VIEWS } from './lib/url.svelte.js';
   import { live, connect, resource } from './lib/api.svelte.js';
+  import { panel } from './lib/panel.svelte.js';
   import { push, initPush, enablePush, disablePush, testPush } from './lib/push.svelte.js';
   import Inbox from '@lucide/svelte/icons/inbox';
   import MessageSquare from '@lucide/svelte/icons/message-square';
@@ -22,6 +23,7 @@
   import Activity from './views/Activity.svelte';
   import ChatView from './views/ChatView.svelte';
   import Drawer from './views/Drawer.svelte';
+  import SessionPanel from './views/SessionPanel.svelte';
 
   onMount(connect);
   onMount(() => { initPush(); });
@@ -75,12 +77,14 @@
   let armed = 0;
   /** @param {KeyboardEvent} e */
   function onkey(e) {
+    // The ticket drawer sits on top and closes first; it marks its Escape handled.
+    if (e.key === 'Escape' && url.session && !url.ticket && !e.defaultPrevented) { closeSession(); return; }
     const el = /** @type {HTMLElement} */ (e.target);
     if (e.metaKey || e.ctrlKey || e.altKey || el.closest('input, textarea, select, [contenteditable]')) return;
     if (armed && Date.now() - armed < 1200) {
       armed = 0;
       const v = VIEWS.find((x) => nav[x].key === e.key);
-      if (v) { e.preventDefault(); go({ view: v, ticket: '', session: '' }); }
+      if (v) { e.preventDefault(); go({ view: v, ticket: '' }); }
     } else if (e.key === 'g') {
       armed = Date.now();
     }
@@ -89,7 +93,7 @@
 
 <svelte:window onkeydown={onkey} />
 
-<div class="shell">
+<div class="shell" class:withpanel={!!url.session} style:--pw={panel.w + 'px'}>
   <div class="brand"><span class="mark"></span>Jobshop <span class="faint">Desk</span></div>
   <nav aria-label="views">
     {#each VIEWS as v (v)}
@@ -99,7 +103,7 @@
         class:active={url.view === v}
         data-view={v}
         title={'Go to ' + nav[v].name + ' (g ' + nav[v].key + ')'}
-        onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '', session: '' }); }}
+        onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '' }); }}
       >
         <span class="ico"><Icon size={14} />{#if v === 'attention' && count > 0}<span class="tabdot"></span>{/if}</span>
         <span class="lbl">{nav[v].name}</span>
@@ -139,6 +143,7 @@
     {:else if url.view === 'deploys'}<Deploys />
     {/if}
   </main>
+  {#if url.session}{#key url.session}<SessionPanel id={url.session} />{/key}{/if}
   {#if url.ticket}<Drawer id={url.ticket} />{/if}
 </div>
 
@@ -148,6 +153,10 @@
     display: grid; grid-template-columns: 212px minmax(0, 1fr); grid-template-rows: auto 1fr auto;
     grid-template-areas: 'brand main' 'nav main' 'foot main';
     align-content: start;
+  }
+  .shell.withpanel {
+    grid-template-columns: 212px minmax(0, 1fr) var(--pw);
+    grid-template-areas: 'brand main panel' 'nav main panel' 'foot main panel';
   }
   .shell > * { min-width: 0; }
   .brand, nav, .foot { background: var(--side); border-right: 1px solid var(--border); }
@@ -177,8 +186,8 @@
   /* The sidebar rows stay compact; the main column takes the full height. */
   .shell { grid-template-rows: auto 1fr auto; }
 
-  @media (max-width: 720px) {
-    .shell {
+  @media (max-width: 768px) {
+    .shell, .shell.withpanel {
       grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
       grid-template-areas: 'top' 'main' 'tabs'; align-content: stretch;
     }

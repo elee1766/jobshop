@@ -63,3 +63,15 @@ export function safe(u) {
     return false;
   }
 }
+
+/** Session ids are ticket ids (project-suffix); actors such as admin or controller are not. @param {string | undefined | null} s */
+export function isSessionId(s) {
+  return !!s && /^[a-z][a-z0-9]*-[0-9a-z]{6,}$/i.test(s);
+}
+
+/** Name for a chat session key: escalation:<ticket> and desk:<id> read plainly, anything else by its prefix. @param {string} k */
+export function chatLabel(k) {
+  if (k.startsWith('escalation:')) return 'Escalation ' + k.slice('escalation:'.length);
+  if (k.startsWith('desk:')) return 'Desk chat';
+  return k.split(':')[0] || 'Session';
+}

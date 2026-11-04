@@ -146,7 +146,7 @@ td.c-time, td.c-act { white-space: nowrap; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
 
-@media (max-width: 720px) {
+@media (max-width: 768px) {
   .vh { min-height: 48px; padding: 0 12px; gap: 8px; }
   .pad { padding: 12px 12px 24px; }
   button, select { min-height: 40px; font-size: 13px; }

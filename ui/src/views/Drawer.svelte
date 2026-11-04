@@ -1,9 +1,10 @@
 <script>
   import { go } from '../lib/url.svelte.js';
   import { resource } from '../lib/api.svelte.js';
-  import { ago, fields, tone, links, meta, safe } from '../lib/format.js';
+  import { ago, fields, tone, links, meta, safe, isSessionId } from '../lib/format.js';
   import Trace from './Trace.svelte';
   import Chat from './Chat.svelte';
+  import SessionLink from './SessionLink.svelte';
   import X from '@lucide/svelte/icons/x';
 
   /** @type {{ id: string }} */
@@ -29,7 +30,7 @@
   const report = (t) => meta(t).report || null;
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === 'Escape') close(); }} />
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }} />
 
 <div class="backdrop" onclick={close} role="presentation"></div>
 <aside class="drawer" data-testid="drawer" aria-label="ticket">
@@ -54,7 +55,7 @@
       </div>
       <div class="row">
         {#each links(t) as l (l.href)}<a href={l.href} target="_blank" rel="noopener noreferrer">{l.label}</a>{/each}
-        {#if t.holder}<span class="muted">held by <span class="mono">{t.holder}</span></span>{/if}
+        {#if t.holder}<span class="muted">held by {#if isSessionId(t.holder)}<SessionLink id={t.holder} />{:else}<span class="mono">{t.holder}</span>{/if}</span>{/if}
         <span class="faint">updated {ago(t.updated_at)}</span>
       </div>
       {#if t.parent_id}
@@ -65,7 +66,7 @@
       {/if}
 
       {#if th}
-        <h3>Escalation chat</h3>
+        <h3>Escalation chat <a href={'?session=' + th.session} class="open" onclick={(e) => { e.preventDefault(); go({ session: th.session, ticket: '' }); }}>open in side panel</a></h3>
         <div class="panel chatpanel" data-testid="escalation-chat"><Chat id={th.session} key={th.key} /></div>
       {/if}
 
@@ -114,7 +115,7 @@
         <h3>Comments</h3>
         {#each v.data.comments as c (c.id)}
           <div class="comment">
-            <div class="faint"><span class="mono">{c.author}</span> · {ago(c.created_at)}</div>
+            <div class="faint">{#if isSessionId(c.author)}<SessionLink id={c.author} />{:else}<span class="mono">{c.author}</span>{/if} · {ago(c.created_at)}</div>
             <pre>{c.body}</pre>
           </div>
         {/each}
@@ -126,9 +127,9 @@
 </aside>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 10; }
+  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 30; }
   .drawer {
-    position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 100vw); z-index: 11; display: flex; flex-direction: column;
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 100vw); z-index: 31; display: flex; flex-direction: column;
     background: var(--panel); border-left: 1px solid var(--border); box-shadow: var(--shadow);
   }
   header {
@@ -149,11 +150,12 @@
   .comment { border-left: 2px solid var(--border); padding: 4px 10px; margin: 8px 0; }
   .panel { border: 1px solid var(--border); border-radius: var(--radius); margin-top: 6px; overflow: hidden; }
   .chatpanel { height: min(480px, 60dvh); }
+  h3 .open { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 8px; }
   .ext { margin: 0; padding-left: 18px; }
   .ext li { margin: 4px 0; overflow-wrap: anywhere; }
   .err { color: var(--bad); padding: 12px 0; }
 
-  @media (max-width: 720px) {
+  @media (max-width: 768px) {
     .drawer { width: 100vw; border-left: 0; padding-top: env(safe-area-inset-top); }
     .backdrop { display: none; }
     header { min-height: 52px; padding: 0 6px 0 14px; }

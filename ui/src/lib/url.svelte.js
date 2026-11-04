@@ -31,13 +31,22 @@ window.addEventListener('popstate', () => Object.assign(url, read()));
  * @param {Partial<UrlState>} patch
  */
 export function go(patch) {
+  // The entry that opens the session panel is marked, so closing it can
+  // step back instead of stacking another entry (see closeSession).
+  const opening = !!patch.session && !url.session;
   Object.assign(url, patch);
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(url)) {
     if (v && !(k === 'view' && v === 'attention')) q.set(k, v);
   }
   const s = q.toString();
-  history.pushState(null, '', s ? '?' + s : location.pathname);
+  history.pushState(opening ? { panel: 1 } : null, '', s ? '?' + s : location.pathname);
+}
+
+/** Close the session panel; back when it was opened from this page, so back and close agree. */
+export function closeSession() {
+  if (history.state?.panel) history.back();
+  else go({ session: '' });
 }
 
 export { VIEWS };

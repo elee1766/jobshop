@@ -61,7 +61,7 @@
 <style>
   .vh .chips { min-width: 0; }
   .links a { display: inline-block; padding: 2px 0; margin-right: 8px; }
-  @media (max-width: 720px) {
+  @media (max-width: 768px) {
     .links a { padding: 8px 0; }
   }
 </style>

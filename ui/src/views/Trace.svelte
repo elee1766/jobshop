@@ -26,5 +26,5 @@
   .node { margin: 4px 0; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; min-width: 0; }
   .node a, .t { overflow-wrap: anywhere; min-width: 0; }
   .kids { flex-basis: 100%; padding-left: 12px; margin-left: 2px; border-left: 1px solid var(--border); min-width: 0; }
-  @media (max-width: 720px) { .kids { padding-left: 8px; } .node > a:first-child { padding: 6px 0; } }
+  @media (max-width: 768px) { .kids { padding-left: 8px; } .node > a:first-child { padding: 6px 0; } }
 </style>

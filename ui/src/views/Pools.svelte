@@ -97,7 +97,7 @@
   .acts { white-space: nowrap; }
   .acts button { height: 24px; margin-right: 4px; }
   .gap { margin-left: 6px; }
-  @media (max-width: 720px) {
+  @media (max-width: 768px) {
     .acts button { height: 40px; padding: 0 14px; }
   }
 </style>

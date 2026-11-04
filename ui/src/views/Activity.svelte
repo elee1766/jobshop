@@ -164,7 +164,7 @@
   .body { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 3px; }
   .meta { display: flex; gap: 4px 12px; flex-wrap: wrap; margin-top: 3px; font-size: 12px; }
   .meta a { padding: 2px 0; }
-  @media (max-width: 720px) {
+  @media (max-width: 768px) {
     .vh { flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
     .vh .chips { flex: 1 0 100%; margin-left: 0; order: 3; }
     .meta a { padding: 8px 0; }

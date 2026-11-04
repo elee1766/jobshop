@@ -403,7 +403,7 @@
   .ro { justify-content: center; font-size: 12px; padding: 12px; align-items: center; }
   .err { color: var(--bad); padding: 0 12px 8px; font-size: 12px; }
 
-  @media (max-width: 720px) {
+  @media (max-width: 768px) {
     .box { padding: 10px 10px 6px; }
     .composer { padding: 8px 8px 8px; }
     .composer textarea { min-height: 40px; }

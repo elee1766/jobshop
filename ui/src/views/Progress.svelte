@@ -1,7 +1,8 @@
 <script>
   import { go } from '../lib/url.svelte.js';
   import { get, live } from '../lib/api.svelte.js';
-  import { ago, fields, meta, tone } from '../lib/format.js';
+  import { ago, fields, meta, tone, isSessionId } from '../lib/format.js';
+  import SessionLink from './SessionLink.svelte';
 
   /** Running runs with each step's latest worker report (meta.report) and the newest comment. */
   /** @type {{ limit?: number }} */
@@ -64,6 +65,7 @@
             <li>
               <span class="pill {rtone(r.state)}">{r.state}</span>
               <span class="step muted">{fields(s).step || s.title}</span>
+              {#if isSessionId(r.by)}<SessionLink id={r.by} />{/if}
               {#if r.note}<span class="note">{r.note}</span>{/if}
               <span class="faint when">{ago(r.at)}</span>
             </li>
@@ -75,7 +77,7 @@
             {/if}
           {/each}
           {#if comment}
-            <li><span class="pill">comment</span><span class="step muted mono">{comment.author}</span><span class="note">{comment.body}</span><span class="faint when">{ago(comment.created_at)}</span></li>
+            <li><span class="pill">comment</span><span class="step muted">{#if isSessionId(comment.author)}<SessionLink id={comment.author} />{:else}<span class="mono">{comment.author}</span>{/if}</span><span class="note">{comment.body}</span><span class="faint when">{ago(comment.created_at)}</span></li>
           {/if}
         </ul>
       </div>
@@ -103,7 +105,7 @@
   .note { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .when { flex: none; margin-left: auto; font-size: 11px; }
   .none { padding: 4px 0; }
-  @media (max-width: 720px) {
+  @media (max-width: 768px) {
     .head { min-height: 44px; }
     .id { display: none; }
   }
