@@ -11,6 +11,7 @@ import (
 
 type Querier interface {
 	AddTicketMeta(ctx context.Context, arg AddTicketMetaParams) error
+	AddTicketResource(ctx context.Context, arg AddTicketResourceParams) error
 	// BlockingPathExists reports whether start reaches target through blocking
 	// edges. Adding (A blocked on B) would close a cycle if B already reaches A.
 	BlockingPathExists(ctx context.Context, arg BlockingPathExistsParams) (bool, error)
@@ -22,6 +23,9 @@ type Querier interface {
 	ClaimWriteTicket(ctx context.Context, arg ClaimWriteTicketParams) (int64, error)
 	// ClearTicketMeta and AddTicketMeta keep ticket_meta in step with meta.
 	ClearTicketMeta(ctx context.Context, ticketID string) error
+	// ClearTicketResources and AddTicketResource keep ticket_resources in
+	// step with fields.resources (#426).
+	ClearTicketResources(ctx context.Context, ticketID string) error
 	CountLearnings(ctx context.Context, arg CountLearningsParams) (int64, error)
 	DeleteEdge(ctx context.Context, arg DeleteEdgeParams) (int64, error)
 	DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64, error)

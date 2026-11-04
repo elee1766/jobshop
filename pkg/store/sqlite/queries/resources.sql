@@ -8,12 +8,11 @@ INSERT INTO resource_caps (name, capacity) VALUES (?, ?);
 -- free slot (#400), for Claim by id. Same rule as ReadyTickets.
 -- name: ResourceFull :one
 SELECT CAST(EXISTS (
-  SELECT 1 FROM tickets t, json_each(t.fields, '$.resources') r
-  JOIN resource_caps c ON c.name = r.value
-    OR (instr(r.value, ':') > 0 AND c.name = substr(r.value, 1, instr(r.value, ':') - 1))
-  WHERE t.id = sqlc.arg(id) AND c.capacity <= (
-    SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
-    WHERE h.status = 'in_progress' AND h.id <> t.id AND hr.value = r.value)
+  SELECT 1 FROM ticket_resources r
+  JOIN resource_caps c ON c.name = r.rkey OR c.name = r.rname
+  WHERE r.ticket_id = sqlc.arg(id) AND c.capacity <= (
+    SELECT count(*) FROM ticket_resources hr JOIN tickets h ON h.id = hr.ticket_id
+    WHERE h.status = 'in_progress' AND h.id <> r.ticket_id AND hr.rkey = r.rkey)
 ) AS INTEGER) AS is_full;
 
 -- name: ResourceCaps :many
@@ -21,26 +20,26 @@ SELECT name, capacity FROM resource_caps ORDER BY name;
 
 -- ResourceUse counts in-progress tickets per resource key (#400).
 -- name: ResourceUse :many
-SELECT CAST(r.value AS TEXT) AS rkey, count(*) AS held
-FROM tickets t, json_each(t.fields, '$.resources') r
+SELECT r.rkey, count(*) AS held
+FROM ticket_resources r JOIN tickets t ON t.id = r.ticket_id
 WHERE t.status = 'in_progress'
-GROUP BY r.value
-ORDER BY r.value;
+GROUP BY r.rkey
+ORDER BY r.rkey;
 
 -- ResourceWaiting counts open tickets per resource key (#400).
 -- name: ResourceWaiting :many
-SELECT CAST(r.value AS TEXT) AS rkey, count(*) AS waiting
-FROM tickets t, json_each(t.fields, '$.resources') r
+SELECT r.rkey, count(*) AS waiting
+FROM ticket_resources r JOIN tickets t ON t.id = r.ticket_id
 WHERE t.status = 'open'
-GROUP BY r.value
-ORDER BY r.value;
+GROUP BY r.rkey
+ORDER BY r.rkey;
 
 -- ResourceWaiters lists open, unblocked, non-deferred tickets per
 -- resource key they name, in claim order (#408). The caller keeps the
 -- keys that are full: those tickets wait on the resource alone.
 -- name: ResourceWaiters :many
-SELECT t.id, CAST(r.value AS TEXT) AS rkey
-FROM tickets t, json_each(t.fields, '$.resources') r
+SELECT t.id, r.rkey
+FROM ticket_resources r JOIN tickets t ON t.id = r.ticket_id
 WHERE t.status = 'open'
   AND t.defer_until <= sqlc.arg(now)
   AND t.f_waiting = 0
@@ -48,7 +47,16 @@ WHERE t.status = 'open'
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
       AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution NOT IN ('done','skipped'))))
-ORDER BY r.value, t.priority, t.created_at, t.id;
+ORDER BY r.rkey, t.priority, t.created_at, t.id;
+
+-- ClearTicketResources and AddTicketResource keep ticket_resources in
+-- step with fields.resources (#426).
+-- name: ClearTicketResources :exec
+DELETE FROM ticket_resources WHERE ticket_id = ?;
+
+-- name: AddTicketResource :exec
+INSERT INTO ticket_resources (ticket_id, rkey, rname) VALUES (?, ?, ?)
+ON CONFLICT DO NOTHING;
 
 -- name: DeleteResourceProviders :exec
 DELETE FROM resource_providers;
@@ -60,19 +68,19 @@ INSERT INTO resource_providers (name) VALUES (?);
 -- no ready slot (#407), for Claim by id. Same rule as ReadyTickets.
 -- name: ProviderEmpty :one
 SELECT CAST(EXISTS (
-  SELECT 1 FROM tickets t, json_each(t.fields, '$.resources') r
-  JOIN resource_providers p ON p.name = r.value
-  WHERE t.id = sqlc.arg(id) AND NOT EXISTS (
+  SELECT 1 FROM ticket_resources r
+  JOIN resource_providers p ON p.name = r.rkey
+  WHERE r.ticket_id = sqlc.arg(id) AND NOT EXISTS (
     SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready')
 ) AS INTEGER) AS is_empty;
 
 -- TicketProviderResources lists the provider resources ticket id needs.
 -- name: TicketProviderResources :many
-SELECT CAST(r.value AS TEXT) AS name
-FROM tickets t, json_each(t.fields, '$.resources') r
-JOIN resource_providers p ON p.name = r.value
-WHERE t.id = sqlc.arg(id)
-ORDER BY r.value;
+SELECT r.rkey AS name
+FROM ticket_resources r
+JOIN resource_providers p ON p.name = r.rkey
+WHERE r.ticket_id = sqlc.arg(id)
+ORDER BY r.rkey;
 
 -- name: GetSlot :one
 SELECT * FROM resource_slots WHERE pool = ? AND id = ?;
@@ -120,5 +128,5 @@ WHERE state = 'held' AND NOT EXISTS (
 -- tickets naming it and the oldest one's created_at.
 -- name: ProviderDemand :one
 SELECT count(*) AS waiting, CAST(coalesce(min(t.created_at), 0) AS INTEGER) AS oldest
-FROM tickets t, json_each(t.fields, '$.resources') r
-WHERE t.status = 'open' AND r.value = CAST(sqlc.arg(pool) AS TEXT);
+FROM tickets t JOIN ticket_resources r ON r.ticket_id = t.id
+WHERE t.status = 'open' AND r.rkey = CAST(sqlc.arg(pool) AS TEXT);
