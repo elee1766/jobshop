@@ -1,17 +1,19 @@
 // Package ingest receives webhook deliveries and keeps them in a spool
-// directory until the controller drains them (#318).
+// database until the controller drains them into the inbox (#318).
 package ingest
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strings"
 	"time"
+
+	_ "modernc.org/sqlite" // database/sql driver "sqlite"
 )
 
 // Sources.
@@ -22,126 +24,145 @@ const (
 
 // Delivery is one spooled webhook delivery.
 type Delivery struct {
+	ID         int64     `json:"id"`
+	Endpoint   string    `json:"endpoint"`
 	Source     string    `json:"source"`
 	DeliveryID string    `json:"delivery_id"`
 	Kind       string    `json:"kind"`
 	ReceivedAt time.Time `json:"received_at"`
-	// Headers are the signature and event headers only.
+	// Headers are the signature, event and delivery headers only.
 	Headers map[string]string `json:"headers"`
 	Payload json.RawMessage   `json:"payload"`
 }
 
-// Name is the spool file name of d.
-func (d Delivery) Name() string { return d.Source + "-" + d.DeliveryID + ".json" }
-
-// validID keeps delivery ids safe as file name parts.
-var validID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
-
-// ErrBadDelivery is a delivery that cannot be named in the spool.
+// ErrBadDelivery is a delivery the spool will not store.
 var ErrBadDelivery = errors.New("ingest: bad delivery")
 
-// Spool is a directory of deliveries, one file each. Temp files start
-// with a dot, so readers never see a partial write.
-type Spool struct{ Dir string }
+// schemaVersion is PRAGMA user_version once schema is applied. One
+// table needs no migration tool; a later change bumps this and adds a
+// step in OpenSpool.
+const schemaVersion = 1
 
-// Write stores d. It returns false when a delivery with the same source
-// and id is already spooled; the file is not touched then.
-func (s Spool) Write(d Delivery) (bool, error) {
-	if (d.Source != SourceGitHub && d.Source != SourceLinear) || !validID.MatchString(d.DeliveryID) || strings.HasPrefix(d.DeliveryID, ".") {
-		return false, fmt.Errorf("%w: source %q id %q", ErrBadDelivery, d.Source, d.DeliveryID)
-	}
-	final := filepath.Join(s.Dir, d.Name())
-	if _, err := os.Lstat(final); err == nil {
-		return false, nil
-	}
-	b, err := json.Marshal(d)
-	if err != nil {
-		return false, err
-	}
-	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
-		return false, err
-	}
-	f, err := os.CreateTemp(s.Dir, ".tmp-*")
-	if err != nil {
-		return false, err
-	}
-	tmp := f.Name()
-	defer func() { _ = os.Remove(tmp) }()
-	if _, err := f.Write(b); err != nil {
-		_ = f.Close()
-		return false, err
-	}
-	if err := f.Sync(); err != nil {
-		_ = f.Close()
-		return false, err
-	}
-	if err := f.Close(); err != nil {
-		return false, err
-	}
-	// Link, not rename: it fails on an existing name, so two concurrent
-	// writes of one delivery keep the first file.
-	if err := os.Link(tmp, final); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, syncDir(s.Dir)
-}
+const schema = `
+CREATE TABLE IF NOT EXISTS spool (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  endpoint    TEXT NOT NULL,
+  source      TEXT NOT NULL CHECK (source IN ('github', 'linear')),
+  delivery_id TEXT NOT NULL,
+  kind        TEXT NOT NULL DEFAULT '',
+  received_at INTEGER NOT NULL,
+  headers     TEXT NOT NULL DEFAULT '{}',
+  payload     TEXT NOT NULL,
+  UNIQUE (source, delivery_id)
+);
+PRAGMA user_version = 1;
+`
 
-// List returns the names of spooled deliveries, oldest name first. A
-// missing dir is an empty spool.
-func (s Spool) List() ([]string, error) {
-	ents, err := os.ReadDir(s.Dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+// Spool is the receiver's own SQLite database (#339). Only the receiver
+// writes rows and only the drain deletes them, so the main jobshop.db
+// keeps one writer and the receiver works while the controller is down.
+type Spool struct{ db *sql.DB }
+
+// OpenSpool opens or creates the spool at path. synchronous=FULL makes a
+// committed Write durable before the handler answers 202.
+func OpenSpool(ctx context.Context, path string) (*Spool, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
 	}
+	dsn := "file:" + path + "?_txlock=immediate" +
+		"&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(FULL)"
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	var out []string
-	for _, e := range ents {
-		n := e.Name()
-		if e.Type().IsRegular() && !strings.HasPrefix(n, ".") && strings.HasSuffix(n, ".json") {
-			out = append(out, n)
+	db.SetMaxOpenConns(1)
+	var v int
+	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&v); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ingest spool %s: %w", path, err)
+	}
+	if v > schemaVersion {
+		_ = db.Close()
+		return nil, fmt.Errorf("ingest spool %s: schema version %d is newer than this binary (%d)", path, v, schemaVersion)
+	}
+	if v < schemaVersion {
+		if _, err := db.ExecContext(ctx, schema); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("ingest spool %s: %w", path, err)
 		}
 	}
-	slices.Sort(out)
-	return out, nil
+	return &Spool{db: db}, nil
 }
 
-// Read decodes the delivery in file name.
-func (s Spool) Read(name string) (Delivery, error) {
-	var d Delivery
-	if filepath.Base(name) != name || strings.HasPrefix(name, ".") {
-		return d, fmt.Errorf("%w: name %q", ErrBadDelivery, name)
+// Close closes the database.
+func (s *Spool) Close() error { return s.db.Close() }
+
+// Write stores d. It returns false when a delivery with the same source
+// and delivery id is already spooled; nothing changes then.
+func (s *Spool) Write(ctx context.Context, d Delivery) (bool, error) {
+	if (d.Source != SourceGitHub && d.Source != SourceLinear) || d.DeliveryID == "" || d.Endpoint == "" {
+		return false, fmt.Errorf("%w: endpoint %q source %q id %q", ErrBadDelivery, d.Endpoint, d.Source, d.DeliveryID)
 	}
-	b, err := os.ReadFile(filepath.Join(s.Dir, name))
+	hdr, err := json.Marshal(d.Headers)
 	if err != nil {
-		return d, err
+		return false, err
 	}
-	if err := json.Unmarshal(b, &d); err != nil {
-		return d, fmt.Errorf("ingest: %s: %w", name, err)
+	payload := string(d.Payload)
+	if payload == "" {
+		payload = "{}"
 	}
-	return d, nil
-}
-
-// Remove deletes file name. A missing file is not an error.
-func (s Spool) Remove(name string) error {
-	if filepath.Base(name) != name || strings.HasPrefix(name, ".") {
-		return fmt.Errorf("%w: name %q", ErrBadDelivery, name)
+	if d.ReceivedAt.IsZero() {
+		d.ReceivedAt = time.Now()
 	}
-	if err := os.Remove(filepath.Join(s.Dir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return syncDir(s.Dir)
-}
-
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
+	res, err := s.db.ExecContext(ctx, `INSERT INTO spool (endpoint, source, delivery_id, kind, received_at, headers, payload)
+VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (source, delivery_id) DO NOTHING`,
+		d.Endpoint, d.Source, d.DeliveryID, d.Kind, d.ReceivedAt.UnixMilli(), string(hdr), payload)
 	if err != nil {
-		return err
+		return false, err
 	}
-	defer func() { _ = d.Close() }()
-	return d.Sync()
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// List returns up to limit deliveries, oldest first. limit <= 0 is 100.
+func (s *Spool) List(ctx context.Context, limit int) ([]Delivery, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, endpoint, source, delivery_id, kind, received_at, headers, payload
+FROM spool ORDER BY id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Delivery
+	for rows.Next() {
+		var d Delivery
+		var recv int64
+		var hdr, payload string
+		if err := rows.Scan(&d.ID, &d.Endpoint, &d.Source, &d.DeliveryID, &d.Kind, &recv, &hdr, &payload); err != nil {
+			return nil, err
+		}
+		d.ReceivedAt = time.UnixMilli(recv).UTC()
+		if err := json.Unmarshal([]byte(hdr), &d.Headers); err != nil {
+			return nil, fmt.Errorf("ingest spool row %d headers: %w", d.ID, err)
+		}
+		d.Payload = json.RawMessage(payload)
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// Delete removes the rows with these ids. Missing ids are not an error.
+func (s *Spool) Delete(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	q := "DELETE FROM spool WHERE id IN (?" + strings.Repeat(",?", len(ids)-1) + ")"
+	_, err := s.db.ExecContext(ctx, q, args...)
+	return err
 }

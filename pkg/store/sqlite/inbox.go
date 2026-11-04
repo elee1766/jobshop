@@ -35,7 +35,7 @@ func (s *Store) InboxPut(ctx context.Context, it store.InboxItem) (out store.Inb
 		n, err := q.InboxInsert(ctx, sqlcdb.InboxInsertParams{
 			Source: it.Source, DeliveryID: it.DeliveryID, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam,
 			Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, ReceivedAt: ms(recv),
-			Payload: payload, Now: ms(now),
+			Payload: payload, Now: ms(now), Endpoint: it.Endpoint,
 		})
 		if err != nil {
 			return err
@@ -169,7 +169,7 @@ func nullJSON(b json.RawMessage) sql.NullString {
 
 func toInbox(r sqlcdb.Inbox) store.InboxItem {
 	it := store.InboxItem{
-		ID: r.ID, Source: r.Source, DeliveryID: r.DeliveryID, Kind: r.Kind, RepoOrTeam: r.RepoOrTeam,
+		ID: r.ID, Source: r.Source, DeliveryID: r.DeliveryID, Endpoint: r.Endpoint, Kind: r.Kind, RepoOrTeam: r.RepoOrTeam,
 		Number: r.Number, CommentID: r.CommentID, Actor: r.Actor, ReceivedAt: fromMS(r.ReceivedAt),
 		Payload: json.RawMessage(r.Payload), State: r.State, HookResults: json.RawMessage(r.HookResults),
 		Holder: r.Holder, LeaseUntil: fromMS(r.LeaseUntil), Attempts: r.Attempts, UpdatedAt: fromMS(r.UpdatedAt),

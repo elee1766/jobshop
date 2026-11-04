@@ -257,3 +257,61 @@ func TestIngestRetention(t *testing.T) {
 	assert.Equal(t, 3*24*time.Hour, Ingest{Retention: "3d"}.RetentionDuration())
 	assert.Equal(t, 36*time.Hour, Ingest{Retention: "36h"}.RetentionDuration())
 }
+
+const ingestApp = "identities:\n  lapp: {kind: linear-app, client_id_file: /i, client_secret_file: /s, webhook_secret_file: /w, workspace: w, teams: [ENG]}\n"
+
+// TestIngestEndpoints (#339): endpoints parse with default paths, and a
+// linear-app identity with a webhook secret and no endpoint gets an
+// implicit one at /linear/webhook.
+func TestIngestEndpoints(t *testing.T) {
+	c, err := Parse([]byte(ingestApp + `ingest:
+  spool: data/spool.db
+  endpoints:
+    - {name: gh-app, source: github, secret_file: secrets/gh, repos: [acme/app]}
+    - {name: gh-org, source: github, secret_file: /abs/gh, path: /hooks/org}
+`))
+	require.NoError(t, err)
+	eps := c.IngestEndpoints()
+	require.Len(t, eps, 3)
+	assert.Equal(t, "/github/gh-app", eps[0].EndpointPath())
+	assert.Equal(t, "/hooks/org", eps[1].EndpointPath())
+	assert.Equal(t, IngestEndpoint{Name: "linear-lapp", Source: IngestLinear, Identity: "lapp", Path: LinearWebhookPath, Implicit: true}, eps[2])
+	assert.Equal(t, "/r/data/spool.db", c.Ingest.SpoolPath(Root{Dir: "/r"}))
+	assert.Equal(t, "/r/ingest/spool.db", Ingest{}.SpoolPath(Root{Dir: "/r"}))
+
+	// Naming the identity in an endpoint replaces the implicit one.
+	c, err = Parse([]byte(ingestApp + "ingest:\n  endpoints:\n    - {name: lin, source: linear, identity: lapp}\n"))
+	require.NoError(t, err)
+	eps = c.IngestEndpoints()
+	require.Len(t, eps, 1)
+	assert.Equal(t, "/linear/lin", eps[0].EndpointPath())
+
+	// Identity only, no ingest block: /linear/webhook still served.
+	c, err = Parse([]byte(ingestApp))
+	require.NoError(t, err)
+	require.Len(t, c.IngestEndpoints(), 1)
+	assert.Equal(t, LinearWebhookPath, c.IngestEndpoints()[0].EndpointPath())
+}
+
+func TestIngestEndpointErrors(t *testing.T) {
+	for name, tc := range map[string]struct{ yaml, want string }{
+		"old github secret":  {"ingest:\n  github_secret_file: x\n", "ingest.endpoints"},
+		"old linear secret":  {"ingest:\n  linear_secret_file: x\n", "ingest.endpoints"},
+		"old spool dir":      {"ingest:\n  spool_dir: x\n", "ingest.spool"},
+		"bad name":           {"ingest:\n  endpoints: [{name: Bad_Name, source: github, secret_file: s}]\n", "[a-z0-9-]+"},
+		"duplicate name":     {"ingest:\n  endpoints: [{name: a, source: github, secret_file: s}, {name: a, source: github, secret_file: t, path: /x}]\n", "duplicate name"},
+		"duplicate path":     {"ingest:\n  endpoints: [{name: a, source: github, secret_file: s, path: /x}, {name: b, source: github, secret_file: t, path: /x}]\n", "already used"},
+		"bad source":         {"ingest:\n  endpoints: [{name: a, source: jira, secret_file: s}]\n", "github or linear"},
+		"no secret":          {"ingest:\n  endpoints: [{name: a, source: github}]\n", "exactly one"},
+		"both secrets":       {ingestApp + "ingest:\n  endpoints: [{name: a, source: linear, secret_file: s, identity: lapp}]\n", "exactly one"},
+		"unknown identity":   {"ingest:\n  endpoints: [{name: a, source: linear, identity: nope}]\n", "linear-app identity"},
+		"repos on linear":    {"ingest:\n  endpoints: [{name: a, source: linear, secret_file: s, repos: [a/b]}]\n", "repos is for github"},
+		"bad repo":           {"ingest:\n  endpoints: [{name: a, source: github, secret_file: s, repos: [nope]}]\n", "owner/name"},
+		"relative path":      {"ingest:\n  endpoints: [{name: a, source: github, secret_file: s, path: x}]\n", "must start with /"},
+		"shadows identities": {ingestApp + "ingest:\n  endpoints: [{name: a, source: linear, secret_file: s, path: /linear/webhook}]\n", "name the identity"},
+	} {
+		_, err := Parse([]byte(tc.yaml))
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), tc.want, name)
+	}
+}

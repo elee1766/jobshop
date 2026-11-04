@@ -53,6 +53,7 @@ type Inbox struct {
 	LeaseUntil  int64
 	Attempts    int64
 	UpdatedAt   int64
+	Endpoint    string
 }
 
 type Label struct {

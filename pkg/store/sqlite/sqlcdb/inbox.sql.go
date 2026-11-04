@@ -12,7 +12,7 @@ import (
 )
 
 const inboxGet = `-- name: InboxGet :one
-SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at FROM inbox WHERE id = ?
+SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint FROM inbox WHERE id = ?
 `
 
 func (q *Queries) InboxGet(ctx context.Context, id int64) (Inbox, error) {
@@ -36,12 +36,13 @@ func (q *Queries) InboxGet(ctx context.Context, id int64) (Inbox, error) {
 		&i.LeaseUntil,
 		&i.Attempts,
 		&i.UpdatedAt,
+		&i.Endpoint,
 	)
 	return i, err
 }
 
 const inboxGetByDelivery = `-- name: InboxGetByDelivery :one
-SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at FROM inbox WHERE delivery_id = ?
+SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint FROM inbox WHERE delivery_id = ?
 `
 
 func (q *Queries) InboxGetByDelivery(ctx context.Context, deliveryID string) (Inbox, error) {
@@ -65,14 +66,15 @@ func (q *Queries) InboxGetByDelivery(ctx context.Context, deliveryID string) (In
 		&i.LeaseUntil,
 		&i.Attempts,
 		&i.UpdatedAt,
+		&i.Endpoint,
 	)
 	return i, err
 }
 
 const inboxInsert = `-- name: InboxInsert :execrows
-INSERT INTO inbox (source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, updated_at)
+INSERT INTO inbox (source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, updated_at, endpoint)
 VALUES (?1, ?2, ?3, ?4, ?5,
-        ?6, ?7, ?8, ?9, ?10)
+        ?6, ?7, ?8, ?9, ?10, ?11)
 ON CONFLICT (delivery_id) DO NOTHING
 `
 
@@ -87,6 +89,7 @@ type InboxInsertParams struct {
 	ReceivedAt int64
 	Payload    string
 	Now        int64
+	Endpoint   string
 }
 
 func (q *Queries) InboxInsert(ctx context.Context, arg InboxInsertParams) (int64, error) {
@@ -101,6 +104,7 @@ func (q *Queries) InboxInsert(ctx context.Context, arg InboxInsertParams) (int64
 		arg.ReceivedAt,
 		arg.Payload,
 		arg.Now,
+		arg.Endpoint,
 	)
 	if err != nil {
 		return 0, err
@@ -109,7 +113,7 @@ func (q *Queries) InboxInsert(ctx context.Context, arg InboxInsertParams) (int64
 }
 
 const inboxList = `-- name: InboxList :many
-SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at FROM inbox
+SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint FROM inbox
 WHERE (?1 = '' OR state = ?1)
   AND (?2 = '' OR source = ?2)
 ORDER BY received_at DESC, id DESC
@@ -149,6 +153,7 @@ func (q *Queries) InboxList(ctx context.Context, arg InboxListParams) ([]Inbox, 
 			&i.LeaseUntil,
 			&i.Attempts,
 			&i.UpdatedAt,
+			&i.Endpoint,
 		); err != nil {
 			return nil, err
 		}
@@ -164,7 +169,7 @@ func (q *Queries) InboxList(ctx context.Context, arg InboxListParams) ([]Inbox, 
 }
 
 const inboxNextClaimable = `-- name: InboxNextClaimable :one
-SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at FROM inbox
+SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint FROM inbox
 WHERE state IN (/*SLICE:states*/?) AND (holder = '' OR lease_until <= ?2)
 ORDER BY received_at, id
 LIMIT 1
@@ -207,6 +212,7 @@ func (q *Queries) InboxNextClaimable(ctx context.Context, arg InboxNextClaimable
 		&i.LeaseUntil,
 		&i.Attempts,
 		&i.UpdatedAt,
+		&i.Endpoint,
 	)
 	return i, err
 }
@@ -227,7 +233,7 @@ func (q *Queries) InboxPrune(ctx context.Context, before int64) (int64, error) {
 const inboxRenew = `-- name: InboxRenew :one
 UPDATE inbox SET lease_until = ?1, updated_at = ?2
 WHERE id = ?3 AND holder = ?4 AND lease_until > ?2
-RETURNING id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at
+RETURNING id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint
 `
 
 type InboxRenewParams struct {
@@ -263,6 +269,7 @@ func (q *Queries) InboxRenew(ctx context.Context, arg InboxRenewParams) (Inbox, 
 		&i.LeaseUntil,
 		&i.Attempts,
 		&i.UpdatedAt,
+		&i.Endpoint,
 	)
 	return i, err
 }
@@ -273,7 +280,7 @@ UPDATE inbox SET state = ?1,
   hook_results = COALESCE(?3, hook_results),
   holder = '', lease_until = 0, updated_at = ?4
 WHERE id = ?5 AND holder = ?6 AND lease_until > ?4
-RETURNING id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at
+RETURNING id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint
 `
 
 type InboxSetStateParams struct {
@@ -315,6 +322,7 @@ func (q *Queries) InboxSetState(ctx context.Context, arg InboxSetStateParams) (I
 		&i.LeaseUntil,
 		&i.Attempts,
 		&i.UpdatedAt,
+		&i.Endpoint,
 	)
 	return i, err
 }
@@ -323,7 +331,7 @@ const inboxTake = `-- name: InboxTake :one
 UPDATE inbox SET holder = ?1, lease_until = ?2,
   attempts = attempts + 1, updated_at = ?3
 WHERE id = ?4 AND (holder = '' OR lease_until <= ?3)
-RETURNING id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at
+RETURNING id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint
 `
 
 type InboxTakeParams struct {
@@ -361,6 +369,7 @@ func (q *Queries) InboxTake(ctx context.Context, arg InboxTakeParams) (Inbox, er
 		&i.LeaseUntil,
 		&i.Attempts,
 		&i.UpdatedAt,
+		&i.Endpoint,
 	)
 	return i, err
 }

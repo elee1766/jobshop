@@ -130,6 +130,10 @@ func webhookController(t *testing.T) (*Controller, *stallClock, *webhookLinear) 
 	require.NoError(t, err)
 	c.live.Store(lc)
 	c.minter, c.linearURL = identity.NewMinter(), srv.URL
+	sp, err := ingest.OpenSpool(t.Context(), c.config().Ingest.SpoolPath(c.root))
+	require.NoError(t, err)
+	testSpools.Store(c, sp)
+	t.Cleanup(func() { testSpools.Delete(c); _ = sp.Close() })
 	return c, clk, f
 }
 
@@ -153,12 +157,21 @@ func sign(secret string, b []byte) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
+// testSpools holds one open spool per controller under test; closed by
+// webhookController's cleanup.
+var testSpools sync.Map
+
+func testSpool(c *Controller) *ingest.Spool {
+	v, _ := testSpools.Load(c)
+	return v.(*ingest.Spool)
+}
+
 // postWebhook sends b and waits for the async work.
 func postWebhook(c *Controller, b []byte, sig string) int {
-	req := httptest.NewRequest(http.MethodPost, ingest.LinearPath, bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, config.LinearWebhookPath, bytes.NewReader(b))
 	req.Header.Set("Linear-Signature", sig)
 	rec := httptest.NewRecorder()
-	c.linearWebhookHandler().Mux().ServeHTTP(rec, req)
+	c.linearWebhookHandler(testSpool(c)).Mux().ServeHTTP(rec, req)
 	c.wg.Wait()
 	return rec.Code
 }
@@ -225,9 +238,10 @@ func TestLinearWebhookComment(t *testing.T) {
 
 	b := webhookBody(t, clk.now(), "Comment", "user", "u-wile", "org-1")
 	require.Equal(t, http.StatusAccepted, postWebhook(c, b, sign(webhookSecret, b)))
-	names, err := ingest.Spool{Dir: c.config().Ingest.Spool(c.root)}.List()
+	rows, err := testSpool(c).List(ctx, 0)
 	require.NoError(t, err)
-	assert.NotEmpty(t, names, "spooled before processing")
+	require.NotEmpty(t, rows, "spooled before processing")
+	assert.Equal(t, "linear-lapp", rows[len(rows)-1].Endpoint, "implicit identity endpoint")
 	got, err := c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusClosed, got.Status)
