@@ -59,7 +59,7 @@ func triggerController(t *testing.T, root config.Root, clk *clock.Fake) func() {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- control.Run(ctx, root, withPass(root.Dir, control.Options{Tick: 20 * time.Millisecond, Clock: clk}))
+		done <- control.Run(ctx, root, withPass(root.Dir, control.Options{Tick: time.Hour, Clock: clk}))
 	}()
 	return func() { cancel(); require.NoError(t, <-done) }
 }
