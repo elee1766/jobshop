@@ -20,7 +20,8 @@ Wait for CI with `gh pr checks --watch`; fix failures and push again.
 Wait inside your turn: ending the turn while holding this step releases
 it and, the second time, counts a failed attempt. If your tool moves a
 long command to the background, keep polling (`gh pr checks <n>`,
-`sleep 60`) until CI finishes; do not end the turn to wait for it.
+`sleep 60`) until CI finishes; do not end the turn to wait for it. A
+background task's wake never starts a new turn here.
 
 Docs: ${docs_rule}
 

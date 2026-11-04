@@ -82,6 +82,11 @@ type runner struct {
 	crashes  []time.Time
 	stopping bool
 	agentPid int // from the host's welcome; 0 until connected
+
+	// lastStop and lastSaid are the stop reason and agent text of the
+	// last turn, recorded when a session ends stuck (#301).
+	lastStop string
+	lastSaid strings.Builder
 	// backoffUntil is set while the agent's provider is rate limited and the
 	// runner waits to retry the same turn.
 	backoffUntil time.Time
@@ -900,7 +905,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		}
 		r.afterTurn(ctx, conn, acpSession, t.ID)
 		if r.unclosed >= maxUnclosed {
-			return errSessionEnd{resolution: resolutionStuck, reason: fmt.Sprintf("%d turns in a row ended without closing or releasing", r.unclosed)}
+			return errSessionEnd{resolution: resolutionStuck, reason: fmt.Sprintf("%d turns in a row ended without closing or releasing; %s", r.unclosed, r.turnEndReason())}
 		}
 		if stale && r.idle() {
 			return r.refresh(nc)
@@ -955,6 +960,18 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		}
 		r.c.metrics.Turns.Add(context.WithoutCancel(ctx), 1, metric.WithAttributes(
 			telemetry.AttrPool.String(r.pool), telemetry.AttrStopReason.String(reason)))
+	}()
+	r.mu.Lock()
+	r.lastStop = ""
+	r.lastSaid.Reset()
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		r.lastStop = string(res.StopReason)
+		if err != nil {
+			r.lastStop = "error"
+		}
+		r.mu.Unlock()
 	}()
 	busyRetries := 0
 	for {
@@ -1022,10 +1039,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		return
 	}
 	if ticketID != "" {
-		reminder := "Your turn ended but you still hold " + ids(held) + ". " +
-			"If the work is finished run `jobshop close`; if you cannot finish it run " +
-			"`jobshop release -r \"<why>\"`; otherwise continue working."
-		if err := r.turn(ctx, conn, acpSession, reminder); err != nil {
+		if err := r.turn(ctx, conn, acpSession, unclosedReminder(ids(held))); err != nil {
 			return
 		}
 		if held, err = r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress}); err != nil {
@@ -1057,6 +1071,37 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 }
 
 const unclosedReason = "agent turn ended without closing or releasing"
+
+// unclosedReminder is the prompt after a turn ends holding tickets. The
+// sessions in #301 ended turns "waiting for the wake" of a backgrounded
+// command; no wake prompt reaches an ACP session, so say so.
+func unclosedReminder(held string) string {
+	return "You still hold " + held + " and your turn ended. Nothing will wake you: " +
+		"a background task's wake or notification does not start a new turn in this session, " +
+		"and the next time a turn ends holding the ticket it is released and the session ends. " +
+		"Do one of these now, in this turn: run `jobshop close` if the work is done; " +
+		"keep waiting in the foreground with short commands (`sleep 60; gh pr checks <n>`) until it finishes; " +
+		"or `jobshop release --until <duration> -r \"<what you wait for>\"` for a long wait; " +
+		"or `jobshop release -r \"<why>\"` if you cannot finish it."
+}
+
+// turnEndReason describes how the last turn ended, for the stuck reason.
+func (r *runner) turnEndReason() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	said := strings.Join(strings.Fields(r.lastSaid.String()), " ")
+	if n := len(said); n > 200 {
+		said = "..." + said[n-200:]
+	}
+	stop := r.lastStop
+	if stop == "" {
+		stop = "unknown"
+	}
+	if said == "" {
+		return "last turn stop_reason " + stop
+	}
+	return fmt.Sprintf("last turn stop_reason %s, agent said: %q", stop, said)
+}
 
 // releasedUnclosedBefore reports whether the controller already released
 // id for an unclosed turn.
@@ -1150,7 +1195,8 @@ Close or release the ticket before you end your turn. Ending a turn while
 you hold it releases it, and a repeat counts as a failed attempt. To wait (CI, a
 rebase, a deploy), stay in the turn: if a long command is moved to the
 background, keep polling it (` + "`gh pr checks <n>`, `sleep 60`" + `) until it
-finishes. For longer waits, ` + "`jobshop release --until <duration>`" + ` instead.`)
+finishes: a background task's wake does not start a new turn here. For
+longer waits, ` + "`jobshop release --until <duration>`" + ` instead.`)
 	return b.String()
 }
 
@@ -1169,7 +1215,18 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
 }
 
-func (c *client) SessionUpdate(context.Context, acp.SessionNotification) error { return nil }
+func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	if m := n.Update.AgentMessageChunk; m != nil && m.Content.Text != nil {
+		c.r.mu.Lock()
+		c.r.lastSaid.WriteString(m.Content.Text.Text)
+		if s := c.r.lastSaid.String(); len(s) > 4096 { // only the tail is reported
+			c.r.lastSaid.Reset()
+			c.r.lastSaid.WriteString(s[len(s)-1024:])
+		}
+		c.r.mu.Unlock()
+	}
+	return nil
+}
 
 func (c *client) HandleExtensionMethod(_ context.Context, method string, params json.RawMessage) (any, error) {
 	if method == host.MethodExportStats {
