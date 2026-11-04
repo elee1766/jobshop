@@ -45,6 +45,8 @@ type Config struct {
 	// ChatPool is the type: chat pool Desk chats with (escalation keys and
 	// new desk:<id> sessions). Empty: chat is read-only.
 	ChatPool string
+	// Push sends Web Push notifications for new attention items. Nil: off.
+	Push *Push
 }
 
 // Server is the Desk HTTP handler.
@@ -72,6 +74,23 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 		panic(err)
 	}
 	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui}
+}
+
+// Start opens push state and runs the notifier until ctx ends. No-op
+// without Push.
+func (s *Server) Start(ctx context.Context) error {
+	if s.cfg.Push == nil {
+		return nil
+	}
+	if s.cfg.Push.Interval <= 0 {
+		s.cfg.Push.Interval = time.Minute
+	}
+	if err := s.cfg.Push.open(); err != nil {
+		return fmt.Errorf("desk: push: %w", err)
+	}
+	go s.runPush(ctx)
+	go s.watchEvents(ctx)
+	return nil
 }
 
 // Loopback reports whether addr (host:port) binds only loopback.
@@ -105,6 +124,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/chat/new", s.json(s.chatNew))
 	mux.HandleFunc("POST /api/pool/scale", s.json(s.poolScale))
 	mux.HandleFunc("POST /api/session/cordon", s.json(s.sessionCordon))
+	if s.cfg.Push != nil {
+		mux.HandleFunc("GET /api/push/key", s.json(s.pushKey))
+		mux.HandleFunc("POST /api/push/subscribe", s.json(s.pushSubscribe))
+		mux.HandleFunc("POST /api/push/unsubscribe", s.json(s.pushUnsubscribe))
+		mux.HandleFunc("POST /api/push/test", s.json(s.pushTest))
+	}
 	mux.Handle("GET /", s.static())
 	return s.guard(mux)
 }
@@ -112,7 +137,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
@@ -152,6 +177,12 @@ func (s *Server) static() http.Handler {
 			w.Header().Set("Cache-Control", "no-cache")
 		} else if strings.HasPrefix(r.URL.Path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else if r.URL.Path == "/sw.js" || r.URL.Path == "/manifest.webmanifest" {
+			// Browsers check the worker for updates; keep it and the manifest fresh.
+			w.Header().Set("Cache-Control", "no-cache")
+			if r.URL.Path == "/manifest.webmanifest" {
+				w.Header().Set("Content-Type", "application/manifest+json")
+			}
 		}
 		files.ServeHTTP(w, r)
 	})

@@ -348,6 +348,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest admission: mutating then validating hooks (command or signed
   url) on pending inbox items, `failure_policy`, `match`; on: intake
   hooks run for Linear items (#348, `docs/notes/348-ingest-admission.md`).
+- Desk as a PWA with Web Push for new attention items, `desk --push`
+  (`docs/notes/desk-push.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).

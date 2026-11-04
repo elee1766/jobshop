@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { url, go, VIEWS } from './lib/url.svelte.js';
   import { live, connect, resource } from './lib/api.svelte.js';
+  import { push, initPush, enablePush, disablePush, testPush } from './lib/push.svelte.js';
   import Attention from './views/Attention.svelte';
   import Work from './views/Work.svelte';
   import Sessions from './views/Sessions.svelte';
@@ -12,6 +13,16 @@
   import Drawer from './views/Drawer.svelte';
 
   onMount(connect);
+  onMount(() => { initPush(); });
+
+  /** @type {Record<string, string>} */
+  const pushTitle = {
+    unsupported: 'this browser has no Web Push (on iOS, add Desk to the home screen first)',
+    unavailable: 'Desk runs without --push',
+    denied: 'notifications blocked in browser settings',
+    off: 'turn on notifications for new attention items',
+    on: 'notifications on (click to turn off)',
+  };
 
   const attention = resource(() => '/api/attention');
   const count = $derived(attention.data?.length ?? 0);
@@ -43,6 +54,17 @@
     <div class="foot">
       <span class="dot" class:on={live.connected} title={live.connected ? 'live' : 'disconnected'}></span>
       <span class="faint">{live.connected ? 'live' : 'offline'}</span>
+      {#if push.state === 'on' || push.state === 'off'}
+        <button
+          class="bell"
+          class:on={push.state === 'on'}
+          data-testid="push-toggle"
+          title={pushTitle[push.state]}
+          aria-label={pushTitle[push.state]}
+          onclick={() => (push.state === 'on' ? disablePush() : enablePush())}
+        >{push.state === 'on' ? '🔔' : '🔕'}</button>
+        {#if push.state === 'on'}<button class="bell" title="send a test notification" onclick={testPush}>test</button>{/if}
+      {/if}
       <button class="theme" onclick={() => (light = !light)} aria-label="toggle theme">{light ? '☾' : '☀'}</button>
     </div>
   </nav>
@@ -75,6 +97,8 @@
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--bad); }
   .dot.on { background: var(--ok); }
   .theme { margin-left: auto; padding: 0 7px; }
+  .bell { padding: 0 6px; opacity: 0.6; }
+  .bell.on { opacity: 1; }
   main { padding: 20px 28px; min-width: 0; }
   @media (max-width: 720px) {
     .shell { grid-template-columns: 1fr; }
