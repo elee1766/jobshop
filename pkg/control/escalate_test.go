@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -52,9 +53,10 @@ func claimAs(t *testing.T, admin *rpc.Client, id, holder string) rpc.ClaimResult
 // failed, CLI release, dead-session release, and lease expiry. Below the
 // limit the step reopens with a comment naming the attempt.
 func TestStepFailureSources(t *testing.T) {
-	// The lease must outlive step 2's claim and release under parallel
-	// load (a 300ms lease expired mid-step, #314); step 3 waits it out.
-	admin := runRootLease(t, "2s")
+	// A fake clock: step 3 advances it past the lease, so the lease never
+	// expires mid-step under load (#314, #375).
+	clk := clock.NewFake(time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC))
+	admin := runRootLease(t, "2s", clk)
 	// implement has retries: 3, so three failures reopen then exhaust.
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "5"}})
 	step := r.Steps[0].ID
@@ -81,17 +83,18 @@ func TestStepFailureSources(t *testing.T) {
 
 	// 3. Lease expiry, swept on the tick, exhausts the step.
 	claimAs(t, admin, step, "js-gone")
-	require.Eventually(t, func() bool {
+	clk.Advance(3 * time.Second)
+	passUntil(t, admin, func() bool {
 		return getTicket(t, admin, step).Ticket.Status == store.StatusClosed
-	}, 15*time.Second, 50*time.Millisecond)
+	}, "lease expiry closes the step")
 	got = getTicket(t, admin, step)
 	assert.Equal(t, "failed", got.Ticket.Resolution)
 	assert.Equal(t, 3, failures(t, got.Ticket))
 	assert.Contains(t, got.Comments[len(got.Comments)-1].Body, "lease_expired")
 	assert.Contains(t, got.Comments[len(got.Comments)-1].Body, "Retry limit 3 reached")
-	require.Eventually(t, func() bool {
+	passUntil(t, admin, func() bool {
 		return runState(t, showRun(t, admin, r.Run.ID)) == store.RunNeedsHuman
-	}, 5*time.Second, 50*time.Millisecond)
+	}, "run needs a human")
 }
 
 // TestStepFailureDeadSession counts a release of a dead session's claim,
