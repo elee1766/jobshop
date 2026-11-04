@@ -277,6 +277,23 @@ func (m *Minter) mintLinear(ctx context.Context, id config.Identity, scopes []st
 	return t, nil
 }
 
+// JWTFor signs an App JWT for a github-app identity, reading its key
+// file. Used for App-level APIs such as webhook deliveries (#335).
+func JWTFor(id config.Identity, now time.Time) (string, error) {
+	if id.Kind != config.IdentityGitHubApp {
+		return "", fmt.Errorf("app jwt: kind %s is not %s", id.Kind, config.IdentityGitHubApp)
+	}
+	b, err := os.ReadFile(id.PrivateKeyFile)
+	if err != nil {
+		return "", err
+	}
+	key, err := parseKey(b)
+	if err != nil {
+		return "", err
+	}
+	return AppJWT(id.AppID, key, now)
+}
+
 func parseKey(b []byte) (*rsa.PrivateKey, error) {
 	blk, _ := pem.Decode(b)
 	if blk == nil {

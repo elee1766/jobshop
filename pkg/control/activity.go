@@ -191,6 +191,7 @@ func (c *Controller) pollActivity(ctx context.Context, s *activityState, src act
 		items, err := src.GitHub(ctx, repo, rp)
 		c.activityErr(s, "github:"+repo, err)
 		fresh := s.unseen(items)
+		c.inboxActivity(ctx, fresh)
 		added += s.add(items, now, window, maxPer)
 		if rs, ok := src.(revertSource); ok {
 			c.checkReverts(ctx, rs, fresh)
@@ -206,6 +207,7 @@ func (c *Controller) pollActivity(ctx context.Context, s *activityState, src act
 		if err == nil {
 			s.Teams[team] = now
 		}
+		c.inboxActivity(ctx, s.unseen(items))
 		added += s.add(items, now, window, maxPer)
 	}
 	// Drop poll state for repos and teams no longer configured.

@@ -78,6 +78,7 @@ const (
 	MethodIdentityList     = "identity.list"
 	MethodIdentityCheck    = "identity.check"
 	MethodIdentityToken    = "identity.token"
+	MethodIngestDrain      = "ingest.drain"
 	MethodSubscribe        = "subscribe"
 	MethodReport           = "report"
 	MethodQuestionAnswer   = "question.answer"
@@ -90,6 +91,20 @@ const (
 	MethodWriteKeyClaim    = "writekey.claim"
 	MethodWriteKeyFinish   = "writekey.finish"
 )
+
+// IngestDrainParams is ingest.drain. Spool, if set, drains that spool
+// database instead of the configured one.
+type IngestDrainParams struct {
+	Spool string `json:"spool,omitempty"`
+}
+
+// IngestDrainResult counts one `ingest drain` pass (#335): spool rows
+// moved, how many were new inbox items, and rows moved to spool_bad.
+type IngestDrainResult struct {
+	Moved int `json:"moved"`
+	Fresh int `json:"fresh"`
+	Bad   int `json:"bad"`
+}
 
 // Activity sources (#255).
 const (

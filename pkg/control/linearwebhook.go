@@ -42,6 +42,7 @@ func (c *Controller) linearWebhookHandler(sp *ingest.Spool) *ingest.Handler {
 		Now: c.now,
 		Log: c.log,
 		OnLinear: func(name string, ev ingest.LinearEvent) {
+			c.wakeDrain()
 			c.wg.Go(func() {
 				if err := c.linearWebhookEvent(c.ctx, name, ev); err != nil {
 					c.log.Warn("linear webhook", "type", ev.Type, "issue", ev.IssueKey(), "err", err)
@@ -59,13 +60,12 @@ func (c *Controller) serveLinearWebhook() error {
 	if addr == "" {
 		return nil
 	}
-	sp, err := ingest.OpenSpool(c.ctx, c.config().Ingest.SpoolPath(c.root))
+	sp, err := c.spool(c.ctx)
 	if err != nil {
 		return fmt.Errorf("linear webhook: %w", err)
 	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		_ = sp.Close()
 		return fmt.Errorf("linear webhook listen: %w", err)
 	}
 	srv := &http.Server{Handler: c.linearWebhookHandler(sp).Mux(), ReadHeaderTimeout: 10 * time.Second}
@@ -81,7 +81,6 @@ func (c *Controller) serveLinearWebhook() error {
 		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(sctx)
-		_ = sp.Close()
 	})
 	c.log.Info("serving linear webhook", "addr", ln.Addr().String())
 	return nil

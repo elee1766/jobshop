@@ -26,7 +26,11 @@ type InboxItem struct {
 	DeliveryID string `json:"delivery_id"`
 	// Endpoint is the ingest endpoint the delivery came in on (#339);
 	// empty for poller finds.
-	Endpoint   string          `json:"endpoint,omitempty"`
+	Endpoint string `json:"endpoint,omitempty"`
+	// NaturalKey names the event itself, independent of how it arrived
+	// (#335), e.g. github:comment:a/b:123:<updated_at>. A webhook and a
+	// poll of the same comment share it and dedupe to one item.
+	NaturalKey string          `json:"natural_key,omitempty"`
 	Kind       string          `json:"kind,omitempty"`
 	RepoOrTeam string          `json:"repo_or_team,omitempty"`
 	Number     int64           `json:"number,omitempty"`

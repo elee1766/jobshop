@@ -339,6 +339,9 @@ type Store interface {
 	// InboxPut stores an ingested item (#321). A delivery id already
 	// stored is a no-op that returns the existing row and dup true.
 	InboxPut(ctx context.Context, it InboxItem) (out InboxItem, dup bool, err error)
+	// InboxPutBatch stores items in one transaction (#335), each deduped
+	// like InboxPut. It returns how many were new.
+	InboxPutBatch(ctx context.Context, its []InboxItem) (fresh int, err error)
 	// InboxClaim leases the oldest item in one of states whose lease is
 	// empty or expired, adding one to attempts. ErrNotFound if none.
 	InboxClaim(ctx context.Context, states []string, holder string, lease time.Duration) (InboxItem, error)
