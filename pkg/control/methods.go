@@ -252,6 +252,11 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		}
 		cl = &h
 	}
+	if p.Outcome != "" {
+		if err := c.setStepOutcome(ctx, sc, id, p.Outcome); err != nil {
+			return nil, err
+		}
+	}
 	t, err := c.store.CloseTicket(ctx, sc.actor, id, cl, p.Resolution)
 	if err != nil {
 		return nil, err
@@ -267,6 +272,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		c.stopRunner(t.ID)
 		c.endSession(ctx, t.ID, "session closed")
 	}
+	c.escalationClosed(ctx, t)
 	return t, nil
 }
 
@@ -623,7 +629,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 	for _, id := range c.orphans(open) {
 		if !p.DryRun {
 			c.log.Warn("stopping orphaned host", "session", id)
-			stopHost(c.root.SessionDir(id))
+			c.stopHost(c.root.SessionDir(id))
 		}
 		res.Stopped = append(res.Stopped, id)
 	}

@@ -44,8 +44,11 @@ func TestInboxPutDedupe(t *testing.T) {
 	assert.Equal(t, a.ID, b.ID)
 	assert.JSONEq(t, `{"x":1}`, string(b.Payload), "first payload kept")
 
-	_, _, err = s.InboxPut(ctx, store.InboxItem{Source: "jira", DeliveryID: "d2"})
+	_, _, err = s.InboxPut(ctx, store.InboxItem{DeliveryID: "d2"})
 	require.ErrorIs(t, err, store.ErrInvalid)
+	_, dup, err = s.InboxPut(ctx, store.InboxItem{Source: "generic", DeliveryID: "generic:d3"})
+	require.NoError(t, err, "any endpoint source is stored (#399)")
+	assert.False(t, dup)
 }
 
 func TestInboxClaimConcurrent(t *testing.T) {
@@ -162,4 +165,37 @@ func TestInboxPrune(t *testing.T) {
 		ids = append(ids, it.DeliveryID)
 	}
 	assert.ElementsMatch(t, []string{"pending", "held", "new-done"}, ids)
+}
+
+// TestInboxRequeue (#353): held -> pending only from the named state and
+// only while no one leases the item.
+func TestInboxRequeue(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	s, _ := inboxStore(t)
+	put, _, err := s.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "d1"})
+	require.NoError(t, err)
+
+	_, err = s.InboxRequeue(ctx, put.ID, store.InboxHeld, store.InboxPending)
+	require.ErrorIs(t, err, store.ErrConflict, "pending is not held")
+
+	it, err := s.InboxClaim(ctx, []string{store.InboxPending}, "w", time.Minute)
+	require.NoError(t, err)
+	_, err = s.InboxSetState(ctx, it.ID, "w", store.InboxUpdate{State: store.InboxHeld})
+	require.NoError(t, err)
+	got, err := s.InboxRequeue(ctx, it.ID, store.InboxHeld, store.InboxPending)
+	require.NoError(t, err)
+	assert.Equal(t, store.InboxPending, got.State)
+	assert.Empty(t, got.Holder)
+
+	// A leased item is not moved under its holder.
+	_, err = s.InboxClaim(ctx, []string{store.InboxPending}, "w", time.Minute)
+	require.NoError(t, err)
+	_, err = s.InboxRequeue(ctx, it.ID, store.InboxPending, store.InboxHeld)
+	require.ErrorIs(t, err, store.ErrConflict)
+
+	_, err = s.InboxRequeue(ctx, 9999, store.InboxHeld, store.InboxPending)
+	require.ErrorIs(t, err, store.ErrNotFound)
+	_, err = s.InboxRequeue(ctx, it.ID, "bogus", store.InboxPending)
+	require.ErrorIs(t, err, store.ErrInvalid)
 }

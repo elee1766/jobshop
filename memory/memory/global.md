@@ -7,13 +7,17 @@ Never pipe into `gh issue edit --body-file -`: a failed command upstream
 with the Write tool, check it is non-empty, then pass the file.
 Do not trust `gh pr checkout` when the branch is checked out in another
 worktree: it silently stays on the old HEAD. Run
-`git fetch origin pull/<n>/head && git checkout --detach FETCH_HEAD`,
-then check `git rev-parse HEAD` equals the PR's headRefOid.
+`git fetch origin pull/<n>/head && git checkout --detach FETCH_HEAD`
+(fetch that ref alone: with master first, FETCH_HEAD is master), then check `git rev-parse HEAD` equals the PR's headRefOid.
+Wait for every verification run cited in the PR body to finish green
+before `jobshop close`.
 `jobshop close <id>` on a ticket you do not hold fails: `jobshop claim
 <id>` first, or leave it to the operator.
 If the jobshop CLI socket goes away mid-turn (controller restart), write
 the PR head and CI state on the GitHub issue so the next attempt can
 verify and close instead of redoing the work.
-On an issue_no_run stall, run `gh pr list --state all --search <n>` first:
-if a merged PR delivered it, close the issue instead of starting pr-work.
-The search can return another issue's PR: confirm `(#<n>)` in its title.
+An umbrella or tracking issue whose sub-issues carry the work gets no
+pr-work run: comment that on it instead of starting one.
+`jobshop close -r failed` takes no reason text: comment first, then close.
+`jobshop comment` takes one body argument; another ticket goes in `-t`:
+`jobshop comment -t <ticket> "<text>"`, never `jobshop comment <id> <text>`.

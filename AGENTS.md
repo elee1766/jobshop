@@ -17,7 +17,8 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
   to pass. A finding in code you did not touch that blocks CI: fix it in
   the same PR and say so in the PR body.
 - Store queries are sqlc (`pkg/store/sqlite/sqlc.yaml`); regenerate after
-  editing `pkg/store/sqlite/queries/` or `migrations/`.
+  editing `pkg/store/sqlite/queries/` or `migrations/`. Output goes to
+  `pkg/store/sqlstore/sqlcdb`, the backend-neutral core's interface (#404).
 - Record design decisions in `docs/` with the date. In `docs/plan.md`: a
   decision goes in section 6, behavior as built in a new file
   `docs/notes/<issue>-<slug>.md` (short, dated), a new runbook check in a

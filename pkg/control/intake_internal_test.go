@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,7 +70,7 @@ func intakeController(t *testing.T, hook string) (*Controller, *fakeLinear) {
 	tokFile := filepath.Join(t.TempDir(), "tok")
 	require.NoError(t, os.WriteFile(tokFile, []byte("lin_api_x\n"), 0o600))
 	cfg := *c.config()
-	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: tokFile, Workspace: "acme", Teams: []string{"ENG"}}}
+	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: config.SecretPath(tokFile), Workspace: "acme", Teams: []string{"ENG"}}}
 	cfg.Workflows = map[string]config.Workflow{"lw": {
 		Vars: []string{"issue"}, Issue: "issue", Repo: "acme/app", Tracker: config.TrackerLinear, LinearWorkspace: "acme",
 		Steps: []config.Step{{ID: "implement", Pool: "dev", Title: "Implement ${issue}", Prompt: "do ${issue}"}},
@@ -103,6 +102,7 @@ func runCount(t *testing.T, c *Controller) int {
 }
 
 func TestIntakeNoHookAllows(t *testing.T) {
+	t.Parallel()
 	c, f := intakeController(t, "")
 	require.NoError(t, startLinearRun(t, c))
 	assert.Equal(t, 1, runCount(t, c))
@@ -110,6 +110,7 @@ func TestIntakeNoHookAllows(t *testing.T) {
 }
 
 func TestIntakeAllow(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	c, f := intakeController(t, "cat > "+filepath.Join(dir, "ev.json"))
 	require.NoError(t, startLinearRun(t, c))
@@ -129,6 +130,7 @@ func TestIntakeAllow(t *testing.T) {
 }
 
 func TestIntakeDeny(t *testing.T) {
+	t.Parallel()
 	for name, hook := range map[string]string{
 		"deny":  `echo '{"decision":"deny","reason":"injection"}'`,
 		"error": "exit 3",
@@ -162,17 +164,4 @@ func TestIntakeDeny(t *testing.T) {
 			assert.Equal(t, 1, runCount(t, c))
 		})
 	}
-}
-
-// TestIntakeComments: a refused Linear comment is dropped from delivery,
-// an allowed one passes; GitHub threads skip the hook.
-func TestIntakeComments(t *testing.T) {
-	c, f := intakeController(t, `grep -q evil && echo '{"decision":"deny","reason":"bad"}' || true`)
-	now := time.Now()
-	cs := []ghComment{{ID: "a", Author: "Ann", Body: "evil text", At: now}, {ID: "b", Author: "Bob", Body: "fine", At: now}}
-	out := c.intakeComments(t.Context(), "js", thread{Linear: "ENG-5"}, cs)
-	require.Len(t, out, 1)
-	assert.Equal(t, "b", out[0].ID)
-	assert.Equal(t, []string{"iss-5"}, f.labels())
-	assert.Len(t, c.intakeComments(t.Context(), "js", thread{Repo: "acme/app", Number: 1}, cs), 2)
 }

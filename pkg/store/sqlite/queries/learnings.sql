@@ -11,7 +11,7 @@ WHERE created_at >= sqlc.arg(since)
   AND (sqlc.narg(status) IS NULL OR status = sqlc.narg(status))
   AND (sqlc.narg(ticket) IS NULL OR ticket = sqlc.narg(ticket))
 ORDER BY created_at DESC, id DESC
-LIMIT sqlc.arg(max_rows);
+LIMIT CAST(sqlc.arg(max_rows) AS INTEGER);
 
 -- name: UpdateLearning :one
 UPDATE learnings

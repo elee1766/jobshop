@@ -1,6 +1,7 @@
 package ingest
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,7 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -19,7 +19,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 )
 
-const maxBody = 1 << 20
+// MaxBody is the largest delivery body accepted.
+const MaxBody = 1 << 20
 
 // Secret is one webhook signing secret. Identity names the Linear
 // identity it belongs to, "" for a plain secret_file.
@@ -81,26 +82,36 @@ func (h *Handler) log() *slog.Logger {
 }
 
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request, eps []config.IngestEndpoint) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxBody+1))
-	if err != nil || len(body) > maxBody {
+	body, err := io.ReadAll(io.LimitReader(r.Body, MaxBody+1))
+	if err != nil || len(body) > MaxBody {
 		http.Error(w, "bad body", http.StatusBadRequest)
 		return
 	}
 	sigHeader := "Linear-Signature"
-	if eps[0].Source == config.IngestGitHub {
+	switch eps[0].Source {
+	case config.IngestGitHub:
 		sigHeader = "X-Hub-Signature-256"
+	case config.IngestGeneric:
+		sigHeader = eps[0].SignatureHeader
 	}
-	sig, _ := strings.CutPrefix(r.Header.Get(sigHeader), "sha256=")
+	prefix := "sha256="
+	if eps[0].Source == config.IngestGeneric {
+		prefix = eps[0].SignaturePrefix
+	}
+	sig, _ := strings.CutPrefix(r.Header.Get(sigHeader), prefix)
 	ep, sec, ok := h.verify(eps, sig, body)
 	if !ok {
 		http.Error(w, "bad signature", http.StatusUnauthorized)
 		return
 	}
-	if ep.Source == config.IngestGitHub {
+	switch ep.Source {
+	case config.IngestGitHub:
 		h.serveGitHub(w, r, ep, body)
-		return
+	case config.IngestGeneric:
+		h.serveGeneric(w, r, ep, body)
+	default:
+		h.serveLinear(w, r, ep, sec, body)
 	}
-	h.serveLinear(w, r, ep, sec, body)
 }
 
 // verify returns the endpoint whose secret's HMAC-SHA256 of body is the
@@ -224,15 +235,18 @@ func (h *Handler) serveLinear(w http.ResponseWriter, r *http.Request, ep config.
 // errNoSecret is returned by ReadSecret for an empty file.
 var errNoSecret = errors.New("empty secret")
 
-// ReadSecret reads a secret file, trimming surrounding space.
-func ReadSecret(identity, path string) (Secret, error) {
-	b, err := os.ReadFile(path)
+// ReadSecret reads a secret file or runs a secret command (config.ReadSecret),
+// trimming surrounding space.
+func ReadSecret(ctx context.Context, identity string, src config.Secret) (Secret, error) {
+	b, err := config.ReadSecret(ctx, src)
 	if err != nil {
 		return Secret{}, err
 	}
 	k := strings.TrimSpace(string(b))
 	if k == "" {
-		return Secret{}, fmt.Errorf("%s: %w", path, errNoSecret)
+		// src.String() is the path, or "secret command": a command line
+		// may hold a token, so it stays out of logs.
+		return Secret{}, fmt.Errorf("%s: %w", src, errNoSecret)
 	}
 	return Secret{Identity: identity, Key: []byte(k)}, nil
 }

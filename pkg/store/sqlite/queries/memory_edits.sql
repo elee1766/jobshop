@@ -10,7 +10,7 @@ SELECT * FROM memory_edits WHERE pr = ?;
 SELECT * FROM memory_edits
 WHERE (sqlc.narg(state) IS NULL OR state = sqlc.narg(state))
 ORDER BY merged_at DESC, id DESC
-LIMIT sqlc.arg(max_rows);
+LIMIT CAST(sqlc.arg(max_rows) AS INTEGER);
 
 -- name: SetMemoryEditResult :one
 UPDATE memory_edits

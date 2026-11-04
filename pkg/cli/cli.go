@@ -56,6 +56,7 @@ type root struct {
 	Comment   commentCmd   `cmd:"" help:"Comment on a ticket."`
 	Guard     guardCmd     `cmd:"" help:"Ask the guardrail hooks before an outside action; exits 1 unless allowed."`
 	Subscribe subscribeCmd `cmd:"" help:"Follow a GitHub issue or PR thread from a ticket; new human comments come back to it."`
+	Wait      waitCmd      `cmd:"" help:"Park a ticket until a PR review, checks, PR state, a reply or a time holds (#381)."`
 	Send      sendCmd      `cmd:"" help:"Send a message to a session or pool."`
 	Assign    assignCmd    `cmd:"" help:"Pre-assign a ticket to a session (admin)."`
 	Claim     claimCmd     `cmd:"" help:"Claim a ticket, or the next one with --next."`
@@ -67,6 +68,7 @@ type root struct {
 	Session   sessionCmd   `cmd:"" help:"Manage sessions."`
 	Run       runCmd       `cmd:"" help:"Start and inspect workflow runs."`
 	Batch     batchCmd     `cmd:"" help:"Start ordered groups of runs."`
+	Resource  resourceCmd  `cmd:"" help:"Provider-owned resource slots: add, remove, unhealthy, list."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
 	Attention attentionCmd `cmd:"" help:"List what waits on a human, oldest first; empty when healthy (admin)."`
@@ -82,10 +84,16 @@ type root struct {
 	Recall    recallCmd    `cmd:"" help:"Search past comments, session journals and learnings. Run it on a failure and before asking a human."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
+	Docs      docsCmd      `cmd:"" help:"Print links to the docs for this binary (packs, readme). Needs no root."`
 }
 
 // Main parses args, runs the selected command and returns a process exit code.
 func Main(args []string) int {
+	if len(args) > 0 && args[0] == "gh" {
+		// Before kong: gh's own flags must reach gh unparsed (#349).
+		g := &Globals{Root: os.Getenv("JOBSHOP_ROOT"), Socket: os.Getenv("JOBSHOP_SOCKET")}
+		return runGH(g, args[1:], os.Stdin, os.Stdout, os.Stderr)
+	}
 	var r root
 	// kong calls Exit after --help; a no-op would fall through and run the
 	// command, so record the code and stop before Run.

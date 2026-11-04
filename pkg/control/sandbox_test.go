@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +30,7 @@ func bwrapWorks(t *testing.T) {
 // still closes its ticket over cli.sock.
 func TestSandboxedSession(t *testing.T) {
 	bwrapWorks(t)
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	other := filepath.Join(root.Dir, "sessions", "js-other")
 	require.NoError(t, os.MkdirAll(other, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(other, "secret"), []byte("x"), 0o600))
@@ -49,7 +48,7 @@ func TestSandboxedSession(t *testing.T) {
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	var endedWhy string
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		var got []store.Ticket
 		err := admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindTask}, &got)
 		if err == nil && len(got) == 1 && got[0].ID == task.ID {
@@ -65,7 +64,7 @@ func TestSandboxedSession(t *testing.T) {
 			return true
 		}
 		return false
-	}, 30*time.Second, 50*time.Millisecond, "ticket closed over cli.sock from inside the sandbox")
+	}, "ticket closed over cli.sock from inside the sandbox")
 	require.Empty(t, endedWhy)
 
 	b, err := os.ReadFile(filepath.Join(work, "probe"))

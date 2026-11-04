@@ -16,9 +16,11 @@ SELECT * FROM inbox WHERE delivery_id = ?;
 -- name: InboxGet :one
 SELECT * FROM inbox WHERE id = ?;
 
+-- now comes before the slice: sqlc numbers later parameters ?N, which
+-- would point into an expanded list of two or more states.
 -- name: InboxNextClaimable :one
 SELECT * FROM inbox
-WHERE state IN (sqlc.slice(states)) AND (holder = '' OR lease_until <= sqlc.arg(now))
+WHERE (holder = '' OR lease_until <= sqlc.arg(now)) AND state IN (sqlc.slice(states))
 ORDER BY received_at, id
 LIMIT 1;
 
@@ -50,8 +52,23 @@ SELECT * FROM inbox
 WHERE (sqlc.arg(state) = '' OR state = sqlc.arg(state))
   AND (sqlc.arg(source) = '' OR source = sqlc.arg(source))
 ORDER BY received_at DESC, id DESC
-LIMIT sqlc.arg(lim);
+LIMIT CAST(sqlc.arg(lim) AS INTEGER);
 
 -- name: InboxPrune :execrows
 DELETE FROM inbox
 WHERE state IN ('dispatched', 'denied', 'failed') AND received_at < sqlc.arg(before);
+
+-- name: InboxRequeue :one
+-- Moves an unleased item from one state to another (held -> pending
+-- once its needs-human ticket is answered, #353). Guarded by the
+-- current state so a racing stage cannot be overwritten.
+UPDATE inbox SET state = sqlc.arg(to_state), updated_at = sqlc.arg(now)
+WHERE id = sqlc.arg(id) AND state = sqlc.arg(from_state) AND (holder = '' OR lease_until <= sqlc.arg(now))
+RETURNING *;
+
+-- name: InboxStateCounts :many
+SELECT state, COUNT(*) AS n FROM inbox GROUP BY state;
+
+-- name: InboxCountOlder :one
+-- Rows in state received before before: the admission backlog (#443).
+SELECT COUNT(*) FROM inbox WHERE state = sqlc.arg(state) AND received_at < sqlc.arg(before);

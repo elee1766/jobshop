@@ -34,6 +34,23 @@ func passUntil(t *testing.T, key any, cond func() bool, msg string) {
 	require.True(t, cond(), msg)
 }
 
+// passEventually is require.Eventually for state the supervisor pass
+// changes: test controllers tick hourly (#433), so it runs a pass before
+// each check instead of waiting for a ticker. Host events (a turn ending)
+// still arrive on their own; the deadline only matters on failure.
+func passEventually(t *testing.T, key any, cond func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(dialWait)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatal(msg)
+		}
+		pass(t, key, 1)
+		// Gives host events time to land without spinning passes.
+		<-time.After(20 * time.Millisecond)
+	}
+}
+
 // pass runs n whole supervisor passes on the controller registered under
 // key (its root dir, or its admin client for runRoot) and
 // returns when they are done. It replaces sleeping "several ticks" before

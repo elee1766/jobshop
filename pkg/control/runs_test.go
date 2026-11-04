@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -22,11 +23,12 @@ import (
 // pack declaring a three-step workflow.
 func runRoot(t *testing.T) *rpc.Client {
 	t.Helper()
-	return runRootLease(t, "")
+	return runRootLease(t, "", nil)
 }
 
-// runRootLease is runRoot with a lease (Go duration, "" for the default).
-func runRootLease(t *testing.T, lease string) *rpc.Client {
+// runRootLease is runRoot with a lease (Go duration, "" for the default)
+// and clock (nil for the real one).
+func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
 	t.Helper()
 	t.Parallel()
 	dir, err := os.MkdirTemp("", "js") // short path for the unix socket
@@ -46,11 +48,44 @@ func runRootLease(t *testing.T, lease string) *rpc.Client {
       - {id: implement, pool: dev, retries: 3, prompt_file: prompts/impl.md, title: "Implement #${issue}"}
       - {id: review, pool: refinery, prompt: "Review #${issue}", title: "Review #${issue}"}
       - {id: deploy, pool: refinery, prompt: "Deploy", title: "Deploy #${issue}"}
+  routed:
+    vars: [review_pool]
+    steps:
+      - {id: review, pool: "${review_pool}", prompt: "Review", title: "Review"}
+  locked:
+    vars: [pr]
+    steps:
+      - {id: work, pool: dev, prompt: "Work", title: "Work ${pr}", needs_resources: ["pr:acme#${pr}", emu]}
+  placed:
+    vars: [pr, risk]
+    steps:
+      - id: review
+        prompt: Review
+        title: "Review ${pr}"
+        placement:
+          required: ["pr:acme#${pr}"]
+          prefer_for: 10m
+          options:
+            - {pool: refinery, resources: [flagship], weight: 100}
+            - {pool: dev, resources: [workhorse], weight: 10, when: "${risk} != 'high'"}
+  graph:
+    vars: [issue]
+    steps:
+      - {id: build, pool: dev, prompt: b, title: "Build #${issue}"}
+      - {id: review, pool: refinery, prompt: r, title: "Review #${issue}", needs: [build]}
+      - {id: device, pool: refinery, prompt: d, title: "Device #${issue}", needs: [build]}
+      - {id: rollout, pool: dev, prompt: o, title: "Rollout #${issue}", needs: [review, device], when: {step: review, outcome: approve}}
+      - {id: accept, pool: dev, prompt: a, title: "Accept #${issue}", when: {step: review, outcome: approve}}
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
-    vars: {repo: /src}
+    vars: {repo: /src, review_pool: refinery}
 lease: %q
+resources:
+  pr: {keyed: true}
+  emu: {max: 2}
+  flagship: {max: 1}
+  workhorse: {max: 4}
 projects:
   js: {}
 agents:
@@ -63,7 +98,9 @@ pools:
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: 50 * time.Millisecond})) }()
+	go func() {
+		done <- control.Run(ctx, root, withPass(dir, control.Options{Tick: time.Hour, Clock: clk}))
+	}()
 	t.Cleanup(func() {
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {
@@ -150,6 +187,90 @@ func TestRunStart(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{State: store.RunRunning}, &runs))
 	require.Len(t, runs, 1)
 	assert.Equal(t, r.Run.ID, runs[0].ID)
+}
+
+// TestRunStepPoolVar routes one workflow's step to two pools by a run
+// var, defaults it from pack vars and rejects an unknown pool (#384).
+func TestRunStepPoolVar(t *testing.T) {
+	admin := runRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "routed", Vars: map[string]string{"review_pool": "dev"}})
+	assert.Equal(t, "dev", r.Steps[0].Pool)
+	assert.Equal(t, "dev", showRun(t, admin, r.Run.ID).Steps[0].Pool)
+	r = startRun(t, admin, rpc.RunStartParams{Workflow: "routed"})
+	assert.Equal(t, "refinery", r.Steps[0].Pool, "pack var default")
+
+	err := admin.Call(t.Context(), rpc.MethodRunStart, rpc.RunStartParams{Workflow: "routed", Vars: map[string]string{"review_pool": "nope"}}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown pool "nope"`)
+	var runs []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
+	assert.Len(t, runs, 2, "a bad pool creates no ticket")
+}
+
+// TestRunStepResources: needs_resources is filled from run vars, and a
+// keyed pr resource lets one step per PR be ready at a time (#400).
+func TestRunStepResources(t *testing.T) {
+	admin := runRoot(t)
+	a := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "1"}})
+	b := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "1"}})
+	c := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "2"}})
+	sf, err := store.DecodeFields[store.StepFields](a.Steps[0])
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pr:acme#1", "emu"}, sf.Resources)
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: a.Steps[0].ID, Holder: "s1"}, nil))
+	assert.ElementsMatch(t, []string{c.Steps[0].ID}, readyIDs(t, admin), "pr 1 is held; pr 2 is free")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: c.Steps[0].ID, Holder: "s2"}, nil))
+	assert.Empty(t, readyIDs(t, admin), "emu (max 2) is full too")
+	// run show says what b waits on (#408).
+	assert.Equal(t, []store.ResourceWait{{Ticket: b.Steps[0].ID, Key: "emu", Held: 2, Capacity: 2}}, showRun(t, admin, b.Run.ID).Waits)
+	assert.Empty(t, showRun(t, admin, a.Run.ID).Waits, "a holds its slots")
+
+	closeStep(t, admin, a.Steps[0].ID, "done")
+	assert.Equal(t, []string{b.Steps[0].ID}, readyIDs(t, admin), "closing frees pr 1 and an emu slot")
+}
+
+// TestRunPlacement: a low-risk step falls back to its lower option only
+// after prefer_for, and back up when the top option frees; a high-risk
+// step never falls back (#409).
+func TestRunPlacement(t *testing.T) {
+	clk := clock.NewFake(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
+	admin := runRootLease(t, "", clk)
+	hog := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "1", "risk": "low"}})
+	low := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "2", "risk": "low"}})
+	high := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "3", "risk": "high"}})
+	placement := func(id string) (string, *store.StepPlacement) {
+		r := showRun(t, admin, id)
+		sf, err := store.DecodeFields[store.StepFields](r.Steps[0])
+		require.NoError(t, err)
+		return r.Steps[0].Pool, sf.Placement
+	}
+	pool, p := placement(high.Run.ID)
+	assert.Equal(t, "refinery", pool)
+	require.Len(t, p.Options, 1, "high risk drops the workhorse option")
+	pool, p = placement(low.Run.ID)
+	assert.Equal(t, "refinery", pool, "starts on the top option")
+	assert.Equal(t, []string{"pr:acme#2", "flagship"}, p.Options[0].Resources)
+
+	// hog takes the only flagship slot.
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: hog.Steps[0].ID, Holder: "s1"}, nil))
+	pass(t, admin, 2)
+	pool, _ = placement(low.Run.ID)
+	assert.Equal(t, "refinery", pool, "holds out for flagship during prefer_for")
+
+	clk.Advance(11 * time.Minute)
+	passUntil(t, admin, func() bool { pool, _ = placement(low.Run.ID); return pool == "dev" }, "falls back after prefer_for")
+	_, p = placement(low.Run.ID)
+	assert.True(t, p.Fallback())
+	assert.Equal(t, []string{"pr:acme#2", "workhorse"}, p.Options[p.Chosen].Resources)
+	assert.Contains(t, readyIDs(t, admin), low.Steps[0].ID, "workhorse is free")
+	pool, _ = placement(high.Run.ID)
+	assert.Equal(t, "refinery", pool, "high risk never falls back")
+	assert.NotContains(t, readyIDs(t, admin), high.Steps[0].ID)
+
+	// Flagship frees before low is claimed: it moves back up.
+	closeStep(t, admin, hog.Steps[0].ID, "done")
+	passUntil(t, admin, func() bool { pool, _ = placement(low.Run.ID); return pool == "refinery" }, "back on flagship once free")
 }
 
 func TestRunStartErrors(t *testing.T) {

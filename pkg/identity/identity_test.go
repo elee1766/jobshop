@@ -59,7 +59,7 @@ func TestMinterCachesAndRefreshes(t *testing.T) {
 	clock := func() time.Time { return now }
 	srv, calls := fakeGitHub(t, time.Hour, clock)
 	id := config.Identity{
-		Kind: config.IdentityGitHubApp, AppID: 1, PrivateKeyFile: WriteKey(t), APIURL: srv.URL,
+		Kind: config.IdentityGitHubApp, AppID: 1, PrivateKeyFile: config.SecretPath(WriteKey(t)), APIURL: srv.URL,
 		Installations: map[string]int64{"a": 11, "b": 22}, Repos: []string{"a/*", "b/x"},
 	}
 	m := identity.NewMinter()
@@ -92,13 +92,13 @@ func TestMinterErrors(t *testing.T) {
 		http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
 	}))
 	t.Cleanup(srv.Close)
-	id := config.Identity{Kind: config.IdentityGitHubApp, AppID: 1, PrivateKeyFile: WriteKey(t), APIURL: srv.URL, Installations: map[string]int64{"a": 1}, Repos: []string{"a/*"}}
+	id := config.Identity{Kind: config.IdentityGitHubApp, AppID: 1, PrivateKeyFile: config.SecretPath(WriteKey(t)), APIURL: srv.URL, Installations: map[string]int64{"a": 1}, Repos: []string{"a/*"}}
 	_, err := identity.NewMinter().Token(t.Context(), "app", id, "a/b")
 	require.ErrorContains(t, err, "Bad credentials")
 
 	lin := filepath.Join(t.TempDir(), "lin")
 	require.NoError(t, os.WriteFile(lin, []byte("lin_api_x\n"), 0o600))
-	tok, err := identity.NewMinter().Token(t.Context(), "lin", config.Identity{Kind: config.IdentityLinear, TokenFile: lin}, "ENG")
+	tok, err := identity.NewMinter().Token(t.Context(), "lin", config.Identity{Kind: config.IdentityLinear, TokenFile: config.SecretPath(lin)}, "ENG")
 	require.NoError(t, err)
 	assert.Equal(t, "lin_api_x", tok.Token)
 }
@@ -118,7 +118,7 @@ func TestGitHubTokenLogin(t *testing.T) {
 	t.Cleanup(srv.Close)
 	pat := filepath.Join(t.TempDir(), "pat")
 	require.NoError(t, os.WriteFile(pat, []byte("ghp_x\n"), 0o600))
-	id := config.Identity{Kind: config.IdentityGitHubToken, TokenFile: pat, Repos: []string{"a/*"}, APIURL: srv.URL}
+	id := config.Identity{Kind: config.IdentityGitHubToken, TokenFile: config.SecretPath(pat), Repos: []string{"a/*"}, APIURL: srv.URL}
 	m := identity.NewMinter()
 	tok, err := m.Token(t.Context(), "me", id, "a/b")
 	require.NoError(t, err)
@@ -174,8 +174,8 @@ func TestLinearApp(t *testing.T) {
 	now := time.Date(2026, 11, 4, 6, 0, 0, 0, time.UTC)
 	srv, calls, scope := fakeLinearOAuth(t, 24*time.Hour)
 	id := config.Identity{
-		Kind: config.IdentityLinearApp, ClientIDFile: writeFile(t, "id", "cid"),
-		ClientSecretFile: writeFile(t, "secret", "good"), TokenURL: srv.URL, Workspace: "acme", Teams: []string{"ENG"},
+		Kind: config.IdentityLinearApp, ClientIDFile: config.SecretPath(writeFile(t, "id", "cid")),
+		ClientSecretFile: config.SecretPath(writeFile(t, "secret", "good")), TokenURL: srv.URL, Workspace: "acme", Teams: []string{"ENG"},
 	}
 	m := identity.NewMinter()
 	m.Now = func() time.Time { return now }
@@ -205,9 +205,26 @@ func TestLinearApp(t *testing.T) {
 	assert.Equal(t, int32(3), calls.Load())
 
 	bad := id
-	bad.ClientSecretFile = writeFile(t, "bad", "s3cret-wrong")
+	bad.ClientSecretFile = config.SecretPath(writeFile(t, "bad", "s3cret-wrong"))
 	_, err = identity.NewMinter().Token(ctx, "lapp", bad, "ENG")
 	require.ErrorContains(t, err, "invalid_client")
 	assert.NotContains(t, err.Error(), "s3cret-wrong")
 	assert.NotContains(t, err.Error(), "lin_oauth")
+}
+
+// TestGitHubAppLogin: an App's login is its slug plus [bot], from GET
+// /app with the App JWT (#402).
+func TestGitHubAppLogin(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/app" || strings.Count(r.Header.Get("Authorization"), ".") != 2 {
+			http.Error(w, "bad", http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"slug":"my-app"}`))
+	}))
+	t.Cleanup(srv.Close)
+	id := config.Identity{Kind: config.IdentityGitHubApp, AppID: 7, PrivateKeyFile: config.SecretPath(WriteKey(t)), APIURL: srv.URL}
+	l, err := identity.NewMinter().Login(t.Context(), "app", id)
+	require.NoError(t, err)
+	assert.Equal(t, "my-app[bot]", l)
 }

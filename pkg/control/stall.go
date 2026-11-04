@@ -128,7 +128,7 @@ func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigg
 	tv := map[string]any{config.StallSignalVar: s.signal, config.StallSubjectVar: s.subject, config.StallDetailVar: s.detail}
 	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: s.key()}
 	for k, v := range tr.Run.Vars {
-		out, err := config.FillTemplate(v, tv)
+		out, err := tr.Run.Fill(v, tv)
 		if err != nil {
 			return store.Ticket{}, fmt.Errorf("run var %s: %w", k, err)
 		}
@@ -168,6 +168,10 @@ func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger) ([]sta
 			found, err = c.stallNeedsHuman(ctx, now, after)
 		case config.StallBlocked:
 			found, err = c.stallBlocked(ctx, now, after)
+		case config.StallResourceWait:
+			found, err = c.stallResourceWait(ctx, now, after)
+		case config.StallIngestWorker, config.StallIngestBacklog:
+			found, err = c.stallIngest(ctx, sig.Signal)
 		case config.StallLinearIssueNoRun:
 			found, err = c.stallLinearIssues(ctx, sig)
 		default:

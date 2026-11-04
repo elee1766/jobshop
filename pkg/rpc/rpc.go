@@ -83,6 +83,7 @@ const (
 	MethodReport           = "report"
 	MethodQuestionAnswer   = "question.answer"
 	MethodActivityList     = "activity.list"
+	MethodActivityRecord   = "activity.record"
 	MethodLearnAdd         = "learn.add"
 	MethodLearnList        = "learn.list"
 	MethodLearnUpdate      = "learn.update"
@@ -104,6 +105,58 @@ type IngestDrainResult struct {
 	Moved int `json:"moved"`
 	Fresh int `json:"fresh"`
 	Bad   int `json:"bad"`
+}
+
+// Ingest worker methods (#443): an external `jobshop ingest work`
+// process claims pending inbox items, runs the admission hooks itself
+// and reports the outcome. Each call is also the worker's heartbeat.
+const (
+	MethodIngestClaim   = "ingest.claim"
+	MethodIngestAdmit   = "ingest.admit"
+	MethodIngestWorkers = "ingest.workers"
+)
+
+// IngestClaimParams is ingest.claim. Worker is a stable id per process.
+type IngestClaimParams struct {
+	Worker string `json:"worker"`
+	Host   string `json:"host,omitempty"`
+}
+
+// IngestClaimResult is a leased pending item with the hooks to run and
+// the event's project; Item nil when nothing is pending. Answered: a
+// human already closed a hold for the item, so validating hooks are
+// skipped.
+type IngestClaimResult struct {
+	Item     *store.InboxItem       `json:"item,omitempty"`
+	Hooks    []config.AdmissionHook `json:"hooks,omitempty"`
+	Project  string                 `json:"project,omitempty"`
+	Answered bool                   `json:"answered,omitempty"`
+	LeaseMS  int64                  `json:"lease_ms,omitempty"` // lease length; clocks may differ
+}
+
+// IngestAdmitParams reports a run of the hooks on a claimed item. Run
+// is the worker's hook run (events, results, denies and asks); the
+// controller decides the state from it.
+type IngestAdmitParams struct {
+	Worker string          `json:"worker"`
+	ID     int64           `json:"id"`
+	Run    json.RawMessage `json:"run"`
+}
+
+// IngestWorker is one external worker's last heartbeat.
+type IngestWorker struct {
+	ID        string    `json:"id"`
+	Host      string    `json:"host,omitempty"`
+	Seen      time.Time `json:"seen"`
+	LastClaim time.Time `json:"last_claim,omitzero"`
+	Admitted  int64     `json:"admitted"`
+}
+
+// IngestWorkersResult lists external workers and inbox counts by state.
+type IngestWorkersResult struct {
+	Mode    string           `json:"mode"`
+	Workers []IngestWorker   `json:"workers"`
+	Counts  map[string]int64 `json:"counts"`
 }
 
 // Activity sources (#255).
@@ -150,6 +203,18 @@ type ActivityListParams struct {
 type ActivityListResult struct {
 	Items   []ActivityItem `json:"items"`
 	Sources []string       `json:"sources"`
+}
+
+// ActivityRecordParams records one outside call a session made through
+// `jobshop gh` (#349). Action is the guard action name; Target is
+// owner/name, with #n for a PR or issue.
+type ActivityRecordParams struct {
+	Action   string `json:"action"`
+	Repo     string `json:"repo,omitempty"`
+	Target   string `json:"target,omitempty"`
+	Decision string `json:"decision"`
+	ExitCode int    `json:"exit_code"`
+	Command  string `json:"command,omitempty"`
 }
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
@@ -230,6 +295,9 @@ type UpdateParams struct {
 type CloseParams struct {
 	ID         string `json:"id,omitempty"`
 	Resolution string `json:"resolution,omitempty"` // default "done"
+	// Outcome is a step's result word (approve, reject, ...), stored in
+	// its fields for later steps' when conditions (#385). Steps only.
+	Outcome string `json:"outcome,omitempty"`
 }
 
 // CommentParams adds a comment.
@@ -396,6 +464,10 @@ type SessionPromptParams struct {
 type PromptPart struct {
 	Source string `json:"source"`
 	Text   string `json:"text"`
+	// Status, on rule parts, says why the part is or is not sent (#397):
+	// new, changed, always, removed, or unchanged (skipped: the session
+	// already holds this text).
+	Status string `json:"status,omitempty"`
 }
 
 // SessionPromptResult is the prompt the session's next turn would get,
@@ -849,6 +921,8 @@ type RunResult struct {
 	Steps []store.Ticket `json:"steps"`
 	// Existing is true when start returned an open run for the key.
 	Existing bool `json:"existing,omitempty"`
+	// Waits are steps held back by a full resource (#408).
+	Waits []store.ResourceWait `json:"waits,omitempty"`
 }
 
 // BatchStartParams starts one run per issue under a batch ticket (#169).
@@ -1118,6 +1192,8 @@ const (
 	AttentionPool     = "pool"     // quarantined pool with no open escalation
 	AttentionRollback = "rollback" // self-deploy rolled back a commit
 	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
+	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
+	AttentionIngest   = "ingest"   // no live external ingest worker, or an admission backlog (#443)
 )
 
 // AttentionItem is one thing waiting on a human.
@@ -1130,6 +1206,8 @@ type AttentionItem struct {
 	// Repo and Ref are meta.github's repo and issue or PR, when set.
 	Repo string `json:"repo,omitempty"`
 	Ref  string `json:"ref,omitempty"`
+	// Owner is who must act, for a wait past its timeout (#381).
+	Owner string `json:"owner,omitempty"`
 }
 
 // AttentionResult lists what waits on a human, oldest first. Empty when
@@ -1315,4 +1393,75 @@ type WriteKeyParams struct {
 	Key    string `json:"key"`
 	Op     string `json:"op,omitempty"`
 	Result string `json:"result,omitempty"`
+}
+
+// Waits (#381).
+const (
+	MethodWaitAdd   = "wait.add"
+	MethodWaitList  = "wait.list"
+	MethodWaitClear = "wait.clear"
+	// AttentionWait is a wait past its timeout.
+	AttentionWait = "wait"
+)
+
+// WaitAddParams parks a ticket (default: the session's current one)
+// until the conditions hold. A held ticket is released without counting
+// a step failure.
+type WaitAddParams struct {
+	ID      string           `json:"id,omitempty"`
+	Conds   []store.WaitCond `json:"conds"`
+	Any     bool             `json:"any,omitempty"`
+	Reason  string           `json:"reason"`
+	Owner   string           `json:"owner,omitempty"`
+	Resume  bool             `json:"resume,omitempty"`
+	Timeout *time.Time       `json:"timeout,omitempty"`
+}
+
+// WaitListParams lists waiting tickets; Project empty is all (admin) or
+// the session's.
+type WaitListParams struct {
+	Project string `json:"project,omitempty"`
+}
+
+// WaitItem is one waiting ticket.
+type WaitItem struct {
+	ID      string     `json:"id"`
+	Project string     `json:"project"`
+	Title   string     `json:"title"`
+	Wait    store.Wait `json:"wait"`
+}
+
+// WaitClearParams removes a ticket's wait; the ticket becomes ready.
+type WaitClearParams struct {
+	ID     string `json:"id,omitempty"`
+	Reason string `json:"reason,omitempty"`
+}
+
+// Resource slot methods (#407): a resource provider adds, removes and
+// fails its slots; list shows slots and occupancy.
+const (
+	MethodResourceAdd       = "resource.add"
+	MethodResourceRemove    = "resource.remove"
+	MethodResourceUnhealthy = "resource.unhealthy"
+	MethodResourceList      = "resource.list"
+)
+
+// SlotParams names one slot of a provider resource.
+type SlotParams struct {
+	Resource string            `json:"resource"`
+	Slot     string            `json:"slot"`
+	Env      map[string]string `json:"env,omitempty"`
+	Reason   string            `json:"reason,omitempty"`
+}
+
+// SlotResult is resource.unhealthy: the slot and the ticket requeued.
+type SlotResult struct {
+	Slot     store.Slot `json:"slot"`
+	Requeued string     `json:"requeued,omitempty"`
+}
+
+// ResourceListResult is resource.list.
+type ResourceListResult struct {
+	Slots []store.Slot        `json:"slots"`
+	Use   []store.ResourceUse `json:"use"`
 }

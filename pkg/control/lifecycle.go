@@ -15,7 +15,7 @@ import (
 func (c *Controller) reapOrphans(open []store.Ticket) {
 	for _, id := range c.orphans(open) {
 		c.log.Warn("stopping orphaned host", "session", id)
-		stopHost(c.root.SessionDir(id))
+		c.stopHost(c.root.SessionDir(id))
 	}
 }
 

@@ -1,0 +1,78 @@
+package control
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"time"
+
+	"github.com/elee1766/jobshop/pkg/rpc"
+)
+
+// IngestWorker is the loop of `jobshop ingest work` (#443): claim a
+// pending item from the controller, run the admission hooks here, report
+// the run. It never opens the database; every write is the controller's.
+type IngestWorker struct {
+	// Call is one RPC to the controller's admin socket.
+	Call func(ctx context.Context, method string, params, out any) error
+	// Dir is the root: hook commands run in it and secret files are
+	// relative to it.
+	Dir    string
+	Worker string
+	Host   string
+	Log    *slog.Logger
+}
+
+// Once claims and admits until nothing is pending, returning how many
+// items it admitted.
+func (w IngestWorker) Once(ctx context.Context) (int, error) {
+	ar := admissionRunner{dir: w.Dir}
+	n := 0
+	for ctx.Err() == nil {
+		var cl rpc.IngestClaimResult
+		if err := w.Call(ctx, rpc.MethodIngestClaim, rpc.IngestClaimParams{Worker: w.Worker, Host: w.Host}, &cl); err != nil {
+			return n, err
+		}
+		if cl.Item == nil {
+			return n, nil
+		}
+		// Hooks must finish inside the lease the controller granted.
+		hctx, cancel := context.WithTimeout(ctx, time.Duration(cl.LeaseMS)*time.Millisecond)
+		run := ar.run(hctx, cl.Project, cl.Hooks, *cl.Item, cl.Answered)
+		cancel()
+		raw, err := json.Marshal(run)
+		if err != nil {
+			return n, err
+		}
+		var done json.RawMessage
+		if err := w.Call(ctx, rpc.MethodIngestAdmit, rpc.IngestAdmitParams{Worker: w.Worker, ID: cl.Item.ID, Run: raw}, &done); err != nil {
+			// A lost lease: another worker has or will claim the item.
+			w.logger().WarnContext(ctx, "ingest work: admit", "delivery", cl.Item.DeliveryID, "err", err)
+			continue
+		}
+		n++
+	}
+	return n, ctx.Err()
+}
+
+// Run calls Once every idle until ctx ends. A failed call is logged and
+// retried, so a controller restart does not stop the worker.
+func (w IngestWorker) Run(ctx context.Context, idle time.Duration, after func(time.Duration) <-chan time.Time) error {
+	for ctx.Err() == nil {
+		if _, err := w.Once(ctx); err != nil && ctx.Err() == nil {
+			w.logger().WarnContext(ctx, "ingest work", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+		case <-after(idle):
+		}
+	}
+	return nil
+}
+
+func (w IngestWorker) logger() *slog.Logger {
+	if w.Log == nil {
+		return slog.New(slog.DiscardHandler)
+	}
+	return w.Log
+}

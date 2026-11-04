@@ -16,6 +16,7 @@ import (
 // method the host-level operator needs across instances; a dev-pool
 // session cannot call the granted ones.
 func TestOperatorGrant(t *testing.T) {
+	t.Parallel()
 	op, err := filepath.Abs("../../packs/operator")
 	require.NoError(t, err)
 	gh, err := filepath.Abs("../../packs/github")

@@ -64,11 +64,41 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	if err != nil {
 		return nil, err
 	}
+	// Waits past their timeout (#381), with reason and owner. Listed even
+	// though the timeout labeled them needs-human, so the title says why.
+	waits, err := c.waiting(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range waits {
+		w := waitOf(t)
+		if w.Timeout.IsZero() || c.now().Before(w.Timeout) {
+			continue
+		}
+		it := ticketItem(rpc.AttentionWait, t)
+		it.Title = fmt.Sprintf("%s: wait past timeout: %s", t.Title, w.Reason)
+		it.Owner, it.Since = w.Owner, w.Timeout
+		if i := slices.IndexFunc(items, func(x rpc.AttentionItem) bool { return x.ID == t.ID }); i >= 0 {
+			items[i] = it
+		} else {
+			items = append(items, it)
+		}
+	}
 	for _, r := range runs {
 		if !escalatedRuns[r.ID] && r.Status != store.StatusClosed {
 			items = append(items, ticketItem(rpc.AttentionRun, r))
 		}
 	}
+	res, err := c.resourceAttention(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, res...)
+	ing, err := c.ingestAttention(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, ing...)
 	c.mu.Lock()
 	if c.configErr != "" {
 		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})

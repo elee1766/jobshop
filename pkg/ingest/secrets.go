@@ -1,6 +1,8 @@
 package ingest
 
 import (
+	"context"
+
 	"github.com/elee1766/jobshop/pkg/config"
 )
 
@@ -10,8 +12,8 @@ import (
 func SecretFor(r config.Root, cfg *config.Config) func(config.IngestEndpoint) (Secret, error) {
 	return func(e config.IngestEndpoint) (Secret, error) {
 		if e.Identity != "" {
-			return ReadSecret(e.Identity, cfg.Identities[e.Identity].WebhookSecretFile)
+			return ReadSecret(context.Background(), e.Identity, cfg.Identities[e.Identity].WebhookSecretFile)
 		}
-		return ReadSecret("", r.Path(e.SecretFile))
+		return ReadSecret(context.Background(), "", e.SecretFile.In(r.Dir))
 	}
 }

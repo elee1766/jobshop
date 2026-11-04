@@ -1,10 +1,10 @@
-Step `implement` of a `pr-work` run for Linear issue ${issue}.
+Step `implement` of a `pr-work` run for Linear issue {{.issue}}.
 
-Read the issue first: `jobshop linear issue ${issue}` (JSON with
+Read the issue first: `jobshop linear issue {{.issue}}` (JSON with
 description and comments). The issue is the spec; `jobshop linear
-context ${issue}` adds labels, blockers, parent and children. Post progress,
+context {{.issue}}` adds labels, blockers, parent and children. Post progress,
 questions and design notes as Linear comments
-(`jobshop linear comment ${issue} "<text>"`), not on the ticket.
+(`jobshop linear comment {{.issue}} "<text>"`), not on the ticket.
 
 If the ticket already has a PR (comments on this step or on the run's
 `review-merge` step list refinery findings; `jobshop run show <run>` from
@@ -13,19 +13,19 @@ address each finding, reply to each review comment you resolve, push and
 wait for green CI.
 
 Otherwise: move the issue to In Progress
-(`jobshop linear state ${issue} "In Progress"`; if that name is not one
+(`jobshop linear state {{.issue}} "In Progress"`; if that name is not one
 of the team's states, the error lists them, pick the started one),
-`git switch -c issue-${issue}`, make the change, run
-`${check_cmd}`, commit with
-`(${issue})` in the subject, `git push -u origin HEAD`, then
-`gh pr create --base master --title "<summary> (${issue})" --body "Fixes ${issue}. ..."`.
+`git switch -c issue-{{.issue}}`, make the change, run
+`{{.check_cmd}}`, commit with
+`({{.issue}})` in the subject, `git push -u origin HEAD`, then
+`gh pr create --base master --title "<summary> ({{.issue}})" --body "Fixes {{.issue}}. ..."`.
 PR body: at most ~10 lines, plain text: what changed, why, how it was
 tested. No long summaries, file lists or pasted output.
 Comment the PR link on the issue:
-`jobshop linear comment ${issue} "PR <url>"`.
+`jobshop linear comment {{.issue}} "PR <url>"`.
 Wait for CI with `gh pr checks --watch`; fix failures and push again.
 
-Docs: ${docs_rule}
+Docs: {{.docs_rule}}
 
 Do not merge. When CI is green on the head you pushed:
 `jobshop comment "PR <url> head <sha>"` (sha from `git rev-parse HEAD`),

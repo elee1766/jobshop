@@ -1,0 +1,24 @@
+# A minimal pack: one pool, one workflow with two steps.
+# Vars: agent, checkout.
+template: go
+defaults:
+  sessions: 1
+pools:
+  work:
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/main
+    max_sessions: "{{.sessions}}"
+    prompt_file: prompts/work.md
+workflows:
+  change:
+    vars: [task]
+    steps:
+      - id: implement
+        pool: work
+        title: "Implement: {{.task}}"
+        prompt: "Make this change on a new branch and push it: {{.task}}. Close when pushed."
+      - id: review
+        pool: work
+        title: "Review: {{.task}}"
+        prompt: "Review the branch pushed for: {{.task}}. Close done if it is right, failed if not."

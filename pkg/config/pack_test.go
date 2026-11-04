@@ -178,7 +178,7 @@ packs:
 	assert.Contains(t, w.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "squash", w.PackVars["merge_method"], "selfdev merges by squash")
 	assert.Empty(t, w.PackVars["required_approver"], "selfdev needs no approval")
-	assert.Contains(t, w.Steps[2].Prompt, "${deploy_check}", "filled at run start")
+	assert.Contains(t, w.Steps[2].Prompt, "{{.deploy_check}}", "filled at run start")
 	assert.Equal(t, "deploy-check", w.Steps[2].Pool, "post-merge leaves the refinery free (#167)")
 	b := c.Workflows["stall-check"]
 	require.Len(t, b.Steps, 1)
@@ -197,7 +197,7 @@ packs:
 	st := c.Triggers["stall"]
 	require.NotNil(t, st.Run)
 	assert.Equal(t, "stall-check", st.Run.Workflow)
-	assert.Equal(t, "${stall_subject}", st.Run.Vars["subject"], "stall vars survive pack substitution")
+	assert.Equal(t, "{{.stall_subject}}", st.Run.Vars["subject"], "stall vars survive pack substitution")
 	assert.Equal(t, 2, st.StallMaxRuns())
 	sigs := map[string]StallSignal{}
 	for _, s := range st.When.Stall {
@@ -213,8 +213,8 @@ packs:
 	assert.Nil(t, mr.Ticket)
 	require.NotNil(t, mr.Run, "master-red starts a run")
 	assert.Equal(t, "ci-repair", mr.Run.Workflow)
-	assert.Equal(t, "${check_output}", mr.Run.Key)
-	assert.Equal(t, map[string]string{"sha": "${check_output}"}, mr.Run.Vars)
+	assert.Equal(t, "{{.check_output}}", mr.Run.Key)
+	assert.Equal(t, map[string]string{"sha": "{{.check_output}}"}, mr.Run.Vars)
 	ci := c.Workflows["ci-repair"]
 	require.Len(t, ci.Steps, 2)
 	assert.Equal(t, "plan", ci.EscalatePool)
@@ -351,7 +351,7 @@ packs:
 	w := c.Workflows["pr-work"]
 	assert.Equal(t, "make test", w.PackVars["check_cmd"])
 	assert.Contains(t, w.PackVars["docs_rule"], "Never append a numbered section", "docs_rule default (#131)")
-	body, err := FillTemplate(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
+	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
 	require.NoError(t, err)
 	assert.Contains(t, body, "`make test`")
 	assert.Contains(t, body, "Docs: put a design note")
@@ -422,7 +422,7 @@ func TestGithubMergePolicy(t *testing.T) {
 		maps.Copy(vars, w.PackVars)
 		for _, s := range w.Steps {
 			if s.ID == step {
-				out, err := FillTemplate(s.Prompt, vars)
+				out, err := w.Render(s.Prompt, vars)
 				require.NoError(t, err)
 				return out
 			}
@@ -540,7 +540,7 @@ packs:
 	vars["issue"] = "ENG-7"
 	var bodies []string
 	for _, s := range w.Steps {
-		b, err := FillTemplate(s.Prompt, vars)
+		b, err := w.Render(s.Prompt, vars)
 		require.NoError(t, err, s.ID)
 		assert.NotContains(t, b, "gh issue", s.ID)
 		bodies = append(bodies, b)
@@ -616,4 +616,98 @@ func TestLoadFileWithRewrite(t *testing.T) {
 	require.NoError(t, err)
 	_, err = LoadFileWith(f, func(p string) string { return strings.Replace(p, "old", "new", 1) })
 	require.ErrorContains(t, err, `var "jobshop_repo" is not set`)
+}
+
+// TestMinimalPackDoc loads the minimal pack from docs/packs.md and the
+// README (a copy in testdata/minimal; keep them in sync).
+func TestMinimalPackDoc(t *testing.T) {
+	c, err := LoadFile(filepath.Join("testdata", "minimal", "jobshop.yaml"))
+	require.NoError(t, err)
+	require.Equal(t, "/srv/widget", c.Pools["work"].Repo)
+	require.Equal(t, 1, c.Pools["work"].MaxSessions)
+	require.Len(t, c.Workflows["change"].Steps, 2)
+}
+
+// TestGithubPackEscalationChat (#379): with escalation_chat_pool set,
+// every workflow's escalate block points at it, with the pack's prompts
+// keeping the escalation vars for the controller; the policy rule is a
+// system rule for every pool. Unset: no chat.
+func TestGithubPackEscalationChat(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	load := func(extra string) *Config {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+pools:
+  esc: {agent: a, type: chat, dir: /w}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile` + extra + `}
+`})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		return c
+	}
+	c := load(", escalation_chat_pool: esc")
+	for n, w := range c.Workflows {
+		require.NotNil(t, w.Escalate, n)
+		assert.Equal(t, "esc", w.Escalate.ChatPool, n)
+	}
+	e := c.Workflows["pr-work"].Escalate
+	out, err := Fill(e.Prompt, e.Template, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	require.NoError(t, err)
+	assert.Contains(t, out, "escalation ticket js-e for run js-r (workflow pr-work)")
+	assert.Contains(t, out, "`jobshop run resume js-r")
+	assert.Contains(t, out, "issue 7")
+	assert.True(t, strings.HasSuffix(strings.TrimSpace(out), "BODY"))
+	assert.NotContains(t, out, "gateway")
+	assert.NotContains(t, out, "thread")
+	pout, err := Fill(e.PoolPrompt, e.Template, map[string]any{"ticket": "js-e", "pool": "dev", "error": "boom", "body": "B"})
+	require.NoError(t, err)
+	assert.Contains(t, pout, "pool dev starts no sessions")
+	assert.Contains(t, pout, "jobshop pool unquarantine dev")
+
+	var policy *PromptRule
+	for i := range c.PromptRules {
+		if c.PromptRules[i].Name == "escalate-policy" {
+			policy = &c.PromptRules[i]
+		}
+	}
+	require.NotNil(t, policy, "escalation policy rule")
+	assert.Equal(t, "system", policy.At)
+	assert.Contains(t, policy.Text, "only for a decision, a credential")
+	assert.Contains(t, policy.Text, "jobshop report progress")
+
+	for n, w := range load("").Workflows {
+		require.NotNil(t, w.Escalate, n)
+		assert.Empty(t, w.Escalate.ChatPool, "no chat by default: "+n)
+	}
+}
+
+// TestEscalationConfig: chat_pool must be a chat pool with a prompt, and
+// prompts may only use the escalation vars.
+func TestEscalationConfig(t *testing.T) {
+	base := "projects:\n  js: {}\nagents:\n  a: {command: x}\npools:\n  dev: {agent: a, dir: /w}\n  chat: {agent: a, type: chat, dir: /w}\n"
+	for name, tc := range map[string]struct{ yaml, err string }{
+		"ok":        {"escalation: {chat_pool: chat, prompt: \"t ${ticket} ${body}\", pool_prompt: \"p ${pool} ${error}\"}\n", ""},
+		"not chat":  {"escalation: {chat_pool: dev, prompt: x}\n", "not a chat pool"},
+		"unknown":   {"escalation: {chat_pool: nope, prompt: x}\n", "unknown pool"},
+		"no prompt": {"escalation: {chat_pool: chat}\n", "needs prompt"},
+		"bad var":   {"escalation: {chat_pool: chat, prompt: \"${issue}\"}\n", "uses ${issue}"},
+		"pool var":  {"escalation: {chat_pool: chat, pool_prompt: \"${run}\"}\n", "uses ${run}"},
+		"empty":     {"escalation: {}\n", ""},
+	} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": base + tc.yaml})
+		_, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		if tc.err == "" {
+			assert.NoError(t, err, name)
+		} else {
+			require.Error(t, err, name)
+			assert.Contains(t, err.Error(), tc.err, name)
+		}
+	}
 }

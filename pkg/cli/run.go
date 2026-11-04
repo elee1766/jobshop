@@ -126,6 +126,10 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 			return err
 		}
 	}
+	waits := map[string]store.ResourceWait{}
+	for _, wt := range r.Waits {
+		waits[wt.Ticket] = wt
+	}
 	for _, s := range r.Steps {
 		sf, err := store.DecodeFields[store.StepFields](s)
 		if err != nil {
@@ -138,9 +142,55 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 		if holder == "" {
 			holder = "-"
 		}
-		if _, err := fmt.Fprintf(w, "%d  %-12s %s  pool %s  %s  %s  holder %s  failures %d/%d\n",
-			sf.Index, sf.Step, s.ID, s.Pool, s.Status, res, holder, sf.Failures, sf.Retries); err != nil {
+		line := fmt.Sprintf("%d  %-12s %s  pool %s  %s  %s  holder %s  failures %d/%d",
+			sf.Index, sf.Step, s.ID, s.Pool, s.Status, res, holder, sf.Failures, sf.Retries)
+		// The graph (#385): what the step waits on, its gate and outcome.
+		if len(sf.Needs) > 0 {
+			line += "  needs " + strings.Join(sf.Needs, ",")
+		}
+		if sf.When != nil {
+			line += fmt.Sprintf("  when %s=%s", sf.When.Step, sf.When.Outcome)
+		}
+		if sf.Outcome != "" {
+			line += "  outcome " + sf.Outcome
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
+		}
+		if len(sf.Resources) > 0 {
+			res := "   resources " + strings.Join(sf.Resources, " ")
+			if wt, ok := waits[s.ID]; ok {
+				// Out of the ready frontier on a full resource (#408).
+				res += fmt.Sprintf("  waiting on %s, %d ahead (%d/%d held)", wt.Key, wt.Ahead, wt.Held, wt.Capacity)
+			}
+			if _, err := fmt.Fprintln(w, res); err != nil {
+				return err
+			}
+		}
+		if p := sf.Placement; p != nil {
+			// Placement (#409): which option the step is on.
+			o := p.Options[p.Chosen]
+			line := fmt.Sprintf("   placement option %d/%d pool %s weight %d", p.Chosen+1, len(p.Options), o.Pool, o.Weight)
+			if p.Fallback() {
+				line += " (fallback)"
+			}
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+		}
+		if sf.Auto() && sf.Command != "" {
+			// Command and http steps (#396): what ran and what it said.
+			if _, err := fmt.Fprintf(w, "   %s %s -> %s\n", sf.Type, sf.Command, sf.Result); err != nil {
+				return err
+			}
+			if out := strings.TrimSpace(sf.Output); out != "" {
+				if len(out) > 400 {
+					out = out[:400] + "..."
+				}
+				if _, err := fmt.Fprintf(w, "   output: %s\n", strings.ReplaceAll(out, "\n", "\n           ")); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -251,7 +301,7 @@ func printBatch(w io.Writer, r rpc.BatchResult) error {
 // done, or "" when all are done.
 func currentStepName(steps []store.Ticket) string {
 	for _, s := range steps {
-		if s.Status == store.StatusClosed && s.Resolution == "done" {
+		if store.StepFinished(s) {
 			continue
 		}
 		if sf, err := store.DecodeFields[store.StepFields](s); err == nil {

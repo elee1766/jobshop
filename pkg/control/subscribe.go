@@ -71,6 +71,7 @@ type ghComment struct {
 	ID     string
 	Author string
 	Bot    bool
+	Self   bool   // the host's own identity; always dropped (#402)
 	Kind   string // comment, review, review comment
 	State  string // review state
 	Body   string
@@ -176,8 +177,10 @@ func (c *Controller) pollSubscriptionThread(ctx context.Context, th thread) {
 }
 
 // pollThreads is a pass over every followed thread, or only the one keyed
-// only when it is set. subPollMu keeps a webhook pass and the pump from
-// delivering the same comment twice.
+// only when it is set. It writes each new comment to the inbox (#442);
+// delivery is the dispatcher's, from admitted rows only, so admission
+// hooks see and may rewrite or refuse every comment first. subPollMu
+// keeps a webhook pass and the pump from reading a thread at once.
 func (c *Controller) pollThreads(ctx context.Context, src threadSource, only string) {
 	c.subPollMu.Lock()
 	defer c.subPollMu.Unlock()
@@ -186,11 +189,76 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 		return
 	}
 	now := c.now()
-	window := config.Duration(cfg.Subscriptions.ResumeWindow, defaultSubResume)
-	all, err := c.store.List(ctx, store.Filter{Limit: math.MaxInt32})
+	followers, byThread, order, err := c.followers(ctx, now)
 	if err != nil {
 		c.log.Warn("subscriptions: list", "err", err)
 		return
+	}
+	wrote := false
+	for _, k := range order {
+		if only != "" && k != only {
+			continue
+		}
+		fs := byThread[k]
+		th, seen := threadOf(fs, k)
+		cs, err := src.Comments(ctx, th, seen)
+		if err != nil {
+			c.log.Warn("subscriptions: fetch", "thread", k, "err", err)
+			continue
+		}
+		last := seen
+		self := ""
+		if th.Linear == "" {
+			self = c.githubSelf(ctx, th.Repo)
+		}
+		ok := true
+		for _, cm := range cs {
+			if !cm.At.After(seen) {
+				continue
+			}
+			if self != "" && strings.EqualFold(cm.Author, self) {
+				cm.Self = true
+			}
+			if err := c.inboxComment(ctx, th, cm); err != nil {
+				c.log.Warn("inbox: poller write", "thread", k, "err", err)
+				ok = false
+				break // read position stays; retried next pass
+			}
+			wrote = true
+			if cm.At.After(last) {
+				last = cm.At
+			}
+		}
+		if !ok {
+			continue
+		}
+		for _, f := range fs {
+			for i := range f.threads {
+				if f.threads[i].key() == k && f.threads[i].Seen.Before(last) {
+					f.threads[i].Seen = last
+					f.changed = true
+				}
+			}
+		}
+	}
+	for _, f := range followers {
+		if f.changed {
+			c.saveThreads(ctx, f)
+		}
+	}
+	if wrote {
+		// Admit and dispatch now rather than on the pump's next wake.
+		c.ingestPass(ctx)
+	}
+}
+
+// followers lists the tickets following threads, grouped by thread key
+// in first-seen order.
+func (c *Controller) followers(ctx context.Context, now time.Time) ([]*follower, map[string][]*follower, []string, error) {
+	window := config.Duration(c.config().Subscriptions.ResumeWindow, defaultSubResume)
+	all, err := c.store.List(ctx, store.Filter{Limit: math.MaxInt32})
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	var followers []*follower
 	for _, t := range all {
@@ -219,58 +287,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 			byThread[th.key()] = append(byThread[th.key()], f)
 		}
 	}
-	for _, k := range order {
-		if only != "" && k != only {
-			continue
-		}
-		fs := byThread[k]
-		th, seen := threadOf(fs, k)
-		cs, err := src.Comments(ctx, th, seen)
-		if err != nil {
-			c.log.Warn("subscriptions: fetch", "thread", k, "err", err)
-			continue
-		}
-		var human []ghComment
-		last := seen
-		self := ""
-		if th.Linear == "" {
-			self = c.githubSelf(ctx, th.Repo)
-		}
-		for _, cm := range cs {
-			if !cm.At.After(seen) {
-				continue
-			}
-			if cm.At.After(last) {
-				last = cm.At
-			}
-			if self != "" && strings.EqualFold(cm.Author, self) {
-				cm.Bot = true
-			}
-			c.inboxComment(ctx, th, cm)
-			if !c.ignored(cm) {
-				human = append(human, cm)
-			}
-		}
-		if len(human) > 0 {
-			if err := c.deliverThread(ctx, th, human, fs, now, window); err != nil {
-				c.log.Warn("subscriptions: deliver", "thread", k, "err", err)
-				continue // read position stays; retried next pass
-			}
-		}
-		for _, f := range fs {
-			for i := range f.threads {
-				if f.threads[i].key() == k && f.threads[i].Seen.Before(last) {
-					f.threads[i].Seen = last
-					f.changed = true
-				}
-			}
-		}
-	}
-	for _, f := range followers {
-		if f.changed {
-			c.saveThreads(ctx, f)
-		}
-	}
+	return followers, byThread, order, nil
 }
 
 // follow returns the ticket's threads, adding implicit ones with the read
@@ -362,14 +379,19 @@ func (c *Controller) saveThreads(ctx context.Context, f *follower) {
 	f.threads = sm.Threads
 }
 
-// githubSelf is the login of the github-token identity covering repo, "" for
-// none or an App (whose comments are [bot]). A user's token comments
-// as that user, so without this its own posts would come back as human
-// news (#340). A failed lookup is logged and filters nothing.
+// githubSelf is the login of the GitHub identity covering repo: a
+// github-token's user, or a github-app's "<slug>[bot]" (#402). Without
+// it the host's own posts would come back as news (#340), and listing
+// the app in subscriptions.bots would wake sessions on their own
+// comments. "" for none; a failed lookup is logged and filters nothing.
 func (c *Controller) githubSelf(ctx context.Context, repo string) string {
 	cfg := c.config()
 	name, ok := cfg.IdentityFor(cfg.IdentityNames(), repo)
-	if !ok || cfg.Identities[name].Kind != config.IdentityGitHubToken {
+	if !ok || !config.IsGitHub(cfg.Identities[name].Kind) {
+		return ""
+	}
+	// An App's comments are [bot] and dropped anyway unless bots is set.
+	if cfg.Identities[name].Kind == config.IdentityGitHubApp && (cfg.Subscriptions == nil || len(cfg.Subscriptions.Bots) == 0) {
 		return ""
 	}
 	l, err := c.minter.Login(ctx, name, cfg.Identities[name])
@@ -380,18 +402,24 @@ func (c *Controller) githubSelf(ctx context.Context, repo string) string {
 	return l
 }
 
-// ignored drops bots, CI, configured logins and, when authors is set,
-// everyone not on it.
+// ignored drops the host's own comments, bots not on subscriptions.bots,
+// CI, configured logins and, when authors is set, every human not on it.
 func (c *Controller) ignored(cm ghComment) bool {
-	if cm.Bot || strings.HasSuffix(cm.Author, "[bot]") || cm.Author == "" {
+	if cm.Self || cm.Author == "" {
 		return true
 	}
 	s := c.config().Subscriptions
+	is := func(l string) bool { return strings.EqualFold(l, cm.Author) }
+	if s != nil && slices.ContainsFunc(s.Ignore, is) {
+		return true
+	}
+	if cm.Bot || strings.HasSuffix(cm.Author, "[bot]") {
+		return s == nil || !slices.Contains(s.Bots, cm.Author)
+	}
 	if s == nil {
 		return false
 	}
-	is := func(l string) bool { return strings.EqualFold(l, cm.Author) }
-	return slices.ContainsFunc(s.Ignore, is) || len(s.Authors) > 0 && !slices.ContainsFunc(s.Authors, is)
+	return len(s.Authors) > 0 && !slices.ContainsFunc(s.Authors, is)
 }
 
 // owner picks the follower that gets a thread's news: the one being
@@ -451,8 +479,8 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 	if err != nil {
 		return err
 	}
-	cs = c.intakeComments(ctx, t.Project, th, cs)
-	if cs = c.linearAnswers(ctx, th, cs); len(cs) == 0 {
+	cs = c.linearAnswers(ctx, th, cs)
+	if len(cs) == 0 {
 		return nil
 	}
 	text := threadText(th, cs)
@@ -617,15 +645,28 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 		return nil, err
 	}
 	var out []ghComment
+	// A linear-app's own comments can arrive as its app actor, not isMe:
+	// match the viewer's name so a listed bot never wakes on itself (#402).
+	appSelf := ""
+	if cfg.Identities[name].Kind == config.IdentityLinearApp && cfg.Subscriptions != nil && len(cfg.Subscriptions.Bots) > 0 {
+		v, err := linear.New(s.url, tok.Token).Viewer(ctx)
+		if err != nil {
+			return nil, err
+		}
+		appSelf = v.Name
+	}
 	for _, cm := range is.Comments {
 		if !cm.CreatedAt.After(since) {
 			continue
+		}
+		if cm.Bot && appSelf != "" && cm.Author == appSelf {
+			cm.Self = true
 		}
 		url := cm.URL
 		if url == "" {
 			url = is.URL
 		}
-		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot || cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt, Parent: cm.ParentID})
+		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot, Self: cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt, Parent: cm.ParentID})
 	}
 	return out, nil
 }

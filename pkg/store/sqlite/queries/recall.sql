@@ -8,7 +8,7 @@ WHERE body MATCH sqlc.arg(query)
   AND (sqlc.arg(kind) = '' OR kind = sqlc.arg(kind))
   AND (sqlc.arg(ticket_id) = '' OR ticket_id = sqlc.arg(ticket_id))
 ORDER BY score
-LIMIT sqlc.arg(lim);
+LIMIT CAST(sqlc.arg(lim) AS INTEGER);
 
 -- name: RecallDelete :exec
 DELETE FROM recall WHERE kind = sqlc.arg(kind) AND ref = sqlc.arg(ref);

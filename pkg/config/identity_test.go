@@ -51,7 +51,7 @@ identities:
 	assert.Equal(t, "me", n)
 	_, ok = c.IdentityFor(c.IdentityNames(), "other/proj")
 	assert.False(t, ok)
-	assert.Equal(t, "/ws", c.Identities["lin"].WebhookSecretFile)
+	assert.Equal(t, config.SecretPath("/ws"), c.Identities["lin"].WebhookSecretFile)
 	eps := c.IngestEndpoints()
 	require.Len(t, eps, 1, "a Linear API key's webhook secret gets an endpoint")
 	assert.Equal(t, "lin", eps[0].Identity)

@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -96,16 +95,11 @@ func admissionHooks(cfg *config.Config) []config.AdmissionHook {
 	return out
 }
 
-// pumpAdmission admits pending items until the controller stops.
+// pumpAdmission admits pending items and dispatches admitted ones (#442)
+// until the controller stops.
 func (c *Controller) pumpAdmission() {
 	for c.ctx.Err() == nil {
-		ok, err := c.admitNext(c.ctx)
-		if err != nil && c.ctx.Err() == nil {
-			c.log.Error("admission", "err", err)
-		}
-		if ok && err == nil {
-			continue
-		}
+		c.ingestPass(c.ctx)
 		select {
 		case <-c.ctx.Done():
 		case <-time.After(admissionIdle):
@@ -113,96 +107,176 @@ func (c *Controller) pumpAdmission() {
 	}
 }
 
-// admitNext claims one pending item and admits it. false: none pending.
-func (c *Controller) admitNext(ctx context.Context) (bool, error) {
-	cfg := c.config()
-	hooks := admissionHooks(cfg)
+// releaseAnswered moves held items whose needs-human ticket is closed
+// back to pending (#353). Admission only claims pending items; on the
+// next claim admit reads the answer through askedHuman: done admits,
+// any other resolution denies. Held is not pruned, so without this an
+// answered item would stay held forever.
+func (c *Controller) releaseAnswered(ctx context.Context) error {
+	held, err := c.store.InboxList(ctx, store.InboxFilter{State: store.InboxHeld, Limit: 200})
+	if err != nil {
+		return err
+	}
+	for _, it := range held {
+		a, ok := c.askedHuman(ctx, "admission/"+it.DeliveryID)
+		if !ok || a.Decision == rpc.GuardAskHuman {
+			continue
+		}
+		if _, err := c.store.InboxRequeue(ctx, it.ID, store.InboxHeld, store.InboxPending); err != nil {
+			if errors.Is(err, store.ErrConflict) {
+				continue // moved or leased meanwhile
+			}
+			return err
+		}
+		c.log.InfoContext(ctx, "inbox admission released", "delivery", it.DeliveryID, "ticket", a.Ticket, "answer", a.Decision)
+	}
+	return nil
+}
+
+// admissionLease is how long an admitter holds an item: a minute plus
+// every hook's timeout.
+func admissionLease(hooks []config.AdmissionHook) time.Duration {
 	lease := time.Minute
 	for _, h := range hooks {
 		lease += config.Duration(h.Timeout, 30*time.Second)
 	}
-	it, err := c.store.InboxClaim(ctx, []string{store.InboxPending}, admissionHolder, lease)
+	return lease
+}
+
+// admitNext claims one pending item and admits it. false: none pending.
+func (c *Controller) admitNext(ctx context.Context) (bool, error) {
+	cfg := c.config()
+	hooks := admissionHooks(cfg)
+	it, err := c.store.InboxClaim(ctx, []string{store.InboxPending}, admissionHolder, admissionLease(hooks))
 	if errors.Is(err, store.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	state, admitted, results := c.admit(ctx, cfg, hooks, it)
-	raw, err := json.Marshal(results)
-	if err != nil {
-		return true, err
-	}
-	u := store.InboxUpdate{State: state, HookResults: raw}
-	if state == store.InboxAdmitted {
-		u.Admitted = admitted
-	}
-	_, err = c.store.InboxSetState(ctx, it.ID, admissionHolder, u)
-	if err == nil {
-		c.log.InfoContext(ctx, "inbox admission", "delivery", it.DeliveryID, "state", state)
-	}
-	return true, err
+	_, answered := c.humanAnswer(ctx, it.DeliveryID)
+	run := c.admissionRunner().run(ctx, cfg.DefaultProject, hooks, it, answered)
+	return true, c.finishAdmission(ctx, it, admissionHolder, run)
 }
 
-// admit runs the hooks on it and returns the new state, the admitted
-// payload and every hook's result.
-func (c *Controller) admit(ctx context.Context, cfg *config.Config, hooks []config.AdmissionHook, it store.InboxItem) (string, json.RawMessage, []admissionResult) {
+// humanAnswer is a human's closed answer to an earlier hold of delivery.
+func (c *Controller) humanAnswer(ctx context.Context, delivery string) (rpc.GuardResult, bool) {
+	a, ok := c.askedHuman(ctx, "admission/"+delivery)
+	if !ok || a.Decision == rpc.GuardAskHuman {
+		return rpc.GuardResult{}, false
+	}
+	return a, true
+}
+
+// admissionRun is what running the hooks on one item produced. Event
+// is the event after the mutating hooks; Asks are the ask_human
+// reasons. The state is decided by finishAdmission, which alone sees
+// the store, so an external worker (#443) and the in-process loop
+// decide the same way.
+type admissionRun struct {
+	Event   admissionEvent    `json:"event"`
+	Results []admissionResult `json:"results"`
+	Denied  bool              `json:"denied,omitempty"`
+	Asks    []string          `json:"asks,omitempty"`
+}
+
+// admissionRunner runs admission hooks. It needs no store, so the
+// external `ingest work` process uses it too.
+type admissionRunner struct {
+	dir string // working dir for commands, root for secret files
+}
+
+func (c *Controller) admissionRunner() admissionRunner { return admissionRunner{dir: c.root.Dir} }
+
+// run runs the mutating hooks, then, unless a human already answered,
+// the validating hooks.
+func (ar admissionRunner) run(ctx context.Context, project string, hooks []config.AdmissionHook, it store.InboxItem, answered bool) admissionRun {
 	ev := admissionEvent{
 		On: admissionOn, DeliveryID: it.DeliveryID, Source: it.Source, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam,
-		Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, Project: cfg.DefaultProject,
+		Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, Project: project,
 		ReceivedAt: it.ReceivedAt, Payload: it.Payload,
 	}
 	subj := config.AdmissionSubject{
 		Source: it.Source, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam, Actor: it.Actor,
 		Project: ev.Project, Bot: strings.HasSuffix(it.Actor, "[bot]"),
 	}
-	results := []admissionResult{}
+	out := admissionRun{Results: []admissionResult{}}
 	for _, h := range hooks {
 		if h.Type == config.AdmissionMutating && h.Match.Matches(subj) {
 			var r admissionResult
-			ev, r = c.mutate(ctx, h, ev)
-			results = append(results, r)
+			ev, r = ar.mutate(ctx, h, ev)
+			out.Results = append(out.Results, r)
 		}
 	}
-	key := "admission/" + it.DeliveryID
-	if a, ok := c.askedHuman(ctx, key); ok && a.Decision != rpc.GuardAskHuman {
-		// A human answered an earlier hold: their answer stands.
-		results = append(results, admissionResult{Name: "human", Type: config.AdmissionValidating, Decision: a.Decision, Reason: a.Reason})
-		if a.Decision == rpc.GuardAllow {
-			return store.InboxAdmitted, ev.Payload, results
-		}
-		return store.InboxDenied, nil, results
+	out.Event = ev
+	if answered {
+		return out // a human's answer stands; validating hooks do not run
 	}
-	state := store.InboxAdmitted
-	var ask []string
 	for _, h := range hooks {
 		if h.Type != config.AdmissionValidating || !h.Match.Matches(subj) {
 			continue
 		}
-		r := c.validate(ctx, h, ev)
-		results = append(results, r)
+		r := ar.validate(ctx, h, ev)
+		out.Results = append(out.Results, r)
 		switch r.Decision {
 		case rpc.GuardDeny:
-			state = store.InboxDenied
+			out.Denied = true
 		case rpc.GuardAskHuman:
-			ask = append(ask, h.Name+": "+r.Reason)
+			out.Asks = append(out.Asks, h.Name+": "+r.Reason)
 		}
 	}
+	return out
+}
+
+// settle decides an item's state from a run and a human's answer.
+// answered is false when no human has closed a hold for it.
+func settle(run admissionRun, a rpc.GuardResult, answered bool) (string, json.RawMessage, []admissionResult) {
+	results := run.Results
+	if answered {
+		results = append(results, admissionResult{Name: "human", Type: config.AdmissionValidating, Decision: a.Decision, Reason: a.Reason})
+		if a.Decision == rpc.GuardAllow {
+			return store.InboxAdmitted, run.Event.Payload, results
+		}
+		return store.InboxDenied, nil, results
+	}
 	switch {
-	case state == store.InboxDenied:
-		return state, nil, results
-	case len(ask) > 0:
-		c.holdForHuman(ctx, key, ev, strings.Join(ask, "\n"))
+	case run.Denied:
+		return store.InboxDenied, nil, results
+	case len(run.Asks) > 0:
 		return store.InboxHeld, nil, results
 	}
-	return state, ev.Payload, results
+	return store.InboxAdmitted, run.Event.Payload, results
+}
+
+// finishAdmission stores a run's outcome for an item holder leases,
+// filing the needs-human ticket for a hold. A human's closed answer to
+// an earlier hold overrides the validating hooks.
+func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, holder string, run admissionRun) error {
+	a, answered := c.humanAnswer(ctx, it.DeliveryID)
+	state, admitted, results := settle(run, a, answered)
+	if state == store.InboxHeld {
+		c.holdForHuman(ctx, "admission/"+it.DeliveryID, run.Event, strings.Join(run.Asks, "\n"))
+	}
+	raw, err := json.Marshal(results)
+	if err != nil {
+		return err
+	}
+	u := store.InboxUpdate{State: state, HookResults: raw}
+	if state == store.InboxAdmitted {
+		u.Admitted = admitted
+	}
+	if _, err := c.store.InboxSetState(ctx, it.ID, holder, u); err != nil {
+		return err
+	}
+	c.log.InfoContext(ctx, "inbox admission", "delivery", it.DeliveryID, "state", state, "by", holder)
+	return nil
 }
 
 // mutate runs a mutating hook. Any failure leaves ev unchanged.
-func (c *Controller) mutate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) (admissionEvent, admissionResult) {
+func (ar admissionRunner) mutate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) (admissionEvent, admissionResult) {
 	r := admissionResult{Name: h.Name, Type: h.Type}
 	start := time.Now()
-	out, err := c.callAdmission(ctx, h, ev)
+	out, err := ar.callAdmission(ctx, h, ev)
 	r.DurationMS = time.Since(start).Milliseconds()
 	fail := func(err error) (admissionEvent, admissionResult) {
 		r.Decision, r.Error = admitFailed, err.Error()
@@ -261,13 +335,13 @@ func (c *Controller) mutate(ctx context.Context, h config.AdmissionHook, ev admi
 
 // validate runs a validating hook. Under failure_policy fail an error,
 // timeout or bad answer denies; under ignore it is skipped.
-func (c *Controller) validate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) admissionResult {
+func (ar admissionRunner) validate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) admissionResult {
 	r := admissionResult{Name: h.Name, Type: h.Type}
 	if h.Intake {
 		ev.On = config.HookIntake
 	}
 	start := time.Now()
-	out, err := c.callAdmission(ctx, h, ev)
+	out, err := ar.callAdmission(ctx, h, ev)
 	r.DurationMS = time.Since(start).Milliseconds()
 	var a hookAnswer
 	if err == nil && len(out) > 0 {
@@ -294,7 +368,7 @@ func (c *Controller) validate(ctx context.Context, h config.AdmissionHook, ev ad
 }
 
 // callAdmission sends ev to the hook and returns its trimmed answer.
-func (c *Controller) callAdmission(ctx context.Context, h config.AdmissionHook, ev admissionEvent) ([]byte, error) {
+func (ar admissionRunner) callAdmission(ctx context.Context, h config.AdmissionHook, ev admissionEvent) ([]byte, error) {
 	body, err := json.Marshal(ev)
 	if err != nil {
 		return nil, err
@@ -303,9 +377,9 @@ func (c *Controller) callAdmission(ctx context.Context, h config.AdmissionHook, 
 	defer cancel()
 	var out []byte
 	if h.URL != "" {
-		out, err = c.postAdmission(ctx, h, ev.DeliveryID, body)
+		out, err = ar.postAdmission(ctx, h, ev.DeliveryID, body)
 	} else {
-		out, err = c.execAdmission(ctx, h, body)
+		out, err = ar.execAdmission(ctx, h, body)
 	}
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("timed out after %s", config.Duration(h.Timeout, 30*time.Second))
@@ -313,9 +387,9 @@ func (c *Controller) callAdmission(ctx context.Context, h config.AdmissionHook, 
 	return bytes.TrimSpace(out), err
 }
 
-func (c *Controller) execAdmission(ctx context.Context, h config.AdmissionHook, body []byte) ([]byte, error) {
+func (ar admissionRunner) execAdmission(ctx context.Context, h config.AdmissionHook, body []byte) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", h.Command)
-	cmd.Dir = c.root.Dir
+	cmd.Dir = ar.dir
 	cmd.Stdin = bytes.NewReader(body)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -334,8 +408,8 @@ func admissionSignature(secret, body []byte) string {
 	return "sha256=" + hex.EncodeToString(m.Sum(nil))
 }
 
-func (c *Controller) postAdmission(ctx context.Context, h config.AdmissionHook, delivery string, body []byte) ([]byte, error) {
-	secret, err := os.ReadFile(c.root.Path(h.SecretFile))
+func (ar admissionRunner) postAdmission(ctx context.Context, h config.AdmissionHook, delivery string, body []byte) ([]byte, error) {
+	secret, err := config.ReadSecret(ctx, h.SecretFile.In(ar.dir))
 	if err != nil {
 		return nil, fmt.Errorf("secret: %w", err)
 	}

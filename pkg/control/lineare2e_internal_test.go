@@ -68,6 +68,7 @@ triggers:
 // with the same key returning the run, and a worker question asked on
 // the issue and answered by a reply.
 func TestLinearEndToEnd(t *testing.T) {
+	t.Parallel()
 	c, clk, dir := stallControllerYAML(t, linearE2EYAML)
 	ctx := t.Context()
 	write := func(name, s string) {

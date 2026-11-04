@@ -71,6 +71,10 @@ func (c *Controller) drainOnce(ctx context.Context) (ingest.DrainResult, error) 
 	if res.Moved > 0 || res.Bad > 0 {
 		c.log.Info("ingest drain", "moved", res.Moved, "fresh", res.Fresh, "bad", res.Bad)
 	}
+	if res.Fresh > 0 {
+		// A webhook may be the review or check a wait is on (#381).
+		c.wakeWaits()
+	}
 	return res, err
 }
 

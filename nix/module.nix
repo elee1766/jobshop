@@ -77,7 +77,10 @@ let
         }
         // ((cfg.settings.defaults or { }).sandbox or { });
       };
-      shared_tools = (cfg.settings.shared_tools or [ ]) ++ cfg.sandbox.sharedTools;
+      shared_tools =
+        (cfg.settings.shared_tools or [ ])
+        ++ cfg.sandbox.sharedTools
+        ++ lib.optional sharedMise cfg.sandbox.mise.dir;
     };
   configFile = settingsFormat.generate "jobshop.yaml" (
     lib.recursiveUpdate settings (
@@ -85,6 +88,7 @@ let
     )
   );
   jobshop = lib.getExe cfg.package;
+  sharedMise = cfg.sandbox.enable && cfg.sandbox.mise.tools != [ ];
 
   defaultTools = with pkgs; [
     git
@@ -104,30 +108,12 @@ let
     self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
   ];
   useIdentities = cfg.gitIdentity.jobshopIdentities;
-  # gh with a token from `jobshop identity token` for the repo it acts on
-  # (#216): --repo/-R if given, else the cwd's origin. An explicit GH_TOKEN
-  # wins; no repo found runs gh unauthenticated.
+  # gh through `jobshop gh` (#349): it adds the identity token for the repo
+  # it acts on (--repo/-R, else the cwd's origin), asks the guard hooks
+  # before writes and records them in the activity feed. An explicit
+  # GH_TOKEN wins. JOBSHOP_GH names the real gh so it never finds itself.
   ghWrapper = pkgs.writeShellScriptBin "gh" ''
-    if [ -z "''${GH_TOKEN:-}" ]; then
-      repo=
-      prev=
-      for a in "$@"; do
-        case "$prev" in -R|--repo) repo=$a ;; esac
-        case "$a" in --repo=*) repo=''${a#--repo=} ;; esac
-        prev=$a
-      done
-      if [ -z "$repo" ]; then
-        url=$(git remote get-url origin 2>/dev/null || true)
-        case "$url" in
-          *github.com[:/]*) repo=''${url#*github.com[:/]}; repo=''${repo%.git} ;;
-        esac
-      fi
-      repo=''${repo#https://github.com/}
-      if [ -n "$repo" ] && t=$(${jobshop} identity token "$repo"); then
-        export GH_TOKEN=$t
-      fi
-    fi
-    exec ${lib.getExe pkgs.gh} "$@"
+    JOBSHOP_GH=${lib.getExe pkgs.gh} exec ${jobshop} gh "$@"
   '';
   path =
     lib.optional useIdentities ghWrapper
@@ -185,6 +171,10 @@ let
       NIX_LD_LIBRARY_PATH = "/run/current-system/sw/share/nix-ld/lib";
       NIX_LD = "/run/current-system/sw/share/nix-ld/lib/ld.so";
       MISE_TRUSTED_CONFIG_PATHS = "${cfg.dataDir}/sessions:${cfg.dataDir}/workspaces";
+    }
+    # Sessions use the host's installs before their own (#316).
+    // lib.optionalAttrs sharedMise {
+      MISE_SHARED_INSTALL_DIRS = "${cfg.sandbox.mise.dir}/installs";
     }
     // cfg.environment
     // {
@@ -485,6 +475,28 @@ in
         ];
         description = "Read-write dirs for every sandboxed session (defaults.sandbox.rw): build caches, agent state, mise data.";
       };
+      # Host-level mise installs shared read-only with sandboxed sessions (#316).
+      mise = {
+        tools = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          example = [
+            "node@24"
+            "python@3.13"
+          ];
+          description = "mise tools installed outside the sandbox into <dir>/installs, mounted read-only into every sandboxed session and listed in MISE_SHARED_INSTALL_DIRS. Empty: no shared install unit.";
+        };
+        dir = lib.mkOption {
+          type = lib.types.str;
+          default = "/var/lib/jobshop-mise";
+          description = "mise data dir for the shared installs; added to sandbox.sharedTools.";
+        };
+        interval = lib.mkOption {
+          type = lib.types.str;
+          default = "daily";
+          description = "systemd OnCalendar for re-running the shared mise install.";
+        };
+      };
     };
 
     defaultPath = lib.mkOption {
@@ -543,7 +555,7 @@ in
           };
         }
       '';
-      description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file, webhook_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets.";
+      description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file, webhook_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets. Each may instead be `{ type = \"command\"; command = \"...\"; }`, whose stdout is the secret (#435).";
     };
 
     workspaces = lib.mkOption {
@@ -580,8 +592,8 @@ in
               description = "Matrix client-server URL. Unused for discord.";
             };
             tokenFile = lib.mkOption {
-              type = lib.types.str;
-              description = "File with the bot access token, readable by the jobshop user. Not a Nix store path.";
+              type = lib.types.either lib.types.str (lib.types.attrsOf lib.types.str);
+              description = "File with the bot access token, readable by the jobshop user (not a Nix store path), or a secret mapping such as `{ type = \"command\"; command = \"pass show matrix/bot\"; }` (#435).";
             };
             pool = lib.mkOption {
               type = lib.types.str;
@@ -620,6 +632,11 @@ in
 
     ingest = {
       enable = lib.mkEnableOption "jobshop-ingest.service running `jobshop ingest serve` (#334) on settings.ingest.listen";
+      worker = {
+        enable = lib.mkEnableOption ''
+          jobshop-ingest-work.service running `jobshop ingest work` (#443). Set
+          settings.ingest.workers = "external" too, or the controller refuses its claims'';
+      };
     };
 
     # Old single-workspace option. Its definitions go to workspaces.default,
@@ -704,7 +721,39 @@ in
           "L+ ${cfg.dataDir}/jobshop.yaml - - - - ${configFile}"
           # Per-host GC roots keep a running session host's binary alive across Nix switches.
           "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${cfg.user} ${cfg.group} -"
-        ];
+        ]
+        ++ lib.optional sharedMise "d ${cfg.sandbox.mise.dir} 0755 ${cfg.user} ${cfg.group} -";
+
+        systemd.services.jobshop-mise = lib.mkIf sharedMise {
+          description = "Install shared mise tools for Jobshop sandboxes";
+          wantedBy = [ "multi-user.target" ];
+          before = [ "jobshop.service" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
+          inherit path;
+          # Outside the sandbox and outside the sessions' own mise data dir,
+          # so sessions only ever read these installs.
+          environment = environment // {
+            MISE_DATA_DIR = cfg.sandbox.mise.dir;
+            MISE_CACHE_DIR = "${cfg.sandbox.mise.dir}/cache";
+            MISE_SHARED_INSTALL_DIRS = "";
+          };
+          serviceConfig = {
+            Type = "oneshot";
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.sandbox.mise.dir;
+          };
+          script = "mise install --yes ${lib.escapeShellArgs cfg.sandbox.mise.tools}";
+        };
+        systemd.timers.jobshop-mise = lib.mkIf sharedMise {
+          wantedBy = [ "timers.target" ];
+          timerConfig = {
+            OnCalendar = cfg.sandbox.mise.interval;
+            Persistent = true;
+          };
+        };
 
         systemd.slices.jobshop = {
           description = "Jobshop controller, session hosts and agents";
@@ -864,7 +913,9 @@ in
               newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
               if ! check=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- \
                    "$newpkg/bin/jobshop" config check --file ${cfg.dataDir}/jobshop.yaml \
-                   --replace ${lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir}="$src" 2>&1); then
+                   --replace ${
+                     lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir
+                   }="$src" 2>&1); then
                 echo "<3>config check failed for $rev, not switching: $check"
                 printf '%s\n' "$check" > $state/failed.reason
                 echo "$rev" > $state/failed
@@ -936,6 +987,25 @@ in
             Slice = "jobshop.slice";
             WorkingDirectory = cfg.dataDir;
             ExecStart = "${jobshop} ingest serve";
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
+      (lib.mkIf cfg.ingest.worker.enable {
+        # Talks to the controller's admin socket; runs admission hooks.
+        systemd.services.jobshop-ingest-work = {
+          description = "Jobshop ingest admission worker";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "jobshop.service" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          restartTriggers = [ configFile ];
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = "${jobshop} ingest work --worker %H";
             Restart = "always";
             RestartSec = 5;
           };

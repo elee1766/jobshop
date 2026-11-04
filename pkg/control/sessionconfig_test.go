@@ -39,7 +39,7 @@ func configSets(t *testing.T, root config.Root) string {
 // unadvertised id is skipped, a reload applies between turns and never
 // during one, and `session config` overrides and resets one session.
 func TestSessionConfig(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "configopts"), nil, 0o600))
 	setPoolConfig(t, root, "    model: m1\n    config_options: {other_id: x}\n")
 	stop := start()
@@ -61,7 +61,7 @@ func TestSessionConfig(t *testing.T) {
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, "model=m1 busy=false\n", configSets(t, root), "set once before the turn; other_id skipped")
 	in := info()
 	assert.Equal(t, "m1", in.Model)
@@ -72,17 +72,18 @@ func TestSessionConfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	var busy store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "busy", Pool: "dev"}, &busy))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, 20*time.Second, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	setPoolConfig(t, root, "    model: m2\n    effort: high\n")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	pass(t, root.Dir, 3)
 	assert.NotContains(t, configSets(t, root), "m2", "not applied mid-turn")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(busy.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
-	require.Eventually(t, func() bool { return info().Model == "m2" }, 10*time.Second, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(busy.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+	// Model and effort are applied one after the other; wait for both.
+	passEventually(t, root.Dir, func() bool { in := info(); return in.Model == "m2" && in.Effort == "high" }, "condition not met after supervisor passes")
 	sets := configSets(t, root)
 	assert.Contains(t, sets, "model=m2 busy=false")
 	assert.Contains(t, sets, "reasoning_effort=high busy=false")
@@ -93,10 +94,10 @@ func TestSessionConfig(t *testing.T) {
 
 	// Override one session, then reset back to the pool's value.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionConfig, rpc.SessionConfigParams{ID: sess, Options: map[string]string{"model": "openai-oauth:m3"}}, nil))
-	require.Eventually(t, func() bool { return info().Model == "openai-oauth:m3" }, 10*time.Second, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return info().Model == "openai-oauth:m3" }, "condition not met after supervisor passes")
 	assert.Equal(t, map[string]string{"model": "openai-oauth:m3"}, info().Override)
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionConfig, rpc.SessionConfigParams{ID: sess, Reset: true}, nil))
-	require.Eventually(t, func() bool { return info().Model == "m2" }, 10*time.Second, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return info().Model == "m2" }, "condition not met after supervisor passes")
 	assert.Empty(t, info().Override)
 	assert.Equal(t, store.StatusOpen, show(sess).Status)
 
@@ -119,6 +120,7 @@ func TestSessionConfigRejected(t *testing.T) {
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	var sess store.Ticket
+	// No passes: one would spawn another session after this one ends.
 	require.Eventually(t, func() bool {
 		var all []store.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession, Status: store.StatusClosed}, &all))
@@ -127,7 +129,7 @@ func TestSessionConfigRejected(t *testing.T) {
 		}
 		sess = all[0]
 		return true
-	}, 20*time.Second, 50*time.Millisecond)
+	}, dialWait, 50*time.Millisecond)
 	assert.Equal(t, "config_failed", sess.Resolution)
 	assert.Equal(t, 2, strings.Count(configSets(t, root), "model=bad-route"), "one retry")
 	_, err := os.Stat(filepath.Join(root.Dir, "prompts"))

@@ -99,9 +99,13 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 		return errors.New("run: a stall trigger sets the key itself (stall:<signal>:<subject>)")
 	}
 	for k, v := range r.Vars {
-		for _, ref := range templateVars(v) {
+		vs, err := refs(v, r.Template)
+		if err != nil {
+			return fmt.Errorf("run: vars.%s: %w", k, err)
+		}
+		for _, ref := range vs {
 			if !slices.Contains(StallVars, ref) {
-				return fmt.Errorf("run: vars.%s uses ${%s}; only %v are available", k, ref, StallVars)
+				return fmt.Errorf("run: vars.%s uses %s; only %v are available", k, placeholder(ref, r.Template), StallVars)
 			}
 		}
 	}

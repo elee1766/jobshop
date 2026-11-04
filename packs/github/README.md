@@ -22,7 +22,7 @@ three steps, each blocked on the one before (`docs/notes/89-runs.md`, `90-step-r
 
 The last step closing `done` closes the run. A step that runs out of
 retries sets the run to `needs_human` and files "Escalate run <id>" in
-`plan`; the planner labels the issue `needs-human` and mentions `@${human}`.
+`plan`; the planner labels the issue `needs-human` and mentions `@<human>`.
 Dependent issues: an edge from the dependent run's `implement` step to the
 dependency's `post-merge` step. `jobshop run show <run>` shows progress.
 
@@ -62,6 +62,10 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `master-red` trigger: when the latest completed master CI run failed,
   starts a `ci-repair` run keyed by the failing SHA (check command via
   `gh`; the controller needs `GH_TOKEN`).
+
+Prompt rules `recall` and `learn-nudge` are in `prompts/rules/`. Trigger
+tickets take `body_file` like pools take `prompt_file`, with pack vars
+substituted.
 
 ## Flow: `ci-repair` per failing master SHA
 
@@ -151,6 +155,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `checkout` | Main checkout of the repo on the host (pool `repo:`); sessions get worktrees of it |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `human` | GitHub user mentioned on escalations |
+| `escalation_chat_pool` | A `type: chat` pool (e.g. the operator pack's `operator`) where the controller opens one escalation chat per escalation ticket with `prompts/escalation.md` or `escalation-pool.md` (#379). Empty (default): ticket only |
 | `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |

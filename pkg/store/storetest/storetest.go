@@ -57,6 +57,13 @@ func Run(t *testing.T, newStore Factory) {
 		{"Runs", testRuns},
 		{"StepFailures", testStepFailures},
 		{"ApplyGraph", testApplyGraph},
+		{"Resources", testResources},
+		{"ProviderSlots", testProviderSlots},
+		{"ConcurrentSlotClaims", testConcurrentSlotClaims},
+		{"PruneWriteKeys", testPruneWriteKeys},
+		{"ConcurrentClaims", testConcurrentClaims},
+		{"ConcurrentResourceClaims", testConcurrentResourceClaims},
+		{"ClaimAfterSkippedBlocker", testClaimAfterSkippedBlocker},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -333,6 +340,15 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, store.StatusOpen, tk.Status)
 	assert.Equal(t, 1, fails())
 
+	// A rebase close reopens without counting, however often (#424).
+	for range 5 {
+		tk, err = s.CloseTicket(ctx, "test", "js-a", nil, store.ResolutionRebase)
+		require.NoError(t, err)
+		assert.Equal(t, store.StatusOpen, tk.Status)
+		assert.Empty(t, tk.Resolution)
+	}
+	assert.Equal(t, 1, fails())
+
 	// Release.
 	_, cl, err := s.Claim(ctx, "js-a", "s1", lease)
 	require.NoError(t, err)
@@ -375,9 +391,10 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, "failed", tk.Resolution)
 	cs, err := s.Comments(ctx, "js-a")
 	require.NoError(t, err)
-	require.Len(t, cs, 5, "one comment per counted failure plus the deferral note")
-	assert.Contains(t, cs[2].Body, "Released until")
-	assert.Contains(t, cs[4].Body, "Retry limit 4 reached")
+	require.Len(t, cs, 10, "one comment per counted failure, per rebase close, plus the deferral note")
+	assert.Contains(t, cs[1].Body, "Closed for a rebase")
+	assert.Contains(t, cs[7].Body, "Released until")
+	assert.Contains(t, cs[9].Body, "Retry limit 4 reached")
 
 	// A step closed failed keeps the next step blocked.
 	ready, err := s.Ready(ctx, proj, "", 0)
@@ -677,4 +694,30 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	ready, err := s.Ready(ctx, proj, "", 0)
 	require.NoError(t, err)
 	assert.NotContains(t, ids(ready), "js-b2", "batches are never claimable")
+}
+
+// testPruneWriteKeys: keys older than the cutoff go, done or pending;
+// newer keys stay (#415).
+func testPruneWriteKeys(t *testing.T, s store.Store, c *Clock) {
+	ctx := t.Context()
+	_, err := s.ClaimWriteKey(ctx, "js/old-done", "op", "a")
+	require.NoError(t, err)
+	_, err = s.FinishWriteKey(ctx, "js/old-done", "r")
+	require.NoError(t, err)
+	_, err = s.ClaimWriteKey(ctx, "js/old-pending", "op", "a")
+	require.NoError(t, err)
+	c.Advance(47 * time.Hour)
+	_, err = s.ClaimWriteKey(ctx, "js/new", "op", "a")
+	require.NoError(t, err)
+	c.Advance(2 * time.Hour)
+
+	n, err := s.PruneWriteKeys(ctx, c.Now().Add(-48*time.Hour))
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+	k, err := s.ClaimWriteKey(ctx, "js/old-done", "op", "a")
+	require.NoError(t, err)
+	assert.True(t, k.New, "pruned key is claimed fresh")
+	k, err = s.ClaimWriteKey(ctx, "js/new", "op", "a")
+	require.NoError(t, err)
+	assert.False(t, k.New, "newer key kept")
 }

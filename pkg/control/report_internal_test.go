@@ -13,6 +13,7 @@ import (
 )
 
 func TestReportQuestionAnswer(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	ctx := t.Context()
 	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)

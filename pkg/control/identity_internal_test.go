@@ -59,6 +59,7 @@ identities:
 // pool identities, each repo gets its own App's installation token, and
 // an uncovered target is refused as forbidden (#200).
 func TestIdentityToken(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	k, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
@@ -125,6 +126,7 @@ func TestIdentityToken(t *testing.T) {
 // viewer with Bearer auth, fails on a bad secret, and never logs the
 // token (#278).
 func TestLinearAppCheck(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	write := func(name, s string) string {
 		p := filepath.Join(dir, name)
@@ -184,7 +186,7 @@ identities:
 	bad := *cfg
 	bad.Identities = map[string]config.Identity{"lapp": cfg.Identities["lapp"]}
 	id := bad.Identities["lapp"]
-	id.ClientSecretFile = write("bad", "nope")
+	id.ClientSecretFile = config.SecretPath(write("bad", "nope"))
 	bad.Identities["lapp"] = id
 	lc, err = newLiveConfig(&bad)
 	require.NoError(t, err)

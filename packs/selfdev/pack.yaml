@@ -1,6 +1,7 @@
 # Self-development pack: agents that build Jobshop itself. An instance of
 # packs/github with Jobshop's values. Vars: repo (checkout path), agent,
 # dev_sessions. See README.md.
+template: go
 defaults:
   dev_sessions: 2
   refinery_sessions: 1
@@ -15,14 +16,17 @@ defaults:
   evaluate_runs: 20
   evaluate_age: 72h
   learn_sessions: 1
+  # Passed to packs/github (#379). Empty: no escalation chat.
+  escalation_chat_pool: ""
 extends:
   - path: ../github
     vars:
+      escalation_chat_pool: "{{.escalation_chat_pool}}"
       repo: elee1766/jobshop
-      checkout: ${repo}
-      agent: ${agent}
-      dev_sessions: ${dev_sessions}
-      refinery_sessions: ${refinery_sessions}
+      checkout: "{{.repo}}"
+      agent: "{{.agent}}"
+      dev_sessions: "{{.dev_sessions}}"
+      refinery_sessions: "{{.refinery_sessions}}"
       human: elee1766
       # Contributors whose issue reports are picked up (#340).
       authors: zexoverz
@@ -58,10 +62,10 @@ extends:
 # and its key dedups, so one curate run is open at a time.
 pools:
   learn:
-    agent: ${agent}
-    repo: ${repo}
+    agent: "{{.agent}}"
+    repo: "{{.repo}}"
     ref: origin/master
-    max_sessions: ${learn_sessions}
+    max_sessions: "{{.learn_sessions}}"
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/learn.md
@@ -86,13 +90,13 @@ workflows:
 triggers:
   evaluate:
     when:
-      edits: {runs: "${evaluate_runs}", age: "${evaluate_age}"}
+      edits: {runs: "{{.evaluate_runs}}", age: "{{.evaluate_age}}"}
     run:
       workflow: evaluate
       key: evaluate
   curate:
     when:
-      learnings: {min: "${curate_min_learnings}", every: "${curate_every}"}
+      learnings: {min: "{{.curate_min_learnings}}", every: "{{.curate_every}}"}
     run:
       workflow: curate
       key: curate
@@ -101,4 +105,4 @@ prompt_rules:
     at: system
     # Ticket pools of every instance; the operator pack's rule covers chat.
     match: {chat: false}
-    memory: {dir: "${memory_dir}", cap: "${memory_cap}"}
+    memory: {dir: "{{.memory_dir}}", cap: "{{.memory_cap}}"}

@@ -33,7 +33,7 @@ type AdmissionHook struct {
 	URL     string `yaml:"url"`
 	// SecretFile, relative to the root, signs url requests
 	// (X-Jobshop-Signature-256). Required with url.
-	SecretFile    string         `yaml:"secret_file"`
+	SecretFile    Secret         `yaml:"secret_file"`
 	Timeout       string         `yaml:"timeout"` // Go duration, default 30s
 	FailurePolicy string         `yaml:"failure_policy"`
 	Match         AdmissionMatch `yaml:"match"`
@@ -125,10 +125,10 @@ func (c *Config) checkAdmission(h AdmissionHook, names map[string]bool) error {
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("url %q must be an http or https URL", h.URL)
 		}
-		if h.SecretFile == "" {
+		if h.SecretFile.IsZero() {
 			return errors.New("secret_file is required with url")
 		}
-	} else if h.SecretFile != "" {
+	} else if !h.SecretFile.IsZero() {
 		return errors.New("secret_file is for url hooks")
 	}
 	if h.Timeout != "" {
@@ -140,8 +140,8 @@ func (c *Config) checkAdmission(h AdmissionHook, names map[string]bool) error {
 		return fmt.Errorf("failure_policy %q must be fail or ignore", p)
 	}
 	for _, s := range h.Match.Sources {
-		if s != IngestGitHub && s != IngestLinear {
-			return fmt.Errorf("match.sources %q must be github or linear", s)
+		if !slices.Contains(IngestSources, s) {
+			return fmt.Errorf("match.sources %q must be github, linear or generic", s)
 		}
 	}
 	for _, g := range slices.Concat(h.Match.Repos, h.Match.Teams) {

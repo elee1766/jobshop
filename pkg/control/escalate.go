@@ -45,6 +45,8 @@ func (c *Controller) stepEvents(ctx context.Context, ids []string) {
 // checkRun escalates a running run with an exhausted step, then completes
 // it when every step closed done.
 func (c *Controller) checkRun(ctx context.Context, runID string) {
+	// Gated steps are decided first: a skip may finish the run.
+	c.gateSteps(ctx, runID)
 	if !c.escalateRun(ctx, runID) {
 		c.completeRun(ctx, runID)
 	}
@@ -145,6 +147,7 @@ func (c *Controller) ensureEscalation(ctx context.Context, run store.Ticket, f s
 	}
 	c.log.Info("escalation filed", "run", run.ID, "ticket", t.ID, "pool", pool)
 	c.record(ctx, store.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: a step failed at its retry limit (escalation %s)", run.ID, f.Workflow, t.ID), "")
+	c.ensureEscalationChat(ctx, t)
 }
 
 // escalationBody lists the run and, per step, its attempts, resolution and
