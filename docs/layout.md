@@ -48,7 +48,7 @@ jobshop/
 ├── ui/                       Desk UI source (Svelte 5, Vite); builds into pkg/desk/dist
 ├── examples/                 sample jobshop.yaml, agent prompts
 ├── nix/
-│   ├── package.nix           buildGo127Module derivation
+│   ├── package.nix           go2nix build, buildGo127Module fallback
 │   └── module.nix            NixOS module: user, slice, service
 ├── flake.nix
 ├── flake.lock
@@ -210,8 +210,9 @@ breakage. No Makefile unless a real need appears.
 
 - Inputs: `nixpkgs` pinned to `nixos-26.05`, the same channel gasserver
   runs. It ships `buildGo127Module` (Go 1.27.3), matching `go.mod`.
-- `packages.x86_64-linux.jobshop`: `buildGo127Module`, `subPackages =
-  [ "cmd/jobshop" ]`, `CGO_ENABLED = 0` (pure-Go SQLite), version and
+- `packages.x86_64-linux.jobshop`: go2nix (per-package derivations, see
+  `docs/notes/go2nix.md`) when its plugin is loaded, else
+  `buildGo127Module`; `cmd/jobshop`, `CGO_ENABLED = 0` (pure-Go SQLite), version and
   commit via `-ldflags -X`, `vendorHash` pinned. Tests run in CI, not in
   the Nix build (`doCheck = false`), same as Gas City's flake.
 - `nixosModules.jobshop`: the deployment unit (below).

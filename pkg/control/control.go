@@ -114,6 +114,10 @@ type Controller struct {
 	gitMu sync.Mutex
 	// minter caches identity tokens (#200).
 	minter *identity.Minter
+	// ingest is the spool drain (#335).
+	ingest ingestDrain
+	// reconcileAt is the last GitHub App delivery reconcile (#335).
+	reconcileAt time.Time
 	// linearURL is the Linear GraphQL endpoint for identity check; "" is
 	// linear.DefaultAPIURL (tests set a fake).
 	linearURL string
@@ -217,6 +221,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		tracer:   tr.Tracer(),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		minter:       identity.NewMinter(),
+		ingest:       ingestDrain{wake: make(chan struct{}, 1)},
 		drained:      map[string]bool{},
 		scaleTargets: map[string]int{}, scaleHist: map[string][]scaleSample{}, scaleViews: map[string]poolScaleView{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
@@ -284,6 +289,8 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpEvents)
 	c.wg.Go(c.pumpSubscriptions)
 	c.wg.Go(c.pumpActivity)
+	c.wg.Go(c.pumpDrain)
+	c.wg.Go(c.pumpReconcile)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -342,6 +349,7 @@ func (c *Controller) serve() error {
 func (c *Controller) stop() {
 	c.cancel()
 	c.wg.Wait()
+	c.closeSpool()
 	_ = os.Remove(c.root.AdminSocket())
 	c.log.Info("controller stopped")
 }
@@ -578,6 +586,7 @@ func init() {
 		rpc.MethodIdentityList:     bind((*Controller).identityList),
 		rpc.MethodIdentityCheck:    bind((*Controller).identityCheck),
 		rpc.MethodIdentityToken:    bind((*Controller).identityToken),
+		rpc.MethodIngestDrain:      bind((*Controller).ingestDrainMethod),
 		rpc.MethodTicketCreate:     bind((*Controller).create),
 		rpc.MethodTicketShow:       bind((*Controller).show),
 		rpc.MethodTicketTrace:      bind((*Controller).trace),

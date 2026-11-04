@@ -41,7 +41,7 @@ var ErrBadDelivery = errors.New("ingest: bad delivery")
 // schemaVersion is PRAGMA user_version once schema is applied. One
 // table needs no migration tool; a later change bumps this and adds a
 // step in OpenSpool.
-const schemaVersion = 1
+const schemaVersion = 2
 
 const schema = `
 CREATE TABLE IF NOT EXISTS spool (
@@ -56,6 +56,24 @@ CREATE TABLE IF NOT EXISTS spool (
   UNIQUE (source, delivery_id)
 );
 PRAGMA user_version = 1;
+`
+
+// schemaV2 adds spool_bad (#335): rows the drain could not parse, kept
+// with the error for a person to look at instead of being dropped.
+const schemaV2 = `
+CREATE TABLE IF NOT EXISTS spool_bad (
+  id          INTEGER PRIMARY KEY,
+  endpoint    TEXT NOT NULL,
+  source      TEXT NOT NULL,
+  delivery_id TEXT NOT NULL,
+  kind        TEXT NOT NULL DEFAULT '',
+  received_at INTEGER NOT NULL,
+  headers     TEXT NOT NULL,
+  payload     TEXT NOT NULL,
+  error       TEXT NOT NULL,
+  moved_at    INTEGER NOT NULL
+);
+PRAGMA user_version = 2;
 `
 
 // Spool is the receiver's own SQLite database (#339). Only the receiver
@@ -85,8 +103,14 @@ func OpenSpool(ctx context.Context, path string) (*Spool, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ingest spool %s: schema version %d is newer than this binary (%d)", path, v, schemaVersion)
 	}
-	if v < schemaVersion {
+	if v < 1 {
 		if _, err := db.ExecContext(ctx, schema); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("ingest spool %s: %w", path, err)
+		}
+	}
+	if v < 2 {
+		if _, err := db.ExecContext(ctx, schemaV2); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("ingest spool %s: %w", path, err)
 		}
@@ -122,6 +146,77 @@ VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (source, delivery_id) DO NOTHING`,
 	}
 	n, err := res.RowsAffected()
 	return n == 1, err
+}
+
+// Rows returns up to limit rows, oldest first, as stored: parsing is
+// the drain's job so it can move a bad row aside. limit <= 0 is 100.
+func (s *Spool) Rows(ctx context.Context, limit int) ([]Row, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT id, endpoint, source, delivery_id, kind, received_at, headers, payload
+FROM spool ORDER BY id LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Row
+	for rows.Next() {
+		var r Row
+		if err := rows.Scan(&r.ID, &r.Endpoint, &r.Source, &r.DeliveryID, &r.Kind, &r.ReceivedAt, &r.Headers, &r.Payload); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// Row is one spool row as stored.
+type Row struct {
+	ID                                 int64
+	Endpoint, Source, DeliveryID, Kind string
+	ReceivedAt                         int64 // Unix ms
+	Headers, Payload                   string
+}
+
+// Delivery parses r.
+func (r Row) Delivery() (Delivery, error) {
+	d := Delivery{
+		ID: r.ID, Endpoint: r.Endpoint, Source: r.Source, DeliveryID: r.DeliveryID, Kind: r.Kind,
+		ReceivedAt: time.UnixMilli(r.ReceivedAt).UTC(),
+	}
+	if err := json.Unmarshal([]byte(r.Headers), &d.Headers); err != nil {
+		return d, fmt.Errorf("headers: %w", err)
+	}
+	if !json.Valid([]byte(r.Payload)) {
+		return d, errors.New("payload is not JSON")
+	}
+	d.Payload = json.RawMessage(r.Payload)
+	return d, nil
+}
+
+// MarkBad moves row id to spool_bad with reason, in one transaction.
+func (s *Spool) MarkBad(ctx context.Context, id int64, reason string, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO spool_bad (id, endpoint, source, delivery_id, kind, received_at, headers, payload, error, moved_at)
+SELECT id, endpoint, source, delivery_id, kind, received_at, headers, payload, ?, ? FROM spool WHERE id = ?`, reason, now.UnixMilli(), id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM spool WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// BadCount is the number of rows in spool_bad.
+func (s *Spool) BadCount(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM spool_bad`).Scan(&n)
+	return n, err
 }
 
 // List returns up to limit deliveries, oldest first. limit <= 0 is 100.

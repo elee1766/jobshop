@@ -618,6 +618,10 @@ in
       description = "Chat gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
     };
 
+    ingest = {
+      enable = lib.mkEnableOption "jobshop-ingest.service running `jobshop ingest serve` (#334) on settings.ingest.listen";
+    };
+
     # Old single-workspace option. Its definitions go to workspaces.default,
     # with the old dir default and selfDeploy, so existing hosts evaluate
     # unchanged and keep their checkout.
@@ -917,6 +921,26 @@ in
       {
         systemd = lib.mkMerge (lib.mapAttrsToList workspaceUnits workspaces);
       }
+      (lib.mkIf cfg.ingest.enable {
+        # Needs no controller or database: only the spool dir and secrets.
+        systemd.services.jobshop-ingest = {
+          description = "Jobshop webhook receiver";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          restartTriggers = [ configFile ];
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = "${jobshop} ingest serve";
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
       {
         # Admin-socket clients; they retry while the controller restarts.
         systemd.services = lib.mapAttrs' (

@@ -21,6 +21,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -305,4 +306,71 @@ func TestSubscriptionsLinear(t *testing.T) {
 
 	c.pollSubscriptions(ctx, src)
 	assert.Len(t, messagesTo(t, c, sess.ID), 1, "delivered once")
+}
+
+// TestSubscriptionsGitHubTokenSelf: with a github-token identity covering
+// the repo, comments by the token's own login (GET /user) are filtered
+// like an App bot's; other humans still arrive (#340).
+func TestSubscriptionsGitHubTokenSelf(t *testing.T) {
+	c, clk, src := subController(t)
+	ctx := t.Context()
+	pat := filepath.Join(t.TempDir(), "pat")
+	require.NoError(t, os.WriteFile(pat, []byte("ghp_x\n"), 0o600))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer ghp_x", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"login":"Alice"}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := *c.config()
+	cfg.Identities = map[string]config.Identity{"me": {Kind: config.IdentityGitHubToken, TokenFile: pat, Repos: []string{"acme/*"}, APIURL: srv.URL}}
+	lc, err := newLiveConfig(&cfg)
+	require.NoError(t, err)
+	c.live.Store(lc)
+	c.minter = identity.NewMinter()
+
+	sess := mkSession(t, c)
+	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
+	_, _, err = c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
+	require.NoError(t, err)
+	c.pollSubscriptions(ctx, src)
+
+	at := clk.now().Add(time.Minute)
+	src.add("acme/widget#7", ghComment{Author: "alice", Body: "my own PR note", At: at})
+	c.pollSubscriptions(ctx, src)
+	assert.Empty(t, messagesTo(t, c, sess.ID), "own comments are filtered")
+
+	src.add("acme/widget#7", ghComment{Author: "bob", Body: "please rename", At: at.Add(time.Minute)})
+	c.pollSubscriptions(ctx, src)
+	msgs := messagesTo(t, c, sess.ID)
+	require.Len(t, msgs, 1)
+	assert.Contains(t, msgs[0].Body, "please rename")
+}
+
+// TestSubscriptionsWriteInbox: a polled comment becomes an inbox row
+// whose natural key matches the drained webhook copy, so the second
+// copy dedupes (#335).
+func TestSubscriptionsWriteInbox(t *testing.T) {
+	c, clk, src := subController(t)
+	ctx := t.Context()
+	mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
+	c.pollSubscriptions(ctx, src)
+
+	at := clk.now().Add(time.Minute).Truncate(time.Second)
+	src.add("acme/widget#7", ghComment{ID: "c99", Author: "bob", Kind: "comment", Body: "hi", At: at})
+	c.pollSubscriptions(ctx, src)
+	its, err := c.store.InboxList(ctx, store.InboxFilter{})
+	require.NoError(t, err)
+	require.Len(t, its, 1)
+	assert.Equal(t, ingest.GitHubKey("acme/widget", "comment", "99", at), its[0].NaturalKey)
+	assert.Equal(t, "99", its[0].CommentID)
+
+	sp, err := ingest.OpenSpool(ctx, filepath.Join(t.TempDir(), "spool.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sp.Close() })
+	payload := fmt.Sprintf(`{"repository":{"full_name":"acme/widget"},"issue":{"number":7},"comment":{"id":99,"updated_at":%q}}`, at.Format(time.RFC3339))
+	_, err = sp.Write(ctx, ingest.Delivery{Endpoint: "gh", Source: "github", DeliveryID: "w1", Kind: "issue_comment", Payload: []byte(payload)})
+	require.NoError(t, err)
+	res, err := ingest.Drain(ctx, sp, c.store, clk.now, c.log)
+	require.NoError(t, err)
+	assert.Equal(t, ingest.DrainResult{Moved: 1}, res, "webhook copy dedupes")
 }

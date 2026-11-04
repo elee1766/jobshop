@@ -1,8 +1,14 @@
 -- name: InboxInsert :execrows
-INSERT INTO inbox (source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, updated_at, endpoint)
+-- No conflict target: a clash on delivery_id or on natural_key (#335)
+-- both mean the item is already stored.
+INSERT INTO inbox (source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, updated_at, endpoint, natural_key)
 VALUES (sqlc.arg(source), sqlc.arg(delivery_id), sqlc.arg(kind), sqlc.arg(repo_or_team), sqlc.arg(number),
-        sqlc.arg(comment_id), sqlc.arg(actor), sqlc.arg(received_at), sqlc.arg(payload), sqlc.arg(now), sqlc.arg(endpoint))
-ON CONFLICT (delivery_id) DO NOTHING;
+        sqlc.arg(comment_id), sqlc.arg(actor), sqlc.arg(received_at), sqlc.arg(payload), sqlc.arg(now), sqlc.arg(endpoint),
+        sqlc.arg(natural_key))
+ON CONFLICT DO NOTHING;
+
+-- name: InboxGetByNaturalKey :one
+SELECT * FROM inbox WHERE natural_key = ? AND natural_key != '';
 
 -- name: InboxGetByDelivery :one
 SELECT * FROM inbox WHERE delivery_id = ?;

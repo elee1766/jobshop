@@ -54,6 +54,7 @@ type Inbox struct {
 	Attempts    int64
 	UpdatedAt   int64
 	Endpoint    string
+	NaturalKey  string
 }
 
 type Label struct {

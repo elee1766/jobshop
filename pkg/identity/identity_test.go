@@ -103,6 +103,40 @@ func TestMinterErrors(t *testing.T) {
 	assert.Equal(t, "lin_api_x", tok.Token)
 }
 
+// TestGitHubTokenLogin: the PAT is read from its file, sent as the
+// bearer token to GET /user, and the login is cached.
+func TestGitHubTokenLogin(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.URL.Path != "/user" || r.Header.Get("Authorization") != "Bearer ghp_x" {
+			http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write([]byte(`{"login":"alice"}`))
+	}))
+	t.Cleanup(srv.Close)
+	pat := filepath.Join(t.TempDir(), "pat")
+	require.NoError(t, os.WriteFile(pat, []byte("ghp_x\n"), 0o600))
+	id := config.Identity{Kind: config.IdentityGitHubToken, TokenFile: pat, Repos: []string{"a/*"}, APIURL: srv.URL}
+	m := identity.NewMinter()
+	tok, err := m.Token(t.Context(), "me", id, "a/b")
+	require.NoError(t, err)
+	assert.Equal(t, "ghp_x", tok.Token)
+	assert.Equal(t, config.IdentityGitHubToken, tok.Kind)
+	for range 2 {
+		l, err := m.Login(t.Context(), "me", id)
+		require.NoError(t, err)
+		assert.Equal(t, "alice", l)
+	}
+	assert.Equal(t, int32(1), calls.Load())
+
+	require.NoError(t, os.WriteFile(pat, []byte("wrong"), 0o600))
+	m.Forget()
+	_, err = m.Login(t.Context(), "me", id)
+	require.ErrorContains(t, err, "Bad credentials")
+}
+
 // fakeLinearOAuth serves Linear's client_credentials token endpoint. The
 // client secret must be "good".
 func fakeLinearOAuth(t *testing.T, ttl time.Duration) (*httptest.Server, *atomic.Int32, *atomic.Value) {

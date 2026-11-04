@@ -304,7 +304,7 @@ func TestIngestEndpointErrors(t *testing.T) {
 		"bad source":         {"ingest:\n  endpoints: [{name: a, source: jira, secret_file: s}]\n", "github or linear"},
 		"no secret":          {"ingest:\n  endpoints: [{name: a, source: github}]\n", "exactly one"},
 		"both secrets":       {ingestApp + "ingest:\n  endpoints: [{name: a, source: linear, secret_file: s, identity: lapp}]\n", "exactly one"},
-		"unknown identity":   {"ingest:\n  endpoints: [{name: a, source: linear, identity: nope}]\n", "linear-app identity"},
+		"unknown identity":   {"ingest:\n  endpoints: [{name: a, source: linear, identity: nope}]\n", "Linear identity"},
 		"repos on linear":    {"ingest:\n  endpoints: [{name: a, source: linear, secret_file: s, repos: [a/b]}]\n", "repos is for github"},
 		"bad repo":           {"ingest:\n  endpoints: [{name: a, source: github, secret_file: s, repos: [nope]}]\n", "owner/name"},
 		"relative path":      {"ingest:\n  endpoints: [{name: a, source: github, secret_file: s, path: x}]\n", "must start with /"},

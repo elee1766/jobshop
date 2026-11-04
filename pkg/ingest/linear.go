@@ -21,6 +21,8 @@ type LinearEvent struct {
 		Type string `json:"type"`
 	} `json:"actor"`
 	Data struct {
+		ID         string    `json:"id"`
+		CreatedAt  time.Time `json:"createdAt"`
 		Identifier string    `json:"identifier"`
 		Number     int       `json:"number"`
 		Team       *teamRef  `json:"team"`
