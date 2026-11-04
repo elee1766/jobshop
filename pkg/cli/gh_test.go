@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func TestClassifyGH(t *testing.T) {
@@ -130,6 +131,8 @@ type fakeController struct {
 	decision string
 	guards   []rpc.GuardParams
 	records  []rpc.ActivityRecordParams
+	// keys is the write key table: key -> result ("" pending).
+	keys map[string]string
 }
 
 func (f *fakeController) serve(t *testing.T) string {
@@ -164,6 +167,21 @@ func (f *fakeController) serve(t *testing.T) string {
 					_ = json.Unmarshal(raw, &p)
 					f.records = append(f.records, p)
 					return struct{}{}, nil
+				case rpc.MethodWriteKeyClaim:
+					var p rpc.WriteKeyParams
+					_ = json.Unmarshal(raw, &p)
+					res, ok := f.keys[p.Key]
+					if !ok {
+						f.keys[p.Key] = ""
+					}
+					return store.WriteKey{Key: p.Key, Scoped: "js/" + p.Key, Op: p.Op, Result: res, Done: res != "", New: !ok}, nil
+				case rpc.MethodWriteKeyFinish:
+					var p rpc.WriteKeyParams
+					_ = json.Unmarshal(raw, &p)
+					if f.keys[p.Key] == "" {
+						f.keys[p.Key] = p.Result
+					}
+					return store.WriteKey{Key: p.Key, Result: f.keys[p.Key], Done: true}, nil
 				}
 				return nil, acp.NewMethodNotFound(method)
 			}, nc, gate)

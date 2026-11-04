@@ -102,6 +102,9 @@ func (ws *writeServer) answer(c call) string {
 	q := c.Query
 	switch {
 	case strings.Contains(q, "issueCreate"):
+		if ws.created[inputID(c)] {
+			return `{"errors":[{"message":"Entity with this id already exists"}]}`
+		}
 		ws.record(c)
 		return `{"data":{"issueCreate":{"success":true,"issue":{"id":"` + inputID(c) + `","identifier":"ENG-50","url":"https://linear.app/acme/issue/ENG-50"}}}}`
 	case strings.Contains(q, "commentCreate"):
@@ -189,6 +192,24 @@ func (k *mapKeys) Finish(_ context.Context, key, result string) (string, error) 
 	return r.result, nil
 }
 
+// TestWriteCreateRetryWithoutLocalKey: the local key was pruned (#415);
+// the create with the same key-derived id is rejected as existing and
+// Do returns the existing issue instead of failing or creating another.
+func TestWriteCreateRetryWithoutLocalKey(t *testing.T) {
+	c, ws := newWriteServer(t)
+	ctx := t.Context()
+	id := linear.KeyID("create-pruned")
+	m, err := c.PlanCreate(ctx, linear.CreateParams{Team: "eng", Title: "New"}, id)
+	require.NoError(t, err)
+	_, err = c.Do(ctx, newMapKeys(), "create-pruned", false, m)
+	require.NoError(t, err)
+	res, err := c.Do(ctx, newMapKeys(), "create-pruned", false, m)
+	require.NoError(t, err)
+	assert.Equal(t, id, res.(linear.Result).ID)
+	assert.True(t, res.(linear.Result).Replayed)
+	assert.Len(t, ws.created, 1, "one entity")
+}
+
 func TestWriteRepeatedKeyPostsOnce(t *testing.T) {
 	c, ws := newWriteServer(t)
 	ctx := t.Context()
@@ -215,8 +236,9 @@ func TestWriteRepeatedKeyPostsOnce(t *testing.T) {
 	assert.NotEqual(t, linear.KeyID("create-2"), id)
 }
 
-// A write that landed but whose reply was lost leaves the key pending;
-// the retry finds the entity by its key-derived id and does not post.
+// A write that landed but whose reply was lost: the failed call reads the
+// entity back by its key-derived id (#415), and a retry replays the
+// stored result. Neither posts again.
 func TestWriteUnknownOutcomeRetry(t *testing.T) {
 	c, ws := newWriteServer(t)
 	ctx := t.Context()
@@ -225,9 +247,10 @@ func TestWriteUnknownOutcomeRetry(t *testing.T) {
 	m, err := c.PlanAsk(ctx, "ENG-123", linear.AskParams{Body: "ready?"}, id)
 	require.NoError(t, err)
 	ws.dropReply = true
-	_, err = c.Do(ctx, keys, "ask-1", false, m)
-	require.Error(t, err)
+	first, err := c.Do(ctx, keys, "ask-1", false, m)
+	require.NoError(t, err)
 	assert.Equal(t, 1, ws.mutations)
+	assert.True(t, first.(linear.Result).Replayed, "found by read back")
 
 	res, err := c.Do(ctx, keys, "ask-1", false, m)
 	require.NoError(t, err)

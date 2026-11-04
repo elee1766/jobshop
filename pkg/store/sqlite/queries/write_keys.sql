@@ -10,3 +10,6 @@ ON CONFLICT (key) DO NOTHING;
 UPDATE write_keys SET result = sqlc.arg(result), done = 1, updated_at = sqlc.arg(now)
 WHERE key = sqlc.arg(key) AND done = 0
 RETURNING *;
+
+-- name: PruneWriteKeys :execrows
+DELETE FROM write_keys WHERE created_at < sqlc.arg(before);

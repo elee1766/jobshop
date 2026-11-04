@@ -106,6 +106,8 @@ type Controller struct {
 	poolPausedUntil map[string]time.Time
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
+	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
+	writeKeysPrunedAt time.Time
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
@@ -405,6 +407,7 @@ func (c *Controller) tick() {
 	c.sweepBatches()
 	c.sweepLinearAsks(c.ctx)
 	c.pruneInbox()
+	c.pruneWriteKeys()
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
@@ -427,6 +430,30 @@ func (c *Controller) pruneInbox() {
 	}
 	if n > 0 {
 		c.log.Info("inbox pruned", "items", n)
+	}
+}
+
+// writeKeyPruneEvery spaces write key prunes; retention is hours.
+const writeKeyPruneEvery = 10 * time.Minute
+
+// pruneWriteKeys deletes write keys older than write_keys.retention,
+// done or pending (#415). A pending key's retry then checks the remote
+// key or marker instead of the local row.
+func (c *Controller) pruneWriteKeys() {
+	now := c.now()
+	if now.Sub(c.writeKeysPrunedAt) < writeKeyPruneEvery {
+		return
+	}
+	c.writeKeysPrunedAt = now
+	n, err := c.store.PruneWriteKeys(c.ctx, now.Add(-c.config().WriteKeys.RetentionDuration()))
+	if err != nil {
+		if c.ctx.Err() == nil {
+			c.log.Error("write key prune", "err", err)
+		}
+		return
+	}
+	if n > 0 {
+		c.log.Info("write keys pruned", "keys", n)
 	}
 }
 

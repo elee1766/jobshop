@@ -42,6 +42,8 @@ type Config struct {
 	Resources map[string]Resource `yaml:"resources"`
 	// Ingest configures the ingest inbox (#321).
 	Ingest Ingest `yaml:"ingest"`
+	// WriteKeys configures the local idempotency key cache (#415).
+	WriteKeys WriteKeys `yaml:"write_keys"`
 	// Defaults hold settings agents and pools inherit (#262).
 	Defaults Defaults `yaml:"defaults"`
 	// SharedTools are dirs mounted read-only into every sandboxed
@@ -551,6 +553,26 @@ func (i Ingest) RetentionDuration() time.Duration {
 	return d
 }
 
+// DefaultWriteKeyRetention is how long local write keys are kept (#415).
+const DefaultWriteKeyRetention = 48 * time.Hour
+
+// WriteKeys configures the write key cache (#415). The remote key or
+// marker is the record; the local row only saves a remote check.
+type WriteKeys struct {
+	// Retention keeps keys this long, done or pending (Go duration or
+	// Nd). Default 48h.
+	Retention string `yaml:"retention"`
+}
+
+// RetentionDuration is Retention parsed, or the default.
+func (w WriteKeys) RetentionDuration() time.Duration {
+	d, _ := parseDays(w.Retention)
+	if d <= 0 {
+		return DefaultWriteKeyRetention
+	}
+	return d
+}
+
 // parseDays is time.ParseDuration that also takes "Nd".
 func parseDays(s string) (time.Duration, error) {
 	if n, ok := strings.CutSuffix(s, "d"); ok {
@@ -940,6 +962,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if r := c.Ingest.Retention; r != "" {
 		if d, err := parseDays(r); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: ingest.retention %q must be a positive duration (e.g. 14d, 72h)", FileName, r)
+		}
+	}
+	if r := c.WriteKeys.Retention; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: write_keys.retention %q must be a positive duration (e.g. 48h, 2d)", FileName, r)
 		}
 	}
 	if c.Limits.MaxSessions < 0 {
