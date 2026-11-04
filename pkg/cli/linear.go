@@ -17,10 +17,15 @@ import (
 // the issue's team (#201). The key never leaves the controller except as
 // the token for this call.
 type linearCmd struct {
-	APIURL  string           `name:"api-url" hidden:"" env:"JOBSHOP_LINEAR_URL" help:"Linear GraphQL endpoint (tests)."`
-	Issue   linearIssueCmd   `cmd:"" help:"Print a Linear issue with its comments as JSON."`
-	Comment linearCommentCmd `cmd:"" help:"Comment on a Linear issue (e.g. the PR link)."`
-	State   linearStateCmd   `cmd:"" help:"Move a Linear issue to a state of its team by name (e.g. Done on merge)."`
+	APIURL   string            `name:"api-url" hidden:"" env:"JOBSHOP_LINEAR_URL" help:"Linear GraphQL endpoint (tests)."`
+	Issue    linearIssueCmd    `cmd:"" help:"Print a Linear issue with its comments as JSON."`
+	Comment  linearCommentCmd  `cmd:"" help:"Comment on a Linear issue (e.g. the PR link)."`
+	State    linearStateCmd    `cmd:"" help:"Move a Linear issue to a state of its team by name (e.g. Done on merge)."`
+	Context  linearContextCmd  `cmd:"" help:"Print an issue with labels, blockers, relations, children, assignee, state and recent comments as JSON."`
+	List     linearListCmd     `cmd:"" help:"List a team's issues as JSON, one page at a time."`
+	Search   linearSearchCmd   `cmd:"" help:"Search a team's issues as JSON, one page at a time."`
+	Catalog  linearCatalogCmd  `cmd:"" help:"List a team's projects, labels, states or users as JSON."`
+	Eligible linearEligibleCmd `cmd:"" help:"Intake gate: print whether an issue may start a run and why not. Exits 1 when not eligible."`
 }
 
 type linearIssueCmd struct {
