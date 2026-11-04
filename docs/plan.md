@@ -440,6 +440,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest dispatch: pollers only write inbox rows; a dispatcher delivers
   admitted rows, so denied or held input never reaches a session (#442,
   `docs/notes/442-ingest-dispatch.md`, check `docs/verify/ingest-dispatch.md`).
+- SQLite store prepares each query once and seeds new databases from a
+  migrated template; pkg/control -race 138s to 63s (#433,
+  `docs/notes/433-sqlite-stmt-cache.md`).
 - Ingest split mode: `ingest.workers: external` moves admission to
   `jobshop ingest work` over the admin socket, with heartbeats,
   missing-worker and backlog attention and inbox gauges (#443,

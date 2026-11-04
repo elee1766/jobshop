@@ -133,7 +133,7 @@ type cachedTx struct {
 
 func (t cachedTx) stmt(ctx context.Context, q string) *sql.Stmt {
 	if st := t.c.cached(q); st != nil {
-		return t.Tx.StmtContext(ctx, st)
+		return t.StmtContext(ctx, st)
 	}
 	return nil
 }
