@@ -2,7 +2,11 @@ package control
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -373,4 +377,74 @@ func TestSubscriptionsWriteInbox(t *testing.T) {
 	res, err := ingest.Drain(ctx, sp, c.store, clk.now, c.log)
 	require.NoError(t, err)
 	assert.Equal(t, ingest.DrainResult{Moved: 1}, res, "webhook copy dedupes")
+}
+
+// TestSubscriptionsBots: a review from a bot on subscriptions.bots reaches
+// the working session and the ticket; unlisted bots are still dropped and
+// advance the read position; the host's own App login is dropped even
+// when listed; a listed bot reopens a closed ticket (#402).
+func TestSubscriptionsBots(t *testing.T) {
+	c, clk, src := subController(t)
+	ctx := t.Context()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/app", r.URL.Path)
+		_, _ = w.Write([]byte(`{"slug":"jobshop-host"}`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := *c.config()
+	subs := *cfg.Subscriptions
+	subs.Bots = []string{"kody[bot]", "jobshop-host[bot]"}
+	cfg.Subscriptions = &subs
+	cfg.Identities = map[string]config.Identity{"app": {
+		Kind: config.IdentityGitHubApp, AppID: 1, PrivateKeyFile: writeRSAKey(t), Repos: []string{"acme/*"},
+		Installations: map[string]int64{"acme": 2}, APIURL: srv.URL,
+	}}
+	lc, err := newLiveConfig(&cfg)
+	require.NoError(t, err)
+	c.live.Store(lc)
+	c.minter = identity.NewMinter()
+
+	sess := mkSession(t, c)
+	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","pr":4}}`)})
+	_, cl, err := c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
+	require.NoError(t, err)
+	c.pollSubscriptions(ctx, src)
+
+	at := clk.now().Add(time.Minute)
+	src.add("acme/widget#4", ghComment{Author: "github-actions[bot]", Bot: true, Body: "CI", At: at})
+	src.add("acme/widget#4", ghComment{Author: "jobshop-host[bot]", Bot: true, Body: "PR head abc", At: at})
+	c.pollSubscriptions(ctx, src)
+	assert.Empty(t, messagesTo(t, c, sess.ID), "unlisted and own bots dropped")
+	assert.Equal(t, at, threadsOf(t, c, tk.ID)[0].Seen)
+
+	at2 := at.Add(time.Minute)
+	src.add("acme/widget#4", ghComment{Author: "kody[bot]", Bot: true, Kind: "review", State: "CHANGES_REQUESTED", Body: "null check", URL: "u", At: at2})
+	c.pollSubscriptions(ctx, src)
+	msgs := messagesTo(t, c, sess.ID)
+	require.Len(t, msgs, 1)
+	assert.Contains(t, msgs[0].Body, "null check")
+	f, err := store.DecodeFields[store.MessageFields](msgs[0])
+	require.NoError(t, err)
+	assert.True(t, f.Interrupt)
+	cs, err := c.store.Comments(ctx, tk.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "github:kody[bot]", cs[len(cs)-1].Author)
+
+	_, err = c.store.CloseTicket(ctx, sess.ID, tk.ID, &cl, "done")
+	require.NoError(t, err)
+	clk.advance(time.Hour)
+	src.add("acme/widget#4", ghComment{Author: "kody[bot]", Bot: true, Kind: "review comment", Body: "one more", At: clk.now()})
+	c.pollSubscriptions(ctx, src)
+	got, err := c.store.Get(ctx, tk.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.StatusOpen, got.Status, "a listed bot resumes the ticket")
+}
+
+func writeRSAKey(t *testing.T) string {
+	t.Helper()
+	k, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	p := filepath.Join(t.TempDir(), "key.pem")
+	require.NoError(t, os.WriteFile(p, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(k)}), 0o600))
+	return p
 }
