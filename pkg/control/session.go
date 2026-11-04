@@ -968,6 +968,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 // confused agent cannot spin on the same ticket.
 func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, acpSession, ticketID string) {
 	defer r.setTurnTicket("")
+	r.indexJournal(ctx, ticketID)
 	held, err := r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
 	if err != nil {
 		return
