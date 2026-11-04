@@ -1,14 +1,21 @@
 <script>
   import { go } from '../lib/url.svelte.js';
   import { ago } from '../lib/format.js';
+  import { resource } from '../lib/api.svelte.js';
   import Progress from './Progress.svelte';
 
   /** @type {{ items: { data: any, error: string, loading: boolean } }} */
   let { items } = $props();
 
+  // An escalation ticket with a chat opens that chat; any other ticket
+  // opens its drawer.
+  const escalations = resource(() => '/api/escalations');
+
   /** @param {any} it */
   function open(it) {
-    if (it.kind === 'run' || it.kind === 'ticket') go({ ticket: it.id });
+    const chat = it.kind === 'ticket' && escalations.data?.find((/** @type {any} */ e) => e.ticket === it.id);
+    if (chat) go({ session: chat.session });
+    else if (it.kind === 'run' || it.kind === 'ticket') go({ ticket: it.id });
     else if (it.kind === 'pool') go({ view: 'pools', ticket: '' });
     else if (it.kind === 'deploy') go({ view: 'deploys', ticket: '' });
   }

@@ -268,3 +268,40 @@ func TestActivity(t *testing.T) {
 	w := get(t, h, "/api/activity?since=soon", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
+
+// TestEscalations: only tickets with a controller-opened chat are listed,
+// open ones first (oldest first), then the latest closed ones.
+func TestEscalations(t *testing.T) {
+	meta := func(session, cause string) json.RawMessage {
+		return json.RawMessage(`{"escalation":{"key":"escalation:x","session":"` + session + `","cause":"` + cause + `","held":"h1"}}`)
+	}
+	t0 := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodTicketList + ":open": []store.Ticket{
+			{ID: "e2", Title: "newer", Body: "why two\nmore", Meta: meta("s2", "wait"), CreatedAt: t0.Add(time.Hour)},
+			{ID: "e1", Title: "older", Meta: meta("s1", "run"), CreatedAt: t0},
+			{ID: "nochat", Title: "no chat", CreatedAt: t0},
+		},
+		rpc.MethodTicketList + ":closed": []store.Ticket{
+			{ID: "e0", Title: "done", Status: store.StatusClosed, Resolution: "done", Meta: meta("s0", "label"), CreatedAt: t0, ClosedAt: t0.Add(2 * time.Hour)},
+		},
+	}}
+	h := New(Config{}, ctl, nil).Handler()
+	var got []Escalation
+	get(t, h, "/api/escalations", &got)
+	var ids []string
+	for _, e := range got {
+		ids = append(ids, e.Ticket)
+	}
+	assert.Equal(t, []string{"e1", "e2", "e0"}, ids)
+	assert.True(t, got[0].Open)
+	assert.Equal(t, "run", got[0].Cause)
+	assert.Equal(t, "s2", got[1].Session)
+	assert.Equal(t, "why two", got[1].Why)
+	assert.False(t, got[2].Open)
+	assert.Equal(t, "done", got[2].Resolution)
+	assert.Contains(t, strings.Join(ctl.calls, "\n"), `"newest":true`)
+
+	h = New(Config{}, &fakeCtl{results: map[string]any{}}, nil).Handler()
+	assert.Equal(t, "[]\n", get(t, h, "/api/escalations", nil).Body.String())
+}

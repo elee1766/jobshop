@@ -198,7 +198,7 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	}
 	f := store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
-		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit,
+		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit, Newest: p.Newest,
 	}
 	if p.Report != "" {
 		f.MetaPack, f.MetaKey, f.MetaValue = reportMetaPack, "state", p.Report

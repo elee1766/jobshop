@@ -192,6 +192,8 @@ type ListParams struct {
 	Holder   string       `json:"holder,omitempty"`
 	ParentID string       `json:"parent_id,omitempty"`
 	Label    string       `json:"label,omitempty"`
+	// Newest lists the most recently created first.
+	Newest bool `json:"newest,omitempty"`
 	// Report matches tickets whose last worker report has this state (#186).
 	Report string `json:"report,omitempty"`
 	Limit  int    `json:"limit,omitempty"`

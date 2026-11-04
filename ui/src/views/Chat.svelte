@@ -24,7 +24,7 @@
   /** @typedef {{ id: string, title: string, status: string }} Call */
   /** @typedef {{ kind: 'text', text: string, time: string }} TextPart */
   /** @typedef {{ kind: 'tools', calls: Call[] }} ToolsPart */
-  /** @typedef {{ kind: 'turn', prompt: string, time: string, parts: (TextPart | ToolsPart)[], end: { error: string, stop: string } | null, long: boolean }} Turn */
+  /** @typedef {{ kind: 'turn', prompt: string, context: string, time: string, parts: (TextPart | ToolsPart)[], end: { error: string, stop: string } | null, long: boolean }} Turn */
   /** @typedef {{ kind: 'system', text: string, time: string }} System */
 
   /** @type {(Turn | System)[]} */
@@ -51,7 +51,7 @@
   function turnFor(time) {
     const last = items[items.length - 1];
     if (last && last.kind === 'turn') return last;
-    items.push({ kind: 'turn', prompt: '', time, parts: [], end: null, long: false });
+    items.push({ kind: 'turn', prompt: '', context: '', time, parts: [], end: null, long: false });
     return /** @type {Turn} */ (items[items.length - 1]);
   }
 
@@ -62,7 +62,7 @@
       case 'turn_start':
         busy = true;
         lastTextAt = Date.now();
-        items.push({ kind: 'turn', prompt: ev.text || '', time, parts: [], end: null, long: false });
+        items.push({ kind: 'turn', prompt: ev.text || '', context: ev.context || '', time, parts: [], end: null, long: false });
         break;
       case 'text': {
         const t = turnFor(time);
@@ -253,6 +253,12 @@
           <div class="system faint" title={it.time}>{it.text}</div>
         {:else}
           <section class="turn-group">
+            {#if it.context}
+              <details class="line ctx" data-testid="chat-context">
+                <summary><ChevronRight size={12} class="chev" /> <span class="sum">Context given to the session</span></summary>
+                <pre class="prose">{it.context}</pre>
+              </details>
+            {/if}
             {#if it.prompt}
               <div class="line turn me">
                 <div class="bubble" class:clamp={it.prompt.length > 600 && !it.long}>
@@ -362,6 +368,11 @@
   .text { max-width: min(100%, 720px); }
   .msg { padding: 2px 2px; }
 
+  .ctx { font-size: 12px; max-width: min(100%, 720px); color: var(--muted); }
+  .ctx summary { list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .ctx summary::-webkit-details-marker { display: none; }
+  .ctx[open] > summary :global(.chev) { transform: rotate(90deg); }
+  .ctx pre { margin: 4px 0 0 10px; padding-left: 10px; border-left: 1px solid var(--border); font-size: 12px; }
   .tools { font-size: 12px; max-width: min(100%, 720px); }
   .tools summary {
     list-style: none; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; max-width: 100%;

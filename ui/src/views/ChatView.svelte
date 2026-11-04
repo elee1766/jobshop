@@ -3,10 +3,14 @@
   import { resource, post } from '../lib/api.svelte.js';
   import { chatLabel } from '../lib/format.js';
   import Plus from '@lucide/svelte/icons/plus';
+  import Escalations from './Escalations.svelte';
 
   // Operator chat: the sessions of the chat pool and a form for a fresh one.
   // A session opens in the side panel (SessionPanel), so the list stays put.
   const chats = resource(() => '/api/chat');
+  const escalations = resource(() => '/api/escalations');
+  // Escalation sessions have their own list below.
+  const others = $derived((chats.data?.sessions ?? []).filter((/** @type {any} */ s) => !s.key.startsWith('escalation:')));
   let first = $state('');
   let starting = $state(false);
   let error = $state('');
@@ -42,7 +46,7 @@
   </form>
   {#if chats.error}<div class="err">{chats.error}</div>{/if}
   <div data-testid="chat-list">
-    {#each chats.data?.sessions ?? [] as s (s.id)}
+    {#each others as s (s.id)}
       <a
         href={'?view=chat&session=' + s.id}
         class="item"
@@ -57,10 +61,11 @@
       <div class="faint pad0">No open operator sessions.</div>
     {/each}
   </div>
+  <Escalations items={escalations} />
 </div>
 
 <style>
-  .list { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px 24px; max-width: 720px; width: 100%; }
+  .list { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px 24px; max-width: 960px; width: 100%; }
   .item { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: var(--radius); color: var(--muted); min-width: 0; }
   .item:hover { background: var(--hover); text-decoration: none; color: var(--text); }
   .item.active { background: var(--raised); color: var(--text); }
