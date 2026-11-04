@@ -39,6 +39,9 @@ defaults:
   linear_target: ""
   # State post-merge moves a shipped issue to.
   linear_done_state: Done
+  # Labels that keep a Linear issue out of intake (`jobshop linear
+  # eligible --skip-labels`, #279). Comma-separated.
+  linear_skip_labels: ""
   # Parallel PRs that append numbered sections to one doc take the same
   # number and conflict (#131).
   docs_rule: >-

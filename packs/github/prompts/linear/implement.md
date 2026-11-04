@@ -1,7 +1,8 @@
 Step `implement` of a `pr-work` run for Linear issue ${issue}.
 
 Read the issue first: `jobshop linear issue ${issue}` (JSON with
-description and comments). The issue is the spec. Post progress,
+description and comments). The issue is the spec; `jobshop linear
+context ${issue}` adds labels, blockers, parent and children. Post progress,
 questions and design notes as Linear comments
 (`jobshop linear comment ${issue} "<text>"`), not on the ticket.
 

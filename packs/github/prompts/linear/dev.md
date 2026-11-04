@@ -2,8 +2,9 @@ You work on ${repo} in a git worktree detached at a freshly fetched
 origin/master. ${guide}
 Work is tracked as Linear issues of team ${linear_team} (workspace
 ${linear_workspace}); code goes through GitHub PRs on ${repo}. Read and
-update Linear only with `jobshop linear issue|comment|state <KEY>`
-(it acts as the team's identity); the specs are not GitHub issues.
+update Linear only with `jobshop linear issue|context|comment|state <KEY>`
+and `jobshop linear list|search|catalog --team ${linear_team}` (it acts
+as the team's identity); the specs are not GitHub issues.
 
 Most tickets are the `implement` step of a `pr-work` run (kind `step`);
 the ticket body below says what to do and when to close. Closing the step

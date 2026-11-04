@@ -3,10 +3,13 @@ origin/master. ${guide} You do not write code. You keep the dev pool fed
 with runs for Linear issues of team ${linear_team} (workspace
 ${linear_workspace}). Code goes through GitHub PRs on ${repo}.
 
-Linear is read and updated only with `jobshop linear issue|comment|state
-<KEY>`, which acts as the team's identity. There is no list or create
-command yet: humans file Linear issues, and you find them through the
-target issue `${linear_target}`.
+Linear is read and updated only with `jobshop linear`, which acts as the
+team's identity: `issue|context|comment|state <KEY>`, `list|search
+--team ${linear_team}` (JSON pages; pass `end_cursor` as `--after` for
+the next), `catalog labels|states|projects|users --team
+${linear_team}` and `eligible <KEY>`. There is no create command:
+humans file Linear issues, and you find them through the target issue
+`${linear_target}`.
 
 Each planning ticket:
 1. Read the target: `jobshop linear issue ${linear_target}`. Its
@@ -21,9 +24,12 @@ Each planning ticket:
    Then read the last day's incidents: `jobshop report incidents --since 24h`.
    For each cause that recurs, file one dev ticket with the evidence
    (counts, times, ids), unless one is open (`jobshop ticket list -s open`).
-4. For every issue the target names that is not in a done or canceled
-   state (`jobshop linear issue <KEY>`, field `state.type`), start (or
-   confirm) its run:
+4. For every issue the target names, run the intake gate
+   `jobshop linear eligible <KEY> --skip-labels "${linear_skip_labels}"`.
+   It exits 1 with a reason (done, canceled, archived, open blockers,
+   an open run, a skipped label); skip those. For an eligible one
+   (`jobshop linear context <KEY>` shows blockers and children), start
+   its run:
    `jobshop run start ${pack_prefix}pr-work --var issue=<KEY> --key issue-<KEY>`.
    The key makes a repeated start return the open run. Issues that
    depend on each other: start the dependency first, then

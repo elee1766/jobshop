@@ -1,0 +1,3 @@
+{"data":{"issues":{"nodes":[
+ {"identifier":"ENG-5","title":"Add export","url":"https://linear.app/acme/issue/ENG-5","updatedAt":"2026-11-03T10:00:00.000Z","state":{"id":"st-todo","name":"Todo","type":"unstarted"},"assignee":{"name":"Ann"},"labels":{"nodes":[{"name":"backend"}]}}],
+ "pageInfo":{"hasNextPage":false,"endCursor":"cur-3"}}}}
