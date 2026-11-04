@@ -45,6 +45,18 @@ type PromptRule struct {
 	Command string `yaml:"command"`
 	// Timeout bounds Command (Go duration). Default 10s.
 	Timeout string `yaml:"timeout"`
+	// Memory adds the memory files and skills index from a git directory
+	// (#266), read each turn so a pull is live without a reload.
+	Memory *RuleMemory `yaml:"memory,omitempty"`
+}
+
+// RuleMemory points a prompt rule at a memory directory (pkg/memory).
+type RuleMemory struct {
+	// Dir holds memory/ and skills/. Relative paths resolve against the
+	// root dir. Empty is a no-op, so a pack can default it to "".
+	Dir string `yaml:"dir"`
+	// Cap is the per-file character cap. Default 2200.
+	Cap int `yaml:"cap,omitempty"`
 }
 
 // RuleMatch selects sessions. Every set field must match; a list matches
@@ -187,8 +199,11 @@ func (c *Config) checkRules() error {
 		default:
 			return fmt.Errorf("%s: at %q must be system, before, after or turn", where, r.At)
 		}
-		if r.Text == "" && r.Command == "" {
-			return fmt.Errorf("%s: set text, file or command", where)
+		if r.Text == "" && r.Command == "" && r.Memory == nil {
+			return fmt.Errorf("%s: set text, file, command or memory", where)
+		}
+		if r.Memory != nil && r.Memory.Cap < 0 {
+			return fmt.Errorf("%s: memory.cap must not be negative", where)
 		}
 		if r.Timeout != "" {
 			if r.Command == "" {

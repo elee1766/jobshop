@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -139,6 +141,11 @@ func (c *Controller) assemble(ctx context.Context, ts turnSpec, body PromptPart)
 			e := ev
 			e.Rule, e.At = r.Name, r.At
 			if out := c.runRuleCommand(ctx, r, e); out != "" {
+				text = strings.TrimSpace(text + "\n\n" + out)
+			}
+		}
+		if r.Memory != nil {
+			if out := c.ruleMemory(r, subj); out != "" {
 				text = strings.TrimSpace(text + "\n\n" + out)
 			}
 		}
@@ -320,4 +327,26 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		res.Ticket = t.ID
 	}
 	return res, nil
+}
+
+// ruleMemory renders a memory rule for the turn's repo and pool (#266).
+// An empty or missing dir adds nothing; files over the cap are cut and
+// logged at WARN so `jobshop memory check` finds them.
+func (c *Controller) ruleMemory(r config.PromptRule, subj config.RuleSubject) string {
+	dir := r.Memory.Dir
+	if dir == "" {
+		return ""
+	}
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(c.root.Dir, dir)
+	}
+	out, over, err := memory.Render(dir, memory.Scope{Repo: subj.Repo, Pool: subj.Pool}, r.Memory.Cap)
+	if err != nil {
+		c.log.Warn("prompt rule memory", "rule", r.Name, "dir", dir, "err", err)
+		return ""
+	}
+	for _, f := range over {
+		c.log.Warn("memory file over cap, truncated", "rule", r.Name, "file", f.Path, "chars", f.Chars, "cap", r.Memory.Cap)
+	}
+	return out
 }

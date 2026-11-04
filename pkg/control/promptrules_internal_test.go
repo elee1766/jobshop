@@ -144,3 +144,46 @@ func TestRuleCommand(t *testing.T) {
 	assert.Contains(t, out, `msg="prompt rule command timed out" rule=slow`)
 	assert.Contains(t, out, `msg="prompt rule command output truncated" rule=big`)
 }
+
+// TestRuleMemory: a memory rule injects the global, repo and pool files at
+// system with the skills index; an over-cap file is cut with a WARN; an
+// empty or missing dir adds nothing (#266).
+func TestRuleMemory(t *testing.T) {
+	mem := t.TempDir()
+	for p, s := range map[string]string{
+		"memory/global.md":                 "GLOBAL-MEM",
+		"memory/repo/elee1766__jobshop.md": "REPO-MEM",
+		"memory/pool/dev.md":               "DEV-MEM " + strings.Repeat("x", 50),
+		"skills/logs/SKILL.md":             "---\nname: logs\ndescription: Read host logs\n---\n",
+	} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(filepath.Join(mem, p)), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(mem, p), []byte(s), 0o600))
+	}
+	c, logs := rulesController(t, rulesBase+fmt.Sprintf(`prompt_rules:
+  - {name: mem, at: system, memory: {dir: %q, cap: 20}}
+  - {name: none, at: system, memory: {dir: ""}}
+  - {name: gone, at: system, memory: {dir: %q}}
+`, mem, filepath.Join(mem, "absent")))
+	ctx := t.Context()
+	tk, err := c.store.Create(ctx, "t", store.NewTicket{
+		Project: "js", Kind: store.KindTask, Title: "x", Pool: "dev",
+		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":266}}`),
+	})
+	require.NoError(t, err)
+	parts := c.assemble(ctx, turnSpec{pool: "dev", kind: turnTicket, ticket: &tk, system: true}, PromptPart{Source: "ticket"})
+	assert.Equal(t, []string{"rule:mem", "ticket"}, sources(parts))
+	text := parts[0].Text
+	for _, s := range []string{"GLOBAL-MEM", "REPO-MEM", "DEV-MEM xxxxxxxxxxxx\n", "- logs: Read host logs (" + filepath.Join(mem, "skills/logs/SKILL.md") + ")"} {
+		assert.Contains(t, text, s)
+	}
+	assert.NotContains(t, text, strings.Repeat("x", 13), "cut at the cap")
+	assert.Contains(t, logs.b.String(), `msg="memory file over cap, truncated" rule=mem file=memory/pool/dev.md chars=58`)
+
+	plan := c.assemble(ctx, turnSpec{pool: "plan", kind: turnMessage, system: true}, PromptPart{Source: "messages"})
+	assert.Contains(t, plan[0].Text, "GLOBAL-MEM")
+	assert.NotContains(t, plan[0].Text, "REPO-MEM", "no ticket, no repo memory")
+	assert.NotContains(t, plan[0].Text, "DEV-MEM")
+
+	later := c.assemble(ctx, turnSpec{pool: "dev", kind: turnTicket, ticket: &tk}, PromptPart{Source: "ticket"})
+	assert.Equal(t, []string{"ticket"}, sources(later), "system rules only on a host's first turn")
+}

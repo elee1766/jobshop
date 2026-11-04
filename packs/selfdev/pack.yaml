@@ -4,6 +4,8 @@
 defaults:
   dev_sessions: 2
   refinery_sessions: 1
+  memory_dir: ""
+  memory_cap: 2200
 extends:
   - path: ../github
     vars:
@@ -35,3 +37,13 @@ extends:
         descendant: `git fetch origin && git merge-base --is-ancestor
         <sha> <commit>`. Self-deploy rebuilds with the newest green master
         commit every 10 minutes.
+# Memory and skills (#266): memory_dir is a git directory holding
+# memory/global.md, memory/repo/<owner>__<name>.md, memory/pool/<name>.md
+# and skills/<name>/SKILL.md. Empty (the default) adds nothing. On
+# gasserver it is a clone of elee1766/jobshop (its memory/ and skills/).
+prompt_rules:
+  - name: selfdev-memory
+    at: system
+    # Ticket pools of every instance; the operator pack's rule covers chat.
+    match: {chat: false}
+    memory: {dir: "${memory_dir}", cap: "${memory_cap}"}
