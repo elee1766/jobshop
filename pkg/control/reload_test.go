@@ -104,7 +104,7 @@ func TestReloadMaxSessions(t *testing.T) {
 	writePoolConfig(t, root, 1, "")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &tickets[2]))
-	time.Sleep(400 * time.Millisecond) // several supervisor ticks
+	pass(t, root.Dir, 3)
 	assert.Len(t, openSessions(t, admin), 2, "no new session over the lowered cap; running ones kept")
 
 	// The running sessions finish their turns and drain the queue.
@@ -255,7 +255,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	}, 20*time.Second, 50*time.Millisecond)
 	writeEnv("three")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
-	time.Sleep(300 * time.Millisecond)
+	pass(t, root.Dir, 3)
 	pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 	require.NoError(t, err)
 	assert.Equal(t, string(pid2), string(pid), "busy host not stopped mid-turn")

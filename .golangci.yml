@@ -4,10 +4,24 @@ linters:
   default: standard
   enable:
     - errorlint
+    - forbidigo
     - gocritic
     - misspell
     - revive
     - unconvert
+  settings:
+    forbidigo:
+      forbid:
+        # Tests must not depend on wall time (#359): wait on events or
+        # run a supervisor pass (pkg/control Options.Pass) instead.
+        - pattern: ^time\.Sleep$
+          msg: no time.Sleep in tests; wait on an event or run a pass (#359)
+      analyze-types: true
+  exclusions:
+    rules:
+      # forbidigo is for tests only; production code may sleep.
+      - path-except: _test\.go$
+        linters: [forbidigo]
 
 formatters:
   enable:

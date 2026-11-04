@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -50,7 +51,7 @@ func TestMain(m *testing.M) {
 			_, _ = f.WriteString(line)
 			_ = f.Close()
 		}
-		time.Sleep(time.Minute)
+		awaitSignal()
 		os.Exit(0)
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "fake-agent" {
@@ -209,7 +210,7 @@ func TestDrain(t *testing.T) {
 	assert.Equal(t, "drained", show(sessID).Resolution)
 	assert.Equal(t, store.StatusClosed, show(first.ID).Status, "running turn finished")
 	assert.Equal(t, store.StatusOpen, show(second.ID).Status, "no new claim while drained")
-	time.Sleep(300 * time.Millisecond) // several supervisor ticks
+	pass(t, root.Dir, 3)
 	var sessions []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	assert.Len(t, sessions, 1, "no new session while drained")
@@ -252,7 +253,7 @@ func TestQuarantine(t *testing.T) {
 	// The pool is paused: ready work starts no session.
 	var other store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "u", Pool: "dev"}, &other))
-	time.Sleep(500 * time.Millisecond)
+	pass(t, root.Dir, 3)
 	sessions = nil
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	assert.Len(t, sessions, 3, "pool paused")
@@ -448,7 +449,19 @@ func holdLock(dir string) {
 		os.Exit(1)
 	}
 	_ = os.WriteFile(filepath.Join(dir, host.PidFile), fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600)
-	time.Sleep(time.Minute)
+	awaitSignal()
+}
+
+// awaitSignal blocks a helper process until it is signalled. The minute
+// is a backstop so a helper whose test died does not outlive it for long;
+// no test waits on it.
+func awaitSignal() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
+	select {
+	case <-sig:
+	case <-time.After(time.Minute):
+	}
 }
 
 // TestSessionReap stops a host with no session ticket and, with Closed,
@@ -524,6 +537,7 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	start := func() func() {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
+		opt = withPass(dir, opt)
 		opt.Tick, opt.HostExe = 50*time.Millisecond, os.Args[0]
 		if opt.Backoff == 0 {
 			opt.Backoff = 100 * time.Millisecond
@@ -545,15 +559,27 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	t.Cleanup(func() {
 		// Stop leftover hosts so the test leaves no processes behind.
 		entries, _ := os.ReadDir(root.SessionDir(""))
+		var pids []int
 		for _, e := range entries {
 			if b, err := os.ReadFile(filepath.Join(root.SessionDir(e.Name()), host.PidFile)); err == nil {
 				var p int
 				if _, err := fmt.Sscan(string(b), &p); err == nil && p > 1 {
-					_ = syscall.Kill(p, syscall.SIGTERM)
+					if syscall.Kill(p, syscall.SIGTERM) == nil {
+						pids = append(pids, p)
+					}
 				}
 			}
 		}
-		time.Sleep(200 * time.Millisecond)
+		// Wait for the hosts to go before removing their dirs.
+		assert.Eventually(t, func() bool {
+			for _, p := range pids {
+				b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", p))
+				if err == nil && !strings.Contains(string(b), ") Z ") {
+					return false
+				}
+			}
+			return true
+		}, 10*time.Second, 20*time.Millisecond)
 		_ = os.RemoveAll(dir)
 	})
 	return root, start
@@ -1217,7 +1243,7 @@ func TestSessionRestartBusy(t *testing.T) {
 
 	// Without --now the turn keeps running.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
-	time.Sleep(500 * time.Millisecond)
+	pass(t, root.Dir, 3)
 	assert.Equal(t, pid, hostPidOf(t, sdir), "busy host not restarted")
 	assert.Equal(t, store.StatusInProgress, show(first.ID).Status)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
@@ -1487,7 +1513,7 @@ func TestScaleDownCordon(t *testing.T) {
 	require.Len(t, ps.Pools, 1)
 	require.NotNil(t, ps.Pools[0].Target, "target survives restart")
 	assert.Equal(t, 0, *ps.Pools[0].Target)
-	time.Sleep(300 * time.Millisecond)
+	pass(t, root.Dir, 3)
 	assert.Equal(t, store.StatusOpen, show(admin, second.ID).Status)
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Auto: true}, nil))

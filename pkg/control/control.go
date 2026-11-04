@@ -61,6 +61,10 @@ type Options struct {
 	// Reload, if set, triggers a config reload per receive. The serve
 	// command sends on SIGHUP; tests send directly.
 	Reload <-chan struct{}
+	// Pass, if set, runs one supervisor pass per receive and closes the
+	// received channel when it is done. Tests use it instead of sleeping
+	// through ticks (#359).
+	Pass <-chan chan struct{}
 	// EventBuffer is the per-subscriber events.subscribe buffer. Default
 	// DefaultEventBuffer; tests shrink it to force lagged.
 	EventBuffer int
@@ -329,8 +333,13 @@ func (c *Controller) serve() error {
 
 	tick := time.NewTicker(c.opt.Tick)
 	defer tick.Stop()
+	var passDone chan struct{}
 	for {
 		c.tick()
+		if passDone != nil {
+			close(passDone)
+			passDone = nil
+		}
 		select {
 		case <-c.ctx.Done():
 			c.stop()
@@ -340,6 +349,7 @@ func (c *Controller) serve() error {
 			// Errors are logged and the old config stays active. The
 			// tick below applies new pool limits right away.
 			_ = c.reload()
+		case passDone = <-c.opt.Pass:
 		}
 	}
 }
