@@ -20,6 +20,12 @@ throwaway team (key `<KEY>`) and a throwaway GitHub repo.
 6. Add a line to `<KEY>-1` asking for work no issue covers. The next
    planner pass files it with `linear create` and it shows a related
    link to `<KEY>-1`; a second pass does not file it again (#292).
+7. Set `linear_human` to your Linear name. Make a `<KEY>-2` worker ask
+   (`jobshop report waiting "q" --question "..."` from its session, or
+   wait for one): the issue gets a comment mentioning you and the
+   `Blocked` label (#293). Reply under that comment: the question
+   closes `answered` and `Blocked` is removed. Covered offline by
+   `TestLinearEndToEnd` (#298).
 
 ## With a Linear App identity (#278)
 
@@ -32,7 +38,7 @@ client credentials enabled, its id and secret in host secret files.
 2. `jobshop identity check <KEY>` prints `viewer` (the app's actor) and
    an `expires` about a day out. A wrong secret fails here with
    `invalid_client`.
-3. Run steps 2 to 5 above. Comments and state changes on `<KEY>-2` show
-   the app as author, not a person.
+3. Run steps 2 to 7 above. Comments, state changes, created issues and
+   the question on `<KEY>-2` show the app as author, not a person.
 4. The token does not appear in `journalctl -u jobshop` (grep for its
    first 12 characters from `jobshop identity token <KEY>`).

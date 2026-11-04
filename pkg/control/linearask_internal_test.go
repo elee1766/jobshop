@@ -34,7 +34,13 @@ type askLinear struct {
 }
 
 func (f *askLinear) serve(t *testing.T) *httptest.Server {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(f.handler(t))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func (f *askLinear) handler(t *testing.T) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		var q struct {
 			Query     string         `json:"query"`
@@ -77,9 +83,7 @@ func (f *askLinear) serve(t *testing.T) *httptest.Server {
 			slices.Reverse(rev)
 			out(map[string]any{"issue": map[string]any{"id": "iss-5", "identifier": "ENG-5", "title": "Fix login", "url": "https://linear.app/acme/issue/ENG-5", "team": map[string]any{"id": "t", "key": "ENG"}, "comments": map[string]any{"nodes": rev}}})
 		}
-	}))
-	t.Cleanup(srv.Close)
-	return srv
+	}
 }
 
 func (f *askLinear) reply(parent, body, user string, at time.Time) {
