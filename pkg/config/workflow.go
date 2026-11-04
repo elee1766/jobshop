@@ -204,6 +204,11 @@ func (c *Config) ResolvePool(pool string, vars map[string]any) (string, error) {
 	return name, nil
 }
 
+// Render fills a step title or prompt template of w from vars.
+func (w *Workflow) Render(s string, vars map[string]any) (string, error) {
+	return FillTemplate(s, vars)
+}
+
 // templateVars returns the ${name} references in s ($$ is a literal $).
 func templateVars(s string) []string {
 	var out []string
