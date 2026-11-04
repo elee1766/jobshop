@@ -95,19 +95,11 @@ func admissionHooks(cfg *config.Config) []config.AdmissionHook {
 	return out
 }
 
-// pumpAdmission admits pending items until the controller stops.
+// pumpAdmission admits pending items and dispatches admitted ones (#442)
+// until the controller stops.
 func (c *Controller) pumpAdmission() {
 	for c.ctx.Err() == nil {
-		if err := c.releaseAnswered(c.ctx); err != nil && c.ctx.Err() == nil {
-			c.log.Error("admission release", "err", err)
-		}
-		ok, err := c.admitNext(c.ctx)
-		if err != nil && c.ctx.Err() == nil {
-			c.log.Error("admission", "err", err)
-		}
-		if ok && err == nil {
-			continue
-		}
+		c.ingestPass(c.ctx)
 		select {
 		case <-c.ctx.Done():
 		case <-time.After(admissionIdle):

@@ -164,6 +164,10 @@ type Controller struct {
 	// subPollMu serializes subscription passes: the pump and webhook
 	// passes for one thread (#300).
 	subPollMu sync.Mutex
+	// dispatchMu serializes inbox dispatch passes (#442): the pump and
+	// poll-triggered passes, so a thread's news is never delivered out
+	// of order.
+	dispatchMu sync.Mutex
 	// waitSource reads PR state for waits; nil means gh (#381). waitWake
 	// asks for a pass now; waitMu serializes passes.
 	waitSource waitSource

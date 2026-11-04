@@ -177,8 +177,10 @@ func (c *Controller) pollSubscriptionThread(ctx context.Context, th thread) {
 }
 
 // pollThreads is a pass over every followed thread, or only the one keyed
-// only when it is set. subPollMu keeps a webhook pass and the pump from
-// delivering the same comment twice.
+// only when it is set. It writes each new comment to the inbox (#442);
+// delivery is the dispatcher's, from admitted rows only, so admission
+// hooks see and may rewrite or refuse every comment first. subPollMu
+// keeps a webhook pass and the pump from reading a thread at once.
 func (c *Controller) pollThreads(ctx context.Context, src threadSource, only string) {
 	c.subPollMu.Lock()
 	defer c.subPollMu.Unlock()
@@ -187,11 +189,76 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 		return
 	}
 	now := c.now()
-	window := config.Duration(cfg.Subscriptions.ResumeWindow, defaultSubResume)
-	all, err := c.store.List(ctx, store.Filter{Limit: math.MaxInt32})
+	followers, byThread, order, err := c.followers(ctx, now)
 	if err != nil {
 		c.log.Warn("subscriptions: list", "err", err)
 		return
+	}
+	wrote := false
+	for _, k := range order {
+		if only != "" && k != only {
+			continue
+		}
+		fs := byThread[k]
+		th, seen := threadOf(fs, k)
+		cs, err := src.Comments(ctx, th, seen)
+		if err != nil {
+			c.log.Warn("subscriptions: fetch", "thread", k, "err", err)
+			continue
+		}
+		last := seen
+		self := ""
+		if th.Linear == "" {
+			self = c.githubSelf(ctx, th.Repo)
+		}
+		ok := true
+		for _, cm := range cs {
+			if !cm.At.After(seen) {
+				continue
+			}
+			if self != "" && strings.EqualFold(cm.Author, self) {
+				cm.Self = true
+			}
+			if err := c.inboxComment(ctx, th, cm); err != nil {
+				c.log.Warn("inbox: poller write", "thread", k, "err", err)
+				ok = false
+				break // read position stays; retried next pass
+			}
+			wrote = true
+			if cm.At.After(last) {
+				last = cm.At
+			}
+		}
+		if !ok {
+			continue
+		}
+		for _, f := range fs {
+			for i := range f.threads {
+				if f.threads[i].key() == k && f.threads[i].Seen.Before(last) {
+					f.threads[i].Seen = last
+					f.changed = true
+				}
+			}
+		}
+	}
+	for _, f := range followers {
+		if f.changed {
+			c.saveThreads(ctx, f)
+		}
+	}
+	if wrote {
+		// Admit and dispatch now rather than on the pump's next wake.
+		c.ingestPass(ctx)
+	}
+}
+
+// followers lists the tickets following threads, grouped by thread key
+// in first-seen order.
+func (c *Controller) followers(ctx context.Context, now time.Time) ([]*follower, map[string][]*follower, []string, error) {
+	window := config.Duration(c.config().Subscriptions.ResumeWindow, defaultSubResume)
+	all, err := c.store.List(ctx, store.Filter{Limit: math.MaxInt32})
+	if err != nil {
+		return nil, nil, nil, err
 	}
 	var followers []*follower
 	for _, t := range all {
@@ -220,58 +287,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 			byThread[th.key()] = append(byThread[th.key()], f)
 		}
 	}
-	for _, k := range order {
-		if only != "" && k != only {
-			continue
-		}
-		fs := byThread[k]
-		th, seen := threadOf(fs, k)
-		cs, err := src.Comments(ctx, th, seen)
-		if err != nil {
-			c.log.Warn("subscriptions: fetch", "thread", k, "err", err)
-			continue
-		}
-		var human []ghComment
-		last := seen
-		self := ""
-		if th.Linear == "" {
-			self = c.githubSelf(ctx, th.Repo)
-		}
-		for _, cm := range cs {
-			if !cm.At.After(seen) {
-				continue
-			}
-			if cm.At.After(last) {
-				last = cm.At
-			}
-			if self != "" && strings.EqualFold(cm.Author, self) {
-				cm.Self = true
-			}
-			c.inboxComment(ctx, th, cm)
-			if !c.ignored(cm) {
-				human = append(human, cm)
-			}
-		}
-		if len(human) > 0 {
-			if err := c.deliverThread(ctx, th, human, fs, now, window); err != nil {
-				c.log.Warn("subscriptions: deliver", "thread", k, "err", err)
-				continue // read position stays; retried next pass
-			}
-		}
-		for _, f := range fs {
-			for i := range f.threads {
-				if f.threads[i].key() == k && f.threads[i].Seen.Before(last) {
-					f.threads[i].Seen = last
-					f.changed = true
-				}
-			}
-		}
-	}
-	for _, f := range followers {
-		if f.changed {
-			c.saveThreads(ctx, f)
-		}
-	}
+	return followers, byThread, order, nil
 }
 
 // follow returns the ticket's threads, adding implicit ones with the read
@@ -463,8 +479,8 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 	if err != nil {
 		return err
 	}
-	cs = c.intakeComments(ctx, t.Project, th, cs)
-	if cs = c.linearAnswers(ctx, th, cs); len(cs) == 0 {
+	cs = c.linearAnswers(ctx, th, cs)
+	if len(cs) == 0 {
 		return nil
 	}
 	text := threadText(th, cs)

@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -162,17 +161,4 @@ func TestIntakeDeny(t *testing.T) {
 			assert.Equal(t, 1, runCount(t, c))
 		})
 	}
-}
-
-// TestIntakeComments: a refused Linear comment is dropped from delivery,
-// an allowed one passes; GitHub threads skip the hook.
-func TestIntakeComments(t *testing.T) {
-	c, f := intakeController(t, `grep -q evil && echo '{"decision":"deny","reason":"bad"}' || true`)
-	now := time.Now()
-	cs := []ghComment{{ID: "a", Author: "Ann", Body: "evil text", At: now}, {ID: "b", Author: "Bob", Body: "fine", At: now}}
-	out := c.intakeComments(t.Context(), "js", thread{Linear: "ENG-5"}, cs)
-	require.Len(t, out, 1)
-	assert.Equal(t, "b", out[0].ID)
-	assert.Equal(t, []string{"iss-5"}, f.labels())
-	assert.Len(t, c.intakeComments(t.Context(), "js", thread{Repo: "acme/app", Number: 1}, cs), 2)
 }
