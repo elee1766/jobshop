@@ -149,3 +149,28 @@ func TestLinearIntakeMatch(t *testing.T) {
 	is.State.Type = "canceled"
 	assert.False(t, linearIntakeMatch(is, nil, nil, nil))
 }
+
+// TestLinearPlannerIntakeKey (#292): the planner and the intake
+// stall-check both start pr-work with key linear-<KEY>, so whichever is
+// second gets the first run, and the stall clears.
+func TestLinearPlannerIntakeKey(t *testing.T) {
+	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[{"identifier":"ENG-1","title":"t","url":"u","updatedAt":"2026-11-01T00:00:00Z","state":{"id":"s","name":"Todo","type":"unstarted"},"assignee":null,"labels":{"nodes":[{"name":"agent"}]}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`))
+	}))
+	t.Cleanup(gql.Close)
+	c, clk, dir := stallControllerYAML(t, linearIntakeYAML)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
+	c.minter, c.linearURL = identity.NewMinter(), gql.URL
+	require.Equal(t, []string{"stall:linear_issue_no_run:ENG-1"}, stallKeys(t, c))
+
+	admin := scope{admin: true, actor: "admin"}
+	start := func() store.Ticket {
+		res, err := c.startRun(t.Context(), admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
+		require.NoError(t, err)
+		return res.(rpc.RunResult).Run
+	}
+	planner, intake := start(), start()
+	assert.Equal(t, planner.ID, intake.ID, "one run for both starters")
+	clk.advance(6 * time.Minute)
+	assert.Empty(t, stallKeys(t, c), "the planner's run hides the issue from intake")
+}

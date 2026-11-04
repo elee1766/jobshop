@@ -9,11 +9,17 @@ throwaway team (key `<KEY>`) and a throwaway GitHub repo.
 2. In Linear, file `<KEY>-2` (a one-line README change) and name it in
    the description of `<KEY>-1`.
 3. Wait for a `lin-plan` ticket (or create one in `lin-plan`). Expect a
-   `lin-pr-work` run with key `issue-<KEY>-2` in `jobshop run list`.
+   `lin-pr-work` run with key `linear-<KEY>-2` in `jobshop run list`,
+   and only one, even if the intake stall-check also fired (#292).
+   Also file `<KEY>-3` in a `linear_intake_states` state without naming
+   it in the target: the planner lists it and starts its run too.
 4. Expect on `<KEY>-2`: state In Progress, then a `PR <url>` comment;
    the PR title ends `(<KEY>-2)`.
 5. After merge and post-merge: a `Shipped in <sha>` comment and state
    Done.
+6. Add a line to `<KEY>-1` asking for work no issue covers. The next
+   planner pass files it with `linear create` and it shows a related
+   link to `<KEY>-1`; a second pass does not file it again (#292).
 
 ## With a Linear App identity (#278)
 
