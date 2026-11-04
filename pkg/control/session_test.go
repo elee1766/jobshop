@@ -22,9 +22,10 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
+	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
-	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -131,11 +132,11 @@ func TestEnvRefresh(t *testing.T) {
 	stop()
 
 	// Pretend the host was spawned by an older deploy with another env.
-	spec, err := host.ReadSpec(sdir)
+	spec, err := hostspec.Read(sdir)
 	require.NoError(t, err)
 	spec.Env = append(spec.Env, "OLD_DEPLOY=1")
 	spec.EnvHash = "old"
-	require.NoError(t, host.WriteSpec(sdir, spec))
+	require.NoError(t, hostspec.Write(sdir, spec))
 
 	stop = start()
 	defer stop()
@@ -145,7 +146,7 @@ func TestEnvRefresh(t *testing.T) {
 		return err == nil && string(pid2) != string(pid) && host.Alive(sdir)
 	}, 20*time.Second, 50*time.Millisecond, "host respawned")
 	require.Eventually(t, func() bool {
-		s, err := host.ReadSpec(sdir)
+		s, err := hostspec.Read(sdir)
 		return err == nil && s.EnvHash != "old"
 	}, 5*time.Second, 50*time.Millisecond)
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
@@ -1050,7 +1051,7 @@ func TestSessionRestartIdle(t *testing.T) {
 	b = []byte(strings.Replace(string(b), "    args: [fake-agent]\n", "    args: [fake-agent]\n    env: {RESTART_MARK: \"1\"}\n", 1))
 	require.NoError(t, os.WriteFile(cfgPath, b, 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
-	spec, err := host.ReadSpec(sdir)
+	spec, err := hostspec.Read(sdir)
 	require.NoError(t, err)
 	require.NotContains(t, spec.Env, "RESTART_MARK=1")
 	oldHash := spec.EnvHash
@@ -1062,7 +1063,7 @@ func TestSessionRestartIdle(t *testing.T) {
 		p := hostPidOf(t, sdir)
 		return p != 0 && p != pid && host.Alive(sdir)
 	}, 20*time.Second, 50*time.Millisecond, "host respawned")
-	s, err := host.ReadSpec(sdir)
+	s, err := hostspec.Read(sdir)
 	require.NoError(t, err)
 	assert.NotEqual(t, oldHash, s.EnvHash, "fresh spec")
 	assert.Contains(t, s.Env, "RESTART_MARK=1", "spec reflects the reloaded config")

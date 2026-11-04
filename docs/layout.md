@@ -33,9 +33,9 @@ jobshop/
 │   │                         client over the acp-go-sdk connection
 │   ├── control/              controller: tick loop, claims release, lease sweep,
 │   │                         session supervision, admin and CLI socket handlers
-│   ├── host/                 session host: spawn agent, ACP proxy, journal,
-│   │                         replay, backpressure, leak guards
 │   ├── config/               YAML loading, validation, defaults
+│   ├── hostspec/             jobshop's spec.json on acphost: conv_export
+│   │                         field and the conversation exporter option
 │   ├── gateway/              chat gateway: adapter interface, routing, Matrix, Discord
 │   ├── desk/                 Jobshop Desk HTTP server over the admin API;
 │   │                         dist/ is the built UI, embedded
@@ -62,18 +62,27 @@ Dependency direction (an arrow means "may import"):
 ```mermaid
 flowchart TD
   cmd[cmd/jobshop] --> cli
-  cli --> control & host
+  cli --> control & acphost & hostspec
   cli --> rpc & config
   config --> cron
-  control --> store & rpc & config & telemetry & acp & host & cron
-  host --> acp
+  control --> store & rpc & config & telemetry & acp & acphost & hostspec & cron
+  hostspec --> acphost & telemetry
   sqlite[store/sqlite] --> store
   storetest[store/storetest] --> store
   rpc --> store
 ```
 
-`host` never imports `store` or `control`: it has no ticket or policy logic
+`acphost` never imports jobshop: it has no ticket or policy logic
 (plan section 8.3), which keeps it small and rarely changing.
+
+The session host is the external module `github.com/elee1766/acphost`
+(issue #256, 2026-11-04), extracted from the old `pkg/host` so other
+projects can run ACP agents under a detachable host. It has no ticket or
+policy logic (plan section 8.3). Conversation export is not part of its
+spec: `pkg/hostspec` keeps the `conv_export` field in spec.json and hands
+`acphost.Main` an exporter built on `telemetry.ConvExporter`. Default
+method and GC root prefixes (`_jobshop/`, `jobshop-host-`) stay, so hosts
+started by older builds are adopted.
 
 Subcommands:
 

@@ -9,8 +9,9 @@ import (
 
 	"github.com/alecthomas/kong"
 
+	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/host"
+	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -163,4 +164,4 @@ type sessionHostCmd struct {
 	Dir string `arg:"" help:"Session directory containing spec.json." type:"path"`
 }
 
-func (c sessionHostCmd) Run() error { return host.Main(c.Dir) }
+func (c sessionHostCmd) Run() error { return host.Main(c.Dir, hostspec.HostOptions(c.Dir)...) }

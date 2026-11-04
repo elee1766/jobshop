@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/elee1766/jobshop/pkg/host"
+	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
