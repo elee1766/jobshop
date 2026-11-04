@@ -63,6 +63,6 @@ export function connect() {
     if (pending) return;
     pending = window.setTimeout(() => { pending = 0; live.tick++; }, 1000);
   };
-  for (const k of ['ticket', 'run', 'session', 'lagged', 'ready']) es.addEventListener(k, bump);
+  for (const k of ['ticket', 'run', 'session', 'lagged', 'ready', 'activity']) es.addEventListener(k, bump);
   return () => es.close();
 }

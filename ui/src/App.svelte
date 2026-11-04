@@ -7,6 +7,7 @@
   import Sessions from './views/Sessions.svelte';
   import Pools from './views/Pools.svelte';
   import Deploys from './views/Deploys.svelte';
+  import Activity from './views/Activity.svelte';
   import ChatView from './views/ChatView.svelte';
   import Drawer from './views/Drawer.svelte';
 
@@ -16,7 +17,7 @@
   const count = $derived(attention.data?.length ?? 0);
 
   /** @type {Record<string, string>} */
-  const names = { attention: 'Attention', chat: 'Chat', work: 'Work', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
+  const names = { attention: 'Attention', chat: 'Chat', work: 'Work', activity: 'Activity', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
 
   let light = $state(localStorage.getItem('desk-theme') === 'light');
   $effect(() => {
@@ -49,6 +50,7 @@
     {#if url.view === 'attention'}<Attention items={attention} />
     {:else if url.view === 'chat'}<ChatView />
     {:else if url.view === 'work'}<Work />
+    {:else if url.view === 'activity'}<Activity />
     {:else if url.view === 'sessions'}<Sessions />
     {:else if url.view === 'pools'}<Pools />
     {:else if url.view === 'deploys'}<Deploys />
