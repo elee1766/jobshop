@@ -1647,6 +1647,7 @@ func (c *Controller) recordGauges() {
 	for k, n := range counts {
 		c.metrics.Sessions.Record(ctx, n, metric.WithAttributes(telemetry.AttrPool.String(k[0]), telemetry.AttrState.String(k[1])))
 	}
+	c.recordInboxGauges(ctx)
 	for name, p := range c.config().Pools {
 		// Ready is capped by the store's default limit; enough for a gauge.
 		if ready, err := c.store.Ready(ctx, p.Project, name, 0); err == nil {

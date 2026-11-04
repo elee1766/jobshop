@@ -401,6 +401,10 @@ type Store interface {
 	// InboxPrune deletes terminal items received before before and
 	// returns how many.
 	InboxPrune(ctx context.Context, before time.Time) (int64, error)
+	// InboxCounts counts items by state, every state present (#443).
+	InboxCounts(ctx context.Context) (map[string]int64, error)
+	// InboxCountOlder counts items in state received before before (#443).
+	InboxCountOlder(ctx context.Context, state string, before time.Time) (int64, error)
 	// IndexRecall adds or replaces (by kind and ref) one document in the
 	// recall index. Comments are indexed by the backend itself.
 	IndexRecall(ctx context.Context, d RecallDoc) error

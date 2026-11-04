@@ -241,3 +241,24 @@ func toInbox(r sqlcdb.Inbox) store.InboxItem {
 	}
 	return it
 }
+
+// InboxCounts counts items by state (#443). Every state is present.
+func (s *Store) InboxCounts(ctx context.Context) (map[string]int64, error) {
+	rs, err := s.q.InboxStateCounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]int64, len(store.InboxStates))
+	for _, st := range store.InboxStates {
+		out[st] = 0
+	}
+	for _, r := range rs {
+		out[r.State] = r.N
+	}
+	return out, nil
+}
+
+// InboxCountOlder counts items in state received before before (#443).
+func (s *Store) InboxCountOlder(ctx context.Context, state string, before time.Time) (int64, error) {
+	return s.q.InboxCountOlder(ctx, sqlcdb.InboxCountOlderParams{State: state, Before: ms(before)})
+}

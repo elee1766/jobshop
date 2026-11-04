@@ -107,6 +107,58 @@ type IngestDrainResult struct {
 	Bad   int `json:"bad"`
 }
 
+// Ingest worker methods (#443): an external `jobshop ingest work`
+// process claims pending inbox items, runs the admission hooks itself
+// and reports the outcome. Each call is also the worker's heartbeat.
+const (
+	MethodIngestClaim   = "ingest.claim"
+	MethodIngestAdmit   = "ingest.admit"
+	MethodIngestWorkers = "ingest.workers"
+)
+
+// IngestClaimParams is ingest.claim. Worker is a stable id per process.
+type IngestClaimParams struct {
+	Worker string `json:"worker"`
+	Host   string `json:"host,omitempty"`
+}
+
+// IngestClaimResult is a leased pending item with the hooks to run and
+// the event's project; Item nil when nothing is pending. Answered: a
+// human already closed a hold for the item, so validating hooks are
+// skipped.
+type IngestClaimResult struct {
+	Item     *store.InboxItem       `json:"item,omitempty"`
+	Hooks    []config.AdmissionHook `json:"hooks,omitempty"`
+	Project  string                 `json:"project,omitempty"`
+	Answered bool                   `json:"answered,omitempty"`
+	LeaseMS  int64                  `json:"lease_ms,omitempty"` // lease length; clocks may differ
+}
+
+// IngestAdmitParams reports a run of the hooks on a claimed item. Run
+// is the worker's hook run (events, results, denies and asks); the
+// controller decides the state from it.
+type IngestAdmitParams struct {
+	Worker string          `json:"worker"`
+	ID     int64           `json:"id"`
+	Run    json.RawMessage `json:"run"`
+}
+
+// IngestWorker is one external worker's last heartbeat.
+type IngestWorker struct {
+	ID        string    `json:"id"`
+	Host      string    `json:"host,omitempty"`
+	Seen      time.Time `json:"seen"`
+	LastClaim time.Time `json:"last_claim,omitzero"`
+	Admitted  int64     `json:"admitted"`
+}
+
+// IngestWorkersResult lists external workers and inbox counts by state.
+type IngestWorkersResult struct {
+	Mode    string           `json:"mode"`
+	Workers []IngestWorker   `json:"workers"`
+	Counts  map[string]int64 `json:"counts"`
+}
+
 // Activity sources (#255).
 const (
 	ActivityGitHub = "github"
@@ -1139,6 +1191,7 @@ const (
 	AttentionRollback = "rollback" // self-deploy rolled back a commit
 	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
 	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
+	AttentionIngest   = "ingest"   // no live external ingest worker, or an admission backlog (#443)
 )
 
 // AttentionItem is one thing waiting on a human.

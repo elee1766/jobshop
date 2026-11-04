@@ -127,6 +127,8 @@ type Controller struct {
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
+	// ingestWorkers is each external ingest worker's last heartbeat (#443).
+	ingestWorkers map[string]*rpc.IngestWorker
 	// configErr is the pack load error the controller started past,
 	// serving the last good config (#227); cleared by a good reload.
 	configErr   string
@@ -676,6 +678,9 @@ func init() {
 		rpc.MethodIdentityCheck:     bind((*Controller).identityCheck),
 		rpc.MethodIdentityToken:     bind((*Controller).identityToken),
 		rpc.MethodIngestDrain:       bind((*Controller).ingestDrainMethod),
+		rpc.MethodIngestClaim:       bind((*Controller).ingestClaim),
+		rpc.MethodIngestAdmit:       bind((*Controller).ingestAdmit),
+		rpc.MethodIngestWorkers:     bind((*Controller).ingestWorkersMethod),
 		rpc.MethodTicketCreate:      bind((*Controller).create),
 		rpc.MethodTicketShow:        bind((*Controller).show),
 		rpc.MethodTicketTrace:       bind((*Controller).trace),

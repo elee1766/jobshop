@@ -65,3 +65,10 @@ WHERE state IN ('dispatched', 'denied', 'failed') AND received_at < sqlc.arg(bef
 UPDATE inbox SET state = sqlc.arg(to_state), updated_at = sqlc.arg(now)
 WHERE id = sqlc.arg(id) AND state = sqlc.arg(from_state) AND (holder = '' OR lease_until <= sqlc.arg(now))
 RETURNING *;
+
+-- name: InboxStateCounts :many
+SELECT state, COUNT(*) AS n FROM inbox GROUP BY state;
+
+-- name: InboxCountOlder :one
+-- Rows in state received before before: the admission backlog (#443).
+SELECT COUNT(*) FROM inbox WHERE state = sqlc.arg(state) AND received_at < sqlc.arg(before);

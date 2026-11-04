@@ -440,6 +440,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest dispatch: pollers only write inbox rows; a dispatcher delivers
   admitted rows, so denied or held input never reaches a session (#442,
   `docs/notes/442-ingest-dispatch.md`, check `docs/verify/ingest-dispatch.md`).
+- Ingest split mode: `ingest.workers: external` moves admission to
+  `jobshop ingest work` over the admin socket, with heartbeats,
+  missing-worker and backlog attention and inbox gauges (#443,
+  `docs/notes/443-ingest-workers.md`, check `docs/verify/ingest-workers.md`).
 
 ## 5. What's next
 
@@ -580,8 +584,9 @@ Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
 the spool and `ingest serve` in #334 and #339, the drain, poller rows
 and reconcile in #335, admission in #348, held release in #353,
-dispatch from admitted rows in #442, GitHub polling sources in #341.
-Next: the split `ingest work` process.
+dispatch from admitted rows in #442, GitHub polling sources in #341,
+the split `ingest work` process in #443. Next: dispatch in a worker
+too, if one controller is not enough.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -1233,6 +1238,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   `{type: command, command: ...}` beside a path string, as the operator
   asked on #366, so no path is ever run by accident and the form can
   grow (other types) without new magic characters.
+- External ingest workers talk to the controller, not the database
+  (2026-11-04, #443): `ingest work` claims over the admin socket, runs
+  the hooks itself and reports the run; the controller decides the state
+  and files the needs-human ticket. One writer stays, and hooks (the slow,
+  untrusted part) leave the controller process.
 
 ## 7. Reference: behavior as built
 
