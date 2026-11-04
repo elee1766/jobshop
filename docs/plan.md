@@ -295,6 +295,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   selfdev, `jobshop learn update` (#273, `docs/notes/273-curator.md`).
 - `jobshop linear context|list|search|catalog|eligible` read commands and
   the intake gate (#279, `docs/notes/279-linear-read.md`).
+- `jobshop linear create|update|ask|relate` with `--key` idempotency
+  (`write_keys` table) and `--dry-run` (#280,
+  `docs/notes/280-linear-write.md`).
 - Curator gate: `memory_edits` baselines, `edits` trigger condition,
   `evaluate` workflow, `jobshop learn evaluate|edits` (#274,
   `docs/notes/274-curator-gate.md`).
@@ -906,6 +909,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   does not stop the other stall signals. stall-check, not the
   controller, starts `pr-work`, so `linear eligible` (blockers, open
   questions) still gates each issue.
+- Linear write idempotency (2026-11-04, #280): the controller stores key
+  -> result (`write_keys`), and created entities take a UUID derived
+  from the key as their Linear id. The stored result covers a retry
+  after success; the derived id covers a write that landed but whose
+  reply was lost, which a result store alone cannot tell from a write
+  that never happened.
 
 ## 7. Reference: behavior as built
 

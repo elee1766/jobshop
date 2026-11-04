@@ -102,3 +102,13 @@ type Ticket struct {
 	UpdatedAt  int64
 	ClosedAt   int64
 }
+
+type WriteKey struct {
+	Key       string
+	Op        string
+	Result    string
+	Done      int64
+	Actor     string
+	CreatedAt int64
+	UpdatedAt int64
+}
