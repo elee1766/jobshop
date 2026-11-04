@@ -153,8 +153,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `ci_branch` pack var and a CI repair drill runbook (#117).
 - Admin API `session.send` and `session.subscribe`, and `type: chat`
   pools started by key (#121).
-- `packs/operator`: the operator chat pool and prompt; selfdev extends
-  it (#124).
+- `packs/operator`: the operator chat pool and prompt (#124), included
+  once per host since #248 (selfdev no longer extends it).
 - Docs: one file per note in `docs/notes/` and per check in
   `docs/verify/`; refinery resolves docs-only conflicts (#131).
 - The CI repair drill opens a draft PR so its branch gets CI (#132).
@@ -261,6 +261,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/244-orphan-tickets.md`).
 - Operator pack at host scope: one include, `config show` instances,
   grant across instances (#248, `docs/notes/248-host-operator.md`).
+  gasserver includes it once at host level; runbook
+  `docs/verify/host-operator.md` (#250).
 - Resumed sessions keep PATH in jcode's `bash -lc` tool shell on NixOS
   (#253, `docs/notes/253-resume-shell-env.md`).
 - Activity feed: recent GitHub and Linear activity for all worked repos
