@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,9 +68,9 @@ func TestOrphanedTickets(t *testing.T) {
 		}
 		return n
 	}
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		return warned(none.ID, "no_pool") == 1 && warned(gone.ID, "unknown_pool") == 1
-	}, dialWait, 20*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	pass(t, root.Dir, 3)
 	assert.Equal(t, 1, warned(none.ID, "no_pool"), "warn once, not every tick")
 	assert.Equal(t, 1, warned(gone.ID, "unknown_pool"))

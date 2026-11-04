@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +39,7 @@ func TestSpawnQuarantine(t *testing.T) {
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool { return status().Quarantined["dev"] != "" }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return status().Quarantined["dev"] != "" }, "pool quarantined")
 	assert.Contains(t, status().Quarantined["dev"], "no-such-repo")
 	pass(t, root.Dir, 3)
 	sessions := list(rpc.ListParams{Kind: store.KindSession})
@@ -54,8 +53,8 @@ func TestSpawnQuarantine(t *testing.T) {
 
 	// A second quarantine while the first escalation is open files none.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolUnquarantine, rpc.PoolParams{Pool: "dev"}, nil))
-	require.Eventually(t, func() bool { return len(list(rpc.ListParams{Kind: store.KindSession})) == 2 }, dialWait, 50*time.Millisecond)
-	require.Eventually(t, func() bool { return status().Quarantined["dev"] != "" }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return len(list(rpc.ListParams{Kind: store.KindSession})) == 2 }, "second spawn")
+	passEventually(t, root.Dir, func() bool { return status().Quarantined["dev"] != "" }, "pool quarantined")
 	assert.Len(t, list(rpc.ListParams{Label: "needs-human"}), 1, "escalation deduped per pool")
 
 	// Reload clears it; the fixed config starts a session that does work.
@@ -63,13 +62,13 @@ func TestSpawnQuarantine(t *testing.T) {
 		fmt.Appendf(nil, "projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n", os.Args[0], root.Dir), 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	assert.Empty(t, status().Quarantined)
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		var got struct {
 			Ticket store.Ticket `json:"ticket"`
 		}
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &got))
 		return got.Ticket.Status == store.StatusClosed
-	}, dialWait, 50*time.Millisecond)
+	}, "fixed pool does the work")
 }
 
 // TestSpawnQuarantineAgentMissing: an agent command that is not there is
@@ -83,9 +82,9 @@ func TestSpawnQuarantineAgentMissing(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, nil))
 	var st rpc.PoolStatusResult
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolList, nil, &st))
 		return st.Quarantined["dev"] != ""
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	assert.Contains(t, st.Quarantined["dev"], "no-such-agent-146")
 }
