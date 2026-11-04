@@ -39,11 +39,19 @@ const (
 	AttrToolInput     = attribute.Key("jobshop.tool.input")
 	AttrToolOutput    = attribute.Key("jobshop.tool.output")
 	AttrStopReason    = attribute.Key("jobshop.turn.stop_reason")
+	AttrModel         = attribute.Key("jobshop.session.model")
+	AttrEffort        = attribute.Key("jobshop.session.effort")
 )
 
 // MetaTicket is the session/prompt _meta key carrying the ticket the turn
 // works on.
 const MetaTicket = "jobshop/ticket"
+
+// MetaModel and MetaEffort carry the session's model and effort (#304).
+const (
+	MetaModel  = "jobshop/model"
+	MetaEffort = "jobshop/effort"
+)
 
 // ConvConfig configures one session's conversation export.
 type ConvConfig struct {
@@ -80,8 +88,10 @@ type ConvExporter struct {
 
 	// worker state
 	ticket string
-	text   strings.Builder // pending agent message chunks
-	kind   string          // "agent_message" or "agent_thought"
+	// model and effort come with each prompt's _meta (#304).
+	model, effort string
+	text          strings.Builder // pending agent message chunks
+	kind          string          // "agent_message" or "agent_thought"
 }
 
 type convFrame struct {
@@ -192,6 +202,8 @@ func (e *ConvExporter) handle(f convFrame) {
 		_ = json.Unmarshal(m.Params, &p)
 		// Message turns carry no ticket; do not keep the last one.
 		e.ticket, _ = p.Meta[MetaTicket].(string)
+		e.model, _ = p.Meta[MetaModel].(string)
+		e.effort, _ = p.Meta[MetaEffort].(string)
 		var b strings.Builder
 		for _, c := range p.Prompt {
 			b.WriteString(c.Text)
@@ -285,6 +297,12 @@ func (e *ConvExporter) emit(event, body string, attrs ...attribute.KeyValue) {
 		AttrSession.String(e.cfg.Session),
 		AttrPool.String(e.cfg.Pool),
 		AttrProject.String(e.cfg.Project),
+	}
+	if e.model != "" {
+		kvs = append(kvs, AttrModel.String(e.model))
+	}
+	if e.effort != "" {
+		kvs = append(kvs, AttrEffort.String(e.effort))
 	}
 	if e.ticket != "" {
 		kvs = append(kvs, AttrTicket.String(e.ticket))

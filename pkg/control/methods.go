@@ -545,8 +545,13 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	}
 	c.mu.Unlock()
 	info.Drained = r != nil && c.poolDrained(r.pool)
-	if cd := c.sessionCordon(ctx, id); cd != nil {
-		info.Cordon = cd.Reason
+	if t, err := c.store.Get(ctx, id); err == nil {
+		if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
+			if f.Cordoned != nil {
+				info.Cordon = f.Cordoned.Reason
+			}
+			info.Model, info.Effort, info.Override = f.Model, f.Effort, f.Override
+		}
 	}
 	if !info.Alive {
 		info.AgentPid = 0

@@ -114,6 +114,10 @@ type runner struct {
 	// lastClaim is when the runner last claimed a ticket; the scaler
 	// cordons the least recently used first (#281). Guarded by mu.
 	lastClaim time.Time
+	// skipped are config option ids already logged as not advertised;
+	// model and effort the agent's current values (#304). Guarded by mu.
+	skipped       map[string]bool
+	model, effort string
 }
 
 func (r *runner) lastClaimAt() time.Time {
@@ -139,6 +143,12 @@ func (r *runner) promptMeta() map[string]any {
 	}
 	if len(r.turnRules) > 0 {
 		m[metaRules] = r.turnRules
+	}
+	if r.model != "" {
+		m[telemetry.MetaModel] = r.model
+	}
+	if r.effort != "" {
+		m[telemetry.MetaEffort] = r.effort
 	}
 	if len(m) == 0 {
 		return nil
@@ -174,6 +184,7 @@ func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnec
 	r.log.Warn("started a new conversation", "old", fields.ACPSession, "new", ns.SessionId,
 		"path", "new+summary", "summary_bytes", len(summary))
 	fields.ACPSession = string(ns.SessionId)
+	noteAdvertised(fields, ns.ConfigOptions)
 	return r.saveFields(*fields)
 }
 
@@ -359,9 +370,10 @@ func (r *runner) finish(resolution, reason string) {
 	r.lifecycle("end", telemetry.AttrResolution.String(resolution))
 	stopHost(r.dir)
 	ctx := context.WithoutCancel(r.ctx)
-	if resolution == resolutionCrashed {
+	if resolution == resolutionCrashed || resolution == resolutionConfigFailed {
 		// Pause before closing: a closed session frees a pool slot, and a
 		// supervisor tick before the pause would start another (#237).
+		// A rejected model repeats on every new session the same way.
 		r.c.poolCrashed(r.pool)
 	}
 	r.c.metrics.SessionsEnded.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
@@ -564,6 +576,7 @@ func (r *runner) session() error {
 			return fmt.Errorf("session/new: %w", err)
 		}
 		fields.ACPSession = string(ns.SessionId)
+		noteAdvertised(&fields, ns.ConfigOptions)
 		if err := r.saveFields(fields); err != nil {
 			return err
 		}
@@ -573,12 +586,15 @@ func (r *runner) session() error {
 		r.mu.Unlock()
 		loaded := false
 		if init.AgentCapabilities.LoadSession {
-			_, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
+			ls, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
 				SessionId: acp.SessionId(fields.ACPSession), Cwd: cwd, McpServers: []acp.McpServer{},
 			})
 			switch {
 			case err == nil:
 				loaded = true
+				if err := r.c.updateSessionFields(ctx, r.id, func(f *store.SessionFields) { noteAdvertised(f, ls.ConfigOptions) }); err != nil {
+					return err
+				}
 				r.log.Info("resumed conversation", "acp_session", fields.ACPSession, "path", "load")
 			case ctx.Err() != nil:
 				return r.dropped(conn)
@@ -804,6 +820,12 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			_ = nc.Close()
 			stopHost(r.dir)
 			return errRefresh
+		}
+		// Config options (#304) change only between turns: jcode refuses
+		// a change while a prompt runs. A reload or `session config`
+		// shows up here before the next message or claim.
+		if err := r.applyConfig(ctx, conn, acpSession); err != nil {
+			return err
 		}
 		// Queued messages go before the next claim, so also after each turn.
 		if err := r.deliver(ctx, conn, acpSession); err != nil {
@@ -1627,8 +1649,12 @@ func (c *Controller) sessionTrace(ctx context.Context, project, pool, agent stri
 // end) as a span in the session's trace.
 func (r *runner) lifecycle(event string, attrs ...attribute.KeyValue) {
 	ctx := telemetry.WithTraceParent(r.ctx, r.traceParent)
+	r.mu.Lock()
+	model, effort := r.model, r.effort
+	r.mu.Unlock()
 	_, span := r.c.tracer.Start(ctx, "session "+event, trace.WithAttributes(append(attrs,
-		telemetry.AttrSession.String(r.id), telemetry.AttrPool.String(r.pool))...))
+		telemetry.AttrSession.String(r.id), telemetry.AttrPool.String(r.pool),
+		telemetry.AttrModel.String(model), telemetry.AttrEffort.String(effort))...))
 	span.End()
 }
 

@@ -593,6 +593,7 @@ func init() {
 		rpc.MethodPoolList:         bind((*Controller).poolList),
 		rpc.MethodPoolScale:        bind((*Controller).poolScaleRPC),
 		rpc.MethodSessionCordon:    bind((*Controller).sessionCordonRPC),
+		rpc.MethodSessionConfig:    bind((*Controller).sessionConfigRPC),
 		rpc.MethodAttention:        bind((*Controller).attention),
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
