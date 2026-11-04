@@ -57,6 +57,9 @@ func (c *Controller) reload() error {
 			err = c.store.SetResourceCaps(context.Background(), cfg.ResourceCaps())
 		}
 		if err == nil {
+			err = c.store.SetResourceProviders(context.Background(), cfg.ResourceProviders())
+		}
+		if err == nil {
 			old := c.live.Swap(lc).cfg
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.Warn("config reload: telemetry changes need a controller restart")

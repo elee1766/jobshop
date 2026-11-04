@@ -395,7 +395,7 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 			return autoResult{result: resultFailed, err: err.Error()}
 		}
 	}
-	env := stepEnv(st.vars, attemptKey, t)
+	env := append(stepEnv(st.vars, attemptKey, t), c.slotEnv(ctx, t)...)
 	res := autoResult{command: telemetry.RedactText(strings.Join(argv, " "), env)}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = c.stepDir(s, st)

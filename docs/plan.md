@@ -394,6 +394,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Resource waits are visible: `run show` position, `resource_wait` stall
   signal, attention entries (#408, `docs/notes/408-resource-waits.md`,
   check `docs/verify/resource-waits.md`).
+- Provider-owned resource slots: `resource add|remove|unhealthy`, reset
+  after each claim, demand and idle release (#407,
+  `docs/notes/407-provider-slots.md`, check `docs/verify/provider-slots.md`).
 - Store ticket queries are portable SQL: hot fields keys and meta
   lookups are plain columns and a `ticket_meta` table, lists are
   `sqlc.slice` (#405, `docs/notes/405-portable-sql.md`).
@@ -573,8 +576,8 @@ Per-session isolation (`docs/notes/users-security.md`).
 **Test speed (#359).** In-process agent (#361), then move the
 process-tree tests onto the fake clock; sqlite template DB (#363).
 
-**Resource pools (#400).** Provider-owned slots build on the keyed and
-counted slots (waiting visibility done, #408; placement done, #409).
+**Resource pools (#400).** Done: provider-owned slots (#407), waiting
+visibility (#408), placement (#409).
 
 **Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
 misjudge conflicts: let the controller check mergeStateStatus itself.
@@ -1185,6 +1188,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   #409): the controller rewrites an unclaimed step's pool and resource
   keys to the chosen option, so the ready and claim queries stay as
   #400 built them. `when` is decided once at run start.
+- Provider slots are stored rows, released by the supervisor
+  (2026-11-04, #407): a concrete slot has an id, env and health, so it
+  needs a row. The row names the claim (ticket and fence); a pass moves
+  slots of ended claims to releasing and resets each once, which covers
+  every claim end path without a hook in each.
 - Store SQL is portable except recall and DDL types (2026-11-04, #405):
   queried fields keys are columns the store writes from `fields`, which
   stays the source of record; meta filters use `ticket_meta`. Recall

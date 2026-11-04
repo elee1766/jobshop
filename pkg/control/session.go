@@ -929,7 +929,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			r.setTurnTicket("")
 			return err
 		}
-		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t, comments))
+		interrupted, err := r.interruptible(ctx, conn, acpSession, slotPrompt(r.c.slotEnv(ctx, t))+r.ticketPrompt(t, comments))
 		if err != nil {
 			r.setTurnTicket("")
 			return err

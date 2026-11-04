@@ -120,6 +120,8 @@ type Controller struct {
 	poolPausedUntil map[string]time.Time
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
+	// prov is resource provider demand and idle state (#407); tick-only.
+	prov providerState
 	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
 	writeKeysPrunedAt time.Time
 	// poolQuarantined maps a pool to the permanent spawn error that
@@ -230,6 +232,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	defer func() { _ = st.Close() }()
 	// Resource caps gate claims (#400); reload re-syncs them.
 	if err := st.SetResourceCaps(ctx, cfg.ResourceCaps()); err != nil {
+		return err
+	}
+	if err := st.SetResourceProviders(ctx, cfg.ResourceProviders()); err != nil {
 		return err
 	}
 
@@ -409,6 +414,8 @@ func (c *Controller) tick() {
 	c.tickMu.Lock()
 	defer c.tickMu.Unlock()
 	c.sweep()
+	// Right after the sweep, so slots of expired claims reset this pass.
+	c.providerPass()
 	// Before supervise, so a created ticket can get a session this tick.
 	if !c.draining() {
 		c.runTriggers()
@@ -658,73 +665,77 @@ var methods map[string]method
 
 func init() {
 	methods = map[string]method{
-		rpc.MethodWhoami:           bind((*Controller).whoami),
-		rpc.MethodVersion:          bind((*Controller).version),
-		rpc.MethodIdentityList:     bind((*Controller).identityList),
-		rpc.MethodIdentityCheck:    bind((*Controller).identityCheck),
-		rpc.MethodIdentityToken:    bind((*Controller).identityToken),
-		rpc.MethodIngestDrain:      bind((*Controller).ingestDrainMethod),
-		rpc.MethodTicketCreate:     bind((*Controller).create),
-		rpc.MethodTicketShow:       bind((*Controller).show),
-		rpc.MethodTicketTrace:      bind((*Controller).trace),
-		rpc.MethodRecall:           bind((*Controller).recall),
-		rpc.MethodTicketList:       bind((*Controller).list),
-		rpc.MethodTicketUpdate:     bind((*Controller).update),
-		rpc.MethodTicketClose:      bind((*Controller).closeTicket),
-		rpc.MethodTicketReopen:     bind((*Controller).reopen),
-		rpc.MethodReady:            bind((*Controller).ready),
-		rpc.MethodCommentAdd:       bind((*Controller).comment),
-		rpc.MethodEdgeAdd:          bind((*Controller).edgeAdd),
-		rpc.MethodEdgeRemove:       bind((*Controller).edgeRemove),
-		rpc.MethodLabelAdd:         bind((*Controller).labelAdd),
-		rpc.MethodLabelRemove:      bind((*Controller).labelRemove),
-		rpc.MethodClaim:            bind((*Controller).claim),
-		rpc.MethodHeartbeat:        bind((*Controller).heartbeat),
-		rpc.MethodRelease:          bind((*Controller).release),
-		rpc.MethodSessionNew:       bind((*Controller).sessionNew),
-		rpc.MethodSessionList:      bind((*Controller).sessionList),
-		rpc.MethodSessionReap:      bind((*Controller).sessionReap),
-		rpc.MethodSessionRestart:   bind((*Controller).sessionRestart),
-		rpc.MethodSessionPrompt:    bind((*Controller).sessionPrompt),
-		rpc.MethodSessionSandbox:   bind((*Controller).sessionSandbox),
-		rpc.MethodSessionSend:      bind((*Controller).sessionSend),
-		rpc.MethodSessionSubscribe: bind((*Controller).sessionSubscribe),
-		rpc.MethodEventsSubscribe:  bind((*Controller).eventsSubscribe),
-		rpc.MethodShutdown:         bind((*Controller).shutdown),
-		rpc.MethodDrain:            bind((*Controller).drainPools),
-		rpc.MethodTriggerList:      bind((*Controller).triggerList),
-		rpc.MethodReload:           bind((*Controller).reloadConfig),
-		rpc.MethodConfigShow:       bind((*Controller).configShow),
-		rpc.MethodRunStart:         bind((*Controller).runStart),
-		rpc.MethodRunShow:          bind((*Controller).runShow),
-		rpc.MethodRunList:          bind((*Controller).runList),
-		rpc.MethodRunCancel:        bind((*Controller).runCancel),
-		rpc.MethodRunResume:        bind((*Controller).runResume),
-		rpc.MethodBatchStart:       bind((*Controller).batchStart),
-		rpc.MethodBatchShow:        bind((*Controller).batchShow),
-		rpc.MethodBatchList:        bind((*Controller).batchList),
-		rpc.MethodPoolList:         bind((*Controller).poolList),
-		rpc.MethodPoolScale:        bind((*Controller).poolScaleRPC),
-		rpc.MethodSessionCordon:    bind((*Controller).sessionCordonRPC),
-		rpc.MethodSessionConfig:    bind((*Controller).sessionConfigRPC),
-		rpc.MethodAttention:        bind((*Controller).attention),
-		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
-		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
-		rpc.MethodGuard:            bind((*Controller).guard),
-		rpc.MethodSubscribe:        bind((*Controller).subscribe),
-		rpc.MethodReport:           bind((*Controller).report),
-		rpc.MethodQuestionAnswer:   bind((*Controller).answerQuestion),
-		rpc.MethodActivityList:     bind((*Controller).activityList),
-		rpc.MethodActivityRecord:   bind((*Controller).activityRecord),
-		rpc.MethodLearnAdd:         bind((*Controller).learnAdd),
-		rpc.MethodLearnList:        bind((*Controller).learnList),
-		rpc.MethodLearnUpdate:      bind((*Controller).learnUpdate),
-		rpc.MethodLearnEvaluate:    bind((*Controller).learnEvaluate),
-		rpc.MethodLearnEdits:       bind((*Controller).learnEdits),
-		rpc.MethodWriteKeyClaim:    bind((*Controller).writeKeyClaim),
-		rpc.MethodWriteKeyFinish:   bind((*Controller).writeKeyFinish),
-		rpc.MethodWaitAdd:          bind((*Controller).waitAdd),
-		rpc.MethodWaitList:         bind((*Controller).waitList),
-		rpc.MethodWaitClear:        bind((*Controller).waitClear),
+		rpc.MethodWhoami:            bind((*Controller).whoami),
+		rpc.MethodVersion:           bind((*Controller).version),
+		rpc.MethodIdentityList:      bind((*Controller).identityList),
+		rpc.MethodIdentityCheck:     bind((*Controller).identityCheck),
+		rpc.MethodIdentityToken:     bind((*Controller).identityToken),
+		rpc.MethodIngestDrain:       bind((*Controller).ingestDrainMethod),
+		rpc.MethodTicketCreate:      bind((*Controller).create),
+		rpc.MethodTicketShow:        bind((*Controller).show),
+		rpc.MethodTicketTrace:       bind((*Controller).trace),
+		rpc.MethodRecall:            bind((*Controller).recall),
+		rpc.MethodTicketList:        bind((*Controller).list),
+		rpc.MethodTicketUpdate:      bind((*Controller).update),
+		rpc.MethodTicketClose:       bind((*Controller).closeTicket),
+		rpc.MethodTicketReopen:      bind((*Controller).reopen),
+		rpc.MethodReady:             bind((*Controller).ready),
+		rpc.MethodCommentAdd:        bind((*Controller).comment),
+		rpc.MethodEdgeAdd:           bind((*Controller).edgeAdd),
+		rpc.MethodEdgeRemove:        bind((*Controller).edgeRemove),
+		rpc.MethodLabelAdd:          bind((*Controller).labelAdd),
+		rpc.MethodLabelRemove:       bind((*Controller).labelRemove),
+		rpc.MethodClaim:             bind((*Controller).claim),
+		rpc.MethodHeartbeat:         bind((*Controller).heartbeat),
+		rpc.MethodRelease:           bind((*Controller).release),
+		rpc.MethodSessionNew:        bind((*Controller).sessionNew),
+		rpc.MethodSessionList:       bind((*Controller).sessionList),
+		rpc.MethodSessionReap:       bind((*Controller).sessionReap),
+		rpc.MethodSessionRestart:    bind((*Controller).sessionRestart),
+		rpc.MethodSessionPrompt:     bind((*Controller).sessionPrompt),
+		rpc.MethodSessionSandbox:    bind((*Controller).sessionSandbox),
+		rpc.MethodSessionSend:       bind((*Controller).sessionSend),
+		rpc.MethodSessionSubscribe:  bind((*Controller).sessionSubscribe),
+		rpc.MethodEventsSubscribe:   bind((*Controller).eventsSubscribe),
+		rpc.MethodShutdown:          bind((*Controller).shutdown),
+		rpc.MethodDrain:             bind((*Controller).drainPools),
+		rpc.MethodTriggerList:       bind((*Controller).triggerList),
+		rpc.MethodReload:            bind((*Controller).reloadConfig),
+		rpc.MethodConfigShow:        bind((*Controller).configShow),
+		rpc.MethodRunStart:          bind((*Controller).runStart),
+		rpc.MethodRunShow:           bind((*Controller).runShow),
+		rpc.MethodRunList:           bind((*Controller).runList),
+		rpc.MethodRunCancel:         bind((*Controller).runCancel),
+		rpc.MethodRunResume:         bind((*Controller).runResume),
+		rpc.MethodBatchStart:        bind((*Controller).batchStart),
+		rpc.MethodBatchShow:         bind((*Controller).batchShow),
+		rpc.MethodBatchList:         bind((*Controller).batchList),
+		rpc.MethodPoolList:          bind((*Controller).poolList),
+		rpc.MethodPoolScale:         bind((*Controller).poolScaleRPC),
+		rpc.MethodSessionCordon:     bind((*Controller).sessionCordonRPC),
+		rpc.MethodSessionConfig:     bind((*Controller).sessionConfigRPC),
+		rpc.MethodAttention:         bind((*Controller).attention),
+		rpc.MethodPoolUnquarantine:  bind((*Controller).poolUnquarantine),
+		rpc.MethodReportIncidents:   bind((*Controller).reportIncidents),
+		rpc.MethodGuard:             bind((*Controller).guard),
+		rpc.MethodSubscribe:         bind((*Controller).subscribe),
+		rpc.MethodReport:            bind((*Controller).report),
+		rpc.MethodQuestionAnswer:    bind((*Controller).answerQuestion),
+		rpc.MethodActivityList:      bind((*Controller).activityList),
+		rpc.MethodActivityRecord:    bind((*Controller).activityRecord),
+		rpc.MethodLearnAdd:          bind((*Controller).learnAdd),
+		rpc.MethodLearnList:         bind((*Controller).learnList),
+		rpc.MethodLearnUpdate:       bind((*Controller).learnUpdate),
+		rpc.MethodLearnEvaluate:     bind((*Controller).learnEvaluate),
+		rpc.MethodLearnEdits:        bind((*Controller).learnEdits),
+		rpc.MethodResourceAdd:       bind((*Controller).resourceAdd),
+		rpc.MethodResourceRemove:    bind((*Controller).resourceRemove),
+		rpc.MethodResourceUnhealthy: bind((*Controller).resourceUnhealthy),
+		rpc.MethodResourceList:      bind((*Controller).resourceList),
+		rpc.MethodWriteKeyClaim:     bind((*Controller).writeKeyClaim),
+		rpc.MethodWriteKeyFinish:    bind((*Controller).writeKeyFinish),
+		rpc.MethodWaitAdd:           bind((*Controller).waitAdd),
+		rpc.MethodWaitList:          bind((*Controller).waitList),
+		rpc.MethodWaitClear:         bind((*Controller).waitClear),
 	}
 }

@@ -661,17 +661,23 @@ func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store
 		if err != nil {
 			return err
 		}
+		fresh := false
 		t, err = s.mutateWith(ctx, q, r.ID, req.Holder, "claim", func(t *store.Ticket) (any, error) {
 			// The candidate was read in this transaction, but without a
 			// single-writer database another claimer may have taken it.
 			if t.Status == store.StatusClosed || (t.Holder != "" && t.Holder != req.Holder) {
 				return nil, fmt.Errorf("%w: %s was taken", store.ErrConflict, t.ID)
 			}
+			fresh = t.Status == store.StatusOpen
 			var d any
 			c, d = s.claim(t, req.Holder, req.Lease)
 			return d, nil
 		}, claimWrite)
-		return err
+		if err != nil || !fresh {
+			return err
+		}
+		// A fresh claim takes its provider slots (#407).
+		return s.takeSlots(ctx, q, t)
 	})
 	return t, c, err
 }
@@ -691,6 +697,11 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 		if err != nil {
 			return err
 		}
+		empty, err := q.ProviderEmpty(ctx, id)
+		if err != nil {
+			return err
+		}
+		fresh := false
 		t, err = s.mutateWith(ctx, q, id, holder, "claim", func(t *store.Ticket) (any, error) {
 			switch {
 			case t.Status == store.StatusClosed:
@@ -701,14 +712,18 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 				return nil, fmt.Errorf("%w: %s is assigned to %s", store.ErrNotHolder, id, t.Holder)
 			case blocked:
 				return nil, fmt.Errorf("%w: %s is blocked", store.ErrNoWork, id)
-			case full != 0 && t.Status == store.StatusOpen:
+			case (full != 0 || empty != 0) && t.Status == store.StatusOpen:
 				return nil, fmt.Errorf("%w: %s waits for a resource slot", store.ErrNoWork, id)
 			}
+			fresh = t.Status == store.StatusOpen
 			var d any
 			c, d = s.claim(t, holder, lease)
 			return d, nil
 		}, claimWrite)
-		return err
+		if err != nil || !fresh {
+			return err
+		}
+		return s.takeSlots(ctx, q, t)
 	})
 	return t, c, err
 }
