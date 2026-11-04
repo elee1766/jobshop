@@ -16,6 +16,7 @@ prompt_rules:
   - name: policy
     command: ./policy-hook     # sh -c in the root dir; JSON event on stdin
     timeout: 5s                # default 10s
+    inject: always             # changed (default) | once | always (#397)
 ```
 
 - Sources: packs and the host file can both declare `prompt_rules`. The

@@ -407,6 +407,10 @@ type SessionPromptParams struct {
 type PromptPart struct {
 	Source string `json:"source"`
 	Text   string `json:"text"`
+	// Status, on rule parts, says why the part is or is not sent (#397):
+	// new, changed, always, removed, or unchanged (skipped: the session
+	// already holds this text).
+	Status string `json:"status,omitempty"`
 }
 
 // SessionPromptResult is the prompt the session's next turn would get,
