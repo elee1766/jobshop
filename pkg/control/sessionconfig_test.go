@@ -61,7 +61,7 @@ func TestSessionConfig(t *testing.T) {
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return show(task.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
 	assert.Equal(t, "model=m1 busy=false\n", configSets(t, root), "set once before the turn; other_id skipped")
 	in := info()
 	assert.Equal(t, "m1", in.Model)
@@ -75,14 +75,14 @@ func TestSessionConfig(t *testing.T) {
 	require.Eventually(t, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, 20*time.Second, 20*time.Millisecond)
+	}, dialWait, 20*time.Millisecond)
 	setPoolConfig(t, root, "    model: m2\n    effort: high\n")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	pass(t, root.Dir, 3)
 	assert.NotContains(t, configSets(t, root), "m2", "not applied mid-turn")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(busy.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
-	require.Eventually(t, func() bool { return info().Model == "m2" }, 10*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return show(busy.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return info().Model == "m2" }, dialWait, 50*time.Millisecond)
 	sets := configSets(t, root)
 	assert.Contains(t, sets, "model=m2 busy=false")
 	assert.Contains(t, sets, "reasoning_effort=high busy=false")
@@ -93,10 +93,10 @@ func TestSessionConfig(t *testing.T) {
 
 	// Override one session, then reset back to the pool's value.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionConfig, rpc.SessionConfigParams{ID: sess, Options: map[string]string{"model": "openai-oauth:m3"}}, nil))
-	require.Eventually(t, func() bool { return info().Model == "openai-oauth:m3" }, 10*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return info().Model == "openai-oauth:m3" }, dialWait, 50*time.Millisecond)
 	assert.Equal(t, map[string]string{"model": "openai-oauth:m3"}, info().Override)
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionConfig, rpc.SessionConfigParams{ID: sess, Reset: true}, nil))
-	require.Eventually(t, func() bool { return info().Model == "m2" }, 10*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return info().Model == "m2" }, dialWait, 50*time.Millisecond)
 	assert.Empty(t, info().Override)
 	assert.Equal(t, store.StatusOpen, show(sess).Status)
 
@@ -127,7 +127,7 @@ func TestSessionConfigRejected(t *testing.T) {
 		}
 		sess = all[0]
 		return true
-	}, 20*time.Second, 50*time.Millisecond)
+	}, dialWait, 50*time.Millisecond)
 	assert.Equal(t, "config_failed", sess.Resolution)
 	assert.Equal(t, 2, strings.Count(configSets(t, root), "model=bad-route"), "one retry")
 	_, err := os.Stat(filepath.Join(root.Dir, "prompts"))

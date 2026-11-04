@@ -65,7 +65,7 @@ func TestSandboxedSession(t *testing.T) {
 			return true
 		}
 		return false
-	}, 30*time.Second, 50*time.Millisecond, "ticket closed over cli.sock from inside the sandbox")
+	}, dialWait, 50*time.Millisecond, "ticket closed over cli.sock from inside the sandbox")
 	require.Empty(t, endedWhy)
 
 	b, err := os.ReadFile(filepath.Join(work, "probe"))

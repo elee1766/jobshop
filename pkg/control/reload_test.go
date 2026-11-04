@@ -39,7 +39,7 @@ func waitClosed(t *testing.T, admin *rpc.Client, id string) {
 			Ticket *store.Ticket `json:"ticket"`
 		}{&got})
 		return err == nil && got.Status == store.StatusClosed
-	}, 20*time.Second, 50*time.Millisecond)
+	}, dialWait, 50*time.Millisecond)
 }
 
 func openSessions(t *testing.T, admin *rpc.Client) []store.Ticket {
@@ -99,7 +99,7 @@ func TestReloadMaxSessions(t *testing.T) {
 	for i := range 2 {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &tickets[i]))
 	}
-	require.Eventually(t, func() bool { return len(openSessions(t, admin)) == 2 }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return len(openSessions(t, admin)) == 2 }, dialWait, 50*time.Millisecond)
 
 	writePoolConfig(t, root, 1, "")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
@@ -235,7 +235,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	require.Eventually(t, func() bool {
 		pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 		return err == nil && string(pid) != string(pid1) && host.Alive(sdir) && hasEnv("DEPLOY=two")
-	}, 20*time.Second, 50*time.Millisecond, "idle host respawned with the new env")
+	}, dialWait, 50*time.Millisecond, "idle host respawned with the new env")
 	var b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
 	waitClosed(t, admin, b.ID) // a prompt to an unloaded conversation would fail
@@ -252,7 +252,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	require.Eventually(t, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
 		return err == nil
-	}, 20*time.Second, 50*time.Millisecond)
+	}, dialWait, 50*time.Millisecond)
 	writeEnv("three")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
 	pass(t, root.Dir, 3)
@@ -266,7 +266,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	assert.Equal(t, sess[0].ID, held.Holder, "claim kept")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	waitClosed(t, admin, c.ID)
-	require.Eventually(t, func() bool { return hasEnv("DEPLOY=three") && host.Alive(sdir) }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return hasEnv("DEPLOY=three") && host.Alive(sdir) }, dialWait, 50*time.Millisecond)
 	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID)
 }
 
@@ -312,7 +312,7 @@ func TestEnvRefreshStopsDaemon(t *testing.T) {
 	var a store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
 	waitClosed(t, admin, a.ID)
-	require.Eventually(t, func() bool { return daemons()["one"] != 0 }, 10*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return daemons()["one"] != 0 }, dialWait, 50*time.Millisecond)
 	old := daemons()["one"]
 	sess := openSessions(t, admin)
 	require.Len(t, sess, 1)
@@ -323,8 +323,8 @@ func TestEnvRefreshStopsDaemon(t *testing.T) {
 	stop = start()
 	defer stop()
 	admin = dial(t, root.AdminSocket())
-	require.Eventually(t, func() bool { return daemons()["two"] != 0 }, 20*time.Second, 50*time.Millisecond, "agent respawned with the new env")
-	require.Eventually(t, func() bool { return !alive(old) }, 10*time.Second, 50*time.Millisecond, "old daemon stopped")
+	require.Eventually(t, func() bool { return daemons()["two"] != 0 }, dialWait, 50*time.Millisecond, "agent respawned with the new env")
+	require.Eventually(t, func() bool { return !alive(old) }, dialWait, 50*time.Millisecond, "old daemon stopped")
 	var b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
 	waitClosed(t, admin, b.ID)
