@@ -319,6 +319,11 @@ type Ingest struct {
 	// Endpoints are the webhook endpoints, each with its own path and
 	// secret (#339).
 	Endpoints []IngestEndpoint `yaml:"endpoints"`
+	// GitHubReconcile is how often failed GitHub App webhook deliveries
+	// are redelivered (#335): a Go duration, "off", or empty for 15m.
+	// Only github-app identities have a deliveries API; with none it is
+	// off.
+	GitHubReconcile string `yaml:"github_reconcile"`
 
 	// Removed in #339; set only to fail the load with a pointer to the
 	// replacement instead of silently turning a source off.
@@ -390,6 +395,11 @@ func (e IngestEndpoint) EndpointPath() string {
 
 func (c *Config) validateIngest() error {
 	i := c.Ingest
+	if r := i.GitHubReconcile; r != "" && r != "off" {
+		if d, err := time.ParseDuration(r); err != nil || d < time.Minute {
+			return fmt.Errorf("%s: ingest.github_reconcile %q must be a duration of at least 1m, or off", FileName, r)
+		}
+	}
 	if i.OldGitHubSecretFile != "" || i.OldLinearSecretFile != "" {
 		return fmt.Errorf("%s: ingest.github_secret_file and ingest.linear_secret_file were replaced by ingest.endpoints (#339): list one endpoint per secret", FileName)
 	}
@@ -465,6 +475,20 @@ func (i Ingest) SpoolPath(r Root) string {
 		return filepath.Join(r.Dir, "ingest", "spool.db")
 	}
 	return r.Path(i.Spool)
+}
+
+// DefaultGitHubReconcile is the reconcile interval when unset.
+const DefaultGitHubReconcile = 15 * time.Minute
+
+// ReconcileEvery is the GitHub reconcile interval; 0 is off.
+func (i Ingest) ReconcileEvery() time.Duration {
+	if i.GitHubReconcile == "off" {
+		return 0
+	}
+	if d, err := time.ParseDuration(i.GitHubReconcile); err == nil && d > 0 {
+		return d
+	}
+	return DefaultGitHubReconcile
 }
 
 // RetentionDuration is Retention parsed, or the default.

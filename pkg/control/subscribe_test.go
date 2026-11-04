@@ -21,6 +21,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -343,4 +344,33 @@ func TestSubscriptionsGitHubTokenSelf(t *testing.T) {
 	msgs := messagesTo(t, c, sess.ID)
 	require.Len(t, msgs, 1)
 	assert.Contains(t, msgs[0].Body, "please rename")
+}
+
+// TestSubscriptionsWriteInbox: a polled comment becomes an inbox row
+// whose natural key matches the drained webhook copy, so the second
+// copy dedupes (#335).
+func TestSubscriptionsWriteInbox(t *testing.T) {
+	c, clk, src := subController(t)
+	ctx := t.Context()
+	mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
+	c.pollSubscriptions(ctx, src)
+
+	at := clk.now().Add(time.Minute).Truncate(time.Second)
+	src.add("acme/widget#7", ghComment{ID: "c99", Author: "bob", Kind: "comment", Body: "hi", At: at})
+	c.pollSubscriptions(ctx, src)
+	its, err := c.store.InboxList(ctx, store.InboxFilter{})
+	require.NoError(t, err)
+	require.Len(t, its, 1)
+	assert.Equal(t, ingest.GitHubKey("acme/widget", "comment", "99", at), its[0].NaturalKey)
+	assert.Equal(t, "99", its[0].CommentID)
+
+	sp, err := ingest.OpenSpool(ctx, filepath.Join(t.TempDir(), "spool.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sp.Close() })
+	payload := fmt.Sprintf(`{"repository":{"full_name":"acme/widget"},"issue":{"number":7},"comment":{"id":99,"updated_at":%q}}`, at.Format(time.RFC3339))
+	_, err = sp.Write(ctx, ingest.Delivery{Endpoint: "gh", Source: "github", DeliveryID: "w1", Kind: "issue_comment", Payload: []byte(payload)})
+	require.NoError(t, err)
+	res, err := ingest.Drain(ctx, sp, c.store, clk.now, c.log)
+	require.NoError(t, err)
+	assert.Equal(t, ingest.DrainResult{Moved: 1}, res, "webhook copy dedupes")
 }

@@ -246,6 +246,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 			if self != "" && strings.EqualFold(cm.Author, self) {
 				cm.Bot = true
 			}
+			c.inboxComment(ctx, th, cm)
 			if !c.ignored(cm) {
 				human = append(human, cm)
 			}
