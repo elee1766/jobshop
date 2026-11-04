@@ -359,66 +359,6 @@ packs:
 	assert.Contains(t, c.Workflows["ci-repair"].Steps[1].Prompt, "Conflicts only in docs")
 }
 
-// TestEscalationPolicy (#379): the github pack carries the escalation
-// policy rule for every pool, and the escalation chat prompts from its
-// prompt files when escalation_chat_pool is set; unset, no chat.
-func TestEscalationPolicy(t *testing.T) {
-	pack, err := filepath.Abs("../../packs/github")
-	require.NoError(t, err)
-	load := func(vars string) *Config {
-		dir := t.TempDir()
-		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
-  js: {}
-agents:
-  a: {command: x}
-pools:
-  chat: {agent: a, type: chat, dir: /tmp}
-packs:
-  - path: ` + pack + `
-    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test` + vars + `}
-`})
-		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
-		require.NoError(t, err)
-		return c
-	}
-	c := load("")
-	var rule *PromptRule
-	for i := range c.PromptRules {
-		if c.PromptRules[i].Name == "escalation-policy" {
-			rule = &c.PromptRules[i]
-		}
-	}
-	require.NotNil(t, rule, "the policy rule is in the merged config")
-	assert.Equal(t, RuleSystem, rule.At)
-	assert.Contains(t, rule.Text, "only for a decision, a credential or access")
-	assert.Contains(t, rule.Text, "jobshop release --until")
-	assert.Empty(t, c.Workflows["pr-work"].Escalate.ChatPool, "no chat without escalation_chat_pool")
-
-	c = load(", escalation_chat_pool: chat")
-	e := c.Workflows["pr-work"].Escalate
-	assert.Equal(t, "chat", e.ChatPool)
-	assert.Contains(t, e.Prompt, "{{.ticket}}", "the escalation vars stay templates until the ticket is filed")
-	assert.Contains(t, e.Prompt, "escalation chat")
-	assert.NotContains(t, e.Prompt, "gateway")
-	assert.Contains(t, e.PoolPrompt, "jobshop pool unquarantine {{.pool}}")
-	assert.NotContains(t, e.PoolPrompt, "gateway")
-
-	// An escalation chat pool that is not a chat pool is refused.
-	dir := t.TempDir()
-	writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
-  js: {}
-agents:
-  a: {command: x}
-pools:
-  dev: {agent: a, dir: /tmp}
-packs:
-  - path: ` + pack + `
-    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test, escalation_chat_pool: dev}
-`})
-	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
-	require.ErrorContains(t, err, "is not a chat pool")
-}
-
 // TestGithubPackGeneric: nothing in packs/github names the Jobshop repo.
 func TestGithubPackGeneric(t *testing.T) {
 	err := filepath.WalkDir("../../packs/github", func(path string, d fs.DirEntry, err error) error {
@@ -686,4 +626,88 @@ func TestMinimalPackDoc(t *testing.T) {
 	require.Equal(t, "/srv/widget", c.Pools["work"].Repo)
 	require.Equal(t, 1, c.Pools["work"].MaxSessions)
 	require.Len(t, c.Workflows["change"].Steps, 2)
+}
+
+// TestGithubPackEscalationChat (#379): with escalation_chat_pool set,
+// every workflow's escalate block points at it, with the pack's prompts
+// keeping the escalation vars for the controller; the policy rule is a
+// system rule for every pool. Unset: no chat.
+func TestGithubPackEscalationChat(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	load := func(extra string) *Config {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+pools:
+  esc: {agent: a, type: chat, dir: /w}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile` + extra + `}
+`})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		return c
+	}
+	c := load(", escalation_chat_pool: esc")
+	for n, w := range c.Workflows {
+		require.NotNil(t, w.Escalate, n)
+		assert.Equal(t, "esc", w.Escalate.ChatPool, n)
+	}
+	e := c.Workflows["pr-work"].Escalate
+	out, err := Fill(e.Prompt, e.Template, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	require.NoError(t, err)
+	assert.Contains(t, out, "escalation ticket js-e for run js-r (workflow pr-work)")
+	assert.Contains(t, out, "`jobshop run resume js-r")
+	assert.Contains(t, out, "issue 7")
+	assert.True(t, strings.HasSuffix(strings.TrimSpace(out), "BODY"))
+	assert.NotContains(t, out, "gateway")
+	assert.NotContains(t, out, "thread")
+	pout, err := Fill(e.PoolPrompt, e.Template, map[string]any{"ticket": "js-e", "pool": "dev", "error": "boom", "body": "B"})
+	require.NoError(t, err)
+	assert.Contains(t, pout, "pool dev starts no sessions")
+	assert.Contains(t, pout, "jobshop pool unquarantine dev")
+
+	var policy *PromptRule
+	for i := range c.PromptRules {
+		if c.PromptRules[i].Name == "escalate-policy" {
+			policy = &c.PromptRules[i]
+		}
+	}
+	require.NotNil(t, policy, "escalation policy rule")
+	assert.Equal(t, "system", policy.At)
+	assert.Contains(t, policy.Text, "only for a decision, a credential")
+	assert.Contains(t, policy.Text, "jobshop report progress")
+
+	for n, w := range load("").Workflows {
+		require.NotNil(t, w.Escalate, n)
+		assert.Empty(t, w.Escalate.ChatPool, "no chat by default: "+n)
+	}
+}
+
+// TestEscalationConfig: chat_pool must be a chat pool with a prompt, and
+// prompts may only use the escalation vars.
+func TestEscalationConfig(t *testing.T) {
+	base := "projects:\n  js: {}\nagents:\n  a: {command: x}\npools:\n  dev: {agent: a, dir: /w}\n  chat: {agent: a, type: chat, dir: /w}\n"
+	for name, tc := range map[string]struct{ yaml, err string }{
+		"ok":        {"escalation: {chat_pool: chat, prompt: \"t ${ticket} ${body}\", pool_prompt: \"p ${pool} ${error}\"}\n", ""},
+		"not chat":  {"escalation: {chat_pool: dev, prompt: x}\n", "not a chat pool"},
+		"unknown":   {"escalation: {chat_pool: nope, prompt: x}\n", "unknown pool"},
+		"no prompt": {"escalation: {chat_pool: chat}\n", "needs prompt"},
+		"bad var":   {"escalation: {chat_pool: chat, prompt: \"${issue}\"}\n", "uses ${issue}"},
+		"pool var":  {"escalation: {chat_pool: chat, pool_prompt: \"${run}\"}\n", "uses ${run}"},
+		"empty":     {"escalation: {}\n", ""},
+	} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": base + tc.yaml})
+		_, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		if tc.err == "" {
+			assert.NoError(t, err, name)
+		} else {
+			require.Error(t, err, name)
+			assert.Contains(t, err.Error(), tc.err, name)
+		}
+	}
 }

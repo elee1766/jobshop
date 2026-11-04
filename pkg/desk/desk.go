@@ -219,22 +219,6 @@ type AttentionItem struct {
 	Title string    `json:"title"`
 	Why   string    `json:"why"`
 	Since time.Time `json:"since,omitzero"`
-	// Chat is the key of the escalation chat the controller opened for
-	// the ticket (meta.escalation.key), when there is one (#379).
-	Chat string `json:"chat,omitempty"`
-}
-
-// escalationKey is meta.escalation.key of t, or "".
-func escalationKey(t store.Ticket) string {
-	var m struct {
-		Escalation struct {
-			Key string `json:"key"`
-		} `json:"escalation"`
-	}
-	if json.Unmarshal(t.Meta, &m) != nil {
-		return ""
-	}
-	return m.Escalation.Key
 }
 
 // attention lists what waits on a human, oldest first; empty when healthy.
@@ -254,7 +238,7 @@ func (s *Server) attention(r *http.Request) (any, error) {
 			return nil, err
 		}
 		for _, t := range ts {
-			out = append(out, AttentionItem{Kind: "ticket", ID: t.ID, Title: t.Title, Why: "escalation", Since: t.CreatedAt, Chat: escalationKey(t)})
+			out = append(out, AttentionItem{Kind: "ticket", ID: t.ID, Title: t.Title, Why: "escalation", Since: t.CreatedAt})
 		}
 	}
 	var pools rpc.PoolStatusResult

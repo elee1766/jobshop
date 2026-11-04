@@ -121,6 +121,12 @@ const (
 	RunCancelled  = "cancelled"
 )
 
+// ResolutionRebase closes a step to route its run back for a rebase
+// (#424): like "failed" the step reopens, but no failure is counted,
+// since master moving under a PR is not the step's fault. On a
+// non-step ticket it is an ordinary close.
+const ResolutionRebase = "rebase"
+
 // RunFields is the engine state of a workflow run. Its steps are its
 // children (parent_id).
 type RunFields struct {
@@ -186,7 +192,73 @@ type StepFields struct {
 	Failures int    `json:"failures"`
 	// Wait parks the step until outside state holds (#381).
 	Wait *Wait `json:"wait,omitempty"`
+	// Resources are the resource keys the step holds while in progress
+	// (#400). It is ready only when each has a free slot.
+	Resources []string `json:"resources,omitempty"`
+	// Type is command or http for steps the controller runs (#396);
+	// empty is an agent step.
+	Type string `json:"type,omitempty"`
+	// Command is the last attempt's filled command line or "METHOD url",
+	// Output its bounded, redacted stdout or response body, Outcome the
+	// outcome word it set, and Result ok, not_yet or failed.
+	Command string `json:"command,omitempty"`
+	Output  string `json:"output,omitempty"`
+	Outcome string `json:"outcome,omitempty"`
+	Result  string `json:"result,omitempty"`
+	// Needs are the step ids this step waits on (#385), for run show.
+	Needs []string `json:"needs,omitempty"`
+	// When gates the step on another step's outcome (#385). A gated step
+	// is created deferred; the controller opens or skips it once its
+	// needs are finished.
+	When *StepWhen `json:"when,omitempty"`
+	// Placement is the step's resolved placement (#409): its options by
+	// weight and which one the ticket is on now.
+	Placement *StepPlacement `json:"placement,omitempty"`
 }
+
+// StepPlacement records a step's placement options. The ticket's pool
+// and Resources are the chosen option's; the controller moves the step
+// to another option while it is open and unclaimed.
+type StepPlacement struct {
+	Options []PlacementOption `json:"options"`
+	// Chosen indexes Options. Fallback is Chosen > 0.
+	Chosen int `json:"chosen"`
+	// PreferMS is prefer_for in milliseconds.
+	PreferMS int64 `json:"prefer_ms,omitempty"`
+	// Since is when the step first could start (its blockers finished),
+	// set by the controller; prefer_for counts from it.
+	Since time.Time `json:"since,omitzero"`
+}
+
+// PlacementOption is one resolved option: a pool and every resource key
+// it needs (required keys included).
+type PlacementOption struct {
+	Pool      string   `json:"pool"`
+	Resources []string `json:"resources,omitempty"`
+	Weight    int      `json:"weight"`
+}
+
+// Fallback reports whether the step is on an option below the top one.
+func (p *StepPlacement) Fallback() bool { return p != nil && p.Chosen > 0 }
+
+// StepWhen is a step condition: step closed with outcome.
+type StepWhen struct {
+	Step    string `json:"step"`
+	Outcome string `json:"outcome"`
+}
+
+// StepSkipped is the resolution of a step whose when did not match. It
+// unblocks dependents like done.
+const StepSkipped = "skipped"
+
+// StepFinished reports whether a step ticket closed done or skipped,
+// the resolutions that let the steps after it run.
+func StepFinished(t Ticket) bool {
+	return t.Status == StatusClosed && (t.Resolution == "done" || t.Resolution == StepSkipped)
+}
+
+// Auto reports whether the controller runs the step itself.
+func (f StepFields) Auto() bool { return f.Type == "command" || f.Type == "http" }
 
 // StepFailure counts one failed attempt on a step ticket: a close
 // "failed", a release while unclosed, or an expired lease. It bumps
@@ -224,6 +296,16 @@ func (f StepFields) Validate() error {
 	}
 	if f.Index < 0 || f.Retries < 0 || f.Failures < 0 {
 		return fmt.Errorf("%w: step: index, retries and failures must be >= 0", ErrInvalid)
+	}
+	for _, r := range f.Resources {
+		if r == "" {
+			return fmt.Errorf("%w: step: empty resource key", ErrInvalid)
+		}
+	}
+	if p := f.Placement; p != nil {
+		if len(p.Options) == 0 || p.Chosen < 0 || p.Chosen >= len(p.Options) {
+			return fmt.Errorf("%w: step: placement chosen out of range", ErrInvalid)
+		}
 	}
 	return f.Wait.Validate()
 }

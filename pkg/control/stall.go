@@ -168,6 +168,10 @@ func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger) ([]sta
 			found, err = c.stallNeedsHuman(ctx, now, after)
 		case config.StallBlocked:
 			found, err = c.stallBlocked(ctx, now, after)
+		case config.StallResourceWait:
+			found, err = c.stallResourceWait(ctx, now, after)
+		case config.StallIngestWorker, config.StallIngestBacklog:
+			found, err = c.stallIngest(ctx, sig.Signal)
 		case config.StallLinearIssueNoRun:
 			found, err = c.stallLinearIssues(ctx, sig)
 		default:

@@ -293,6 +293,36 @@ func TestIngestEndpoints(t *testing.T) {
 	assert.Equal(t, LinearWebhookPath, c.IngestEndpoints()[0].EndpointPath())
 }
 
+// TestIngestPollers (#341): defaults, and every validation error.
+func TestIngestPollers(t *testing.T) {
+	const pat = "identities:\n  me: {kind: github-token, token_file: /pat, repos: [\"me/*\"]}\n  lin: {kind: linear, token_file: /l, workspace: w, teams: [ENG]}\n"
+	c, err := Parse([]byte(pat + "ingest:\n  pollers:\n    - {name: p, source: github, repos: [me/app], identity: me}\n    - {name: q, source: github, repos: [x/y], events: [issues], interval: 30s}\n"))
+	require.NoError(t, err)
+	ps := c.Ingest.Pollers
+	require.Len(t, ps, 2)
+	assert.Equal(t, time.Minute, ps[0].Every())
+	assert.Equal(t, PollerEvents, ps[0].EventSet())
+	assert.Equal(t, 30*time.Second, ps[1].Every())
+	assert.Equal(t, []string{"issues"}, ps[1].EventSet())
+
+	for name, tc := range map[string]struct{ yaml, want string }{
+		"bad name":       {"ingest:\n  pollers: [{name: A_b, source: github, repos: [a/b]}]\n", "[a-z0-9-]+"},
+		"dup name":       {"ingest:\n  pollers: [{name: a, source: github, repos: [a/b]}, {name: a, source: github, repos: [a/b]}]\n", "already used"},
+		"endpoint name":  {"ingest:\n  endpoints: [{name: a, source: github, secret_file: s}]\n  pollers: [{name: a, source: github, repos: [a/b]}]\n", "already used"},
+		"source":         {"ingest:\n  pollers: [{name: a, source: linear, repos: [a/b]}]\n", "source must be github"},
+		"no repos":       {"ingest:\n  pollers: [{name: a, source: github}]\n", "needs repos"},
+		"bad repo":       {"ingest:\n  pollers: [{name: a, source: github, repos: [nope]}]\n", "owner/name"},
+		"bad event":      {"ingest:\n  pollers: [{name: a, source: github, repos: [a/b], events: [push]}]\n", "must be one of"},
+		"short interval": {"ingest:\n  pollers: [{name: a, source: github, repos: [a/b], interval: 1s}]\n", "at least 10s"},
+		"linear id":      {pat + "ingest:\n  pollers: [{name: a, source: github, repos: [a/b], identity: lin}]\n", "github-app or github-token"},
+		"not covered":    {pat + "ingest:\n  pollers: [{name: a, source: github, repos: [a/b], identity: me}]\n", "does not cover a/b"},
+	} {
+		_, err := Parse([]byte(tc.yaml))
+		require.Error(t, err, name)
+		assert.Contains(t, err.Error(), tc.want, name)
+	}
+}
+
 func TestIngestEndpointErrors(t *testing.T) {
 	for name, tc := range map[string]struct{ yaml, want string }{
 		"old github secret":  {"ingest:\n  github_secret_file: x\n", "ingest.endpoints"},

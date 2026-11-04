@@ -11,6 +11,7 @@ import (
 )
 
 func TestTicketPromptComments(t *testing.T) {
+	t.Parallel()
 	tk := store.Ticket{ID: "js-1", Title: "Resolve #70", Body: "the body"}
 	plain := ticketPromptText("pool prompt", tk, nil)
 	assert.NotContains(t, plain, "# Recent comments", "no comments: no section")

@@ -555,7 +555,7 @@ in
           };
         }
       '';
-      description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file, webhook_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets.";
+      description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file, webhook_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets. Each may instead be `{ type = \"command\"; command = \"...\"; }`, whose stdout is the secret (#435).";
     };
 
     workspaces = lib.mkOption {
@@ -592,8 +592,8 @@ in
               description = "Matrix client-server URL. Unused for discord.";
             };
             tokenFile = lib.mkOption {
-              type = lib.types.str;
-              description = "File with the bot access token, readable by the jobshop user. Not a Nix store path.";
+              type = lib.types.either lib.types.str (lib.types.attrsOf lib.types.str);
+              description = "File with the bot access token, readable by the jobshop user (not a Nix store path), or a secret mapping such as `{ type = \"command\"; command = \"pass show matrix/bot\"; }` (#435).";
             };
             pool = lib.mkOption {
               type = lib.types.str;
@@ -632,6 +632,11 @@ in
 
     ingest = {
       enable = lib.mkEnableOption "jobshop-ingest.service running `jobshop ingest serve` (#334) on settings.ingest.listen";
+      worker = {
+        enable = lib.mkEnableOption ''
+          jobshop-ingest-work.service running `jobshop ingest work` (#443). Set
+          settings.ingest.workers = "external" too, or the controller refuses its claims'';
+      };
     };
 
     # Old single-workspace option. Its definitions go to workspaces.default,
@@ -982,6 +987,25 @@ in
             Slice = "jobshop.slice";
             WorkingDirectory = cfg.dataDir;
             ExecStart = "${jobshop} ingest serve";
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
+      (lib.mkIf cfg.ingest.worker.enable {
+        # Talks to the controller's admin socket; runs admission hooks.
+        systemd.services.jobshop-ingest-work = {
+          description = "Jobshop ingest admission worker";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "jobshop.service" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          restartTriggers = [ configFile ];
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = "${jobshop} ingest work --worker %H";
             Restart = "always";
             RestartSec = 5;
           };

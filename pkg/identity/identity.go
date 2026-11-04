@@ -20,7 +20,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -80,7 +79,7 @@ func (m *Minter) Token(ctx context.Context, name string, id config.Identity, tar
 		m.cache[key] = t
 		return t, nil
 	case config.IdentityLinear, config.IdentityGitHubToken:
-		b, err := os.ReadFile(id.TokenFile)
+		b, err := config.ReadSecret(ctx, id.TokenFile)
 		if err != nil {
 			return Token{}, fmt.Errorf("identity %s: %w", name, err)
 		}
@@ -117,12 +116,13 @@ func (m *Minter) Forget() {
 	m.mu.Unlock()
 }
 
-// Login returns the GitHub login a github-token identity acts as (GET
-// /user), cached until Forget. Its comments are filtered like an App
-// bot's so they are not delivered back to itself (#340).
+// Login returns the GitHub login an identity acts as, cached until
+// Forget: GET /user for a github-token (#340), "<slug>[bot]" from GET
+// /app for a github-app (#402). Its comments are filtered so they are not
+// delivered back to itself.
 func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (string, error) {
-	if id.Kind != config.IdentityGitHubToken {
-		return "", fmt.Errorf("identity %s: login is for kind %s", name, config.IdentityGitHubToken)
+	if !config.IsGitHub(id.Kind) {
+		return "", fmt.Errorf("identity %s: login is for GitHub identities, not %s", name, id.Kind)
 	}
 	m.mu.Lock()
 	l, ok := m.logins[name]
@@ -130,19 +130,29 @@ func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (st
 	if ok {
 		return l, nil
 	}
-	tok, err := m.Token(ctx, name, id, "")
-	if err != nil {
-		return "", err
+	path, auth := "/user", ""
+	if id.Kind == config.IdentityGitHubApp {
+		jwt, err := JWTFor(id, m.Now())
+		if err != nil {
+			return "", fmt.Errorf("identity %s: %w", name, err)
+		}
+		path, auth = "/app", jwt
+	} else {
+		tok, err := m.Token(ctx, name, id, "")
+		if err != nil {
+			return "", err
+		}
+		auth = tok.Token
 	}
 	base := id.APIURL
 	if base == "" {
 		base = DefaultAPIURL
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+"/user", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+path, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+tok.Token)
+	req.Header.Set("Authorization", "Bearer "+auth)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	resp, err := m.HTTP.Do(req)
@@ -152,13 +162,20 @@ func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (st
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("identity %s: GET /user: %s: %s", name, resp.Status, strings.TrimSpace(string(body)))
+		return "", fmt.Errorf("identity %s: GET %s: %s: %s", name, path, resp.Status, strings.TrimSpace(string(body)))
 	}
 	var u struct {
 		Login string `json:"login"`
+		Slug  string `json:"slug"`
 	}
-	if err := json.Unmarshal(body, &u); err != nil || u.Login == "" {
-		return "", fmt.Errorf("identity %s: GET /user: no login", name)
+	if err := json.Unmarshal(body, &u); err != nil {
+		return "", fmt.Errorf("identity %s: GET %s: %w", name, path, err)
+	}
+	if id.Kind == config.IdentityGitHubApp && u.Slug != "" {
+		u.Login = u.Slug + "[bot]"
+	}
+	if u.Login == "" {
+		return "", fmt.Errorf("identity %s: GET %s: no login", name, path)
 	}
 	m.mu.Lock()
 	if m.logins == nil {
@@ -170,7 +187,7 @@ func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (st
 }
 
 func (m *Minter) mint(ctx context.Context, id config.Identity, inst int64, now time.Time) (Token, error) {
-	pemBytes, err := os.ReadFile(id.PrivateKeyFile)
+	pemBytes, err := config.ReadSecret(ctx, id.PrivateKeyFile)
 	if err != nil {
 		return Token{}, err
 	}
@@ -223,11 +240,11 @@ const DefaultLinearTokenURL = "https://api.linear.app/oauth/token"
 // (#278). Error bodies are included (Linear returns error and
 // error_description), never the secret or a token.
 func (m *Minter) mintLinear(ctx context.Context, id config.Identity, scopes []string, now time.Time) (Token, error) {
-	cid, err := os.ReadFile(id.ClientIDFile)
+	cid, err := config.ReadSecret(ctx, id.ClientIDFile)
 	if err != nil {
 		return Token{}, err
 	}
-	secret, err := os.ReadFile(id.ClientSecretFile)
+	secret, err := config.ReadSecret(ctx, id.ClientSecretFile)
 	if err != nil {
 		return Token{}, err
 	}
@@ -283,7 +300,7 @@ func JWTFor(id config.Identity, now time.Time) (string, error) {
 	if id.Kind != config.IdentityGitHubApp {
 		return "", fmt.Errorf("app jwt: kind %s is not %s", id.Kind, config.IdentityGitHubApp)
 	}
-	b, err := os.ReadFile(id.PrivateKeyFile)
+	b, err := config.ReadSecret(context.Background(), id.PrivateKeyFile)
 	if err != nil {
 		return "", err
 	}

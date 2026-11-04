@@ -21,7 +21,8 @@ WITH RECURSIVE reach(id) AS (
 SELECT EXISTS (SELECT 1 FROM reach WHERE reach.id = CAST(sqlc.arg(target) AS TEXT));
 
 -- name: InsertLabel :execrows
-INSERT OR IGNORE INTO labels (ticket_id, label) VALUES (?, ?);
+INSERT INTO labels (ticket_id, label) VALUES (?, ?)
+ON CONFLICT DO NOTHING;
 
 -- name: DeleteLabel :execrows
 DELETE FROM labels WHERE ticket_id = ? AND label = ?;
@@ -45,7 +46,7 @@ RETURNING *;
 SELECT * FROM comments WHERE ticket_id = ? AND deleted = 0 ORDER BY id;
 
 -- name: ListChanges :many
-SELECT * FROM history WHERE seq > ? ORDER BY seq LIMIT ?;
+SELECT * FROM history WHERE seq > ? ORDER BY seq LIMIT CAST(sqlc.arg(lim) AS INTEGER);
 
 -- name: LastSeq :one
 SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM history;

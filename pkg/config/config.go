@@ -29,14 +29,21 @@ type Config struct {
 	Pools     map[string]Pool     `yaml:"pools"`
 	Triggers  map[string]Trigger  `yaml:"triggers"`
 	Workflows map[string]Workflow `yaml:"workflows"`
+	// Escalation is the escalation chat for workflows without an
+	// escalate block and for pool quarantines (#379). Absent: no chat.
+	Escalation *EscalationChat `yaml:"escalation"`
 	// PromptRules add operator guidance to matching sessions' prompts
 	// (#205): packs' rules in pack order, then this file's.
 	PromptRules []PromptRule `yaml:"prompt_rules"`
 	Telemetry   Telemetry    `yaml:"telemetry"`
 	// Limits are host-wide caps across pools (#281).
 	Limits Limits `yaml:"limits"`
+	// Resources are named slots steps hold while in progress (#400).
+	Resources map[string]Resource `yaml:"resources"`
 	// Ingest configures the ingest inbox (#321).
 	Ingest Ingest `yaml:"ingest"`
+	// WriteKeys configures the local idempotency key cache (#415).
+	WriteKeys WriteKeys `yaml:"write_keys"`
 	// Defaults hold settings agents and pools inherit (#262).
 	Defaults Defaults `yaml:"defaults"`
 	// SharedTools are dirs mounted read-only into every sandboxed
@@ -99,6 +106,9 @@ const (
 	StallSessionSilent   = "session_silent"   // session holding a ticket with no journal output for After
 	StallNeedsHuman      = "needs_human"      // needs_human run, or needs-human ticket, older than After
 	StallBlocked         = "blocked"          // open ticket labeled blocked, unchanged for After
+	StallResourceWait    = "resource_wait"    // open, unblocked ticket waiting on a full resource for After (#408)
+	StallIngestWorker    = "ingest_worker"    // ingest.workers external and no worker heartbeat for ingest.worker_missing (#443)
+	StallIngestBacklog   = "ingest_backlog"   // over ingest.backlog_max pending inbox items older than ingest.backlog_after (#443)
 	// StallIssueNoRun is a check signal whose subjects are GitHub issue
 	// numbers; the controller drops issues that have an open run
 	// (meta.github.issue), so the check only lists open work issues.
@@ -113,7 +123,7 @@ const (
 const DefaultLinearPoll = 5 * time.Minute
 
 // StoreStallSignals lists the signals the controller computes itself.
-var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked}
+var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked, StallResourceWait, StallIngestWorker, StallIngestBacklog}
 
 // Stall template vars, filled per stall when a stall trigger fires.
 const (
@@ -246,6 +256,11 @@ type Subscriptions struct {
 	ResumeWindow string `yaml:"resume_window"`
 	// Ignore lists logins whose comments are dropped, beyond bots.
 	Ignore []string `yaml:"ignore"`
+	// Bots lists bot logins (exact, with the [bot] suffix on GitHub, the
+	// app actor name on Linear) whose comments and reviews are delivered
+	// like a human's (#402). The host's own identities are dropped even
+	// when listed. Authors does not apply to them.
+	Bots []string `yaml:"bots"`
 	// Authors, when set, are the only logins whose comments are
 	// delivered (#340); the public repo's other commenters are dropped.
 	Authors []string `yaml:"authors"`
@@ -280,7 +295,7 @@ type Gateway struct {
 	// For discord, rooms are channel ids (text or forum), senders user ids.
 	Homeserver string `yaml:"homeserver"`
 	// TokenFile holds the bot access token. Tokens are never in the yaml.
-	TokenFile string   `yaml:"token_file"`
+	TokenFile Secret   `yaml:"token_file"`
 	Pool      string   `yaml:"pool"`    // a type: chat pool
 	Rooms     []string `yaml:"rooms"`   // allowed room ids
 	Senders   []string `yaml:"senders"` // allowed sender ids
@@ -303,6 +318,9 @@ type Attention struct {
 	// beside it, so a later successful deploy clears it. Empty:
 	// rollbacks are not checked.
 	RollbackFile string `yaml:"rollback_file"`
+	// ResourceWait lists a step waiting on a full resource longer than
+	// this Go duration (#408). Empty: not listed.
+	ResourceWait string `yaml:"resource_wait"`
 }
 
 // DefaultInboxRetention is how long terminal inbox items are kept.
@@ -329,6 +347,20 @@ type Ingest struct {
 	GitHubReconcile string `yaml:"github_reconcile"`
 	// Admission hooks run on pending inbox items (#348).
 	Admission []AdmissionHook `yaml:"admission"`
+	// Pollers read GitHub repos that send no webhook (#341) and write
+	// inbox rows shaped like webhook deliveries.
+	Pollers []IngestPoller `yaml:"pollers"`
+	// Workers is where admission runs (#443): internal (default) in the
+	// controller, external in `jobshop ingest work` processes.
+	Workers string `yaml:"workers"`
+	// WorkerMissing lists external mode with no worker heartbeat for
+	// this Go duration as attention. Empty: 5m.
+	WorkerMissing string `yaml:"worker_missing"`
+	// BacklogAfter and BacklogMax list attention when more than
+	// BacklogMax pending items are older than BacklogAfter. Empty: 10m
+	// and 0.
+	BacklogAfter string `yaml:"backlog_after"`
+	BacklogMax   int    `yaml:"backlog_max"`
 
 	// Removed in #339; set only to fail the load with a pointer to the
 	// replacement instead of silently turning a source off.
@@ -354,7 +386,7 @@ type IngestEndpoint struct {
 	Source string `yaml:"source"`
 	// SecretFile is relative to the root. Identity instead names a
 	// Linear identity (app or API key, #340) whose webhook_secret_file signs.
-	SecretFile string `yaml:"secret_file"`
+	SecretFile Secret `yaml:"secret_file"`
 	Identity   string `yaml:"identity"`
 	// Path defaults to /<source>/<name>.
 	Path string `yaml:"path"`
@@ -408,7 +440,7 @@ func (c *Config) IngestEndpoints() []IngestEndpoint {
 	}
 	for _, name := range c.IdentityNames() {
 		id := c.Identities[name]
-		if !IsLinear(id.Kind) || id.WebhookSecretFile == "" || named[name] {
+		if !IsLinear(id.Kind) || id.WebhookSecretFile.IsZero() || named[name] {
 			continue
 		}
 		out = append(out, IngestEndpoint{
@@ -429,6 +461,17 @@ func (e IngestEndpoint) EndpointPath() string {
 
 func (c *Config) validateIngest() error {
 	i := c.Ingest
+	if i.Workers != "" && i.Workers != IngestWorkersInternal && i.Workers != IngestWorkersExternal {
+		return fmt.Errorf("%s: ingest.workers %q must be internal or external", FileName, i.Workers)
+	}
+	for k, v := range map[string]string{"worker_missing": i.WorkerMissing, "backlog_after": i.BacklogAfter} {
+		if d, err := time.ParseDuration(v); v != "" && (err != nil || d <= 0) {
+			return fmt.Errorf("%s: ingest.%s %q must be a positive duration", FileName, k, v)
+		}
+	}
+	if i.BacklogMax < 0 {
+		return fmt.Errorf("%s: ingest.backlog_max must not be negative", FileName)
+	}
 	if r := i.GitHubReconcile; r != "" && r != "off" {
 		if d, err := time.ParseDuration(r); err != nil || d < time.Minute {
 			return fmt.Errorf("%s: ingest.github_reconcile %q must be a duration of at least 1m, or off", FileName, r)
@@ -460,12 +503,12 @@ func (c *Config) validateIngest() error {
 		} else if e.SignatureHeader != "" || e.SignaturePrefix != "" || e.DeliveryIDHeader != "" || e.Map != (IngestMap{}) {
 			return fmt.Errorf("%s: signature_header, signature_prefix, delivery_id_header and map are for generic endpoints", where)
 		}
-		if (e.SecretFile == "") == (e.Identity == "") {
+		if e.SecretFile.IsZero() == (e.Identity == "") {
 			return fmt.Errorf("%s: set exactly one of secret_file and identity", where)
 		}
 		if e.Identity != "" {
 			id, ok := c.Identities[e.Identity]
-			if !ok || !IsLinear(id.Kind) || id.WebhookSecretFile == "" || e.Source != IngestLinear {
+			if !ok || !IsLinear(id.Kind) || id.WebhookSecretFile.IsZero() || e.Source != IngestLinear {
 				return fmt.Errorf("%s: identity %q must be a Linear identity with webhook_secret_file, on a linear endpoint", where, e.Identity)
 			}
 		}
@@ -486,6 +529,9 @@ func (c *Config) validateIngest() error {
 		}
 		paths[p] = e.Name
 	}
+	if err := c.validatePollers(names); err != nil {
+		return err
+	}
 	// Implicit endpoints share /linear/webhook; an explicit endpoint
 	// there would shadow them.
 	for _, e := range c.IngestEndpoints() {
@@ -494,6 +540,90 @@ func (c *Config) validateIngest() error {
 				return fmt.Errorf("%s: ingest.endpoints %q uses %s, which identity %q's webhook secret also serves; name the identity in that endpoint instead", FileName, other, LinearWebhookPath, e.Identity)
 			}
 			break
+		}
+	}
+	return nil
+}
+
+// IngestPoller polls GitHub repos into the inbox (#341).
+type IngestPoller struct {
+	Name   string   `yaml:"name"`
+	Source string   `yaml:"source"` // github
+	Repos  []string `yaml:"repos"`
+	// Events are webhook event names: issues, issue_comment,
+	// pull_request, pull_request_review. Empty: all four.
+	Events []string `yaml:"events"`
+	// Interval between polls, default 1m, at least 10s.
+	Interval string `yaml:"interval"`
+	// Identity is a github-app or github-token identity covering the
+	// repos. Empty: the identity that covers each repo.
+	Identity string `yaml:"identity"`
+}
+
+// PollerEvents are the events an ingest poller can read.
+var PollerEvents = []string{"issues", "issue_comment", "pull_request", "pull_request_review"}
+
+// DefaultPollInterval is a poller's interval when unset.
+const DefaultPollInterval = time.Minute
+
+// Every is the poll interval.
+func (p IngestPoller) Every() time.Duration {
+	if d, err := time.ParseDuration(p.Interval); err == nil && d > 0 {
+		return d
+	}
+	return DefaultPollInterval
+}
+
+// EventSet is Events, or all of them when empty.
+func (p IngestPoller) EventSet() []string {
+	if len(p.Events) == 0 {
+		return PollerEvents
+	}
+	return p.Events
+}
+
+func (c *Config) validatePollers(endpoints map[string]bool) error {
+	names := map[string]bool{}
+	for _, p := range c.Ingest.Pollers {
+		where := fmt.Sprintf("%s: ingest.pollers %q", FileName, p.Name)
+		if !endpointName.MatchString(p.Name) {
+			return fmt.Errorf("%s: name must match [a-z0-9-]+", where)
+		}
+		if names[p.Name] || endpoints[p.Name] {
+			return fmt.Errorf("%s: name already used by a poller or endpoint", where)
+		}
+		names[p.Name] = true
+		if p.Source != IngestGitHub {
+			return fmt.Errorf("%s: source must be github", where)
+		}
+		if len(p.Repos) == 0 {
+			return fmt.Errorf("%s: needs repos", where)
+		}
+		for _, r := range p.Repos {
+			if !RepoPattern.MatchString(r) {
+				return fmt.Errorf("%s: repo %q must be owner/name", where, r)
+			}
+		}
+		for _, e := range p.Events {
+			if !slices.Contains(PollerEvents, e) {
+				return fmt.Errorf("%s: event %q must be one of %s", where, e, strings.Join(PollerEvents, ", "))
+			}
+		}
+		if p.Interval != "" {
+			if d, err := time.ParseDuration(p.Interval); err != nil || d < 10*time.Second {
+				return fmt.Errorf("%s: interval %q must be a duration of at least 10s", where, p.Interval)
+			}
+		}
+		if p.Identity != "" {
+			id, ok := c.Identities[p.Identity]
+			if !ok || (id.Kind != IdentityGitHubApp && id.Kind != IdentityGitHubToken) {
+				return fmt.Errorf("%s: identity %q must be a github-app or github-token identity", where, p.Identity)
+			}
+			for _, r := range p.Repos {
+				if !id.CoversRepo(r) {
+					return fmt.Errorf("%s: identity %q does not cover %s", where, p.Identity, r)
+				}
+			}
 		}
 	}
 	return nil
@@ -532,11 +662,46 @@ func (i Ingest) ReconcileEvery() time.Duration {
 	return DefaultGitHubReconcile
 }
 
+// Ingest worker modes (#443).
+const (
+	IngestWorkersInternal = "internal"
+	IngestWorkersExternal = "external"
+)
+
+// External reports that admission runs in `jobshop ingest work`, not the controller.
+func (i Ingest) External() bool { return i.Workers == IngestWorkersExternal }
+
+// WorkerMissingAfter is WorkerMissing or 5m.
+func (i Ingest) WorkerMissingAfter() time.Duration { return Duration(i.WorkerMissing, 5*time.Minute) }
+
+// BacklogAge is BacklogAfter or 10m.
+func (i Ingest) BacklogAge() time.Duration { return Duration(i.BacklogAfter, 10*time.Minute) }
+
 // RetentionDuration is Retention parsed, or the default.
 func (i Ingest) RetentionDuration() time.Duration {
 	d, _ := parseDays(i.Retention)
 	if d <= 0 {
 		return DefaultInboxRetention
+	}
+	return d
+}
+
+// DefaultWriteKeyRetention is how long local write keys are kept (#415).
+const DefaultWriteKeyRetention = 48 * time.Hour
+
+// WriteKeys configures the write key cache (#415). The remote key or
+// marker is the record; the local row only saves a remote check.
+type WriteKeys struct {
+	// Retention keeps keys this long, done or pending (Go duration or
+	// Nd). Default 48h.
+	Retention string `yaml:"retention"`
+}
+
+// RetentionDuration is Retention parsed, or the default.
+func (w WriteKeys) RetentionDuration() time.Duration {
+	d, _ := parseDays(w.Retention)
+	if d <= 0 {
+		return DefaultWriteKeyRetention
 	}
 	return d
 }
@@ -932,6 +1097,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: ingest.retention %q must be a positive duration (e.g. 14d, 72h)", FileName, r)
 		}
 	}
+	if r := c.WriteKeys.Retention; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: write_keys.retention %q must be a positive duration (e.g. 48h, 2d)", FileName, r)
+		}
+	}
 	if c.Limits.MaxSessions < 0 {
 		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)
 	}
@@ -979,9 +1149,22 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
 		}
 	}
+	if err := c.checkResources(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
+	}
+	if w := c.Attention.ResourceWait; w != "" {
+		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: attention.resource_wait %q must be a positive duration", FileName, w)
+		}
+	}
 	for name, w := range c.Workflows {
 		if err := c.checkWorkflow(name, &w); err != nil {
 			return nil, fmt.Errorf("%s: workflow %s: %w", src("workflows", name), name, err)
+		}
+	}
+	if c.Escalation != nil {
+		if err := c.checkEscalation(c.Escalation); err != nil {
+			return nil, fmt.Errorf("%s: escalation: %w", FileName, err)
 		}
 	}
 	if err := c.checkRules(); err != nil {
@@ -1000,7 +1183,7 @@ func (c *Config) checkGateway(g Gateway) error {
 	default:
 		return fmt.Errorf("network %q must be %q or %q", g.Network, GatewayMatrix, GatewayDiscord)
 	}
-	if g.TokenFile == "" {
+	if g.TokenFile.IsZero() {
 		return errors.New("token_file is required")
 	}
 	p, ok := c.Pools[g.Pool]
@@ -1179,8 +1362,7 @@ func (c *Config) Prefix(project string) string {
 }
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
-// controller, and the gateway on escalation tickets). escalation is the
-// escalation chat the controller opens (#379).
+// controller, and the gateway on escalation tickets).
 var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question", "escalation"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a

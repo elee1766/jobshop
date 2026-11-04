@@ -14,6 +14,7 @@ import (
 // #183 get meta.github.repo from the workflow config; other meta stays,
 // and a run of an unknown workflow is left alone.
 func TestBackfillGitHubRepo(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
 	run := mkTicket(t, c, store.NewTicket{

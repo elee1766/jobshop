@@ -4,22 +4,51 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Pollers write what they find to the inbox as well (#335), with a
-// stable synthetic delivery id and, for comments, the natural key the
-// drain gives the webhook copy, so the two dedupe to one item. They keep
-// dispatching directly for now; dispatch moves onto inbox rows later
-// (#318 item 5). A failed write is logged and does not stop the poll.
+// Pollers only write the inbox (#335, #442). Each find gets a stable
+// synthetic delivery id and, for comments, the natural key the drain gives
+// the webhook copy. The dispatcher (dispatch.go) delivers admitted rows.
 
-// inboxComment records a subscription poller comment.
-func (c *Controller) inboxComment(ctx context.Context, th thread, cm ghComment) {
+// pollComment is a subscription poller row's payload: the thread and the
+// comment, as admission hooks see and may rewrite them.
+type pollComment struct {
+	Thread  thread          `json:"thread"`
+	Comment pollCommentBody `json:"comment"`
+}
+
+// pollCommentBody is ghComment with JSON names.
+type pollCommentBody struct {
+	ID     string    `json:"id"`
+	Author string    `json:"author"`
+	Bot    bool      `json:"bot,omitempty"`
+	Self   bool      `json:"self,omitempty"`
+	Kind   string    `json:"kind"`
+	State  string    `json:"state,omitempty"`
+	Body   string    `json:"body"`
+	URL    string    `json:"url,omitempty"`
+	At     time.Time `json:"at"`
+	Parent string    `json:"parent,omitempty"`
+}
+
+func (b pollCommentBody) comment() ghComment {
+	return ghComment(b)
+}
+
+// inboxComment records a subscription poller comment. A webhook copy
+// already stored under the same natural key is not dispatched (the
+// dispatcher only delivers poller rows), so the poller then stores its
+// own row without the natural key.
+func (c *Controller) inboxComment(ctx context.Context, th thread, cm ghComment) error {
 	it := store.InboxItem{ReceivedAt: c.now(), Actor: cm.Author}
-	payload := map[string]any{"body": cm.Body, "url": cm.URL, "author": cm.Author, "at": cm.At, "kind": cm.Kind}
+	seenless := th
+	seenless.Seen = time.Time{}
+	p := pollComment{Thread: seenless, Comment: pollCommentBody(cm)}
 	if th.Linear != "" {
 		team, num, _ := strings.Cut(th.Linear, "-")
 		it.Source, it.RepoOrTeam, it.Kind, it.CommentID = ingest.SourceLinear, team, "Comment", cm.ID
@@ -37,10 +66,19 @@ func (c *Controller) inboxComment(ctx context.Context, th thread, cm ghComment) 
 			it.DeliveryID = "poll:github:" + th.Repo + ":" + cm.ID + ":" + cm.At.UTC().Format("2006-01-02T15:04:05Z")
 		}
 	}
-	it.Payload, _ = json.Marshal(payload)
-	if _, _, err := c.store.InboxPut(ctx, it); err != nil {
-		c.log.Warn("inbox: poller write", "delivery", it.DeliveryID, "err", err)
+	var err error
+	if it.Payload, err = json.Marshal(p); err != nil {
+		return err
 	}
+	got, dup, err := c.store.InboxPut(ctx, it)
+	if err != nil || !dup || got.DeliveryID == it.DeliveryID {
+		return err
+	}
+	// The webhook copy came first: keep it (deduped for the record) and
+	// add the poller row the dispatcher delivers.
+	it.NaturalKey = ""
+	_, _, err = c.store.InboxPut(ctx, it)
+	return err
 }
 
 // ghCommentKind maps the subscription poller's prefixed ids (c, r, p) to
@@ -61,9 +99,13 @@ func ghCommentKind(id string) (kind, bare string) {
 	return "", ""
 }
 
+// activityPrefix starts an activity poller row's delivery id.
+const activityPrefix = "poll:activity:"
+
 // inboxActivity records activity poller items (repo events, CI runs and
 // Linear changes). Their ids are already stable; they have no natural
-// key, since the events API does not give the comment version.
+// key, since the events API does not give the comment version. The
+// payload is the rpc.ActivityItem.
 func (c *Controller) inboxActivity(ctx context.Context, items []rpc.ActivityItem) {
 	if len(items) == 0 {
 		return
@@ -75,7 +117,7 @@ func (c *Controller) inboxActivity(ctx context.Context, items []rpc.ActivityItem
 		}
 		p, _ := json.Marshal(a)
 		it := store.InboxItem{
-			Source: a.Source, DeliveryID: "poll:activity:" + a.ID, Kind: a.Kind, RepoOrTeam: a.Repo,
+			Source: a.Source, DeliveryID: activityPrefix + a.ID, Kind: a.Kind, RepoOrTeam: a.Repo,
 			Actor: a.Actor, ReceivedAt: c.now(), Payload: p,
 		}
 		_ = json.Unmarshal([]byte(a.Ref), &it.Number)

@@ -36,6 +36,25 @@ import (
 // DefaultLease is the claim lease when the config sets none.
 const DefaultLease = 30 * time.Minute
 
+// HostRunner runs session hosts for Options.Hosts. Start begins a host
+// for a session directory whose spec is written; it must not wait for the
+// host to listen. Stop stops the host for dir and waits for it, reporting
+// false for a dir it does not run so the controller signals the pid in
+// the dir as usual.
+type HostRunner interface {
+	Start(dir string) error
+	Stop(dir string) bool
+}
+
+// HostExits is an optional HostRunner method. A host process that exits
+// closes the controller's connection with it; an in-process host's
+// accepted connection outlives acphost.Main, so the controller closes
+// it when Exited's channel closes, or it never sees the crash (#467).
+// Exited returns nil for a dir the runner does not run.
+type HostExits interface {
+	Exited(dir string) <-chan struct{}
+}
+
 // Options tune a controller. Zero values use defaults.
 type Options struct {
 	Tick time.Duration // lease sweep interval, default 30s
@@ -45,6 +64,10 @@ type Options struct {
 	Log   *slog.Logger
 	// HostExe is the binary started as session-host. Default /proc/self/exe.
 	HostExe string
+	// Hosts, if set, starts and stops session hosts instead of a detached
+	// process per session. Tests run hosts in-process with it so a test of
+	// controller logic does not pay a process spawn per host (#361).
+	Hosts HostRunner
 	// Backoff is the first wait after a provider rate limit, doubling to
 	// 15x. Default 1m; tests shorten it.
 	Backoff time.Duration
@@ -106,9 +129,15 @@ type Controller struct {
 	poolPausedUntil map[string]time.Time
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
+	// prov is resource provider demand and idle state (#407); tick-only.
+	prov providerState
+	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
+	writeKeysPrunedAt time.Time
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
+	// ingestWorkers is each external ingest worker's last heartbeat (#443).
+	ingestWorkers map[string]*rpc.IngestWorker
 	// configErr is the pack load error the controller started past,
 	// serving the last good config (#227); cleared by a good reload.
 	configErr   string
@@ -137,8 +166,10 @@ type Controller struct {
 	tickMu sync.Mutex
 	// runMu serializes run start (key dedup) and run state changes.
 	runMu sync.Mutex
-	// escMu serializes opening and finishing escalation chats (#379).
-	escMu sync.Mutex
+	// autoMu guards auto, the command and http step attempts running in
+	// this process (#396).
+	autoMu sync.Mutex
+	auto   autoSteps
 	// events fans store changes out to events.subscribe.
 	events *hub
 	// subSource reads GitHub threads; nil means gh (tests set a fake).
@@ -146,6 +177,10 @@ type Controller struct {
 	// subPollMu serializes subscription passes: the pump and webhook
 	// passes for one thread (#300).
 	subPollMu sync.Mutex
+	// dispatchMu serializes inbox dispatch passes (#442): the pump and
+	// poll-triggered passes, so a thread's news is never delivered out
+	// of order.
+	dispatchMu sync.Mutex
 	// waitSource reads PR state for waits; nil means gh (#381). waitWake
 	// asks for a pass now; waitMu serializes passes.
 	waitSource waitSource
@@ -210,6 +245,13 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	// Resource caps gate claims (#400); reload re-syncs them.
+	if err := st.SetResourceCaps(ctx, cfg.ResourceCaps()); err != nil {
+		return err
+	}
+	if err := st.SetResourceProviders(ctx, cfg.ResourceProviders()); err != nil {
+		return err
+	}
 
 	m, err := telemetry.NewMetrics()
 	if err != nil {
@@ -310,6 +352,7 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpActivity)
 	c.wg.Go(c.pumpDrain)
 	c.wg.Go(c.pumpReconcile)
+	c.wg.Go(c.pumpPollers)
 	c.wg.Go(c.pumpAdmission)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
@@ -387,17 +430,23 @@ func (c *Controller) tick() {
 	c.tickMu.Lock()
 	defer c.tickMu.Unlock()
 	c.sweep()
+	// Right after the sweep, so slots of expired claims reset this pass.
+	c.providerPass()
 	// Before supervise, so a created ticket can get a session this tick.
 	if !c.draining() {
 		c.runTriggers()
 	}
+	// Placement moves steps between pools before sessions are sized (#409).
+	c.placeSteps()
 	c.supervise()
+	c.runAutoSteps()
 	c.reportOrphans()
 	c.sweepRuns()
+	c.sweepEscalationChats(c.ctx)
 	c.sweepBatches()
 	c.sweepLinearAsks(c.ctx)
-	c.sweepEscalationChats(c.ctx)
 	c.pruneInbox()
+	c.pruneWriteKeys()
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
@@ -420,6 +469,30 @@ func (c *Controller) pruneInbox() {
 	}
 	if n > 0 {
 		c.log.Info("inbox pruned", "items", n)
+	}
+}
+
+// writeKeyPruneEvery spaces write key prunes; retention is hours.
+const writeKeyPruneEvery = 10 * time.Minute
+
+// pruneWriteKeys deletes write keys older than write_keys.retention,
+// done or pending (#415). A pending key's retry then checks the remote
+// key or marker instead of the local row.
+func (c *Controller) pruneWriteKeys() {
+	now := c.now()
+	if now.Sub(c.writeKeysPrunedAt) < writeKeyPruneEvery {
+		return
+	}
+	c.writeKeysPrunedAt = now
+	n, err := c.store.PruneWriteKeys(c.ctx, now.Add(-c.config().WriteKeys.RetentionDuration()))
+	if err != nil {
+		if c.ctx.Err() == nil {
+			c.log.Error("write key prune", "err", err)
+		}
+		return
+	}
+	if n > 0 {
+		c.log.Info("write keys pruned", "keys", n)
 	}
 }
 
@@ -608,73 +681,80 @@ var methods map[string]method
 
 func init() {
 	methods = map[string]method{
-		rpc.MethodWhoami:           bind((*Controller).whoami),
-		rpc.MethodVersion:          bind((*Controller).version),
-		rpc.MethodIdentityList:     bind((*Controller).identityList),
-		rpc.MethodIdentityCheck:    bind((*Controller).identityCheck),
-		rpc.MethodIdentityToken:    bind((*Controller).identityToken),
-		rpc.MethodIngestDrain:      bind((*Controller).ingestDrainMethod),
-		rpc.MethodTicketCreate:     bind((*Controller).create),
-		rpc.MethodTicketShow:       bind((*Controller).show),
-		rpc.MethodTicketTrace:      bind((*Controller).trace),
-		rpc.MethodRecall:           bind((*Controller).recall),
-		rpc.MethodTicketList:       bind((*Controller).list),
-		rpc.MethodTicketUpdate:     bind((*Controller).update),
-		rpc.MethodTicketClose:      bind((*Controller).closeTicket),
-		rpc.MethodTicketReopen:     bind((*Controller).reopen),
-		rpc.MethodReady:            bind((*Controller).ready),
-		rpc.MethodCommentAdd:       bind((*Controller).comment),
-		rpc.MethodEdgeAdd:          bind((*Controller).edgeAdd),
-		rpc.MethodEdgeRemove:       bind((*Controller).edgeRemove),
-		rpc.MethodLabelAdd:         bind((*Controller).labelAdd),
-		rpc.MethodLabelRemove:      bind((*Controller).labelRemove),
-		rpc.MethodClaim:            bind((*Controller).claim),
-		rpc.MethodHeartbeat:        bind((*Controller).heartbeat),
-		rpc.MethodRelease:          bind((*Controller).release),
-		rpc.MethodSessionNew:       bind((*Controller).sessionNew),
-		rpc.MethodSessionList:      bind((*Controller).sessionList),
-		rpc.MethodSessionReap:      bind((*Controller).sessionReap),
-		rpc.MethodSessionRestart:   bind((*Controller).sessionRestart),
-		rpc.MethodSessionPrompt:    bind((*Controller).sessionPrompt),
-		rpc.MethodSessionSandbox:   bind((*Controller).sessionSandbox),
-		rpc.MethodSessionSend:      bind((*Controller).sessionSend),
-		rpc.MethodSessionSubscribe: bind((*Controller).sessionSubscribe),
-		rpc.MethodEventsSubscribe:  bind((*Controller).eventsSubscribe),
-		rpc.MethodShutdown:         bind((*Controller).shutdown),
-		rpc.MethodDrain:            bind((*Controller).drainPools),
-		rpc.MethodTriggerList:      bind((*Controller).triggerList),
-		rpc.MethodReload:           bind((*Controller).reloadConfig),
-		rpc.MethodConfigShow:       bind((*Controller).configShow),
-		rpc.MethodRunStart:         bind((*Controller).runStart),
-		rpc.MethodRunShow:          bind((*Controller).runShow),
-		rpc.MethodRunList:          bind((*Controller).runList),
-		rpc.MethodRunCancel:        bind((*Controller).runCancel),
-		rpc.MethodRunResume:        bind((*Controller).runResume),
-		rpc.MethodBatchStart:       bind((*Controller).batchStart),
-		rpc.MethodBatchShow:        bind((*Controller).batchShow),
-		rpc.MethodBatchList:        bind((*Controller).batchList),
-		rpc.MethodPoolList:         bind((*Controller).poolList),
-		rpc.MethodPoolScale:        bind((*Controller).poolScaleRPC),
-		rpc.MethodSessionCordon:    bind((*Controller).sessionCordonRPC),
-		rpc.MethodSessionConfig:    bind((*Controller).sessionConfigRPC),
-		rpc.MethodAttention:        bind((*Controller).attention),
-		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
-		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),
-		rpc.MethodGuard:            bind((*Controller).guard),
-		rpc.MethodSubscribe:        bind((*Controller).subscribe),
-		rpc.MethodReport:           bind((*Controller).report),
-		rpc.MethodQuestionAnswer:   bind((*Controller).answerQuestion),
-		rpc.MethodActivityList:     bind((*Controller).activityList),
-		rpc.MethodActivityRecord:   bind((*Controller).activityRecord),
-		rpc.MethodLearnAdd:         bind((*Controller).learnAdd),
-		rpc.MethodLearnList:        bind((*Controller).learnList),
-		rpc.MethodLearnUpdate:      bind((*Controller).learnUpdate),
-		rpc.MethodLearnEvaluate:    bind((*Controller).learnEvaluate),
-		rpc.MethodLearnEdits:       bind((*Controller).learnEdits),
-		rpc.MethodWriteKeyClaim:    bind((*Controller).writeKeyClaim),
-		rpc.MethodWriteKeyFinish:   bind((*Controller).writeKeyFinish),
-		rpc.MethodWaitAdd:          bind((*Controller).waitAdd),
-		rpc.MethodWaitList:         bind((*Controller).waitList),
-		rpc.MethodWaitClear:        bind((*Controller).waitClear),
+		rpc.MethodWhoami:            bind((*Controller).whoami),
+		rpc.MethodVersion:           bind((*Controller).version),
+		rpc.MethodIdentityList:      bind((*Controller).identityList),
+		rpc.MethodIdentityCheck:     bind((*Controller).identityCheck),
+		rpc.MethodIdentityToken:     bind((*Controller).identityToken),
+		rpc.MethodIngestDrain:       bind((*Controller).ingestDrainMethod),
+		rpc.MethodIngestClaim:       bind((*Controller).ingestClaim),
+		rpc.MethodIngestAdmit:       bind((*Controller).ingestAdmit),
+		rpc.MethodIngestWorkers:     bind((*Controller).ingestWorkersMethod),
+		rpc.MethodTicketCreate:      bind((*Controller).create),
+		rpc.MethodTicketShow:        bind((*Controller).show),
+		rpc.MethodTicketTrace:       bind((*Controller).trace),
+		rpc.MethodRecall:            bind((*Controller).recall),
+		rpc.MethodTicketList:        bind((*Controller).list),
+		rpc.MethodTicketUpdate:      bind((*Controller).update),
+		rpc.MethodTicketClose:       bind((*Controller).closeTicket),
+		rpc.MethodTicketReopen:      bind((*Controller).reopen),
+		rpc.MethodReady:             bind((*Controller).ready),
+		rpc.MethodCommentAdd:        bind((*Controller).comment),
+		rpc.MethodEdgeAdd:           bind((*Controller).edgeAdd),
+		rpc.MethodEdgeRemove:        bind((*Controller).edgeRemove),
+		rpc.MethodLabelAdd:          bind((*Controller).labelAdd),
+		rpc.MethodLabelRemove:       bind((*Controller).labelRemove),
+		rpc.MethodClaim:             bind((*Controller).claim),
+		rpc.MethodHeartbeat:         bind((*Controller).heartbeat),
+		rpc.MethodRelease:           bind((*Controller).release),
+		rpc.MethodSessionNew:        bind((*Controller).sessionNew),
+		rpc.MethodSessionList:       bind((*Controller).sessionList),
+		rpc.MethodSessionReap:       bind((*Controller).sessionReap),
+		rpc.MethodSessionRestart:    bind((*Controller).sessionRestart),
+		rpc.MethodSessionPrompt:     bind((*Controller).sessionPrompt),
+		rpc.MethodSessionSandbox:    bind((*Controller).sessionSandbox),
+		rpc.MethodSessionSend:       bind((*Controller).sessionSend),
+		rpc.MethodSessionSubscribe:  bind((*Controller).sessionSubscribe),
+		rpc.MethodEventsSubscribe:   bind((*Controller).eventsSubscribe),
+		rpc.MethodShutdown:          bind((*Controller).shutdown),
+		rpc.MethodDrain:             bind((*Controller).drainPools),
+		rpc.MethodTriggerList:       bind((*Controller).triggerList),
+		rpc.MethodReload:            bind((*Controller).reloadConfig),
+		rpc.MethodConfigShow:        bind((*Controller).configShow),
+		rpc.MethodRunStart:          bind((*Controller).runStart),
+		rpc.MethodRunShow:           bind((*Controller).runShow),
+		rpc.MethodRunList:           bind((*Controller).runList),
+		rpc.MethodRunCancel:         bind((*Controller).runCancel),
+		rpc.MethodRunResume:         bind((*Controller).runResume),
+		rpc.MethodBatchStart:        bind((*Controller).batchStart),
+		rpc.MethodBatchShow:         bind((*Controller).batchShow),
+		rpc.MethodBatchList:         bind((*Controller).batchList),
+		rpc.MethodPoolList:          bind((*Controller).poolList),
+		rpc.MethodPoolScale:         bind((*Controller).poolScaleRPC),
+		rpc.MethodSessionCordon:     bind((*Controller).sessionCordonRPC),
+		rpc.MethodSessionConfig:     bind((*Controller).sessionConfigRPC),
+		rpc.MethodAttention:         bind((*Controller).attention),
+		rpc.MethodPoolUnquarantine:  bind((*Controller).poolUnquarantine),
+		rpc.MethodReportIncidents:   bind((*Controller).reportIncidents),
+		rpc.MethodGuard:             bind((*Controller).guard),
+		rpc.MethodSubscribe:         bind((*Controller).subscribe),
+		rpc.MethodReport:            bind((*Controller).report),
+		rpc.MethodQuestionAnswer:    bind((*Controller).answerQuestion),
+		rpc.MethodActivityList:      bind((*Controller).activityList),
+		rpc.MethodActivityRecord:    bind((*Controller).activityRecord),
+		rpc.MethodLearnAdd:          bind((*Controller).learnAdd),
+		rpc.MethodLearnList:         bind((*Controller).learnList),
+		rpc.MethodLearnUpdate:       bind((*Controller).learnUpdate),
+		rpc.MethodLearnEvaluate:     bind((*Controller).learnEvaluate),
+		rpc.MethodLearnEdits:        bind((*Controller).learnEdits),
+		rpc.MethodResourceAdd:       bind((*Controller).resourceAdd),
+		rpc.MethodResourceRemove:    bind((*Controller).resourceRemove),
+		rpc.MethodResourceUnhealthy: bind((*Controller).resourceUnhealthy),
+		rpc.MethodResourceList:      bind((*Controller).resourceList),
+		rpc.MethodWriteKeyClaim:     bind((*Controller).writeKeyClaim),
+		rpc.MethodWriteKeyFinish:    bind((*Controller).writeKeyFinish),
+		rpc.MethodWaitAdd:           bind((*Controller).waitAdd),
+		rpc.MethodWaitList:          bind((*Controller).waitList),
+		rpc.MethodWaitClear:         bind((*Controller).waitClear),
 	}
 }

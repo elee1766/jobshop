@@ -165,10 +165,7 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `release --until` defers a ticket without counting a step failure
   (#139).
 - Escalation threads: a gateway with `escalation_room` opens one thread
-  per escalation ticket with an operator session ready (#125); since
-  #379 the controller opens the chat and the thread mirrors it.
-- Escalation chat: the controller starts a keyed chat session per
-  escalation ticket from pack config, shown in Desk (#379).
+  per escalation ticket with an operator session ready (#125).
 - Pool `admin` grants: operator sessions run `reload` and `session list`
   (#126).
 - `run start --after <id>` creates outside blockers with the run; the
@@ -387,8 +384,84 @@ Short list; behavior details are in `docs/notes/` (section 7).
   packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
 - `jobshop wait add|list|clear`: tickets park on a PR review, checks,
   PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
+- Write keys: remote key or hidden GitHub marker is the record, local
+  rows pruned after 48h (#415, `docs/notes/415-write-key-cache.md`).
 - Generic HMAC ingest endpoints with a payload map, and `jobshop ingest
   put` for local senders (#399, `docs/notes/399-generic-ingest.md`).
+- `ingest.pollers`: GitHub repos without a webhook polled into the inbox
+  with ETags and stored cursors (#341, `docs/notes/341-ingest-pollers.md`,
+  check `docs/verify/ingest-pollers.md`).
+- Resource slots: `resources:` (counted or keyed) and step
+  `needs_resources`, enforced in the ready and claim queries (#400,
+  `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
+- Resource waits are visible: `run show` position, `resource_wait` stall
+  signal, attention entries (#408, `docs/notes/408-resource-waits.md`,
+  check `docs/verify/resource-waits.md`).
+- Provider-owned resource slots: `resource add|remove|unhealthy`, reset
+  after each claim, demand and idle release (#407,
+  `docs/notes/407-provider-slots.md`, check `docs/verify/provider-slots.md`).
+- Store ticket queries are portable SQL: hot fields keys and meta
+  lookups are plain columns and a `ticket_meta` table, lists are
+  `sqlc.slice` (#405, `docs/notes/405-portable-sql.md`).
+- Resource slot queries join `ticket_resources` instead of `json_each`
+  (#426, `docs/notes/426-portable-resources.md`).
+- Escalation chat: the controller opens one chat per escalation ticket
+  from pack config; Desk shows it; the gateway mirrors (#379,
+  `docs/notes/379-escalation-chat.md`, `docs/verify/escalation-chat.md`).
+- Command and http workflow steps run by the controller, no session
+  (#396, `docs/notes/396-command-http-steps.md`).
+- Command steps run in their pool's sandbox; `worktree: true` gives a
+  run one worktree, removed at run close (#419,
+  `docs/notes/419-command-step-sandbox.md`,
+  `docs/verify/command-step-sandbox.md`).
+- `close -r rebase` reopens a step without counting a failure; the
+  refinery uses it for a PR that only conflicts with master (#424,
+  `docs/notes/424-rebase-no-failure.md`).
+- Workflow step graphs: `needs:` for parallel steps, `when:` for steps
+  gated on an outcome set with `close --outcome` (#385,
+  `docs/notes/385-step-needs-when.md`).
+- Claims and lease sweeps are guarded single statements; ClaimNext
+  retries lost races; the store suite also runs with deferred
+  transactions on several connections (#406,
+  `docs/notes/406-store-guarded-claims.md`).
+- Store split: backend-neutral core `pkg/store/sqlstore` over sqlc's
+  Querier; `pkg/store/sqlite` is a thin driver (#404,
+  `docs/notes/404-store-core-split.md`).
+- Tests: `Options.Hosts` runs session hosts in-process for
+  controller-logic tests (#361, `docs/notes/361-inproc-hosts.md`).
+- Admission releases a held inbox item back to pending once its
+  needs-human ticket is closed (#353,
+  `docs/notes/353-admission-release-held.md`).
+- Secret settings take a path or `{type: file|command, ...}`; a command's
+  stdout is the secret (#435, PR #366, `docs/notes/435-secret-commands.md`).
+- Step `placement`: weighted pool options with `when` and `prefer_for`;
+  the controller moves an unclaimed step to a free option (#409,
+  `docs/notes/409-step-placement.md`, check `docs/verify/step-placement.md`).
+- Ingest dispatch: pollers only write inbox rows; a dispatcher delivers
+  admitted rows, so denied or held input never reaches a session (#442,
+  `docs/notes/442-ingest-dispatch.md`, check `docs/verify/ingest-dispatch.md`).
+- SQLite store prepares each query once and seeds new databases from a
+  migrated template; pkg/control -race 138s to 63s (#433,
+  `docs/notes/433-sqlite-stmt-cache.md`).
+- Bound LIMITs are `CAST(? AS INTEGER)` so cached statements are not
+  re-prepared; the schema template is kept as bytes. pkg/control -race
+  82s to 61s wall (#433, `docs/notes/433-limit-reprepare.md`).
+- Env refresh treats a zombie session daemon as stopped instead of
+  waiting 5s for it (#433, `docs/notes/433-zombie-wait.md`).
+- runRoot and the metrics and trace tests tick hourly and use passes;
+  pkg/control -race 41s to 28s (#433, `docs/notes/433-remaining-fast-ticks.md`).
+- pkg/control internal tests call `t.Parallel()`; -race 31s to 21s
+  (#433, `docs/notes/433-parallel-internal-tests.md`).
+- In-process test hosts report agent exits (`control.HostExits`), so
+  crash tests skip host spawns (#467, `docs/notes/467-inproc-host-exit.md`).
+- Ingest split mode: `ingest.workers: external` moves admission to
+  `jobshop ingest work` over the admin socket, with heartbeats,
+  missing-worker and backlog attention and inbox gauges (#443,
+  `docs/notes/443-ingest-workers.md`, check `docs/verify/ingest-workers.md`).
+- Ingest end-to-end tests: webhook to session prompt through spool,
+  drain, admission and dispatch (#453, `docs/notes/453-ingest-e2e-tests.md`).
+- Ingest end-to-end runbook for gasserver: receiver to session, dedupe,
+  gap fill, split mode (#444, check `docs/verify/ingest.md`).
 
 ## 5. What's next
 
@@ -490,8 +563,7 @@ is built (#156); its evidence is one planner pass filing from it.
 (Discord later), read/write attach and the operator pack (section 8).
 `session.send` and `session.subscribe` are built (#121); next are chat
 pool idle TTL and `attach --rw` (#122, built), the gateway (#123, built), the pack (#124),
-escalation threads (#125, built; runbook `docs/verify/escalation-thread.md`);
-since #379 the controller owns the escalation chat and the gateway mirrors it.
+escalation threads (#125, built; runbook `docs/verify/escalation-thread.md`).
 The Discord adapter is built (#182); it needs a live check with a bot token.
 Respawn env check after the next self-deploy: `docs/verify/respawn-env.md` (#244).
 Activity feed live check and rate-limit measurement on gasserver:
@@ -529,14 +601,24 @@ Waits live check: `docs/verify/waits.md` (#381).
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
 the spool and `ingest serve` in #334 and #339, the drain, poller rows
-and reconcile in #335, admission in #348. Next: release held items
-(#353), then dispatch from admitted rows (item 5).
+and reconcile in #335, admission in #348, held release in #353,
+dispatch from admitted rows in #442, GitHub polling sources in #341,
+the split `ingest work` process in #443, end-to-end tests in #453.
+Live check: `docs/verify/ingest.md` on gasserver (#444); step 1 was
+dry run; 2 to 8 write live inbox rows or change config, left for the operator.
+Next: dispatch in a worker too, if one controller is not enough.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
 
 **Test speed (#359).** In-process agent (#361), then move the
 process-tree tests onto the fake clock; sqlite template DB (#363).
+
+**Resource pools (#400).** Done: provider-owned slots (#407), waiting
+visibility (#408), placement (#409).
+
+**Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
+misjudge conflicts: let the controller check mergeStateStatus itself.
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1116,18 +1198,15 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   failing mutator leaves the event unchanged rather than denying it;
   only validators can deny. Admission runs in the controller for now;
   the split `ingest work` process is a later #318 item.
+- Dispatch is at-least-once with a write key (2026-11-04, #442): a
+  claimed admitted row is delivered under key `dispatch/<id>`, then
+  marked dispatched. A crash between the two redelivers nothing new.
+  Poll rows get their own `poll:` delivery id, so a webhook copy of the
+  same comment does not swallow the poller's delivery.
 - `jobshop gh` fails closed (2026-11-04, #349): a write with no
   controller to answer the guard does not run, while reads always run.
   Flag values are left out of the activity record so a body or token
   passed as a flag does not land in the feed.
-- Desk is the operator UI; Matrix and Discord are paused, alternatives
-  not companions; the escalation chat is gateway-independent
-  (2026-11-04, #379): the controller opens a keyed chat session
-  (`escalation:<ticket>`, `meta.escalation`) when it files an escalation
-  ticket, with the first message from pack config
-  (`workflows.<name>.escalate`), and a gateway only mirrors it. No pack
-  config: ticket only. Agents escalate only when a human is required
-  (prompt rule `escalation-policy`).
 - A step pool is a run-start template (2026-11-04, #384): routing picks
   a pool, so model and effort, per run without one workflow per pool.
   A bad pool fails the start rather than creating an unclaimable step.
@@ -1144,6 +1223,46 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   the ready and claim queries skip a ticket with a wait. The controller
   evaluates them, not the agent; a moved head or closed PR clears a
   review or checks wait as invalidated so the agent re-decides.
+- Resource occupancy is derived, not stored (2026-11-04, #400): a slot
+  is held by an in-progress ticket naming its key, so every claim end
+  frees it in the same write and there is no slot row to leak. Only
+  capacities are stored, synced from config.
+- Placement moves the step ticket, not a scheduler queue (2026-11-04,
+  #409): the controller rewrites an unclaimed step's pool and resource
+  keys to the chosen option, so the ready and claim queries stay as
+  #400 built them. `when` is decided once at run start.
+- Provider slots are stored rows, released by the supervisor
+  (2026-11-04, #407): a concrete slot has an id, env and health, so it
+  needs a row. The row names the claim (ticket and fence); a pass moves
+  slots of ended claims to releasing and resets each once, which covers
+  every claim end path without a hook in each.
+- Store SQL is portable except recall and DDL types (2026-11-04, #405):
+  queried fields keys are columns the store writes from `fields`, which
+  stays the source of record; meta filters use `ticket_meta`. Recall
+  stays the one per-engine module. This prepares for Postgres; it is not
+  a decision to build it.
+- Desk is the operator UI; Matrix and Discord are paused, alternatives
+  not companions; the escalation chat is gateway-independent
+  (2026-11-04, #379). The controller opens it from pack policy
+  (`escalate:` / `escalation:`), and gateways only mirror it.
+- Command and http steps (2026-11-04, #396) are step tickets with no
+  pool, claimed by the controller as holder `controller`, so retries,
+  escalation and run completion stay the agent-step code paths. The
+  attempt key is run/step/fence: a restart with `on_restart: retry`
+  resumes the same claim and key; a new claim is a new attempt.
+- A step sent back only because master moved closes `-r rebase`
+  (2026-11-04, #424): the store reopens it like `failed` but leaves
+  fields.failures alone. A resolution, not a pack rule, so any workflow
+  can use it and the refinery decides what counts as a finding.
+- Secret commands use an explicit type, not a prefix (2026-11-04, #435):
+  `{type: command, command: ...}` beside a path string, as the operator
+  asked on #366, so no path is ever run by accident and the form can
+  grow (other types) without new magic characters.
+- External ingest workers talk to the controller, not the database
+  (2026-11-04, #443): `ingest work` claims over the admin socket, runs
+  the hooks itself and reports the run; the controller decides the state
+  and files the needs-human ticket. One writer stays, and hooks (the slow,
+  untrusted part) leave the controller process.
 
 ## 7. Reference: behavior as built
 
@@ -1184,7 +1303,6 @@ moved from the old 7.x list, oldest first:
 - [Operator pack](notes/124-operator-pack.md) (#124)
 - [Gateway, Matrix adapter](notes/123-gateway-matrix.md) (#123)
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
-- [Escalation chat owned by the controller](notes/379-escalation-chat.md) (#379)
 - [Gateway, Discord adapter](notes/182-gateway-discord.md) (#182)
 - [Jobshop Desk](notes/202-desk.md) (#202)
 - [Chat in Desk](notes/203-desk-chat.md) (#203)
@@ -1199,6 +1317,8 @@ moved from the old 7.x list, oldest first:
 - [Prompt rule injection dedup](notes/397-inject-dedup.md) (#397)
 - [TestSessionRestartIdle flake](notes/327-restart-idle-flake.md) (#327)
 - [Prompt text from files](notes/382-text-files.md) (#382)
+- [Subscription bot allowlist](notes/402-subscription-bots.md) (#402)
+- [Step needs and when](notes/385-step-needs-when.md) (#385)
 
 ## 8. Chat gateway
 
@@ -1229,9 +1349,9 @@ messages and prompts stay in the controller.
   like other changes. This is how a Gas City mayor role returns as config.
 - Escalation threads (2026-11-02): an escalation also opens a Matrix
   thread, created by the gateway from a controller
-  event. Since 2026-11-04 (#379) the keyed session with the escalation
-  context is the controller's escalation chat and the thread mirrors it.
-  The operator's reply there unblocks the run.
+  event, with a keyed operator session already holding the escalation
+  context. The operator's reply there unblocks the run. Superseded by
+  #379: the controller owns the chat, Matrix and Discord are paused.
 - Testing: gasserver runs a loopback tuwunel homeserver as the jobshop
   user (`jobshop.localhost`, no federation, token registration), so
   agents register their own bot and test users and verify Matrix end to

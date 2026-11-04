@@ -12,14 +12,14 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Escalation threads (#125, mirror since #379). The controller owns the
-// escalation chat: it files the ticket (label needs-human), starts the
-// session keyed escalation:<ticket> and records it in meta.escalation.
-// A gateway with an escalation room opens one thread per ticket that has
-// such a chat, records it in the ticket's meta.gateway, posts the
-// session's turns there and sends the thread's replies to the same keyed
-// session. It sends no prompt of its own. Tickets without a chat (no
-// escalate.chat_pool configured) get no thread, except questions.
+// Escalation threads (#125, #379). The controller files an escalation
+// ticket (label needs-human, meta.run.escalation) and, when the pack sets
+// an escalation chat, opens the chat session itself and records it in
+// meta.escalation. A gateway with an escalation room mirrors it: it opens
+// one thread per ticket, records the thread in meta.gateway, binds the
+// thread to meta.escalation.key so replies reach the same session, and
+// posts the session's turns. It never sends a first prompt. Matrix and
+// Discord are paused (2026-11-04): Desk is the operator UI.
 
 // EscalationLabel marks escalation tickets.
 const EscalationLabel = "needs-human"
@@ -32,27 +32,9 @@ type Escalation struct {
 	Gateway string `json:"gateway"` // gateway name that opened the thread
 	Room    string `json:"room"`
 	Root    string `json:"root"`
-	Key     string `json:"key"`               // the controller's chat key, escalation:<ticket>
-	Pool    string `json:"pool,omitempty"`    // the chat pool of that key
-	Session string `json:"session,omitempty"` // the controller's chat session
-	Final   bool   `json:"final,omitempty"`   // the closed message was posted
-}
-
-// chatMeta is meta.escalation on an escalation ticket, written by the
-// controller (#379).
-type chatMeta struct {
 	Key     string `json:"key"`
-	Session string `json:"session"`
-	Pool    string `json:"pool"`
-}
-
-func metaChat(t store.Ticket) (chatMeta, bool) {
-	var c chatMeta
-	raw, ok := ticketMeta(t)["escalation"]
-	if !ok || json.Unmarshal(raw, &c) != nil || c.Key == "" || c.Session == "" {
-		return c, false
-	}
-	return c, true
+	Session string `json:"session,omitempty"` // set once the first prompt is sent
+	Final   bool   `json:"final,omitempty"`   // the closed message was posted
 }
 
 // runMeta is meta.run on an escalation ticket, written by the controller.
@@ -130,6 +112,22 @@ func metaEscalation(t store.Ticket) (Escalation, bool) {
 		return e, false
 	}
 	return e, true
+}
+
+// chatMeta is meta.escalation, the controller's escalation chat (#379).
+type chatMeta struct {
+	Key     string `json:"key"`
+	Pool    string `json:"pool"`
+	Session string `json:"session"`
+}
+
+func metaChat(t store.Ticket) (chatMeta, bool) {
+	var c chatMeta
+	raw, ok := ticketMeta(t)["escalation"]
+	if !ok || json.Unmarshal(raw, &c) != nil || c.Key == "" || c.Session == "" {
+		return c, false
+	}
+	return c, true
 }
 
 // errSkip ends an updateEscalation without writing.
@@ -273,28 +271,35 @@ func (g *Gateway) Escalations(ctx context.Context) {
 	}
 }
 
-// escalation makes sure the open ticket t has a thread mirroring the
-// controller's chat session.
+// escalation makes sure the open ticket t has a thread bound to its chat.
 func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 	e, ok := metaEscalation(t)
 	if ok && e.Gateway != g.cfg.Name {
 		return nil // another gateway owns it
 	}
 	_, isQuestion := metaQuestion(t)
-	chat, haveChat := metaChat(t)
-	since := time.Now() // a thread that already exists mirrors new turns only
-	if !ok {
-		if !isQuestion && !haveChat {
-			return nil // the controller has not opened a chat, or runs none
+	chat, hasChat := metaChat(t)
+	if !isQuestion && !hasChat {
+		return nil // no chat yet (or none configured): nothing to mirror
+	}
+	if ok && e.Session != "" {
+		g.mu.Lock()
+		_, seen := g.escalating[t.ID]
+		g.mu.Unlock()
+		if seen {
+			return nil
 		}
+	}
+	if !ok {
 		th, err := g.ad.Open(ctx, g.settings().EscalationRoom, openingText(t))
 		if err != nil {
 			return fmt.Errorf("open thread: %w", err)
 		}
-		e = Escalation{Gateway: g.cfg.Name, Room: th.Room, Root: th.Root, Key: g.Key(th), Pool: g.cfg.Pool}
-		if haveChat {
-			e.Key, e.Pool, e.Session = chat.Key, chat.Pool, chat.Session
+		key := g.Key(th)
+		if hasChat {
+			key = chat.Key
 		}
+		e = Escalation{Gateway: g.cfg.Name, Room: th.Room, Root: th.Root, Key: key}
 		_, err = g.updateEscalation(ctx, t.ID, func(_ store.Ticket, cur *Escalation, ok bool) error {
 			if ok {
 				return errors.New("another thread was recorded first")
@@ -307,14 +312,15 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 			return fmt.Errorf("record thread: %w", err)
 		}
 		g.log.Info("gateway: escalation thread", "ticket", t.ID, "key", e.Key)
-		since = time.Time{} // a new thread gets the first turn too
 	}
 	th := Thread{Room: e.Room, Root: e.Root}
 	g.mu.Lock()
 	g.escalating[t.ID] = th
 	if e.Key != g.Key(th) {
-		g.keys[th] = e.Key
-		g.pools[th] = e.Pool
+		g.keys[th] = e.Key // the chat's key, or a replacement thread (#197)
+	}
+	if hasChat && chat.Pool != "" {
+		g.pools[th] = chat.Pool
 	}
 	g.mu.Unlock()
 	if isQuestion {
@@ -325,8 +331,19 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 		g.mu.Unlock()
 		return nil
 	}
-	if e.Session != "" {
-		g.watch(ctx, e.Session, since, th)
+	// Mirror the controller's chat: post its turns in the thread. The
+	// first prompt predates the watch, so the summary turn and later
+	// ones are posted.
+	g.watch(ctx, chat.Session, t.CreatedAt, th)
+	if e.Session == chat.Session {
+		return nil
+	}
+	_, err := g.updateEscalation(ctx, t.ID, func(_ store.Ticket, cur *Escalation, _ bool) error {
+		cur.Session = chat.Session
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("record session: %w", err)
 	}
 	return nil
 }
@@ -370,7 +387,9 @@ func (g *Gateway) rethread(ctx context.Context, old Thread, text string) {
 	g.mu.Lock()
 	g.escalating[id] = th
 	g.keys[th] = key
-	g.pools[th] = g.pools[old]
+	if p, ok := g.pools[old]; ok {
+		g.pools[th] = p
+	}
 	for _, w := range g.watched {
 		w.mu.Lock()
 		if w.thread == old {

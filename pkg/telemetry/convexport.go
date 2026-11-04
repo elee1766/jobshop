@@ -342,6 +342,12 @@ func (e *ConvExporter) clean(s string) (string, bool) {
 	return s[:cut], true
 }
 
+// RedactText replaces secret values from env (secret-named KEY=value
+// entries) and gitleaks findings in s, like conversation export does.
+func RedactText(s string, env []string) string {
+	return (&ConvExporter{env: secretEnvValues(env)}).Redact(s)
+}
+
 // Redact replaces launch-env secret values and gitleaks findings in s.
 func (e *ConvExporter) Redact(s string) string {
 	for _, v := range e.env {

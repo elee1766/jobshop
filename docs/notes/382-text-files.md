@@ -18,6 +18,5 @@ prompt-like `*_file` field into its inline field at load:
   example `triggers.replan.ticket.body` or `prompt_rules.recall.text`.
 - packs/github keeps its `recall` and `learn-nudge` rules in
   `prompts/rules/*.md`.
-- `workflows.<n>.escalate.prompt_file` and `.pool_prompt_file` (#379) load
-  into `prompt` and `pool_prompt`, with no pack var substitution (the vars
-  wait for the ticket).
+- The #379 escalation chat prompt, when it lands, should add one
+  `t.load(..., "prompt", "prompt_file", ...)` call here.

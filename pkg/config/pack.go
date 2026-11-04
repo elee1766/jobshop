@@ -55,6 +55,7 @@ type packFile struct {
 	Workflows   map[string]Workflow `yaml:"workflows"`
 	PromptRules []PromptRule        `yaml:"prompt_rules"`
 	Hooks       []Hook              `yaml:"hooks"`
+	Escalation  *EscalationChat     `yaml:"escalation"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -306,6 +307,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	}
 	// Step titles and prompts keep ${run var} references for run start.
 	restore := holdTemplates(m)
+	restoreEsc := holdEscalationPrompts(m)
 	// ${check_output} is filled when a trigger fires, not at load.
 	subVars := map[string]any{CheckOutputVar: placeholder(CheckOutputVar, syn)}
 	for _, k := range StallVars { // likewise, per stall
@@ -316,6 +318,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	}
 	v, err := substitute(m, subVars, "", syn)
 	restore()
+	restoreEsc()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}

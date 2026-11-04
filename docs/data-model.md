@@ -67,11 +67,13 @@ CREATE INDEX tickets_parent  ON tickets(parent_id);
 CREATE INDEX tickets_kind    ON tickets(kind, status);
 
 -- Engine-owned field indexes. Fixed in migrations, since kinds are in Go.
-CREATE INDEX tickets_message_to ON tickets(json_extract(fields, '$.to'))
+-- Hot fields keys are copied to plain f_* columns by the store on every
+-- write (#405, docs/notes/405-portable-sql.md), so no index or query
+-- needs a JSON function.
+CREATE INDEX tickets_message_to ON tickets(f_to)
   WHERE kind = 'message';
-CREATE UNIQUE INDEX tickets_session_key ON tickets(json_extract(fields, '$.key'))
-  WHERE kind = 'session' AND status <> 'closed';
--- Postgres: ON tickets ((fields->>'to')) WHERE kind = 'message'
+CREATE UNIQUE INDEX tickets_session_key ON tickets(f_key)
+  WHERE kind = 'session' AND status <> 'closed' AND f_key IS NOT NULL;
 
 -- Typed relations between tickets. Edge kinds are engine-defined:
 --   blocks, waits_for  -> block readiness
@@ -358,7 +360,7 @@ WHERE ephemeral = 1 AND status = 'closed' AND closed_at < :now - :retention_ms;
 
 - `meta` is grouped by pack name: `{"gx": {"linear_id": "ENG-123"}}`.
   The controller rejects top-level keys that are not a known pack name
-  (built-ins `github`, `trigger`, `run`, `gateway`, `escalation` (#379), plus `meta_packs:` in jobshop.yaml);
+  (built-ins `github`, `trigger`, `run`, `gateway`, plus `meta_packs:` in jobshop.yaml);
   the store only checks the shape (#29, 2026-11-01). Gas City
   has only a flat `map[string]string` with an optional dot-prefix
   convention, and in the live city engine keys (`close_reason`, `state`,

@@ -6,5 +6,7 @@ sql:
     gen:
       go:
         package: sqlcdb
-        out: sqlcdb
+        out: ../sqlstore/sqlcdb
+        sql_package: database/sql
+        emit_interface: true
         emit_empty_slices: true

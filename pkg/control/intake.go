@@ -164,20 +164,3 @@ func (c *Controller) refuseIntake(ctx context.Context, project, key string, x in
 		c.log.WarnContext(ctx, "intake: file ticket", "issue", x.Issue, "err", err)
 	}
 }
-
-// intakeComments drops the Linear comments the intake hooks refuse; a
-// refused comment is not delivered later (the read position moves on),
-// the needs-human ticket quotes the reason. GitHub threads pass as they are.
-func (c *Controller) intakeComments(ctx context.Context, project string, th thread, cs []ghComment) []ghComment {
-	if th.Linear == "" || !c.hasIntakeHooks() {
-		return cs
-	}
-	var out []ghComment
-	for _, cm := range cs {
-		x := intakeExtra{Source: intakeComment, Issue: th.Linear, Author: cm.Author, Text: cm.Body}
-		if c.intake(ctx, project, "intake/"+th.Linear+"/"+cm.ID, x).Decision == rpc.GuardAllow {
-			out = append(out, cm)
-		}
-	}
-	return out
-}

@@ -93,7 +93,8 @@ func TestRecallBackfill(t *testing.T) {
 	// database from an older release, then reopen to migrate forward.
 	db, err := sql.Open("sqlite", "file:"+path)
 	require.NoError(t, err)
-	for _, q := range []string{
+	for _, q := range append(undo00013(), []string{
+		"DROP TABLE resource_caps", "DELETE FROM goose_db_version WHERE version_id = 12",
 		"DELETE FROM goose_db_version WHERE version_id = 11",
 		"DROP INDEX inbox_natural_key", "DELETE FROM goose_db_version WHERE version_id = 10",
 		"DELETE FROM goose_db_version WHERE version_id = 9",
@@ -107,7 +108,7 @@ func TestRecallBackfill(t *testing.T) {
 		"DROP TRIGGER recall_comment_delete", "DROP TRIGGER recall_comment_update",
 		"DROP TRIGGER recall_comment_insert", "DROP TABLE recall",
 		"DELETE FROM goose_db_version WHERE version_id = 4",
-	} {
+	}...) {
 		_, err = db.ExecContext(ctx, q)
 		require.NoError(t, err, q)
 	}

@@ -41,6 +41,7 @@ func startWork(t *testing.T, c *Controller, key string) (store.Ticket, store.Tic
 }
 
 func TestLearnRPC(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
 	step, sess, sc := startWork(t, c, "l1")
@@ -86,6 +87,7 @@ func TestLearnRPC(t *testing.T) {
 }
 
 func TestLearnSince(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
@@ -101,6 +103,7 @@ func TestLearnSince(t *testing.T) {
 }
 
 func TestLearnStepFailure(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "f1")
@@ -119,6 +122,7 @@ func TestLearnStepFailure(t *testing.T) {
 }
 
 func TestLearnRelease(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := stallController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "r1")
@@ -136,6 +140,7 @@ func TestLearnRelease(t *testing.T) {
 }
 
 func TestLearnReviewFinding(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "v1")
@@ -161,6 +166,7 @@ func TestLearnReviewFinding(t *testing.T) {
 }
 
 func TestLearnEscalation(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "e1")
@@ -174,6 +180,7 @@ func TestLearnEscalation(t *testing.T) {
 }
 
 func TestLearnAnswer(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "q1")
@@ -190,6 +197,7 @@ func TestLearnAnswer(t *testing.T) {
 }
 
 func TestLearnStall(t *testing.T) {
+	t.Parallel()
 	c, _, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
 	c.runTriggers()
@@ -201,6 +209,7 @@ func TestLearnStall(t *testing.T) {
 
 // TestLearnUpdate: open -> pr pending -> applied or rejected (#273).
 func TestLearnUpdate(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}

@@ -314,7 +314,7 @@ func (c *Controller) stopRunner(id string) {
 		r.cancel()
 		<-r.done
 	}
-	stopHost(c.root.SessionDir(id))
+	c.stopHost(c.root.SessionDir(id))
 }
 
 func (r *runner) run() {
@@ -381,7 +381,7 @@ func (r *runner) crashed() bool {
 func (r *runner) finish(resolution, reason string) {
 	r.log.Info("session ended", "resolution", resolution, "reason", reason)
 	r.lifecycle("end", telemetry.AttrResolution.String(resolution))
-	stopHost(r.dir)
+	r.c.stopHost(r.dir)
 	ctx := context.WithoutCancel(r.ctx)
 	if resolution == resolutionCrashed || resolution == resolutionConfigFailed {
 		// Pause before closing: a closed session frees a pool slot, and a
@@ -408,7 +408,10 @@ func (r *runner) finish(resolution, reason string) {
 
 // stopHost asks a host to stop (it forwards SIGTERM to the agent's group)
 // and kills it if it is still alive after 10 seconds.
-func stopHost(dir string) {
+func (c *Controller) stopHost(dir string) {
+	if c.opt.Hosts != nil && c.opt.Hosts.Stop(dir) {
+		return
+	}
 	pid := hostPid(dir)
 	if pid <= 1 || !host.Alive(dir) {
 		return
@@ -440,11 +443,25 @@ func stopSessionProcs(dir string) {
 	deadline := time.Now().Add(5 * time.Second)
 	for len(pids) > 0 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
-		pids = slices.DeleteFunc(pids, func(p int) bool { return syscall.Kill(p, 0) != nil })
+		pids = slices.DeleteFunc(pids, procGone)
 	}
 	for _, p := range pids {
 		_ = syscall.Kill(p, syscall.SIGKILL)
 	}
+}
+
+// procGone reports whether pid has exited. A zombie counts as gone:
+// kill(pid, 0) succeeds on it until its parent reaps it, and a detached
+// daemon's parent (init or a subreaper) may take a while, which held
+// every env refresh for the full 5s deadline (#433).
+func procGone(pid int) bool {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return syscall.Kill(pid, 0) != nil
+	}
+	// The state follows the parenthesized command, which may hold spaces.
+	i := bytes.LastIndexByte(b, ')')
+	return i >= 0 && i+2 < len(b) && (b[i+2] == 'Z' || b[i+2] == 'X')
 }
 
 // sessionProcs lists processes whose environ has the JOBSHOP_SOCKET the
@@ -529,6 +546,19 @@ func (r *runner) session() error {
 		return err
 	}
 	defer func() { _ = nc.Close() }()
+	if he, ok := r.c.opt.Hosts.(HostExits); ok {
+		if exited := he.Exited(r.dir); exited != nil {
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				select {
+				case <-exited:
+					_ = nc.Close()
+				case <-done:
+				}
+			}()
+		}
+	}
 	r.mu.Lock()
 	r.agentPid = welcome.AgentPid
 	r.mu.Unlock()
@@ -736,7 +766,7 @@ func (r *runner) restart(nc net.Conn) error {
 	r.log.Info("restarting host on request", "host_pid", hostPid(r.dir))
 	r.lifecycle("restart_requested")
 	_ = nc.Close()
-	stopHost(r.dir)
+	r.c.stopHost(r.dir)
 	return errRefresh
 }
 
@@ -769,7 +799,7 @@ func (r *runner) worktreeMissing() bool {
 func (r *runner) refresh(nc net.Conn) error {
 	r.log.Info("refreshing host env", "host_pid", hostPid(r.dir))
 	_ = nc.Close()
-	stopHost(r.dir)
+	r.c.stopHost(r.dir)
 	return errRefresh
 }
 
@@ -836,7 +866,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				"caller", "runner.worktreeMissing", "host_pid", hostPid(r.dir))
 			r.lifecycle("worktree_missing")
 			_ = nc.Close()
-			stopHost(r.dir)
+			r.c.stopHost(r.dir)
 			return errRefresh
 		}
 		// Config options (#304) change only between turns: jcode refuses
@@ -929,7 +959,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			r.setTurnTicket("")
 			return err
 		}
-		interrupted, err := r.interruptible(ctx, conn, acpSession, r.ticketPrompt(t, comments))
+		interrupted, err := r.interruptible(ctx, conn, acpSession, slotPrompt(r.c.slotEnv(ctx, t))+r.ticketPrompt(t, comments))
 		if err != nil {
 			r.setTurnTicket("")
 			return err
@@ -1040,7 +1070,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 			// conversation, and the claim survives for the next prompt.
 			r.log.Warn("agent stuck busy, respawning host", "host_pid", hostPid(r.dir))
 			r.lifecycle("agent_stuck_busy")
-			stopHost(r.dir)
+			r.c.stopHost(r.dir)
 			return errRefresh
 		}
 		if err == nil || ctx.Err() != nil || !rateLimited(err) {
@@ -1486,6 +1516,16 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	if err := hostspec.Write(dir, spec); err != nil {
 		return err
 	}
+	// The previous host's exit record would make connect() report this
+	// host as exited before it has taken the lock.
+	_ = os.Remove(filepath.Join(dir, host.ExitFile))
+	if c.opt.Hosts != nil {
+		if err := c.opt.Hosts.Start(dir); err != nil {
+			return err
+		}
+		c.log.Info("spawned host", "session", t.ID, "in_process", true, "agent", f.Agent)
+		return nil
+	}
 	logf, err := os.OpenFile(filepath.Join(dir, host.LogFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
@@ -1543,42 +1583,47 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) (bool, error) {
 	if !ok || p.Repo == "" {
 		return false, nil
 	}
+	return true, c.addWorktree(p.Repo, p.Ref, cwd, "jobshop session "+t.ID, "pool "+t.Pool)
+}
+
+// addWorktree makes a locked, detached worktree of repo at ref (default
+// HEAD) in cwd unless cwd exists. what names the owner in errors.
+func (c *Controller) addWorktree(repo, ref, cwd, reason, what string) error {
 	c.gitMu.Lock()
 	defer c.gitMu.Unlock()
 	if _, err := os.Stat(cwd); err == nil {
-		return true, nil
+		return nil
 	}
-	if st, err := os.Stat(p.Repo); err != nil {
-		return true, host.Permanentf("pool %s repo %s: %w", t.Pool, p.Repo, err)
+	if st, err := os.Stat(repo); err != nil {
+		return host.Permanentf("%s repo %s: %w", what, repo, err)
 	} else if !st.IsDir() {
-		return true, host.Permanentf("pool %s repo %s is not a directory", t.Pool, p.Repo)
+		return host.Permanentf("%s repo %s is not a directory", what, repo)
 	}
-	ref := p.Ref
 	if ref == "" {
 		ref = "HEAD"
 	}
 	// Start from the latest remote state; a failed fetch (offline, no
 	// remote) still allows a worktree from what is there.
-	if out, err := exec.Command("git", "-C", p.Repo, "fetch", "--quiet", "--prune").CombinedOutput(); err != nil {
-		c.log.Warn("git fetch", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
+	if out, err := exec.Command("git", "-C", repo, "fetch", "--quiet", "--prune").CombinedOutput(); err != nil {
+		c.log.Warn("git fetch", "repo", repo, "err", err, "out", strings.TrimSpace(string(out)))
 	}
 	// A worktree deleted without git (rm -rf) stays registered and makes
 	// `worktree add` refuse the same path. It is locked (below) and prune
 	// skips locked entries, so unlock it first.
-	_ = exec.Command("git", "-C", p.Repo, "worktree", "unlock", cwd).Run()
-	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "prune").CombinedOutput(); err != nil {
-		c.log.Warn("git worktree prune", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
+	_ = exec.Command("git", "-C", repo, "worktree", "unlock", cwd).Run()
+	if out, err := exec.Command("git", "-C", repo, "worktree", "prune").CombinedOutput(); err != nil {
+		c.log.Warn("git worktree prune", "repo", repo, "err", err, "out", strings.TrimSpace(string(out)))
 	}
-	out, err := exec.Command("git", "-C", p.Repo, "worktree", "add", "--detach",
-		"--lock", "--reason", "jobshop session "+t.ID, cwd, ref).CombinedOutput()
+	out, err := exec.Command("git", "-C", repo, "worktree", "add", "--detach",
+		"--lock", "--reason", reason, cwd, ref).CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
 		if worktreeAddPermanent(string(out)) {
 			err = &host.PermanentError{Err: err}
 		}
-		return true, err
+		return err
 	}
-	return true, nil
+	return nil
 }
 
 // worktreeAddPermanent matches git's messages for a repo or ref that is
@@ -1678,6 +1723,7 @@ func (c *Controller) recordGauges() {
 	for k, n := range counts {
 		c.metrics.Sessions.Record(ctx, n, metric.WithAttributes(telemetry.AttrPool.String(k[0]), telemetry.AttrState.String(k[1])))
 	}
+	c.recordInboxGauges(ctx)
 	for name, p := range c.config().Pools {
 		// Ready is capped by the store's default limit; enough for a gauge.
 		if ready, err := c.store.Ready(ctx, p.Project, name, 0); err == nil {

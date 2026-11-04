@@ -59,6 +59,8 @@ type activityState struct {
 	errs  map[string]string    // last error logged per source
 	mu    *sync.Mutex          // guards Items for activity.list
 	path  string
+	// added counts items added since load, for pollActivity's result.
+	added int
 }
 
 // activitySource fetches one repo or team. Tests replace it.
@@ -132,6 +134,7 @@ func (s *activityState) add(items []rpc.ActivityItem, now time.Time, window time
 		s.Items = append(s.Items, it)
 		n++
 	}
+	s.added += n
 	sort.SliceStable(s.Items, func(i, j int) bool { return s.Items[i].At.After(s.Items[j].At) })
 	per := map[string]int{}
 	kept := s.Items[:0]
@@ -165,7 +168,9 @@ func (c *Controller) activityErr(s *activityState, src string, err error) {
 	c.log.Warn("activity: poll", "source", src, "err", err)
 }
 
-// pollActivity runs one pass over every repo and team due.
+// pollActivity runs one pass over every repo and team due. New items go
+// to the inbox; the dispatcher adds the admitted ones to the feed
+// (#442). It returns how many this pass added.
 func (c *Controller) pollActivity(ctx context.Context, s *activityState, src activitySource) int {
 	cfg := c.config()
 	a := cfg.Activity
@@ -174,11 +179,9 @@ func (c *Controller) pollActivity(ctx context.Context, s *activityState, src act
 	}
 	now := c.now()
 	window := config.Duration(a.Window, defaultActivityWindow)
-	maxPer := a.MaxItems
-	if maxPer == 0 {
-		maxPer = defaultActivityMax
-	}
-	added := 0
+	s.mu.Lock()
+	before := s.added
+	s.mu.Unlock()
 	for _, repo := range cfg.ActivityRepos() {
 		rp := s.Repos[repo]
 		if rp == nil {
@@ -190,12 +193,7 @@ func (c *Controller) pollActivity(ctx context.Context, s *activityState, src act
 		}
 		items, err := src.GitHub(ctx, repo, rp)
 		c.activityErr(s, "github:"+repo, err)
-		fresh := s.unseen(items)
-		c.inboxActivity(ctx, fresh)
-		added += s.add(items, now, window, maxPer)
-		if rs, ok := src.(revertSource); ok {
-			c.checkReverts(ctx, rs, fresh)
-		}
+		c.inboxActivity(ctx, s.unseen(items))
 	}
 	for _, team := range cfg.ActivityTeams() {
 		since, ok := s.Teams[team]
@@ -208,7 +206,6 @@ func (c *Controller) pollActivity(ctx context.Context, s *activityState, src act
 			s.Teams[team] = now
 		}
 		c.inboxActivity(ctx, s.unseen(items))
-		added += s.add(items, now, window, maxPer)
 	}
 	// Drop poll state for repos and teams no longer configured.
 	for r := range s.Repos {
@@ -224,10 +221,10 @@ func (c *Controller) pollActivity(ctx context.Context, s *activityState, src act
 	if err := s.save(); err != nil {
 		c.activityErr(s, "cache", err)
 	}
-	if added > 0 && c.events != nil {
-		c.events.publish([]rpc.Event{{Kind: rpc.EventKindActivity, Time: now}})
-	}
-	return added
+	c.ingestPass(ctx)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.added - before
 }
 
 // pumpActivity polls until the controller stops. The state is loaded

@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -29,7 +28,7 @@ func setRules(t *testing.T, root config.Root, base []byte, rules string) {
 // turn labeled; a respawn sends the system rule again; a reload that
 // removes a rule drops it from the next turn.
 func TestPromptRules(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	base, err := os.ReadFile(root.Config())
 	require.NoError(t, err)
 	base = []byte(strings.Replace(string(base), "    max_sessions: 1\n", "    max_sessions: 1\n    prompt: POOL-DEV\n", 1))
@@ -61,7 +60,7 @@ func TestPromptRules(t *testing.T) {
 		t.Helper()
 		var tk store.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: title, Pool: "dev"}, &tk))
-		require.Eventually(t, func() bool { return show(tk.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+		passEventually(t, root.Dir, func() bool { return show(tk.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	}
 
 	runTicket("first")
@@ -113,10 +112,10 @@ func TestPromptRules(t *testing.T) {
 	var pr rpc.SessionPromptResult
 	// Right after the restart the session can briefly show neither a held
 	// nor a ready ticket (a message turn); wait for the ticket turn (#230).
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		pr = rpc.SessionPromptResult{}
 		return admin.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, &pr) == nil && pr.Turn == "ticket"
-	}, dialWait, 50*time.Millisecond, "last turn %q", pr.Turn)
+	}, "ticket turn after restart")
 	assert.Equal(t, next.ID, pr.Ticket)
 	assert.Equal(t, []string{"dev-only", "hook"}, pr.Rules)
 	var srcs []string
@@ -133,12 +132,12 @@ func TestPromptRules(t *testing.T) {
 	// Respawn: the next turn carries the system rule again.
 	pid := hostPidOf(t, sdir)
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id, Now: true}, nil))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
 		return p != 0 && p != pid && host.Alive(sdir)
-	}, dialWait, 50*time.Millisecond)
+	}, "condition not met after supervisor passes")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(next.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return show(next.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	p = prompts()
 	last := p[len(p)-1]
 	assert.Contains(t, last, next.ID)

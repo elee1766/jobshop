@@ -60,6 +60,7 @@ triggers:
 // stall-check run; skip-labeled, wrong-state, closed, unlabeled and
 // already-running issues do not, and Linear is read once per poll.
 func TestLinearIntake(t *testing.T) {
+	t.Parallel()
 	var reads atomic.Int32
 	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "lin_api_test" {
@@ -129,6 +130,7 @@ func TestLinearIntake(t *testing.T) {
 // TestLinearIntakeOff: no team, no Linear read; an unreachable Linear
 // finds nothing instead of failing the trigger.
 func TestLinearIntakeOff(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallControllerYAML(t, linearIntakeYAML)
 	c.minter, c.linearURL = identity.NewMinter(), "http://127.0.0.1:1"
 	found, err := c.stallLinearIssues(t.Context(), config.StallSignal{Signal: config.StallLinearIssueNoRun})
@@ -140,6 +142,7 @@ func TestLinearIntakeOff(t *testing.T) {
 }
 
 func TestLinearIntakeMatch(t *testing.T) {
+	t.Parallel()
 	is := linear.Summary{State: linear.State{Name: "Todo", Type: "unstarted"}, Labels: []string{"Agent", "x"}}
 	assert.True(t, linearIntakeMatch(is, nil, nil, nil))
 	assert.True(t, linearIntakeMatch(is, []string{"todo"}, []string{"agent"}, nil))
@@ -154,6 +157,7 @@ func TestLinearIntakeMatch(t *testing.T) {
 // stall-check both start pr-work with key linear-<KEY>, so whichever is
 // second gets the first run, and the stall clears.
 func TestLinearPlannerIntakeKey(t *testing.T) {
+	t.Parallel()
 	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[{"identifier":"ENG-1","title":"t","url":"u","updatedAt":"2026-11-01T00:00:00Z","state":{"id":"s","name":"Todo","type":"unstarted"},"assignee":null,"labels":{"nodes":[{"name":"agent"}]}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`))
 	}))

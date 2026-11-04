@@ -88,6 +88,7 @@ func listActivity(t *testing.T, c *Controller, p rpc.ActivityListParams) rpc.Act
 }
 
 func TestActivityPollListAndLinks(t *testing.T) {
+	t.Parallel()
 	c, clk, src := activityController(t)
 	now := clk.now()
 	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":255}}`)})
@@ -132,6 +133,7 @@ func TestActivityPollListAndLinks(t *testing.T) {
 }
 
 func TestActivityGrantAndOff(t *testing.T) {
+	t.Parallel()
 	c, _, _ := activityController(t)
 	_, err := c.activityList(t.Context(), scope{pool: "dev"}, rpc.ActivityListParams{})
 	require.ErrorContains(t, err, "activity")
@@ -142,6 +144,7 @@ func TestActivityGrantAndOff(t *testing.T) {
 }
 
 func TestActivityPollInterval(t *testing.T) {
+	t.Parallel()
 	c, clk, src := activityController(t)
 	c.activity.Repos["elee1766/jobshop"] = &repoPoll{Next: clk.now().Add(time.Minute)}
 	c.pollActivity(t.Context(), c.activity, src)
@@ -153,6 +156,7 @@ func TestActivityPollInterval(t *testing.T) {
 }
 
 func TestActivityErrorLoggedOnce(t *testing.T) {
+	t.Parallel()
 	c, _, src := activityController(t)
 	s := c.activity
 	src.err = fmt.Errorf("boom")
@@ -167,6 +171,7 @@ func TestActivityErrorLoggedOnce(t *testing.T) {
 // TestLiveActivityETag runs the HTTP source against a fake GitHub: the
 // second poll sends If-None-Match and a 304 yields nothing.
 func TestLiveActivityETag(t *testing.T) {
+	t.Parallel()
 	c, _, _ := activityController(t)
 	var mu sync.Mutex
 	var inm []string
@@ -211,6 +216,7 @@ func TestLiveActivityETag(t *testing.T) {
 }
 
 func TestParseRepoEvents(t *testing.T) {
+	t.Parallel()
 	body := `[
 	 {"id":"1","type":"PushEvent","actor":{"login":"elee-agent[bot]"},"created_at":"2026-11-03T07:00:00Z","payload":{"ref":"refs/heads/issue-1","head":"bbbbbbbbbbbbbbbb","before":"aaaaaaaaaaaaaaaa"}},
 	 {"id":"2","type":"PullRequestEvent","actor":{"login":"elee-agent[bot]"},"created_at":"2026-11-03T07:00:00Z","payload":{"action":"merged","number":254,"pull_request":{"number":254}}}, 

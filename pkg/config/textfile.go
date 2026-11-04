@@ -69,20 +69,6 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 	wfs, _ := m["workflows"].(map[string]any)
 	for _, n := range sortedKeys(wfs) {
 		wm, _ := wfs[n].(map[string]any)
-		// Escalation chat prompts keep their vars until the ticket is
-		// filed (#379).
-		if em, ok := wm["escalate"].(map[string]any); ok {
-			key := "workflows." + n + ".escalate"
-			if err := t.load(em, "prompt", "prompt_file", key, false); err != nil {
-				return err
-			}
-			if err := t.load(em, "pool_prompt", "pool_prompt_file", key, false); err != nil {
-				return err
-			}
-			if err := t.load(em, "hold_prompt", "hold_prompt_file", key, false); err != nil {
-				return err
-			}
-		}
 		steps, _ := wm["steps"].([]any)
 		for i, s := range steps {
 			// Step prompts keep ${run var} references for run start.
@@ -98,6 +84,28 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 		tm, _ := trs[n].(map[string]any)
 		if tk, ok := tm["ticket"].(map[string]any); ok {
 			if err := t.load(tk, "body", "body_file", "triggers."+n+".ticket", true); err != nil {
+				return err
+			}
+		}
+	}
+	// Escalation chat prompts (#379): pack vars at load, the escalation
+	// vars ({{.ticket}} or ${ticket}, ...) kept for the controller.
+	et := t
+	if t.vars != nil {
+		et.vars = escalationPassthrough(t.vars, t.syn)
+	}
+	blocks := escalationBlocks(m)
+	for _, n := range sortedKeys(blocks) {
+		e, _ := blocks[n].(map[string]any)
+		for _, f := range escalationPrompts {
+			if s, ok := e[f].(string); ok && et.vars != nil {
+				v, err := substitute(s, et.vars, n+"."+f, t.syn)
+				if err != nil {
+					return fmt.Errorf("%s: %w", t.file, err)
+				}
+				e[f] = v
+			}
+			if err := et.load(e, f, f+"_file", n, true); err != nil {
 				return err
 			}
 		}

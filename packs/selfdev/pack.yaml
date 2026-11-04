@@ -7,7 +7,6 @@ defaults:
   refinery_sessions: 1
   memory_dir: ""
   memory_cap: 2200
-  escalation_chat_pool: ""
   # Curator (#273): start a curate pass once this many open learnings
   # were recorded since the last pass, or daily when at least one was.
   curate_min_learnings: 10
@@ -17,14 +16,16 @@ defaults:
   evaluate_runs: 20
   evaluate_age: 72h
   learn_sessions: 1
+  # Passed to packs/github (#379). Empty: no escalation chat.
+  escalation_chat_pool: ""
 extends:
   - path: ../github
     vars:
+      escalation_chat_pool: "{{.escalation_chat_pool}}"
       repo: elee1766/jobshop
       checkout: "{{.repo}}"
       agent: "{{.agent}}"
       dev_sessions: "{{.dev_sessions}}"
-      escalation_chat_pool: "{{.escalation_chat_pool}}"
       refinery_sessions: "{{.refinery_sessions}}"
       human: elee1766
       # Contributors whose issue reports are picked up (#340).

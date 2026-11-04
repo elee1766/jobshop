@@ -104,7 +104,7 @@ func askController(t *testing.T) (*Controller, *stallClock, *askLinear) {
 	tokFile := filepath.Join(t.TempDir(), "tok")
 	require.NoError(t, os.WriteFile(tokFile, []byte("lin_api_x\n"), 0o600))
 	cfg := *c.config()
-	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: tokFile, Workspace: "acme", Teams: []string{"ENG"}}}
+	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: config.SecretPath(tokFile), Workspace: "acme", Teams: []string{"ENG"}}}
 	lc, err := newLiveConfig(&cfg)
 	require.NoError(t, err)
 	c.live.Store(lc)
@@ -118,6 +118,7 @@ func askController(t *testing.T) (*Controller, *stallClock, *askLinear) {
 // with the mention and Blocked; a reply under it answers the question,
 // reaches the session and removes Blocked.
 func TestLinearQuestion(t *testing.T) {
+	t.Parallel()
 	c, clk, f := askController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
@@ -174,6 +175,7 @@ func TestLinearQuestion(t *testing.T) {
 // TestLinearEscalation: an escalation ticket for a Linear run is posted
 // on the issue without Blocked; a GitHub-only one is not posted.
 func TestLinearEscalation(t *testing.T) {
+	t.Parallel()
 	c, _, f := askController(t)
 	ctx := t.Context()
 	esc := mkTicket(t, c, store.NewTicket{
@@ -204,6 +206,7 @@ func TestLinearEscalation(t *testing.T) {
 // TestLinearAskRetry: a crash after the post but before meta.linear_ask
 // was saved replays the stored write instead of posting again.
 func TestLinearAskRetry(t *testing.T) {
+	t.Parallel()
 	c, _, f := askController(t)
 	ctx := t.Context()
 	esc := mkTicket(t, c, store.NewTicket{

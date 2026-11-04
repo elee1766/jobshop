@@ -74,6 +74,7 @@ func val(name, cmd string) config.AdmissionHook {
 }
 
 func TestAdmissionNoHooksAdmits(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, nil)
 	it := putInbox(t, c, store.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
@@ -86,6 +87,7 @@ func TestAdmissionNoHooksAdmits(t *testing.T) {
 }
 
 func TestAdmissionOrderAndMutation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "log")
 	// Validating is listed first but runs after both mutating hooks, and
@@ -120,6 +122,7 @@ func TestAdmissionOrderAndMutation(t *testing.T) {
 }
 
 func TestAdmissionDeny(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{
 		val("ok", ""+`echo '{"decision":"allow"}'`),
 		val("no", `echo '{"decision":"deny","reason":"spam"}'`),
@@ -132,6 +135,7 @@ func TestAdmissionDeny(t *testing.T) {
 }
 
 func TestAdmissionAskHumanHolds(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{val("ask", `echo '{"decision":"ask_human","reason":"unsure"}'`)})
 	it := putInbox(t, c, store.InboxItem{RepoOrTeam: "acme/app", Number: 7, Actor: "mallory"})
 	got, _ := admitOne(t, c, it.ID)
@@ -144,7 +148,47 @@ func TestAdmissionAskHumanHolds(t *testing.T) {
 	assert.Contains(t, ts[0].Body, "acme/app#7")
 }
 
+// TestAdmissionHeldReleased (#353): closing the needs-human ticket moves
+// the held item back to pending, and the next admission applies the
+// answer without re-running the validating hook.
+func TestAdmissionHeldReleased(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		resolution, want string
+	}{{"done", store.InboxAdmitted}, {"wontfix", store.InboxDenied}} {
+		t.Run(tc.resolution, func(t *testing.T) {
+			c, _ := admissionController(t, []config.AdmissionHook{val("ask", `echo '{"decision":"ask_human","reason":"unsure"}'`)})
+			it := putInbox(t, c, store.InboxItem{})
+			got, _ := admitOne(t, c, it.ID)
+			require.Equal(t, store.InboxHeld, got.State)
+
+			// Unanswered: stays held.
+			require.NoError(t, c.releaseAnswered(t.Context()))
+			got, err := c.store.InboxGet(t.Context(), it.ID)
+			require.NoError(t, err)
+			assert.Equal(t, store.InboxHeld, got.State)
+
+			ts, err := c.store.List(t.Context(), store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: "admission/d1"})
+			require.NoError(t, err)
+			require.Len(t, ts, 1)
+			_, err = c.store.CloseTicket(t.Context(), "human", ts[0].ID, nil, tc.resolution)
+			require.NoError(t, err)
+
+			require.NoError(t, c.releaseAnswered(t.Context()))
+			got, err = c.store.InboxGet(t.Context(), it.ID)
+			require.NoError(t, err)
+			assert.Equal(t, store.InboxPending, got.State)
+
+			got, rs := admitOne(t, c, it.ID)
+			assert.Equal(t, tc.want, got.State)
+			require.Len(t, rs, 1, "the human's answer, not the hook again")
+			assert.Equal(t, "human", rs[0].Name)
+		})
+	}
+}
+
 func TestAdmissionTimeout(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		policy, typ, state, decision string
 	}{
@@ -170,6 +214,7 @@ func TestAdmissionTimeout(t *testing.T) {
 }
 
 func TestAdmissionBadJSONDenies(t *testing.T) {
+	t.Parallel()
 	c, _ := admissionController(t, []config.AdmissionHook{val("bad", "echo nope")})
 	it := putInbox(t, c, store.InboxItem{})
 	got, rs := admitOne(t, c, it.ID)
@@ -178,6 +223,7 @@ func TestAdmissionBadJSONDenies(t *testing.T) {
 }
 
 func TestAdmissionMatch(t *testing.T) {
+	t.Parallel()
 	yes, no := true, false
 	base := store.InboxItem{Source: "github", Kind: "issue_comment", RepoOrTeam: "acme/app", Actor: "bob"}
 	for name, tc := range map[string]struct {
@@ -218,6 +264,7 @@ func TestAdmissionMatch(t *testing.T) {
 }
 
 func TestAdmissionIntakeHooksCoverLinear(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	c, _ := admissionController(t, nil, "cat > "+filepath.Join(dir, "ev.json")+`; echo '{"decision":"deny","reason":"inj"}'`)
 	gh := putInbox(t, c, store.InboxItem{Source: "github", DeliveryID: "g"})
@@ -232,6 +279,7 @@ func TestAdmissionIntakeHooksCoverLinear(t *testing.T) {
 }
 
 func TestAdmissionURLSignature(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	secret := []byte("topsecret")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sec"), append(secret, '\n'), 0o600))
@@ -264,7 +312,7 @@ func TestAdmissionURLSignature(t *testing.T) {
 	_ = resp.Body.Close()
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
-	h := config.AdmissionHook{Name: "remote", Type: config.AdmissionValidating, URL: srv.URL, SecretFile: filepath.Join(dir, "sec")}
+	h := config.AdmissionHook{Name: "remote", Type: config.AdmissionValidating, URL: srv.URL, SecretFile: config.SecretPath(filepath.Join(dir, "sec"))}
 	c, _ := admissionController(t, []config.AdmissionHook{h})
 	it := putInbox(t, c, store.InboxItem{})
 	got, _ := admitOne(t, c, it.ID)
@@ -280,6 +328,7 @@ func TestAdmissionURLSignature(t *testing.T) {
 }
 
 func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "log")
 	c, clk := admissionController(t, []config.AdmissionHook{val("v", `grep -o '"delivery_id":"[^"]*"' >> `+log)})
@@ -288,7 +337,7 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 	// storing the result.
 	claimed, err := c.store.InboxClaim(t.Context(), []string{store.InboxPending}, admissionHolder, time.Minute)
 	require.NoError(t, err)
-	c.admit(t.Context(), c.config(), admissionHooks(c.config()), claimed)
+	c.admissionRunner().run(t.Context(), "", admissionHooks(c.config()), claimed, false)
 	ok, err := c.admitNext(t.Context())
 	require.NoError(t, err)
 	assert.False(t, ok, "leased item is not claimable")
@@ -302,6 +351,7 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 }
 
 func TestApplyJSONPatch(t *testing.T) {
+	t.Parallel()
 	out, err := applyJSONPatch([]byte(`{"a":[1,2],"b":{"c":"x"}}`), []byte(`[
 		{"op":"add","path":"/a/1","value":9},
 		{"op":"remove","path":"/b/c"},

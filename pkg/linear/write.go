@@ -95,6 +95,15 @@ func (c *Client) Do(ctx context.Context, keys KeyStore, key string, dry bool, m 
 	}
 	if !found {
 		r, err := c.apply(ctx, m)
+		if err != nil && m.ID != "" {
+			// The local key may be gone (#415: a 48h cache) while the
+			// entity exists: Linear rejects the reused id. The id is the
+			// remote key, so finding it means the write already landed.
+			if prev, ok, lerr := c.lookup(ctx, m.Op, m.ID); lerr == nil && ok {
+				prev.Replayed = true
+				r, err = prev, nil
+			}
+		}
 		if err != nil {
 			return nil, err
 		}

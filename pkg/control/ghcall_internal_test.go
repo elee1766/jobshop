@@ -13,6 +13,7 @@ import (
 // TestActivityRecord: a session's jobshop gh call lands in the feed with
 // the session as actor and the PR number as ref.
 func TestActivityRecord(t *testing.T) {
+	t.Parallel()
 	c, _, _ := activityController(t)
 	sc := scope{session: "js-s1", pool: "dev"}
 	_, err := c.activityRecord(t.Context(), sc, rpc.ActivityRecordParams{

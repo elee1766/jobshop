@@ -412,10 +412,10 @@ func (c *Controller) batchBlocked(ctx context.Context, res *rpc.BatchResult) err
 	return nil
 }
 
-// currentStep is the first step not closed done, or nil.
+// currentStep is the first step not closed done or skipped, or nil.
 func currentStep(steps []store.Ticket) *store.Ticket {
 	for i := range steps {
-		if steps[i].Status != store.StatusClosed || steps[i].Resolution != "done" {
+		if !store.StepFinished(steps[i]) {
 			return &steps[i]
 		}
 	}

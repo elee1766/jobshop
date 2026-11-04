@@ -34,7 +34,7 @@ func TestConversationExportDeadEndpoint(t *testing.T) {
 
 	var a, b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
-	waitClosed(t, admin, a.ID)
+	waitClosed(t, root, admin, a.ID)
 	sessions := openSessions(t, admin)
 	require.Len(t, sessions, 1)
 	spec, err := hostspec.Read(root.SessionDir(sessions[0].ID))
@@ -46,7 +46,7 @@ func TestConversationExportDeadEndpoint(t *testing.T) {
 	// A second turn on the same host: export failures never stall it.
 	start2 := time.Now()
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
-	waitClosed(t, admin, b.ID)
+	waitClosed(t, root, admin, b.ID)
 	assert.Less(t, time.Since(start2), 15*time.Second)
 	assert.Len(t, openSessions(t, admin), 1, "session not crashed")
 }

@@ -65,6 +65,7 @@ func sources(parts []PromptPart) []string {
 // within a position; system only on a host's first turn; before/after only
 // where the pool prompt goes; match by pool, step and chat.
 func TestAssembleOrder(t *testing.T) {
+	t.Parallel()
 	c, _ := rulesController(t, rulesBase+`prompt_rules:
   - {name: t1, text: T1}
   - {name: sys, text: SYS, at: system}
@@ -110,6 +111,7 @@ func TestAssembleOrder(t *testing.T) {
 // the rule's text; a failure or timeout adds nothing and logs WARN; output
 // is capped.
 func TestRuleCommand(t *testing.T) {
+	t.Parallel()
 	c, logs := rulesController(t, rulesBase+fmt.Sprintf(`prompt_rules:
   - name: echo
     text: STATIC
@@ -150,6 +152,7 @@ func TestRuleCommand(t *testing.T) {
 // system with the skills index; an over-cap file is cut with a WARN; an
 // empty or missing dir adds nothing (#266).
 func TestRuleMemory(t *testing.T) {
+	t.Parallel()
 	mem := t.TempDir()
 	for p, s := range map[string]string{
 		"memory/global.md":                 "GLOBAL-MEM",
@@ -193,6 +196,7 @@ func TestRuleMemory(t *testing.T) {
 // after position of dev, refinery and operator ticket turns, and in a
 // chat session's first message turn, but not in later chat turns.
 func TestLearnNudge(t *testing.T) {
+	t.Parallel()
 	abs := func(p string) string {
 		a, err := filepath.Abs("../../packs/" + p)
 		require.NoError(t, err)

@@ -38,14 +38,21 @@ releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
    them here instead of failing the step. Keep both sides; if both added
    a numbered section, give this PR the next free number. Then
    `git push --force-with-lease`, comment on the PR what you resolved,
-   and wait for CI on the new head. Any non-docs conflict is case 4.
+   and wait for CI on the new head.
+   Non-docs conflicts with master and nothing else wrong (no review
+   finding): comment the conflicted files on the PR and on the `implement`
+   step, `jobshop run resume <run> --step implement`, then
+   `jobshop close -r rebase` on this step. It reopens behind implement
+   without counting a failed attempt: master moving is not the PR's fault.
+   A conflict plus any case 4 finding is case 4.
 3. Waiting (CI pending): wait for it.
-4. Needs code changes (required checks failing after a rerun of a flaky job, merge
-   conflicts, unresolved review comments, acceptance criteria not met):
+4. Needs code changes (required checks failing after a rerun of a flaky job, 
+   unresolved review comments, acceptance criteria not met):
    comment concrete findings on the PR and on the `implement` step, then
    `jobshop run resume <run> --step implement` (reopens implement for a
-   dev session) and `jobshop close -r failed` on this step with the
-   findings as the reason. The failed close reopens this step blocked
+   dev session) and `jobshop close -r failed` on this step (no reason
+   text: the findings are already in the comments). The failed close
+   reopens this step blocked
    behind implement and counts one attempt; at the retry limit the run
    escalates to a human instead.
 5. Waiting for approval (step 6 needs an approval that is missing or is

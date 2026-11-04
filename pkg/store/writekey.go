@@ -16,4 +16,7 @@ type WriteKey struct {
 	// pending key that is not new had an earlier attempt with an unknown
 	// outcome.
 	New bool `json:"new,omitempty"`
+	// Scoped is the project-scoped name the controller stores the key
+	// under; GitHub markers carry it (#415).
+	Scoped string `json:"scoped,omitempty"`
 }

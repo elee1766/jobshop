@@ -155,6 +155,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `checkout` | Main checkout of the repo on the host (pool `repo:`); sessions get worktrees of it |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `human` | GitHub user mentioned on escalations |
+| `escalation_chat_pool` | Empty (default): an escalation is only a ticket. A `type: chat` pool (e.g. the operator pack's `operator`): the controller opens a chat session there, key `escalation:<ticket id>`, whose first message (model context) is picked by cause, see Escalation chat prompts below, and records it in `meta.escalation`. Desk's chat pool should be the same (#379) |
 | `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
@@ -174,7 +175,6 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `linear_done_state` | With `linear`: state post-merge moves a shipped issue to. Default `Done` |
 | `linear_human` | With `linear`: the Linear user worker questions and run escalations mention when posted on the run's issue (#293). Replies under that comment answer the question |
 | `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` stall starts stall-check for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
-| `escalation_chat_pool` | Empty (default): an escalation is only a ticket. A `type: chat` pool (e.g. `operator`): the controller opens a chat session there, key `escalation:<ticket id>`, whose first message (model context) is picked by cause, see Escalation chat prompts below, and records it in `meta.escalation`. Desk's chat pool should be the same (#379) |
 | `linear_intake_assignee` | Planner `linear list --assignee` filter: a name, `me`, or empty for any (#292) |
 
 ### Escalation chat prompts

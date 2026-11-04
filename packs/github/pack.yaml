@@ -58,16 +58,15 @@ defaults:
   # Planner list filter by assignee (#292): a name, `me`, or empty for any.
   linear_intake_assignee: ""
   linear_poll: 5m
-  # Chat pool (a type: chat pool, e.g. operator) whose session the
-  # controller opens for each escalation ticket (#379), keyed
-  # escalation:<ticket id>. Desk's chat pool should be the same. Empty:
-  # ticket only, no chat.
-  escalation_chat_pool: ""
   # Parallel PRs that append numbered sections to one doc take the same
   # number and conflict (#131).
   docs_rule: >-
     put a design note or runbook check in a new file of its own, named by
     the issue number. Never append a numbered section to a shared doc.
+  # Chat pool (type: chat, e.g. the operator pack's operator) where the
+  # controller opens one escalation chat per escalation ticket (#379).
+  # Empty: escalation tickets only, no chat.
+  escalation_chat_pool: ""
 pools:
   dev:
     agent: "{{.agent}}"
@@ -194,19 +193,13 @@ triggers:
 # Workers check what earlier sessions learned before retrying blind or
 # reaching a human (#265).
 prompt_rules:
-  # Escalate only when a human is required (#379). Every pool gets it.
-  - name: escalation-policy
-    at: system
-    text: >-
-      Escalate to a human only for a decision, a credential or access, or a
-      host config problem you cannot fix: `jobshop close -r failed` at the
-      retry limit, `jobshop report waiting --question`, or the needs-human
-      label. Never for status, FYI or "done". Send progress to `jobshop
-      report progress` and ticket comments (Desk shows them). Wait with
-      `jobshop release --until`. Run `jobshop recall` before asking.
   - name: recall
     at: system
     file: prompts/rules/recall.md
+  # Escalation policy (#379): a human is reached only when one is needed.
+  - name: escalate-policy
+    at: system
+    file: prompts/rules/escalate-policy.md
   # Nudge (#271): every pool, after the pool prompt, so it sits with the
   # step's close instructions. Chat sessions get it on their first turn
   # too: operator improvement sessions close runs and hit corrections.

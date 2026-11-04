@@ -16,6 +16,7 @@ import (
 // method the host-level operator needs across instances; a dev-pool
 // session cannot call the granted ones.
 func TestOperatorGrant(t *testing.T) {
+	t.Parallel()
 	op, err := filepath.Abs("../../packs/operator")
 	require.NoError(t, err)
 	gh, err := filepath.Abs("../../packs/github")
@@ -60,13 +61,7 @@ packs:
 
 	res, err := c.configShow(ctx, opSc, struct{}{})
 	require.NoError(t, err)
-	show := res.(rpc.ConfigShowResult)
-	inst := show.Instances
-	var ruleNames []string
-	for _, r := range show.Config["prompt_rules"].([]any) {
-		ruleNames = append(ruleNames, r.(map[string]any)["name"].(string))
-	}
-	assert.Contains(t, ruleNames, "acphost-escalation-policy", "the policy rule is in config show (#379)")
+	inst := res.(rpc.ConfigShowResult).Instances
 	require.Len(t, inst, 2)
 	assert.Equal(t, "acphost-", inst[0].Prefix)
 	assert.Contains(t, inst[0].Workflows, "acphost-pr-work")

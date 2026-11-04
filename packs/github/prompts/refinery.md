@@ -22,9 +22,3 @@ A ticket that is not a step (an older hand-off: kind `task` with a
 `review-merge`. To route one back, comment findings and
 `jobshop ticket update <id> --pool {{.pack_prefix}}dev`, then `jobshop release`. After a
 merge, `jobshop close`.
-
-Escalate only when a human is required: a decision, a credential or
-access (an approval only a person can give), or a host config problem.
-Never for status, FYI or "done": use `jobshop report progress` and ticket
-comments. Wait with `jobshop release --until`; run `jobshop recall`
-before asking.

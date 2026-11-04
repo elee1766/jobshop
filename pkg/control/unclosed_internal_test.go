@@ -16,6 +16,7 @@ import (
 // holding a step releases it deferred without counting a failure; a
 // second unclosed release of the same step counts one.
 func TestUnclosedTurnFirstReleaseNoFailure(t *testing.T) {
+	t.Parallel()
 	c, clk, _ := subController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)

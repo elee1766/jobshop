@@ -1,11 +1,5 @@
 # Escalation thread round trip (#125)
 
-Since #379 the controller starts the escalation chat (set the pack var
-`escalation_chat_pool` to the gateway pool, e.g. `operator`) and the
-thread mirrors it, so the first prompt comes from
-`packs/github/prompts/escalation.md` and `meta.escalation` holds the
-session.
-
 Against the local tuwunel on gasserver (`http://127.0.0.1:6167`). Passed
 2026-11-02 with a throwaway root, a jcode `type: chat` pool `operator`,
 and a copy of the `drill` workflow whose step was failed by hand.

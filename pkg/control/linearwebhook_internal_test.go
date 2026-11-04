@@ -181,6 +181,7 @@ func postWebhook(c *Controller, b []byte, sig string) int {
 // signatures, stale timestamps, other orgs, bots and the App itself do
 // nothing.
 func TestLinearWebhookIssue(t *testing.T) {
+	t.Parallel()
 	c, clk, f := webhookController(t)
 	// First read is cached for the 1h poll: ENG-5 does not exist yet.
 	c.runTriggers()
@@ -217,6 +218,7 @@ func TestLinearWebhookIssue(t *testing.T) {
 // TestLinearWebhookComment (#300): a signed reply under a question's ask
 // comment answers it right away, through the subscription path.
 func TestLinearWebhookComment(t *testing.T) {
+	t.Parallel()
 	c, clk, f := webhookController(t)
 	ctx := t.Context()
 	sess := mkSession(t, c)
@@ -250,6 +252,7 @@ func TestLinearWebhookComment(t *testing.T) {
 
 // TestLinearWebhookOff: no listen address, no server.
 func TestLinearWebhookOff(t *testing.T) {
+	t.Parallel()
 	c, _, _ := stallControllerYAML(t, strings.Replace(linearWebhookYAML, "webhook_listen: 127.0.0.1:0", `webhook_listen: ""`, 1))
 	require.NoError(t, c.serveLinearWebhook())
 	c.wg.Wait()
