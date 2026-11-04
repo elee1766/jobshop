@@ -92,6 +92,14 @@ func TestControllerRestart(t *testing.T) {
 	require.True(t, host.Alive(sdir), "host outlives the controller")
 	stop = start()
 	defer stop()
+	// The agent's JOBSHOP_SOCKET is served again by the new controller
+	// (#325), so it can still comment, close or release.
+	cli := dial(t, filepath.Join(sdir, "cli.sock"))
+	var mine store.Ticket
+	require.NoError(t, cli.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &struct {
+		Ticket *store.Ticket `json:"ticket"`
+	}{&mine}))
+	assert.Equal(t, task.ID, mine.ID)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 
 	admin = dial(t, root.AdminSocket())
