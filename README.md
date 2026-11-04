@@ -157,7 +157,7 @@ golangci-lint run ./...       # v2.15.0; or nix run .#golangci-lint
 - Desk UI source is `ui/` (Svelte 5, Vite). It builds into
   `pkg/desk/dist`, which is committed and embedded. CI checks it is
   current.
-- A change to `go.mod` or `go.sum` needs a new `vendorHash` in
+- A change to `go.mod` or `go.sum` needs a new fallback `vendorHash` in
   `nix/package.nix` (see AGENTS.md).
 - Contributor rules for people and agents are in `AGENTS.md`.
 
