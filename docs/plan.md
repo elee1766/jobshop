@@ -357,6 +357,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest drain: spool to inbox in batches (delete after commit, bad rows
   to `spool_bad`), pollers write inbox rows deduped by natural key, GitHub
   App failed-delivery reconcile (#335, `docs/notes/335-ingest-drain.md`).
+- NixOS module `ingest.enable`: `jobshop-ingest.service` for `ingest
+  serve`; ingress is host config (#344, `docs/notes/344-ingest-unit.md`).
 
 ## 5. What's next
 
