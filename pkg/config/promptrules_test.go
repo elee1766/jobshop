@@ -100,7 +100,8 @@ func TestPromptRulesPrefix(t *testing.T) {
 func TestPromptRuleErrors(t *testing.T) {
 	for _, tc := range []struct{ rules, want string }{
 		{"  - text: x\n", "name"},
-		{"  - name: a\n", "set text, file or command"},
+		{"  - name: a\n", "set text, file, command or memory"},
+		{"  - {name: a, memory: {dir: x, cap: -1}}\n", "memory.cap must not be negative"},
 		{"  - name: a\n    text: x\n    at: middle\n", "at \"middle\""},
 		{"  - name: a\n    text: x\n    timeout: 1s\n", "timeout needs a command"},
 		{"  - name: a\n    command: echo\n    timeout: soon\n", "positive duration"},

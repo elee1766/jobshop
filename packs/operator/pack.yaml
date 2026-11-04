@@ -6,6 +6,8 @@
 # session per key.
 defaults:
   operator_sessions: 0
+  memory_dir: ""
+  memory_cap: 2200
 # #248 renamed repo to jobshop_repo; hosts that still set repo keep
 # working with a warning (#261). Remove after the next release.
 renamed_vars:
@@ -33,6 +35,12 @@ prompt_rules:
     file: prompts/improve.md
     at: after
     match: {pools: [operator], keys: ["improve:*"]}
+  # Memory and skills (#266), the same directory as selfdev's
+  # memory_dir. Empty (the default) adds nothing.
+  - name: operator-memory
+    at: system
+    match: {pools: [operator]}
+    memory: {dir: "${memory_dir}", cap: "${memory_cap}"}
 # Operator sessions never push to master (#249). The prompt has them run
 # `jobshop guard push --target <branch>` before a push; this hook denies
 # master or main in any form (origin/master, HEAD:master,
