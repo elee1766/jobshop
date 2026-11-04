@@ -355,6 +355,8 @@ type EscalationChat struct {
 	// chat. Vars: EscalationPoolVars.
 	PoolPrompt     string `yaml:"pool_prompt"`
 	PoolPromptFile string `yaml:"pool_prompt_file"`
+	// Template is the declaring pack's syntax (#383), set by the loader.
+	Template string `yaml:"template,omitempty"`
 }
 
 // Escalation chat template vars, filled when the chat starts.
@@ -366,13 +368,13 @@ var (
 // escalationPassthrough returns vars plus each escalation var mapped to
 // its own reference, so pack substitution leaves them for the controller.
 // Escalation vars win over pack vars of the same name.
-func escalationPassthrough(vars map[string]any) map[string]any {
+func escalationPassthrough(vars map[string]any, syn string) map[string]any {
 	out := make(map[string]any, len(vars)+len(EscalationVars)+len(EscalationPoolVars))
 	for k, v := range vars {
 		out[k] = v
 	}
 	for _, k := range append(slices.Clone(EscalationVars), EscalationPoolVars...) {
-		out[k] = "${" + k + "}"
+		out[k] = placeholder(k, syn)
 	}
 	return out
 }
@@ -443,9 +445,13 @@ func (c *Config) checkEscalation(e *EscalationChat) error {
 		key, v string
 		vars   []string
 	}{{"prompt", e.Prompt, EscalationVars}, {"pool_prompt", e.PoolPrompt, EscalationPoolVars}} {
-		for _, v := range templateVars(f.v) {
+		vs, err := refs(f.v, e.Template)
+		if err != nil {
+			return fmt.Errorf("%s: %w", f.key, err)
+		}
+		for _, v := range vs {
 			if !slices.Contains(f.vars, v) {
-				return fmt.Errorf("%s uses ${%s}; available: %v", f.key, v, f.vars)
+				return fmt.Errorf("%s uses %s; available: %v", f.key, placeholder(v, e.Template), f.vars)
 			}
 		}
 	}

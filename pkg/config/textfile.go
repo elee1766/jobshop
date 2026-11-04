@@ -89,17 +89,17 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 		}
 	}
 	// Escalation chat prompts (#379): pack vars at load, the escalation
-	// vars (${ticket}, ...) kept for the controller.
+	// vars ({{.ticket}} or ${ticket}, ...) kept for the controller.
 	et := t
 	if t.vars != nil {
-		et.vars = escalationPassthrough(t.vars)
+		et.vars = escalationPassthrough(t.vars, t.syn)
 	}
 	blocks := escalationBlocks(m)
 	for _, n := range sortedKeys(blocks) {
 		e, _ := blocks[n].(map[string]any)
 		for _, f := range []string{"prompt", "pool_prompt"} {
 			if s, ok := e[f].(string); ok && et.vars != nil {
-				v, err := substitute(s, et.vars, n+"."+f)
+				v, err := substitute(s, et.vars, n+"."+f, t.syn)
 				if err != nil {
 					return fmt.Errorf("%s: %w", t.file, err)
 				}

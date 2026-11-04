@@ -69,7 +69,7 @@ func (c *Controller) escalationChat(t store.Ticket) (pool, prompt string, ok boo
 		if e == nil || e.ChatPool == "" || e.Prompt == "" {
 			return "", "", false
 		}
-		out, err := config.FillTemplate(e.Prompt, map[string]any{
+		out, err := config.Fill(e.Prompt, e.Template, map[string]any{
 			"ticket": t.ID, "run": r.ID, "workflow": r.Workflow, "issue_ref": issueRef(t), "body": t.Body,
 		})
 		if err != nil {
@@ -87,7 +87,7 @@ func (c *Controller) escalationChat(t store.Ticket) (pool, prompt string, ok boo
 		if e == nil || e.ChatPool == "" || e.PoolPrompt == "" || e.ChatPool == p.Name {
 			return "", "", false
 		}
-		out, err := config.FillTemplate(e.PoolPrompt, map[string]any{
+		out, err := config.Fill(e.PoolPrompt, e.Template, map[string]any{
 			"ticket": t.ID, "pool": p.Name, "error": p.Quarantine, "body": t.Body,
 		})
 		if err != nil {

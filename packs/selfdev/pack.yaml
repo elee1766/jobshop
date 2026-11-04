@@ -21,7 +21,7 @@ defaults:
 extends:
   - path: ../github
     vars:
-      escalation_chat_pool: ${escalation_chat_pool}
+      escalation_chat_pool: "{{.escalation_chat_pool}}"
       repo: elee1766/jobshop
       checkout: "{{.repo}}"
       agent: "{{.agent}}"

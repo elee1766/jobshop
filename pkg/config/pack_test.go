@@ -657,7 +657,7 @@ packs:
 		assert.Equal(t, "esc", w.Escalate.ChatPool, n)
 	}
 	e := c.Workflows["pr-work"].Escalate
-	out, err := FillTemplate(e.Prompt, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	out, err := Fill(e.Prompt, e.Template, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
 	require.NoError(t, err)
 	assert.Contains(t, out, "escalation ticket js-e for run js-r (workflow pr-work)")
 	assert.Contains(t, out, "`jobshop run resume js-r")
@@ -665,7 +665,7 @@ packs:
 	assert.True(t, strings.HasSuffix(strings.TrimSpace(out), "BODY"))
 	assert.NotContains(t, out, "gateway")
 	assert.NotContains(t, out, "thread")
-	pout, err := FillTemplate(e.PoolPrompt, map[string]any{"ticket": "js-e", "pool": "dev", "error": "boom", "body": "B"})
+	pout, err := Fill(e.PoolPrompt, e.Template, map[string]any{"ticket": "js-e", "pool": "dev", "error": "boom", "body": "B"})
 	require.NoError(t, err)
 	assert.Contains(t, pout, "pool dev starts no sessions")
 	assert.Contains(t, pout, "jobshop pool unquarantine dev")

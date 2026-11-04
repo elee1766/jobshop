@@ -217,7 +217,7 @@ workflows:
     linear_workspace: "{{.linear_workspace}}"
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:
@@ -243,7 +243,7 @@ workflows:
     vars: [signal, subject, detail]
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:
@@ -258,7 +258,7 @@ workflows:
     vars: [sha]
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:
@@ -281,7 +281,7 @@ workflows:
     repo: "{{.repo}}"
     escalate_pool: plan
     escalate:
-      chat_pool: ${escalation_chat_pool}
+      chat_pool: "{{.escalation_chat_pool}}"
       prompt_file: prompts/escalation.md
       pool_prompt_file: prompts/escalation-pool.md
     steps:

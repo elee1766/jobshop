@@ -14,12 +14,13 @@
   for workflows without one. A pool quarantine uses the block of a
   workflow escalating to the same pool, else the top-level block. Prompt
   vars: `ticket run workflow issue_ref body`; pool prompt: `ticket pool
-  error body`. Prompt rules can match the chat with
+  error body`, written in the declaring pack's template syntax (#383:
+  `{{.ticket}}` in a `template: go` pack, `${ticket}` otherwise). Prompt rules can match the chat with
   `keys: ["escalation:*"]`. No chat pool: ticket only. The `*_file`
   fields load through the #382 text file loader, with pack vars filled
   and the escalation vars kept.
 - packs/github ships `prompts/escalation.md` and `escalation-pool.md` on
-  every workflow, with `chat_pool: ${escalation_chat_pool}` (default
+  every workflow, with `chat_pool: "{{.escalation_chat_pool}}"` (default
   empty, so off), and an `escalate-policy` system rule: reach a human
   only for a decision, a credential or access, or a host config problem.
 - Closing the ticket sends one final message to the chat and sets
