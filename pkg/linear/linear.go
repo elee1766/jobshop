@@ -400,3 +400,68 @@ func (c *Client) Changes(ctx context.Context, team string, since time.Time) ([]C
 	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
 	return out, nil
 }
+
+const labelsQuery = `query($name: String!) { issueLabels(filter: {name: {eqIgnoreCase: $name}}) { nodes { id team { id } } } }`
+
+const labelCreateMutation = `mutation($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { success issueLabel { id } } }`
+
+const addLabelMutation = `mutation($id: String!, $labelId: String!) { issueAddLabel(id: $id, labelId: $labelId) { success } }`
+
+// AddLabel puts the label named name on the issue, creating it in the
+// issue's team when neither the team nor the workspace has it.
+func (c *Client) AddLabel(ctx context.Context, key, name string) error {
+	is, err := c.GetIssue(ctx, key)
+	if err != nil {
+		return err
+	}
+	var lr struct {
+		IssueLabels struct {
+			Nodes []struct {
+				ID   string  `json:"id"`
+				Team *TeamID `json:"team"`
+			} `json:"nodes"`
+		} `json:"issueLabels"`
+	}
+	if err := c.do(ctx, labelsQuery, map[string]any{"name": name}, &lr); err != nil {
+		return err
+	}
+	id := ""
+	for _, n := range lr.IssueLabels.Nodes {
+		if n.Team == nil || n.Team.ID == is.Team.ID {
+			id = n.ID
+			break
+		}
+	}
+	if id == "" {
+		var cr struct {
+			IssueLabelCreate struct {
+				Success    bool   `json:"success"`
+				IssueLabel TeamID `json:"issueLabel"`
+			} `json:"issueLabelCreate"`
+		}
+		if err := c.do(ctx, labelCreateMutation, map[string]any{"input": map[string]any{"name": name, "teamId": is.Team.ID}}, &cr); err != nil {
+			return err
+		}
+		if !cr.IssueLabelCreate.Success || cr.IssueLabelCreate.IssueLabel.ID == "" {
+			return errors.New("linear: label not created")
+		}
+		id = cr.IssueLabelCreate.IssueLabel.ID
+	}
+	var ar struct {
+		IssueAddLabel struct {
+			Success bool `json:"success"`
+		} `json:"issueAddLabel"`
+	}
+	if err := c.do(ctx, addLabelMutation, map[string]any{"id": is.ID, "labelId": id}, &ar); err != nil {
+		return err
+	}
+	if !ar.IssueAddLabel.Success {
+		return errors.New("linear: label not added")
+	}
+	return nil
+}
+
+// TeamID is an object with only an id.
+type TeamID struct {
+	ID string `json:"id"`
+}

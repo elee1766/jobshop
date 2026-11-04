@@ -298,6 +298,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Curator gate: `memory_edits` baselines, `edits` trigger condition,
   `evaluate` workflow, `jobshop learn evaluate|edits` (#274,
   `docs/notes/274-curator-gate.md`).
+- Guardrail hook point `on: intake` on Linear issue text before run start
+  and subscription delivery (#288, `docs/notes/288-intake-hook.md`).
 
 ## 5. What's next
 
@@ -886,6 +888,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   curate pass, and the trigger queries pending rows. The controller
   computes metrics and decides; the agent only opens the revert PR, so
   the decision is testable and the same on every run.
+- Intake hooks (2026-11-04, #288) run in the controller at run start and
+  subscription delivery, not in the agent: the text is checked before any
+  prompt holds it. A refusal fails closed and files one needs-human
+  ticket per issue; closing it done is the approval, as for ask-human.
 
 ## 7. Reference: behavior as built
 

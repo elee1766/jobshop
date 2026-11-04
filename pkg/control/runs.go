@@ -112,7 +112,11 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 			return runPlan{}, forbidden("after %s: session is scoped to project %s", id, sc.project)
 		}
 	}
-	return runPlan{w: w, proj: proj, vars: vars, meta: meta}, nil
+	plan := runPlan{w: w, proj: proj, vars: vars, meta: meta}
+	if err := c.intakeRun(ctx, plan); err != nil {
+		return runPlan{}, err
+	}
+	return plan, nil
 }
 
 // buildRun returns the run ticket (first), its steps in order and their

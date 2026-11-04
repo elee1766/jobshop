@@ -396,6 +396,9 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 	if err != nil {
 		return err
 	}
+	if cs = c.intakeComments(ctx, t.Project, th, cs); len(cs) == 0 {
+		return nil
+	}
 	text := threadText(th, cs)
 	author := th.authorPrefix() + cs[len(cs)-1].Author
 	if _, err := c.store.AddComment(ctx, author, t.ID, text); err != nil {
