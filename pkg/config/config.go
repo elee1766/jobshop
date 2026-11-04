@@ -729,7 +729,7 @@ func (c *Config) ActivityRepos() []string {
 func (c *Config) ActivityTeams() []string {
 	var out []string
 	for _, i := range c.Identities {
-		if i.Kind != IdentityLinear {
+		if !IsLinear(i.Kind) {
 			continue
 		}
 		for _, t := range i.Teams {

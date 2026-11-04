@@ -491,9 +491,16 @@ in
             installations.elee1766 = 67890;
             repos = [ "elee1766/*" ];
           };
+          elee-linear = {
+            kind = "linear-app";
+            client_id_file = "/run/secrets/linear-app-id";
+            client_secret_file = "/run/secrets/linear-app-secret";
+            workspace = "acme";
+            teams = [ "ENG" ];
+          };
         }
       '';
-      description = "Written to settings.identities (#200). Key paths come from host secrets and must be readable by the jobshop user; the yaml holds no secrets.";
+      description = "Written to settings.identities (#200). Key and secret paths (private_key_file, token_file, client_id_file, client_secret_file) come from host secrets and must be readable by the jobshop user; the yaml holds no secrets.";
     };
 
     workspaces = lib.mkOption {

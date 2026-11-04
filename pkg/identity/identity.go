@@ -1,6 +1,7 @@
 // Package identity mints and caches credentials for configured identities
-// (#200): GitHub App installation tokens, and Linear API keys read from
-// files. Secrets never come from yaml.
+// (#200): GitHub App installation tokens, Linear App client_credentials
+// tokens (#278), and Linear API keys read from files. Secrets never come
+// from yaml.
 package identity
 
 import (
@@ -17,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -59,6 +61,22 @@ func NewMinter() *Minter {
 // covers target.
 func (m *Minter) Token(ctx context.Context, name string, id config.Identity, target string) (Token, error) {
 	switch id.Kind {
+	case config.IdentityLinearApp:
+		scopes := id.LinearScopes()
+		key := name + "/linear-app/" + strings.Join(scopes, ",")
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		now := m.Now()
+		if t, ok := m.cache[key]; ok && now.Add(refreshBefore).Before(t.Expires) {
+			return t, nil
+		}
+		t, err := m.mintLinear(ctx, id, scopes, now)
+		if err != nil {
+			return Token{}, fmt.Errorf("identity %s: %w", name, err)
+		}
+		t.Identity, t.Kind = name, id.Kind
+		m.cache[key] = t
+		return t, nil
 	case config.IdentityLinear:
 		b, err := os.ReadFile(id.TokenFile)
 		if err != nil {
@@ -141,6 +159,67 @@ func (m *Minter) mint(ctx context.Context, id config.Identity, inst int64, now t
 		return Token{}, fmt.Errorf("installation %d token: empty token", inst)
 	}
 	return Token{Token: r.Token, Expires: r.ExpiresAt}, nil
+}
+
+// DefaultLinearTokenURL is Linear's OAuth token endpoint.
+const DefaultLinearTokenURL = "https://api.linear.app/oauth/token"
+
+// mintLinear gets an app token with the OAuth client_credentials grant
+// (#278). Error bodies are included (Linear returns error and
+// error_description), never the secret or a token.
+func (m *Minter) mintLinear(ctx context.Context, id config.Identity, scopes []string, now time.Time) (Token, error) {
+	cid, err := os.ReadFile(id.ClientIDFile)
+	if err != nil {
+		return Token{}, err
+	}
+	secret, err := os.ReadFile(id.ClientSecretFile)
+	if err != nil {
+		return Token{}, err
+	}
+	form := url.Values{
+		"grant_type":    {"client_credentials"},
+		"client_id":     {strings.TrimSpace(string(cid))},
+		"client_secret": {strings.TrimSpace(string(secret))},
+		"scope":         {strings.Join(scopes, ",")},
+	}
+	u := id.TokenURL
+	if u == "" {
+		u = DefaultLinearTokenURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
+	if err != nil {
+		return Token{}, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	resp, err := m.HTTP.Do(req)
+	if err != nil {
+		return Token{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var r struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int64  `json:"expires_in"`
+		Error       string `json:"error"`
+		Description string `json:"error_description"`
+	}
+	_ = json.Unmarshal(body, &r)
+	if resp.StatusCode != http.StatusOK {
+		msg := strings.TrimSpace(r.Error + " " + r.Description)
+		if msg == "" {
+			msg = resp.Status
+		}
+		return Token{}, fmt.Errorf("linear app token: %s: %s", resp.Status, msg)
+	}
+	if r.AccessToken == "" {
+		return Token{}, errors.New("linear app token: empty token")
+	}
+	t := Token{Token: r.AccessToken}
+	if r.ExpiresIn > 0 {
+		t.Expires = now.Add(time.Duration(r.ExpiresIn) * time.Second)
+	}
+	return t, nil
 }
 
 func parseKey(b []byte) (*rsa.PrivateKey, error) {

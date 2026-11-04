@@ -297,6 +297,8 @@ type IdentityCheckResult struct {
 	Identity string    `json:"identity"`
 	Kind     string    `json:"kind"`
 	Expires  time.Time `json:"expires,omitzero"`
+	// Viewer is the Linear user the token acts as (Linear kinds only).
+	Viewer string `json:"viewer,omitempty"`
 }
 
 // IdentityTokenResult is a credential for a target.

@@ -13,7 +13,16 @@ import (
 const (
 	IdentityGitHubApp = "github-app"
 	IdentityLinear    = "linear"
+	// IdentityLinearApp is a Linear OAuth app that mints its own tokens
+	// with client_credentials (#278).
+	IdentityLinearApp = "linear-app"
 )
+
+// DefaultLinearAppScopes are requested when a linear-app sets none.
+var DefaultLinearAppScopes = []string{"read", "write", "issues:create", "comments:create"}
+
+// IsLinear reports whether kind is a Linear identity (key or app).
+func IsLinear(kind string) bool { return kind == IdentityLinear || kind == IdentityLinearApp }
 
 // Identity is a credential jobshop acts as, and what it may act on (#200).
 // Secrets come only from files; the yaml holds paths.
@@ -33,6 +42,21 @@ type Identity struct {
 	TokenFile string   `yaml:"token_file"`
 	Workspace string   `yaml:"workspace"`
 	Teams     []string `yaml:"teams"`
+	// Linear App (#278): ClientIDFile and ClientSecretFile hold the OAuth
+	// app credentials; Scopes default to DefaultLinearAppScopes. TokenURL
+	// defaults to Linear's token endpoint (tests point it at a fake).
+	ClientIDFile     string   `yaml:"client_id_file"`
+	ClientSecretFile string   `yaml:"client_secret_file"`
+	Scopes           []string `yaml:"scopes"`
+	TokenURL         string   `yaml:"token_url"`
+}
+
+// LinearScopes is Scopes or the default set.
+func (i Identity) LinearScopes() []string {
+	if len(i.Scopes) == 0 {
+		return DefaultLinearAppScopes
+	}
+	return i.Scopes
 }
 
 // CoversRepo reports whether a GitHub App identity covers owner/repo and
@@ -55,7 +79,7 @@ func (i Identity) CoversRepo(repo string) bool {
 
 // CoversTeam reports whether a Linear identity covers the team key.
 func (i Identity) CoversTeam(team string) bool {
-	if i.Kind != IdentityLinear || team == "" {
+	if !IsLinear(i.Kind) || team == "" {
 		return false
 	}
 	return slices.Contains(i.Teams, team) || slices.Contains(i.Teams, "*")
@@ -78,20 +102,46 @@ func checkIdentity(i Identity) error {
 				return fmt.Errorf("repos: bad glob %q", g)
 			}
 		}
-		if i.TokenFile != "" || i.Workspace != "" || len(i.Teams) > 0 {
-			return errors.New("token_file, workspace and teams are for kind linear")
+		if i.TokenFile != "" || i.Workspace != "" || len(i.Teams) > 0 || i.linearAppSet() {
+			return errors.New("token_file, workspace, teams and client_* are for Linear kinds")
 		}
 	case IdentityLinear:
 		if i.TokenFile == "" || i.Workspace == "" || len(i.Teams) == 0 {
 			return errors.New("token_file, workspace and teams are required")
 		}
-		if i.AppID != 0 || i.PrivateKeyFile != "" || len(i.Installations) > 0 || len(i.Repos) > 0 || i.APIURL != "" {
+		if i.githubSet() {
 			return errors.New("app_id, private_key_file, installations, repos and api_url are for kind github-app")
 		}
+		if i.linearAppSet() {
+			return errors.New("client_id_file, client_secret_file, scopes and token_url are for kind linear-app")
+		}
+	case IdentityLinearApp:
+		if i.ClientIDFile == "" || i.ClientSecretFile == "" || i.Workspace == "" || len(i.Teams) == 0 {
+			return errors.New("client_id_file, client_secret_file, workspace and teams are required")
+		}
+		if i.TokenFile != "" {
+			return errors.New("token_file is for kind linear; linear-app mints its own token")
+		}
+		if i.githubSet() {
+			return errors.New("app_id, private_key_file, installations, repos and api_url are for kind github-app")
+		}
+		for _, s := range i.Scopes {
+			if s == "" || strings.ContainsAny(s, ", ") {
+				return fmt.Errorf("scopes: bad scope %q (one per list item)", s)
+			}
+		}
 	default:
-		return fmt.Errorf("kind %q must be %q or %q", i.Kind, IdentityGitHubApp, IdentityLinear)
+		return fmt.Errorf("kind %q must be %q, %q or %q", i.Kind, IdentityGitHubApp, IdentityLinear, IdentityLinearApp)
 	}
 	return nil
+}
+
+func (i Identity) githubSet() bool {
+	return i.AppID != 0 || i.PrivateKeyFile != "" || len(i.Installations) > 0 || len(i.Repos) > 0 || i.APIURL != ""
+}
+
+func (i Identity) linearAppSet() bool {
+	return i.ClientIDFile != "" || i.ClientSecretFile != "" || len(i.Scopes) > 0 || i.TokenURL != ""
 }
 
 // IdentityFor returns the first identity, in sorted name order, among
