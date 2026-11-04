@@ -110,6 +110,8 @@ type Controller struct {
 	// linearURL is the Linear GraphQL endpoint for identity check; "" is
 	// linear.DefaultAPIURL (tests set a fake).
 	linearURL string
+	// linIntake caches linear_issue_no_run reads between polls (#287).
+	linIntake linearIntake
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
 	// tickMu is held for a supervisor pass and taken by reload, so once a

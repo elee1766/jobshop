@@ -81,8 +81,15 @@ func (c *stallClock) advance(d time.Duration) {
 // stall functions directly with a fake clock.
 func stallController(t *testing.T) (*Controller, *stallClock, string) {
 	t.Helper()
+	return stallControllerYAML(t, stallYAML)
+}
+
+// stallControllerYAML is stallController with a config whose %[1]s is
+// the temp dir.
+func stallControllerYAML(t *testing.T, yaml string) (*Controller, *stallClock, string) {
+	t.Helper()
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, stallYAML, dir), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, yaml, dir), 0o600))
 	root := config.Root{Dir: dir}
 	cfg, err := config.Load(root)
 	require.NoError(t, err)

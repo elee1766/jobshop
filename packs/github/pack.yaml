@@ -42,6 +42,12 @@ defaults:
   # Labels that keep a Linear issue out of intake (`jobshop linear
   # eligible --skip-labels`, #279). Comma-separated.
   linear_skip_labels: ""
+  # Intake (#287): open issues of linear_team in these states (and with
+  # one of these labels, if set) and no open run start pr-work through
+  # stall-check. Comma-separated; empty labels match any.
+  linear_intake_states: Todo
+  linear_intake_labels: ""
+  linear_poll: 5m
   # Parallel PRs that append numbered sections to one doc take the same
   # number and conflict (#131).
   docs_rule: >-
@@ -134,6 +140,14 @@ triggers:
             | select(.title | test("^drill"; "i") | not)
             | select((now - (.createdAt | fromdateiso8601)) > 1800)
             | "\(.number) open, no run"'
+        # Linear issues ready for work with no run (#287). Off while
+        # linear_team is empty.
+        - signal: linear_issue_no_run
+          team: ${linear_team}
+          states: ${linear_intake_states}
+          labels: ${linear_intake_labels}
+          skip_labels: ${linear_skip_labels}
+          poll: ${linear_poll}
         # Non-draft PRs with all checks green, untouched for 2h.
         - signal: pr_unmerged
           check: >-
