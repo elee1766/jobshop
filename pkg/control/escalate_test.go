@@ -52,7 +52,9 @@ func claimAs(t *testing.T, admin *rpc.Client, id, holder string) rpc.ClaimResult
 // failed, CLI release, dead-session release, and lease expiry. Below the
 // limit the step reopens with a comment naming the attempt.
 func TestStepFailureSources(t *testing.T) {
-	admin := runRootLease(t, "300ms")
+	// The lease must outlive step 2's claim and release under parallel
+	// load (a 300ms lease expired mid-step, #314); step 3 waits it out.
+	admin := runRootLease(t, "2s")
 	// implement has retries: 3, so three failures reopen then exhaust.
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "5"}})
 	step := r.Steps[0].ID
@@ -81,7 +83,7 @@ func TestStepFailureSources(t *testing.T) {
 	claimAs(t, admin, step, "js-gone")
 	require.Eventually(t, func() bool {
 		return getTicket(t, admin, step).Ticket.Status == store.StatusClosed
-	}, 5*time.Second, 50*time.Millisecond)
+	}, 15*time.Second, 50*time.Millisecond)
 	got = getTicket(t, admin, step)
 	assert.Equal(t, "failed", got.Ticket.Resolution)
 	assert.Equal(t, 3, failures(t, got.Ticket))
