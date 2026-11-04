@@ -371,6 +371,11 @@ type Store interface {
 	// PruneWriteKeys deletes keys created before before, done or
 	// pending, and returns how many (#415).
 	PruneWriteKeys(ctx context.Context, before time.Time) (int64, error)
+	// PollCursor returns an ingest poller's cursor (#341); Found is
+	// false when none is stored.
+	PollCursor(ctx context.Context, poller, repo, stream string) (PollCursor, error)
+	// SetPollCursor stores a poller's cursor.
+	SetPollCursor(ctx context.Context, c PollCursor) error
 	// InboxPut stores an ingested item (#321). A delivery id already
 	// stored is a no-op that returns the existing row and dup true.
 	InboxPut(ctx context.Context, it InboxItem) (out InboxItem, dup bool, err error)

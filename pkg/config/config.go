@@ -345,6 +345,9 @@ type Ingest struct {
 	GitHubReconcile string `yaml:"github_reconcile"`
 	// Admission hooks run on pending inbox items (#348).
 	Admission []AdmissionHook `yaml:"admission"`
+	// Pollers read GitHub repos that send no webhook (#341) and write
+	// inbox rows shaped like webhook deliveries.
+	Pollers []IngestPoller `yaml:"pollers"`
 
 	// Removed in #339; set only to fail the load with a pointer to the
 	// replacement instead of silently turning a source off.
@@ -502,6 +505,9 @@ func (c *Config) validateIngest() error {
 		}
 		paths[p] = e.Name
 	}
+	if err := c.validatePollers(names); err != nil {
+		return err
+	}
 	// Implicit endpoints share /linear/webhook; an explicit endpoint
 	// there would shadow them.
 	for _, e := range c.IngestEndpoints() {
@@ -510,6 +516,90 @@ func (c *Config) validateIngest() error {
 				return fmt.Errorf("%s: ingest.endpoints %q uses %s, which identity %q's webhook secret also serves; name the identity in that endpoint instead", FileName, other, LinearWebhookPath, e.Identity)
 			}
 			break
+		}
+	}
+	return nil
+}
+
+// IngestPoller polls GitHub repos into the inbox (#341).
+type IngestPoller struct {
+	Name   string   `yaml:"name"`
+	Source string   `yaml:"source"` // github
+	Repos  []string `yaml:"repos"`
+	// Events are webhook event names: issues, issue_comment,
+	// pull_request, pull_request_review. Empty: all four.
+	Events []string `yaml:"events"`
+	// Interval between polls, default 1m, at least 10s.
+	Interval string `yaml:"interval"`
+	// Identity is a github-app or github-token identity covering the
+	// repos. Empty: the identity that covers each repo.
+	Identity string `yaml:"identity"`
+}
+
+// PollerEvents are the events an ingest poller can read.
+var PollerEvents = []string{"issues", "issue_comment", "pull_request", "pull_request_review"}
+
+// DefaultPollInterval is a poller's interval when unset.
+const DefaultPollInterval = time.Minute
+
+// Every is the poll interval.
+func (p IngestPoller) Every() time.Duration {
+	if d, err := time.ParseDuration(p.Interval); err == nil && d > 0 {
+		return d
+	}
+	return DefaultPollInterval
+}
+
+// EventSet is Events, or all of them when empty.
+func (p IngestPoller) EventSet() []string {
+	if len(p.Events) == 0 {
+		return PollerEvents
+	}
+	return p.Events
+}
+
+func (c *Config) validatePollers(endpoints map[string]bool) error {
+	names := map[string]bool{}
+	for _, p := range c.Ingest.Pollers {
+		where := fmt.Sprintf("%s: ingest.pollers %q", FileName, p.Name)
+		if !endpointName.MatchString(p.Name) {
+			return fmt.Errorf("%s: name must match [a-z0-9-]+", where)
+		}
+		if names[p.Name] || endpoints[p.Name] {
+			return fmt.Errorf("%s: name already used by a poller or endpoint", where)
+		}
+		names[p.Name] = true
+		if p.Source != IngestGitHub {
+			return fmt.Errorf("%s: source must be github", where)
+		}
+		if len(p.Repos) == 0 {
+			return fmt.Errorf("%s: needs repos", where)
+		}
+		for _, r := range p.Repos {
+			if !RepoPattern.MatchString(r) {
+				return fmt.Errorf("%s: repo %q must be owner/name", where, r)
+			}
+		}
+		for _, e := range p.Events {
+			if !slices.Contains(PollerEvents, e) {
+				return fmt.Errorf("%s: event %q must be one of %s", where, e, strings.Join(PollerEvents, ", "))
+			}
+		}
+		if p.Interval != "" {
+			if d, err := time.ParseDuration(p.Interval); err != nil || d < 10*time.Second {
+				return fmt.Errorf("%s: interval %q must be a duration of at least 10s", where, p.Interval)
+			}
+		}
+		if p.Identity != "" {
+			id, ok := c.Identities[p.Identity]
+			if !ok || (id.Kind != IdentityGitHubApp && id.Kind != IdentityGitHubToken) {
+				return fmt.Errorf("%s: identity %q must be a github-app or github-token identity", where, p.Identity)
+			}
+			for _, r := range p.Repos {
+				if !id.CoversRepo(r) {
+					return fmt.Errorf("%s: identity %q does not cover %s", where, p.Identity, r)
+				}
+			}
 		}
 	}
 	return nil

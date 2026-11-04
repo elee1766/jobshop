@@ -388,6 +388,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   rows pruned after 48h (#415, `docs/notes/415-write-key-cache.md`).
 - Generic HMAC ingest endpoints with a payload map, and `jobshop ingest
   put` for local senders (#399, `docs/notes/399-generic-ingest.md`).
+- `ingest.pollers`: GitHub repos without a webhook polled into the inbox
+  with ETags and stored cursors (#341, `docs/notes/341-ingest-pollers.md`,
+  check `docs/verify/ingest-pollers.md`).
 - Resource slots: `resources:` (counted or keyed) and step
   `needs_resources`, enforced in the ready and claim queries (#400,
   `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
@@ -577,8 +580,8 @@ Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
 the spool and `ingest serve` in #334 and #339, the drain, poller rows
 and reconcile in #335, admission in #348, held release in #353,
-dispatch from admitted rows in #442. Next: the split `ingest work`
-process.
+dispatch from admitted rows in #442, GitHub polling sources in #341.
+Next: the split `ingest work` process.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).

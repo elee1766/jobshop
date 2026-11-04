@@ -91,6 +91,15 @@ type MemoryEdit struct {
 	CreatedAt   int64
 }
 
+type PollCursor struct {
+	Poller    string
+	Repo      string
+	Stream    string
+	Since     int64
+	Etag      string
+	UpdatedAt int64
+}
+
 type Recall struct {
 	Body     string
 	Kind     string
