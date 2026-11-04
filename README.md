@@ -10,7 +10,7 @@ implemented, reviewed, merged and deployed by Jobshop pools.
 flowchart LR
   CLI[jobshop CLI] -- admin.sock / cli.sock --> C[controller]
   C --> S[(SQLite)]
-  C -- ACP over acp.sock --> H[session host, one per session]
+  C -- ACP over acp.sock --> H[session host: acphost, one per session]
   H -- stdio --> A[agent]
   A -- jobshop CLI --> C
   G[gateway: Matrix, Discord] --> C
@@ -23,10 +23,11 @@ flowchart LR
   blocking edges, labels, comments, claims with leases and fences, and
   defers. The controller is the only writer. Agents use the `jobshop` CLI,
   which acts as their session.
-- **Sessions.** One detached host process per session runs the agent,
-  proxies ACP and journals every frame. Sessions survive controller
-  restarts and deploys. Crash loops, stuck sessions and spawn errors are
-  detected, and the pool is quarantined.
+- **Sessions.** Each session runs in a detached host process from
+  [elee1766/acphost](https://github.com/elee1766/acphost), which spawns
+  the agent, proxies ACP over `acp.sock` and journals frames for replay.
+  Sessions survive controller restarts and deploys. Crash loops, stuck
+  sessions and spawn errors are detected, and the pool is quarantined.
 - **Pools.** Each pool has an agent, a repo (sessions get a git worktree),
   a prompt, `max_sessions` and timeouts. `type: chat` pools hold one
   session per conversation key.
@@ -43,8 +44,8 @@ flowchart LR
   to issue threads, so new human comments come back to them. Identities
   map GitHub App installations and Linear tokens to repos and teams.
 - **Guidance and guardrails.** `prompt_rules` inject text, files or
-  command output into matching sessions' prompts. `hooks` allow, deny or
-  ask a human before outside actions (`jobshop guard`).
+  command output into matching sessions' prompts. `hooks` gate claims and
+  outside actions (see [Isolation](#isolation)).
 - **Humans.** Workers report progress and ask questions (`jobshop
   report`). Questions and escalations go to the `attention` list, a chat
   thread through the gateway (Matrix or Discord), and Desk.
@@ -52,6 +53,38 @@ flowchart LR
   runs, sessions and attention, and has chat with operator sessions.
 - **Telemetry.** OpenTelemetry traces and logs, a Prometheus endpoint, and
   optional export of agent conversations.
+
+## Isolation
+
+- **Bubblewrap sandbox per session.** Set `sandbox:` under `defaults`, on
+  agents or on pools. acphost runs bwrap and Jobshop computes the mounts,
+  which are an allow list: system dirs are read-only, and the session dir
+  (with its worktree), the pool repo's git dir and configured `rw` paths
+  are writable. `admin.sock`, `jobshop.db`, `secrets/` and other sessions
+  are not mounted. The env is cleared to a kept list. A missing bwrap or
+  mount source quarantines the pool. There is no unsandboxed fallback.
+  `jobshop session sandbox <id>` shows the mounts and argv. On NixOS set
+  `services.jobshop.sandbox.enable` (needs `programs.nix-ld`). mise works
+  inside it. See `docs/notes/262-sandbox.md`.
+- **Socket scoping.** A session talks only to its own `cli.sock`, which
+  acts as that session (its ticket, pool and project). The admin socket
+  is not reachable from a sandbox.
+- **Credentials.** Secrets are files, never inline in yaml. A session gets
+  a short-lived scoped token with `jobshop identity token <owner/repo>`
+  instead of holding a key.
+- **Guardrail hooks.** `hooks` gate claims and outside actions (push, PR,
+  merge, comments) with allow, deny or ask a human. A broken hook denies.
+- **Limits.** All processes run as one Unix user, and network is on by
+  default (`sandbox.network: host`). The sandbox guards against mistakes
+  and limits blast radius. It is not a boundary against a hostile agent.
+  See `docs/notes/users-security.md`.
+
+```yaml
+defaults:
+  sandbox:
+    backend: bubblewrap
+    rw: [~/.cache/go-build]
+```
 
 ## Packs in this repo
 
