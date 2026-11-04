@@ -428,6 +428,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Step `placement`: weighted pool options with `when` and `prefer_for`;
   the controller moves an unclaimed step to a free option (#409,
   `docs/notes/409-step-placement.md`, check `docs/verify/step-placement.md`).
+- Ingest dispatch: pollers only write inbox rows; a dispatcher delivers
+  admitted rows, so denied or held input never reaches a session (#442,
+  `docs/notes/442-ingest-dispatch.md`, check `docs/verify/ingest-dispatch.md`).
 
 ## 5. What's next
 
@@ -567,8 +570,9 @@ Waits live check: `docs/verify/waits.md` (#381).
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
 the spool and `ingest serve` in #334 and #339, the drain, poller rows
-and reconcile in #335, admission in #348. Next: release held items
-(#353), then dispatch from admitted rows (item 5).
+and reconcile in #335, admission in #348, held release in #353,
+dispatch from admitted rows in #442. Next: the split `ingest work`
+process.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -1160,6 +1164,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   failing mutator leaves the event unchanged rather than denying it;
   only validators can deny. Admission runs in the controller for now;
   the split `ingest work` process is a later #318 item.
+- Dispatch is at-least-once with a write key (2026-11-04, #442): a
+  claimed admitted row is delivered under key `dispatch/<id>`, then
+  marked dispatched. A crash between the two redelivers nothing new.
+  Poll rows get their own `poll:` delivery id, so a webhook copy of the
+  same comment does not swallow the poller's delivery.
 - `jobshop gh` fails closed (2026-11-04, #349): a write with no
   controller to answer the guard does not run, while reads always run.
   Flag values are left out of the activity record so a body or token
