@@ -97,6 +97,8 @@ type Controller struct {
 	// Pool crash-loop quarantine, memory only (see quarantine.go).
 	poolCrashLog    map[string][]time.Time
 	poolPausedUntil map[string]time.Time
+	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
+	inboxPrunedAt time.Time
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
@@ -360,6 +362,30 @@ func (c *Controller) tick() {
 	c.sweepRuns()
 	c.sweepBatches()
 	c.sweepLinearAsks(c.ctx)
+	c.pruneInbox()
+}
+
+// inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
+// tick would only add writes.
+const inboxPruneEvery = time.Hour
+
+// pruneInbox deletes terminal inbox items older than ingest.retention.
+func (c *Controller) pruneInbox() {
+	now := c.now()
+	if now.Sub(c.inboxPrunedAt) < inboxPruneEvery {
+		return
+	}
+	c.inboxPrunedAt = now
+	n, err := c.store.InboxPrune(c.ctx, now.Add(-c.config().Ingest.RetentionDuration()))
+	if err != nil {
+		if c.ctx.Err() == nil {
+			c.log.Error("inbox prune", "err", err)
+		}
+		return
+	}
+	if n > 0 {
+		c.log.Info("inbox pruned", "items", n)
+	}
 }
 
 func (c *Controller) sweep() {
