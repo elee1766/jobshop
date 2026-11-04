@@ -53,6 +53,17 @@ func TestParsePools(t *testing.T) {
 	assert.Equal(t, Pool{Project: "js", Agent: "claude", Dir: "/work"}, c.Pools["local"])
 }
 
+// TestUnknownAdminMethod: a method this binary does not know is dropped
+// with a warning, so a newer pack or last good config still loads (#325).
+func TestUnknownAdminMethod(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  p:\n    agent: a\n    dir: /w\n    admin: [shutdown, session-list]\n"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"session-list"}, c.Pools["p"].Admin)
+	require.Len(t, c.Warnings, 1)
+	assert.Contains(t, c.Warnings[0], `admin method "shutdown" is unknown`)
+	assert.False(t, c.Pools["p"].Allows("shutdown"))
+}
+
 func TestParseErrors(t *testing.T) {
 	base := "projects:\n  js: {}\nagents:\n  a:\n    command: x\n"
 	tests := []struct {
@@ -67,7 +78,6 @@ func TestParseErrors(t *testing.T) {
 		{"bad timeout", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    idle_timeout: soon\n", "idle_timeout"},
 		{"unknown telemetry key", base + "telemetry:\n  metrics: x\n", "metrics"},
 		{"export without logs endpoint", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n", "conversation_export needs"},
-		{"ungrantable admin method", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    admin: [shutdown]\n", `admin method "shutdown"`},
 		{"bad inbox retention", base + "ingest:\n  retention: 2w\n", "ingest.retention"},
 	}
 	for _, tt := range tests {

@@ -649,10 +649,19 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if p.Attach != "" && p.Attach != AttachRW {
 			return nil, fmt.Errorf("%s: pool %s: attach %q must be empty or %q", src("pools", name), name, p.Attach, AttachRW)
 		}
+		// An unknown admin method is dropped with a warning, not fatal: a
+		// pack or last good config written for a newer binary must not stop
+		// an older one from starting (#325). The grant is simply not given.
+		var admin []string
 		for _, m := range p.Admin {
 			if !slices.Contains(PoolAdminMethods, m) {
-				return nil, fmt.Errorf("%s: pool %s: admin method %q must be one of %s", src("pools", name), name, m, strings.Join(PoolAdminMethods, ", "))
+				c.Warnings = append(c.Warnings, fmt.Sprintf("%s: pool %s: admin method %q is unknown to this binary, ignored (known: %s)", src("pools", name), name, m, strings.Join(PoolAdminMethods, ", ")))
+				continue
 			}
+			admin = append(admin, m)
+		}
+		if len(admin) != len(p.Admin) {
+			p.Admin = admin
 		}
 		for _, id := range p.Identities {
 			if _, ok := c.Identities[id]; !ok {
