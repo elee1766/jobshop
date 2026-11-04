@@ -53,6 +53,15 @@ type Learning struct {
 	CreatedAt int64
 }
 
+type Recall struct {
+	Body     string
+	Kind     string
+	Ref      string
+	TicketID string
+	Project  string
+	At       string
+}
+
 type Ticket struct {
 	ID         string
 	Project    string

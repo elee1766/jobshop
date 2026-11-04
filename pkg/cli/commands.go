@@ -316,6 +316,20 @@ type triggerListCmd struct{}
 
 func (triggerListCmd) Run(g *Globals) error { return g.call(rpc.MethodTriggerList, nil, nil) }
 
+type recallCmd struct {
+	Query   []string `arg:"" help:"Words to search for."`
+	Limit   int      `short:"n" help:"Most hits to return (default 10)."`
+	Scope   string   `enum:",comment,journal,learning" default:"" help:"Only one source kind: comment, journal or learning."`
+	Ticket  string   `short:"t" help:"Only hits on this ticket."`
+	Project string   `help:"Project (admin only; sessions search their own)."`
+}
+
+func (c recallCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodRecall, rpc.RecallParams{
+		Query: strings.Join(c.Query, " "), Limit: c.Limit, Kind: c.Scope, TicketID: c.Ticket, Project: c.Project,
+	}, nil)
+}
+
 type whoamiCmd struct{}
 
 func (whoamiCmd) Run(g *Globals) error { return g.call(rpc.MethodWhoami, nil, nil) }
