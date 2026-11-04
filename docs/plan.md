@@ -446,6 +446,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Bound LIMITs are `CAST(? AS INTEGER)` so cached statements are not
   re-prepared; the schema template is kept as bytes. pkg/control -race
   82s to 61s wall (#433, `docs/notes/433-limit-reprepare.md`).
+- Env refresh treats a zombie session daemon as stopped instead of
+  waiting 5s for it (#433, `docs/notes/433-zombie-wait.md`).
 - Ingest split mode: `ingest.workers: external` moves admission to
   `jobshop ingest work` over the admin socket, with heartbeats,
   missing-worker and backlog attention and inbox gauges (#443,
