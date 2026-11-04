@@ -17,6 +17,8 @@ later step (review-merge) failed, pass `--step <that step>` or the run
 escalates again.
 GitHub 5xx on push or merge often still lands. Check `git ls-remote
 origin <branch>` or `gh api repos/elee1766/jobshop/pulls/<n> --jq .merged`
-before retrying; if the PR never gets checks, push a new commit.
+before retrying. A PR with no checks usually conflicts with master: run
+`git merge-tree --write-tree origin/master HEAD` and rebase before
+pushing an empty commit.
 Find post-merge CI by sha (`gh run list --branch master --commit <sha>`);
 if none ran, a green run on a descendant commit counts.

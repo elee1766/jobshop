@@ -2,7 +2,6 @@ package sqlite_test
 
 import (
 	"database/sql"
-	"path/filepath"
 	"strconv"
 	"testing"
 	"time"
@@ -15,8 +14,9 @@ import (
 )
 
 func TestRecallNewCommentSearchable(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
-	s, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "j.db"), sqlite.Options{})
+	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
 	require.NoError(t, err)
 	defer func() { _ = s.Close() }()
 	tk, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
@@ -47,8 +47,9 @@ func TestRecallNewCommentSearchable(t *testing.T) {
 }
 
 func TestRecallRanking(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
-	s, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "j.db"), sqlite.Options{})
+	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
 	require.NoError(t, err)
 	defer func() { _ = s.Close() }()
 	at := time.UnixMilli(1_700_000_000_000)
@@ -77,8 +78,9 @@ func TestRecallRanking(t *testing.T) {
 // TestRecallBackfill writes comments before the recall migration and checks
 // the migration indexes them.
 func TestRecallBackfill(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
-	path := filepath.Join(t.TempDir(), "j.db")
+	path := testPath(t)
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
 	tk, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
@@ -122,8 +124,9 @@ func TestRecallBackfill(t *testing.T) {
 // TestRecallLearnings: learnings are indexed on insert; a global learning
 // (no ticket, no project) is visible to every project.
 func TestRecallLearnings(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
-	s, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "j.db"), sqlite.Options{})
+	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
 	require.NoError(t, err)
 	defer func() { _ = s.Close() }()
 	l, err := s.AddLearning(ctx, store.Learning{
