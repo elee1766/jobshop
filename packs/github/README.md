@@ -63,6 +63,10 @@ It replaces `blocker-check`: the planner labels a blocked claim
   starts a `ci-repair` run keyed by the failing SHA (check command via
   `gh`; the controller needs `GH_TOKEN`).
 
+Prompt rules `recall` and `learn-nudge` are in `prompts/rules/`. Trigger
+tickets take `body_file` like pools take `prompt_file`, with pack vars
+substituted.
+
 ## Flow: `ci-repair` per failing master SHA
 
 `master-red` runs `jobshop run start ci-repair --var sha=<sha> --key

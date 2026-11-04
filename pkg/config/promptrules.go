@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"path/filepath"
 	"time"
@@ -137,37 +136,6 @@ func anyOf(globs, vs []string) bool {
 		}
 	}
 	return false
-}
-
-// resolveRuleFiles reads prompt_rules[].file into text, relative to dir
-// (the declaring file's directory), like a pool's prompt_file.
-func resolveRuleFiles(m map[string]any, dir, file string) error {
-	rules, _ := m["prompt_rules"].([]any)
-	for i, r := range rules {
-		rm, _ := r.(map[string]any)
-		if rm == nil {
-			return fmt.Errorf("%s: prompt_rules[%d] must be a mapping", file, i)
-		}
-		if f, ok := rm["file"]; ok {
-			if _, both := rm["text"]; both {
-				return fmt.Errorf("%s: prompt_rules[%d]: set text or file, not both", file, i)
-			}
-			s, _ := f.(string)
-			if s == "" {
-				return fmt.Errorf("%s: prompt_rules[%d].file must be a path", file, i)
-			}
-			if !filepath.IsAbs(s) {
-				s = filepath.Join(dir, s)
-			}
-			b, err := os.ReadFile(s)
-			if err != nil {
-				return fmt.Errorf("%s: prompt_rules[%d].file: %w", file, i, err)
-			}
-			delete(rm, "file")
-			rm["text"] = string(b)
-		}
-	}
-	return nil
 }
 
 // checkRules validates c.PromptRules: names unique and valid, a known
