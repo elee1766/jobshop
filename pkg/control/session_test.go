@@ -1059,23 +1059,15 @@ func TestRateLimitBackoff(t *testing.T) {
 // TestMetrics serves /metrics from the controller and checks that a pool
 // run produces the starting series.
 func TestMetrics(t *testing.T) {
-	root, _ := poolRoot(t, "1m")
+	addr := make(chan string, 1)
+	root, start := poolRootOpt(t, "1m", control.Options{MetricsReady: func(a string) { addr <- a }})
 	f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0)
 	require.NoError(t, err)
 	_, err = f.WriteString("telemetry:\n  metrics_listen: 127.0.0.1:0\n")
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
-
-	addr := make(chan string, 1)
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-	go func() {
-		done <- control.Run(ctx, root, control.Options{
-			Tick: 50 * time.Millisecond, HostExe: os.Args[0],
-			MetricsReady: func(a string) { addr <- a },
-		})
-	}()
-	defer func() { cancel(); assert.NoError(t, <-done) }()
+	ctx := t.Context()
+	defer start()()
 	var url string
 	select {
 	case a := <-addr:
@@ -1108,7 +1100,7 @@ func TestMetrics(t *testing.T) {
 		`jobshop_turns_total{jobshop_pool="dev",jobshop_turn_stop_reason="end_turn"`,
 	}
 	var body string
-	assert.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		body = scrape()
 		for _, want := range wants {
 			if !strings.Contains(body, want) {
@@ -1116,7 +1108,7 @@ func TestMetrics(t *testing.T) {
 			}
 		}
 		return true
-	}, dialWait, 100*time.Millisecond, "metrics series")
+	}, "metrics series")
 	for _, want := range wants {
 		assert.Contains(t, body, want)
 	}
@@ -1125,17 +1117,10 @@ func TestMetrics(t *testing.T) {
 // TestTraces checks that the agent's close request is a server span in the
 // session's trace, parented by the traceparent the agent got in its env.
 func TestTraces(t *testing.T) {
-	root, _ := poolRoot(t, "1m")
 	exp := tracetest.NewInMemoryExporter()
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-	go func() {
-		done <- control.Run(ctx, root, control.Options{
-			Tick: 50 * time.Millisecond, HostExe: os.Args[0],
-			SpanProcessor: sdktrace.NewSimpleSpanProcessor(exp),
-		})
-	}()
-	defer func() { cancel(); assert.NoError(t, <-done) }()
+	root, start := poolRootOpt(t, "1m", control.Options{SpanProcessor: sdktrace.NewSimpleSpanProcessor(exp)})
+	ctx := t.Context()
+	defer start()()
 
 	admin := dial(t, root.AdminSocket())
 	var task store.Ticket
@@ -1150,11 +1135,11 @@ func TestTraces(t *testing.T) {
 		return tracetest.SpanStub{}, false
 	}
 	var closeSpan tracetest.SpanStub
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		s, ok := find("rpc " + rpc.MethodTicketClose)
 		closeSpan = s
 		return ok
-	}, dialWait, 50*time.Millisecond)
+	}, "close span")
 
 	root2, ok := find("session")
 	require.True(t, ok, "session root span")
@@ -1450,24 +1435,17 @@ func TestSessionsEndedMetric(t *testing.T) {
 		{"noclose", "stuck"},
 	} {
 		t.Run(tc.resolution, func(t *testing.T) {
-			root, _ := poolRoot(t, "1m")
+			addr := make(chan string, 1)
+			// In-process hosts: the agent still exits as a process (#467).
+			root, start := poolRootOpt(t, "1m", control.Options{MetricsReady: func(a string) { addr <- a }})
 			f, err := os.OpenFile(filepath.Join(root.Dir, config.FileName), os.O_APPEND|os.O_WRONLY, 0)
 			require.NoError(t, err)
 			_, err = f.WriteString("telemetry:\n  metrics_listen: 127.0.0.1:0\n")
 			require.NoError(t, err)
 			require.NoError(t, f.Close())
 			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, tc.marker), nil, 0o600))
-
-			addr := make(chan string, 1)
-			ctx, cancel := context.WithCancel(t.Context())
-			done := make(chan error, 1)
-			go func() {
-				done <- control.Run(ctx, root, control.Options{
-					Tick: 50 * time.Millisecond, HostExe: os.Args[0],
-					MetricsReady: func(a string) { addr <- a },
-				})
-			}()
-			defer func() { cancel(); assert.NoError(t, <-done) }()
+			ctx := t.Context()
+			defer start()()
 			var url string
 			select {
 			case a := <-addr:
@@ -1481,7 +1459,7 @@ func TestSessionsEndedMetric(t *testing.T) {
 				require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: title, Pool: "dev"}, nil))
 			}
 			want := `jobshop_sessions_ended_total{jobshop_pool="dev",jobshop_resolution="` + tc.resolution + `"`
-			require.Eventually(t, func() bool {
+			passEventually(t, root.Dir, func() bool {
 				res, err := http.Get(url) //nolint:noctx // test
 				if err != nil {
 					return false
@@ -1489,7 +1467,7 @@ func TestSessionsEndedMetric(t *testing.T) {
 				defer func() { _ = res.Body.Close() }()
 				b, _ := io.ReadAll(res.Body)
 				return strings.Contains(string(b), want)
-			}, dialWait, 100*time.Millisecond, want)
+			}, want)
 		})
 	}
 }
