@@ -311,6 +311,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Pool scaling: min/max, desired target, `pool scale`, cordon to scale
   down, persisted scale and drain, host cap (#281,
   `docs/notes/281-pool-scaling.md`).
+- Desk scale columns, Scale/Auto and Cordon/Uncordon buttons (#284,
+  `docs/notes/284-desk-scale.md`).
 - Linear planner: lists team issues by the intake vars, starts pr-work
   with the intake's `linear-<KEY>` key, files new work and out-of-scope
   findings with `linear create` and `relate` (#292,
