@@ -365,12 +365,14 @@ prompt_rules:
   at: system
   command: ""
   timeout: ""
+  inject: changed
 - name: learn-nudge
   match: {}
   text: "Before `jobshop close` or `jobshop release`: if this turn hit a correction (a human or reviewer told you to do it differently), a failure, or a workaround, record it with `jobshop learn correction|failure|workaround \"<summary>\" --fix \"<what to do next time>\"`. Do not record a learning for routine success.\n"
   at: after
   command: ""
   timeout: ""
+  inject: changed
 - name: selfdev-memory
   match:
     chat: false
@@ -381,6 +383,7 @@ prompt_rules:
   memory:
     dir: /mem
     cap: 2200
+  inject: changed
 - name: acphost-recall
   match: {}
   text: |
@@ -388,12 +391,14 @@ prompt_rules:
   at: system
   command: ""
   timeout: ""
+  inject: changed
 - name: acphost-learn-nudge
   match: {}
   text: "Before `jobshop close` or `jobshop release`: if this turn hit a correction (a human or reviewer told you to do it differently), a failure, or a workaround, record it with `jobshop learn correction|failure|workaround \"<summary>\" --fix \"<what to do next time>\"`. Do not record a learning for routine success.\n"
   at: after
   command: ""
   timeout: ""
+  inject: changed
 - name: eng-recall
   match: {}
   text: |
@@ -401,12 +406,14 @@ prompt_rules:
   at: system
   command: ""
   timeout: ""
+  inject: changed
 - name: eng-learn-nudge
   match: {}
   text: "Before `jobshop close` or `jobshop release`: if this turn hit a correction (a human or reviewer told you to do it differently), a failure, or a workaround, record it with `jobshop learn correction|failure|workaround \"<summary>\" --fix \"<what to do next time>\"`. Do not record a learning for routine success.\n"
   at: after
   command: ""
   timeout: ""
+  inject: changed
 - name: operator-improve
   match:
     pools:
@@ -417,6 +424,7 @@ prompt_rules:
   at: after
   command: ""
   timeout: ""
+  inject: changed
 - name: operator-memory
   match:
     pools:
@@ -428,6 +436,7 @@ prompt_rules:
   memory:
     dir: ""
     cap: 2200
+  inject: changed
 steps:
   acphost-ci-repair:
   - id: fix
