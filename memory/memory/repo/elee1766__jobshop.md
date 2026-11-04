@@ -34,3 +34,7 @@ Tests without ticks: wait with pass/passUntil, not require.Eventually.
 Rewrite them one by one: gofmt -r drops comments.
 Local `-race` failures (dial timeouts) when /proc/loadavg is far above
 the core count are load, not bugs: rerun the test alone before fixing.
+A flaky test: `gh issue list --search <TestName>` first and link the
+existing issue. In pkg/control tests, wait for every asserted condition
+in one pass/passUntil, and run `pass(t, dir, 1)` before creating state
+that startup (reapOrphans) must not touch.
