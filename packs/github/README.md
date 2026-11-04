@@ -151,6 +151,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `checkout` | Main checkout of the repo on the host (pool `repo:`); sessions get worktrees of it |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `human` | GitHub user mentioned on escalations |
+| `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
 | `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
