@@ -301,6 +301,7 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpActivity)
 	c.wg.Go(c.pumpDrain)
 	c.wg.Go(c.pumpReconcile)
+	c.wg.Go(c.pumpAdmission)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
