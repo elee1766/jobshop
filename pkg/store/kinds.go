@@ -118,6 +118,12 @@ const (
 	RunCancelled  = "cancelled"
 )
 
+// ResolutionRebase closes a step to route its run back for a rebase
+// (#424): like "failed" the step reopens, but no failure is counted,
+// since master moving under a PR is not the step's fault. On a
+// non-step ticket it is an ordinary close.
+const ResolutionRebase = "rebase"
+
 // RunFields is the engine state of a workflow run. Its steps are its
 // children (parent_id).
 type RunFields struct {

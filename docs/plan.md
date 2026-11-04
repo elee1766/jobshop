@@ -391,6 +391,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
 - Command and http workflow steps run by the controller, no session
   (#396, `docs/notes/396-command-http-steps.md`).
+- `close -r rebase` reopens a step without counting a failure; the
+  refinery uses it for a PR that only conflicts with master (#424,
+  `docs/notes/424-rebase-no-failure.md`).
 
 ## 5. What's next
 
@@ -541,6 +544,9 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 
 **Resource pools (#400).** Provider-owned slots, waiting visibility and
 placement build on the keyed and counted slots.
+
+**Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
+misjudge conflicts: let the controller check mergeStateStatus itself.
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1149,6 +1155,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   escalation and run completion stay the agent-step code paths. The
   attempt key is run/step/fence: a restart with `on_restart: retry`
   resumes the same claim and key; a new claim is a new attempt.
+- A step sent back only because master moved closes `-r rebase`
+  (2026-11-04, #424): the store reopens it like `failed` but leaves
+  fields.failures alone. A resolution, not a pack rule, so any workflow
+  can use it and the refinery decides what counts as a finding.
 
 ## 7. Reference: behavior as built
 
