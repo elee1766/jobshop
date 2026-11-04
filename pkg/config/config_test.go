@@ -68,6 +68,7 @@ func TestParseErrors(t *testing.T) {
 		{"unknown telemetry key", base + "telemetry:\n  metrics: x\n", "metrics"},
 		{"export without logs endpoint", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n", "conversation_export needs"},
 		{"ungrantable admin method", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    admin: [shutdown]\n", `admin method "shutdown"`},
+		{"bad inbox retention", base + "ingest:\n  retention: 2w\n", "ingest.retention"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -239,4 +240,10 @@ gateway:
 		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
 		assert.Error(t, err, name)
 	}
+}
+
+func TestIngestRetention(t *testing.T) {
+	assert.Equal(t, DefaultInboxRetention, Ingest{}.RetentionDuration())
+	assert.Equal(t, 3*24*time.Hour, Ingest{Retention: "3d"}.RetentionDuration())
+	assert.Equal(t, 36*time.Hour, Ingest{Retention: "36h"}.RetentionDuration())
 }
