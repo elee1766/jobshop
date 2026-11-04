@@ -17,6 +17,9 @@ import (
 // database from an older release.
 func undo00013() []string {
 	return []string{
+		// 00014 (#407) is undone first: goose refuses a gap below the top.
+		"DROP TABLE resource_slots", "DROP TABLE resource_providers",
+		"DELETE FROM goose_db_version WHERE version_id = 14",
 		"DROP TABLE ticket_meta", "DROP INDEX tickets_children",
 		"DROP INDEX tickets_message_to", "DROP INDEX tickets_session_key",
 		"DROP INDEX tickets_run_key", "DROP INDEX tickets_run_state",

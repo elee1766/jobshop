@@ -56,6 +56,11 @@ WHERE tickets.id = ?7 AND tickets.revision = ?8
     WHERE c.capacity <= (
       SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
       WHERE h.status = 'in_progress' AND h.id <> tickets.id AND hr.value = r.value)))
+  -- And a ready slot of each provider resource (#407).
+  AND (tickets.status = 'in_progress' OR NOT EXISTS (
+    SELECT 1 FROM json_each(tickets.fields, '$.resources') r
+    JOIN resource_providers p ON p.name = r.value
+    WHERE NOT EXISTS (SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready')))
 `
 
 type ClaimWriteTicketParams struct {
@@ -813,6 +818,11 @@ WHERE t.project = ?
     WHERE c.capacity <= (
       SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
       WHERE h.status = 'in_progress' AND h.id <> t.id AND hr.value = r.value))
+  -- Provider slots (#407); my in-progress ticket already holds its slot.
+  AND (t.status = 'in_progress' OR NOT EXISTS (
+    SELECT 1 FROM json_each(t.fields, '$.resources') r
+    JOIN resource_providers p ON p.name = r.value
+    WHERE NOT EXISTS (SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready')))
 ORDER BY
   CASE WHEN t.status = 'in_progress' THEN 0
        WHEN t.holder <> '' THEN 1 -- open with a holder can only be mine here
@@ -1002,6 +1012,11 @@ WHERE t.project = ?
     WHERE c.capacity <= (
       SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
       WHERE h.status = 'in_progress' AND h.id <> t.id AND hr.value = r.value))
+  -- A provider resource needs a ready slot (#407).
+  AND NOT EXISTS (
+    SELECT 1 FROM json_each(t.fields, '$.resources') r
+    JOIN resource_providers p ON p.name = r.value
+    WHERE NOT EXISTS (SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready'))
 ORDER BY t.priority, t.created_at, t.id
 LIMIT ?
 `

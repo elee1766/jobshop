@@ -68,6 +68,7 @@ type root struct {
 	Session   sessionCmd   `cmd:"" help:"Manage sessions."`
 	Run       runCmd       `cmd:"" help:"Start and inspect workflow runs."`
 	Batch     batchCmd     `cmd:"" help:"Start ordered groups of runs."`
+	Resource  resourceCmd  `cmd:"" help:"Provider-owned resource slots: add, remove, unhealthy, list."`
 	Trigger   triggerCmd   `cmd:"" help:"Inspect ticket triggers (admin)."`
 	Pool      poolCmd      `cmd:"" help:"Inspect and unquarantine pools (admin)."`
 	Attention attentionCmd `cmd:"" help:"List what waits on a human, oldest first; empty when healthy (admin)."`

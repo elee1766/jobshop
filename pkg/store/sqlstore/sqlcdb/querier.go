@@ -26,6 +26,8 @@ type Querier interface {
 	DeleteEdge(ctx context.Context, arg DeleteEdgeParams) (int64, error)
 	DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64, error)
 	DeleteResourceCaps(ctx context.Context) error
+	DeleteResourceProviders(ctx context.Context) error
+	DeleteSlot(ctx context.Context, arg DeleteSlotParams) error
 	// ExpireWriteTicket reopens a ticket only if its lease is still expired
 	// at write time (#406). Heartbeat renews a lease without a revision
 	// bump, so the revision check alone would let a sweep reopen a ticket
@@ -41,6 +43,7 @@ type Querier interface {
 	FinishWriteKey(ctx context.Context, arg FinishWriteKeyParams) (WriteKey, error)
 	GetLearning(ctx context.Context, id int64) (Learning, error)
 	GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit, error)
+	GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error)
 	GetTicket(ctx context.Context, id string) (Ticket, error)
 	GetWriteKey(ctx context.Context, key string) (WriteKey, error)
 	// Heartbeat renews a lease without a revision bump or history row.
@@ -76,6 +79,8 @@ type Querier interface {
 	InsertLearning(ctx context.Context, arg InsertLearningParams) (Learning, error)
 	InsertMemoryEdit(ctx context.Context, arg InsertMemoryEditParams) (MemoryEdit, error)
 	InsertResourceCap(ctx context.Context, arg InsertResourceCapParams) error
+	InsertResourceProvider(ctx context.Context, name string) error
+	InsertSlot(ctx context.Context, arg InsertSlotParams) error
 	InsertTicket(ctx context.Context, arg InsertTicketParams) error
 	InsertWriteKey(ctx context.Context, arg InsertWriteKeyParams) (int64, error)
 	LabelsFor(ctx context.Context, ids []string) ([]Label, error)
@@ -90,11 +95,15 @@ type Querier interface {
 	ListLearningsByPR(ctx context.Context, pr string) ([]Learning, error)
 	ListMemoryEdits(ctx context.Context, arg ListMemoryEditsParams) ([]MemoryEdit, error)
 	ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, error)
+	ListSlots(ctx context.Context) ([]ResourceSlot, error)
 	ListStepsCreated(ctx context.Context, arg ListStepsCreatedParams) ([]Ticket, error)
 	ListTickets(ctx context.Context, arg ListTicketsParams) ([]Ticket, error)
 	// ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
 	// engine does not bind parameters in ORDER BY, so it is a second query.
 	ListTicketsNewest(ctx context.Context, arg ListTicketsNewestParams) ([]Ticket, error)
+	// MarkSlotsReleasing moves held slots whose claim ended (the ticket is
+	// not in progress, or was claimed again with a new fence) to releasing.
+	MarkSlotsReleasing(ctx context.Context, updatedAt int64) error
 	// Three tiers: my in-progress work, tickets pre-assigned to me, the pool queue.
 	NextClaimCandidate(ctx context.Context, arg NextClaimCandidateParams) (Ticket, error)
 	// OrphanedTickets is open, unclaimed claimable work no pool will pick up:
@@ -102,6 +111,12 @@ type Querier interface {
 	// Parameters after a sqlc.slice are bare ?: sqlc numbers named ones ?N
 	// from the unexpanded query, so they would point into the list.
 	OrphanedTickets(ctx context.Context, arg OrphanedTicketsParams) ([]Ticket, error)
+	// ProviderDemand is the waiting side of a provider's demand (#407): open
+	// tickets naming it and the oldest one's created_at.
+	ProviderDemand(ctx context.Context, pool string) (ProviderDemandRow, error)
+	// ProviderEmpty reports whether ticket id needs a provider resource with
+	// no ready slot (#407), for Claim by id. Same rule as ReadyTickets.
+	ProviderEmpty(ctx context.Context, id string) (int64, error)
 	PruneWriteKeys(ctx context.Context, before int64) (int64, error)
 	// Parameters are bare ? (see OrphanedTickets).
 	ReadyTickets(ctx context.Context, arg ReadyTicketsParams) ([]Ticket, error)
@@ -125,7 +140,14 @@ type Querier interface {
 	// SetParent re-parents a ticket (batch adoption, #169). The caller bumps
 	// the revision and writes history through mutate.
 	SetParent(ctx context.Context, arg SetParentParams) error
+	// TakeSlot holds pool's longest-idle ready slot for a claim (#407).
+	TakeSlot(ctx context.Context, arg TakeSlotParams) (ResourceSlot, error)
+	// TicketProviderResources lists the provider resources ticket id needs.
+	TicketProviderResources(ctx context.Context, id string) ([]string, error)
+	// TicketSlots lists the slots ticket id's live claim holds.
+	TicketSlots(ctx context.Context, ticket string) ([]ResourceSlot, error)
 	UpdateLearning(ctx context.Context, arg UpdateLearningParams) (Learning, error)
+	UpdateSlot(ctx context.Context, arg UpdateSlotParams) error
 	// WriteTicket stores every mutable column, guarded by the previous revision.
 	WriteTicket(ctx context.Context, arg WriteTicketParams) (int64, error)
 }

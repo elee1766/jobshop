@@ -18,6 +18,54 @@ func (q *Queries) DeleteResourceCaps(ctx context.Context) error {
 	return err
 }
 
+const deleteResourceProviders = `-- name: DeleteResourceProviders :exec
+DELETE FROM resource_providers
+`
+
+func (q *Queries) DeleteResourceProviders(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteResourceProviders)
+	return err
+}
+
+const deleteSlot = `-- name: DeleteSlot :exec
+DELETE FROM resource_slots WHERE pool = ? AND id = ?
+`
+
+type DeleteSlotParams struct {
+	Pool string
+	ID   string
+}
+
+func (q *Queries) DeleteSlot(ctx context.Context, arg DeleteSlotParams) error {
+	_, err := q.db.ExecContext(ctx, deleteSlot, arg.Pool, arg.ID)
+	return err
+}
+
+const getSlot = `-- name: GetSlot :one
+SELECT pool, id, state, env, ticket, fence, removing, updated_at FROM resource_slots WHERE pool = ? AND id = ?
+`
+
+type GetSlotParams struct {
+	Pool string
+	ID   string
+}
+
+func (q *Queries) GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error) {
+	row := q.db.QueryRowContext(ctx, getSlot, arg.Pool, arg.ID)
+	var i ResourceSlot
+	err := row.Scan(
+		&i.Pool,
+		&i.ID,
+		&i.State,
+		&i.Env,
+		&i.Ticket,
+		&i.Fence,
+		&i.Removing,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const insertResourceCap = `-- name: InsertResourceCap :exec
 INSERT INTO resource_caps (name, capacity) VALUES (?, ?)
 `
@@ -30,6 +78,124 @@ type InsertResourceCapParams struct {
 func (q *Queries) InsertResourceCap(ctx context.Context, arg InsertResourceCapParams) error {
 	_, err := q.db.ExecContext(ctx, insertResourceCap, arg.Name, arg.Capacity)
 	return err
+}
+
+const insertResourceProvider = `-- name: InsertResourceProvider :exec
+INSERT INTO resource_providers (name) VALUES (?)
+`
+
+func (q *Queries) InsertResourceProvider(ctx context.Context, name string) error {
+	_, err := q.db.ExecContext(ctx, insertResourceProvider, name)
+	return err
+}
+
+const insertSlot = `-- name: InsertSlot :exec
+INSERT INTO resource_slots (pool, id, state, env, updated_at) VALUES (?, ?, 'ready', ?, ?)
+`
+
+type InsertSlotParams struct {
+	Pool      string
+	ID        string
+	Env       string
+	UpdatedAt int64
+}
+
+func (q *Queries) InsertSlot(ctx context.Context, arg InsertSlotParams) error {
+	_, err := q.db.ExecContext(ctx, insertSlot,
+		arg.Pool,
+		arg.ID,
+		arg.Env,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const listSlots = `-- name: ListSlots :many
+SELECT pool, id, state, env, ticket, fence, removing, updated_at FROM resource_slots ORDER BY pool, id
+`
+
+func (q *Queries) ListSlots(ctx context.Context) ([]ResourceSlot, error) {
+	rows, err := q.db.QueryContext(ctx, listSlots)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ResourceSlot{}
+	for rows.Next() {
+		var i ResourceSlot
+		if err := rows.Scan(
+			&i.Pool,
+			&i.ID,
+			&i.State,
+			&i.Env,
+			&i.Ticket,
+			&i.Fence,
+			&i.Removing,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markSlotsReleasing = `-- name: MarkSlotsReleasing :exec
+UPDATE resource_slots SET state = 'releasing', updated_at = ?1
+WHERE state = 'held' AND NOT EXISTS (
+  SELECT 1 FROM tickets t WHERE t.id = resource_slots.ticket
+    AND t.status = 'in_progress' AND t.fence = resource_slots.fence)
+`
+
+// MarkSlotsReleasing moves held slots whose claim ended (the ticket is
+// not in progress, or was claimed again with a new fence) to releasing.
+func (q *Queries) MarkSlotsReleasing(ctx context.Context, updatedAt int64) error {
+	_, err := q.db.ExecContext(ctx, markSlotsReleasing, updatedAt)
+	return err
+}
+
+const providerDemand = `-- name: ProviderDemand :one
+SELECT count(*) AS waiting, CAST(coalesce(min(t.created_at), 0) AS INTEGER) AS oldest
+FROM tickets t, json_each(t.fields, '$.resources') r
+WHERE t.status = 'open' AND r.value = CAST(?1 AS TEXT)
+`
+
+type ProviderDemandRow struct {
+	Waiting int64
+	Oldest  int64
+}
+
+// ProviderDemand is the waiting side of a provider's demand (#407): open
+// tickets naming it and the oldest one's created_at.
+func (q *Queries) ProviderDemand(ctx context.Context, pool string) (ProviderDemandRow, error) {
+	row := q.db.QueryRowContext(ctx, providerDemand, pool)
+	var i ProviderDemandRow
+	err := row.Scan(&i.Waiting, &i.Oldest)
+	return i, err
+}
+
+const providerEmpty = `-- name: ProviderEmpty :one
+SELECT CAST(EXISTS (
+  SELECT 1 FROM tickets t, json_each(t.fields, '$.resources') r
+  JOIN resource_providers p ON p.name = r.value
+  WHERE t.id = ?1 AND NOT EXISTS (
+    SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready')
+) AS INTEGER) AS is_empty
+`
+
+// ProviderEmpty reports whether ticket id needs a provider resource with
+// no ready slot (#407), for Claim by id. Same rule as ReadyTickets.
+func (q *Queries) ProviderEmpty(ctx context.Context, id string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, providerEmpty, id)
+	var is_empty int64
+	err := row.Scan(&is_empty)
+	return is_empty, err
 }
 
 const resourceCaps = `-- name: ResourceCaps :many
@@ -195,4 +361,146 @@ func (q *Queries) ResourceWaiting(ctx context.Context) ([]ResourceWaitingRow, er
 		return nil, err
 	}
 	return items, nil
+}
+
+const takeSlot = `-- name: TakeSlot :one
+UPDATE resource_slots SET state = 'held', ticket = ?1, fence = ?2,
+  updated_at = ?3
+WHERE resource_slots.pool = ?4 AND resource_slots.id = (
+  SELECT s.id FROM resource_slots s WHERE s.pool = ?4 AND s.state = 'ready'
+  ORDER BY s.updated_at, s.id LIMIT 1)
+RETURNING pool, id, state, env, ticket, fence, removing, updated_at
+`
+
+type TakeSlotParams struct {
+	Ticket    string
+	Fence     int64
+	UpdatedAt int64
+	Pool      string
+}
+
+// TakeSlot holds pool's longest-idle ready slot for a claim (#407).
+func (q *Queries) TakeSlot(ctx context.Context, arg TakeSlotParams) (ResourceSlot, error) {
+	row := q.db.QueryRowContext(ctx, takeSlot,
+		arg.Ticket,
+		arg.Fence,
+		arg.UpdatedAt,
+		arg.Pool,
+	)
+	var i ResourceSlot
+	err := row.Scan(
+		&i.Pool,
+		&i.ID,
+		&i.State,
+		&i.Env,
+		&i.Ticket,
+		&i.Fence,
+		&i.Removing,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const ticketProviderResources = `-- name: TicketProviderResources :many
+SELECT CAST(r.value AS TEXT) AS name
+FROM tickets t, json_each(t.fields, '$.resources') r
+JOIN resource_providers p ON p.name = r.value
+WHERE t.id = ?1
+ORDER BY r.value
+`
+
+// TicketProviderResources lists the provider resources ticket id needs.
+func (q *Queries) TicketProviderResources(ctx context.Context, id string) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, ticketProviderResources, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		items = append(items, name)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const ticketSlots = `-- name: TicketSlots :many
+SELECT s.pool, s.id, s.state, s.env, s.ticket, s.fence, s.removing, s.updated_at FROM resource_slots s JOIN tickets t ON t.id = s.ticket
+WHERE s.ticket = ?1 AND s.state = 'held'
+  AND t.status = 'in_progress' AND t.fence = s.fence
+ORDER BY s.pool, s.id
+`
+
+// TicketSlots lists the slots ticket id's live claim holds.
+func (q *Queries) TicketSlots(ctx context.Context, ticket string) ([]ResourceSlot, error) {
+	rows, err := q.db.QueryContext(ctx, ticketSlots, ticket)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ResourceSlot{}
+	for rows.Next() {
+		var i ResourceSlot
+		if err := rows.Scan(
+			&i.Pool,
+			&i.ID,
+			&i.State,
+			&i.Env,
+			&i.Ticket,
+			&i.Fence,
+			&i.Removing,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateSlot = `-- name: UpdateSlot :exec
+UPDATE resource_slots SET
+  state = ?1, env = ?2, ticket = ?3,
+  fence = ?4, removing = ?5, updated_at = ?6
+WHERE pool = ?7 AND id = ?8
+`
+
+type UpdateSlotParams struct {
+	State     string
+	Env       string
+	Ticket    string
+	Fence     int64
+	Removing  int64
+	UpdatedAt int64
+	Pool      string
+	ID        string
+}
+
+func (q *Queries) UpdateSlot(ctx context.Context, arg UpdateSlotParams) error {
+	_, err := q.db.ExecContext(ctx, updateSlot,
+		arg.State,
+		arg.Env,
+		arg.Ticket,
+		arg.Fence,
+		arg.Removing,
+		arg.UpdatedAt,
+		arg.Pool,
+		arg.ID,
+	)
+	return err
 }

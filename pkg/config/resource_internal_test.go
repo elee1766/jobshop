@@ -18,6 +18,12 @@ func TestResourceChecks(t *testing.T) {
 		{"no max", Resource{}, "max must be >= 1"},
 		{"keyed with max", Resource{Keyed: true, Max: 1}, "not max"},
 		{"per key without keyed", Resource{Max: 1, CapacityPerKey: 2}, "needs keyed"},
+		{"provider", Resource{Provider: &Provider{Command: "p", IdleRelease: "10m"}}, ""},
+		{"provider url", Resource{Provider: &Provider{URL: "https://h/p"}}, ""},
+		{"provider with max", Resource{Max: 1, Provider: &Provider{Command: "p"}}, "drop max"},
+		{"provider both", Resource{Provider: &Provider{Command: "p", URL: "https://h"}}, "exactly one"},
+		{"provider bad url", Resource{Provider: &Provider{URL: "ftp://h"}}, "http or https"},
+		{"provider bad dur", Resource{Provider: &Provider{Command: "p", Timeout: "x"}}, "positive duration"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &Config{Resources: map[string]Resource{"r": tt.r}}

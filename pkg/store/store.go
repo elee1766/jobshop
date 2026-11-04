@@ -245,6 +245,30 @@ type Store interface {
 	// ResourceWaits lists tickets held back only by a full resource key,
 	// in claim order per key (#408).
 	ResourceWaits(ctx context.Context) ([]ResourceWait, error)
+	// SetResourceProviders names the resources whose slots a provider
+	// owns (#407). A step needing one is ready only while a slot is ready.
+	SetResourceProviders(ctx context.Context, names []string) error
+	// AddSlot adds a ready slot, or updates a known slot's env. A gone
+	// slot comes back ready.
+	AddSlot(ctx context.Context, pool, id string, env map[string]string) (Slot, error)
+	// RemoveSlot deletes an idle slot; a held one is deleted once its
+	// claim ends, without a reset.
+	RemoveSlot(ctx context.Context, pool, id string) (Slot, error)
+	// SlotUnhealthy marks a slot gone. A held slot's claim is reopened
+	// without counting a step failure; the reopened ticket id is returned.
+	SlotUnhealthy(ctx context.Context, actor, pool, id, reason string) (Slot, string, error)
+	// Slots lists every slot.
+	Slots(ctx context.Context) ([]Slot, error)
+	// TicketSlots lists the slots a ticket's live claim holds.
+	TicketSlots(ctx context.Context, id string) ([]Slot, error)
+	// ReleaseSlots moves held slots whose claim ended to releasing, then
+	// returns every releasing slot.
+	ReleaseSlots(ctx context.Context) ([]Slot, error)
+	// SlotReset records a provider reset: ok -> ready, else gone. A slot
+	// removed while held is deleted.
+	SlotReset(ctx context.Context, pool, id string, ok bool) error
+	// SlotDemand reports a provider resource's waiting and slot counts.
+	SlotDemand(ctx context.Context, pool string) (SlotDemand, error)
 	// Orphaned returns open, unclaimed claimable tickets whose pool is
 	// empty or not in pools, so no session will ever claim them. Empty
 	// project means every project.

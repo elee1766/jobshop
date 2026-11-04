@@ -105,6 +105,21 @@ type ResourceCap struct {
 	Capacity int64
 }
 
+type ResourceProvider struct {
+	Name string
+}
+
+type ResourceSlot struct {
+	Pool      string
+	ID        string
+	State     string
+	Env       string
+	Ticket    string
+	Fence     int64
+	Removing  int64
+	UpdatedAt int64
+}
+
 type Ticket struct {
 	ID         string
 	Project    string

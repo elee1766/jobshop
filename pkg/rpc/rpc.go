@@ -1381,3 +1381,32 @@ type WaitClearParams struct {
 	ID     string `json:"id,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
+
+// Resource slot methods (#407): a resource provider adds, removes and
+// fails its slots; list shows slots and occupancy.
+const (
+	MethodResourceAdd       = "resource.add"
+	MethodResourceRemove    = "resource.remove"
+	MethodResourceUnhealthy = "resource.unhealthy"
+	MethodResourceList      = "resource.list"
+)
+
+// SlotParams names one slot of a provider resource.
+type SlotParams struct {
+	Resource string            `json:"resource"`
+	Slot     string            `json:"slot"`
+	Env      map[string]string `json:"env,omitempty"`
+	Reason   string            `json:"reason,omitempty"`
+}
+
+// SlotResult is resource.unhealthy: the slot and the ticket requeued.
+type SlotResult struct {
+	Slot     store.Slot `json:"slot"`
+	Requeued string     `json:"requeued,omitempty"`
+}
+
+// ResourceListResult is resource.list.
+type ResourceListResult struct {
+	Slots []store.Slot        `json:"slots"`
+	Use   []store.ResourceUse `json:"use"`
+}
