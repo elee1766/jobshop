@@ -103,6 +103,25 @@ jobshop desk                             # web UI on 127.0.0.1:7480
 `jobshop --help` lists the rest (tickets, edges, labels, send, batches,
 reports, events, identities).
 
+### Webhooks: `jobshop ingest serve`
+
+`jobshop ingest serve` receives GitHub (`POST /github/webhook`) and
+Linear (`POST /linear/webhook`) webhooks, checks the signature, and
+writes each delivery to a spool directory. It needs no controller or
+database. Set `ingest.github_secret_file` and/or `ingest.linear_secret_file`
+in jobshop.yaml; a source with no secret is off. It listens on
+`ingest.listen` (default `127.0.0.1:8740`), so put a reverse proxy in
+front that terminates TLS and forwards only those two paths:
+
+```
+location /github/webhook { proxy_pass http://127.0.0.1:8740; }
+location /linear/webhook { proxy_pass http://127.0.0.1:8740; }
+```
+
+It answers 202 when spooled, 204 for an event jobshop ignores, 401 for a
+bad signature, and 500 when the spool write fails so the sender retries.
+See `docs/notes/334-ingest-spool.md`.
+
 ### NixOS
 
 The flake exports `nixosModules.default`. It gives `services.jobshop` with

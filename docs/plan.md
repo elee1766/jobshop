@@ -339,6 +339,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest inbox table and store API: put deduped by delivery id, lease
   claim, fenced state changes, `ingest.retention` prune; no writers yet
   (#321, `docs/notes/321-ingest-inbox.md`).
+- Ingest spool and `jobshop ingest serve`: GitHub and Linear webhooks
+  verified, filtered and spooled atomically, one file per delivery; the
+  controller's Linear webhook shares the handler (#334,
+  `docs/notes/334-ingest-spool.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).
@@ -477,7 +481,9 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 Model config live check: `docs/verify/model-config.md` (#304).
 
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
-admission hooks and dispatch; the table and store API landed in #321.
+admission hooks and dispatch; the table and store API landed in #321,
+the spool and `ingest serve` in #334. Next: drain the spool into the
+inbox.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).

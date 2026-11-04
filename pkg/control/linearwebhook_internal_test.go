@@ -22,6 +22,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -154,10 +155,10 @@ func sign(secret string, b []byte) string {
 
 // postWebhook sends b and waits for the async work.
 func postWebhook(c *Controller, b []byte, sig string) int {
-	req := httptest.NewRequest(http.MethodPost, linearWebhookPath, bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, ingest.LinearPath, bytes.NewReader(b))
 	req.Header.Set("Linear-Signature", sig)
 	rec := httptest.NewRecorder()
-	c.handleLinearWebhook(rec, req)
+	c.linearWebhookHandler().Mux().ServeHTTP(rec, req)
 	c.wg.Wait()
 	return rec.Code
 }
@@ -183,16 +184,17 @@ func TestLinearWebhookIssue(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, postWebhook(c, good, ""), "no signature")
 	stale := webhookBody(t, now.Add(-2*time.Minute), "Issue", "user", "u-ann", "org-1")
 	assert.Equal(t, http.StatusUnauthorized, postWebhook(c, stale, sign(webhookSecret, stale)), "stale")
+	bot := webhookBody(t, now, "Issue", "app", "a-bot", "org-1")
+	assert.Equal(t, http.StatusNoContent, postWebhook(c, bot, sign(webhookSecret, bot)), "bot filtered")
 	for name, b := range map[string][]byte{
 		"other org": webhookBody(t, now, "Issue", "user", "u-ann", "org-2"),
-		"bot":       webhookBody(t, now, "Issue", "app", "a-bot", "org-1"),
 		"self":      webhookBody(t, now, "Issue", "user", "app-user", "org-1"),
 	} {
-		assert.Equal(t, http.StatusOK, postWebhook(c, b, sign(webhookSecret, b)), name)
+		assert.Equal(t, http.StatusAccepted, postWebhook(c, b, sign(webhookSecret, b)), name)
 		assert.Equal(t, 0, runCount(t, c), "%s ignored", name)
 	}
 
-	assert.Equal(t, http.StatusOK, postWebhook(c, good, sign(webhookSecret, good)))
+	assert.Equal(t, http.StatusAccepted, postWebhook(c, good, sign(webhookSecret, good)))
 	runs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
 	require.NoError(t, err)
 	require.Len(t, runs, 1, "the webhook started the intake run")
@@ -222,7 +224,10 @@ func TestLinearWebhookComment(t *testing.T) {
 	f.ask.reply(askID, "yes", "Wile", clk.now())
 
 	b := webhookBody(t, clk.now(), "Comment", "user", "u-wile", "org-1")
-	require.Equal(t, http.StatusOK, postWebhook(c, b, sign(webhookSecret, b)))
+	require.Equal(t, http.StatusAccepted, postWebhook(c, b, sign(webhookSecret, b)))
+	names, err := ingest.Spool{Dir: c.config().Ingest.Spool(c.root)}.List()
+	require.NoError(t, err)
+	assert.NotEmpty(t, names, "spooled before processing")
 	got, err := c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusClosed, got.Status)
