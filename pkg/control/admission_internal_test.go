@@ -326,7 +326,7 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 	// storing the result.
 	claimed, err := c.store.InboxClaim(t.Context(), []string{store.InboxPending}, admissionHolder, time.Minute)
 	require.NoError(t, err)
-	c.admit(t.Context(), c.config(), admissionHooks(c.config()), claimed)
+	c.admissionRunner().run(t.Context(), "", admissionHooks(c.config()), claimed, false)
 	ok, err := c.admitNext(t.Context())
 	require.NoError(t, err)
 	assert.False(t, ok, "leased item is not claimable")

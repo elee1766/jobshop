@@ -632,6 +632,11 @@ in
 
     ingest = {
       enable = lib.mkEnableOption "jobshop-ingest.service running `jobshop ingest serve` (#334) on settings.ingest.listen";
+      worker = {
+        enable = lib.mkEnableOption ''
+          jobshop-ingest-work.service running `jobshop ingest work` (#443). Set
+          settings.ingest.workers = "external" too, or the controller refuses its claims'';
+      };
     };
 
     # Old single-workspace option. Its definitions go to workspaces.default,
@@ -982,6 +987,25 @@ in
             Slice = "jobshop.slice";
             WorkingDirectory = cfg.dataDir;
             ExecStart = "${jobshop} ingest serve";
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
+      (lib.mkIf cfg.ingest.worker.enable {
+        # Talks to the controller's admin socket; runs admission hooks.
+        systemd.services.jobshop-ingest-work = {
+          description = "Jobshop ingest admission worker";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "jobshop.service" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          restartTriggers = [ configFile ];
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = "${jobshop} ingest work --worker %H";
             Restart = "always";
             RestartSec = 5;
           };

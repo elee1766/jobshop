@@ -107,6 +107,8 @@ const (
 	StallNeedsHuman      = "needs_human"      // needs_human run, or needs-human ticket, older than After
 	StallBlocked         = "blocked"          // open ticket labeled blocked, unchanged for After
 	StallResourceWait    = "resource_wait"    // open, unblocked ticket waiting on a full resource for After (#408)
+	StallIngestWorker    = "ingest_worker"    // ingest.workers external and no worker heartbeat for ingest.worker_missing (#443)
+	StallIngestBacklog   = "ingest_backlog"   // over ingest.backlog_max pending inbox items older than ingest.backlog_after (#443)
 	// StallIssueNoRun is a check signal whose subjects are GitHub issue
 	// numbers; the controller drops issues that have an open run
 	// (meta.github.issue), so the check only lists open work issues.
@@ -121,7 +123,7 @@ const (
 const DefaultLinearPoll = 5 * time.Minute
 
 // StoreStallSignals lists the signals the controller computes itself.
-var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked, StallResourceWait}
+var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked, StallResourceWait, StallIngestWorker, StallIngestBacklog}
 
 // Stall template vars, filled per stall when a stall trigger fires.
 const (
@@ -348,6 +350,17 @@ type Ingest struct {
 	// Pollers read GitHub repos that send no webhook (#341) and write
 	// inbox rows shaped like webhook deliveries.
 	Pollers []IngestPoller `yaml:"pollers"`
+	// Workers is where admission runs (#443): internal (default) in the
+	// controller, external in `jobshop ingest work` processes.
+	Workers string `yaml:"workers"`
+	// WorkerMissing lists external mode with no worker heartbeat for
+	// this Go duration as attention. Empty: 5m.
+	WorkerMissing string `yaml:"worker_missing"`
+	// BacklogAfter and BacklogMax list attention when more than
+	// BacklogMax pending items are older than BacklogAfter. Empty: 10m
+	// and 0.
+	BacklogAfter string `yaml:"backlog_after"`
+	BacklogMax   int    `yaml:"backlog_max"`
 
 	// Removed in #339; set only to fail the load with a pointer to the
 	// replacement instead of silently turning a source off.
@@ -448,6 +461,17 @@ func (e IngestEndpoint) EndpointPath() string {
 
 func (c *Config) validateIngest() error {
 	i := c.Ingest
+	if i.Workers != "" && i.Workers != IngestWorkersInternal && i.Workers != IngestWorkersExternal {
+		return fmt.Errorf("%s: ingest.workers %q must be internal or external", FileName, i.Workers)
+	}
+	for k, v := range map[string]string{"worker_missing": i.WorkerMissing, "backlog_after": i.BacklogAfter} {
+		if d, err := time.ParseDuration(v); v != "" && (err != nil || d <= 0) {
+			return fmt.Errorf("%s: ingest.%s %q must be a positive duration", FileName, k, v)
+		}
+	}
+	if i.BacklogMax < 0 {
+		return fmt.Errorf("%s: ingest.backlog_max must not be negative", FileName)
+	}
 	if r := i.GitHubReconcile; r != "" && r != "off" {
 		if d, err := time.ParseDuration(r); err != nil || d < time.Minute {
 			return fmt.Errorf("%s: ingest.github_reconcile %q must be a duration of at least 1m, or off", FileName, r)
@@ -637,6 +661,21 @@ func (i Ingest) ReconcileEvery() time.Duration {
 	}
 	return DefaultGitHubReconcile
 }
+
+// Ingest worker modes (#443).
+const (
+	IngestWorkersInternal = "internal"
+	IngestWorkersExternal = "external"
+)
+
+// External reports that admission runs in `jobshop ingest work`, not the controller.
+func (i Ingest) External() bool { return i.Workers == IngestWorkersExternal }
+
+// WorkerMissingAfter is WorkerMissing or 5m.
+func (i Ingest) WorkerMissingAfter() time.Duration { return Duration(i.WorkerMissing, 5*time.Minute) }
+
+// BacklogAge is BacklogAfter or 10m.
+func (i Ingest) BacklogAge() time.Duration { return Duration(i.BacklogAfter, 10*time.Minute) }
 
 // RetentionDuration is Retention parsed, or the default.
 func (i Ingest) RetentionDuration() time.Duration {

@@ -40,7 +40,8 @@ func (c *Controller) ingestPass(ctx context.Context) {
 	if err := c.releaseAnswered(ctx); err != nil && ctx.Err() == nil {
 		c.log.Error("admission release", "err", err)
 	}
-	for range 1000 {
+	// With ingest.workers external, `jobshop ingest work` admits (#443).
+	for range admitBudget(c.config().Ingest.External()) {
 		ok, err := c.admitNext(ctx)
 		if err != nil && ctx.Err() == nil {
 			c.log.Error("admission", "err", err)
@@ -231,4 +232,13 @@ func (c *Controller) activitySource() activitySource {
 		return c.activitySrc
 	}
 	return &liveActivity{c: c}
+}
+
+// admitBudget is how many items one pass admits in process: none when
+// external workers admit.
+func admitBudget(external bool) int {
+	if external {
+		return 0
+	}
+	return 1000
 }

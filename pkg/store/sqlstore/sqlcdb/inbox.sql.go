@@ -11,6 +11,23 @@ import (
 	"strings"
 )
 
+const inboxCountOlder = `-- name: InboxCountOlder :one
+SELECT COUNT(*) FROM inbox WHERE state = ?1 AND received_at < ?2
+`
+
+type InboxCountOlderParams struct {
+	State  string
+	Before int64
+}
+
+// Rows in state received before before: the admission backlog (#443).
+func (q *Queries) InboxCountOlder(ctx context.Context, arg InboxCountOlderParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, inboxCountOlder, arg.State, arg.Before)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const inboxGet = `-- name: InboxGet :one
 SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint, natural_key FROM inbox WHERE id = ?
 `
@@ -417,6 +434,38 @@ func (q *Queries) InboxSetState(ctx context.Context, arg InboxSetStateParams) (I
 		&i.NaturalKey,
 	)
 	return i, err
+}
+
+const inboxStateCounts = `-- name: InboxStateCounts :many
+SELECT state, COUNT(*) AS n FROM inbox GROUP BY state
+`
+
+type InboxStateCountsRow struct {
+	State string
+	N     int64
+}
+
+func (q *Queries) InboxStateCounts(ctx context.Context) ([]InboxStateCountsRow, error) {
+	rows, err := q.db.QueryContext(ctx, inboxStateCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InboxStateCountsRow{}
+	for rows.Next() {
+		var i InboxStateCountsRow
+		if err := rows.Scan(&i.State, &i.N); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const inboxTake = `-- name: InboxTake :one

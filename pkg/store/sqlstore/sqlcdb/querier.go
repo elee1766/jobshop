@@ -55,6 +55,8 @@ type Querier interface {
 	Heartbeat(ctx context.Context, arg HeartbeatParams) (int64, error)
 	// HeldBy covers claimed and pre-assigned tickets, so a dead session strands neither.
 	HeldBy(ctx context.Context, holder string) ([]string, error)
+	// Rows in state received before before: the admission backlog (#443).
+	InboxCountOlder(ctx context.Context, arg InboxCountOlderParams) (int64, error)
 	InboxGet(ctx context.Context, id int64) (Inbox, error)
 	InboxGetByDelivery(ctx context.Context, deliveryID string) (Inbox, error)
 	InboxGetByNaturalKey(ctx context.Context, naturalKey string) (Inbox, error)
@@ -74,6 +76,7 @@ type Querier interface {
 	// Fenced by holder and a live lease. The lease is dropped so the next
 	// stage can claim the row in its new state.
 	InboxSetState(ctx context.Context, arg InboxSetStateParams) (Inbox, error)
+	InboxStateCounts(ctx context.Context) ([]InboxStateCountsRow, error)
 	// Takes the row only if it is still claimable, so two claimers racing on
 	// the same row cannot both win.
 	InboxTake(ctx context.Context, arg InboxTakeParams) (Inbox, error)
