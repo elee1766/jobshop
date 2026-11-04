@@ -7,8 +7,10 @@ Never pipe into `gh issue edit --body-file -`: a failed command upstream
 with the Write tool, check it is non-empty, then pass the file.
 Do not trust `gh pr checkout` when the branch is checked out in another
 worktree: it silently stays on the old HEAD. Run
-`git fetch origin pull/<n>/head && git checkout --detach FETCH_HEAD`,
-then check `git rev-parse HEAD` equals the PR's headRefOid.
+`git fetch origin pull/<n>/head && git checkout --detach FETCH_HEAD`
+(fetch that ref alone: with master first, FETCH_HEAD is master), then check `git rev-parse HEAD` equals the PR's headRefOid.
+Wait for every verification run cited in the PR body to finish green
+before `jobshop close`.
 `jobshop close <id>` on a ticket you do not hold fails: `jobshop claim
 <id>` first, or leave it to the operator.
 If the jobshop CLI socket goes away mid-turn (controller restart), write
