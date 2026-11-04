@@ -89,6 +89,11 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 			items = append(items, ticketItem(rpc.AttentionRun, r))
 		}
 	}
+	res, err := c.resourceAttention(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items = append(items, res...)
 	c.mu.Lock()
 	if c.configErr != "" {
 		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})

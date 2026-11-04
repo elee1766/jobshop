@@ -126,6 +126,10 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 			return err
 		}
 	}
+	waits := map[string]store.ResourceWait{}
+	for _, wt := range r.Waits {
+		waits[wt.Ticket] = wt
+	}
 	for _, s := range r.Steps {
 		sf, err := store.DecodeFields[store.StepFields](s)
 		if err != nil {
@@ -154,7 +158,12 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 			return err
 		}
 		if len(sf.Resources) > 0 {
-			if _, err := fmt.Fprintln(w, "   resources", strings.Join(sf.Resources, " ")); err != nil {
+			res := "   resources " + strings.Join(sf.Resources, " ")
+			if wt, ok := waits[s.ID]; ok {
+				// Out of the ready frontier on a full resource (#408).
+				res += fmt.Sprintf("  waiting on %s, %d ahead (%d/%d held)", wt.Key, wt.Ahead, wt.Held, wt.Capacity)
+			}
+			if _, err := fmt.Fprintln(w, res); err != nil {
 				return err
 			}
 		}

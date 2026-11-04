@@ -106,6 +106,7 @@ const (
 	StallSessionSilent   = "session_silent"   // session holding a ticket with no journal output for After
 	StallNeedsHuman      = "needs_human"      // needs_human run, or needs-human ticket, older than After
 	StallBlocked         = "blocked"          // open ticket labeled blocked, unchanged for After
+	StallResourceWait    = "resource_wait"    // open, unblocked ticket waiting on a full resource for After (#408)
 	// StallIssueNoRun is a check signal whose subjects are GitHub issue
 	// numbers; the controller drops issues that have an open run
 	// (meta.github.issue), so the check only lists open work issues.
@@ -120,7 +121,7 @@ const (
 const DefaultLinearPoll = 5 * time.Minute
 
 // StoreStallSignals lists the signals the controller computes itself.
-var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked}
+var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked, StallResourceWait}
 
 // Stall template vars, filled per stall when a stall trigger fires.
 const (
@@ -315,6 +316,9 @@ type Attention struct {
 	// beside it, so a later successful deploy clears it. Empty:
 	// rollbacks are not checked.
 	RollbackFile string `yaml:"rollback_file"`
+	// ResourceWait lists a step waiting on a full resource longer than
+	// this Go duration (#408). Empty: not listed.
+	ResourceWait string `yaml:"resource_wait"`
 }
 
 // DefaultInboxRetention is how long terminal inbox items are kept.
@@ -1018,6 +1022,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if err := c.checkResources(); err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
+	}
+	if w := c.Attention.ResourceWait; w != "" {
+		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: attention.resource_wait %q must be a positive duration", FileName, w)
+		}
 	}
 	for name, w := range c.Workflows {
 		if err := c.checkWorkflow(name, &w); err != nil {

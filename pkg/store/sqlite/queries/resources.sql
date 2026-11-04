@@ -34,3 +34,18 @@ FROM tickets t, json_each(t.fields, '$.resources') r
 WHERE t.status = 'open'
 GROUP BY r.value
 ORDER BY r.value;
+
+-- ResourceWaiters lists open, unblocked, non-deferred tickets per
+-- resource key they name, in claim order (#408). The caller keeps the
+-- keys that are full: those tickets wait on the resource alone.
+-- name: ResourceWaiters :many
+SELECT t.id, CAST(r.value AS TEXT) AS rkey
+FROM tickets t, json_each(t.fields, '$.resources') r
+WHERE t.status = 'open'
+  AND t.defer_until <= sqlc.arg(now)
+  AND t.f_waiting = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
+    WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution NOT IN ('done','skipped'))))
+ORDER BY r.value, t.priority, t.created_at, t.id;

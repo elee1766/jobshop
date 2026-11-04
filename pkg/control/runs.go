@@ -364,7 +364,11 @@ func (c *Controller) runResult(ctx context.Context, run store.Ticket) (rpc.RunRe
 	if err != nil {
 		return rpc.RunResult{}, err
 	}
-	return rpc.RunResult{Run: run, Steps: steps}, nil
+	waits, err := c.runWaits(ctx, steps)
+	if err != nil {
+		return rpc.RunResult{}, err
+	}
+	return rpc.RunResult{Run: run, Steps: steps, Waits: waits}, nil
 }
 
 // getRun loads a run the caller may see.

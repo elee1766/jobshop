@@ -391,6 +391,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Resource slots: `resources:` (counted or keyed) and step
   `needs_resources`, enforced in the ready and claim queries (#400,
   `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
+- Resource waits are visible: `run show` position, `resource_wait` stall
+  signal, attention entries (#408, `docs/notes/408-resource-waits.md`,
+  check `docs/verify/resource-waits.md`).
 - Store ticket queries are portable SQL: hot fields keys and meta
   lookups are plain columns and a `ticket_meta` table, lists are
   `sqlc.slice` (#405, `docs/notes/405-portable-sql.md`).
@@ -567,8 +570,8 @@ Per-session isolation (`docs/notes/users-security.md`).
 **Test speed (#359).** In-process agent (#361), then move the
 process-tree tests onto the fake clock; sqlite template DB (#363).
 
-**Resource pools (#400).** Provider-owned slots, waiting visibility and
-placement build on the keyed and counted slots.
+**Resource pools (#400).** Provider-owned slots and placement build on
+the keyed and counted slots (waiting visibility done, #408).
 
 **Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
 misjudge conflicts: let the controller check mergeStateStatus itself.

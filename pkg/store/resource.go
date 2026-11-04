@@ -23,3 +23,14 @@ type ResourceUse struct {
 	Held     int    `json:"held"`
 	Waiting  int    `json:"waiting"`
 }
+
+// ResourceWait is a ticket held back only by a full resource key (#408):
+// open, unblocked and not deferred, but every slot of Key is taken.
+// Ahead counts the waiters on Key that claim order puts first.
+type ResourceWait struct {
+	Ticket   string `json:"ticket"`
+	Key      string `json:"key"`
+	Ahead    int    `json:"ahead"`
+	Held     int    `json:"held"`
+	Capacity int    `json:"capacity"`
+}
