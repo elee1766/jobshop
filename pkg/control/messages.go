@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 
@@ -83,7 +82,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 	// correction); the interrupting message is then delivered at once.
 	interrupted, err := r.interruptible(ctx, conn, acpSession, text)
 	r.mu.Lock()
-	r.delivered = time.Now()
+	r.delivered = r.c.now()
 	r.mu.Unlock()
 	if err != nil || !interrupted {
 		return err
@@ -100,7 +99,7 @@ func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnecti
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		tick := time.NewTicker(r.c.opt.MessagePoll)
+		tick := r.c.clk().NewTicker(r.c.opt.MessagePoll)
 		defer tick.Stop()
 		for {
 			select {
@@ -110,7 +109,7 @@ func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnecti
 				r.log.Info("restart --now: cancelling turn")
 				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
 				return
-			case <-tick.C:
+			case <-tick.C():
 			}
 			if len(r.inbox(wctx, true)) > 0 {
 				r.log.Info("interrupt message: cancelling turn")

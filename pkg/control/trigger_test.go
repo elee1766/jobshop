@@ -6,37 +6,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-type clock struct {
-	mu sync.Mutex
-	t  time.Time
-}
-
-func (c *clock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.t
-}
-
-func (c *clock) Set(t time.Time) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.t = t
-}
-
-func (c *clock) Advance(d time.Duration) { c.Set(c.Now().Add(d)) }
+// newClock is the fake clock the trigger tests start at.
+func newClock() *clock.Fake { return clock.NewFake(time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)) }
 
 // Pools have max_sessions 0, so nothing claims: tests see raw trigger output.
 const triggerYAML = `projects:
@@ -71,11 +55,11 @@ triggers:
 
 // triggerController runs a controller on root with clock clk until the
 // returned stop is called.
-func triggerController(t *testing.T, root config.Root, clk *clock) func() {
+func triggerController(t *testing.T, root config.Root, clk *clock.Fake) func() {
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- control.Run(ctx, root, withPass(root.Dir, control.Options{Tick: 20 * time.Millisecond, Now: clk.Now}))
+		done <- control.Run(ctx, root, withPass(root.Dir, control.Options{Tick: 20 * time.Millisecond, Clock: clk}))
 	}()
 	return func() { cancel(); require.NoError(t, <-done) }
 }
@@ -87,7 +71,7 @@ func TestTriggers(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, triggerYAML, dir), 0o600))
 	root := config.Root{Dir: dir}
-	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	clk := newClock()
 	stop := triggerController(t, root, clk)
 
 	admin := dial(t, root.AdminSocket())
@@ -105,7 +89,7 @@ func TestTriggers(t *testing.T) {
 	settle := func() { pass(t, root.Dir, 3) }
 
 	// dev is empty: replan fires once, then waits on its open ticket.
-	require.Eventually(t, func() bool { return len(byTrigger("replan")) == 1 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(byTrigger("replan")) == 1 }, "trigger")
 	settle()
 	plans := byTrigger("replan")
 	require.Len(t, plans, 1, "no second ticket while the first is open")
@@ -131,7 +115,7 @@ func TestTriggers(t *testing.T) {
 	settle()
 	assert.Len(t, byTrigger("replan"), 1, "still cooling down")
 	clk.Advance(2 * time.Minute)
-	require.Eventually(t, func() bool { return len(byTrigger("replan")) == 2 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(byTrigger("replan")) == 2 }, "trigger")
 
 	// Work in dev: the condition no longer holds after the ticket closes.
 	var work store.Ticket
@@ -145,7 +129,7 @@ func TestTriggers(t *testing.T) {
 
 	// Cron: fires once at 06:00, not again in the same slot.
 	clk.Set(time.Date(2026, 11, 1, 6, 0, 30, 0, time.UTC))
-	require.Eventually(t, func() bool { return len(byTrigger("nightly")) == 1 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(byTrigger("nightly")) == 1 }, "trigger")
 	nightly := byTrigger("nightly")[0]
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: nightly.ID}, nil))
 	clk.Advance(time.Hour)
@@ -158,7 +142,7 @@ func TestTriggers(t *testing.T) {
 	stop = triggerController(t, root, clk)
 	defer stop()
 	admin = dial(t, root.AdminSocket())
-	require.Eventually(t, func() bool { return len(byTrigger("nightly")) == 2 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(byTrigger("nightly")) == 2 }, "trigger")
 	for _, tk := range byTrigger("nightly") {
 		_ = admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: tk.ID}, nil)
 	}
@@ -192,7 +176,7 @@ func TestTriggerCheck(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, checkYAML, dir), 0o600))
 	root := config.Root{Dir: dir}
-	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	clk := newClock()
 	stop := triggerController(t, root, clk)
 	defer stop()
 	admin := dial(t, root.AdminSocket())
@@ -214,7 +198,7 @@ func TestTriggerCheck(t *testing.T) {
 	assert.Equal(t, "check exited 1", infos[0].Why)
 
 	setSHA("abc")
-	require.Eventually(t, func() bool { return len(list()) == 1 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(list()) == 1 }, "trigger")
 	tk := list()[0]
 	assert.JSONEq(t, `{"trigger":{"name":"red","key":"red/abc"}}`, string(tk.Meta))
 	assert.Contains(t, tk.Body, "abc")
@@ -225,7 +209,7 @@ func TestTriggerCheck(t *testing.T) {
 	assert.Equal(t, "key abc already filed as "+tk.ID, infos[0].Why)
 
 	setSHA("def")
-	require.Eventually(t, func() bool { return len(list()) == 2 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(list()) == 2 }, "trigger")
 }
 
 // TestTicketTrace builds trigger -> plan ticket -> dev ticket the way the
@@ -237,14 +221,14 @@ func TestTicketTrace(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, triggerYAML, dir), 0o600))
 	root := config.Root{Dir: dir}
-	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	clk := newClock()
 	stop := triggerController(t, root, clk)
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 	ctx := t.Context()
 
 	var plan store.Ticket
-	require.Eventually(t, func() bool {
+	passUntil(t, root.Dir, func() bool {
 		var l []store.Ticket
 		require.NoError(t, admin.Call(ctx, rpc.MethodTicketList, rpc.ListParams{Pool: "plan"}, &l))
 		if len(l) == 0 {
@@ -252,7 +236,7 @@ func TestTicketTrace(t *testing.T) {
 		}
 		plan = l[0]
 		return true
-	}, 5*time.Second, 20*time.Millisecond)
+	}, "plan ticket filed")
 
 	// Planner session claims the plan ticket and files a dev ticket.
 	var ps rpc.SessionNewResult
@@ -331,7 +315,7 @@ func TestTriggerRun(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, runTriggerYAML, dir), 0o600))
 	root := config.Root{Dir: dir}
-	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	clk := newClock()
 	stop := triggerController(t, root, clk)
 	defer stop()
 	admin := dial(t, root.AdminSocket())
@@ -346,7 +330,7 @@ func TestTriggerRun(t *testing.T) {
 	}
 
 	setSHA("abc")
-	require.Eventually(t, func() bool { return len(runs()) == 1 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(runs()) == 1 }, "trigger")
 	var r rpc.RunResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunShow, rpc.IDParams{ID: runs()[0].ID}, &r))
 	assert.Contains(t, string(r.Run.Meta), `"key":"red/abc`)
@@ -363,7 +347,7 @@ func TestTriggerRun(t *testing.T) {
 	assert.Len(t, runs(), 1, "same output does not start another run")
 
 	setSHA("def")
-	require.Eventually(t, func() bool { return len(runs()) == 2 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(runs()) == 2 }, "trigger")
 }
 
 const curateTriggerYAML = `projects:
@@ -398,7 +382,7 @@ func TestTriggerLearnings(t *testing.T) {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, curateTriggerYAML, dir), 0o600))
 	root := config.Root{Dir: dir}
-	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	clk := newClock()
 	stop := triggerController(t, root, clk)
 	defer stop()
 	admin := dial(t, root.AdminSocket())
@@ -418,7 +402,7 @@ func TestTriggerLearnings(t *testing.T) {
 	settle()
 	assert.Empty(t, runs(), "below the threshold")
 	learn(1)
-	require.Eventually(t, func() bool { return len(runs()) == 1 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(runs()) == 1 }, "trigger")
 	learn(5)
 	settle()
 	assert.Len(t, runs(), 1, "open run holds the trigger")
@@ -429,5 +413,5 @@ func TestTriggerLearnings(t *testing.T) {
 	settle()
 	assert.Len(t, runs(), 1, "no new learnings since the last pass")
 	learn(3)
-	require.Eventually(t, func() bool { return len(runs()) == 2 }, 5*time.Second, 20*time.Millisecond)
+	passUntil(t, root.Dir, func() bool { return len(runs()) == 2 }, "trigger")
 }

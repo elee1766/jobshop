@@ -254,7 +254,7 @@ func (c *Controller) pumpActivity() {
 		select {
 		case <-c.ctx.Done():
 			return
-		case <-time.After(every):
+		case <-c.after(every):
 		}
 	}
 }

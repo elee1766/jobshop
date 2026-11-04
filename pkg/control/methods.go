@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	host "github.com/elee1766/acphost"
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -409,7 +410,7 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	}
 	var until time.Time
 	if p.Until != nil {
-		if !p.Until.After(time.Now()) {
+		if !p.Until.After(c.now()) {
 			return nil, fmt.Errorf("%w: until must be in the future", store.ErrInvalid)
 		}
 		until = *p.Until
@@ -468,7 +469,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 	}
 	var cutoff time.Time
 	if p.Since > 0 {
-		cutoff = time.Now().Add(-p.Since)
+		cutoff = c.now().Add(-p.Since)
 	}
 	var tickets []store.Ticket
 	for _, s := range statuses {
@@ -660,12 +661,22 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 	return res, nil
 }
 
-func (c *Controller) now() time.Time {
-	if c.opt.Now != nil {
-		return c.opt.Now()
+// clk is the controller's clock; the wall clock for a Controller built
+// without Run (internal tests).
+func (c *Controller) clk() clock.Clock {
+	if c.opt.Clock != nil {
+		return c.opt.Clock
 	}
-	return time.Now()
+	return clock.Real{}
 }
+
+func (c *Controller) now() time.Time { return c.clk().Now() }
+
+// after is time.After on the controller's clock.
+func (c *Controller) after(d time.Duration) <-chan time.Time { return c.clk().After(d) }
+
+// since is time.Since on the controller's clock.
+func (c *Controller) since(t time.Time) time.Duration { return c.now().Sub(t) }
 
 func (c *Controller) shutdown(_ context.Context, sc scope, p rpc.ShutdownParams) (any, error) {
 	if err := requireAdmin(sc, "shutdown"); err != nil {

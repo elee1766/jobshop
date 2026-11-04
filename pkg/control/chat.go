@@ -197,7 +197,7 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		select {
 		case <-ctx.Done():
 			return res, nil
-		case <-time.After(subscribePoll):
+		case <-c.after(subscribePoll):
 		}
 		t, err := c.store.Get(ctx, p.ID)
 		if err != nil {

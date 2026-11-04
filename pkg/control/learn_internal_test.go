@@ -119,10 +119,10 @@ func TestLearnStepFailure(t *testing.T) {
 }
 
 func TestLearnRelease(t *testing.T) {
-	c, _, _ := stallController(t)
+	c, clk, _ := stallController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "r1")
-	until := time.Now().Add(time.Hour) // release checks the wall clock
+	until := clk.now().Add(time.Hour) // release checks the controller clock
 	_, err := c.release(ctx, sc, rpc.ReleaseParams{Reason: "CI later", Until: &until})
 	require.NoError(t, err)
 	assert.Empty(t, learnings(t, c, store.LearningFilter{Ticket: step.ID}), "a deferred release is not a failure")
