@@ -448,6 +448,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   82s to 61s wall (#433, `docs/notes/433-limit-reprepare.md`).
 - Env refresh treats a zombie session daemon as stopped instead of
   waiting 5s for it (#433, `docs/notes/433-zombie-wait.md`).
+- In-process test hosts report agent exits (`control.HostExits`), so
+  crash tests skip host spawns (#467, `docs/notes/467-inproc-host-exit.md`).
 - Ingest split mode: `ingest.workers: external` moves admission to
   `jobshop ingest work` over the admin socket, with heartbeats,
   missing-worker and backlog attention and inbox gauges (#443,

@@ -543,6 +543,19 @@ func (r *runner) session() error {
 		return err
 	}
 	defer func() { _ = nc.Close() }()
+	if he, ok := r.c.opt.Hosts.(HostExits); ok {
+		if exited := he.Exited(r.dir); exited != nil {
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				select {
+				case <-exited:
+					_ = nc.Close()
+				case <-done:
+				}
+			}()
+		}
+	}
 	r.mu.Lock()
 	r.agentPid = welcome.AgentPid
 	r.mu.Unlock()

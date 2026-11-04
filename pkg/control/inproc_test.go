@@ -17,8 +17,9 @@ import (
 // (control.Options.Hosts), so controller-logic tests skip the host
 // process spawn the race build pays about a second for (#361). The agent
 // is still the fake-agent child acphost starts. Tests about real process
-// trees (restart and adopt, crash and quarantine, sandbox, env refresh,
-// stuck and busy) opt out with realHosts, see poolRootOpt.
+// trees (restart and adopt, sandbox, env refresh, stuck and busy) opt
+// out with realHosts, see poolRootOpt. Agent crashes work in-process
+// through Exited (#467).
 type inProcHosts struct {
 	mu   sync.Mutex
 	runs map[string]chan struct{} // dir -> closed when Main returns
@@ -78,6 +79,16 @@ func (h *inProcHosts) Stop(dir string) bool {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+// Exited is closed when the host for dir returns (control.HostExits).
+func (h *inProcHosts) Exited(dir string) <-chan struct{} {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if done, ok := h.runs[dir]; ok {
+		return done
+	}
+	return nil
 }
 
 // stopAll stops every host still running, for test cleanup.
