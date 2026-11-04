@@ -48,10 +48,14 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
       - {id: implement, pool: dev, retries: 3, prompt_file: prompts/impl.md, title: "Implement #${issue}"}
       - {id: review, pool: refinery, prompt: "Review #${issue}", title: "Review #${issue}"}
       - {id: deploy, pool: refinery, prompt: "Deploy", title: "Deploy #${issue}"}
+  routed:
+    vars: [review_pool]
+    steps:
+      - {id: review, pool: "${review_pool}", prompt: "Review", title: "Review"}
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
-    vars: {repo: /src}
+    vars: {repo: /src, review_pool: refinery}
 lease: %q
 projects:
   js: {}
@@ -154,6 +158,24 @@ func TestRunStart(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{State: store.RunRunning}, &runs))
 	require.Len(t, runs, 1)
 	assert.Equal(t, r.Run.ID, runs[0].ID)
+}
+
+// TestRunStepPoolVar routes one workflow's step to two pools by a run
+// var, defaults it from pack vars and rejects an unknown pool (#384).
+func TestRunStepPoolVar(t *testing.T) {
+	admin := runRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "routed", Vars: map[string]string{"review_pool": "dev"}})
+	assert.Equal(t, "dev", r.Steps[0].Pool)
+	assert.Equal(t, "dev", showRun(t, admin, r.Run.ID).Steps[0].Pool)
+	r = startRun(t, admin, rpc.RunStartParams{Workflow: "routed"})
+	assert.Equal(t, "refinery", r.Steps[0].Pool, "pack var default")
+
+	err := admin.Call(t.Context(), rpc.MethodRunStart, rpc.RunStartParams{Workflow: "routed", Vars: map[string]string{"review_pool": "nope"}}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown pool "nope"`)
+	var runs []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
+	assert.Len(t, runs, 2, "a bad pool creates no ticket")
 }
 
 func TestRunStartErrors(t *testing.T) {
