@@ -765,6 +765,12 @@ func (s *Store) CloseTicket(ctx context.Context, actor, id string, c *store.Clai
 				note, ferr = s.stepFailure(t, "closed failed", d)
 				return d, ferr
 			}
+			if resolution == store.ResolutionRebase && t.Kind == store.KindStep {
+				reopen(t)
+				t.Resolution = ""
+				t.ClosedAt = time.Time{}
+				note = "Closed for a rebase: reopened without counting a failed attempt."
+			}
 			return d, nil
 		})
 		if err != nil {

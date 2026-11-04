@@ -164,3 +164,25 @@ func TestStepEscalation(t *testing.T) {
 	closeStep(t, admin, review, "failed")
 	assert.Len(t, escalations(t, admin, r.Run.ID), 2)
 }
+
+// TestStepRebaseNoFailure closes review for a conflict with master more
+// times than its retry limit without escalating; a real finding still
+// counts (#424).
+func TestStepRebaseNoFailure(t *testing.T) {
+	admin := runRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "77"}})
+	closeStep(t, admin, r.Steps[0].ID, "done")
+	review := r.Steps[1].ID
+	for range 5 {
+		closeStep(t, admin, review, store.ResolutionRebase)
+	}
+	assert.Equal(t, store.StatusOpen, getTicket(t, admin, review).Ticket.Status)
+	assert.Equal(t, store.RunRunning, runState(t, showRun(t, admin, r.Run.ID)))
+	assert.Empty(t, escalations(t, admin, r.Run.ID))
+
+	closeStep(t, admin, review, "failed")
+	assert.Equal(t, store.RunRunning, runState(t, showRun(t, admin, r.Run.ID)), "one finding is below the limit")
+	closeStep(t, admin, review, "failed")
+	assert.Equal(t, store.RunNeedsHuman, runState(t, showRun(t, admin, r.Run.ID)))
+	assert.Len(t, escalations(t, admin, r.Run.ID), 1)
+}
