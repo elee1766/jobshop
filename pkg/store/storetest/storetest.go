@@ -60,6 +60,8 @@ func Run(t *testing.T, newStore Factory) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Each case has its own store and clock, so cases run in parallel.
+			t.Parallel()
 			c := &Clock{T: time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)}
 			s := newStore(t, c)
 			t.Cleanup(func() { _ = s.Close() })

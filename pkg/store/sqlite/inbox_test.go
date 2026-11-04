@@ -2,7 +2,6 @@ package sqlite_test
 
 import (
 	"encoding/json"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -20,15 +19,15 @@ func inboxStore(t *testing.T) (*sqlite.Store, *atomic.Int64) {
 	t.Helper()
 	var clock atomic.Int64
 	clock.Store(time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC).UnixMilli())
-	s, err := sqlite.Open(t.Context(), filepath.Join(t.TempDir(), "j.db"), sqlite.Options{
+	s := openTest(t, sqlite.Options{
 		Now: func() time.Time { return time.UnixMilli(clock.Load()).UTC() },
 	})
-	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
 	return s, &clock
 }
 
 func TestInboxPutDedupe(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	s, _ := inboxStore(t)
 	it := store.InboxItem{Source: "github", DeliveryID: "d1", Endpoint: "gh-app", Kind: "issue_comment", RepoOrTeam: "a/b", Number: 7, Payload: json.RawMessage(`{"x":1}`)}
@@ -50,6 +49,7 @@ func TestInboxPutDedupe(t *testing.T) {
 }
 
 func TestInboxClaimConcurrent(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	s, _ := inboxStore(t)
 	const n = 20
@@ -82,6 +82,7 @@ func TestInboxClaimConcurrent(t *testing.T) {
 }
 
 func TestInboxLeaseExpiry(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	s, clock := inboxStore(t)
 	put, _, err := s.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "d1"})
@@ -126,6 +127,7 @@ func TestInboxLeaseExpiry(t *testing.T) {
 }
 
 func TestInboxPrune(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	s, clock := inboxStore(t)
 	old := time.UnixMilli(clock.Load()).UTC()
