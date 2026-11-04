@@ -283,7 +283,7 @@ pkgs.runCommand "jobshop-module-test" { } ''
   ${rollbackTest}
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
   grep -q 'private_key_file: /run/secrets/k.pem' ${yamlPacks ident}
-  grep -q 'identity token' ${lib.head ident.config.systemd.services.jobshop.path}/bin/gh
+  grep -q 'exec .* gh "\$@"' ${lib.head ident.config.systemd.services.jobshop.path}/bin/gh
   grep -q '/var/lib/jobshop/workspaces/other/packs/github' ${yamlPacks two}
   grep -q 'repo: elee1766/other' ${yamlPacks two}
   grep -q 'prefix: ot-' ${yamlPacks two}

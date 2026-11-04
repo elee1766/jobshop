@@ -104,30 +104,12 @@ let
     self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
   ];
   useIdentities = cfg.gitIdentity.jobshopIdentities;
-  # gh with a token from `jobshop identity token` for the repo it acts on
-  # (#216): --repo/-R if given, else the cwd's origin. An explicit GH_TOKEN
-  # wins; no repo found runs gh unauthenticated.
+  # gh through `jobshop gh` (#349): it adds the identity token for the repo
+  # it acts on (--repo/-R, else the cwd's origin), asks the guard hooks
+  # before writes and records them in the activity feed. An explicit
+  # GH_TOKEN wins. JOBSHOP_GH names the real gh so it never finds itself.
   ghWrapper = pkgs.writeShellScriptBin "gh" ''
-    if [ -z "''${GH_TOKEN:-}" ]; then
-      repo=
-      prev=
-      for a in "$@"; do
-        case "$prev" in -R|--repo) repo=$a ;; esac
-        case "$a" in --repo=*) repo=''${a#--repo=} ;; esac
-        prev=$a
-      done
-      if [ -z "$repo" ]; then
-        url=$(git remote get-url origin 2>/dev/null || true)
-        case "$url" in
-          *github.com[:/]*) repo=''${url#*github.com[:/]}; repo=''${repo%.git} ;;
-        esac
-      fi
-      repo=''${repo#https://github.com/}
-      if [ -n "$repo" ] && t=$(${jobshop} identity token "$repo"); then
-        export GH_TOKEN=$t
-      fi
-    fi
-    exec ${lib.getExe pkgs.gh} "$@"
+    JOBSHOP_GH=${lib.getExe pkgs.gh} exec ${jobshop} gh "$@"
   '';
   path =
     lib.optional useIdentities ghWrapper

@@ -369,6 +369,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Controller clock: `Options.Clock` (`pkg/clock`, with a `Fake` for
   tests) drives every controller timer; `Options.Now` is gone (#362,
   `docs/notes/362-controller-clock.md`).
+- `jobshop gh`: gh with the identity token, a guard check before
+  writes and an activity record, replacing the module's shell wrapper
+  (#349, `docs/notes/349-jobshop-gh.md`).
 
 ## 5. What's next
 
@@ -1093,6 +1096,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   failing mutator leaves the event unchanged rather than denying it;
   only validators can deny. Admission runs in the controller for now;
   the split `ingest work` process is a later #318 item.
+- `jobshop gh` fails closed (2026-11-04, #349): a write with no
+  controller to answer the guard does not run, while reads always run.
+  Flag values are left out of the activity record so a body or token
+  passed as a flag does not land in the feed.
 
 ## 7. Reference: behavior as built
 

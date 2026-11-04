@@ -655,6 +655,7 @@ func init() {
 		rpc.MethodReport:           bind((*Controller).report),
 		rpc.MethodQuestionAnswer:   bind((*Controller).answerQuestion),
 		rpc.MethodActivityList:     bind((*Controller).activityList),
+		rpc.MethodActivityRecord:   bind((*Controller).activityRecord),
 		rpc.MethodLearnAdd:         bind((*Controller).learnAdd),
 		rpc.MethodLearnList:        bind((*Controller).learnList),
 		rpc.MethodLearnUpdate:      bind((*Controller).learnUpdate),
