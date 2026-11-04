@@ -60,3 +60,23 @@ jobs:
       - run: ./result/bin/jobshop version
       # NixOS module evaluation checks (nix/module-test.nix).
       - run: nix build .#checks.x86_64-linux.module --print-build-logs
+
+  # Desk's built UI is committed in pkg/desk/dist and embedded (#208):
+  # svelte-check must pass and the committed build must match ui/src.
+  ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
+      - name: pkg/desk/dist is current
+        run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"
