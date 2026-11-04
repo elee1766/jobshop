@@ -8,3 +8,7 @@ with short calls; write files with the Write tool. To wait on CI or a
 deploy, use `jobshop release --until 20m`, not a plain release (that
 counts as a failed attempt). Comment on another ticket with
 `jobshop comment -t <ticket> "<text>"`.
+
+pkg/config/pack_test.go asserts pack prompt substrings and admin lists.
+When editing anything under packs/, grep it for the old text and update
+the assertions in the same commit.
