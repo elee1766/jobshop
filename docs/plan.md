@@ -345,6 +345,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   handler (#334, #339, `docs/notes/334-ingest-spool.md`).
 - go2nix per-package Nix build with a buildGoModule fallback; CI on
   Ubicloud runners (`docs/notes/go2nix.md`).
+- Ingest admission: mutating then validating hooks (command or signed
+  url) on pending inbox items, `failure_policy`, `match`; on: intake
+  hooks run for Linear items (#348, `docs/notes/348-ingest-admission.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).
@@ -503,8 +506,8 @@ Model config live check: `docs/verify/model-config.md` (#304).
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
 the spool and `ingest serve` in #334 and #339, the drain, poller rows
-and reconcile in #335. Next: admission hooks, then dispatch from
-admitted rows (item 5).
+and reconcile in #335, admission in #348. Next: release held items
+(#353), then dispatch from admitted rows (item 5).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -1085,6 +1088,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-04, #362): controller tests use unix sockets and real host
   processes, which a synctest bubble cannot hold. Waits on real
   processes stay on wall time.
+- Ingest admission (2026-11-04, #348): all mutating hooks run before any
+  validating hook, so validators judge what will be stored, and a
+  failing mutator leaves the event unchanged rather than denying it;
+  only validators can deny. Admission runs in the controller for now;
+  the split `ingest work` process is a later #318 item.
 
 ## 7. Reference: behavior as built
 
