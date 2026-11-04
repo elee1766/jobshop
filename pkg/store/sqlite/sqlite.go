@@ -14,7 +14,6 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
 //go:generate go tool sqlc generate
@@ -40,6 +39,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	if opt.Concurrent {
 		lock, conns = "deferred", 8
 	}
+	seed(ctx, path)
 	dsn := "file:" + path + "?_txlock=" + lock +
 		"&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)" +
 		"&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
@@ -54,9 +54,11 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// Statements are prepared once per text and closed with db (#433).
+	cache := newStmtCache(db)
 	s, err := sqlstore.New(sqlstore.Driver{
 		DB:          db,
-		Bind:        func(d sqlcdb.DBTX) sqlcdb.Querier { return sqlcdb.New(d) },
+		Bind:        cache.bind,
 		Classify:    classify,
 		RecallMatch: recallMatch,
 		IsBusy:      isBusy,
