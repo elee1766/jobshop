@@ -80,6 +80,63 @@ The key makes one run per SHA: once it closes, the same SHA does not
 start another. Two failed `fix` attempts set the run to `needs_human`
 and file "Escalate run <id>" in `plan`.
 
+## Linear instance
+
+Issues live in Linear, code goes through GitHub PRs. One instance per
+Linear team and repo, each with its own `prefix:` (#184). Host
+jobshop.yaml:
+
+```yaml
+identities:
+  eng-app:
+    kind: linear-app                 # OAuth client_credentials (#278)
+    client_id_file: /run/secrets/linear-client-id
+    client_secret_file: /run/secrets/linear-client-secret
+    workspace: acme
+    teams: [ENG]
+    # scopes default: read, write, issues:create, comments:create
+hooks:
+  - on: intake                       # checks Linear issue text (#288)
+    command: jev decide
+packs:
+  - path: /src/jobshop/packs/github
+    prefix: eng-
+    vars:
+      repo: acme/app
+      checkout: /src/app
+      agent: claude
+      human: wile                    # GitHub user
+      check_cmd: make test
+      tracker: linear
+      linear_workspace: acme
+      linear_team: ENG
+      linear_target: ENG-1           # planner goal issue
+      linear_human: Wile             # Linear user mentioned on questions
+      linear_intake_states: Todo
+      linear_intake_labels: agent    # empty: any label
+      linear_skip_labels: Blocked
+      linear_done_state: Done
+```
+
+How one issue flows:
+
+1. Intake: every `linear_poll`, the `linear_issue_no_run` stall signal
+   lists ENG issues in `linear_intake_states` with an intake label and
+   no skip label. One with no open run starts `eng-stall-check` (#287).
+   The planner lists the same filter on its own passes (#292).
+2. stall-check or the planner runs `jobshop linear eligible` and starts
+   `eng-pr-work` with key `linear-<KEY>`. Either start returns the other's
+   run. The `intake` hook reads the issue text first; a refusal labels
+   the issue `needs-human` and files a ticket on `jobshop attention`,
+   and closing that ticket `done` lets the next start through.
+3. implement moves the issue to In Progress, opens a PR on `repo`, and
+   comments its link. A worker question is posted on the issue mentioning
+   `linear_human`, with label `Blocked`; a reply under it answers (#293).
+4. The refinery merges; post-merge comments the sha and moves the issue
+   to `linear_done_state`.
+
+Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
+
 ## Vars
 
 | Var | Meaning |

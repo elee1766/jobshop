@@ -313,6 +313,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   with the intake's `linear-<KEY>` key, files new work and out-of-scope
   findings with `linear create` and `relate` (#292,
   `docs/notes/292-linear-planner.md`).
+- Linear end to end: README `Linear instance` section and
+  `TestLinearEndToEnd` across intake, hook, run key and questions (#298,
+  `docs/notes/298-linear-e2e.md`).
 - Questions and escalations of Linear runs asked on the Linear issue,
   replies become answers, `Blocked` while waiting (#293,
   `docs/notes/293-linear-communication.md`).
@@ -434,6 +437,7 @@ workspace: `docs/verify/linear-pack.md` (#278).
 Linear intake live check with a Linear token on gasserver:
 `docs/verify/linear-intake.md` (#287).
 Linear planner live check: steps 3 and 6 of `docs/verify/linear-pack.md` (#292).
+Linear questions live check: step 7 of `docs/verify/linear-pack.md` (#298).
 Linear communication live check: `docs/verify/linear-communication.md`
 (#293).
 
