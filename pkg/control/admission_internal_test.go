@@ -157,6 +157,7 @@ func TestAdmissionHeldReleased(t *testing.T) {
 		resolution, want string
 	}{{"done", store.InboxAdmitted}, {"wontfix", store.InboxDenied}} {
 		t.Run(tc.resolution, func(t *testing.T) {
+			t.Parallel()
 			c, _ := admissionController(t, []config.AdmissionHook{val("ask", `echo '{"decision":"ask_human","reason":"unsure"}'`)})
 			it := putInbox(t, c, store.InboxItem{})
 			got, _ := admitOne(t, c, it.ID)
@@ -198,6 +199,7 @@ func TestAdmissionTimeout(t *testing.T) {
 		{"ignore", config.AdmissionMutating, store.InboxAdmitted, admitIgnored},
 	} {
 		t.Run(tc.typ+"/"+tc.policy, func(t *testing.T) {
+			t.Parallel()
 			h := config.AdmissionHook{Name: "slow", Type: tc.typ, Command: "sleep 5", Timeout: "100ms", FailurePolicy: tc.policy}
 			c, _ := admissionController(t, []config.AdmissionHook{h})
 			it := putInbox(t, c, store.InboxItem{})
@@ -247,6 +249,7 @@ func TestAdmissionMatch(t *testing.T) {
 		"project match": {config.AdmissionMatch{Projects: []string{"PROJECT"}}, base, true},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			h := val("v", `echo '{"decision":"deny"}'`)
 			h.Match = tc.m
 			c, _ := admissionController(t, []config.AdmissionHook{h})

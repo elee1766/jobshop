@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"os"
 	"sync"
 	"time"
 
@@ -41,6 +42,18 @@ func (c *Controller) spool(ctx context.Context) (*ingest.Spool, error) {
 	return sp, nil
 }
 
+// spoolExists reports whether the spool is open or its file exists.
+func (c *Controller) spoolExists() bool {
+	c.ingest.mu.Lock()
+	open := c.ingest.sp != nil
+	c.ingest.mu.Unlock()
+	if open {
+		return true
+	}
+	_, err := os.Stat(c.config().Ingest.SpoolPath(c.root))
+	return err == nil
+}
+
 // closeSpool closes the spool if it was opened.
 func (c *Controller) closeSpool() {
 	c.ingest.mu.Lock()
@@ -61,6 +74,12 @@ func (c *Controller) wakeDrain() {
 
 // drainOnce runs one drain until the spool is empty.
 func (c *Controller) drainOnce(ctx context.Context) (ingest.DrainResult, error) {
+	// No spool file means nothing was ever spooled. Opening it would
+	// create and migrate it, which every test controller paid (#433).
+	// Writers (the Linear listener, `ingest serve`) create it.
+	if !c.spoolExists() {
+		return ingest.DrainResult{}, nil
+	}
 	sp, err := c.spool(ctx)
 	if err != nil {
 		return ingest.DrainResult{}, err

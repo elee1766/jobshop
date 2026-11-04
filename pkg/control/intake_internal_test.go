@@ -137,6 +137,7 @@ func TestIntakeDeny(t *testing.T) {
 		"ask":   `echo '{"decision":"ask_human","reason":"unsure"}'`,
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			c, f := intakeController(t, hook)
 			err := startLinearRun(t, c)
 			require.ErrorIs(t, err, rpc.ErrForbidden)
