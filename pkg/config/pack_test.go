@@ -273,6 +273,24 @@ packs:
 	assert.Contains(t, gh.Workflows, "acphost-pr-work")
 	assert.Contains(t, gh.Triggers, "acphost-master-red")
 	assert.Equal(t, []string{"operator"}, op.Pools)
+
+	// Improvement sessions (#249): the rule matches improve:* keys of the
+	// operator pool, and a push hook guards the pool.
+	var rule *PromptRule
+	for i := range c.PromptRules {
+		if c.PromptRules[i].Name == "operator-improve" {
+			rule = &c.PromptRules[i]
+		}
+	}
+	require.NotNil(t, rule)
+	assert.Equal(t, RuleAfter, rule.At)
+	assert.Contains(t, rule.Text, "jobshop guard push --target")
+	assert.Contains(t, rule.Text, "PR <url> head")
+	assert.True(t, rule.Match.Matches(RuleSubject{Pool: "operator", Chat: true, Key: "improve:prompts"}))
+	assert.False(t, rule.Match.Matches(RuleSubject{Pool: "operator", Chat: true, Key: "matrix:!r:x"}))
+	require.Len(t, c.Hooks, 1)
+	assert.True(t, c.Hooks[0].Applies(HookAction, "push", "operator"))
+	assert.False(t, c.Hooks[0].Applies(HookAction, "push", "dev"), "dev pools are not this pack's to guard")
 }
 
 // TestGithubPackLoads loads packs/github for another repo: no Jobshop

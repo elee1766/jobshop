@@ -22,3 +22,25 @@ pools:
     # config and its instances, sessions, pools, triggers, attention, and
     # reload. Run list/show and tickets need no grant.
     admin: [config-reload, config-show, session-list, pool-list, trigger-list, attention, activity]
+# Improvement sessions (#249): a session keyed improve:<slug> gets
+# prompts/improve.md after the pool prompt.
+prompt_rules:
+  - name: operator-improve
+    file: prompts/improve.md
+    at: after
+    match: {pools: [operator], keys: ["improve:*"]}
+# Operator sessions never push to master (#249). The prompt has them run
+# `jobshop guard push --target <branch>` before a push; this hook denies
+# master or main in any form (origin/master, HEAD:master,
+# refs/heads/main) and a push with no target.
+hooks:
+  - on: action
+    actions: [push]
+    pools: [operator]
+    command: |
+      ev=$(cat)
+      if ! printf '%s' "$ev" | grep -q '"target":"[^"]'; then
+        echo '{"decision":"deny","reason":"name the branch: jobshop guard push --target <branch>"}'
+      elif printf '%s' "$ev" | grep -Eq '"target":"([^"]*[:/])?(master|main)"'; then
+        echo '{"decision":"deny","reason":"operator sessions never push to master; push a branch and open a PR"}'
+      fi

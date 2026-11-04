@@ -170,12 +170,27 @@ type sendCmd struct {
 	Text      string `arg:"" help:"Message text. Use - to read stdin."`
 	Interrupt bool   `help:"Cancel the recipient's running turn and deliver now."`
 	Project   string `help:"Project (admin only; sessions use their own)."`
+	// Key with pool:<name> sends by pool and key (session.send), starting
+	// the chat pool's session for the key, e.g. improve:<slug> (#249).
+	Key string `help:"With pool:<chat pool>: the session key; starts the session if none is open (admin)."`
 }
 
 func (c sendCmd) Run(g *Globals) error {
 	text, err := readBody(c.Text)
 	if err != nil {
 		return err
+	}
+	if c.Key != "" {
+		pool, ok := strings.CutPrefix(c.To, "pool:")
+		if !ok {
+			return errors.New("--key needs pool:<name> as the recipient")
+		}
+		var res rpc.SessionSendResult
+		if err := g.call(rpc.MethodSessionSend, rpc.SessionSendParams{Pool: pool, Key: c.Key, Text: text, Interrupt: c.Interrupt}, &res); err != nil {
+			return err
+		}
+		fmt.Println(res.Session)
+		return nil
 	}
 	fields, err := json.Marshal(store.MessageFields{To: c.To, Interrupt: c.Interrupt})
 	if err != nil {
