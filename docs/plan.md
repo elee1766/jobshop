@@ -380,6 +380,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   a router can pick the pool per run (#384, `docs/notes/384-step-pool-var.md`).
 - Pack-writing guide `docs/packs.md`, `jobshop docs` and an init hint
   (#352, `docs/notes/352-pack-docs.md`).
+- Pack templates in Go `text/template` behind `template: go`; in-repo
+  packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
 
 ## 5. What's next
 
@@ -1115,6 +1117,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Packs are user-written (2026-11-04, #352): a root has its own pack
   under `<root>/packs/`; `packs/` in this repo are examples of how we
   run Jobshop on itself, not defaults. The repo layout does not change.
+- Pack templates (2026-11-04, #383): Go `text/template`, opted in per
+  pack with `template: go`, keeping the two passes (pack vars at load,
+  run and trigger vars later) with one flat var map instead of
+  `.pack`/`.vars` namespaces, so prompts read `{{.issue}}` and the
+  migration is a mechanical rewrite. Whole-value `{{.x}}` keeps its type.
 
 ## 7. Reference: behavior as built
 

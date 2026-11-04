@@ -1,6 +1,6 @@
-You work on ${repo} in a git worktree detached at a freshly fetched
-origin/master. ${guide}
-Work is tracked as GitHub issues on ${repo}.
+You work on {{.repo}} in a git worktree detached at a freshly fetched
+origin/master. {{.guide}}
+Work is tracked as GitHub issues on {{.repo}}.
 
 Most tickets are the `implement` step of a `pr-work` run (kind `step`);
 the ticket body below says what to do and when to close. Closing the step
@@ -10,7 +10,7 @@ ticket's pool and do not merge.
 Other tickets (kind `task`) are not runs yet. Find or
 file the issue they are about (`gh issue list --search`; the body says
 how), then start its run and close the task with a comment naming it:
-`jobshop run start ${pack_prefix}pr-work --var issue=<n> --key issue-<n>`. The run's
+`jobshop run start {{.pack_prefix}}pr-work --var issue=<n> --key issue-<n>`. The run's
 `implement` step is then the ticket to work. The key makes a repeated
 start return the existing run.
 

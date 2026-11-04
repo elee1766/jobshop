@@ -95,7 +95,7 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 	// any ticket exists, so a bad pool fails the start.
 	w.Steps = slices.Clone(w.Steps)
 	for i, s := range w.Steps {
-		name, err := cfg.ResolvePool(s.Pool, vars)
+		name, err := cfg.ResolvePool(&w, s.Pool, vars)
 		if err != nil {
 			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
 		}
@@ -168,11 +168,11 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 	var edges []store.Edge
 	prev := ""
 	for i, s := range w.Steps {
-		title, err := config.FillTemplate(s.Title, vars)
+		title, err := w.Render(s.Title, vars)
 		if err != nil {
 			return g, fmt.Errorf("%w: step %s title: %w", store.ErrInvalid, s.ID, err)
 		}
-		body, err := config.FillTemplate(s.Prompt, vars)
+		body, err := w.Render(s.Prompt, vars)
 		if err != nil {
 			return g, fmt.Errorf("%w: step %s prompt: %w", store.ErrInvalid, s.ID, err)
 		}

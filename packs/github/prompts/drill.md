@@ -1,4 +1,4 @@
-Step `fail` of a `drill` run for issue #${issue}.
+Step `fail` of a `drill` run for issue #{{.issue}}.
 
 This is an escalation drill. It checks that a step at its retry limit
 puts the run in `needs_human` and files an escalation ticket. Do nothing

@@ -42,6 +42,9 @@ type Workflow struct {
 	// PackVars are the vars of the pack that declared the workflow, set by
 	// the loader, not by users.
 	PackVars map[string]any `yaml:"pack_vars,omitempty"`
+	// Template is the declaring pack's syntax (SyntaxGo or ""), set by
+	// the loader.
+	Template string `yaml:"template,omitempty"`
 }
 
 // Step is one ticket of a run, blocked on the previous step.
@@ -98,12 +101,16 @@ func (c *Config) checkTriggerRun(tr *Trigger) error {
 		templates["vars."+k] = v
 	}
 	for where, s := range templates {
-		for _, v := range templateVars(s) {
+		vs, err := refs(s, r.Template)
+		if err != nil {
+			return fmt.Errorf("run: %s: %w", where, err)
+		}
+		for _, v := range vs {
 			if v != CheckOutputVar {
-				return fmt.Errorf("run: %s uses ${%s}; only ${%s} is available", where, v, CheckOutputVar)
+				return fmt.Errorf("run: %s uses %s; only %s is available", where, placeholder(v, r.Template), placeholder(CheckOutputVar, r.Template))
 			}
 			if tr.When.Check == "" {
-				return fmt.Errorf("run: %s uses ${%s}, which needs when.check", where, CheckOutputVar)
+				return fmt.Errorf("run: %s uses %s, which needs when.check", where, placeholder(CheckOutputVar, r.Template))
 			}
 		}
 	}
@@ -163,7 +170,7 @@ func setPackVars(m map[string]any, vars map[string]any, file string) error {
 // FillTemplate replaces ${name} in s from vars ($$ is a literal $). A
 // missing var is an error.
 func FillTemplate(s string, vars map[string]any) (string, error) {
-	out, err := substitute(s, vars, "")
+	out, err := substitute(s, vars, "", SyntaxDollar)
 	if err != nil {
 		return "", err
 	}
@@ -175,26 +182,30 @@ func FillTemplate(s string, vars map[string]any) (string, error) {
 // here.
 func (c *Config) checkStepPool(w *Workflow, pool string) error {
 	runVar := false
-	for _, v := range templateVars(pool) {
+	vs, err := refs(pool, w.Template)
+	if err != nil {
+		return fmt.Errorf("pool: %w", err)
+	}
+	for _, v := range vs {
 		_, packed := w.PackVars[v]
 		switch {
 		case slices.Contains(w.Vars, v):
 			runVar = true
 		case !packed:
-			return fmt.Errorf("pool uses ${%s}, not in workflow vars or pack vars", v)
+			return fmt.Errorf("pool uses %s, not in workflow vars or pack vars", placeholder(v, w.Template))
 		}
 	}
 	if runVar {
 		return nil
 	}
-	_, err := c.ResolvePool(pool, w.PackVars)
+	_, err = c.ResolvePool(w, pool, w.PackVars)
 	return err
 }
 
-// ResolvePool fills a step's pool template from vars and checks the pool
-// exists.
-func (c *Config) ResolvePool(pool string, vars map[string]any) (string, error) {
-	name, err := FillTemplate(pool, vars)
+// ResolvePool fills a step's pool template of w from vars and checks the
+// pool exists.
+func (c *Config) ResolvePool(w *Workflow, pool string, vars map[string]any) (string, error) {
+	name, err := w.Render(pool, vars)
 	if err != nil {
 		return "", fmt.Errorf("pool: %w", err)
 	}
@@ -202,6 +213,17 @@ func (c *Config) ResolvePool(pool string, vars map[string]any) (string, error) {
 		return "", fmt.Errorf("unknown pool %q", name)
 	}
 	return name, nil
+}
+
+// Render fills a step title, prompt or pool template of w from vars, in
+// the declaring pack's syntax.
+func (w *Workflow) Render(s string, vars map[string]any) (string, error) {
+	return Fill(s, w.Template, vars)
+}
+
+// Fill fills a trigger run var or key template from vars.
+func (r *TriggerRun) Fill(s string, vars map[string]any) (string, error) {
+	return Fill(s, r.Template, vars)
 }
 
 // templateVars returns the ${name} references in s ($$ is a literal $).
@@ -289,9 +311,13 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 			return fmt.Errorf("%s: retries must be >= 0", where)
 		}
 		for _, f := range []struct{ key, v string }{{"title", s.Title}, {"prompt", s.Prompt}} {
-			for _, v := range templateVars(f.v) {
+			vs, err := refs(f.v, w.Template)
+			if err != nil {
+				return fmt.Errorf("%s: %s: %w", where, f.key, err)
+			}
+			for _, v := range vs {
 				if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) {
-					return fmt.Errorf("%s: %s uses ${%s}, not in workflow vars or pack vars", where, f.key, v)
+					return fmt.Errorf("%s: %s uses %s, not in workflow vars or pack vars", where, f.key, placeholder(v, w.Template))
 				}
 			}
 		}

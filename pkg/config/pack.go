@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
+	"github.com/elee1766/jobshop/pkg/config/tmpl"
 )
 
 // PackFileName is the file in a pack directory that declares its pools,
@@ -68,6 +70,9 @@ type packHead struct {
 	// so a rename on master does not fail the deploy of hosts not yet
 	// updated.
 	RenamedVars map[string]string `yaml:"renamed_vars"`
+	// Template is the pack's template syntax: "" for ${name}, or "go"
+	// for Go text/template (#383). Per pack during the migration.
+	Template string `yaml:"template"`
 }
 
 // packLayer is one pack file's contribution after substitution.
@@ -250,7 +255,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	var head packHead
-	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"], "renamed_vars": m["renamed_vars"]})
+	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"], "renamed_vars": m["renamed_vars"], "template": m["template"]})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
@@ -260,6 +265,11 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	delete(m, "defaults")
 	delete(m, "extends")
 	delete(m, "renamed_vars")
+	delete(m, "template")
+	syn := head.Template
+	if err := checkSyntax(syn); err != nil {
+		return nil, fmt.Errorf("%s: template: %w", file, err)
+	}
 	given, warnings := renameVars(given, head.RenamedVars, file)
 	// Given vars win over defaults.
 	vars := map[string]any{}
@@ -283,7 +293,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 			p = filepath.Join(dir, p)
 		}
 		// The base's vars are templates over this pack's vars.
-		bv, err := substitute(cloneValue(ref.Vars), vars, fmt.Sprintf("extends[%d].vars", i))
+		bv, err := substitute(cloneValue(ref.Vars), vars, fmt.Sprintf("extends[%d].vars", i), syn)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
@@ -297,14 +307,14 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	// Step titles and prompts keep ${run var} references for run start.
 	restore := holdTemplates(m)
 	// ${check_output} is filled when a trigger fires, not at load.
-	subVars := map[string]any{CheckOutputVar: "${" + CheckOutputVar + "}"}
+	subVars := map[string]any{CheckOutputVar: placeholder(CheckOutputVar, syn)}
 	for _, k := range StallVars { // likewise, per stall
-		subVars[k] = "${" + k + "}"
+		subVars[k] = placeholder(k, syn)
 	}
 	for k, v := range vars {
 		subVars[k] = v
 	}
-	v, err := substitute(m, subVars, "")
+	v, err := substitute(m, subVars, "", syn)
 	restore()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
@@ -316,9 +326,13 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := setPackVars(m, vars, file); err != nil {
 		return nil, err
 	}
+	setSyntax(m, syn)
 	textSources := map[string][]string{}
-	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: subVars, sources: textSources}); err != nil {
+	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: subVars, syn: syn, sources: textSources}); err != nil {
 		return nil, err
+	}
+	if syn == SyntaxGo {
+		warnings = append(warnings, leftoverVars(m, file)...)
 	}
 	raw, err = yaml.Marshal(m)
 	if err != nil {
@@ -401,11 +415,11 @@ var varPattern = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // substitute replaces ${name} in string values. A string that is exactly
 // one reference takes the var's value with its type, so numbers stay
 // numbers. "$$" is a literal "$" (for ${SESSION_DIR} style agent args).
-func substitute(v any, vars map[string]any, key string) (any, error) {
+func substitute(v any, vars map[string]any, key, syn string) (any, error) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, e := range x {
-			r, err := substitute(e, vars, joinKey(key, k))
+			r, err := substitute(e, vars, joinKey(key, k), syn)
 			if err != nil {
 				return nil, err
 			}
@@ -414,7 +428,7 @@ func substitute(v any, vars map[string]any, key string) (any, error) {
 		return x, nil
 	case []any:
 		for i, e := range x {
-			r, err := substitute(e, vars, fmt.Sprintf("%s[%d]", key, i))
+			r, err := substitute(e, vars, fmt.Sprintf("%s[%d]", key, i), syn)
 			if err != nil {
 				return nil, err
 			}
@@ -422,6 +436,13 @@ func substitute(v any, vars map[string]any, key string) (any, error) {
 		}
 		return x, nil
 	case string:
+		if syn == SyntaxGo {
+			r, err := tmpl.Value(x, vars)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", key, err)
+			}
+			return r, nil
+		}
 		if m := varPattern.FindStringSubmatch(x); m != nil && m[0] == x && m[1] != "" {
 			val, ok := vars[m[1]]
 			if !ok {

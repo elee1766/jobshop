@@ -22,7 +22,7 @@ three steps, each blocked on the one before (`docs/notes/89-runs.md`, `90-step-r
 
 The last step closing `done` closes the run. A step that runs out of
 retries sets the run to `needs_human` and files "Escalate run <id>" in
-`plan`; the planner labels the issue `needs-human` and mentions `@${human}`.
+`plan`; the planner labels the issue `needs-human` and mentions `@<human>`.
 Dependent issues: an edge from the dependent run's `implement` step to the
 dependency's `post-merge` step. `jobshop run show <run>` shows progress.
 

@@ -15,6 +15,7 @@ import (
 type textFiles struct {
 	dir, file string
 	vars      map[string]any
+	syn       string // the pack's template syntax
 	// sources records "<key>.<field>" -> the file read, for config show.
 	sources map[string][]string
 }
@@ -43,7 +44,7 @@ func (t textFiles) load(m map[string]any, field, fileField, key string, subst bo
 	delete(m, fileField)
 	var text any = string(b)
 	if subst && t.vars != nil {
-		if text, err = substitute(text, t.vars, key+"."+fileField); err != nil {
+		if text, err = substitute(text, t.vars, key+"."+fileField, t.syn); err != nil {
 			return fmt.Errorf("%s: %w", t.file, err)
 		}
 	}

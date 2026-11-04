@@ -39,7 +39,9 @@ flowchart LR
   a human. Batches group runs in an order.
 - **Packs.** A pack is a directory of pools, prompts, triggers and
   workflows filled from vars. It can extend another pack, and several
-  instances can sit side by side with a `prefix:`.
+  instances can sit side by side with a `prefix:`. Templates are Go
+  `text/template` (`{{.repo}}`, `{{if}}`, `default`) with `template: go`;
+  packs without it still use `${repo}` for now.
 - **Trackers.** GitHub issues and PRs, or Linear issues. Tickets subscribe
   to issue threads, so new human comments come back to them. Identities
   map GitHub App installations and Linear tokens to repos and teams.
@@ -92,10 +94,11 @@ A pack is a directory you write in your root (`packs/<name>/`) with a
 `pack.yaml` and its prompts. A minimal one:
 
 ```yaml
+template: go
 pools:
   work:
-    agent: ${agent}
-    repo: ${checkout}
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
     ref: origin/main
     max_sessions: 1
     prompt_file: prompts/work.md
@@ -103,8 +106,8 @@ workflows:
   change:
     vars: [task]
     steps:
-      - {id: implement, pool: work, title: "Implement: ${task}", prompt: "Make the change: ${task}"}
-      - {id: review, pool: work, title: "Review: ${task}", prompt: "Review the change: ${task}"}
+      - {id: implement, pool: work, title: "Implement: {{.task}}", prompt: "Make the change: {{.task}}"}
+      - {id: review, pool: work, title: "Review: {{.task}}", prompt: "Review the change: {{.task}}"}
 ```
 
 `docs/packs.md` is the guide (`jobshop docs packs` prints its link).
