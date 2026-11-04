@@ -52,6 +52,21 @@ type Learning struct {
 	Status    string
 	CreatedAt int64
 	Pr        string
+	Gate      string
+}
+
+type MemoryEdit struct {
+	ID          int64
+	Pr          string
+	Learnings   string
+	Pools       string
+	MergedAt    int64
+	Baseline    string
+	State       string
+	After       string
+	Reason      string
+	EvaluatedAt int64
+	CreatedAt   int64
 }
 
 type Recall struct {

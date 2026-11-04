@@ -142,6 +142,14 @@ func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Tri
 		}
 	}
 
+	if e := tr.When.Edits; e != nil {
+		why, err := c.editsHold(ctx, *e, now)
+		if err != nil || why != "" {
+			st.why = why
+			return st, err
+		}
+	}
+
 	// Last, so the command runs only when everything else holds.
 	if tr.When.Check != "" {
 		key, why, err := c.runCheck(ctx, tr.When)

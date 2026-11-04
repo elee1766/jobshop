@@ -88,12 +88,27 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 		cur = append(cur, l)
 	}
 	out := make([]store.Learning, 0, len(cur))
-	for _, l := range cur {
+	merged := map[string][]int64{}
+	var prs []string
+	for i, l := range cur {
 		u, err := c.store.UpdateLearning(ctx, l.ID, l.Status, l.PR)
 		if err != nil {
 			return nil, err
 		}
 		out = append(out, u)
+		if p.Status == store.LearningApplied && u.PR != "" {
+			if _, ok := merged[u.PR]; !ok {
+				prs = append(prs, u.PR)
+			}
+			merged[u.PR] = append(merged[u.PR], p.IDs[i])
+		}
+	}
+	// An applied PR merged: record the memory edit and its baseline for
+	// the curator gate (#274).
+	for _, pr := range prs {
+		if _, err := c.recordEdit(ctx, pr, merged[pr], p.MergedAt); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }

@@ -10,6 +10,10 @@ defaults:
   # were recorded since the last pass, or daily when at least one was.
   curate_min_learnings: 10
   curate_every: 24h
+  # Curator gate (#274): evaluate a merged curator edit after this many
+  # runs in its pools, or this long after its merge.
+  evaluate_runs: 20
+  evaluate_age: 72h
   learn_sessions: 1
 extends:
   - path: ../github
@@ -68,7 +72,22 @@ workflows:
         retries: 1
         title: "Curate learnings"
         prompt_file: prompts/curate.md
+  # Curator gate (#274): started when a merged curator edit is due.
+  evaluate:
+    escalate_pool: plan
+    steps:
+      - id: evaluate
+        pool: learn
+        retries: 1
+        title: "Evaluate merged memory edits"
+        prompt_file: prompts/evaluate.md
 triggers:
+  evaluate:
+    when:
+      edits: {runs: "${evaluate_runs}", age: "${evaluate_age}"}
+    run:
+      workflow: evaluate
+      key: evaluate
   curate:
     when:
       learnings: {min: "${curate_min_learnings}", every: "${curate_every}"}

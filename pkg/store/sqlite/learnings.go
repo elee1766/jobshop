@@ -39,17 +39,13 @@ func (s *Store) Learnings(ctx context.Context, f store.LearningFilter) ([]store.
 	if err != nil {
 		return nil, err
 	}
-	out := make([]store.Learning, len(rows))
-	for i, r := range rows {
-		out[i] = toLearning(r)
-	}
-	return out, nil
+	return toLearnings(rows), nil
 }
 
 func toLearning(r sqlcdb.Learning) store.Learning {
 	return store.Learning{
 		ID: r.ID, Kind: r.Kind, Summary: r.Summary, Fix: r.Fix, Scope: r.Scope, Ticket: r.Ticket,
-		Session: r.Session, Source: r.Source, Status: r.Status, PR: r.Pr, CreatedAt: fromMS(r.CreatedAt),
+		Session: r.Session, Source: r.Source, Status: r.Status, PR: r.Pr, Gate: r.Gate, CreatedAt: fromMS(r.CreatedAt),
 	}
 }
 

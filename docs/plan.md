@@ -295,6 +295,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   selfdev, `jobshop learn update` (#273, `docs/notes/273-curator.md`).
 - `jobshop linear context|list|search|catalog|eligible` read commands and
   the intake gate (#279, `docs/notes/279-linear-read.md`).
+- Curator gate: `memory_edits` baselines, `edits` trigger condition,
+  `evaluate` workflow, `jobshop learn evaluate|edits` (#274,
+  `docs/notes/274-curator-gate.md`).
 
 ## 5. What's next
 
@@ -404,8 +407,9 @@ Activity feed live check and rate-limit measurement on gasserver:
 Pre-switch config check on the next pack var change:
 `docs/verify/deploy-config-check.md` (#261).
 Learning loop (#247 B): capture (#264), the nudge (#271), memory,
-recall, reverted PRs as learnings (#272) and the curator are built;
-curator live check `docs/verify/curator.md` (#273).
+recall, reverted PRs as learnings (#272), the curator and its gate are
+built; curator live check `docs/verify/curator.md` (#273), end to end
+`docs/verify/learning-loop.md` (#274).
 Recall live check after the next self-deploy: `docs/verify/recall.md` (#265).
 Linear App identity live check, with an OAuth app in a throwaway
 workspace: `docs/verify/linear-pack.md` (#278).
@@ -877,6 +881,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   `when.learnings` trigger condition, not a cron plus check: the count
   is a store query, so no shell. Learning outcomes are set by the next
   pass (`learn update`), not by a merge hook, so reverts are seen too.
+- The curator gate (2026-11-04, #274) keeps merged edits in a
+  `memory_edits` store table, not run meta: the merge is seen by a later
+  curate pass, and the trigger queries pending rows. The controller
+  computes metrics and decides; the agent only opens the revert PR, so
+  the decision is testable and the same on every run.
 
 ## 7. Reference: behavior as built
 

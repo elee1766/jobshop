@@ -28,7 +28,7 @@ func (q *Queries) CountLearnings(ctx context.Context, arg CountLearningsParams) 
 }
 
 const getLearning = `-- name: GetLearning :one
-SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr FROM learnings WHERE id = ?
+SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr, gate FROM learnings WHERE id = ?
 `
 
 func (q *Queries) GetLearning(ctx context.Context, id int64) (Learning, error) {
@@ -46,6 +46,7 @@ func (q *Queries) GetLearning(ctx context.Context, id int64) (Learning, error) {
 		&i.Status,
 		&i.CreatedAt,
 		&i.Pr,
+		&i.Gate,
 	)
 	return i, err
 }
@@ -53,7 +54,7 @@ func (q *Queries) GetLearning(ctx context.Context, id int64) (Learning, error) {
 const insertLearning = `-- name: InsertLearning :one
 INSERT INTO learnings (kind, summary, fix, scope, ticket, session, source, status, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr
+RETURNING id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr, gate
 `
 
 type InsertLearningParams struct {
@@ -93,12 +94,13 @@ func (q *Queries) InsertLearning(ctx context.Context, arg InsertLearningParams) 
 		&i.Status,
 		&i.CreatedAt,
 		&i.Pr,
+		&i.Gate,
 	)
 	return i, err
 }
 
 const listLearnings = `-- name: ListLearnings :many
-SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr FROM learnings
+SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr, gate FROM learnings
 WHERE created_at >= ?1
   AND (?2 IS NULL OR scope = ?2)
   AND (?3 IS NULL OR kind = ?3)
@@ -145,6 +147,7 @@ func (q *Queries) ListLearnings(ctx context.Context, arg ListLearningsParams) ([
 			&i.Status,
 			&i.CreatedAt,
 			&i.Pr,
+			&i.Gate,
 		); err != nil {
 			return nil, err
 		}
@@ -163,7 +166,7 @@ const updateLearning = `-- name: UpdateLearning :one
 UPDATE learnings
 SET status = ?1, pr = ?2
 WHERE id = ?3
-RETURNING id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr
+RETURNING id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr, gate
 `
 
 type UpdateLearningParams struct {
@@ -187,6 +190,7 @@ func (q *Queries) UpdateLearning(ctx context.Context, arg UpdateLearningParams) 
 		&i.Status,
 		&i.CreatedAt,
 		&i.Pr,
+		&i.Gate,
 	)
 	return i, err
 }

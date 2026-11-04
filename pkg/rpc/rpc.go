@@ -80,6 +80,8 @@ const (
 	MethodLearnAdd         = "learn.add"
 	MethodLearnList        = "learn.list"
 	MethodLearnUpdate      = "learn.update"
+	MethodLearnEvaluate    = "learn.evaluate"
+	MethodLearnEdits       = "learn.edits"
 )
 
 // Activity sources (#255).
@@ -1174,4 +1176,23 @@ type LearnUpdateParams struct {
 	IDs    []int64 `json:"ids"`
 	Status string  `json:"status,omitempty"`
 	PR     string  `json:"pr,omitempty"`
+	// MergedAt is when the PR merged; with status applied it starts the
+	// curator gate's window (#274). Zero means now.
+	MergedAt time.Time `json:"merged_at,omitzero"`
+}
+
+// LearnEvaluateParams runs the curator gate (#274) on pending memory
+// edits that are due: Runs runs in their pools since the merge, or Age
+// since it (defaults 20 and 72h). A nonzero ID evaluates that edit even
+// when not due. The result is the evaluated []store.MemoryEdit.
+type LearnEvaluateParams struct {
+	ID   int64         `json:"id,omitempty"`
+	Runs int           `json:"runs,omitempty"`
+	Age  time.Duration `json:"age,omitempty"`
+}
+
+// LearnEditsParams filters learn.edits. The result is []store.MemoryEdit.
+type LearnEditsParams struct {
+	State string `json:"state,omitempty"`
+	Limit int    `json:"limit,omitempty"`
 }

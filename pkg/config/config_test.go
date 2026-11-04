@@ -112,7 +112,7 @@ func TestParseTriggers(t *testing.T) {
 
 	trig := func(s string) string { return base + "triggers:\n  t:\n" + s }
 	tests := []struct{ name, yaml, want string }{
-		{"empty when", trig("    when: {}\n    ticket: {title: x}\n"), "a check or learnings"},
+		{"empty when", trig("    when: {}\n    ticket: {title: x}\n"), "a check, learnings or edits"},
 		{"learnings min", trig("    when: {learnings: {min: 0}}\n    ticket: {title: x}\n"), "learnings.min must be >= 1"},
 		{"learnings every", trig("    when: {learnings: {min: 1, every: soon}}\n    ticket: {title: x}\n"), "learnings.every"},
 		{"timeout without check", trig("    when: {ready_below: 1, check_timeout: 1s}\n    ticket: {title: x}\n"), "check_timeout needs check"},

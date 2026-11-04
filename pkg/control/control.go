@@ -584,5 +584,7 @@ func init() {
 		rpc.MethodLearnAdd:         bind((*Controller).learnAdd),
 		rpc.MethodLearnList:        bind((*Controller).learnList),
 		rpc.MethodLearnUpdate:      bind((*Controller).learnUpdate),
+		rpc.MethodLearnEvaluate:    bind((*Controller).learnEvaluate),
+		rpc.MethodLearnEdits:       bind((*Controller).learnEdits),
 	}
 }
