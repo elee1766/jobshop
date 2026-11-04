@@ -330,6 +330,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `session/set_config_option` at session start and between turns after a
   reload, `session config` override (#304,
   `docs/notes/304-model-config.md`).
+- Gateway re-reads rooms, senders, marker and escalation room from
+  `config.show` every 30s, no restart (#307,
+  `docs/notes/307-gateway-config-follow.md`).
 
 ## 5. What's next
 
@@ -456,6 +459,8 @@ Linear webhook live check: "Webhook" section of
 
 Pool scaling live check: `docs/verify/pool-scaling.md` (#281); Desk
 scale and cordon buttons are a follow-up.
+Gateway config follow live check: `docs/verify/gateway-config-follow.md`
+(#307).
 
 Model config live check: `docs/verify/model-config.md` (#304).
 
