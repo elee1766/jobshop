@@ -72,7 +72,9 @@ type root struct {
 	Activity  activityCmd  `cmd:"" help:"Recent GitHub and Linear activity in the repos and teams jobshop works, newest first (admin or pool grant activity)."`
 	Report    reportCmd    `cmd:"" help:"Report your ticket's state (progress, waiting, ready, blocked, failed, dropped), or reliability reports (admin)."`
 	Answer    answerCmd    `cmd:"" help:"Answer a worker's question; the answer goes to the asking session (admin)."`
+	Learn     learnCmd     `cmd:"" help:"Record a correction, failure or workaround for the learning loop, or list learnings."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
+	Memory    memoryCmd    `cmd:"" help:"Memory files and skills from a git directory (#266)."`
 	Events    eventsCmd    `cmd:"" help:"Print the change stream as JSON lines (admin, for debugging)."`
 	Identity  identityCmd  `cmd:"" help:"GitHub App and Linear identities: list, check, tokens and the git credential helper."`
 	Linear    linearCmd    `cmd:"" help:"Read, comment on and move Linear issues as the identity for their team."`

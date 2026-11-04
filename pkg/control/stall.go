@@ -48,6 +48,7 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 			continue
 		}
 		c.log.Info("stall trigger fired", "trigger", name, "key", s.key(), "run", t.ID)
+		c.recordStall(ctx, s, t.ID)
 	}
 }
 

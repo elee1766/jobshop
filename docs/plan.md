@@ -274,6 +274,12 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Self-deploy checks the host config against the new commit's packs
   before switching; pack `renamed_vars` (#261,
   `docs/notes/261-deploy-config-check.md`).
+- Memory files and skills from a git directory via a prompt rule's
+  `memory:`, `jobshop memory check` (#266,
+  `docs/notes/266-memory-skills.md`).
+- Learnings capture: `jobshop learn`, a `learnings` table, and
+  controller-recorded failures, review findings, escalations, answers
+  and stalls (#264, `docs/notes/264-learnings.md`).
 
 ## 5. What's next
 
@@ -382,6 +388,8 @@ Activity feed live check and rate-limit measurement on gasserver:
 `docs/verify/activity-feed.md` (#255).
 Pre-switch config check on the next pack var change:
 `docs/verify/deploy-config-check.md` (#261).
+Learning loop (#247 B): capture is built (#264); next memory files and
+skills, then the curator. Reverted PRs as learnings are a follow-up.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -746,6 +754,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   they share the operator's grant and worktree. Packs may declare
   `hooks:` (appended, never replacing the host's) so the operator pack
   ships its own push-to-master deny.
+- Memory and skills are a prompt rule source (`memory: {dir, cap}`, read
+  each turn) over a plain git directory (2026-11-04, #266), not a store
+  table: edits go through PRs like any prompt, and a pull is live with
+  no reload. Files are capped (2200 chars) so memory cannot crowd out
+  the ticket.
 - Yaml changes reach the controller through systemd `reloadTriggers`
   (2026-11-03, #210), not a file watcher: switches already drive
   restarts, and SIGHUP reload exists.
@@ -796,6 +809,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - The first unclosed-turn release of a ticket is a deferral, later ones
   count as failures (2026-11-03, #241): harnesses end turns to wait on
   backgrounded commands, which is not a failed attempt.
+- Learnings are rows of a `learnings` store table (2026-11-04, #264),
+  not non-claimable tickets: no pool, ready list or stall check can see
+  them, and they add no history rows or change events.
 - The activity feed (2026-11-04, #255) is a cache file under the root,
   not a store table: the items are external and refetchable, and store
   writes would add history rows and change events for each one. Links to

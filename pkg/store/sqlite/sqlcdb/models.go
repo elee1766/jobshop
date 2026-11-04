@@ -40,6 +40,19 @@ type Label struct {
 	Label    string
 }
 
+type Learning struct {
+	ID        int64
+	Kind      string
+	Summary   string
+	Fix       string
+	Scope     string
+	Ticket    string
+	Session   string
+	Source    string
+	Status    string
+	CreatedAt int64
+}
+
 type Ticket struct {
 	ID         string
 	Project    string
