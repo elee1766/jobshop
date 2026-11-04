@@ -499,7 +499,10 @@ func resolvePromptFiles(m map[string]any, dir, file string, vars map[string]any)
 		}
 		p["prompt"] = prompt
 	}
-	return resolveStepPromptFiles(m, dir, file)
+	if err := resolveStepPromptFiles(m, dir, file); err != nil {
+		return err
+	}
+	return resolveEscalatePromptFiles(m, dir, file)
 }
 
 // mergeInto applies src over dst. In the merged sections each entry merges
@@ -626,6 +629,9 @@ func prefixLayers(layers []packLayer, prefix string) {
 					ren(em, "agent", "agents")
 				case s == "workflows":
 					ren(em, "escalate_pool", "pools")
+					if e, ok := em["escalate"].(map[string]any); ok {
+						ren(e, "chat_pool", "pools")
+					}
 					steps, _ := em["steps"].([]any)
 					for _, st := range steps {
 						if sm, ok := st.(map[string]any); ok {

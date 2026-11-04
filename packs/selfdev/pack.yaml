@@ -6,6 +6,7 @@ defaults:
   refinery_sessions: 1
   memory_dir: ""
   memory_cap: 2200
+  escalation_chat_pool: ""
   # Curator (#273): start a curate pass once this many open learnings
   # were recorded since the last pass, or daily when at least one was.
   curate_min_learnings: 10
@@ -22,6 +23,7 @@ extends:
       checkout: ${repo}
       agent: ${agent}
       dev_sessions: ${dev_sessions}
+      escalation_chat_pool: ${escalation_chat_pool}
       refinery_sessions: ${refinery_sessions}
       human: elee1766
       # Contributors whose issue reports are picked up (#340).
@@ -68,6 +70,10 @@ pools:
 workflows:
   curate:
     escalate_pool: plan
+    escalate:
+      chat_pool: ${escalation_chat_pool}
+      prompt_file: ../github/prompts/escalation.md
+      pool_prompt_file: ../github/prompts/escalation-pool.md
     steps:
       - id: curate
         pool: learn
@@ -77,6 +83,10 @@ workflows:
   # Curator gate (#274): started when a merged curator edit is due.
   evaluate:
     escalate_pool: plan
+    escalate:
+      chat_pool: ${escalation_chat_pool}
+      prompt_file: ../github/prompts/escalation.md
+      pool_prompt_file: ../github/prompts/escalation-pool.md
     steps:
       - id: evaluate
         pool: learn

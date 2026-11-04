@@ -57,6 +57,11 @@ defaults:
   # Planner list filter by assignee (#292): a name, `me`, or empty for any.
   linear_intake_assignee: ""
   linear_poll: 5m
+  # Chat pool (a type: chat pool, e.g. operator) whose session the
+  # controller opens for each escalation ticket (#379), keyed
+  # escalation:<ticket id>. Desk's chat pool should be the same. Empty:
+  # ticket only, no chat.
+  escalation_chat_pool: ""
   # Parallel PRs that append numbered sections to one doc take the same
   # number and conflict (#131).
   docs_rule: >-
@@ -188,6 +193,16 @@ triggers:
 # Workers check what earlier sessions learned before retrying blind or
 # reaching a human (#265).
 prompt_rules:
+  # Escalate only when a human is required (#379). Every pool gets it.
+  - name: escalation-policy
+    at: system
+    text: >-
+      Escalate to a human only for a decision, a credential or access, or a
+      host config problem you cannot fix: `jobshop close -r failed` at the
+      retry limit, `jobshop report waiting --question`, or the needs-human
+      label. Never for status, FYI or "done". Send progress to `jobshop
+      report progress` and ticket comments (Desk shows them). Wait with
+      `jobshop release --until`. Run `jobshop recall` before asking.
   - name: recall
     at: system
     text: >-
@@ -216,6 +231,10 @@ workflows:
     tracker: ${tracker}
     linear_workspace: ${linear_workspace}
     escalate_pool: plan
+    escalate:
+      chat_pool: ${escalation_chat_pool}
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: implement
         pool: dev
@@ -238,6 +257,10 @@ workflows:
   stall-check:
     vars: [signal, subject, detail]
     escalate_pool: plan
+    escalate:
+      chat_pool: ${escalation_chat_pool}
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: diagnose
         pool: plan
@@ -249,6 +272,10 @@ workflows:
   ci-repair:
     vars: [sha]
     escalate_pool: plan
+    escalate:
+      chat_pool: ${escalation_chat_pool}
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: fix
         pool: dev
@@ -268,6 +295,10 @@ workflows:
     issue: issue
     repo: ${repo}
     escalate_pool: plan
+    escalate:
+      chat_pool: ${escalation_chat_pool}
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
     steps:
       - id: fail
         pool: dev

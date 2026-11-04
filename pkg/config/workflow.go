@@ -41,11 +41,41 @@ type Workflow struct {
 	LinearWorkspace string `yaml:"linear_workspace"`
 	// EscalatePool gets the escalation ticket when a run needs a human.
 	EscalatePool string `yaml:"escalate_pool"`
-	Steps        []Step `yaml:"steps"`
+	// Escalate configures the chat the controller opens for an
+	// escalation ticket of this workflow (#379).
+	Escalate Escalate `yaml:"escalate,omitempty"`
+	Steps    []Step   `yaml:"steps"`
 	// PackVars are the vars of the pack that declared the workflow, set by
 	// the loader, not by users.
 	PackVars map[string]any `yaml:"pack_vars,omitempty"`
 }
+
+// Escalate is the escalation chat policy of a workflow (#379). With
+// ChatPool set, the controller starts a session of that chat pool keyed
+// escalation:<ticket id> for each escalation ticket and sends the
+// rendered prompt as its first message. Empty ChatPool: ticket only.
+// Prompts are templates: ${name} from the pack vars and the escalation
+// vars (EscalationRunVars, EscalationPoolVars), filled when the ticket
+// is filed.
+type Escalate struct {
+	ChatPool string `yaml:"chat_pool,omitempty"`
+	// Prompt is the first message for a run escalation. PromptFile is
+	// read into Prompt at load, relative to the declaring file.
+	Prompt     string `yaml:"prompt,omitempty"`
+	PromptFile string `yaml:"prompt_file,omitempty"`
+	// PoolPrompt is the first message for a pool quarantine escalation
+	// (the workflow whose escalate_pool receives it). Empty: no chat for
+	// those.
+	PoolPrompt     string `yaml:"pool_prompt,omitempty"`
+	PoolPromptFile string `yaml:"pool_prompt_file,omitempty"`
+}
+
+// Template vars of an escalation chat's first message, besides the
+// pack vars.
+var (
+	EscalationRunVars  = []string{"ticket", "run", "workflow", "issue_ref", "body"}
+	EscalationPoolVars = []string{"ticket", "pool", "quarantine", "body"}
+)
 
 // Step is one ticket of a run, blocked on the previous step.
 type Step struct {
@@ -125,6 +155,14 @@ func holdTemplates(m map[string]any) func() {
 	wfs, _ := m["workflows"].(map[string]any)
 	for _, w := range wfs {
 		wm, _ := w.(map[string]any)
+		if em, ok := wm["escalate"].(map[string]any); ok {
+			for _, k := range []string{"prompt", "pool_prompt"} {
+				if v, ok := em[k]; ok {
+					hs = append(hs, held{em, k, v})
+					delete(em, k)
+				}
+			}
+		}
 		steps, _ := wm["steps"].([]any)
 		for _, s := range steps {
 			sm, _ := s.(map[string]any)
@@ -157,6 +195,77 @@ func setPackVars(m map[string]any, vars map[string]any, file string) error {
 		}
 		if vars != nil {
 			wm["pack_vars"] = vars
+		}
+	}
+	return nil
+}
+
+// resolveEscalatePromptFiles replaces workflows.*.escalate.prompt_file and
+// pool_prompt_file with the file's content, reading relative to dir. Like
+// step prompts, the content stays a template until the ticket is filed.
+func resolveEscalatePromptFiles(m map[string]any, dir, file string) error {
+	wfs, _ := m["workflows"].(map[string]any)
+	names := make([]string, 0, len(wfs))
+	for n := range wfs {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		wm, _ := wfs[n].(map[string]any)
+		em, _ := wm["escalate"].(map[string]any)
+		for _, k := range []string{"prompt", "pool_prompt"} {
+			pf, ok := em[k+"_file"]
+			if !ok {
+				continue
+			}
+			key := fmt.Sprintf("workflows.%s.escalate.%s_file", n, k)
+			if _, both := em[k]; both {
+				return fmt.Errorf("%s: workflows.%s.escalate: set %s or %s_file, not both", file, n, k, k)
+			}
+			p, ok := pf.(string)
+			if !ok || p == "" {
+				return fmt.Errorf("%s: %s must be a path", file, key)
+			}
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(dir, p)
+			}
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return fmt.Errorf("%s: %s: %w", file, key, err)
+			}
+			delete(em, k+"_file")
+			em[k] = string(b)
+		}
+	}
+	return nil
+}
+
+// checkEscalate validates the escalation chat policy of w.
+func (c *Config) checkEscalate(w *Workflow) error {
+	e := w.Escalate
+	if e.PromptFile != "" || e.PoolPromptFile != "" {
+		return errors.New("prompt_file needs a config file location")
+	}
+	if e.ChatPool != "" {
+		p, ok := c.Pools[e.ChatPool]
+		if !ok {
+			return fmt.Errorf("chat_pool: unknown pool %q", e.ChatPool)
+		}
+		if !p.Chat() {
+			return fmt.Errorf("chat_pool: pool %s is not a chat pool", e.ChatPool)
+		}
+		if e.Prompt == "" {
+			return errors.New("chat_pool needs prompt or prompt_file")
+		}
+	}
+	for _, t := range []struct {
+		key, v string
+		vars   []string
+	}{{"prompt", e.Prompt, EscalationRunVars}, {"pool_prompt", e.PoolPrompt, EscalationPoolVars}} {
+		for _, v := range templateVars(t.v) {
+			if _, ok := w.PackVars[v]; !ok && !slices.Contains(t.vars, v) {
+				return fmt.Errorf("%s uses ${%s}, not in %v or pack vars", t.key, v, t.vars)
+			}
 		}
 	}
 	return nil
@@ -263,6 +372,9 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		if _, ok := c.Pools[w.EscalatePool]; !ok {
 			return fmt.Errorf("escalate_pool: unknown pool %q", w.EscalatePool)
 		}
+	}
+	if err := c.checkEscalate(w); err != nil {
+		return fmt.Errorf("escalate: %w", err)
 	}
 	if len(w.Steps) == 0 {
 		return errors.New("steps: at least one step is required")

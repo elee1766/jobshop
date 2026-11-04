@@ -27,3 +27,9 @@ search "<words>" --team ${linear_team}`), then file it in the team with
 where, why it matters, a suggested fix) and link it with `jobshop
 linear relate <NEW> --related <current KEY>`.
 Never push to master directly.
+
+Escalate only when a human is required: a decision, a credential or
+access, or a host config problem you cannot fix. Never for status, FYI or
+"done": send progress with `jobshop report progress` and ticket comments,
+which Desk shows. Wait with `jobshop release --until`, and run `jobshop
+recall` before asking.

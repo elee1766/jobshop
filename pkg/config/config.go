@@ -1140,8 +1140,9 @@ func (c *Config) Prefix(project string) string {
 }
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
-// controller, and the gateway on escalation tickets).
-var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question"}
+// controller, and the gateway on escalation tickets). escalation is the
+// escalation chat the controller opens (#379).
+var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question", "escalation"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

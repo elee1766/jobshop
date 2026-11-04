@@ -359,6 +359,66 @@ packs:
 	assert.Contains(t, c.Workflows["ci-repair"].Steps[1].Prompt, "Conflicts only in docs")
 }
 
+// TestEscalationPolicy (#379): the github pack carries the escalation
+// policy rule for every pool, and the escalation chat prompts from its
+// prompt files when escalation_chat_pool is set; unset, no chat.
+func TestEscalationPolicy(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	load := func(vars string) *Config {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+pools:
+  chat: {agent: a, type: chat, dir: /tmp}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test` + vars + `}
+`})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		return c
+	}
+	c := load("")
+	var rule *PromptRule
+	for i := range c.PromptRules {
+		if c.PromptRules[i].Name == "escalation-policy" {
+			rule = &c.PromptRules[i]
+		}
+	}
+	require.NotNil(t, rule, "the policy rule is in the merged config")
+	assert.Equal(t, RuleSystem, rule.At)
+	assert.Contains(t, rule.Text, "only for a decision, a credential or access")
+	assert.Contains(t, rule.Text, "jobshop release --until")
+	assert.Empty(t, c.Workflows["pr-work"].Escalate.ChatPool, "no chat without escalation_chat_pool")
+
+	c = load(", escalation_chat_pool: chat")
+	e := c.Workflows["pr-work"].Escalate
+	assert.Equal(t, "chat", e.ChatPool)
+	assert.Contains(t, e.Prompt, "${ticket}", "the escalation vars stay templates until the ticket is filed")
+	assert.Contains(t, e.Prompt, "escalation chat")
+	assert.NotContains(t, e.Prompt, "gateway")
+	assert.Contains(t, e.PoolPrompt, "jobshop pool unquarantine ${pool}")
+	assert.NotContains(t, e.PoolPrompt, "gateway")
+
+	// An escalation chat pool that is not a chat pool is refused.
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+pools:
+  dev: {agent: a, dir: /tmp}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test, escalation_chat_pool: dev}
+`})
+	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.ErrorContains(t, err, "is not a chat pool")
+}
+
 // TestGithubPackGeneric: nothing in packs/github names the Jobshop repo.
 func TestGithubPackGeneric(t *testing.T) {
 	err := filepath.WalkDir("../../packs/github", func(path string, d fs.DirEntry, err error) error {

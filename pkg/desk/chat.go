@@ -15,8 +15,11 @@ import (
 
 // Chat (#203): Desk sends to sessions with session.send, the same call
 // the gateway makes, and reads replies from /api/session/<id>/stream
-// (session.subscribe). Escalation panels send by the key the gateway
-// recorded in meta.gateway, so Matrix and Desk feed one session.
+// (session.subscribe). Escalation panels send by meta.escalation.key, the
+// chat the controller opened for the ticket (#379), in the chat pool.
+// Desk's chat pool must be the pool that chat lives in
+// (meta.escalation.pool); a gateway thread mirroring it feeds the same
+// session.
 
 // maxChatText bounds one message; the agent prompt has its own limits.
 const maxChatText = 32 << 10
@@ -120,6 +123,15 @@ func (s *Server) chatAccess(r *http.Request) (any, error) {
 	return ChatAccess{Write: true}, nil
 }
 
+// escalationTitle labels an escalation chat key: "Escalation <ticket>".
+func escalationTitle(key string) (string, bool) {
+	id, ok := strings.CutPrefix(key, "escalation:")
+	if !ok || id == "" {
+		return "", false
+	}
+	return "Escalation " + id, true
+}
+
 // ChatSession is one open session of the chat pool, for GET /api/chat.
 type ChatSession struct {
 	ID    string `json:"id"`
@@ -139,7 +151,11 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 			continue
 		}
 		f, _ := store.DecodeFields[store.SessionFields](*si.Ticket)
-		out = append(out, ChatSession{ID: si.ID, Key: f.Key, Title: si.Ticket.Title, Alive: si.Alive})
+		title := si.Ticket.Title
+		if t, ok := escalationTitle(f.Key); ok {
+			title = t
+		}
+		out = append(out, ChatSession{ID: si.ID, Key: f.Key, Title: title, Alive: si.Alive})
 	}
 	return map[string]any{"pool": s.cfg.ChatPool, "sessions": out}, nil
 }

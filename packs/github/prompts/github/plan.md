@@ -97,7 +97,12 @@ is not for a human: resume the run, defer its failed step with
 `jobshop ticket update <step> --defer <duration until then>`, comment on
 the issue until when, close the escalation ticket, and do not mention
 @${human}.
-If the escalation ticket has `meta.gateway` (`jobshop ticket show <id>`),
-a chat thread exists for it: label and comment as above, then leave the
-ticket open so the human answers in the thread. Otherwise close the
-escalation ticket once the issue is labeled and commented.
+If the escalation ticket has `meta.escalation` (`jobshop ticket show <id>`),
+the controller opened an escalation chat for it (key `escalation:<id>`)
+and its own session is already summarizing it for the operator. Label and
+comment as above, then leave the ticket open so the human answers in the
+chat. Otherwise close the escalation ticket once the issue is labeled and
+commented. Open an escalation or mention @${human} only when a human is
+required (a decision, a credential or access, or a host config problem
+that cannot be fixed here); status goes to `jobshop report progress` and
+ticket comments.

@@ -165,7 +165,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `release --until` defers a ticket without counting a step failure
   (#139).
 - Escalation threads: a gateway with `escalation_room` opens one thread
-  per escalation ticket with an operator session ready (#125).
+  per escalation ticket with an operator session ready (#125); since
+  #379 the controller opens the chat and the thread mirrors it.
+- Escalation chat: the controller starts a keyed chat session per
+  escalation ticket from pack config, shown in Desk (#379).
 - Pool `admin` grants: operator sessions run `reload` and `session list`
   (#126).
 - `run start --after <id>` creates outside blockers with the run; the
@@ -473,7 +476,8 @@ is built (#156); its evidence is one planner pass filing from it.
 (Discord later), read/write attach and the operator pack (section 8).
 `session.send` and `session.subscribe` are built (#121); next are chat
 pool idle TTL and `attach --rw` (#122, built), the gateway (#123, built), the pack (#124),
-escalation threads (#125, built; runbook `docs/verify/escalation-thread.md`).
+escalation threads (#125, built; runbook `docs/verify/escalation-thread.md`);
+since #379 the controller owns the escalation chat and the gateway mirrors it.
 The Discord adapter is built (#182); it needs a live check with a bot token.
 Respawn env check after the next self-deploy: `docs/verify/respawn-env.md` (#244).
 Activity feed live check and rate-limit measurement on gasserver:
@@ -1100,6 +1104,14 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   controller to answer the guard does not run, while reads always run.
   Flag values are left out of the activity record so a body or token
   passed as a flag does not land in the feed.
+- Desk is the operator UI; Matrix and Discord are paused, alternatives
+  not companions; the escalation chat is gateway-independent
+  (2026-11-04, #379): the controller opens a keyed chat session
+  (`escalation:<ticket>`, `meta.escalation`) when it files an escalation
+  ticket, with the first message from pack config
+  (`workflows.<name>.escalate`), and a gateway only mirrors it. No pack
+  config: ticket only. Agents escalate only when a human is required
+  (prompt rule `escalation-policy`).
 
 ## 7. Reference: behavior as built
 
@@ -1140,6 +1152,7 @@ moved from the old 7.x list, oldest first:
 - [Operator pack](notes/124-operator-pack.md) (#124)
 - [Gateway, Matrix adapter](notes/123-gateway-matrix.md) (#123)
 - [Escalation threads](notes/125-escalation-threads.md) (#125)
+- [Escalation chat owned by the controller](notes/379-escalation-chat.md) (#379)
 - [Gateway, Discord adapter](notes/182-gateway-discord.md) (#182)
 - [Jobshop Desk](notes/202-desk.md) (#202)
 - [Chat in Desk](notes/203-desk-chat.md) (#203)
@@ -1182,8 +1195,9 @@ messages and prompts stay in the controller.
   like other changes. This is how a Gas City mayor role returns as config.
 - Escalation threads (2026-11-02): an escalation also opens a Matrix
   thread, created by the gateway from a controller
-  event, with a keyed operator session already holding the escalation
-  context. The operator's reply there unblocks the run.
+  event. Since 2026-11-04 (#379) the keyed session with the escalation
+  context is the controller's escalation chat and the thread mirrors it.
+  The operator's reply there unblocks the run.
 - Testing: gasserver runs a loopback tuwunel homeserver as the jobshop
   user (`jobshop.localhost`, no federation, token registration), so
   agents register their own bot and test users and verify Matrix end to

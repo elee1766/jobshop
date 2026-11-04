@@ -1,5 +1,8 @@
 # Escalation threads (#125)
 
+Superseded in part by #379 (`379-escalation-chat.md`): the controller
+owns the chat session and the first prompt; the gateway only mirrors.
+
 2026-11-02.
 
 - Config: `gateway.<name>.escalation_room`, a room id that must also be

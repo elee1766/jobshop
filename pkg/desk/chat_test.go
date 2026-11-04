@@ -119,7 +119,7 @@ func TestChatList(t *testing.T) {
 		return rpc.SessionInfo{ID: id, Alive: true, Ticket: &store.Ticket{ID: id, Pool: pool, Fields: f}}
 	}
 	ctl := &fakeCtl{results: map[string]any{rpc.MethodSessionList: []rpc.SessionInfo{
-		sess("s1", "operator", "matrix:!r:$e"), sess("s2", "dev", ""), sess("s3", "operator", "desk:abc"),
+		sess("s1", "operator", "matrix:!r:$e"), sess("s2", "dev", ""), sess("s3", "operator", "desk:abc"), sess("s4", "operator", "escalation:js-9"),
 	}}}
 	h := New(Config{ChatPool: "operator"}, ctl, nil).Handler()
 	var out struct {
@@ -128,7 +128,45 @@ func TestChatList(t *testing.T) {
 	}
 	get(t, h, "/api/chat", &out)
 	assert.Equal(t, "operator", out.Pool)
-	require.Len(t, out.Sessions, 2)
+	require.Len(t, out.Sessions, 3)
 	assert.Equal(t, "matrix:!r:$e", out.Sessions[0].Key)
 	assert.Equal(t, "desk:abc", out.Sessions[1].Key)
+	assert.Equal(t, "Escalation js-9", out.Sessions[2].Title, "escalation keys are labeled by ticket (#379)")
+}
+
+// TestEscalationChatSend (#379): the ticket view carries meta.escalation,
+// and /api/chat/send with its key reaches the controller's session in the
+// chat pool; the attention item names the key.
+func TestEscalationChatSend(t *testing.T) {
+	esc := store.Ticket{
+		ID: "js-9", Kind: store.KindTask, Labels: []string{NeedsHuman},
+		Meta: json.RawMessage(`{"escalation":{"key":"escalation:js-9","session":"s7","pool":"operator"}}`),
+	}
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodTicketShow:       rpc.ShowResult{Ticket: esc},
+		rpc.MethodTicketList:       []store.Ticket{esc},
+		rpc.MethodSessionSend:      rpc.SessionSendResult{Session: "s7"},
+		rpc.MethodRunList:          []store.Ticket{},
+		rpc.MethodPoolList:         rpc.PoolStatusResult{},
+		rpc.MethodTicketList + ":": []store.Ticket{esc},
+	}}
+	h := New(Config{ChatPool: "operator"}, ctl, nil).Handler()
+
+	var tv TicketView
+	get(t, h, "/api/ticket/js-9", &tv)
+	var m struct {
+		Escalation struct{ Key, Session string } `json:"escalation"`
+	}
+	require.NoError(t, json.Unmarshal(tv.Ticket.Meta, &m))
+	assert.Equal(t, "escalation:js-9", m.Escalation.Key)
+	assert.Equal(t, "s7", m.Escalation.Session)
+
+	w := postJSON(h, "/api/chat/send", `{"key":"`+m.Escalation.Key+`","text":"resume it"}`, nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, rpc.MethodSessionSend+` {"pool":"operator","key":"escalation:js-9","text":"resume it"}`, ctl.calls[len(ctl.calls)-1])
+
+	var items []AttentionItem
+	get(t, h, "/api/attention", &items)
+	require.NotEmpty(t, items)
+	assert.Equal(t, "escalation:js-9", items[0].Chat)
 }

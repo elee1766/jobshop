@@ -20,7 +20,12 @@ func TestEscalationThread(t *testing.T) {
 		"js-esc": {
 			ID: "js-esc", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
 			Body: "Run js-run needs a human.",
-			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"}}`),
+			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"},"escalation":{"key":"escalation:js-esc","session":"s-esc","pool":"escalations"}}`),
+		},
+		// The controller opened no chat (none configured): no thread.
+		"js-nochat": {
+			ID: "js-nochat", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
+			Meta: []byte(`{"run":{"id":"js-run2","workflow":"drill","escalation":"js-run2/1"}}`),
 		},
 		// Not an escalation: no meta.run.
 		"js-other": {ID: "js-other", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1},
@@ -32,30 +37,23 @@ func TestEscalationThread(t *testing.T) {
 	g.Escalations(ctx)
 	g.Escalations(ctx) // dedup: a second pass opens nothing
 	assert.Equal(t, 1, ad.opened)
-	s := ctl.sent()
-	require.Len(t, s, 1)
-	assert.Equal(t, "operator", s[0].Pool)
-	assert.Equal(t, "fake:!esc:$open1", s[0].Key)
-	assert.Contains(t, s[0].Text, "jobshop run resume js-run")
-	assert.Contains(t, s[0].Text, "Run js-run needs a human.")
+	assert.Empty(t, ctl.sent(), "the gateway sends no prompt of its own")
 	ctl.mu.Lock()
 	tk := ctl.ticket["js-esc"]
 	ctl.mu.Unlock()
 	e, ok := metaEscalation(tk)
 	require.True(t, ok)
-	assert.Equal(t, Escalation{Gateway: "local", Room: "!esc", Root: "$open1", Key: "fake:!esc:$open1", Session: "s-fake:!esc:$open1"}, e)
+	assert.Equal(t, Escalation{Gateway: "local", Room: "!esc", Root: "$open1", Key: "escalation:js-esc", Pool: "escalations", Session: "s-esc"}, e)
 	assert.Contains(t, string(tk.Meta), `"run":`, "other meta packs are kept")
+	assert.Contains(t, string(tk.Meta), `"escalation":`, "the controller's chat record is kept")
 
-	// The session's summary goes to the thread.
-	require.Eventually(t, func() bool { return len(ad.got()) == 2 }, 5*time.Second, 10*time.Millisecond)
-	assert.True(t, strings.HasPrefix(ad.got()[1], "!esc/$open1: echo: You are handling escalation ticket js-esc"))
-
-	// The operator replies in the thread: same key, same session.
+	// The operator replies in the thread: the controller's key and pool.
 	g.Handle(ctx, Message{Thread: Thread{Room: "!esc", Root: "$open1"}, ID: "$r", Sender: "@op", Text: "resume it"})
-	s = ctl.sent()
-	require.Len(t, s, 2)
-	assert.Equal(t, "fake:!esc:$open1", s[1].Key)
-	require.Eventually(t, func() bool { return len(ad.got()) == 3 }, 5*time.Second, 10*time.Millisecond)
+	s := ctl.sent()
+	require.Len(t, s, 1)
+	assert.Equal(t, "escalations", s[0].Pool)
+	assert.Equal(t, "escalation:js-esc", s[0].Key)
+	require.Eventually(t, func() bool { return slices.Contains(ad.got(), "!esc/$open1: echo: resume it") }, 5*time.Second, 10*time.Millisecond)
 
 	// The session closes the ticket: one final message, then no more.
 	ctl.mu.Lock()
@@ -67,8 +65,8 @@ func TestEscalationThread(t *testing.T) {
 	g.Escalations(ctx)
 	g.Escalations(ctx)
 	got := ad.got()
-	require.Len(t, got, 4)
-	assert.Equal(t, "!esc/$open1: jobshop: escalation js-esc closed (done). Replies here still reach the same session.", got[3])
+	require.Len(t, got, 3)
+	assert.Equal(t, "!esc/$open1: jobshop: escalation js-esc closed (done). Replies here still reach the same session.", got[2])
 	ctl.mu.Lock()
 	e, _ = metaEscalation(ctl.ticket["js-esc"])
 	ctl.mu.Unlock()
@@ -89,15 +87,15 @@ func TestEscalationOwnedElsewhere(t *testing.T) {
 	assert.Empty(t, ctl.sent())
 }
 
-// TestPoolEscalationThread: a pool quarantine escalation (#146) opens a
-// thread like a run escalation, with a prompt about the pool.
+// TestPoolEscalationThread: a pool quarantine escalation (#146) with a
+// controller chat opens a thread like a run escalation.
 func TestPoolEscalationThread(t *testing.T) {
 	ad := &fakeAdapter{}
 	ctl := &fakeController{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{
 		"js-pool": {
 			ID: "js-pool", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
 			Body: "Pool dev starts no sessions.",
-			Meta: []byte(`{"pool":{"name":"dev","quarantine":"spawn: repo /x: no such file"}}`),
+			Meta: []byte(`{"pool":{"name":"dev","quarantine":"spawn: repo /x: no such file"},"escalation":{"key":"escalation:js-pool","session":"s-esc","pool":"escalations"}}`),
 		},
 	}}
 	ctl.changes = make(chan rpc.Event)
@@ -109,14 +107,8 @@ func TestPoolEscalationThread(t *testing.T) {
 
 	// Created with the label: the event alone opens the thread, no poll.
 	ctl.changes <- rpc.Event{Kind: rpc.EventKindTicket, Op: "create", ID: "js-pool", Status: store.StatusOpen}
-	require.Eventually(t, func() bool { return len(ctl.sent()) == 1 }, 5*time.Second, 10*time.Millisecond)
-	ad.mu.Lock()
-	assert.Equal(t, 1, ad.opened)
-	ad.mu.Unlock()
-	s := ctl.sent()
-	require.Len(t, s, 1)
-	assert.Contains(t, s[0].Text, "jobshop pool unquarantine dev")
-	assert.Contains(t, s[0].Text, "Pool dev starts no sessions.")
+	require.Eventually(t, func() bool { ad.mu.Lock(); defer ad.mu.Unlock(); return ad.opened == 1 }, 5*time.Second, 10*time.Millisecond)
+	assert.Empty(t, ctl.sent())
 	ctl.mu.Lock()
 	tk := ctl.ticket["js-pool"]
 	ctl.mu.Unlock()
@@ -139,7 +131,7 @@ func TestEscalationEvents(t *testing.T) {
 	esc := func(id string) store.Ticket {
 		return store.Ticket{
 			ID: id, Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
-			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"}}`),
+			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"},"escalation":{"key":"escalation:` + id + `","session":"s-` + id + `","pool":"escalations"}}`),
 		}
 	}
 	ctl.mu.Lock()
@@ -174,25 +166,15 @@ func TestEscalationEvents(t *testing.T) {
 	require.Eventually(t, func() bool { return opened() == 2 }, 5*time.Second, 10*time.Millisecond)
 }
 
-// TestGitHubRef: the escalation prompt names the issue or PR with its
-// repo (#183), and falls back when meta.github is missing.
-func TestGitHubRef(t *testing.T) {
-	assert.Equal(t, "its GitHub issue (`gh issue view 7 --repo acme/widget --comments`)",
-		githubRef(store.Ticket{Meta: []byte(`{"github":{"repo":"acme/widget","issue":7}}`)}))
-	assert.Equal(t, "its GitHub PR (`gh pr view 9 --repo acme/widget --comments`)",
-		githubRef(store.Ticket{Meta: []byte(`{"github":{"repo":"acme/widget","pr":9}}`)}))
-	assert.Contains(t, githubRef(store.Ticket{}), "run's vars")
-}
-
 // TestEscalationRethread: posts to a thread whose root the network
 // rejects (#197) open a new thread, recorded on the ticket, and replies
-// there reach the same session.
+// there reach the same chat session.
 func TestEscalationRethread(t *testing.T) {
 	ad := &fakeAdapter{gone: map[string]bool{"$open1": true}}
 	ctl := &fakeController{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{
 		"js-esc": {
 			ID: "js-esc", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
-			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"}}`),
+			Meta: []byte(`{"run":{"id":"js-run","workflow":"drill","escalation":"js-run/1"},"escalation":{"key":"escalation:js-esc","session":"s-esc","pool":"escalations"}}`),
 		},
 	}}
 	g := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
@@ -200,25 +182,22 @@ func TestEscalationRethread(t *testing.T) {
 	t.Cleanup(func() { cancel(); g.wg.Wait() })
 
 	g.Escalations(ctx)
-	// The summary fails on $open1 and lands in $open2.
-	require.Eventually(t, func() bool {
-		for _, p := range ad.got() {
-			if strings.HasPrefix(p, "!esc/$open2: echo: You are handling") {
-				return true
-			}
-		}
-		return false
-	}, 5*time.Second, 10*time.Millisecond)
+	// The controller's session replies; the post fails on $open1 and lands in $open2.
+	ctl.events <- rpc.SessionEvent{Type: rpc.EventTurnStart, Time: new(time.Now())}
+	ctl.events <- rpc.SessionEvent{Type: rpc.EventText, Text: "summary"}
+	ctl.events <- rpc.SessionEvent{Type: rpc.EventTurnEnd}
+	require.Eventually(t, func() bool { return slices.Contains(ad.got(), "!esc/$open2: summary") }, 5*time.Second, 10*time.Millisecond)
 	ctl.mu.Lock()
 	e, _ := metaEscalation(ctl.ticket["js-esc"])
 	ctl.mu.Unlock()
 	assert.Equal(t, "$open2", e.Root)
-	assert.Equal(t, "fake:!esc:$open1", e.Key, "the session key stays")
+	assert.Equal(t, "escalation:js-esc", e.Key, "the session key stays")
 
 	g.Handle(ctx, Message{Thread: Thread{Room: "!esc", Root: "$open2"}, ID: "$r", Sender: "@op", Text: "resume it"})
 	s := ctl.sent()
-	require.Len(t, s, 2)
-	assert.Equal(t, "fake:!esc:$open1", s[1].Key)
+	require.Len(t, s, 1)
+	assert.Equal(t, "escalation:js-esc", s[0].Key)
+	assert.Equal(t, "escalations", s[0].Pool)
 	require.Eventually(t, func() bool {
 		return slices.Contains(ad.got(), "!esc/$open2: echo: resume it")
 	}, 5*time.Second, 10*time.Millisecond)
@@ -226,7 +205,7 @@ func TestEscalationRethread(t *testing.T) {
 	// A restarted gateway maps the recorded thread back to the key.
 	g2 := New(Config{Name: "local", Pool: "operator", Rooms: []string{"!esc"}, Senders: []string{"@op"}, EscalationRoom: "!esc"}, ad, ctl, nil)
 	g2.Escalations(ctx)
-	assert.Equal(t, "fake:!esc:$open1", g2.threadKey(Thread{Room: "!esc", Root: "$open2"}))
+	assert.Equal(t, "escalation:js-esc", g2.threadKey(Thread{Room: "!esc", Root: "$open2"}))
 }
 
 func TestQuestionThread(t *testing.T) {

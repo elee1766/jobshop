@@ -137,6 +137,8 @@ type Controller struct {
 	tickMu sync.Mutex
 	// runMu serializes run start (key dedup) and run state changes.
 	runMu sync.Mutex
+	// escMu serializes opening and finishing escalation chats (#379).
+	escMu sync.Mutex
 	// events fans store changes out to events.subscribe.
 	events *hub
 	// subSource reads GitHub threads; nil means gh (tests set a fake).
@@ -387,6 +389,7 @@ func (c *Controller) tick() {
 	c.sweepRuns()
 	c.sweepBatches()
 	c.sweepLinearAsks(c.ctx)
+	c.sweepEscalationChats(c.ctx)
 	c.pruneInbox()
 }
 
