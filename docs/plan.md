@@ -259,6 +259,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   too (#235, `docs/notes/235-stall-ready-since-unblock.md`).
 - A session's task created with no pool goes to the session's pool (#244,
   `docs/notes/244-orphan-tickets.md`).
+- Resumed sessions keep PATH in jcode's `bash -lc` tool shell on NixOS
+  (#253, `docs/notes/253-resume-shell-env.md`).
 
 ## 5. What's next
 
