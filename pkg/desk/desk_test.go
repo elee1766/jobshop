@@ -97,6 +97,10 @@ func TestAttention(t *testing.T) {
 		rpc.MethodRunList + ":" + store.RunNeedsHuman: []store.Ticket{{ID: "r1", Title: "run", UpdatedAt: mid}},
 		rpc.MethodTicketList + ":open":                []store.Ticket{{ID: "t1", Title: "escalation", CreatedAt: old}},
 		rpc.MethodPoolList:                            rpc.PoolStatusResult{Quarantined: map[string]string{"dev": "agent not found"}},
+		rpc.MethodWaitList: []rpc.WaitItem{
+			{ID: "w1", Wait: store.Wait{Reason: "approval", Owner: "bob", TimedOut: true, Timeout: mid.Add(time.Minute)}},
+			{ID: "w2", Wait: store.Wait{Reason: "not yet"}},
+		},
 	}}
 	h := New(Config{DeployState: dir}, ctl, nil).Handler()
 	var items []AttentionItem
@@ -106,7 +110,7 @@ func TestAttention(t *testing.T) {
 		got = append(got, it.Kind+":"+it.ID)
 	}
 	// Oldest first; items without a time last.
-	assert.Equal(t, []string{"ticket:t1", "run:r1", "deploy:bbbbbbbbbb", "pool:dev"}, got)
+	assert.Equal(t, []string{"ticket:t1", "run:r1", "wait:w1", "deploy:bbbbbbbbbb", "pool:dev"}, got)
 	assert.Contains(t, strings.Join(ctl.calls, "\n"), `"label":"needs-human"`)
 }
 

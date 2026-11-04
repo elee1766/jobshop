@@ -79,6 +79,8 @@ WHERE t.project = sqlc.arg(project)
   AND t.kind IN (SELECT value FROM json_each(sqlc.arg(kinds_json)))
   AND (sqlc.narg(pool) IS NULL OR t.pool = sqlc.narg(pool))
   AND t.defer_until <= sqlc.arg(now)
+  -- fields.wait parks a ticket until the controller clears it (#381).
+  AND json_extract(t.fields, '$.wait') IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
@@ -98,6 +100,8 @@ WHERE t.project = sqlc.arg(project)
     OR (t.status = 'open' AND t.holder = '' AND t.pool = sqlc.arg(pool))
   )
   AND t.defer_until <= sqlc.arg(now)
+  -- fields.wait parks a ticket until the controller clears it (#381).
+  AND json_extract(t.fields, '$.wait') IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
