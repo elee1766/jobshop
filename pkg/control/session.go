@@ -1205,6 +1205,11 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (host.Spec,
 		"JOBSHOP_SOCKET=" + c.socketPath(t.ID),
 		"JOBSHOP_SESSION=" + t.ID,
 		"PATH=" + filepath.Dir(exe) + string(os.PathListSeparator) + os.Getenv("PATH"),
+		// Agents may run tools in a login shell (jcode does after a resume:
+		// `bash -lc`). On NixOS /etc/profile then sources set-environment,
+		// which overwrites PATH with the system one, so jobshop and gh
+		// vanish (#253). This marker makes it skip that and keep ours.
+		"__NIXOS_SET_ENVIRONMENT_DONE=1",
 	}
 	for k, v := range agent.Env {
 		env = append(env, k+"="+v)

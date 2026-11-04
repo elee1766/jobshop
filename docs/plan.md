@@ -261,6 +261,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/244-orphan-tickets.md`).
 - Operator pack at host scope: one include, `config show` instances,
   grant across instances (#248, `docs/notes/248-host-operator.md`).
+- Resumed sessions keep PATH in jcode's `bash -lc` tool shell on NixOS
+  (#253, `docs/notes/253-resume-shell-env.md`).
 
 ## 5. What's next
 
