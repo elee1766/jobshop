@@ -113,7 +113,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 	require.Eventually(t, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "held"))
 		return err == nil
-	}, 20*time.Second, 20*time.Millisecond)
+	}, dialWait, 20*time.Millisecond)
 	// Interrupt the held turn; the message is delivered right after.
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{ID: sent.Session, Text: "stop", Interrupt: true}, nil))
 	require.Eventually(t, func() bool { return ev2.has(rpc.EventTurnEnd, "cancelled") && ev2.has(rpc.EventText, "echo: stop") },
@@ -193,7 +193,7 @@ func TestChatPoolKeys(t *testing.T) {
 	var s rpc.ShowResult
 	require.Eventually(t, func() bool {
 		return admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: b.Session}, &s) == nil && s.Ticket.Status == store.StatusClosed
-	}, 30*time.Second, 100*time.Millisecond)
+	}, dialWait, 100*time.Millisecond)
 	assert.Equal(t, "idle", s.Ticket.Resolution)
 }
 

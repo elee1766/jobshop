@@ -57,7 +57,7 @@ func TestImprovementSession(t *testing.T) {
 			}
 			line, _, _ := strings.Cut(string(b), "\n")
 			return json.Unmarshal([]byte(line), &p) == nil
-		}, 20*time.Second, 50*time.Millisecond, "the agent ran in the session worktree")
+		}, dialWait, 50*time.Millisecond, "the agent ran in the session worktree")
 		return p
 	}
 

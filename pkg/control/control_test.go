@@ -65,6 +65,12 @@ func TestSessionScope(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist, "session socket is removed")
 }
 
+// dialWait bounds dial and the other Eventually waits in these tests only
+// on failure: they return as soon as the condition holds. With ~40 parallel
+// controllers under -race -count=5, startup (migrate, config and pack load)
+// and trigger passes took over 5s (#365).
+const dialWait = 2 * time.Minute
+
 func dial(t *testing.T, path string) *rpc.Client {
 	t.Helper()
 	var c *rpc.Client
@@ -72,7 +78,7 @@ func dial(t *testing.T, path string) *rpc.Client {
 		var err error
 		c, err = rpc.Dial(t.Context(), path)
 		return err == nil
-	}, 5*time.Second, 10*time.Millisecond)
+	}, dialWait, 10*time.Millisecond)
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }

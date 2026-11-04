@@ -61,7 +61,7 @@ func TestPromptRules(t *testing.T) {
 		t.Helper()
 		var tk store.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: title, Pool: "dev"}, &tk))
-		require.Eventually(t, func() bool { return show(tk.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+		require.Eventually(t, func() bool { return show(tk.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
 	}
 
 	runTicket("first")
@@ -116,7 +116,7 @@ func TestPromptRules(t *testing.T) {
 	require.Eventually(t, func() bool {
 		pr = rpc.SessionPromptResult{}
 		return admin.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, &pr) == nil && pr.Turn == "ticket"
-	}, 20*time.Second, 50*time.Millisecond, "last turn %q", pr.Turn)
+	}, dialWait, 50*time.Millisecond, "last turn %q", pr.Turn)
 	assert.Equal(t, next.ID, pr.Ticket)
 	assert.Equal(t, []string{"dev-only", "hook"}, pr.Rules)
 	var srcs []string
@@ -135,9 +135,9 @@ func TestPromptRules(t *testing.T) {
 	require.Eventually(t, func() bool {
 		p := hostPidOf(t, sdir)
 		return p != 0 && p != pid && host.Alive(sdir)
-	}, 20*time.Second, 50*time.Millisecond)
+	}, dialWait, 50*time.Millisecond)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	require.Eventually(t, func() bool { return show(next.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	require.Eventually(t, func() bool { return show(next.ID).Status == store.StatusClosed }, dialWait, 50*time.Millisecond)
 	p = prompts()
 	last := p[len(p)-1]
 	assert.Contains(t, last, next.ID)
