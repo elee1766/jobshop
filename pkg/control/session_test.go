@@ -1348,3 +1348,60 @@ func TestRoutedBackPrompt(t *testing.T) {
 	assert.Contains(t, p, "admin:\n"+finding)
 	assert.Contains(t, p, "hand the ticket back to refinery")
 }
+
+// TestScaleDownCordon scales dev to 0 during a blocked turn: the session is
+// cordoned, finishes its ticket, claims nothing new and ends scaled_down.
+// The target survives a controller restart, and auto takes the work.
+func TestScaleDownCordon(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
+	stop := start()
+
+	admin := dial(t, root.AdminSocket())
+	show := func(c *rpc.Client, id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, c.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	var first, second store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &first))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "started"))
+		return err == nil
+	}, 20*time.Second, 20*time.Millisecond)
+
+	zero := 0
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Target: &zero}, nil))
+	var infos []rpc.SessionInfo
+	require.Eventually(t, func() bool {
+		infos = nil
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+		return len(infos) == 1 && infos[0].Cordon == store.CordonScale
+	}, 10*time.Second, 50*time.Millisecond)
+	sessID := infos[0].ID
+	assert.Equal(t, store.StatusInProgress, show(admin, first.ID).Status, "working session is not stopped")
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &second))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
+	require.Eventually(t, func() bool { return show(admin, sessID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+	assert.Equal(t, "scaled_down", show(admin, sessID).Resolution)
+	assert.Equal(t, store.StatusClosed, show(admin, first.ID).Status, "running turn finished")
+	assert.Equal(t, store.StatusOpen, show(admin, second.ID).Status, "no new claim while scaled to 0")
+
+	stop()
+	stop = start()
+	defer func() { stop() }()
+	admin = dial(t, root.AdminSocket())
+	var ps rpc.PoolStatusResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolList, nil, &ps))
+	require.Len(t, ps.Pools, 1)
+	require.NotNil(t, ps.Pools[0].Target, "target survives restart")
+	assert.Equal(t, 0, *ps.Pools[0].Target)
+	time.Sleep(300 * time.Millisecond)
+	assert.Equal(t, store.StatusOpen, show(admin, second.ID).Status)
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Auto: true}, nil))
+	require.Eventually(t, func() bool { return show(admin, second.ID).Status == store.StatusClosed }, 20*time.Second, 50*time.Millisecond)
+}

@@ -31,6 +31,8 @@ type Config struct {
 	// (#205): packs' rules in pack order, then this file's.
 	PromptRules []PromptRule `yaml:"prompt_rules"`
 	Telemetry   Telemetry    `yaml:"telemetry"`
+	// Limits are host-wide caps across pools (#281).
+	Limits Limits `yaml:"limits"`
 	// Attention configures `jobshop attention` (#185).
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
@@ -286,6 +288,13 @@ type Attention struct {
 	RollbackFile string `yaml:"rollback_file"`
 }
 
+// Limits are host-wide caps (#281).
+type Limits struct {
+	// MaxSessions caps supervisor-started sessions across all ticket
+	// pools. 0 means no host cap.
+	MaxSessions int `yaml:"max_sessions"`
+}
+
 // Telemetry configures observability.
 type Telemetry struct {
 	// MetricsListen is the TCP address for Prometheus /metrics, e.g.
@@ -347,7 +356,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "report-incidents", "attention", "activity"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "report-incidents", "attention", "activity"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -373,6 +382,15 @@ type Pool struct {
 	// MaxSessions caps concurrent sessions. 0 means the pool never starts
 	// sessions on its own (manual sessions only).
 	MaxSessions int `yaml:"max_sessions"`
+	// MinSessions are kept open with no ready work (a warm pool, #281).
+	// Default 0. Must be <= max_sessions.
+	MinSessions int `yaml:"min_sessions"`
+	// ScaleDownAfter is how long demand must stay below the open count
+	// before surplus sessions are cordoned (Go duration). Default 10m.
+	ScaleDownAfter string `yaml:"scale_down_after"`
+	// Priority orders pools when limits.max_sessions caps the host: lower
+	// gets its sessions first. Default 0.
+	Priority int `yaml:"priority"`
 	// Dir is the working directory for agents. With Repo set, each session
 	// instead gets its own git worktree of Repo under its session directory.
 	Dir  string `yaml:"dir"`
@@ -540,10 +558,16 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if p.MaxSessions < 0 {
 			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", src("pools", name), name)
 		}
+		if p.MinSessions < 0 || p.MinSessions > p.MaxSessions {
+			return nil, fmt.Errorf("%s: pool %s: min_sessions must be between 0 and max_sessions", src("pools", name), name)
+		}
+		if p.MinSessions > 0 && p.Chat() {
+			return nil, fmt.Errorf("%s: pool %s: min_sessions does not apply to chat pools", src("pools", name), name)
+		}
 		if p.ConversationExport && c.Telemetry.LogsURL() == "" {
 			return nil, fmt.Errorf("%s: pool %s: conversation_export needs telemetry.otlp_endpoint or otlp_logs_endpoint", src("pools", name), name)
 		}
-		for _, d := range []struct{ key, v string }{{"idle_timeout", p.IdleTimeout}, {"turn_timeout", p.TurnTimeout}} {
+		for _, d := range []struct{ key, v string }{{"idle_timeout", p.IdleTimeout}, {"turn_timeout", p.TurnTimeout}, {"scale_down_after", p.ScaleDownAfter}} {
 			if d.v == "" {
 				continue
 			}
@@ -552,6 +576,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			}
 		}
 		c.Pools[name] = p
+	}
+	if c.Limits.MaxSessions < 0 {
+		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)
 	}
 	if s := c.Subscriptions; s != nil {
 		for _, d := range []struct{ key, v string }{{"interval", s.Interval}, {"resume_window", s.ResumeWindow}} {

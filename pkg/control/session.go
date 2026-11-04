@@ -106,6 +106,15 @@ type runner struct {
 	// Written under mu (session.prompt reads it); the runner goroutine
 	// reads it without.
 	delivered time.Time
+	// lastClaim is when the runner last claimed a ticket; the scaler
+	// cordons the least recently used first (#281). Guarded by mu.
+	lastClaim time.Time
+}
+
+func (r *runner) lastClaimAt() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastClaim
 }
 
 func (r *runner) setTurnTicket(id string) {
@@ -805,9 +814,34 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		if r.c.poolDrained(r.pool) && r.idle() {
 			return errSessionEnd{resolution: resolutionDrained}
 		}
+		// A cordoned session (#281) finishes what it holds and claims
+		// nothing new. Scale and drain cordons then end it; a manual one
+		// keeps it open and out of rotation.
+		cordon := r.c.sessionCordon(ctx, r.id)
+		var cordonWork string
+		if cordon != nil {
+			cordonWork = r.c.cordonedWork(ctx, r.id)
+		}
+		if cordon != nil && cordonWork == "" {
+			switch cordon.Reason {
+			case store.CordonScale:
+				return errSessionEnd{resolution: resolutionScaledDown}
+			case store.CordonDrain:
+				return errSessionEnd{resolution: resolutionDrained}
+			}
+		}
 		var t store.Ticket
 		err := store.ErrNoWork
-		if !pool.Chat() { // chat sessions answer messages only
+		switch {
+		case pool.Chat(): // chat sessions answer messages only
+		case cordon != nil:
+			if cordonWork != "" {
+				t, _, err = r.c.store.Claim(ctx, cordonWork, r.id, r.c.leaseDur())
+				if err != nil && ctx.Err() == nil {
+					err = store.ErrNoWork // closed or reassigned meanwhile; look again
+				}
+			}
+		default:
 			t, _, err = r.c.store.ClaimNext(ctx, store.ClaimNext{
 				Project: r.project(), Pool: r.pool, Holder: r.id, Lease: r.c.leaseDur(),
 			})
@@ -818,7 +852,14 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				idleSince = r.delivered
 			}
 			if havePool && time.Since(idleSince) > idle {
-				return errSessionEnd{resolution: resolutionIdle}
+				// A manually cordoned session stays for whoever cordoned
+				// it; a warm pool keeps min_sessions (or the manual
+				// target) open with no work.
+				if cordon != nil || r.c.keepWarm(ctx, r.pool) {
+					idleSince = time.Now()
+				} else {
+					return errSessionEnd{resolution: resolutionIdle}
+				}
 			}
 			select {
 			case <-ctx.Done():
@@ -834,6 +875,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			return err
 		}
 		r.c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
+		r.mu.Lock()
+		r.lastClaim = time.Now()
+		r.mu.Unlock()
 		r.setTurnTicket(t.ID)
 		comments, err := r.c.store.Comments(ctx, t.ID)
 		if err != nil {
@@ -1442,41 +1486,7 @@ func (c *Controller) supervise() {
 	if c.draining() {
 		return
 	}
-	backingOff := c.backingOffPools()
-	for name, p := range c.config().Pools {
-		if p.Chat() || p.MaxSessions == 0 || c.poolDrained(name) || backingOff[name] || c.poolPaused(name) {
-			// Chat sessions are started by session.send, not by ready work.
-			// A rate-limited pool would only start more sessions that hit
-			// the same limit; a crash-looping one is paused.
-			continue
-		}
-		open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: name})
-		if err != nil {
-			continue
-		}
-		// Idle sessions (holding nothing) will claim ready work themselves;
-		// start more only for the rest, up to the cap. Count idle before
-		// reading ready: a claim in between then drops the ticket from
-		// ready instead of counting it as both ready and held (#102).
-		idle := 0
-		for _, s := range open {
-			held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: store.StatusInProgress})
-			if err == nil && len(held) == 0 {
-				idle++
-			}
-		}
-		ready, err := c.store.Ready(ctx, p.Project, name, p.MaxSessions)
-		if err != nil {
-			continue
-		}
-		want := min(len(ready)-idle, p.MaxSessions-len(open))
-		for range max(want, 0) {
-			if _, err := c.newSession(ctx, "controller", p.Project, name, p.Agent, "", ""); err != nil {
-				c.log.Error("start session", "pool", name, "err", err)
-				break
-			}
-		}
-	}
+	c.reconcile()
 }
 
 // recordGauges sets the session and ready-ticket gauges for each pool.

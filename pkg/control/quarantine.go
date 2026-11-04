@@ -246,9 +246,9 @@ func (c *Controller) poolStatus() rpc.PoolStatusResult {
 	return res
 }
 
-func (c *Controller) poolList(_ context.Context, sc scope, _ struct{}) (any, error) {
+func (c *Controller) poolList(ctx context.Context, sc scope, _ struct{}) (any, error) {
 	if err := c.requireGrant(sc, "pool-list", "pool list"); err != nil {
 		return nil, err
 	}
-	return c.poolStatus(), nil
+	return c.poolStatusCtx(ctx), nil
 }

@@ -15,9 +15,10 @@ const drainAll = "*"
 
 const resolutionDrained = "drained"
 
-// drainPools marks pools drained: the supervisor starts no sessions for them and
-// their sessions claim no new tickets, ending once they hold nothing. The
-// state is in memory only; a controller restart undrains everything.
+// drainPools marks pools drained: desired becomes 0, the supervisor starts
+// no sessions for them and their sessions claim no new tickets, ending once
+// they hold nothing. The state is saved in scale.json, so it survives a
+// controller restart (#281).
 func (c *Controller) drainPools(_ context.Context, sc scope, p rpc.DrainParams) (any, error) {
 	if err := c.requireGrant(sc, "drain", "drain"); err != nil {
 		return nil, err
@@ -41,7 +42,11 @@ func (c *Controller) drainPools(_ context.Context, sc scope, p rpc.DrainParams) 
 		delete(c.drained, key)
 	}
 	out := slices.Sorted(maps.Keys(c.drained))
+	err := c.saveScaleLocked()
 	c.mu.Unlock()
+	if err != nil {
+		return nil, fmt.Errorf("save %s: %w", scaleFile, err)
+	}
 	c.log.Info("drain changed", "pool", key, "undrain", p.Undrain, "drained", out)
 	return rpc.DrainResult{Drained: out}, nil
 }

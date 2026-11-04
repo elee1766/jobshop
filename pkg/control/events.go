@@ -205,9 +205,9 @@ func (c *Controller) eventsSubscribe(ctx context.Context, sc scope, p rpc.Events
 	defer c.events.remove(sub)
 	res := rpc.EventsSubscribeResult{Seq: p.SinceSeq}
 	send := func(ev rpc.Event) error {
-		// Ready, lagged and activity events are not history rows (seq 0
+		// Ready, lagged, activity and pool events are not history rows (seq 0
 		// or a resume mark) and always pass.
-		ctl := ev.Kind == rpc.EventKindReady || ev.Kind == rpc.EventKindLagged || ev.Kind == rpc.EventKindActivity
+		ctl := ev.Kind == rpc.EventKindReady || ev.Kind == rpc.EventKindLagged || ev.Kind == rpc.EventKindActivity || ev.Kind == rpc.EventKindPool
 		if ev.Seq <= res.Seq && !ctl {
 			return nil
 		}
@@ -217,7 +217,7 @@ func (c *Controller) eventsSubscribe(ctx context.Context, sc scope, p rpc.Events
 		if !ctl && !eventMatches(p, ev) {
 			return nil
 		}
-		if ev.Kind == rpc.EventKindActivity && len(p.Kinds) > 0 && !slices.Contains(p.Kinds, ev.Kind) {
+		if (ev.Kind == rpc.EventKindActivity || ev.Kind == rpc.EventKindPool) && len(p.Kinds) > 0 && !slices.Contains(p.Kinds, ev.Kind) {
 			return nil
 		}
 		return sc.peer.conn.SendNotification(ctx, rpc.NotifyEvent, ev)

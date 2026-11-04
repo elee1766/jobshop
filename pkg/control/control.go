@@ -88,7 +88,12 @@ type Controller struct {
 	sessions map[string]context.CancelFunc // open session id -> stops its cli.sock
 	runners  map[string]*runner
 	drain    bool            // full shutdown in progress: start nothing new
-	drained  map[string]bool // drained pools (drainAll for every pool); memory only
+	drained  map[string]bool // drained pools (drainAll for every pool); persisted in scale.json
+	// Pool scaling (#281): manual targets (persisted with drains), the
+	// stabilization samples and each pool's last desired count.
+	scaleTargets map[string]int
+	scaleHist    map[string][]scaleSample
+	scaleViews   map[string]poolScaleView
 	// Pool crash-loop quarantine, memory only (see quarantine.go).
 	poolCrashLog    map[string][]time.Time
 	poolPausedUntil map[string]time.Time
@@ -208,6 +213,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
 		minter:       identity.NewMinter(),
 		drained:      map[string]bool{},
+		scaleTargets: map[string]int{}, scaleHist: map[string][]scaleSample{}, scaleViews: map[string]poolScaleView{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 		poolQuarantined: map[string]string{},
 		events:          ev,
@@ -225,6 +231,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	} else {
 		c.saveLastGood(cfg)
 	}
+	c.loadScale()
 	defer c.cancel()
 	return c.serve()
 }
@@ -575,6 +582,8 @@ func init() {
 		rpc.MethodBatchShow:        bind((*Controller).batchShow),
 		rpc.MethodBatchList:        bind((*Controller).batchList),
 		rpc.MethodPoolList:         bind((*Controller).poolList),
+		rpc.MethodPoolScale:        bind((*Controller).poolScaleRPC),
+		rpc.MethodSessionCordon:    bind((*Controller).sessionCordonRPC),
 		rpc.MethodAttention:        bind((*Controller).attention),
 		rpc.MethodPoolUnquarantine: bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:  bind((*Controller).reportIncidents),

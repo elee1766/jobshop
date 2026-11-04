@@ -134,6 +134,9 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 	if p.Holder != "" && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
 	}
+	if err := c.checkAssign(ctx, p.Holder, p.Force); err != nil {
+		return nil, err
+	}
 	// A session's follow-up task with no pool would never be claimed (#244);
 	// it goes to the creator's pool, which can reroute it.
 	if p.Kind == store.KindTask && p.Pool == "" && !sc.admin {
@@ -213,6 +216,11 @@ func (c *Controller) ready(ctx context.Context, sc scope, p rpc.ReadyParams) (an
 func (c *Controller) update(ctx context.Context, sc scope, p rpc.UpdateParams) (any, error) {
 	if p.Holder != nil && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
+	}
+	if p.Holder != nil {
+		if err := c.checkAssign(ctx, *p.Holder, p.Force); err != nil {
+			return nil, err
+		}
 	}
 	if err := c.checkMetaPacks(p.Meta); err != nil {
 		return nil, err
@@ -341,6 +349,11 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 		}
 		// Resuming held work is not a new claim, so it skips claim hooks.
 		held, _ := c.store.List(ctx, store.Filter{Holder: holder, Status: store.StatusInProgress, Limit: 1})
+		if len(held) == 0 && c.sessionCordon(ctx, holder) != nil {
+			// A cordoned session takes no new work (#281); it may still
+			// claim a ticket pre-assigned to it by id.
+			return nil, fmt.Errorf("%w: session %s is cordoned", store.ErrNoWork, holder)
+		}
 		r.Ticket, r.Claim, err = c.store.ClaimNext(ctx, store.ClaimNext{
 			Project: proj, Pool: pool, Holder: holder, Lease: c.leaseDur(),
 		})
@@ -532,6 +545,9 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	}
 	c.mu.Unlock()
 	info.Drained = r != nil && c.poolDrained(r.pool)
+	if cd := c.sessionCordon(ctx, id); cd != nil {
+		info.Cordon = cd.Reason
+	}
 	if !info.Alive {
 		info.AgentPid = 0
 		if ex, ok := host.ReadExit(dir); ok {
