@@ -52,7 +52,7 @@ SELECT * FROM inbox
 WHERE (sqlc.arg(state) = '' OR state = sqlc.arg(state))
   AND (sqlc.arg(source) = '' OR source = sqlc.arg(source))
 ORDER BY received_at DESC, id DESC
-LIMIT sqlc.arg(lim);
+LIMIT CAST(sqlc.arg(lim) AS INTEGER);
 
 -- name: InboxPrune :execrows
 DELETE FROM inbox

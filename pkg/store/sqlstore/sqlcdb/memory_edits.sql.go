@@ -164,7 +164,7 @@ const listMemoryEdits = `-- name: ListMemoryEdits :many
 SELECT id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at FROM memory_edits
 WHERE (?1 IS NULL OR state = ?1)
 ORDER BY merged_at DESC, id DESC
-LIMIT ?2
+LIMIT CAST(?2 AS INTEGER)
 `
 
 type ListMemoryEditsParams struct {

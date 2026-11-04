@@ -107,6 +107,10 @@ WHERE id = sqlc.arg(id)
   AND fence = sqlc.arg(fence)
   AND status = 'in_progress';
 
+-- LIMIT CAST(? AS INTEGER), here and in every query with a bound limit:
+-- a bare bound LIMIT makes SQLite re-prepare a cached statement each
+-- time the value changes, which was a fifth of the control tests' CPU
+-- (#433). The expression is evaluated at run time instead.
 -- name: ListTickets :many
 SELECT * FROM tickets
 WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
@@ -122,7 +126,7 @@ WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
       AND m.pack = sqlc.narg(meta_pack) AND m.mkey = sqlc.narg(meta_key) AND m.value = sqlc.narg(meta_value)))
 ORDER BY priority, created_at, id
-LIMIT sqlc.arg(max_rows);
+LIMIT CAST(sqlc.arg(max_rows) AS INTEGER);
 
 -- ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
 -- engine does not bind parameters in ORDER BY, so it is a second query.
@@ -141,7 +145,7 @@ WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
       AND m.pack = sqlc.narg(meta_pack) AND m.mkey = sqlc.narg(meta_key) AND m.value = sqlc.narg(meta_value)))
 ORDER BY created_at DESC, id DESC
-LIMIT sqlc.arg(max_rows);
+LIMIT CAST(sqlc.arg(max_rows) AS INTEGER);
 
 -- name: ReadyTickets :many
 -- Parameters are bare ? (see OrphanedTickets).
@@ -174,7 +178,7 @@ WHERE t.project = ?
     WHERE r.ticket_id = t.id
       AND NOT EXISTS (SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready'))
 ORDER BY t.priority, t.created_at, t.id
-LIMIT ?;
+LIMIT CAST(? AS INTEGER);
 
 -- Three tiers: my in-progress work, tickets pre-assigned to me, the pool queue.
 -- name: NextClaimCandidate :one
@@ -236,7 +240,7 @@ WHERE (? = 1 OR t.project = ?)
   AND t.kind IN (sqlc.slice(kinds))
   AND (t.pool = '' OR t.pool NOT IN (sqlc.slice(known)))
 ORDER BY t.priority, t.created_at, t.id
-LIMIT ?;
+LIMIT CAST(? AS INTEGER);
 
 -- name: ListChildren :many
 SELECT * FROM tickets
@@ -259,7 +263,7 @@ WHERE kind = 'run'
   AND (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
   AND (sqlc.narg(state) IS NULL OR f_state = sqlc.narg(state))
 ORDER BY created_at DESC, id DESC
-LIMIT sqlc.arg(max_rows);
+LIMIT CAST(sqlc.arg(max_rows) AS INTEGER);
 
 -- SetParent re-parents a ticket (batch adoption, #169). The caller bumps
 -- the revision and writes history through mutate.

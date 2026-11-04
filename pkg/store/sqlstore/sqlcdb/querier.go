@@ -105,6 +105,10 @@ type Querier interface {
 	ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, error)
 	ListSlots(ctx context.Context) ([]ResourceSlot, error)
 	ListStepsCreated(ctx context.Context, arg ListStepsCreatedParams) ([]Ticket, error)
+	// LIMIT CAST(? AS INTEGER), here and in every query with a bound limit:
+	// a bare bound LIMIT makes SQLite re-prepare a cached statement each
+	// time the value changes, which was a fifth of the control tests' CPU
+	// (#433). The expression is evaluated at run time instead.
 	ListTickets(ctx context.Context, arg ListTicketsParams) ([]Ticket, error)
 	// ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
 	// engine does not bind parameters in ORDER BY, so it is a second query.

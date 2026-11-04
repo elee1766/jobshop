@@ -443,6 +443,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - SQLite store prepares each query once and seeds new databases from a
   migrated template; pkg/control -race 138s to 63s (#433,
   `docs/notes/433-sqlite-stmt-cache.md`).
+- Bound LIMITs are `CAST(? AS INTEGER)` so cached statements are not
+  re-prepared; the schema template is kept as bytes. pkg/control -race
+  82s to 61s wall (#433, `docs/notes/433-limit-reprepare.md`).
 - Ingest split mode: `ingest.workers: external` moves admission to
   `jobshop ingest work` over the admin socket, with heartbeats,
   missing-worker and backlog attention and inbox gauges (#443,

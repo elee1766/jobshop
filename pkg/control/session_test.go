@@ -379,6 +379,7 @@ func TestSessionList(t *testing.T) {
 	// An orphan: a session directory whose lock is held (here by the test
 	// process) but that no session ticket names. Made after startup so the
 	// controller's startup reaping does not stop it.
+	pass(t, root.Dir, 1)
 	odir := root.SessionDir("js-orphan")
 	require.NoError(t, os.MkdirAll(odir, 0o700))
 	lf, err := os.Create(filepath.Join(odir, host.LockFile))
@@ -485,6 +486,9 @@ func TestSessionReap(t *testing.T) {
 	require.DirExists(t, root.SessionDir(closed.ID))
 
 	// Made after startup so the controller's startup reaping leaves it.
+	// The admin socket serves before that reaping; a pass is taken only
+	// after it.
+	pass(t, root.Dir, 1)
 	odir := root.SessionDir("js-orphan")
 	require.NoError(t, os.MkdirAll(odir, 0o700))
 	holder := exec.Command(os.Args[0], "hold-lock", odir)

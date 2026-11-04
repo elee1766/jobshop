@@ -581,7 +581,7 @@ func kindsList(ks []store.Kind) []string {
 func (s *Store) Ready(ctx context.Context, project, pool string, n int) ([]store.Ticket, error) {
 	rows, err := s.q.ReadyTickets(ctx, sqlcdb.ReadyTicketsParams{
 		Project: project, Kinds: kindsList(nil), Column3: boolInt(pool == ""), Pool: pool,
-		DeferUntil: ms(s.now()), Limit: limit(n),
+		DeferUntil: ms(s.now()), Column6: limit(n),
 	})
 	if err != nil {
 		return nil, err
@@ -598,7 +598,7 @@ func (s *Store) Orphaned(ctx context.Context, project string, pools []string, n 
 		known = []string{""}
 	}
 	rows, err := s.q.OrphanedTickets(ctx, sqlcdb.OrphanedTicketsParams{
-		Column1: boolInt(project == ""), Project: project, Kinds: kindsList(nil), Known: known, Limit: limit(n),
+		Column1: boolInt(project == ""), Project: project, Kinds: kindsList(nil), Known: known, Column5: limit(n),
 	})
 	if err != nil {
 		return nil, err
@@ -1199,7 +1199,7 @@ func (s *Store) Changes(ctx context.Context, after int64, n int) ([]store.Histor
 	if n <= 0 {
 		n = store.DefaultLimit
 	}
-	rows, err := s.q.ListChanges(ctx, sqlcdb.ListChangesParams{Seq: after, Limit: int64(n)})
+	rows, err := s.q.ListChanges(ctx, sqlcdb.ListChangesParams{Seq: after, Lim: int64(n)})
 	if err != nil {
 		return nil, err
 	}
