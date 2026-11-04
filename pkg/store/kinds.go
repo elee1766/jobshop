@@ -186,7 +186,20 @@ type StepFields struct {
 	// Resources are the resource keys the step holds while in progress
 	// (#400). It is ready only when each has a free slot.
 	Resources []string `json:"resources,omitempty"`
+	// Type is command or http for steps the controller runs (#396);
+	// empty is an agent step.
+	Type string `json:"type,omitempty"`
+	// Command is the last attempt's filled command line or "METHOD url",
+	// Output its bounded, redacted stdout or response body, Outcome the
+	// outcome word it set, and Result ok, not_yet or failed.
+	Command string `json:"command,omitempty"`
+	Output  string `json:"output,omitempty"`
+	Outcome string `json:"outcome,omitempty"`
+	Result  string `json:"result,omitempty"`
 }
+
+// Auto reports whether the controller runs the step itself.
+func (f StepFields) Auto() bool { return f.Type == "command" || f.Type == "http" }
 
 // StepFailure counts one failed attempt on a step ticket: a close
 // "failed", a release while unclosed, or an expired lease. It bumps

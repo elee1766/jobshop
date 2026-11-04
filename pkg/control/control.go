@@ -137,6 +137,10 @@ type Controller struct {
 	tickMu sync.Mutex
 	// runMu serializes run start (key dedup) and run state changes.
 	runMu sync.Mutex
+	// autoMu guards auto, the command and http step attempts running in
+	// this process (#396).
+	autoMu sync.Mutex
+	auto   autoSteps
 	// events fans store changes out to events.subscribe.
 	events *hub
 	// subSource reads GitHub threads; nil means gh (tests set a fake).
@@ -394,6 +398,7 @@ func (c *Controller) tick() {
 		c.runTriggers()
 	}
 	c.supervise()
+	c.runAutoSteps()
 	c.reportOrphans()
 	c.sweepRuns()
 	c.sweepEscalationChats(c.ctx)

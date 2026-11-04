@@ -392,6 +392,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Escalation chat: the controller opens one chat per escalation ticket
   from pack config; Desk shows it; the gateway mirrors (#379,
   `docs/notes/379-escalation-chat.md`, `docs/verify/escalation-chat.md`).
+- Command and http workflow steps run by the controller, no session
+  (#396, `docs/notes/396-command-http-steps.md`).
 
 ## 5. What's next
 
@@ -1149,6 +1151,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   not companions; the escalation chat is gateway-independent
   (2026-11-04, #379). The controller opens it from pack policy
   (`escalate:` / `escalation:`), and gateways only mirror it.
+- Command and http steps (2026-11-04, #396) are step tickets with no
+  pool, claimed by the controller as holder `controller`, so retries,
+  escalation and run completion stay the agent-step code paths. The
+  attempt key is run/step/fence: a restart with `on_restart: retry`
+  resumes the same claim and key; a new claim is a new attempt.
 
 ## 7. Reference: behavior as built
 
