@@ -85,7 +85,7 @@ func planGHKeyed(c ghCall, repo string, args []string, scoped string, stdin io.R
 		return k, fmt.Errorf("%s needs a body (-b or -F)", ghKeyFlag)
 	}
 	k.body = body + "\n\n" + ghKeyMarker(scoped)
-	k.args = append(rest, "--body", k.body)
+	k.args = append(slices.Clone(rest), "--body", k.body)
 	return k, nil
 }
 
