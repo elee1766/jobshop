@@ -27,7 +27,7 @@ pools:
     # What the operator reads and does across instances: the merged
     # config and its instances, sessions, pools, triggers, attention, and
     # reload. Run list/show and tickets need no grant.
-    admin: [config-reload, config-show, session-list, pool-list, pool-scale, session-cordon, trigger-list, attention, activity]
+    admin: [config-reload, config-show, session-list, pool-list, pool-scale, session-cordon, session-config, trigger-list, attention, activity]
 # Improvement sessions (#249): a session keyed improve:<slug> gets
 # prompts/improve.md after the pool prompt.
 prompt_rules:

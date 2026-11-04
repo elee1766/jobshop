@@ -32,7 +32,7 @@
   {#if actErr}<div class="card err">{actErr}</div>{/if}
   <div class="card scroll">
     <table data-testid="sessions">
-      <thead><tr><th>Session</th><th>State</th><th>Ticket</th><th class="hide-sm">Pool</th><th class="hide-sm">Last event</th><th></th></tr></thead>
+      <thead><tr><th>Session</th><th>State</th><th>Ticket</th><th class="hide-sm">Pool</th><th class="hide-sm">Model</th><th class="hide-sm">Last event</th><th></th></tr></thead>
       <tbody>
         {#each sessions.data as s (s.id)}
           {@const st = stateOf(s)}
@@ -45,6 +45,7 @@
               {/if}
             </td>
             <td class="hide-sm muted">{s.ticket?.pool ?? ''}</td>
+            <td class="hide-sm muted mono">{s.model ?? ''}{s.effort ? ' · ' + s.effort : ''}{#if s.override}<span class="pill warn">override</span>{/if}</td>
             <td class="hide-sm muted">{ago(s.seq_time)}</td>
             <td class="acts">
               {#if s.alive}
@@ -57,10 +58,10 @@
             </td>
           </tr>
           {#if url.session === s.id}
-            <tr><td colspan="6" class="journal"><Journal id={s.id} /></td></tr>
+            <tr><td colspan="7" class="journal"><Journal id={s.id} /></td></tr>
           {/if}
         {:else}
-          <tr><td colspan="6" class="faint">No live sessions.</td></tr>
+          <tr><td colspan="7" class="faint">No live sessions.</td></tr>
         {/each}
       </tbody>
     </table>

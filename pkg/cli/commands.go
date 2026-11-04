@@ -640,6 +640,25 @@ type sessionCmd struct {
 	Cordon   sessionCordonCmd   `cmd:"" help:"Take a session out of rotation: it finishes its ticket and claims nothing new, but stays open (admin or session-cordon grant)."`
 	Uncordon sessionUncordonCmd `cmd:"" help:"Return a cordoned session to rotation."`
 	Drain    sessionDrainCmd    `cmd:"" help:"Cordon a session and end it once it holds nothing."`
+	Config   sessionConfigCmd   `cmd:"" help:"Set ACP config options (model=<route> effort=<level>) on one session, applied between turns; --reset goes back to the pool's (admin or session-config grant)."`
+}
+
+type sessionConfigCmd struct {
+	ID      string   `arg:"" help:"Session id."`
+	Options []string `arg:"" optional:"" help:"<id>=<value> pairs, e.g. model=openai-oauth:gpt-5 effort=high."`
+	Reset   bool     `help:"Drop the session's override first, back to the pool's values."`
+}
+
+func (c sessionConfigCmd) Run(g *Globals) error {
+	p := rpc.SessionConfigParams{ID: c.ID, Reset: c.Reset, Options: map[string]string{}}
+	for _, kv := range c.Options {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" || v == "" {
+			return fmt.Errorf("option %q: want <id>=<value>", kv)
+		}
+		p.Options[k] = v
+	}
+	return g.call(rpc.MethodSessionConfig, p, nil)
 }
 
 type sessionCordonCmd struct {
