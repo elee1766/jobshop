@@ -248,6 +248,9 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		return nil, err
 	}
 	c.countClose(ctx, t)
+	if p.Resolution == "failed" {
+		c.recordStepFailure(ctx, t, "closed failed", failedReason(t))
+	}
 	if t.Kind == store.KindStep && t.ParentID != "" {
 		c.checkRun(ctx, t.ParentID)
 	}
@@ -401,6 +404,10 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	t, err := c.store.Release(ctx, cl, p.Reason, until)
 	if err != nil {
 		return nil, err
+	}
+	if until.IsZero() {
+		// A plain release of a step counts as a failed attempt.
+		c.recordStepFailure(ctx, t, "released", p.Reason)
 	}
 	c.stepEvent(ctx, t)
 	return t, nil

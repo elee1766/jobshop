@@ -236,6 +236,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 		from = p.From
 	}
 	res := rpc.AnswerResult{}
+	c.recordAnswer(ctx, qt, qm.Ticket, from, text)
 	if _, err := c.store.AddComment(ctx, sc.actor, qt.ID, "answer from "+from+": "+text); err != nil {
 		return nil, err
 	}

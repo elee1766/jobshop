@@ -363,6 +363,10 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if err != nil {
 		return nil, err
 	}
+	if step.Status == store.StatusClosed && step.Resolution == "done" {
+		// Reopening a finished step is a review finding against it.
+		c.recordReviewFinding(ctx, sc, *step)
+	}
 	if step.Status == store.StatusClosed {
 		if _, err := c.store.Reopen(ctx, sc.actor, step.ID); err != nil {
 			return nil, err

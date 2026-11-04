@@ -263,6 +263,54 @@ type Store interface {
 	// ListRuns returns runs newest first. Empty project or state matches all.
 	ListRuns(ctx context.Context, project, state string, limit int) ([]Ticket, error)
 
+	// AddLearning records a learning (#264). Kind and Source are
+	// validated; Status defaults to open.
+	AddLearning(ctx context.Context, l Learning) (Learning, error)
+	// Learnings returns learnings newest first.
+	Learnings(ctx context.Context, f LearningFilter) ([]Learning, error)
+
 	// Close releases backend resources.
 	Close() error
+}
+
+// Learning kinds, sources and statuses (#264).
+const (
+	LearningCorrection = "correction"
+	LearningFailure    = "failure"
+	LearningWorkaround = "workaround"
+
+	LearningSourceAgent      = "agent"
+	LearningSourceController = "controller"
+
+	LearningOpen     = "open"
+	LearningApplied  = "applied"
+	LearningRejected = "rejected"
+)
+
+// LearningKinds lists the valid learning kinds.
+var LearningKinds = []string{LearningCorrection, LearningFailure, LearningWorkaround}
+
+// Learning is a correction, failure or workaround recorded for the curator.
+// Scope is "global", "repo:<owner/name>" or "pool:<name>".
+type Learning struct {
+	ID        int64     `json:"id"`
+	Kind      string    `json:"kind"`
+	Summary   string    `json:"summary"`
+	Fix       string    `json:"fix,omitempty"`
+	Scope     string    `json:"scope"`
+	Ticket    string    `json:"ticket,omitempty"`
+	Session   string    `json:"session,omitempty"`
+	Source    string    `json:"source"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// LearningFilter selects learnings. Zero values match everything.
+type LearningFilter struct {
+	Since  time.Time
+	Scope  string
+	Kind   string
+	Status string
+	Ticket string
+	Limit  int // 0 means DefaultLimit
 }

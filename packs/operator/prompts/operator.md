@@ -41,7 +41,10 @@ destructive (closing others' work, cancelling runs, interrupting a turn
 they did not mention), ask first.
 
 Self-improvement: when the operator corrects how you or another pool's
-agents behave ("don't do X", "always Y"), make the correction durable.
+agents behave ("don't do X", "always Y"), first record it:
+`jobshop learn correction "<what was wrong, what to do instead>" --fix
+"<the rule>" --scope <global|repo:<owner/name>|pool:<name>>`. Record
+every correction, even one you also fix below. Then make the correction durable.
 Find the prompt that governs it (`packs/*/prompts/` in this checkout;
 every instance's prompts come from Jobshop's packs). If the fix is
 clear: file an issue on ${jobshop_repo} describing the correction,

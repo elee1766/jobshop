@@ -76,6 +76,8 @@ const (
 	MethodReport           = "report"
 	MethodQuestionAnswer   = "question.answer"
 	MethodActivityList     = "activity.list"
+	MethodLearnAdd         = "learn.add"
+	MethodLearnList        = "learn.list"
 )
 
 // Activity sources (#255).
@@ -1125,4 +1127,27 @@ type AnswerParams struct {
 type AnswerResult struct {
 	Question store.Ticket  `json:"question"`
 	Message  *store.Ticket `json:"message,omitempty"`
+}
+
+// LearnParams records a learning (#264). Kind is correction, failure or
+// workaround; Scope is global, repo:<owner/name> or pool:<name> (default:
+// the ticket's repo or pool, else global). Ticket defaults to the
+// session's current ticket.
+type LearnParams struct {
+	Kind    string `json:"kind"`
+	Summary string `json:"summary"`
+	Fix     string `json:"fix,omitempty"`
+	Scope   string `json:"scope,omitempty"`
+	Ticket  string `json:"ticket,omitempty"`
+}
+
+// LearnListParams filters learn.list. The result is []store.Learning,
+// newest first.
+type LearnListParams struct {
+	Since  time.Duration `json:"since,omitempty"`
+	Scope  string        `json:"scope,omitempty"`
+	Kind   string        `json:"kind,omitempty"`
+	Status string        `json:"status,omitempty"`
+	Ticket string        `json:"ticket,omitempty"`
+	Limit  int           `json:"limit,omitempty"`
 }
