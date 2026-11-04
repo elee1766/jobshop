@@ -82,7 +82,8 @@ func TestSessionConfig(t *testing.T) {
 	assert.NotContains(t, configSets(t, root), "m2", "not applied mid-turn")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	passEventually(t, root.Dir, func() bool { return show(busy.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
-	passEventually(t, root.Dir, func() bool { return info().Model == "m2" }, "condition not met after supervisor passes")
+	// Model and effort are applied one after the other; wait for both.
+	passEventually(t, root.Dir, func() bool { in := info(); return in.Model == "m2" && in.Effort == "high" }, "condition not met after supervisor passes")
 	sets := configSets(t, root)
 	assert.Contains(t, sets, "model=m2 busy=false")
 	assert.Contains(t, sets, "reasoning_effort=high busy=false")
