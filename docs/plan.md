@@ -374,6 +374,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#349, `docs/notes/349-jobshop-gh.md`).
 - TestStepFailureSources runs on the fake clock (#375,
   `docs/notes/375-step-failure-fake-clock.md`).
+- NixOS module `sandbox.mise.tools`: host-installed mise tools shared
+  read-only with sandboxes (#316, `docs/notes/316-sandbox-mise-shared.md`).
 
 ## 5. What's next
 
@@ -507,6 +509,7 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 (#307).
 
 Model config live check: `docs/verify/model-config.md` (#304).
+Shared mise live check: `docs/verify/sandbox-mise-shared.md` (#316).
 
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
