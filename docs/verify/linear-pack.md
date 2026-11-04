@@ -42,3 +42,18 @@ client credentials enabled, its id and secret in host secret files.
    the question on `<KEY>-2` show the app as author, not a person.
 4. The token does not appear in `journalctl -u jobshop` (grep for its
    first 12 characters from `jobshop identity token <KEY>`).
+
+## Webhook (#300)
+
+Needs the App identity above and a public HTTPS URL forwarded to the
+controller (reverse proxy or tunnel, e.g. `cloudflared`).
+
+1. Set `linear.webhook_listen: 127.0.0.1:9470` and the identity's
+   `webhook_secret_file` (the App's webhook signing secret); restart.
+   The log shows `serving linear webhook`.
+2. In the App settings, point the webhook at `<url>/linear/webhook`
+   with Issue and Comment events.
+3. Raise `linear_poll` to `1h`. File `<KEY>-4` in an intake state: a
+   stall-check run starts within seconds, not at the next poll.
+4. Repeat step 7 above: the reply answers the question within seconds.
+5. `curl -X POST -d '{}' <url>/linear/webhook` returns 401.

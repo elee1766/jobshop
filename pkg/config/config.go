@@ -44,6 +44,8 @@ type Config struct {
 	// Subscriptions polls GitHub threads that tickets follow (#187).
 	// Absent: off.
 	Subscriptions *Subscriptions `yaml:"subscriptions"`
+	// Linear configures the Linear webhook endpoint (#300).
+	Linear Linear `yaml:"linear"`
 	// Activity polls recent GitHub and Linear activity for Desk (#255).
 	// Absent: off.
 	Activity *Activity `yaml:"activity"`
@@ -293,6 +295,14 @@ type Limits struct {
 	// MaxSessions caps supervisor-started sessions across all ticket
 	// pools. 0 means no host cap.
 	MaxSessions int `yaml:"max_sessions"`
+}
+
+// Linear configures Linear push delivery (#300).
+type Linear struct {
+	// WebhookListen is the TCP address for POST /linear/webhook. Empty:
+	// off, intake and replies are polled only. Linear must reach it, so a
+	// host with no public endpoint needs a reverse proxy or tunnel.
+	WebhookListen string `yaml:"webhook_listen"`
 }
 
 // Telemetry configures observability.

@@ -135,6 +135,12 @@ How one issue flows:
 4. The refinery merges; post-merge comments the sha and moves the issue
    to `linear_done_state`.
 
+Optional push (#300): with `linear.webhook_listen` set and the
+identity's `webhook_secret_file`, Linear's Issue and Comment webhooks
+run steps 1 and 3's reply handling right away instead of at the next
+poll. Linear must reach the address, so it needs a reverse proxy or
+tunnel. Polling still runs.
+
 Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 
 ## Vars

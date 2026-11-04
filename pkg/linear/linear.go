@@ -107,6 +107,26 @@ func (c *Client) Viewer(ctx context.Context) (Viewer, error) {
 	return r.Viewer, nil
 }
 
+// Me is the token's own actor id and its organization id, for checking
+// who sent a webhook (#300).
+func (c *Client) Me(ctx context.Context) (user, org string, err error) {
+	var r struct {
+		Viewer struct {
+			ID           string `json:"id"`
+			Organization struct {
+				ID string `json:"id"`
+			} `json:"organization"`
+		} `json:"viewer"`
+	}
+	if err := c.do(ctx, `query { viewer { id organization { id } } }`, nil, &r); err != nil {
+		return "", "", err
+	}
+	if r.Viewer.ID == "" || r.Viewer.Organization.ID == "" {
+		return "", "", fmt.Errorf("linear: viewer organization: empty response")
+	}
+	return r.Viewer.ID, r.Viewer.Organization.ID, nil
+}
+
 func (c *Client) do(ctx context.Context, query string, vars map[string]any, out any) error {
 	b, err := json.Marshal(map[string]any{"query": query, "variables": vars})
 	if err != nil {

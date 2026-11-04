@@ -162,6 +162,25 @@ type follower struct {
 // pollSubscriptions runs one pass: register new threads, fetch new
 // comments, deliver them.
 func (c *Controller) pollSubscriptions(ctx context.Context, src threadSource) {
+	c.pollThreads(ctx, src, "")
+}
+
+// pollSubscriptionThread runs one pass over the single thread th, for a
+// webhook that says it changed (#300). Off when subscriptions are.
+func (c *Controller) pollSubscriptionThread(ctx context.Context, th thread) {
+	src := c.subSource
+	if src == nil {
+		src = muxSource{gh: ghSource{}, linear: linearSource{c: c, url: c.linearURL}}
+	}
+	c.pollThreads(ctx, src, th.key())
+}
+
+// pollThreads is a pass over every followed thread, or only the one keyed
+// only when it is set. subPollMu keeps a webhook pass and the pump from
+// delivering the same comment twice.
+func (c *Controller) pollThreads(ctx context.Context, src threadSource, only string) {
+	c.subPollMu.Lock()
+	defer c.subPollMu.Unlock()
 	cfg := c.config()
 	if cfg.Subscriptions == nil {
 		return
@@ -201,6 +220,9 @@ func (c *Controller) pollSubscriptions(ctx context.Context, src threadSource) {
 		}
 	}
 	for _, k := range order {
+		if only != "" && k != only {
+			continue
+		}
 		fs := byThread[k]
 		th, seen := threadOf(fs, k)
 		cs, err := src.Comments(ctx, th, seen)
