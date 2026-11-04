@@ -51,8 +51,10 @@ func dedupe(cfg *config.Config, sent map[string]string, parts []PromptPart) (sen
 	var removed []PromptPart
 	for _, name := range sortedNames(sent) {
 		if _, ok := mode[name]; !ok {
-			removed = append(removed, PromptPart{Source: "removed:" + name, Status: injectRemoved,
-				Text: fmt.Sprintf("Prompt rule %q no longer applies.", name)})
+			removed = append(removed, PromptPart{
+				Source: "removed:" + name, Status: injectRemoved,
+				Text: fmt.Sprintf("Prompt rule %q no longer applies.", name),
+			})
 			delete(next, name)
 		}
 	}
