@@ -391,6 +391,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Resource slots: `resources:` (counted or keyed) and step
   `needs_resources`, enforced in the ready and claim queries (#400,
   `docs/notes/400-resource-slots.md`, check `docs/verify/resource-slots.md`).
+- Store ticket queries are portable SQL: hot fields keys and meta
+  lookups are plain columns and a `ticket_meta` table, lists are
+  `sqlc.slice` (#405, `docs/notes/405-portable-sql.md`).
 - Escalation chat: the controller opens one chat per escalation ticket
   from pack config; Desk shows it; the gateway mirrors (#379,
   `docs/notes/379-escalation-chat.md`, `docs/verify/escalation-chat.md`).
@@ -1158,6 +1161,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   is held by an in-progress ticket naming its key, so every claim end
   frees it in the same write and there is no slot row to leak. Only
   capacities are stored, synced from config.
+- Store SQL is portable except recall and DDL types (2026-11-04, #405):
+  queried fields keys are columns the store writes from `fields`, which
+  stays the source of record; meta filters use `ticket_meta`. Recall
+  stays the one per-engine module. This prepares for Postgres; it is not
+  a decision to build it.
 - Desk is the operator UI; Matrix and Discord are paused, alternatives
   not companions; the escalation chat is gateway-independent
   (2026-11-04, #379). The controller opens it from pack policy

@@ -16,9 +16,11 @@ SELECT * FROM inbox WHERE delivery_id = ?;
 -- name: InboxGet :one
 SELECT * FROM inbox WHERE id = ?;
 
+-- now comes before the slice: sqlc numbers later parameters ?N, which
+-- would point into an expanded list of two or more states.
 -- name: InboxNextClaimable :one
 SELECT * FROM inbox
-WHERE state IN (sqlc.slice(states)) AND (holder = '' OR lease_until <= sqlc.arg(now))
+WHERE (holder = '' OR lease_until <= sqlc.arg(now)) AND state IN (sqlc.slice(states))
 ORDER BY received_at, id
 LIMIT 1;
 

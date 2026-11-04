@@ -229,11 +229,14 @@ func (s *Store) mutate(ctx context.Context, q *sqlcdb.Queries, id, actor, op str
 	prev := t.Revision
 	t.Revision++
 	t.UpdatedAt = now.UTC().Truncate(time.Millisecond)
+	cols := fieldColumns(t.Fields)
 	n, err := q.WriteTicket(ctx, sqlcdb.WriteTicketParams{
 		Title: t.Title, Body: t.Body, Status: string(t.Status), Resolution: t.Resolution,
 		Priority: int64(t.Priority), Pool: t.Pool, Holder: t.Holder,
 		LeaseUntil: ms(t.LeaseUntil), Fence: t.Fence, DeferUntil: ms(t.DeferUntil),
 		Fields: string(t.Fields), Meta: string(t.Meta), Revision: t.Revision,
+		FKey: cols.key, FTo: cols.to, FState: cols.state, FWorkflow: cols.workflow,
+		FIndex: cols.index, FWaiting: cols.waiting,
 		UpdatedAt: ms(now), ClosedAt: ms(t.ClosedAt), ID: id, ExpectedRevision: prev,
 	})
 	if err != nil {
@@ -241,6 +244,9 @@ func (s *Store) mutate(ctx context.Context, q *sqlcdb.Queries, id, actor, op str
 	}
 	if n == 0 {
 		return store.Ticket{}, fmt.Errorf("%w: %s", store.ErrConflict, id)
+	}
+	if err := syncMeta(ctx, q, id, t.Meta); err != nil {
+		return store.Ticket{}, err
 	}
 	if err := history(ctx, q, t, now, actor, op, diff); err != nil {
 		return store.Ticket{}, err
@@ -275,15 +281,21 @@ func (s *Store) insert(ctx context.Context, q *sqlcdb.Queries, actor string, nt 
 	if nt.ParentID != "" {
 		parent = sql.NullString{String: nt.ParentID, Valid: true}
 	}
+	cols := fieldColumns(fields)
 	err = q.InsertTicket(ctx, sqlcdb.InsertTicketParams{
 		ID: id, Project: nt.Project, Kind: string(nt.Kind), Title: nt.Title, Body: nt.Body,
 		Status: string(store.StatusOpen), Priority: int64(prio), Pool: nt.Pool, Holder: nt.Holder,
 		ParentID: parent, DeferUntil: ms(nt.DeferUntil), Ephemeral: boolInt(nt.Ephemeral),
 		Fields: string(fields), Meta: string(meta), Revision: 1, CreatedBy: actor,
 		CreatedAt: ms(now), UpdatedAt: ms(now),
+		FKey: cols.key, FTo: cols.to, FState: cols.state, FWorkflow: cols.workflow,
+		FIndex: cols.index, FWaiting: cols.waiting,
 	})
 	if err != nil {
 		return store.Ticket{}, classify(err, id)
+	}
+	if err := syncMeta(ctx, q, id, meta); err != nil {
+		return store.Ticket{}, err
 	}
 	for _, l := range nt.Labels {
 		if err := addLabel(ctx, q, id, l); err != nil {
@@ -398,7 +410,7 @@ func (s *Store) ApplyGraph(ctx context.Context, actor string, g store.Graph) (ou
 
 // FindOpenBatchByKey returns the open batch of project with key.
 func (s *Store) FindOpenBatchByKey(ctx context.Context, project, key string) (store.Ticket, error) {
-	row, err := s.q.FindOpenBatchByKey(ctx, sqlcdb.FindOpenBatchByKeyParams{Project: project, Key: key})
+	row, err := s.q.FindOpenBatchByKey(ctx, sqlcdb.FindOpenBatchByKeyParams{Project: project, Key: nstr(key)})
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.Ticket{}, fmt.Errorf("%w: open batch %s key %q", store.ErrNotFound, project, key)
 	}
@@ -428,7 +440,7 @@ func (s *Store) ListChildren(ctx context.Context, id string) ([]store.Ticket, er
 
 // FindOpenRunByKey returns the open run of workflow with key.
 func (s *Store) FindOpenRunByKey(ctx context.Context, workflow, key string) (store.Ticket, error) {
-	row, err := s.q.FindOpenRunByKey(ctx, sqlcdb.FindOpenRunByKeyParams{Key: key, Workflow: workflow})
+	row, err := s.q.FindOpenRunByKey(ctx, sqlcdb.FindOpenRunByKeyParams{Key: nstr(key), Workflow: nstr(workflow)})
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.Ticket{}, fmt.Errorf("%w: open run %s key %q", store.ErrNotFound, workflow, key)
 	}
@@ -458,6 +470,8 @@ func limit(n int) int64 {
 	return int64(n)
 }
 
+func nstr(s string) sql.NullString { return sql.NullString{String: s, Valid: true} }
+
 func narg(s string) any {
 	if s == "" {
 		return nil
@@ -467,27 +481,26 @@ func narg(s string) any {
 
 // List returns tickets matching f ordered by priority then age.
 func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
-	var metaPath any
+	var metaPack any
+	var metaKey sql.NullString
 	if f.MetaPack != "" && f.MetaKey != "" {
-		// json_extract path; quoted so pack and key names cannot inject.
-		mp, _ := json.Marshal(f.MetaPack)
-		mk, _ := json.Marshal(f.MetaKey)
-		metaPath = "$." + string(mp) + "." + string(mk)
+		metaPack = f.MetaPack
+		metaKey = sql.NullString{String: f.MetaKey, Valid: true}
 	}
-	metaValue := sql.NullString{String: f.MetaValue, Valid: metaPath != nil}
+	metaValue := sql.NullString{String: f.MetaValue, Valid: metaPack != nil}
 	var rows []sqlcdb.Ticket
 	var err error
 	if f.Newest {
 		rows, err = s.q.ListTicketsNewest(ctx, sqlcdb.ListTicketsNewestParams{
 			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
 			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
-			Label: narg(f.Label), MetaPath: metaPath, MetaValue: metaValue, MaxRows: limit(f.Limit),
+			Label: narg(f.Label), MetaPack: metaPack, MetaKey: metaKey, MetaValue: metaValue, MaxRows: limit(f.Limit),
 		})
 	} else {
 		rows, err = s.q.ListTickets(ctx, sqlcdb.ListTicketsParams{
 			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
 			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
-			Label: narg(f.Label), MetaPath: metaPath, MetaValue: metaValue, MaxRows: limit(f.Limit),
+			Label: narg(f.Label), MetaPack: metaPack, MetaKey: metaKey, MetaValue: metaValue, MaxRows: limit(f.Limit),
 		})
 	}
 	if err != nil {
@@ -504,19 +517,22 @@ func toTickets(rows []sqlcdb.Ticket) []store.Ticket {
 	return out
 }
 
-func kindsJSON(ks []store.Kind) string {
+func kindsList(ks []store.Kind) []string {
 	if len(ks) == 0 {
 		ks = store.ClaimableKinds
 	}
-	b, _ := json.Marshal(ks) // []string-like, cannot fail
-	return string(b)
+	out := make([]string, len(ks))
+	for i, k := range ks {
+		out[i] = string(k)
+	}
+	return out
 }
 
 // Ready returns the claimable frontier for a project, optionally one pool.
 func (s *Store) Ready(ctx context.Context, project, pool string, n int) ([]store.Ticket, error) {
 	rows, err := s.q.ReadyTickets(ctx, sqlcdb.ReadyTicketsParams{
-		Project: project, KindsJson: kindsJSON(nil), Pool: narg(pool),
-		Now: ms(s.now()), MaxRows: limit(n),
+		Project: project, Kinds: kindsList(nil), Column3: boolInt(pool == ""), Pool: pool,
+		DeferUntil: ms(s.now()), Limit: limit(n),
 	})
 	if err != nil {
 		return nil, err
@@ -526,12 +542,14 @@ func (s *Store) Ready(ctx context.Context, project, pool string, n int) ([]store
 
 // Orphaned returns open, unclaimed tickets with no pool or an unknown one.
 func (s *Store) Orphaned(ctx context.Context, project string, pools []string, n int) ([]store.Ticket, error) {
-	if pools == nil {
-		pools = []string{}
+	// An empty slice binds as IN (NULL), which matches nothing under NOT
+	// IN; "" is never a pool name here (pool = '' is its own case).
+	known := pools
+	if len(known) == 0 {
+		known = []string{""}
 	}
-	known, _ := json.Marshal(pools) // []string, cannot fail
 	rows, err := s.q.OrphanedTickets(ctx, sqlcdb.OrphanedTicketsParams{
-		Project: narg(project), KindsJson: kindsJSON(nil), KnownJson: string(known), MaxRows: limit(n),
+		Column1: boolInt(project == ""), Project: project, Kinds: kindsList(nil), Known: known, Limit: limit(n),
 	})
 	if err != nil {
 		return nil, err
@@ -566,8 +584,8 @@ func (s *Store) ClaimNext(ctx context.Context, req store.ClaimNext) (t store.Tic
 	}
 	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
 		r, err := q.NextClaimCandidate(ctx, sqlcdb.NextClaimCandidateParams{
-			Project: req.Project, KindsJson: kindsJSON(req.Kinds), Holder: req.Holder,
-			Pool: req.Pool, Now: ms(s.now()),
+			Project: req.Project, Kinds: kindsList(req.Kinds), Holder: req.Holder, Holder_2: req.Holder,
+			Pool: req.Pool, DeferUntil: ms(s.now()),
 		})
 		if errors.Is(err, sql.ErrNoRows) {
 			return store.ErrNoWork

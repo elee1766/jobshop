@@ -8,7 +8,39 @@ package sqlcdb
 import (
 	"context"
 	"database/sql"
+	"strings"
 )
+
+const addTicketMeta = `-- name: AddTicketMeta :exec
+INSERT INTO ticket_meta (ticket_id, pack, mkey, value) VALUES (?, ?, ?, ?)
+`
+
+type AddTicketMetaParams struct {
+	TicketID string
+	Pack     string
+	Mkey     string
+	Value    string
+}
+
+func (q *Queries) AddTicketMeta(ctx context.Context, arg AddTicketMetaParams) error {
+	_, err := q.db.ExecContext(ctx, addTicketMeta,
+		arg.TicketID,
+		arg.Pack,
+		arg.Mkey,
+		arg.Value,
+	)
+	return err
+}
+
+const clearTicketMeta = `-- name: ClearTicketMeta :exec
+DELETE FROM ticket_meta WHERE ticket_id = ?
+`
+
+// ClearTicketMeta and AddTicketMeta keep ticket_meta in step with meta.
+func (q *Queries) ClearTicketMeta(ctx context.Context, ticketID string) error {
+	_, err := q.db.ExecContext(ctx, clearTicketMeta, ticketID)
+	return err
+}
 
 const expiredLeases = `-- name: ExpiredLeases :many
 SELECT id FROM tickets
@@ -40,17 +72,17 @@ func (q *Queries) ExpiredLeases(ctx context.Context, now int64) ([]string, error
 }
 
 const findOpenBatchByKey = `-- name: FindOpenBatchByKey :one
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE kind = 'batch' AND status <> 'closed'
   AND project = ?1
-  AND json_extract(fields, '$.key') = ?2
+  AND f_key = ?2
 ORDER BY created_at, id
 LIMIT 1
 `
 
 type FindOpenBatchByKeyParams struct {
 	Project string
-	Key     string
+	Key     sql.NullString
 }
 
 // FindOpenBatchByKey: at most one open batch per project and key (the
@@ -81,22 +113,28 @@ func (q *Queries) FindOpenBatchByKey(ctx context.Context, arg FindOpenBatchByKey
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.FKey,
+		&i.FTo,
+		&i.FState,
+		&i.FWorkflow,
+		&i.FIndex,
+		&i.FWaiting,
 	)
 	return i, err
 }
 
 const findOpenRunByKey = `-- name: FindOpenRunByKey :one
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE kind = 'run' AND status <> 'closed'
-  AND json_extract(fields, '$.key') = ?1
-  AND json_extract(fields, '$.workflow') = ?2
+  AND f_key = ?1
+  AND f_workflow = ?2
 ORDER BY created_at, id
 LIMIT 1
 `
 
 type FindOpenRunByKeyParams struct {
-	Key      string
-	Workflow string
+	Key      sql.NullString
+	Workflow sql.NullString
 }
 
 // FindOpenRunByKey uses tickets_run_key; at most one open run per
@@ -127,12 +165,18 @@ func (q *Queries) FindOpenRunByKey(ctx context.Context, arg FindOpenRunByKeyPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.FKey,
+		&i.FTo,
+		&i.FState,
+		&i.FWorkflow,
+		&i.FIndex,
+		&i.FWaiting,
 	)
 	return i, err
 }
 
 const getTicket = `-- name: GetTicket :one
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets WHERE id = ?
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets WHERE id = ?
 `
 
 func (q *Queries) GetTicket(ctx context.Context, id string) (Ticket, error) {
@@ -161,6 +205,12 @@ func (q *Queries) GetTicket(ctx context.Context, id string) (Ticket, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.FKey,
+		&i.FTo,
+		&i.FState,
+		&i.FWorkflow,
+		&i.FIndex,
+		&i.FWaiting,
 	)
 	return i, err
 }
@@ -228,11 +278,13 @@ const insertTicket = `-- name: InsertTicket :exec
 INSERT INTO tickets (
   id, project, kind, title, body, status, resolution, priority, pool, holder,
   lease_until, fence, parent_id, defer_until, ephemeral, fields, meta,
-  revision, created_by, created_at, updated_at, closed_at
+  revision, created_by, created_at, updated_at, closed_at,
+  f_key, f_to, f_state, f_workflow, f_index, f_waiting
 ) VALUES (
   ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
   ?, ?, ?, ?, ?, ?, ?,
-  ?, ?, ?, ?, ?
+  ?, ?, ?, ?, ?,
+  ?, ?, ?, ?, ?, ?
 )
 `
 
@@ -259,6 +311,12 @@ type InsertTicketParams struct {
 	CreatedAt  int64
 	UpdatedAt  int64
 	ClosedAt   int64
+	FKey       sql.NullString
+	FTo        sql.NullString
+	FState     sql.NullString
+	FWorkflow  sql.NullString
+	FIndex     sql.NullInt64
+	FWaiting   int64
 }
 
 func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) error {
@@ -285,14 +343,20 @@ func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) erro
 		arg.CreatedAt,
 		arg.UpdatedAt,
 		arg.ClosedAt,
+		arg.FKey,
+		arg.FTo,
+		arg.FState,
+		arg.FWorkflow,
+		arg.FIndex,
+		arg.FWaiting,
 	)
 	return err
 }
 
 const listChildren = `-- name: ListChildren :many
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE parent_id = ?1
-ORDER BY CAST(json_extract(fields, '$.index') AS INTEGER), created_at, id
+ORDER BY f_index, created_at, id
 `
 
 func (q *Queries) ListChildren(ctx context.Context, parentID sql.NullString) ([]Ticket, error) {
@@ -327,6 +391,12 @@ func (q *Queries) ListChildren(ctx context.Context, parentID sql.NullString) ([]
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.FKey,
+			&i.FTo,
+			&i.FState,
+			&i.FWorkflow,
+			&i.FIndex,
+			&i.FWaiting,
 		); err != nil {
 			return nil, err
 		}
@@ -342,10 +412,10 @@ func (q *Queries) ListChildren(ctx context.Context, parentID sql.NullString) ([]
 }
 
 const listRuns = `-- name: ListRuns :many
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE kind = 'run'
   AND (?1 IS NULL OR project = ?1)
-  AND (?2 IS NULL OR json_extract(fields, '$.state') = ?2)
+  AND (?2 IS NULL OR f_state = ?2)
 ORDER BY created_at DESC, id DESC
 LIMIT ?3
 `
@@ -388,6 +458,12 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, e
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.FKey,
+			&i.FTo,
+			&i.FState,
+			&i.FWorkflow,
+			&i.FIndex,
+			&i.FWaiting,
 		); err != nil {
 			return nil, err
 		}
@@ -403,7 +479,7 @@ func (q *Queries) ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, e
 }
 
 const listTickets = `-- name: ListTickets :many
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE (?1 IS NULL OR project = ?1)
   AND (?2 IS NULL OR kind = ?2)
   AND (?3 IS NULL OR status = ?3)
@@ -413,9 +489,11 @@ WHERE (?1 IS NULL OR project = ?1)
   AND (?7 IS NULL OR created_by = ?7)
   AND (?8 IS NULL OR EXISTS (
     SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?8))
-  AND (?9 IS NULL OR json_extract(meta, ?9) = ?10)
+  AND (?9 IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = ?9 AND m.mkey = ?10 AND m.value = ?11))
 ORDER BY priority, created_at, id
-LIMIT ?11
+LIMIT ?12
 `
 
 type ListTicketsParams struct {
@@ -427,7 +505,8 @@ type ListTicketsParams struct {
 	ParentID  interface{}
 	CreatedBy interface{}
 	Label     interface{}
-	MetaPath  interface{}
+	MetaPack  interface{}
+	MetaKey   sql.NullString
 	MetaValue sql.NullString
 	MaxRows   int64
 }
@@ -442,7 +521,8 @@ func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Tic
 		arg.ParentID,
 		arg.CreatedBy,
 		arg.Label,
-		arg.MetaPath,
+		arg.MetaPack,
+		arg.MetaKey,
 		arg.MetaValue,
 		arg.MaxRows,
 	)
@@ -476,6 +556,12 @@ func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Tic
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.FKey,
+			&i.FTo,
+			&i.FState,
+			&i.FWorkflow,
+			&i.FIndex,
+			&i.FWaiting,
 		); err != nil {
 			return nil, err
 		}
@@ -491,7 +577,7 @@ func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Tic
 }
 
 const listTicketsNewest = `-- name: ListTicketsNewest :many
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE (?1 IS NULL OR project = ?1)
   AND (?2 IS NULL OR kind = ?2)
   AND (?3 IS NULL OR status = ?3)
@@ -501,9 +587,11 @@ WHERE (?1 IS NULL OR project = ?1)
   AND (?7 IS NULL OR created_by = ?7)
   AND (?8 IS NULL OR EXISTS (
     SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?8))
-  AND (?9 IS NULL OR json_extract(meta, ?9) = ?10)
+  AND (?9 IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = ?9 AND m.mkey = ?10 AND m.value = ?11))
 ORDER BY created_at DESC, id DESC
-LIMIT ?11
+LIMIT ?12
 `
 
 type ListTicketsNewestParams struct {
@@ -515,7 +603,8 @@ type ListTicketsNewestParams struct {
 	ParentID  interface{}
 	CreatedBy interface{}
 	Label     interface{}
-	MetaPath  interface{}
+	MetaPack  interface{}
+	MetaKey   sql.NullString
 	MetaValue sql.NullString
 	MaxRows   int64
 }
@@ -532,7 +621,8 @@ func (q *Queries) ListTicketsNewest(ctx context.Context, arg ListTicketsNewestPa
 		arg.ParentID,
 		arg.CreatedBy,
 		arg.Label,
-		arg.MetaPath,
+		arg.MetaPack,
+		arg.MetaKey,
 		arg.MetaValue,
 		arg.MaxRows,
 	)
@@ -566,6 +656,12 @@ func (q *Queries) ListTicketsNewest(ctx context.Context, arg ListTicketsNewestPa
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.FKey,
+			&i.FTo,
+			&i.FState,
+			&i.FWorkflow,
+			&i.FIndex,
+			&i.FWaiting,
 		); err != nil {
 			return nil, err
 		}
@@ -581,17 +677,17 @@ func (q *Queries) ListTicketsNewest(ctx context.Context, arg ListTicketsNewestPa
 }
 
 const nextClaimCandidate = `-- name: NextClaimCandidate :one
-SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at FROM tickets t
-WHERE t.project = ?1
-  AND t.kind IN (SELECT value FROM json_each(?2))
+SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at, t.f_key, t.f_to, t.f_state, t.f_workflow, t.f_index, t.f_waiting FROM tickets t
+WHERE t.project = ?
+  AND t.kind IN (/*SLICE:kinds*/?)
   AND (
-    (t.status = 'in_progress' AND t.holder = ?3)
-    OR (t.status = 'open' AND t.holder = ?3)
-    OR (t.status = 'open' AND t.holder = '' AND t.pool = ?4)
+    (t.status = 'in_progress' AND t.holder = ?)
+    OR (t.status = 'open' AND t.holder = ?)
+    OR (t.status = 'open' AND t.holder = '' AND t.pool = ?)
   )
-  AND t.defer_until <= ?5
+  AND t.defer_until <= ?
   -- fields.wait parks a ticket until the controller clears it (#381).
-  AND json_extract(t.fields, '$.wait') IS NULL
+  AND t.f_waiting = 0
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
@@ -615,22 +711,32 @@ LIMIT 1
 `
 
 type NextClaimCandidateParams struct {
-	Project   string
-	KindsJson interface{}
-	Holder    string
-	Pool      string
-	Now       int64
+	Project    string
+	Kinds      []string
+	Holder     string
+	Holder_2   string
+	Pool       string
+	DeferUntil int64
 }
 
 // Three tiers: my in-progress work, tickets pre-assigned to me, the pool queue.
 func (q *Queries) NextClaimCandidate(ctx context.Context, arg NextClaimCandidateParams) (Ticket, error) {
-	row := q.db.QueryRowContext(ctx, nextClaimCandidate,
-		arg.Project,
-		arg.KindsJson,
-		arg.Holder,
-		arg.Pool,
-		arg.Now,
-	)
+	query := nextClaimCandidate
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Project)
+	if len(arg.Kinds) > 0 {
+		for _, v := range arg.Kinds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:kinds*/?", strings.Repeat(",?", len(arg.Kinds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:kinds*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.Holder)
+	queryParams = append(queryParams, arg.Holder_2)
+	queryParams = append(queryParams, arg.Pool)
+	queryParams = append(queryParams, arg.DeferUntil)
+	row := q.db.QueryRowContext(ctx, query, queryParams...)
 	var i Ticket
 	err := row.Scan(
 		&i.ID,
@@ -655,37 +761,62 @@ func (q *Queries) NextClaimCandidate(ctx context.Context, arg NextClaimCandidate
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ClosedAt,
+		&i.FKey,
+		&i.FTo,
+		&i.FState,
+		&i.FWorkflow,
+		&i.FIndex,
+		&i.FWaiting,
 	)
 	return i, err
 }
 
 const orphanedTickets = `-- name: OrphanedTickets :many
-SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at FROM tickets t
-WHERE (?1 IS NULL OR t.project = ?1)
+SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at, t.f_key, t.f_to, t.f_state, t.f_workflow, t.f_index, t.f_waiting FROM tickets t
+WHERE (? = 1 OR t.project = ?)
   AND t.status = 'open'
   AND t.holder = ''
-  AND t.kind IN (SELECT value FROM json_each(?2))
-  AND (t.pool = '' OR t.pool NOT IN (SELECT value FROM json_each(?3)))
+  AND t.kind IN (/*SLICE:kinds*/?)
+  AND (t.pool = '' OR t.pool NOT IN (/*SLICE:known*/?))
 ORDER BY t.priority, t.created_at, t.id
-LIMIT ?4
+LIMIT ?
 `
 
 type OrphanedTicketsParams struct {
-	Project   interface{}
-	KindsJson interface{}
-	KnownJson interface{}
-	MaxRows   int64
+	Column1 interface{}
+	Project string
+	Kinds   []string
+	Known   []string
+	Limit   int64
 }
 
 // OrphanedTickets is open, unclaimed claimable work no pool will pick up:
-// no pool, or a pool name not in known_json (the loaded config).
+// no pool, or a pool name not in known (the loaded config).
+// Parameters after a sqlc.slice are bare ?: sqlc numbers named ones ?N
+// from the unexpanded query, so they would point into the list.
 func (q *Queries) OrphanedTickets(ctx context.Context, arg OrphanedTicketsParams) ([]Ticket, error) {
-	rows, err := q.db.QueryContext(ctx, orphanedTickets,
-		arg.Project,
-		arg.KindsJson,
-		arg.KnownJson,
-		arg.MaxRows,
-	)
+	query := orphanedTickets
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Column1)
+	queryParams = append(queryParams, arg.Project)
+	if len(arg.Kinds) > 0 {
+		for _, v := range arg.Kinds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:kinds*/?", strings.Repeat(",?", len(arg.Kinds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:kinds*/?", "NULL", 1)
+	}
+	if len(arg.Known) > 0 {
+		for _, v := range arg.Known {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:known*/?", strings.Repeat(",?", len(arg.Known))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:known*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -716,6 +847,12 @@ func (q *Queries) OrphanedTickets(ctx context.Context, arg OrphanedTicketsParams
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.FKey,
+			&i.FTo,
+			&i.FState,
+			&i.FWorkflow,
+			&i.FIndex,
+			&i.FWaiting,
 		); err != nil {
 			return nil, err
 		}
@@ -731,14 +868,14 @@ func (q *Queries) OrphanedTickets(ctx context.Context, arg OrphanedTicketsParams
 }
 
 const readyTickets = `-- name: ReadyTickets :many
-SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at FROM tickets t
-WHERE t.project = ?1
+SELECT t.id, t.project, t.kind, t.title, t.body, t.status, t.resolution, t.priority, t.pool, t.holder, t.lease_until, t.fence, t.parent_id, t.defer_until, t.ephemeral, t.fields, t.meta, t.revision, t.created_by, t.created_at, t.updated_at, t.closed_at, t.f_key, t.f_to, t.f_state, t.f_workflow, t.f_index, t.f_waiting FROM tickets t
+WHERE t.project = ?
   AND t.status = 'open'
-  AND t.kind IN (SELECT value FROM json_each(?2))
-  AND (?3 IS NULL OR t.pool = ?3)
-  AND t.defer_until <= ?4
+  AND t.kind IN (/*SLICE:kinds*/?)
+  AND (? = 1 OR t.pool = ?)
+  AND t.defer_until <= ?
   -- fields.wait parks a ticket until the controller clears it (#381).
-  AND json_extract(t.fields, '$.wait') IS NULL
+  AND t.f_waiting = 0
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
@@ -755,25 +892,36 @@ WHERE t.project = ?1
       SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
       WHERE h.status = 'in_progress' AND h.id <> t.id AND hr.value = r.value))
 ORDER BY t.priority, t.created_at, t.id
-LIMIT ?5
+LIMIT ?
 `
 
 type ReadyTicketsParams struct {
-	Project   string
-	KindsJson interface{}
-	Pool      interface{}
-	Now       int64
-	MaxRows   int64
+	Project    string
+	Kinds      []string
+	Column3    interface{}
+	Pool       string
+	DeferUntil int64
+	Limit      int64
 }
 
+// Parameters are bare ? (see OrphanedTickets).
 func (q *Queries) ReadyTickets(ctx context.Context, arg ReadyTicketsParams) ([]Ticket, error) {
-	rows, err := q.db.QueryContext(ctx, readyTickets,
-		arg.Project,
-		arg.KindsJson,
-		arg.Pool,
-		arg.Now,
-		arg.MaxRows,
-	)
+	query := readyTickets
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Project)
+	if len(arg.Kinds) > 0 {
+		for _, v := range arg.Kinds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:kinds*/?", strings.Repeat(",?", len(arg.Kinds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:kinds*/?", "NULL", 1)
+	}
+	queryParams = append(queryParams, arg.Column3)
+	queryParams = append(queryParams, arg.Pool)
+	queryParams = append(queryParams, arg.DeferUntil)
+	queryParams = append(queryParams, arg.Limit)
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
 	}
@@ -804,6 +952,12 @@ func (q *Queries) ReadyTickets(ctx context.Context, arg ReadyTicketsParams) ([]T
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.FKey,
+			&i.FTo,
+			&i.FState,
+			&i.FWorkflow,
+			&i.FIndex,
+			&i.FWaiting,
 		); err != nil {
 			return nil, err
 		}
@@ -847,11 +1001,17 @@ UPDATE tickets SET
   fence       = ?9,
   defer_until = ?10,
   fields      = ?11,
-  meta        = ?12,
-  revision    = ?13,
-  updated_at  = ?14,
-  closed_at   = ?15
-WHERE id = ?16 AND revision = ?17
+  f_key       = ?12,
+  f_to        = ?13,
+  f_state     = ?14,
+  f_workflow  = ?15,
+  f_index     = ?16,
+  f_waiting   = ?17,
+  meta        = ?18,
+  revision    = ?19,
+  updated_at  = ?20,
+  closed_at   = ?21
+WHERE id = ?22 AND revision = ?23
 `
 
 type WriteTicketParams struct {
@@ -866,6 +1026,12 @@ type WriteTicketParams struct {
 	Fence            int64
 	DeferUntil       int64
 	Fields           string
+	FKey             sql.NullString
+	FTo              sql.NullString
+	FState           sql.NullString
+	FWorkflow        sql.NullString
+	FIndex           sql.NullInt64
+	FWaiting         int64
 	Meta             string
 	Revision         int64
 	UpdatedAt        int64
@@ -888,6 +1054,12 @@ func (q *Queries) WriteTicket(ctx context.Context, arg WriteTicketParams) (int64
 		arg.Fence,
 		arg.DeferUntil,
 		arg.Fields,
+		arg.FKey,
+		arg.FTo,
+		arg.FState,
+		arg.FWorkflow,
+		arg.FIndex,
+		arg.FWaiting,
 		arg.Meta,
 		arg.Revision,
 		arg.UpdatedAt,

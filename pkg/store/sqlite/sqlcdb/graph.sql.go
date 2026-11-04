@@ -148,7 +148,8 @@ func (q *Queries) InsertHistory(ctx context.Context, arg InsertHistoryParams) er
 }
 
 const insertLabel = `-- name: InsertLabel :execrows
-INSERT OR IGNORE INTO labels (ticket_id, label) VALUES (?, ?)
+INSERT INTO labels (ticket_id, label) VALUES (?, ?)
+ON CONFLICT DO NOTHING
 `
 
 type InsertLabelParams struct {

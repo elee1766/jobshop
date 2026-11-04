@@ -128,6 +128,19 @@ type Ticket struct {
 	CreatedAt  int64
 	UpdatedAt  int64
 	ClosedAt   int64
+	FKey       sql.NullString
+	FTo        sql.NullString
+	FState     sql.NullString
+	FWorkflow  sql.NullString
+	FIndex     sql.NullInt64
+	FWaiting   int64
+}
+
+type TicketMetum struct {
+	TicketID string
+	Pack     string
+	Mkey     string
+	Value    string
 }
 
 type WriteKey struct {
