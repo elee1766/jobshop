@@ -11,7 +11,9 @@ migration, renumber past master's and open PRs' highest file, regenerate sqlc.
 Deferred SQLite transactions get SQLITE_BUSY on the read-to-write upgrade
 (busy_timeout does not wait on it): retry the whole transaction, bounded.
 Bash calls auto-background after about 3s; redirects into the work tree
-are blocked: write files with the Write tool. Several sessions lint on one host: run
+are blocked: write files with the Write tool. For CI or deploy waits,
+check once, comment the state, then `jobshop release --until 30m`.
+Never commit `go test -c` binaries (`*.test`): check `git status`. Several sessions lint on one host: run
 `golangci-lint run --allow-parallel-runners ./...`.
 
 pkg/config/pack_test.go asserts pack prompt substrings and admin lists.
