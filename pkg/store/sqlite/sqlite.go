@@ -13,7 +13,8 @@ import (
 	"time"
 
 	"github.com/pressly/goose/v3"
-	_ "modernc.org/sqlite" // database/sql driver "sqlite"
+	msqlite "modernc.org/sqlite" // database/sql driver "sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -34,10 +35,15 @@ type Options struct {
 	// OnCommit, if set, runs after every committed write transaction.
 	// The controller uses it to wake events.subscribe (#147).
 	OnCommit func()
+	// Concurrent opens with deferred transactions and several
+	// connections, so writers are not serialized up front (#406). Tests
+	// use it to check claims do not depend on a single-writer database.
+	Concurrent bool
 }
 
-// Store is the SQLite backend. All access goes through one connection: the
-// controller is the only writer and SQLite serializes writes anyway.
+// Store is the SQLite backend. In production all access goes through one
+// connection, but claims and sweeps do not rely on that: their writes
+// re-check their conditions in the same statement (#406).
 type Store struct {
 	db     *sql.DB
 	q      *sqlcdb.Queries
@@ -52,14 +58,18 @@ var _ store.Store = (*Store)(nil)
 // Open opens (creating if needed) the database at path and migrates it.
 // Use ":memory:" for a private in-memory database.
 func Open(ctx context.Context, path string, opt Options) (*Store, error) {
-	dsn := "file:" + path + "?_txlock=immediate" +
+	lock, conns := "immediate", 1
+	if opt.Concurrent {
+		lock, conns = "deferred", 8
+	}
+	dsn := "file:" + path + "?_txlock=" + lock +
 		"&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)" +
 		"&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(1)
+	db.SetMaxOpenConns(conns)
 	db.SetConnMaxIdleTime(0)
 	db.SetConnMaxLifetime(0)
 	if err := migrate(ctx, db); err != nil {
@@ -95,7 +105,22 @@ func migrate(ctx context.Context, db *sql.DB) error {
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
+// busyTries bounds how often tx reruns a transaction that lost a write
+// race (SQLITE_BUSY on a deferred read-to-write upgrade, which
+// busy_timeout does not wait on). Only Concurrent stores hit it.
+const busyTries = 16
+
 func (s *Store) tx(ctx context.Context, fn func(q *sqlcdb.Queries) error) error {
+	var err error
+	for range busyTries {
+		if err = s.txOnce(ctx, fn); !isBusy(err) {
+			break
+		}
+	}
+	return busy(err)
+}
+
+func (s *Store) txOnce(ctx context.Context, fn func(q *sqlcdb.Queries) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -111,6 +136,21 @@ func (s *Store) tx(ctx context.Context, fn func(q *sqlcdb.Queries) error) error 
 		s.commit()
 	}
 	return nil
+}
+
+func isBusy(err error) bool {
+	var se *msqlite.Error
+	return errors.As(err, &se) && se.Code()&0xff == sqlite3.SQLITE_BUSY
+}
+
+// busy turns SQLite's "database is busy" (a deferred transaction lost a
+// write race to another connection) into ErrConflict: the caller's read
+// is stale, as with a revision mismatch, and retrying is safe.
+func busy(err error) error {
+	if isBusy(err) {
+		return fmt.Errorf("%w: %w", store.ErrConflict, err)
+	}
+	return err
 }
 
 func ms(t time.Time) int64 {
@@ -217,6 +257,22 @@ func history(ctx context.Context, q *sqlcdb.Queries, t store.Ticket, at time.Tim
 func (s *Store) mutate(ctx context.Context, q *sqlcdb.Queries, id, actor, op string,
 	fn func(t *store.Ticket) (diff any, err error),
 ) (store.Ticket, error) {
+	return s.mutateWith(ctx, q, id, actor, op, fn, nil)
+}
+
+// writeFn writes t (already at its new revision) over prev. It returns
+// the rows changed; 0 means the write's guard did not hold.
+type writeFn func(ctx context.Context, q *sqlcdb.Queries, t store.Ticket, prev int64, now time.Time) (int64, error)
+
+// errGuard is a guarded write that matched no row; callers turn it into
+// the error (or skip) that fits them.
+var errGuard = errors.New("guard did not hold")
+
+// mutateWith is mutate with a custom write. With w non-nil, a write that
+// changes no row returns errGuard wrapped with ErrConflict.
+func (s *Store) mutateWith(ctx context.Context, q *sqlcdb.Queries, id, actor, op string,
+	fn func(t *store.Ticket) (diff any, err error), w writeFn,
+) (store.Ticket, error) {
 	t, err := s.get(ctx, q, id)
 	if err != nil {
 		return t, err
@@ -229,6 +285,19 @@ func (s *Store) mutate(ctx context.Context, q *sqlcdb.Queries, id, actor, op str
 	prev := t.Revision
 	t.Revision++
 	t.UpdatedAt = now.UTC().Truncate(time.Millisecond)
+	if w != nil {
+		n, err := w(ctx, q, t, prev, now)
+		if err != nil {
+			return store.Ticket{}, err
+		}
+		if n == 0 {
+			return store.Ticket{}, fmt.Errorf("%w: %s: %w", store.ErrConflict, id, errGuard)
+		}
+		if err := history(ctx, q, t, now, actor, op, diff); err != nil {
+			return store.Ticket{}, err
+		}
+		return t, nil
+	}
 	cols := fieldColumns(t.Fields)
 	n, err := q.WriteTicket(ctx, sqlcdb.WriteTicketParams{
 		Title: t.Title, Body: t.Body, Status: string(t.Status), Resolution: t.Resolution,
@@ -576,12 +645,37 @@ func checkLease(holder string, lease time.Duration) error {
 	return nil
 }
 
+// claimWrite is the guarded write of a claim: it holds only if the
+// ticket is still unblocked when written (#406).
+func claimWrite(ctx context.Context, q *sqlcdb.Queries, t store.Ticket, prev int64, now time.Time) (int64, error) {
+	return q.ClaimWriteTicket(ctx, sqlcdb.ClaimWriteTicketParams{
+		Status: string(t.Status), Holder: t.Holder, LeaseUntil: ms(t.LeaseUntil), Fence: t.Fence,
+		Revision: t.Revision, UpdatedAt: ms(now), ID: t.ID, ExpectedRevision: prev,
+	})
+}
+
+// claimNextTries bounds how many candidates ClaimNext tries when other
+// claimers win the race for them.
+const claimNextTries = 64
+
 // ClaimNext claims the holder's next ticket. A ticket the holder already has
 // in progress is returned again with the same fence and a renewed lease.
+// A candidate lost to a concurrent claimer (or blocked meanwhile) is
+// skipped for the next one, up to claimNextTries.
 func (s *Store) ClaimNext(ctx context.Context, req store.ClaimNext) (t store.Ticket, c store.Claim, err error) {
 	if err := checkLease(req.Holder, req.Lease); err != nil {
 		return t, c, err
 	}
+	for range claimNextTries {
+		t, c, err = s.claimNextOnce(ctx, req)
+		if !errors.Is(err, store.ErrConflict) {
+			return t, c, err
+		}
+	}
+	return t, c, err
+}
+
+func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store.Ticket, c store.Claim, err error) {
 	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
 		r, err := q.NextClaimCandidate(ctx, sqlcdb.NextClaimCandidateParams{
 			Project: req.Project, Kinds: kindsList(req.Kinds), Holder: req.Holder, Holder_2: req.Holder,
@@ -593,11 +687,16 @@ func (s *Store) ClaimNext(ctx context.Context, req store.ClaimNext) (t store.Tic
 		if err != nil {
 			return err
 		}
-		t, err = s.mutate(ctx, q, r.ID, req.Holder, "claim", func(t *store.Ticket) (any, error) {
+		t, err = s.mutateWith(ctx, q, r.ID, req.Holder, "claim", func(t *store.Ticket) (any, error) {
+			// The candidate was read in this transaction, but without a
+			// single-writer database another claimer may have taken it.
+			if t.Status == store.StatusClosed || (t.Holder != "" && t.Holder != req.Holder) {
+				return nil, fmt.Errorf("%w: %s was taken", store.ErrConflict, t.ID)
+			}
 			var d any
 			c, d = s.claim(t, req.Holder, req.Lease)
 			return d, nil
-		})
+		}, claimWrite)
 		return err
 	})
 	return t, c, err
@@ -618,7 +717,7 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 		if err != nil {
 			return err
 		}
-		t, err = s.mutate(ctx, q, id, holder, "claim", func(t *store.Ticket) (any, error) {
+		t, err = s.mutateWith(ctx, q, id, holder, "claim", func(t *store.Ticket) (any, error) {
 			switch {
 			case t.Status == store.StatusClosed:
 				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
@@ -634,7 +733,7 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 			var d any
 			c, d = s.claim(t, holder, lease)
 			return d, nil
-		})
+		}, claimWrite)
 		return err
 	})
 	return t, c, err
@@ -816,16 +915,15 @@ func (s *Store) Reopen(ctx context.Context, actor, id string) (t store.Ticket, e
 	return t, err
 }
 
-func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q *sqlcdb.Queries) ([]string, error), diff any) (out []string, err error) {
+func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q *sqlcdb.Queries) ([]string, error), diff any, w writeFn) (out []string, err error) {
 	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
 		list, err := ids(q)
 		if err != nil {
 			return err
 		}
-		out = list
 		for _, id := range list {
 			var note string
-			_, err := s.mutate(ctx, q, id, actor, op, func(t *store.Ticket) (any, error) {
+			_, err := s.mutateWith(ctx, q, id, actor, op, func(t *store.Ticket) (any, error) {
 				d := map[string]any{"holder": t.Holder, "status": t.Status}
 				if m, ok := diff.(map[string]any); ok {
 					for k, v := range m {
@@ -845,10 +943,16 @@ func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q *sql
 				var ferr error
 				note, ferr = s.stepFailure(t, how, d)
 				return d, ferr
-			})
+			}, w)
+			if errors.Is(err, store.ErrConflict) {
+				// Changed since the list was read (renewed, released or
+				// closed by its holder): not this sweep's to reopen.
+				continue
+			}
 			if err != nil {
 				return err
 			}
+			out = append(out, id)
 			if err := s.note(ctx, q, id, note); err != nil {
 				return err
 			}
@@ -865,13 +969,22 @@ func (s *Store) ReleaseHolder(ctx context.Context, actor, holder, reason string)
 	}
 	return s.reopenAll(ctx, actor, "release",
 		func(q *sqlcdb.Queries) ([]string, error) { return q.HeldBy(ctx, holder) },
-		map[string]any{"reason": reason})
+		map[string]any{"reason": reason}, nil)
 }
 
-// SweepLeases reopens tickets whose lease expired.
+// SweepLeases reopens tickets whose lease expired. Each write re-checks
+// the expiry, so a lease renewed after the list was read is kept.
 func (s *Store) SweepLeases(ctx context.Context, actor string) ([]string, error) {
+	now := s.now()
 	return s.reopenAll(ctx, actor, "lease_expired",
-		func(q *sqlcdb.Queries) ([]string, error) { return q.ExpiredLeases(ctx, ms(s.now())) }, nil)
+		func(q *sqlcdb.Queries) ([]string, error) { return q.ExpiredLeases(ctx, ms(now)) }, nil,
+		func(ctx context.Context, q *sqlcdb.Queries, t store.Ticket, prev int64, at time.Time) (int64, error) {
+			return q.ExpireWriteTicket(ctx, sqlcdb.ExpireWriteTicketParams{
+				Status: string(t.Status), Resolution: t.Resolution, Holder: t.Holder,
+				LeaseUntil: ms(t.LeaseUntil), Fields: string(t.Fields), Revision: t.Revision,
+				UpdatedAt: ms(at), ClosedAt: ms(t.ClosedAt), ID: t.ID, ExpectedRevision: prev, Now: ms(now),
+			})
+		})
 }
 
 // Update applies u. Holder changes (pre-assignment) are allowed only while

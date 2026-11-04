@@ -32,6 +32,65 @@ func (q *Queries) AddTicketMeta(ctx context.Context, arg AddTicketMetaParams) er
 	return err
 }
 
+const claimWriteTicket = `-- name: ClaimWriteTicket :execrows
+UPDATE tickets SET
+  status      = ?1,
+  holder      = ?2,
+  lease_until = ?3,
+  fence       = ?4,
+  revision    = ?5,
+  updated_at  = ?6
+WHERE tickets.id = ?7 AND tickets.revision = ?8
+  AND tickets.status IN ('open', 'in_progress')
+  AND NOT EXISTS (
+    SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
+    WHERE e.from_id = tickets.id AND e.kind IN ('blocks','waits_for')
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution NOT IN ('done','skipped'))))
+  -- An open ticket also needs a free slot for each resource (#400), so
+  -- two claimers cannot both take the last slot. An in-progress resume
+  -- already holds its slots.
+  AND (tickets.status = 'in_progress' OR NOT EXISTS (
+    SELECT 1 FROM json_each(tickets.fields, '$.resources') r
+    JOIN resource_caps c ON c.name = r.value
+      OR (instr(r.value, ':') > 0 AND c.name = substr(r.value, 1, instr(r.value, ':') - 1))
+    WHERE c.capacity <= (
+      SELECT count(*) FROM tickets h, json_each(h.fields, '$.resources') hr
+      WHERE h.status = 'in_progress' AND h.id <> tickets.id AND hr.value = r.value)))
+`
+
+type ClaimWriteTicketParams struct {
+	Status           string
+	Holder           string
+	LeaseUntil       int64
+	Fence            int64
+	Revision         int64
+	UpdatedAt        int64
+	ID               string
+	ExpectedRevision int64
+}
+
+// ClaimWriteTicket is WriteTicket for a claim (#406): the not-blocked
+// check runs in the same statement as the write, so a blocker that
+// reopens between the caller's read and this write fails the claim
+// instead of leaving a blocked ticket claimed. Blockers are other rows,
+// which the revision check alone does not cover.
+func (q *Queries) ClaimWriteTicket(ctx context.Context, arg ClaimWriteTicketParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, claimWriteTicket,
+		arg.Status,
+		arg.Holder,
+		arg.LeaseUntil,
+		arg.Fence,
+		arg.Revision,
+		arg.UpdatedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const clearTicketMeta = `-- name: ClearTicketMeta :exec
 DELETE FROM ticket_meta WHERE ticket_id = ?
 `
@@ -40,6 +99,58 @@ DELETE FROM ticket_meta WHERE ticket_id = ?
 func (q *Queries) ClearTicketMeta(ctx context.Context, ticketID string) error {
 	_, err := q.db.ExecContext(ctx, clearTicketMeta, ticketID)
 	return err
+}
+
+const expireWriteTicket = `-- name: ExpireWriteTicket :execrows
+UPDATE tickets SET
+  status      = ?1,
+  resolution  = ?2,
+  holder      = ?3,
+  lease_until = ?4,
+  fields      = ?5,
+  revision    = ?6,
+  updated_at  = ?7,
+  closed_at   = ?8
+WHERE id = ?9 AND revision = ?10
+  AND status = 'in_progress' AND lease_until > 0 AND lease_until < ?11
+`
+
+type ExpireWriteTicketParams struct {
+	Status           string
+	Resolution       string
+	Holder           string
+	LeaseUntil       int64
+	Fields           string
+	Revision         int64
+	UpdatedAt        int64
+	ClosedAt         int64
+	ID               string
+	ExpectedRevision int64
+	Now              int64
+}
+
+// ExpireWriteTicket reopens a ticket only if its lease is still expired
+// at write time (#406). Heartbeat renews a lease without a revision
+// bump, so the revision check alone would let a sweep reopen a ticket
+// whose holder just renewed.
+func (q *Queries) ExpireWriteTicket(ctx context.Context, arg ExpireWriteTicketParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, expireWriteTicket,
+		arg.Status,
+		arg.Resolution,
+		arg.Holder,
+		arg.LeaseUntil,
+		arg.Fields,
+		arg.Revision,
+		arg.UpdatedAt,
+		arg.ClosedAt,
+		arg.ID,
+		arg.ExpectedRevision,
+		arg.Now,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const expiredLeases = `-- name: ExpiredLeases :many
