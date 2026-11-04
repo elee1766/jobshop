@@ -224,7 +224,7 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	}
 	c.Packs = head.Packs
 	c.Instances = instances
-	c.Warnings = warnings
+	c.Warnings = append(warnings, c.Warnings...)
 	return c, nil
 }
 
