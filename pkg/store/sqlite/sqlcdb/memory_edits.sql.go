@@ -208,7 +208,7 @@ func (q *Queries) ListMemoryEdits(ctx context.Context, arg ListMemoryEditsParams
 }
 
 const listStepsCreated = `-- name: ListStepsCreated :many
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at FROM tickets
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE kind = 'step' AND created_at >= ?1 AND created_at < ?2
 ORDER BY created_at, id
 `
@@ -250,6 +250,12 @@ func (q *Queries) ListStepsCreated(ctx context.Context, arg ListStepsCreatedPara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ClosedAt,
+			&i.FKey,
+			&i.FTo,
+			&i.FState,
+			&i.FWorkflow,
+			&i.FIndex,
+			&i.FWaiting,
 		); err != nil {
 			return nil, err
 		}

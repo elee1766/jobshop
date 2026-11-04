@@ -209,19 +209,22 @@ func (q *Queries) InboxList(ctx context.Context, arg InboxListParams) ([]Inbox, 
 
 const inboxNextClaimable = `-- name: InboxNextClaimable :one
 SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, received_at, payload, admitted, state, hook_results, holder, lease_until, attempts, updated_at, endpoint, natural_key FROM inbox
-WHERE state IN (/*SLICE:states*/?) AND (holder = '' OR lease_until <= ?2)
+WHERE (holder = '' OR lease_until <= ?1) AND state IN (/*SLICE:states*/?)
 ORDER BY received_at, id
 LIMIT 1
 `
 
 type InboxNextClaimableParams struct {
-	States []string
 	Now    int64
+	States []string
 }
 
+// now comes before the slice: sqlc numbers later parameters ?N, which
+// would point into an expanded list of two or more states.
 func (q *Queries) InboxNextClaimable(ctx context.Context, arg InboxNextClaimableParams) (Inbox, error) {
 	query := inboxNextClaimable
 	var queryParams []interface{}
+	queryParams = append(queryParams, arg.Now)
 	if len(arg.States) > 0 {
 		for _, v := range arg.States {
 			queryParams = append(queryParams, v)
@@ -230,7 +233,6 @@ func (q *Queries) InboxNextClaimable(ctx context.Context, arg InboxNextClaimable
 	} else {
 		query = strings.Replace(query, "/*SLICE:states*/?", "NULL", 1)
 	}
-	queryParams = append(queryParams, arg.Now)
 	row := q.db.QueryRowContext(ctx, query, queryParams...)
 	var i Inbox
 	err := row.Scan(
