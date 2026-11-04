@@ -291,6 +291,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   activity feed (#272, `docs/notes/272-revert-learnings.md`).
 - Curator: `learn` pool, `curate` workflow and learnings trigger in
   selfdev, `jobshop learn update` (#273, `docs/notes/273-curator.md`).
+- `jobshop linear context|list|search|catalog|eligible` read commands and
+  the intake gate (#279, `docs/notes/279-linear-read.md`).
 
 ## 5. What's next
 

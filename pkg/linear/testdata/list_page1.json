@@ -1,0 +1,4 @@
+{"data":{"issues":{"nodes":[
+ {"identifier":"ENG-7","title":"Fix login","url":"https://linear.app/acme/issue/ENG-7","updatedAt":"2026-11-03T12:00:00.000Z","state":{"id":"st-todo","name":"Todo","type":"unstarted"},"assignee":{"name":"Ann"},"labels":{"nodes":[{"name":"bug"}]}},
+ {"identifier":"ENG-6","title":"CSV writer","url":"https://linear.app/acme/issue/ENG-6","updatedAt":"2026-11-03T11:00:00.000Z","state":{"id":"st-todo","name":"Todo","type":"unstarted"},"assignee":null,"labels":{"nodes":[]}}],
+ "pageInfo":{"hasNextPage":true,"endCursor":"cur-2"}}}}

@@ -1,0 +1,14 @@
+{"data":{"issue":{"id":"iss-5","identifier":"ENG-5","title":"Add export","description":"Export CSV.","url":"https://linear.app/acme/issue/ENG-5/add-export","archivedAt":null,
+ "state":{"id":"st-todo","name":"Todo","type":"unstarted"},"team":{"id":"team-1","key":"ENG"},
+ "assignee":{"name":"Ann"},
+ "labels":{"nodes":[{"name":"backend"},{"name":"Feature"}]},
+ "parent":{"identifier":"ENG-1","title":"Reports","state":{"name":"In Progress","type":"started"}},
+ "children":{"nodes":[{"identifier":"ENG-6","title":"CSV writer","state":{"name":"Todo","type":"unstarted"}}]},
+ "relations":{"nodes":[{"type":"related","relatedIssue":{"identifier":"ENG-9","title":"PDF export","state":{"name":"Backlog","type":"backlog"}}}]},
+ "inverseRelations":{"nodes":[
+  {"type":"blocks","issue":{"identifier":"ENG-3","title":"Schema","state":{"name":"In Progress","type":"started"}}},
+  {"type":"blocks","issue":{"identifier":"ENG-2","title":"Auth","state":{"name":"Done","type":"completed"}}},
+  {"type":"duplicate","issue":{"identifier":"ENG-8","title":"Export","state":{"name":"Canceled","type":"canceled"}}}]},
+ "comments":{"nodes":[
+  {"id":"c-2","body":"newer","url":"https://linear.app/acme/issue/ENG-5#comment-c2","createdAt":"2026-11-03T10:00:00.000Z","user":{"name":"jobshop","isMe":true},"botActor":null},
+  {"id":"c-1","body":"older","url":"https://linear.app/acme/issue/ENG-5#comment-c1","createdAt":"2026-11-02T10:00:00.000Z","user":null,"botActor":{"name":"GitHub"}}]}}}}
