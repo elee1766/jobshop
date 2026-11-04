@@ -6,6 +6,10 @@ pkg/config and pkg/control change fast: `git fetch` and rebase onto
 origin/master before the first push and reuse helpers master added. After
 changing packs or a config default, run `go test ./pkg/config -run
 TestPacksGolden -update` and commit the golden.
+Parallel PRs often take the same migration number: before pushing a new
+migration, fetch master and renumber past its highest file, then regenerate sqlc.
+Deferred SQLite transactions get SQLITE_BUSY on the read-to-write upgrade
+(busy_timeout does not wait on it): retry the whole transaction, bounded.
 Bash calls auto-background after about 3s and shell redirects into the
 work tree are blocked. Use run_in_background and poll its output file
 with short calls; write files with the Write tool. To wait on CI or a
