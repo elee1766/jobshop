@@ -44,8 +44,11 @@ func TestInboxPutDedupe(t *testing.T) {
 	assert.Equal(t, a.ID, b.ID)
 	assert.JSONEq(t, `{"x":1}`, string(b.Payload), "first payload kept")
 
-	_, _, err = s.InboxPut(ctx, store.InboxItem{Source: "jira", DeliveryID: "d2"})
+	_, _, err = s.InboxPut(ctx, store.InboxItem{DeliveryID: "d2"})
 	require.ErrorIs(t, err, store.ErrInvalid)
+	_, dup, err = s.InboxPut(ctx, store.InboxItem{Source: "generic", DeliveryID: "generic:d3"})
+	require.NoError(t, err, "any endpoint source is stored (#399)")
+	assert.False(t, dup)
 }
 
 func TestInboxClaimConcurrent(t *testing.T) {

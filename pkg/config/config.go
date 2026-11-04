@@ -341,7 +341,12 @@ type Ingest struct {
 const (
 	IngestGitHub = "github"
 	IngestLinear = "linear"
+	// IngestGeneric is any other HMAC-signed JSON sender (#399).
+	IngestGeneric = "generic"
 )
+
+// IngestSources are the endpoint sources.
+var IngestSources = []string{IngestGitHub, IngestLinear, IngestGeneric}
 
 // IngestEndpoint is one webhook endpoint (#339).
 type IngestEndpoint struct {
@@ -356,8 +361,32 @@ type IngestEndpoint struct {
 	// Repos, GitHub only, allows deliveries for these owner/name repos.
 	// Empty allows all, including deliveries with no repository.
 	Repos []string `yaml:"repos"`
+	// SignatureHeader, generic only, is the request header holding the
+	// hex HMAC-SHA256 of the raw body, after SignaturePrefix (e.g.
+	// "sha256=") is cut. DeliveryIDHeader, if set, names the sender's
+	// delivery id; without one the body hash dedupes (#399).
+	SignatureHeader  string `yaml:"signature_header"`
+	SignaturePrefix  string `yaml:"signature_prefix"`
+	DeliveryIDHeader string `yaml:"delivery_id_header"`
+	// Map, generic only, says where the inbox subject fields are in the
+	// JSON payload.
+	Map IngestMap `yaml:"map"`
 	// Implicit marks an endpoint made for an identity's webhook secret.
 	Implicit bool `yaml:"-"`
+}
+
+// IngestMap maps a generic payload to inbox fields (#399). Each value
+// is a dotted path into the JSON (`repo`, `prs.0`, `pull.head.sha`);
+// NaturalKey is text with `{path}` parts filled the same way. An unset
+// or missing path leaves the field empty.
+type IngestMap struct {
+	Kind       string `yaml:"kind" json:"kind,omitempty"`
+	RepoOrTeam string `yaml:"repo_or_team" json:"repo_or_team,omitempty"`
+	Number     string `yaml:"number" json:"number,omitempty"`
+	Actor      string `yaml:"actor" json:"actor,omitempty"`
+	CommentID  string `yaml:"comment_id" json:"comment_id,omitempty"`
+	DeliveryID string `yaml:"delivery_id" json:"delivery_id,omitempty"`
+	NaturalKey string `yaml:"natural_key" json:"natural_key,omitempty"`
 }
 
 // LinearWebhookPath is the shared path of implicit identity endpoints.
@@ -421,8 +450,15 @@ func (c *Config) validateIngest() error {
 			return fmt.Errorf("%s: duplicate name", where)
 		}
 		names[e.Name] = true
-		if e.Source != IngestGitHub && e.Source != IngestLinear {
-			return fmt.Errorf("%s: source must be github or linear", where)
+		if !slices.Contains(IngestSources, e.Source) {
+			return fmt.Errorf("%s: source must be github, linear or generic", where)
+		}
+		if e.Source == IngestGeneric {
+			if e.SignatureHeader == "" {
+				return fmt.Errorf("%s: a generic endpoint needs signature_header", where)
+			}
+		} else if e.SignatureHeader != "" || e.SignaturePrefix != "" || e.DeliveryIDHeader != "" || e.Map != (IngestMap{}) {
+			return fmt.Errorf("%s: signature_header, signature_prefix, delivery_id_header and map are for generic endpoints", where)
 		}
 		if (e.SecretFile == "") == (e.Identity == "") {
 			return fmt.Errorf("%s: set exactly one of secret_file and identity", where)
