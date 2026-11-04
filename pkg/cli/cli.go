@@ -86,6 +86,11 @@ type root struct {
 
 // Main parses args, runs the selected command and returns a process exit code.
 func Main(args []string) int {
+	if len(args) > 0 && args[0] == "gh" {
+		// Before kong: gh's own flags must reach gh unparsed (#349).
+		g := &Globals{Root: os.Getenv("JOBSHOP_ROOT"), Socket: os.Getenv("JOBSHOP_SOCKET")}
+		return runGH(g, args[1:], os.Stdin, os.Stdout, os.Stderr)
+	}
 	var r root
 	// kong calls Exit after --help; a no-op would fall through and run the
 	// command, so record the code and stop before Run.

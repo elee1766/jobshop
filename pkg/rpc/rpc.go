@@ -83,6 +83,7 @@ const (
 	MethodReport           = "report"
 	MethodQuestionAnswer   = "question.answer"
 	MethodActivityList     = "activity.list"
+	MethodActivityRecord   = "activity.record"
 	MethodLearnAdd         = "learn.add"
 	MethodLearnList        = "learn.list"
 	MethodLearnUpdate      = "learn.update"
@@ -150,6 +151,18 @@ type ActivityListParams struct {
 type ActivityListResult struct {
 	Items   []ActivityItem `json:"items"`
 	Sources []string       `json:"sources"`
+}
+
+// ActivityRecordParams records one outside call a session made through
+// `jobshop gh` (#349). Action is the guard action name; Target is
+// owner/name, with #n for a PR or issue.
+type ActivityRecordParams struct {
+	Action   string `json:"action"`
+	Repo     string `json:"repo,omitempty"`
+	Target   string `json:"target,omitempty"`
+	Decision string `json:"decision"`
+	ExitCode int    `json:"exit_code"`
+	Command  string `json:"command,omitempty"`
 }
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
