@@ -18,6 +18,7 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"github.com/elee1766/acphost"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -47,6 +48,7 @@ const (
 	MethodSessionReap      = "session.reap"
 	MethodSessionRestart   = "session.restart"
 	MethodSessionPrompt    = "session.prompt"
+	MethodSessionSandbox   = "session.sandbox"
 	MethodSessionSend      = "session.send"
 	MethodSessionSubscribe = "session.subscribe"
 	MethodWhoami           = "whoami"
@@ -349,6 +351,22 @@ type SessionListParams struct {
 type SessionRestartParams struct {
 	ID  string `json:"id"`
 	Now bool   `json:"now,omitempty"`
+}
+
+// SessionSandboxParams names the session whose sandbox to show.
+type SessionSandboxParams struct {
+	ID string `json:"id"`
+}
+
+// SessionSandboxResult is the sandbox the session's next spawn would get.
+// Sandbox is nil when its pool is not sandboxed. Error is set when the
+// bwrap argv cannot be built (bwrap missing, a mount source missing).
+type SessionSandboxResult struct {
+	Session string           `json:"session"`
+	Pool    string           `json:"pool"`
+	Sandbox *acphost.Sandbox `json:"sandbox,omitempty"`
+	Argv    []string         `json:"argv,omitempty"`
+	Error   string           `json:"error,omitempty"`
 }
 
 // SessionPromptParams names the session whose next prompt to show.
