@@ -155,6 +155,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `checkout` | Main checkout of the repo on the host (pool `repo:`); sessions get worktrees of it |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `human` | GitHub user mentioned on escalations |
+| `escalation_chat_pool` | A `type: chat` pool (e.g. the operator pack's `operator`) where the controller opens one escalation chat per escalation ticket with `prompts/escalation.md` or `escalation-pool.md` (#379). Empty (default): ticket only |
 | `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |

@@ -111,7 +111,10 @@ type Gateway struct {
 	escalating map[string]Thread // open escalation tickets with a thread, by ticket id
 	// keys maps a replacement escalation thread to the session key of the
 	// thread it replaced, so replies reach the same session (#197).
-	keys      map[Thread]string
+	keys map[Thread]string
+	// pools maps an escalation thread to the controller's chat pool when
+	// it differs from cfg.Pool (#379).
+	pools     map[Thread]string
 	questions map[string]string // open question tickets by thread key
 	wg        sync.WaitGroup
 }
@@ -132,7 +135,7 @@ func New(cfg Config, ad Adapter, ctl Controller, log *slog.Logger) *Gateway {
 	g := &Gateway{
 		cfg: cfg, ad: ad, ctl: ctl, log: log, retry: 2 * time.Second,
 		watched: map[string]*watch{}, escalating: map[string]Thread{}, keys: map[Thread]string{},
-		questions: map[string]string{},
+		pools: map[Thread]string{}, questions: map[string]string{},
 	}
 	g.live.Store(&cfg)
 	return g
@@ -266,7 +269,13 @@ func (g *Gateway) Handle(ctx context.Context, m Message) {
 		return
 	}
 	sent := time.Now()
-	p := rpc.SessionSendParams{Pool: g.cfg.Pool, Key: key, Text: text, Interrupt: interrupt}
+	pool := g.cfg.Pool
+	g.mu.Lock()
+	if p, ok := g.pools[m.Thread]; ok {
+		pool = p
+	}
+	g.mu.Unlock()
+	p := rpc.SessionSendParams{Pool: pool, Key: key, Text: text, Interrupt: interrupt}
 	res, err := g.ctl.Send(ctx, p)
 	if err != nil {
 		g.log.Warn("gateway: send", "key", key, "err", err)

@@ -3,8 +3,8 @@
   import { resource, post } from '../lib/api.svelte.js';
   import Chat from './Chat.svelte';
 
-  // Operator chat: sessions of the chat pool (escalation threads from the
-  // gateway and desk:<id> sessions), and a button for a fresh one.
+  // Operator chat: sessions of the chat pool (desk:<id> sessions and
+  // escalation chats), and a button for a fresh one.
   const chats = resource(() => '/api/chat');
   let first = $state('');
   let starting = $state(false);
@@ -28,11 +28,11 @@
   }
 
   /** @param {string} k */
-  const label = (k) => (k.startsWith('desk:') ? 'Desk' : k.startsWith('matrix:') ? 'Matrix' : k.split(':')[0] || 'session');
+  const label = (k) => (k.startsWith('desk:') ? 'Desk' : k.startsWith('escalation:') ? 'Escalation ' + k.slice('escalation:'.length) : k.split(':')[0] || 'session');
 </script>
 
 <h1>Chat</h1>
-<p class="muted sub">Operator sessions in pool <span class="mono">{chats.data?.pool ?? '…'}</span>. Desk and Matrix share sessions by key.</p>
+<p class="muted sub">Operator sessions in pool <span class="mono">{chats.data?.pool ?? '…'}</span>, and escalation chats.</p>
 
 <div class="card new">
   <form onsubmit={(e) => { e.preventDefault(); start(); }}>

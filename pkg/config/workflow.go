@@ -38,7 +38,10 @@ type Workflow struct {
 	LinearWorkspace string `yaml:"linear_workspace"`
 	// EscalatePool gets the escalation ticket when a run needs a human.
 	EscalatePool string `yaml:"escalate_pool"`
-	Steps        []Step `yaml:"steps"`
+	// Escalate opens an escalation chat for the run's escalation tickets
+	// (#379). Nil: the top-level escalation block, if any.
+	Escalate *EscalationChat `yaml:"escalate"`
+	Steps    []Step          `yaml:"steps"`
 	// PackVars are the vars of the pack that declared the workflow, set by
 	// the loader, not by users.
 	PackVars map[string]any `yaml:"pack_vars,omitempty"`
@@ -282,6 +285,11 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 			return fmt.Errorf("escalate_pool: unknown pool %q", w.EscalatePool)
 		}
 	}
+	if w.Escalate != nil {
+		if err := c.checkEscalation(w.Escalate); err != nil {
+			return fmt.Errorf("escalate: %w", err)
+		}
+	}
 	if len(w.Steps) == 0 {
 		return errors.New("steps: at least one step is required")
 	}
@@ -326,6 +334,118 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 				if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) {
 					return fmt.Errorf("%s: %s uses %s, not in workflow vars or pack vars", where, f.key, placeholder(v, w.Template))
 				}
+			}
+		}
+	}
+	return nil
+}
+
+// EscalationChat is the escalation chat policy (#379): a workflow's
+// escalate block, or the top-level escalation block for runs without one
+// and for pool quarantines. The controller starts one session in
+// ChatPool keyed escalation:<ticket> and sends the rendered prompt as its
+// first message. An empty ChatPool means no chat, ticket only.
+type EscalationChat struct {
+	ChatPool string `yaml:"chat_pool"`
+	// Prompt is the first message of a run escalation chat. Vars:
+	// EscalationVars, plus the declaring pack's vars on a workflow.
+	Prompt     string `yaml:"prompt"`
+	PromptFile string `yaml:"prompt_file"`
+	// PoolPrompt is the first message of a pool quarantine escalation
+	// chat. Vars: EscalationPoolVars.
+	PoolPrompt     string `yaml:"pool_prompt"`
+	PoolPromptFile string `yaml:"pool_prompt_file"`
+}
+
+// Escalation chat template vars, filled when the chat starts.
+var (
+	EscalationVars     = []string{"ticket", "run", "workflow", "issue_ref", "body"}
+	EscalationPoolVars = []string{"ticket", "pool", "error", "body"}
+)
+
+// escalationPassthrough returns vars plus each escalation var mapped to
+// its own reference, so pack substitution leaves them for the controller.
+// Escalation vars win over pack vars of the same name.
+func escalationPassthrough(vars map[string]any) map[string]any {
+	out := make(map[string]any, len(vars)+len(EscalationVars)+len(EscalationPoolVars))
+	for k, v := range vars {
+		out[k] = v
+	}
+	for _, k := range append(slices.Clone(EscalationVars), EscalationPoolVars...) {
+		out[k] = "${" + k + "}"
+	}
+	return out
+}
+
+// holdEscalationPrompts removes inline escalation prompts so pack var
+// substitution of the whole file leaves them alone; the returned func
+// puts them back. resolveEscalationFiles then substitutes them with the
+// escalation vars passed through.
+func holdEscalationPrompts(m map[string]any) func() {
+	type held struct {
+		e map[string]any
+		k string
+		v any
+	}
+	var hs []held
+	for _, b := range escalationBlocks(m) {
+		e, _ := b.(map[string]any)
+		for _, k := range []string{"prompt", "pool_prompt"} {
+			if v, ok := e[k]; ok {
+				hs = append(hs, held{e, k, v})
+				delete(e, k)
+			}
+		}
+	}
+	return func() {
+		for _, h := range hs {
+			h.e[h.k] = h.v
+		}
+	}
+}
+
+// escalationBlocks returns the raw escalation maps of m: the top-level
+// escalation block and each workflow's escalate block.
+func escalationBlocks(m map[string]any) map[string]any {
+	out := map[string]any{}
+	if e, ok := m["escalation"].(map[string]any); ok {
+		out["escalation"] = e
+	}
+	wfs, _ := m["workflows"].(map[string]any)
+	for n, w := range wfs {
+		wm, _ := w.(map[string]any)
+		if e, ok := wm["escalate"].(map[string]any); ok {
+			out["workflows."+n+".escalate"] = e
+		}
+	}
+	return out
+}
+
+// checkEscalation validates an escalation block.
+func (c *Config) checkEscalation(e *EscalationChat) error {
+	if e.PromptFile != "" || e.PoolPromptFile != "" {
+		return errors.New("prompt_file needs a config file location")
+	}
+	if e.ChatPool == "" {
+		return nil
+	}
+	p, ok := c.Pools[e.ChatPool]
+	if !ok {
+		return fmt.Errorf("chat_pool: unknown pool %q", e.ChatPool)
+	}
+	if !p.Chat() {
+		return fmt.Errorf("chat_pool: pool %s is not a chat pool (type: chat)", e.ChatPool)
+	}
+	if e.Prompt == "" && e.PoolPrompt == "" {
+		return errors.New("chat_pool needs prompt or prompt_file")
+	}
+	for _, f := range []struct {
+		key, v string
+		vars   []string
+	}{{"prompt", e.Prompt, EscalationVars}, {"pool_prompt", e.PoolPrompt, EscalationPoolVars}} {
+		for _, v := range templateVars(f.v) {
+			if !slices.Contains(f.vars, v) {
+				return fmt.Errorf("%s uses ${%s}; available: %v", f.key, v, f.vars)
 			}
 		}
 	}

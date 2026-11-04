@@ -29,6 +29,9 @@ type Config struct {
 	Pools     map[string]Pool     `yaml:"pools"`
 	Triggers  map[string]Trigger  `yaml:"triggers"`
 	Workflows map[string]Workflow `yaml:"workflows"`
+	// Escalation is the escalation chat for workflows without an
+	// escalate block and for pool quarantines (#379). Absent: no chat.
+	Escalation *EscalationChat `yaml:"escalation"`
 	// PromptRules add operator guidance to matching sessions' prompts
 	// (#205): packs' rules in pack order, then this file's.
 	PromptRules []PromptRule `yaml:"prompt_rules"`
@@ -994,6 +997,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: workflow %s: %w", src("workflows", name), name, err)
 		}
 	}
+	if c.Escalation != nil {
+		if err := c.checkEscalation(c.Escalation); err != nil {
+			return nil, fmt.Errorf("%s: escalation: %w", FileName, err)
+		}
+	}
 	if err := c.checkRules(); err != nil {
 		return nil, err
 	}
@@ -1190,7 +1198,7 @@ func (c *Config) Prefix(project string) string {
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
 // controller, and the gateway on escalation tickets).
-var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question"}
+var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question", "escalation"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

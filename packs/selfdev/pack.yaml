@@ -16,9 +16,12 @@ defaults:
   evaluate_runs: 20
   evaluate_age: 72h
   learn_sessions: 1
+  # Passed to packs/github (#379). Empty: no escalation chat.
+  escalation_chat_pool: ""
 extends:
   - path: ../github
     vars:
+      escalation_chat_pool: ${escalation_chat_pool}
       repo: elee1766/jobshop
       checkout: "{{.repo}}"
       agent: "{{.agent}}"

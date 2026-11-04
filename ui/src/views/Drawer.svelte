@@ -11,8 +11,8 @@
   // External activity linked to this run or ticket (#255).
   const ext = resource(() => '/api/activity?limit=20&ticket=' + encodeURIComponent(id));
   const close = () => go({ ticket: '' });
-  /** meta.gateway on an escalation: the thread's session and key (#125). @param {any} t */
-  const gw = (t) => meta(t).gateway || null;
+  /** meta.escalation on an escalation: the controller's chat session and key (#379). @param {any} t */
+  const esc = (t) => meta(t).escalation || null;
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') close(); }} />
@@ -44,10 +44,10 @@
       <div class="row"><span class="muted">parent</span> <a href={'?ticket=' + t.parent_id} class="mono" onclick={(e) => { e.preventDefault(); go({ ticket: t.parent_id }); }}>{t.parent_id}</a></div>
     {/if}
 
-    {#if gw(t)?.session}
-      <h3>Escalation thread</h3>
-      <div class="faint">Same session as the {gw(t).gateway} gateway thread; replies here reach it too.</div>
-      <div class="panel" data-testid="escalation-chat"><Chat id={gw(t).session} key={gw(t).key} /></div>
+    {#if esc(t)?.session}
+      <h3>Escalation chat</h3>
+      <div class="faint">The session working this escalation; write here to answer it.</div>
+      <div class="panel" data-testid="escalation-chat"><Chat id={esc(t).session} key={esc(t).key} /></div>
     {/if}
 
     {#if v.data.run}
