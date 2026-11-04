@@ -549,6 +549,22 @@ packs:
 	assert.Contains(t, bodies[0], `jobshop linear comment ENG-7 "PR <url>"`)
 	assert.Contains(t, bodies[2], `jobshop linear state ENG-7 "Done"`)
 
+	// The planner lists the team by the intake vars, starts runs with the
+	// intake's key, and files new work with create and relate (#292).
+	plan := c.Pools["eng-plan"].Prompt
+	assert.Equal(t, "Todo", w.PackVars["linear_intake_states"])
+	assert.Contains(t, w.PackVars, "linear_intake_assignee")
+	assert.Contains(t, plan, "jobshop linear list\n   --team ENG --state <state>")
+	assert.Contains(t, plan, "`Todo` (comma-separated)")
+	assert.Contains(t, plan, "--key linear-<KEY>")
+	assert.NotContains(t, plan, "--key issue-")
+	assert.NotContains(t, plan, "no create command")
+	assert.Contains(t, plan, "jobshop linear create --team ENG")
+	assert.Contains(t, plan, "jobshop linear relate <NEW> --related\n   ENG-1")
+	assert.Contains(t, c.Pools["eng-dev"].Prompt, "jobshop linear create --team ENG")
+	assert.Contains(t, c.Pools["eng-dev"].Prompt, "linear relate <NEW> --related <current KEY>")
+	assert.Contains(t, bodies[1], "jobshop linear relate <NEW> --related ENG-7")
+
 	// The github default keeps the gh prompts and no Linear workspace.
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test}\n"})
 	c, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))

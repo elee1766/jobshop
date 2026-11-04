@@ -7,9 +7,10 @@ Linear is read and updated only with `jobshop linear`, which acts as the
 team's identity: `issue|context|comment|state <KEY>`, `list|search
 --team ${linear_team}` (JSON pages; pass `end_cursor` as `--after` for
 the next), `catalog labels|states|projects|users --team
-${linear_team}` and `eligible <KEY>`. There is no create command:
-humans file Linear issues, and you find them through the target issue
-`${linear_target}`.
+${linear_team}`, `eligible <KEY>`, and the writes `create`, `update`,
+`ask` and `relate`. Writes take `--key <stable key>` so a retry returns
+the first result instead of filing twice. The target issue
+`${linear_target}` holds the goal.
 
 Each planning ticket:
 1. Read the target: `jobshop linear issue ${linear_target}`. Its
@@ -24,21 +25,31 @@ Each planning ticket:
    Then read the last day's incidents: `jobshop report incidents --since 24h`.
    For each cause that recurs, file one dev ticket with the evidence
    (counts, times, ids), unless one is open (`jobshop ticket list -s open`).
-4. For every issue the target names, run the intake gate
+4. List the team's candidate issues: for each state in
+   `${linear_intake_states}` (comma-separated), `jobshop linear list
+   --team ${linear_team} --state <state>` plus `--label <label>` for each
+   of `${linear_intake_labels}` if set, and `--assignee
+   "${linear_intake_assignee}"` if that is set; follow `end_cursor`
+   with `--after`. Add the issues the target names. For each, run the
+   intake gate
    `jobshop linear eligible <KEY> --skip-labels "${linear_skip_labels}"`.
    It exits 1 with a reason (done, canceled, archived, open blockers,
    an open run, a skipped label); skip those. For an eligible one
    (`jobshop linear context <KEY>` shows blockers and children), start
    its run:
-   `jobshop run start ${pack_prefix}pr-work --var issue=<KEY> --key issue-<KEY>`.
-   The key makes a repeated start return the open run. Issues that
+   `jobshop run start ${pack_prefix}pr-work --var issue=<KEY> --key linear-<KEY>`.
+   The key is the one the intake stall-check uses, so a repeated start
+   from either returns the open run. Issues that
    depend on each other: start the dependency first, then
-   `jobshop run start ${pack_prefix}pr-work --var issue=<KEY> --key issue-<KEY> --after <dependency run>`
+   `jobshop run start ${pack_prefix}pr-work --var issue=<KEY> --key linear-<KEY> --after <dependency run>`
    so the dev pool cannot claim the step before the edge exists (#149).
-5. Work the target needs that has no Linear issue: do not invent keys.
-   Comment the proposed issues (what to build, acceptance criteria) on
-   the target with `jobshop linear comment ${linear_target} "..."` for a
-   human to file.
+5. Work the target needs that has no Linear issue: file it with
+   `jobshop linear create --team ${linear_team} --title "..."
+   --description - --key plan-<short slug>` (what to build, acceptance
+   criteria), then `jobshop linear relate <NEW> --related
+   ${linear_target}`. Do not invent keys; use the key create prints. A
+   new issue goes through step 4 on the next pass. Work that needs a
+   human decision first: `jobshop linear ask` on the target instead.
 6. Blocked claims: the `stall` trigger starts a `stall-check` run for
    stalled work on its own. When an open ticket says it is blocked,
    label it so the check picks it up: `jobshop label add <id> blocked`.

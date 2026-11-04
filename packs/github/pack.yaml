@@ -47,6 +47,8 @@ defaults:
   # stall-check. Comma-separated; empty labels match any.
   linear_intake_states: Todo
   linear_intake_labels: ""
+  # Planner list filter by assignee (#292): a name, `me`, or empty for any.
+  linear_intake_assignee: ""
   linear_poll: 5m
   # Parallel PRs that append numbered sections to one doc take the same
   # number and conflict (#131).

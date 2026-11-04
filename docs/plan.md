@@ -309,6 +309,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Pool scaling: min/max, desired target, `pool scale`, cordon to scale
   down, persisted scale and drain, host cap (#281,
   `docs/notes/281-pool-scaling.md`).
+- Linear planner: lists team issues by the intake vars, starts pr-work
+  with the intake's `linear-<KEY>` key, files new work and out-of-scope
+  findings with `linear create` and `relate` (#292,
+  `docs/notes/292-linear-planner.md`).
 
 ## 5. What's next
 
@@ -426,6 +430,7 @@ Linear App identity live check, with an OAuth app in a throwaway
 workspace: `docs/verify/linear-pack.md` (#278).
 Linear intake live check with a Linear token on gasserver:
 `docs/verify/linear-intake.md` (#287).
+Linear planner live check: steps 3 and 6 of `docs/verify/linear-pack.md` (#292).
 
 Pool scaling live check: `docs/verify/pool-scaling.md` (#281); Desk
 scale and cordon buttons are a follow-up.
@@ -915,6 +920,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   does not stop the other stall signals. stall-check, not the
   controller, starts `pr-work`, so `linear eligible` (blockers, open
   questions) still gates each issue.
+- Linear planner and intake share the run key `linear-<KEY>` (2026-11-04,
+  #292), replacing the planner's `issue-<KEY>`: run start dedups by key,
+  so one key is what keeps the two starters from opening two runs.
+  Out-of-scope findings on a Linear tracker go to Linear issues, related
+  to the source, not dev tickets, so the humans who triage Linear see them.
 - Linear write idempotency (2026-11-04, #280): the controller stores key
   -> result (`write_keys`), and created entities take a UUID derived
   from the key as their Linear id. The stored result covers a retry

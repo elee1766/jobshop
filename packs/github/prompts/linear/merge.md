@@ -15,6 +15,12 @@ worktree, then `${check_cmd}`. A failure, a lint finding, or a new
 case 4: put the exact output in your findings. You do not fix code
 yourself.
 
+A problem you find that is outside this PR's issue does not block it:
+file it with `jobshop linear create --team ${linear_team} --title
+"<title>" --description - --key review-${issue}-<short slug>`, then
+`jobshop linear relate <NEW> --related ${issue}`, after `jobshop linear
+search` finds no duplicate.
+
 Then do exactly one of these. Releasing this step counts as a failed
 attempt (like a failed close), so wait inside your turn instead of
 releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
