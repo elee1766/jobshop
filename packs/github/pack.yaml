@@ -25,6 +25,9 @@ defaults:
   stall_after: 1h
   stall_step_after: 3h
   stall_human_after: 4h
+  # GitHub logins besides ${human} whose issues start work (#340).
+  # Comma-separated. Others need the accepted label.
+  authors: ""
   deploy_check: >-
     none (these agents do not deploy this repo); treat this check as
     passed.
@@ -134,13 +137,18 @@ triggers:
         - {signal: needs_human, after: "${stall_human_after}"}
         - {signal: blocked, after: "${stall_after}"}
         # Open issues older than 30m that are not targets, decisions,
-        # escalations, tracking or drills; the controller drops those
-        # with an open run.
+        # escalations, tracking or drills, filed by an App (the planner),
+        # ${human} or a login in ${authors}, or labeled accepted (#340);
+        # the controller drops those with an open run.
         - signal: issue_no_run
           repo: ${repo}
           check: >-
             gh issue list --repo ${repo} --state open --limit 200
-            --json number,labels,title,createdAt --jq '.[]
+            --json number,labels,title,createdAt,author --jq '
+            ("${human},${authors}" | ascii_downcase | split(",") | map(select(. != ""))) as $ok
+            | .[]
+            | select(.author.is_bot or ([.author.login | ascii_downcase] | inside($ok))
+            or ([.labels[].name] | any(. == "accepted")))
             | select([.labels[].name] | any(. == "target" or . == "needs-decision"
             or . == "needs-human" or . == "tracking") | not)
             | select(.title | test("^drill"; "i") | not)

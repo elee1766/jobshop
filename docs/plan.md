@@ -348,6 +348,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/320-jcode-memory-off.md`).
 - Unknown pool admin methods warn and are dropped instead of failing
   the load (#325, #328, `docs/notes/325-unknown-admin-method.md`).
+- GitHub author allowlist: pack var `authors` and the `accepted` label
+  gate `issue_no_run`; `subscriptions.authors` gates comments (#340,
+  `docs/notes/340-author-allowlist.md`).
 
 ## 5. What's next
 

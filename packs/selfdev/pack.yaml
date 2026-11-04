@@ -24,6 +24,8 @@ extends:
       dev_sessions: ${dev_sessions}
       refinery_sessions: ${refinery_sessions}
       human: elee1766
+      # Contributors whose issue reports are picked up (#340).
+      authors: zexoverz
       ci_workflow: ci
       check_cmd: go build ./... && go vet ./... && go test ./... && golangci-lint run ./...
       docs_rule: >-
