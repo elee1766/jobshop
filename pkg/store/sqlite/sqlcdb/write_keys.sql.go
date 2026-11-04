@@ -80,3 +80,15 @@ func (q *Queries) InsertWriteKey(ctx context.Context, arg InsertWriteKeyParams) 
 	}
 	return result.RowsAffected()
 }
+
+const pruneWriteKeys = `-- name: PruneWriteKeys :execrows
+DELETE FROM write_keys WHERE created_at < ?1
+`
+
+func (q *Queries) PruneWriteKeys(ctx context.Context, before int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneWriteKeys, before)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

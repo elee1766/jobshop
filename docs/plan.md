@@ -384,6 +384,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
 - `jobshop wait add|list|clear`: tickets park on a PR review, checks,
   PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
+- Write keys: remote key or hidden GitHub marker is the record, local
+  rows pruned after 48h (#415, `docs/notes/415-write-key-cache.md`).
 - Generic HMAC ingest endpoints with a payload map, and `jobshop ingest
   put` for local senders (#399, `docs/notes/399-generic-ingest.md`).
 - Resource slots: `resources:` (counted or keyed) and step

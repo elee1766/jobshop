@@ -31,6 +31,7 @@ func (c *Controller) writeKeyClaim(ctx context.Context, sc scope, p rpc.WriteKey
 	if err != nil {
 		return nil, err
 	}
+	k.Scoped = k.Key
 	k.Key = p.Key
 	return k, nil
 }

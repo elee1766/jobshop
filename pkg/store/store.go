@@ -341,6 +341,9 @@ type Store interface {
 	// FinishWriteKey stores a pending write's result; a done key keeps
 	// its first result.
 	FinishWriteKey(ctx context.Context, key, result string) (WriteKey, error)
+	// PruneWriteKeys deletes keys created before before, done or
+	// pending, and returns how many (#415).
+	PruneWriteKeys(ctx context.Context, before time.Time) (int64, error)
 	// InboxPut stores an ingested item (#321). A delivery id already
 	// stored is a no-op that returns the existing row and dup true.
 	InboxPut(ctx context.Context, it InboxItem) (out InboxItem, dup bool, err error)

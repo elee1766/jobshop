@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite/sqlcdb"
@@ -55,6 +56,17 @@ func (s *Store) FinishWriteKey(ctx context.Context, key, result string) (out sto
 		return nil
 	})
 	return out, err
+}
+
+// PruneWriteKeys deletes keys created before before, done or pending
+// (#415): the local table is a cache, the remote key or marker is the
+// record.
+func (s *Store) PruneWriteKeys(ctx context.Context, before time.Time) (n int64, err error) {
+	err = s.tx(ctx, func(q *sqlcdb.Queries) error {
+		n, err = q.PruneWriteKeys(ctx, ms(before))
+		return err
+	})
+	return n, err
 }
 
 func toWriteKey(r sqlcdb.WriteKey) store.WriteKey {

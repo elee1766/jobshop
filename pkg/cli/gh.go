@@ -250,7 +250,12 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 		warn(stderr, err.Error())
 		return 1
 	}
+	key, args := cutGHKey(args)
 	c := classifyGH(args)
+	if key != "" && c.action == "" {
+		warn(stderr, "jobshop gh: "+ghKeyFlag+" is only for writes (not run)")
+		return 1
+	}
 	repo := c.repo
 	if repo == "" {
 		repo = originRepo()
@@ -288,6 +293,11 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 			recordGH(g, c.action, repo, target, r.Decision, 1, args, stderr)
 			return 1
 		}
+	}
+	if key != "" {
+		code := runGHKeyed(g, gh, env, c, repo, key, args, stdin, stdout, stderr)
+		recordGH(g, c.action, repo, target, rpc.GuardAllow, code, args, stderr)
+		return code
 	}
 	cmd := exec.Command(gh, args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr, cmd.Env = stdin, stdout, stderr, env
