@@ -263,6 +263,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   grant across instances (#248, `docs/notes/248-host-operator.md`).
 - Resumed sessions keep PATH in jcode's `bash -lc` tool shell on NixOS
   (#253, `docs/notes/253-resume-shell-env.md`).
+- Activity feed: recent GitHub and Linear activity for all worked repos
+  and teams in Desk, the run drawer and `jobshop activity` (#255,
+  `docs/notes/255-activity-feed.md`).
 
 ## 5. What's next
 
@@ -367,6 +370,8 @@ pool idle TTL and `attach --rw` (#122, built), the gateway (#123, built), the pa
 escalation threads (#125, built; runbook `docs/verify/escalation-thread.md`).
 The Discord adapter is built (#182); it needs a live check with a bot token.
 Respawn env check after the next self-deploy: `docs/verify/respawn-env.md` (#244).
+Activity feed live check and rate-limit measurement on gasserver:
+`docs/verify/activity-feed.md` (#255).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -776,6 +781,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - The first unclosed-turn release of a ticket is a deferral, later ones
   count as failures (2026-11-03, #241): harnesses end turns to wait on
   backgrounded commands, which is not a failed attempt.
+- The activity feed (2026-11-04, #255) is a cache file under the root,
+  not a store table: the items are external and refetchable, and store
+  writes would add history rows and change events for each one. Links to
+  runs are computed at list time from ticket meta.
 - Linear subscriptions (2026-11-03, #233) drop comments by the polling
   identity's own user (`isMe`): sessions comment with that same key.
 - Linear pack prompts are a `tracker` var on packs/github choosing

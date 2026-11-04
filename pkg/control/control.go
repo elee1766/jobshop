@@ -118,7 +118,12 @@ type Controller struct {
 	events *hub
 	// subSource reads GitHub threads; nil means gh (tests set a fake).
 	subSource threadSource
-	wg        sync.WaitGroup
+	// activitySrc reads GitHub and Linear activity; nil means live APIs
+	// (tests set a fake). activity is the cache, loaded on first poll.
+	activitySrc activitySource
+	activityMu  sync.Mutex
+	activity    *activityState
+	wg          sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -261,6 +266,7 @@ func (c *Controller) serve() error {
 	}
 	c.wg.Go(c.pumpEvents)
 	c.wg.Go(c.pumpSubscriptions)
+	c.wg.Go(c.pumpActivity)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -570,5 +576,6 @@ func init() {
 		rpc.MethodSubscribe:        bind((*Controller).subscribe),
 		rpc.MethodReport:           bind((*Controller).report),
 		rpc.MethodQuestionAnswer:   bind((*Controller).answerQuestion),
+		rpc.MethodActivityList:     bind((*Controller).activityList),
 	}
 }

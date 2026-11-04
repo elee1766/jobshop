@@ -75,7 +75,54 @@ const (
 	MethodSubscribe        = "subscribe"
 	MethodReport           = "report"
 	MethodQuestionAnswer   = "question.answer"
+	MethodActivityList     = "activity.list"
 )
+
+// Activity sources (#255).
+const (
+	ActivityGitHub = "github"
+	ActivityLinear = "linear"
+)
+
+// ActivityItem is one external event: a push, PR, review, comment, CI
+// result or Linear change. Ref is the issue or PR number (GitHub) or the
+// issue key (Linear) it refers to; Tickets are the Jobshop runs and
+// tickets whose meta.github or meta.linear names that ref.
+type ActivityItem struct {
+	ID      string    `json:"id"`
+	Source  string    `json:"source"`
+	Repo    string    `json:"repo,omitempty"` // owner/name, or the Linear team key
+	Kind    string    `json:"kind"`
+	Actor   string    `json:"actor"`
+	Bot     bool      `json:"bot,omitempty"`
+	At      time.Time `json:"at"`
+	Title   string    `json:"title"`
+	Body    string    `json:"body,omitempty"`
+	URL     string    `json:"url,omitempty"`
+	Ref     string    `json:"ref,omitempty"`
+	PR      bool      `json:"pr,omitempty"`
+	Tickets []string  `json:"tickets,omitempty"`
+}
+
+// ActivityListParams filters activity.list. Bots is "humans", "bots" or
+// "" (all). Ticket keeps items linked to that run or ticket.
+type ActivityListParams struct {
+	Since  time.Duration `json:"since,omitempty"`
+	Source string        `json:"source,omitempty"`
+	Repo   string        `json:"repo,omitempty"`
+	Kind   string        `json:"kind,omitempty"`
+	Actor  string        `json:"actor,omitempty"`
+	Bots   string        `json:"bots,omitempty"`
+	Ticket string        `json:"ticket,omitempty"`
+	Limit  int           `json:"limit,omitempty"`
+}
+
+// ActivityListResult is newest first. Sources lists every polled repo and
+// team, for filter chips.
+type ActivityListResult struct {
+	Items   []ActivityItem `json:"items"`
+	Sources []string       `json:"sources"`
+}
 
 // CreateParams creates a ticket. Project defaults to the caller's project.
 type CreateParams struct {
@@ -837,6 +884,9 @@ const (
 	EventKindSession = "session"
 	EventKindReady   = "ready"
 	EventKindLagged  = "lagged"
+	// EventKindActivity: new external activity items (#255); refetch
+	// activity.list. Seq is 0: it is not a history row.
+	EventKindActivity = "activity"
 )
 
 // Session event ops; other session history ops (claim, update) keep their

@@ -42,6 +42,9 @@ type Config struct {
 	// Subscriptions polls GitHub threads that tickets follow (#187).
 	// Absent: off.
 	Subscriptions *Subscriptions `yaml:"subscriptions"`
+	// Activity polls recent GitHub and Linear activity for Desk (#255).
+	// Absent: off.
+	Activity *Activity `yaml:"activity"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
@@ -186,6 +189,21 @@ type Subscriptions struct {
 	Ignore []string `yaml:"ignore"`
 }
 
+// Activity configures the external activity poller (#255). Repos and
+// teams come from the loaded config: every workflow repo and every Linear
+// identity team.
+type Activity struct {
+	// Interval between polls (Go duration). Default 1m; GitHub's
+	// X-Poll-Interval can only lengthen it.
+	Interval string `yaml:"interval"`
+	// Window is how long items are kept (Go duration). Default 168h.
+	Window string `yaml:"window"`
+	// MaxItems bounds the items kept per source (repo or team). Default 1000.
+	MaxItems int `yaml:"max_items"`
+	// Repos are polled besides the workflow repos.
+	Repos []string `yaml:"repos"`
+}
+
 // Gateway.Network values.
 const (
 	GatewayMatrix  = "matrix"
@@ -286,7 +304,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "report-incidents", "attention"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "report-incidents", "attention", "activity"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -502,6 +520,24 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			}
 		}
 	}
+	if a := c.Activity; a != nil {
+		for _, d := range []struct{ key, v string }{{"interval", a.Interval}, {"window", a.Window}} {
+			if d.v == "" {
+				continue
+			}
+			if v, err := time.ParseDuration(d.v); err != nil || v <= 0 {
+				return nil, fmt.Errorf("%s: activity: %s %q must be a positive duration", FileName, d.key, d.v)
+			}
+		}
+		if a.MaxItems < 0 {
+			return nil, fmt.Errorf("%s: activity: max_items must not be negative", FileName)
+		}
+		for _, r := range a.Repos {
+			if !RepoPattern.MatchString(r) {
+				return nil, fmt.Errorf("%s: activity: repo %q must be owner/name", FileName, r)
+			}
+		}
+	}
 	for name, g := range c.Gateway {
 		if err := c.checkGateway(g); err != nil {
 			return nil, fmt.Errorf("%s: gateway %s: %w", FileName, name, err)
@@ -645,6 +681,40 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 		return fmt.Errorf("ticket: unknown project %q", t.Project)
 	}
 	return nil
+}
+
+// ActivityRepos lists the GitHub repos the activity poller reads: every
+// workflow repo and activity.repos, sorted and unique.
+func (c *Config) ActivityRepos() []string {
+	var out []string
+	for _, w := range c.Workflows {
+		if RepoPattern.MatchString(w.Repo) {
+			out = append(out, w.Repo)
+		}
+	}
+	if c.Activity != nil {
+		out = append(out, c.Activity.Repos...)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+// ActivityTeams lists the Linear team keys of all Linear identities,
+// sorted and unique. "*" is skipped: it names no team to poll.
+func (c *Config) ActivityTeams() []string {
+	var out []string
+	for _, i := range c.Identities {
+		if i.Kind != IdentityLinear {
+			continue
+		}
+		for _, t := range i.Teams {
+			if t != "*" {
+				out = append(out, t)
+			}
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // Duration parses an optional duration string already checked by Parse.

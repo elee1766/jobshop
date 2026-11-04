@@ -668,6 +668,24 @@ type attentionCmd struct{}
 
 func (attentionCmd) Run(g *Globals) error { return g.call(rpc.MethodAttention, nil, nil) }
 
+type activityCmd struct {
+	Since  time.Duration `help:"Only items newer than this, e.g. 1h."`
+	Source string        `enum:",github,linear" default:"" help:"github or linear."`
+	Repo   string        `help:"owner/name, or a Linear team key."`
+	Kind   string        `help:"push, pr, merge, review, review_comment, comment, issue, branch, release, ci, state, assignee."`
+	Actor  string        `help:"Login or Linear name."`
+	Bots   string        `enum:",all,humans,bots" default:"" help:"humans, bots or all (default)."`
+	Ticket string        `short:"t" help:"Only items linked to this run or ticket."`
+	Limit  int           `default:"50" help:"Most items to print, newest first."`
+}
+
+func (c activityCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodActivityList, rpc.ActivityListParams{
+		Since: c.Since, Source: c.Source, Repo: c.Repo, Kind: c.Kind, Actor: c.Actor,
+		Bots: c.Bots, Ticket: c.Ticket, Limit: c.Limit,
+	}, nil)
+}
+
 type guardCmd struct {
 	Action string `arg:"" help:"Action about to happen: push, pr-create, merge, comment, message, or any name a hook knows."`
 	Target string `help:"What it acts on, such as a PR url or branch."`
