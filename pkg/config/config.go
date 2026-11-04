@@ -243,6 +243,9 @@ type Subscriptions struct {
 	ResumeWindow string `yaml:"resume_window"`
 	// Ignore lists logins whose comments are dropped, beyond bots.
 	Ignore []string `yaml:"ignore"`
+	// Authors, when set, are the only logins whose comments are
+	// delivered (#340); the public repo's other commenters are dropped.
+	Authors []string `yaml:"authors"`
 }
 
 // Activity configures the external activity poller (#255). Repos and

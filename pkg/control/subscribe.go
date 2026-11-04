@@ -354,13 +354,18 @@ func (c *Controller) saveThreads(ctx context.Context, f *follower) {
 	f.threads = sm.Threads
 }
 
-// ignored drops bots, CI and configured logins.
+// ignored drops bots, CI, configured logins and, when authors is set,
+// everyone not on it.
 func (c *Controller) ignored(cm ghComment) bool {
 	if cm.Bot || strings.HasSuffix(cm.Author, "[bot]") || cm.Author == "" {
 		return true
 	}
 	s := c.config().Subscriptions
-	return s != nil && slices.ContainsFunc(s.Ignore, func(l string) bool { return strings.EqualFold(l, cm.Author) })
+	if s == nil {
+		return false
+	}
+	is := func(l string) bool { return strings.EqualFold(l, cm.Author) }
+	return slices.ContainsFunc(s.Ignore, is) || len(s.Authors) > 0 && !slices.ContainsFunc(s.Authors, is)
 }
 
 // owner picks the follower that gets a thread's news: the one being

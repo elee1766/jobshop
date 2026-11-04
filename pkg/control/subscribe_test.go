@@ -124,6 +124,7 @@ func mkSession(t *testing.T, c *Controller) store.Ticket {
 // the read position is stored and used on the next pass.
 func TestSubscriptionsWorkingSession(t *testing.T) {
 	c, clk, src := subController(t)
+	c.config().Subscriptions.Authors = []string{"Alice"}
 	ctx := t.Context()
 	sess := mkSession(t, c)
 	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
@@ -143,8 +144,9 @@ func TestSubscriptionsWorkingSession(t *testing.T) {
 	src.add("other/lib#12", ghComment{Author: "github-actions[bot]", Body: "CI", At: at})
 	src.add("other/lib#12", ghComment{Author: "ci-person", Body: "noise", At: at})
 	src.add("other/lib#12", ghComment{Author: "renovate", Bot: true, Body: "bump", At: at})
+	src.add("other/lib#12", ghComment{Author: "mallory", Body: "not on authors", At: at})
 	c.pollSubscriptions(ctx, src)
-	assert.Empty(t, messagesTo(t, c, sess.ID), "bots and ignored logins are filtered")
+	assert.Empty(t, messagesTo(t, c, sess.ID), "bots, ignored logins and non-authors are filtered")
 	assert.Equal(t, at, threadsOf(t, c, tk.ID)[1].Seen, "read position advances past filtered comments")
 
 	at2 := at.Add(time.Minute)
