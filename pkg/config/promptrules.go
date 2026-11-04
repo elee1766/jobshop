@@ -47,7 +47,18 @@ type PromptRule struct {
 	// Memory adds the memory files and skills index from a git directory
 	// (#266), read each turn so a pull is live without a reload.
 	Memory *RuleMemory `yaml:"memory,omitempty"`
+	// Inject is changed (default: send when new to the session or its
+	// text changed), once (send once per conversation) or always (every
+	// matching turn) (#397).
+	Inject string `yaml:"inject,omitempty"`
 }
+
+// PromptRule.Inject values.
+const (
+	InjectChanged = "changed"
+	InjectOnce    = "once"
+	InjectAlways  = "always"
+)
 
 // RuleMemory points a prompt rule at a memory directory (pkg/memory).
 type RuleMemory struct {
@@ -169,6 +180,13 @@ func (c *Config) checkRules() error {
 		}
 		if r.Text == "" && r.Command == "" && r.Memory == nil {
 			return fmt.Errorf("%s: set text, file, command or memory", where)
+		}
+		switch r.Inject {
+		case "":
+			c.PromptRules[i].Inject = InjectChanged
+		case InjectChanged, InjectOnce, InjectAlways:
+		default:
+			return fmt.Errorf("%s: inject %q must be changed, once or always", where, r.Inject)
 		}
 		if r.Memory != nil && r.Memory.Cap < 0 {
 			return fmt.Errorf("%s: memory.cap must not be negative", where)

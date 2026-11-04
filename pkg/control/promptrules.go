@@ -246,14 +246,22 @@ func ruleNames(parts []PromptPart) []string {
 	return out
 }
 
-// renderParts is `session prompt` output: each part under a label.
+// renderParts is `session prompt` output: each part under a label, with
+// its injection status; a skipped part shows no text.
 func renderParts(parts []PromptPart) string {
 	var b strings.Builder
 	for i, p := range parts {
 		if i > 0 {
 			b.WriteString("\n")
 		}
-		fmt.Fprintf(&b, "=== %s ===\n%s\n", p.Source, p.Text)
+		switch p.Status {
+		case "":
+			fmt.Fprintf(&b, "=== %s ===\n%s\n", p.Source, p.Text)
+		case injectUnchanged:
+			fmt.Fprintf(&b, "=== %s (unchanged, not sent) ===\n", p.Source)
+		default:
+			fmt.Fprintf(&b, "=== %s (%s) ===\n%s\n", p.Source, p.Status, p.Text)
+		}
 	}
 	return b.String()
 }
@@ -317,8 +325,15 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		body = PromptPart{Source: "messages", Text: messagesHeader + "\n\n(next messages)"}
 	}
 	parts := c.assemble(ctx, ts, body)
+	var sent map[string]string
+	if r != nil {
+		r.mu.Lock()
+		sent = r.injected
+		r.mu.Unlock()
+	}
+	send, all, _ := dedupe(c.config(), sent, parts)
 	res := rpc.SessionPromptResult{
-		Session: sess.ID, Turn: ts.kind, Rules: ruleNames(parts), Parts: parts, Text: renderParts(parts),
+		Session: sess.ID, Turn: ts.kind, Rules: ruleNames(send), Parts: all, Text: renderParts(all),
 	}
 	if res.Rules == nil {
 		res.Rules = []string{}

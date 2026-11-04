@@ -72,6 +72,10 @@ type runner struct {
 	// turnRules are the prompt rules in the current prompt, sent in its
 	// _meta so the host journal records which applied (#205).
 	turnRules []string
+	// injected maps rule name to the hash of the text this conversation
+	// last received (#397). Reset when the context may be gone. Guarded
+	// by mu.
+	injected map[string]string
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -195,6 +199,12 @@ const recoveryNote = "Note: this session was resumed after a restart, crash, res
 	"Before repeating any outside action (push, PR, issue or ticket comment, close), " +
 	"check your worktree (`git status`, `git log`), the remote branch and GitHub, " +
 	"and `jobshop ticket show` for what already happened."
+
+func (r *runner) resetInjected() {
+	r.mu.Lock()
+	r.injected = nil
+	r.mu.Unlock()
+}
 
 func (r *runner) takeResumed() bool {
 	r.mu.Lock()
@@ -524,6 +534,10 @@ func (r *runner) session() error {
 	if welcome.Initialize == nil {
 		fresh = true
 	}
+	if fresh {
+		// A new host may hold a new conversation or a summary: resend all.
+		r.resetInjected()
+	}
 
 	gate := rpc.NewGate(rd)
 	conn := acp.NewClientSideConnection(&client{r: r}, nc, gate)
@@ -571,6 +585,7 @@ func (r *runner) session() error {
 	cwd := r.c.sessionCwd(t)
 	switch {
 	case fields.ACPSession == "":
+		r.resetInjected()
 		ns, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 		if err != nil {
 			return fmt.Errorf("session/new: %w", err)
@@ -1166,8 +1181,15 @@ func (r *runner) turnSpec(kind string, t *store.Ticket, poolPrompt bool) turnSpe
 	}
 }
 
-// useParts records which rules the prompt carries and returns its text.
+// useParts drops rule parts the conversation already holds (#397),
+// records which rules the prompt carries and returns its text.
 func (r *runner) useParts(parts []PromptPart) string {
+	r.mu.Lock()
+	send, all, next := dedupe(r.c.config(), r.injected, parts)
+	r.injected = next
+	r.mu.Unlock()
+	r.c.recordInjected(r.pool, all)
+	parts = send
 	names := ruleNames(parts)
 	r.setTurnRules(names)
 	if len(names) > 0 {
