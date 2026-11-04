@@ -1507,42 +1507,47 @@ func (c *Controller) ensureWorktree(t store.Ticket, cwd string) (bool, error) {
 	if !ok || p.Repo == "" {
 		return false, nil
 	}
+	return true, c.addWorktree(p.Repo, p.Ref, cwd, "jobshop session "+t.ID, "pool "+t.Pool)
+}
+
+// addWorktree makes a locked, detached worktree of repo at ref (default
+// HEAD) in cwd unless cwd exists. what names the owner in errors.
+func (c *Controller) addWorktree(repo, ref, cwd, reason, what string) error {
 	c.gitMu.Lock()
 	defer c.gitMu.Unlock()
 	if _, err := os.Stat(cwd); err == nil {
-		return true, nil
+		return nil
 	}
-	if st, err := os.Stat(p.Repo); err != nil {
-		return true, host.Permanentf("pool %s repo %s: %w", t.Pool, p.Repo, err)
+	if st, err := os.Stat(repo); err != nil {
+		return host.Permanentf("%s repo %s: %w", what, repo, err)
 	} else if !st.IsDir() {
-		return true, host.Permanentf("pool %s repo %s is not a directory", t.Pool, p.Repo)
+		return host.Permanentf("%s repo %s is not a directory", what, repo)
 	}
-	ref := p.Ref
 	if ref == "" {
 		ref = "HEAD"
 	}
 	// Start from the latest remote state; a failed fetch (offline, no
 	// remote) still allows a worktree from what is there.
-	if out, err := exec.Command("git", "-C", p.Repo, "fetch", "--quiet", "--prune").CombinedOutput(); err != nil {
-		c.log.Warn("git fetch", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
+	if out, err := exec.Command("git", "-C", repo, "fetch", "--quiet", "--prune").CombinedOutput(); err != nil {
+		c.log.Warn("git fetch", "repo", repo, "err", err, "out", strings.TrimSpace(string(out)))
 	}
 	// A worktree deleted without git (rm -rf) stays registered and makes
 	// `worktree add` refuse the same path. It is locked (below) and prune
 	// skips locked entries, so unlock it first.
-	_ = exec.Command("git", "-C", p.Repo, "worktree", "unlock", cwd).Run()
-	if out, err := exec.Command("git", "-C", p.Repo, "worktree", "prune").CombinedOutput(); err != nil {
-		c.log.Warn("git worktree prune", "repo", p.Repo, "err", err, "out", strings.TrimSpace(string(out)))
+	_ = exec.Command("git", "-C", repo, "worktree", "unlock", cwd).Run()
+	if out, err := exec.Command("git", "-C", repo, "worktree", "prune").CombinedOutput(); err != nil {
+		c.log.Warn("git worktree prune", "repo", repo, "err", err, "out", strings.TrimSpace(string(out)))
 	}
-	out, err := exec.Command("git", "-C", p.Repo, "worktree", "add", "--detach",
-		"--lock", "--reason", "jobshop session "+t.ID, cwd, ref).CombinedOutput()
+	out, err := exec.Command("git", "-C", repo, "worktree", "add", "--detach",
+		"--lock", "--reason", reason, cwd, ref).CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
 		if worktreeAddPermanent(string(out)) {
 			err = &host.PermanentError{Err: err}
 		}
-		return true, err
+		return err
 	}
-	return true, nil
+	return nil
 }
 
 // worktreeAddPermanent matches git's messages for a repo or ref that is

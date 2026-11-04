@@ -428,7 +428,11 @@ func (c *Controller) setRunState(ctx context.Context, actor string, t store.Tick
 	if err != nil || resolution == "" {
 		return t, err
 	}
-	return c.store.CloseTicket(ctx, actor, t.ID, nil, resolution)
+	t, err = c.store.CloseTicket(ctx, actor, t.ID, nil, resolution)
+	if err == nil {
+		c.removeRunDir(t.ID)
+	}
+	return t, err
 }
 
 func (c *Controller) runCancel(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
@@ -583,6 +587,7 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 // for needs_human runs, then sets the needs_human gauge.
 func (c *Controller) sweepRuns() {
 	defer c.recordRunGauges(c.ctx)
+	c.sweepRunDirs()
 	for _, state := range []string{store.RunRunning, store.RunNeedsHuman} {
 		runs, err := c.store.ListRuns(c.ctx, "", state, 0)
 		if err != nil {

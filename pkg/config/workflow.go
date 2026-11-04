@@ -130,6 +130,10 @@ type Step struct {
 	// Placement replaces pool and needs_resources with weighted options
 	// (#409).
 	Placement *Placement `yaml:"placement,omitempty"`
+	// Worktree runs a command step in a git worktree of its pool's repo
+	// at the pool ref, one per run, shared by the run's command steps and
+	// removed when the run closes (#419).
+	Worktree bool `yaml:"worktree,omitempty"`
 }
 
 // StepWhen is a step condition: run only if step closed with outcome.
@@ -458,6 +462,9 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 			}
 		} else if s.Type != StepAgent {
 			return fmt.Errorf("%s: type %q must be agent, command or http", where, s.Type)
+		}
+		if s.Worktree && (s.Type != StepCommand || s.Pool == "") {
+			return fmt.Errorf("%s: worktree needs a command step with a pool", where)
 		}
 		if s.Placement != nil {
 			if err := c.checkPlacement(w, s); err != nil {

@@ -48,8 +48,14 @@ func expandHome(p string) string {
 // create configured rw dirs, so it runs on spawn and in the debug view,
 // not for env staleness checks (sandboxKey covers those).
 func (c *Controller) sandboxFor(t store.Ticket, exe, cwd string) (*host.Sandbox, error) {
+	return c.poolSandbox(t.Pool, c.root.SessionDir(t.ID), exe, cwd)
+}
+
+// poolSandbox is pool's sandbox for a process whose own writable dir is
+// own (a session dir, or a command step's dir) and which runs in cwd.
+func (c *Controller) poolSandbox(pool, own, exe, cwd string) (*host.Sandbox, error) {
 	cfg := c.config()
-	sb := cfg.SandboxFor(t.Pool)
+	sb := cfg.SandboxFor(pool)
 	if sb.Backend == "" {
 		return nil, nil
 	}
@@ -60,7 +66,7 @@ func (c *Controller) sandboxFor(t store.Ticket, exe, cwd string) (*host.Sandbox,
 	}
 	// jobshop itself and the agent command, which may live outside the store.
 	ro(filepath.Dir(exe))
-	agent := cfg.Agents[cfg.Pools[t.Pool].Agent]
+	agent := cfg.Agents[cfg.Pools[pool].Agent]
 	if filepath.IsAbs(agent.Command) {
 		ro(filepath.Dir(agent.Command))
 	}
@@ -73,12 +79,12 @@ func (c *Controller) sandboxFor(t store.Ticket, exe, cwd string) (*host.Sandbox,
 	rw := func(p string) { s.RW = append(s.RW, host.Mount{Src: p}) }
 	// The session dir holds cli.sock, the only controller socket bound in.
 	// cwd is the worktree under it, or the pool dir.
-	rw(c.root.SessionDir(t.ID))
-	if !within(cwd, c.root.SessionDir(t.ID)) {
+	rw(own)
+	if !within(cwd, own) {
 		rw(cwd)
 	}
 	// Worktree commits write objects and refs in the main checkout's .git.
-	if p := cfg.Pools[t.Pool]; p.Repo != "" {
+	if p := cfg.Pools[pool]; p.Repo != "" {
 		if gd := gitCommonDir(p.Repo); gd != "" {
 			rw(gd)
 		}
