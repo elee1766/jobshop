@@ -342,6 +342,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).
+- Unknown pool admin methods warn and are dropped instead of failing
+  the load (#325, #328, `docs/notes/325-unknown-admin-method.md`).
 
 ## 5. What's next
 
@@ -1033,6 +1035,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   own table, not tickets: items are many and short-lived, and a
   conditional take keeps claimers from sharing a row. Delivery is at
   least once; consumers dedupe with run and write keys.
+- A pool admin method the binary does not know is dropped with a load
+  warning, not a fatal error (2026-11-04, #325, #328): the packs checkout can
+  move ahead of the deployed binary, and one stale method must not stop
+  serve and every session socket with it.
 
 ## 7. Reference: behavior as built
 
