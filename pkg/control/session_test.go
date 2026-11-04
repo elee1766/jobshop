@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
@@ -936,11 +937,35 @@ func TestAgentBusy(t *testing.T) {
 	assert.Equal(t, store.StatusOpen, sessions[0].Status, "session did not end crashed")
 }
 
+// backoffLog counts the controller's rate-limit backoff log records. The
+// backoff lasts 100-400ms, so polling session.list for BackoffUntil missed
+// it under -race load (#372); a log record cannot be missed.
+type backoffLog struct {
+	slog.Handler
+	n *atomic.Int32
+}
+
+func (h backoffLog) Handle(ctx context.Context, r slog.Record) error {
+	if r.Message == "provider rate limited, backing off" {
+		h.n.Add(1)
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h backoffLog) WithAttrs(a []slog.Attr) slog.Handler {
+	return backoffLog{h.Handler.WithAttrs(a), h.n}
+}
+
+func (h backoffLog) WithGroup(g string) slog.Handler {
+	return backoffLog{h.Handler.WithGroup(g), h.n}
+}
+
 // TestRateLimitBackoff has the agent fail prompts with a 429 a few times:
 // the session keeps its claim and host, backs off without restarting, and
 // the retried turn closes the ticket.
 func TestRateLimitBackoff(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	backoffs := new(atomic.Int32)
+	root, start := poolRootOpt(t, "1m", control.Options{Log: slog.New(backoffLog{slog.Default().Handler(), backoffs})})
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "ratelimit"), []byte("3"), 0o600))
 	stop := start()
 	defer stop()
@@ -956,20 +981,18 @@ func TestRateLimitBackoff(t *testing.T) {
 		return got
 	}
 
-	sawBackoff := false
 	hostPid := 0
 	require.Eventually(t, func() bool {
 		var list []rpc.SessionInfo
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &list))
 		for _, s := range list {
-			if s.BackoffUntil == nil {
-				continue
-			}
-			sawBackoff = true
 			// The retry may close the ticket between reading backoff and
 			// reading the claim; otherwise the claim must still be held.
-			if s.Current != task.ID {
+			if s.BackoffUntil != nil && s.Current != task.ID {
 				assert.Equal(t, store.StatusClosed, show(task.ID).Status, "claim kept while backing off")
+			}
+			if s.HostPid == 0 {
+				continue
 			}
 			if hostPid == 0 {
 				hostPid = s.HostPid
@@ -978,7 +1001,7 @@ func TestRateLimitBackoff(t *testing.T) {
 		}
 		return show(task.ID).Status == store.StatusClosed
 	}, 30*time.Second, 20*time.Millisecond)
-	assert.True(t, sawBackoff)
+	assert.Equal(t, int32(3), backoffs.Load(), "one backoff per 429")
 	assert.Equal(t, "done", show(task.ID).Resolution)
 
 	var sessions []store.Ticket
