@@ -242,6 +242,9 @@ type Store interface {
 	SetResourceCaps(ctx context.Context, caps map[string]int) error
 	// Resources reports each resource key in use or waited on.
 	Resources(ctx context.Context) ([]ResourceUse, error)
+	// ResourceWaits lists tickets held back only by a full resource key,
+	// in claim order per key (#408).
+	ResourceWaits(ctx context.Context) ([]ResourceWait, error)
 	// Orphaned returns open, unclaimed claimable tickets whose pool is
 	// empty or not in pools, so no session will ever claim them. Empty
 	// project means every project.

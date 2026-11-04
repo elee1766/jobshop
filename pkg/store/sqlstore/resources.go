@@ -72,3 +72,39 @@ func (s *Store) Resources(ctx context.Context) ([]store.ResourceUse, error) {
 	}
 	return out, nil
 }
+
+// ResourceWaits lists tickets waiting on a full resource key, in claim
+// order per key (#408). A ticket naming several full keys is listed under
+// the first.
+func (s *Store) ResourceWaits(ctx context.Context) ([]store.ResourceWait, error) {
+	use, err := s.Resources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	full := map[string]store.ResourceUse{}
+	for _, u := range use {
+		if u.Capacity > 0 && u.Held >= u.Capacity {
+			full[u.Key] = u
+		}
+	}
+	if len(full) == 0 {
+		return nil, nil
+	}
+	rows, err := s.q.ResourceWaiters(ctx, ms(s.now()))
+	if err != nil {
+		return nil, err
+	}
+	var out []store.ResourceWait
+	seen := map[string]bool{}
+	ahead := map[string]int{}
+	for _, r := range rows {
+		u, ok := full[r.Rkey]
+		if !ok || seen[r.ID] {
+			continue
+		}
+		seen[r.ID] = true
+		out = append(out, store.ResourceWait{Ticket: r.ID, Key: r.Rkey, Ahead: ahead[r.Rkey], Held: u.Held, Capacity: u.Capacity})
+		ahead[r.Rkey]++
+	}
+	return out, nil
+}

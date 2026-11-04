@@ -208,6 +208,9 @@ func TestRunStepResources(t *testing.T) {
 	assert.ElementsMatch(t, []string{c.Steps[0].ID}, readyIDs(t, admin), "pr 1 is held; pr 2 is free")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: c.Steps[0].ID, Holder: "s2"}, nil))
 	assert.Empty(t, readyIDs(t, admin), "emu (max 2) is full too")
+	// run show says what b waits on (#408).
+	assert.Equal(t, []store.ResourceWait{{Ticket: b.Steps[0].ID, Key: "emu", Held: 2, Capacity: 2}}, showRun(t, admin, b.Run.ID).Waits)
+	assert.Empty(t, showRun(t, admin, a.Run.ID).Waits, "a holds its slots")
 
 	closeStep(t, admin, a.Steps[0].ID, "done")
 	assert.Equal(t, []string{b.Steps[0].ID}, readyIDs(t, admin), "closing frees pr 1 and an emu slot")

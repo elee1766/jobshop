@@ -70,6 +70,14 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	assert.Contains(t, use, store.ResourceUse{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1})
 	assert.Contains(t, use, store.ResourceUse{Key: "other", Held: 0, Waiting: 2})
 
+	// Waits (#408): only the full keys, in claim order.
+	waits, err := s.ResourceWaits(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []store.ResourceWait{
+		{Ticket: "js-b", Key: "emu", Ahead: 0, Held: 1, Capacity: 1},
+		{Ticket: "js-d", Key: "pr:x#1", Ahead: 0, Held: 1, Capacity: 1},
+	}, waits)
+
 	// Close frees the slot.
 	_, err = s.CloseTicket(ctx, "s1", "js-a", &ca, "done")
 	require.NoError(t, err)

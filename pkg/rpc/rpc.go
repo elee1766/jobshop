@@ -867,6 +867,8 @@ type RunResult struct {
 	Steps []store.Ticket `json:"steps"`
 	// Existing is true when start returned an open run for the key.
 	Existing bool `json:"existing,omitempty"`
+	// Waits are steps held back by a full resource (#408).
+	Waits []store.ResourceWait `json:"waits,omitempty"`
 }
 
 // BatchStartParams starts one run per issue under a batch ticket (#169).
@@ -1136,6 +1138,7 @@ const (
 	AttentionPool     = "pool"     // quarantined pool with no open escalation
 	AttentionRollback = "rollback" // self-deploy rolled back a commit
 	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
+	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
 )
 
 // AttentionItem is one thing waiting on a human.

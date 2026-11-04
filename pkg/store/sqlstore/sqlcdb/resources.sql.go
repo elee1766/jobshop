@@ -116,6 +116,50 @@ func (q *Queries) ResourceUse(ctx context.Context) ([]ResourceUseRow, error) {
 	return items, nil
 }
 
+const resourceWaiters = `-- name: ResourceWaiters :many
+SELECT t.id, CAST(r.value AS TEXT) AS rkey
+FROM tickets t, json_each(t.fields, '$.resources') r
+WHERE t.status = 'open'
+  AND t.defer_until <= ?1
+  AND t.f_waiting = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
+    WHERE e.from_id = t.id AND e.kind IN ('blocks','waits_for')
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution NOT IN ('done','skipped'))))
+ORDER BY r.value, t.priority, t.created_at, t.id
+`
+
+type ResourceWaitersRow struct {
+	ID   string
+	Rkey string
+}
+
+// ResourceWaiters lists open, unblocked, non-deferred tickets per
+// resource key they name, in claim order (#408). The caller keeps the
+// keys that are full: those tickets wait on the resource alone.
+func (q *Queries) ResourceWaiters(ctx context.Context, now int64) ([]ResourceWaitersRow, error) {
+	rows, err := q.db.QueryContext(ctx, resourceWaiters, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ResourceWaitersRow{}
+	for rows.Next() {
+		var i ResourceWaitersRow
+		if err := rows.Scan(&i.ID, &i.Rkey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resourceWaiting = `-- name: ResourceWaiting :many
 SELECT CAST(r.value AS TEXT) AS rkey, count(*) AS waiting
 FROM tickets t, json_each(t.fields, '$.resources') r

@@ -114,6 +114,10 @@ type Querier interface {
 	ResourceFull(ctx context.Context, id string) (int64, error)
 	// ResourceUse counts in-progress tickets per resource key (#400).
 	ResourceUse(ctx context.Context) ([]ResourceUseRow, error)
+	// ResourceWaiters lists open, unblocked, non-deferred tickets per
+	// resource key they name, in claim order (#408). The caller keeps the
+	// keys that are full: those tickets wait on the resource alone.
+	ResourceWaiters(ctx context.Context, now int64) ([]ResourceWaitersRow, error)
 	// ResourceWaiting counts open tickets per resource key (#400).
 	ResourceWaiting(ctx context.Context) ([]ResourceWaitingRow, error)
 	SetLearningGate(ctx context.Context, arg SetLearningGateParams) error
