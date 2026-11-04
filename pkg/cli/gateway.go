@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/goccy/go-yaml"
+
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/cron"
 	"github.com/elee1766/jobshop/pkg/gateway"
@@ -67,6 +69,8 @@ func (c gatewayCmd) Run(g *Globals) error {
 	gw := gateway.New(gateway.Config{
 		Name: c.Name, Pool: gc.Pool, Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker,
 		EscalationRoom: gc.EscalationRoom, Digest: digest,
+		Fetch:      socketController{sock: sock}.gatewayConfig(c.Name),
+		FetchEvery: gatewayConfigEvery,
 	}, ad, socketController{sock: sock}, log)
 	log.Info("gateway: running", "network", gc.Network, "pool", gc.Pool, "escalation_room", gc.EscalationRoom)
 	return gw.Run(ctx)
@@ -133,4 +137,33 @@ func (s socketController) Subscribe(ctx context.Context, p rpc.SessionSubscribeP
 func (s socketController) Attention(ctx context.Context) (rpc.AttentionResult, error) {
 	var res rpc.AttentionResult
 	return res, s.call(ctx, rpc.MethodAttention, nil, &res)
+}
+
+// gatewayConfigEvery is how often a gateway reads its settings from the
+// controller, so a reload reaches it without a restart (#307).
+const gatewayConfigEvery = 30 * time.Second
+
+// gatewayConfig returns a fetch for gateway name's rooms, senders,
+// marker and escalation room from the controller's active config.
+func (s socketController) gatewayConfig(name string) func(context.Context) (gateway.Config, error) {
+	return func(ctx context.Context) (gateway.Config, error) {
+		var res rpc.ConfigShowResult
+		if err := s.call(ctx, rpc.MethodConfigShow, struct{}{}, &res); err != nil {
+			return gateway.Config{}, err
+		}
+		gws, _ := res.Config["gateway"].(map[string]any)
+		raw, ok := gws[name]
+		if !ok {
+			return gateway.Config{}, fmt.Errorf("no gateway %q in the controller's config", name)
+		}
+		b, err := yaml.Marshal(raw)
+		if err != nil {
+			return gateway.Config{}, err
+		}
+		var gc config.Gateway
+		if err := yaml.Unmarshal(b, &gc); err != nil {
+			return gateway.Config{}, err
+		}
+		return gateway.Config{Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker, EscalationRoom: gc.EscalationRoom}, nil
+	}
 }

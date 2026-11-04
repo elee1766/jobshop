@@ -47,6 +47,12 @@ func NewMatrix(ctx context.Context, homeserver, token string, rooms []string, lo
 	return &Matrix{cli: cli, log: log, rooms: rooms}, nil
 }
 
+// Join implements Joiner, for a room added by a config change (#307).
+func (m *Matrix) Join(ctx context.Context, room string) error {
+	_, err := m.cli.JoinRoomByID(ctx, id.RoomID(room))
+	return err
+}
+
 // Network implements Adapter.
 func (m *Matrix) Network() string { return "matrix" }
 

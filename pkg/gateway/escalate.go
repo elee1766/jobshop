@@ -287,7 +287,7 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 		return nil // another gateway owns it
 	}
 	if !ok {
-		th, err := g.ad.Open(ctx, g.cfg.EscalationRoom, openingText(t))
+		th, err := g.ad.Open(ctx, g.settings().EscalationRoom, openingText(t))
 		if err != nil {
 			return fmt.Errorf("open thread: %w", err)
 		}
@@ -358,7 +358,7 @@ func (g *Gateway) rethread(ctx context.Context, old Thread, text string) {
 	if id == "" {
 		return
 	}
-	th, err := g.ad.Open(ctx, g.cfg.EscalationRoom, fmt.Sprintf("Escalation %s continues here: the previous thread (root %s) was not found.", id, old.Root))
+	th, err := g.ad.Open(ctx, g.settings().EscalationRoom, fmt.Sprintf("Escalation %s continues here: the previous thread (root %s) was not found.", id, old.Root))
 	if err != nil {
 		g.log.Warn("gateway: rethread", "ticket", id, "err", err)
 		return
