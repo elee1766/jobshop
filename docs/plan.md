@@ -991,6 +991,35 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   holes: anything not listed (admin.sock, the db, secrets, other
   sessions) is absent. A missing bwrap or mount is a permanent spawn
   error that quarantines the pool; there is no unsandboxed fallback.
+- Second repo is elee1766/acphost (2026-11-04, #213): the session host
+  library extracted from `pkg/host`, worked by an `acphost-` instance of
+  packs/github. A real dependency instead of a throwaway drill repo, so
+  cross-repo work (tag there, bump here) is exercised.
+- Agent containment is bubblewrap (2026-11-04, acphost#13, #262), not
+  firejail: unprivileged on gasserver with no setuid, and it does only
+  what its argv says, which fits a controller that computes each
+  session's mounts. acphost runs it; jobshop decides the mounts. Learnings
+  go through `cli.sock`, so the sandbox needs no write mount for them.
+  Mise works inside it with `MISE_ALL_COMPILE=false`,
+  `MISE_PYTHON_COMPILE=false`, nix-ld and the resolver bound in (tested
+  on gasserver, #262).
+- Guidance is injected by Jobshop, not delivered as files (2026-11-04,
+  #247): pack prompts and `prompt_rules` carry everything that must
+  apply, since only the controller knows a session's pool, repo and step
+  and `session prompt` shows the result. Files hold reference material
+  read on demand (skills, runbooks), mounted read-only. jcode's own
+  memory is turned off for jobshop agents once packs/learn is live.
+- The operator role in Matrix is played by the coordinator agent
+  (2026-11-04, #145) as `@claude-operator:jobshop.localhost`; the human
+  does not use the rooms.
+- External input goes through one durable inbox and admission
+  (2026-11-04, #318): webhooks and pollers write rows keyed by delivery
+  id, mutating then validating hooks (`command:` or signed `url:`, fail
+  closed) run before anything reaches a ticket or prompt, and the
+  receiver, drain and workers can run as separate crash-only processes.
+  Correctness never depends on a process supervisor; workers heartbeat
+  so a missing one shows on `attention`. `jobshop gh` replaces the
+  module's gh wrapper and runs the guard hooks on writing commands.
 
 ## 7. Reference: behavior as built
 
