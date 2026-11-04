@@ -5,17 +5,19 @@ the run's `review-merge` step (`jobshop run show <run>` with the run id
 from this ticket's `parent_id`), or from
 `gh pr list --state merged --search "#{{.issue}}" --json number,mergeCommit`.
 
-Releasing this step counts as a failed attempt, so wait inside your turn
-(`gh run watch`, `sleep 300` between checks) rather than releasing.
+Long commands are moved to the background, so do not wait inside the
+turn. Check once; if CI or the deploy is pending, comment what you saw
+and `jobshop release --until 20m` (a deferral, not a failed attempt;
+a plain release is one).
 
 1. Master CI on the merge commit:
    `gh run list --branch master --commit <sha> --json status,conclusion,databaseId`.
-   Pending: `gh run watch <id>`. Red: file a priority-0 fix issue
+   Pending: release --until as above. Red: file a priority-0 fix issue
    (`gh issue list --search` first) and a dev ticket for it, comment
    both here, and `jobshop close -r failed`.
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh on every loop. Do not reuse an earlier result or
-   version, the deploy may have moved since. Not yet: sleep 5 minutes
+   version, the deploy may have moved since. Not yet: release --until
    and check again. Still not after an hour of
    green CI: comment what you saw and `jobshop close -r failed`.
 3. Both good: comment on the issue (`gh issue comment {{.issue}}`) that it
