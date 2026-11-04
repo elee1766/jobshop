@@ -629,7 +629,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 	for _, id := range c.orphans(open) {
 		if !p.DryRun {
 			c.log.Warn("stopping orphaned host", "session", id)
-			stopHost(c.root.SessionDir(id))
+			c.stopHost(c.root.SessionDir(id))
 		}
 		res.Stopped = append(res.Stopped, id)
 	}

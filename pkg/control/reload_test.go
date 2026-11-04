@@ -215,7 +215,7 @@ func TestConfigShow(t *testing.T) {
 // between turns, loads the conversation and keeps working in the same
 // session. A turn running at the change finishes first.
 func TestEnvRefreshLive(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	writeEnv := func(v string) {
 		cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\n    env: {DEPLOY: %q}\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n",
 			os.Args[0], v, root.Dir)
@@ -287,7 +287,7 @@ func TestEnvRefreshLive(t *testing.T) {
 // after a deploy (#111). A new controller adopting the live host with a
 // different env refreshes it before the next turn.
 func TestEnvRefreshStopsDaemon(t *testing.T) {
-	root, start := poolRoot(t, "1m")
+	root, start := poolRootReal(t, "1m")
 	writeEnv := func(v string) {
 		cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\n    env: {DEPLOY: %q}\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n",
 			os.Args[0], v, root.Dir)

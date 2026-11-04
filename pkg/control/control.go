@@ -36,6 +36,16 @@ import (
 // DefaultLease is the claim lease when the config sets none.
 const DefaultLease = 30 * time.Minute
 
+// HostRunner runs session hosts for Options.Hosts. Start begins a host
+// for a session directory whose spec is written; it must not wait for the
+// host to listen. Stop stops the host for dir and waits for it, reporting
+// false for a dir it does not run so the controller signals the pid in
+// the dir as usual.
+type HostRunner interface {
+	Start(dir string) error
+	Stop(dir string) bool
+}
+
 // Options tune a controller. Zero values use defaults.
 type Options struct {
 	Tick time.Duration // lease sweep interval, default 30s
@@ -45,6 +55,10 @@ type Options struct {
 	Log   *slog.Logger
 	// HostExe is the binary started as session-host. Default /proc/self/exe.
 	HostExe string
+	// Hosts, if set, starts and stops session hosts instead of a detached
+	// process per session. Tests run hosts in-process with it so a test of
+	// controller logic does not pay a process spawn per host (#361).
+	Hosts HostRunner
 	// Backoff is the first wait after a provider rate limit, doubling to
 	// 15x. Default 1m; tests shorten it.
 	Backoff time.Duration
