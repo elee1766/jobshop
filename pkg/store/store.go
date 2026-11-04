@@ -237,6 +237,11 @@ type Store interface {
 
 	// Ready returns open, unblocked, non-deferred claimable tickets.
 	Ready(ctx context.Context, project, pool string, limit int) ([]Ticket, error)
+	// SetResourceCaps replaces the resource capacities (name -> slots)
+	// that gate Ready and ClaimNext (#400).
+	SetResourceCaps(ctx context.Context, caps map[string]int) error
+	// Resources reports each resource key in use or waited on.
+	Resources(ctx context.Context) ([]ResourceUse, error)
 	// Orphaned returns open, unclaimed claimable tickets whose pool is
 	// empty or not in pools, so no session will ever claim them. Empty
 	// project means every project.

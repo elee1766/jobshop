@@ -52,11 +52,18 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
     vars: [review_pool]
     steps:
       - {id: review, pool: "${review_pool}", prompt: "Review", title: "Review"}
+  locked:
+    vars: [pr]
+    steps:
+      - {id: work, pool: dev, prompt: "Work", title: "Work ${pr}", needs_resources: ["pr:acme#${pr}", emu]}
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
     vars: {repo: /src, review_pool: refinery}
 lease: %q
+resources:
+  pr: {keyed: true}
+  emu: {max: 2}
 projects:
   js: {}
 agents:
@@ -176,6 +183,26 @@ func TestRunStepPoolVar(t *testing.T) {
 	var runs []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
 	assert.Len(t, runs, 2, "a bad pool creates no ticket")
+}
+
+// TestRunStepResources: needs_resources is filled from run vars, and a
+// keyed pr resource lets one step per PR be ready at a time (#400).
+func TestRunStepResources(t *testing.T) {
+	admin := runRoot(t)
+	a := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "1"}})
+	b := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "1"}})
+	c := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "2"}})
+	sf, err := store.DecodeFields[store.StepFields](a.Steps[0])
+	require.NoError(t, err)
+	assert.Equal(t, []string{"pr:acme#1", "emu"}, sf.Resources)
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: a.Steps[0].ID, Holder: "s1"}, nil))
+	assert.ElementsMatch(t, []string{c.Steps[0].ID}, readyIDs(t, admin), "pr 1 is held; pr 2 is free")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: c.Steps[0].ID, Holder: "s2"}, nil))
+	assert.Empty(t, readyIDs(t, admin), "emu (max 2) is full too")
+
+	closeStep(t, admin, a.Steps[0].ID, "done")
+	assert.Equal(t, []string{b.Steps[0].ID}, readyIDs(t, admin), "closing frees pr 1 and an emu slot")
 }
 
 func TestRunStartErrors(t *testing.T) {

@@ -208,6 +208,10 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	// Resource caps gate claims (#400); reload re-syncs them.
+	if err := st.SetResourceCaps(ctx, cfg.ResourceCaps()); err != nil {
+		return err
+	}
 
 	m, err := telemetry.NewMetrics()
 	if err != nil {

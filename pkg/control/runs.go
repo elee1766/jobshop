@@ -100,6 +100,12 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
 		}
 		w.Steps[i].Pool = name
+		// Resource keys too (#400): an unknown resource fails the start.
+		rs, err := cfg.ResolveResources(&w, s.NeedsResources, vars)
+		if err != nil {
+			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+		}
+		w.Steps[i].NeedsResources = rs
 	}
 	// Steps live in their pools' projects; the run goes with the first.
 	proj := cfg.Pools[w.Steps[0].Pool].Project
@@ -180,7 +186,7 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 		if err != nil {
 			return g, err
 		}
-		sf, err := json.Marshal(store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit()})
+		sf, err := json.Marshal(store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources})
 		if err != nil {
 			return g, err
 		}
