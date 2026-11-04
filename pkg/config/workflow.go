@@ -13,6 +13,9 @@ import (
 // DefaultStepRetries is a step's retry limit when retries is unset.
 const DefaultStepRetries = 2
 
+// OutcomePattern is a step outcome word (`jobshop close --outcome`).
+var OutcomePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
+
 // Workflow trackers (#201).
 const (
 	TrackerGitHub = "github"
@@ -117,6 +120,31 @@ type Step struct {
 	// (#400): a resource name, or "name:<key>" for a keyed resource.
 	// Run vars fill them at run start.
 	NeedsResources []string `yaml:"needs_resources"`
+	// Needs are the step ids this step waits on (#385). Empty means the
+	// previous step; the first step waits on nothing. Two steps with the
+	// same needs become ready together.
+	Needs []string `yaml:"needs"`
+	// When gates the step on an earlier step's recorded outcome; when it
+	// does not match, the step closes skipped instead of running.
+	When *StepWhen `yaml:"when"`
+}
+
+// StepWhen is a step condition: run only if step closed with outcome.
+type StepWhen struct {
+	Step    string `yaml:"step"`
+	Outcome string `yaml:"outcome"`
+}
+
+// StepNeeds returns the step ids step i waits on: its needs, or the
+// previous step.
+func (w Workflow) StepNeeds(i int) []string {
+	if len(w.Steps[i].Needs) > 0 {
+		return w.Steps[i].Needs
+	}
+	if i == 0 {
+		return nil
+	}
+	return []string{w.Steps[i-1].ID}
 }
 
 // Auto reports whether the controller runs the step (command or http).
@@ -402,6 +430,8 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		return errors.New("steps: at least one step is required")
 	}
 	ids := map[string]bool{}
+	// ancestors[id] is every step id that id transitively waits on.
+	ancestors := map[string]map[string]bool{}
 	for i := range w.Steps {
 		s := &w.Steps[i]
 		where := fmt.Sprintf("steps[%d]", i)
@@ -448,6 +478,27 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		if s.Retries != nil && *s.Retries < 0 {
 			return fmt.Errorf("%s: retries must be >= 0", where)
 		}
+		// Needs name earlier steps only, so the steps form a DAG in
+		// declaration order.
+		anc := map[string]bool{}
+		for _, n := range w.StepNeeds(i) {
+			if n == s.ID || !ids[n] {
+				return fmt.Errorf("%s: needs %q, which is not an earlier step", where, n)
+			}
+			anc[n] = true
+			for a := range ancestors[n] {
+				anc[a] = true
+			}
+		}
+		if s.When != nil {
+			if !anc[s.When.Step] {
+				return fmt.Errorf("%s: when.step %q is not a step it needs (directly or through others)", where, s.When.Step)
+			}
+			if !OutcomePattern.MatchString(s.When.Outcome) {
+				return fmt.Errorf("%s: when.outcome %q must match %s", where, s.When.Outcome, OutcomePattern)
+			}
+		}
+		ancestors[s.ID] = anc
 		for _, f := range []struct{ key, v string }{{"title", s.Title}, {"prompt", s.Prompt}} {
 			vs, err := refs(f.v, w.Template)
 			if err != nil {

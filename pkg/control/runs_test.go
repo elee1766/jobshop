@@ -56,6 +56,14 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
     vars: [pr]
     steps:
       - {id: work, pool: dev, prompt: "Work", title: "Work ${pr}", needs_resources: ["pr:acme#${pr}", emu]}
+  graph:
+    vars: [issue]
+    steps:
+      - {id: build, pool: dev, prompt: b, title: "Build #${issue}"}
+      - {id: review, pool: refinery, prompt: r, title: "Review #${issue}", needs: [build]}
+      - {id: device, pool: refinery, prompt: d, title: "Device #${issue}", needs: [build]}
+      - {id: rollout, pool: dev, prompt: o, title: "Rollout #${issue}", needs: [review, device], when: {step: review, outcome: approve}}
+      - {id: accept, pool: dev, prompt: a, title: "Accept #${issue}", when: {step: review, outcome: approve}}
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk

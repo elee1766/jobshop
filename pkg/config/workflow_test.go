@@ -128,6 +128,10 @@ func TestWorkflowErrors(t *testing.T) {
 		{"unknown run var", "  w:\n    steps:\n      - {id: a, type: command, run: 'echo ${nope}'}\n", "${nope} is not in workflow vars"},
 		{"unknown key", "  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p, pol: x}\n", "pol"},
 		{"pack_vars set by user", "  w:\n    pack_vars: {x: 1}\n    steps:\n      - " + step + "\n", "pack_vars is set by the loader"},
+		{"needs later step", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p, needs: [b]}\n      - {id: b, pool: dev, title: t, prompt: p}\n", `step a: needs "b", which is not an earlier step`},
+		{"needs itself", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p, needs: [b]}\n", `step b: needs "b"`},
+		{"when on unrelated step", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p, needs: [a]}\n      - {id: c, pool: dev, title: t, prompt: p, needs: [a], when: {step: b, outcome: ok}}\n", `step c: when.step "b" is not a step it needs`},
+		{"bad outcome", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p, when: {step: a, outcome: \"Not ok\"}}\n", `when.outcome "Not ok" must match`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

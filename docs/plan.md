@@ -399,6 +399,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `close -r rebase` reopens a step without counting a failure; the
   refinery uses it for a PR that only conflicts with master (#424,
   `docs/notes/424-rebase-no-failure.md`).
+- Workflow step graphs: `needs:` for parallel steps, `when:` for steps
+  gated on an outcome set with `close --outcome` (#385,
+  `docs/notes/385-step-needs-when.md`).
 
 ## 5. What's next
 
@@ -1223,6 +1226,7 @@ moved from the old 7.x list, oldest first:
 - [TestSessionRestartIdle flake](notes/327-restart-idle-flake.md) (#327)
 - [Prompt text from files](notes/382-text-files.md) (#382)
 - [Subscription bot allowlist](notes/402-subscription-bots.md) (#402)
+- [Step needs and when](notes/385-step-needs-when.md) (#385)
 
 ## 8. Chat gateway
 

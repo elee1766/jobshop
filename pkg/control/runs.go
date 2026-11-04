@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -175,7 +176,7 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 	}
 	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: store.KindRun, Title: title, ParentID: parent, Fields: rf, Meta: runMetaJSON}}
 	var edges []store.Edge
-	prev := ""
+	stepIDs := map[string]string{} // workflow step id -> ticket id
 	for i, s := range w.Steps {
 		title, err := w.Render(s.Title, vars)
 		if err != nil {
@@ -189,31 +190,38 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 		if err != nil {
 			return g, err
 		}
-		stepFields := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources}
+		needs := w.StepNeeds(i)
+		stepF := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs}
 		pool := s.Pool
 		if s.Auto() {
 			// No pool on the ticket: no session may claim it; the
 			// controller runs it (#396).
-			stepFields.Type, pool = s.Type, ""
+			stepF.Type, pool = s.Type, ""
 		}
-		sf, err := json.Marshal(stepFields)
-		if err != nil {
+		nt := store.NewTicket{
+			ID: id, Project: stepProject(cfg, s), Kind: store.KindStep, Title: title, Body: body,
+			Pool: pool, ParentID: runID, Meta: meta,
+		}
+		if s.When != nil {
+			// Held until checkRun decides: open it, or close it skipped.
+			stepF.When = &store.StepWhen{Step: s.When.Step, Outcome: s.When.Outcome}
+			nt.DeferUntil = gateHold
+		}
+		if nt.Fields, err = json.Marshal(stepF); err != nil {
 			return g, err
 		}
-		nts = append(nts, store.NewTicket{
-			ID: id, Project: stepProject(cfg, s), Kind: store.KindStep, Title: title, Body: body,
-			Pool: pool, ParentID: runID, Fields: sf, Meta: meta,
-		})
-		if prev != "" {
-			edges = append(edges, store.Edge{From: id, To: prev, Kind: store.EdgeBlocks})
-		} else {
+		nts = append(nts, nt)
+		for _, n := range needs {
+			edges = append(edges, store.Edge{From: id, To: stepIDs[n], Kind: store.EdgeBlocks})
+		}
+		if len(needs) == 0 {
 			// Same graph apply as the step: no window where it is
 			// claimable without its outside blockers (#149).
 			for _, a := range p.After {
 				edges = append(edges, store.Edge{From: id, To: a, Kind: store.EdgeBlocks})
 			}
 		}
-		prev = id
+		stepIDs[s.ID] = id
 	}
 	return store.Graph{Tickets: nts, Edges: edges}, nil
 }
@@ -225,6 +233,95 @@ func stepProject(cfg *config.Config, s config.Step) string {
 		return p.Project
 	}
 	return cfg.DefaultProject
+}
+
+// gateHold is the defer_until of a step with a when condition until its
+// needs finish (#385): far enough out that nothing claims it.
+var gateHold = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+
+// setStepOutcome records `close --outcome` on an open step ticket.
+func (c *Controller) setStepOutcome(ctx context.Context, sc scope, id, outcome string) error {
+	if !config.OutcomePattern.MatchString(outcome) {
+		return fmt.Errorf("%w: outcome %q must match %s", store.ErrInvalid, outcome, config.OutcomePattern)
+	}
+	t, err := c.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if t.Kind != store.KindStep {
+		return fmt.Errorf("%w: --outcome is for workflow steps; %s is a %s", store.ErrInvalid, id, t.Kind)
+	}
+	f, err := store.DecodeFields[store.StepFields](t)
+	if err != nil {
+		return err
+	}
+	f.Outcome = outcome
+	b, err := json.Marshal(f)
+	if err != nil {
+		return err
+	}
+	_, err = c.store.Update(ctx, sc.actor, id, store.Update{Fields: b, IfRevision: t.Revision})
+	return err
+}
+
+// gateSteps opens or skips gated steps whose needs have all finished,
+// repeating while a skip unblocks more. It reports whether it changed
+// anything.
+func (c *Controller) gateSteps(ctx context.Context, runID string) bool {
+	c.runMu.Lock()
+	defer c.runMu.Unlock()
+	changed := false
+	for range 64 { // bound: each pass finishes at least one step
+		steps, err := c.store.ListChildren(ctx, runID)
+		if err != nil {
+			return changed
+		}
+		byID := map[string]store.Ticket{}
+		fields := map[string]store.StepFields{}
+		for _, s := range steps {
+			if f, err := store.DecodeFields[store.StepFields](s); err == nil {
+				byID[f.Step], fields[f.Step] = s, f
+			}
+		}
+		acted := false
+		for name, f := range fields {
+			s := byID[name]
+			if f.When == nil || s.Status == store.StatusClosed || !s.DeferUntil.Equal(gateHold) {
+				continue
+			}
+			ready := true
+			for _, n := range f.Needs {
+				if !store.StepFinished(byID[n]) {
+					ready = false
+				}
+			}
+			if !ready {
+				continue
+			}
+			gate := byID[f.When.Step]
+			if gate.Resolution == "done" && fields[f.When.Step].Outcome == f.When.Outcome {
+				var zero time.Time
+				if _, err := c.store.Update(ctx, "controller", s.ID, store.Update{DeferUntil: &zero}); err != nil {
+					c.log.Error("open gated step", "step", s.ID, "err", err)
+					return changed
+				}
+				c.log.Info("gated step opened", "run", runID, "step", name)
+			} else {
+				if _, err := c.store.CloseTicket(ctx, "controller", s.ID, nil, store.StepSkipped); err != nil {
+					c.log.Error("skip step", "step", s.ID, "err", err)
+					return changed
+				}
+				_, _ = c.store.AddComment(ctx, "controller", s.ID, fmt.Sprintf("Skipped: step %s outcome %q, wanted %q.",
+					f.When.Step, fields[f.When.Step].Outcome, f.When.Outcome))
+				c.log.Info("step skipped", "run", runID, "step", name)
+			}
+			acted, changed = true, true
+		}
+		if !acted {
+			return changed
+		}
+	}
+	return changed
 }
 
 // runMeta is meta.github = {repo, issue|pr} when the workflow names an
@@ -386,7 +483,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 		if err != nil {
 			return nil, err
 		}
-		done := steps[i].Status == store.StatusClosed && steps[i].Resolution == "done"
+		done := store.StepFinished(steps[i])
 		if (p.Step != "" && sf.Step == p.Step) || (p.Step == "" && !done) {
 			step = &steps[i]
 			break
@@ -433,7 +530,8 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	return c.runResult(ctx, t)
 }
 
-// completeRun closes a running run done once every step is closed done.
+// completeRun closes a running run done once every step is closed done
+// or skipped.
 // Called after a step closes and on each tick (a close by another path,
 // or a controller restart between the two writes, is caught there).
 func (c *Controller) completeRun(ctx context.Context, runID string) {
@@ -452,7 +550,7 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 		return
 	}
 	for _, s := range steps {
-		if s.Status != store.StatusClosed || s.Resolution != "done" {
+		if !store.StepFinished(s) {
 			return
 		}
 	}

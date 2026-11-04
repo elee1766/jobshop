@@ -202,6 +202,28 @@ type StepFields struct {
 	Output  string `json:"output,omitempty"`
 	Outcome string `json:"outcome,omitempty"`
 	Result  string `json:"result,omitempty"`
+	// Needs are the step ids this step waits on (#385), for run show.
+	Needs []string `json:"needs,omitempty"`
+	// When gates the step on another step's outcome (#385). A gated step
+	// is created deferred; the controller opens or skips it once its
+	// needs are finished.
+	When *StepWhen `json:"when,omitempty"`
+}
+
+// StepWhen is a step condition: step closed with outcome.
+type StepWhen struct {
+	Step    string `json:"step"`
+	Outcome string `json:"outcome"`
+}
+
+// StepSkipped is the resolution of a step whose when did not match. It
+// unblocks dependents like done.
+const StepSkipped = "skipped"
+
+// StepFinished reports whether a step ticket closed done or skipped,
+// the resolutions that let the steps after it run.
+func StepFinished(t Ticket) bool {
+	return t.Status == StatusClosed && (t.Resolution == "done" || t.Resolution == StepSkipped)
 }
 
 // Auto reports whether the controller runs the step itself.

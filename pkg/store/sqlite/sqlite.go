@@ -638,9 +638,9 @@ func (s *Store) blocked(ctx context.Context, q *sqlcdb.Queries, id string) (bool
 		if b.Status != string(store.StatusClosed) {
 			return true, nil
 		}
-		// A step unblocks the next only when it closed done (matches
-		// ReadyTickets and NextClaimCandidate).
-		if b.Kind == string(store.KindStep) && b.Resolution != "done" {
+		// A step unblocks the next only when it closed done or skipped
+		// (matches ReadyTickets and NextClaimCandidate).
+		if b.Kind == string(store.KindStep) && b.Resolution != "done" && b.Resolution != store.StepSkipped {
 			return true, nil
 		}
 	}

@@ -252,6 +252,11 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		}
 		cl = &h
 	}
+	if p.Outcome != "" {
+		if err := c.setStepOutcome(ctx, sc, id, p.Outcome); err != nil {
+			return nil, err
+		}
+	}
 	t, err := c.store.CloseTicket(ctx, sc.actor, id, cl, p.Resolution)
 	if err != nil {
 		return nil, err
