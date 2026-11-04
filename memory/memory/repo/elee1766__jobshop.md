@@ -28,3 +28,8 @@ escalates again.
 A PR with no checks usually conflicts with master: run
 `git merge-tree --write-tree origin/master HEAD` and rebase before
 pushing an empty commit.
+sqlc is not on PATH: regenerate with `go generate ./pkg/store/sqlite/`.
+With `sqlc.slice`, named params after the slice bind into the list: put
+named params first or use bare `?`, and check the `?N` in sqlcdb.
+Local `-race` failures (dial timeouts) when /proc/loadavg is far above
+the core count are load, not bugs: rerun the test alone before fixing.
