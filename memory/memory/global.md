@@ -19,3 +19,5 @@ verify and close instead of redoing the work.
 An umbrella or tracking issue whose sub-issues carry the work gets no
 pr-work run: comment that on it instead of starting one.
 `jobshop close -r failed` takes no reason text: comment first, then close.
+`jobshop comment` takes one body argument; another ticket goes in `-t`:
+`jobshop comment -t <ticket> "<text>"`, never `jobshop comment <id> <text>`.

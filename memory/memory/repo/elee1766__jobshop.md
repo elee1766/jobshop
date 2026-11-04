@@ -14,8 +14,8 @@ Bash calls auto-background after about 3s and shell redirects into the
 work tree are blocked. Use run_in_background and poll its output file
 with short calls; write files with the Write tool. To wait on CI or a
 deploy, use `jobshop release --until 20m`, not a plain release (that
-counts as a failed attempt). Comment on another ticket with
-`jobshop comment -t <ticket> "<text>"`.
+counts as a failed attempt). Several sessions lint on one host: run
+`golangci-lint run --allow-parallel-runners ./...`.
 
 pkg/config/pack_test.go asserts pack prompt substrings and admin lists.
 When editing anything under packs/, grep it for the old text and update
