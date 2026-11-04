@@ -336,6 +336,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Bubblewrap sandbox per session from `sandbox:` config, mounts computed
   by the controller, `session sandbox`, NixOS `sandbox.enable` (#262,
   `docs/notes/262-sandbox.md`).
+- Ingest inbox table and store API: put deduped by delivery id, lease
+  claim, fenced state changes, `ingest.retention` prune; no writers yet
+  (#321, `docs/notes/321-ingest-inbox.md`).
 
 ## 5. What's next
 
@@ -469,6 +472,9 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 (#307).
 
 Model config live check: `docs/verify/model-config.md` (#304).
+
+Ingest inbox (#318): move webhooks and pollers onto the inbox, then
+admission hooks and dispatch; the table and store API landed in #321.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -1020,6 +1026,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   Correctness never depends on a process supervisor; workers heartbeat
   so a missing one shows on `attention`. `jobshop gh` replaces the
   module's gh wrapper and runs the guard hooks on writing commands.
+- The inbox lease (2026-11-04, #321) is the ticket lease model on its
+  own table, not tickets: items are many and short-lived, and a
+  conditional take keeps claimers from sharing a row. Delivery is at
+  least once; consumers dedupe with run and write keys.
 
 ## 7. Reference: behavior as built
 
