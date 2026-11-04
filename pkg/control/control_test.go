@@ -65,6 +65,11 @@ func TestSessionScope(t *testing.T) {
 	assert.ErrorIs(t, err, os.ErrNotExist, "session socket is removed")
 }
 
+// dialWait bounds dial only on failure: dial returns as soon as the socket
+// answers. With ~40 parallel controllers under -race -count=5, startup
+// (migrate, config and pack load) took over 5s (#365).
+const dialWait = 2 * time.Minute
+
 func dial(t *testing.T, path string) *rpc.Client {
 	t.Helper()
 	var c *rpc.Client
@@ -72,7 +77,7 @@ func dial(t *testing.T, path string) *rpc.Client {
 		var err error
 		c, err = rpc.Dial(t.Context(), path)
 		return err == nil
-	}, 5*time.Second, 10*time.Millisecond)
+	}, dialWait, 10*time.Millisecond)
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
