@@ -378,6 +378,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   read-only with sandboxes (#316, `docs/notes/316-sandbox-mise-shared.md`).
 - Step `pool:` may name a run var, resolved and checked at run start, so
   a router can pick the pool per run (#384, `docs/notes/384-step-pool-var.md`).
+- Pack-writing guide `docs/packs.md`, `jobshop docs` and an init hint
+  (#352, `docs/notes/352-pack-docs.md`).
 
 ## 5. What's next
 
@@ -1110,6 +1112,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - A step pool is a run-start template (2026-11-04, #384): routing picks
   a pool, so model and effort, per run without one workflow per pool.
   A bad pool fails the start rather than creating an unclaimable step.
+- Packs are user-written (2026-11-04, #352): a root has its own pack
+  under `<root>/packs/`; `packs/` in this repo are examples of how we
+  run Jobshop on itself, not defaults. The repo layout does not change.
 
 ## 7. Reference: behavior as built
 

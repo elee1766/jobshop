@@ -82,6 +82,7 @@ type root struct {
 	Recall    recallCmd    `cmd:"" help:"Search past comments, session journals and learnings. Run it on a failure and before asking a human."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
+	Docs      docsCmd      `cmd:"" help:"Print links to the docs for this binary (packs, readme). Needs no root."`
 }
 
 // Main parses args, runs the selected command and returns a process exit code.
