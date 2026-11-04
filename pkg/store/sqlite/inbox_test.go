@@ -31,9 +31,10 @@ func inboxStore(t *testing.T) (*sqlite.Store, *atomic.Int64) {
 func TestInboxPutDedupe(t *testing.T) {
 	ctx := t.Context()
 	s, _ := inboxStore(t)
-	it := store.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issue_comment", RepoOrTeam: "a/b", Number: 7, Payload: json.RawMessage(`{"x":1}`)}
+	it := store.InboxItem{Source: "github", DeliveryID: "d1", Endpoint: "gh-app", Kind: "issue_comment", RepoOrTeam: "a/b", Number: 7, Payload: json.RawMessage(`{"x":1}`)}
 	a, dup, err := s.InboxPut(ctx, it)
 	require.NoError(t, err)
+	assert.Equal(t, "gh-app", a.Endpoint, "endpoint stored (#339)")
 	assert.False(t, dup)
 	assert.Equal(t, store.InboxPending, a.State)
 

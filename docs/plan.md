@@ -339,10 +339,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest inbox table and store API: put deduped by delivery id, lease
   claim, fenced state changes, `ingest.retention` prune; no writers yet
   (#321, `docs/notes/321-ingest-inbox.md`).
-- Ingest spool and `jobshop ingest serve`: GitHub and Linear webhooks
-  verified, filtered and spooled atomically, one file per delivery; the
-  controller's Linear webhook shares the handler (#334,
-  `docs/notes/334-ingest-spool.md`).
+- Ingest spool and `jobshop ingest serve`: webhook endpoints, each with
+  its own path, secret and GitHub repo allowlist, spooled into a
+  separate SQLite database; the controller's Linear webhook shares the
+  handler (#334, #339, `docs/notes/334-ingest-spool.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).
@@ -487,8 +487,8 @@ Model config live check: `docs/verify/model-config.md` (#304).
 
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
-the spool and `ingest serve` in #334. Next: drain the spool into the
-inbox.
+the spool and `ingest serve` in #334 and #339. Next: drain the spool
+into the inbox (#335).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -1048,6 +1048,13 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   warning, not a fatal error (2026-11-04, #325, #328): the packs checkout can
   move ahead of the deployed binary, and one stale method must not stop
   serve and every session socket with it.
+- Ingest spool and endpoints (2026-11-04, #339): received webhooks go
+  into a separate SQLite database written only by the receiver, not
+  files and not jobshop.db, so the controller stays the one writer of
+  the main database and the receiver keeps working while it is down.
+  Endpoints are a list, each with its own secret and, for GitHub, a
+  repo allowlist, so one leaked secret or a misconfigured hook reaches
+  only its own endpoint.
 
 ## 7. Reference: behavior as built
 

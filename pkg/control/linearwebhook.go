@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
 )
@@ -23,14 +24,20 @@ import (
 // spool drain lands, this in-memory step runs right after the write.
 
 // linearWebhookHandler is the ingest handler for the controller's
-// listener: Linear only, spooling under ingest.spool_dir.
-func (c *Controller) linearWebhookHandler() *ingest.Handler {
+// listener: the Linear endpoints from ingest.endpoints and the implicit
+// identity ones, writing to the same spool database as `ingest serve`.
+func (c *Controller) linearWebhookHandler(sp *ingest.Spool) *ingest.Handler {
+	var eps []config.IngestEndpoint
+	for _, e := range c.config().IngestEndpoints() {
+		if e.Source == config.IngestLinear {
+			eps = append(eps, e)
+		}
+	}
 	return &ingest.Handler{
-		Spool: ingest.Spool{Dir: c.config().Ingest.Spool(c.root)},
-		Linear: func() []ingest.Secret {
-			return ingest.LinearSecrets(c.root, c.config(), func(name string, err error) {
-				c.log.Warn("linear webhook: secret", "identity", name, "err", err)
-			})
+		Spool:     sp,
+		Endpoints: eps,
+		Secret: func(e config.IngestEndpoint) (ingest.Secret, error) {
+			return ingest.SecretFor(c.root, c.config())(e)
 		},
 		Now: c.now,
 		Log: c.log,
@@ -44,18 +51,24 @@ func (c *Controller) linearWebhookHandler() *ingest.Handler {
 	}
 }
 
-// serveLinearWebhook serves POST /linear/webhook on linear.webhook_listen
-// until the controller stops. Empty listen address: off.
+// serveLinearWebhook serves the Linear endpoints on linear.webhook_listen
+// until the controller stops. Empty listen address: off. Endpoints are
+// read at start; a new one needs a controller restart.
 func (c *Controller) serveLinearWebhook() error {
 	addr := c.config().Linear.WebhookListen
 	if addr == "" {
 		return nil
 	}
+	sp, err := ingest.OpenSpool(c.ctx, c.config().Ingest.SpoolPath(c.root))
+	if err != nil {
+		return fmt.Errorf("linear webhook: %w", err)
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
+		_ = sp.Close()
 		return fmt.Errorf("linear webhook listen: %w", err)
 	}
-	srv := &http.Server{Handler: c.linearWebhookHandler().Mux(), ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{Handler: c.linearWebhookHandler(sp).Mux(), ReadHeaderTimeout: 10 * time.Second}
 	c.wg.Go(func() {
 		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			c.log.Error("linear webhook server", "err", err)
@@ -63,7 +76,12 @@ func (c *Controller) serveLinearWebhook() error {
 	})
 	c.wg.Go(func() {
 		<-c.ctx.Done()
-		_ = srv.Close()
+		// Shutdown waits for handlers in flight, so none writes to a
+		// closed spool.
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(sctx)
+		_ = sp.Close()
 	})
 	c.log.Info("serving linear webhook", "addr", ln.Addr().String())
 	return nil

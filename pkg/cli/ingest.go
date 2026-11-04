@@ -17,12 +17,12 @@ import (
 )
 
 type ingestCmd struct {
-	Serve ingestServeCmd `cmd:"" help:"Serve the webhook receiver: verify, filter and spool deliveries. Needs no controller or database."`
+	Serve ingestServeCmd `cmd:"" help:"Serve the webhook endpoints: verify, filter and spool deliveries. Needs no controller or main database."`
 }
 
 type ingestServeCmd struct {
-	Listen   string `help:"TCP address (default ingest.listen, else 127.0.0.1:8740)."`
-	SpoolDir string `name:"spool-dir" help:"Spool directory (default ingest.spool_dir, else <root>/ingest/spool)."`
+	Listen string `help:"TCP address (default ingest.listen, else 127.0.0.1:8740)."`
+	Spool  string `help:"Spool database (default ingest.spool, else <root>/ingest/spool.db)."`
 }
 
 func (c ingestServeCmd) Run(g *Globals) error {
@@ -38,40 +38,47 @@ func (c ingestServeCmd) Run(g *Globals) error {
 	if c.Listen != "" {
 		addr = c.Listen
 	}
-	dir := cfg.Ingest.Spool(r)
-	if c.SpoolDir != "" {
-		dir = r.Path(c.SpoolDir)
+	path := cfg.Ingest.SpoolPath(r)
+	if c.Spool != "" {
+		path = r.Path(c.Spool)
+	}
+	// Endpoints are read once: adding one needs a restart. Secrets are
+	// read per request, so rotating a secret file does not.
+	eps := cfg.IngestEndpoints()
+	if len(eps) == 0 {
+		return fmt.Errorf("ingest serve: no endpoints: add ingest.endpoints in %s", r.Config())
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "ingest")
-	warn := func(name string, err error) { log.Warn("ingest: secret", "name", name, "err", err) }
-	h := &ingest.Handler{Spool: ingest.Spool{Dir: dir}, Log: log}
-	// Secrets are read per request, so a rotated file needs no restart.
-	// A source with no secret configured at start is not served.
-	if len(ingest.GitHubSecrets(r, cfg, warn)) > 0 {
-		h.GitHub = func() []ingest.Secret { return ingest.GitHubSecrets(r, cfg, warn) }
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	sp, err := ingest.OpenSpool(ctx, path)
+	if err != nil {
+		return err
 	}
-	if len(ingest.LinearSecrets(r, cfg, warn)) > 0 {
-		h.Linear = func() []ingest.Secret { return ingest.LinearSecrets(r, cfg, warn) }
-	}
-	if h.GitHub == nil && h.Linear == nil {
-		return fmt.Errorf("ingest serve: no webhook secret: set ingest.github_secret_file, ingest.linear_secret_file or a linear-app webhook_secret_file in %s", r.Config())
-	}
+	defer func() { _ = sp.Close() }()
+	h := &ingest.Handler{Spool: sp, Endpoints: eps, Secret: ingest.SecretFor(r, cfg), Log: log}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("ingest listen: %w", err)
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	srv := &http.Server{Handler: h.Mux(), ReadHeaderTimeout: 10 * time.Second}
+	// Serve returns as soon as Shutdown starts; wait for it so handlers
+	// in flight finish their writes before the spool closes.
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = srv.Shutdown(sctx)
 	}()
-	log.Info("ingest: serving", "addr", ln.Addr().String(), "spool", dir, "github", h.GitHub != nil, "linear", h.Linear != nil)
+	for _, e := range eps {
+		log.Info("ingest: endpoint", "name", e.Name, "source", e.Source, "path", e.EndpointPath(), "repos", len(e.Repos))
+	}
+	log.Info("ingest: serving", "addr", ln.Addr().String(), "spool", path)
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	<-done
 	return nil
 }
