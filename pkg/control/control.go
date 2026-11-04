@@ -413,6 +413,8 @@ func (c *Controller) tick() {
 	if !c.draining() {
 		c.runTriggers()
 	}
+	// Placement moves steps between pools before sessions are sized (#409).
+	c.placeSteps()
 	c.supervise()
 	c.runAutoSteps()
 	c.reportOrphans()

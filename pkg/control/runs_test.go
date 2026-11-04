@@ -56,6 +56,18 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
     vars: [pr]
     steps:
       - {id: work, pool: dev, prompt: "Work", title: "Work ${pr}", needs_resources: ["pr:acme#${pr}", emu]}
+  placed:
+    vars: [pr, risk]
+    steps:
+      - id: review
+        prompt: Review
+        title: "Review ${pr}"
+        placement:
+          required: ["pr:acme#${pr}"]
+          prefer_for: 10m
+          options:
+            - {pool: refinery, resources: [flagship], weight: 100}
+            - {pool: dev, resources: [workhorse], weight: 10, when: "${risk} != 'high'"}
   graph:
     vars: [issue]
     steps:
@@ -72,6 +84,8 @@ lease: %q
 resources:
   pr: {keyed: true}
   emu: {max: 2}
+  flagship: {max: 1}
+  workhorse: {max: 4}
 projects:
   js: {}
 agents:
@@ -214,6 +228,49 @@ func TestRunStepResources(t *testing.T) {
 
 	closeStep(t, admin, a.Steps[0].ID, "done")
 	assert.Equal(t, []string{b.Steps[0].ID}, readyIDs(t, admin), "closing frees pr 1 and an emu slot")
+}
+
+// TestRunPlacement: a low-risk step falls back to its lower option only
+// after prefer_for, and back up when the top option frees; a high-risk
+// step never falls back (#409).
+func TestRunPlacement(t *testing.T) {
+	clk := clock.NewFake(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
+	admin := runRootLease(t, "", clk)
+	hog := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "1", "risk": "low"}})
+	low := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "2", "risk": "low"}})
+	high := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "3", "risk": "high"}})
+	placement := func(id string) (string, *store.StepPlacement) {
+		r := showRun(t, admin, id)
+		sf, err := store.DecodeFields[store.StepFields](r.Steps[0])
+		require.NoError(t, err)
+		return r.Steps[0].Pool, sf.Placement
+	}
+	pool, p := placement(high.Run.ID)
+	assert.Equal(t, "refinery", pool)
+	require.Len(t, p.Options, 1, "high risk drops the workhorse option")
+	pool, p = placement(low.Run.ID)
+	assert.Equal(t, "refinery", pool, "starts on the top option")
+	assert.Equal(t, []string{"pr:acme#2", "flagship"}, p.Options[0].Resources)
+
+	// hog takes the only flagship slot.
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: hog.Steps[0].ID, Holder: "s1"}, nil))
+	pass(t, admin, 2)
+	pool, _ = placement(low.Run.ID)
+	assert.Equal(t, "refinery", pool, "holds out for flagship during prefer_for")
+
+	clk.Advance(11 * time.Minute)
+	passUntil(t, admin, func() bool { pool, _ = placement(low.Run.ID); return pool == "dev" }, "falls back after prefer_for")
+	_, p = placement(low.Run.ID)
+	assert.True(t, p.Fallback())
+	assert.Equal(t, []string{"pr:acme#2", "workhorse"}, p.Options[p.Chosen].Resources)
+	assert.Contains(t, readyIDs(t, admin), low.Steps[0].ID, "workhorse is free")
+	pool, _ = placement(high.Run.ID)
+	assert.Equal(t, "refinery", pool, "high risk never falls back")
+	assert.NotContains(t, readyIDs(t, admin), high.Steps[0].ID)
+
+	// Flagship frees before low is claimed: it moves back up.
+	closeStep(t, admin, hog.Steps[0].ID, "done")
+	passUntil(t, admin, func() bool { pool, _ = placement(low.Run.ID); return pool == "refinery" }, "back on flagship once free")
 }
 
 func TestRunStartErrors(t *testing.T) {

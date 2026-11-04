@@ -167,6 +167,17 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 				return err
 			}
 		}
+		if p := sf.Placement; p != nil {
+			// Placement (#409): which option the step is on.
+			o := p.Options[p.Chosen]
+			line := fmt.Sprintf("   placement option %d/%d pool %s weight %d", p.Chosen+1, len(p.Options), o.Pool, o.Weight)
+			if p.Fallback() {
+				line += " (fallback)"
+			}
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return err
+			}
+		}
 		if sf.Auto() && sf.Command != "" {
 			// Command and http steps (#396): what ran and what it said.
 			if _, err := fmt.Fprintf(w, "   %s %s -> %s\n", sf.Type, sf.Command, sf.Result); err != nil {
