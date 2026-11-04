@@ -259,6 +259,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   too (#235, `docs/notes/235-stall-ready-since-unblock.md`).
 - A session's task created with no pool goes to the session's pool (#244,
   `docs/notes/244-orphan-tickets.md`).
+- Operator pack at host scope: one include, `config show` instances,
+  grant across instances (#248, `docs/notes/248-host-operator.md`).
 - Resumed sessions keep PATH in jcode's `bash -lc` tool shell on NixOS
   (#253, `docs/notes/253-resume-shell-env.md`).
 
@@ -720,6 +722,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Several repos on one host are separate pack instances with a name
   `prefix:` (2026-11-03, #184), not pools keyed by repo: no new runtime
   state, and each repo keeps its own planner and checkout.
+- The operator pack is host-level, included once, and reads the pack
+  instances from `config show` (2026-11-04, #248), not one operator per
+  repo: one chat thread can steer every repo, and the prompt stays free
+  of repo names.
 - Yaml changes reach the controller through systemd `reloadTriggers`
   (2026-11-03, #210), not a file watcher: switches already drive
   restarts, and SIGHUP reload exists.

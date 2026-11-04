@@ -68,6 +68,53 @@ type packHead struct {
 type packLayer struct {
 	file string
 	m    map[string]any
+	vars map[string]any // the layer's vars after defaults
+}
+
+// PackInstance is one entry of jobshop.yaml's packs list as loaded: what
+// an operator session reads to handle each repo or team the host serves
+// (#248).
+type PackInstance struct {
+	Path   string `json:"path"`
+	Prefix string `json:"prefix,omitempty"`
+	// Vars are the pack's vars after defaults. With extends, a base's
+	// vars win over the including pack's: the including pack passes
+	// concrete values down (selfdev's repo is a checkout path, its
+	// github base's repo is owner/name).
+	Vars      map[string]any `json:"vars"`
+	Pools     []string       `json:"pools"`
+	Workflows []string       `json:"workflows"`
+	Triggers  []string       `json:"triggers"`
+}
+
+// packInstance summarizes one packs entry from its loaded layers.
+func packInstance(path, prefix string, layers []packLayer) PackInstance {
+	in := PackInstance{Path: path, Prefix: prefix, Vars: map[string]any{}}
+	names := map[string]map[string]bool{"pools": {}, "workflows": {}, "triggers": {}}
+	// Layers are bases first; apply the top pack first so bases win.
+	for i := len(layers) - 1; i >= 0; i-- {
+		for k, v := range layers[i].vars {
+			in.Vars[k] = v
+		}
+	}
+	for _, l := range layers {
+		for s, set := range names {
+			sm, _ := l.m[s].(map[string]any)
+			for n := range sm {
+				set[n] = true
+			}
+		}
+	}
+	list := func(set map[string]bool) []string {
+		out := make([]string, 0, len(set))
+		for n := range set {
+			out = append(out, n)
+		}
+		sort.Strings(out)
+		return out
+	}
+	in.Pools, in.Workflows, in.Triggers = list(names["pools"]), list(names["workflows"]), list(names["triggers"])
+	return in
 }
 
 // maxPackDepth bounds extends chains so a cycle fails instead of looping.
@@ -107,6 +154,7 @@ func parseFile(path string, b []byte) (*Config, error) {
 	}
 	merged := map[string]any{}
 	sources := map[string][]string{}
+	var instances []PackInstance
 	for i, ref := range head.Packs {
 		if ref.Path == "" {
 			return nil, fmt.Errorf("%s: packs[%d]: path is required", name, i)
@@ -125,6 +173,7 @@ func parseFile(path string, b []byte) (*Config, error) {
 		if ref.Prefix != "" {
 			prefixLayers(layers, ref.Prefix)
 		}
+		instances = append(instances, packInstance(ref.Path, ref.Prefix, layers))
 		for _, l := range layers {
 			mergeInto(merged, l.m, l.file, sources)
 		}
@@ -154,6 +203,7 @@ func parseFile(path string, b []byte) (*Config, error) {
 		return nil, err
 	}
 	c.Packs = head.Packs
+	c.Instances = instances
 	return c, nil
 }
 
@@ -252,7 +302,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := yaml.UnmarshalWithOptions(raw, &pf, yaml.Strict()); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return append(layers, packLayer{file: file, m: m}), nil
+	return append(layers, packLayer{file: file, m: m, vars: vars}), nil
 }
 
 // cloneValue deep-copies maps and lists so substitution does not edit

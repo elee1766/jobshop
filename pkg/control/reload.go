@@ -109,7 +109,7 @@ func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, e
 	if err != nil {
 		return nil, err
 	}
-	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources}
+	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources, Instances: cfg.Instances}
 	if err := yaml.Unmarshal(b, &out.Config); err != nil {
 		return nil, err
 	}

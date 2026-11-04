@@ -35,12 +35,3 @@ extends:
         descendant: `git fetch origin && git merge-base --is-ancestor
         <sha> <commit>`. Self-deploy rebuilds with the newest green master
         commit every 10 minutes.
-  # Operator chat pool (#124), enabled wherever selfdev is.
-  - path: ../operator
-    vars:
-      repo: elee1766/jobshop
-      checkout: ${repo}
-      agent: ${agent}
-      guide: >-
-        Jobshop is Go, module github.com/elee1766/jobshop. Read AGENTS.md
-        and docs/ first (docs/plan.md is the plan and decision log).

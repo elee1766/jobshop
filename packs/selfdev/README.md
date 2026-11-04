@@ -27,9 +27,13 @@ Jobshop's values, through `extends:` in `pack.yaml`:
 packs:
   - path: /var/lib/jobshop/src/jobshop/packs/selfdev
     vars: {repo: /var/lib/jobshop/src/jobshop, agent: jcode, dev_sessions: 2}
+  # The operator chat pool is host-level, included once (#248).
+  - path: /var/lib/jobshop/src/jobshop/packs/operator
+    vars: {jobshop_repo: elee1766/jobshop, checkout: /var/lib/jobshop/src/jobshop, agent: jcode}
 agents:
   jcode: {command: jcode, args: [acp]}
 ```
 
 `jobshop config show` lists both `packs/github/pack.yaml` and
-`packs/selfdev/pack.yaml` as sources of each entry.
+`packs/selfdev/pack.yaml` as sources of each entry. selfdev no longer
+brings the `operator` pool; see `packs/operator/README.md`.

@@ -1,22 +1,24 @@
 # Operator pack: a chat pool whose sessions talk to the operator and
-# manage work (tickets, issues, messages, runs, reload). Vars: see
-# README.md. Sessions are started per chat thread by the gateway (or
-# `jobshop send` with a pool and key), one session per key.
+# manage work across every pack instance on the host (tickets, issues,
+# messages, runs, reload). Include it once in jobshop.yaml, without a
+# prefix (#248). Vars: see README.md. Sessions are started per chat
+# thread by the gateway (or `jobshop send` with a pool and key), one
+# session per key.
 defaults:
   operator_sessions: 0
-  guide: >-
-    Read the repo's README and contributor docs (AGENTS.md,
-    CONTRIBUTING.md) first.
 pools:
   operator:
     type: chat
     attach: rw
     agent: ${agent}
+    # Jobshop's checkout: prompt fixes land in its packs/.
     repo: ${checkout}
     ref: origin/master
     max_sessions: ${operator_sessions}
     idle_timeout: 12h
     turn_timeout: 1h
     prompt_file: prompts/operator.md
-    # Lets the session socket run `jobshop reload` and `session list`.
-    admin: [config-reload, session-list, attention]
+    # What the operator reads and does across instances: the merged
+    # config and its instances, sessions, pools, triggers, attention, and
+    # reload. Run list/show and tickets need no grant.
+    admin: [config-reload, config-show, session-list, pool-list, trigger-list, attention]

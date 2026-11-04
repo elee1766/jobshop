@@ -44,6 +44,9 @@ type Config struct {
 	Subscriptions *Subscriptions `yaml:"subscriptions"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
+	// Instances summarize each Packs entry as loaded (#248). Not kept in
+	// the last good config.
+	Instances []PackInstance `yaml:"-"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
 	// BuiltinMetaPacks.
 	MetaPacks []string `yaml:"meta_packs"`
