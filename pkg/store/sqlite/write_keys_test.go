@@ -1,7 +1,6 @@
 package sqlite_test
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,9 +11,9 @@ import (
 )
 
 func TestWriteKeys(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
-	s, err := sqlite.Open(ctx, filepath.Join(t.TempDir(), "j.db"), sqlite.Options{})
-	require.NoError(t, err)
+	s := openTest(t, sqlite.Options{})
 	defer func() { _ = s.Close() }()
 
 	k, err := s.ClaimWriteKey(ctx, "js/k1", "linear.ask", "sess")
