@@ -61,6 +61,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"PruneWriteKeys", testPruneWriteKeys},
 		{"ConcurrentClaims", testConcurrentClaims},
 		{"ConcurrentResourceClaims", testConcurrentResourceClaims},
+		{"ClaimAfterSkippedBlocker", testClaimAfterSkippedBlocker},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

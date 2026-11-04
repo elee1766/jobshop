@@ -122,3 +122,30 @@ func testConcurrentResourceClaims(t *testing.T, s store.Store, _ *Clock) {
 	wg.Wait()
 	assert.Len(t, held, 1, "one slot, one claim")
 }
+
+// testClaimAfterSkippedBlocker: a step whose blocker closed skipped is
+// ready, and the guarded claim write accepts it too (#389, #406).
+func testClaimAfterSkippedBlocker(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	runID, err := s.NewID(proj)
+	require.NoError(t, err)
+	mk := func(id string) store.NewTicket {
+		return store.NewTicket{
+			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q}`, runID, id)),
+		}
+	}
+	run := store.NewTicket{
+		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		Fields: json.RawMessage(`{"workflow":"w","state":"running"}`),
+	}
+	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{run, mk("js-sa"), mk("js-sb")},
+		[]store.Edge{{From: "js-sb", To: "js-sa", Kind: store.EdgeBlocks}})
+	require.NoError(t, err)
+	_, err = s.CloseTicket(ctx, "controller", "js-sa", nil, store.StepSkipped)
+	require.NoError(t, err)
+
+	tk, _, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: "h", Lease: lease})
+	require.NoError(t, err)
+	assert.Equal(t, "js-sb", tk.ID)
+}

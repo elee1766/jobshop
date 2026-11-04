@@ -65,7 +65,7 @@ WHERE tickets.id = sqlc.arg(id) AND tickets.revision = sqlc.arg(expected_revisio
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
     WHERE e.from_id = tickets.id AND e.kind IN ('blocks','waits_for')
-      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution <> 'done')))
+      AND (b.status <> 'closed' OR (b.kind = 'step' AND b.resolution NOT IN ('done','skipped'))))
   -- An open ticket also needs a free slot for each resource (#400), so
   -- two claimers cannot both take the last slot. An in-progress resume
   -- already holds its slots.
