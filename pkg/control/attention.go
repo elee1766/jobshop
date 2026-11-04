@@ -1,6 +1,7 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -136,5 +137,12 @@ func rollbackItem(path string) (rpc.AttentionItem, bool) {
 	}
 	b, _ := os.ReadFile(path)
 	rev := strings.TrimSpace(string(b))
-	return rpc.AttentionItem{Kind: rpc.AttentionRollback, ID: rev, Title: "self-deploy rolled back " + rev, Since: fi.ModTime().UTC()}, true
+	title := "self-deploy rolled back " + rev
+	// failed.reason is written when the pre-switch config check failed
+	// (#261): the commit was never switched to, and the error names the
+	// pack, the var and the host config to fix.
+	if r, err := os.ReadFile(path + ".reason"); err == nil && len(bytes.TrimSpace(r)) > 0 {
+		title = "self-deploy skipped " + rev + ", config check failed: " + strings.TrimSpace(string(r))
+	}
+	return rpc.AttentionItem{Kind: rpc.AttentionRollback, ID: rev, Title: title, Since: fi.ModTime().UTC()}, true
 }

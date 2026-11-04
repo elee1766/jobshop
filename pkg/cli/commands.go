@@ -230,12 +230,70 @@ type triggerCmd struct {
 }
 
 type configCmd struct {
-	Show configShowCmd `cmd:"" help:"Print the merged config the controller runs with, and which pack or file set each agent, pool and trigger."`
+	Show  configShowCmd  `cmd:"" help:"Print the merged config the controller runs with, and which pack or file set each agent, pool and trigger."`
+	Check configCheckCmd `cmd:"" help:"Load and validate a config file with its packs, without a controller. Exit 1 on error."`
 }
 
 type configShowCmd struct{}
 
 func (configShowCmd) Run(g *Globals) error { return g.call(rpc.MethodConfigShow, nil, nil) }
+
+// configCheckCmd is what self-deploy runs from the new build before it
+// switches (#261): a pack var the host config no longer satisfies fails
+// here instead of after the switch.
+type configCheckCmd struct {
+	File    string   `help:"Config file. Default: the root's jobshop.yaml." type:"path"`
+	Replace []string `help:"OLD=NEW: read packs whose path starts with OLD from NEW instead, e.g. the new commit's checkout." placeholder:"OLD=NEW"`
+}
+
+func (c configCheckCmd) Run(g *Globals) error {
+	file := c.File
+	if file == "" {
+		r, err := g.root()
+		if err != nil {
+			return err
+		}
+		file = r.Config()
+	}
+	rewrite, err := pathRewrite(c.Replace)
+	if err != nil {
+		return err
+	}
+	cfg, err := config.LoadFileWith(file, rewrite)
+	if err != nil {
+		return err
+	}
+	for _, w := range cfg.Warnings {
+		fmt.Fprintln(os.Stderr, "warning:", w)
+	}
+	fmt.Printf("ok: %d pools, %d agents, %d triggers, %d workflows\n", len(cfg.Pools), len(cfg.Agents), len(cfg.Triggers), len(cfg.Workflows))
+	return nil
+}
+
+// pathRewrite builds a prefix rewrite from OLD=NEW pairs.
+func pathRewrite(pairs []string) (func(string) string, error) {
+	type rep struct{ old, new string }
+	reps := make([]rep, 0, len(pairs))
+	for _, p := range pairs {
+		o, n, ok := strings.Cut(p, "=")
+		if !ok || o == "" || n == "" {
+			return nil, fmt.Errorf("--replace %q: want OLD=NEW", p)
+		}
+		reps = append(reps, rep{filepath.Clean(o), filepath.Clean(n)})
+	}
+	return func(path string) string {
+		c := filepath.Clean(path)
+		for _, r := range reps {
+			if c == r.old {
+				return r.new
+			}
+			if rest, ok := strings.CutPrefix(c, r.old+string(filepath.Separator)); ok {
+				return filepath.Join(r.new, rest)
+			}
+		}
+		return path
+	}, nil
+}
 
 type poolCmd struct {
 	List         poolListCmd         `cmd:"" help:"Show quarantined and paused pools."`

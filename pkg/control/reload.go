@@ -80,7 +80,11 @@ func (c *Controller) reload() error {
 }
 
 // saveLastGood records cfg for a later start whose live packs fail (#227).
+// It runs after every good load, so it also logs the load's warnings.
 func (c *Controller) saveLastGood(cfg *config.Config) {
+	for _, w := range cfg.Warnings {
+		c.log.Warn("config: " + w)
+	}
 	if err := config.SaveLastGood(c.root.LastGood(), cfg); err != nil {
 		c.log.Warn("config: save last good", "err", err)
 	}
