@@ -225,7 +225,8 @@ func TestDrain(t *testing.T) {
 // TestQuarantine runs an agent that dies on every prompt: three crashed
 // sessions quarantine the ticket and pause the pool.
 func TestQuarantine(t *testing.T) {
-	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, RestartDelay: 10 * time.Millisecond})
+	// In-process hosts: the agent still crashes as a process (#467).
+	root, start := poolRootOpt(t, "1m", control.Options{RestartDelay: 10 * time.Millisecond})
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "crash"), nil, 0o600))
 	stop := start()
 	defer stop()
