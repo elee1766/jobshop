@@ -90,7 +90,14 @@ const (
 	// numbers; the controller drops issues that have an open run
 	// (meta.github.issue), so the check only lists open work issues.
 	StallIssueNoRun = "issue_no_run"
+	// StallLinearIssueNoRun is computed by the controller from Linear
+	// (#287): open issues of Team matching States and Labels, minus
+	// SkipLabels, that no open run carries in meta.linear.issue.
+	StallLinearIssueNoRun = "linear_issue_no_run"
 )
+
+// DefaultLinearPoll is how often linear_issue_no_run reads Linear.
+const DefaultLinearPoll = 5 * time.Minute
 
 // StoreStallSignals lists the signals the controller computes itself.
 var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked}
@@ -113,6 +120,16 @@ type StallSignal struct {
 	// Repo (owner/name) is the repo an issue_no_run check lists; only
 	// runs whose meta.github.repo matches hide an issue (#183).
 	Repo string `yaml:"repo"`
+	// linear_issue_no_run only (#287). Team is a Linear team key; empty
+	// turns the signal off, so a pack can list it unconditionally.
+	// States, Labels and SkipLabels are comma-separated names, matched
+	// case-insensitively; empty States or Labels match any. Poll is how
+	// often Linear is read (Go duration, default DefaultLinearPoll).
+	Team       string `yaml:"team"`
+	States     string `yaml:"states"`
+	Labels     string `yaml:"labels"`
+	SkipLabels string `yaml:"skip_labels"`
+	Poll       string `yaml:"poll"`
 }
 
 // TriggerRun starts a workflow run, like `jobshop run start`. Vars and

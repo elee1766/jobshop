@@ -300,6 +300,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/274-curator-gate.md`).
 - Guardrail hook point `on: intake` on Linear issue text before run start
   and subscription delivery (#288, `docs/notes/288-intake-hook.md`).
+- Linear intake: `linear_issue_no_run` stall signal, read from Linear
+  by the controller, starts stall-check for team issues with no open
+  run (#287, `docs/notes/287-linear-intake.md`).
 
 ## 5. What's next
 
@@ -415,6 +418,8 @@ built; curator live check `docs/verify/curator.md` (#273), end to end
 Recall live check after the next self-deploy: `docs/verify/recall.md` (#265).
 Linear App identity live check, with an OAuth app in a throwaway
 workspace: `docs/verify/linear-pack.md` (#278).
+Linear intake live check with a Linear token on gasserver:
+`docs/verify/linear-intake.md` (#287).
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -892,6 +897,15 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   subscription delivery, not in the agent: the text is checked before any
   prompt holds it. A refusal fails closed and files one needs-human
   ticket per issue; closing it done is the approval, as for ask-human.
+- Linear intake (2026-11-04, #287) is a stall signal the controller
+  computes, not a shell check: the token comes from the identity
+  covering the team, which a `sh -c` check cannot reach without putting
+  it in the environment. Linear is read at most once per `poll` (default
+  5m) and filtered in Go, since the list filter takes one state and one
+  label. A read error finds nothing and is logged, so a Linear outage
+  does not stop the other stall signals. stall-check, not the
+  controller, starts `pr-work`, so `linear eligible` (blockers, open
+  questions) still gates each issue.
 
 ## 7. Reference: behavior as built
 

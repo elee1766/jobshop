@@ -104,6 +104,7 @@ and file "Escalate run <id>" in `plan`.
 | `linear_workspace`, `linear_team` | With `linear`: the workspace and the team key (ENG) this instance works. One instance per team and repo, with a `prefix:` |
 | `linear_target` | With `linear`: the Linear issue the planner reads as its goal (ENG-1) |
 | `linear_done_state` | With `linear`: state post-merge moves a shipped issue to. Default `Done` |
+| `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` stall starts stall-check for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels, and no open run. Linear is read every `linear_poll` (5m) (#287) |
 
 Approval check the refinery runs (prints the number of matching
 approvals, above 0 to merge):

@@ -30,6 +30,13 @@ What the signal means and where to start:
   the operator's answer: remind in its thread, do not answer for them.
 - `issue_no_run`: issue #${subject} is open with no run. `gh issue view
   ${subject} --comments`.
+- `linear_issue_no_run`: Linear issue ${subject} is ready for work and
+  no open run carries it. `jobshop linear eligible ${subject}
+  --skip-labels "${linear_skip_labels}"`; if eligible, start it with
+  `jobshop run start ${pack_prefix}pr-work --var issue=${subject} --key
+  linear-${subject}` and close this check. If not (an open blocker, a
+  question in the thread), comment why on the issue (`jobshop linear
+  comment ${subject} "<why>"`) and close.
 - `pr_unmerged`: PR #${subject} has green checks but is not merged.
   `gh pr view ${subject}`, its run's `review-merge` step.
 - `no_merge`: nothing merged to master for a long time while work is
