@@ -172,7 +172,7 @@ SELECT id, source, delivery_id, kind, repo_or_team, number, comment_id, actor, r
 WHERE (?1 = '' OR state = ?1)
   AND (?2 = '' OR source = ?2)
 ORDER BY received_at DESC, id DESC
-LIMIT ?3
+LIMIT CAST(?3 AS INTEGER)
 `
 
 type InboxListParams struct {

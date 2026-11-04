@@ -46,7 +46,7 @@ RETURNING *;
 SELECT * FROM comments WHERE ticket_id = ? AND deleted = 0 ORDER BY id;
 
 -- name: ListChanges :many
-SELECT * FROM history WHERE seq > ? ORDER BY seq LIMIT ?;
+SELECT * FROM history WHERE seq > ? ORDER BY seq LIMIT CAST(sqlc.arg(lim) AS INTEGER);
 
 -- name: LastSeq :one
 SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM history;

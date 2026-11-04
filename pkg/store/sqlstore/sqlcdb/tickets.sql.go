@@ -533,7 +533,7 @@ WHERE kind = 'run'
   AND (?1 IS NULL OR project = ?1)
   AND (?2 IS NULL OR f_state = ?2)
 ORDER BY created_at DESC, id DESC
-LIMIT ?3
+LIMIT CAST(?3 AS INTEGER)
 `
 
 type ListRunsParams struct {
@@ -609,7 +609,7 @@ WHERE (?1 IS NULL OR project = ?1)
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
       AND m.pack = ?9 AND m.mkey = ?10 AND m.value = ?11))
 ORDER BY priority, created_at, id
-LIMIT ?12
+LIMIT CAST(?12 AS INTEGER)
 `
 
 type ListTicketsParams struct {
@@ -627,6 +627,10 @@ type ListTicketsParams struct {
 	MaxRows   int64
 }
 
+// LIMIT CAST(? AS INTEGER), here and in every query with a bound limit:
+// a bare bound LIMIT makes SQLite re-prepare a cached statement each
+// time the value changes, which was a fifth of the control tests' CPU
+// (#433). The expression is evaluated at run time instead.
 func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Ticket, error) {
 	rows, err := q.db.QueryContext(ctx, listTickets,
 		arg.Project,
@@ -707,7 +711,7 @@ WHERE (?1 IS NULL OR project = ?1)
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
       AND m.pack = ?9 AND m.mkey = ?10 AND m.value = ?11))
 ORDER BY created_at DESC, id DESC
-LIMIT ?12
+LIMIT CAST(?12 AS INTEGER)
 `
 
 type ListTicketsNewestParams struct {
@@ -900,7 +904,7 @@ WHERE (? = 1 OR t.project = ?)
   AND t.kind IN (/*SLICE:kinds*/?)
   AND (t.pool = '' OR t.pool NOT IN (/*SLICE:known*/?))
 ORDER BY t.priority, t.created_at, t.id
-LIMIT ?
+LIMIT CAST(? AS INTEGER)
 `
 
 type OrphanedTicketsParams struct {
@@ -908,7 +912,7 @@ type OrphanedTicketsParams struct {
 	Project string
 	Kinds   []string
 	Known   []string
-	Limit   int64
+	Column5 int64
 }
 
 // OrphanedTickets is open, unclaimed claimable work no pool will pick up:
@@ -936,7 +940,7 @@ func (q *Queries) OrphanedTickets(ctx context.Context, arg OrphanedTicketsParams
 	} else {
 		query = strings.Replace(query, "/*SLICE:known*/?", "NULL", 1)
 	}
-	queryParams = append(queryParams, arg.Limit)
+	queryParams = append(queryParams, arg.Column5)
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err
@@ -1018,7 +1022,7 @@ WHERE t.project = ?
     WHERE r.ticket_id = t.id
       AND NOT EXISTS (SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready'))
 ORDER BY t.priority, t.created_at, t.id
-LIMIT ?
+LIMIT CAST(? AS INTEGER)
 `
 
 type ReadyTicketsParams struct {
@@ -1027,7 +1031,7 @@ type ReadyTicketsParams struct {
 	Column3    interface{}
 	Pool       string
 	DeferUntil int64
-	Limit      int64
+	Column6    int64
 }
 
 // Parameters are bare ? (see OrphanedTickets).
@@ -1046,7 +1050,7 @@ func (q *Queries) ReadyTickets(ctx context.Context, arg ReadyTicketsParams) ([]T
 	queryParams = append(queryParams, arg.Column3)
 	queryParams = append(queryParams, arg.Pool)
 	queryParams = append(queryParams, arg.DeferUntil)
-	queryParams = append(queryParams, arg.Limit)
+	queryParams = append(queryParams, arg.Column6)
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
 		return nil, err

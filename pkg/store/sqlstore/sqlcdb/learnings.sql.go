@@ -107,7 +107,7 @@ WHERE created_at >= ?1
   AND (?4 IS NULL OR status = ?4)
   AND (?5 IS NULL OR ticket = ?5)
 ORDER BY created_at DESC, id DESC
-LIMIT ?6
+LIMIT CAST(?6 AS INTEGER)
 `
 
 type ListLearningsParams struct {

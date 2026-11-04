@@ -59,7 +59,7 @@ WHERE body MATCH ?1
   AND (?3 = '' OR kind = ?3)
   AND (?4 = '' OR ticket_id = ?4)
 ORDER BY score
-LIMIT ?5
+LIMIT CAST(?5 AS INTEGER)
 `
 
 type RecallSearchParams struct {
