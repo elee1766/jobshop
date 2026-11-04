@@ -307,6 +307,13 @@ type Store interface {
 	AddLearning(ctx context.Context, l Learning) (Learning, error)
 	// Learnings returns learnings newest first.
 	Learnings(ctx context.Context, f LearningFilter) ([]Learning, error)
+	// UpdateLearning sets a learning's status and PR (#273).
+	UpdateLearning(ctx context.Context, id int64, status, pr string) (Learning, error)
+	// GetLearning reads one learning; ErrNotFound if missing.
+	GetLearning(ctx context.Context, id int64) (Learning, error)
+	// CountLearnings counts learnings created at or after since with
+	// status (empty: any).
+	CountLearnings(ctx context.Context, since time.Time, status string) (int, error)
 	// IndexRecall adds or replaces (by kind and ref) one document in the
 	// recall index. Comments are indexed by the backend itself.
 	IndexRecall(ctx context.Context, d RecallDoc) error
@@ -337,15 +344,18 @@ var LearningKinds = []string{LearningCorrection, LearningFailure, LearningWorkar
 // Learning is a correction, failure or workaround recorded for the curator.
 // Scope is "global", "repo:<owner/name>" or "pool:<name>".
 type Learning struct {
-	ID        int64     `json:"id"`
-	Kind      string    `json:"kind"`
-	Summary   string    `json:"summary"`
-	Fix       string    `json:"fix,omitempty"`
-	Scope     string    `json:"scope"`
-	Ticket    string    `json:"ticket,omitempty"`
-	Session   string    `json:"session,omitempty"`
-	Source    string    `json:"source"`
-	Status    string    `json:"status"`
+	ID      int64  `json:"id"`
+	Kind    string `json:"kind"`
+	Summary string `json:"summary"`
+	Fix     string `json:"fix,omitempty"`
+	Scope   string `json:"scope"`
+	Ticket  string `json:"ticket,omitempty"`
+	Session string `json:"session,omitempty"`
+	Source  string `json:"source"`
+	Status  string `json:"status"`
+	// PR is the curator's PR that addresses it (#273): pending while
+	// open, kept when applied or rejected.
+	PR        string    `json:"pr,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 

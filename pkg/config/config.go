@@ -158,6 +158,18 @@ type TriggerWhen struct {
 	// its own run with key stall:<signal>:<subject>. A stall trigger has
 	// no other condition and needs run:. check_timeout bounds its checks.
 	Stall []StallSignal `yaml:"stall"`
+
+	// Learnings holds on open learnings recorded since the trigger last
+	// fired (#273).
+	Learnings *LearningsWhen `yaml:"learnings"`
+}
+
+// LearningsWhen holds when at least Min open learnings were recorded
+// since the trigger last fired (or, never fired, since the controller
+// started), or when Every passed since then and at least one was.
+type LearningsWhen struct {
+	Min   int    `yaml:"min"`
+	Every string `yaml:"every"` // Go duration; empty: threshold only
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -616,8 +628,18 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 	if tr.MaxRuns != 0 {
 		return errors.New("max_runs needs when.stall")
 	}
-	if w.Cron == "" && !w.HasCounts() && w.Check == "" {
-		return errors.New("when needs a cron, a count threshold or a check")
+	if w.Cron == "" && !w.HasCounts() && w.Check == "" && w.Learnings == nil {
+		return errors.New("when needs a cron, a count threshold, a check or learnings")
+	}
+	if l := w.Learnings; l != nil {
+		if l.Min < 1 {
+			return errors.New("when: learnings.min must be >= 1")
+		}
+		if l.Every != "" {
+			if d, err := time.ParseDuration(l.Every); err != nil || d <= 0 {
+				return fmt.Errorf("when: learnings.every %q must be a positive duration", l.Every)
+			}
+		}
 	}
 	if w.CheckTimeout != "" {
 		if w.Check == "" {

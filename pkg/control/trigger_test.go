@@ -365,3 +365,69 @@ func TestTriggerRun(t *testing.T) {
 	setSHA("def")
 	require.Eventually(t, func() bool { return len(runs()) == 2 }, 5*time.Second, 20*time.Millisecond)
 }
+
+const curateTriggerYAML = `projects:
+  js: {}
+agents:
+  fake:
+    command: false
+pools:
+  learn:
+    agent: fake
+    dir: %[1]q
+workflows:
+  curate:
+    steps:
+      - {id: curate, pool: learn, title: "Curate", prompt: "Curate"}
+triggers:
+  curate:
+    when:
+      learnings: {min: 3}
+    run:
+      workflow: curate
+      key: curate
+`
+
+// TestTriggerLearnings: the curate trigger (#273) fires once open
+// learnings reach the threshold, not again while its run is open, and
+// after the run closes counts only learnings newer than that run.
+func TestTriggerLearnings(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, curateTriggerYAML, dir), 0o600))
+	root := config.Root{Dir: dir}
+	clk := &clock{t: time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)}
+	stop := triggerController(t, root, clk)
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	runs := func() []store.Ticket {
+		var out []store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &out))
+		return out
+	}
+	learn := func(n int) {
+		for i := range n {
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodLearnAdd, rpc.LearnParams{Kind: store.LearningFailure, Summary: fmt.Sprint("l", i)}, nil))
+		}
+	}
+	settle := func() { time.Sleep(150 * time.Millisecond) }
+
+	learn(2)
+	settle()
+	assert.Empty(t, runs(), "below the threshold")
+	learn(1)
+	require.Eventually(t, func() bool { return len(runs()) == 1 }, 5*time.Second, 20*time.Millisecond)
+	learn(5)
+	settle()
+	assert.Len(t, runs(), 1, "open run holds the trigger")
+
+	// Learnings recorded before the run started do not count again.
+	clk.Advance(time.Minute)
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunCancel, rpc.IDParams{ID: runs()[0].ID}, nil))
+	settle()
+	assert.Len(t, runs(), 1, "no new learnings since the last pass")
+	learn(3)
+	require.Eventually(t, func() bool { return len(runs()) == 2 }, 5*time.Second, 20*time.Millisecond)
+}

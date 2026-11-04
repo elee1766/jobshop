@@ -9,10 +9,51 @@ import (
 	"context"
 )
 
+const countLearnings = `-- name: CountLearnings :one
+SELECT COUNT(*) FROM learnings
+WHERE created_at >= ?1
+  AND (?2 IS NULL OR status = ?2)
+`
+
+type CountLearningsParams struct {
+	Since  int64
+	Status interface{}
+}
+
+func (q *Queries) CountLearnings(ctx context.Context, arg CountLearningsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLearnings, arg.Since, arg.Status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const getLearning = `-- name: GetLearning :one
+SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr FROM learnings WHERE id = ?
+`
+
+func (q *Queries) GetLearning(ctx context.Context, id int64) (Learning, error) {
+	row := q.db.QueryRowContext(ctx, getLearning, id)
+	var i Learning
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Summary,
+		&i.Fix,
+		&i.Scope,
+		&i.Ticket,
+		&i.Session,
+		&i.Source,
+		&i.Status,
+		&i.CreatedAt,
+		&i.Pr,
+	)
+	return i, err
+}
+
 const insertLearning = `-- name: InsertLearning :one
 INSERT INTO learnings (kind, summary, fix, scope, ticket, session, source, status, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, kind, summary, fix, scope, ticket, session, source, status, created_at
+RETURNING id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr
 `
 
 type InsertLearningParams struct {
@@ -51,12 +92,13 @@ func (q *Queries) InsertLearning(ctx context.Context, arg InsertLearningParams) 
 		&i.Source,
 		&i.Status,
 		&i.CreatedAt,
+		&i.Pr,
 	)
 	return i, err
 }
 
 const listLearnings = `-- name: ListLearnings :many
-SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at FROM learnings
+SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr FROM learnings
 WHERE created_at >= ?1
   AND (?2 IS NULL OR scope = ?2)
   AND (?3 IS NULL OR kind = ?3)
@@ -102,6 +144,7 @@ func (q *Queries) ListLearnings(ctx context.Context, arg ListLearningsParams) ([
 			&i.Source,
 			&i.Status,
 			&i.CreatedAt,
+			&i.Pr,
 		); err != nil {
 			return nil, err
 		}
@@ -114,4 +157,36 @@ func (q *Queries) ListLearnings(ctx context.Context, arg ListLearningsParams) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateLearning = `-- name: UpdateLearning :one
+UPDATE learnings
+SET status = ?1, pr = ?2
+WHERE id = ?3
+RETURNING id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr
+`
+
+type UpdateLearningParams struct {
+	Status string
+	Pr     string
+	ID     int64
+}
+
+func (q *Queries) UpdateLearning(ctx context.Context, arg UpdateLearningParams) (Learning, error) {
+	row := q.db.QueryRowContext(ctx, updateLearning, arg.Status, arg.Pr, arg.ID)
+	var i Learning
+	err := row.Scan(
+		&i.ID,
+		&i.Kind,
+		&i.Summary,
+		&i.Fix,
+		&i.Scope,
+		&i.Ticket,
+		&i.Session,
+		&i.Source,
+		&i.Status,
+		&i.CreatedAt,
+		&i.Pr,
+	)
+	return i, err
 }

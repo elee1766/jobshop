@@ -79,6 +79,7 @@ const (
 	MethodActivityList     = "activity.list"
 	MethodLearnAdd         = "learn.add"
 	MethodLearnList        = "learn.list"
+	MethodLearnUpdate      = "learn.update"
 )
 
 // Activity sources (#255).
@@ -1161,4 +1162,14 @@ type LearnListParams struct {
 	Status string        `json:"status,omitempty"`
 	Ticket string        `json:"ticket,omitempty"`
 	Limit  int           `json:"limit,omitempty"`
+}
+
+// LearnUpdateParams sets the status and PR of learnings (#273). The
+// curator sets PR while they stay open; whoever sees the PR merge or
+// close sets applied or rejected. Empty Status keeps each one's status,
+// empty PR keeps its PR. The result is the updated []store.Learning.
+type LearnUpdateParams struct {
+	IDs    []int64 `json:"ids"`
+	Status string  `json:"status,omitempty"`
+	PR     string  `json:"pr,omitempty"`
 }

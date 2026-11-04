@@ -13,6 +13,7 @@ type learnCmd struct {
 	Failure    learnFailureCmd    `cmd:"" help:"Record a failure and its cause."`
 	Workaround learnWorkaroundCmd `cmd:"" help:"Record a workaround for a tool or environment problem."`
 	List       learnListCmd       `cmd:"" help:"List learnings, newest first."`
+	Update     learnUpdateCmd     `cmd:"" help:"Set the status or PR of learnings (curator, #273)."`
 }
 
 type learnKindCmd struct {
@@ -55,4 +56,17 @@ func (c learnListCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodLearnList, rpc.LearnListParams{
 		Since: c.Since, Scope: c.Scope, Kind: c.Kind, Status: c.Status, Ticket: c.Ticket, Limit: c.Limit,
 	}, nil)
+}
+
+// learnUpdateCmd is `jobshop learn update` (#273): the curator records
+// the PR addressing learnings, then applied (merged) or rejected (closed
+// unmerged or reverted; needs the PR).
+type learnUpdateCmd struct {
+	IDs    []int64 `arg:"" name:"id" help:"Learning ids."`
+	Status string  `enum:",open,applied,rejected" default:"" help:"open, applied or rejected."`
+	PR     string  `name:"pr" help:"PR URL that addresses them."`
+}
+
+func (c learnUpdateCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodLearnUpdate, rpc.LearnUpdateParams{IDs: c.IDs, Status: c.Status, PR: c.PR}, nil)
 }

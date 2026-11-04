@@ -198,3 +198,48 @@ func TestLearnStall(t *testing.T) {
 	assert.Contains(t, ls[0].Summary, "stall issue_no_run on issue-7: no run")
 	assert.Equal(t, store.LearningSourceController, ls[0].Source)
 }
+
+// TestLearnUpdate: open -> pr pending -> applied or rejected (#273).
+func TestLearnUpdate(t *testing.T) {
+	c, _, _ := stallController(t)
+	ctx := t.Context()
+	admin := scope{admin: true, actor: "admin"}
+	add := func() int64 {
+		out, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: store.LearningFailure, Summary: "x"})
+		require.NoError(t, err)
+		return out.(store.Learning).ID
+	}
+	a, b := add(), add()
+	pr := "https://github.com/elee1766/jobshop/pull/9"
+
+	_, err := c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{})
+	require.ErrorIs(t, err, store.ErrInvalid)
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}})
+	require.ErrorIs(t, err, store.ErrInvalid, "needs status or pr")
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: store.LearningRejected})
+	require.ErrorIs(t, err, store.ErrInvalid, "rejected needs a pr")
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: "done"})
+	require.ErrorIs(t, err, store.ErrInvalid)
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{999}, PR: pr})
+	require.ErrorIs(t, err, store.ErrNotFound)
+
+	out, err := c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a, b}, PR: pr})
+	require.NoError(t, err)
+	for _, l := range out.([]store.Learning) {
+		assert.Equal(t, store.LearningOpen, l.Status, "pr pending keeps it open")
+		assert.Equal(t, pr, l.PR)
+	}
+	out, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{a}, Status: store.LearningApplied})
+	require.NoError(t, err)
+	assert.Equal(t, pr, out.([]store.Learning)[0].PR, "pr kept")
+	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{b}, Status: store.LearningRejected})
+	require.NoError(t, err, "pr already set")
+
+	rej := learnings(t, c, store.LearningFilter{Status: store.LearningRejected})
+	require.Len(t, rej, 1)
+	assert.Equal(t, b, rej[0].ID)
+	assert.Equal(t, pr, rej[0].PR)
+	n, err := c.store.CountLearnings(ctx, time.Time{}, store.LearningOpen)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+}

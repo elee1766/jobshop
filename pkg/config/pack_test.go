@@ -223,6 +223,20 @@ packs:
 	assert.Contains(t, ci.Steps[0].Prompt, "--log-failed")
 	assert.Contains(t, ci.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "plan", c.Triggers["replan"].Ticket.Pool)
+	// Curator (#273).
+	assert.Equal(t, 1, c.Pools["learn"].MaxSessions)
+	cu := c.Workflows["curate"]
+	require.Len(t, cu.Steps, 1)
+	assert.Equal(t, "learn", cu.Steps[0].Pool)
+	assert.Contains(t, cu.Steps[0].Prompt, "jobshop learn update")
+	assert.Contains(t, cu.Steps[0].Prompt, "--status rejected")
+	assert.Contains(t, cu.Steps[0].Prompt, "jobshop memory check")
+	ct := c.Triggers["curate"]
+	require.NotNil(t, ct.Run)
+	assert.Equal(t, "curate", ct.Run.Workflow)
+	assert.Equal(t, "curate", ct.Run.Key)
+	require.NotNil(t, ct.When.Learnings)
+	assert.Equal(t, LearningsWhen{Min: 10, Every: "24h"}, *ct.When.Learnings)
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
 }
 

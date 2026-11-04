@@ -51,6 +51,7 @@ type Learning struct {
 	Source    string
 	Status    string
 	CreatedAt int64
+	Pr        string
 }
 
 type Recall struct {
