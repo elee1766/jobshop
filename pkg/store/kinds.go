@@ -49,6 +49,18 @@ type SessionFields struct {
 	// Cordoned takes the session out of rotation (#281): it claims no new
 	// work. Nil means in rotation.
 	Cordoned *Cordon `json:"cordoned,omitempty"`
+	// Model and Effort are the agent's current values as it last reported
+	// them (#304), for session list, Desk and telemetry.
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
+	// Options are the ACP config options the controller set on the
+	// conversation; ConfigIDs the option ids the agent advertised. Both
+	// survive a controller restart, so an adopted host is not set again.
+	Options   map[string]string `json:"options,omitempty"`
+	ConfigIDs []string          `json:"config_ids,omitempty"`
+	// Override is `session config` (#304): option values on top of the
+	// pool's until the session ends or the override is reset.
+	Override map[string]string `json:"override,omitempty"`
 }
 
 // Cordon reasons (#281).

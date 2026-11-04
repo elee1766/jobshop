@@ -18,6 +18,7 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	"github.com/elee1766/acphost"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -47,6 +48,7 @@ const (
 	MethodSessionReap      = "session.reap"
 	MethodSessionRestart   = "session.restart"
 	MethodSessionPrompt    = "session.prompt"
+	MethodSessionSandbox   = "session.sandbox"
 	MethodSessionSend      = "session.send"
 	MethodSessionSubscribe = "session.subscribe"
 	MethodWhoami           = "whoami"
@@ -66,6 +68,7 @@ const (
 	MethodPoolList         = "pool.list"
 	MethodPoolScale        = "pool.scale"
 	MethodSessionCordon    = "session.cordon"
+	MethodSessionConfig    = "session.config"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
 	MethodGuard            = "guard"
@@ -350,6 +353,22 @@ type SessionRestartParams struct {
 	Now bool   `json:"now,omitempty"`
 }
 
+// SessionSandboxParams names the session whose sandbox to show.
+type SessionSandboxParams struct {
+	ID string `json:"id"`
+}
+
+// SessionSandboxResult is the sandbox the session's next spawn would get.
+// Sandbox is nil when its pool is not sandboxed. Error is set when the
+// bwrap argv cannot be built (bwrap missing, a mount source missing).
+type SessionSandboxResult struct {
+	Session string           `json:"session"`
+	Pool    string           `json:"pool"`
+	Sandbox *acphost.Sandbox `json:"sandbox,omitempty"`
+	Argv    []string         `json:"argv,omitempty"`
+	Error   string           `json:"error,omitempty"`
+}
+
 // SessionPromptParams names the session whose next prompt to show.
 type SessionPromptParams struct {
 	ID string `json:"id"`
@@ -404,6 +423,11 @@ type SessionInfo struct {
 	Crashes int `json:"crashes,omitempty"`
 	// BackoffUntil is set while the session waits out a provider rate limit.
 	BackoffUntil *time.Time `json:"backoff_until,omitempty"`
+	// Model and Effort are the agent's current values (#304); Override is
+	// the session's `session config` override, if any.
+	Model    string            `json:"model,omitempty"`
+	Effort   string            `json:"effort,omitempty"`
+	Override map[string]string `json:"override,omitempty"`
 }
 
 // SessionReapParams cleans up session leftovers. Hosts with no open session
@@ -717,6 +741,16 @@ type SessionCordonParams struct {
 	Uncordon bool   `json:"uncordon,omitempty"`
 }
 
+// SessionConfigParams sets ACP config options on one session (#304),
+// applied between turns. Options keys are option ids; "effort" means
+// reasoning_effort. Reset drops the override first, back to the pool's
+// values.
+type SessionConfigParams struct {
+	ID      string            `json:"id"`
+	Options map[string]string `json:"options,omitempty"`
+	Reset   bool              `json:"reset,omitempty"`
+}
+
 // DrainResult lists drained pools after the call; "*" means all.
 type DrainResult struct {
 	Drained []string `json:"drained"`
@@ -964,7 +998,10 @@ const (
 	OpSessionStart = "start"
 	OpSessionStop  = "stop"
 	OpSessionCrash = "crash"
-	OpRunState     = "state"
+	// OpSessionConfig: the controller set an ACP config option on a live
+	// session (#304); Option, Old and New say which.
+	OpSessionConfig = "config"
+	OpRunState      = "state"
 )
 
 // EventsSubscribeParams selects change events. SinceSeq > 0 replays
@@ -1002,6 +1039,9 @@ type Event struct {
 	Labels     []string     `json:"labels,omitempty"`
 	Pool       string       `json:"pool,omitempty"`    // pool events
 	Desired    int          `json:"desired,omitempty"` // pool events
+	Option     string       `json:"option,omitempty"`  // session config events
+	Old        string       `json:"old,omitempty"`
+	New        string       `json:"new,omitempty"`
 }
 
 // Events calls events.subscribe and passes each event to fn until the

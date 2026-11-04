@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -52,6 +54,7 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "fake-agent" {
+		sandboxProbe()
 		fakeAgent()
 		os.Exit(0)
 	}
@@ -649,7 +652,10 @@ func TestPoolSession(t *testing.T) {
 
 // fakeAgent speaks ACP on stdio and closes each prompted ticket.
 func fakeAgent() {
-	a := &agent{known: map[acp.SessionId]bool{}, cancel: make(chan struct{}, 1)}
+	a := &agent{
+		known: map[acp.SessionId]bool{}, cancel: make(chan struct{}, 1),
+		cur: map[string]string{"model": "default-model", "reasoning_effort": "medium"},
+	}
 	conn := acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
 	a.conn = conn
 	<-conn.Done()
@@ -660,6 +666,9 @@ type agent struct {
 	conn   *acp.AgentSideConnection
 	known  map[acp.SessionId]bool // created or loaded in this process
 	cancel chan struct{}
+	cur    map[string]string // config option values (#304)
+	busy   atomic.Bool       // a prompt is running
+	mu     sync.Mutex        // guards cur
 }
 
 func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
@@ -682,7 +691,30 @@ func (a *agent) NewSession(context.Context, acp.NewSessionRequest) (acp.NewSessi
 	a.n++
 	id := acp.SessionId(fmt.Sprintf("s%d", a.n))
 	a.known[id] = true
-	return acp.NewSessionResponse{SessionId: id}, nil
+	return acp.NewSessionResponse{SessionId: id, ConfigOptions: a.configOptions()}, nil
+}
+
+// configOptions advertises model and reasoning_effort when a "configopts"
+// file exists, like jcode (#304).
+func (a *agent) configOptions() []acp.SessionConfigOption {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.configOptionsLocked()
+}
+
+func (a *agent) configOptionsLocked() []acp.SessionConfigOption {
+	if _, err := os.Stat("configopts"); err != nil {
+		return nil
+	}
+	var out []acp.SessionConfigOption
+	for _, id := range []string{"model", "reasoning_effort"} {
+		vals := acp.SessionConfigSelectOptionsUngrouped{{Name: a.cur[id], Value: acp.SessionConfigValueId(a.cur[id])}}
+		out = append(out, acp.SessionConfigOption{Select: &acp.SessionConfigOptionSelect{
+			Id: acp.SessionConfigId(id), Name: id, Type: "select", CurrentValue: acp.SessionConfigValueId(a.cur[id]),
+			Options: acp.SessionConfigSelectOptions{Ungrouped: &vals},
+		}})
+	}
+	return out
 }
 
 func (a *agent) LoadSession(_ context.Context, p acp.LoadSessionRequest) (acp.LoadSessionResponse, error) {
@@ -691,7 +723,7 @@ func (a *agent) LoadSession(_ context.Context, p acp.LoadSessionRequest) (acp.Lo
 		return acp.LoadSessionResponse{}, &acp.RequestError{Code: -32603, Message: "session not found"}
 	}
 	a.known[p.SessionId] = true
-	return acp.LoadSessionResponse{}, nil
+	return acp.LoadSessionResponse{ConfigOptions: a.configOptions()}, nil
 }
 
 func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
@@ -699,6 +731,13 @@ func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	if !a.known[p.SessionId] {
 		return acp.PromptResponse{}, &acp.RequestError{Code: -32602, Message: "Unknown ACP session id: " + string(p.SessionId)}
 	}
+	a.busy.Store(true)
+	res, err := a.prompt(ctx, p)
+	a.busy.Store(false)
+	return res, err
+}
+
+func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
 	// Record every prompt (one JSON string per line) for tests to inspect.
 	var text string
 	for _, b := range p.Prompt {
@@ -806,8 +845,28 @@ func (a *agent) ResumeSession(context.Context, acp.ResumeSessionRequest) (acp.Re
 	return acp.ResumeSessionResponse{}, nil
 }
 
-func (a *agent) SetSessionConfigOption(context.Context, acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
-	return acp.SetSessionConfigOptionResponse{}, nil
+func (a *agent) SetSessionConfigOption(_ context.Context, p acp.SetSessionConfigOptionRequest) (acp.SetSessionConfigOptionResponse, error) {
+	v := p.ValueId
+	if v == nil {
+		return acp.SetSessionConfigOptionResponse{}, &acp.RequestError{Code: -32602, Message: "want a value id"}
+	}
+	// Record each call and whether a prompt was running, one line each.
+	line := fmt.Sprintf("%s=%s busy=%v\n", v.ConfigId, v.Value, a.busy.Load())
+	if f, err := os.OpenFile("configsets", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+		_, _ = f.WriteString(line)
+		_ = f.Close()
+	}
+	if a.busy.Load() {
+		return acp.SetSessionConfigOptionResponse{}, &acp.RequestError{Code: -32000, Message: "busy; retry when it finishes"}
+	}
+	// A value listed in "configreject" is refused, like an unknown route.
+	if b, err := os.ReadFile("configreject"); err == nil && strings.Contains(string(b), string(v.Value)) {
+		return acp.SetSessionConfigOptionResponse{}, &acp.RequestError{Code: -32602, Message: "unknown model route " + string(v.Value)}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cur[string(v.ConfigId)] = string(v.Value)
+	return acp.SetSessionConfigOptionResponse{ConfigOptions: a.configOptionsLocked()}, nil
 }
 
 func (a *agent) SetSessionMode(context.Context, acp.SetSessionModeRequest) (acp.SetSessionModeResponse, error) {

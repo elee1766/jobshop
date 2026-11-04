@@ -35,7 +35,7 @@ func (g *Gateway) digest(ctx context.Context) {
 	if len(res.Items) == 0 {
 		return
 	}
-	if _, err := g.ad.Open(ctx, g.cfg.EscalationRoom, digestText(res.Items, time.Now())); err != nil {
+	if _, err := g.ad.Open(ctx, g.settings().EscalationRoom, digestText(res.Items, time.Now())); err != nil {
 		g.log.Warn("gateway: digest", "err", err)
 	}
 }

@@ -68,6 +68,16 @@ let
         rollback_file = "${deployState}/failed";
       }
       // (cfg.settings.attention or { });
+    }
+    // lib.optionalAttrs cfg.sandbox.enable {
+      defaults = (cfg.settings.defaults or { }) // {
+        sandbox = {
+          backend = "bubblewrap";
+          inherit (cfg.sandbox) rw;
+        }
+        // ((cfg.settings.defaults or { }).sandbox or { });
+      };
+      shared_tools = (cfg.settings.shared_tools or [ ]) ++ cfg.sandbox.sharedTools;
     };
   configFile = settingsFormat.generate "jobshop.yaml" (
     lib.recursiveUpdate settings (
@@ -89,6 +99,7 @@ let
     openssh
     coreutils
     bash
+    mise
     # From this flake's nixpkgs, so agents lint with the version CI uses.
     self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
   ];
@@ -119,7 +130,10 @@ let
     exec ${lib.getExe pkgs.gh} "$@"
   '';
   path =
-    lib.optional useIdentities ghWrapper ++ cfg.path ++ lib.optionals cfg.defaultPath defaultTools;
+    lib.optional useIdentities ghWrapper
+    ++ cfg.path
+    ++ lib.optionals cfg.defaultPath defaultTools
+    ++ lib.optional cfg.sandbox.enable pkgs.bubblewrap;
 
   credentialHelper =
     if useIdentities then "!${jobshop} identity git-credential" else cfg.gitIdentity.credentialHelper;
@@ -164,6 +178,14 @@ let
     };
   environment =
     gitEnv
+    # mise inside the sandbox: prebuilt runtimes through nix-ld (#262).
+    // lib.optionalAttrs cfg.sandbox.enable {
+      MISE_ALL_COMPILE = "false";
+      MISE_PYTHON_COMPILE = "false";
+      NIX_LD_LIBRARY_PATH = "/run/current-system/sw/share/nix-ld/lib";
+      NIX_LD = "/run/current-system/sw/share/nix-ld/lib/ld.so";
+      MISE_TRUSTED_CONFIG_PATHS = "${cfg.dataDir}/sessions:${cfg.dataDir}/workspaces";
+    }
     // cfg.environment
     // {
       JOBSHOP_ROOT = cfg.dataDir;
@@ -444,10 +466,31 @@ in
       description = "Deny private, CGNAT/tailnet, link-local and ULA ranges, like gasserver's agent slice.";
     };
 
+    sandbox = {
+      enable = lib.mkEnableOption "bubblewrap sandboxes for agents (#262): bubblewrap on PATH and defaults.sandbox.backend = bubblewrap";
+      sharedTools = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Dirs mounted read-only into every sandboxed session (settings.shared_tools).";
+      };
+      rw = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "~/go"
+          "~/.cache/go-build"
+          "~/.npm"
+          "~/.jcode"
+          "~/.local/share/mise"
+          "~/.cache/mise"
+        ];
+        description = "Read-write dirs for every sandboxed session (defaults.sandbox.rw): build caches, agent state, mise data.";
+      };
+    };
+
     defaultPath = lib.mkOption {
       type = lib.types.bool;
       default = true;
-      description = "Put the tools Jobshop's own agents need on PATH (git, go, nix, gnumake, gcc, ripgrep, fd, jq, curl, openssh, coreutils, bash), before `path`.";
+      description = "Put the tools Jobshop's own agents need on PATH (git, go, nix, gnumake, gcc, ripgrep, fd, jq, curl, openssh, coreutils, bash, mise), before `path`.";
     };
 
     gitIdentity = {

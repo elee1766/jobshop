@@ -85,6 +85,16 @@ func TestParseConversationExport(t *testing.T) {
 	assert.False(t, c.Pools["q"].ConversationExport, "default off")
 }
 
+// TestSessionOptions (#304): the pool overrides the agent per option id,
+// and model and effort are shorthand for their ACP ids.
+func TestSessionOptions(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\n    model: claude-oauth:opus\n    effort: low\n    config_options: {mode: fast}\npools:\n  p:\n    agent: a\n    dir: /w\n    model: openai-oauth:gpt\n  q:\n    agent: a\n    dir: /w\n    config_options: {reasoning_effort: high}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"model": "openai-oauth:gpt", "reasoning_effort": "low", "mode": "fast"}, c.SessionOptions("p", "a"))
+	assert.Equal(t, map[string]string{"model": "claude-oauth:opus", "reasoning_effort": "high", "mode": "fast"}, c.SessionOptions("q", "a"))
+	assert.Equal(t, map[string]string{"model": "claude-oauth:opus", "reasoning_effort": "low", "mode": "fast"}, c.SessionOptions("", "a"), "manual session")
+}
+
 func TestParsePoolAdmin(t *testing.T) {
 	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  p:\n    agent: a\n    dir: /w\n    admin: [config-reload, session-list]\n"))
 	require.NoError(t, err)
