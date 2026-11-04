@@ -1,6 +1,7 @@
 package storetest
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -77,4 +78,47 @@ func testConcurrentClaims(t *testing.T, s store.Store, _ *Clock) {
 		winners = append(winners, w)
 	}
 	assert.Len(t, winners, 1)
+}
+
+// testConcurrentResourceClaims: several holders race for steps that share
+// a capacity-1 resource (#400, #406). The slot check is part of the
+// guarded claim write, so exactly one step is in progress at a time.
+func testConcurrentResourceClaims(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	require.NoError(t, s.SetResourceCaps(ctx, map[string]int{"emu": 1}))
+	runID, err := s.NewID(proj)
+	require.NoError(t, err)
+	nts := []store.NewTicket{{
+		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		Fields: json.RawMessage(`{"workflow":"w","state":"running"}`),
+	}}
+	for i := range 6 {
+		id := fmt.Sprintf("js-r%d", i)
+		nts = append(nts, store.NewTicket{
+			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q,"retries":5,"resources":["emu"]}`, runID, id)),
+		})
+	}
+	_, err = s.CreateGraph(ctx, "test", nts, nil)
+	require.NoError(t, err)
+
+	var mu sync.Mutex
+	var held []string
+	var wg sync.WaitGroup
+	for i := range 8 {
+		holder := fmt.Sprintf("h%d", i)
+		wg.Go(func() {
+			tk, _, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: holder, Lease: lease})
+			if errors.Is(err, store.ErrNoWork) || errors.Is(err, store.ErrConflict) {
+				return
+			}
+			if assert.NoError(t, err, holder) {
+				mu.Lock()
+				held = append(held, tk.ID)
+				mu.Unlock()
+			}
+		})
+	}
+	wg.Wait()
+	assert.Len(t, held, 1, "one slot, one claim")
 }
