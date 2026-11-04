@@ -280,6 +280,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Learnings capture: `jobshop learn`, a `learnings` table, and
   controller-recorded failures, review findings, escalations, answers
   and stalls (#264, `docs/notes/264-learnings.md`).
+- Learning nudge: an `after` prompt rule asking workers to `jobshop
+  learn` a correction, failure or workaround before closing (#271,
+  `docs/notes/271-nudge.md`).
 - `jobshop recall`: FTS5 search over comments, session journals and
   learnings,
   with a pack prompt rule to use it on failures (#265,
@@ -392,7 +395,7 @@ Activity feed live check and rate-limit measurement on gasserver:
 `docs/verify/activity-feed.md` (#255).
 Pre-switch config check on the next pack var change:
 `docs/verify/deploy-config-check.md` (#261).
-Learning loop (#247 B): capture is built (#264); next memory files and
+Learning loop (#247 B): capture (#264) and the nudge (#271) are built; next memory files and
 skills, then the curator. Reverted PRs as learnings are a follow-up.
 Recall live check after the next self-deploy: `docs/verify/recall.md` (#265).
 

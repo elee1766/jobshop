@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -186,4 +187,41 @@ func TestRuleMemory(t *testing.T) {
 
 	later := c.assemble(ctx, turnSpec{pool: "dev", kind: turnTicket, ticket: &tk}, PromptPart{Source: "ticket"})
 	assert.Equal(t, []string{"ticket"}, sources(later), "system rules only on a host's first turn")
+}
+
+// TestLearnNudge (#271): the learn-nudge rule from packs/github is in the
+// after position of dev, refinery and operator ticket turns, and in a
+// chat session's first message turn, but not in later chat turns.
+func TestLearnNudge(t *testing.T) {
+	abs := func(p string) string {
+		a, err := filepath.Abs("../../packs/" + p)
+		require.NoError(t, err)
+		return a
+	}
+	c, _ := rulesController(t, `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: `+abs("selfdev")+`
+    vars: {repo: /src/jobshop, agent: a}
+  - path: `+abs("operator")+`
+    vars: {jobshop_repo: elee1766/jobshop, checkout: /src/jobshop, agent: a}
+`)
+	ctx := t.Context()
+	task, err := c.store.Create(ctx, "t", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "t"})
+	require.NoError(t, err)
+	body := PromptPart{Source: "ticket", Text: "BODY"}
+	for _, pool := range []string{"dev", "refinery", "operator"} {
+		parts := c.assemble(ctx, turnSpec{pool: pool, kind: turnTicket, ticket: &task, poolPrompt: true}, body)
+		src := sources(parts)
+		require.Contains(t, src, "rule:learn-nudge", pool)
+		assert.Contains(t, joinParts(parts), "jobshop learn", pool)
+		assert.Contains(t, joinParts(parts), "Do not record a learning for routine success", pool)
+		assert.Less(t, slices.Index(src, "pool"), slices.Index(src, "rule:learn-nudge"), pool)
+	}
+	first := c.assemble(ctx, turnSpec{pool: "operator", kind: turnMessage, poolPrompt: true}, PromptPart{Source: "messages", Text: "M"})
+	assert.Contains(t, sources(first), "rule:learn-nudge")
+	later := c.assemble(ctx, turnSpec{pool: "operator", kind: turnMessage}, PromptPart{Source: "messages", Text: "M"})
+	assert.NotContains(t, sources(later), "rule:learn-nudge")
 }
