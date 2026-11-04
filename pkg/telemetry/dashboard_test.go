@@ -75,6 +75,9 @@ func exportedNames(t *testing.T) map[string]bool {
 	m.SessionsEnded.Add(ctx, 1, all)
 	m.Orphaned.Record(ctx, 1, metric.WithAttributes(AttrReason.String("no_pool")))
 	m.RunsNeedsHuman.Record(ctx, 1, all)
+	m.PoolDesired.Record(ctx, 1, all)
+	m.PoolCordoned.Record(ctx, 1, all)
+	m.ScaleEvents.Add(ctx, 1, all)
 	m.LeaseExpiries.Add(ctx, 1)
 	m.Since(ctx, time.Now(), "ping")
 
@@ -91,4 +94,12 @@ func exportedNames(t *testing.T) map[string]bool {
 		names[mm[1]] = true
 	}
 	return names
+}
+
+// TestPoolScaleMetricNames pins the series names #281 promises.
+func TestPoolScaleMetricNames(t *testing.T) {
+	known := exportedNames(t)
+	for _, n := range []string{"jobshop_pool_sessions_desired", "jobshop_pool_sessions_cordoned", "jobshop_pool_scale_events_total"} {
+		assert.True(t, known[n], n)
+	}
 }

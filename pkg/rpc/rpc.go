@@ -64,6 +64,8 @@ const (
 	MethodBatchShow        = "batch.show"
 	MethodBatchList        = "batch.list"
 	MethodPoolList         = "pool.list"
+	MethodPoolScale        = "pool.scale"
+	MethodSessionCordon    = "session.cordon"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
 	MethodGuard            = "guard"
@@ -145,6 +147,8 @@ type CreateParams struct {
 	Labels   []string        `json:"labels,omitempty"`
 	Fields   json.RawMessage `json:"fields,omitempty"`
 	Meta     json.RawMessage `json:"meta,omitempty"`
+	// Force pre-assigns to a cordoned session (#281).
+	Force bool `json:"force,omitempty"`
 }
 
 // IDParams names one ticket. An empty ID in a session scope means the
@@ -197,6 +201,9 @@ type UpdateParams struct {
 	Fields     json.RawMessage `json:"fields,omitempty"`
 	Meta       json.RawMessage `json:"meta,omitempty"`
 	IfRevision int64           `json:"if_revision,omitempty"`
+	// Force pre-assigns to a cordoned session, which otherwise refuses
+	// new work (#281).
+	Force bool `json:"force,omitempty"`
 }
 
 // CloseParams closes a ticket. In a session scope the session must hold it.
@@ -390,6 +397,9 @@ type SessionInfo struct {
 	SeqTime  *time.Time    `json:"seq_time,omitempty"`
 	Exit     string        `json:"exit,omitempty"`    // exit.json reason, for dead hosts
 	Drained  bool          `json:"drained,omitempty"` // takes no new tickets
+	// Cordon is the session's cordon reason (scale, manual, drain), empty
+	// while in rotation (#281).
+	Cordon string `json:"cordon,omitempty"`
 	// Crashes counts unplanned host restarts in the crash window.
 	Crashes int `json:"crashes,omitempty"`
 	// BackoffUntil is set while the session waits out a provider rate limit.
@@ -669,6 +679,42 @@ type PoolParams struct {
 type PoolStatusResult struct {
 	Quarantined map[string]string    `json:"quarantined"`
 	Paused      map[string]time.Time `json:"paused"`
+	// Pools are the ticket pools' scale columns (#281).
+	Pools []PoolScale `json:"pools,omitempty"`
+	// HostMax is limits.max_sessions; 0 means no host cap.
+	HostMax int `json:"host_max,omitempty"`
+}
+
+// PoolScale is one ticket pool's scaling state. Target is the manual
+// target from pool scale; nil means auto.
+type PoolScale struct {
+	Name     string `json:"name"`
+	Min      int    `json:"min"`
+	Max      int    `json:"max"`
+	Priority int    `json:"priority,omitempty"`
+	Target   *int   `json:"target,omitempty"`
+	Desired  int    `json:"desired"`
+	Open     int    `json:"open"`
+	Working  int    `json:"working"`
+	Idle     int    `json:"idle"`
+	Cordoned int    `json:"cordoned"`
+	Drained  bool   `json:"drained,omitempty"`
+}
+
+// PoolScaleParams sets a pool's manual target, or with Auto returns it to
+// demand-based scaling.
+type PoolScaleParams struct {
+	Pool   string `json:"pool"`
+	Target *int   `json:"target,omitempty"`
+	Auto   bool   `json:"auto,omitempty"`
+}
+
+// SessionCordonParams cordons one session (no new claims), with Drain
+// also ends it once idle, or with Uncordon returns it to rotation.
+type SessionCordonParams struct {
+	ID       string `json:"id"`
+	Drain    bool   `json:"drain,omitempty"`
+	Uncordon bool   `json:"uncordon,omitempty"`
 }
 
 // DrainResult lists drained pools after the call; "*" means all.
@@ -903,7 +949,10 @@ const (
 	EventKindRun     = "run"
 	EventKindSession = "session"
 	EventKindReady   = "ready"
-	EventKindLagged  = "lagged"
+	// EventKindPool: a pool scale or session cordon change (#281); Op is
+	// up, cordon, uncordon, manual or auto.
+	EventKindPool   = "pool"
+	EventKindLagged = "lagged"
 	// EventKindActivity: new external activity items (#255); refetch
 	// activity.list. Seq is 0: it is not a history row.
 	EventKindActivity = "activity"
@@ -951,6 +1000,8 @@ type Event struct {
 	Resolution string       `json:"resolution,omitempty"`
 	State      string       `json:"state,omitempty"` // run state
 	Labels     []string     `json:"labels,omitempty"`
+	Pool       string       `json:"pool,omitempty"`    // pool events
+	Desired    int          `json:"desired,omitempty"` // pool events
 }
 
 // Events calls events.subscribe and passes each event to fn until the

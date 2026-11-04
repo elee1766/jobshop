@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // Kind is an engine-defined ticket kind. Packs cannot add kinds.
@@ -45,6 +46,27 @@ type SessionFields struct {
 	// TraceParent is the session trace's W3C traceparent, kept so lifecycle
 	// spans after a controller restart join the same trace.
 	TraceParent string `json:"traceparent,omitempty"`
+	// Cordoned takes the session out of rotation (#281): it claims no new
+	// work. Nil means in rotation.
+	Cordoned *Cordon `json:"cordoned,omitempty"`
+}
+
+// Cordon reasons (#281).
+const (
+	// CordonScale: cordoned by the controller to scale the pool down; the
+	// session ends scaled_down once it holds nothing.
+	CordonScale = "scale"
+	// CordonManual: `session cordon`; the session stays open and idle.
+	CordonManual = "manual"
+	// CordonDrain: `session drain`; the session ends drained once idle.
+	CordonDrain = "drain"
+)
+
+// Cordon records why and by whom a session was cordoned.
+type Cordon struct {
+	Reason string    `json:"reason"`
+	By     string    `json:"by,omitempty"`
+	At     time.Time `json:"at"`
 }
 
 // Validate implements Fields.

@@ -306,6 +306,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Linear intake: `linear_issue_no_run` stall signal, read from Linear
   by the controller, starts stall-check for team issues with no open
   run (#287, `docs/notes/287-linear-intake.md`).
+- Pool scaling: min/max, desired target, `pool scale`, cordon to scale
+  down, persisted scale and drain, host cap (#281,
+  `docs/notes/281-pool-scaling.md`).
 
 ## 5. What's next
 
@@ -423,6 +426,9 @@ Linear App identity live check, with an OAuth app in a throwaway
 workspace: `docs/verify/linear-pack.md` (#278).
 Linear intake live check with a Linear token on gasserver:
 `docs/verify/linear-intake.md` (#287).
+
+Pool scaling live check: `docs/verify/pool-scaling.md` (#281); Desk
+scale and cordon buttons are a follow-up.
 
 **Later.** Postgres backend against the same conformance suite.
 Per-session isolation (`docs/notes/users-security.md`).
@@ -915,6 +921,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   after success; the derived id covers a write that landed but whose
   reply was lost, which a result store alone cannot tell from a write
   that never happened.
+- Pools scale down by cordon, never by stopping a session (2026-11-04,
+  #281): a turn is never cut. Manual targets and drains persist in
+  `<root>/scale.json`, not the store, since they are controller state
+  like the last good config; the cordon lives in session fields so it
+  shows in `ticket show` and history.
 
 ## 7. Reference: behavior as built
 

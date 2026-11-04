@@ -46,6 +46,10 @@ type Metrics struct {
 	Orphaned      metric.Int64Gauge
 	// RunsNeedsHuman is open runs in state needs_human, by project.
 	RunsNeedsHuman metric.Int64Gauge
+	// Pool scaling (#281).
+	PoolDesired  metric.Int64Gauge
+	PoolCordoned metric.Int64Gauge
+	ScaleEvents  metric.Int64Counter
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -59,7 +63,7 @@ func NewMetrics() (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [13]error
+	var errs [16]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -80,6 +84,12 @@ func NewMetrics() (*Metrics, error) {
 		metric.WithDescription("Open unclaimed tickets no pool will claim, by reason (no_pool, unknown_pool)."))
 	m.RunsNeedsHuman, errs[12] = meter.Int64Gauge("jobshop.runs.needs_human",
 		metric.WithDescription("Open runs waiting on a human (a step failed at its retry limit), by project."))
+	m.PoolDesired, errs[13] = meter.Int64Gauge("jobshop.pool.sessions.desired",
+		metric.WithDescription("Desired sessions per ticket pool, from the supervisor tick (#281)."))
+	m.PoolCordoned, errs[14] = meter.Int64Gauge("jobshop.pool.sessions.cordoned",
+		metric.WithDescription("Open sessions out of rotation per pool (scale, manual or drain cordon)."))
+	m.ScaleEvents, errs[15] = meter.Int64Counter("jobshop.pool.scale_events",
+		metric.WithDescription("Pool scale changes by pool and reason (up, cordon, uncordon, manual, auto)."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err

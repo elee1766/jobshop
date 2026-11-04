@@ -296,8 +296,28 @@ func pathRewrite(pairs []string) (func(string) string, error) {
 }
 
 type poolCmd struct {
-	List         poolListCmd         `cmd:"" help:"Show quarantined and paused pools."`
+	List         poolListCmd         `cmd:"" help:"Show each pool's min, max, desired, open, working, idle and cordoned sessions, plus quarantined and paused pools."`
+	Scale        poolScaleCmd        `cmd:"" help:"Set a pool's desired session count, or 'auto' to follow ready work again. Persisted (admin or pool-scale grant)."`
 	Unquarantine poolUnquarantineCmd `cmd:"" help:"Let a quarantined or paused pool start sessions again."`
+}
+
+type poolScaleCmd struct {
+	Pool   string `arg:"" help:"Pool name."`
+	Target string `arg:"" help:"Session count, or auto."`
+}
+
+func (c poolScaleCmd) Run(g *Globals) error {
+	p := rpc.PoolScaleParams{Pool: c.Pool}
+	if c.Target == "auto" {
+		p.Auto = true
+	} else {
+		n, err := strconv.Atoi(c.Target)
+		if err != nil || n < 0 {
+			return fmt.Errorf("target %q: want a count >= 0 or auto", c.Target)
+		}
+		p.Target = &n
+	}
+	return g.call(rpc.MethodPoolScale, p, nil)
 }
 
 type poolListCmd struct{}
@@ -495,10 +515,11 @@ type assignCmd struct {
 	ID     string `arg:"" help:"Ticket id."`
 	Holder string `arg:"" optional:"" help:"Session id to pre-assign; omit to unassign."`
 	Pool   string `help:"Also route to this pool."`
+	Force  bool   `help:"Assign even if the session is cordoned."`
 }
 
 func (c assignCmd) Run(g *Globals) error {
-	p := rpc.UpdateParams{ID: c.ID, Holder: &c.Holder}
+	p := rpc.UpdateParams{ID: c.ID, Holder: &c.Holder, Force: c.Force}
 	if c.Pool != "" {
 		p.Pool = &c.Pool
 	}
@@ -610,12 +631,39 @@ func (c labelRm) Run(g *Globals) error {
 }
 
 type sessionCmd struct {
-	New     sessionNewCmd     `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
-	List    sessionListCmd    `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
-	Reap    sessionReapCmd    `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
-	Restart sessionRestartCmd `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
-	Attach  sessionAttachCmd  `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
-	Prompt  sessionPromptCmd  `cmd:"" help:"Print the prompt a session's next turn would get, each part labeled by source (admin)."`
+	New      sessionNewCmd      `cmd:"" help:"Register a session and open its CLI socket (admin). Phase 2 starts agents automatically."`
+	List     sessionListCmd     `cmd:"" help:"List sessions with live host state, plus orphaned hosts (admin)."`
+	Reap     sessionReapCmd     `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
+	Restart  sessionRestartCmd  `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
+	Attach   sessionAttachCmd   `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
+	Prompt   sessionPromptCmd   `cmd:"" help:"Print the prompt a session's next turn would get, each part labeled by source (admin)."`
+	Cordon   sessionCordonCmd   `cmd:"" help:"Take a session out of rotation: it finishes its ticket and claims nothing new, but stays open (admin or session-cordon grant)."`
+	Uncordon sessionUncordonCmd `cmd:"" help:"Return a cordoned session to rotation."`
+	Drain    sessionDrainCmd    `cmd:"" help:"Cordon a session and end it once it holds nothing."`
+}
+
+type sessionCordonCmd struct {
+	ID string `arg:"" help:"Session id."`
+}
+
+func (c sessionCordonCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionCordon, rpc.SessionCordonParams{ID: c.ID}, nil)
+}
+
+type sessionUncordonCmd struct {
+	ID string `arg:"" help:"Session id."`
+}
+
+func (c sessionUncordonCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionCordon, rpc.SessionCordonParams{ID: c.ID, Uncordon: true}, nil)
+}
+
+type sessionDrainCmd struct {
+	ID string `arg:"" help:"Session id."`
+}
+
+func (c sessionDrainCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionCordon, rpc.SessionCordonParams{ID: c.ID, Drain: true}, nil)
 }
 
 // sessionPromptCmd shows pool prompt, prompt rules and ticket as the
