@@ -263,6 +263,21 @@ type ListParams struct {
 	Holder   string       `json:"holder,omitempty"`
 	ParentID string       `json:"parent_id,omitempty"`
 	Label    string       `json:"label,omitempty"`
+	// Meta matches "pack.key" to a string value, all required, at most
+	// store.MaxMetaFilters (#541). A plugin keeps state in meta.<plugin>
+	// and lists it back with this.
+	Meta map[string]string `json:"meta,omitempty"`
+	// Workflow and State match fields.workflow and fields.state (runs).
+	Workflow string `json:"workflow,omitempty"`
+	State    string `json:"state,omitempty"`
+	// Run lists a run's steps (its children); same as ParentID.
+	Run string `json:"run,omitempty"`
+	// Order is "priority" (default) or "newest". Newest is the old form.
+	Order string `json:"order,omitempty"`
+	// Since keeps tickets updated at or after it (RFC 3339).
+	Since time.Time `json:"since,omitzero"`
+	// After is a cursor: the id of the last ticket of the previous page.
+	After string `json:"after,omitempty"`
 	// Newest lists the most recently created first.
 	Newest bool `json:"newest,omitempty"`
 	// Report matches tickets whose last worker report has this state (#186).

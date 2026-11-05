@@ -551,26 +551,41 @@ func narg(s string) any {
 
 // List returns tickets matching f ordered by priority then age.
 func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
-	var metaPack any
-	var metaKey sql.NullString
+	metas := f.Meta
 	if f.MetaPack != "" && f.MetaKey != "" {
-		metaPack = f.MetaPack
-		metaKey = sql.NullString{String: f.MetaKey, Valid: true}
+		metas = append([]store.MetaMatch{{Pack: f.MetaPack, Key: f.MetaKey, Value: f.MetaValue}}, metas...)
 	}
-	metaValue := sql.NullString{String: f.MetaValue, Valid: metaPack != nil}
+	if len(metas) > store.MaxMetaFilters {
+		return nil, fmt.Errorf("%w: at most %d meta filters", store.ErrInvalid, store.MaxMetaFilters)
+	}
+	var mp [store.MaxMetaFilters]any
+	var mk, mv [store.MaxMetaFilters]sql.NullString
+	for i, m := range metas {
+		mp[i] = m.Pack
+		mk[i] = sql.NullString{String: m.Key, Valid: true}
+		mv[i] = sql.NullString{String: m.Value, Valid: true}
+	}
+	var since int64
+	if !f.Since.IsZero() {
+		since = ms(f.Since)
+	}
 	var rows []sqlcdb.Ticket
 	var err error
 	if f.Newest {
 		rows, err = s.q.ListTicketsNewest(ctx, sqlcdb.ListTicketsNewestParams{
 			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
 			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
-			Label: narg(f.Label), MetaPack: metaPack, MetaKey: metaKey, MetaValue: metaValue, MaxRows: limit(f.Limit),
+			Workflow: narg(f.Workflow), State: narg(f.State), Since: since, Label: narg(f.Label),
+			MetaPack: mp[0], MetaKey: mk[0], MetaValue: mv[0], MetaPack2: mp[1], MetaKey2: mk[1], MetaValue2: mv[1],
+			MetaPack3: mp[2], MetaKey3: mk[2], MetaValue3: mv[2], After: narg(f.After), MaxRows: limit(f.Limit),
 		})
 	} else {
 		rows, err = s.q.ListTickets(ctx, sqlcdb.ListTicketsParams{
 			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
 			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
-			Label: narg(f.Label), MetaPack: metaPack, MetaKey: metaKey, MetaValue: metaValue, MaxRows: limit(f.Limit),
+			Workflow: narg(f.Workflow), State: narg(f.State), Since: since, Label: narg(f.Label),
+			MetaPack: mp[0], MetaKey: mk[0], MetaValue: mv[0], MetaPack2: mp[1], MetaKey2: mk[1], MetaValue2: mv[1],
+			MetaPack3: mp[2], MetaKey3: mk[2], MetaValue3: mv[2], After: narg(f.After), MaxRows: limit(f.Limit),
 		})
 	}
 	if err != nil {
