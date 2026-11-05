@@ -133,7 +133,7 @@ func TestStallReadyUnclaimed(t *testing.T) {
 	mkTicket(t, c, store.NewTicket{Title: "orphan", Pool: "gone"})
 	assert.Empty(t, stallKeys(t, c), "fresh ticket")
 	clk.advance(30 * time.Minute)
-	_, err := c.store.AddComment(t.Context(), "admin", tk.ID, "touch")
+	_, err := store.AddComment(t.Context(), c.store, "admin", tk.ID, "touch")
 	require.NoError(t, err)
 	clk.advance(50 * time.Minute)
 	assert.Empty(t, stallKeys(t, c), "a comment resets the clock")

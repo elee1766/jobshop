@@ -117,7 +117,7 @@ func (c *Controller) postLinearAsk(ctx context.Context, t store.Ticket) error {
 	if err := c.setMetaPack(ctx, t.ID, linearAskPack, linearAsk{Comment: res.ID, URL: res.URL, Issue: key}); err != nil {
 		return err
 	}
-	_, err = c.store.AddComment(ctx, "controller", t.ID, fmt.Sprintf("asked on Linear %s: %s", key, res.URL))
+	_, err = store.AddComment(ctx, c.store, "controller", t.ID, fmt.Sprintf("asked on Linear %s: %s", key, res.URL))
 	return err
 }
 

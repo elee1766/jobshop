@@ -411,7 +411,7 @@ func (r *runner) finish(resolution, reason string) {
 			telemetry.AttrKind.String(string(store.KindSession)), telemetry.AttrResolution.String(resolution)))
 	}
 	if reason != "" {
-		_, _ = r.c.store.AddComment(ctx, "controller", r.id, reason)
+		_, _ = store.AddComment(ctx, r.c.store, "controller", r.id, reason)
 	}
 	if resolution == resolutionCrashed {
 		r.c.crashRelease(ctx, r.id)

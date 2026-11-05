@@ -50,7 +50,7 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 			return rpc.UpsertResult{Op: "none"}, nil
 		}
 		if note := joinNonEmpty(p.Title, p.Body); note != "" {
-			if _, err := c.store.AddComment(ctx, sc.actor, cur.ID, note); err != nil {
+			if _, err := store.AddComment(ctx, c.store, sc.actor, cur.ID, note); err != nil {
 				return nil, err
 			}
 		}
@@ -97,7 +97,7 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 		if slices.Contains(cur.Labels, l) {
 			continue
 		}
-		if err := c.store.AddLabel(ctx, sc.actor, cur.ID, l); err != nil {
+		if err := store.AddLabel(ctx, c.store, sc.actor, cur.ID, l); err != nil {
 			return nil, err
 		}
 		cur.Labels = append(cur.Labels, l)

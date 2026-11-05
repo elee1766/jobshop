@@ -136,7 +136,7 @@ func TestSubscriptionsWorkingSession(t *testing.T) {
 	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
 	_, _, err := c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
-	_, err = c.store.AddComment(ctx, sess.ID, tk.ID, "PR https://github.com/other/lib/pull/12 head abc")
+	_, err = store.AddComment(ctx, c.store, sess.ID, tk.ID, "PR https://github.com/other/lib/pull/12 head abc")
 	require.NoError(t, err)
 
 	c.pollSubscriptions(ctx, src)

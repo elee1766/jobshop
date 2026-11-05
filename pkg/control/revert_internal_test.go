@@ -59,7 +59,7 @@ func TestRevertLearning(t *testing.T) {
 		Kind: store.KindStep, Title: "implement", ParentID: run.ID,
 		Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`),
 	})
-	_, err := c.store.AddComment(t.Context(), "s1", step.ID, "PR https://github.com/elee1766/jobshop/pull/268 head abc")
+	_, err := store.AddComment(t.Context(), c.store, "s1", step.ID, "PR https://github.com/elee1766/jobshop/pull/268 head abc")
 	require.NoError(t, err)
 
 	src := &fakeReverts{

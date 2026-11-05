@@ -237,7 +237,7 @@ func (c *Controller) finishAutoStep(ctx context.Context, t store.Ticket, cl stor
 	if res.err != "" {
 		note += " (" + res.err + ")"
 	}
-	_, _ = c.store.AddComment(ctx, autoHolder, t.ID, note)
+	_, _ = store.AddComment(ctx, c.store, autoHolder, t.ID, note)
 	switch res.result {
 	case resultOK:
 		t, err = store.Close(ctx, c.store, autoHolder, t.ID, &cl, "done")

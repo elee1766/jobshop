@@ -299,9 +299,9 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 		return t, err
 	}
 	if w.TimedOut && slices.Contains(t.Labels, needsHumanLabel) {
-		_ = c.store.RemoveLabel(ctx, "controller", t.ID, needsHumanLabel)
+		_ = store.RemoveLabel(ctx, c.store, "controller", t.ID, needsHumanLabel)
 	}
-	_, _ = c.store.AddComment(ctx, "controller", t.ID, fmt.Sprintf("Wait (%s) ended: %s", w.Reason, why))
+	_, _ = store.AddComment(ctx, c.store, "controller", t.ID, fmt.Sprintf("Wait (%s) ended: %s", w.Reason, why))
 	c.log.Info("wait cleared", "ticket", t.ID, "why", why)
 	return t, nil
 }
@@ -444,14 +444,14 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticke
 		}
 	}
 	if timedOut {
-		if err := c.store.AddLabel(ctx, "controller", t.ID, needsHumanLabel); err != nil {
+		if err := store.AddLabel(ctx, c.store, "controller", t.ID, needsHumanLabel); err != nil {
 			return err
 		}
 		owner := w.Owner
 		if owner == "" {
 			owner = "unset"
 		}
-		_, _ = c.store.AddComment(ctx, "controller", t.ID, fmt.Sprintf("Wait (%s) passed its timeout %s; owner %s. Clear it with `jobshop wait clear %s`.", w.Reason, w.Timeout.Format(time.RFC3339), owner, t.ID))
+		_, _ = store.AddComment(ctx, c.store, "controller", t.ID, fmt.Sprintf("Wait (%s) passed its timeout %s; owner %s. Clear it with `jobshop wait clear %s`.", w.Reason, w.Timeout.Format(time.RFC3339), owner, t.ID))
 		c.log.Warn("wait timed out", "ticket", t.ID, "reason", w.Reason, "owner", w.Owner)
 		c.holdChat(ctx, t.ID)
 	}
