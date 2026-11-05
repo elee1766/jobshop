@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.7](https://github.com/elee1766/jobshop/compare/v0.1.6...v0.1.7) (2026-11-05)
+
+
+### Features
+
+* **config:** enabled: false on pools, workflows and triggers (JOB-24) ([#731](https://github.com/elee1766/jobshop/issues/731)) ([8381017](https://github.com/elee1766/jobshop/commit/83810177e41c1c76ddcd54c51b2f8050287e977b))
+* **control:** quarantine isolated pools on failed preflight at load ([#728](https://github.com/elee1766/jobshop/issues/728)) ([#730](https://github.com/elee1766/jobshop/issues/730)) ([d61d6bd](https://github.com/elee1766/jobshop/commit/d61d6bdfd8a92844822f005811f373ebf59acab3))
+* **nix:** home-manager module for rootless user services (JOB-22) ([#729](https://github.com/elee1766/jobshop/issues/729)) ([74261ce](https://github.com/elee1766/jobshop/commit/74261cef11690c07358dc81d4da198afbb40a575))
+
 ## [0.1.6](https://github.com/elee1766/jobshop/compare/v0.1.5...v0.1.6) (2026-11-05)
 
 
