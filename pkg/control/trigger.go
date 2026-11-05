@@ -8,8 +8,8 @@ import (
 	"maps"
 	"os/exec"
 	"slices"
-	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -356,33 +356,48 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 	if err := c.requireGrant(sc, "trigger-list", "trigger list"); err != nil {
 		return nil, err
 	}
-	out := []rpc.TriggerInfo{}
-	for name, tr := range c.config().Triggers {
-		if len(tr.When.Stall) > 0 {
-			fire, why, err := c.evalStall(ctx, name, tr)
-			if err != nil {
-				return nil, err
-			}
-			info := rpc.TriggerInfo{Name: name, Holds: len(fire) > 0, Why: why}
-			for _, s := range fire {
-				info.Stalls = append(info.Stalls, s.key())
-			}
-			out = append(out, info)
-			continue
-		}
-		st, err := c.evalTrigger(ctx, name, tr)
-		if err != nil {
-			return nil, err
-		}
-		info := rpc.TriggerInfo{Name: name, Holds: st.holds, Why: st.why, Open: st.open}
-		if !st.last.IsZero() {
-			info.LastFired = &st.last
-		}
-		if !st.nextCron.IsZero() {
-			info.NextCron = &st.nextCron
-		}
-		out = append(out, info)
+	// Triggers are evaluated in parallel: most of the time is check
+	// commands (often gh), and one after another they made the Desk
+	// pools view take ~5s (#522). Evaluation only reads, so order does
+	// not matter.
+	trs := c.config().Triggers
+	names := slices.Sorted(maps.Keys(trs))
+	out := make([]rpc.TriggerInfo, len(names))
+	errs := make([]error, len(names))
+	var wg sync.WaitGroup
+	for i, name := range names {
+		wg.Go(func() { out[i], errs[i] = c.triggerInfo(ctx, name, trs[name]) })
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// triggerInfo evaluates one trigger for trigger.list.
+func (c *Controller) triggerInfo(ctx context.Context, name string, tr config.Trigger) (rpc.TriggerInfo, error) {
+	if len(tr.When.Stall) > 0 {
+		fire, why, err := c.evalStall(ctx, name, tr)
+		if err != nil {
+			return rpc.TriggerInfo{}, err
+		}
+		info := rpc.TriggerInfo{Name: name, Holds: len(fire) > 0, Why: why}
+		for _, s := range fire {
+			info.Stalls = append(info.Stalls, s.key())
+		}
+		return info, nil
+	}
+	st, err := c.evalTrigger(ctx, name, tr)
+	if err != nil {
+		return rpc.TriggerInfo{}, err
+	}
+	info := rpc.TriggerInfo{Name: name, Holds: st.holds, Why: st.why, Open: st.open}
+	if !st.last.IsZero() {
+		info.LastFired = &st.last
+	}
+	if !st.nextCron.IsZero() {
+		info.NextCron = &st.nextCron
+	}
+	return info, nil
 }
