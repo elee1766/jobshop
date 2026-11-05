@@ -1131,7 +1131,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, acpSession, ticketID string) {
 	defer r.setTurnTicket("")
 	r.indexJournal(ctx, ticketID)
-	held, err := r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
+	held, err := r.promptable(ctx)
 	if err != nil {
 		return
 	}
@@ -1143,7 +1143,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		if err := r.turn(ctx, conn, acpSession, unclosedReminder(ids(held))); err != nil {
 			return
 		}
-		if held, err = r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress}); err != nil {
+		if held, err = r.promptable(ctx); err != nil {
 			return
 		}
 	}
@@ -1169,6 +1169,20 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		r.log.Warn("released unclosed ticket", "ticket", t.ID, "failure", repeat)
 		r.c.stepEvent(ctx, t)
 	}
+}
+
+// promptable lists the in-progress tickets the session holds, except
+// those deferred into the future (#664): ClaimNext never prompts the
+// session with one, so a turn cannot be expected to close it. Without
+// this, a ticket claimed for the session by id while a turn was ending
+// got the unclosed reminder and the agent closed it.
+func (r *runner) promptable(ctx context.Context) ([]store.Ticket, error) {
+	held, err := r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
+	if err != nil {
+		return nil, err
+	}
+	now := r.c.now()
+	return slices.DeleteFunc(held, func(t store.Ticket) bool { return t.DeferUntil.After(now) }), nil
 }
 
 const unclosedReason = "agent turn ended without closing or releasing"
