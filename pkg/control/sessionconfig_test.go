@@ -119,8 +119,11 @@ func TestSessionConfigRejected(t *testing.T) {
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	// One pass spawns the session: the start-up tick can run before the
+	// ticket exists, and the hourly tick never comes (#550). No more
+	// passes: one would spawn another session after this one ends.
+	pass(t, root.Dir, 1)
 	var sess store.Ticket
-	// No passes: one would spawn another session after this one ends.
 	require.Eventually(t, func() bool {
 		var all []store.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession, Status: store.StatusClosed}, &all))
