@@ -11,11 +11,6 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Inbox is the part of the store the drain writes to.
-type Inbox interface {
-	InboxPutBatch(ctx context.Context, its []store.InboxItem) (int, error)
-}
-
 // DrainBatch is how many spool rows one drain step moves.
 const DrainBatch = 100
 
@@ -27,11 +22,11 @@ type DrainResult struct {
 }
 
 // Drain moves spool rows into the inbox in id order until the spool is
-// empty (#335). Each batch is inserted in one inbox transaction and only
-// then deleted from the spool, so a crash between the two re-drains the
-// batch and the inbox dedupes it. A row that does not parse moves to
-// spool_bad with the error; it is never dropped.
-func Drain(ctx context.Context, sp *Spool, in Inbox, now func() time.Time, log *slog.Logger) (DrainResult, error) {
+// empty (#335). Each batch is stored in the inbox and only then deleted
+// from the spool, so a crash between the two, or a failure part way
+// through a batch, re-drains it and the inbox dedupes it. A row that
+// does not parse moves to spool_bad with the error; it is never dropped.
+func Drain(ctx context.Context, sp *Spool, in InboxStore, now func() time.Time, log *slog.Logger) (DrainResult, error) {
 	var res DrainResult
 	for {
 		rows, err := sp.Rows(ctx, DrainBatch)
@@ -56,7 +51,7 @@ func Drain(ctx context.Context, sp *Spool, in Inbox, now func() time.Time, log *
 			items = append(items, it)
 			ids = append(ids, r.ID)
 		}
-		fresh, err := in.InboxPutBatch(ctx, items)
+		fresh, err := InboxPutBatch(ctx, in, items)
 		if err != nil {
 			return res, fmt.Errorf("ingest drain: inbox: %w", err)
 		}

@@ -915,6 +915,24 @@ type Journal struct {
 	// LagMax is the oldest unshipped frame age that raises attention
 	// journal-lag (Go duration). Default 10m.
 	LagMax string `yaml:"lag_max"`
+	// Compress compresses closed sessions' journals with zstd (#631).
+	Compress JournalCompress `yaml:"compress"`
+}
+
+// JournalCompress compresses a closed session's journal.ndjson to
+// journal.ndjson.zst (acphost#74). Readers serve both forms.
+type JournalCompress struct {
+	// After is how long after a session closed its journal is compressed
+	// (Go duration or Nd). Empty: off.
+	After string `yaml:"after"`
+	// Level is the zstd level, 1-22. 0: 3.
+	Level int `yaml:"level"`
+}
+
+// AfterDuration is After parsed; 0 means off.
+func (j JournalCompress) AfterDuration() time.Duration {
+	d, _ := parseDays(j.After)
+	return d
 }
 
 // VictoriaLogs is one VictoriaLogs instance.
@@ -951,6 +969,14 @@ func (j Journal) check() error {
 		if d, err := parseDays(r); err != nil || d <= 0 {
 			return fmt.Errorf("journal.lag_max %q must be a positive duration (e.g. 10m)", r)
 		}
+	}
+	if r := j.Compress.After; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return fmt.Errorf("journal.compress.after %q must be a positive duration (e.g. 24h)", r)
+		}
+	}
+	if l := j.Compress.Level; l < 0 || l > 22 {
+		return fmt.Errorf("journal.compress.level %d must be 1-22 (0: 3)", l)
 	}
 	if v := j.VictoriaLogs; v != nil {
 		u, err := url.Parse(v.URL)

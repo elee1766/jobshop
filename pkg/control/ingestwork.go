@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -67,7 +68,7 @@ func (c *Controller) ingestClaim(ctx context.Context, sc scope, p rpc.IngestClai
 		return nil, fmt.Errorf("%w: ingest.workers is not external; the controller admits", store.ErrConflict)
 	}
 	hooks := admissionHooks(cfg)
-	it, err := c.store.InboxClaim(ctx, []string{store.InboxPending}, ingestWorkerPrefix+p.Worker, admissionLease(hooks))
+	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, ingestWorkerPrefix+p.Worker, admissionLease(hooks))
 	if errors.Is(err, store.ErrNotFound) {
 		c.beat(p, false, false)
 		return rpc.IngestClaimResult{}, nil
@@ -92,7 +93,7 @@ func (c *Controller) ingestAdmit(ctx context.Context, sc scope, p rpc.IngestAdmi
 	if err := json.Unmarshal(p.Run, &run); err != nil {
 		return nil, fmt.Errorf("%w: run: %w", store.ErrInvalid, err)
 	}
-	it, err := c.store.InboxGet(ctx, p.ID)
+	it, err := ingest.InboxGet(ctx, c.store, p.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +106,7 @@ func (c *Controller) ingestAdmit(ctx context.Context, sc scope, p rpc.IngestAdmi
 		return nil, err
 	}
 	c.beat(rpc.IngestClaimParams{Worker: p.Worker}, false, true)
-	got, err := c.store.InboxGet(ctx, p.ID)
+	got, err := ingest.InboxGet(ctx, c.store, p.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +118,7 @@ func (c *Controller) ingestWorkersMethod(ctx context.Context, sc scope, _ struct
 	if err := c.requireGrant(sc, "attention", "ingest workers"); err != nil {
 		return nil, err
 	}
-	counts, err := c.store.InboxCounts(ctx)
+	counts, err := ingest.InboxCounts(ctx, c.store)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +187,7 @@ func (c *Controller) missingWorker() (stall, bool) {
 // ingest.backlog_after.
 func (c *Controller) ingestBacklog(ctx context.Context) (stall, bool, error) {
 	in := c.config().Ingest
-	n, err := c.store.InboxCountOlder(ctx, store.InboxPending, c.now().Add(-in.BacklogAge()))
+	n, err := ingest.InboxCountOlder(ctx, c.store, store.InboxPending, c.now().Add(-in.BacklogAge()))
 	if err != nil || n <= int64(in.BacklogMax) {
 		return stall{}, false, err
 	}
@@ -212,7 +213,7 @@ func (c *Controller) stallIngest(ctx context.Context, signal string) ([]stall, e
 
 // recordInboxGauges records inbox counts by state and live workers.
 func (c *Controller) recordInboxGauges(ctx context.Context) {
-	counts, err := c.store.InboxCounts(ctx)
+	counts, err := ingest.InboxCounts(ctx, c.store)
 	if err != nil {
 		return
 	}

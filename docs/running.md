@@ -179,3 +179,19 @@ redact:
 A bad regex, an id already used, or an unknown id in `disabled_rules`
 fails `jobshop config check` with the rule id. Reload rebuilds the
 scanner; a reload with bad rules keeps the last good one.
+
+## Journal compression
+
+A closed session's `journal.ndjson` is compressed with zstd to
+`journal.ndjson.zst` (plus a seq index) once it has been closed for
+`journal.compress.after`. The sweep runs on start and hourly, one
+session at a time at idle IO priority. Every journal reader (Desk,
+`session attach`, recall, shipping) reads both forms. Host-only; off by
+default (#631).
+
+```yaml
+journal:
+  compress:
+    after: 24h   # empty: off
+    level: 3     # zstd 1-22
+```

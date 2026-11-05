@@ -278,7 +278,7 @@ func TestIngestE2ERedaction(t *testing.T) {
 		}
 	}
 
-	its, err := e.c.store.InboxList(t.Context(), store.InboxFilter{})
+	its, err := ingest.InboxList(t.Context(), e.c.store, store.InboxFilter{})
 	require.NoError(t, err)
 	require.Len(t, its, 2, "the webhook row and the poller row")
 	for _, it := range its {
@@ -350,7 +350,7 @@ func TestIngestE2EHookTimeout(t *testing.T) {
 			cm := e.newComment(46, "hello there")
 			e.poll(t, cm)
 
-			its, err := e.c.store.InboxList(t.Context(), store.InboxFilter{})
+			its, err := ingest.InboxList(t.Context(), e.c.store, store.InboxFilter{})
 			require.NoError(t, err)
 			require.Len(t, its, 1)
 			var rs []admissionResult
@@ -420,7 +420,7 @@ func TestIngestE2EURLHookSignature(t *testing.T) {
 				return
 			}
 			assert.Empty(t, e.prompts(t))
-			its, err := e.c.store.InboxList(t.Context(), store.InboxFilter{})
+			its, err := ingest.InboxList(t.Context(), e.c.store, store.InboxFilter{})
 			require.NoError(t, err)
 			var rs []admissionResult
 			require.NoError(t, json.Unmarshal(its[0].HookResults, &rs))
