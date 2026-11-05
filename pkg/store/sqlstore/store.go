@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"time"
@@ -93,8 +94,14 @@ const busyTries = 16
 
 func (s *Store) tx(ctx context.Context, fn func(q sqlcdb.Querier) error) error {
 	var err error
-	for range busyTries {
+	for try := range busyTries {
 		if err = s.txOnce(ctx, fn); !s.isBusy(err) {
+			break
+		}
+		// Rerunning at once lets the same writers collide again in
+		// lockstep until the tries run out (#527); a random, growing
+		// wait spreads them.
+		if try < busyTries-1 && !busyWait(ctx, try) {
 			break
 		}
 	}
@@ -104,6 +111,20 @@ func (s *Store) tx(ctx context.Context, fn func(q sqlcdb.Querier) error) error {
 		return fmt.Errorf("%w: %w", store.ErrConflict, err)
 	}
 	return err
+}
+
+// busyWait sleeps a random time up to 1ms<<try (capped at 64ms). It
+// reports false if ctx ends first.
+func busyWait(ctx context.Context, try int) bool {
+	d := time.Duration(rand.Int64N(int64(time.Millisecond << min(try, 6))))
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 func (s *Store) isBusy(err error) bool {
@@ -816,6 +837,43 @@ func (s *Store) Release(ctx context.Context, c store.Claim, reason string, until
 			return err
 		}
 		return s.note(ctx, q, t.ID, note)
+	})
+	return t, err
+}
+
+// Handoff moves a ticket to pool, releases its holder, bumps the fence
+// and adds note as a comment by actor, all in one transaction (#492).
+// A non-nil claim must still hold the ticket. It is not a step failure.
+func (s *Store) Handoff(ctx context.Context, actor, id string, c *store.Claim, pool, note string) (t store.Ticket, err error) {
+	if pool == "" {
+		return store.Ticket{}, fmt.Errorf("%w: handoff needs a pool", store.ErrInvalid)
+	}
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+		t, err = s.mutate(ctx, q, id, actor, "handoff", func(t *store.Ticket) (any, error) {
+			if t.Status == store.StatusClosed {
+				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
+			}
+			if c != nil {
+				if err := holds(t, *c); err != nil {
+					return nil, err
+				}
+			}
+			d := map[string]any{"from_pool": t.Pool, "pool": pool, "holder": t.Holder}
+			t.Pool = pool
+			if t.Status == store.StatusInProgress {
+				reopen(t)
+				t.Fence++
+			}
+			if note != "" {
+				d["note"] = note
+			}
+			return d, nil
+		})
+		if err != nil || strings.TrimSpace(note) == "" {
+			return err
+		}
+		_, err = q.InsertComment(ctx, sqlcdb.InsertCommentParams{TicketID: id, Author: actor, Body: note, CreatedAt: ms(s.now())})
+		return err
 	})
 	return t, err
 }

@@ -28,7 +28,7 @@
     if (url.repo) q.set('repo', url.repo);
     if (url.kind) q.set('kind', url.kind);
     if (who !== 'all') q.set('bots', who);
-    return '/api/activity?' + q.toString();
+    return 'api/activity?' + q.toString();
   });
 
   /** "github:owner/name" -> { source, repo } @param {string} s */

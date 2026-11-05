@@ -29,6 +29,10 @@ defaults:
   # GitHub logins besides {{.human}} whose issues start work (#340).
   # Comma-separated. Others need the accepted label.
   authors: ""
+  # pr_unmerged skips PRs by {{.human}}, by these logins, or with one of
+  # these labels (#509): operator PRs kept open on purpose. Comma-separated.
+  stall_pr_skip_authors: ""
+  stall_pr_skip_labels: hold
   deploy_check: >-
     none (these agents do not deploy this repo); treat this check as
     passed.
@@ -67,6 +71,10 @@ defaults:
   # controller opens one escalation chat per escalation ticket (#379).
   # Empty: escalation tickets only, no chat.
   escalation_chat_pool: ""
+  # The planner proposes the next target (label proposed) when work runs
+  # out; a human approves by relabeling it target (#488). false: only
+  # humans file targets.
+  propose_targets: true
 pools:
   dev:
     agent: "{{.agent}}"
@@ -85,7 +93,7 @@ pools:
     turn_timeout: 2h
     prompt_file: prompts/{{.tracker}}/plan.md
     # stall-check steps run here and inspect or restart sessions.
-    admin: [session-list, session-restart, trigger-list, report-incidents, attention, activity]
+    admin: [session-list, session-restart, trigger-list, report-incidents, attention, activity, handoff]
   refinery:
     agent: "{{.agent}}"
     repo: "{{.checkout}}"
@@ -155,7 +163,7 @@ triggers:
             | select(.author.is_bot or ([.author.login | ascii_downcase] | inside($ok))
             or ([.labels[].name] | any(. == "accepted")))
             | select([.labels[].name] | any(. == "target" or . == "needs-decision"
-            or . == "needs-human" or . == "tracking") | not)
+            or . == "needs-human" or . == "tracking" or . == "proposed") | not)
             | select(.title | test("^drill"; "i") | not)
             | select((now - (.createdAt | fromdateiso8601)) > 1800)
             | "\(.number) open, no run"'
@@ -167,12 +175,19 @@ triggers:
           labels: "{{.linear_intake_labels}}"
           skip_labels: "{{.linear_skip_labels}}"
           poll: "{{.linear_poll}}"
-        # Non-draft PRs with all checks green, untouched for 2h.
+        # Non-draft PRs with all checks green, untouched for 2h. PRs by
+        # {{.human}} or stall_pr_skip_authors, or with a
+        # stall_pr_skip_labels label, are held on purpose (#509).
         - signal: pr_unmerged
           check: >-
             gh pr list --repo {{.repo}} --state open
-            --json number,isDraft,updatedAt,statusCheckRollup --jq '.[]
+            --json number,isDraft,updatedAt,statusCheckRollup,author,labels --jq '
+            ("{{.human}},{{.stall_pr_skip_authors}}" | ascii_downcase | split(",") | map(select(. != ""))) as $skipa
+            | ("{{.stall_pr_skip_labels}}" | ascii_downcase | split(",") | map(select(. != ""))) as $skipl
+            | .[]
             | select(.isDraft | not)
+            | select(.author.login | ascii_downcase | IN($skipa[]) | not)
+            | select(any(.labels[].name | ascii_downcase; IN($skipl[])) | not)
             | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[];
             .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL"))
             | select((now - (.updatedAt | fromdateiso8601)) > 7200)

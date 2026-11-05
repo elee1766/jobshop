@@ -1,5 +1,40 @@
 // Formatting helpers. Everything from the controller is rendered as text
-// ({...} in Svelte escapes it); nothing uses {@html}.
+// ({...} in Svelte escapes it). The one exception is markdown(), used by
+// the Artifacts view.
+
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
+
+/**
+ * Renders an artifact body (#508) for {@html}. The body is written by an
+ * agent, so it is untrusted: marked turns it into HTML and DOMPurify
+ * strips scripts, event handlers, iframes, forms and style, keeping only
+ * plain document markup. Links open in a new tab without a referrer.
+ * The page CSP (script-src 'self') is a second guard.
+ * @param {string} md
+ */
+export function markdown(md) {
+  const html = /** @type {string} */ (marked.parse(md || '', { async: false, gfm: true }));
+  const clean = DOMPurify.sanitize(html, {
+    USE_PROFILES: { html: true },
+    FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'object', 'embed', 'svg', 'math'],
+    FORBID_ATTR: ['style'],
+  });
+  const doc = new DOMParser().parseFromString(clean, 'text/html');
+  for (const a of doc.querySelectorAll('a')) {
+    if (!safe(a.href)) a.removeAttribute('href');
+    a.setAttribute('target', '_blank');
+    a.setAttribute('rel', 'noopener noreferrer');
+  }
+  return doc.body.innerHTML;
+}
+
+/** @param {number} n */
+export function bytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1024 / 1024).toFixed(1) + ' MB';
+}
 
 /** @param {string | undefined | null} t */
 export function ago(t) {

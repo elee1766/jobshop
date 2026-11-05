@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/elee1766/acphost"
@@ -43,6 +45,7 @@ const (
 	MethodClaim            = "claim"
 	MethodHeartbeat        = "heartbeat"
 	MethodRelease          = "release"
+	MethodHandoff          = "handoff"
 	MethodSessionNew       = "session.new"
 	MethodSessionList      = "session.list"
 	MethodSessionReap      = "session.reap"
@@ -341,6 +344,14 @@ type SubscribeParams struct {
 	Repo   string `json:"repo"`
 	Number int    `json:"number"`
 	PR     bool   `json:"pr,omitempty"`
+}
+
+// HandoffParams moves a ticket to another pool, releasing its holder and
+// adding Note as a comment, in one transaction (#492).
+type HandoffParams struct {
+	ID   string `json:"id,omitempty"`
+	Pool string `json:"pool"`
+	Note string `json:"note,omitempty"`
 }
 
 // ReleaseParams releases a held ticket.
@@ -709,12 +720,50 @@ const MetaKey = "_meta"
 // Meta is request metadata.
 type Meta struct {
 	TraceParent string `json:"traceparent,omitempty"`
+	// Actor names the person behind an admin-socket call, such as
+	// "desk:alice" (#515). The controller honors it only on the admin
+	// socket; a session socket's actor is fixed by the socket.
+	Actor string `json:"actor,omitempty"`
 }
 
-// withMeta adds _meta.traceparent from ctx to object params.
+type actorKey struct{}
+
+// WithActor makes calls under ctx carry actor in _meta.actor.
+func WithActor(ctx context.Context, actor string) context.Context {
+	if actor == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, actorKey{}, actor)
+}
+
+// ActorFrom returns the actor set by WithActor.
+func ActorFrom(ctx context.Context) string {
+	a, _ := ctx.Value(actorKey{}).(string)
+	return a
+}
+
+// MaxActor is the longest _meta.actor accepted, in bytes.
+const MaxActor = 256
+
+// ValidActor checks an actor name: at most MaxActor bytes of printable
+// text, no control characters.
+func ValidActor(a string) error {
+	if a == "" || len(a) > MaxActor || !utf8.ValidString(a) {
+		return fmt.Errorf("%w: actor must be 1 to %d bytes of UTF-8", store.ErrInvalid, MaxActor)
+	}
+	for _, r := range a {
+		if !unicode.IsPrint(r) {
+			return fmt.Errorf("%w: actor has a non-printable character", store.ErrInvalid)
+		}
+	}
+	return nil
+}
+
+// withMeta adds _meta (traceparent, actor) from ctx to object params.
 func withMeta(ctx context.Context, params any) (any, error) {
 	tp := telemetry.TraceParent(ctx)
-	if tp == "" {
+	actor := ActorFrom(ctx)
+	if tp == "" && actor == "" {
 		return params, nil
 	}
 	obj := map[string]json.RawMessage{}
@@ -727,7 +776,7 @@ func withMeta(ctx context.Context, params any) (any, error) {
 			return params, nil // not an object: send without metadata
 		}
 	}
-	m, err := json.Marshal(Meta{TraceParent: tp})
+	m, err := json.Marshal(Meta{TraceParent: tp, Actor: actor})
 	if err != nil {
 		return nil, err
 	}
@@ -1194,6 +1243,8 @@ const (
 	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
 	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
 	AttentionIngest   = "ingest"   // no live external ingest worker, or an admission backlog (#443)
+	AttentionDecision = "decision" // open ticket labeled proposed: a planner-proposed target to approve (#488)
+	AttentionStale    = "stale"    // open ticket no pool will claim, older than attention.orphan_age (#495)
 )
 
 // AttentionItem is one thing waiting on a human.
@@ -1464,4 +1515,69 @@ type SlotResult struct {
 type ResourceListResult struct {
 	Slots []store.Slot        `json:"slots"`
 	Use   []store.ResourceUse `json:"use"`
+}
+
+// Artifact methods (#508): deliverables a human reads and acks in Desk.
+const (
+	MethodArtifactDeliver = "artifact.deliver"
+	MethodArtifactList    = "artifact.list"
+	MethodArtifactShow    = "artifact.show"
+	MethodArtifactAck     = "artifact.ack"
+)
+
+// ArtifactDeliverParams is artifact.deliver. Files are absolute paths
+// inside the session's dir or worktree; the controller copies them.
+type ArtifactDeliverParams struct {
+	Title  string   `json:"title"`
+	Body   string   `json:"body"`
+	Files  []string `json:"files,omitempty"`
+	Ticket string   `json:"ticket,omitempty"` // source; default the session's held ticket
+}
+
+// ArtifactFile is one attachment in meta.artifact.files.
+type ArtifactFile struct {
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	Type   string `json:"type,omitempty"`
+	Pruned bool   `json:"pruned,omitempty"`
+}
+
+// ArtifactMeta is meta.artifact on an artifact ticket.
+type ArtifactMeta struct {
+	Ticket  string         `json:"ticket,omitempty"`
+	Run     string         `json:"run,omitempty"`
+	Trigger string         `json:"trigger,omitempty"`
+	Pool    string         `json:"pool,omitempty"`
+	Session string         `json:"session,omitempty"`
+	Files   []ArtifactFile `json:"files,omitempty"`
+}
+
+// ArtifactListParams filters artifact.list.
+type ArtifactListParams struct {
+	Unread  bool   `json:"unread,omitempty"`
+	Trigger string `json:"trigger,omitempty"`
+	Pool    string `json:"pool,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+// Artifact is one artifact ticket with its parsed meta.
+type Artifact struct {
+	Ticket store.Ticket `json:"ticket"`
+	Meta   ArtifactMeta `json:"artifact"`
+	Read   bool         `json:"read"`
+}
+
+// ArtifactShowResult is artifact.show: the artifact, its comments and
+// history, and the attachment dir (admin only; Desk serves files from it).
+type ArtifactShowResult struct {
+	Artifact
+	Comments []store.Comment      `json:"comments"`
+	History  []store.HistoryEntry `json:"history"`
+	Dir      string               `json:"dir,omitempty"`
+}
+
+// ArtifactAckParams is artifact.ack.
+type ArtifactAckParams struct {
+	ID   string `json:"id"`
+	Note string `json:"note,omitempty"`
 }

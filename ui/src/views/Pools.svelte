@@ -2,13 +2,13 @@
   import { resource, post, live } from '../lib/api.svelte.js';
   import { ago } from '../lib/format.js';
 
-  const pools = resource(() => '/api/pools');
+  const pools = resource(() => 'api/pools');
   let actErr = $state('');
 
   /** @param {any} body */
   async function scale(body) {
     actErr = '';
-    try { await post('/api/pool/scale', body); live.tick++; } catch (e) { actErr = String(/** @type {any} */ (e).message || e); }
+    try { await post('api/pool/scale', body); live.tick++; } catch (e) { actErr = String(/** @type {any} */ (e).message || e); }
   }
 
   /** @param {any} sp */

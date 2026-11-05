@@ -44,6 +44,10 @@ type Config struct {
 	Ingest Ingest `yaml:"ingest"`
 	// WriteKeys configures the local idempotency key cache (#415).
 	WriteKeys WriteKeys `yaml:"write_keys"`
+	// Artifacts configures delivered artifacts' attachments (#508).
+	Artifacts Artifacts `yaml:"artifacts"`
+	// Store selects the ticket store backend (#493).
+	Store Store `yaml:"store"`
 	// Defaults hold settings agents and pools inherit (#262).
 	Defaults Defaults `yaml:"defaults"`
 	// SharedTools are dirs mounted read-only into every sandboxed
@@ -308,6 +312,11 @@ type Gateway struct {
 	// `jobshop attention` to EscalationRoom as a new thread, only when the
 	// list is not empty (#185). Empty: no digest.
 	AttentionDigest string `yaml:"attention_digest"`
+	// ArtifactRoom gets one line per delivered artifact (#508). Empty:
+	// artifacts are not posted.
+	ArtifactRoom string `yaml:"artifact_room"`
+	// DeskURL is Desk's base URL for links in artifact lines. Empty: no link.
+	DeskURL string `yaml:"desk_url"`
 }
 
 // Attention configures the attention view: what waits on a human.
@@ -321,6 +330,21 @@ type Attention struct {
 	// ResourceWait lists a step waiting on a full resource longer than
 	// this Go duration (#408). Empty: not listed.
 	ResourceWait string `yaml:"resource_wait"`
+	// OrphanAge lists an open ticket no pool will claim (no pool, or a
+	// pool not in the config) once it is older than this Go duration
+	// (#495). Default 72h; "off" disables it.
+	OrphanAge string `yaml:"orphan_age"`
+}
+
+// DefaultOrphanAge is attention.orphan_age when unset.
+const DefaultOrphanAge = 72 * time.Hour
+
+// OrphanAgeDuration is attention.orphan_age, 0 when off.
+func (a Attention) OrphanAgeDuration() time.Duration {
+	if a.OrphanAge == "off" {
+		return 0
+	}
+	return Duration(a.OrphanAge, DefaultOrphanAge)
 }
 
 // DefaultInboxRetention is how long terminal inbox items are kept.
@@ -706,6 +730,38 @@ func (w WriteKeys) RetentionDuration() time.Duration {
 	return d
 }
 
+// DefaultArtifactMaxBytes caps one artifact's attachments (#508).
+const DefaultArtifactMaxBytes = 10 << 20
+
+// DefaultArtifactRetention is how long attachments are kept after ack.
+const DefaultArtifactRetention = 90 * 24 * time.Hour
+
+// Artifacts configures artifact attachments under <root>/artifacts (#508).
+type Artifacts struct {
+	// MaxBytes caps the total attachment size of one artifact. Default 10MB.
+	MaxBytes int64 `yaml:"max_bytes"`
+	// Retention deletes an acked artifact's attachments this long after
+	// the ack (Go duration or Nd). The ticket stays. Default 90d.
+	Retention string `yaml:"retention"`
+}
+
+// MaxBytesOrDefault is MaxBytes, or the default when unset.
+func (a Artifacts) MaxBytesOrDefault() int64 {
+	if a.MaxBytes <= 0 {
+		return DefaultArtifactMaxBytes
+	}
+	return a.MaxBytes
+}
+
+// RetentionDuration is Retention parsed, or the default.
+func (a Artifacts) RetentionDuration() time.Duration {
+	d, _ := parseDays(a.Retention)
+	if d <= 0 {
+		return DefaultArtifactRetention
+	}
+	return d
+}
+
 // parseDays is time.ParseDuration that also takes "Nd".
 func parseDays(s string) (time.Duration, error) {
 	if n, ok := strings.CutSuffix(s, "d"); ok {
@@ -835,7 +891,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -1086,6 +1142,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: shared_tools: %q must be absolute", FileName, d)
 		}
 	}
+	if err := c.Store.check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
+	}
 	if err := c.validateIngest(); err != nil {
 		return nil, err
 	}
@@ -1101,6 +1160,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if d, err := parseDays(r); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: write_keys.retention %q must be a positive duration (e.g. 48h, 2d)", FileName, r)
 		}
+	}
+	if r := c.Artifacts.Retention; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: artifacts.retention %q must be a positive duration (e.g. 90d)", FileName, r)
+		}
+	}
+	if c.Artifacts.MaxBytes < 0 {
+		return nil, fmt.Errorf("%s: artifacts.max_bytes must be >= 0", FileName)
 	}
 	if c.Limits.MaxSessions < 0 {
 		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)
@@ -1155,6 +1222,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if w := c.Attention.ResourceWait; w != "" {
 		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: attention.resource_wait %q must be a positive duration", FileName, w)
+		}
+	}
+	if w := c.Attention.OrphanAge; w != "" && w != "off" {
+		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: attention.orphan_age %q must be a positive duration or off", FileName, w)
 		}
 	}
 	for name, w := range c.Workflows {

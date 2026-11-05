@@ -15,7 +15,8 @@ const escalations = [
 /** @param {import('@playwright/test').Page} page */
 async function mock(page) {
   await page.route('**/api/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
+    // Strip any Desk prefix (DESK_PREFIX runs under /desk/).
+    const path = new URL(route.request().url()).pathname.replace(/^.*?(?=\/api\/)/, '');
     /** @param {any} body */
     const json = (body) => route.fulfill({ json: body });
     if (path === '/api/escalations') return json(escalations);
@@ -37,7 +38,7 @@ async function mock(page) {
 
 test('chat view lists escalation sessions apart from other chats', async ({ page }) => {
   await mock(page);
-  await page.goto('/?view=chat');
+  await page.goto('./?view=chat');
   const table = page.getByTestId('escalations');
   await expect(table).toBeVisible();
   const rows = table.getByTestId('escalation-row');
@@ -58,7 +59,7 @@ test('chat view lists escalation sessions apart from other chats', async ({ page
 
 test('clicking an escalation opens its session panel', async ({ page }) => {
   await mock(page);
-  await page.goto('/?view=chat');
+  await page.goto('./?view=chat');
   await page.getByTestId('escalation-row').nth(1).click();
   await expect(page.getByTestId('session-panel')).toBeVisible();
   await expect(page).toHaveURL(/session=js-sess2/);
@@ -68,7 +69,7 @@ test('clicking an escalation opens its session panel', async ({ page }) => {
 
 test('an escalation ticket in attention opens its chat, not the drawer', async ({ page }) => {
   await mock(page);
-  await page.goto('/');
+  await page.goto('./');
   await page.locator('[data-testid=attention-list] tr.click').first().click();
   await expect(page.getByTestId('session-panel')).toBeVisible();
   await expect(page).toHaveURL(/session=js-sess1/);

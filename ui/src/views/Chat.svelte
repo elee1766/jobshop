@@ -1,6 +1,6 @@
 <script>
   import { tick as afterRender } from 'svelte';
-  import { post } from '../lib/api.svelte.js';
+  import { post, api } from '../lib/api.svelte.js';
   import { safe } from '../lib/format.js';
   import ArrowUp from '@lucide/svelte/icons/arrow-up';
   import ArrowDown from '@lucide/svelte/icons/arrow-down';
@@ -113,7 +113,7 @@
     items = [];
     status = 'connecting';
     busy = false;
-    const es = new EventSource('/api/session/' + encodeURIComponent(id) + '/stream?tail=' + tail);
+    const es = new EventSource(api('api/session/' + encodeURIComponent(id) + '/stream?tail=' + tail));
     es.addEventListener('open', () => { status = 'live'; });
     es.addEventListener('session', (e) => apply(JSON.parse(e.data)));
     es.addEventListener('end', () => { status = 'closed'; busy = false; es.close(); });
@@ -175,7 +175,7 @@
     sending = true;
     error = '';
     try {
-      await post('/api/chat/send', key ? { key, text, interrupt } : { session: id, text, interrupt });
+      await post('api/chat/send', key ? { key, text, interrupt } : { session: id, text, interrupt });
       text = '';
       stuck = true;
       await afterRender();

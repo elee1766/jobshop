@@ -52,6 +52,8 @@ let
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
     // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
     // lib.optionalAttrs (g.attentionDigest != "") { attention_digest = g.attentionDigest; }
+    // lib.optionalAttrs (g.artifactRoom != "") { artifact_room = g.artifactRoom; }
+    // lib.optionalAttrs (g.deskUrl != "") { desk_url = g.deskUrl; }
   ) cfg.gateway;
   settings =
     cfg.settings
@@ -297,7 +299,12 @@ let
       # the controller when a pack file changed. Session worktrees are separate.
       services."${unit}-sync" = {
         description = "Fast-forward the Jobshop workspace ${name} and reload live packs";
-        after = [ "${unit}.service" ];
+        # After the controller, so a switch that restarts both reloads a
+        # running controller (#475).
+        after = [
+          "${unit}.service"
+          "jobshop.service"
+        ];
         requires = [ "${unit}.service" ];
         inherit path environment;
         serviceConfig = {
@@ -336,7 +343,20 @@ let
           # a missed reload leaves the controller on old pools (#177).
           if [ "$before" != "$after" ]; then
             echo "checkout moved $before..$after, reloading"
-            ${jobshop} reload
+            # A stopped controller loads packs on start, so a skipped reload
+            # loses nothing. Failing here would fail a switch that stops the
+            # controller while this unit runs and roll back a good deploy (#475).
+            if ! ${pkgs.systemd}/bin/systemctl is-active --quiet jobshop.service; then
+              echo "controller not running, reload skipped"
+              exit 0
+            fi
+            if ! ${jobshop} reload; then
+              if ! ${pkgs.systemd}/bin/systemctl is-active --quiet jobshop.service; then
+                echo "controller stopped during reload, reload skipped"
+                exit 0
+              fi
+              exit 1
+            fi
           fi
         '';
       };
@@ -623,11 +643,61 @@ in
               example = "0 9 * * *";
               description = "Cron (UTC) for a digest of `jobshop attention` in `escalationRoom`, posted only when the list is not empty. Empty: none.";
             };
+            artifactRoom = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Room that gets one line per delivered artifact (#508). Empty: none.";
+            };
+            deskUrl = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              example = "https://desk.example";
+              description = "Desk base URL for links in artifact lines. Empty: no link.";
+            };
           };
         }
       );
       default = { };
       description = "Chat gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
+    };
+
+    # Desk (#202) as jobshop-desk.service; userHeader (#515), basePath
+    # (#516) and trustedProxies for a reverse proxy in front.
+    desk = {
+      enable = lib.mkEnableOption "jobshop-desk.service running `jobshop desk`";
+      listen = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1:7480";
+        description = "Address Desk serves on. Non-loopback adds --allow-remote.";
+      };
+      hosts = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Extra Host header values to accept (--host).";
+      };
+      userHeader = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "Tailscale-User-Login";
+        description = "Header an authenticating proxy sets to the user; writes record `desk:<user>` (#515). Empty: no user.";
+      };
+      basePath = lib.mkOption {
+        type = lib.types.str;
+        default = "/";
+        example = "/desk/";
+        description = "URL prefix Desk is served under (--base-path). The proxy may keep or strip it.";
+      };
+      trustedProxies = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "127.0.0.1" ];
+        description = "Peer addresses or CIDRs whose userHeader and X-Forwarded-Prefix Desk trusts (--trusted-proxy). Required with userHeader.";
+      };
+      extraArgs = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "More `jobshop desk` flags.";
+      };
     };
 
     ingest = {
@@ -972,6 +1042,59 @@ in
       {
         systemd = lib.mkMerge (lib.mapAttrsToList workspaceUnits workspaces);
       }
+      (lib.mkIf cfg.desk.enable {
+        assertions = [
+          {
+            assertion = cfg.desk.userHeader == "" || cfg.desk.trustedProxies != [ ];
+            message = "services.jobshop.desk.userHeader needs desk.trustedProxies";
+          }
+        ];
+        # An admin-socket client like the gateway.
+        systemd.services.jobshop-desk = {
+          description = "Jobshop Desk";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "jobshop.service" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = lib.escapeShellArgs (
+              [
+                "${jobshop}"
+                "desk"
+                "--listen"
+                cfg.desk.listen
+                "--base-path"
+                cfg.desk.basePath
+              ]
+              ++ lib.optional (
+                !(
+                  lib.hasPrefix "127." cfg.desk.listen
+                  || lib.hasPrefix "localhost:" cfg.desk.listen
+                  || lib.hasPrefix "[::1]" cfg.desk.listen
+                )
+              ) "--allow-remote"
+              ++ lib.concatMap (h: [
+                "--host"
+                h
+              ]) cfg.desk.hosts
+              ++ lib.optionals (cfg.desk.userHeader != "") [
+                "--user-header"
+                cfg.desk.userHeader
+              ]
+              ++ lib.concatMap (p: [
+                "--trusted-proxy"
+                p
+              ]) cfg.desk.trustedProxies
+              ++ cfg.desk.extraArgs
+            );
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
       (lib.mkIf cfg.ingest.enable {
         # Needs no controller or database: only the spool dir and secrets.
         systemd.services.jobshop-ingest = {

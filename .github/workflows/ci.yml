@@ -30,7 +30,27 @@ jobs:
             go-${{ runner.os }}-
       - run: go build ./...
       - run: go vet ./...
-      - run: go test -race ./...
+      # checkptr is off for modernc's machine-translated C only: its pointer
+      # arithmetic is ~a third of race-test CPU and is not our code. The
+      # race detector still covers it (#433).
+      - name: go test
+        id: test
+        run: |
+          go test -json -race -gcflags='modernc.org/...=-d=checkptr=0' ./... > test.json 2>&1 || rc=$?
+          # Readable log from the JSON stream.
+          go run ./pkg/flaky/cmd/ci-flaky -print -in test.json
+          exit "${rc:-0}"
+      # On failure, rerun each failed test 20 times: flaky or broken (#510).
+      # The job still fails; failed-tests.json is for the planner.
+      - name: rerun failed tests
+        if: failure() && steps.test.outcome == 'failure'
+        run: go run ./pkg/flaky/cmd/ci-flaky -in test.json -out failed-tests.json -summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.test.outcome == 'failure'
+        with:
+          name: failed-tests
+          path: failed-tests.json
+          if-no-files-found: ignore
       - name: sqlc generated code is current
         run: go tool sqlc diff
         working-directory: pkg/store/sqlite
@@ -91,3 +111,35 @@ jobs:
       - run: npm run build
       - name: pkg/desk/dist is current
         run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"
+
+  # The store conformance suite against Postgres (#493). The go job runs
+  # it against SQLite; pkg/store/postgres's tests skip without the DSN.
+  postgres:
+    runs-on: ubicloud-standard-4
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      JOBSHOP_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-pg-${{ runner.os }}-
+      - run: go test -race ./pkg/store/postgres/

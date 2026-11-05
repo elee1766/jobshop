@@ -17,11 +17,11 @@
     let stale = false;
     (async () => {
       try {
-        const w = await get('/api/work?state=running&limit=' + limit);
+        const w = await get('api/work?state=running&limit=' + limit);
         const runs = (w.runs ?? []).slice(0, limit);
         const out = await Promise.all(runs.map(async (/** @type {any} */ run) => {
           try {
-            const v = await get('/api/ticket/' + encodeURIComponent(run.id));
+            const v = await get('api/ticket/' + encodeURIComponent(run.id));
             const cs = v.comments ?? [];
             return { run, steps: v.run?.steps ?? [], comment: cs.length ? cs[cs.length - 1] : null };
           } catch {

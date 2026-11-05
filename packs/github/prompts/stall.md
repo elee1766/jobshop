@@ -53,11 +53,12 @@ and any merged PR, closed issue or run it names.
 
 Fix in place when you can, one or more of:
 - Start a missing run: `jobshop run start {{.pack_prefix}}pr-work --var issue=<n> --key
-  issue-<n>` (skip issues labeled `target`, `needs-decision`, drills and
-  tracking issues; comment why instead).
-- Requeue or reroute a ticket: `jobshop ticket update <id> --pool
-  <pool>`, `jobshop ticket update <id> --defer 0`, `jobshop label rm <id>
-  blocked`.
+  issue-<n>` (skip issues labeled `target`, `needs-decision`, `proposed`,
+  drills and tracking issues; comment why instead).
+- Requeue or reroute a ticket: `jobshop handoff <id> --to <pool> --note
+  "<why>"` (moves, releases any holder and comments in one step; never
+  `ticket update --pool` plus `release`), `jobshop ticket update <id>
+  --defer 0`, `jobshop label rm <id> blocked`.
 - Resume a run whose blocker is gone: `jobshop run resume <run>`, and
   drop `needs-human` from its issue (`gh issue edit <n> --remove-label
   needs-human`).

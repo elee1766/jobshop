@@ -4,7 +4,7 @@
   import { ago } from '../lib/format.js';
   import SessionLink from './SessionLink.svelte';
 
-  const sessions = resource(() => '/api/sessions');
+  const sessions = resource(() => 'api/sessions');
 
   let actErr = $state('');
 
@@ -12,7 +12,7 @@
   async function cordon(e, body) {
     e.stopPropagation();
     actErr = '';
-    try { await post('/api/session/cordon', body); live.tick++; } catch (err) { actErr = String(/** @type {any} */ (err).message || err); }
+    try { await post('api/session/cordon', body); live.tick++; } catch (err) { actErr = String(/** @type {any} */ (err).message || err); }
   }
 
   /** @param {any} s */

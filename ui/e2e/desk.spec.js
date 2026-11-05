@@ -14,7 +14,7 @@ function watchErrors(page) {
 
 test('attention is first and shows a list or the empty state', async ({ page }) => {
   const errors = watchErrors(page);
-  await page.goto('/');
+  await page.goto('./');
   await expect(page.locator('[data-testid=attention-empty], [data-testid=attention-list]')).toBeVisible();
   await expect(page.getByText('live', { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -23,19 +23,20 @@ test('attention is first and shows a list or the empty state', async ({ page }) 
 for (const [view, testid] of [['work', 'runs'], ['sessions', 'sessions'], ['pools', 'triggers'], ['deploys', 'deploys']]) {
   test(`${view} view renders from the URL and the nav`, async ({ page }) => {
     const errors = watchErrors(page);
-    await page.goto('/?view=' + view);
-    await expect(page.getByTestId(testid)).toBeVisible();
+    await page.goto('./?view=' + view);
+    // /api/pools evaluates every trigger and takes ~5s on gasserver (#520).
+    await expect(page.getByTestId(testid)).toBeVisible({ timeout: 15_000 });
     await page.locator('nav a[data-view=attention]').click();
     await expect(page).toHaveURL(/\/$/);
     await page.goBack();
     await expect(page).toHaveURL(new RegExp('view=' + view));
-    await expect(page.getByTestId(testid)).toBeVisible();
+    await expect(page.getByTestId(testid)).toBeVisible({ timeout: 15_000 });
     expect(errors).toEqual([]);
   });
 }
 
 test('run drawer opens from work, is linkable and closes', async ({ page }) => {
-  await page.goto('/?view=work');
+  await page.goto('./?view=work');
   await expect(page.getByTestId('runs')).toBeVisible();
   const row = page.locator('[data-testid=runs] tr.click').first();
   test.skip((await row.count()) === 0, 'no runs on this controller');
@@ -52,7 +53,7 @@ test('run drawer opens from work, is linkable and closes', async ({ page }) => {
 
 test('session chat panel opens from the sessions list and closes', async ({ page, isMobile }) => {
   const errors = watchErrors(page);
-  await page.goto('/?view=sessions');
+  await page.goto('./?view=sessions');
   await expect(page.getByTestId('sessions')).toBeVisible();
   const row = page.locator('[data-testid=sessions] tr.click').first();
   test.skip((await row.count()) === 0, 'no sessions on this controller');
@@ -104,7 +105,7 @@ test('session chat panel opens from the sessions list and closes', async ({ page
 
 test('session panel at 360px is full screen without horizontal overflow', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
-  await page.goto('/?view=chat');
+  await page.goto('./?view=chat');
   const link = page.locator('[data-testid=chat-list] a.item').first();
   test.skip((await link.count()) === 0, 'no chat sessions on this controller');
   await link.click();
@@ -123,25 +124,46 @@ test('session panel at 360px is full screen without horizontal overflow', async 
 });
 
 test('a session id in a ticket drawer opens the panel above it', async ({ page }) => {
-  const items = await (await page.request.get('/api/work')).json();
+  const items = await (await page.request.get('api/work')).json();
   const run = items.runs?.[0];
   test.skip(!run, 'no runs on this controller');
-  const t = await (await page.request.get('/api/ticket/' + run.id)).json();
+  const t = await (await page.request.get('api/ticket/' + run.id)).json();
   const holder = t.ticket.holder;
   test.skip(!holder, 'run has no session holder');
-  await page.goto('/?ticket=' + run.id);
+  await page.goto('./?ticket=' + run.id);
   await page.getByTestId('drawer').getByRole('link', { name: holder }).first().click();
   await expect(page.getByTestId('session-panel')).toBeVisible();
   await expect(page.getByTestId('drawer')).toHaveCount(0);
 });
 
 test('no horizontal page overflow', async ({ page }) => {
-  for (const view of ['attention', 'chat', 'work', 'activity', 'sessions', 'pools', 'deploys']) {
-    await page.goto('/?view=' + view);
+  for (const view of ['attention', 'artifacts', 'chat', 'work', 'activity', 'sessions', 'pools', 'deploys']) {
+    await page.goto('./?view=' + view);
     // The SSE stream stays open, so networkidle never comes.
     await expect(page.locator('main h1')).toBeVisible();
     await page.waitForTimeout(300);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(over, view).toBeLessThanOrEqual(1);
   }
+});
+
+// Artifacts (#508): list, read, ack and next. Needs at least two unread
+// artifacts (`jobshop artifact deliver`); acks the first one.
+test('artifacts list, read, ack and next', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('./?view=artifacts');
+  await expect(page.locator('[data-testid=artifacts-empty], [data-testid=artifact-list]')).toBeVisible();
+  const rows = page.locator('[data-testid=artifact-list] .item');
+  test.skip((await rows.count()) < 2, 'needs two unread artifacts');
+  const first = await rows.nth(0).locator('.title').innerText();
+  const second = await rows.nth(1).locator('.title').innerText();
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(first);
+  await page.keyboard.press('j');
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(second);
+  await page.keyboard.press('k');
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(first);
+  await page.keyboard.press('a');
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(second);
+  await expect(rows.filter({ hasText: first })).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

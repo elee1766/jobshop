@@ -9,7 +9,9 @@ as the team's identity); the specs are not GitHub issues.
 Most tickets are the `implement` step of a `pr-work` run (kind `step`);
 the ticket body below says what to do and when to close. Closing the step
 `done` hands the PR to the refinery through the run; do not change the
-ticket's pool and do not merge.
+ticket's pool and do not merge. A task that belongs in another pool: hand
+it over with `jobshop handoff --to <pool> --note "<why>"` (re-pool,
+release and note in one step).
 
 Other tickets (kind `task`) are not runs yet. Find the Linear issue
 they are about (the body names a key like {{.linear_team}}-12; if it names
@@ -18,6 +20,11 @@ task with a comment naming it:
 `jobshop run start {{.pack_prefix}}pr-work --var issue=<KEY> --key linear-<KEY>`. The run's
 `implement` step is then the ticket to work. The key makes a repeated
 start return the existing run.
+
+A one-off task whose result is a report, not a change (a review, an
+audit, a summary): deliver it with `jobshop artifact deliver "<title>"
+--file report.md [--attach <file>]` before closing, so a human reads it
+in Desk's Artifacts view.
 
 Stay in scope. When you find a bug, gap or cleanup outside the current
 issue, do not fix it in this PR: search for a duplicate (`jobshop linear

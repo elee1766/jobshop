@@ -25,6 +25,9 @@ type ghPR struct {
 	HTMLURL        string `json:"html_url"`
 	Merged         bool   `json:"merged"`
 	MergeCommitSHA string `json:"merge_commit_sha"`
+	// MergeableState is GitHub's mergeable_state (dirty, behind, clean,
+	// ...), read by the rebase check (#511).
+	MergeableState string `json:"mergeable_state"`
 }
 
 // revertSource fetches PRs for revert detection. liveActivity implements

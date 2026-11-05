@@ -1,10 +1,11 @@
 <script>
   import { onMount } from 'svelte';
   import { url, go, closeSession, VIEWS } from './lib/url.svelte.js';
-  import { live, connect, resource } from './lib/api.svelte.js';
+  import { live, connect, resource, get } from './lib/api.svelte.js';
   import { panel } from './lib/panel.svelte.js';
   import { push, initPush, enablePush, disablePush, testPush } from './lib/push.svelte.js';
   import Inbox from '@lucide/svelte/icons/inbox';
+  import Package from '@lucide/svelte/icons/package';
   import MessageSquare from '@lucide/svelte/icons/message-square';
   import ListChecks from '@lucide/svelte/icons/list-checks';
   import ActivityIcon from '@lucide/svelte/icons/activity';
@@ -16,6 +17,7 @@
   import Sun from '@lucide/svelte/icons/sun';
   import Moon from '@lucide/svelte/icons/moon';
   import Attention from './views/Attention.svelte';
+  import Artifacts from './views/Artifacts.svelte';
   import Work from './views/Work.svelte';
   import Sessions from './views/Sessions.svelte';
   import Pools from './views/Pools.svelte';
@@ -53,12 +55,18 @@
     on: 'notifications on (click to turn off)',
   };
 
-  const attention = resource(() => '/api/attention');
+  const attention = resource(() => 'api/attention');
   const count = $derived(attention.data?.length ?? 0);
+  /** @type {{ user: string } | null} */
+  let who = $state(null);
+  onMount(() => { get('api/whoami').then((w) => (who = w)).catch(() => {}); });
+  const unread = resource(() => 'api/artifacts?unread=1');
+  const unreadCount = $derived(unread.data?.length ?? 0);
 
   /** @type {Record<string, { name: string, icon: any, key: string }>} */
   const nav = {
     attention: { name: 'Attention', icon: Inbox, key: 'a' },
+    artifacts: { name: 'Artifacts', icon: Package, key: 'r' },
     chat: { name: 'Chat', icon: MessageSquare, key: 'c' },
     work: { name: 'Work', icon: ListChecks, key: 'w' },
     activity: { name: 'Activity', icon: ActivityIcon, key: 'y' },
@@ -96,6 +104,7 @@
 <div class="shell" class:withpanel={!!url.session} style:--pw={panel.w + 'px'}>
   <div class="brand"><span class="mark"></span>Jobshop <span class="faint">Desk</span></div>
   <nav aria-label="views">
+    {#if who?.user}<div class="user faint" title="signed in through the proxy">{who.user}</div>{/if}
     {#each VIEWS as v (v)}
       {@const Icon = nav[v].icon}
       <a
@@ -103,11 +112,12 @@
         class:active={url.view === v}
         data-view={v}
         title={'Go to ' + nav[v].name + ' (g ' + nav[v].key + ')'}
-        onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '' }); }}
+        onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '', artifact: '' }); }}
       >
         <span class="ico"><Icon size={14} />{#if v === 'attention' && count > 0}<span class="tabdot"></span>{/if}</span>
         <span class="lbl">{nav[v].name}</span>
         {#if v === 'attention' && count > 0}<span class="badge">{count}</span>{/if}
+        {#if v === 'artifacts' && unreadCount > 0}<span class="badge" data-testid="artifacts-unread">{unreadCount}</span>{/if}
       </a>
     {/each}
   </nav>
@@ -135,6 +145,7 @@
   </div>
   <main>
     {#if url.view === 'attention'}<Attention items={attention} />
+    {:else if url.view === 'artifacts'}<Artifacts />
     {:else if url.view === 'chat'}<ChatView />
     {:else if url.view === 'work'}<Work />
     {:else if url.view === 'activity'}<Activity />
@@ -163,6 +174,7 @@
   .brand { grid-area: brand; display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; font-weight: 600; font-size: 13px; }
   .mark { width: 14px; height: 14px; border-radius: 4px; background: var(--accent); }
   nav { grid-area: nav; padding: 4px 8px; display: flex; flex-direction: column; gap: 1px; overflow-y: auto; }
+  .user { padding: 0 8px 6px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   nav a {
     display: flex; align-items: center; gap: 9px; height: 28px; padding: 0 8px; border-radius: var(--radius);
     color: var(--muted); font-size: 13px;

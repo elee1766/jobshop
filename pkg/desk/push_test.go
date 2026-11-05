@@ -151,7 +151,7 @@ func TestPushAttention(t *testing.T) {
 	got := p.diff([]AttentionItem{old, fresh})
 	require.Len(t, got, 1)
 	p.send(ctx, message(got[0]), t.Logf)
-	assert.Equal(t, []PushMessage{{Title: "deploy blocked", Body: "run needs a human", Tag: "run:js-2", URL: "/?ticket=js-2"}}, br.got)
+	assert.Equal(t, []PushMessage{{Title: "deploy blocked", Body: "run needs a human", Tag: "run:js-2", URL: "./?ticket=js-2"}}, br.got)
 	assert.Empty(t, p.diff([]AttentionItem{old, fresh}))
 
 	// Restart keeps the key, subscription and sent list.

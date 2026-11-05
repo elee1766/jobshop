@@ -87,6 +87,12 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 		if !slices.Contains(w.Vars, k) {
 			return runPlan{}, fmt.Errorf("%w: workflow %s has no var %q (vars: %v)", store.ErrInvalid, p.Workflow, k, w.Vars)
 		}
+		// An empty issue or PR var renders "Implement #" with no issue to
+		// work, and its key (issue-) joins every later empty start to one
+		// broken run (#496). Other vars may be empty (a stall's detail).
+		if (k == w.Issue || k == w.PR) && strings.TrimSpace(v) == "" {
+			return runPlan{}, fmt.Errorf("%w: workflow %s var %s is empty", store.ErrInvalid, p.Workflow, k)
+		}
 		vars[k] = v
 	}
 	for _, k := range w.Vars {

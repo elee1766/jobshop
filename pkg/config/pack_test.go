@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -205,10 +206,13 @@ packs:
 	}
 	assert.Equal(t, "3h", sigs[StallStepStalled].After)
 	assert.Contains(t, sigs[StallIssueNoRun].Check, "gh issue list --repo elee1766/jobshop")
+	assert.Contains(t, sigs[StallIssueNoRun].Check, `. == "proposed"`, "planner proposals wait on a human (#506)")
+	assertIssueNoRunFilter(t, sigs[StallIssueNoRun].Check)
 	assert.Equal(t, "elee1766/jobshop", sigs[StallIssueNoRun].Repo, "issue_no_run matches runs of its repo (#183)")
 	assert.Equal(t, "elee1766/jobshop", c.Workflows["pr-work"].Repo)
 	assert.Contains(t, sigs["no_merge"].Check, "repos/elee1766/jobshop/commits/master")
 	assert.Contains(t, sigs["pr_unmerged"].Check, "statusCheckRollup")
+	assertPRUnmergedFilter(t, sigs["pr_unmerged"].Check)
 	mr := c.Triggers["master-red"]
 	assert.Nil(t, mr.Ticket)
 	require.NotNil(t, mr.Run, "master-red starts a run")
@@ -359,6 +363,43 @@ packs:
 	assert.Contains(t, c.Workflows["ci-repair"].Steps[1].Prompt, "Conflicts only in docs")
 }
 
+// TestGithubPackProposeTargets: the planner prompt has the proposal
+// rules by default and omits them with propose_targets false (#488).
+func TestGithubPackProposeTargets(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		extra string
+		want  bool
+	}{{"", true}, {", propose_targets: false", false}} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile` + tc.extra + `}
+`})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		p := c.Pools["plan"].Prompt
+		for _, s := range []string{"Proposing a target", "`gh issue create --label proposed", "never add the `target` label yourself", "-l proposed --meta"} {
+			if tc.want {
+				assert.Contains(t, p, s)
+			} else {
+				assert.NotContains(t, p, s)
+			}
+		}
+		if tc.want {
+			assert.NotContains(t, p, "comment that on the ticket and close it")
+		} else {
+			assert.Contains(t, p, "comment that on the ticket and close it")
+			assert.NotContains(t, p, "proposed")
+		}
+	}
+}
+
 // TestGithubPackGeneric: nothing in packs/github names the Jobshop repo.
 func TestGithubPackGeneric(t *testing.T) {
 	err := filepath.WalkDir("../../packs/github", func(path string, d fs.DirEntry, err error) error {
@@ -500,7 +541,7 @@ packs:
 	assert.Equal(t, "gz-stall-check", c.Triggers["gz-stall"].Run.Workflow)
 	assert.Contains(t, c.Pools["gz-plan"].Prompt, "jobshop run start gz-pr-work --var")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var")
-	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--pool gz-dev`")
+	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--to gz-dev ")
 	assert.Equal(t, "gz-", w.PackVars[PackPrefixVar])
 
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    prefix: Bad\n"})
@@ -710,4 +751,54 @@ func TestEscalationConfig(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.err, name)
 		}
 	}
+}
+
+// assertIssueNoRunFilter runs the issue_no_run jq filter on fixture
+// issues: a proposed issue is not emitted, an unlabeled one is (#506).
+func assertIssueNoRunFilter(t *testing.T, check string) {
+	t.Helper()
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Log("jq not on PATH, filter not run")
+		return
+	}
+	_, filter, ok := strings.Cut(check, "--jq '")
+	require.True(t, ok, "check has a --jq filter")
+	filter = strings.TrimSuffix(filter, "'")
+	issues := `[
+	 {"number":1,"title":"plain","labels":[],"createdAt":"2020-01-01T00:00:00Z","author":{"login":"bot","is_bot":true}},
+	 {"number":2,"title":"Proposed target: x","labels":[{"name":"proposed"}],"createdAt":"2020-01-01T00:00:00Z","author":{"login":"bot","is_bot":true}}
+	]`
+	cmd := exec.CommandContext(t.Context(), jq, "-r", filter)
+	cmd.Stdin = strings.NewReader(issues)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Equal(t, "1 open, no run\n", string(out))
+}
+
+// assertPRUnmergedFilter runs the pr_unmerged jq filter (#509): PRs by the
+// operator (elee1766 in selfdev) or labeled hold are skipped, other green
+// PRs are flagged.
+func assertPRUnmergedFilter(t *testing.T, check string) {
+	t.Helper()
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Log("jq not on PATH, filter not run")
+		return
+	}
+	_, filter, ok := strings.Cut(check, "--jq '")
+	require.True(t, ok, "check has a --jq filter")
+	filter = strings.TrimSuffix(filter, "'")
+	green := `"isDraft":false,"updatedAt":"2020-01-01T00:00:00Z","statusCheckRollup":[{"conclusion":"SUCCESS"}]`
+	prs := `[
+	 {"number":1,` + green + `,"labels":[],"author":{"login":"elee-agent[bot]"}},
+	 {"number":2,` + green + `,"labels":[{"name":"Hold"}],"author":{"login":"elee-agent[bot]"}},
+	 {"number":3,` + green + `,"labels":[],"author":{"login":"Elee1766"}},
+	 {"number":4,` + green + `,"labels":[{"name":"holding"}],"author":{"login":"elee"}}
+	]`
+	cmd := exec.CommandContext(t.Context(), jq, "-r", filter)
+	cmd.Stdin = strings.NewReader(prs)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Equal(t, "1 green, unmerged since 2020-01-01T00:00:00Z\n4 green, unmerged since 2020-01-01T00:00:00Z\n", string(out))
 }

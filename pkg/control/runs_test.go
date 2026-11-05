@@ -282,6 +282,7 @@ func TestRunStartErrors(t *testing.T) {
 	}{
 		{"unknown workflow", rpc.RunStartParams{Workflow: "nope"}, `unknown workflow "nope"`},
 		{"missing var", rpc.RunStartParams{Workflow: "pr"}, "needs var issue"},
+		{"empty var", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": " "}, Key: "issue-"}, "var issue is empty"},
 		{"unknown var", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1", "x": "2"}}, `no var "x"`},
 		{"other project", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1"}, Project: "zz"}, "runs in project js"},
 	} {

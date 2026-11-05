@@ -7,8 +7,8 @@
 
   // Operator chat: the sessions of the chat pool and a form for a fresh one.
   // A session opens in the side panel (SessionPanel), so the list stays put.
-  const chats = resource(() => '/api/chat');
-  const escalations = resource(() => '/api/escalations');
+  const chats = resource(() => 'api/chat');
+  const escalations = resource(() => 'api/escalations');
   // Escalation sessions have their own list below.
   const others = $derived((chats.data?.sessions ?? []).filter((/** @type {any} */ s) => !s.key.startsWith('escalation:')));
   let first = $state('');
@@ -20,7 +20,7 @@
     starting = true;
     error = '';
     try {
-      const r = await post('/api/chat/new', { text: first });
+      const r = await post('api/chat/new', { text: first });
       first = '';
       go({ session: r.session });
     } catch (e) {

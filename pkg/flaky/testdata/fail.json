@@ -1,0 +1,16 @@
+{"Action":"start","Package":"example.com/a"}
+{"Action":"run","Package":"example.com/a","Test":"TestA"}
+{"Action":"output","Package":"example.com/a","Test":"TestA","Output":"    a_test.go:9: boom\n"}
+{"Action":"fail","Package":"example.com/a","Test":"TestA","Elapsed":0.01}
+{"Action":"run","Package":"example.com/a","Test":"TestOK"}
+{"Action":"pass","Package":"example.com/a","Test":"TestOK","Elapsed":0}
+{"Action":"run","Package":"example.com/a","Test":"TestSub"}
+{"Action":"run","Package":"example.com/a","Test":"TestSub/case_1"}
+{"Action":"fail","Package":"example.com/a","Test":"TestSub/case_1","Elapsed":0}
+{"Action":"fail","Package":"example.com/a","Test":"TestSub","Elapsed":0}
+{"Action":"fail","Package":"example.com/a","Elapsed":0.02}
+# example.com/broken
+not json build error line
+{"Action":"run","Package":"example.com/b","Test":"TestC"}
+{"Action":"fail","Package":"example.com/b","Test":"TestC","Elapsed":1}
+{"Action":"fail","Package":"example.com/b","Elapsed":1}

@@ -9,7 +9,7 @@
 
   // An escalation ticket with a chat opens that chat; any other ticket
   // opens its drawer.
-  const escalations = resource(() => '/api/escalations');
+  const escalations = resource(() => 'api/escalations');
 
   /** @param {any} it */
   function open(it) {

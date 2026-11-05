@@ -570,6 +570,16 @@ func (c releaseCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodRelease, p, nil)
 }
 
+type handoffCmd struct {
+	ID   string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
+	To   string `required:"" help:"Pool to move the ticket to."`
+	Note string `help:"Comment to add for the next holder."`
+}
+
+func (c handoffCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodHandoff, rpc.HandoffParams{ID: c.ID, Pool: c.To, Note: c.Note}, nil)
+}
+
 // parseUntil reads a duration from now or an RFC3339 time.
 func parseUntil(s string, now time.Time) (time.Time, error) {
 	if d, err := time.ParseDuration(s); err == nil {

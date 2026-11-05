@@ -349,7 +349,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   url) on pending inbox items, `failure_policy`, `match`; on: intake
   hooks run for Linear items (#348, `docs/notes/348-ingest-admission.md`).
 - Desk as a PWA with Web Push for new attention items, `desk --push`
-  (`docs/notes/desk-push.md`).
+  (`docs/notes/desk-push.md`), base-relative under `--base-path`
+  (#535, `docs/notes/392-desk-pwa.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).
@@ -418,7 +419,12 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/verify/command-step-sandbox.md`).
 - `close -r rebase` reopens a step without counting a failure; the
   refinery uses it for a PR that only conflicts with master (#424,
-  `docs/notes/424-rebase-no-failure.md`).
+  `docs/notes/424-rebase-no-failure.md`). The controller checks the PR's
+  merge state first and counts a clean PR as failed (#511,
+  `docs/notes/511-rebase-merge-state.md`).
+- trigger.list evaluates triggers in parallel, so the Desk pools view
+  no longer waits for every check in turn (#522,
+  `docs/notes/522-trigger-list-parallel.md`).
 - Workflow step graphs: `needs:` for parallel steps, `when:` for steps
   gated on an outcome set with `close --outcome` (#385,
   `docs/notes/385-step-needs-when.md`).
@@ -429,6 +435,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Store split: backend-neutral core `pkg/store/sqlstore` over sqlc's
   Querier; `pkg/store/sqlite` is a thin driver (#404,
   `docs/notes/404-store-core-split.md`).
+- Postgres store backend `pkg/store/postgres` (pgx), passing the same
+  conformance suite in CI; `store: {driver: postgres, dsn_file}` (#493,
+  `docs/notes/493-postgres.md`).
 - Tests: `Options.Hosts` runs session hosts in-process for
   controller-logic tests (#361, `docs/notes/361-inproc-hosts.md`).
 - Admission releases a held inbox item back to pending once its
@@ -454,6 +463,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   pkg/control -race 41s to 28s (#433, `docs/notes/433-remaining-fast-ticks.md`).
 - pkg/control internal tests call `t.Parallel()`; -race 31s to 21s
   (#433, `docs/notes/433-parallel-internal-tests.md`).
+- CI race tests turn checkptr off for modernc.org packages only;
+  pkg/control -race 22s to 16s (#433, `docs/notes/433-modernc-checkptr.md`).
 - In-process test hosts report agent exits (`control.HostExits`), so
   crash tests skip host spawns (#467, `docs/notes/467-inproc-host-exit.md`).
 - Ingest split mode: `ingest.workers: external` moves admission to
@@ -464,6 +475,31 @@ Short list; behavior details are in `docs/notes/` (section 7).
   drain, admission and dispatch (#453, `docs/notes/453-ingest-e2e-tests.md`).
 - Ingest end-to-end runbook for gasserver: receiver to session, dedupe,
   gap fill, split mode (#444, check `docs/verify/ingest.md`).
+- Planner proposes the next target (label `proposed`, var
+  `propose_targets`), listed in attention as a decision (#488,
+  `docs/notes/488-planner-proposals.md`).
+- `TestNewUserPath` follows `docs/packs.md` end to end with the guide's
+  own pack and config (#494, `docs/notes/494-new-user-path.md`).
+- Stale ad-hoc tickets (no claimable pool, older than
+  `attention.orphan_age`, default 72h) are listed in attention with a
+  close hint; the github planner closes verified ones (#495,
+  `docs/notes/495-stale-adhoc-tickets.md`).
+- `jobshop handoff <ticket> --to <pool> --note`: re-pool, release, fence
+  bump and note in one transaction; stall-check, refinery and dev
+  prompts use it (#492, `docs/notes/492-handoff.md`).
+- `pr_unmerged` skips PRs by the operator or `stall_pr_skip_authors`
+  and PRs labeled `hold` (#509, `docs/notes/509-pr-unmerged-skip.md`).
+- CI reruns failed tests 20 times, marks each flaky or broken and uploads
+  the `failed-tests` artifact (#510, `docs/notes/510-ci-flaky-rerun.md`).
+- Desk takes the user from a trusted proxy header and records writes as
+  `desk:<user>` (#515, `docs/notes/515-desk-proxy-user.md`).
+- Artifacts: `jobshop artifact deliver|list|show|ack`, attachments
+  under `<root>/artifacts`, Desk Artifacts view, gateway
+  `artifact_room` line (#508, `docs/notes/508-artifacts.md`,
+  `docs/verify/artifacts.md`).
+- Desk under a path prefix: `--base-path`, `X-Forwarded-Prefix` from a
+  `--trusted-proxy`, relative build with a runtime `<base href>`,
+  `services.jobshop.desk.basePath` (#516, `docs/notes/516-desk-base-path.md`).
 
 ## 5. What's next
 
@@ -599,6 +635,9 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 Model config live check: `docs/verify/model-config.md` (#304).
 Shared mise live check: `docs/verify/sandbox-mise-shared.md` (#316).
 Waits live check: `docs/verify/waits.md` (#381).
+Planner proposals live check: `docs/verify/planner-proposals.md` (#488).
+Workspace sync with the controller down: `docs/verify/workspace-sync-controller-down.md`,
+note `docs/notes/475-sync-during-switch.md` (#475).
 
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
@@ -610,7 +649,7 @@ Live check: `docs/verify/ingest.md` on gasserver (#444); step 1 was
 dry run; 2 to 8 write live inbox rows or change config, left for the operator.
 Next: dispatch in a worker too, if one controller is not enough.
 
-**Later.** Postgres backend against the same conformance suite.
+**Later.** Moving gasserver to Postgres (#493 built the backend).
 Per-session isolation (`docs/notes/users-security.md`).
 
 **Test speed (#359).** In-process agent (#361), then move the
@@ -619,8 +658,15 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 **Resource pools (#400).** Done: provider-owned slots (#407), waiting
 visibility (#408), placement (#409).
 
-**Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
-misjudge conflicts: let the controller check mergeStateStatus itself.
+**Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
+proxy header (#515), artifacts (#508), Desk under a path prefix (#516).
+Next: turn on `desk.userHeader` on gasserver.
+
+**Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
+artifact (#510). Next: the planner's incident step reads the artifact.
+
+**Rebase route-back (#424).** Done: `close -r rebase`, checked against
+the PR's merge state by the controller (#511).
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1008,6 +1054,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   their own (2026-11-03, #203): one session per escalation, so the
   operator sees the same conversation from Matrix and Desk. Desk shows
   the session's turns, not other messages in the Matrix room.
+- Desk identity comes from a trusted proxy header and is never
+  self-asserted (2026-11-05, #515): Desk reads `--user-header` only from
+  `--trusted-proxy` peers and refuses other requests with 403; the user
+  reaches the controller as `_meta.actor` (`desk:<user>`), which only the
+  admin socket may set.
 - A replacement escalation thread keeps the original session key
   (2026-11-03, #197): the operator's conversation continues in the same
   session, and the key is already recorded in `meta.gateway`.
@@ -1243,6 +1294,14 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   stays the source of record; meta filters use `ticket_meta`. Recall
   stays the one per-engine module. This prepares for Postgres; it is not
   a decision to build it.
+- Postgres runs sqlite's sqlc code, rewritten at run time (2026-11-05,
+  #493): `?N`/`?` become `$N`, a few casts are adjusted, and queries
+  using an engine feature (recall FTS) have Postgres text in
+  `pkg/store/postgres/queries/overrides.sql`. A second sqlc engine would
+  emit different Go types for the same queries and need hand-copied SQL;
+  this keeps one query source and one Querier. Postgres has its own
+  migrations (one schema file); a test prepares every sqlc query on it,
+  so a new sqlite query Postgres cannot run fails by name.
 - Desk is the operator UI; Matrix and Discord are paused, alternatives
   not companions; the escalation chat is gateway-independent
   (2026-11-04, #379). The controller opens it from pack policy
@@ -1265,6 +1324,31 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   the hooks itself and reports the run; the controller decides the state
   and files the needs-human ticket. One writer stays, and hooks (the slow,
   untrusted part) leave the controller process.
+- CI's race run skips checkptr in modernc.org packages (2026-11-05,
+  #433): translated C we do not maintain, a third of test CPU. Our code
+  keeps checkptr and modernc keeps race instrumentation.
+- The planner proposes the next target when work runs out and a human
+  approves it by relabeling `proposed` to `target` (2026-11-05, #488).
+  The planner never sets `target` itself, so direction stays a human's
+  call while the pools no longer idle between phases.
+- Re-pooling a held ticket is one `handoff` write, not `ticket update
+  --pool` then `release` (2026-11-05, #492): between the two the ticket
+  sat held in the new pool with no note. It is not a failed attempt.
+  Sessions hand off only their own ticket; other tickets need admin or
+  the `handoff` pool grant, which the stall-check pool has.
+- A green PR by the operator, or labeled `hold`, is not a stall
+  (2026-11-05, #509): the operator keeps such PRs open on purpose, and
+  flagging them only parked stall-check runs in `needs_human`.
+- The controller checks a `close -r rebase` against the PR's
+  mergeable_state (2026-11-05, #511): dirty or behind keep the rebase,
+  any other known state counts as failed with a comment. An unreadable
+  state keeps the rebase and logs a WARN, so a GitHub outage never
+  turns a real conflict into a failed attempt.
+- Artifacts are message tickets to `human` with label `artifact`, and
+  attachments are files under `<root>/artifacts/<id>/`, not a new table
+  (2026-11-05, #508). Read state, history and live updates come from
+  tickets for free; only the files need storage, and the controller
+  copies them because sessions cannot write there from the sandbox.
 
 ## 7. Reference: behavior as built
 
@@ -1321,6 +1405,12 @@ moved from the old 7.x list, oldest first:
 - [Prompt text from files](notes/382-text-files.md) (#382)
 - [Subscription bot allowlist](notes/402-subscription-bots.md) (#402)
 - [Step needs and when](notes/385-step-needs-when.md) (#385)
+- [Empty run vars rejected](notes/496-empty-run-var.md) (#496)
+- [Session socket bound once](notes/479-session-socket-once.md) (#479)
+- [New-user path test](notes/494-new-user-path.md) (#494)
+- [issue_no_run skips proposed](notes/506-issue-no-run-proposed.md) (#506)
+- [pr_unmerged skips operator and hold PRs](notes/509-pr-unmerged-skip.md) (#509)
+- [Desk under a path prefix](notes/516-desk-base-path.md) (#516)
 
 ## 8. Chat gateway
 

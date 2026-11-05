@@ -15,8 +15,8 @@
    */
   let { id } = $props();
 
-  const sessions = resource(() => '/api/sessions');
-  const chats = resource(() => '/api/chat');
+  const sessions = resource(() => 'api/sessions');
+  const chats = resource(() => 'api/chat');
   const info = $derived(sessions.data?.find((/** @type {any} */ s) => s.id === id));
   const chat = $derived(chats.data?.sessions?.find((/** @type {any} */ s) => s.id === id));
   const key = $derived(chat?.alive ? chat.key : '');
@@ -26,7 +26,7 @@
   $effect(() => {
     access = { write: false, reason: '' };
     let stale = false;
-    get('/api/session/' + encodeURIComponent(id) + '/access').then(
+    get('api/session/' + encodeURIComponent(id) + '/access').then(
       (a) => { if (!stale) access = { write: !!a.write, reason: a.reason || '' }; },
       () => {},
     );

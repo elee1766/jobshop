@@ -29,7 +29,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/store/postgres"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -129,6 +131,8 @@ type Controller struct {
 	poolPausedUntil map[string]time.Time
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
+	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
+	artifactsPrunedAt time.Time
 	// prov is resource provider demand and idle state (#407); tick-only.
 	prov providerState
 	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
@@ -237,7 +241,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	defer unlock()
 
 	ev := newHub(opt.EventBuffer)
-	st, err := sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Clock.Now, OnCommit: ev.kick, Prefix: func(p string) string {
+	st, err := openStore(ctx, root, cfg.Store, sqlstore.Options{Now: opt.Clock.Now, OnCommit: ev.kick, Prefix: func(p string) string {
 		// Follows reloads, so a project added later gets its prefix.
 		return live.Load().cfg.Prefix(p)
 	}})
@@ -447,6 +451,7 @@ func (c *Controller) tick() {
 	c.sweepLinearAsks(c.ctx)
 	c.pruneInbox()
 	c.pruneWriteKeys()
+	c.pruneArtifacts()
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
@@ -587,14 +592,22 @@ func (c *Controller) socketPath(session string) string {
 	return filepath.Join(c.root.SessionDir(session), "cli.sock")
 }
 
+// openSession binds a session's cli.sock once. The admin socket serves
+// before startup reopens the open sessions, so a session created in that
+// window reaches here twice; binding under c.mu and skipping an open
+// session keeps the second call from removing or rebinding the live
+// socket (#479).
 func (c *Controller) openSession(t store.Ticket) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.sessions[t.ID]; ok {
+		return nil
+	}
 	ln, err := listen(c.socketPath(t.ID))
 	if err != nil {
 		return err
 	}
 	sc := scope{actor: t.ID, session: t.ID, project: t.Project, pool: t.Pool}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.sessions[t.ID] = c.start(ln, sc)
 	return nil
 }
@@ -627,8 +640,10 @@ type peer struct{ conn *acp.Connection }
 // handler dispatches one socket's requests. The SDK gives each request its
 // own context; it is joined with the socket's so a closing session or
 // controller cancels in-flight work too.
-func (c *Controller) handler(sockCtx context.Context, sc scope) acp.MethodHandler {
+func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.MethodHandler {
 	return func(reqCtx context.Context, name string, params json.RawMessage) (any, *acp.RequestError) {
+		// Per call: _meta.actor must not leak into later calls on the socket.
+		sc := sockScope
 		ctx, cancel := context.WithCancel(reqCtx)
 		defer cancel()
 		stop := context.AfterFunc(sockCtx, cancel)
@@ -638,6 +653,16 @@ func (c *Controller) handler(sockCtx context.Context, sc scope) acp.MethodHandle
 			return nil, acp.NewMethodNotFound(name)
 		}
 		params, meta := rpc.SplitMeta(params)
+		if meta.Actor != "" {
+			// Only the admin socket may name who is behind a call (#515).
+			if !sc.admin {
+				return nil, rpc.ToWire(fmt.Errorf("%w: only the admin socket can set _meta.actor", rpc.ErrForbidden))
+			}
+			if err := rpc.ValidActor(meta.Actor); err != nil {
+				return nil, rpc.ToWire(err)
+			}
+			sc.actor = meta.Actor
+		}
 		ctx = telemetry.WithTraceParent(ctx, meta.TraceParent)
 		ctx, span := c.tracer.Start(ctx, "rpc "+name, trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(telemetry.AttrMethod.String(name), attribute.String("jobshop.actor", sc.actor)))
@@ -707,6 +732,7 @@ func init() {
 		rpc.MethodClaim:             bind((*Controller).claim),
 		rpc.MethodHeartbeat:         bind((*Controller).heartbeat),
 		rpc.MethodRelease:           bind((*Controller).release),
+		rpc.MethodHandoff:           bind((*Controller).handoff),
 		rpc.MethodSessionNew:        bind((*Controller).sessionNew),
 		rpc.MethodSessionList:       bind((*Controller).sessionList),
 		rpc.MethodSessionReap:       bind((*Controller).sessionReap),
@@ -740,6 +766,10 @@ func init() {
 		rpc.MethodSubscribe:         bind((*Controller).subscribe),
 		rpc.MethodReport:            bind((*Controller).report),
 		rpc.MethodQuestionAnswer:    bind((*Controller).answerQuestion),
+		rpc.MethodArtifactDeliver:   bind((*Controller).artifactDeliver),
+		rpc.MethodArtifactList:      bind((*Controller).artifactList),
+		rpc.MethodArtifactShow:      bind((*Controller).artifactShow),
+		rpc.MethodArtifactAck:       bind((*Controller).artifactAck),
 		rpc.MethodActivityList:      bind((*Controller).activityList),
 		rpc.MethodActivityRecord:    bind((*Controller).activityRecord),
 		rpc.MethodLearnAdd:          bind((*Controller).learnAdd),
@@ -757,4 +787,17 @@ func init() {
 		rpc.MethodWaitList:          bind((*Controller).waitList),
 		rpc.MethodWaitClear:         bind((*Controller).waitClear),
 	}
+}
+
+// openStore opens the configured ticket store (#493): SQLite at
+// root.DB() unless store.driver is postgres.
+func openStore(ctx context.Context, root config.Root, sc config.Store, opt sqlstore.Options) (*sqlstore.Store, error) {
+	if sc.DriverName() != config.StorePostgres {
+		return sqlite.Open(ctx, root.DB(), opt)
+	}
+	dsn, err := sc.DSN(ctx, root.Dir)
+	if err != nil {
+		return nil, err
+	}
+	return postgres.Open(ctx, dsn, opt)
 }

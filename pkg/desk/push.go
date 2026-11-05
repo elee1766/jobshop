@@ -154,9 +154,10 @@ func (p *Push) diff(items []AttentionItem) []AttentionItem {
 }
 
 func message(it AttentionItem) PushMessage {
-	m := PushMessage{Title: it.Title, Body: it.Why, Tag: attentionKey(it), URL: "/"}
+	// Relative to the service worker's scope, so it works under --base-path.
+	m := PushMessage{Title: it.Title, Body: it.Why, Tag: attentionKey(it), URL: "./"}
 	if it.Kind == "run" || it.Kind == "ticket" {
-		m.URL = "/?ticket=" + it.ID
+		m.URL = "./?ticket=" + it.ID
 	}
 	return m
 }
@@ -251,6 +252,6 @@ func (s *Server) pushUnsubscribe(r *http.Request) (any, error) {
 
 // pushTest sends a test notification to every subscription.
 func (s *Server) pushTest(r *http.Request) (any, error) {
-	s.cfg.Push.send(r.Context(), PushMessage{Title: "Jobshop Desk", Body: "Test notification", Tag: "test", URL: "/"}, s.log.Warn)
+	s.cfg.Push.send(r.Context(), PushMessage{Title: "Jobshop Desk", Body: "Test notification", Tag: "test", URL: "./"}, s.log.Warn)
 	return map[string]bool{"ok": true}, nil
 }
