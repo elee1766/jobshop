@@ -20,6 +20,13 @@ import (
 // trees (restart and adopt, sandbox, env refresh, stuck and busy) opt
 // out with realHosts, see poolRootOpt. Agent crashes work in-process
 // through Exited (#467).
+//
+// Not built on acphost's acphosttest (#723): the controller calls Start
+// from its own goroutine, where acphosttest.Start's t.Fatalf is not
+// allowed; acphosttest.Start rewrites the spec the controller already
+// wrote; and it blocks until the socket listens, while the controller
+// polls the socket itself. Stop and Exited here match acphosttest's
+// Stop and Done.
 type inProcHosts struct {
 	mu   sync.Mutex
 	runs map[string]chan struct{} // dir -> closed when Main returns
