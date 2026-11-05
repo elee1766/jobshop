@@ -19,6 +19,8 @@ type DrainResult struct {
 	Moved int `json:"moved"` // spool rows removed after the inbox commit
 	Fresh int `json:"fresh"` // of those, new inbox items (the rest deduped)
 	Bad   int `json:"bad"`   // rows moved to spool_bad
+	// Items are the new inbox items, for the controller's wake (#679).
+	Items []store.InboxItem `json:"-"`
 }
 
 // Drain moves spool rows into the inbox in id order until the spool is
@@ -59,7 +61,8 @@ func Drain(ctx context.Context, sp *Spool, in InboxStore, now func() time.Time, 
 			return res, fmt.Errorf("ingest drain: spool delete: %w", err)
 		}
 		res.Moved += len(ids)
-		res.Fresh += fresh
+		res.Fresh += len(fresh)
+		res.Items = append(res.Items, fresh...)
 	}
 }
 
@@ -110,6 +113,34 @@ type ghPayload struct {
 		ID          int64     `json:"id"`
 		SubmittedAt time.Time `json:"submitted_at"`
 	} `json:"review"`
+	// check_suite and check_run name their PRs here (#679), so a CI
+	// event wakes the waits on that PR.
+	CheckSuite *ghChecks `json:"check_suite"`
+	CheckRun   *struct {
+		ghChecks
+		CheckSuite *ghChecks `json:"check_suite"`
+	} `json:"check_run"`
+}
+
+type ghChecks struct {
+	PullRequests []struct {
+		Number int64 `json:"number"`
+	} `json:"pull_requests"`
+}
+
+// firstPR is the first PR a check event names, 0 for none.
+func (p ghPayload) firstPR() int64 {
+	var cs []*ghChecks
+	cs = append(cs, p.CheckSuite)
+	if p.CheckRun != nil {
+		cs = append(cs, &p.CheckRun.ghChecks, p.CheckRun.CheckSuite)
+	}
+	for _, c := range cs {
+		if c != nil && len(c.PullRequests) > 0 {
+			return c.PullRequests[0].Number
+		}
+	}
+	return 0
 }
 
 func githubSubject(it *store.InboxItem, payload json.RawMessage) error {
@@ -128,6 +159,8 @@ func githubSubject(it *store.InboxItem, payload json.RawMessage) error {
 		it.Number = p.Issue.Number
 	case p.PullRequest != nil:
 		it.Number = p.PullRequest.Number
+	default:
+		it.Number = p.firstPR()
 	}
 	switch {
 	case it.Kind == "pull_request_review" && p.Review != nil:

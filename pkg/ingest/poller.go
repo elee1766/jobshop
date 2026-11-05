@@ -47,6 +47,8 @@ type PollStore interface {
 type PollResult struct {
 	Items int // rows written, before dedupe
 	Fresh int // new inbox rows
+	// New are the new inbox rows, for the controller's wake (#679).
+	New []store.InboxItem
 }
 
 func (p *Poller) wants(ev string) bool { return slices.Contains(p.Events, ev) }
@@ -159,7 +161,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 		if err != nil {
 			return res, fmt.Errorf("poller %s: inbox: %w", p.Name, err)
 		}
-		res.Items, res.Fresh = len(items), fresh
+		res.Items, res.Fresh, res.New = len(items), len(fresh), fresh
 	}
 	for _, c := range cursors {
 		if err := SetPollCursor(ctx, p.Store, c); err != nil {

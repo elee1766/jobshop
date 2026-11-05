@@ -97,12 +97,17 @@ func admissionHooks(cfg *config.Config) []config.AdmissionHook {
 }
 
 // pumpAdmission admits pending items and dispatches admitted ones (#442)
-// until the controller stops.
+// until the controller stops. It waits on the inbox notifier (#679), so
+// a new item is admitted as it lands; admissionIdle stays as the
+// backstop for state changes the notifier does not see (a lease
+// expiring, a hold answered).
 func (c *Controller) pumpAdmission() {
 	for c.ctx.Err() == nil {
+		changed := c.inboxNotifier().Changed()
 		c.ingestPass(c.ctx)
 		select {
 		case <-c.ctx.Done():
+		case <-changed:
 		case <-time.After(admissionIdle):
 		}
 	}
@@ -268,6 +273,10 @@ func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, ho
 	}
 	if _, err := ingest.InboxSetState(ctx, c.store, it.ID, holder, u); err != nil {
 		return err
+	}
+	if state == store.InboxAdmitted {
+		// Dispatch-only workers long-poll for admitted items (#679).
+		c.inboxNotifier().Advance()
 	}
 	c.log.InfoContext(ctx, "inbox admission", "delivery", it.DeliveryID, "state", state, "by", holder)
 	return nil

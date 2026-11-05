@@ -41,9 +41,11 @@ type Handler struct {
 	Secret func(config.IngestEndpoint) (Secret, error)
 	Now    func() time.Time
 	Log    *slog.Logger
-	// OnLinear, if set, runs after a new Linear delivery is spooled
-	// (not for duplicates). The controller uses it until the drain lands.
-	OnLinear func(signer string, ev LinearEvent)
+	// OnSpool, if set, runs after any new delivery is spooled (not for
+	// duplicates), whatever its source (#679). The controller's listener
+	// wakes its drain with it; `ingest serve` notifies the controller.
+	// It must not block.
+	OnSpool func(d Delivery)
 }
 
 // Mux serves every endpoint at its path. Implicit identity endpoints
@@ -99,7 +101,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, eps []config.Ing
 		prefix = eps[0].SignaturePrefix
 	}
 	sig, _ := strings.CutPrefix(r.Header.Get(sigHeader), prefix)
-	ep, sec, ok := h.verify(eps, sig, body)
+	ep, _, ok := h.verify(eps, sig, body)
 	if !ok {
 		http.Error(w, "bad signature", http.StatusUnauthorized)
 		return
@@ -110,7 +112,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, eps []config.Ing
 	case config.IngestGeneric:
 		h.serveGeneric(w, r, ep, body)
 	default:
-		h.serveLinear(w, r, ep, sec, body)
+		h.serveLinear(w, r, ep, body)
 	}
 }
 
@@ -158,16 +160,18 @@ func pick(r *http.Request, names ...string) map[string]string {
 	return out
 }
 
-// write spools d and answers. It reports whether d was new.
-func (h *Handler) write(w http.ResponseWriter, r *http.Request, d Delivery) bool {
+// write spools d, answers, and runs OnSpool when d was new.
+func (h *Handler) write(w http.ResponseWriter, r *http.Request, d Delivery) {
 	fresh, err := h.Spool.Write(r.Context(), d)
 	if err != nil {
 		h.log().Error("ingest: spool write", "endpoint", d.Endpoint, "delivery", d.DeliveryID, "err", err)
 		http.Error(w, "spool write failed", http.StatusInternalServerError)
-		return false
+		return
 	}
 	w.WriteHeader(http.StatusAccepted)
-	return fresh
+	if fresh && h.OnSpool != nil {
+		h.OnSpool(d)
+	}
 }
 
 // GitHubWanted reports whether a GitHub event kind is worth spooling.
@@ -206,7 +210,7 @@ func (h *Handler) serveGitHub(w http.ResponseWriter, r *http.Request, ep config.
 	})
 }
 
-func (h *Handler) serveLinear(w http.ResponseWriter, r *http.Request, ep config.IngestEndpoint, sec Secret, body []byte) {
+func (h *Handler) serveLinear(w http.ResponseWriter, r *http.Request, ep config.IngestEndpoint, body []byte) {
 	var ev LinearEvent
 	if err := json.Unmarshal(body, &ev); err != nil {
 		http.Error(w, "bad payload", http.StatusBadRequest)
@@ -220,16 +224,13 @@ func (h *Handler) serveLinear(w http.ResponseWriter, r *http.Request, ep config.
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	fresh := h.write(w, r, Delivery{
+	h.write(w, r, Delivery{
 		Endpoint: ep.Name, Source: SourceLinear,
 		DeliveryID: deliveryID(r.Header.Get("Linear-Delivery"), body),
 		Kind:       ev.Type, ReceivedAt: h.now().UTC(),
 		Headers: pick(r, "Linear-Delivery", "Linear-Event", "Linear-Signature"),
 		Payload: body,
 	})
-	if fresh && h.OnLinear != nil {
-		h.OnLinear(sec.Identity, ev)
-	}
 }
 
 // errNoSecret is returned by ReadSecret for an empty file.

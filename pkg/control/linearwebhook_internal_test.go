@@ -133,7 +133,7 @@ func webhookController(t *testing.T) (*Controller, *stallClock, *webhookLinear) 
 	sp, err := ingest.OpenSpool(t.Context(), c.config().Ingest.SpoolPath(c.root))
 	require.NoError(t, err)
 	testSpools.Store(c, sp)
-	t.Cleanup(func() { testSpools.Delete(c); _ = sp.Close() })
+	t.Cleanup(func() { testSpools.Delete(c); _ = sp.Close(); c.closeSpool() })
 	return c, clk, f
 }
 
@@ -166,12 +166,16 @@ func testSpool(c *Controller) *ingest.Spool {
 	return v.(*ingest.Spool)
 }
 
-// postWebhook sends b and waits for the async work.
+// postWebhook sends b, drains the spool as the woken drain pump would
+// (#679), and waits for the async work.
 func postWebhook(c *Controller, b []byte, sig string) int {
 	req := httptest.NewRequest(http.MethodPost, config.LinearWebhookPath, bytes.NewReader(b))
 	req.Header.Set("Linear-Signature", sig)
 	rec := httptest.NewRecorder()
 	c.linearWebhookHandler(testSpool(c)).Mux().ServeHTTP(rec, req)
+	if _, err := c.drainOnce(c.ctx); err != nil {
+		panic(err)
+	}
 	c.wg.Wait()
 	return rec.Code
 }
@@ -240,10 +244,14 @@ func TestLinearWebhookComment(t *testing.T) {
 
 	b := webhookBody(t, clk.now(), "Comment", "user", "u-wile", "org-1")
 	require.Equal(t, http.StatusAccepted, postWebhook(c, b, sign(webhookSecret, b)))
-	rows, err := testSpool(c).List(ctx, 0)
+	// Spooled, then drained into the inbox like any delivery (#679).
+	its, err := ingest.InboxList(ctx, c.store, store.InboxFilter{Source: ingest.SourceLinear})
 	require.NoError(t, err)
-	require.NotEmpty(t, rows, "spooled before processing")
-	assert.Equal(t, "linear-lapp", rows[len(rows)-1].Endpoint, "implicit identity endpoint")
+	eps := []string{}
+	for _, it := range its {
+		eps = append(eps, it.Endpoint)
+	}
+	assert.Contains(t, eps, "linear-lapp", "drained into the inbox from the implicit identity endpoint")
 	got, err := c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusClosed, got.Status)

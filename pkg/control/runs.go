@@ -434,6 +434,10 @@ func (c *Controller) setRunState(ctx context.Context, actor string, t store.Tick
 		return t, err
 	}
 	t, err = c.store.Update(ctx, actor, t.ID, store.Update{Fields: b, IfRevision: t.Revision})
+	if err == nil {
+		// A run wait reads the state: wake the waits on this run (#679).
+		c.wakeWaitsSubjects(runSubject(t.ID))
+	}
 	if err != nil || resolution == "" {
 		return t, err
 	}

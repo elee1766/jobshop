@@ -125,7 +125,28 @@ const (
 	// MethodIngestDispatch dispatches admitted items as the calling
 	// worker (#633). Params IngestClaimParams.
 	MethodIngestDispatch = "ingest.dispatch"
+	// MethodIngestNext is the inbox long poll (#679): it returns when the
+	// inbox changed since After, or after TimeoutMS.
+	MethodIngestNext = "ingest.next"
+	// MethodIngestNotify is a receiver's "I spooled something" (#679):
+	// the controller drains now instead of on its timer.
+	MethodIngestNotify = "ingest.notify"
 )
+
+// IngestNextParams is ingest.next. After is the Seq the caller last saw
+// (0 the first time). TimeoutMS bounds the wait; 0 is 30s, and the
+// controller caps it below the CLI call deadline.
+type IngestNextParams struct {
+	After     int64 `json:"after"`
+	TimeoutMS int64 `json:"timeout_ms,omitempty"`
+}
+
+// IngestNextResult is the inbox change count now. Changed is false when
+// the wait timed out.
+type IngestNextResult struct {
+	Seq     int64 `json:"seq"`
+	Changed bool  `json:"changed"`
+}
 
 // IngestDispatchResult is how many admitted items one ingest.dispatch
 // claimed and handed off.
