@@ -44,6 +44,8 @@ type Config struct {
 	Ingest Ingest `yaml:"ingest"`
 	// WriteKeys configures the local idempotency key cache (#415).
 	WriteKeys WriteKeys `yaml:"write_keys"`
+	// Store selects the ticket store backend (#493).
+	Store Store `yaml:"store"`
 	// Defaults hold settings agents and pools inherit (#262).
 	Defaults Defaults `yaml:"defaults"`
 	// SharedTools are dirs mounted read-only into every sandboxed
@@ -1100,6 +1102,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if !filepath.IsAbs(d) {
 			return nil, fmt.Errorf("%s: shared_tools: %q must be absolute", FileName, d)
 		}
+	}
+	if err := c.Store.check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if err := c.validateIngest(); err != nil {
 		return nil, err

@@ -94,3 +94,35 @@ jobs:
       - run: npm run build
       - name: pkg/desk/dist is current
         run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"
+
+  # The store conformance suite against Postgres (#493). The go job runs
+  # it against SQLite; pkg/store/postgres's tests skip without the DSN.
+  postgres:
+    runs-on: ubicloud-standard-4
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      JOBSHOP_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-pg-${{ runner.os }}-
+      - run: go test -race ./pkg/store/postgres/
