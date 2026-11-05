@@ -37,6 +37,11 @@ func undo00013() []string {
 // undo00015 returns a database to its schema before 00015 (#426).
 func undo00015() []string {
 	return []string{
+		// 00021 (#579) moved memory_edits into records; 00018 below
+		// drops and recreates the table, so any shape will do.
+		"CREATE TABLE memory_edits (id INTEGER PRIMARY KEY)",
+		"DROP INDEX IF EXISTS ru_memory_edits_pr",
+		"DELETE FROM goose_db_version WHERE version_id = 21",
 		// 00020 (#579) moved write_keys and poll_cursors into records.
 		"CREATE TABLE write_keys (key TEXT PRIMARY KEY, op TEXT NOT NULL, result TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0, actor TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
 		"CREATE TABLE poll_cursors (poller TEXT NOT NULL, repo TEXT NOT NULL, stream TEXT NOT NULL, since INTEGER NOT NULL DEFAULT 0, etag TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL, PRIMARY KEY (poller, repo, stream))",

@@ -47,8 +47,6 @@ type Querier interface {
 	// workflow and key (the controller serializes starts).
 	FindOpenRunByKey(ctx context.Context, arg FindOpenRunByKeyParams) (Ticket, error)
 	GetLearning(ctx context.Context, id int64) (Learning, error)
-	GetMemoryEdit(ctx context.Context, id int64) (MemoryEdit, error)
-	GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit, error)
 	GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error)
 	GetTicket(ctx context.Context, id string) (Ticket, error)
 	// Heartbeat renews a lease without a revision bump or history row.
@@ -85,8 +83,6 @@ type Querier interface {
 	InsertHistory(ctx context.Context, arg InsertHistoryParams) error
 	InsertLabel(ctx context.Context, arg InsertLabelParams) (int64, error)
 	InsertLearning(ctx context.Context, arg InsertLearningParams) (Learning, error)
-	InsertMemoryEdit(ctx context.Context, arg InsertMemoryEditParams) (MemoryEdit, error)
-	InsertMemoryWrite(ctx context.Context, arg InsertMemoryWriteParams) (MemoryEdit, error)
 	InsertResourceCap(ctx context.Context, arg InsertResourceCapParams) error
 	InsertResourceProvider(ctx context.Context, name string) error
 	InsertSlot(ctx context.Context, arg InsertSlotParams) error
@@ -101,7 +97,6 @@ type Querier interface {
 	ListLearnings(ctx context.Context, arg ListLearningsParams) ([]Learning, error)
 	ListLearningsBetween(ctx context.Context, arg ListLearningsBetweenParams) ([]Learning, error)
 	ListLearningsByPR(ctx context.Context, pr string) ([]Learning, error)
-	ListMemoryEdits(ctx context.Context, arg ListMemoryEditsParams) ([]MemoryEdit, error)
 	ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, error)
 	ListSlots(ctx context.Context) ([]ResourceSlot, error)
 	ListStepsCreated(ctx context.Context, arg ListStepsCreatedParams) ([]Ticket, error)
@@ -151,8 +146,9 @@ type Querier interface {
 	ResourceWaiters(ctx context.Context, now int64) ([]ResourceWaitersRow, error)
 	// ResourceWaiting counts open tickets per resource key (#400).
 	ResourceWaiting(ctx context.Context) ([]ResourceWaitingRow, error)
+	// Curator gate reads (#274). Memory edits moved to the memory_edits
+	// collection (#579, pkg/memedit).
 	SetLearningGate(ctx context.Context, arg SetLearningGateParams) error
-	SetMemoryEditResult(ctx context.Context, arg SetMemoryEditResultParams) (MemoryEdit, error)
 	// SetParent re-parents a ticket (batch adoption, #169). The caller bumps
 	// the revision and writes history through mutate.
 	SetParent(ctx context.Context, arg SetParentParams) error

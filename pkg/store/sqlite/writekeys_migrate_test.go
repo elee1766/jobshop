@@ -27,6 +27,9 @@ func TestWriteKeysCursorsMigrate(t *testing.T) {
 	db, err := sql.Open("sqlite", "file:"+path)
 	require.NoError(t, err)
 	for _, q := range []string{
+		// 00021 moved memory_edits; undo it so goose reruns from 20.
+		"CREATE TABLE memory_edits (id INTEGER PRIMARY KEY, pr TEXT NOT NULL DEFAULT '', learnings TEXT NOT NULL DEFAULT '[]', pools TEXT NOT NULL DEFAULT '[]', merged_at INTEGER NOT NULL, baseline TEXT NOT NULL DEFAULT '{}', state TEXT NOT NULL DEFAULT 'pending', after TEXT NOT NULL DEFAULT '{}', reason TEXT NOT NULL DEFAULT '', evaluated_at INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, path TEXT NOT NULL DEFAULT '', before TEXT NOT NULL DEFAULT '', existed INTEGER NOT NULL DEFAULT 0)",
+		"DROP INDEX ru_memory_edits_pr", "DELETE FROM goose_db_version WHERE version_id = 21",
 		"CREATE TABLE write_keys (key TEXT PRIMARY KEY, op TEXT NOT NULL, result TEXT NOT NULL DEFAULT '', done INTEGER NOT NULL DEFAULT 0, actor TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
 		"CREATE TABLE poll_cursors (poller TEXT NOT NULL, repo TEXT NOT NULL, stream TEXT NOT NULL, since INTEGER NOT NULL DEFAULT 0, etag TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL, PRIMARY KEY (poller, repo, stream))",
 		"DELETE FROM goose_db_version WHERE version_id = 20",
