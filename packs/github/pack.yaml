@@ -159,7 +159,7 @@ triggers:
             | select(.author.is_bot or ([.author.login | ascii_downcase] | inside($ok))
             or ([.labels[].name] | any(. == "accepted")))
             | select([.labels[].name] | any(. == "target" or . == "needs-decision"
-            or . == "needs-human" or . == "tracking") | not)
+            or . == "needs-human" or . == "tracking" or . == "proposed") | not)
             | select(.title | test("^drill"; "i") | not)
             | select((now - (.createdAt | fromdateiso8601)) > 1800)
             | "\(.number) open, no run"'

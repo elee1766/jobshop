@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -205,6 +206,8 @@ packs:
 	}
 	assert.Equal(t, "3h", sigs[StallStepStalled].After)
 	assert.Contains(t, sigs[StallIssueNoRun].Check, "gh issue list --repo elee1766/jobshop")
+	assert.Contains(t, sigs[StallIssueNoRun].Check, `. == "proposed"`, "planner proposals wait on a human (#506)")
+	assertIssueNoRunFilter(t, sigs[StallIssueNoRun].Check)
 	assert.Equal(t, "elee1766/jobshop", sigs[StallIssueNoRun].Repo, "issue_no_run matches runs of its repo (#183)")
 	assert.Equal(t, "elee1766/jobshop", c.Workflows["pr-work"].Repo)
 	assert.Contains(t, sigs["no_merge"].Check, "repos/elee1766/jobshop/commits/master")
@@ -747,4 +750,27 @@ func TestEscalationConfig(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.err, name)
 		}
 	}
+}
+
+// assertIssueNoRunFilter runs the issue_no_run jq filter on fixture
+// issues: a proposed issue is not emitted, an unlabeled one is (#506).
+func assertIssueNoRunFilter(t *testing.T, check string) {
+	t.Helper()
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Log("jq not on PATH, filter not run")
+		return
+	}
+	_, filter, ok := strings.Cut(check, "--jq '")
+	require.True(t, ok, "check has a --jq filter")
+	filter = strings.TrimSuffix(filter, "'")
+	issues := `[
+	 {"number":1,"title":"plain","labels":[],"createdAt":"2020-01-01T00:00:00Z","author":{"login":"bot","is_bot":true}},
+	 {"number":2,"title":"Proposed target: x","labels":[{"name":"proposed"}],"createdAt":"2020-01-01T00:00:00Z","author":{"login":"bot","is_bot":true}}
+	]`
+	cmd := exec.CommandContext(t.Context(), jq, "-r", filter)
+	cmd.Stdin = strings.NewReader(issues)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Equal(t, "1 open, no run\n", string(out))
 }
