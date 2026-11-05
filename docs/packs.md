@@ -82,6 +82,13 @@ has `capacity_per_key` slots (default 1) per key. A step whose
 resource is full is not ready, so no session starts for it; the slot
 frees when the step's claim ends.
 
+**Turning an entry off.** `enabled: false` on a pool, workflow or
+trigger keeps it validated but not loaded: nothing fires, starts or
+spawns, and stall checks skip it. It takes a template
+(`enabled: "{{.flow_on}}"`), so a host can switch it per instance. A
+live entry that needs a disabled one fails to load
+([notes](notes/JOB-24-enabled-false.md)).
+
 **Text in files.** Long text can live in files, relative to the file
 that declares it: pool and step `prompt_file`, trigger ticket
 `body_file`, prompt rule `file`. Set the inline field or the file

@@ -106,14 +106,19 @@ type Config struct {
 	// "workflows.<name>" and "prompt_rules.<name>" to the files that set
 	// the entry, in merge order.
 	Sources map[string][]string `yaml:"-"`
+	// Disabled lists the entries set enabled: false (JOB-24). They were
+	// validated, then removed from Pools, Workflows and Triggers.
+	Disabled Disabled `yaml:"-"`
 }
 
 // Trigger creates a ticket from Ticket, or starts a workflow run from Run,
 // while every condition in When holds and nothing it created is open.
 type Trigger struct {
-	When   TriggerWhen    `yaml:"when"`
-	Ticket *TriggerTicket `yaml:"ticket"`
-	Run    *TriggerRun    `yaml:"run"`
+	// Enabled false keeps the trigger validated but not loaded (JOB-24).
+	Enabled *bool          `yaml:"enabled,omitempty"`
+	When    TriggerWhen    `yaml:"when"`
+	Ticket  *TriggerTicket `yaml:"ticket"`
+	Run     *TriggerRun    `yaml:"run"`
 	// Cooldown is the minimum time after its last ticket closed before the
 	// trigger fires again (Go duration).
 	Cooldown string `yaml:"cooldown"`
@@ -1136,6 +1141,8 @@ const AttachRW = "rw"
 
 // Pool is a queue of work in one project served by sessions of one agent.
 type Pool struct {
+	// Enabled false keeps the pool validated but not loaded (JOB-24).
+	Enabled *bool  `yaml:"enabled,omitempty"`
 	Project string `yaml:"project"`
 	Agent   string `yaml:"agent"`
 	// Type is "" for a ticket pool or "chat". Chat pool sessions claim no
@@ -1550,6 +1557,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 	}
 	if err := c.checkRules(); err != nil {
+		return nil, err
+	}
+	if err := c.dropDisabled(src); err != nil {
 		return nil, err
 	}
 	return &c, nil

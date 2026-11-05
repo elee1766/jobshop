@@ -150,7 +150,7 @@ func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, e
 	if err != nil {
 		return nil, err
 	}
-	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources, Instances: cfg.Instances}
+	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources, Instances: cfg.Instances, Disabled: cfg.Disabled}
 	if cfg.Reload.Watch {
 		out.Watch = &rpc.ConfigWatch{On: true, Files: len(cfg.Watch.Files), Dirs: len(cfg.Watch.Dirs)}
 	}

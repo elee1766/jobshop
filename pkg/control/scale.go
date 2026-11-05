@@ -545,6 +545,7 @@ func (c *Controller) poolStatusCtx(ctx context.Context) rpc.PoolStatusResult {
 		res.Pools = append(res.Pools, row)
 	}
 	res.HostMax = cfg.Limits.MaxSessions
+	res.Disabled = cfg.Disabled.Pools
 	return res
 }
 

@@ -20,12 +20,16 @@ const (
 )
 
 // orphaned returns open, unclaimed tickets that no configured pool will
-// claim: their pool is empty or not in the loaded config.
+// claim: their pool is empty or not in the loaded config. A disabled
+// pool's tickets wait for it to be enabled again, so they are not
+// orphans (JOB-24).
 func (c *Controller) orphaned(ctx context.Context, project string, limit int) ([]store.Ticket, error) {
-	pools := make([]string, 0, len(c.config().Pools))
-	for name := range c.config().Pools {
+	cfg := c.config()
+	pools := make([]string, 0, len(cfg.Pools)+len(cfg.Disabled.Pools))
+	for name := range cfg.Pools {
 		pools = append(pools, name)
 	}
+	pools = append(pools, cfg.Disabled.Pools...)
 	sort.Strings(pools)
 	ts, err := c.store.List(ctx, store.Filter{
 		Project: project, Kinds: store.ClaimableKinds, Status: store.StatusOpen, Unheld: true,

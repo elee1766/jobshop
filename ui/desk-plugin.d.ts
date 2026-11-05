@@ -419,6 +419,7 @@ export interface ConfigShowResult {
   config: Record<string, unknown>;
   sources: Record<string, string[]>;
   instances: PackInstance[];
+  disabled: Disabled;
   watch?: ConfigWatch;
 }
 
@@ -463,6 +464,12 @@ export interface DeskExecParams {
 export interface DeskExecResult {
   output?: unknown;
   text?: string;
+}
+
+export interface Disabled {
+  pools?: string[];
+  workflows?: string[];
+  triggers?: string[];
 }
 
 export interface DrainParams {
@@ -880,6 +887,7 @@ export interface PoolStatusResult {
   paused: Record<string, string>;
   pools?: PoolScale[];
   host_max?: number;
+  disabled?: string[];
 }
 
 export interface PromptPart {

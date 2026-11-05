@@ -936,6 +936,8 @@ type PoolStatusResult struct {
 	Pools []PoolScale `json:"pools,omitempty"`
 	// HostMax is limits.max_sessions; 0 means no host cap.
 	HostMax int `json:"host_max,omitempty"`
+	// Disabled are pools set enabled: false (JOB-24): validated, not run.
+	Disabled []string `json:"disabled,omitempty"`
 }
 
 // PoolScale is one ticket pool's scaling state. Target is the manual
@@ -1047,6 +1049,9 @@ type ConfigShowResult struct {
 	// Instances are the packs entries with their vars and the pools,
 	// workflows and triggers each declares, prefix applied (#248).
 	Instances []config.PackInstance `json:"instances"`
+	// Disabled are the entries set enabled: false (JOB-24). They are not
+	// in Config.
+	Disabled config.Disabled `json:"disabled"`
 	// Watch is set when reload.watch is on (#533).
 	Watch *ConfigWatch `json:"watch,omitempty"`
 }

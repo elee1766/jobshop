@@ -26,6 +26,8 @@ const (
 // section 6, "Runs and workflows"). Step titles and prompts are templates
 // filled at run start from PackVars plus the run's vars.
 type Workflow struct {
+	// Enabled false keeps the workflow validated but not loaded (JOB-24).
+	Enabled *bool `yaml:"enabled,omitempty"`
 	// Vars are the var names a run must supply. Pack vars give defaults.
 	Vars []string `yaml:"vars"`
 	// Issue names the var holding a GitHub issue number, copied into
@@ -350,6 +352,9 @@ func (c *Config) ResolvePool(w *Workflow, pool string, vars map[string]any) (str
 		return "", fmt.Errorf("pool: %w", err)
 	}
 	if _, ok := c.Pools[name]; !ok {
+		if slices.Contains(c.Disabled.Pools, name) {
+			return "", fmt.Errorf("pool %q is disabled", name)
+		}
 		return "", fmt.Errorf("unknown pool %q", name)
 	}
 	return name, nil
