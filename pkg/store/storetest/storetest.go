@@ -42,6 +42,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"UpdateCAS", testUpdateCAS},
 		{"ReadyRespectsEdges", testReadyRespectsEdges},
 		{"EdgeCycle", testEdgeCycle},
+		{"ApplySwapsEdges", testApplySwapsEdges},
 		{"ClaimNextTiers", testClaimNextTiers},
 		{"FencedClose", testFencedClose},
 		{"Handoff", testHandoff},
@@ -95,7 +96,7 @@ func task(t *testing.T, s store.Store, title, pool string, opts ...func(*store.N
 	for _, o := range opts {
 		o(&nt)
 	}
-	tk, err := s.Create(t.Context(), "test", nt)
+	tk, err := store.Create(t.Context(), s, "test", nt)
 	require.NoError(t, err)
 	return tk
 }
@@ -175,9 +176,9 @@ func testListFilters(t *testing.T, s store.Store, c *Clock) {
 }
 
 func testListCreatedBy(t *testing.T, s store.Store, _ *Clock) {
-	a, err := s.Create(t.Context(), "js-sess1", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "a"})
+	a, err := store.Create(t.Context(), s, "js-sess1", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "a"})
 	require.NoError(t, err)
-	_, err = s.Create(t.Context(), "admin", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "b"})
+	_, err = store.Create(t.Context(), s, "admin", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "b"})
 	require.NoError(t, err)
 	l, err := s.List(t.Context(), store.Filter{CreatedBy: "js-sess1"})
 	require.NoError(t, err)
@@ -204,10 +205,10 @@ func testCreateGet(t *testing.T, s store.Store, _ *Clock) {
 	_, err = s.Get(ctx, "js-missing")
 	assert.ErrorIs(t, err, store.ErrNotFound)
 
-	_, err = s.Create(ctx, "test", store.NewTicket{ID: a.ID, Project: proj, Kind: store.KindTask})
+	_, err = store.Create(ctx, s, "test", store.NewTicket{ID: a.ID, Project: proj, Kind: store.KindTask})
 	assert.ErrorIs(t, err, store.ErrAlreadyExist)
 
-	_, err = s.Create(ctx, "test", store.NewTicket{Project: proj, Kind: store.KindTask, ParentID: "js-missing"})
+	_, err = store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: store.KindTask, ParentID: "js-missing"})
 	assert.ErrorIs(t, err, store.ErrNotFound)
 
 	l, err := s.List(ctx, store.Filter{Project: proj, Label: "x"})
@@ -226,13 +227,14 @@ func testFieldsValidated(t *testing.T, s store.Store, _ *Clock) {
 		{Kind: store.KindTask},
 	}
 	for _, nt := range cases {
-		_, err := s.Create(ctx, "test", nt)
+		_, err := store.Create(ctx, s, "test", nt)
 		assert.ErrorIs(t, err, store.ErrInvalid, "%+v", nt)
 	}
-	m, err := s.Create(ctx, "test", store.NewTicket{
+	m, err := store.Create(ctx, s, "test", store.NewTicket{
 		Project: proj, Kind: store.KindMessage,
 		Fields: json.RawMessage(`{"to":"pool:dev","from":"me"}`),
 	})
+
 	require.NoError(t, err)
 	f, err := store.DecodeFields[store.MessageFields](m)
 	require.NoError(t, err)
@@ -260,8 +262,8 @@ func testReadyRespectsEdges(t *testing.T, s store.Store, _ *Clock) {
 	a := task(t, s, "a", "dev", prio(1))
 	b := task(t, s, "b", "dev", prio(2))
 	c := task(t, s, "c", "dev", prio(3))
-	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}))
-	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}))
 
 	r, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
 	require.NoError(t, err)
@@ -276,20 +278,42 @@ func testReadyRespectsEdges(t *testing.T, s store.Store, _ *Clock) {
 	e, err := store.Edges(ctx, s, b.ID)
 	require.NoError(t, err)
 	assert.Len(t, e, 2)
-	require.NoError(t, s.RemoveEdge(ctx, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}))
-	assert.ErrorIs(t, s.RemoveEdge(ctx, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}), store.ErrNotFound)
+	require.NoError(t, store.RemoveEdge(ctx, s, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}))
+	assert.ErrorIs(t, store.RemoveEdge(ctx, s, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}), store.ErrNotFound)
 }
 
 func testEdgeCycle(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	a, b, c := task(t, s, "a", ""), task(t, s, "b", ""), task(t, s, "c", "")
-	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}))
-	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: b.ID, To: c.ID, Kind: store.EdgeWaitsFor}))
-	assert.ErrorIs(t, s.AddEdge(ctx, "test", store.Edge{From: c.ID, To: a.ID, Kind: store.EdgeBlocks}), store.ErrCycle)
-	assert.ErrorIs(t, s.AddEdge(ctx, "test", store.Edge{From: a.ID, To: a.ID, Kind: store.EdgeBlocks}), store.ErrInvalid)
+	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: b.ID, To: c.ID, Kind: store.EdgeWaitsFor}))
+	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", store.Edge{From: c.ID, To: a.ID, Kind: store.EdgeBlocks}), store.ErrCycle)
+	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: a.ID, Kind: store.EdgeBlocks}), store.ErrInvalid)
 	// tracks never gates readiness, so it may close a loop.
-	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: c.ID, To: a.ID, Kind: store.EdgeTracks}))
-	assert.ErrorIs(t, s.AddEdge(ctx, "test", store.Edge{From: a.ID, To: "js-missing", Kind: store.EdgeBlocks}), store.ErrNotFound)
+	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: c.ID, To: a.ID, Kind: store.EdgeTracks}))
+	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: "js-missing", Kind: store.EdgeBlocks}), store.ErrNotFound)
+}
+
+// testApplySwapsEdges moves a blocking edge in one Apply: removals run
+// before additions, and a failed removal writes nothing.
+func testApplySwapsEdges(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	a, b, c := task(t, s, "a", ""), task(t, s, "b", ""), task(t, s, "c", "")
+	ab := store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}
+	ba := store.Edge{From: b.ID, To: a.ID, Kind: store.EdgeBlocks}
+	ac := store.Edge{From: a.ID, To: c.ID, Kind: store.EdgeBlocks}
+	require.NoError(t, store.AddEdge(ctx, s, "test", ab))
+
+	// b -> a would be a cycle unless a -> b is removed first.
+	_, err := s.Apply(ctx, "test", store.Graph{RemoveEdges: []store.Edge{ab}, Edges: []store.Edge{ba}})
+	require.NoError(t, err)
+
+	_, err = s.Apply(ctx, "test", store.Graph{RemoveEdges: []store.Edge{ab}, Edges: []store.Edge{ac}})
+	require.ErrorIs(t, err, store.ErrNotFound)
+	e, err := store.Edges(ctx, s, a.ID)
+	require.NoError(t, err)
+	require.Len(t, e, 1, "the failed apply added nothing")
+	assert.Equal(t, b.ID, e[0].From)
 }
 
 func testOrphaned(t *testing.T, s store.Store, _ *Clock) {
@@ -334,7 +358,7 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 		}
 	}
 	// Inserted out of order: ListChildren orders by fields.index (10 > 2).
-	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{run, step(10, "js-b"), step(2, "js-a")}, nil)
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, step(10, "js-b"), step(2, "js-a")}, Edges: nil})
 	require.NoError(t, err)
 	kids, err := store.Children(ctx, s, runID)
 	require.NoError(t, err)
@@ -376,8 +400,8 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 		}
 	}
 	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)}
-	_, err := s.CreateGraph(ctx, "test", []store.NewTicket{run, mk("js-a", 0), mk("js-b", 1)},
-		[]store.Edge{{From: "js-b", To: "js-a", Kind: store.EdgeBlocks}})
+	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, mk("js-a", 0), mk("js-b", 1)}, Edges: []store.Edge{{From: "js-b", To: "js-a", Kind: store.EdgeBlocks}}})
+
 	require.NoError(t, err)
 	fails := func() int {
 		t.Helper()
@@ -740,8 +764,8 @@ func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {
 	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindTask}
 	s1 := store.NewTicket{ID: "js-s1", Project: proj, Kind: store.KindTask, ParentID: "js-run"}
 	s2 := store.NewTicket{ID: "js-s2", Project: proj, Kind: store.KindTask, ParentID: "js-run"}
-	out, err := s.CreateGraph(ctx, "test", []store.NewTicket{run, s1, s2},
-		[]store.Edge{{From: "js-s2", To: "js-s1", Kind: store.EdgeBlocks}})
+	out, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, s1, s2}, Edges: []store.Edge{{From: "js-s2", To: "js-s1", Kind: store.EdgeBlocks}}})
+
 	require.NoError(t, err)
 	assert.Len(t, out, 3)
 	kids, err := s.List(ctx, store.Filter{ParentID: "js-run"})
@@ -751,10 +775,11 @@ func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {
 	// A cycle aborts the whole graph.
 	x := store.NewTicket{ID: "js-x", Project: proj, Kind: store.KindTask}
 	y := store.NewTicket{ID: "js-y", Project: proj, Kind: store.KindTask}
-	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{x, y}, []store.Edge{
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{x, y}, Edges: []store.Edge{
 		{From: "js-x", To: "js-y", Kind: store.EdgeBlocks},
 		{From: "js-y", To: "js-x", Kind: store.EdgeBlocks},
-	})
+	}})
+
 	assert.ErrorIs(t, err, store.ErrCycle)
 	_, err = s.Get(ctx, "js-x")
 	assert.ErrorIs(t, err, store.ErrNotFound)
@@ -763,10 +788,11 @@ func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {
 func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	sess := func() (store.Ticket, error) {
-		return s.Create(ctx, "test", store.NewTicket{
+		return store.Create(ctx, s, "test", store.NewTicket{
 			Project: proj, Kind: store.KindSession,
 			Fields: json.RawMessage(`{"agent":"jcode","key":"matrix:!r"}`),
 		})
+
 	}
 	a, err := sess()
 	require.NoError(t, err)
@@ -777,15 +803,17 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	_, err = sess()
 	assert.NoError(t, err, "key is reusable once the session closes")
-	_, err = s.Create(ctx, "test", store.NewTicket{
+	_, err = store.Create(ctx, s, "test", store.NewTicket{
 		Project: proj, Kind: store.KindSession,
 		Fields: json.RawMessage(`{"agent":"jcode"}`),
 	})
+
 	assert.NoError(t, err)
-	_, err = s.Create(ctx, "test", store.NewTicket{
+	_, err = store.Create(ctx, s, "test", store.NewTicket{
 		Project: proj, Kind: store.KindSession,
 		Fields: json.RawMessage(`{"agent":"jcode"}`),
 	})
+
 	assert.NoError(t, err, "sessions without a key never collide")
 }
 
@@ -798,7 +826,7 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 		ID: "js-s", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
 		Fields: json.RawMessage(`{"run":"js-run","step":"s","index":0,"retries":1}`),
 	}
-	_, err := s.CreateGraph(ctx, "test", []store.NewTicket{run, step}, nil)
+	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, step}, Edges: nil})
 	require.NoError(t, err)
 	other := task(t, s, "other", "dev")
 	batch := func(id string) store.NewTicket {
@@ -808,19 +836,21 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	// Held: nothing is written.
 	_, _, err = s.Claim(ctx, "js-s", "sess", time.Minute)
 	require.NoError(t, err)
-	_, err = s.ApplyGraph(ctx, "test", store.Graph{
+	_, err = s.Apply(ctx, "test", store.Graph{
 		Tickets: []store.NewTicket{batch("js-b1")}, Reparent: map[string]string{"js-run": "js-b1"},
 		Edges: []store.Edge{{From: "js-s", To: other.ID, Kind: store.EdgeBlocks}}, Unclaimed: []string{"js-s"},
 	})
+
 	require.ErrorIs(t, err, store.ErrNotHolder)
 	_, err = s.Get(ctx, "js-b1")
 	require.ErrorIs(t, err, store.ErrNotFound)
 	_, err = store.OpenBatch(ctx, s, proj, "k")
 	require.ErrorIs(t, err, store.ErrNotFound)
 
-	out, err := s.ApplyGraph(ctx, "test", store.Graph{
+	out, err := s.Apply(ctx, "test", store.Graph{
 		Tickets: []store.NewTicket{batch("js-b2")}, Reparent: map[string]string{"js-run": "js-b2"},
 	})
+
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 	got, err := s.Get(ctx, "js-run")

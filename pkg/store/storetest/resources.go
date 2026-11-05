@@ -40,7 +40,7 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	step("js-e", "pr:x#2")
 	step("js-f", "other")
 	step("js-g", "other")
-	_, err = s.CreateGraph(ctx, "test", nts, nil)
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: nts, Edges: nil})
 	require.NoError(t, err)
 
 	ready := func() []string {

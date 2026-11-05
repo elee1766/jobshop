@@ -185,7 +185,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 		}
 		g.Edges = append(g.Edges, store.Edge{From: first, To: a.lastStep(), Kind: store.EdgeBlocks})
 	}
-	out, err := c.store.ApplyGraph(ctx, sc.actor, g)
+	out, err := c.store.Apply(ctx, sc.actor, g)
 	if err != nil {
 		return nil, err
 	}

@@ -157,7 +157,7 @@ func (c *Controller) refuseIntake(ctx context.Context, project, key string, x in
 		project = c.config().DefaultProject
 	}
 	prio := 1
-	if _, err := c.store.Create(ctx, "controller", store.NewTicket{
+	if _, err := store.Create(ctx, c.store, "controller", store.NewTicket{
 		Project: project, Kind: store.KindTask, Title: "Intake refused for " + x.Issue,
 		Body: b.String(), Priority: &prio, Labels: labels, Meta: meta,
 	}); err != nil {

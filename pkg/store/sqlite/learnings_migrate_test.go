@@ -21,7 +21,7 @@ func TestLearningsMigrate(t *testing.T) {
 	path := testPath(t)
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
-	tk, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
+	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 

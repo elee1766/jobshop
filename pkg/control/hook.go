@@ -183,10 +183,11 @@ func (c *Controller) fileAskHuman(ctx context.Context, ev hookEvent, key, reason
 	if project == "" {
 		project = c.config().DefaultProject
 	}
-	t, err := c.store.Create(ctx, "controller", store.NewTicket{
+	t, err := store.Create(ctx, c.store, "controller", store.NewTicket{
 		Project: project, Kind: store.KindTask, Title: "Approve " + ev.Action + " by " + ev.Session,
 		Body: b.String(), Priority: &prio, Labels: []string{needsHumanLabel}, Meta: meta,
 	})
+
 	if err == nil {
 		c.holdChat(ctx, t.ID)
 	}

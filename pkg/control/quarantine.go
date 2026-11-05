@@ -179,10 +179,11 @@ func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason stri
 		"This is a host config problem (a repo or workspace path, an agent command). Fix the config, then `jobshop reload` "+
 		"or `jobshop pool unquarantine %s`, and close this ticket.", pool, reason, pool)
 	prio := 1
-	t, err := c.store.Create(ctx, "controller", store.NewTicket{
+	t, err := store.Create(ctx, c.store, "controller", store.NewTicket{
 		Project: proj, Kind: store.KindTask, Title: clipTitle(fmt.Sprintf("Pool %s quarantined: %s", pool, reason)),
 		Body: body, Priority: &prio, Pool: dest, Labels: []string{"needs-human"}, Meta: meta,
 	})
+
 	if err != nil {
 		c.log.Error("create pool escalation", "pool", pool, "err", err)
 		return

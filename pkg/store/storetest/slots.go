@@ -28,7 +28,7 @@ func slotSteps(t *testing.T, s store.Store, res string, ids ...string) {
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q,"retries":5,"resources":[%q]}`, runID, id, res)),
 		})
 	}
-	_, err = s.CreateGraph(t.Context(), "test", nts, nil)
+	_, err = s.Apply(t.Context(), "test", store.Graph{Tickets: nts, Edges: nil})
 	require.NoError(t, err)
 }
 

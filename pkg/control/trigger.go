@@ -322,10 +322,11 @@ func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Tri
 	if key != "" {
 		tt.Body = strings.TrimSpace(tt.Body + "\n\nCheck output: " + key)
 	}
-	return c.store.Create(ctx, "controller", store.NewTicket{
+	return store.Create(ctx, c.store, "controller", store.NewTicket{
 		Project: tt.Project, Kind: store.KindTask, Title: tt.Title, Body: tt.Body,
 		Priority: tt.Priority, Pool: tt.Pool, Labels: tt.Labels, Meta: meta,
 	})
+
 }
 
 // fireRun starts the trigger's workflow run. meta.trigger goes on the run

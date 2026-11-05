@@ -121,7 +121,7 @@ func mkTicket(t *testing.T, c *Controller, nt store.NewTicket) store.Ticket {
 	if nt.Kind == "" {
 		nt.Kind = store.KindTask
 	}
-	tk, err := c.store.Create(t.Context(), "admin", nt)
+	tk, err := store.Create(t.Context(), c.store, "admin", nt)
 	require.NoError(t, err)
 	return tk
 }
@@ -148,7 +148,7 @@ func TestStallReadyUnclaimedSinceUnblock(t *testing.T) {
 	blocked := func() (store.Ticket, store.Ticket) {
 		step := mkTicket(t, c, store.NewTicket{Title: "step", Pool: "dev"})
 		b := mkTicket(t, c, store.NewTicket{Title: "blocker"})
-		require.NoError(t, c.store.AddEdge(ctx, "admin", store.Edge{From: step.ID, To: b.ID, Kind: store.EdgeBlocks}))
+		require.NoError(t, store.AddEdge(ctx, c.store, "admin", store.Edge{From: step.ID, To: b.ID, Kind: store.EdgeBlocks}))
 		return step, b
 	}
 	// Blocker closed 2h ago: the step is stalled.

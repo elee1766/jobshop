@@ -588,11 +588,12 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 		if err != nil {
 			return err
 		}
-		_, err = c.store.Create(ctx, "controller", store.NewTicket{
+		_, err = store.Create(ctx, c.store, "controller", store.NewTicket{
 			Project: t.Project, Kind: store.KindMessage,
 			Title: fmt.Sprintf("%s has new comments for %s", threadName(th), t.ID),
 			Body:  text, Fields: fields,
 		})
+
 		if err == nil {
 			c.wakeRunner(t.Holder)
 		}

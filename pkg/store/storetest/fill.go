@@ -41,13 +41,14 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	require.NoError(t, err2)
 	f.Step, err2 = s.NewID(proj)
 	require.NoError(t, err2)
-	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{
 		{ID: f.Run, Project: proj, Kind: store.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"w","state":"running","key":"k"}`)},
 		{
 			ID: f.Step, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: f.Run, Title: "step",
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"s","index":0,"retries":2,"resources":["emu"]}`, f.Run)),
 		},
-	}, nil)
+	}, Edges: nil})
+
 	require.NoError(t, err)
 	c.Advance(time.Second)
 	tk := task(t, s, "task", "dev", func(n *store.NewTicket) {
@@ -57,7 +58,7 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	})
 	f.Task = tk.ID
 	f.Blocker = task(t, s, "blocker", "dev").ID
-	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: f.Task, To: f.Blocker, Kind: store.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: f.Task, To: f.Blocker, Kind: store.EdgeBlocks}))
 	_, err = s.AddComment(ctx, "u", f.Task, "vendorHash mismatch after go.sum change")
 	require.NoError(t, err)
 	_, _, err = s.Claim(ctx, f.Step, "sess", lease)
@@ -156,6 +157,6 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	require.NoError(t, err)
 	assert.False(t, dup)
 	assert.Greater(t, it.ID, f.Inbox)
-	_, err = s.Create(ctx, "test", store.NewTicket{Project: proj, Kind: store.KindTask, Title: "new"})
+	_, err = store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: store.KindTask, Title: "new"})
 	require.NoError(t, err)
 }

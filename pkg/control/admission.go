@@ -479,7 +479,7 @@ func (c *Controller) holdForHuman(ctx context.Context, key string, ev admissionE
 		project = c.config().DefaultProject
 	}
 	prio := 1
-	if _, err := c.store.Create(ctx, "controller", store.NewTicket{
+	if _, err := store.Create(ctx, c.store, "controller", store.NewTicket{
 		Project: project, Kind: store.KindTask, Title: "Admission held " + ev.Source + " delivery " + ev.DeliveryID,
 		Body: b.String(), Priority: &prio, Labels: []string{needsHumanLabel, questionLabel}, Meta: meta,
 	}); err != nil {
