@@ -387,6 +387,11 @@ type Attention struct {
 	// beside it, so a later successful deploy clears it. Empty:
 	// rollbacks are not checked.
 	RollbackFile string `yaml:"rollback_file"`
+	// ConfigRepoFile is written by the NixOS module's config repo sync
+	// when a commit fails `jobshop config check` (#532): the first line
+	// is the commit, the rest the error. Listed while it exists; the
+	// sync removes it when a later commit passes. Empty: not checked.
+	ConfigRepoFile string `yaml:"config_repo_file"`
 	// ResourceWait lists a step waiting on a full resource longer than
 	// this Go duration (#408). Empty: not listed.
 	ResourceWait string `yaml:"resource_wait"`

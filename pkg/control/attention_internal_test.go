@@ -89,4 +89,13 @@ func TestAttention(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(state, "deployed"), []byte("new\n"), 0o600))
 	_, ok = rollbackItem(filepath.Join(state, "failed"))
 	assert.False(t, ok, "a later deploy clears it")
+
+	// Config repo (#532): listed while the failed file exists.
+	repoFile := filepath.Join(dir, "config-repo.failed")
+	_, ok = configRepoItem(repoFile)
+	assert.False(t, ok, "no failed file")
+	require.NoError(t, os.WriteFile(repoFile, []byte("abc123\npacks[0]: pack.yaml: no such file\n"), 0o600))
+	it, ok = configRepoItem(repoFile)
+	require.True(t, ok)
+	assert.Equal(t, rpc.AttentionItem{Kind: rpc.AttentionConfigRepo, ID: "abc123", Title: "config repo commit abc123 failed its check, running the last good config: packs[0]: pack.yaml: no such file", Since: it.Since}, it)
 }
