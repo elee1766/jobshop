@@ -10,5 +10,5 @@
     "skipLibCheck": true,
     "types": ["svelte"]
   },
-  "include": ["desk-plugin.d.ts", "src/**/*.js", "src/**/*.svelte", "plugins/**/*.js", "plugins/**/*.svelte"]
+  "include": ["desk-plugin.d.ts", "shell/**/*.js", "shell/**/*.svelte", "kit/**/*.js", "kit/**/*.svelte", "plugins/**/*.js", "plugins/**/*.svelte"]
 }

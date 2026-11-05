@@ -55,7 +55,7 @@ test('run drawer opens from work, is linkable and closes', async ({ page }) => {
 test('session chat panel opens from the sessions list and closes', async ({ page, isMobile }) => {
   const errors = watchErrors(page);
   await page.goto('./?view=sessions');
-  await expect(page.getByTestId('sessions')).toBeVisible();
+  await expect(page.getByTestId('sessions')).toBeVisible({ timeout: 15_000 });
   const row = page.locator('[data-testid=sessions] tr.click').first();
   test.skip((await row.count()) === 0, 'no sessions on this controller');
   const id = (await row.locator('td').first().locator('a').innerText()).trim();
@@ -78,7 +78,7 @@ test('session chat panel opens from the sessions list and closes', async ({ page
   } else {
     // Side panel: the list stays visible beside it.
     expect(box.width).toBeLessThan(vp.width / 2);
-    await expect(page.getByTestId('sessions')).toBeVisible();
+    await expect(page.getByTestId('sessions')).toBeVisible({ timeout: 15_000 });
   }
 
   // Reload keeps the panel.
@@ -153,7 +153,7 @@ test('no horizontal page overflow', async ({ page }) => {
 test('artifacts list, read, ack and next', async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto('./?view=artifacts');
-  await expect(page.locator('[data-testid=artifacts-empty], [data-testid=artifact-list]')).toBeVisible();
+  await expect(page.locator('[data-testid=artifacts-empty], [data-testid=artifact-list]')).toBeVisible({ timeout: 15_000 });
   const rows = page.locator('[data-testid=artifact-list] .item');
   test.skip((await rows.count()) < 2, 'needs two unread artifacts');
   const first = await rows.nth(0).locator('.title').innerText();

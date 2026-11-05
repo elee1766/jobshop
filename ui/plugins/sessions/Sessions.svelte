@@ -1,9 +1,13 @@
 <script>
-  import { url, go, closeSession } from '../lib/url.svelte.js';
-  import { resource, post, live } from '../lib/api.svelte.js';
-  import { ago } from '../lib/format.js';
+  import { resource, params, errText } from '../../kit/plugin.svelte.js';
+  import { ago } from '../../kit/format.js';
 
-  const sessions = resource(() => 'api/sessions');
+  /** @type {{ api: any, context?: any, config?: any }} */
+  let { api } = $props();
+  const url = params(() => api);
+  const go = (/** @type {Record<string, string>} */ p) => api.go(p);
+  const closeSession = () => api.closeSession();
+  const sessions = resource(() => api, () => 'api/sessions');
 
   let actErr = $state('');
 
@@ -11,7 +15,7 @@
   async function cordon(e, body) {
     e.stopPropagation();
     actErr = '';
-    try { await post('api/session/cordon', body); live.tick++; } catch (err) { actErr = String(/** @type {any} */ (err).message || err); }
+    try { await api.post('api/session/cordon', body); sessions.refresh(); } catch (err) { actErr = errText(err); }
   }
 
   /** @param {any} s */

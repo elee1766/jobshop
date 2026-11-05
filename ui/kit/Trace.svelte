@@ -1,10 +1,9 @@
 <script>
-  import { go } from '../lib/url.svelte.js';
-  import { tone, safe } from '../lib/format.js';
+  import { tone, safe } from './format.js';
   import Trace from './Trace.svelte';
 
-  /** @type {{ node: any }} */
-  let { node } = $props();
+  /** @type {{ node: any, go: (p: Record<string, string>) => void }} */
+  let { node, go } = $props();
 </script>
 
 <div class="node">
@@ -17,7 +16,7 @@
   {/each}
   {#if node.children?.length}
     <div class="kids">
-      {#each node.children as c (c.id)}<Trace node={c} />{/each}
+      {#each node.children as c (c.id)}<Trace node={c} {go} />{/each}
     </div>
   {/if}
 </div>

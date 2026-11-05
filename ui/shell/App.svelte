@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { url, go, closeSession, VIEWS } from './lib/url.svelte.js';
+  import { url, go, closeSession } from './lib/url.svelte.js';
   import { live, connect, resource, get } from './lib/api.svelte.js';
   import { panel } from './lib/panel.svelte.js';
   import { initPush } from './lib/push.svelte.js';
@@ -17,11 +17,6 @@
   import Puzzle from '@lucide/svelte/icons/puzzle';
   import { plugins, loadPlugins, contributions, dispatch, who, toasts, confirmBox } from './lib/plugins.svelte.js';
   import PluginSlot from './views/PluginSlot.svelte';
-  import Artifacts from './views/Artifacts.svelte';
-  import Work from './views/Work.svelte';
-  import Sessions from './views/Sessions.svelte';
-  import Pools from './views/Pools.svelte';
-  import Activity from './views/Activity.svelte';
   import Drawer from './views/Drawer.svelte';
   import SidePanel from './views/SidePanel.svelte';
 
@@ -53,26 +48,31 @@
   const unread = resource(() => 'api/artifacts?unread=1');
   const unreadCount = $derived(unread.data?.length ?? 0);
 
-  /** @type {Record<string, { name: string, icon: any, key: string }>} */
-  const builtin = {
-    attention: { name: 'Attention', icon: Inbox, key: 'a' },
-    artifacts: { name: 'Artifacts', icon: Package, key: 'r' },
-    chat: { name: 'Chat', icon: MessageSquare, key: 'c' },
-    work: { name: 'Work', icon: ListChecks, key: 'w' },
-    activity: { name: 'Activity', icon: ActivityIcon, key: 'y' },
-    sessions: { name: 'Sessions', icon: Terminal, key: 's' },
-    pools: { name: 'Pools', icon: Boxes, key: 'p' },
-    // Built-in plugin views (#517) keep their icon and key.
-    deploys: { name: 'Deploys', icon: Rocket, key: 'd' },
+  // Every view is a plugin (#541). Known ids keep their icon, key and
+  // nav order; other plugin views follow in plugin order.
+  /** @type {Record<string, { icon: any, key: string }>} */
+  const known = {
+    attention: { icon: Inbox, key: 'a' },
+    artifacts: { icon: Package, key: 'r' },
+    chat: { icon: MessageSquare, key: 'c' },
+    work: { icon: ListChecks, key: 'w' },
+    activity: { icon: ActivityIcon, key: 'y' },
+    sessions: { icon: Terminal, key: 's' },
+    pools: { icon: Boxes, key: 'p' },
+    deploys: { icon: Rocket, key: 'd' },
   };
+  const order = Object.keys(known);
+  const rank = (/** @type {string} */ id) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
 
-  // Plugin views (#517): one with a built-in's id replaces it.
   const pviews = $derived(contributions('view'));
   const pview = $derived(pviews.find((v) => v.c.id === url.view));
-  const nav = $derived([
-    ...VIEWS.map((v) => ({ id: v, title: pviews.find((p) => p.c.id === v)?.c.title || builtin[v].name })),
-    ...pviews.filter((p) => !VIEWS.includes(p.c.id ?? '')).map((p) => ({ id: p.c.id ?? '', title: p.c.title || p.c.id || '' })),
-  ].map((v) => ({ ...v, icon: builtin[v.id]?.icon || Puzzle, key: builtin[v.id]?.key || '' })));
+  const nav = $derived(
+    pviews
+      .filter((p, i) => p.c.id && pviews.findIndex((q) => q.c.id === p.c.id) === i)
+      .map((p, i) => ({ id: p.c.id ?? '', title: p.c.title || p.c.id || '', i }))
+      .sort((a, b) => rank(a.id) - rank(b.id) || a.i - b.i)
+      .map((v) => ({ ...v, icon: known[v.id]?.icon || Puzzle, key: known[v.id]?.key || '' })),
+  );
   const headers = $derived(contributions('header'));
 
   let light = $state(localStorage.getItem('desk-theme') === 'light');
@@ -138,11 +138,6 @@
   </div>
   <main>
     {#if pview}{#key pview.plugin.name + pview.c.element}<PluginSlot plugin={pview.plugin} element={pview.c.element} />{/key}
-    {:else if url.view === 'artifacts'}<Artifacts />
-    {:else if url.view === 'work'}<Work />
-    {:else if url.view === 'activity'}<Activity />
-    {:else if url.view === 'sessions'}<Sessions />
-    {:else if url.view === 'pools'}<Pools />
     {:else if !plugins.loaded}<p class="faint">Loading…</p>
     {:else}<p class="faint pad" data-testid="view-missing">No plugin shows <span class="mono">{url.view}</span>{plugins.error ? ': ' + plugins.error : ''}.</p>
     {/if}

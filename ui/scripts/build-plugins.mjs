@@ -16,7 +16,7 @@ const out = join(ui, '..', 'pkg', 'desk', 'dist', 'plugins');
 
 const bad = check(src);
 if (bad.length) {
-  console.error('ui/plugins must not import the shell (ui/src); use the api object:\n' + bad.join('\n'));
+  console.error('ui/plugins may import only their own files and ui/kit, never ui/shell; use the api object:\n' + bad.join('\n'));
   process.exit(1);
 }
 

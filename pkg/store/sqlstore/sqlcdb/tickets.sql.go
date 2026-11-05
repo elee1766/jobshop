@@ -603,34 +603,63 @@ WHERE (?1 IS NULL OR project = ?1)
   AND (?5 IS NULL OR holder = ?5)
   AND (?6 IS NULL OR parent_id = ?6)
   AND (?7 IS NULL OR created_by = ?7)
-  AND (?8 IS NULL OR EXISTS (
-    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?8))
-  AND (?9 IS NULL OR EXISTS (
+  AND (?8 IS NULL OR f_workflow = ?8)
+  AND (?9 IS NULL OR f_state = ?9)
+  AND tickets.updated_at >= ?10
+  AND (?11 IS NULL OR EXISTS (
+    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?11))
+  AND (?12 IS NULL OR EXISTS (
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
-      AND m.pack = ?9 AND m.mkey = ?10 AND m.value = ?11))
+      AND m.pack = ?12 AND m.mkey = ?13 AND m.value = ?14))
+  AND (?15 IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = ?15 AND m.mkey = ?16 AND m.value = ?17))
+  AND (?18 IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = ?18 AND m.mkey = ?19 AND m.value = ?20))
+  AND (?21 IS NULL OR EXISTS (
+    SELECT 1 FROM tickets a WHERE a.id = ?21
+      AND (tickets.priority > a.priority
+        OR (tickets.priority = a.priority AND (tickets.created_at > a.created_at
+          OR (tickets.created_at = a.created_at AND tickets.id > a.id))))))
 ORDER BY priority, created_at, id
-LIMIT CAST(?12 AS INTEGER)
+LIMIT CAST(?22 AS INTEGER)
 `
 
 type ListTicketsParams struct {
-	Project   interface{}
-	Kind      interface{}
-	Status    interface{}
-	Pool      interface{}
-	Holder    interface{}
-	ParentID  interface{}
-	CreatedBy interface{}
-	Label     interface{}
-	MetaPack  interface{}
-	MetaKey   sql.NullString
-	MetaValue sql.NullString
-	MaxRows   int64
+	Project    interface{}
+	Kind       interface{}
+	Status     interface{}
+	Pool       interface{}
+	Holder     interface{}
+	ParentID   interface{}
+	CreatedBy  interface{}
+	Workflow   interface{}
+	State      interface{}
+	Since      int64
+	Label      interface{}
+	MetaPack   interface{}
+	MetaKey    sql.NullString
+	MetaValue  sql.NullString
+	MetaPack2  interface{}
+	MetaKey2   sql.NullString
+	MetaValue2 sql.NullString
+	MetaPack3  interface{}
+	MetaKey3   sql.NullString
+	MetaValue3 sql.NullString
+	After      interface{}
+	MaxRows    int64
 }
 
 // LIMIT CAST(? AS INTEGER), here and in every query with a bound limit:
 // a bare bound LIMIT makes SQLite re-prepare a cached statement each
 // time the value changes, which was a fifth of the control tests' CPU
 // (#433). The expression is evaluated at run time instead.
+//
+// A NULL argument turns its filter off. meta_pack/key/value 1-3 are up
+// to store.MaxMetaFilters meta matches, all required; workflow and
+// state match the f_ columns; since bounds updated_at; after is a
+// cursor, the id of the last ticket of the previous page (#541).
 func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Ticket, error) {
 	rows, err := q.db.QueryContext(ctx, listTickets,
 		arg.Project,
@@ -640,10 +669,20 @@ func (q *Queries) ListTickets(ctx context.Context, arg ListTicketsParams) ([]Tic
 		arg.Holder,
 		arg.ParentID,
 		arg.CreatedBy,
+		arg.Workflow,
+		arg.State,
+		arg.Since,
 		arg.Label,
 		arg.MetaPack,
 		arg.MetaKey,
 		arg.MetaValue,
+		arg.MetaPack2,
+		arg.MetaKey2,
+		arg.MetaValue2,
+		arg.MetaPack3,
+		arg.MetaKey3,
+		arg.MetaValue3,
+		arg.After,
 		arg.MaxRows,
 	)
 	if err != nil {
@@ -705,28 +744,51 @@ WHERE (?1 IS NULL OR project = ?1)
   AND (?5 IS NULL OR holder = ?5)
   AND (?6 IS NULL OR parent_id = ?6)
   AND (?7 IS NULL OR created_by = ?7)
-  AND (?8 IS NULL OR EXISTS (
-    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?8))
-  AND (?9 IS NULL OR EXISTS (
+  AND (?8 IS NULL OR f_workflow = ?8)
+  AND (?9 IS NULL OR f_state = ?9)
+  AND tickets.updated_at >= ?10
+  AND (?11 IS NULL OR EXISTS (
+    SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = ?11))
+  AND (?12 IS NULL OR EXISTS (
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
-      AND m.pack = ?9 AND m.mkey = ?10 AND m.value = ?11))
+      AND m.pack = ?12 AND m.mkey = ?13 AND m.value = ?14))
+  AND (?15 IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = ?15 AND m.mkey = ?16 AND m.value = ?17))
+  AND (?18 IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = ?18 AND m.mkey = ?19 AND m.value = ?20))
+  AND (?21 IS NULL OR EXISTS (
+    SELECT 1 FROM tickets a WHERE a.id = ?21
+      AND (tickets.created_at < a.created_at
+        OR (tickets.created_at = a.created_at AND tickets.id < a.id))))
 ORDER BY created_at DESC, id DESC
-LIMIT CAST(?12 AS INTEGER)
+LIMIT CAST(?22 AS INTEGER)
 `
 
 type ListTicketsNewestParams struct {
-	Project   interface{}
-	Kind      interface{}
-	Status    interface{}
-	Pool      interface{}
-	Holder    interface{}
-	ParentID  interface{}
-	CreatedBy interface{}
-	Label     interface{}
-	MetaPack  interface{}
-	MetaKey   sql.NullString
-	MetaValue sql.NullString
-	MaxRows   int64
+	Project    interface{}
+	Kind       interface{}
+	Status     interface{}
+	Pool       interface{}
+	Holder     interface{}
+	ParentID   interface{}
+	CreatedBy  interface{}
+	Workflow   interface{}
+	State      interface{}
+	Since      int64
+	Label      interface{}
+	MetaPack   interface{}
+	MetaKey    sql.NullString
+	MetaValue  sql.NullString
+	MetaPack2  interface{}
+	MetaKey2   sql.NullString
+	MetaValue2 sql.NullString
+	MetaPack3  interface{}
+	MetaKey3   sql.NullString
+	MetaValue3 sql.NullString
+	After      interface{}
+	MaxRows    int64
 }
 
 // ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
@@ -740,10 +802,20 @@ func (q *Queries) ListTicketsNewest(ctx context.Context, arg ListTicketsNewestPa
 		arg.Holder,
 		arg.ParentID,
 		arg.CreatedBy,
+		arg.Workflow,
+		arg.State,
+		arg.Since,
 		arg.Label,
 		arg.MetaPack,
 		arg.MetaKey,
 		arg.MetaValue,
+		arg.MetaPack2,
+		arg.MetaKey2,
+		arg.MetaValue2,
+		arg.MetaPack3,
+		arg.MetaKey3,
+		arg.MetaValue3,
+		arg.After,
 		arg.MaxRows,
 	)
 	if err != nil {

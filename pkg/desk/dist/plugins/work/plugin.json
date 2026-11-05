@@ -1,0 +1,9 @@
+{
+  "name": "work",
+  "version": "1",
+  "entry": "index.js",
+  "api": ">=3",
+  "contributes": [
+    { "slot": "view", "element": "desk-work-view", "id": "work", "title": "Work" }
+  ]
+}
