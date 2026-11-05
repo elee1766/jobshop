@@ -2,7 +2,7 @@
   import { resource } from '../lib/api.svelte.js';
   import { ago } from '../lib/format.js';
 
-  const d = resource(() => '/api/deploys');
+  const d = resource(() => 'api/deploys');
   /** @param {string} [r] */
   const commit = (r) => (r ? 'https://github.com/elee1766/jobshop/commit/' + encodeURIComponent(r) : '');
   const short = (/** @type {string} */ r) => (r || '').slice(0, 7);

@@ -24,7 +24,7 @@ func proxyReq(peer, user string, set bool) *http.Request {
 }
 
 func TestProxyUser(t *testing.T) {
-	proxies, err := ParseProxies([]string{"127.0.0.1", "10.1.0.0/16"})
+	proxies, err := ParseTrustedProxies([]string{"127.0.0.1", "10.1.0.0/16"})
 	require.NoError(t, err)
 	ctl := &fakeCtl{results: map[string]any{rpc.MethodSessionList: []rpc.SessionInfo{}}}
 	h := New(Config{UserHeader: "X-Forwarded-User", TrustedProxies: proxies}, ctl, nil).Handler()
@@ -73,10 +73,10 @@ func TestNoProxyUserUnchanged(t *testing.T) {
 	assert.Empty(t, who.User)
 }
 
-func TestParseProxies(t *testing.T) {
-	_, err := ParseProxies([]string{"nope"})
+func TestParseTrustedProxies(t *testing.T) {
+	_, err := ParseTrustedProxies([]string{"nope"})
 	require.Error(t, err)
-	p, err := ParseProxies([]string{"::1", "100.64.0.0/10"})
+	p, err := ParseTrustedProxies([]string{"::1", "100.64.0.0/10"})
 	require.NoError(t, err)
 	assert.Equal(t, "::1/128", p[0].String())
 }

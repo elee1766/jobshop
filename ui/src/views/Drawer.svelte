@@ -7,9 +7,9 @@
 
   /** @type {{ id: string }} */
   let { id } = $props();
-  const v = resource(() => '/api/ticket/' + encodeURIComponent(id));
+  const v = resource(() => 'api/ticket/' + encodeURIComponent(id));
   // External activity linked to this run or ticket (#255).
-  const ext = resource(() => '/api/activity?limit=20&ticket=' + encodeURIComponent(id));
+  const ext = resource(() => 'api/activity?limit=20&ticket=' + encodeURIComponent(id));
   const close = () => go({ ticket: '' });
   /** meta.escalation on an escalation: the controller's chat session and key (#379). @param {any} t */
   const esc = (t) => meta(t).escalation || null;

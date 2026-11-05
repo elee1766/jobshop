@@ -6,7 +6,7 @@ test.skip(!process.env.DESK_CHAT, 'set DESK_CHAT=1 to start a real operator sess
 
 test('new operator session streams a reply to a message', async ({ page }) => {
   test.setTimeout(240_000);
-  await page.goto('/?view=chat');
+  await page.goto('./?view=chat');
   await page.getByTestId('chat-new-input').fill('Desk e2e check: reply with this word and nothing else\nPONG');
   await page.getByTestId('chat-new').click();
   await expect(page).toHaveURL(/session=/);
@@ -23,12 +23,12 @@ test('new operator session streams a reply to a message', async ({ page }) => {
 });
 
 test('sessions view attaches: composer only where the pool allows rw', async ({ page }) => {
-  await page.goto('/?view=sessions');
+  await page.goto('./?view=sessions');
   await expect(page.getByTestId('sessions')).toBeVisible();
   const row = page.locator('[data-testid=sessions] tr.click').first();
   test.skip((await row.count()) === 0, 'no sessions');
   const id = (await row.locator('td').first().innerText()).trim().split(/\s/)[0];
-  const access = await (await page.request.get('/api/session/' + id + '/access')).json();
+  const access = await (await page.request.get('api/session/' + id + '/access')).json();
   await row.click();
   await expect(page.getByTestId('journal')).toBeVisible();
   if (access.write) await expect(page.getByTestId('chat-input')).toBeVisible();
@@ -36,13 +36,13 @@ test('sessions view attaches: composer only where the pool allows rw', async ({ 
 });
 
 test('escalation drawer shows the escalation chat', async ({ page }) => {
-  const items = await (await page.request.get('/api/attention')).json();
+  const items = await (await page.request.get('api/attention')).json();
   const esc = items.find((/** @type {any} */ i) => i.kind === 'ticket');
   test.skip(!esc, 'no open escalation on this controller');
-  const t = await (await page.request.get('/api/ticket/' + esc.id)).json();
+  const t = await (await page.request.get('api/ticket/' + esc.id)).json();
   const chat = t.ticket.meta?.escalation;
   test.skip(!chat?.session, 'escalation has no chat (no escalation chat config)');
-  await page.goto('/?ticket=' + esc.id);
+  await page.goto('./?ticket=' + esc.id);
   const panel = page.getByTestId('escalation-chat');
   await expect(panel).toBeVisible();
   await expect(panel).toContainText(chat.key);
