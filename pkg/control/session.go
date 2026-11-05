@@ -1527,8 +1527,10 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 			return host.Permanentf("isolation: share worktree: %w", err)
 		}
 	}
-	// A worktree was just made; any other cwd must already exist.
-	if err := host.CheckSpawn(spec.Spec, worktree); err != nil {
+	// A worktree was just made; any other cwd must already exist. The
+	// host dir check rejects a session whose acp.sock would pass the unix
+	// socket path limit before the host starts and fails at bind (acphost#79).
+	if err := host.CheckSpawn(spec.Spec, worktree, host.WithHostDir(dir)); err != nil {
 		return err
 	}
 	if err := hostspec.Write(dir, spec); err != nil {
