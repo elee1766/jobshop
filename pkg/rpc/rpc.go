@@ -563,16 +563,16 @@ type SessionInfo struct {
 	// DisplayName is the session's label (#626): its own, or a default
 	// from pool and ticket titles. Not unique.
 	DisplayName string        `json:"display_name,omitempty"`
-	Ticket   *store.Ticket `json:"ticket,omitempty"`
-	Orphan   bool          `json:"orphan,omitempty"`
-	Alive    bool          `json:"alive"`
-	HostPid  int           `json:"host_pid,omitempty"`
-	AgentPid int           `json:"agent_pid,omitempty"` // known once a driver connected
-	Current  string        `json:"current,omitempty"`   // ticket the session holds
-	Seq      int64         `json:"seq,omitempty"`       // last journal sequence number
-	SeqTime  *time.Time    `json:"seq_time,omitempty"`
-	Exit     string        `json:"exit,omitempty"`    // exit.json reason, for dead hosts
-	Drained  bool          `json:"drained,omitempty"` // takes no new tickets
+	Ticket      *store.Ticket `json:"ticket,omitempty"`
+	Orphan      bool          `json:"orphan,omitempty"`
+	Alive       bool          `json:"alive"`
+	HostPid     int           `json:"host_pid,omitempty"`
+	AgentPid    int           `json:"agent_pid,omitempty"` // known once a driver connected
+	Current     string        `json:"current,omitempty"`   // ticket the session holds
+	Seq         int64         `json:"seq,omitempty"`       // last journal sequence number
+	SeqTime     *time.Time    `json:"seq_time,omitempty"`
+	Exit        string        `json:"exit,omitempty"`    // exit.json reason, for dead hosts
+	Drained     bool          `json:"drained,omitempty"` // takes no new tickets
 	// Cordon is the session's cordon reason (scale, manual, drain), empty
 	// while in rotation (#281).
 	Cordon string `json:"cordon,omitempty"`
