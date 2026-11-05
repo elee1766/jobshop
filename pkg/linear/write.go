@@ -234,38 +234,86 @@ type member struct {
 	URL         string `json:"url"`
 }
 
-const teamWriteQuery = `query($team: String!) { teams(filter: {key: {eq: $team}}) { nodes {
-  id key
-  states(first: 250) { nodes { id name type } }
-  labels(first: 250) { nodes { id name } }
-  members(first: 250) { nodes { id name displayName email url } }
-} } }`
+// teamIDQuery reads only the team id. States, labels and members come
+// from one paged query each (teamConn): asking for all three at 250 in
+// one query was rejected as "Query too complex" (#680, like #653).
+const teamIDQuery = `query($team: String!) { teams(filter: {key: {eq: $team}}) { nodes { id key } } }`
 
-func (c *Client) team(ctx context.Context, key string) (teamInfo, error) {
-	type nodes struct {
-		Nodes []Entry `json:"nodes"`
-	}
+// teamNeed says which lists team reads.
+type teamNeed struct{ states, labels, members bool }
+
+func (c *Client) team(ctx context.Context, key string, need teamNeed) (teamInfo, error) {
 	var r struct {
 		Teams struct {
 			Nodes []struct {
-				ID      string `json:"id"`
-				Key     string `json:"key"`
-				States  nodes  `json:"states"`
-				Labels  nodes  `json:"labels"`
-				Members struct {
-					Nodes []member `json:"nodes"`
-				} `json:"members"`
+				ID  string `json:"id"`
+				Key string `json:"key"`
 			} `json:"nodes"`
 		} `json:"teams"`
 	}
-	if err := c.do(ctx, teamWriteQuery, map[string]any{"team": key}, &r); err != nil {
+	if err := c.do(ctx, teamIDQuery, map[string]any{"team": key}, &r); err != nil {
 		return teamInfo{}, err
 	}
 	if len(r.Teams.Nodes) == 0 {
 		return teamInfo{}, fmt.Errorf("linear: team %s not found", key)
 	}
-	t := r.Teams.Nodes[0]
-	return teamInfo{ID: t.ID, Key: t.Key, States: t.States.Nodes, Labels: t.Labels.Nodes, Members: t.Members.Nodes}, nil
+	t := teamInfo{ID: r.Teams.Nodes[0].ID, Key: r.Teams.Nodes[0].Key}
+	if need.states {
+		if err := teamConn(ctx, c, t.Key, "states", "id name type", &t.States); err != nil {
+			return teamInfo{}, err
+		}
+	}
+	if need.labels {
+		if err := teamConn(ctx, c, t.Key, "labels", "id name", &t.Labels); err != nil {
+			return teamInfo{}, err
+		}
+	}
+	if need.members {
+		if err := teamConn(ctx, c, t.Key, "members", "id name displayName email url", &t.Members); err != nil {
+			return teamInfo{}, err
+		}
+	}
+	return t, nil
+}
+
+// teamConn reads one connection of a team, paged like Catalog, into out.
+func teamConn[T any](ctx context.Context, c *Client, team, conn, fields string, out *[]T) error {
+	q := `query($team: String!, $first: Int!, $after: String) { teams(filter: {key: {eq: $team}}) { nodes {
+  ` + conn + `(first: $first, after: $after) { nodes { ` + fields + ` } pageInfo { hasNextPage endCursor } }
+} } }`
+	type page struct {
+		Nodes    []T `json:"nodes"`
+		PageInfo struct {
+			HasNextPage bool   `json:"hasNextPage"`
+			EndCursor   string `json:"endCursor"`
+		} `json:"pageInfo"`
+	}
+	vars := map[string]any{"team": team, "first": catalogPage}
+	for range catalogMaxPages {
+		var r struct {
+			Teams struct {
+				Nodes []map[string]json.RawMessage `json:"nodes"`
+			} `json:"teams"`
+		}
+		if err := c.do(ctx, q, vars, &r); err != nil {
+			return err
+		}
+		if len(r.Teams.Nodes) == 0 {
+			return fmt.Errorf("linear: team %s not found", team)
+		}
+		var p page
+		if raw := r.Teams.Nodes[0][conn]; len(raw) > 0 {
+			if err := json.Unmarshal(raw, &p); err != nil {
+				return fmt.Errorf("linear: %s of team %s: %w", conn, team, err)
+			}
+		}
+		*out = append(*out, p.Nodes...)
+		if !p.PageInfo.HasNextPage || p.PageInfo.EndCursor == "" {
+			return nil
+		}
+		vars["after"] = p.PageInfo.EndCursor
+	}
+	return fmt.Errorf("linear: %s of team %s has more than %d pages", conn, team, catalogMaxPages)
 }
 
 func pick(kind string, es []Entry, name string) (Entry, error) {
@@ -322,7 +370,7 @@ func (c *Client) PlanCreate(ctx context.Context, p CreateParams, id string) (Mut
 	if strings.TrimSpace(p.Title) == "" {
 		return Mutation{}, errors.New("linear: create needs a title")
 	}
-	t, err := c.team(ctx, strings.ToUpper(p.Team))
+	t, err := c.team(ctx, strings.ToUpper(p.Team), teamNeed{states: p.State != "", labels: len(p.Labels) > 0, members: p.Assignee != ""})
 	if err != nil {
 		return Mutation{}, err
 	}
@@ -399,7 +447,7 @@ func (c *Client) PlanUpdate(ctx context.Context, key string, p UpdateParams) (Mu
 		return Mutation{}, fmt.Errorf("%w: %s updated at %s, not %s", ErrConflict, key,
 			r.Issue.UpdatedAt.UTC().Format(time.RFC3339Nano), p.IfUpdatedAt.UTC().Format(time.RFC3339Nano))
 	}
-	t, err := c.team(ctx, r.Issue.Team.Key)
+	t, err := c.team(ctx, r.Issue.Team.Key, teamNeed{states: p.State != "", labels: len(p.AddLabels)+len(p.RemoveLabels) > 0, members: p.Assignee != ""})
 	if err != nil {
 		return Mutation{}, err
 	}
@@ -499,7 +547,7 @@ func (c *Client) PlanAsk(ctx context.Context, key string, p AskParams, id string
 	}
 	body := p.Body
 	if len(p.Mention) > 0 {
-		t, err := c.team(ctx, is.Team.Key)
+		t, err := c.team(ctx, is.Team.Key, teamNeed{members: true})
 		if err != nil {
 			return Mutation{}, err
 		}
