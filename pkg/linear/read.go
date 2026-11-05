@@ -144,10 +144,10 @@ func (c *Client) GetContext(ctx context.Context, key string, all bool) (Context,
 
 type commentNodes struct {
 	Nodes []struct {
-		ID        string    `json:"id"`
-		Body      string    `json:"body"`
-		URL       string    `json:"url"`
-		CreatedAt time.Time `json:"createdAt"`
+		ID        string       `json:"id"`
+		Body      string       `json:"body"`
+		URL       string       `json:"url"`
+		CreatedAt time.Time    `json:"createdAt"`
 		User      *commentUser `json:"user"`
 		BotActor  *commentBot  `json:"botActor"`
 	} `json:"nodes"`

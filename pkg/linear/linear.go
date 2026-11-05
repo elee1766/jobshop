@@ -369,18 +369,18 @@ func (c *Client) SetState(ctx context.Context, key, name string) (State, error) 
 // Change is one thing that happened on an issue (#255): created, a
 // comment, a state change or an assignee change.
 type Change struct {
-	Issue  string    `json:"issue"` // key, ENG-123
-	Title  string    `json:"title"` // issue title
-	Kind   string    `json:"kind"`  // issue, comment, state, assignee
-	Actor  string    `json:"actor"`
+	Issue string `json:"issue"` // key, ENG-123
+	Title string `json:"title"` // issue title
+	Kind  string `json:"kind"`  // issue, comment, state, assignee
+	Actor string `json:"actor"`
 	// ActorID is the comment author's user or bot id (comments only).
-	ActorID string `json:"actor_id,omitempty"`
-	Self   bool      `json:"self,omitempty"` // by the API key's own user
-	Bot    bool      `json:"bot,omitempty"`  // no user (integration)
-	Text   string    `json:"text"`           // comment body, or "Todo -> Done"
-	URL    string    `json:"url"`
-	At     time.Time `json:"at"`
-	ItemID string    `json:"item_id"` // stable id of the comment or history entry
+	ActorID string    `json:"actor_id,omitempty"`
+	Self    bool      `json:"self,omitempty"` // by the API key's own user
+	Bot     bool      `json:"bot,omitempty"`  // no user (integration)
+	Text    string    `json:"text"`           // comment body, or "Todo -> Done"
+	URL     string    `json:"url"`
+	At      time.Time `json:"at"`
+	ItemID  string    `json:"item_id"` // stable id of the comment or history entry
 }
 
 const activityQuery = `query($team: String!, $since: DateTimeOrDuration!) {
@@ -415,10 +415,10 @@ func (c *Client) Changes(ctx context.Context, team string, since time.Time) ([]C
 				Creator    *actor    `json:"creator"`
 				Comments   struct {
 					Nodes []struct {
-						ID        string    `json:"id"`
-						Body      string    `json:"body"`
-						URL       string    `json:"url"`
-						CreatedAt time.Time `json:"createdAt"`
+						ID        string       `json:"id"`
+						Body      string       `json:"body"`
+						URL       string       `json:"url"`
+						CreatedAt time.Time    `json:"createdAt"`
 						User      *commentUser `json:"user"`
 						BotActor  *commentBot  `json:"botActor"`
 					} `json:"nodes"`

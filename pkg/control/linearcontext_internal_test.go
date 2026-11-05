@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -85,7 +86,7 @@ func TestLinearDeliveryAuthor(t *testing.T) {
 	th := thread{Linear: "ENG-5"}
 	one := []ghComment{{Linear: true, AuthorID: "u1", Handle: "ann", Author: "ann (Ann Lee)"}, {Linear: true, AuthorID: "u1", Handle: "ann", Author: "ann (Ann Lee)"}}
 	assert.Equal(t, "linear:ann", deliveryAuthor(th, one))
-	two := append(one, ghComment{Linear: true, AuthorID: "u2", Handle: "ann", Author: "ann (Ann Lee)"})
+	two := append(slices.Clone(one), ghComment{Linear: true, AuthorID: "u2", Handle: "ann", Author: "ann (Ann Lee)"})
 	assert.Equal(t, "linear:several", deliveryAuthor(th, two), "same handle, different id")
 
 	byID := map[string]linear.Comment{}
