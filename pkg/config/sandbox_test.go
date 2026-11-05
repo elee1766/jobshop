@@ -48,6 +48,11 @@ func TestSandboxProfileErrors(t *testing.T) {
 		"sandbox_profiles:\n  x: {ro: [relative]}\n",
 		"sandbox_profiles:\n  x: {env_keep: [\"A=B\"]}\n",
 		"sandbox_profiles:\n  x: {env_keep: [\"*\"]}\n",
+		"sandbox_profiles:\n  x: {network: host, dns: {forward: 169.254.1.1}}\n",
+		"sandbox_profiles:\n  x: {dns: {forward: resolver}}\n",
+		"sandbox_profiles:\n  x: {dns: {forward: 169.254.1.1, host: localhost}}\n",
+		"sandbox_profiles:\n  x: {resolv_conf: resolv.conf}\n",
+		"sandbox_profiles:\n  x: {dns_check: \"a b\"}\n",
 	} {
 		_, err := config.Parse([]byte("projects: {js: {}}\nagents: {fake: {command: /bin/true}}\n" + bad))
 		assert.Error(t, err, bad)

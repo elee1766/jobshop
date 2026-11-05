@@ -1559,6 +1559,9 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir, home); err != nil {
 		return err
 	}
+	if err := c.checkSandboxDNS(t.Pool, spec.Sandbox); err != nil {
+		return err
+	}
 	if home != "" {
 		// Sandboxed, "~/" binds land at the controller's HOME path, so
 		// HOME stays that path; unsandboxed it is the mapped home itself.
