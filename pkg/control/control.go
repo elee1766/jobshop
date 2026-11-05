@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -681,7 +682,7 @@ func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.Metho
 				telemetry.AttrProject.String(sc.project))
 		}
 		defer c.metrics.Since(ctx, time.Now(), name)
-		res, err := h(c, ctx, sc, params)
+		res, err := h.call(c, ctx, sc, params)
 		if err != nil {
 			if !errors.Is(err, store.ErrNoWork) {
 				span.SetStatus(codes.Error, err.Error())
@@ -693,12 +694,17 @@ func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.Metho
 	}
 }
 
-type method func(c *Controller, ctx context.Context, sc scope, params json.RawMessage) (any, error)
+// method is one handler. params is its parameter type, which a test
+// checks against rpc.Specs (#542).
+type method struct {
+	call   func(c *Controller, ctx context.Context, sc scope, params json.RawMessage) (any, error)
+	params reflect.Type
+}
 
 // bind decodes params into P before calling fn, a (*Controller) method
 // expression.
 func bind[P any](fn func(c *Controller, ctx context.Context, sc scope, p P) (any, error)) method {
-	return func(c *Controller, ctx context.Context, sc scope, raw json.RawMessage) (any, error) {
+	return method{params: reflect.TypeFor[P](), call: func(c *Controller, ctx context.Context, sc scope, raw json.RawMessage) (any, error) {
 		var p P
 		if len(raw) > 0 && string(raw) != "null" {
 			dec := json.NewDecoder(bytesReader(raw))
@@ -708,7 +714,7 @@ func bind[P any](fn func(c *Controller, ctx context.Context, sc scope, p P) (any
 			}
 		}
 		return fn(c, ctx, sc, p)
-	}
+	}}
 }
 
 var methods map[string]method
@@ -796,6 +802,7 @@ func init() {
 		rpc.MethodWaitAdd:           bind((*Controller).waitAdd),
 		rpc.MethodWaitList:          bind((*Controller).waitList),
 		rpc.MethodWaitClear:         bind((*Controller).waitClear),
+		rpc.MethodDeskExec:          bind((*Controller).deskExec),
 	}
 }
 

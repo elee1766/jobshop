@@ -522,6 +522,11 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - NixOS `workspaces.<name>.config`: run from `jobshop.yaml` in a git
   checkout; each push is checked, reset to last good on failure and
   listed as attention `config-repo` (#532, `docs/notes/532-config-repo.md`).
+- Desk plugins part 3: `desk_commands` run by `desk.exec`/`api.exec`,
+  `rpc.Specs` with schemas on `GET /api/rpc` and a generated
+  `ui/desk-plugin.d.ts`, the CSV example and `docs/desk-plugins.md`
+  (#542, `docs/notes/542-desk-plugins-part3.md`,
+  `docs/verify/desk-plugin-commands.md`).
 
 ## 5. What's next
 
@@ -686,9 +691,9 @@ visibility (#408), placement (#409).
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
 `session.journal` (#529), Desk plugin host part 1 (#517), config from a
-git repo (#532).
+git repo (#532), plugin commands, typed RPC and docs (#542).
 Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
-and plugin API (#541, #542).
+and `api.query`/`api.session` (#541).
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1401,6 +1406,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   host object, as Home Assistant cards; no shared framework or Module
   Federation, so a Desk upgrade cannot break a plugin's runtime.
   Built-ins may not import the shell, which proves the API suffices.
+- Plugins run host commands only by name from `desk_commands`, never a
+  command string from the browser (2026-11-05, #542). Plugin types come
+  from one table, `rpc.Specs`, checked against the handler table, so the
+  `.d.ts` and the `/api/rpc` schemas cannot drift from the controller.
 
 ## 7. Reference: behavior as built
 
@@ -1465,6 +1474,7 @@ moved from the old 7.x list, oldest first:
 - [Desk under a path prefix](notes/516-desk-base-path.md) (#516)
 - [Learning kinds and trigger filters](notes/524-learning-kinds.md) (#524)
 - [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
+- [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
 
 ## 8. Chat gateway
 
