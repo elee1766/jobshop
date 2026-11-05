@@ -32,6 +32,10 @@ defaults:
   # these labels (#509): operator PRs kept open on purpose. Comma-separated.
   stall_pr_skip_authors: ""
   stall_pr_skip_labels: hold
+  # Label release-please puts on its open release PR (#698). The
+  # release-pr trigger routes a green one to the refinery, and
+  # pr_unmerged skips it. Empty turns the trigger off.
+  release_pr_label: "autorelease: pending"
   deploy_check: >-
     none (these agents do not deploy this repo); treat this check as
     passed.
@@ -139,6 +143,26 @@ triggers:
       workflow: ci-repair
       vars: {sha: "{{.check_output}}"}
       key: "{{.check_output}}"
+  # One release-merge run per green release-please PR (#698): those PRs
+  # have no pr-work run, so nothing else merges them. The check prints
+  # the lowest such PR number; the key dedups it. The run's open ticket
+  # holds the trigger, so a second release PR waits for the first.
+  release-pr:
+    when:
+      check: >-
+        test -n "{{.release_pr_label}}" &&
+        gh pr list --repo {{.repo}} --state open --label "{{.release_pr_label}}"
+        --json number,isDraft,statusCheckRollup --jq '
+        [.[]
+        | select(.isDraft | not)
+        | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[];
+        .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL"))
+        | .number] | sort | .[0] // empty' | grep .
+      check_timeout: 30s
+    run:
+      workflow: release-merge
+      vars: {pr: "{{.check_output}}"}
+      key: "release-pr-{{.check_output}}"
   # Work that stopped moving (#143). Store signals are computed by the
   # controller; the others are gh checks, one subject per output line.
   stall:
@@ -190,6 +214,8 @@ triggers:
             | select(.isDraft | not)
             | select(.author.login | ascii_downcase | IN($skipa[]) | not)
             | select(any(.labels[].name | ascii_downcase; IN($skipl[])) | not)
+            | select(("{{.release_pr_label}}" | ascii_downcase) as $rl
+            | $rl == "" or (any(.labels[].name | ascii_downcase; . == $rl) | not))
             | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[];
             .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL"))
             | select((now - (.updatedAt | fromdateiso8601)) > 7200)
@@ -335,6 +361,25 @@ workflows:
         retries: 2
         title: "Merge CI fix for {{.sha}}"
         prompt_file: prompts/ci-merge.md
+  # One run per green release-please PR, started by the release-pr
+  # trigger with key release-pr-<n> (#698). No review: release PRs are
+  # merged by policy (#569, 2026-11-05 #644/#646).
+  release-merge:
+    vars: [pr]
+    pr: pr
+    repo: "{{.repo}}"
+    escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
+      hold_prompt_file: prompts/escalation-hold.md
+    steps:
+      - id: merge
+        pool: refinery
+        retries: 2
+        title: "Merge release PR #{{.pr}}"
+        prompt_file: prompts/release-merge.md
   # Escalation drill (docs/verify/escalation-drill.md). One attempt
   # that always closes failed, so the run reaches needs_human at once.
   # Started by hand with --key drill-<date>.

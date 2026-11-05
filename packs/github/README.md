@@ -67,6 +67,9 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `master-red` trigger: when the latest completed master CI run failed,
   starts a `ci-repair` run keyed by the failing SHA (check command via
   `gh`; the controller needs `GH_TOKEN`).
+- `release-pr` trigger: a green release PR (label `release_pr_label`)
+  starts a `release-merge` run keyed `release-pr-<n>`: one `merge` step in
+  `refinery`, `prompts/release-merge.md` (#698).
 
 Prompt rules `recall` and `learn-nudge` are in `prompts/rules/`. Trigger
 tickets take `body_file` like pools take `prompt_file`, with pack vars
@@ -165,6 +168,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
 | `stall_pr_skip_authors` | Comma-separated logins whose green PRs `pr_unmerged` does not flag, besides `human` (#509) |
 | `stall_pr_skip_labels` | Comma-separated PR labels `pr_unmerged` does not flag. Default `hold` (#509) |
+| `release_pr_label` | Label of release-please PRs. Default `autorelease: pending`. A green, non-draft open PR with it gets one `release-merge` run (refinery merges it without review), and `pr_unmerged` does not flag it. Empty turns the `release-pr` trigger off (#698) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
 | `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
