@@ -55,40 +55,51 @@ let
     // lib.optionalAttrs (g.artifactRoom != "") { artifact_room = g.artifactRoom; }
     // lib.optionalAttrs (g.deskUrl != "") { desk_url = g.deskUrl; }
   ) cfg.gateway;
-  settings =
-    cfg.settings
+  withModuleKeys =
+    base:
+    base
     // lib.optionalAttrs (cfg.identities != { }) {
-      identities = (cfg.settings.identities or { }) // cfg.identities;
+      identities = (base.identities or { }) // cfg.identities;
     }
-    // lib.optionalAttrs (livePacks != [ ]) { packs = (cfg.settings.packs or [ ]) ++ livePacks; }
+    // lib.optionalAttrs (livePacks != [ ]) { packs = (base.packs or [ ]) ++ livePacks; }
     // lib.optionalAttrs (cfg.gateway != { }) {
-      gateway = (cfg.settings.gateway or { }) // gatewaySettings;
+      gateway = (base.gateway or { }) // gatewaySettings;
     }
     # Self-deploy rollbacks show in `jobshop attention` (#185).
     // lib.optionalAttrs cfg.selfDeploy.enable {
       attention = {
         rollback_file = "${deployState}/failed";
       }
-      // (cfg.settings.attention or { });
+      // (base.attention or { });
     }
     // lib.optionalAttrs cfg.sandbox.enable {
-      defaults = (cfg.settings.defaults or { }) // {
+      defaults = (base.defaults or { }) // {
         sandbox = {
           backend = "bubblewrap";
           inherit (cfg.sandbox) rw;
         }
-        // ((cfg.settings.defaults or { }).sandbox or { });
+        // ((base.defaults or { }).sandbox or { });
       };
       shared_tools =
-        (cfg.settings.shared_tools or [ ])
+        (base.shared_tools or [ ])
         ++ cfg.sandbox.sharedTools
         ++ lib.optional sharedMise cfg.sandbox.mise.dir;
     };
-  configFile = settingsFormat.generate "jobshop.yaml" (
-    lib.recursiveUpdate settings (
-      lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; }
-    )
+  # Managed mode (configFile = null): jobshop.yaml is generated from
+  # settings plus the module's keys. User mode (#531): the user owns
+  # jobshop.yaml and includes jobshop.module.yaml, which holds only the
+  # module's keys.
+  userConfig = cfg.configFile != null;
+  telemetryAttrs = lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; };
+  generatedConfig = settingsFormat.generate "jobshop.yaml" (
+    lib.recursiveUpdate (withModuleKeys cfg.settings) telemetryAttrs
   );
+  moduleFile = settingsFormat.generate "jobshop.module.yaml" (
+    lib.recursiveUpdate (withModuleKeys { }) telemetryAttrs
+  );
+  # What a switch changes: reload and restart triggers.
+  configFile = if userConfig then moduleFile else generatedConfig;
+  rootConfig = "${cfg.dataDir}/jobshop.yaml";
   jobshop = lib.getExe cfg.package;
   sharedMise = cfg.sandbox.enable && cfg.sandbox.mise.tools != [ ];
 
@@ -398,7 +409,21 @@ in
     settings = lib.mkOption {
       type = settingsFormat.type;
       default = { };
-      description = "Contents of jobshop.yaml.";
+      description = "Contents of jobshop.yaml. Unused, and must be empty, with configFile set.";
+    };
+
+    configFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/jobshop/jobshop.yaml";
+      description = ''
+        A jobshop.yaml the user owns (#531). Null: generated from settings.
+        A path: dataDir/jobshop.yaml links to it, or is left alone when it is
+        that path, and the module never writes it. The module's own keys
+        (identities, gateway, live packs, sandbox, attention, telemetry) go to
+        dataDir/jobshop.module.yaml; the file should list it under
+        `include:`. Edits are checked and reloaded by jobshop-config.path.
+      '';
     };
 
     path = lib.mkOption {
@@ -775,6 +800,10 @@ in
             assertion = !sd.enable || deployWorkspaces != [ ];
             message = "services.jobshop.selfDeploy.enable needs one workspace with selfDeploy = true.";
           }
+          {
+            assertion = !userConfig || cfg.settings == { };
+            message = "services.jobshop: set configFile or settings, not both; with configFile put those keys in your file (the module's own keys go to jobshop.module.yaml).";
+          }
         ];
 
         users.users.${cfg.user} = {
@@ -788,7 +817,17 @@ in
         systemd.tmpfiles.rules = [
           "d ${cfg.dataDir} 0700 ${cfg.user} ${cfg.group} -"
           # The root's config is the generated file; L+ replaces the link on each switch.
-          "L+ ${cfg.dataDir}/jobshop.yaml - - - - ${configFile}"
+          # With configFile the user's file is linked (never written) and the
+          # module's keys go to jobshop.module.yaml (#531).
+        ]
+        ++ (
+          if userConfig then
+            [ "L+ ${cfg.dataDir}/jobshop.module.yaml - - - - ${moduleFile}" ]
+            ++ lib.optional (cfg.configFile != rootConfig) "L+ ${rootConfig} - - - - ${cfg.configFile}"
+          else
+            [ "L+ ${rootConfig} - - - - ${configFile}" ]
+        )
+        ++ [
           # Per-host GC roots keep a running session host's binary alive across Nix switches.
           "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${cfg.user} ${cfg.group} -"
         ]
@@ -1093,6 +1132,35 @@ in
             Restart = "always";
             RestartSec = 5;
           };
+        };
+      })
+      (lib.mkIf userConfig {
+        # A user-owned jobshop.yaml changes outside a switch, so
+        # reloadTriggers never see it (#531). Check, then reload; a failed
+        # check logs and the controller keeps its running config (#227).
+        systemd.paths.jobshop-config = {
+          description = "Watch the user-managed jobshop.yaml";
+          wantedBy = [ "multi-user.target" ];
+          pathConfig = {
+            PathChanged = [
+              cfg.configFile
+              "${cfg.dataDir}/jobshop.module.yaml"
+            ];
+            Unit = "jobshop-config.service";
+          };
+        };
+        systemd.services.jobshop-config = {
+          description = "Check and reload a changed jobshop.yaml";
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          serviceConfig.Type = "oneshot";
+          script = ''
+            if ! out=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- ${jobshop} config check --file ${rootConfig} 2>&1); then
+              echo "<3>jobshop.yaml check failed, keeping the running config: $out"
+              exit 1
+            fi
+            echo "config check: $out"
+            ${pkgs.systemd}/bin/systemctl try-reload-or-restart jobshop.service
+          '';
         };
       })
       (lib.mkIf cfg.ingest.enable {
