@@ -2,6 +2,8 @@ package control
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	host "github.com/elee1766/acphost"
@@ -79,6 +81,31 @@ func TestSlotAllocation(t *testing.T) {
 	d, err := createSlotSession(t, c, "dev")
 	require.NoError(t, err)
 	assert.Equal(t, 0, slotOf(t, d))
+}
+
+// TestRemoveSlotHome (JOB-28): closing a per_session session deletes its
+// slot's home and leaves the other slot's; an open session keeps its own.
+func TestRemoveSlotHome(t *testing.T) {
+	c, _, _ := stallControllerYAML(t, slotYAML)
+	ctx := t.Context()
+	a, err := createSlotSession(t, c, "dev")
+	require.NoError(t, err)
+	b, err := createSlotSession(t, c, "dev")
+	require.NoError(t, err)
+	ha, hb := c.mappedHomeDir("dev", new(slotOf(t, a))), c.mappedHomeDir("dev", new(slotOf(t, b)))
+	for _, h := range []string{ha, hb} {
+		require.NoError(t, os.MkdirAll(filepath.Join(h, ".cache"), 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(h, ".cache", "f"), []byte("x"), 0o600))
+	}
+
+	c.removeSlotHome(a)
+	assert.DirExists(t, ha, "open session keeps its home")
+
+	closed, err := store.Close(ctx, c.store, "test", a.ID, nil, "done")
+	require.NoError(t, err)
+	c.removeSlotHome(closed)
+	assert.NoDirExists(t, ha)
+	assert.DirExists(t, hb)
 }
 
 // TestSlotRestart: a new controller over the same store sees the

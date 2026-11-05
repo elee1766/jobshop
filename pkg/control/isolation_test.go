@@ -203,22 +203,37 @@ pools:
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	}
 
-	var work []string
+	var work, homes []string
 	passEventually(t, root.Dir, func() bool {
 		var got []store.Ticket
 		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusOpen, Kind: store.KindSession}, &got) != nil || len(got) < 2 {
 			return false
 		}
-		work = work[:0]
+		work, homes = work[:0], homes[:0]
 		for _, s := range got[:2] {
 			w := filepath.Join(root.SessionDir(s.ID), "work")
+			f, err := store.DecodeFields[store.SessionFields](s)
+			if err != nil || f.Slot == nil {
+				return false
+			}
+			h := filepath.Join(root.Dir, "homes", "dev-"+strconv.Itoa(*f.Slot))
 			if _, err := os.Stat(w); err != nil {
 				return false
 			}
-			work = append(work, w)
+			if _, err := os.Stat(h); err != nil {
+				return false
+			}
+			work, homes = append(work, w), append(homes, h)
 		}
 		return true
-	}, "two sessions with worktrees")
+	}, "two sessions with worktrees and homes")
+
+	// Each per-slot home (JOB-28) gets a secret too; the probe reads the
+	// peer's through peer-home, written before peer-go.
+	for i, h := range homes {
+		require.NoError(t, os.WriteFile(filepath.Join(h, "secret"), []byte("s"), 0o660))
+		require.NoError(t, os.WriteFile(filepath.Join(work[i], "peer-home"), []byte(filepath.Join(homes[1-i], "secret")), 0o660))
+	}
 
 	// Each worktree gets a secret, then a go file naming the other's
 	// secret; the agents wait for it before probing.
@@ -237,12 +252,28 @@ pools:
 		}, "peer probe result")
 		b, err := os.ReadFile(res)
 		require.NoError(t, err)
-		assert.Equal(t, "own: ok\npeer: denied\n", string(b), w)
+		assert.Equal(t, "own: ok\npeer: denied\nown home: ok\npeer home: denied\n", string(b), w)
 		st, err := os.Stat(res)
 		require.NoError(t, err)
 		uids[st.Sys().(*syscall.Stat_t).Uid] = true
 	}
 	assert.Len(t, uids, 2, "each session writes as its own host uid")
+
+	// Closing the sessions frees their slots and deletes their homes, so
+	// the next session in a slot cannot read what the last one left.
+	var open []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusOpen, Kind: store.KindSession}, &open))
+	for _, s := range open {
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: s.ID}, nil))
+	}
+	passEventually(t, root.Dir, func() bool {
+		for _, h := range homes {
+			if _, err := os.Stat(h); err == nil {
+				return false
+			}
+		}
+		return true
+	}, "per-session homes removed")
 }
 
 // peerProbe runs in the fake agent for TestPerSessionIsolation: wait for
@@ -269,6 +300,18 @@ func peerProbe() {
 		res += "peer: read\n"
 	} else {
 		res += "peer: denied\n"
+	}
+	if home, err := os.ReadFile("peer-home"); err == nil {
+		if _, err := os.ReadFile(filepath.Join(os.Getenv("HOME"), "secret")); err == nil {
+			res += "own home: ok\n"
+		} else {
+			res += "own home: " + err.Error() + "\n"
+		}
+		if _, err := os.ReadFile(string(home)); err == nil {
+			res += "peer home: read\n"
+		} else {
+			res += "peer home: denied\n"
+		}
 	}
 	_ = os.WriteFile("peer-probe", []byte(res), 0o660)
 }

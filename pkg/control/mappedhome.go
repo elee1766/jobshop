@@ -139,6 +139,30 @@ func (c *Controller) sessionMappedHome(t store.Ticket, f store.SessionFields) (s
 	return home, nil
 }
 
+// removeSlotHome deletes a closed per_session session's home (JOB-28), so
+// the next session given the same slot starts empty and cannot read what
+// this one left. Per-pool homes are shared by design and kept. The
+// controller can delete agent files through the pool group's default
+// ACL entry; a failure is logged, and the next spawn in the slot still
+// re-grants the dir.
+func (c *Controller) removeSlotHome(t store.Ticket) {
+	u := c.config().IsolationFor(t.Pool).User
+	if t.Kind != store.KindSession || t.Status != store.StatusClosed || u == nil || u.Slots() == 0 {
+		return
+	}
+	f, err := store.DecodeFields[store.SessionFields](t)
+	if err != nil || f.Slot == nil {
+		return
+	}
+	if host.Alive(c.root.SessionDir(t.ID)) {
+		return
+	}
+	home := c.mappedHomeDir(t.Pool, f.Slot)
+	if err := os.RemoveAll(home); err != nil {
+		c.log.Warn("remove per-session home", "session", t.ID, "home", home, "err", err)
+	}
+}
+
 // checkMounts fails with the first sandbox mount source (or the cwd) the
 // mapped uid cannot reach, naming the path and its mode. Without it bwrap
 // fails at spawn ("Can't find source path ... Permission denied") and the

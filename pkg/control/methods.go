@@ -333,6 +333,7 @@ func (c *Controller) endSession(ctx context.Context, id, reason string) {
 	c.setReadOnly(id, false)
 	if t, err := c.store.Get(ctx, id); err == nil {
 		c.removeWorktree(t, "endSession: "+reason)
+		c.removeSlotHome(t)
 	}
 	released, err := c.store.Expire(ctx, "controller", id, reason)
 	if err != nil {
