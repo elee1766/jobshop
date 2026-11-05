@@ -21,6 +21,11 @@ failed attempt; a plain release is one).
    version, the deploy may have moved since. Not yet: comment what you
    saw, `jobshop release --until 5m -r "deploy pending"`, and check again. Still not after an hour of
    green CI: comment what you saw and `jobshop close -r failed`.
-3. Both good: comment on the issue (`gh issue comment {{.issue}}`) that it
+3. Release: if the issue asks for a release or a tag, the merge alone
+   does not ship it. Check `git ls-remote --tags https://github.com/{{.repo}} <tag>`.
+   No tag yet: comment what is missing and
+   `jobshop release --until 30m -r "tag <tag> not pushed"`; never close on
+   the merge alone.
+4. All good: comment on the issue (`gh issue comment {{.issue}}`) that it
    shipped in <sha> (and is deployed, if step 2 applies), then
    `jobshop close`. That finishes the run.
