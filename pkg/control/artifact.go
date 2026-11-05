@@ -111,7 +111,6 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 		ID: id, Project: project, Kind: store.KindMessage, Title: title, Body: p.Body,
 		Labels: []string{artifactLabel}, Meta: meta, Fields: fields,
 	})
-
 	if err != nil {
 		_ = os.RemoveAll(c.artifactDir(id))
 		return nil, err

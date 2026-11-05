@@ -792,7 +792,6 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 			Project: proj, Kind: store.KindSession,
 			Fields: json.RawMessage(`{"agent":"jcode","key":"matrix:!r"}`),
 		})
-
 	}
 	a, err := sess()
 	require.NoError(t, err)

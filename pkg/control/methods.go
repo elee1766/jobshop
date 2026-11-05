@@ -184,7 +184,6 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 		Pool: p.Pool, Holder: p.Holder, ParentID: p.ParentID, Labels: p.Labels,
 		Fields: p.Fields, Meta: p.Meta,
 	})
-
 }
 
 func (c *Controller) show(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {

@@ -198,7 +198,6 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 		Project: t.Project, Kind: store.KindMessage, Title: "Question: " + title, Body: b,
 		Priority: &prio, Labels: []string{needsHumanLabel}, Meta: mb, Fields: fields,
 	})
-
 }
 
 // questionOf is meta.question of a question ticket.
@@ -255,7 +254,6 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 				Project: s.Project, Kind: store.KindMessage,
 				Title: fmt.Sprintf("Answer to your question %s on %s", qt.ID, qm.Ticket), Body: text, Fields: fields,
 			})
-
 			if err != nil {
 				return nil, err
 			}

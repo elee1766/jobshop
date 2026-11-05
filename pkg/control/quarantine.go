@@ -183,7 +183,6 @@ func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason stri
 		Project: proj, Kind: store.KindTask, Title: clipTitle(fmt.Sprintf("Pool %s quarantined: %s", pool, reason)),
 		Body: body, Priority: &prio, Pool: dest, Labels: []string{"needs-human"}, Meta: meta,
 	})
-
 	if err != nil {
 		c.log.Error("create pool escalation", "pool", pool, "err", err)
 		return

@@ -141,7 +141,6 @@ func (c *Controller) ensureEscalation(ctx context.Context, run store.Ticket, f s
 		Project: run.Project, Kind: store.KindTask, Title: "Escalate run " + run.ID,
 		Body: body, Priority: &prio, Pool: pool, Labels: []string{"needs-human"}, Meta: mb,
 	})
-
 	if err != nil {
 		c.log.Error("create escalation", "run", run.ID, "err", err)
 		return

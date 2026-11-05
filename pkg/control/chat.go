@@ -73,7 +73,6 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	m, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
 		Project: sess.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
 	})
-
 	if err != nil {
 		return nil, err
 	}
