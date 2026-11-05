@@ -13,8 +13,9 @@ the pinned decision log issue (#569). Progress: open `target` issues.
   run a supervisor pass (`pass` / `Options.Pass`) or wait on an event.
   New controller-logic tests use the in-process agent once #361 lands.
 - Lint: golangci-lint v2.15.0 with `.golangci.yml`, the same version CI runs
-  (on PATH for agents on gasserver; elsewhere `nix develop` or
-  `nix run .#golangci-lint -- run ./...`). Fix every finding in the code you
+  (on PATH for agents on gasserver, set in its host config; elsewhere
+  `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...`).
+  Fix every finding in the code you
   touched before pushing; do not add `//nolint` or relax `.golangci.yml`
   to pass. A finding in code you did not touch that blocks CI: fix it in
   the same PR and say so in the PR body.

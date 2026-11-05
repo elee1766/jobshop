@@ -153,8 +153,6 @@ let
     coreutils
     bash
     mise
-    # From this flake's nixpkgs, so agents lint with the version CI uses.
-    self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
   ];
   useIdentities = cfg.gitIdentity.jobshopIdentities;
   # gh through `jobshop gh` (#349): it adds the identity token for the repo
