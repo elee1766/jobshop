@@ -3,8 +3,6 @@
   import { resource } from '../lib/api.svelte.js';
   import { ago, fields, tone, links, meta, safe, isSessionId } from '../lib/format.js';
   import Trace from './Trace.svelte';
-  import Chat from './Chat.svelte';
-  import SessionLink from './SessionLink.svelte';
   import X from '@lucide/svelte/icons/x';
   import PluginSlot from './PluginSlot.svelte';
   import { contributions, matches } from '../lib/plugins.svelte.js';
@@ -15,19 +13,8 @@
   // External activity linked to this run or ticket (#255).
   const ext = resource(() => 'api/activity?limit=20&ticket=' + encodeURIComponent(id));
   const close = () => go({ ticket: '' });
-  /**
-   * The escalation chat: meta.escalation (controller-owned, #379), else the
-   * older meta.gateway session and key.
-   * @param {any} t
-   */
-  const thread = (t) => {
-    const m = meta(t);
-    const e = m.escalation;
-    if (e?.session) return { session: e.session, key: e.key || '' };
-    const g = m.gateway;
-    if (g?.session) return { session: g.session, key: g.key || '' };
-    return null;
-  };
+  /** @param {string} id */
+  const openSession = (id) => go({ session: id, ticket: '' });
   /** @param {any} t */
   const report = (t) => meta(t).report || null;
   /** Match target for drawer and action plugins (#517). @param {any} t @param {any} run */
@@ -37,6 +24,10 @@
   /** @param {any} data */
   const ctx = (data) => (data.run ? { ticket: data.ticket, run: data.run } : { ticket: data.ticket });
 </script>
+
+{#snippet sessionLink(/** @type {string} */ sid)}
+  <a href={'?session=' + sid} class="mono sl" onclick={(e) => { e.preventDefault(); e.stopPropagation(); openSession(sid); }}>{sid}</a>
+{/snippet}
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }} />
 
@@ -52,7 +43,6 @@
     {:else if v.data}
       {@const t = v.data.ticket}
       {@const f = fields(t)}
-      {@const th = thread(t)}
       {@const rp = report(t)}
       <h2>{t.title}</h2>
       <div class="row">
@@ -63,7 +53,7 @@
       </div>
       <div class="row">
         {#each links(t) as l (l.href)}<a href={l.href} target="_blank" rel="noopener noreferrer">{l.label}</a>{/each}
-        {#if t.holder}<span class="muted">held by {#if isSessionId(t.holder)}<SessionLink id={t.holder} />{:else}<span class="mono">{t.holder}</span>{/if}</span>{/if}
+        {#if t.holder}<span class="muted">held by {#if isSessionId(t.holder)}{@render sessionLink(t.holder)}{:else}<span class="mono">{t.holder}</span>{/if}</span>{/if}
         <span class="faint">updated {ago(t.updated_at)}</span>
       </div>
       {#if slotted('action', t, v.data.run).length}
@@ -78,11 +68,6 @@
       {/if}
       {#if rp}
         <div class="report"><span class="pill accent">{rp.state}</span> {#if rp.note}<span>{rp.note}</span>{/if} <span class="faint">{ago(rp.at)}</span></div>
-      {/if}
-
-      {#if th}
-        <h3>Escalation chat <a href={'?session=' + th.session} class="open" onclick={(e) => { e.preventDefault(); go({ session: th.session, ticket: '' }); }}>open in side panel</a></h3>
-        <div class="panel chatpanel" data-testid="escalation-chat"><Chat id={th.session} key={th.key} /></div>
       {/if}
 
       {#if v.data.run}
@@ -135,7 +120,7 @@
         <h3>Comments</h3>
         {#each v.data.comments as c (c.id)}
           <div class="comment">
-            <div class="faint">{#if isSessionId(c.author)}<SessionLink id={c.author} />{:else}<span class="mono">{c.author}</span>{/if} · {ago(c.created_at)}</div>
+            <div class="faint">{#if isSessionId(c.author)}{@render sessionLink(c.author)}{:else}<span class="mono">{c.author}</span>{/if} · {ago(c.created_at)}</div>
             <pre>{c.body}</pre>
           </div>
         {/each}
@@ -168,9 +153,6 @@
   .note { font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
   .body { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; max-height: 320px; overflow: auto; }
   .comment { border-left: 2px solid var(--border); padding: 4px 10px; margin: 8px 0; }
-  .panel { border: 1px solid var(--border); border-radius: var(--radius); margin-top: 6px; overflow: hidden; }
-  .chatpanel { height: min(480px, 60dvh); }
-  h3 .open { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 8px; }
   .ext { margin: 0; padding-left: 18px; }
   .ext li { margin: 4px 0; overflow-wrap: anywhere; }
   .err { color: var(--bad); padding: 12px 0; }
@@ -180,7 +162,6 @@
     .backdrop { display: none; }
     header { min-height: 52px; padding: 0 6px 0 14px; }
     .scrollbody { padding: 2px 14px calc(32px + env(safe-area-inset-bottom)); }
-    .steps li a, .ext li a { display: inline-block; padding: 8px 0; }
-    .chatpanel { height: 70dvh; }
+    .steps li a, .ext li a, .sl { display: inline-block; padding: 8px 0; }
   }
 </style>

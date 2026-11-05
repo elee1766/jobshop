@@ -59,8 +59,11 @@ type Plugin struct {
 	fsys      fs.FS
 }
 
-// PluginSlots are the slot names a contribution may use.
-var PluginSlots = []string{"view", "drawer", "artifact", "action", "header"}
+// PluginSlots are the slot names a contribution may use. session (#535)
+// is the session panel's body: the shell owns the frame (side column on
+// desktop, full screen on a phone) and the last session contribution
+// renders the chat inside it.
+var PluginSlots = []string{"view", "drawer", "artifact", "action", "header", "session"}
 
 var (
 	pluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)

@@ -2,7 +2,6 @@
   import { url, go, closeSession } from '../lib/url.svelte.js';
   import { resource, post, live } from '../lib/api.svelte.js';
   import { ago } from '../lib/format.js';
-  import SessionLink from './SessionLink.svelte';
 
   const sessions = resource(() => 'api/sessions');
 
@@ -41,7 +40,7 @@
           {#each sessions.data as s (s.id)}
             {@const st = stateOf(s)}
             <tr class="click" class:sel={url.session === s.id} onclick={() => (url.session === s.id ? closeSession() : go({ session: s.id }))}>
-              <td class="c-id"><SessionLink id={s.id} />{#if s.crashes}<span class="pill bad gap">{s.crashes} crashes</span>{/if}</td>
+              <td class="c-id"><a href={'?session=' + s.id} class="mono sl" onclick={(e) => { e.preventDefault(); e.stopPropagation(); go({ session: s.id, ticket: '' }); }}>{s.id}</a>{#if s.crashes}<span class="pill bad gap">{s.crashes} crashes</span>{/if}</td>
               <td class="c-st"><span class="pill {st[1]}">{st[0]}</span>{#if s.cordon}<span class="pill warn gap" title="no new claims">cordoned: {s.cordon}</span>{/if}</td>
               <td>
                 {#if s.current}

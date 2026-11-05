@@ -65,7 +65,7 @@ test('session chat panel opens from the sessions list and closes', async ({ page
   await expect(panel).toBeVisible();
   await expect(page).toHaveURL(new RegExp('session=' + id));
   await expect(page.getByTestId('journal')).toBeVisible();
-  await expect(page.locator('.chat .head')).toHaveText(/^\s*(live|closed|connecting|reconnecting)/);
+  await expect(page.getByTestId('chat-status')).toHaveText(/^\s*(live|closed|connecting|reconnecting)/);
   const noOverflow = () => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(await noOverflow()).toBeLessThanOrEqual(1);
 

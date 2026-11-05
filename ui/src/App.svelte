@@ -3,7 +3,7 @@
   import { url, go, closeSession, VIEWS } from './lib/url.svelte.js';
   import { live, connect, resource, get } from './lib/api.svelte.js';
   import { panel } from './lib/panel.svelte.js';
-  import { push, initPush, enablePush, disablePush, testPush } from './lib/push.svelte.js';
+  import { initPush } from './lib/push.svelte.js';
   import Inbox from '@lucide/svelte/icons/inbox';
   import Package from '@lucide/svelte/icons/package';
   import MessageSquare from '@lucide/svelte/icons/message-square';
@@ -12,25 +12,23 @@
   import Terminal from '@lucide/svelte/icons/terminal';
   import Boxes from '@lucide/svelte/icons/boxes';
   import Rocket from '@lucide/svelte/icons/rocket';
-  import Bell from '@lucide/svelte/icons/bell';
-  import BellOff from '@lucide/svelte/icons/bell-off';
   import Sun from '@lucide/svelte/icons/sun';
   import Moon from '@lucide/svelte/icons/moon';
   import Puzzle from '@lucide/svelte/icons/puzzle';
   import { plugins, loadPlugins, contributions, dispatch, who, toasts, confirmBox } from './lib/plugins.svelte.js';
   import PluginSlot from './views/PluginSlot.svelte';
-  import Attention from './views/Attention.svelte';
   import Artifacts from './views/Artifacts.svelte';
   import Work from './views/Work.svelte';
   import Sessions from './views/Sessions.svelte';
   import Pools from './views/Pools.svelte';
   import Activity from './views/Activity.svelte';
-  import ChatView from './views/ChatView.svelte';
   import Drawer from './views/Drawer.svelte';
-  import SessionPanel from './views/SessionPanel.svelte';
+  import SidePanel from './views/SidePanel.svelte';
 
   onMount(() => connect(dispatch));
   onMount(loadPlugins);
+  // Registers the service worker, so the PWA installs and pushes arrive
+  // even before a plugin asks for api.push.
   onMount(() => { initPush(); });
 
   // Keep the shell as tall as the visible viewport so the chat composer
@@ -48,15 +46,6 @@
     vv.addEventListener('scroll', fit);
     return () => { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); };
   });
-
-  /** @type {Record<string, string>} */
-  const pushTitle = {
-    unsupported: 'this browser has no Web Push (on iOS, add Desk to the home screen first)',
-    unavailable: 'Desk runs without --push',
-    denied: 'notifications blocked in browser settings',
-    off: 'turn on notifications for new attention items',
-    on: 'notifications on (click to turn off)',
-  };
 
   const attention = resource(() => 'api/attention');
   const count = $derived(attention.data?.length ?? 0);
@@ -142,17 +131,6 @@
       <span class="faint">{live.connected ? 'live' : 'offline'}</span>
     </span>
     <span class="tools">
-      {#if push.state === 'on' || push.state === 'off'}
-        {#if push.state === 'on'}<button class="ghost test" title="send a test notification" onclick={testPush}>test</button>{/if}
-        <button
-          class="ghost icon bell"
-          class:lit={push.state === 'on'}
-          data-testid="push-toggle"
-          title={pushTitle[push.state]}
-          aria-label={pushTitle[push.state]}
-          onclick={() => (push.state === 'on' ? disablePush() : enablePush())}
-        >{#if push.state === 'on'}<Bell size={14} />{:else}<BellOff size={14} />{/if}</button>
-      {/if}
       <button class="ghost icon" onclick={() => (light = !light)} aria-label="toggle theme" title="toggle theme">
         {#if light}<Moon size={14} />{:else}<Sun size={14} />{/if}
       </button>
@@ -161,16 +139,15 @@
   <main>
     {#if pview}{#key pview.plugin.name + pview.c.element}<PluginSlot plugin={pview.plugin} element={pview.c.element} />{/key}
     {:else if url.view === 'artifacts'}<Artifacts />
-    {:else if url.view === 'chat'}<ChatView />
     {:else if url.view === 'work'}<Work />
     {:else if url.view === 'activity'}<Activity />
     {:else if url.view === 'sessions'}<Sessions />
     {:else if url.view === 'pools'}<Pools />
-    {:else if url.view !== 'attention' && !plugins.loaded}<p class="faint">Loading…</p>
-    {:else}<Attention items={attention} />
+    {:else if !plugins.loaded}<p class="faint">Loading…</p>
+    {:else}<p class="faint pad" data-testid="view-missing">No plugin shows <span class="mono">{url.view}</span>{plugins.error ? ': ' + plugins.error : ''}.</p>
     {/if}
   </main>
-  {#if url.session}{#key url.session}<SessionPanel id={url.session} />{/key}{/if}
+  {#if url.session}{#key url.session}<SidePanel id={url.session} />{/key}{/if}
   {#if url.ticket}<Drawer id={url.ticket} />{/if}
   {#if toasts.items.length}
     <div class="toasts" data-testid="toasts">{#each toasts.items as t (t.id)}<div class="card toast">{t.msg}</div>{/each}</div>
@@ -220,8 +197,6 @@
   .foot { grid-area: foot; display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-top: 1px solid var(--border); }
   .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
   .tools { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
-  .test { font-size: 11px; padding: 0 6px; }
-  .bell.lit { color: var(--accent); }
   main { grid-area: main; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; background: var(--bg); }
   /* The sidebar rows stay compact; the main column takes the full height. */
   .shell { grid-template-rows: auto 1fr auto; }
@@ -245,7 +220,6 @@
     .brand { padding: calc(env(safe-area-inset-top) + 0px) 12px 0; justify-self: start; align-self: center; height: 40px; }
     .foot { justify-self: end; align-self: center; padding: calc(env(safe-area-inset-top) + 0px) 4px 0 0; height: 40px; }
     .tools .ghost.icon { width: 40px; height: 40px; }
-    .test { height: 40px; }
     main { grid-area: main; }
     nav {
       grid-area: tabs; flex-direction: row; justify-content: space-around; gap: 0; padding: 0 4px env(safe-area-inset-bottom);

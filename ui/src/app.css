@@ -1,47 +1,72 @@
 /* Loosely Linear: cool near-black neutrals, hairline borders, one indigo accent.
-   Dark by default, light via [data-theme='light']. */
+   Dark by default, light via [data-theme='light'].
+   The --desk-* properties are the theme every plugin reads (#535,
+   docs/desk-plugins.md); the short names are the shell's aliases. */
 :root {
-  --bg: #0e0f11;
-  --side: #0b0c0e;
-  --panel: #131417;
-  --raised: #191b1f;
-  --hover: #1e2025;
-  --border: #23252b;
-  --border-strong: #33363d;
-  --text: #e4e6ea;
-  --muted: #8d919b;
-  --faint: #5f636d;
-  --accent: #7c7bf6;
-  --accent-fg: #ffffff;
-  --accent-soft: rgba(124, 123, 246, 0.15);
-  --ok: #4cb782;
-  --warn: #e5a04b;
-  --bad: #ef6464;
-  --shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
-  --radius: 6px;
-  --font: Inter, ui-sans-serif, -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
-  --mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
-  --tabbar: 52px;
+  --desk-bg: #0e0f11;
+  --desk-side: #0b0c0e;
+  --desk-panel: #131417;
+  --desk-raised: #191b1f;
+  --desk-hover: #1e2025;
+  --desk-border: #23252b;
+  --desk-border-strong: #33363d;
+  --desk-text: #e4e6ea;
+  --desk-muted: #8d919b;
+  --desk-faint: #5f636d;
+  --desk-accent: #7c7bf6;
+  --desk-accent-fg: #ffffff;
+  --desk-accent-soft: rgba(124, 123, 246, 0.15);
+  --desk-ok: #4cb782;
+  --desk-warn: #e5a04b;
+  --desk-bad: #ef6464;
+  --desk-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
+  --desk-radius: 6px;
+  --desk-font: Inter, ui-sans-serif, -apple-system, 'Segoe UI', Roboto, system-ui, sans-serif;
+  --desk-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  --desk-tabbar: 52px;
   color-scheme: dark;
 }
 :root[data-theme='light'] {
-  --bg: #ffffff;
-  --side: #f6f7f8;
-  --panel: #fbfbfc;
-  --raised: #f1f2f4;
-  --hover: #eceef1;
-  --border: #e6e8eb;
-  --border-strong: #d4d7dc;
-  --text: #1c1d21;
-  --muted: #666b75;
-  --faint: #9a9ea8;
-  --accent: #5b5bd6;
-  --accent-soft: rgba(91, 91, 214, 0.1);
-  --ok: #2f9e6b;
-  --warn: #c27d1c;
-  --bad: #d64545;
-  --shadow: 0 10px 40px rgba(20, 22, 30, 0.16);
+  --desk-bg: #ffffff;
+  --desk-side: #f6f7f8;
+  --desk-panel: #fbfbfc;
+  --desk-raised: #f1f2f4;
+  --desk-hover: #eceef1;
+  --desk-border: #e6e8eb;
+  --desk-border-strong: #d4d7dc;
+  --desk-text: #1c1d21;
+  --desk-muted: #666b75;
+  --desk-faint: #9a9ea8;
+  --desk-accent: #5b5bd6;
+  --desk-accent-soft: rgba(91, 91, 214, 0.1);
+  --desk-ok: #2f9e6b;
+  --desk-warn: #c27d1c;
+  --desk-bad: #d64545;
+  --desk-shadow: 0 10px 40px rgba(20, 22, 30, 0.16);
   color-scheme: light;
+}
+:root {
+  --bg: var(--desk-bg);
+  --side: var(--desk-side);
+  --panel: var(--desk-panel);
+  --raised: var(--desk-raised);
+  --hover: var(--desk-hover);
+  --border: var(--desk-border);
+  --border-strong: var(--desk-border-strong);
+  --text: var(--desk-text);
+  --muted: var(--desk-muted);
+  --faint: var(--desk-faint);
+  --accent: var(--desk-accent);
+  --accent-fg: var(--desk-accent-fg);
+  --accent-soft: var(--desk-accent-soft);
+  --ok: var(--desk-ok);
+  --warn: var(--desk-warn);
+  --bad: var(--desk-bad);
+  --shadow: var(--desk-shadow);
+  --radius: var(--desk-radius);
+  --font: var(--desk-font);
+  --mono: var(--desk-mono);
+  --tabbar: var(--desk-tabbar);
 }
 
 * { box-sizing: border-box; }

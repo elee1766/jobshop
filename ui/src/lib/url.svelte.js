@@ -1,7 +1,7 @@
 // URL holds all UI state: view, open ticket, open session, filters.
 // Back and forward work, and a link reproduces what you see.
 
-/** @typedef {{ view: string, ticket: string, session: string, state: string, source: string, repo: string, kind: string, who: string, artifact: string, trigger: string, pool: string, read: string }} UrlState */
+/** @typedef {{ view: string, ticket: string, session: string, item: string, state: string, source: string, repo: string, kind: string, who: string, artifact: string, trigger: string, pool: string, read: string }} UrlState */
 
 // Built-in views. A plugin view (#517) is any other id; App falls back
 // to attention when no plugin claims it.
@@ -16,6 +16,8 @@ function read() {
     view: viewRe.test(view) ? view : 'attention',
     ticket: q.get('ticket') ?? '',
     session: q.get('session') ?? '',
+    // The attention item (kind:id) an open session resolves (#535).
+    item: q.get('item') ?? '',
     state: q.get('state') ?? '',
     // Activity filters (#255).
     source: q.get('source') ?? '',
@@ -54,7 +56,7 @@ export function go(patch) {
 /** Close the session panel; back when it was opened from this page, so back and close agree. */
 export function closeSession() {
   if (history.state?.panel) history.back();
-  else go({ session: '' });
+  else go({ session: '', item: '' });
 }
 
 export { VIEWS };

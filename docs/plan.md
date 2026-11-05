@@ -351,9 +351,11 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Ingest admission: mutating then validating hooks (command or signed
   url) on pending inbox items, `failure_policy`, `match`; on: intake
   hooks run for Linear items (#348, `docs/notes/348-ingest-admission.md`).
-- Desk as a PWA with Web Push for new attention items, `desk --push`
-  (`docs/notes/desk-push.md`), base-relative under `--base-path`
-  (#535, `docs/notes/392-desk-pwa.md`).
+- Desk as a PWA with Web Push for new attention items, `desk --push`,
+  on the plugin model: Attention and Chat are built-in plugins, a click
+  on an attention item opens the chat that resolves it, `api.push`,
+  `session.cancel` (#535, `docs/notes/535-desk-pwa.md`,
+  `docs/notes/535-attention-chat.md`, `docs/verify/desk-pwa.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).
@@ -689,7 +691,7 @@ visibility (#408), placement (#409).
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
 `session.journal` (#529), Desk plugin host part 1 (#517), config from a
-git repo (#532).
+git repo (#532), Desk PWA and attention chat (#535).
 Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
 and plugin API (#541, #542).
 
@@ -1404,6 +1406,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   host object, as Home Assistant cards; no shared framework or Module
   Federation, so a Desk upgrade cannot break a plugin's runtime.
   Built-ins may not import the shell, which proves the API suffices.
+- Attention resolves in a chat (2026-11-05, #535): a click opens the
+  item's escalation chat, else a chat-pool session keyed
+  `attention:<kind>:<id>` started with a context prompt, so the operator
+  agent helps decide and the Resolve buttons call existing RPCs. The
+  shell keeps only the frame (PWA, push, theme, tab bar, side panel);
+  the session panel body is a plugin slot.
 
 ## 7. Reference: behavior as built
 
@@ -1468,6 +1476,8 @@ moved from the old 7.x list, oldest first:
 - [Desk under a path prefix](notes/516-desk-base-path.md) (#516)
 - [Learning kinds and trigger filters](notes/524-learning-kinds.md) (#524)
 - [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
+- [Desk PWA on the plugin model](notes/535-desk-pwa.md) (#535)
+- [Attention opens its chat](notes/535-attention-chat.md) (#535)
 
 ## 8. Chat gateway
 
