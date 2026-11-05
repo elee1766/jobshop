@@ -73,6 +73,7 @@ const (
 	MethodPoolScale        = "pool.scale"
 	MethodSessionCordon    = "session.cordon"
 	MethodSessionConfig    = "session.config"
+	MethodSessionRename    = "session.rename"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
 	MethodGuard            = "guard"
@@ -415,6 +416,8 @@ type SessionNewParams struct {
 	Agent   string `json:"agent,omitempty"` // default: the pool's agent
 	Key     string `json:"key,omitempty"`
 	Title   string `json:"title,omitempty"`
+	// DisplayName labels the session in lists (#626); not unique.
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 // VersionResult is the controller binary's version and commit. Sessions
@@ -556,7 +559,10 @@ type SessionRestartResult struct {
 // session directory. Ticket is nil for an orphan: a directory with a live
 // host but no open session ticket.
 type SessionInfo struct {
-	ID       string        `json:"id"`
+	ID string `json:"id"`
+	// DisplayName is the session's label (#626): its own, or a default
+	// from pool and ticket titles. Not unique.
+	DisplayName string        `json:"display_name,omitempty"`
 	Ticket   *store.Ticket `json:"ticket,omitempty"`
 	Orphan   bool          `json:"orphan,omitempty"`
 	Alive    bool          `json:"alive"`
@@ -938,6 +944,13 @@ type SessionConfigParams struct {
 	ID      string            `json:"id"`
 	Options map[string]string `json:"options,omitempty"`
 	Reset   bool              `json:"reset,omitempty"`
+}
+
+// SessionRenameParams sets a session's display name (#626). ID empty
+// means the calling session. Name empty clears it back to the default.
+type SessionRenameParams struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"`
 }
 
 // DrainResult lists drained pools after the call; "*" means all.

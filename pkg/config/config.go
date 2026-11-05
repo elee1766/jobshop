@@ -1075,7 +1075,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff", "ticket-release", "ticket-undefer", "decision-resolve", "session-journal", "journal-search", "memory-write"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "session-rename", "report-incidents", "attention", "activity", "handoff", "ticket-release", "ticket-undefer", "decision-resolve", "session-journal", "journal-search", "memory-write"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -1133,6 +1133,9 @@ type Pool struct {
 	// sockets may call, e.g. [config-reload, session-list] for an
 	// operator chat pool. Default none.
 	Admin []string `yaml:"admin"`
+	// DisplayName labels the pool's new sessions in lists (#626). Not
+	// unique; a session may rename itself. Default: pool and ticket title.
+	DisplayName string `yaml:"display_name"`
 	// Identities the pool's sessions may act as, on top of their
 	// project's (#200). Lets a pack name the identity it needs.
 	Identities []string `yaml:"identities"`

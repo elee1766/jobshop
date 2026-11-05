@@ -75,3 +75,7 @@ You are one chat. The conversation stays open; there is no ticket to
 close unless your first message hands you an escalation ticket (an
 `escalation:<ticket>` chat): then close that ticket when it is resolved.
 Your replies are shown to the operator in Desk.
+
+Name yourself after the topic so the operator can find this chat later:
+once the first message makes the topic clear, run `jobshop session
+rename "<a few words>"`, and again if the topic changes.

@@ -1807,7 +1807,7 @@ func (r *runner) lifecycle(event string, attrs ...attribute.KeyValue) {
 // agent is configured, starts its driver. Sessions whose agent is not in
 // the config are external: something else (a human running an agent with
 // JOBSHOP_SOCKET) drives them.
-func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent, key, title string) (store.Ticket, error) {
+func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent, key, title, displayName string) (store.Ticket, error) {
 	if agent == "" {
 		return store.Ticket{}, fmt.Errorf("%w: agent is required", store.ErrInvalid)
 	}
@@ -1819,7 +1819,10 @@ func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent
 		c.slotMu.Unlock()
 		return store.Ticket{}, err
 	}
-	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
+	if displayName == "" {
+		displayName = c.config().Pools[pool].DisplayName
+	}
+	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key, DisplayName: displayName, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
 	if err != nil {
 		c.slotMu.Unlock()
 		return store.Ticket{}, err

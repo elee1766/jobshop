@@ -543,7 +543,7 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 			return nil, err
 		}
 	}
-	t, err := c.newSession(ctx, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title)
+	t, err := c.newSession(ctx, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title, p.DisplayName)
 	if err != nil {
 		return nil, err
 	}
@@ -646,8 +646,11 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	}
 	c.mu.Unlock()
 	info.Drained = r != nil && c.poolDrained(r.pool)
+	var sessTicket store.Ticket
 	if t, err := c.store.Get(ctx, id); err == nil {
+		sessTicket = t
 		if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
+			info.DisplayName = f.DisplayName
 			if f.Cordoned != nil {
 				info.Cordon = f.Cordoned.Reason
 			}
@@ -670,7 +673,22 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	if len(held) > 0 {
 		info.Current = held[0].ID
 	}
+	if info.DisplayName == "" {
+		info.DisplayName = defaultDisplayName(sessTicket, held)
+	}
 	return info, nil
+}
+
+// defaultDisplayName labels a session with no name of its own (#626):
+// its pool and the title of the ticket it works, else its ticket title.
+func defaultDisplayName(sess store.Ticket, held []store.Ticket) string {
+	if len(held) > 0 && held[0].Title != "" {
+		if sess.Pool != "" {
+			return sess.Pool + ": " + held[0].Title
+		}
+		return held[0].Title
+	}
+	return sess.Title
 }
 
 // sessionRestart stops a session's host so its driver respawns it with a

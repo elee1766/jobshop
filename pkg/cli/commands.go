@@ -705,6 +705,16 @@ type sessionCmd struct {
 	Uncordon sessionUncordonCmd `cmd:"" help:"Return a cordoned session to rotation."`
 	Drain    sessionDrainCmd    `cmd:"" help:"Cordon a session and end it once it holds nothing."`
 	Config   sessionConfigCmd   `cmd:"" help:"Set ACP config options (model=<route> effort=<level>) on one session, applied between turns; --reset goes back to the pool's (admin or session-config grant)."`
+	Rename   sessionRenameCmd   `cmd:"" help:"Set this session's display name, a non-unique label for lists; --id renames another (admin or session-rename grant). An empty name restores the default."`
+}
+
+type sessionRenameCmd struct {
+	Name string `arg:"" help:"Display name. Not unique, never used for lookup."`
+	ID   string `name:"id" help:"Session id. Default: the calling session."`
+}
+
+func (c sessionRenameCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionRename, rpc.SessionRenameParams{ID: c.ID, Name: c.Name}, nil)
 }
 
 type sessionConfigCmd struct {
@@ -910,11 +920,12 @@ type sessionNewCmd struct {
 	Project string `help:"Project."`
 	Key     string `help:"External key, e.g. matrix:<room>; unique while open."`
 	Title   string `help:"Title."`
+	Name    string `help:"Display name, a non-unique label for lists. Default: the pool's display_name, else pool and ticket title."`
 }
 
 func (c sessionNewCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodSessionNew, rpc.SessionNewParams{
-		Project: c.Project, Pool: c.Pool, Agent: c.Agent, Key: c.Key, Title: c.Title,
+		Project: c.Project, Pool: c.Pool, Agent: c.Agent, Key: c.Key, Title: c.Title, DisplayName: c.Name,
 	}, nil)
 }
 

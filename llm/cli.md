@@ -197,6 +197,10 @@ Commands:
     applied between turns; --reset goes back to the pool's (admin or
     session-config grant).
 
+  session rename <name> [flags]
+    Set this session's display name, a non-unique label for lists; --id renames
+    another (admin or session-rename grant). An empty name restores the default.
+
   run start <workflow> [flags]
     Start a workflow run: a run ticket and one step ticket per workflow step.
 
@@ -1623,6 +1627,10 @@ Commands:
     Set ACP config options (model=<route> effort=<level>) on one session,
     applied between turns; --reset goes back to the pool's (admin or
     session-config grant).
+
+  session rename <name> [flags]
+    Set this session's display name, a non-unique label for lists; --id renames
+    another (admin or session-rename grant). An empty name restores the default.
 ```
 
 ## jobshop session new
@@ -1647,6 +1655,8 @@ Flags:
       --project=STRING    Project.
       --key=STRING        External key, e.g. matrix:<room>; unique while open.
       --title=STRING      Title.
+      --name=STRING       Display name, a non-unique label for lists. Default:
+                          the pool's display_name, else pool and ticket title.
 ```
 
 ## jobshop session list
@@ -1907,6 +1917,29 @@ Flags:
 
       --reset            Drop the session's override first, back to the pool's
                          values.
+```
+
+## jobshop session rename
+
+```
+Usage: jobshop session rename <name> [flags]
+
+Set this session's display name, a non-unique label for lists; --id renames
+another (admin or session-rename grant). An empty name restores the default.
+
+Arguments:
+  <name>    Display name. Not unique, never used for lookup.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --id=STRING        Session id. Default: the calling session.
 ```
 
 ## jobshop run

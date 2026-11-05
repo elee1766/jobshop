@@ -271,7 +271,7 @@ func (c *Controller) reconcile() {
 	for _, name := range slices.Sorted(maps.Keys(grants)) {
 		p := cfg.Pools[name]
 		for range grants[name] {
-			if _, err := c.newSession(ctx, "controller", p.Project, name, p.Agent, "", ""); err != nil {
+			if _, err := c.newSession(ctx, "controller", p.Project, name, p.Agent, "", "", ""); err != nil {
 				c.log.Error("start session", "pool", name, "err", err)
 				break
 			}
