@@ -420,7 +420,13 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 		}
 	}
 	extra := append(stepEnv(st.vars, attemptKey, t), c.slotEnv(ctx, t)...)
-	env := append(os.Environ(), extra...)
+	// The controller's own binary comes first on PATH and is JOBSHOP_BIN,
+	// as for sessions: units run with a PATH that has no jobshop (#669).
+	if exe, err := c.hostExe(); err == nil {
+		extra = append(extra, "JOBSHOP_BIN="+exe,
+			"PATH="+filepath.Dir(exe)+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+	env := append(withoutEnv(os.Environ(), "PATH"), extra...)
 	res := autoResult{command: c.redactor(env).Text(strings.Join(argv, " "))}
 	pl, err := c.stepPlace(s, sf, st)
 	if err != nil {

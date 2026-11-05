@@ -134,7 +134,7 @@ workflows:
         retries: 0
         run: |
           set +e
-          out=$(jobshop runbook run "$JOBSHOP_VAR_RUNBOOK" 2>&1)
+          out=$("${JOBSHOP_BIN:-jobshop}" runbook run "$JOBSHOP_VAR_RUNBOOK" 2>&1)
           rc=$?
           printf '%s\n' "$out"
           printf '%s\n' "$out" | gh issue comment "$JOBSHOP_VAR_ISSUE" --repo elee1766/jobshop --body-file - >&2
