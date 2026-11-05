@@ -67,6 +67,11 @@ func (c linearAPICmd) Run(g *Globals, l *linearCmd) error {
 	// The guard is about what the agent does, so it runs whoever's key
 	// makes the call. No controller, no answer: a write fails closed.
 	if op.kind == "mutation" {
+		vb, _ := json.Marshal(vars)
+		if err := checkOut(g, "linear api", l.AllowSecretFindings, outText{"query", query}, outText{"variables", string(vb)}); err != nil {
+			record("secret", 1)
+			return err
+		}
 		var r rpc.GuardResult
 		detail := strings.TrimSpace(op.name + " " + strings.Join(op.fields, " "))
 		if err := g.call(rpc.MethodGuard, rpc.GuardParams{Action: action, Target: team, Detail: detail}, &r); err != nil {

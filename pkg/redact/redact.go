@@ -61,6 +61,26 @@ func (r *Redactor) JSON(raw json.RawMessage) json.RawMessage {
 // Text is New(env).Text(s).
 func Text(s string, env []string) string { return New(env).Text(s) }
 
+// Finding is a gitleaks match without the secret: what the CLI prints
+// when it refuses an outbound write (#574).
+type Finding struct {
+	Rule string
+	Line int // 1-based line in the scanned text
+}
+
+// Find returns gitleaks findings in s, without the secrets.
+func Find(s string) []Finding {
+	d := leaks()
+	if d == nil || s == "" {
+		return nil
+	}
+	var out []Finding
+	for _, f := range d.DetectString(s) {
+		out = append(out, Finding{Rule: f.RuleID, Line: f.StartLine + 1})
+	}
+	return out
+}
+
 // JSON is New(env).JSON(raw).
 func JSON(raw json.RawMessage, env []string) json.RawMessage { return New(env).JSON(raw) }
 

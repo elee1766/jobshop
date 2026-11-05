@@ -80,6 +80,25 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 			return nil, err
 		}
 	}
+	masked := false
+	for i, f := range am.Files {
+		p := filepath.Join(c.artifactDir(id), f.Name)
+		m, err := redactFile(p)
+		if err != nil {
+			_ = os.RemoveAll(c.artifactDir(id))
+			return nil, err
+		}
+		if m {
+			if st, err := os.Stat(p); err == nil {
+				am.Files[i].Size = st.Size()
+			}
+		}
+		masked = masked || m
+	}
+	if masked {
+		c.recordRedacted(sc, "artifact", id)
+	}
+	c.redactWrite(sc, "artifact", id, &title, &p.Body)
 	meta, err := json.Marshal(map[string]rpc.ArtifactMeta{artifactMetaPack: am})
 	if err != nil {
 		return nil, err

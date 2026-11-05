@@ -537,6 +537,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
   and config-repo sync file needs-human `deploy:*`/`config-repo:*`
   tickets; Deploys moved to `packs/deploy` (#577,
   `docs/notes/577-deploy-out-of-core.md`).
+- Secrets redacted on every outbound path: session events, stored
+  comments, reports, learnings and artifacts; `jobshop gh`/`linear`
+  writes with a gitleaks finding are refused (#574,
+  `docs/notes/574-redact-outbound.md`).
 - NixOS `workspaces.<name>.config`: run from `jobshop.yaml` in a git
   checkout; each push is checked, reset to last good on failure and
   listed as attention `config-repo` (#532, `docs/notes/532-config-repo.md`).
@@ -1459,9 +1463,16 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   digests show it with no deploy code. The NixOS self-deploy and its
   Deploys plugin (packs/deploy) are one example wrapper; multi-host or
   staged rollouts build their own the same way.
+<<<<<<< HEAD
 - A config field the NixOS module sets is removed as a load warning for
   one release, then an error (2026-11-05, #597): the self-deploy check
   reads the jobshop.yaml the old module wrote.
+=======
+- Outbound gh and Linear writes with a secret are refused, not rewritten
+  (2026-11-05, #574): the agent fixes its own text, so nothing it did
+  not mean to post reaches GitHub. Text the controller stores is masked
+  instead, since there is no one to refuse to.
+>>>>>>> 6bbb57c (Redact agent text on every outbound path (#574))
 
 ## 7. Reference: behavior as built
 
@@ -1532,7 +1543,11 @@ moved from the old 7.x list, oldest first:
 - [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
 - [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
 - [Deploy state out of core](notes/577-deploy-out-of-core.md) (#577)
+<<<<<<< HEAD
 - [Attention rows: summary and inline resolution](notes/607-attention-rows.md) (#607)
+=======
+- [Redaction on outbound paths](notes/574-redact-outbound.md) (#574)
+>>>>>>> 6bbb57c (Redact agent text on every outbound path (#574))
 
 ## 8. Chat gateway
 

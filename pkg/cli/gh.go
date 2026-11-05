@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -251,9 +252,34 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 		return 1
 	}
 	key, args := cutGHKey(args)
+	allow, args := cutAllowSecrets(args)
 	c := classifyGH(args)
 	if key != "" && c.action == "" {
 		warn(stderr, "jobshop gh: "+ghKeyFlag+" is only for writes (not run)")
+		return 1
+	}
+	if c.action != "" {
+		// Scan what the write sends before the guard and gh see it (#574).
+		texts, in, err := ghOutText(args, stdin)
+		if err != nil {
+			warn(stderr, "jobshop gh: "+err.Error()+" (not run)")
+			return 1
+		}
+		if in != nil {
+			stdin = bytes.NewReader(in)
+		}
+		if found := secretFindings(texts); found != "" {
+			if !allow {
+				warn(stderr, "jobshop gh: refused, the text looks like it holds a secret; remove it and retry (not run):\n"+strings.TrimRight(found, "\n"))
+				return 1
+			}
+			if err := allowSecrets(g); err != nil {
+				warn(stderr, "jobshop gh: "+err.Error()+" (not run)")
+				return 1
+			}
+		}
+	} else if allow {
+		warn(stderr, "jobshop gh: "+allowSecretsFlag+" is only for writes (not run)")
 		return 1
 	}
 	repo := c.repo

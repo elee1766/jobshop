@@ -66,6 +66,7 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	if err != nil {
 		return nil, err
 	}
+	c.redactWrite(sc, "report on", id, &p.Note, &p.Question)
 	var res rpc.ReportResult
 	rm := reportMeta{State: p.State, Note: strings.TrimSpace(p.Note), By: sc.actor, At: c.now().UTC()}
 	if p.Until != nil {

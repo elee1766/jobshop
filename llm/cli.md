@@ -3389,13 +3389,17 @@ Usage: jobshop linear <command> [flags]
 Read, comment on and move Linear issues as the identity for their team.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
 
 Commands:
   linear issue <key> [flags]
@@ -3452,13 +3456,17 @@ Arguments:
   <key>    Issue key, e.g. ENG-123.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
 ```
 
 ## jobshop linear comment
@@ -3473,13 +3481,17 @@ Arguments:
   <body>    Comment text. Use - to read stdin.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
 ```
 
 ## jobshop linear state
@@ -3494,13 +3506,17 @@ Arguments:
   <state>    State name, e.g. "In Review" or Done.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
 ```
 
 ## jobshop linear context
@@ -3515,15 +3531,19 @@ Arguments:
   <key>    Issue key, e.g. ENG-123.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --all-comments     Every comment (up to 250), not the 10 newest.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --all-comments             Every comment (up to 250), not the 10 newest.
 ```
 
 ## jobshop linear list
@@ -3534,21 +3554,24 @@ Usage: jobshop linear list --team=STRING [flags]
 List a team's issues as JSON, one page at a time.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --team=STRING        Team key, e.g. ENG.
-      --state=STRING       State name, e.g. Todo.
-      --label=STRING       Label name.
-      --assignee=STRING    Assignee name, or me.
-      --limit=50           Page size (max 250).
-      --after=STRING       Cursor: end_cursor of the previous page.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --team=STRING              Team key, e.g. ENG.
+      --state=STRING             State name, e.g. Todo.
+      --label=STRING             Label name.
+      --assignee=STRING          Assignee name, or me.
+      --limit=50                 Page size (max 250).
+      --after=STRING             Cursor: end_cursor of the previous page.
 ```
 
 ## jobshop linear search
@@ -3562,21 +3585,24 @@ Arguments:
   <query>    Search text.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --team=STRING        Team key, e.g. ENG.
-      --state=STRING       State name, e.g. Todo.
-      --label=STRING       Label name.
-      --assignee=STRING    Assignee name, or me.
-      --limit=50           Page size (max 250).
-      --after=STRING       Cursor: end_cursor of the previous page.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --team=STRING              Team key, e.g. ENG.
+      --state=STRING             State name, e.g. Todo.
+      --label=STRING             Label name.
+      --assignee=STRING          Assignee name, or me.
+      --limit=50                 Page size (max 250).
+      --after=STRING             Cursor: end_cursor of the previous page.
 ```
 
 ## jobshop linear catalog
@@ -3590,15 +3616,19 @@ Arguments:
   <kind>    projects, labels, states or users.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --team=STRING      Team key, e.g. ENG.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --team=STRING              Team key, e.g. ENG.
 ```
 
 ## jobshop linear eligible
@@ -3613,17 +3643,22 @@ Arguments:
   <key>    Issue key.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
 
       --skip-labels=SKIP-LABELS,...
-                         Labels that make an issue ineligible (comma-separated;
-                         the pack's linear_skip_labels).
+                                 Labels that make an issue ineligible
+                                 (comma-separated; the pack's
+                                 linear_skip_labels).
 ```
 
 ## jobshop linear create
@@ -3634,25 +3669,30 @@ Usage: jobshop linear create --team=STRING --title=STRING [flags]
 Create an issue. --key makes a retry return the first result.
 
 Flags:
-  -h, --help                  Show context-sensitive help.
-      --root=STRING           Jobshop root directory (holds jobshop.yaml, the
-                              database, sockets and sessions). Default: nearest
-                              ancestor of the cwd containing jobshop.yaml
-                              ($JOBSHOP_ROOT).
-      --socket=STRING         Socket to talk to. Defaults to the session
-                              CLI socket, else the root's admin socket
-                              ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --team=STRING           Team key, e.g. ENG.
-      --title=STRING          Issue title.
-      --description=STRING    Issue description (markdown). Use - to read stdin.
-      --state=STRING          State name.
-      --label=LABEL,...       Label name (repeatable).
-      --assignee=STRING       Assignee name, display name or email.
-      --parent=STRING         Parent issue key.
-      --key=STRING            Idempotency key: a repeat with the same key
-                              returns the first result instead of writing again.
-      --dry-run               Print the mutation and send nothing.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --team=STRING              Team key, e.g. ENG.
+      --title=STRING             Issue title.
+      --description=STRING       Issue description (markdown). Use - to read
+                                 stdin.
+      --state=STRING             State name.
+      --label=LABEL,...          Label name (repeatable).
+      --assignee=STRING          Assignee name, display name or email.
+      --parent=STRING            Parent issue key.
+      --key=STRING               Idempotency key: a repeat with the same key
+                                 returns the first result instead of writing
+                                 again.
+      --dry-run                  Print the mutation and send nothing.
 ```
 
 ## jobshop linear update
@@ -3674,6 +3714,9 @@ Flags:
       --socket=STRING              Socket to talk to. Defaults to the session
                                    CLI socket, else the root's admin socket
                                    ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings      Send writes that hold a gitleaks finding
+                                   (admin callers only).
 
       --title=STRING               New title.
       --state=STRING               State name.
@@ -3702,23 +3745,26 @@ Arguments:
   <body>     Question text. Use - to read stdin.
 
 Flags:
-  -h, --help                   Show context-sensitive help.
-      --root=STRING            Jobshop root directory (holds jobshop.yaml, the
-                               database, sockets and sessions). Default: nearest
-                               ancestor of the cwd containing jobshop.yaml
-                               ($JOBSHOP_ROOT).
-      --socket=STRING          Socket to talk to. Defaults to the session
-                               CLI socket, else the root's admin socket
-                               ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --mention=MENTION,...    User to notify: name, display name or email
-                               (repeatable). Their profile URL goes in the body,
-                               since a plain @name does not notify.
-      --reply-to=STRING        Comment id to reply under.
-      --key=STRING             Idempotency key: a repeat with the same key
-                               returns the first result instead of writing
-                               again.
-      --dry-run                Print the mutation and send nothing.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --mention=MENTION,...      User to notify: name, display name or email
+                                 (repeatable). Their profile URL goes in the
+                                 body, since a plain @name does not notify.
+      --reply-to=STRING          Comment id to reply under.
+      --key=STRING               Idempotency key: a repeat with the same key
+                                 returns the first result instead of writing
+                                 again.
+      --dry-run                  Print the mutation and send nothing.
 ```
 
 ## jobshop linear relate
@@ -3732,19 +3778,24 @@ Arguments:
   <issue>    Issue key.
 
 Flags:
-  -h, --help              Show context-sensitive help.
-      --root=STRING       Jobshop root directory (holds jobshop.yaml,
-                          the database, sockets and sessions). Default:
-                          nearest ancestor of the cwd containing jobshop.yaml
-                          ($JOBSHOP_ROOT).
-      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
-                          else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --blocks=STRING     Issue key this issue blocks.
-      --related=STRING    Issue key this issue is related to.
-      --key=STRING        Idempotency key: a repeat with the same key returns
-                          the first result instead of writing again.
-      --dry-run           Print the mutation and send nothing.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --blocks=STRING            Issue key this issue blocks.
+      --related=STRING           Issue key this issue is related to.
+      --key=STRING               Idempotency key: a repeat with the same key
+                                 returns the first result instead of writing
+                                 again.
+      --dry-run                  Print the mutation and send nothing.
 ```
 
 ## jobshop linear api
@@ -3759,23 +3810,26 @@ Arguments:
   [<query>]    GraphQL document.
 
 Flags:
-  -h, --help                   Show context-sensitive help.
-      --root=STRING            Jobshop root directory (holds jobshop.yaml, the
-                               database, sockets and sessions). Default: nearest
-                               ancestor of the cwd containing jobshop.yaml
-                               ($JOBSHOP_ROOT).
-      --socket=STRING          Socket to talk to. Defaults to the session
-                               CLI socket, else the root's admin socket
-                               ($JOBSHOP_SOCKET).
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
 
-      --team=STRING            Team key whose identity makes the call (default:
-                               from an issue key in the variables).
-  -f, --field=FIELD            String variable name=value (@file reads the
-                               file). query=... sets the query.
-  -F, --raw-field=RAW-FIELD    Typed variable name=json (number, bool, object;
-                               @file reads the file).
-      --input=STRING           Request body file, - for stdin: a JSON request or
-                               bare GraphQL.
+      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+                                 callers only).
+
+      --team=STRING              Team key whose identity makes the call
+                                 (default: from an issue key in the variables).
+  -f, --field=FIELD              String variable name=value (@file reads the
+                                 file). query=... sets the query.
+  -F, --raw-field=RAW-FIELD      Typed variable name=json (number, bool, object;
+                                 @file reads the file).
+      --input=STRING             Request body file, - for stdin: a JSON request
+                                 or bare GraphQL.
 ```
 
 ## jobshop recall

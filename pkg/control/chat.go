@@ -162,8 +162,12 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 	if sc.peer == nil || sc.peer.conn == nil {
 		return nil, fmt.Errorf("%w: subscribe needs a socket connection", store.ErrInvalid)
 	}
+	// Events reach Desk, chat gateways and A2A peers (#574): redact with
+	// the session's env and gitleaks, built once per subscription.
+	red := redact.New(journalEnv(c.root.SessionDir(p.ID)))
 	send := func(ev rpc.SessionEvent) error {
 		ev.Session = p.ID
+		redactEvent(red, &ev)
 		return sc.peer.conn.SendNotification(ctx, rpc.NotifySessionEvent, ev)
 	}
 	state := func(t store.Ticket) error {
@@ -219,6 +223,16 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 			}
 		}
 		last = t
+	}
+}
+
+// redactEvent masks secrets in the text fields of a session event.
+func redactEvent(red *redact.Redactor, ev *rpc.SessionEvent) {
+	ev.Text = red.Text(ev.Text)
+	ev.Context = red.Text(ev.Context)
+	ev.Error = red.Text(ev.Error)
+	if ev.Tool != nil {
+		ev.Tool.Title = red.Text(ev.Tool.Title)
 	}
 }
 

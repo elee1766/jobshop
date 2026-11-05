@@ -38,6 +38,18 @@ func (c *Controller) activityRecord(_ context.Context, sc scope, p rpc.ActivityR
 		Actor: actor, Bot: true, At: now, Title: strings.TrimSpace(title),
 		Body: truncate(p.Command), Ref: ref,
 	}
+	c.addActivity(it)
+	return struct{}{}, nil
+}
+
+// addActivity appends one item to the activity feed, if one is
+// configured, and tells subscribers.
+func (c *Controller) addActivity(it rpc.ActivityItem) {
+	cfg := c.config()
+	if cfg.Activity == nil {
+		return
+	}
+	now := it.At
 	c.activityMu.Lock()
 	if c.activity == nil {
 		c.activity = c.loadActivity()
@@ -56,5 +68,4 @@ func (c *Controller) activityRecord(_ context.Context, sc scope, p rpc.ActivityR
 			c.events.publish([]rpc.Event{{Kind: rpc.EventKindActivity, Time: now}})
 		}
 	}
-	return struct{}{}, nil
 }
