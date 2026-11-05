@@ -62,6 +62,9 @@ Commands:
   ingest workers
     List external ingest workers' heartbeats and inbox counts by state.
 
+  admin store migrate [flags]
+    Copy a SQLite store into Postgres (#632). The controller must be stopped.
+
   ticket create <title> [flags]
     Create a ticket.
 
@@ -754,6 +757,74 @@ Flags:
                          ($JOBSHOP_ROOT).
       --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
                          else the root's admin socket ($JOBSHOP_SOCKET).
+```
+
+## jobshop admin
+
+```
+Usage: jobshop admin <command> [flags]
+
+Offline maintenance with the controller stopped (store migrate).
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+Commands:
+  admin store migrate [flags]
+    Copy a SQLite store into Postgres (#632). The controller must be stopped.
+```
+
+## jobshop admin store
+
+```
+Usage: jobshop admin store <command>
+
+Ticket store maintenance.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+Commands:
+  admin store migrate [flags]
+    Copy a SQLite store into Postgres (#632). The controller must be stopped.
+```
+
+## jobshop admin store migrate
+
+```
+Usage: jobshop admin store migrate [flags]
+
+Copy a SQLite store into Postgres (#632). The controller must be stopped.
+
+Flags:
+  -h, --help                Show context-sensitive help.
+      --root=STRING         Jobshop root directory (holds jobshop.yaml,
+                            the database, sockets and sessions). Default:
+                            nearest ancestor of the cwd containing jobshop.yaml
+                            ($JOBSHOP_ROOT).
+      --socket=STRING       Socket to talk to. Defaults to the session
+                            CLI socket, else the root's admin socket
+                            ($JOBSHOP_SOCKET).
+
+      --from=sqlite:PATH    Source store, sqlite:<path>. Default: the root's
+                            jobshop.db.
+      --to="postgres"       Target driver.
+      --dsn-file=STRING     File holding the Postgres DSN (URL or key=value).
+                            Default: the root config's store.dsn_file.
+      --force               Replace the target's rows instead of refusing a
+                            non-empty target.
 ```
 
 ## jobshop ticket

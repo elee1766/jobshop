@@ -180,4 +180,4 @@ jobs:
           restore-keys: |
             go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-pg-${{ runner.os }}-
-      - run: go test -race ./pkg/store/postgres/
+      - run: go test -race ./pkg/store/postgres/ ./pkg/store/storemigrate/

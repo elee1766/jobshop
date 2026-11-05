@@ -48,6 +48,7 @@ type root struct {
 	Gateway     gatewayCmd     `cmd:"" help:"Run a chat gateway from jobshop.yaml (admin socket client)."`
 	Desk        deskCmd        `cmd:"" help:"Serve Jobshop Desk, the read-only dashboard (admin socket client)."`
 	Ingest      ingestCmd      `cmd:"" help:"Receive GitHub and Linear webhooks into the ingest spool."`
+	Admin       adminCmd       `cmd:"" help:"Offline maintenance with the controller stopped (store migrate)."`
 
 	Ticket    ticketCmd    `cmd:"" help:"Create, show, list, update and close tickets."`
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`
