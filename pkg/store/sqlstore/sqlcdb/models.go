@@ -25,6 +25,11 @@ type Edge struct {
 	CreatedAt int64
 }
 
+type FtsJournal struct {
+	Key  string
+	Body string
+}
+
 type FtsLearning struct {
 	Key  string
 	Body string

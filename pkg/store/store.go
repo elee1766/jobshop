@@ -87,22 +87,10 @@ const (
 	RecallLearning = "learning"
 )
 
-// RecallDoc is one searchable document. Ref identifies it within Kind: a
-// comment id, "<session>:<seq>" for a journal turn, a learning id.
-type RecallDoc struct {
-	Kind     string
-	Ref      string
-	TicketID string
-	Project  string
-	At       time.Time
-	Body     string
-}
-
-// RecallQuery selects recall hits. Empty fields match everything.
+// RecallQuery selects comment hits. Empty fields match everything.
 type RecallQuery struct {
 	Text     string
 	Project  string
-	Kind     string
 	TicketID string
 	Limit    int // 0 means 10
 }
@@ -394,10 +382,9 @@ type Store interface {
 	// and edges before Apply.
 	NewID(project string) (string, error)
 
-	// IndexRecall adds or replaces (by kind and ref) one document in the
-	// recall index. Comments are indexed by the backend itself.
-	IndexRecall(ctx context.Context, d RecallDoc) error
-	// Recall searches the index, best match first.
+	// Recall searches ticket comments, best match first. The backend
+	// indexes comments as they are written; session journals and
+	// learnings are collections with their own Search (#579).
 	Recall(ctx context.Context, q RecallQuery) ([]RecallHit, error)
 
 	// Collection registers a collection of records (#579) and returns

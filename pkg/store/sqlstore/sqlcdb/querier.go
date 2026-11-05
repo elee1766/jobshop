@@ -62,8 +62,7 @@ type Querier interface {
 	// ProviderEmpty reports whether ticket id needs a provider resource with
 	// no ready slot (#407), for Claim by id. Same rule as ReadyTickets.
 	ProviderEmpty(ctx context.Context, id string) (int64, error)
-	RecallDelete(ctx context.Context, arg RecallDeleteParams) error
-	RecallInsert(ctx context.Context, arg RecallInsertParams) error
+	// Comments only: journals and learnings are collections (#579).
 	RecallSearch(ctx context.Context, arg RecallSearchParams) ([]RecallSearchRow, error)
 	ResourceCaps(ctx context.Context) ([]ResourceCap, error)
 	// ResourceFull reports whether ticket id names a resource key with no

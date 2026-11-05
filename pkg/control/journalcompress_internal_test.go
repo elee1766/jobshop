@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -134,7 +135,7 @@ func TestJournalCompressSweep(t *testing.T) {
 	// Recall indexes a compressed journal through the acphost reader.
 	r := &runner{c: c, id: old.ID, pool: "dev", ctx: ctx, dir: c.root.SessionDir(old.ID), log: c.log}
 	r.indexJournal(ctx, old.ID)
-	hits, err := c.store.Recall(ctx, store.RecallQuery{Text: "hi", Kind: store.RecallJournal, Limit: 5})
+	hits, err := journal.Recall(ctx, c.store, "hi", "", "", 5)
 	require.NoError(t, err)
 	var refs []string
 	for _, h := range hits {

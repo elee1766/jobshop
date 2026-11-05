@@ -9,63 +9,22 @@ import (
 	"context"
 )
 
-const recallDelete = `-- name: RecallDelete :exec
-DELETE FROM recall WHERE kind = ?1 AND ref = ?2
-`
-
-type RecallDeleteParams struct {
-	Kind string
-	Ref  string
-}
-
-func (q *Queries) RecallDelete(ctx context.Context, arg RecallDeleteParams) error {
-	_, err := q.db.ExecContext(ctx, recallDelete, arg.Kind, arg.Ref)
-	return err
-}
-
-const recallInsert = `-- name: RecallInsert :exec
-INSERT INTO recall (body, kind, ref, ticket_id, project, at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-`
-
-type RecallInsertParams struct {
-	Body     string
-	Kind     string
-	Ref      string
-	TicketID string
-	Project  string
-	At       string
-}
-
-func (q *Queries) RecallInsert(ctx context.Context, arg RecallInsertParams) error {
-	_, err := q.db.ExecContext(ctx, recallInsert,
-		arg.Body,
-		arg.Kind,
-		arg.Ref,
-		arg.TicketID,
-		arg.Project,
-		arg.At,
-	)
-	return err
-}
-
 const recallSearch = `-- name: RecallSearch :many
 SELECT kind, ref, ticket_id, project, CAST(at AS INTEGER) AS at_ms,
        snippet(recall, 0, '[', ']', '...', 16) AS snippet,
        CAST(bm25(recall) AS REAL) AS score
 FROM recall
 WHERE body MATCH ?1
-  AND (?2 = '' OR project = ?2 OR (kind = 'learning' AND project = ''))
-  AND (?3 = '' OR kind = ?3)
-  AND (?4 = '' OR ticket_id = ?4)
+  AND kind = 'comment'
+  AND (?2 = '' OR project = ?2)
+  AND (?3 = '' OR ticket_id = ?3)
 ORDER BY score
-LIMIT CAST(?5 AS INTEGER)
+LIMIT CAST(?4 AS INTEGER)
 `
 
 type RecallSearchParams struct {
 	Query    string
 	Project  interface{}
-	Kind     interface{}
 	TicketID interface{}
 	Lim      int64
 }
@@ -80,11 +39,11 @@ type RecallSearchRow struct {
 	Score    float64
 }
 
+// Comments only: journals and learnings are collections (#579).
 func (q *Queries) RecallSearch(ctx context.Context, arg RecallSearchParams) ([]RecallSearchRow, error) {
 	rows, err := q.db.QueryContext(ctx, recallSearch,
 		arg.Query,
 		arg.Project,
-		arg.Kind,
 		arg.TicketID,
 		arg.Lim,
 	)

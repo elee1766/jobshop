@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -66,7 +67,7 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	l, err := learning.Add(ctx, s, store.Learning{Kind: store.LearningFailure, Summary: "flaky dial timeout", Fix: "rerun alone", Ticket: f.Task, Source: "agent"}, "")
 	require.NoError(t, err)
 	f.Learning = l.ID
-	require.NoError(t, s.IndexRecall(ctx, store.RecallDoc{Kind: store.RecallJournal, Ref: "sess:1", TicketID: f.Task, Project: proj, At: c.T, Body: "journal about nftables"}))
+	require.NoError(t, journal.Index(ctx, s, journal.Doc{Session: "sess", Ticket: f.Task, Project: proj, At: c.T, Text: "journal about nftables"}))
 	_, err = memedit.AddWrite(ctx, s, store.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}, MergedAt: c.T})
 	require.NoError(t, err)
 	it, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issues", RepoOrTeam: "a/b", Number: 7, ReceivedAt: c.T, Payload: json.RawMessage(`{"x":1}`)})
@@ -112,11 +113,12 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	require.NoError(t, err)
 	require.Len(t, cs, 1)
 
-	for _, q := range []string{"vendorHash mismatch", "nftables"} {
-		hits, err := s.Recall(ctx, store.RecallQuery{Text: q})
-		require.NoError(t, err)
-		assert.Len(t, hits, 1, q)
-	}
+	hits, err := s.Recall(ctx, store.RecallQuery{Text: "vendorHash mismatch"})
+	require.NoError(t, err)
+	assert.Len(t, hits, 1, "comment search after the copy")
+	jhits, err := journal.Recall(ctx, s, "nftables", "", "", 0)
+	require.NoError(t, err)
+	assert.Len(t, jhits, 1, "journal search after the copy")
 	lhits, err := learning.Recall(ctx, s, "flaky dial", "", "", 0)
 	require.NoError(t, err)
 	assert.Len(t, lhits, 1, "learning search after the copy")
