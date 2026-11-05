@@ -158,7 +158,7 @@ packs:
 	assert.Contains(t, c.Pools["plan"].Prompt, "@elee1766")
 	assert.Contains(t, c.Triggers["master-red"].When.Check, "--repo elee1766/jobshop --branch master --workflow ci")
 	assert.Contains(t, c.Workflows["pr-work"].PackVars["deploy_check"], "jobshop version --server", "controller's commit, not the session binary (#180)")
-	assert.Equal(t, "go build ./... && go vet ./... && go test ./... && golangci-lint run ./...", c.Workflows["pr-work"].PackVars["check_cmd"])
+	assert.Equal(t, "go build ./... && go vet ./... && go test ./... && golangci-lint run ./... && nix fmt -- --check $(git ls-files '*.nix')", c.Workflows["pr-work"].PackVars["check_cmd"])
 	assert.Contains(t, c.Workflows["pr-work"].PackVars["docs_rule"], "docs/notes/<issue>-<slug>.md")
 	var mem *RuleMemory
 	for _, r := range c.PromptRules {

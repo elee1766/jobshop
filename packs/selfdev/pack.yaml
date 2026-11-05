@@ -34,7 +34,7 @@ extends:
       # Contributors whose issue reports are picked up (#340).
       authors: zexoverz
       ci_workflow: ci
-      check_cmd: go build ./... && go vet ./... && go test ./... && golangci-lint run ./...
+      check_cmd: go build ./... && go vet ./... && go test ./... && golangci-lint run ./... && nix fmt -- --check $(git ls-files '*.nix')
       docs_rule: >-
         behavior as built goes in a new file
         `docs/notes/<issue>-<slug>.md` (short, dated), a runbook check in a
