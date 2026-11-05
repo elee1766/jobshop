@@ -54,7 +54,7 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 	if err != nil {
 		return nil, err
 	}
-	out, err := c.store.CreateGraph(ctx, sc.actor, g.Tickets, g.Edges)
+	out, err := c.store.Apply(ctx, sc.actor, store.Graph{Tickets: g.Tickets, Edges: g.Edges})
 	if err != nil {
 		return nil, err
 	}

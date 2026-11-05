@@ -107,7 +107,7 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 	if err != nil {
 		return nil, err
 	}
-	t, err := c.store.Create(ctx, sc.actor, store.NewTicket{
+	t, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
 		ID: id, Project: project, Kind: store.KindMessage, Title: title, Body: p.Body,
 		Labels: []string{artifactLabel}, Meta: meta, Fields: fields,
 	})
@@ -116,7 +116,7 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 		return nil, err
 	}
 	if src != nil {
-		if err := c.store.AddEdge(ctx, sc.actor, store.Edge{From: t.ID, To: src.ID, Kind: store.EdgeTracks}); err != nil {
+		if err := store.AddEdge(ctx, c.store, sc.actor, store.Edge{From: t.ID, To: src.ID, Kind: store.EdgeTracks}); err != nil {
 			return nil, err
 		}
 		if _, err := c.store.AddComment(ctx, sc.actor, src.ID, "artifact delivered: "+t.ID+" "+title); err != nil {

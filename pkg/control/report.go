@@ -194,7 +194,7 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 		return store.Ticket{}, err
 	}
 	prio := 1
-	return c.store.Create(ctx, sc.actor, store.NewTicket{
+	return store.Create(ctx, c.store, sc.actor, store.NewTicket{
 		Project: t.Project, Kind: store.KindMessage, Title: "Question: " + title, Body: b,
 		Priority: &prio, Labels: []string{needsHumanLabel}, Meta: mb, Fields: fields,
 	})
@@ -250,7 +250,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 			if err != nil {
 				return nil, err
 			}
-			m, err := c.store.Create(ctx, sc.actor, store.NewTicket{
+			m, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
 				Project: s.Project, Kind: store.KindMessage,
 				Title: fmt.Sprintf("Answer to your question %s on %s", qt.ID, qm.Ticket), Body: text, Fields: fields,
 			})

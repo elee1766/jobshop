@@ -420,40 +420,9 @@ func (s *Store) classify(err error, id string) error {
 	}
 }
 
-// Create inserts one ticket.
-func (s *Store) Create(ctx context.Context, actor string, nt store.NewTicket) (t store.Ticket, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
-		t, err = s.insert(ctx, q, actor, nt)
-		return err
-	})
-	return t, err
-}
-
-// CreateGraph inserts tickets then edges atomically. Tickets are inserted in
-// order, so a parent must precede its children.
-func (s *Store) CreateGraph(ctx context.Context, actor string, nts []store.NewTicket, edges []store.Edge) (out []store.Ticket, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
-		out = make([]store.Ticket, 0, len(nts))
-		for _, nt := range nts {
-			t, err := s.insert(ctx, q, actor, nt)
-			if err != nil {
-				return err
-			}
-			out = append(out, t)
-		}
-		for _, e := range edges {
-			if err := s.addEdge(ctx, q, actor, e); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	return out, err
-}
-
-// ApplyGraph checks Unclaimed, inserts tickets, re-parents and adds edges
-// in one transaction.
-func (s *Store) ApplyGraph(ctx context.Context, actor string, g store.Graph) (out []store.Ticket, err error) {
+// Apply checks Unclaimed, inserts tickets, re-parents, removes and adds
+// edges in one transaction.
+func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []store.Ticket, err error) {
 	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		for _, id := range g.Unclaimed {
 			t, err := s.get(ctx, q, id)
@@ -482,6 +451,11 @@ func (s *Store) ApplyGraph(ctx context.Context, actor string, g store.Graph) (ou
 				return err
 			}
 			if err := q.SetParent(ctx, sqlcdb.SetParentParams{ParentID: sql.NullString{String: parent, Valid: parent != ""}, ID: id}); err != nil {
+				return err
+			}
+		}
+		for _, e := range g.RemoveEdges {
+			if err := s.removeEdge(ctx, q, actor, e); err != nil {
 				return err
 			}
 		}
@@ -1054,27 +1028,19 @@ func (s *Store) addEdge(ctx context.Context, q sqlcdb.Querier, actor string, e s
 	return history(ctx, q, t, now, actor, "edge_add", map[string]any{"to": e.To, "kind": e.Kind})
 }
 
-// AddEdge records a relation. Blocking edges that would form a cycle fail.
-func (s *Store) AddEdge(ctx context.Context, actor string, e store.Edge) error {
-	return s.tx(ctx, func(q sqlcdb.Querier) error { return s.addEdge(ctx, q, actor, e) })
-}
-
-// RemoveEdge deletes a relation.
-func (s *Store) RemoveEdge(ctx context.Context, actor string, e store.Edge) error {
-	return s.tx(ctx, func(q sqlcdb.Querier) error {
-		n, err := q.DeleteEdge(ctx, sqlcdb.DeleteEdgeParams{FromID: e.From, ToID: e.To, Kind: string(e.Kind)})
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return fmt.Errorf("%w: edge %s -> %s (%s)", store.ErrNotFound, e.From, e.To, e.Kind)
-		}
-		t, err := s.get(ctx, q, e.From)
-		if err != nil {
-			return err
-		}
-		return history(ctx, q, t, s.now(), actor, "edge_remove", map[string]any{"to": e.To, "kind": e.Kind})
-	})
+func (s *Store) removeEdge(ctx context.Context, q sqlcdb.Querier, actor string, e store.Edge) error {
+	n, err := q.DeleteEdge(ctx, sqlcdb.DeleteEdgeParams{FromID: e.From, ToID: e.To, Kind: string(e.Kind)})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: edge %s -> %s (%s)", store.ErrNotFound, e.From, e.To, e.Kind)
+	}
+	t, err := s.get(ctx, q, e.From)
+	if err != nil {
+		return err
+	}
+	return history(ctx, q, t, s.now(), actor, "edge_remove", map[string]any{"to": e.To, "kind": e.Kind})
 }
 
 func (s *Store) addLabel(ctx context.Context, q sqlcdb.Querier, id, label string) error {

@@ -71,18 +71,18 @@ func TestPortableColumnsBackfill(t *testing.T) {
 	require.NoError(t, err)
 	rf, _ := json.Marshal(store.RunFields{Workflow: "w", Key: "k1", State: store.RunRunning})
 	meta := json.RawMessage(`{"trigger":{"name":"nightly","n":3}}`)
-	run, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf, Meta: meta})
+	run, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf, Meta: meta})
 	require.NoError(t, err)
 	var steps []string
 	for _, i := range []int{1, 0} {
 		sf, _ := json.Marshal(store.StepFields{Run: run.ID, Step: "s", Index: i})
-		st, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
+		st, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
 		require.NoError(t, err)
 		steps = append(steps, st.ID)
 	}
 	cond := store.WaitCond{Type: store.WaitTime, At: run.CreatedAt.Add(time.Hour)}
 	wf, _ := json.Marshal(store.TaskFields{Wait: &store.Wait{Reason: "later", Since: run.CreatedAt, Conds: []store.WaitCond{cond}}})
-	waiting, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "w", Pool: "dev", Fields: wf})
+	waiting, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "w", Pool: "dev", Fields: wf})
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
@@ -129,12 +129,12 @@ func TestTicketResourcesBackfill(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.SetResourceCaps(ctx, map[string]int{"pr": 1}))
 	rf, _ := json.Marshal(store.RunFields{Workflow: "w", State: store.RunRunning})
-	run, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf})
+	run, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf})
 	require.NoError(t, err)
 	var ids []string
 	for range 2 {
 		sf, _ := json.Marshal(store.StepFields{Run: run.ID, Step: "s", Resources: []string{"pr:x#1"}})
-		st, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
+		st, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
 		require.NoError(t, err)
 		ids = append(ids, st.ID)
 	}

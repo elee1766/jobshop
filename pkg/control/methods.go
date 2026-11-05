@@ -179,7 +179,7 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 			return nil, err
 		}
 	}
-	return c.store.Create(ctx, sc.actor, store.NewTicket{
+	return store.Create(ctx, c.store, sc.actor, store.NewTicket{
 		Project: proj, Kind: p.Kind, Title: p.Title, Body: p.Body, Priority: p.Priority,
 		Pool: p.Pool, Holder: p.Holder, ParentID: p.ParentID, Labels: p.Labels,
 		Fields: p.Fields, Meta: p.Meta,
@@ -362,11 +362,11 @@ func (c *Controller) comment(ctx context.Context, sc scope, p rpc.CommentParams)
 }
 
 func (c *Controller) edgeAdd(ctx context.Context, sc scope, p rpc.EdgeParams) (any, error) {
-	return struct{}{}, c.store.AddEdge(ctx, sc.actor, store.Edge{From: p.From, To: p.To, Kind: p.Kind})
+	return struct{}{}, store.AddEdge(ctx, c.store, sc.actor, store.Edge{From: p.From, To: p.To, Kind: p.Kind})
 }
 
 func (c *Controller) edgeRemove(ctx context.Context, sc scope, p rpc.EdgeParams) (any, error) {
-	return struct{}{}, c.store.RemoveEdge(ctx, sc.actor, store.Edge{From: p.From, To: p.To, Kind: p.Kind})
+	return struct{}{}, store.RemoveEdge(ctx, c.store, sc.actor, store.Edge{From: p.From, To: p.To, Kind: p.Kind})
 }
 
 func (c *Controller) labelAdd(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {

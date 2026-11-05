@@ -30,7 +30,7 @@ func testListShapes(t *testing.T, s store.Store, c *Clock) {
 	held := task(t, s, "held", "dev", func(n *store.NewTicket) { n.Holder = "s1" })
 	c.Advance(time.Second)
 	rf, _ := json.Marshal(store.RunFields{Workflow: "w", Key: "k", State: store.RunRunning})
-	msg, err := s.Create(ctx, "test", store.NewTicket{Project: proj, Kind: store.KindRun, Title: "r", Fields: rf})
+	msg, err := store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: store.KindRun, Title: "r", Fields: rf})
 	require.NoError(t, err)
 	_, err = store.Close(ctx, s, "test", a.ID, nil, "done")
 	require.NoError(t, err)

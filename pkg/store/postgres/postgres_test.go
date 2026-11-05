@@ -116,7 +116,7 @@ func TestRecall(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
 	s := openTest(t, postgres.Options{})
-	tk, err := s.Create(ctx, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
+	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
 	require.NoError(t, err)
 	_, err = s.AddComment(ctx, "a", tk.ID, "CI failed: golangci-lint gofumpt formatting in pkg/cli")
 	require.NoError(t, err)

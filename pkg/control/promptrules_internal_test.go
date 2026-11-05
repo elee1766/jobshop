@@ -76,15 +76,17 @@ func TestAssembleOrder(t *testing.T) {
   - {name: chatonly, text: CHAT, match: {chat: true}}
 `)
 	ctx := t.Context()
-	run, err := c.store.Create(ctx, "t", store.NewTicket{
+	run, err := store.Create(ctx, c.store, "t", store.NewTicket{
 		Project: "js", Kind: store.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`),
 	})
+
 	require.NoError(t, err)
-	step, err := c.store.Create(ctx, "t", store.NewTicket{
+	step, err := store.Create(ctx, c.store, "t", store.NewTicket{
 		Project: "js", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
 		Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"implement"}`, run.ID)),
 	})
+
 	require.NoError(t, err)
 	body := PromptPart{Source: "ticket", Text: "BODY"}
 
@@ -121,10 +123,11 @@ func TestRuleCommand(t *testing.T) {
   - {name: big, command: "head -c %d /dev/zero | tr '\\0' x"}
 `, config.MaxRuleOutput+100))
 	ctx := t.Context()
-	tk, err := c.store.Create(ctx, "t", store.NewTicket{
+	tk, err := store.Create(ctx, c.store, "t", store.NewTicket{
 		Project: "js", Kind: store.KindTask, Title: "x", Pool: "dev",
 		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":205}}`),
 	})
+
 	require.NoError(t, err)
 	start := time.Now()
 	parts := c.assemble(ctx, turnSpec{session: "js-s", pool: "dev", agent: "fake", project: "js", kind: turnTicket, ticket: &tk}, PromptPart{Source: "ticket"})
@@ -169,10 +172,11 @@ func TestRuleMemory(t *testing.T) {
   - {name: gone, at: system, memory: {dir: %q}}
 `, mem, filepath.Join(mem, "absent")))
 	ctx := t.Context()
-	tk, err := c.store.Create(ctx, "t", store.NewTicket{
+	tk, err := store.Create(ctx, c.store, "t", store.NewTicket{
 		Project: "js", Kind: store.KindTask, Title: "x", Pool: "dev",
 		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":266}}`),
 	})
+
 	require.NoError(t, err)
 	parts := c.assemble(ctx, turnSpec{pool: "dev", kind: turnTicket, ticket: &tk, system: true}, PromptPart{Source: "ticket"})
 	assert.Equal(t, []string{"rule:mem", "ticket"}, sources(parts))
@@ -212,7 +216,7 @@ prompt_rules:
     text: "run jobshop learn. Do not record a learning for routine success."
 `)
 	ctx := t.Context()
-	task, err := c.store.Create(ctx, "t", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "t"})
+	task, err := store.Create(ctx, c.store, "t", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "t"})
 	require.NoError(t, err)
 	body := PromptPart{Source: "ticket", Text: "BODY"}
 	for _, pool := range []string{"dev", "refinery", "operator"} {

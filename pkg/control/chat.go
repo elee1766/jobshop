@@ -70,7 +70,7 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 		return nil, err
 	}
 	title, body, _ := strings.Cut(p.Text, "\n")
-	m, err := c.store.Create(ctx, sc.actor, store.NewTicket{
+	m, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
 		Project: sess.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
 	})
 	if err != nil {

@@ -69,7 +69,7 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 		if err != nil {
 			return nil, err
 		}
-		t, err := c.store.Create(ctx, sc.actor, store.NewTicket{
+		t, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
 			Project: proj, Kind: store.KindTask, Title: p.Title, Body: p.Body,
 			Pool: p.Pool, Labels: p.Labels, Meta: meta,
 		})

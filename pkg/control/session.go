@@ -1849,9 +1849,10 @@ func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent
 			title = pool + " " + title
 		}
 	}
-	t, err := c.store.Create(ctx, actor, store.NewTicket{
+	t, err := store.Create(ctx, c.store, actor, store.NewTicket{
 		Project: project, Kind: store.KindSession, Title: title, Pool: pool, Fields: fields,
 	})
+
 	c.slotMu.Unlock()
 	if err != nil {
 		return t, err

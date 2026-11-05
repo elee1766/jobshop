@@ -26,7 +26,7 @@ func testConcurrentClaims(t *testing.T, s store.Store, _ *Clock) {
 	}
 	blocker := task(t, s, "blocker", "other")
 	blocked := task(t, s, "blocked", "dev")
-	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: blocked.ID, To: blocker.ID, Kind: store.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: blocked.ID, To: blocker.ID, Kind: store.EdgeBlocks}))
 
 	var mu sync.Mutex
 	got := map[string][]string{} // ticket -> holders that claimed it
@@ -99,7 +99,7 @@ func testConcurrentResourceClaims(t *testing.T, s store.Store, _ *Clock) {
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":%q,"retries":5,"resources":["emu"]}`, runID, id)),
 		})
 	}
-	_, err = s.CreateGraph(ctx, "test", nts, nil)
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: nts, Edges: nil})
 	require.NoError(t, err)
 
 	var mu sync.Mutex
@@ -139,8 +139,8 @@ func testClaimAfterSkippedBlocker(t *testing.T, s store.Store, _ *Clock) {
 		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"w","state":"running"}`),
 	}
-	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{run, mk("js-sa"), mk("js-sb")},
-		[]store.Edge{{From: "js-sb", To: "js-sa", Kind: store.EdgeBlocks}})
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, mk("js-sa"), mk("js-sb")}, Edges: []store.Edge{{From: "js-sb", To: "js-sa", Kind: store.EdgeBlocks}}})
+
 	require.NoError(t, err)
 	_, err = store.Close(ctx, s, "controller", "js-sa", nil, store.StepSkipped)
 	require.NoError(t, err)

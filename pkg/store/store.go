@@ -195,12 +195,15 @@ type NewTicket struct {
 // DefaultPriority is used when NewTicket.Priority is nil. Lower runs first.
 const DefaultPriority = 2
 
-// Graph is the input to ApplyGraph.
+// Graph is the input to Apply. It runs in this order: check Unclaimed,
+// insert Tickets (a parent before its children), re-parent, remove
+// RemoveEdges (a missing edge is ErrNotFound), add Edges.
 type Graph struct {
-	Tickets   []NewTicket
-	Reparent  map[string]string // existing ticket id -> new parent id
-	Edges     []Edge
-	Unclaimed []string
+	Tickets     []NewTicket
+	Reparent    map[string]string // existing ticket id -> new parent id
+	Edges       []Edge
+	RemoveEdges []Edge
+	Unclaimed   []string
 }
 
 // Update changes mutable, non-claim fields. Nil pointers are left unchanged.
@@ -315,7 +318,6 @@ var (
 // Store is the only persistence interface. Every write records history
 // (except heartbeats) and bumps the ticket revision.
 type Store interface {
-	Create(ctx context.Context, actor string, t NewTicket) (Ticket, error)
 	Get(ctx context.Context, id string) (Ticket, error)
 	// List returns tickets matching f. It replaces the per-shape reads:
 	// ready, orphaned, children, runs, by key, by creation time (#579).
@@ -374,9 +376,6 @@ type Store interface {
 	// holder "", every ticket whose lease expired, and returns the ids.
 	Expire(ctx context.Context, actor, holder, reason string) ([]string, error)
 
-	AddEdge(ctx context.Context, actor string, e Edge) error
-	RemoveEdge(ctx context.Context, actor string, e Edge) error
-
 	AddLabel(ctx context.Context, actor, id, label string) error
 	RemoveLabel(ctx context.Context, actor, id, label string) error
 
@@ -394,15 +393,14 @@ type Store interface {
 	// feeds events.subscribe; n < 0 reads only Last.
 	Changes(ctx context.Context, after int64, n int) (ChangePage, error)
 
-	// CreateGraph inserts tickets and edges in one transaction.
-	CreateGraph(ctx context.Context, actor string, tickets []NewTicket, edges []Edge) ([]Ticket, error)
-	// ApplyGraph is CreateGraph that may also re-parent existing tickets,
-	// in one transaction. Each Unclaimed id must be open and unheld inside
+	// Apply writes g in one transaction and returns the created tickets
+	// in order (#579: replaces Create, CreateGraph, ApplyGraph, AddEdge
+	// and RemoveEdge). Each Unclaimed id must be open and unheld inside
 	// that transaction, or nothing is written and the error wraps
 	// ErrNotHolder (#169: an edge added to a claimed step has no effect).
-	ApplyGraph(ctx context.Context, actor string, g Graph) ([]Ticket, error)
+	Apply(ctx context.Context, actor string, g Graph) ([]Ticket, error)
 	// NewID mints a ticket id for project, so a caller can wire parent ids
-	// and edges before CreateGraph.
+	// and edges before Apply.
 	NewID(project string) (string, error)
 
 	// IndexRecall adds or replaces (by kind and ref) one document in the

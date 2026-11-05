@@ -394,9 +394,10 @@ func (c *Controller) sendMessage(ctx context.Context, sess store.Ticket, text, m
 		return err
 	}
 	title, body, _ := strings.Cut(text, "\n")
-	_, err = c.store.Create(ctx, "controller", store.NewTicket{
+	_, err = store.Create(ctx, c.store, "controller", store.NewTicket{
 		Project: sess.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
 	})
+
 	if err == nil {
 		c.wakeRunner(sess.ID)
 	}

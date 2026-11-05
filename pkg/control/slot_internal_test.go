@@ -41,7 +41,7 @@ func createSlotSession(t *testing.T, c *Controller, pool string) (store.Ticket, 
 	}
 	fields, err := json.Marshal(store.SessionFields{Agent: "fake", Slot: slot})
 	require.NoError(t, err)
-	return c.store.Create(t.Context(), "test", store.NewTicket{Project: "js", Kind: store.KindSession, Title: "s", Pool: pool, Fields: fields})
+	return store.Create(t.Context(), c.store, "test", store.NewTicket{Project: "js", Kind: store.KindSession, Title: "s", Pool: pool, Fields: fields})
 }
 
 func slotOf(t *testing.T, tk store.Ticket) int {
