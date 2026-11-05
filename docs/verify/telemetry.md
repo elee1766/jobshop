@@ -14,7 +14,7 @@ Wired 2026-11-01 (gasserver.nix `modules/jobshop.nix`, gascity-city
 
 Checks, from a session (all endpoints are on loopback):
 
-```sh
+```sh readonly
 curl -s 127.0.0.1:9464/metrics | grep -c '^jobshop_'
 curl -s 'http://127.0.0.1:18428/api/v1/targets' \
   | jq -r '.data.activeTargets[] | select(.labels.job=="jobshop") | .health'   # up
@@ -40,7 +40,7 @@ missing for a pool, or VictoriaTraces has no `session` trace for service
 as `info` lines and do not fail. Defaults are the gasserver loopback
 URLs; `--help` lists the flags.
 
-```sh
+```sh readonly
 deploy/verify-telemetry.sh                       # paste the output on #36
 CURL=/run/current-system/sw/bin/curl deploy/verify-telemetry.sh   # if curl is not on PATH
 ```
