@@ -104,7 +104,7 @@ let
     };
   };
 
-  # Shared read-only mise installs (#316).
+  # JOB-23: the removed mise options still evaluate, with a warning.
   miseShared = eval {
     sandbox.enable = true;
     sandbox.mise.tools = [ "node@24" ];
@@ -428,8 +428,6 @@ let
       repos = [ "elee1766/*" ];
     };
     sandbox.enable = true;
-    sandbox.mise.dir = "/srv/jobshop-mise";
-    sandbox.mise.tools = [ "node@24" ];
     journal.victorialogs.url = "http://127.0.0.1:9428";
     settings.projects.js = { };
   };
@@ -451,7 +449,6 @@ let
       lib.all (u: hmUnits ? ${u}) [
         "jobshop"
         "jobshop-shutdown"
-        "jobshop-mise"
         "jobshop-self-deploy"
         "jobshop-workspace-jobshop"
         "jobshop-workspace-jobshop-sync"
@@ -491,16 +488,47 @@ let
         !r.success || r.value
       )
     ))
-    (expect "shared mise unit, env and mount" (
+    (expect "removed mise options warn and add nothing" (
       let
         svc = miseShared.config.systemd.services;
       in
-      svc.jobshop.environment.MISE_SHARED_INSTALL_DIRS == "/var/lib/jobshop-mise/installs"
-      && svc.jobshop-mise.environment.MISE_DATA_DIR == "/var/lib/jobshop-mise"
-      && lib.hasInfix "mise install --yes node@24" svc.jobshop-mise.script
-      && miseShared.config.systemd.timers ? jobshop-mise
-      && !(miseOff.config.systemd.services ? jobshop-mise)
-      && !(miseOff.config.systemd.services.jobshop.environment ? MISE_SHARED_INSTALL_DIRS)
+      !(svc ? jobshop-mise)
+      && !(svc.jobshop.environment ? MISE_SHARED_INSTALL_DIRS)
+      && lib.any (lib.hasInfix "sandbox.mise is ignored") miseShared.config.warnings
+      && !(lib.any (lib.hasInfix "sandbox.mise") miseOff.config.warnings)
+    ))
+    # JOB-23: the default controller PATH has only what jobshop execs.
+    (expect "default PATH has no consumer tools" (
+      let
+        names = map (p: p.pname or p.name or "") miseOff.config.systemd.services.jobshop.path;
+        bad = lib.filter (
+          n:
+          lib.any (t: lib.hasPrefix t n) [
+            "go"
+            "gcc"
+            "mise"
+            "gnumake"
+            "ripgrep"
+          ]
+        ) names;
+      in
+      bad == [ ] && lib.elem "git" names && lib.elem "bubblewrap" names
+    ))
+    (expect "sandbox defaults are generic" (
+      let
+        env = miseOff.config.systemd.services.jobshop.environment;
+      in
+      !(env ? NIX_LD)
+      && !(env ? MISE_ALL_COMPILE)
+      && miseOff.config.services.jobshop.sandbox.rw == [ ]
+      && !(lib.elem "MISE_*" miseOff.config.services.jobshop.sandbox.envKeep)
+    ))
+    (expect "defaultPath true warns and adds go" (
+      let
+        c = eval { defaultPath = true; };
+      in
+      lib.any (p: (p.pname or "") == "go") c.config.systemd.services.jobshop.path
+      && lib.any (lib.hasInfix "defaultPath is deprecated") c.config.warnings
     ))
     (expect "two workspaces pass assertions" (failed two == [ ]))
     (expect "two workspaces have clone units" (
@@ -719,7 +747,7 @@ pkgs.runCommand "jobshop-module-test" { } ''
   grep -q 'repo: elee1766/other' ${yamlPacks two}
   grep -q 'prefix: ot-' ${yamlPacks two}
   [ "$(grep -c 'prefix:' ${yamlPacks two})" = 1 ] || { echo 'selfdev got a prefix'; exit 1; }
-  grep -q -- '- /var/lib/jobshop-mise' ${yamlPacks miseShared}
+  ! grep -q -- '- /var/lib/jobshop-mise' ${yamlPacks miseShared}
   grep -q 'url: http://127.0.0.1:9428' ${yamlPacks vlLocal}
   grep -q 'url: http://logs.internal:9428' ${yamlPacks vlExternal}
   touch $out

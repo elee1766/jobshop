@@ -91,10 +91,7 @@ let
         }
         // ((base.defaults or { }).sandbox or { });
       };
-      shared_tools =
-        (base.shared_tools or [ ])
-        ++ cfg.sandbox.sharedTools
-        ++ lib.optional sharedMise cfg.sandbox.mise.dir;
+      shared_tools = (base.shared_tools or [ ]) ++ cfg.sandbox.sharedTools;
     };
   # Managed mode (configFile = null): jobshop.yaml is generated from
   # settings plus the module's keys. User mode (#531): the user owns
@@ -156,8 +153,19 @@ let
   asUser = lib.optionalString isNixos "${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- ";
   # tmpfiles owner: user tmpfiles create as the user already.
   own = if isNixos then "${cfg.user} ${cfg.group}" else "- -";
-  sharedMise = cfg.sandbox.enable && cfg.sandbox.mise.tools != [ ];
 
+  # What the controller and the module's own units exec (JOB-23): git for
+  # worktrees and workspace sync, sh for hooks and steps, diff in the sync
+  # script, ssh for a workspace's first clone over git@. systemd adds
+  # coreutils, findutils, grep and sed to every unit's PATH.
+  baseTools = with pkgs; [
+    git
+    bash
+    coreutils
+    diffutils
+    openssh
+  ];
+  # The old consumer toolset, kept behind defaultPath (default false).
   defaultTools = with pkgs; [
     git
     go_1_27
@@ -185,6 +193,7 @@ let
     lib.optional useIdentities ghWrapper
     ++ cfg.path
     ++ lib.optionals cfg.defaultPath defaultTools
+    ++ baseTools
     ++ lib.optional cfg.sandbox.enable pkgs.bubblewrap
     # newuidmap/newgidmap must be the setuid wrappers, not the store
     # binaries; /run/wrappers/bin is on the service PATH below.
@@ -235,18 +244,8 @@ let
     };
   environment =
     gitEnv
-    # mise inside the sandbox: prebuilt runtimes through nix-ld (#262).
-    // lib.optionalAttrs cfg.sandbox.enable {
-      MISE_ALL_COMPILE = "false";
-      MISE_PYTHON_COMPILE = "false";
-      NIX_LD_LIBRARY_PATH = "/run/current-system/sw/share/nix-ld/lib";
-      NIX_LD = "/run/current-system/sw/share/nix-ld/lib/ld.so";
-      MISE_TRUSTED_CONFIG_PATHS = "${cfg.dataDir}/sessions:${cfg.dataDir}/workspaces";
-    }
-    # Sessions use the host's installs before their own (#316).
-    // lib.optionalAttrs sharedMise {
-      MISE_SHARED_INSTALL_DIRS = "${cfg.sandbox.mise.dir}/installs";
-    }
+    # Agent toolchain env (mise, nix-ld) is the consumer's, in
+    # environment (JOB-23; example in docs/nixos.md).
     // cfg.environment
     // {
       JOBSHOP_ROOT = cfg.dataDir;
@@ -969,59 +968,46 @@ in
           "TERM"
           "SSL_CERT_FILE"
           "NIX_SSL_CERT_FILE"
-          "NIX_PATH"
-          "NIX_LD"
-          "NIX_LD_LIBRARY_PATH"
-          "GOPATH"
-          "GOCACHE"
-          "GOFLAGS"
-          "GOTOOLCHAIN"
+          # The module sets the git identity through GIT_* env.
           "GIT_*"
-          "MISE_*"
         ];
         description = "Controller env names passed into sandboxed sessions (defaults.sandbox.env_keep); a trailing * keeps a prefix.";
       };
       rw = lib.mkOption {
         type = lib.types.listOf lib.types.str;
-        default = [
+        default = [ ];
+        example = [
           "~/go"
           "~/.cache/go-build"
-          "~/.npm"
-          "~/.jcode"
-          "~/.local/share/mise"
-          "~/.cache/mise"
         ];
-        description = "Read-write dirs for every sandboxed session (defaults.sandbox.rw): build caches, agent state, mise data.";
+        description = "Read-write dirs for every sandboxed session (defaults.sandbox.rw): build caches, agent state.";
       };
-      # Host-level mise installs shared read-only with sandboxed sessions (#316).
+      # Removed (JOB-23): kept one release as ignored options with a
+      # warning, so a host that sets them still evaluates. See the
+      # example in docs/nixos.md.
       mise = {
         tools = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
-          example = [
-            "node@24"
-            "python@3.13"
-          ];
-          description = "mise tools installed outside the sandbox into <dir>/installs, mounted read-only into every sandboxed session and listed in MISE_SHARED_INSTALL_DIRS. Empty: no shared install unit.";
+          description = "Ignored (JOB-23). Run mise from your own unit and add its dir to sandbox.sharedTools; see docs/nixos.md.";
         };
         dir = lib.mkOption {
           type = lib.types.str;
-          default = if isNixos then "/var/lib/jobshop-mise" else "${config.xdg.stateHome}/jobshop-mise";
-          defaultText = lib.literalExpression ''"/var/lib/jobshop-mise" (NixOS), "''${config.xdg.stateHome}/jobshop-mise" (home-manager)'';
-          description = "mise data dir for the shared installs; added to sandbox.sharedTools.";
+          default = "/var/lib/jobshop-mise";
+          description = "Ignored (JOB-23).";
         };
         interval = lib.mkOption {
           type = lib.types.str;
           default = "daily";
-          description = "systemd OnCalendar for re-running the shared mise install.";
+          description = "Ignored (JOB-23).";
         };
       };
     };
 
     defaultPath = lib.mkOption {
       type = lib.types.bool;
-      default = true;
-      description = "Put the tools Jobshop's own agents need on PATH (git, go, nix, gnumake, gcc, ripgrep, fd, jq, curl, openssh, coreutils, bash, mise), before `path`.";
+      default = false;
+      description = "Deprecated (JOB-23): put the old agent toolset (go, nix, gnumake, gcc, ripgrep, fd, jq, curl, mise, ...) on PATH. List your agents' tools in `path` instead; this option goes away in a later release.";
     };
 
     gitIdentity = {
@@ -1337,39 +1323,12 @@ in
         # Per-host GC roots keep a running session host's binary alive across
         # Nix switches. Under home-manager the host creates this dir (root owns
         # per-user/), see docs/home-manager.md.
-        ++ lib.optional isNixos "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${own} -"
-        ++ lib.optional sharedMise "d ${cfg.sandbox.mise.dir} 0755 ${own} -";
+        ++ lib.optional isNixos "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${own} -";
 
-        services.jobshop.units.services.jobshop-mise = lib.mkIf sharedMise {
-          description = "Install shared mise tools for Jobshop sandboxes";
-          wantedBy = [ "multi-user.target" ];
-          before = [ "jobshop.service" ];
-          after = [ "network-online.target" ];
-          wants = [ "network-online.target" ];
-          inherit path;
-          # Outside the sandbox and outside the sessions' own mise data dir,
-          # so sessions only ever read these installs.
-          environment = environment // {
-            MISE_DATA_DIR = cfg.sandbox.mise.dir;
-            MISE_CACHE_DIR = "${cfg.sandbox.mise.dir}/cache";
-            MISE_SHARED_INSTALL_DIRS = "";
-          };
-          serviceConfig = {
-            Type = "oneshot";
-            User = cfg.user;
-            Group = cfg.group;
-            Slice = "jobshop.slice";
-            WorkingDirectory = cfg.sandbox.mise.dir;
-          };
-          script = "mise install --yes ${lib.escapeShellArgs cfg.sandbox.mise.tools}";
-        };
-        services.jobshop.units.timers.jobshop-mise = lib.mkIf sharedMise {
-          wantedBy = [ "timers.target" ];
-          timerConfig = {
-            OnCalendar = cfg.sandbox.mise.interval;
-            Persistent = true;
-          };
-        };
+        warnings =
+          lib.optional (cfg.sandbox.mise.tools != [ ])
+            "services.jobshop.sandbox.mise is ignored (JOB-23): run mise from your own unit and add its dir to sandbox.sharedTools, see docs/nixos.md."
+          ++ lib.optional cfg.defaultPath "services.jobshop.defaultPath is deprecated (JOB-23): list your agents' tools in services.jobshop.path.";
 
         services.jobshop.units.slices.jobshop = {
           description = "Jobshop controller, session hosts and agents";
