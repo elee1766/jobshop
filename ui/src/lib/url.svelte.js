@@ -1,9 +1,9 @@
 // URL holds all UI state: view, open ticket, open session, filters.
 // Back and forward work, and a link reproduces what you see.
 
-/** @typedef {{ view: string, ticket: string, session: string, state: string, source: string, repo: string, kind: string, who: string }} UrlState */
+/** @typedef {{ view: string, ticket: string, session: string, state: string, source: string, repo: string, kind: string, who: string, artifact: string, trigger: string, pool: string, read: string }} UrlState */
 
-const VIEWS = ['attention', 'chat', 'work', 'activity', 'sessions', 'pools', 'deploys'];
+const VIEWS = ['attention', 'artifacts', 'chat', 'work', 'activity', 'sessions', 'pools', 'deploys'];
 
 /** @returns {UrlState} */
 function read() {
@@ -19,6 +19,11 @@ function read() {
     repo: q.get('repo') ?? '',
     kind: q.get('kind') ?? '',
     who: q.get('who') ?? '',
+    // Artifacts (#508): open artifact, filters, show read ones.
+    artifact: q.get('artifact') ?? '',
+    trigger: q.get('trigger') ?? '',
+    pool: q.get('pool') ?? '',
+    read: q.get('read') ?? '',
   };
 }
 

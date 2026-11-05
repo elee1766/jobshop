@@ -131,6 +131,8 @@ type Controller struct {
 	poolPausedUntil map[string]time.Time
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
+	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
+	artifactsPrunedAt time.Time
 	// prov is resource provider demand and idle state (#407); tick-only.
 	prov providerState
 	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
@@ -449,6 +451,7 @@ func (c *Controller) tick() {
 	c.sweepLinearAsks(c.ctx)
 	c.pruneInbox()
 	c.pruneWriteKeys()
+	c.pruneArtifacts()
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
@@ -763,6 +766,10 @@ func init() {
 		rpc.MethodSubscribe:         bind((*Controller).subscribe),
 		rpc.MethodReport:            bind((*Controller).report),
 		rpc.MethodQuestionAnswer:    bind((*Controller).answerQuestion),
+		rpc.MethodArtifactDeliver:   bind((*Controller).artifactDeliver),
+		rpc.MethodArtifactList:      bind((*Controller).artifactList),
+		rpc.MethodArtifactShow:      bind((*Controller).artifactShow),
+		rpc.MethodArtifactAck:       bind((*Controller).artifactAck),
 		rpc.MethodActivityList:      bind((*Controller).activityList),
 		rpc.MethodActivityRecord:    bind((*Controller).activityRecord),
 		rpc.MethodLearnAdd:          bind((*Controller).learnAdd),

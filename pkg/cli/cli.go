@@ -76,6 +76,7 @@ type root struct {
 	Activity  activityCmd  `cmd:"" help:"Recent GitHub and Linear activity in the repos and teams jobshop works, newest first (admin or pool grant activity)."`
 	Report    reportCmd    `cmd:"" help:"Report your ticket's state (progress, waiting, ready, blocked, failed, dropped), or reliability reports (admin)."`
 	Answer    answerCmd    `cmd:"" help:"Answer a worker's question; the answer goes to the asking session (admin)."`
+	Artifact  artifactCmd  `cmd:"" help:"Deliver reports for a human to read in Desk; list, show and ack them."`
 	Learn     learnCmd     `cmd:"" help:"Record a correction, failure or workaround for the learning loop, or list learnings."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Memory    memoryCmd    `cmd:"" help:"Memory files and skills from a git directory (#266)."`
