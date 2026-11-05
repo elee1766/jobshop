@@ -2,15 +2,12 @@ package control
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -26,11 +23,11 @@ func attentionKinds(t *testing.T, c *Controller) []string {
 }
 
 // TestAttention: empty when healthy; lists needs-human tickets,
-// questions, unescalated needs_human runs, quarantined pools and a
-// rollback, oldest first, with each escalated run or pool once (#185).
+// questions, unescalated needs_human runs and quarantined pools, oldest
+// first, with each escalated run or pool once (#185).
 func TestAttention(t *testing.T) {
 	t.Parallel()
-	c, clk, dir := stallController(t)
+	c, clk, _ := stallController(t)
 	// Healthy: a running run and an ordinary ticket are not listed.
 	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "ok", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`)})
 	mkTicket(t, c, store.NewTicket{Title: "task"})
@@ -68,34 +65,4 @@ func TestAttention(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "acme/widget", items[2].Repo)
 	assert.Equal(t, "#7", items[2].Ref)
-
-	// Rollback: listed while "failed" is newer than "deployed".
-	state := filepath.Join(dir, "deploy")
-	require.NoError(t, os.MkdirAll(state, 0o750))
-	_, ok := rollbackItem(filepath.Join(state, "failed"))
-	assert.False(t, ok, "no failed file")
-	require.NoError(t, os.WriteFile(filepath.Join(state, "deployed"), []byte("old\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(state, "failed"), []byte("abc123\n"), 0o600))
-	past := time.Now().Add(-time.Hour)
-	require.NoError(t, os.Chtimes(filepath.Join(state, "deployed"), past, past))
-	it, ok := rollbackItem(filepath.Join(state, "failed"))
-	require.True(t, ok)
-	assert.Equal(t, rpc.AttentionItem{Kind: rpc.AttentionRollback, ID: "abc123", Title: "self-deploy rolled back abc123", Since: it.Since}, it)
-	// A failed pre-switch config check names the error (#261).
-	require.NoError(t, os.WriteFile(filepath.Join(state, "failed.reason"), []byte(`pools.operator.prompt_file: var "jobshop_repo" is not set`+"\n"), 0o600))
-	it, ok = rollbackItem(filepath.Join(state, "failed"))
-	require.True(t, ok)
-	assert.Equal(t, `self-deploy skipped abc123, config check failed: pools.operator.prompt_file: var "jobshop_repo" is not set`, it.Title)
-	require.NoError(t, os.WriteFile(filepath.Join(state, "deployed"), []byte("new\n"), 0o600))
-	_, ok = rollbackItem(filepath.Join(state, "failed"))
-	assert.False(t, ok, "a later deploy clears it")
-
-	// Config repo (#532): listed while the failed file exists.
-	repoFile := filepath.Join(dir, "config-repo.failed")
-	_, ok = configRepoItem(repoFile)
-	assert.False(t, ok, "no failed file")
-	require.NoError(t, os.WriteFile(repoFile, []byte("abc123\npacks[0]: pack.yaml: no such file\n"), 0o600))
-	it, ok = configRepoItem(repoFile)
-	require.True(t, ok)
-	assert.Equal(t, rpc.AttentionItem{Kind: rpc.AttentionConfigRepo, ID: "abc123", Title: "config repo commit abc123 failed its check, running the last good config: packs[0]: pack.yaml: no such file", Since: it.Since}, it)
 }

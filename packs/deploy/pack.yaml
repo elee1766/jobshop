@@ -1,0 +1,16 @@
+# Deploy pack (#577): the Desk Deploys view for the NixOS module's
+# single-host self-deploy. Deploy state is not core; the self-deploy
+# script reports rollbacks as needs-human tickets (`jobshop ticket upsert
+# --key deploy:rollback`), and this pack only shows its state files.
+# The module adds it when services.jobshop.selfDeploy.enable is set.
+template: go
+defaults:
+  state_dir: /var/lib/jobshop-deploy
+desk_commands:
+  # deployed and failed revs with their mtimes (unix seconds), as JSON.
+  deploy-state:
+    timeout: 5s
+    command: |
+      d={{quote .state_dir}}
+      f() { r=$(tr -dc '0-9a-f' < "$d/$1" 2>/dev/null); t=$(stat -c %Y "$d/$1" 2>/dev/null || echo 0); printf '"%s":"%s","%s_at":%s' "$1" "$r" "$1" "$t"; }
+      printf '{%s,%s}\n' "$(f deployed)" "$(f failed)"

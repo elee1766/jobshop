@@ -36,6 +36,7 @@ const (
 	MethodTicketUpdate     = "ticket.update"
 	MethodTicketClose      = "ticket.close"
 	MethodTicketReopen     = "ticket.reopen"
+	MethodTicketUpsert     = "ticket.upsert"
 	MethodReady            = "ticket.ready"
 	MethodCommentAdd       = "comment.add"
 	MethodEdgeAdd          = "edge.add"
@@ -292,6 +293,29 @@ type UpdateParams struct {
 	// Force pre-assigns to a cordoned session, which otherwise refuses
 	// new work (#281).
 	Force bool `json:"force,omitempty"`
+}
+
+// UpsertParams creates or updates the open ticket with Key, or closes it
+// (#577). Outside tools use it to report a problem once and clear it
+// when it is gone, e.g. a deploy wrapper's deploy:rollback.
+type UpsertParams struct {
+	Key     string   `json:"key"`
+	Project string   `json:"project,omitempty"`
+	Title   string   `json:"title,omitempty"`
+	Body    string   `json:"body,omitempty"`
+	Pool    string   `json:"pool,omitempty"`
+	Labels  []string `json:"labels,omitempty"`
+	// Close closes the open ticket with Key, if any, with Resolution
+	// (default done). Title and Body then go in a closing comment when set.
+	Close      bool   `json:"close,omitempty"`
+	Resolution string `json:"resolution,omitempty"`
+}
+
+// UpsertResult is the ticket and what happened: created, updated,
+// unchanged, closed or none (Close with no open ticket).
+type UpsertResult struct {
+	Op     string        `json:"op"`
+	Ticket *store.Ticket `json:"ticket,omitempty"`
 }
 
 // CloseParams closes a ticket. In a session scope the session must hold it.
@@ -1264,9 +1288,7 @@ const (
 	AttentionTicket     = "ticket"      // open ticket labeled needs-human (escalations, pool quarantines)
 	AttentionQuestion   = "question"    // open ticket labeled question: a worker asks a human
 	AttentionPool       = "pool"        // quarantined pool with no open escalation
-	AttentionRollback   = "rollback"    // self-deploy rolled back a commit
 	AttentionConfig     = "config"      // controller serves its last good config: a live pack failed to load (#227)
-	AttentionConfigRepo = "config-repo" // a config repo commit failed its check; the host stays on the last good one (#532)
 	AttentionResource   = "resource"    // step waiting on a full resource past attention.resource_wait (#408)
 	AttentionIngest     = "ingest"      // no live external ingest worker, or an admission backlog (#443)
 	AttentionDecision   = "decision"    // open ticket labeled proposed: a planner-proposed target to approve (#488)
@@ -1280,7 +1302,7 @@ const (
 // AttentionItem is one thing waiting on a human.
 type AttentionItem struct {
 	Kind    string    `json:"kind"`
-	ID      string    `json:"id"` // ticket id, pool name or rolled-back commit
+	ID      string    `json:"id"` // ticket id or pool name
 	Project string    `json:"project,omitempty"`
 	Title   string    `json:"title"`
 	Since   time.Time `json:"since"`

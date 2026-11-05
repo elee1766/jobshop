@@ -5,11 +5,14 @@
   /** @type {{ items: { data: any, error: string, loading: boolean } }} */
   let { items } = $props();
 
+  // Kinds that name a ticket open its drawer (#577: Desk lists the
+  // controller's attention, which has more kinds than these).
+  const ticketKinds = ['run', 'ticket', 'question', 'decision', 'wait', 'stale', 'resource'];
+
   /** @param {any} it */
   function open(it) {
-    if (it.kind === 'run' || it.kind === 'ticket') go({ ticket: it.id });
+    if (ticketKinds.includes(it.kind)) go({ ticket: it.id });
     else if (it.kind === 'pool') go({ view: 'pools', ticket: '' });
-    else if (it.kind === 'deploy') go({ view: 'deploys', ticket: '' });
   }
 </script>
 
@@ -23,7 +26,7 @@
 {:else if items.data.length === 0}
   <div class="card empty" data-testid="attention-empty">
     <div class="big">Nothing needs you.</div>
-    <div class="muted">No escalations, needs-human runs, quarantined pools or rolled-back deploys.</div>
+    <div class="muted">No escalations, needs-human runs or tickets, or quarantined pools.</div>
   </div>
 {:else}
   <div class="card scroll">

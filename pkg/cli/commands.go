@@ -370,6 +370,29 @@ type ticketCmd struct {
 	Update ticketUpdateCmd `cmd:"" help:"Change a ticket."`
 	Close  closeCmd        `cmd:"" help:"Close a ticket."`
 	Reopen ticketReopenCmd `cmd:"" help:"Reopen a closed ticket (admin)."`
+	Upsert ticketUpsertCmd `cmd:"" help:"Create or update the open ticket with a key, or close it (admin). For outside tools that report a problem and clear it."`
+}
+
+type ticketUpsertCmd struct {
+	Key        string   `required:"" help:"Stable key, e.g. deploy:rollback. At most one open ticket per key and project."`
+	Title      string   `arg:"" optional:"" help:"Title (required unless --close)."`
+	Body       string   `short:"b" help:"Body. Use - to read stdin."`
+	Project    string   `help:"Project (default: the config's default project)."`
+	Pool       string   `help:"Pool to route a new ticket to."`
+	Label      []string `short:"l" help:"Labels to add, e.g. needs-human."`
+	Close      bool     `help:"Close the open ticket with the key, if any; title and body become a closing comment."`
+	Resolution string   `short:"r" help:"Resolution with --close (default done)."`
+}
+
+func (c ticketUpsertCmd) Run(g *Globals) error {
+	body, err := readBody(c.Body)
+	if err != nil {
+		return err
+	}
+	return g.call(rpc.MethodTicketUpsert, rpc.UpsertParams{
+		Key: c.Key, Project: c.Project, Title: c.Title, Body: body, Pool: c.Pool,
+		Labels: c.Label, Close: c.Close, Resolution: c.Resolution,
+	}, nil)
 }
 
 type ticketCreateCmd struct {

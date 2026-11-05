@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -44,9 +43,6 @@ type Controller interface {
 type Config struct {
 	// Hosts are the Host header values accepted besides loopback names.
 	Hosts []string
-	// DeployState is the self-deploy state dir (deployed, failed files).
-	// Empty: the Deploys view shows the controller version only.
-	DeployState string
 	// ChatPool is the type: chat pool Desk chats with (escalation keys and
 	// new desk:<id> sessions). Empty: chat is read-only.
 	ChatPool string
@@ -272,7 +268,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/work", s.json(s.work))
 	mux.HandleFunc("GET /api/sessions", s.json(s.sessions))
 	mux.HandleFunc("GET /api/pools", s.json(s.pools))
-	mux.HandleFunc("GET /api/deploys", s.json(s.deploys))
 	mux.HandleFunc("GET /api/activity", s.json(s.activity))
 	mux.HandleFunc("GET /api/ticket/{id}", s.json(s.ticket))
 	mux.HandleFunc("GET /api/events", s.events)
@@ -424,63 +419,32 @@ func (s *Server) activity(r *http.Request) (any, error) {
 
 // AttentionItem is one thing waiting on a human.
 type AttentionItem struct {
-	Kind  string    `json:"kind"` // run, ticket, pool, deploy
+	Kind  string    `json:"kind"` // rpc.Attention* kinds
 	ID    string    `json:"id,omitempty"`
 	Title string    `json:"title"`
 	Why   string    `json:"why"`
 	Since time.Time `json:"since,omitzero"`
 }
 
-// attention lists what waits on a human, oldest first; empty when healthy.
+// attention is the controller's attention list (#577): Desk adds no
+// items of its own, so a tool that reports through a needs-human ticket
+// shows here, in the CLI and in digests alike.
 func (s *Server) attention(r *http.Request) (any, error) {
-	ctx := r.Context()
-	out := []AttentionItem{}
-	var runs []store.Ticket
-	if err := s.ctl.Call(ctx, rpc.MethodRunList, rpc.RunListParams{State: store.RunNeedsHuman}, &runs); err != nil {
+	var res rpc.AttentionResult
+	if err := s.ctl.Call(r.Context(), rpc.MethodAttention, struct{}{}, &res); err != nil {
 		return nil, err
 	}
-	for _, t := range runs {
-		out = append(out, AttentionItem{Kind: "run", ID: t.ID, Title: t.Title, Why: "run needs a human", Since: t.UpdatedAt})
-	}
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
-		var ts []store.Ticket
-		if err := s.ctl.Call(ctx, rpc.MethodTicketList, rpc.ListParams{Label: NeedsHuman, Status: st}, &ts); err != nil {
-			return nil, err
+	out := make([]AttentionItem, 0, len(res.Items))
+	for _, it := range res.Items {
+		var why []string
+		if it.Repo != "" || it.Ref != "" {
+			why = append(why, strings.TrimSpace(it.Repo+" "+it.Ref))
 		}
-		for _, t := range ts {
-			out = append(out, AttentionItem{Kind: "ticket", ID: t.ID, Title: t.Title, Why: "escalation", Since: t.CreatedAt})
+		if it.Owner != "" {
+			why = append(why, "owner "+it.Owner)
 		}
+		out = append(out, AttentionItem{Kind: it.Kind, ID: it.ID, Title: it.Title, Why: strings.Join(why, ", "), Since: it.Since})
 	}
-	var pools rpc.PoolStatusResult
-	if err := s.ctl.Call(ctx, rpc.MethodPoolList, struct{}{}, &pools); err != nil {
-		return nil, err
-	}
-	var waits []rpc.WaitItem
-	if err := s.ctl.Call(ctx, rpc.MethodWaitList, rpc.WaitListParams{}, &waits); err != nil {
-		return nil, err
-	}
-	for _, w := range waits {
-		if w.Wait.TimedOut {
-			why := "wait past timeout: " + w.Wait.Reason
-			if w.Wait.Owner != "" {
-				why += " (owner " + w.Wait.Owner + ")"
-			}
-			out = append(out, AttentionItem{Kind: "wait", ID: w.ID, Title: w.Title, Why: why, Since: w.Wait.Timeout})
-		}
-	}
-	for name, why := range pools.Quarantined {
-		out = append(out, AttentionItem{Kind: "pool", ID: name, Title: "pool " + name + " quarantined", Why: why})
-	}
-	if d := s.readDeploy(); d.Failed != "" && d.Failed != d.Deployed {
-		out = append(out, AttentionItem{Kind: "deploy", ID: d.Failed, Title: "deploy of " + short(d.Failed) + " rolled back", Why: "self-deploy failed; waiting for a newer green commit", Since: d.FailedAt})
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i].Since, out[j].Since
-		if a.IsZero() != b.IsZero() {
-			return b.IsZero()
-		}
-		return a.Before(b)
-	})
 	return out, nil
 }
 
@@ -538,45 +502,6 @@ func (s *Server) pools(r *http.Request) (any, error) {
 	}
 	sort.Slice(p.Triggers, func(i, j int) bool { return p.Triggers[i].Name < p.Triggers[j].Name })
 	return p, nil
-}
-
-// Deploys is the running controller and the self-deploy state.
-type Deploys struct {
-	Server     rpc.VersionResult `json:"server"`
-	Deployed   string            `json:"deployed,omitempty"`
-	DeployedAt time.Time         `json:"deployed_at,omitzero"`
-	Failed     string            `json:"failed,omitempty"`
-	FailedAt   time.Time         `json:"failed_at,omitzero"`
-}
-
-func (s *Server) deploys(r *http.Request) (any, error) {
-	d := s.readDeploy()
-	if err := s.ctl.Call(r.Context(), rpc.MethodVersion, struct{}{}, &d.Server); err != nil {
-		return nil, err
-	}
-	return d, nil
-}
-
-func (s *Server) readDeploy() Deploys {
-	var d Deploys
-	if s.cfg.DeployState == "" {
-		return d
-	}
-	read := func(name string) (string, time.Time) {
-		p := filepath.Join(s.cfg.DeployState, name)
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return "", time.Time{}
-		}
-		var mt time.Time
-		if fi, err := os.Stat(p); err == nil {
-			mt = fi.ModTime()
-		}
-		return strings.TrimSpace(string(b)), mt
-	}
-	d.Deployed, d.DeployedAt = read("deployed")
-	d.Failed, d.FailedAt = read("failed")
-	return d
 }
 
 // TicketView is the drawer: the ticket, its run when it is one, and its trace.
