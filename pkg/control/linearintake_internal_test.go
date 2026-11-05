@@ -151,6 +151,15 @@ func TestLinearIntakeMatch(t *testing.T) {
 	assert.False(t, linearIntakeMatch(is, nil, nil, []string{"X"}))
 	is.State.Type = "canceled"
 	assert.False(t, linearIntakeMatch(is, nil, nil, nil))
+
+	// JOB-4: target and proposed parents never start a run.
+	skip := []string{"Blocked", "target", "proposed"}
+	for _, l := range []string{"target", "Proposed"} {
+		p := linear.Summary{State: linear.State{Name: "Todo", Type: "unstarted"}, Labels: []string{"repo", l}}
+		assert.False(t, linearIntakeMatch(p, []string{"Todo"}, nil, skip), l)
+	}
+	sub := linear.Summary{State: linear.State{Name: "Todo", Type: "unstarted"}, Labels: []string{"repo"}}
+	assert.True(t, linearIntakeMatch(sub, []string{"Todo"}, nil, skip), "a target's sub-issue is taken")
 }
 
 // TestLinearPlannerIntakeKey (#292): the planner and the intake
