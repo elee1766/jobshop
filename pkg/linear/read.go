@@ -66,7 +66,7 @@ const contextQuery = `query($id: String!, $comments: Int!) { issue(id: $id) {
   children(first: 100) { nodes { ` + refFields + ` } }
   relations(first: 100) { nodes { type relatedIssue { ` + refFields + ` } } }
   inverseRelations(first: 100) { nodes { type issue { ` + refFields + ` } } }
-  comments(first: $comments) { nodes { id body url createdAt user { name isMe } botActor { name } } }
+  comments(first: $comments) { nodes { id body url createdAt ` + commentAuthorFields + ` } }
 } }`
 
 // RecentComments is how many comments Context reads without all.
@@ -144,12 +144,12 @@ func (c *Client) GetContext(ctx context.Context, key string, all bool) (Context,
 
 type commentNodes struct {
 	Nodes []struct {
-		ID        string    `json:"id"`
-		Body      string    `json:"body"`
-		URL       string    `json:"url"`
-		CreatedAt time.Time `json:"createdAt"`
-		User      *actor    `json:"user"`
-		BotActor  *named    `json:"botActor"`
+		ID        string       `json:"id"`
+		Body      string       `json:"body"`
+		URL       string       `json:"url"`
+		CreatedAt time.Time    `json:"createdAt"`
+		User      *commentUser `json:"user"`
+		BotActor  *commentBot  `json:"botActor"`
 	} `json:"nodes"`
 }
 
@@ -158,14 +158,7 @@ func (cn commentNodes) list() []Comment {
 	out := []Comment{}
 	for _, n := range cn.Nodes {
 		cm := Comment{ID: n.ID, Body: n.Body, URL: n.URL, CreatedAt: n.CreatedAt}
-		switch {
-		case n.User != nil:
-			cm.Author, cm.Self = n.User.Name, n.User.IsMe
-		case n.BotActor != nil:
-			cm.Author, cm.Bot = n.BotActor.Name, true
-		default:
-			cm.Bot = true
-		}
+		cm.setAuthor(n.User, n.BotActor)
 		out = append(out, cm)
 	}
 	slices.Reverse(out)

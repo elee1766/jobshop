@@ -533,7 +533,7 @@ func (c *Controller) evalReply(ctx context.Context, pass *waitPass, w *store.Wai
 		if !cm.At.After(w.Since) || c.ignored(cm) {
 			continue
 		}
-		if cd.From != "" && !strings.EqualFold(cd.From, cm.Author) {
+		if cd.From != "" && !strings.EqualFold(cd.From, cm.Author) && (!cm.Linear || !c.linearMatch(cd.From, cm)) {
 			continue
 		}
 		return true, fmt.Sprintf("%s replied on %s", cm.Author, cd.Thread), nil

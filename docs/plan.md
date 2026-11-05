@@ -540,6 +540,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `ui/desk-plugin.d.ts`, the CSV example and `docs/desk-plugins.md`
   (#542, `docs/notes/542-desk-plugins-part3.md`,
   `docs/verify/desk-plugin-commands.md`).
+- Linear comments: attribution by user id or displayName, `several`
+  for mixed batches, reply lines, title and state header, edits (#595,
+  `docs/notes/595-linear-comment-context.md`).
 
 ## 5. What's next
 
@@ -663,6 +666,8 @@ Linear communication live check: `docs/verify/linear-communication.md`
 (#293).
 Linear webhook live check: "Webhook" section of
 `docs/verify/linear-pack.md`; needs a reverse proxy or tunnel (#300).
+Linear comment context live check:
+`docs/verify/linear-comment-context.md`; waits on #258 (#595).
 
 Sandbox rollout on gasserver, `acphost-dev` first:
 `docs/verify/sandbox.md` (#262).
