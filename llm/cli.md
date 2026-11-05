@@ -579,6 +579,12 @@ Flags:
                                    --user-header and X-Forwarded-Prefix
                                    Desk trusts. Required with --user-header.
                                    --base-path wins over X-Forwarded-Prefix.
+      --push                       Send Web Push notifications for new attention
+                                   items. Browsers allow push only over HTTPS
+                                   (or localhost).
+      --push-subject="mailto:jobshop@localhost"
+                                   VAPID contact push services see (mailto:
+                                   or https: URL).
 ```
 
 ## jobshop ingest

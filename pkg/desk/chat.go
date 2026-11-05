@@ -83,6 +83,25 @@ func (s *Server) chatSend(r *http.Request) (any, error) {
 	return res, nil
 }
 
+// chatCancel is POST /api/chat/cancel {session}: Stop. It cancels the
+// running turn through session.cancel (#535) and sends nothing.
+func (s *Server) chatCancel(r *http.Request) (any, error) {
+	var b struct {
+		Session string `json:"session"`
+	}
+	if err := s.decode(r, &b); err != nil {
+		return nil, err
+	}
+	if b.Session == "" {
+		return nil, fmt.Errorf("%w: session is required", errBadRequest)
+	}
+	var res rpc.SessionCancelResult
+	if err := s.ctl.Call(r.Context(), rpc.MethodSessionCancel, rpc.IDParams{ID: b.Session}, &res); err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
 // escalationKeyPrefix keys the controller's escalation chats (#379).
 const escalationKeyPrefix = "escalation:"
 

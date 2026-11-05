@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
@@ -46,6 +47,8 @@ type Config struct {
 	// ChatPool is the type: chat pool Desk chats with (escalation keys and
 	// new desk:<id> sessions). Empty: chat is read-only.
 	ChatPool string
+	// Push sends Web Push notifications for new attention items. Nil: off.
+	Push *Push
 	// UserHeader names the header an authenticating proxy sets to the
 	// signed-in user (#515). Empty: no user; calls act as "admin".
 	UserHeader string
@@ -102,6 +105,8 @@ type Server struct {
 	builtin fs.FS
 	rootsMu sync.Mutex
 	roots   map[string]*os.Root
+	// attn is <root>/desk/attention.json (#535).
+	attn attentionFile
 }
 
 // NeedsHuman is the escalation label.
@@ -132,7 +137,11 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 	if _, err := fs.Stat(ui, "plugins"); err == nil {
 		builtin, _ = fs.Sub(ui, "plugins")
 	}
-	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index, builtin: builtin}
+	s := &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index, builtin: builtin}
+	if cfg.Root != "" {
+		s.attn.path = filepath.Join(cfg.Root, "desk", "attention.json")
+	}
+	return s
 }
 
 // basePathRe is what a base path may contain. A leading "//" would make
@@ -247,6 +256,23 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, page)
 }
 
+// Start opens push state and runs the notifier until ctx ends. No-op
+// without Push.
+func (s *Server) Start(ctx context.Context) error {
+	if s.cfg.Push == nil {
+		return nil
+	}
+	if s.cfg.Push.Interval <= 0 {
+		s.cfg.Push.Interval = time.Minute
+	}
+	if err := s.cfg.Push.open(); err != nil {
+		return fmt.Errorf("desk: push: %w", err)
+	}
+	go s.runPush(ctx)
+	go s.watchEvents(ctx)
+	return nil
+}
+
 // Loopback reports whether addr (host:port) binds only loopback.
 func Loopback(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
@@ -276,10 +302,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/journal/search", s.json(s.journalSearch))
 	mux.HandleFunc("GET /api/session/{id}/access", s.json(s.chatAccess))
 	mux.HandleFunc("GET /api/chat", s.json(s.chatList))
+	mux.HandleFunc("GET /api/escalations", s.json(s.escalations))
 	mux.HandleFunc("POST /api/chat/send", s.json(s.chatSend))
 	mux.HandleFunc("POST /api/chat/new", s.json(s.chatNew))
+	mux.HandleFunc("POST /api/chat/cancel", s.json(s.chatCancel))
+	mux.HandleFunc("POST /api/attention/chat", s.json(s.attentionChat))
+	mux.HandleFunc("POST /api/attention/ack", s.json(s.attentionAck))
+	mux.HandleFunc("GET /api/session/{id}/events", s.json(s.sessionEvents))
 	mux.HandleFunc("POST /api/pool/scale", s.json(s.poolScale))
 	mux.HandleFunc("POST /api/session/cordon", s.json(s.sessionCordon))
+	if s.cfg.Push != nil {
+		mux.HandleFunc("GET /api/push/key", s.json(s.pushKey))
+		mux.HandleFunc("POST /api/push/subscribe", s.json(s.pushSubscribe))
+		mux.HandleFunc("POST /api/push/unsubscribe", s.json(s.pushUnsubscribe))
+		mux.HandleFunc("POST /api/push/test", s.json(s.pushTest))
+	}
 	mux.HandleFunc("GET /api/artifacts", s.json(s.artifactList))
 	mux.HandleFunc("GET /api/artifacts/{id}", s.json(s.artifactShow))
 	mux.HandleFunc("GET /api/artifacts/{id}/files/{name}", s.artifactFile)
@@ -295,7 +332,7 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
@@ -346,6 +383,12 @@ func (s *Server) static() http.Handler {
 		}
 		if strings.HasPrefix(r.URL.Path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else if r.URL.Path == "/sw.js" || r.URL.Path == "/manifest.webmanifest" {
+			// Browsers check the worker for updates; keep it and the manifest fresh.
+			w.Header().Set("Cache-Control", "no-cache")
+			if r.URL.Path == "/manifest.webmanifest" {
+				w.Header().Set("Content-Type", "application/manifest+json")
+			}
 		}
 		files.ServeHTTP(w, r)
 	})
@@ -424,6 +467,8 @@ type AttentionItem struct {
 	Title string    `json:"title"`
 	Why   string    `json:"why"`
 	Since time.Time `json:"since,omitzero"`
+	// Ref is the linked issue or PR (#12, PR #3), from the controller.
+	Ref string `json:"ref,omitempty"`
 }
 
 // attention is the controller's attention list (#577): Desk adds no
@@ -443,9 +488,10 @@ func (s *Server) attention(r *http.Request) (any, error) {
 		if it.Owner != "" {
 			why = append(why, "owner "+it.Owner)
 		}
-		out = append(out, AttentionItem{Kind: it.Kind, ID: it.ID, Title: it.Title, Why: strings.Join(why, ", "), Since: it.Since})
+		out = append(out, AttentionItem{Kind: it.Kind, ID: it.ID, Title: it.Title, Why: strings.Join(why, ", "), Since: it.Since, Ref: it.Ref})
 	}
-	return out, nil
+	// Items the operator acknowledged in Desk stay hidden (#535).
+	return s.dropAcked(out), nil
 }
 
 // Work is runs and batches.

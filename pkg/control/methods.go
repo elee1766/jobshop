@@ -677,6 +677,32 @@ func (c *Controller) sessionRestart(ctx context.Context, sc scope, p rpc.Session
 	return rpc.SessionRestartResult{ID: p.ID, HostPid: hostPid(c.root.SessionDir(p.ID)), Now: p.Now}, nil
 }
 
+// sessionCancel cancels the running turn of a controller-driven session
+// (#535). Nothing is sent; messages already queued are delivered next.
+func (c *Controller) sessionCancel(_ context.Context, sc scope, p rpc.IDParams) (any, error) {
+	if err := requireAdmin(sc, "session cancel"); err != nil {
+		return nil, err
+	}
+	if p.ID == "" {
+		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+	}
+	c.mu.Lock()
+	r := c.runners[p.ID]
+	c.mu.Unlock()
+	if r == nil {
+		return nil, fmt.Errorf("%w: session %s has no controller-driven host", store.ErrInvalid, p.ID)
+	}
+	if !r.inTurn.Load() {
+		return rpc.SessionCancelResult{ID: p.ID}, nil
+	}
+	select {
+	case r.cancelNow <- struct{}{}:
+	default:
+	}
+	c.log.Info("session cancel requested", "session", p.ID)
+	return rpc.SessionCancelResult{ID: p.ID, Cancelled: true}, nil
+}
+
 // sessionReap stops orphaned hosts (the startup reapOrphans rule) and, with
 // Closed, deletes old closed sessions' directories (plan 8.4 item 5). An
 // open session is never touched: only closed tickets' directories are

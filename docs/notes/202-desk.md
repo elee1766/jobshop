@@ -34,6 +34,20 @@ triggers, Deploys, and a ticket/run drawer. Chat and actions are #203.
   back/forward and links work.
 - Theme: warm greys, soft borders, violet accent, dark default with a
   light toggle (stored in localStorage).
+- 2026-11-04: restyled loosely after Linear: cool near-black greys, 13px
+  Inter-like system font, hairline borders, indigo accent, lucide icons,
+  a sidebar with count badges, and a header bar per view (`.vh`). `g`
+  then a letter jumps to a view. Chat is a messenger layout: prompts as
+  right bubbles, agent text left, tool calls grouped per turn and updated
+  by tool id, a typing indicator, and a composer that grows. Attention
+  also lists running runs with each step's latest `meta.report` and the
+  newest comment.
+- 2026-11-04: mobile (under 720px): the sidebar becomes a bottom tab bar
+  with safe-area insets, brand and live/push/theme controls sit in a top
+  bar, tables become stacked cards (`table.stack`), the ticket drawer is
+  full screen, and the chat list and conversation are two screens. The
+  shell tracks `visualViewport` so the composer stays above the keyboard.
+  `e2e/desk.spec.js` checks no page-level horizontal overflow per view.
 - Controller text is rendered with `{...}` (escaped); no `{@html}`. Only
   http(s) links from trace output become anchors.
 - `vite build` writes to `pkg/desk/dist`, which is committed and embedded

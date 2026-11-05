@@ -112,6 +112,13 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 // `session restart --now` cancels the turn the same way.
 func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnection, acpSession, text string) (bool, error) {
 	var interrupted atomic.Bool
+	// A cancel sent before this turn is not for it.
+	select {
+	case <-r.cancelNow:
+	default:
+	}
+	r.inTurn.Store(true)
+	defer r.inTurn.Store(false)
 	wctx, stop := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
@@ -124,6 +131,10 @@ func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnecti
 				return
 			case <-r.restartNow:
 				r.log.Info("restart --now: cancelling turn")
+				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
+				return
+			case <-r.cancelNow:
+				r.log.Info("session cancel: cancelling turn")
 				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
 				return
 			case <-tick.C():

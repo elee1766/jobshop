@@ -53,6 +53,7 @@ or plain classes as in the example.
 | `action` | a button row in the drawer | `{ticket, run?}` | as drawer |
 | `artifact` | an attachment renderer | `{artifact, file}` with `file.url` | `type` (MIME, `text/*` globs), `ext` |
 | `header` | a widget in the nav bar | `{}` | none |
+| `session` | the session panel body (#535); the shell owns the frame, the last one wins | `{session, item}`, `item` the attention `kind:id` it resolves, or empty | none |
 
 `match` lists accepted values per key; every key listed must accept one
 of the target's values. No `match` accepts everything. A view whose `id`
@@ -80,6 +81,24 @@ TypeScript plugin.
   unsubscribe function; call it in `disconnectedCallback`.
 - `navigate(view, params)`, `toast(msg)`, `confirm(msg)`, `url(path)`,
   `user`, `base`, `lastSeq`, `version`.
+
+Added in api version 2 (#535; declare `"api": ">=2"`):
+
+- `params()`: Desk's URL state (`view`, `ticket`, `session`, `item`).
+- `openSession(id, {item?})`, `closeSession()`, `openTicket(id)`.
+- `session.stream(id, {tail}, fn)`: the live stream; `fn` gets
+  `{type: 'open'|'event'|'end'|'error', event}`, events are
+  `rpc.SessionEvent` (`turn_start`, `text`, `reasoning`, `tool` with
+  `input` and `output`, `turn_end`, `usage`, `state`). Returns a close
+  function.
+- `session.older(id, before, limit)`: `{events, first}`, the journal
+  before seq `before`.
+- `session.access(id)`, `session.send({session|key, text, interrupt})`,
+  `session.cancel(id)` (Stop: cancels the turn, sends nothing).
+- `push.status()`, `push.subscribe()`, `push.unsubscribe()`,
+  `push.test()`: each resolves to `{state, error}`, `state` one of
+  `unsupported`, `unavailable` (Desk without `--push`), `denied`, `off`,
+  `on`.
 
 Example: create a ticket with meta, then follow it.
 
@@ -112,8 +131,15 @@ like pools. `desk.exec` is a normal RPC method, so `desk.rpc.deny:
 ## Theming
 
 Plugins render in Desk's document, so Desk's CSS custom properties
-apply: `var(--bad)`, `var(--muted)` and the rest in
-`ui/src/app.css`, with the light and dark values Desk picks. Classes
+apply. Prefer the `--desk-*` tokens (#535), which Desk swaps for
+`[data-theme='light']`: surfaces `--desk-bg`, `--desk-side`,
+`--desk-panel`, `--desk-raised`, `--desk-hover`; `--desk-border`,
+`--desk-border-strong`; text `--desk-text`, `--desk-muted`,
+`--desk-faint`; `--desk-accent`, `--desk-accent-fg`,
+`--desk-accent-soft`; states `--desk-ok`, `--desk-warn`, `--desk-bad`;
+`--desk-shadow`, `--desk-radius`, `--desk-font`, `--desk-mono`,
+`--desk-tabbar`. The short names (`var(--bad)`, `var(--muted)`) in
+`ui/src/app.css` still work. Classes
 Desk defines (`card`, `faint`, `mono`) work too. A built-in's own CSS
 loads through a `<link>` to its `style.css`, since the CSP blocks inline
 styles; do the same, or set styles from JS with `element.style`.

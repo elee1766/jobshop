@@ -1,0 +1,11 @@
+{
+  "name": "chat",
+  "version": "1",
+  "entry": "index.js",
+  "api": ">=2",
+  "contributes": [
+    { "slot": "session", "element": "desk-chat-pane" },
+    { "slot": "view", "element": "desk-chat-view", "id": "chat", "title": "Chat" },
+    { "slot": "drawer", "element": "desk-chat-drawer", "title": "Session chat", "match": { "kind": ["session", "step", "task"] } }
+  ]
+}

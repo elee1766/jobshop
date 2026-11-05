@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -23,6 +24,8 @@ type deskCmd struct {
 	UserHeader   string   `help:"Header an authenticating proxy sets to the user (e.g. Tailscale-User-Login). Writes record desk:<user>. Empty: no user."`
 	BasePath     string   `help:"URL prefix Desk is served under behind a proxy, e.g. /desk/. The proxy may keep or strip it." default:"/"`
 	TrustedProxy []string `help:"Peer address or CIDR (repeatable) whose --user-header and X-Forwarded-Prefix Desk trusts. Required with --user-header. --base-path wins over X-Forwarded-Prefix."`
+	Push         bool     `help:"Send Web Push notifications for new attention items. Browsers allow push only over HTTPS (or localhost)."`
+	PushSubject  string   `name:"push-subject" help:"VAPID contact push services see (mailto: or https: URL)." default:"mailto:jobshop@localhost"`
 }
 
 // Run serves Jobshop Desk over the admin socket (#202).
@@ -50,8 +53,13 @@ func (c deskCmd) Run(g *Globals) error {
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "desk")
 	cfg := desk.Config{Hosts: c.Host, ChatPool: c.ChatPool, UserHeader: c.UserHeader, BasePath: base, TrustedProxies: proxies, Root: r.Dir}
+	if c.Push {
+		// Under the root, with the key and subscriptions: only Desk reads it.
+		cfg.Push = &desk.Push{File: filepath.Join(r.Dir, "desk", "push.json"), Subject: c.PushSubject}
+	}
+	d := desk.New(cfg, desk.Socket{Path: sock}, log)
 	srv := &http.Server{
-		Handler:           desk.New(cfg, desk.Socket{Path: sock}, log).Handler(),
+		Handler:           d.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	ln, err := net.Listen("tcp", c.Listen)
@@ -60,6 +68,9 @@ func (c deskCmd) Run(g *Globals) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if err := d.Start(ctx); err != nil {
+		return err
+	}
 	srv.BaseContext = func(net.Listener) context.Context { return ctx }
 	go func() {
 		<-ctx.Done()

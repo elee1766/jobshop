@@ -775,6 +775,7 @@ func init() {
 		rpc.MethodSessionSend:       bind((*Controller).sessionSend),
 		rpc.MethodSessionSubscribe:  bind((*Controller).sessionSubscribe),
 		rpc.MethodSessionJournal:    bind((*Controller).sessionJournal),
+		rpc.MethodSessionCancel:     bind((*Controller).sessionCancel),
 		rpc.MethodJournalSearch:     bind((*Controller).journalSearch),
 		rpc.MethodJournalBackfill:   bind((*Controller).journalBackfill),
 		rpc.MethodEventsSubscribe:   bind((*Controller).eventsSubscribe),

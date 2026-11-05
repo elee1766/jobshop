@@ -125,6 +125,32 @@ func TestSessionSendSubscribe(t *testing.T) {
 		assert.NotContains(t, e.Text, "again", "old events not replayed")
 	}
 
+	// Stop (#535): session.cancel ends the held turn and sends nothing.
+	require.NoError(t, os.Remove(filepath.Join(root.Dir, "held")))
+	var idle rpc.SessionCancelResult
+	require.NoError(t, admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: sent.Session}, &idle))
+	cancels := func() int {
+		n := 0
+		for _, e := range ev2.get() {
+			if e.Type == rpc.EventTurnEnd && e.StopReason == "cancelled" {
+				n++
+			}
+		}
+		return n
+	}
+	before := cancels()
+	require.NoError(t, admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{ID: sent.Session, Text: "hold on"}, nil))
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "held"))
+		return err == nil
+	}, dialWait, 20*time.Millisecond)
+	var stopped rpc.SessionCancelResult
+	require.Eventually(t, func() bool {
+		return admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: sent.Session}, &stopped) == nil && stopped.Cancelled
+	}, dialWait, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return cancels() == before+1 }, 20*time.Second, 50*time.Millisecond)
+	require.ErrorIs(t, admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: "js-nope"}, nil), store.ErrInvalid)
+
 	// Closing the session ends the stream with a state event.
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: sent.Session}, nil))
 	select {

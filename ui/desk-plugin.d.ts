@@ -127,6 +127,7 @@ export interface RpcMethods {
   "run.resume": { params: RunResumeParams; result: RunResult };
   "run.show": { params: IDParams; result: RunResult };
   "run.start": { params: RunStartParams; result: RunResult };
+  "session.cancel": { params: IDParams; result: SessionCancelResult };
   "session.config": { params: SessionConfigParams; result: SessionInfo };
   "session.cordon": { params: SessionCordonParams; result: SessionInfo };
   "session.journal": { params: SessionJournalParams; result: SessionJournalResult };
@@ -896,6 +897,11 @@ export interface Secret {
   Type: string;
   Path: string;
   Command: string;
+}
+
+export interface SessionCancelResult {
+  id: string;
+  cancelled: boolean;
 }
 
 export interface SessionConfigParams {
