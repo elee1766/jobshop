@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
 	"go.opentelemetry.io/otel/attribute"
@@ -191,14 +192,45 @@ func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnec
 		r.log.Warn("read journal for summary", "err", err)
 	}
 	summary := host.Summarize(frames, host.DefaultSummaryBytes)
+	source := "journal"
+	if summary == "" {
+		// The journal file is gone or empty (JOB-14): fall back to the
+		// summary indexed for recall after the last turn.
+		source = "recall index"
+		s, err := journal.Load(ctx, r.c.store, r.id)
+		if err != nil {
+			r.log.Warn("load indexed journal summary", "err", err)
+		}
+		summary = clipSummary(s, host.DefaultSummaryBytes)
+	}
+	if summary == "" {
+		r.log.Warn("new conversation has no summary", "old", fields.ACPSession,
+			"reason", "no journal frames and no indexed summary")
+	}
 	r.mu.Lock()
 	r.seed = summary
 	r.mu.Unlock()
 	r.log.Warn("started a new conversation", "old", fields.ACPSession, "new", ns.SessionId,
-		"path", "new+summary", "summary_bytes", len(summary))
+		"path", "new+summary", "summary_bytes", len(summary), "summary_source", source)
 	fields.ACPSession = string(ns.SessionId)
 	noteAdvertised(fields, ns.ConfigOptions)
 	return r.saveFields(*fields)
+}
+
+// clipSummary keeps s within n bytes: its header line and its newest
+// text, since the indexed summary is larger than a prompt seed.
+func clipSummary(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	const gap = "\n\n[... earlier items omitted ...]\n\n"
+	head, _, _ := strings.Cut(s, "\n")
+	keep := max(n-len(head)-len(gap), 0)
+	tail := s[len(s)-keep:]
+	for len(tail) > 0 && !utf8.RuneStart(tail[0]) {
+		tail = tail[1:]
+	}
+	return head + gap + tail
 }
 
 // recoveryNote opens the first prompt after a host respawn. The agent may
