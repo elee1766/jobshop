@@ -31,6 +31,7 @@ import (
 	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -111,7 +112,7 @@ type runner struct {
 	// recoveryNote. Memory only.
 	resumed bool
 	// turnTicket is the ticket the current prompt works on, sent in the
-	// prompt's _meta so conversation export can tag records with it.
+	// prompt's _meta so journal shipping can tag rows with it.
 	turnTicket string
 	// delivered is when deliver last ran a message turn; it resets the
 	// idle timer, so a chat session lives while its thread is active.
@@ -146,16 +147,16 @@ func (r *runner) promptMeta() map[string]any {
 	defer r.mu.Unlock()
 	m := map[string]any{}
 	if r.turnTicket != "" {
-		m[telemetry.MetaTicket] = r.turnTicket
+		m[journal.MetaTicket] = r.turnTicket
 	}
 	if len(r.turnRules) > 0 {
 		m[metaRules] = r.turnRules
 	}
 	if r.model != "" {
-		m[telemetry.MetaModel] = r.model
+		m[journal.MetaModel] = r.model
 	}
 	if r.effort != "" {
-		m[telemetry.MetaEffort] = r.effort
+		m[journal.MetaEffort] = r.effort
 	}
 	if len(m) == 0 {
 		return nil
@@ -824,12 +825,13 @@ func (r *runner) dropped(conn *acp.ClientSideConnection) error {
 }
 
 func (r *runner) saveFields(f store.SessionFields) error {
-	b, err := json.Marshal(f)
-	if err != nil {
-		return err
-	}
-	_, err = r.c.store.Update(context.WithoutCancel(r.ctx), "controller", r.id, store.Update{Fields: b})
-	return err
+	// The runner's copy has a stale journal cursor; keep the stored one,
+	// which only the shipper moves (#530).
+	return r.c.updateSessionFields(context.WithoutCancel(r.ctx), r.id, func(cur *store.SessionFields) {
+		shipped := cur.ShippedSeq
+		*cur = f
+		cur.ShippedSeq = max(shipped, f.ShippedSeq)
+	})
 }
 
 func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
@@ -1357,15 +1359,9 @@ func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) err
 	return nil
 }
 
-func (c *client) HandleExtensionMethod(_ context.Context, method string, params json.RawMessage) (any, error) {
+func (c *client) HandleExtensionMethod(_ context.Context, method string, _ json.RawMessage) (any, error) {
 	if method == host.MethodExportStats {
-		var s host.ExportStats
-		if json.Unmarshal(params, &s) == nil {
-			ctx := c.r.c.ctx
-			attrs := metric.WithAttributes(telemetry.AttrPool.String(c.r.pool))
-			c.r.c.metrics.ConvDropped.Add(ctx, s.Dropped, attrs)
-			c.r.c.metrics.ConvTruncated.Add(ctx, s.Truncated, attrs)
-		}
+		// Hosts no longer export (#530); an older host may still report.
 		return nil, nil
 	}
 	if method == host.MethodTurnEnd {
@@ -1464,14 +1460,6 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (hostspec.S
 		Env: env, EnvHash: envHash(hostInheritedEnv(), slices.Concat(env, c.sandboxKey(t.Pool), c.isolationKey(t.Pool))), Dir: c.sessionCwd(t),
 		LeaseMS: hostLease.Milliseconds(),
 	}}
-	// Config validation guarantees a logs endpoint when a pool exports.
-	if p, ok := c.config().Pools[t.Pool]; ok && p.ConversationExport {
-		tel := c.config().Telemetry
-		spec.ConvExport = &hostspec.ConvExport{
-			LogsURL: tel.LogsURL(), Headers: tel.Headers(os.Getenv), Pool: t.Pool, Project: t.Project,
-			TraceParent: f.TraceParent,
-		}
-	}
 	return spec, exe, nil
 }
 

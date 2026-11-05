@@ -1259,6 +1259,7 @@ const (
 	AttentionIngest     = "ingest"      // no live external ingest worker, or an admission backlog (#443)
 	AttentionDecision   = "decision"    // open ticket labeled proposed: a planner-proposed target to approve (#488)
 	AttentionStale      = "stale"       // open ticket no pool will claim, older than attention.orphan_age (#495)
+	AttentionJournalLag = "journal-lag" // journal shipping is behind journal.lag_max (#530)
 )
 
 // AttentionItem is one thing waiting on a human.
@@ -1642,4 +1643,40 @@ type DeskExecParams struct {
 type DeskExecResult struct {
 	Output json.RawMessage `json:"output,omitempty"`
 	Text   string          `json:"text,omitempty"`
+}
+
+// Journal search on VictoriaLogs (#530).
+const (
+	MethodJournalSearch   = "journal.search"
+	MethodJournalBackfill = "journal.backfill"
+)
+
+// JournalSearchParams is a LogsQL query over shipped journal rows.
+// Since is a lookback when Start is zero. Limit defaults to 1000, at
+// most 10000.
+type JournalSearchParams struct {
+	Query string        `json:"query"`
+	Since time.Duration `json:"since,omitempty"`
+	Start time.Time     `json:"start,omitzero"`
+	Until time.Time     `json:"until,omitzero"`
+	Limit int           `json:"limit,omitempty"`
+}
+
+// JournalSearchResult holds VictoriaLogs result rows as it returned them:
+// frame rows, or a stats pipe's columns. Truncated means Limit cut it.
+type JournalSearchResult struct {
+	Rows      []json.RawMessage `json:"rows"`
+	Truncated bool              `json:"truncated,omitempty"`
+}
+
+// JournalBackfillParams ships existing journals from their cursors.
+// Since limits it to sessions closed within it (open ones always).
+type JournalBackfillParams struct {
+	Since time.Duration `json:"since,omitempty"`
+}
+
+// JournalBackfillResult counts what a backfill shipped.
+type JournalBackfillResult struct {
+	Sessions int `json:"sessions"`
+	Frames   int `json:"frames"`
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -48,6 +49,8 @@ type Config struct {
 	WriteKeys WriteKeys `yaml:"write_keys"`
 	// Artifacts configures delivered artifacts' attachments (#508).
 	Artifacts Artifacts `yaml:"artifacts"`
+	// Journal configures journal shipping and search (#530).
+	Journal Journal `yaml:"journal"`
 	// Store selects the ticket store backend (#493).
 	Store Store `yaml:"store"`
 	// Defaults hold settings agents and pools inherit (#262).
@@ -830,6 +833,64 @@ func (a Artifacts) RetentionDuration() time.Duration {
 	return d
 }
 
+// DefaultJournalLagMax is when unshipped journal frames become an
+// attention item (#530).
+const DefaultJournalLagMax = 10 * time.Minute
+
+// Journal configures journal shipping and search (#530).
+type Journal struct {
+	// VictoriaLogs is where frames are shipped and searched. Absent: no
+	// shipping, and journal.search errors.
+	VictoriaLogs *VictoriaLogs `yaml:"victorialogs"`
+	// LagMax is the oldest unshipped frame age that raises attention
+	// journal-lag (Go duration). Default 10m.
+	LagMax string `yaml:"lag_max"`
+}
+
+// VictoriaLogs is one VictoriaLogs instance.
+type VictoriaLogs struct {
+	// URL is the base URL, e.g. http://127.0.0.1:9428.
+	URL string `yaml:"url"`
+	// Headers go on every request. ${VAR} expands from the controller env.
+	Headers map[string]string `yaml:"headers"`
+	// RetentionHint is the instance's retention as set on its side, for
+	// display only: jobshop does not delete rows.
+	RetentionHint string `yaml:"retention_hint"`
+}
+
+// HeaderValues returns Headers with ${VAR} expanded by getenv.
+func (v VictoriaLogs) HeaderValues(getenv func(string) string) map[string]string {
+	h := make(map[string]string, len(v.Headers))
+	for k, x := range v.Headers {
+		h[k] = os.Expand(x, getenv)
+	}
+	return h
+}
+
+// LagMaxDuration is LagMax parsed, or the default.
+func (j Journal) LagMaxDuration() time.Duration {
+	d, _ := parseDays(j.LagMax)
+	if d <= 0 {
+		return DefaultJournalLagMax
+	}
+	return d
+}
+
+func (j Journal) check() error {
+	if r := j.LagMax; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return fmt.Errorf("journal.lag_max %q must be a positive duration (e.g. 10m)", r)
+		}
+	}
+	if v := j.VictoriaLogs; v != nil {
+		u, err := url.Parse(v.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("journal.victorialogs.url %q must be an http(s) URL", v.URL)
+		}
+	}
+	return nil
+}
+
 // parseDays is time.ParseDuration that also takes "Nd".
 func parseDays(s string) (time.Duration, error) {
 	if n, ok := strings.CutSuffix(s, "d"); ok {
@@ -961,7 +1022,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff", "ticket-release", "session-journal"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff", "ticket-release", "session-journal", "journal-search"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -1012,9 +1073,8 @@ type Pool struct {
 	IdleTimeout string `yaml:"idle_timeout"`
 	// TurnTimeout cancels a single agent turn. Default 2h.
 	TurnTimeout string `yaml:"turn_timeout"`
-	// ConversationExport makes the session host send prompts, agent
-	// messages and tool calls as OTLP log records to the telemetry logs
-	// endpoint, redacted and capped. Default off.
+	// ConversationExport was OTLP conversation export (#45), removed by
+	// #530. Still parsed so an older config loads, with a warning.
 	ConversationExport bool `yaml:"conversation_export"`
 	// Admin lists admin methods (PoolAdminMethods) this pool's session
 	// sockets may call, e.g. [config-reload, session-list] for an
@@ -1199,8 +1259,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if p.MinSessions > 0 && p.Chat() {
 			return nil, fmt.Errorf("%s: pool %s: min_sessions does not apply to chat pools", src("pools", name), name)
 		}
-		if p.ConversationExport && c.Telemetry.LogsURL() == "" {
-			return nil, fmt.Errorf("%s: pool %s: conversation_export needs telemetry.otlp_endpoint or otlp_logs_endpoint", src("pools", name), name)
+		if p.ConversationExport {
+			// A warning for one release, then an error (#530, as #325).
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s: pool %s: conversation_export is removed, see journal.victorialogs; ignored", src("pools", name), name))
 		}
 		for _, d := range []struct{ key, v string }{{"idle_timeout", p.IdleTimeout}, {"turn_timeout", p.TurnTimeout}, {"scale_down_after", p.ScaleDownAfter}} {
 			if d.v == "" {
@@ -1252,6 +1313,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if c.Artifacts.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: artifacts.max_bytes must be >= 0", FileName)
+	}
+	if err := c.Journal.check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if c.Limits.MaxSessions < 0 {
 		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)

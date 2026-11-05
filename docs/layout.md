@@ -34,13 +34,15 @@ jobshop/
 │   ├── control/              controller: tick loop, claims release, lease sweep,
 │   │                         session supervision, admin and CLI socket handlers
 │   ├── config/               YAML loading, validation, defaults
-│   ├── hostspec/             jobshop's spec.json on acphost: conv_export
-│   │                         field and the conversation exporter option
+│   ├── hostspec/             jobshop's spec.json on acphost (an older
+│   │                         conv_export field is ignored, #530)
 │   ├── gateway/              chat gateway: adapter interface, routing, Matrix, Discord
 │   ├── desk/                 Jobshop Desk HTTP server over the admin API;
 │   │                         dist/ is the built UI, embedded
-│   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter,
-│   │                         conversation export
+│   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter
+│   ├── redact/               secret redaction for journal reads, shipping
+│   │                         and command step output (gitleaks, env values)
+│   ├── journal/              journal rows and the VictoriaLogs client (#530)
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
 │   ├── cron/                 5-field cron parser for triggers (no dependency)
 │   └── ids/                  ticket ids: per-project prefix + sonyflake base32
@@ -78,9 +80,9 @@ flowchart TD
 The session host is the external module `github.com/elee1766/acphost`
 (issue #256, 2026-11-04), extracted from the old `pkg/host` so other
 projects can run ACP agents under a detachable host. It has no ticket or
-policy logic (plan section 8.3). Conversation export is not part of its
-spec: `pkg/hostspec` keeps the `conv_export` field in spec.json and hands
-`acphost.Main` an exporter built on `telemetry.ConvExporter`. Default
+policy logic (plan section 8.3). Conversation export over OTLP was
+removed by #530; journal shipping to VictoriaLogs reads the journal
+files in the controller instead, so the host needs no exporter. Default
 method and GC root prefixes (`_jobshop/`, `jobshop-host-`) stay, so hosts
 started by older builds are adopted.
 
@@ -114,7 +116,7 @@ Subcommands:
 | Matrix client-server API (gateway) | `maunium.net/go/mautrix` (2026-11-02, #123): the maintained Go Matrix client, used by the mautrix bridges; pure Go without its optional crypto, so `CGO_ENABLED=0` holds | v0.32.0 |
 | Discord bot API (gateway) | `github.com/bwmarrin/discordgo` (2026-11-03, #182): the most used Go Discord library, REST plus gateway websocket with resume; pure Go | v0.29.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
-| Secret redaction (conversation export) | `github.com/zricethezav/gitleaks/v8` (`detect`) | v8.30.1 |
+| Secret redaction | `github.com/zricethezav/gitleaks/v8` (`detect`) | v8.30.1 |
 | Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency. @lucide/svelte for the activity view's icons (2026-11-04, #255); tree-shaken per icon | svelte 5.57.3, vite 8.3.5, @lucide/svelte 1.67.0 |
 | Lint (tool, not a module) | golangci-lint, built by `nix/golangci-lint.nix` with Go 1.27 because nixpkgs builds it with Go 1.26, which refuses go 1.27 modules (2026-11-03). Same version in CI, the dev shell and agents' PATH | v2.15.0 |
 
@@ -142,10 +144,10 @@ Uses:
   transport). Only imported by `pkg/telemetry`.
 - **errgroup**: controller and host goroutine lifetimes and shutdown.
 - **gitleaks**: its detector and default rule set redact secrets in
-  conversation export before records are queued, plus launch-env secret
+  journal reads and shipped journal rows, plus launch-env secret
   values (exact match). Large dependency (about 74 modules in its
   `go.mod`); accepted for rule coverage and maintenance (decided
-  2026-11-01). Only imported by `pkg/telemetry`.
+  2026-11-01). Only imported by `pkg/redact`.
 
 Standard library by choice (decided 2026-11-01):
 - `log/slog` for logging, `net/http` for `/metrics`, `text/tabwriter`

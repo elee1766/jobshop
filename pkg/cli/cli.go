@@ -84,6 +84,7 @@ type root struct {
 	Identity  identityCmd  `cmd:"" help:"GitHub App and Linear identities: list, check, tokens and the git credential helper."`
 	Linear    linearCmd    `cmd:"" help:"Read, comment on and move Linear issues as the identity for their team."`
 	Recall    recallCmd    `cmd:"" help:"Search past comments, session journals and learnings. Run it on a failure and before asking a human."`
+	Journal   journalCmd   `cmd:"" help:"Search every session's journal with LogsQL on VictoriaLogs (journal.victorialogs), and backfill it."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
 	Docs      docsCmd      `cmd:"" help:"Print links to the docs for this binary (packs, readme). Needs no root."`

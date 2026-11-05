@@ -13,9 +13,9 @@ import (
 	host "github.com/elee1766/acphost"
 
 	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // session.journal (#529): read-only, paged, redacted access to a
@@ -64,7 +64,7 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 	if err != nil {
 		return nil, err
 	}
-	env := journalEnv(dir)
+	red := redact.New(journalEnv(dir))
 	res := rpc.SessionJournalResult{Frames: []rpc.JournalFrame{}, NextSeq: p.SinceSeq, Done: true}
 	for _, f := range frames {
 		if len(res.Frames) == limit {
@@ -77,7 +77,7 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 		if (p.From != "" && f.From != p.From) || (len(p.Kinds) > 0 && !slices.ContainsFunc(frameKinds(f.Msg), func(k string) bool { return slices.Contains(p.Kinds, k) })) {
 			continue
 		}
-		res.Frames = append(res.Frames, rpc.JournalFrame{Seq: f.Seq, T: f.T, From: f.From, Msg: telemetry.RedactJSON(f.Msg, env)})
+		res.Frames = append(res.Frames, rpc.JournalFrame{Seq: f.Seq, T: f.T, From: f.From, Msg: red.JSON(f.Msg)})
 	}
 	return res, nil
 }
@@ -115,8 +115,8 @@ func frameKinds(msg json.RawMessage) []string {
 }
 
 // journalEnv is the env the session's agent ran with, for redacting its
-// secret values as conversation export does: the host's inherited env
-// (this controller's) plus the spec's.
+// secret values: the host's inherited env (this controller's) plus the
+// spec's.
 func journalEnv(dir string) []string {
 	env := os.Environ()
 	if s, err := hostspec.Read(dir); err == nil {
