@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.5](https://github.com/elee1766/jobshop/compare/v0.1.4...v0.1.5) (2026-11-05)
+
+
+### Features
+
+* **control:** mapped user home and credentials for isolated pools (JOB-19) ([#713](https://github.com/elee1766/jobshop/issues/713)) ([3fea2c5](https://github.com/elee1766/jobshop/commit/3fea2c56275ae8acf8c9c4ab4fef74470a9a6d2e))
+
+
+### Bug fixes
+
+* **control:** seed new conversation from recall index when journal is gone (JOB-14) ([#708](https://github.com/elee1766/jobshop/issues/708)) ([3525821](https://github.com/elee1766/jobshop/commit/35258219d5fe3f48d343b7a743c07d6d630c7044))
+
+
+### Performance
+
+* **control:** kill admission hook process group on timeout (JOB-16) ([#707](https://github.com/elee1766/jobshop/issues/707)) ([6caf730](https://github.com/elee1766/jobshop/commit/6caf7304e1ea867f22154eaa7a19024c1969cc3e))
+
 ## [0.1.4](https://github.com/elee1766/jobshop/compare/v0.1.3...v0.1.4) (2026-11-05)
 
 
