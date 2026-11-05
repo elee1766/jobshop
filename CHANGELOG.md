@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/elee1766/jobshop/compare/v0.1.1...v0.1.2) (2026-11-05)
+
+
+### Bug fixes
+
+* **control:** stop stall checks cascading on needs_human checks ([#704](https://github.com/elee1766/jobshop/issues/704)) ([#705](https://github.com/elee1766/jobshop/issues/705)) ([e22c0cb](https://github.com/elee1766/jobshop/commit/e22c0cb71b66dd91d2c03cd8df2b250a14b7f758))
+
 ## [0.1.1](https://github.com/elee1766/jobshop/compare/v0.1.0...v0.1.1) (2026-11-05)
 
 
