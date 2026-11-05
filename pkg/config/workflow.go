@@ -41,7 +41,9 @@ type Workflow struct {
 	// ENG-123, runs get meta.linear = {workspace, issue}, and Repo is the
 	// code repo for PRs (meta.github.repo).
 	Tracker string `yaml:"tracker"`
-	// LinearWorkspace names the Linear workspace; required with linear.
+	// LinearWorkspace names the Linear workspace. With linear it may be
+	// empty at load (a github instance whose Linear vars are unset, #652);
+	// starting a run of the workflow then fails.
 	LinearWorkspace string `yaml:"linear_workspace"`
 	// EscalatePool gets the escalation ticket when a run needs a human.
 	EscalatePool string `yaml:"escalate_pool"`
@@ -393,8 +395,8 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 			return errors.New("linear_workspace needs tracker: linear")
 		}
 	case TrackerLinear:
-		if w.Issue == "" || w.LinearWorkspace == "" {
-			return errors.New("tracker linear needs issue and linear_workspace")
+		if w.Issue == "" {
+			return errors.New("tracker linear needs issue")
 		}
 	default:
 		return fmt.Errorf("tracker %q must be %q or %q", w.Tracker, TrackerGitHub, TrackerLinear)

@@ -228,7 +228,9 @@ workflows:
     issue: issue
     repo: "{{.repo}}"
     tracker: "{{.tracker}}"
-    linear_workspace: "{{.linear_workspace}}"
+    # Only with tracker linear: a github instance may set
+    # linear_workspace for pr-work-linear (#652).
+    linear_workspace: '{{if eq .tracker "linear"}}{{.linear_workspace}}{{end}}'
     escalate_pool: plan
     escalate:
       chat_pool: "{{.escalation_chat_pool}}"
@@ -251,6 +253,38 @@ workflows:
         retries: 2
         title: "Check master CI and deploy for #{{.issue}}"
         prompt_file: prompts/{{.tracker}}/post-merge.md
+  # pr-work for a Linear issue on an instance whose tracker is github
+  # (#652): GitHub issues and Linear team linear_team in one instance.
+  # Same steps and pools; the Linear prompts. Unused while linear_team is
+  # empty. On a tracker: linear instance pr-work is already this.
+  pr-work-linear:
+    vars: [issue]
+    issue: issue
+    repo: "{{.repo}}"
+    tracker: linear
+    linear_workspace: "{{.linear_workspace}}"
+    escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
+      hold_prompt_file: prompts/escalation-hold.md
+    steps:
+      - id: implement
+        pool: dev
+        retries: 3
+        title: "Implement {{.issue}}"
+        prompt_file: prompts/linear/implement.md
+      - id: review-merge
+        pool: refinery
+        retries: 2
+        title: "Review and merge PR for {{.issue}}"
+        prompt_file: prompts/linear/merge.md
+      - id: post-merge
+        pool: deploy-check
+        retries: 2
+        title: "Check master CI and deploy for {{.issue}}"
+        prompt_file: prompts/linear/post-merge.md
   # One run per stall, started by the stall trigger with key
   # stall:<signal>:<subject>. One attempt: a stall it cannot fix
   # escalates at once.

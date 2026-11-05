@@ -177,7 +177,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `required_approver` | Empty (default): no approval needed. A GitHub login: merge only when that login has an `APPROVED` review whose `commit_id` is the current head; otherwise the merge step closes `failed` and retries |
 | `required_checks` | Empty (default): every check in `statusCheckRollup` must pass. Otherwise comma-separated check names that must be `SUCCESS` on the head |
 | `tracker` | `github` (default) or `linear`: where `pr-work` issues live. Selects `prompts/<tracker>/` for the plan and dev pools and the pr-work steps (#232) |
-| `linear_workspace`, `linear_team` | With `linear`: the workspace and the team key (ENG) this instance works. One instance per team and repo, with a `prefix:` |
+| `linear_workspace`, `linear_team` | With `linear`: the workspace and the team key (ENG) this instance works. One instance per team and repo, with a `prefix:`. With `github` (#652): set both to also take Linear issues of that team; they run as `pr-work-linear` (Linear prompts, same pools, PRs on GitHub) and the planner lists them too. Empty `linear_team`: GitHub only |
 | `linear_target` | With `linear`: the Linear issue the planner reads as its goal (ENG-1) |
 | `linear_done_state` | With `linear`: state post-merge moves a shipped issue to. Default `Done` |
 | `linear_human` | With `linear`: the Linear user worker questions and run escalations mention when posted on the run's issue (#293). Replies under that comment answer the question |
