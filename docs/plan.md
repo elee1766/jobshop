@@ -531,9 +531,6 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `ui/desk-plugin.d.ts`, the CSV example and `docs/desk-plugins.md`
   (#542, `docs/notes/542-desk-plugins-part3.md`,
   `docs/verify/desk-plugin-commands.md`).
-- `network: a2a` gateway: escalation chats mirrored to another agent over
-  A2A (outbound JSON-RPC, polled tasks, resumable from meta.gateway)
-  (#547, `docs/notes/547-a2a-gateway.md`, `docs/verify/a2a-gateway.md`).
 
 ## 5. What's next
 
@@ -698,8 +695,7 @@ visibility (#408), placement (#409).
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
 `session.journal` (#529), Desk plugin host part 1 (#517), config from a
-git repo (#532), plugin commands, typed RPC and docs (#542), A2A
-escalation gateway (#547).
+git repo (#532), plugin commands, typed RPC and docs (#542).
 Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
 and `api.query`/`api.session` (#541).
 
