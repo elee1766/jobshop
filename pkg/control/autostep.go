@@ -105,7 +105,7 @@ func (c *Controller) resumeAutoStep(ctx context.Context, cfg *config.Config, t s
 	s, _, ok := c.autoStepConfig(cfg, t)
 	if ok && s.OnRestart == config.OnRestartFail {
 		cl := store.Claim{TicketID: t.ID, Holder: autoHolder, Fence: t.Fence}
-		if t2, err := c.store.Release(ctx, cl, "controller restarted during the attempt (on_restart: fail)", time.Time{}); err == nil {
+		if t2, err := c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "controller restarted during the attempt (on_restart: fail)"}); err == nil {
 			c.log.Warn("step attempt lost on restart", "ticket", t.ID, "step", s.ID)
 			c.stepEvent(ctx, t2)
 		}
@@ -240,11 +240,11 @@ func (c *Controller) finishAutoStep(ctx context.Context, t store.Ticket, cl stor
 	_, _ = c.store.AddComment(ctx, autoHolder, t.ID, note)
 	switch res.result {
 	case resultOK:
-		t, err = c.store.CloseTicket(ctx, autoHolder, t.ID, &cl, "done")
+		t, err = store.Close(ctx, c.store, autoHolder, t.ID, &cl, "done")
 	case resultNotYet:
-		t, err = c.store.Release(ctx, cl, "not yet", c.now().Add(res.retryAfter))
+		t, err = c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "not yet", Until: c.now().Add(res.retryAfter)})
 	default:
-		t, err = c.store.CloseTicket(ctx, autoHolder, t.ID, &cl, "failed")
+		t, err = store.Close(ctx, c.store, autoHolder, t.ID, &cl, "failed")
 	}
 	if err != nil {
 		c.log.Error("step finish", "ticket", t.ID, "result", res.result, "err", err)

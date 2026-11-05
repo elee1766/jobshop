@@ -327,7 +327,7 @@ func (c *Controller) gateSteps(ctx context.Context, runID string) bool {
 				}
 				c.log.Info("gated step opened", "run", runID, "step", name)
 			} else {
-				if _, err := c.store.CloseTicket(ctx, "controller", s.ID, nil, store.StepSkipped); err != nil {
+				if _, err := store.Close(ctx, c.store, "controller", s.ID, nil, store.StepSkipped); err != nil {
 					c.log.Error("skip step", "step", s.ID, "err", err)
 					return changed
 				}
@@ -441,7 +441,7 @@ func (c *Controller) setRunState(ctx context.Context, actor string, t store.Tick
 	if err != nil || resolution == "" {
 		return t, err
 	}
-	t, err = c.store.CloseTicket(ctx, actor, t.ID, nil, resolution)
+	t, err = store.Close(ctx, c.store, actor, t.ID, nil, resolution)
 	if err == nil {
 		c.removeRunDir(t.ID)
 	}
@@ -475,7 +475,7 @@ func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.IDParams) (a
 			continue
 		}
 		// Administrative close: a session holding the step loses it.
-		if _, err := c.store.CloseTicket(ctx, sc.actor, s.ID, nil, store.RunCancelled); err != nil {
+		if _, err := store.Close(ctx, c.store, sc.actor, s.ID, nil, store.RunCancelled); err != nil {
 			return nil, err
 		}
 	}

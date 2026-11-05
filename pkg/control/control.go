@@ -561,7 +561,7 @@ func (c *Controller) pruneWriteKeys() {
 }
 
 func (c *Controller) sweep() {
-	ids, err := c.store.SweepLeases(c.ctx, "controller")
+	ids, err := c.store.Expire(c.ctx, "controller", "", "")
 	if err != nil {
 		if c.ctx.Err() == nil {
 			c.log.Error("lease sweep", "err", err)

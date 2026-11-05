@@ -32,7 +32,7 @@ func testListShapes(t *testing.T, s store.Store, c *Clock) {
 	rf, _ := json.Marshal(store.RunFields{Workflow: "w", Key: "k", State: store.RunRunning})
 	msg, err := s.Create(ctx, "test", store.NewTicket{Project: proj, Kind: store.KindRun, Title: "r", Fields: rf})
 	require.NoError(t, err)
-	_, err = s.CloseTicket(ctx, "test", a.ID, nil, "done")
+	_, err = store.Close(ctx, s, "test", a.ID, nil, "done")
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{b.ID, held.ID, msg.ID}, list(store.Filter{Statuses: store.OpenStatuses}))

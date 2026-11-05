@@ -79,21 +79,21 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	}, waits)
 
 	// Close frees the slot.
-	_, err = s.CloseTicket(ctx, "s1", "js-a", &ca, "done")
+	_, err = store.Close(ctx, s, "s1", "js-a", &ca, "done")
 	require.NoError(t, err)
 	got, cb, err := s.ClaimNext(ctx, req("s3"))
 	require.NoError(t, err)
 	assert.Equal(t, "js-b", got.ID, "the waiting emu step is claimable once the slot frees")
 
 	// Release frees it.
-	_, err = s.Release(ctx, cb, "x", time.Time{})
+	_, err = s.Release(ctx, "", cb.TicketID, &cb, store.Outcome{Reason: "x"})
 	require.NoError(t, err)
 	assert.Contains(t, ready(), "js-b")
 	_, cb, err = s.Claim(ctx, "js-b", "s3", lease)
 	require.NoError(t, err)
 
 	// A dead holder frees it.
-	_, err = s.ReleaseHolder(ctx, "controller", "s3", "session died")
+	_, err = s.Expire(ctx, "controller", "s3", "session died")
 	require.NoError(t, err)
 	assert.Contains(t, ready(), "js-b")
 	_, err = s.Heartbeat(ctx, cb, lease)
@@ -102,7 +102,7 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 	// Lease expiry frees it.
 	assert.NotContains(t, ready(), "js-d")
 	c.Advance(lease + time.Minute)
-	_, err = s.SweepLeases(ctx, "controller")
+	_, err = s.Expire(ctx, "controller", "", "")
 	require.NoError(t, err)
 	assert.Contains(t, ready(), "js-d", "the expired pr:x#1 claim frees the key")
 	_, err = s.Heartbeat(ctx, cc, lease)

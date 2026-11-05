@@ -45,6 +45,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ClaimNextTiers", testClaimNextTiers},
 		{"FencedClose", testFencedClose},
 		{"Handoff", testHandoff},
+		{"ReleaseOutcomeRules", testReleaseOutcomeRules},
 		{"Heartbeat", testHeartbeat},
 		{"ReleaseHolder", testReleaseHolder},
 		{"SweepLeases", testSweepLeases},
@@ -266,7 +267,7 @@ func testReadyRespectsEdges(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{b.ID, c.ID}, ids(r), "a is blocked; tracks does not block")
 
-	_, err = s.CloseTicket(ctx, "test", b.ID, nil, "done")
+	_, err = store.Close(ctx, s, "test", b.ID, nil, "done")
 	require.NoError(t, err)
 	r, err = s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
@@ -298,7 +299,7 @@ func testOrphaned(t *testing.T, s store.Store, _ *Clock) {
 	_ = task(t, s, "queued", "dev")
 	_ = task(t, s, "held", "gone", func(n *store.NewTicket) { n.Holder = "s1" })
 	closed := task(t, s, "closed", "")
-	_, err := s.CloseTicket(ctx, "test", closed.ID, nil, "done")
+	_, err := store.Close(ctx, s, "test", closed.ID, nil, "done")
 	require.NoError(t, err)
 
 	orphaned := func(project string, pools []string) ([]store.Ticket, error) {
@@ -357,7 +358,7 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"js-a", "js-b"}, ids(ready))
 
-	_, err = s.CloseTicket(ctx, "test", runID, nil, "done")
+	_, err = store.Close(ctx, s, "test", runID, nil, "done")
 	require.NoError(t, err)
 	_, err = store.OpenRun(ctx, s, "w", "k1")
 	assert.ErrorIs(t, err, store.ErrNotFound, "closed runs do not dedup")
@@ -388,14 +389,14 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	}
 
 	// Close failed reopens below the limit.
-	tk, err := s.CloseTicket(ctx, "test", "js-a", nil, "failed")
+	tk, err := store.Close(ctx, s, "test", "js-a", nil, "failed")
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusOpen, tk.Status)
 	assert.Equal(t, 1, fails())
 
 	// A rebase close reopens without counting, however often (#424).
 	for range 5 {
-		tk, err = s.CloseTicket(ctx, "test", "js-a", nil, store.ResolutionRebase)
+		tk, err = store.Close(ctx, s, "test", "js-a", nil, store.ResolutionRebase)
 		require.NoError(t, err)
 		assert.Equal(t, store.StatusOpen, tk.Status)
 		assert.Empty(t, tk.Resolution)
@@ -405,14 +406,14 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	// Release.
 	_, cl, err := s.Claim(ctx, "js-a", "s1", lease)
 	require.NoError(t, err)
-	_, err = s.Release(ctx, cl, "gave up", time.Time{})
+	_, err = s.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "gave up"})
 	require.NoError(t, err)
 	assert.Equal(t, 2, fails())
 
 	// A deferred release is not a failure and hides the step until then (#139).
 	_, cl, err = s.Claim(ctx, "js-a", "s1", lease)
 	require.NoError(t, err)
-	tk, err = s.Release(ctx, cl, "not yet", c.T.Add(time.Hour))
+	tk, err = s.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "not yet", Until: c.T.Add(time.Hour)})
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusOpen, tk.Status)
 	assert.Equal(t, 2, fails())
@@ -427,7 +428,7 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	// Dead holder.
 	_, _, err = s.Claim(ctx, "js-a", "s2", lease)
 	require.NoError(t, err)
-	_, err = s.ReleaseHolder(ctx, "controller", "s2", "session died")
+	_, err = s.Expire(ctx, "controller", "s2", "session died")
 	require.NoError(t, err)
 	assert.Equal(t, 3, fails())
 
@@ -435,7 +436,7 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	_, _, err = s.Claim(ctx, "js-a", "s3", lease)
 	require.NoError(t, err)
 	c.Advance(2 * lease)
-	_, err = s.SweepLeases(ctx, "controller")
+	_, err = s.Expire(ctx, "controller", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, 4, fails())
 	tk, err = s.Get(ctx, "js-a")
@@ -458,7 +459,7 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 
 	// Tasks are not counted.
 	task := task(t, s, "plain", "dev")
-	tk, err = s.CloseTicket(ctx, "test", task.ID, nil, "failed")
+	tk, err = store.Close(ctx, s, "test", task.ID, nil, "failed")
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusClosed, tk.Status)
 }
@@ -481,7 +482,7 @@ func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, assigned.ID, again.ID, "in-progress work resumes")
 	assert.Equal(t, c1.Fence, c2.Fence)
 
-	_, err = s.CloseTicket(ctx, "s1", assigned.ID, &c2, "done")
+	_, err = store.Close(ctx, s, "s1", assigned.ID, &c2, "done")
 	require.NoError(t, err)
 	got, _, err = s.ClaimNext(ctx, req)
 	require.NoError(t, err)
@@ -502,10 +503,10 @@ func testHandoff(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	stale := cl
 	stale.Fence--
-	_, err = s.Handoff(ctx, "s1", a.ID, &stale, "refinery", "x")
+	_, err = s.Release(ctx, "s1", a.ID, &stale, store.Outcome{Pool: "refinery", Note: "x"})
 	require.ErrorIs(t, err, store.ErrNotHolder)
 
-	got, err := s.Handoff(ctx, "s1", a.ID, &cl, "refinery", "over to you")
+	got, err := s.Release(ctx, "s1", a.ID, &cl, store.Outcome{Pool: "refinery", Note: "over to you"})
 	require.NoError(t, err)
 	assert.Equal(t, "refinery", got.Pool)
 	assert.Equal(t, store.StatusOpen, got.Status)
@@ -518,8 +519,32 @@ func testHandoff(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, "over to you", cs[0].Body)
 	assert.Equal(t, "s1", cs[0].Author)
 
-	_, err = s.Handoff(ctx, "admin", a.ID, nil, "", "")
+	_, err = s.Release(ctx, "admin", a.ID, nil, store.Outcome{})
 	require.ErrorIs(t, err, store.ErrInvalid)
+}
+
+// testReleaseOutcomeRules (#579): close and pool are exclusive, a claim
+// for another ticket is rejected, and an empty id or actor comes from
+// the claim.
+func testReleaseOutcomeRules(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	a := task(t, s, "a", "dev")
+	b := task(t, s, "b", "dev")
+	_, cl, err := s.Claim(ctx, a.ID, "s1", lease)
+	require.NoError(t, err)
+
+	_, err = s.Release(ctx, "s1", a.ID, &cl, store.Outcome{Close: "done", Pool: "refinery"})
+	require.ErrorIs(t, err, store.ErrInvalid)
+	_, err = s.Release(ctx, "s1", b.ID, &cl, store.Outcome{Close: "done"})
+	require.ErrorIs(t, err, store.ErrInvalid)
+
+	got, err := s.Release(ctx, "", "", &cl, store.Outcome{Close: "done"})
+	require.NoError(t, err)
+	assert.Equal(t, store.StatusClosed, got.Status)
+	assert.Equal(t, "done", got.Resolution)
+	h, err := store.History(ctx, s, a.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "s1", h[len(h)-1].Actor)
 }
 
 func testFencedClose(t *testing.T, s store.Store, c *Clock) {
@@ -527,23 +552,23 @@ func testFencedClose(t *testing.T, s store.Store, c *Clock) {
 	a := task(t, s, "a", "dev")
 	_, old, err := s.Claim(ctx, a.ID, "s1", lease)
 	require.NoError(t, err)
-	_, err = s.Release(ctx, old, "handoff", time.Time{})
+	_, err = s.Release(ctx, "", old.TicketID, &old, store.Outcome{Reason: "handoff"})
 	require.NoError(t, err)
 	_, cur, err := s.Claim(ctx, a.ID, "s1", lease)
 	require.NoError(t, err)
 	assert.Greater(t, cur.Fence, old.Fence)
 
-	_, err = s.CloseTicket(ctx, "s1", a.ID, &old, "stale")
+	_, err = store.Close(ctx, s, "s1", a.ID, &old, "stale")
 	assert.ErrorIs(t, err, store.ErrNotHolder, "stale fence is rejected")
 	c.Advance(time.Second)
-	closed, err := s.CloseTicket(ctx, "s1", a.ID, &cur, "done")
+	closed, err := store.Close(ctx, s, "s1", a.ID, &cur, "done")
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusClosed, closed.Status)
 	assert.Equal(t, "done", closed.Resolution)
 	assert.Equal(t, c.T, closed.ClosedAt)
 	assert.True(t, closed.LeaseUntil.IsZero())
 
-	_, err = s.CloseTicket(ctx, "admin", a.ID, nil, "again")
+	_, err = store.Close(ctx, s, "admin", a.ID, nil, "again")
 	assert.ErrorIs(t, err, store.ErrClosed)
 	re, err := s.Reopen(ctx, "admin", a.ID)
 	require.NoError(t, err)
@@ -582,7 +607,7 @@ func testReleaseHolder(t *testing.T, s store.Store, _ *Clock) {
 	_, _, err = s.Claim(ctx, other.ID, "s2", lease)
 	require.NoError(t, err)
 
-	released, err := s.ReleaseHolder(ctx, "controller", "s1", "session died")
+	released, err := s.Expire(ctx, "controller", "s1", "session died")
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{a.ID, b.ID}, released)
 	for _, id := range released {
@@ -609,7 +634,7 @@ func testSweepLeases(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	c.Advance(11 * time.Minute)
 
-	swept, err := s.SweepLeases(ctx, "controller")
+	swept, err := s.Expire(ctx, "controller", "", "")
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.ID}, swept)
 	_, err = s.Heartbeat(ctx, ca, lease)
@@ -748,7 +773,7 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 	assert.Regexp(t, `^js-s-[0-9a-z]{13}$`, a.ID, "session ids carry the s tag (#615)")
 	_, err = sess()
 	assert.ErrorIs(t, err, store.ErrAlreadyExist)
-	_, err = s.CloseTicket(ctx, "test", a.ID, nil, "stopped")
+	_, err = store.Close(ctx, s, "test", a.ID, nil, "stopped")
 	require.NoError(t, err)
 	_, err = sess()
 	assert.NoError(t, err, "key is reusable once the session closes")

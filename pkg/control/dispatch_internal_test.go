@@ -88,7 +88,7 @@ func TestDispatchHeldThenReleased(t *testing.T) {
 	asks, err := c.store.List(t.Context(), store.Filter{Label: needsHumanLabel})
 	require.NoError(t, err)
 	require.Len(t, asks, 1)
-	_, err = c.store.CloseTicket(t.Context(), "admin", asks[0].ID, nil, "done")
+	_, err = store.Close(t.Context(), c.store, "admin", asks[0].ID, nil, "done")
 	require.NoError(t, err)
 	c.ingestPass(t.Context())
 	c.ingestPass(t.Context())

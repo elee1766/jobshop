@@ -152,7 +152,7 @@ func TestLinearEndToEnd(t *testing.T) {
 
 	// 3. The operator approves; stall-check and then the planner start
 	// with the same key and get one run.
-	_, err = c.store.CloseTicket(ctx, "admin", items[0].ID, nil, "done")
+	_, err = store.Close(ctx, c.store, "admin", items[0].ID, nil, "done")
 	require.NoError(t, err)
 	write("decision", `{"decision":"allow"}`)
 	run, err := start()

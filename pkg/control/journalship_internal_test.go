@@ -195,7 +195,7 @@ func TestJournalBackfill(t *testing.T) {
 	c, clk := shipController(t, vl.URL)
 	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	appendJournal(t, c, sess.ID, 1, 5, clk.now(), "")
-	_, err := c.store.CloseTicket(t.Context(), "admin", sess.ID, nil, "done")
+	_, err := store.Close(t.Context(), c.store, "admin", sess.ID, nil, "done")
 	require.NoError(t, err)
 	clk.advance(48 * time.Hour) // past the startup pickup window
 

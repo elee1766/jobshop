@@ -186,7 +186,7 @@ func TestSubscriptionsResume(t *testing.T) {
 	_, cl, err := c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
 	c.pollSubscriptions(ctx, src)
-	_, err = c.store.CloseTicket(ctx, sess.ID, tk.ID, &cl, "done")
+	_, err = store.Close(ctx, c.store, sess.ID, tk.ID, &cl, "done")
 	require.NoError(t, err)
 
 	clk.advance(time.Hour)
@@ -199,7 +199,7 @@ func TestSubscriptionsResume(t *testing.T) {
 
 	_, cl, err = c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
-	_, err = c.store.CloseTicket(ctx, sess.ID, tk.ID, &cl, "done")
+	_, err = store.Close(ctx, c.store, sess.ID, tk.ID, &cl, "done")
 	require.NoError(t, err)
 	clk.advance(25 * time.Hour)
 	src.add("acme/widget#3", ghComment{Author: "bob", Body: "late", At: clk.now()})
@@ -438,7 +438,7 @@ func TestSubscriptionsBots(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "github:kody[bot]", cs[len(cs)-1].Author)
 
-	_, err = c.store.CloseTicket(ctx, sess.ID, tk.ID, &cl, "done")
+	_, err = store.Close(ctx, c.store, sess.ID, tk.ID, &cl, "done")
 	require.NoError(t, err)
 	clk.advance(time.Hour)
 	src.add("acme/widget#4", ghComment{Author: "kody[bot]", Bot: true, Kind: "review comment", Body: "one more", At: clk.now()})

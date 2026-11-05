@@ -161,6 +161,19 @@ type Claim struct {
 	LeaseUntil time.Time `json:"lease_until"`
 }
 
+// Outcome says how Release lets go of a ticket. Close set closes it
+// with that resolution; Pool set hands it off to that pool with Note as
+// a comment; otherwise it returns to open, deferred to Until when set
+// (not a step failure) and counted as a failed attempt with Reason when
+// not. Close and Pool are exclusive.
+type Outcome struct {
+	Close  string
+	Pool   string
+	Note   string
+	Until  time.Time
+	Reason string
+}
+
 // NewTicket is the input to Create. ID, if empty, is generated.
 type NewTicket struct {
 	ID         string
@@ -349,23 +362,17 @@ type Store interface {
 	Claim(ctx context.Context, id, holder string, lease time.Duration) (Ticket, Claim, error)
 	// Heartbeat extends a lease. It never bumps the revision or writes history.
 	Heartbeat(ctx context.Context, c Claim, lease time.Duration) (Claim, error)
-	// Release returns a held ticket to open. A non-zero until defers the
-	// ticket to that time and is not counted as a step failure (#139).
-	Release(ctx context.Context, c Claim, reason string, until time.Time) (Ticket, error)
-	// Handoff moves a ticket to pool, releases its holder, bumps the fence
-	// and adds note as a comment in one transaction (#492). A non-nil claim
-	// must still hold it; a nil claim is an administrative handoff.
-	Handoff(ctx context.Context, actor, id string, c *Claim, pool, note string) (Ticket, error)
-	// CloseTicket closes a ticket. A non-nil claim must still hold it; a nil
-	// claim is an administrative close.
-	CloseTicket(ctx context.Context, actor, id string, c *Claim, resolution string) (Ticket, error)
+	// Release lets go of ticket id as o says: close, hand off (pool,
+	// release, fence and note in one transaction, #492), or return to
+	// open, deferred when o.Until is set (#139). A non-nil claim must
+	// still hold the ticket; a nil claim is administrative and allowed
+	// only for close and handoff. An empty actor is the claim's holder.
+	Release(ctx context.Context, actor, id string, c *Claim, o Outcome) (Ticket, error)
 	Reopen(ctx context.Context, actor, id string) (Ticket, error)
 
-	// ReleaseHolder reopens everything held by a dead session (claims and
-	// pre-assignments) and returns the affected ids.
-	ReleaseHolder(ctx context.Context, actor, holder, reason string) ([]string, error)
-	// SweepLeases reopens tickets whose lease has expired.
-	SweepLeases(ctx context.Context, actor string) ([]string, error)
+	// Expire reopens what a dead holder held or was assigned, or, with
+	// holder "", every ticket whose lease expired, and returns the ids.
+	Expire(ctx context.Context, actor, holder, reason string) ([]string, error)
 
 	AddEdge(ctx context.Context, actor string, e Edge) error
 	RemoveEdge(ctx context.Context, actor string, e Edge) error

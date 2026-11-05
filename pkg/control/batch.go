@@ -266,7 +266,7 @@ func (c *Controller) deriveBatch(ctx context.Context, batchID string) {
 		return
 	}
 	if state == store.BatchDone || state == store.BatchFailed {
-		if _, err := c.store.CloseTicket(ctx, "controller", b.ID, nil, state); err != nil {
+		if _, err := store.Close(ctx, c.store, "controller", b.ID, nil, state); err != nil {
 			c.log.Error("close batch", "batch", batchID, "err", err)
 			return
 		}

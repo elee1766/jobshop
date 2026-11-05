@@ -47,7 +47,7 @@ func testConcurrentClaims(t *testing.T, s store.Store, _ *Clock) {
 				mu.Lock()
 				got[tk.ID] = append(got[tk.ID], holder)
 				mu.Unlock()
-				if _, err := s.CloseTicket(ctx, holder, tk.ID, &c, "done"); !assert.NoError(t, err) {
+				if _, err := store.Close(ctx, s, holder, tk.ID, &c, "done"); !assert.NoError(t, err) {
 					return
 				}
 			}
@@ -142,7 +142,7 @@ func testClaimAfterSkippedBlocker(t *testing.T, s store.Store, _ *Clock) {
 	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{run, mk("js-sa"), mk("js-sb")},
 		[]store.Edge{{From: "js-sb", To: "js-sa", Kind: store.EdgeBlocks}})
 	require.NoError(t, err)
-	_, err = s.CloseTicket(ctx, "controller", "js-sa", nil, store.StepSkipped)
+	_, err = store.Close(ctx, s, "controller", "js-sa", nil, store.StepSkipped)
 	require.NoError(t, err)
 
 	tk, _, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: "h", Lease: lease})

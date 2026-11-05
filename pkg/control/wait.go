@@ -217,7 +217,7 @@ func (c *Controller) waitAdd(ctx context.Context, sc scope, p rpc.WaitAddParams)
 	if held != nil {
 		held.Fence = t.Fence
 		// A release with until is a deferral: not a failed attempt.
-		if t, err = c.store.Release(ctx, *held, "waiting: "+w.Reason, now); err != nil {
+		if t, err = c.store.Release(ctx, "", held.TicketID, held, store.Outcome{Reason: "waiting: " + w.Reason, Until: now}); err != nil {
 			return nil, err
 		}
 	}

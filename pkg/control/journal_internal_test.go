@@ -101,7 +101,7 @@ func TestSessionJournal(t *testing.T) {
 	require.ErrorIs(t, err, rpc.ErrForbidden)
 
 	// An ended session's journal is still readable.
-	_, err = c.store.CloseTicket(ctx, "admin", sess.ID, nil, "done")
+	_, err = store.Close(ctx, c.store, "admin", sess.ID, nil, "done")
 	require.NoError(t, err)
 	assert.Len(t, page(admin, rpc.SessionJournalParams{ID: sess.ID}).Frames, 10)
 

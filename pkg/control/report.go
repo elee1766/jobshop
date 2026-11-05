@@ -103,7 +103,7 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 		if err != nil {
 			return nil, err
 		}
-		if _, err := c.store.Release(ctx, cl, "waiting: "+rm.Note, *p.Until); err != nil {
+		if _, err := c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "waiting: " + rm.Note, Until: *p.Until}); err != nil {
 			return nil, err
 		}
 	}
@@ -280,7 +280,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 			}
 		}
 	}
-	if res.Question, err = c.store.CloseTicket(ctx, sc.actor, qt.ID, nil, resolutionAnswered); err != nil {
+	if res.Question, err = store.Close(ctx, c.store, sc.actor, qt.ID, nil, resolutionAnswered); err != nil {
 		return nil, err
 	}
 	c.unblockLinear(ctx, qt)

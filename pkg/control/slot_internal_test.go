@@ -77,7 +77,7 @@ func TestSlotAllocation(t *testing.T) {
 	require.ErrorIs(t, err, errSlotsFull)
 
 	// Ending the slot-0 session frees slot 0, the lowest free.
-	_, err = c.store.CloseTicket(ctx, "test", a.ID, nil, "done")
+	_, err = store.Close(ctx, c.store, "test", a.ID, nil, "done")
 	require.NoError(t, err)
 	assert.Equal(t, 1, c.slotCapacity(ctx, "dev"))
 	d, err := createSlotSession(t, c, "dev")

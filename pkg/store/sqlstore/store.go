@@ -707,8 +707,42 @@ func reopen(t *store.Ticket) {
 	t.LeaseUntil = time.Time{}
 }
 
-// Release returns a held ticket to open and unassigned.
-func (s *Store) Release(ctx context.Context, c store.Claim, reason string, until time.Time) (t store.Ticket, err error) {
+// Release lets go of a ticket as o says (#579): close, hand off, or
+// return to open.
+func (s *Store) Release(ctx context.Context, actor, id string, c *store.Claim, o store.Outcome) (store.Ticket, error) {
+	if id == "" && c != nil {
+		id = c.TicketID
+	}
+	if c != nil && c.TicketID != "" && c.TicketID != id {
+		return store.Ticket{}, fmt.Errorf("%w: claim is for %s, not %s", store.ErrInvalid, c.TicketID, id)
+	}
+	if actor == "" && c != nil {
+		actor = c.Holder
+	}
+	switch {
+	case o.Close != "" && o.Pool != "":
+		return store.Ticket{}, fmt.Errorf("%w: release: close and pool are exclusive", store.ErrInvalid)
+	case o.Close != "":
+		return s.closeTicket(ctx, actor, id, c, o.Close)
+	case o.Pool != "":
+		return s.handoff(ctx, actor, id, c, o.Pool, o.Note)
+	case c == nil:
+		return store.Ticket{}, fmt.Errorf("%w: release to open needs a claim", store.ErrInvalid)
+	}
+	return s.release(ctx, *c, o.Reason, o.Until)
+}
+
+// Expire reopens what holder held or was assigned, or with holder ""
+// every ticket whose lease expired (#579).
+func (s *Store) Expire(ctx context.Context, actor, holder, reason string) ([]string, error) {
+	if holder == "" {
+		return s.sweepLeases(ctx, actor)
+	}
+	return s.releaseHolder(ctx, actor, holder, reason)
+}
+
+// release returns a held ticket to open and unassigned.
+func (s *Store) release(ctx context.Context, c store.Claim, reason string, until time.Time) (t store.Ticket, err error) {
 	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, c.TicketID, c.Holder, "release", func(t *store.Ticket) (any, error) {
@@ -736,10 +770,10 @@ func (s *Store) Release(ctx context.Context, c store.Claim, reason string, until
 	return t, err
 }
 
-// Handoff moves a ticket to pool, releases its holder, bumps the fence
+// handoff moves a ticket to pool, releases its holder, bumps the fence
 // and adds note as a comment by actor, all in one transaction (#492).
 // A non-nil claim must still hold the ticket. It is not a step failure.
-func (s *Store) Handoff(ctx context.Context, actor, id string, c *store.Claim, pool, note string) (t store.Ticket, err error) {
+func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, pool, note string) (t store.Ticket, err error) {
 	if pool == "" {
 		return store.Ticket{}, fmt.Errorf("%w: handoff needs a pool", store.ErrInvalid)
 	}
@@ -807,8 +841,8 @@ func (s *Store) note(ctx context.Context, q sqlcdb.Querier, id, body string) err
 	return err
 }
 
-// CloseTicket closes a ticket, fenced by c when non-nil.
-func (s *Store) CloseTicket(ctx context.Context, actor, id string, c *store.Claim, resolution string) (t store.Ticket, err error) {
+// closeTicket closes a ticket, fenced by c when non-nil.
+func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Claim, resolution string) (t store.Ticket, err error) {
 	err = s.tx(ctx, func(q sqlcdb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
@@ -910,8 +944,8 @@ func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqlc
 	return out, err
 }
 
-// ReleaseHolder reopens everything a dead holder held or was assigned.
-func (s *Store) ReleaseHolder(ctx context.Context, actor, holder, reason string) ([]string, error) {
+// releaseHolder reopens everything a dead holder held or was assigned.
+func (s *Store) releaseHolder(ctx context.Context, actor, holder, reason string) ([]string, error) {
 	if holder == "" {
 		return nil, fmt.Errorf("%w: holder is required", store.ErrInvalid)
 	}
@@ -920,9 +954,9 @@ func (s *Store) ReleaseHolder(ctx context.Context, actor, holder, reason string)
 		map[string]any{"reason": reason}, nil)
 }
 
-// SweepLeases reopens tickets whose lease expired. Each write re-checks
+// sweepLeases reopens tickets whose lease expired. Each write re-checks
 // the expiry, so a lease renewed after the list was read is kept.
-func (s *Store) SweepLeases(ctx context.Context, actor string) ([]string, error) {
+func (s *Store) sweepLeases(ctx context.Context, actor string) ([]string, error) {
 	now := s.now()
 	return s.reopenAll(ctx, actor, "lease_expired",
 		func(q sqlcdb.Querier) ([]string, error) { return q.ExpiredLeases(ctx, ms(now)) }, nil,

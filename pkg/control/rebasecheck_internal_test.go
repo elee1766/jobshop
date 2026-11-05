@@ -48,7 +48,7 @@ func TestRebaseMergeState(t *testing.T) {
 			require.NoError(t, err)
 
 			res, why := c.rebaseResolution(t.Context(), review)
-			got, err := c.store.CloseTicket(t.Context(), "admin", review.ID, nil, res)
+			got, err := store.Close(t.Context(), c.store, "admin", review.ID, nil, res)
 			require.NoError(t, err)
 			sf, err := store.DecodeFields[store.StepFields](got)
 			require.NoError(t, err)

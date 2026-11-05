@@ -173,7 +173,7 @@ func TestAdmissionHeldReleased(t *testing.T) {
 			ts, err := c.store.List(t.Context(), store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: "admission/d1"})
 			require.NoError(t, err)
 			require.Len(t, ts, 1)
-			_, err = c.store.CloseTicket(t.Context(), "human", ts[0].ID, nil, tc.resolution)
+			_, err = store.Close(t.Context(), c.store, "human", ts[0].ID, nil, tc.resolution)
 			require.NoError(t, err)
 
 			require.NoError(t, c.releaseAnswered(t.Context()))
