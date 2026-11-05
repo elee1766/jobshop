@@ -1,0 +1,84 @@
+package control
+
+import (
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/elee1766/jobshop/pkg/redact"
+	"github.com/elee1766/jobshop/pkg/rpc"
+)
+
+// Redaction on write (#574): comments, reports, learnings and artifacts
+// reach Desk, gateway digests and memory curation (committed to a public
+// repo), so the controller masks secrets before storing them. The
+// session's own env is not known here; gitleaks' rules cover tokens.
+
+// maxRedactFile is the largest artifact attachment scanned. Bigger files
+// and binary ones are copied as they are.
+const maxRedactFile = 1 << 20
+
+// redactWrite masks secrets in each of texts, in place. When any changed
+// it records one activity item naming what (never the secret).
+func (c *Controller) redactWrite(sc scope, what, target string, texts ...*string) {
+	changed := false
+	for _, s := range texts {
+		if s == nil || *s == "" {
+			continue
+		}
+		if r := redact.Text(*s, nil); r != *s {
+			*s, changed = r, true
+		}
+	}
+	if changed {
+		c.recordRedacted(sc, what, target)
+	}
+}
+
+// recordRedacted adds a redacted: true item to the activity feed.
+func (c *Controller) recordRedacted(sc scope, what, target string) {
+	actor := sc.session
+	if actor == "" {
+		actor = sc.actor
+	}
+	now := c.now()
+	c.addActivity(rpc.ActivityItem{
+		ID:     fmt.Sprintf("redact:%s:%d:%d", actor, now.UnixNano(), ghCallSeq.Add(1)),
+		Source: "jobshop", Kind: "redact", Actor: actor, Bot: true, At: now,
+		Title: strings.TrimSpace(fmt.Sprintf("secrets masked in %s %s", what, target)), Redacted: true,
+	})
+}
+
+// redactFile masks secrets in a copied artifact attachment, if it is
+// text and at most maxRedactFile. It reports whether anything changed.
+func redactFile(path string) (bool, error) {
+	st, err := os.Stat(path)
+	if err != nil || st.Size() > maxRedactFile {
+		return false, err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	if isBinary(b) {
+		return false, nil
+	}
+	r := redact.Text(string(b), nil)
+	if r == string(b) {
+		return false, nil
+	}
+	return true, os.WriteFile(path, []byte(r), 0o640)
+}
+
+// isBinary is a NUL byte in the first 8KB, as git decides.
+func isBinary(b []byte) bool {
+	if len(b) > 8192 {
+		b = b[:8192]
+	}
+	for _, c := range b {
+		if c == 0 {
+			return true
+		}
+	}
+	return false
+}

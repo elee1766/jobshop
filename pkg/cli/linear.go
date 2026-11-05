@@ -17,20 +17,22 @@ import (
 // the issue's team (#201). The key never leaves the controller except as
 // the token for this call.
 type linearCmd struct {
-	APIURL   string            `name:"api-url" hidden:"" env:"JOBSHOP_LINEAR_URL" help:"Linear GraphQL endpoint (tests)."`
-	Issue    linearIssueCmd    `cmd:"" help:"Print a Linear issue with its comments as JSON."`
-	Comment  linearCommentCmd  `cmd:"" help:"Comment on a Linear issue (e.g. the PR link)."`
-	State    linearStateCmd    `cmd:"" help:"Move a Linear issue to a state of its team by name (e.g. Done on merge)."`
-	Context  linearContextCmd  `cmd:"" help:"Print an issue with labels, blockers, relations, children, assignee, state and recent comments as JSON."`
-	List     linearListCmd     `cmd:"" help:"List a team's issues as JSON, one page at a time."`
-	Search   linearSearchCmd   `cmd:"" help:"Search a team's issues as JSON, one page at a time."`
-	Catalog  linearCatalogCmd  `cmd:"" help:"List a team's projects, labels, states or users as JSON."`
-	Eligible linearEligibleCmd `cmd:"" help:"Intake gate: print whether an issue may start a run and why not. Exits 1 when not eligible."`
-	Create   linearCreateCmd   `cmd:"" help:"Create an issue. --key makes a retry return the first result."`
-	Update   linearUpdateCmd   `cmd:"" help:"Change title, state, assignee or labels; reads the issue back to verify."`
-	Ask      linearAskCmd      `cmd:"" help:"Comment a question, mentioning users so they are notified."`
-	Relate   linearRelateCmd   `cmd:"" help:"Mark an issue as blocking or related to another."`
-	API      linearAPICmd      `cmd:"" name:"api" help:"Raw GraphQL call: LINEAR_API_KEY if set, else the team's identity. Mutations ask the guard (linear-api-mutation)."`
+	APIURL string `name:"api-url" hidden:"" env:"JOBSHOP_LINEAR_URL" help:"Linear GraphQL endpoint (tests)."`
+	// AllowSecretFindings skips the outbound secret check (#574); admin only.
+	AllowSecretFindings bool              `name:"allow-secret-findings" help:"Send writes that hold a gitleaks finding (admin callers only)."`
+	Issue               linearIssueCmd    `cmd:"" help:"Print a Linear issue with its comments as JSON."`
+	Comment             linearCommentCmd  `cmd:"" help:"Comment on a Linear issue (e.g. the PR link)."`
+	State               linearStateCmd    `cmd:"" help:"Move a Linear issue to a state of its team by name (e.g. Done on merge)."`
+	Context             linearContextCmd  `cmd:"" help:"Print an issue with labels, blockers, relations, children, assignee, state and recent comments as JSON."`
+	List                linearListCmd     `cmd:"" help:"List a team's issues as JSON, one page at a time."`
+	Search              linearSearchCmd   `cmd:"" help:"Search a team's issues as JSON, one page at a time."`
+	Catalog             linearCatalogCmd  `cmd:"" help:"List a team's projects, labels, states or users as JSON."`
+	Eligible            linearEligibleCmd `cmd:"" help:"Intake gate: print whether an issue may start a run and why not. Exits 1 when not eligible."`
+	Create              linearCreateCmd   `cmd:"" help:"Create an issue. --key makes a retry return the first result."`
+	Update              linearUpdateCmd   `cmd:"" help:"Change title, state, assignee or labels; reads the issue back to verify."`
+	Ask                 linearAskCmd      `cmd:"" help:"Comment a question, mentioning users so they are notified."`
+	Relate              linearRelateCmd   `cmd:"" help:"Mark an issue as blocking or related to another."`
+	API                 linearAPICmd      `cmd:"" name:"api" help:"Raw GraphQL call: LINEAR_API_KEY if set, else the team's identity. Mutations ask the guard (linear-api-mutation)."`
 }
 
 type linearIssueCmd struct {
@@ -89,6 +91,9 @@ func (c linearCommentCmd) Run(g *Globals, l *linearCmd) error {
 	}
 	if strings.TrimSpace(body) == "" {
 		return fmt.Errorf("empty comment")
+	}
+	if err := checkOut(g, "linear comment", l.AllowSecretFindings, outText{"body", body}); err != nil {
+		return err
 	}
 	cl, ctx, cancel, err := l.client(g, c.Key)
 	if err != nil {
