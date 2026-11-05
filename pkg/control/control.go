@@ -120,6 +120,9 @@ type Controller struct {
 	mu       sync.Mutex
 	sessions map[string]context.CancelFunc // open session id -> stops its cli.sock
 	runners  map[string]*runner
+	// readOnly are sessions limited to read methods until a human
+	// writes (#606); mirrors SessionFields.ReadOnly.
+	readOnly map[string]bool
 	drain    bool            // full shutdown in progress: start nothing new
 	drained  map[string]bool // drained pools (drainAll for every pool); persisted in scale.json
 	// Pool scaling (#281): manual targets (persisted with drains), the
@@ -303,7 +306,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	c := &Controller{
 		root: root, live: live, store: st, opt: opt, log: log, metrics: m, incidents: incidents,
 		tracer:   tr.Tracer(),
-		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
+		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{}, readOnly: map[string]bool{},
 		minter:       identity.NewMinter(),
 		ingest:       ingestDrain{wake: make(chan struct{}, 1)},
 		waitWake:     make(chan struct{}, 1),
@@ -419,6 +422,9 @@ func (c *Controller) serve() error {
 		return err
 	}
 	for _, t := range open {
+		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.ReadOnly {
+			c.setReadOnly(t.ID, true)
+		}
 		if err := c.openSession(t); err != nil {
 			c.log.Warn("session socket", "session", t.ID, "err", err)
 		}
@@ -484,6 +490,7 @@ func (c *Controller) tick() {
 	c.reportOrphans()
 	c.sweepRuns()
 	c.sweepEscalationChats(c.ctx)
+	c.sweepAttentionChats(c.ctx)
 	c.sweepBatches()
 	c.sweepLinearAsks(c.ctx)
 	c.pruneInbox()
@@ -689,6 +696,9 @@ func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.Metho
 		if !ok {
 			return nil, acp.NewMethodNotFound(name)
 		}
+		if err := c.checkReadOnly(sc, name); err != nil {
+			return nil, rpc.ToWire(err)
+		}
 		params, meta := rpc.SplitMeta(params)
 		if meta.Actor != "" {
 			// Only the admin socket may name who is behind a call (#515).
@@ -807,6 +817,7 @@ func init() {
 		rpc.MethodSessionCordon:     bind((*Controller).sessionCordonRPC),
 		rpc.MethodSessionConfig:     bind((*Controller).sessionConfigRPC),
 		rpc.MethodAttention:         bind((*Controller).attention),
+		rpc.MethodAttentionChat:     bind((*Controller).attentionChat),
 		rpc.MethodPoolUnquarantine:  bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:   bind((*Controller).reportIncidents),
 		rpc.MethodGuard:             bind((*Controller).guard),

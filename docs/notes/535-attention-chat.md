@@ -6,7 +6,10 @@
 - `/api/attention` merges the controller's `attention` list, so Desk
   shows `question`, `decision`, `stale`, `config`, `config-repo`,
   `resource` and `ingest` items with their issue or PR (`ref`).
-- A click calls `POST /api/attention/chat {kind, id, title, why}`:
+- A click calls `POST /api/attention/chat {kind, id, title, why}`.
+  Since #606 the controller owns this (`attention.chat`) and usually
+  pre-started the chat when the item arrived, so the click only
+  attaches (`docs/notes/606-attention-prestart.md`). Before #606:
   - a ticket with `meta.escalation` (#379) opens that chat;
   - otherwise the chat pool session keyed `attention:<kind>:<id>`;
     when none is open, Desk starts it with a context prompt (kind, id,

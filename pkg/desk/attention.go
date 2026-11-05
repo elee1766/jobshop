@@ -2,7 +2,6 @@ package desk
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,17 +16,10 @@ import (
 )
 
 // Attention opens the chat that resolves it (#535). A click on an item
-// asks Desk for its chat: the controller's escalation chat when the
-// ticket has one, else a chat-pool session keyed attention:<kind>:<id>,
-// started with a context prompt. The key is kept on the ticket
-// (meta.desk.attention_chat) or, for items that are not tickets, in
-// <root>/desk/attention.json, which also holds acknowledged items.
-
-// ticketKinds are attention kinds whose ID is a ticket.
-var ticketKinds = []string{
-	rpc.AttentionRun, rpc.AttentionTicket, rpc.AttentionQuestion, rpc.AttentionDecision,
-	rpc.AttentionStale, rpc.AttentionWait,
-}
+// asks the controller for its chat (attention.chat, #606): the escalation
+// chat when the ticket has one, else the chat-pool session keyed
+// attention:<kind>:<id>, which the controller usually started when the
+// item arrived. <root>/desk/attention.json holds acknowledged items.
 
 // AttentionChat is POST /api/attention/chat's body and result.
 type AttentionChat struct {
@@ -37,13 +29,15 @@ type AttentionChat struct {
 	Session string `json:"session,omitempty"`
 	// Pool is where the chat runs; sends by Key go there.
 	Pool string `json:"pool,omitempty"`
-	// Started is set when this call started the chat.
+	// Started is set when this call started the chat; a pre-started chat
+	// is only attached to.
 	Started bool `json:"started,omitempty"`
 }
 
 // attentionState is <root>/desk/attention.json.
 type attentionState struct {
-	// Chats maps kind:id to the chat key, for items that are not tickets.
+	// Chats mapped kind:id to a chat key before #606 moved attention
+	// chats to the controller. Kept so an old file round-trips.
 	Chats map[string]string `json:"chats,omitempty"`
 	// Acked are kind:id keys acknowledged in Desk; hidden while listed.
 	Acked []string `json:"acked,omitempty"`
@@ -121,185 +115,49 @@ func (s *Server) attentionAck(r *http.Request) (any, error) {
 			st.Acked = append(st.Acked, k)
 		}
 	})
+	if err == nil {
+		// An acknowledged item's chat is done (#606).
+		s.closeAttentionChat(r, "attention:"+k)
+	}
 	return map[string]bool{"ok": err == nil}, err
 }
 
-// attentionChat is POST /api/attention/chat {kind, id, title}: the
-// session that resolves the item, started when there is none.
-func (s *Server) attentionChat(r *http.Request) (any, error) {
-	var b struct {
-		Kind  string `json:"kind"`
-		ID    string `json:"id"`
-		Title string `json:"title"`
-		Why   string `json:"why"`
-	}
-	if err := s.decode(r, &b); err != nil {
-		return nil, err
-	}
-	if b.Kind == "" || b.ID == "" || strings.ContainsAny(b.Kind+b.ID, " \n") {
-		return nil, fmt.Errorf("%w: kind and id are required", errBadRequest)
-	}
-	ctx := r.Context()
-	res := AttentionChat{Kind: b.Kind, ID: b.ID, Key: "attention:" + b.Kind + ":" + b.ID, Pool: s.cfg.ChatPool}
-	isTicket := slices.Contains(ticketKinds, b.Kind)
-	var t store.Ticket
-	if isTicket {
-		var sh rpc.ShowResult
-		if err := s.ctl.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: b.ID}, &sh); err != nil {
-			return nil, err
-		}
-		t = sh.Ticket
-		// The controller's escalation chat answers for the ticket (#379).
-		if e, ok := escalationOf(t); ok && b.Kind != rpc.AttentionQuestion {
-			var m struct {
-				Escalation struct {
-					Pool string `json:"pool"`
-				} `json:"escalation"`
-			}
-			_ = json.Unmarshal(t.Meta, &m)
-			res.Key, res.Session, res.Pool = e.Key, e.Session, m.Escalation.Pool
-			return res, nil
-		}
-		if k := deskMeta(t.Meta).AttentionChat; k != "" {
-			res.Key = k
-		}
-	} else if k := s.attn.load().Chats[b.Kind+":"+b.ID]; k != "" {
-		res.Key = k
-	}
-	if s.cfg.ChatPool == "" {
-		return nil, fmt.Errorf("%w: no chat pool configured (--chat-pool)", errBadRequest)
-	}
-	if id := s.openChat(r, res.Key); id != "" {
-		res.Session = id
-		return res, nil
-	}
-	prompt := s.attentionPrompt(r, b.Kind, b.ID, b.Title, b.Why, t)
-	var sent rpc.SessionSendResult
-	p := rpc.SessionSendParams{Pool: s.cfg.ChatPool, Key: res.Key, Text: prompt}
-	if err := s.ctl.Call(ctx, rpc.MethodSessionSend, p, &sent); err != nil {
-		return nil, err
-	}
-	res.Session, res.Started = sent.Session, true
-	if err := s.recordChat(r, isTicket, t, b.Kind+":"+b.ID, res.Key); err != nil {
-		s.log.Warn("desk: record attention chat", "item", b.Kind+":"+b.ID, "err", err)
-	}
-	return res, nil
-}
-
-// openChat is the open session for key in the chat pool, or "".
-func (s *Server) openChat(r *http.Request, key string) string {
+// closeAttentionChat closes the open session keyed key, if any.
+func (s *Server) closeAttentionChat(r *http.Request, key string) {
 	var list []rpc.SessionInfo
 	if err := s.ctl.Call(r.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &list); err != nil {
-		return ""
+		return
 	}
 	for _, si := range list {
 		if si.Ticket == nil || si.Ticket.Status == store.StatusClosed {
 			continue
 		}
 		if f, _ := store.DecodeFields[store.SessionFields](*si.Ticket); f.Key == key {
-			return si.ID
-		}
-	}
-	return ""
-}
-
-type deskMetaPack struct {
-	AttentionChat string `json:"attention_chat,omitempty"`
-	// AttentionSummary is the row's summary (#607), from the chat's first
-	// reply (#606); the controller lists it in place of the body.
-	AttentionSummary string `json:"attention_summary,omitempty"`
-}
-
-func deskMeta(raw json.RawMessage) deskMetaPack {
-	var m struct {
-		Desk deskMetaPack `json:"desk"`
-	}
-	_ = json.Unmarshal(raw, &m)
-	return m.Desk
-}
-
-// recordChat keeps the key so a second click finds the same chat. On a
-// ticket it goes in meta.desk; ticket.update replaces meta, so the
-// write is conditional on the revision read.
-func (s *Server) recordChat(r *http.Request, isTicket bool, t store.Ticket, item, key string) error {
-	if !isTicket {
-		return s.attn.update(func(st *attentionState) {
-			if st.Chats == nil {
-				st.Chats = map[string]string{}
+			var out store.Ticket
+			if err := s.ctl.Call(r.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: si.ID, Resolution: "acknowledged"}, &out); err != nil {
+				s.log.Warn("desk: close acknowledged chat", "session", si.ID, "err", err)
 			}
-			st.Chats[item] = key
-		})
-	}
-	if deskMeta(t.Meta).AttentionChat == key {
-		return nil
-	}
-	m := map[string]json.RawMessage{}
-	if len(t.Meta) > 0 {
-		if err := json.Unmarshal(t.Meta, &m); err != nil {
-			return err
 		}
 	}
-	dm := deskMeta(t.Meta)
-	dm.AttentionChat = key
-	d, err := json.Marshal(dm)
-	if err != nil {
-		return err
-	}
-	m["desk"] = d
-	raw, err := json.Marshal(m)
-	if err != nil {
-		return err
-	}
-	var out store.Ticket
-	err = s.ctl.Call(r.Context(), rpc.MethodTicketUpdate, rpc.UpdateParams{ID: t.ID, Meta: raw, IfRevision: t.Revision}, &out)
-	if errors.Is(err, store.ErrConflict) {
-		return nil // changed meanwhile; the key is deterministic, so the next click still finds the chat
-	}
-	return err
 }
 
-// attentionPrompt is the first message of a resolving chat: what the
-// item is, its links, and for a run the run show output.
-func (s *Server) attentionPrompt(r *http.Request, kind, id, title, why string, t store.Ticket) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Desk attention item: %s %s\n", kind, id)
-	if t.ID != "" && title == "" {
-		title = t.Title
+// attentionChat is POST /api/attention/chat {kind, id, title, why}: the
+// session that resolves the item. The controller owns it (attention.chat,
+// #606): usually the chat it pre-started when the item arrived, so this
+// only attaches and the pane replays the journal with the first reply.
+func (s *Server) attentionChat(r *http.Request) (any, error) {
+	var b rpc.AttentionChatParams
+	if err := s.decode(r, &b); err != nil {
+		return nil, err
 	}
-	if title != "" {
-		fmt.Fprintf(&b, "Title: %s\n", title)
+	if b.Kind == "" || b.ID == "" || strings.ContainsAny(b.Kind+b.ID, " \n") {
+		return nil, fmt.Errorf("%w: kind and id are required", errBadRequest)
 	}
-	if why != "" && why != kind {
-		fmt.Fprintf(&b, "Why: %s\n", why)
+	var res rpc.AttentionChatResult
+	if err := s.ctl.Call(r.Context(), rpc.MethodAttentionChat, b, &res); err != nil {
+		return nil, err
 	}
-	if t.ID != "" {
-		var m struct {
-			GitHub struct {
-				Repo  string `json:"repo"`
-				Issue any    `json:"issue"`
-				PR    any    `json:"pr"`
-			} `json:"github"`
-		}
-		_ = json.Unmarshal(t.Meta, &m)
-		if m.GitHub.Repo != "" && m.GitHub.Issue != nil {
-			fmt.Fprintf(&b, "Issue: https://github.com/%s/issues/%v\n", m.GitHub.Repo, m.GitHub.Issue)
-		}
-		if m.GitHub.Repo != "" && m.GitHub.PR != nil {
-			fmt.Fprintf(&b, "PR: https://github.com/%s/pull/%v\n", m.GitHub.Repo, m.GitHub.PR)
-		}
-	}
-	if kind == rpc.AttentionRun {
-		var run json.RawMessage
-		if err := s.ctl.Call(r.Context(), rpc.MethodRunShow, rpc.IDParams{ID: id}, &run); err == nil {
-			out, _ := json.MarshalIndent(run, "", "  ")
-			if len(out) > 16<<10 {
-				out = append(out[:16<<10], "\n[cut]"...)
-			}
-			fmt.Fprintf(&b, "\n`jobshop run show %s`:\n```json\n%s\n```\n", id, out)
-		}
-	}
-	b.WriteString("\nHelp the operator resolve this item. Look at it with the jobshop CLI, explain what blocks it, and propose the action. Do not act on it until the operator agrees.")
-	return b.String()
+	return AttentionChat{Kind: res.Kind, ID: res.ID, Key: res.Key, Session: res.Session, Pool: res.Pool, Started: res.Started}, nil
 }
 
 // SessionEvents is GET /api/session/<id>/events?before=<seq>&limit=<n>:

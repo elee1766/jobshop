@@ -71,6 +71,15 @@ type SessionFields struct {
 	// Slot is the session's index in its pool's isolation per_session id
 	// range (#540): it runs as map_uid+slot. Nil without per_session.
 	Slot *int `json:"slot,omitempty"`
+	// Prestart marks an attention chat the controller started before
+	// anyone clicked it (#606). Idle, it is suspended rather than ended.
+	Prestart bool `json:"prestart,omitempty"`
+	// ReadOnly limits the session to read methods and read tool calls
+	// until a human sends it a message (#606).
+	ReadOnly bool `json:"read_only,omitempty"`
+	// Suspended: the host was stopped while idle and the session stays
+	// open; the next message resumes it with session/load (#606).
+	Suspended bool `json:"suspended,omitempty"`
 }
 
 // Cordon reasons (#281).

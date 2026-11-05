@@ -1358,6 +1358,31 @@ type AttentionResult struct {
 	Items []AttentionItem `json:"items"`
 }
 
+// MethodAttentionChat is the chat that resolves an attention item (#606):
+// the escalation chat, a chat pre-started when the item arrived, or one
+// started now. Desk, gateways and digests share it.
+const MethodAttentionChat = "attention.chat"
+
+// AttentionChatParams names the item. Title and Why fill the context
+// prompt when the chat is started by this call.
+type AttentionChatParams struct {
+	Kind  string `json:"kind"`
+	ID    string `json:"id"`
+	Title string `json:"title,omitempty"`
+	Why   string `json:"why,omitempty"`
+}
+
+// AttentionChatResult is the item's chat. Started is set when this call
+// started it; a pre-started or escalation chat is only attached to.
+type AttentionChatResult struct {
+	Kind    string `json:"kind"`
+	ID      string `json:"id"`
+	Key     string `json:"key"`
+	Session string `json:"session"`
+	Pool    string `json:"pool"`
+	Started bool   `json:"started,omitempty"`
+}
+
 // IncidentsParams selects the report window. Zero Since means 24h.
 type IncidentsParams struct {
 	Since time.Duration `json:"since,omitempty"`

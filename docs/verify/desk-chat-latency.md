@@ -22,3 +22,17 @@ ticket from the planner prompt's `ticket create` line):
 3. A third: Reject. The issue is closed as not planned.
 4. From an attention chat session: `jobshop ticket undefer <id>` works
    on a deferred ticket in its project.
+
+Pre-started attention chats (#606), record on #606:
+1. File a test question: `jobshop ticket create "prestart test" -l
+   question`. Within a minute `jobshop session list` shows an operator
+   session keyed `attention:question:<id>` and its journal has one
+   turn with the agent's summary.
+2. Wait 30s, click the item in Desk. Measure click to first rendered
+   agent message (target: under 1s). `jobshop session journal
+   <session>` shows no second `session/prompt`.
+3. Before writing, the session cannot write: from its socket a
+   `jobshop ticket create` fails "read-only until the operator sends a
+   message". Send "thanks" in the chat; writes work after.
+4. Close the question ticket. Within a minute the session closes
+   `resolved`.

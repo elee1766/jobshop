@@ -99,6 +99,7 @@ export interface RpcMethods {
   "artifact.list": { params: ArtifactListParams; result: Artifact[] };
   "artifact.show": { params: IDParams; result: ArtifactShowResult };
   "attention": { params: Record<string, never>; result: AttentionResult };
+  "attention.chat": { params: AttentionChatParams; result: AttentionChatResult };
   "batch.list": { params: BatchListParams; result: Ticket[] };
   "batch.show": { params: IDParams; result: BatchResult };
   "batch.start": { params: BatchStartParams; result: BatchResult };
@@ -307,6 +308,22 @@ export interface ArtifactShowResult {
   comments: Comment[];
   history: HistoryEntry[];
   dir?: string;
+}
+
+export interface AttentionChatParams {
+  kind: string;
+  id: string;
+  title?: string;
+  why?: string;
+}
+
+export interface AttentionChatResult {
+  kind: string;
+  id: string;
+  key: string;
+  session: string;
+  pool: string;
+  started?: boolean;
 }
 
 export interface AttentionItem {

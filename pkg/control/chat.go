@@ -62,6 +62,9 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	if probe {
 		return rpc.SessionSendResult{Session: sess.ID}, nil
 	}
+	// A human writing lifts the read-only first turn (#606).
+	c.humanWrote(ctx, sess.ID)
+	c.resumeSession(ctx, sess.ID)
 	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt, Context: strings.TrimSpace(p.Context)})
 	if err != nil {
 		return nil, err
