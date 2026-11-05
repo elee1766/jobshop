@@ -110,7 +110,8 @@ The rest is in [docs/running.md](docs/running.md).
 
 `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
 Contributor rules for people and agents (sqlc, Desk `dist`, Nix
-`vendorHash`) are in [AGENTS.md](AGENTS.md).
+`vendorHash`) are in [AGENTS.md](AGENTS.md); PR titles are conventional
+commits ([CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## License
 

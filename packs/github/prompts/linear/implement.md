@@ -18,7 +18,13 @@ of the team's states, the error lists them, pick the started one),
 `git switch -c issue-{{.issue}}`, make the change, run
 `{{.check_cmd}}`, commit with
 `({{.issue}})` in the subject, `git push -u origin HEAD`, then
-`gh pr create --base master --title "<summary> ({{.issue}})" --body "Fixes {{.issue}}. ..."`.
+`gh pr create --base master --title "<type>(<scope>): <summary> ({{.issue}})" --body "Fixes {{.issue}}. ..."`.
+The PR title is a conventional commit: it becomes the squash commit
+subject. Type is one of feat, fix, perf, refactor, docs, test, ci,
+build, chore, revert; scope is the package or area (`control`, `desk`,
+`store`, `packs/github`); the summary starts lowercase. A breaking
+change to the CLI, config, protocol or store schema gets `!` after the
+scope (`feat(store)!: ...`) or a `BREAKING CHANGE:` line in the body.
 PR body: at most ~10 lines, plain text: what changed, why, how it was
 tested. No long summaries, file lists or pasted output.
 Comment the PR link on the issue:

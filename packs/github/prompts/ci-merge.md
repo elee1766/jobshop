@@ -30,6 +30,9 @@ of CI finishing.
    the next attempt checks again. An empty approver needs no approval.
 4. Ready (required checks `{{.required_checks}}` green on the current head,
    or every check when that is empty; approval present if required):
+   fix a title that is not a conventional commit
+   (`fix(<scope>): <summary> (#<n>)`, lowercase summary) with
+   `gh pr edit <n> --title "..."`, then
    `gh pr merge <n> --{{.merge_method}} --match-head-commit <headRefOid>` (never
    `--delete-branch`). Wait for master CI on the merge commit
    (`gh run list --branch master --commit <merge sha>`, `gh run watch`).
