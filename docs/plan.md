@@ -452,6 +452,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   pkg/control -race 41s to 28s (#433, `docs/notes/433-remaining-fast-ticks.md`).
 - pkg/control internal tests call `t.Parallel()`; -race 31s to 21s
   (#433, `docs/notes/433-parallel-internal-tests.md`).
+- CI race tests turn checkptr off for modernc.org packages only;
+  pkg/control -race 22s to 16s (#433, `docs/notes/433-modernc-checkptr.md`).
 - In-process test hosts report agent exits (`control.HostExits`), so
   crash tests skip host spawns (#467, `docs/notes/467-inproc-host-exit.md`).
 - Ingest split mode: `ingest.workers: external` moves admission to
@@ -1263,6 +1265,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   the hooks itself and reports the run; the controller decides the state
   and files the needs-human ticket. One writer stays, and hooks (the slow,
   untrusted part) leave the controller process.
+- CI's race run skips checkptr in modernc.org packages (2026-11-05,
+  #433): translated C we do not maintain, a third of test CPU. Our code
+  keeps checkptr and modernc keeps race instrumentation.
 
 ## 7. Reference: behavior as built
 
