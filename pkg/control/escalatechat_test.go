@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,18 +133,19 @@ func TestEscalationChat(t *testing.T) {
 	// The pack prompt is model-only context, not a visible message: the
 	// session's journal shows the turn with empty text and the prompt as
 	// its context.
-	var turn rpc.SessionEvent
+	var firstTurn atomic.Pointer[rpc.SessionEvent]
 	subCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	sub := dial(t, root.AdminSocket())
 	go func() {
 		_, _ = sub.Subscribe(subCtx, rpc.SessionSubscribeParams{ID: sessions[0].ID}, func(ev rpc.SessionEvent) {
-			if ev.Type == rpc.EventTurnStart && turn.Type == "" {
-				turn = ev
+			if ev.Type == rpc.EventTurnStart {
+				firstTurn.CompareAndSwap(nil, &ev)
 			}
 		})
 	}()
-	require.Eventually(t, func() bool { return turn.Type != "" }, 20*time.Second, 20*time.Millisecond)
+	require.Eventually(t, func() bool { return firstTurn.Load() != nil }, 20*time.Second, 20*time.Millisecond)
+	turn := firstTurn.Load()
 	assert.Empty(t, turn.Text, "no visible operator message")
 	assert.Contains(t, turn.Context, "ESC-RUN "+id)
 
