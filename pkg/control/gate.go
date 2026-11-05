@@ -13,13 +13,14 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Curator gate (#274). When a curator PR merges, `learn update --status
-// applied` records a memory edit with a baseline: the metrics of the
-// scoped pools over the window before the merge. After enough runs in
-// those pools, or enough days, the evaluate workflow calls `learn
-// evaluate`, which measures the same window after the merge and decides
-// helped or not_helped. The evaluate step opens a revert PR for a
-// not_helped edit; the curator path then marks its learnings rejected.
+// Curator gate (#274). A memory edit is recorded with a baseline: the
+// metrics of the scoped pools over the window before it. Local writes
+// (#592, memory.write) record it at write time; older curator PRs at
+// `learn update --status applied`. After enough runs in those pools, or
+// enough days, the evaluate workflow calls `learn evaluate`, which
+// measures the same window after and decides helped or not_helped. A
+// not_helped local write gets its previous text back here; a not_helped
+// PR edit is reverted by the evaluate step.
 
 // Gate defaults; the trigger and the CLI can override them.
 const (
@@ -268,6 +269,13 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 		u, err := c.store.SetMemoryEditResult(ctx, e.ID, state, after, reason)
 		if err != nil {
 			return nil, err
+		}
+		// A local write that did not help is undone here (#592); a PR edit
+		// is reverted by the evaluate step.
+		if state == store.EditNotHelped {
+			if err := c.restoreEdit(ctx, u); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, u)
 	}

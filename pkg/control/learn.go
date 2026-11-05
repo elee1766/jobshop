@@ -122,7 +122,8 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 			return nil, err
 		}
 		out = append(out, u)
-		if p.Status == store.LearningApplied && u.PR != "" {
+		// memory:<id> is a local write (#592), recorded by memory.write.
+		if p.Status == store.LearningApplied && u.PR != "" && !strings.HasPrefix(u.PR, "memory:") {
 			if _, ok := merged[u.PR]; !ok {
 				prs = append(prs, u.PR)
 			}

@@ -27,3 +27,22 @@ a duplicate, then file it with `gh issue create` (what you saw, where,
 why it matters, a suggested fix) and mention the new issue in a comment
 on the current one.
 Never push to master directly.
+
+Working notes:
+- Run gh from the repo worktree or pass `-R {{.repo}}`: outside a repo it
+  fails, and an empty issue number makes a run keyed `issue-`.
+- Never pipe into `gh issue edit --body-file -` or `gh pr create
+  --body-file -`: a failed command upstream blanks the body. Write the
+  body to a file with the Write tool, check it is non-empty, pass the file.
+- `jobshop comment` takes one body argument; another ticket goes in
+  `-t`: `jobshop comment -t <ticket> "<text>"`. `jobshop close -r failed`
+  takes no reason text: comment first, then close. `jobshop close <id>`
+  on a ticket you do not hold fails: claim it first, or leave it.
+- Old runs leave local `issue-<n>` branches: `git branch --list
+  issue-<n>` before `git switch -c`; if it exists use `issue-<n>-<slug>`.
+  Do not chain the switch with build or test: a failed switch skips them.
+- A flaky test: `gh issue list --search <TestName>` first and link the
+  existing issue.
+- If the jobshop CLI socket goes away mid-turn (controller restart),
+  write the PR head and CI state on the issue so the next attempt can
+  verify and close instead of redoing the work.

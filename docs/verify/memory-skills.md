@@ -1,17 +1,22 @@
 # Memory and skills
 
-Check that a session prompt carries the global memory (#266).
+Check that a session prompt carries the local memory (#266, #592).
 
-1. In the host `jobshop.yaml` (or the Nix `settings.packs` vars), set
-   `memory_dir: /var/lib/jobshop/src/jobshop/memory` on the selfdev
-   entry, then `jobshop reload`.
-2. `JOBSHOP_SOCKET= jobshop memory check` prints nothing and exits 0.
-3. `JOBSHOP_SOCKET= jobshop session restart <dev session>`, then
+1. The selfdev and operator packs read `<root>/memory` by default
+   (`/var/lib/jobshop/memory` on the NixOS module). `ls
+   /var/lib/jobshop/memory` exists and is owned by the service user.
+2. `jobshop memory show` prints that directory and its files;
+   `JOBSHOP_SOCKET= jobshop memory check` prints nothing and exits 0.
+3. `jobshop memory write global --from-file <f>` with a one-line file,
+   then `JOBSHOP_SOCKET= jobshop session restart <dev session>` and
    `JOBSHOP_SOCKET= jobshop session prompt <dev session>` shows
    `=== rule:selfdev-memory ===` with `Memory (global,
-   memory/global.md):` and the text of `memory/memory/global.md`.
-4. For a ticket on elee1766/jobshop with a file at
-   `memory/memory/repo/elee1766__jobshop.md`, the same prompt shows
-   `Memory (repo, ...)`.
-5. Append over 2200 characters to a scratch copy's `global.md` and run
-   `jobshop memory check <copy>`: it lists the file and exits 1.
+   memory/global.md):` and that line. `jobshop memory log` lists the edit.
+4. For a ticket on elee1766/jobshop, `jobshop memory write
+   repo/elee1766__jobshop ...` makes the same prompt show
+   `Memory (repo, ...)`, and `=== rule:selfdev-guide ===` appears.
+5. A write over 2200 characters fails with `over the memory cap` and
+   leaves the file as it was.
+6. Curator: `jobshop pool scale learn auto`; after one curate run,
+   `jobshop memory log` shows its writes and `gh pr list --search Curate`
+   shows no new PR.

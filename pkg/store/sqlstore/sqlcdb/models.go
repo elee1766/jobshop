@@ -89,6 +89,9 @@ type MemoryEdit struct {
 	Reason      string
 	EvaluatedAt int64
 	CreatedAt   int64
+	Path        string
+	Before      string
+	Existed     int64
 }
 
 type PollCursor struct {

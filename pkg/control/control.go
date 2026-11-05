@@ -161,6 +161,9 @@ type Controller struct {
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
+	// memMu serializes local memory writes and restores (#592), so a
+	// write's before text is the file it replaced.
+	memMu sync.Mutex
 	// cgroup is the delegated sessions cgroup for isolation limits (#388),
 	// set up once on first need.
 	cgroupOnce sync.Once
@@ -814,6 +817,8 @@ func init() {
 		rpc.MethodLearnUpdate:       bind((*Controller).learnUpdate),
 		rpc.MethodLearnEvaluate:     bind((*Controller).learnEvaluate),
 		rpc.MethodLearnEdits:        bind((*Controller).learnEdits),
+		rpc.MethodMemoryWrite:       bind((*Controller).memoryWrite),
+		rpc.MethodMemoryShow:        bind((*Controller).memoryShow),
 		rpc.MethodResourceAdd:       bind((*Controller).resourceAdd),
 		rpc.MethodResourceRemove:    bind((*Controller).resourceRemove),
 		rpc.MethodResourceUnhealthy: bind((*Controller).resourceUnhealthy),

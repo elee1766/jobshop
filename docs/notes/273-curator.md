@@ -12,8 +12,9 @@
   `prompts/learn.md`), workflow `curate` (one step `curate` in `learn`,
   1 retry, escalates to `plan`, `prompts/curate.md`), trigger `curate`
   (`min: ${curate_min_learnings}` default 10, `every: ${curate_every}`
-  default 24h, run key `curate`). In selfdev, not operator: the edits
-  land in this repo's `memory/` and `packs/` through its `pr-work`.
+  default 24h, run key `curate`). In selfdev, not operator. Since #592
+  memory edits are local writes (`jobshop memory write`) and only
+  `packs/` prompt fixes go through `pr-work`.
 - The pass: settle earlier PRs, read rejected learnings, group open ones,
   make bounded memory/skill/prompt edits (`jobshop memory check` must
   pass), file a `Curate:` issue and PR listing learning ids per edit,

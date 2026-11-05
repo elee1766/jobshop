@@ -9,8 +9,34 @@ import (
 	"context"
 )
 
+const getMemoryEdit = `-- name: GetMemoryEdit :one
+SELECT id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at, path, "before", existed FROM memory_edits WHERE id = ?
+`
+
+func (q *Queries) GetMemoryEdit(ctx context.Context, id int64) (MemoryEdit, error) {
+	row := q.db.QueryRowContext(ctx, getMemoryEdit, id)
+	var i MemoryEdit
+	err := row.Scan(
+		&i.ID,
+		&i.Pr,
+		&i.Learnings,
+		&i.Pools,
+		&i.MergedAt,
+		&i.Baseline,
+		&i.State,
+		&i.After,
+		&i.Reason,
+		&i.EvaluatedAt,
+		&i.CreatedAt,
+		&i.Path,
+		&i.Before,
+		&i.Existed,
+	)
+	return i, err
+}
+
 const getMemoryEditByPR = `-- name: GetMemoryEditByPR :one
-SELECT id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at FROM memory_edits WHERE pr = ?
+SELECT id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at, path, "before", existed FROM memory_edits WHERE pr = ?
 `
 
 func (q *Queries) GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit, error) {
@@ -28,6 +54,9 @@ func (q *Queries) GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit,
 		&i.Reason,
 		&i.EvaluatedAt,
 		&i.CreatedAt,
+		&i.Path,
+		&i.Before,
+		&i.Existed,
 	)
 	return i, err
 }
@@ -35,7 +64,7 @@ func (q *Queries) GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit,
 const insertMemoryEdit = `-- name: InsertMemoryEdit :one
 INSERT INTO memory_edits (pr, learnings, pools, merged_at, baseline, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at
+RETURNING id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at, path, "before", existed
 `
 
 type InsertMemoryEditParams struct {
@@ -69,6 +98,57 @@ func (q *Queries) InsertMemoryEdit(ctx context.Context, arg InsertMemoryEditPara
 		&i.Reason,
 		&i.EvaluatedAt,
 		&i.CreatedAt,
+		&i.Path,
+		&i.Before,
+		&i.Existed,
+	)
+	return i, err
+}
+
+const insertMemoryWrite = `-- name: InsertMemoryWrite :one
+INSERT INTO memory_edits (path, before, existed, learnings, pools, merged_at, baseline, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at, path, "before", existed
+`
+
+type InsertMemoryWriteParams struct {
+	Path      string
+	Before    string
+	Existed   int64
+	Learnings string
+	Pools     string
+	MergedAt  int64
+	Baseline  string
+	CreatedAt int64
+}
+
+func (q *Queries) InsertMemoryWrite(ctx context.Context, arg InsertMemoryWriteParams) (MemoryEdit, error) {
+	row := q.db.QueryRowContext(ctx, insertMemoryWrite,
+		arg.Path,
+		arg.Before,
+		arg.Existed,
+		arg.Learnings,
+		arg.Pools,
+		arg.MergedAt,
+		arg.Baseline,
+		arg.CreatedAt,
+	)
+	var i MemoryEdit
+	err := row.Scan(
+		&i.ID,
+		&i.Pr,
+		&i.Learnings,
+		&i.Pools,
+		&i.MergedAt,
+		&i.Baseline,
+		&i.State,
+		&i.After,
+		&i.Reason,
+		&i.EvaluatedAt,
+		&i.CreatedAt,
+		&i.Path,
+		&i.Before,
+		&i.Existed,
 	)
 	return i, err
 }
@@ -161,7 +241,7 @@ func (q *Queries) ListLearningsByPR(ctx context.Context, pr string) ([]Learning,
 }
 
 const listMemoryEdits = `-- name: ListMemoryEdits :many
-SELECT id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at FROM memory_edits
+SELECT id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at, path, "before", existed FROM memory_edits
 WHERE (?1 IS NULL OR state = ?1)
 ORDER BY merged_at DESC, id DESC
 LIMIT CAST(?2 AS INTEGER)
@@ -193,6 +273,9 @@ func (q *Queries) ListMemoryEdits(ctx context.Context, arg ListMemoryEditsParams
 			&i.Reason,
 			&i.EvaluatedAt,
 			&i.CreatedAt,
+			&i.Path,
+			&i.Before,
+			&i.Existed,
 		); err != nil {
 			return nil, err
 		}
@@ -288,7 +371,7 @@ const setMemoryEditResult = `-- name: SetMemoryEditResult :one
 UPDATE memory_edits
 SET state = ?1, after = ?2, reason = ?3, evaluated_at = ?4
 WHERE id = ?5
-RETURNING id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at
+RETURNING id, pr, learnings, pools, merged_at, baseline, state, "after", reason, evaluated_at, created_at, path, "before", existed
 `
 
 type SetMemoryEditResultParams struct {
@@ -320,6 +403,9 @@ func (q *Queries) SetMemoryEditResult(ctx context.Context, arg SetMemoryEditResu
 		&i.Reason,
 		&i.EvaluatedAt,
 		&i.CreatedAt,
+		&i.Path,
+		&i.Before,
+		&i.Existed,
 	)
 	return i, err
 }

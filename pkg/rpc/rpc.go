@@ -93,6 +93,8 @@ const (
 	MethodLearnUpdate      = "learn.update"
 	MethodLearnEvaluate    = "learn.evaluate"
 	MethodLearnEdits       = "learn.edits"
+	MethodMemoryWrite      = "memory.write"
+	MethodMemoryShow       = "memory.show"
 	MethodWriteKeyClaim    = "writekey.claim"
 	MethodWriteKeyFinish   = "writekey.finish"
 )
@@ -1501,6 +1503,36 @@ type LearnEvaluateParams struct {
 type LearnEditsParams struct {
 	State string `json:"state,omitempty"`
 	Limit int    `json:"limit,omitempty"`
+}
+
+// MemoryWriteParams writes one file in the local memory directory (#592):
+// Scope is global, repo/<owner>__<name>, pool/<name> or skills/<name>.
+// The controller checks the cap, writes Text and records a memory edit
+// holding the previous text, which the curator gate restores on
+// not_helped. Learnings are the ids the write addresses. The result is
+// the recorded store.MemoryEdit.
+type MemoryWriteParams struct {
+	Scope     string  `json:"scope"`
+	Text      string  `json:"text"`
+	Learnings []int64 `json:"learnings,omitempty"`
+}
+
+// MemoryShowParams lists the local memory files; Scope narrows to one.
+type MemoryShowParams struct {
+	Scope string `json:"scope,omitempty"`
+}
+
+// MemoryShowResult is the memory directory and its files.
+type MemoryShowResult struct {
+	Dir   string       `json:"dir"`
+	Files []MemoryFile `json:"files"`
+}
+
+// MemoryFile is one file of memory.show.
+type MemoryFile struct {
+	Path  string `json:"path"`
+	Chars int    `json:"chars"`
+	Text  string `json:"text"`
 }
 
 // WriteKeyParams claims or finishes an idempotency key for a tracker

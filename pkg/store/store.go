@@ -365,6 +365,11 @@ type Store interface {
 	// AddMemoryEdit records a merged curator PR; an already recorded PR
 	// returns its row unchanged (#274).
 	AddMemoryEdit(ctx context.Context, e MemoryEdit) (MemoryEdit, error)
+	// AddMemoryWrite records a local memory write (#592): e.Path, Before,
+	// Existed, Learnings, Pools, Baseline; MergedAt is the write time.
+	AddMemoryWrite(ctx context.Context, e MemoryEdit) (MemoryEdit, error)
+	// MemoryEdit returns one edit by id.
+	MemoryEdit(ctx context.Context, id int64) (MemoryEdit, error)
 	// MemoryEdits lists memory edits newest merge first; empty state is all.
 	MemoryEdits(ctx context.Context, state string, limit int) ([]MemoryEdit, error)
 	// SetMemoryEditResult stores the gate's decision and writes it on

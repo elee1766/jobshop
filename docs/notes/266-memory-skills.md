@@ -27,10 +27,11 @@ prompt_rules:
   1; with no dir it checks every rule's `memory.dir` in jobshop.yaml. It
   reads files only, no controller.
 - Packs: selfdev (rule `selfdev-memory`, `chat: false`) and operator
-  (`operator-memory`, the operator pool) take vars `memory_dir` (default
-  empty, off) and `memory_cap` (2200). gasserver sets `memory_dir` to
-  `memory/` in its Jobshop checkout; that directory is public, says so in
-  its README, and holds no secrets or personal data.
+  (`operator-memory`, the operator pool) take vars `memory_dir` and
+  `memory_cap` (2200).
+- 2026-11-05: memory is local to the host, `<root>/memory` by default,
+  and written by `jobshop memory write`; the repo's `memory/` is gone
+  (#592, `docs/notes/592-local-memory.md`).
 - Tests: `pkg/memory` (scopes, cap, skills index, missing dir),
   `TestRuleMemory`, `TestSelfdevPackLoads`.
 - Live check: `docs/verify/memory-skills.md`.

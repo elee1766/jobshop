@@ -62,7 +62,9 @@ Fix in place when you can, one or more of:
   --defer 0`, `jobshop label rm <id> blocked`.
 - Resume a run whose blocker is gone: `jobshop run resume <run>`, and
   drop `needs-human` from its issue (`gh issue edit <n> --remove-label
-  needs-human`).
+  needs-human`). `run resume` reopens only the first unfinished step: when
+  a later step (review-merge) failed, pass `--step <that step>` or the
+  run escalates again.
 - A time-gated step that is waiting on purpose (a 24h window, a
   scheduled run): never escalate it. If it is deferred, leave it and say
   until when. If it is not (open and ready, or its run is `needs_human`

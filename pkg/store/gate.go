@@ -36,10 +36,15 @@ func (m PoolMetrics) Rate(n int) float64 {
 	return float64(n) / float64(m.Steps)
 }
 
-// MemoryEdit is a merged curator PR the gate evaluates (#274).
+// MemoryEdit is a memory change the gate evaluates (#274): a merged
+// curator PR (PR set) or, since #592, a local write under <root>/memory
+// (Path set, Before the text it replaced, Existed false for a new file).
 type MemoryEdit struct {
 	ID          int64       `json:"id"`
-	PR          string      `json:"pr"`
+	PR          string      `json:"pr,omitempty"`
+	Path        string      `json:"path,omitempty"`
+	Before      string      `json:"before,omitempty"`
+	Existed     bool        `json:"existed,omitempty"`
 	Learnings   []int64     `json:"learnings"`
 	Pools       []string    `json:"pools"`
 	MergedAt    time.Time   `json:"merged_at"`

@@ -37,6 +37,11 @@ func undo00013() []string {
 // undo00015 returns a database to its schema before 00015 (#426).
 func undo00015() []string {
 	return []string{
+		// 00018 (#592) rebuilt memory_edits; put back the 00006 shape.
+		"DROP TABLE memory_edits",
+		"CREATE TABLE memory_edits (id INTEGER PRIMARY KEY, pr TEXT NOT NULL UNIQUE, learnings TEXT NOT NULL DEFAULT '[]', pools TEXT NOT NULL DEFAULT '[]', merged_at INTEGER NOT NULL, baseline TEXT NOT NULL DEFAULT '{}', state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','helped','not_helped')), after TEXT NOT NULL DEFAULT '{}', reason TEXT NOT NULL DEFAULT '', evaluated_at INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)",
+		"CREATE INDEX memory_edits_state ON memory_edits(state, merged_at)",
+		"DELETE FROM goose_db_version WHERE version_id = 18",
 		// 00017 (#524) only relaxes a CHECK, so the newer table stays.
 		"DELETE FROM goose_db_version WHERE version_id = 17",
 		// 00016 (#341) is undone first.

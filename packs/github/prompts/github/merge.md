@@ -9,8 +9,11 @@ Find the PR in the comments of the run's `implement` step
 - master CI (`gh run list --branch master --limit 3`)
 
 Run the repo's checks on the PR head yourself before deciding (the repo's
-contributor docs name them, e.g. a linter): `gh pr checkout <n>` in your
-worktree, then `{{.check_cmd}}`. A failure, a lint finding, or a new
+contributor docs name them, e.g. a linter) on the PR head in your
+worktree. `gh pr checkout` fails or stays on an old head in a detached
+worktree: run `git fetch origin pull/<n>/head && git checkout --detach
+FETCH_HEAD`, then, as a separate command, confirm `git rev-parse HEAD`
+equals the PR's `headRefOid`. Then run `{{.check_cmd}}`. A failure, a lint finding, or a new
 `//nolint` or relaxed linter config without a reason in the PR body is
 case 4: put the exact output in your findings. You do not fix code
 yourself.
@@ -35,12 +38,16 @@ resumes here within a minute of CI finishing. For master CI use
    then start over from the top.
 2. Behind master (`mergeStateStatus` BEHIND): `gh pr update-branch <n>`,
    then wait for CI on the new head.
-   Conflicts only in docs (`*.md`; `gh pr checkout <n>`,
+   Conflicts only in docs (`*.md`; check out the PR head as above,
    `git rebase origin/master`, every conflicted file is docs): resolve
    them here instead of failing the step. Keep both sides; if both added
    a numbered section, give this PR the next free number. Then
    `git push --force-with-lease`, comment on the PR what you resolved,
    and wait for CI on the new head.
+   `mergeStateStatus` can read CLEAN or UNKNOWN while stale, and a PR
+   with no checks usually conflicts: right before merging, `git fetch
+   origin` and `git merge-tree --write-tree origin/master <head>`; on a
+   conflict treat it as BEHIND.
    Non-docs conflicts with master and nothing else wrong (no review
    finding): comment the conflicted files on the PR and on the `implement`
    step, `jobshop run resume <run> --step implement`, then

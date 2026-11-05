@@ -3,18 +3,67 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/memory"
+	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
 type memoryCmd struct {
+	Write memoryWriteCmd `cmd:"" help:"Write a local memory file under <root>/memory and record the edit (#592)."`
+	Show  memoryShowCmd  `cmd:"" help:"Print the local memory files."`
+	Log   memoryLogCmd   `cmd:"" help:"List memory edits with their evaluation, newest first."`
 	Check memoryCheckCmd `cmd:"" help:"Report memory files over the character cap (exits 1 if any)."`
 }
 
+// memoryWriteCmd is `jobshop memory write <scope> --learnings <ids>`:
+// the curator's write path. The controller writes the file, so the edit
+// and its previous text are recorded for the gate.
+type memoryWriteCmd struct {
+	Scope     string  `arg:"" help:"global, repo/<owner>__<name>, pool/<name> or skills/<name>."`
+	Learnings []int64 `help:"Learning ids the edit addresses (comma-separated)."`
+	FromFile  string  `name:"from-file" help:"Read the new file text from this path. Default: stdin."`
+}
+
+func (c memoryWriteCmd) Run(g *Globals) error {
+	var text string
+	if c.FromFile != "" {
+		b, err := os.ReadFile(c.FromFile)
+		if err != nil {
+			return err
+		}
+		text = string(b)
+	} else {
+		t, err := readBody("-")
+		if err != nil {
+			return err
+		}
+		text = t + "\n"
+	}
+	return g.call(rpc.MethodMemoryWrite, rpc.MemoryWriteParams{Scope: c.Scope, Text: text, Learnings: c.Learnings}, nil)
+}
+
+type memoryShowCmd struct {
+	Scope string `arg:"" optional:"" help:"Only this scope (global, repo/<owner>__<name>, pool/<name>, skills/<name>)."`
+}
+
+func (c memoryShowCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodMemoryShow, rpc.MemoryShowParams{Scope: c.Scope}, nil)
+}
+
+type memoryLogCmd struct {
+	State string `enum:",pending,helped,not_helped" default:"" help:"pending, helped or not_helped."`
+	Limit int    `default:"50" help:"Most edits to print."`
+}
+
+func (c memoryLogCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodLearnEdits, rpc.LearnEditsParams{State: c.State, Limit: c.Limit}, nil)
+}
+
 type memoryCheckCmd struct {
-	Dir string `arg:"" optional:"" help:"Memory directory (holds memory/ and skills/). Default: every prompt rule's memory.dir in jobshop.yaml."`
+	Dir string `arg:"" optional:"" help:"Memory directory (holds memory/ and skills/). Default: every prompt rule's memory.dir in jobshop.yaml, e.g. <root>/memory."`
 	Cap int    `help:"Per-file character cap. Default: the rule's cap, else 2200."`
 }
 
