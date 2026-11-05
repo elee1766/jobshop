@@ -1,6 +1,10 @@
-# NixOS module for running the Jobshop controller as its own user and slice.
+# Jobshop module for NixOS (system units as the jobshop user) and
+# home-manager (user units of the user that imports it, JOB-22).
+# Both modes share this option tree and the jobshop.yaml generation.
+# Units are collected in the internal services.jobshop.units option and
+# mapped to systemd.* or systemd.user.* at the end.
 # Host-specific values (limits, secrets, agent tooling) are set by the importing host.
-self:
+self: mode:
 {
   config,
   options,
@@ -9,6 +13,7 @@ self:
   ...
 }:
 let
+  isNixos = mode == "nixos";
   cfg = config.services.jobshop;
   opts = options.services.jobshop;
   settingsFormat = pkgs.formats.yaml { };
@@ -145,6 +150,12 @@ let
   configFile = if userConfig then moduleFile else generatedConfig;
   rootConfig = "${cfg.dataDir}/jobshop.yaml";
   jobshop = lib.getExe cfg.package;
+  systemctl = "${pkgs.systemd}/bin/systemctl" + lib.optionalString (!isNixos) " --user";
+  # Root units run jobshop commands as the jobshop user; user units
+  # already are that user (runuser refuses non-root callers).
+  asUser = lib.optionalString isNixos "${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- ";
+  # tmpfiles owner: user tmpfiles create as the user already.
+  own = if isNixos then "${cfg.user} ${cfg.group}" else "- -";
   sharedMise = cfg.sandbox.enable && cfg.sandbox.mise.tools != [ ];
 
   defaultTools = with pkgs; [
@@ -256,7 +267,32 @@ let
   ghRepo = lib.optionalString (deployWorkspaces != [ ]) (
     ghRepoOf cfg.workspaces.${lib.head deployWorkspaces}.url
   );
-  deployState = "/var/lib/jobshop-deploy";
+  deployState = sd.stateDir;
+  # How self-deploy switches and rolls back: the system profile with
+  # nixos-rebuild as root, or the home-manager profile as the user.
+  hmPackage = if isNixos then null else config.programs.home-manager.package or pkgs.home-manager;
+  deployTool = if isNixos then "nixos-rebuild" else "home-manager";
+  journalFlag = lib.optionalString (!isNixos) "--user ";
+  # systemctl from the deploy unit's PATH (tests stub it there).
+  sctl = "systemctl" + lib.optionalString (!isNixos) " --user";
+  overrideArgs = ''--refresh --override-input ${sd.inputName} ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$1"'';
+  deploySwitch =
+    if isNixos then
+      ''
+        profile=/nix/var/nix/profiles/system
+        prev=$(readlink -f $profile)
+        switch_to() { nixos-rebuild switch --flake ${lib.escapeShellArg sd.hostFlake} ${overrideArgs}; }
+        rollback() { nix-env -p $profile --set "$prev" && "$prev/bin/switch-to-configuration" switch; }
+      ''
+    else
+      ''
+        # home-manager keeps its generations in the user's profiles dir.
+        profile=''${XDG_STATE_HOME:-$HOME/.local/state}/nix/profiles/home-manager
+        [ -e "$profile" ] || profile=/nix/var/nix/profiles/per-user/$USER/home-manager
+        prev=$(readlink -f "$profile")
+        switch_to() { home-manager switch --flake ${lib.escapeShellArg sd.hostFlake} ${overrideArgs}; }
+        rollback() { "$prev/activate"; }
+      '';
   # Pools in settings with isolation.user.per_session (#540); each one's
   # [map_uid, map_uid+range) and gids must sit inside the jobshop user's
   # subuid/subgid range, else the pool is quarantined at its first spawn.
@@ -377,6 +413,125 @@ let
         };
       };
     };
+
+  # One service in NixOS form (the subset this module uses), so the same
+  # definitions become system units or home-manager user units.
+  serviceUnit = {
+    options = {
+      description = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+      };
+      wantedBy = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+      };
+      before = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+      };
+      after = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+      };
+      wants = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+      };
+      requires = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+      };
+      path = lib.mkOption {
+        type = lib.types.listOf (lib.types.either lib.types.package lib.types.str);
+        default = [ ];
+      };
+      environment = lib.mkOption {
+        type = lib.types.attrsOf lib.types.str;
+        default = { };
+      };
+      serviceConfig = lib.mkOption {
+        type = lib.types.attrsOf lib.types.anything;
+        default = { };
+      };
+      script = lib.mkOption {
+        type = lib.types.lines;
+        default = "";
+      };
+      reloadTriggers = lib.mkOption {
+        type = lib.types.listOf lib.types.anything;
+        default = [ ];
+      };
+      restartTriggers = lib.mkOption {
+        type = lib.types.listOf lib.types.anything;
+        default = [ ];
+      };
+      restartIfChanged = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+      };
+      stopIfChanged = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+      };
+    };
+  };
+
+  # home-manager rendering of the units. A user manager has no
+  # network-online.target and starts default.target, not multi-user.target.
+  hmTarget = t: if t == "multi-user.target" then "default.target" else t;
+  hmDeps = l: map hmTarget (lib.filter (t: t != "network-online.target") l);
+  # Environment= takes one quoted K=V per line; % is a unit specifier.
+  hmQuote = s: ''"${lib.replaceStrings [ "\\" ''"'' "%" ] [ "\\\\" ''\"'' "%%" ] s}"'';
+  hmService = name: s: {
+    Unit =
+      lib.filterAttrs (_: v: v != [ ] && v != "") {
+        Description = s.description;
+        Before = hmDeps s.before;
+        After = hmDeps s.after;
+        Wants = hmDeps s.wants;
+        Requires = hmDeps s.requires;
+        X-Reload-Triggers = map toString s.reloadTriggers;
+        X-Restart-Triggers = map toString s.restartTriggers;
+      }
+      // lib.optionalAttrs (!s.restartIfChanged) { X-SwitchMethod = "keep-old"; };
+    Service =
+      removeAttrs s.serviceConfig [
+        "User"
+        "Group"
+      ]
+      // {
+        # The same PATH NixOS gives a system unit.
+        Environment = lib.mapAttrsToList (k: v: hmQuote "${k}=${v}") (
+          s.environment
+          // {
+            PATH = "${
+              lib.makeBinPath (
+                s.path
+                ++ (with pkgs; [
+                  coreutils
+                  findutils
+                  gnugrep
+                  gnused
+                  systemd
+                ])
+              )
+            }:${lib.makeSearchPathOutput "bin" "sbin" s.path}";
+          }
+        );
+      }
+      // lib.optionalAttrs (s.script != "") {
+        ExecStart = "${pkgs.writeShellScript "${name}-start" "set -e\n${s.script}"}";
+      };
+    Install.WantedBy = hmDeps s.wantedBy;
+  };
+  hmSimple =
+    kind: name: u:
+    {
+      Unit.Description = u.description or "";
+      ${kind} = u."${lib.toLower kind}Config" or { };
+    }
+    // lib.optionalAttrs (u ? wantedBy) { Install.WantedBy = hmDeps u.wantedBy; };
 
   # Per-workspace clone and sync units, named jobshop-workspace-<name>.
   workspaceUnits =
@@ -506,12 +661,12 @@ let
             # A stopped controller loads packs on start, so a skipped reload
             # loses nothing. Failing here would fail a switch that stops the
             # controller while this unit runs and roll back a good deploy (#475).
-            if ! ${pkgs.systemd}/bin/systemctl is-active --quiet jobshop.service; then
+            if ! ${systemctl} is-active --quiet jobshop.service; then
               echo "controller not running, reload skipped"
               exit 0
             fi
             if ! ${jobshop} reload; then
-              if ! ${pkgs.systemd}/bin/systemctl is-active --quiet jobshop.service; then
+              if ! ${systemctl} is-active --quiet jobshop.service; then
                 echo "controller stopped during reload, reload skipped"
                 exit 0
               fi
@@ -541,17 +696,50 @@ in
 
     user = lib.mkOption {
       type = lib.types.str;
-      default = "jobshop";
+      default = if isNixos then "jobshop" else config.home.username;
+      defaultText = lib.literalExpression ''"jobshop" (NixOS), config.home.username (home-manager)'';
     };
 
     group = lib.mkOption {
       type = lib.types.str;
       default = "jobshop";
+      description = "Group of the jobshop user (NixOS only).";
+    };
+
+    # Units in NixOS form; mapped to systemd.* or systemd.user.* below.
+    units = lib.mkOption {
+      internal = true;
+      default = { };
+      type = lib.types.submodule {
+        options = {
+          services = lib.mkOption {
+            default = { };
+            type = lib.types.attrsOf (lib.types.submodule serviceUnit);
+          };
+          timers = lib.mkOption {
+            default = { };
+            type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+          };
+          paths = lib.mkOption {
+            default = { };
+            type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+          };
+          slices = lib.mkOption {
+            default = { };
+            type = lib.types.attrsOf (lib.types.attrsOf lib.types.anything);
+          };
+          tmpfiles = lib.mkOption {
+            default = [ ];
+            type = lib.types.listOf lib.types.str;
+          };
+        };
+      };
     };
 
     dataDir = lib.mkOption {
       type = lib.types.path;
-      default = "/var/lib/jobshop";
+      default = if isNixos then "/var/lib/jobshop" else "${config.xdg.stateHome}/jobshop";
+      defaultText = lib.literalExpression ''"/var/lib/jobshop" (NixOS), "''${config.xdg.stateHome}/jobshop" (home-manager)'';
       description = "Jobshop root directory: jobshop.yaml (linked from settings), database, sockets, session directories and journals.";
     };
 
@@ -721,8 +909,9 @@ in
 
     restrictEgress = lib.mkOption {
       type = lib.types.bool;
-      default = true;
-      description = "Deny private, CGNAT/tailnet, link-local and ULA ranges, like gasserver's agent slice.";
+      default = isNixos;
+      defaultText = lib.literalExpression "true (NixOS), false (home-manager)";
+      description = "Deny private, CGNAT/tailnet, link-local and ULA ranges, like gasserver's agent slice. NixOS only: a user manager cannot attach the IP filter, so home-manager asserts it is off.";
     };
 
     isolation = {
@@ -817,7 +1006,8 @@ in
         };
         dir = lib.mkOption {
           type = lib.types.str;
-          default = "/var/lib/jobshop-mise";
+          default = if isNixos then "/var/lib/jobshop-mise" else "${config.xdg.stateHome}/jobshop-mise";
+          defaultText = lib.literalExpression ''"/var/lib/jobshop-mise" (NixOS), "''${config.xdg.stateHome}/jobshop-mise" (home-manager)'';
           description = "mise data dir for the shared installs; added to sandbox.sharedTools.";
         };
         interval = lib.mkOption {
@@ -1049,13 +1239,14 @@ in
 
     selfDeploy = {
       enable = lib.mkEnableOption ''
-        root unit that rebuilds this host with the jobshop flake input overridden to the
+        unit that switches this host (NixOS, as root: nixos-rebuild) or this home
+        (home-manager, as the user: home-manager switch) with the jobshop flake input overridden to the
         newest green commit on the default branch of the workspace with selfDeploy set, then checks the controller
         and rolls back on failure. The host flake's lock is not edited'';
       hostFlake = lib.mkOption {
         type = lib.types.str;
         example = "git+ssh://git@github.com/elee1766/gasserver.nix#gasserver";
-        description = "Flake output to rebuild (same as system.autoUpgrade.flake plus #host).";
+        description = "Flake output to switch: `<flake>#<host>` for NixOS (as system.autoUpgrade.flake), `<flake>#<user>` for a homeConfigurations entry.";
       };
       inputName = lib.mkOption {
         type = lib.types.str;
@@ -1065,7 +1256,7 @@ in
       inputUrl = lib.mkOption {
         type = lib.types.str;
         example = "git+ssh://git@github-jobshop/elee1766/jobshop?ref=master";
-        description = "URL root can fetch the jobshop flake from; `&rev=<sha>` is appended.";
+        description = "URL the deploying user (root, or the home-manager user) can fetch the jobshop flake from; `&rev=<sha>` is appended.";
       };
       branch = lib.mkOption {
         type = lib.types.str;
@@ -1074,6 +1265,12 @@ in
       interval = lib.mkOption {
         type = lib.types.str;
         default = "10min";
+      };
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = if isNixos then "/var/lib/jobshop-deploy" else "${config.xdg.stateHome}/jobshop-deploy";
+        defaultText = lib.literalExpression ''"/var/lib/jobshop-deploy" (NixOS), "''${config.xdg.stateHome}/jobshop-deploy" (home-manager)'';
+        description = "Self-deploy state (deployed, failed, override); the deploy pack's Deploys view reads it.";
       };
     };
   };
@@ -1122,32 +1319,10 @@ in
           message = "services.jobshop.isolation: pool ${p} per_session ids run past subIdStart + subIdCount (${toString cfg.isolation.subIdStart} + ${toString cfg.isolation.subIdCount}); raise subIdCount or lower map_uid/map_gid or range (#540).";
         }) isoPools;
 
-        users.users.${cfg.user} = {
-          isSystemUser = true;
-          group = cfg.group;
-          home = cfg.dataDir;
-          createHome = true;
-        }
-        // lib.optionalAttrs cfg.isolation.enable {
-          subUidRanges = [
-            {
-              startUid = cfg.isolation.subIdStart;
-              count = cfg.isolation.subIdCount;
-            }
-          ];
-          subGidRanges = [
-            {
-              startGid = cfg.isolation.subIdStart;
-              count = cfg.isolation.subIdCount;
-            }
-          ];
-        };
-        users.groups.${cfg.group} = { };
-
-        systemd.tmpfiles.rules = [
-          "d ${cfg.dataDir} 0700 ${cfg.user} ${cfg.group} -"
+        services.jobshop.units.tmpfiles = [
+          "d ${cfg.dataDir} 0700 ${own} -"
           # Local agent memory (#592): the packs' default memory_dir.
-          "d ${cfg.dataDir}/memory 0750 ${cfg.user} ${cfg.group} -"
+          "d ${cfg.dataDir}/memory 0750 ${own} -"
           # The root's config is the generated file; L+ replaces the link on each switch.
           # With configFile the user's file is linked (never written) and the
           # module's keys go to jobshop.module.yaml (#531).
@@ -1159,13 +1334,13 @@ in
           else
             [ "L+ ${rootConfig} - - - - ${configFile}" ]
         )
-        ++ [
-          # Per-host GC roots keep a running session host's binary alive across Nix switches.
-          "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${cfg.user} ${cfg.group} -"
-        ]
-        ++ lib.optional sharedMise "d ${cfg.sandbox.mise.dir} 0755 ${cfg.user} ${cfg.group} -";
+        # Per-host GC roots keep a running session host's binary alive across
+        # Nix switches. Under home-manager the host creates this dir (root owns
+        # per-user/), see docs/home-manager.md.
+        ++ lib.optional isNixos "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${own} -"
+        ++ lib.optional sharedMise "d ${cfg.sandbox.mise.dir} 0755 ${own} -";
 
-        systemd.services.jobshop-mise = lib.mkIf sharedMise {
+        services.jobshop.units.services.jobshop-mise = lib.mkIf sharedMise {
           description = "Install shared mise tools for Jobshop sandboxes";
           wantedBy = [ "multi-user.target" ];
           before = [ "jobshop.service" ];
@@ -1188,7 +1363,7 @@ in
           };
           script = "mise install --yes ${lib.escapeShellArgs cfg.sandbox.mise.tools}";
         };
-        systemd.timers.jobshop-mise = lib.mkIf sharedMise {
+        services.jobshop.units.timers.jobshop-mise = lib.mkIf sharedMise {
           wantedBy = [ "timers.target" ];
           timerConfig = {
             OnCalendar = cfg.sandbox.mise.interval;
@@ -1196,7 +1371,7 @@ in
           };
         };
 
-        systemd.slices.jobshop = {
+        services.jobshop.units.slices.jobshop = {
           description = "Jobshop controller, session hosts and agents";
           sliceConfig = {
             CPUQuota = cfg.cpuQuota;
@@ -1219,7 +1394,7 @@ in
           };
         };
 
-        systemd.services.jobshop = {
+        services.jobshop.units.services.jobshop = {
           description = "Jobshop controller";
           wantedBy = [ "multi-user.target" ];
           wants = [ "network-online.target" ];
@@ -1256,13 +1431,14 @@ in
           };
         }
         // lib.optionalAttrs cfg.isolation.enable {
-          # newuidmap/newgidmap setuid wrappers (security.wrappers).
+          # newuidmap/newgidmap setuid wrappers (security.wrappers, or the
+          # host's /run/wrappers under home-manager).
           path = path ++ [ "/run/wrappers" ];
         };
 
         # Full stop at system shutdown: end every session and reap hosts. Ordered
         # after jobshop.service so it stops first, while the controller is still up.
-        systemd.services.jobshop-shutdown = {
+        services.jobshop.units.services.jobshop-shutdown = {
           description = "Stop all Jobshop sessions at system shutdown";
           wantedBy = [ "multi-user.target" ];
           after = [ "jobshop.service" ];
@@ -1287,37 +1463,39 @@ in
         # back to the previous generation. The host flake's lock is not edited, so
         # the next manual deploy or auto-upgrade uses the locked rev until the host
         # repo bumps it.
-        systemd.services.jobshop-self-deploy = lib.mkIf sd.enable {
+        services.jobshop.units.services.jobshop-self-deploy = lib.mkIf sd.enable {
           description = "Deploy the newest green Jobshop commit";
           after = [ "network-online.target" ];
           wants = [ "network-online.target" ];
           # A switch restarts units; this one must not be one of them mid-run.
           restartIfChanged = false;
-          path = with pkgs; [
-            nix
-            git
-            openssh
-            jq
-            coreutils
-            util-linux
-            config.system.build.nixos-rebuild
-          ];
-          environment.HOME = "/root";
+          path =
+            (with pkgs; [
+              nix
+              git
+              openssh
+              jq
+              coreutils
+              util-linux
+            ])
+            ++ [ (if isNixos then config.system.build.nixos-rebuild else hmPackage) ];
+          environment = lib.optionalAttrs isNixos { HOME = "/root"; };
           serviceConfig = {
             Type = "oneshot";
-            StateDirectory = "jobshop-deploy";
             TimeoutStartSec = "30min";
-          };
+          }
+          // lib.optionalAttrs isNixos { StateDirectory = "jobshop-deploy"; };
           script = ''
             set -eu
             state=${deployState}
+            mkdir -p $state
             ${reportFn}
             # A failure's report, kept so a later run re-files it if the
             # controller was down this time.
             fail_report() { printf '%s\n%s\n%s\n' "$1" "$2" "$3" > $state/failed.report; report "$@"; }
             # The newest master commit with a successful CI run, read as the jobshop
             # user (its gh has the App token). Empty: nothing to do.
-            rev=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- env ${
+            rev=$(${asUser}env ${
               lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${lib.escapeShellArg v}") environment)
             } PATH=${lib.makeBinPath path}:$PATH \
               gh run list --repo ${ghRepo} --branch ${sd.branch} --workflow ci --status success \
@@ -1325,7 +1503,7 @@ in
             [ -n "$rev" ] || { echo "no green ${sd.branch} run"; exit 0; }
             # The running controller's binary, not this unit's eval-time package,
             # which is the version from before the last self-deploy.
-            running() { readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe"; }
+            running() { readlink -f "/proc/$(${sctl} show -p MainPID --value jobshop.service)/exe"; }
             current=$("$(running)" version | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
             # deployed is only written after a good switch, so a manual
             # rollback, a host rebuild or auto-upgrade can leave it naming
@@ -1376,7 +1554,7 @@ in
               rm -f $state/failed.reason
               src=$(nix flake metadata --json --refresh ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$rev" | jq -r .path)
               newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
-              if ! check=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- \
+              if ! check=$(${asUser}\
                    "$newpkg/bin/jobshop" config check --file ${cfg.dataDir}/jobshop.yaml \
                    --replace ${
                      lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir
@@ -1390,15 +1568,13 @@ in
               fi
               echo "config check: $check"
             ''}
-            prev=$(readlink -f /nix/var/nix/profiles/system)
-            if ! nixos-rebuild switch --flake ${lib.escapeShellArg sd.hostFlake} --refresh \
-                 --override-input ${sd.inputName} ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$rev"; then
+            ${deploySwitch}
+            if ! switch_to "$rev"; then
               echo "<3>switch to $rev failed, rolling back"
               echo "$rev" > $state/failed
-              nix-env -p /nix/var/nix/profiles/system --set "$prev"
-              "$prev/bin/switch-to-configuration" switch || true
+              rollback || true
               fail_report deploy:rollback "self-deploy rolled back $rev: switch failed" \
-                "nixos-rebuild switch to $rev failed; the host is back on $prev. See journalctl -u jobshop-self-deploy. The ticket closes on the next good deploy."
+                "${deployTool} switch to $rev failed; the host is back on $prev. See journalctl ${journalFlag}-u jobshop-self-deploy. The ticket closes on the next good deploy."
               exit 1
             fi
 
@@ -1406,8 +1582,8 @@ in
             ok=
             for _ in $(seq 30); do
               [ -z "$drill" ] || break
-              if systemctl is-active --quiet jobshop.service \
-                 && runuser -u ${cfg.user} -- env JOBSHOP_ROOT=${cfg.dataDir} "$(running)" session list >/dev/null 2>&1 \
+              if ${sctl} is-active --quiet jobshop.service \
+                 && ${asUser}env JOBSHOP_ROOT=${cfg.dataDir} "$(running)" session list >/dev/null 2>&1 \
                  && "$(running)" version | grep -q "(''${rev:0:7}"; then
                 ok=1; break
               fi
@@ -1416,10 +1592,9 @@ in
             if [ -z "$ok" ]; then
               echo "<3>controller unhealthy after $rev, rolling back to $prev"
               echo "$rev" > $state/failed
-              nix-env -p /nix/var/nix/profiles/system --set "$prev"
-              "$prev/bin/switch-to-configuration" switch
+              rollback
               fail_report deploy:rollback "self-deploy rolled back $rev: controller unhealthy" \
-                "The controller did not come up healthy on $rev''${drill:+ (rollback drill)}; the host is back on $prev. See journalctl -u jobshop-self-deploy. The ticket closes on the next good deploy."
+                "The controller did not come up healthy on $rev''${drill:+ (rollback drill)}; the host is back on $prev. See journalctl ${journalFlag}-u jobshop-self-deploy. The ticket closes on the next good deploy."
               exit 1
             fi
             echo "$rev" > $state/deployed
@@ -1428,23 +1603,75 @@ in
             rm -f $state/failed.report
             # Read by nixos-upgrade (flags below) so the daily auto-upgrade keeps
             # this rev instead of returning to the host flake's locked one.
+            # Under home-manager a manual switch can pass the same flags.
             echo "--override-input ${sd.inputName} ${sd.inputUrl}&rev=$rev" > $state/override
             echo "deployed $rev"
           '';
         };
-        systemd.timers.jobshop-self-deploy = lib.mkIf sd.enable {
+        services.jobshop.units.timers.jobshop-self-deploy = lib.mkIf sd.enable {
           wantedBy = [ "timers.target" ];
           timerConfig = {
             OnBootSec = "10min";
             OnUnitActiveSec = sd.interval;
           };
         };
+      }
+      (lib.optionalAttrs isNixos {
+        users.users.${cfg.user} = {
+          isSystemUser = true;
+          group = cfg.group;
+          home = cfg.dataDir;
+          createHome = true;
+        }
+        // lib.optionalAttrs cfg.isolation.enable {
+          subUidRanges = [
+            {
+              startUid = cfg.isolation.subIdStart;
+              count = cfg.isolation.subIdCount;
+            }
+          ];
+          subGidRanges = [
+            {
+              startGid = cfg.isolation.subIdStart;
+              count = cfg.isolation.subIdCount;
+            }
+          ];
+        };
+        users.groups.${cfg.group} = { };
+        systemd = {
+          inherit (cfg.units)
+            services
+            timers
+            paths
+            slices
+            ;
+          tmpfiles.rules = cfg.units.tmpfiles;
+        };
         # Expanded by the nixos-upgrade shell script; empty until the first
         # self-deploy, so auto-upgrade then uses the locked rev as before.
         system.autoUpgrade.flags = lib.mkIf sd.enable [ "$(cat ${deployState}/override 2>/dev/null)" ];
-      }
+      })
+      (lib.optionalAttrs (!isNixos) {
+        assertions = [
+          {
+            assertion = !cfg.restrictEgress;
+            message = "services.jobshop.restrictEgress: a user manager cannot apply IPAddressDeny; set it false and filter egress on the host or with isolation (docs/home-manager.md).";
+          }
+          {
+            assertion = !(vl.enable && vl.url == "");
+            message = "services.jobshop.journal.victorialogs.enable runs a system service; under home-manager set journal.victorialogs.url to a VictoriaLogs the host runs.";
+          }
+        ];
+        systemd.user = {
+          services = lib.mapAttrs hmService cfg.units.services;
+          timers = lib.mapAttrs (hmSimple "Timer") cfg.units.timers;
+          paths = lib.mapAttrs (hmSimple "Path") cfg.units.paths;
+          slices = lib.mapAttrs (hmSimple "Slice") cfg.units.slices;
+          tmpfiles.rules = cfg.units.tmpfiles;
+        };
+      })
       {
-        systemd = lib.mkMerge (lib.mapAttrsToList workspaceUnits workspaces);
+        services.jobshop.units = lib.mkMerge (lib.mapAttrsToList workspaceUnits workspaces);
       }
       (lib.mkIf cfg.desk.enable {
         assertions = [
@@ -1454,7 +1681,7 @@ in
           }
         ];
         # An admin-socket client like the gateway.
-        systemd.services.jobshop-desk = {
+        services.jobshop.units.services.jobshop-desk = {
           description = "Jobshop Desk";
           wantedBy = [ "multi-user.target" ];
           after = [ "jobshop.service" ];
@@ -1503,7 +1730,7 @@ in
         # A user-owned jobshop.yaml changes outside a switch, so
         # reloadTriggers never see it (#531). Check, then reload; a failed
         # check logs and the controller keeps its running config (#227).
-        systemd.paths.jobshop-config = {
+        services.jobshop.units.paths.jobshop-config = {
           description = "Watch the user-managed jobshop.yaml";
           wantedBy = [ "multi-user.target" ];
           pathConfig = {
@@ -1514,34 +1741,40 @@ in
             Unit = "jobshop-config.service";
           };
         };
-        systemd.services.jobshop-config = {
+        services.jobshop.units.services.jobshop-config = {
           description = "Check and reload a changed jobshop.yaml";
           environment.JOBSHOP_ROOT = cfg.dataDir;
           serviceConfig.Type = "oneshot";
           script = ''
-            if ! out=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- ${jobshop} config check --file ${rootConfig} 2>&1); then
+            if ! out=$(${asUser}${jobshop} config check --file ${rootConfig} 2>&1); then
               echo "<3>jobshop.yaml check failed, keeping the running config: $out"
               exit 1
             fi
             echo "config check: $out"
-            ${pkgs.systemd}/bin/systemctl try-reload-or-restart jobshop.service
+            ${systemctl} try-reload-or-restart jobshop.service
           '';
         };
       })
-      (lib.mkIf (vl.enable && vl.url == "") {
-        services.victorialogs = {
-          enable = true;
-          inherit (vl) listenAddress;
-          extraOptions = [ "-retentionPeriod=${vl.retentionPeriod}" ];
-        };
-        systemd.services.jobshop = {
-          wants = [ "victorialogs.service" ];
-          after = [ "victorialogs.service" ];
-        };
-      })
+      (lib.mkIf (vl.enable && vl.url == "") (
+        lib.mkMerge [
+          (lib.optionalAttrs isNixos {
+            services.victorialogs = {
+              enable = true;
+              inherit (vl) listenAddress;
+              extraOptions = [ "-retentionPeriod=${vl.retentionPeriod}" ];
+            };
+          })
+          {
+            services.jobshop.units.services.jobshop = {
+              wants = [ "victorialogs.service" ];
+              after = [ "victorialogs.service" ];
+            };
+          }
+        ]
+      ))
       (lib.mkIf cfg.ingest.enable {
         # Needs no controller or database: only the spool dir and secrets.
-        systemd.services.jobshop-ingest = {
+        services.jobshop.units.services.jobshop-ingest = {
           description = "Jobshop webhook receiver";
           wantedBy = [ "multi-user.target" ];
           after = [ "network-online.target" ];
@@ -1561,7 +1794,7 @@ in
       })
       (lib.mkIf cfg.ingest.worker.enable {
         # Talks to the controller's admin socket; runs admission hooks.
-        systemd.services.jobshop-ingest-work = {
+        services.jobshop.units.services.jobshop-ingest-work = {
           description = "Jobshop ingest admission worker";
           wantedBy = [ "multi-user.target" ];
           after = [ "jobshop.service" ];
@@ -1580,7 +1813,7 @@ in
       })
       {
         # Admin-socket clients; they retry while the controller restarts.
-        systemd.services = lib.mapAttrs' (
+        services.jobshop.units.services = lib.mapAttrs' (
           name: _:
           lib.nameValuePair "jobshop-gateway-${name}" {
             description = "Jobshop chat gateway ${name}";

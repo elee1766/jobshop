@@ -4,9 +4,29 @@
   self,
   nixpkgs,
   pkgs,
+  home-manager,
 }:
 let
   lib = nixpkgs.lib;
+  # The home-manager module (JOB-22) for the same jobshop settings.
+  evalHM =
+    jobshop:
+    home-manager.lib.homeManagerConfiguration {
+      inherit pkgs;
+      modules = [
+        self.homeManagerModules.jobshop
+        {
+          home.username = "jobcity";
+          home.homeDirectory = "/home/jobcity";
+          home.stateVersion = "26.05";
+          services.jobshop = {
+            enable = true;
+            package = pkgs.hello;
+          }
+          // jobshop;
+        }
+      ];
+    };
   eval =
     jobshop:
     nixpkgs.lib.nixosSystem {
@@ -387,8 +407,90 @@ let
   '';
 
   units = c: lib.attrNames c.config.systemd.services;
+  # Settings both modes take, with the paths pinned so the files can match.
+  shared = {
+    dataDir = "/srv/jobshop";
+    restrictEgress = false;
+    workspaces.jobshop = {
+      url = "https://github.com/elee1766/jobshop.git";
+      livePacks = [ "packs/selfdev" ];
+      selfDeploy = true;
+    };
+    selfDeploy = {
+      enable = true;
+      hostFlake = "x#y";
+      inputUrl = "git+https://example/jobshop?ref=master";
+      stateDir = "/srv/jobshop-deploy";
+    };
+    identities.elee-agent = {
+      kind = "github-token";
+      token_file = "/home/jobcity/secrets/gh";
+      repos = [ "elee1766/*" ];
+    };
+    sandbox.enable = true;
+    sandbox.mise.dir = "/srv/jobshop-mise";
+    sandbox.mise.tools = [ "node@24" ];
+    journal.victorialogs.url = "http://127.0.0.1:9428";
+    settings.projects.js = { };
+  };
+  sharedNixos = eval shared;
+  sharedHM = evalHM shared;
+  hmUnits = sharedHM.config.systemd.user.services;
+  hmEnv = u: lib.concatStringsSep "\n" hmUnits.${u}.Service.Environment;
+  hmDefault = evalHM { };
+  hmFailed = c: map (a: a.message) (lib.filter (a: !a.assertion) c.config.assertions);
+  hmTmp = c: c.config.systemd.user.tmpfiles.rules;
+  hmYaml =
+    c: lib.last (lib.splitString " " (lib.findFirst (r: lib.hasInfix "/jobshop.yaml " r) "" (hmTmp c)));
   expect = name: cond: if cond then true else throw "module-test: ${name} failed";
   checks = [
+    (expect "home-manager: same yaml as NixOS" (
+      hmYaml sharedHM == yamlPacks sharedNixos && hmFailed sharedHM == [ ] && failed sharedNixos == [ ]
+    ))
+    (expect "home-manager: user units, no root" (
+      lib.all (u: hmUnits ? ${u}) [
+        "jobshop"
+        "jobshop-shutdown"
+        "jobshop-mise"
+        "jobshop-self-deploy"
+        "jobshop-workspace-jobshop"
+        "jobshop-workspace-jobshop-sync"
+      ]
+      && hmUnits.jobshop.Install.WantedBy == [ "default.target" ]
+      && !(hmUnits.jobshop.Service ? User)
+      && hmUnits.jobshop.Service.ExecStart == [ "${lib.getExe pkgs.hello} serve" ]
+      && lib.hasInfix "JOBSHOP_ROOT=/srv/jobshop" (hmEnv "jobshop")
+      && hmUnits.jobshop-self-deploy.Unit.X-SwitchMethod == "keep-old"
+      && sharedHM.config.systemd.user.slices ? jobshop
+      && sharedHM.config.systemd.user.timers ? jobshop-self-deploy
+    ))
+    (expect "home-manager: self-deploy switches the home as the user" (
+      let
+        s = sharedHM.config.services.jobshop.units.services.jobshop-self-deploy.script;
+      in
+      lib.hasInfix "home-manager switch --flake 'x#y'" s
+      && lib.hasInfix "systemctl --user is-active" s
+      && !(lib.hasInfix "nixos-rebuild" s)
+      && lib.hasInfix "state=/srv/jobshop-deploy" s
+    ))
+    (expect "home-manager: XDG defaults and no restrictEgress" (
+      hmDefault.config.services.jobshop.dataDir == "/home/jobcity/.local/state/jobshop"
+      && hmDefault.config.services.jobshop.user == "jobcity"
+      && hmFailed hmDefault == [ ]
+      # homeManagerConfiguration may throw on a failed assertion instead.
+      && (
+        let
+          r = builtins.tryEval (
+            lib.any (lib.hasInfix "restrictEgress") (
+              hmFailed (evalHM {
+                restrictEgress = true;
+              })
+            )
+          );
+        in
+        !r.success || r.value
+      )
+    ))
     (expect "shared mise unit, env and mount" (
       let
         svc = miseShared.config.systemd.services;
