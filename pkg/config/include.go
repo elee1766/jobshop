@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 )
 
 // IncludeKey lists files merged under the root config before its own keys
@@ -18,6 +19,19 @@ const IncludeKey = "include"
 // appendedKeys are top-level lists an include adds to instead of
 // replacing: both files contribute packs and shared tool dirs.
 var appendedKeys = []string{"packs", "shared_tools", "prompt_rules", "hooks"}
+
+// fileDir is the directory relative pack and prompt file paths resolve
+// against: the config file's own directory after following links (#532),
+// so a jobshop.yaml linked from a git checkout finds the packs beside it.
+// A link into the Nix store keeps the link's directory: a generated file
+// there has no siblings, and relative paths in it meant the root.
+func fileDir(path string) string {
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil || strings.HasPrefix(target, "/nix/store/") {
+		return filepath.Dir(path)
+	}
+	return filepath.Dir(target)
+}
 
 // applyIncludes merges the files named by top's include list (paths
 // relative to dir) and then top itself. Maps merge per key, the

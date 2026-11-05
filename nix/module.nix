@@ -72,6 +72,14 @@ let
       }
       // (base.attention or { });
     }
+    # A config repo commit that failed its check (#532).
+    // lib.optionalAttrs repoConfig {
+      attention = {
+        config_repo_file = "${configRepoState}.failed";
+      }
+      // (base.attention or { })
+      // lib.optionalAttrs cfg.selfDeploy.enable { rollback_file = "${deployState}/failed"; };
+    }
     // lib.optionalAttrs cfg.sandbox.enable {
       defaults = (base.defaults or { }) // {
         sandbox = {
@@ -89,7 +97,18 @@ let
   # settings plus the module's keys. User mode (#531): the user owns
   # jobshop.yaml and includes jobshop.module.yaml, which holds only the
   # module's keys.
-  userConfig = cfg.configFile != null;
+  # A workspace whose checkout holds jobshop.yaml (#532) is user mode too:
+  # its file is the user's file, and its sync unit checks and reloads it.
+  configWorkspaces = lib.attrNames (lib.filterAttrs (_: w: w.config != null) workspaces);
+  repoConfig = configWorkspaces != [ ];
+  repoConfigFile =
+    let
+      w = workspaces.${lib.head configWorkspaces};
+    in
+    "${w.dir}/${w.config}";
+  userFile = if repoConfig then repoConfigFile else cfg.configFile;
+  configRepoState = "${cfg.dataDir}/config-repo";
+  userConfig = cfg.configFile != null || repoConfig;
   telemetryAttrs = lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; };
   generatedConfig = settingsFormat.generate "jobshop.yaml" (
     lib.recursiveUpdate (withModuleKeys cfg.settings) telemetryAttrs
@@ -263,6 +282,19 @@ let
           default = "2min";
           description = "How often the sync unit fast-forwards the checkout to origin and reloads the controller when it moved.";
         };
+        config = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "jobshop.yaml";
+          description = ''
+            Run the controller from this file in the checkout (#532): dataDir/jobshop.yaml
+            links to it, and its relative pack paths resolve in the checkout. The sync unit
+            checks each new commit before reloading; a failing commit is reset to the last
+            good one (dataDir/config-repo.last-good) and listed in `jobshop attention`.
+            The file should include jobshop.module.yaml for the module's keys and secrets.
+            At most one workspace; not with configFile or settings.
+          '';
+        };
         selfDeploy = lib.mkOption {
           type = lib.types.bool;
           default = false;
@@ -346,12 +378,46 @@ let
             target=$installed
           ''}
           before=$(git rev-parse HEAD)
+          ${lib.optionalString (w.config != null) ''
+            # Config repo (#532): a commit runs only after it passes
+            # `jobshop config check`; a failing one is reset to the last
+            # good commit and listed in `jobshop attention`.
+            last_good=${configRepoState}.last-good
+            failed=${configRepoState}.failed
+            [ -s "$last_good" ] || git rev-parse HEAD > "$last_good"
+            # A commit that already failed stays failed until origin moves on.
+            if [ -s "$failed" ] && [ "$(head -n1 "$failed")" = "$(git rev-parse --short "$target")" ]; then
+              exit 0
+            fi
+            if ! out=$(git merge --ff-only --quiet "$target" 2>&1); then
+              rev=$(git rev-parse --short "$target")
+              printf '%s\n%s\n' "$rev" "checkout not fast-forwardable (local edits or diverged history): $out" > "$failed"
+              echo "<3>config repo ${name} not fast-forwardable to $target: $out"
+              exit 1
+            fi
+            after=$(git rev-parse HEAD)
+            [ "$before" != "$after" ] || exit 0
+            # Through the root's link, so include: finds jobshop.module.yaml
+            # beside it while packs resolve in the checkout.
+            if ! out=$(${jobshop} config check --file ${rootConfig} 2>&1); then
+              good=$(cat "$last_good")
+              printf '%s\n%s\n' "$(git rev-parse --short "$after")" "$out" > "$failed"
+              echo "<3>config repo ${name}: $after failed its check, reset to $good: $out"
+              git reset --quiet --hard "$good"
+              exit 1
+            fi
+            echo "$after" > "$last_good"
+            rm -f "$failed"
+            echo "config repo moved $before..$after, check passed"
+          ''}
+          ${lib.optionalString (w.config == null) ''
           # Only fast-forward: a hand-edited checkout is left alone and logged.
           if ! git merge --ff-only --quiet "$target"; then
             echo "<4>workspace ${name} not fast-forwardable to $target, left as is"
             exit 0
           fi
           after=$(git rev-parse HEAD)
+          ''}
           # Reload on any move, not only a diff under livePacks: a live pack
           # extends packs outside that list (selfdev extends ../github), and
           # a missed reload leaves the controller on old pools (#177).
@@ -374,7 +440,7 @@ let
           fi
         '';
       };
-      timers."${unit}-sync" = lib.mkIf (w.livePacks != [ ]) {
+      timers."${unit}-sync" = lib.mkIf (w.livePacks != [ ] || w.config != null) {
         wantedBy = [ "timers.target" ];
         timerConfig = {
           OnBootSec = "2min";
@@ -825,6 +891,10 @@ in
             assertion = !userConfig || cfg.settings == { };
             message = "services.jobshop: set configFile or settings, not both; with configFile put those keys in your file (the module's own keys go to jobshop.module.yaml).";
           }
+          {
+            assertion = lib.length configWorkspaces <= 1 && !(repoConfig && cfg.configFile != null);
+            message = "services.jobshop: set workspaces.<name>.config on at most one workspace, and not with configFile.";
+          }
         ];
 
         users.users.${cfg.user} = {
@@ -858,7 +928,7 @@ in
         ++ (
           if userConfig then
             [ "L+ ${cfg.dataDir}/jobshop.module.yaml - - - - ${moduleFile}" ]
-            ++ lib.optional (cfg.configFile != rootConfig) "L+ ${rootConfig} - - - - ${cfg.configFile}"
+            ++ lib.optional (userFile != rootConfig) "L+ ${rootConfig} - - - - ${userFile}"
           else
             [ "L+ ${rootConfig} - - - - ${configFile}" ]
         )
@@ -1186,10 +1256,11 @@ in
           description = "Watch the user-managed jobshop.yaml";
           wantedBy = [ "multi-user.target" ];
           pathConfig = {
-            PathChanged = [
-              cfg.configFile
-              "${cfg.dataDir}/jobshop.module.yaml"
-            ];
+            PathChanged =
+              # With a config repo the sync unit checks and reloads the
+              # repo's file (#532); only the module file is watched here.
+              lib.optional (!repoConfig) cfg.configFile
+              ++ [ "${cfg.dataDir}/jobshop.module.yaml" ];
             Unit = "jobshop-config.service";
           };
         };

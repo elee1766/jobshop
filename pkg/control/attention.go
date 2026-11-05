@@ -130,6 +130,9 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	if it, ok := rollbackItem(c.config().Attention.RollbackFile); ok {
 		items = append(items, it)
 	}
+	if it, ok := configRepoItem(c.config().Attention.ConfigRepoFile); ok {
+		items = append(items, it)
+	}
 	slices.SortStableFunc(items, func(a, b rpc.AttentionItem) int {
 		if n := a.Since.Compare(b.Since); n != 0 {
 			return n
@@ -168,6 +171,25 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 		}
 	}
 	return it
+}
+
+// configRepoItem reports a config repo commit that failed its check
+// (#532): path holds the commit on its first line, then the error.
+func configRepoItem(path string) (rpc.AttentionItem, bool) {
+	if path == "" {
+		return rpc.AttentionItem{}, false
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return rpc.AttentionItem{}, false
+	}
+	b, _ := os.ReadFile(path)
+	rev, why, _ := strings.Cut(strings.TrimSpace(string(b)), "\n")
+	title := "config repo commit " + rev + " failed its check, running the last good config"
+	if why = strings.TrimSpace(why); why != "" {
+		title += ": " + why
+	}
+	return rpc.AttentionItem{Kind: rpc.AttentionConfigRepo, ID: rev, Title: title, Since: fi.ModTime().UTC()}, true
 }
 
 // rollbackItem reports a self-deploy rollback: path (the deploy state

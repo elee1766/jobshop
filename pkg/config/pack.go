@@ -170,6 +170,10 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	if top, err = applyIncludes(top, dir, name); err != nil {
 		return nil, err
 	}
+	// Includes name host files next to the root's jobshop.yaml; packs and
+	// prompt files live with the config, which may be a link into a
+	// checkout (#532).
+	dir = fileDir(path)
 	// Validate the packs list on its own so its errors are precise.
 	var head struct {
 		Packs []PackRef `yaml:"packs"`
