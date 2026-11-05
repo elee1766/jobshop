@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.9](https://github.com/elee1766/jobshop/compare/v0.1.8...v0.1.9) (2026-11-05)
+
+
+### Features
+
+* **control:** name the spawn error on a pool crash-loop pause (JOB-27) ([#737](https://github.com/elee1766/jobshop/issues/737)) ([e1343b4](https://github.com/elee1766/jobshop/commit/e1343b4a6bcbb7c1c4f54e8bc387a9dfe85b1967))
+
+
+### Bug fixes
+
+* **control:** delete a per-session home when the session ends (JOB-28) ([#736](https://github.com/elee1766/jobshop/issues/736)) ([75acaf4](https://github.com/elee1766/jobshop/commit/75acaf46f60ec336721a0e2e8fa84f52bc54ea46))
+* **control:** skip linear issues with a run started during the stall scan (JOB-26) ([#735](https://github.com/elee1766/jobshop/issues/735)) ([1afa680](https://github.com/elee1766/jobshop/commit/1afa6804fbc19f5ab0f8e1b815b5b4a2c07bfd60))
+
 ## [0.1.8](https://github.com/elee1766/jobshop/compare/v0.1.7...v0.1.8) (2026-11-05)
 
 
