@@ -1043,7 +1043,6 @@ func (s *Store) RemoveEdge(ctx context.Context, actor string, e store.Edge) erro
 	})
 }
 
-
 func (s *Store) addLabel(ctx context.Context, q sqlcdb.Querier, id, label string) error {
 	label = strings.TrimSpace(label)
 	if label == "" {
