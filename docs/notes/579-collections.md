@@ -74,53 +74,73 @@ database only differ in which extra indexes exist.
 
 ## API
 
-About 8 methods on a handle, replacing the 26 domain methods:
+The target store interface the operator approved on #579
+(2026-11-05) is the starting point. `Store` keeps 19 methods (tickets,
+claims, resources, `Collection`, `Close`); the 26 Inbox, Learning,
+MemoryEdit, WriteKey, PollCursor and Recall methods become the 9 on
+`Collection`:
 
 ```go
+// Store.Collection returns the handle for a domain bucket, creating its
+// SQLite partial indexes or Postgres partition on first use.
+Collection(ctx context.Context, spec CollectionSpec) (Collection, error)
+
 type Collection interface {
     // Put inserts r, or does nothing if the key (or a Unique field)
-    // exists. It returns the stored record and whether it was new.
-    Put(ctx, r Record) (Record, bool, error)
-    PutBatch(ctx, rs []Record) (fresh int, err error)
-    Get(ctx, key string) (Record, error)            // ErrNotFound
-    GetBy(ctx, field, value string) (Record, error) // a Unique field
-    // Update writes state and value if r.Revision matches the stored
-    // one; else ErrConflict. A non-empty holder must hold the lease, else
-    // ErrNotHolder (the fence the inbox uses today).
-    Update(ctx, r Record, holder string) (Record, error)
-    List(ctx, q Query) ([]Record, error)
-    Claim(ctx, states []string, holder string, lease time.Duration) (Record, error)
-    Renew(ctx, key, holder string, lease time.Duration) (Record, error)
-    Delete(ctx, key string) error
-    Prune(ctx, states []string, before time.Time) (int64, error) // by updated_at
-    Count(ctx, q Query) (map[string]int64, error)                // grouped by state
+    // exists; it returns the stored record and whether it was new.
+    Put(ctx context.Context, r Record) (rec Record, created bool, err error)
+    Get(ctx context.Context, key string) (Record, error) // ErrNotFound
+    // Update writes state, value and holder if r.Revision matches the
+    // stored one, else ErrConflict. A non-empty r.Holder must hold a
+    // live lease, else ErrNotHolder (the inbox fence today).
+    Update(ctx context.Context, r Record) (Record, error)
+    List(ctx context.Context, f RecordFilter) ([]Record, error)
+    Count(ctx context.Context, f RecordFilter) (map[string]int, error) // by state
+    Claim(ctx context.Context, f RecordFilter, holder string, lease time.Duration) (Record, error)
+    Renew(ctx context.Context, key, holder string, lease time.Duration) (Record, error)
+    Delete(ctx context.Context, f RecordFilter) (int, error)
+    Search(ctx context.Context, query string, limit int) ([]Record, error)
 }
 
-type Query struct {
-    States []string
-    Where  map[string]string // indexed field = value
-    Since, Until time.Time   // on created_at
-    Order  string            // "created" (default), "-created", "key", "-key", "updated"
-    Limit  int               // 0 means DefaultLimit
+type RecordFilter struct {
+    Keys          []string          // exact keys; one key is a point delete
+    States        []string
+    Where         map[string]string // indexed or unique field = value
+    Since, Until  time.Time         // created_at window
+    UpdatedBefore time.Time         // prune by age
+    Order         string            // "created" (default), "-created", "key", "-key", "updated"
+    Limit         int               // 0 means DefaultLimit
 }
 ```
 
-`Where` accepts only indexed and unique fields; anything else is
+The earlier sketch's extra methods fold into these:
+
+| Earlier sketch | Approved interface |
+| --- | --- |
+| `PutBatch` | `Put` in a loop inside the caller's batch; inbox drain is the only user and is not hot |
+| `GetBy(field, v)` | `List(RecordFilter{Where: {field: v}, Limit: 1})` |
+| `Delete(key)`, `Prune(states, before)` | `Delete(RecordFilter{Keys: ...})`, `Delete(RecordFilter{States: ..., UpdatedBefore: t})` |
+| `Claim(states, ...)` | `Claim(RecordFilter{States: ..., Where: ...}, ...)` |
+| store-wide `IndexRecall`, `Recall` | the `recall` collection's `Put` and `Search` (see Search) |
+
+`Where` accepts only indexed and unique fields, anything else is
 `ErrInvalid`, so a query never scans a large bucket by accident.
+`Delete` and `Claim` with an empty filter are `ErrInvalid` too.
 
 ## Claim and lease
 
 The same rules as the inbox and ticket claims today:
 
-- `Claim` picks the oldest record (`created_at, key`) whose state is in
-  `states` and that is unleased (`holder = ''` or `lease_until <= now`).
+- `Claim` picks the oldest record (`created_at, key`) matching the
+  filter (its states, plus any indexed fields) that is unleased
+  (`holder = ''` or `lease_until <= now`).
   It takes it with a conditional `UPDATE ... WHERE key = ? AND (holder =
   '' OR lease_until <= now)`. A lost race tries the next row, at most 10
   times, then `ErrConflict`. This is the current `InboxClaim` loop.
 - `Claim` sets holder and lease, bumps `attempts` and `revision`.
 - `Renew` extends a live lease held by holder; otherwise `ErrNotHolder`.
   It does not bump the revision (as ticket heartbeats).
-- `Update` with a holder clears the lease when the new state is not
+- `Update` with r.Holder set clears the lease when the new state is not
   claimable. The domain says which states are claimable by passing them
   to `Claim`; the store does not know.
 - Time comes from the store clock (`s.now()`), so tests use the fake
@@ -200,18 +220,30 @@ queries stay sqlc.
 
 ## Search
 
-Learnings recall uses FTS5 today, fed by triggers on `learnings`. That
-does not fit a generic table with triggers per collection, so:
+Learnings recall uses FTS5 today, fed by triggers on `learnings`, and
+`IndexRecall`/`Recall` are store methods. The approved interface drops
+both from `Store` and gives each collection `Search`:
 
 - `Spec.Search` lists the JSON fields that feed search. On `Put` and on
-  an `Update` that changes those fields, the store writes the existing
-  `recall` index in the same transaction (kind = collection name, ref =
-  key). That is what `IndexRecall` does for session journals now.
-- `Recall` stays one store method, over all kinds, as it is today.
-  Postgres keeps its `tsvector` recall table. No per-partition FTS.
+  an `Update` that changes them, the store writes one FTS row in the
+  same transaction, keyed by (collection, key). SQLite: one FTS5 table
+  `records_fts(collection UNINDEXED, key UNINDEXED, body)`. Postgres: a
+  generated `tsvector` column on the parent with a GIN index declared
+  there, so every partition gets it. `Search` filters on the collection
+  and ranks within it.
+- Recall across kinds (comments, journals, learnings) becomes one
+  `recall` collection. A `RecallDoc` is its record: key `<kind>:<ref>`,
+  `kind`, `project` and `ticket` as indexed fields, `text` searched.
+  `control/recall.go` calls `recall.Put` where it calls `IndexRecall`
+  today, and `recall.Search` where it calls `Recall`, dropping hits
+  of another kind or project in Go (`Search` takes no filter, so it
+  asks for a few times the limit). The learn
+  package puts each learning's summary and
+  fix into `recall` too, so learnings need no triggers and recall keeps
+  one ranking across kinds.
 
-So the only search-specific code is the existing recall table, and
-learnings stop needing triggers.
+So the existing recall table becomes the `recall` collection, and the
+only search code is the FTS table or column behind `Search`.
 
 ## Queries that need more than an index
 
@@ -228,13 +260,14 @@ a created-at window and an order:
 
 No step of the plan needs 3. Inbox `CountOlder` is `Count` with
 `Until`; `Requeue` is `Get` then `Update`; `LearningsByPR` is
-`Where{"pr": ...}`.
+`List(RecordFilter{Where: {"pr": ...}})`.
 
 ## Migration of existing data
 
 One goose migration per domain PR, in plan order: poll_cursors and
-write_keys (empty), memory_edits (22), learnings (339), inbox (3,774).
-Each migration:
+write_keys (empty), memory_edits (22), learnings (339), inbox (3,774),
+then recall (the existing FTS rows, into the `recall` collection and
+`records_fts`). Each migration:
 
 - **Up:** creates the `records` table and the collection's indexes
   (SQLite) or its partition (Postgres)
@@ -244,8 +277,8 @@ Each migration:
   Keys are the old primary key (ids zero padded), `created_at` the old
   created or received time, and the sequence starts at `max(id) + 1`.
   Then it drops the old table, its indexes and its recall triggers. For
-  learnings it re-keys the `recall` rows (`kind = 'learning'`, ref = new
-  key) in the same migration.
+  learnings it re-keys the old recall rows (`kind = 'learning'`, ref =
+  new key) in the same migration, before the recall move.
 - **Down:** recreates the old table and copies back with `json_extract`
   / `->>`. Down is lossless for every field that exists today.
 - **Check:** before merge, run Up, then Down, then Up on an
@@ -257,19 +290,25 @@ migration's DDL must match the registration's. A test asserts that.
 
 ## After
 
-The ticket core keeps tickets, edges, labels, comments, history,
-`ticket_meta`, graph, runs, resources and slots (resources and slots
-join tickets in `Ready`/`ClaimNext`; revisit later). The target is about
-40 methods on `store.Store` plus `Collection(spec)` and `Recall`. The
-final count goes here when step 3 is done.
+The ticket side follows the approved interface in step 3: `List(Filter)`,
+`Thread`, `Apply`, `Update`, `Release(Outcome)`, `Expire`, `Slot` and
+`Resources` replace today's ticket methods, one PR per group, each with
+conformance cases for every filter field and outcome. Target: 19
+methods on `store.Store` plus 9 on `Collection`. The final count goes
+here when step 3 is done.
 
-## Open questions for review
+## Review questions, answered
 
-Status 2026-11-05: the operator has answered none of these yet. This
-note merges only after they are answered here.
+The three questions this note first left open are settled by the
+interface the operator approved on #579 (2026-11-05):
 
-1. String keys with zero-padded ids, versus an integer key column.
-2. Queries built in Go for collections, versus keeping sqlc with one
-   query set per collection.
-3. Recall shared across collections (above), versus a search index per
-   collection.
+1. **Keys: strings.** `Collection.Get(ctx, key string)` and
+   `Renew(ctx, key, ...)` take string keys. Integer ids become zero
+   padded keys, and `Spec.Sequence` mints them.
+2. **Queries built in Go.** `RecordFilter.Where` names indexed fields
+   known only at registration, and the Postgres partition name comes from
+   the spec, so sqlc cannot express them. The Go builder above stays;
+   ticket queries stay sqlc.
+3. **Search per collection.** `Collection.Search` replaces the
+   store-wide `Recall`; cross-kind recall is the `recall` collection
+   (see Search).
