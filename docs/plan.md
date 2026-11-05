@@ -529,8 +529,6 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `ui/desk-plugin.d.ts`, the CSV example and `docs/desk-plugins.md`
   (#542, `docs/notes/542-desk-plugins-part3.md`,
   `docs/verify/desk-plugin-commands.md`).
-- Linear prompts stay in the configured teams: never read or write
-  another team (#565, `docs/notes/565-linear-team-scope.md`).
 
 ## 5. What's next
 
