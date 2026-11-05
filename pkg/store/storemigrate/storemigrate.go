@@ -27,7 +27,6 @@ var Tables = []string{
 	"comments",
 	"learnings",
 	"recall",
-	"memory_edits",
 	"inbox",
 	"resource_caps",
 	"ticket_meta",
@@ -40,12 +39,11 @@ var Tables = []string{
 // identity lists tables whose id column is a Postgres identity; its
 // sequence is moved past the copied ids.
 var identity = map[string]string{
-	"history":      "seq",
-	"comments":     "id",
-	"learnings":    "id",
-	"recall":       "id",
-	"memory_edits": "id",
-	"inbox":        "id",
+	"history":   "seq",
+	"comments":  "id",
+	"learnings": "id",
+	"recall":    "id",
+	"inbox":     "id",
 }
 
 // ErrNotEmpty is returned when the target holds rows and Force is off.

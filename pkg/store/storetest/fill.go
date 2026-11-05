@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -64,7 +65,7 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	require.NoError(t, err)
 	f.Learning = l.ID
 	require.NoError(t, s.IndexRecall(ctx, store.RecallDoc{Kind: store.RecallJournal, Ref: "sess:1", TicketID: f.Task, Project: proj, At: c.T, Body: "journal about nftables"}))
-	_, err = s.AddMemoryWrite(ctx, store.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}})
+	_, err = memedit.AddWrite(ctx, s, store.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}, MergedAt: c.T})
 	require.NoError(t, err)
 	it, _, err := s.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issues", RepoOrTeam: "a/b", Number: 7, ReceivedAt: c.T, Payload: json.RawMessage(`{"x":1}`)})
 	require.NoError(t, err)
@@ -117,7 +118,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	lg, err := s.GetLearning(ctx, f.Learning)
 	require.NoError(t, err)
 	assert.Equal(t, "rerun alone", lg.Fix)
-	me, err := s.MemoryEdits(ctx, "", 0)
+	me, err := memedit.List(ctx, s, "", 0)
 	require.NoError(t, err)
 	require.Len(t, me, 1)
 	assert.Equal(t, "memory/global.md", me[0].Path)
