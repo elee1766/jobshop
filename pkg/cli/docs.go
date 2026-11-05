@@ -18,11 +18,12 @@ var docTopics = []struct {
 }{
 	{"packs", "writing a pack, and the example packs", []string{"docs/packs.md", "packs/"}},
 	{"desk-plugins", "writing a Desk plugin, and the example", []string{"docs/desk-plugins.md", "examples/desk-plugins/"}},
-	{"readme", "overview and running a root", []string{"README.md"}},
+	{"readme", "overview, goals and example flows", []string{"README.md"}},
+	{"llm", "entry point for agents: what to read, the full CLI", []string{"llm/README.md"}},
 }
 
 type docsCmd struct {
-	Topic string `arg:"" optional:"" help:"Topic (packs, desk-plugins, readme). Empty lists topics."`
+	Topic string `arg:"" optional:"" help:"Topic (packs, desk-plugins, readme, llm). Empty lists topics."`
 }
 
 func (c docsCmd) Run() error {

@@ -81,6 +81,11 @@ has `capacity_per_key` slots (default 1) per key. A step whose
 resource is full is not ready, so no session starts for it; the slot
 frees when the step's claim ends.
 
+**Text in files.** Long text can live in files, relative to the file
+that declares it: pool and step `prompt_file`, trigger ticket
+`body_file`, prompt rule `file`. Set the inline field or the file
+field, not both ([notes](notes/382-text-files.md)).
+
 ## A minimal pack
 
 One `work` pool, one prompt and a `change` workflow with `implement` and
