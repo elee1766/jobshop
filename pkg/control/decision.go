@@ -111,7 +111,7 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 	}
 	// The ticket may be held (the planner parked it while holding, or a
 	// session works it): close it as admin, its holder loses the claim.
-	closed, err := c.store.CloseTicket(ctx, who, t.ID, nil, resolution)
+	closed, err := store.Close(ctx, c.store, who, t.ID, nil, resolution)
 	if err != nil {
 		return nil, err
 	}

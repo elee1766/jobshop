@@ -159,7 +159,7 @@ func TestIntakeDeny(t *testing.T) {
 			items, err = c.attentionItems(t.Context())
 			require.NoError(t, err)
 			require.Len(t, items, 1)
-			_, err = c.store.CloseTicket(t.Context(), "admin", items[0].ID, nil, "done")
+			_, err = store.Close(t.Context(), c.store, "admin", items[0].ID, nil, "done")
 			require.NoError(t, err)
 			require.NoError(t, startLinearRun(t, c))
 			assert.Equal(t, 1, runCount(t, c))

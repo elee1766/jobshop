@@ -369,7 +369,7 @@ func (c *Controller) artifactAck(ctx context.Context, sc scope, p rpc.ArtifactAc
 			return nil, err
 		}
 	}
-	if t, err = c.store.CloseTicket(ctx, sc.actor, t.ID, nil, resolutionAcknowledged); err != nil {
+	if t, err = store.Close(ctx, c.store, sc.actor, t.ID, nil, resolutionAcknowledged); err != nil {
 		return nil, err
 	}
 	return toArtifact(t, am), nil

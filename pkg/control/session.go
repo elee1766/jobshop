@@ -404,7 +404,7 @@ func (r *runner) finish(resolution, reason string) {
 	}
 	r.c.metrics.SessionsEnded.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
 		telemetry.AttrResolution.String(resolution)))
-	if _, err := r.c.store.CloseTicket(ctx, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
+	if _, err := store.Close(ctx, r.c.store, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
 		r.log.Error("close session ticket", "err", err)
 	} else if err == nil {
 		r.c.metrics.Closes.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
@@ -1159,7 +1159,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		if repeat {
 			release = time.Time{}
 		}
-		if _, err := r.c.store.Release(ctx, cl, unclosedReason, release); err != nil {
+		if _, err := r.c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: unclosedReason, Until: release}); err != nil {
 			continue
 		}
 		r.unclosed++

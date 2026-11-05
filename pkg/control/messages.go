@@ -55,7 +55,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 		if err != nil {
 			continue // another session took it
 		}
-		if _, err := r.c.store.CloseTicket(ctx, "controller", t.ID, &cl, resolutionDelivered); err != nil && !errors.Is(err, store.ErrClosed) {
+		if _, err := store.Close(ctx, r.c.store, "controller", t.ID, &cl, resolutionDelivered); err != nil && !errors.Is(err, store.ErrClosed) {
 			r.log.Warn("close delivered message", "message", t.ID, "err", err)
 			continue
 		}

@@ -53,7 +53,7 @@ func (c *Controller) stopAll() {
 	for _, t := range open {
 		wg.Go(func() {
 			c.stopRunner(t.ID)
-			if t2, err := c.store.CloseTicket(ctx, "controller", t.ID, nil, "shutdown"); err != nil {
+			if t2, err := store.Close(ctx, c.store, "controller", t.ID, nil, "shutdown"); err != nil {
 				c.log.Error("shutdown: close session", "session", t.ID, "err", err)
 			} else {
 				c.countClose(ctx, t2)

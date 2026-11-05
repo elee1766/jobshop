@@ -307,7 +307,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 			p.Resolution = res
 		}
 	}
-	t, err := c.store.CloseTicket(ctx, sc.actor, id, cl, p.Resolution)
+	t, err := store.Close(ctx, c.store, sc.actor, id, cl, p.Resolution)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +334,7 @@ func (c *Controller) endSession(ctx context.Context, id, reason string) {
 	if t, err := c.store.Get(ctx, id); err == nil {
 		c.removeWorktree(t, "endSession: "+reason)
 	}
-	released, err := c.store.ReleaseHolder(ctx, "controller", id, reason)
+	released, err := c.store.Expire(ctx, "controller", id, reason)
 	if err != nil {
 		c.log.Error("release session claims", "session", id, "err", err)
 		return
@@ -428,7 +428,7 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 				// after the pick. A refused pick is deferred, not failed,
 				// so the next claim moves on to other work.
 				until := c.now().Add(claimDenyDefer)
-				if _, rerr := c.store.Release(ctx, r.Claim, herr.Error(), until); rerr != nil {
+				if _, rerr := c.store.Release(ctx, "", r.Claim.TicketID, &r.Claim, store.Outcome{Reason: herr.Error(), Until: until}); rerr != nil {
 					c.log.ErrorContext(ctx, "release after claim hook", "ticket", r.Ticket.ID, "err", rerr)
 				}
 				return nil, herr
@@ -489,7 +489,7 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 		}
 		until = *p.Until
 	}
-	t, err := c.store.Release(ctx, cl, p.Reason, until)
+	t, err := c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: p.Reason, Until: until})
 	if err != nil {
 		return nil, err
 	}
@@ -523,7 +523,7 @@ func (c *Controller) handoff(ctx context.Context, sc scope, p rpc.HandoffParams)
 		}
 		cl = &h
 	}
-	t, err := c.store.Handoff(ctx, sc.actor, id, cl, p.Pool, p.Note)
+	t, err := c.store.Release(ctx, sc.actor, id, cl, store.Outcome{Pool: p.Pool, Note: p.Note})
 	if err != nil {
 		return nil, err
 	}

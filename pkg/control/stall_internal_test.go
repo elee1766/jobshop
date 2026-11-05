@@ -153,12 +153,12 @@ func TestStallReadyUnclaimedSinceUnblock(t *testing.T) {
 	}
 	// Blocker closed 2h ago: the step is stalled.
 	old, ob := blocked()
-	_, err := c.store.CloseTicket(ctx, "admin", ob.ID, nil, "done")
+	_, err := store.Close(ctx, c.store, "admin", ob.ID, nil, "done")
 	require.NoError(t, err)
 	// Created 2h ago, blocker closes 1m ago: not stalled.
 	fresh, fb := blocked()
 	clk.advance(2*time.Hour - time.Minute)
-	_, err = c.store.CloseTicket(ctx, "admin", fb.ID, nil, "done")
+	_, err = store.Close(ctx, c.store, "admin", fb.ID, nil, "done")
 	require.NoError(t, err)
 	clk.advance(time.Minute)
 	keys := stallKeys(t, c)
@@ -210,7 +210,7 @@ func TestStallNeedsHumanAndBlocked(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.setRunState(t.Context(), "controller", run, f, store.RunNeedsHuman, "")
 	require.NoError(t, err)
-	_, err = c.store.CloseTicket(t.Context(), "admin", res.(rpc.RunResult).Steps[0].ID, nil, "failed")
+	_, err = store.Close(t.Context(), c.store, "admin", res.(rpc.RunResult).Steps[0].ID, nil, "failed")
 	require.NoError(t, err)
 	// An escalation ticket is covered by its run.
 	mkTicket(t, c, store.NewTicket{Title: "Escalate", Labels: []string{"needs-human"}, Meta: json.RawMessage(`{"run":{"id":"` + run.ID + `"}}`)})
@@ -277,7 +277,7 @@ func TestStallFire(t *testing.T) {
 	assert.Len(t, runs(), 1, "open run holds the key")
 
 	closeRun := func() {
-		_, err := c.store.CloseTicket(t.Context(), "admin", steps[0].ID, nil, "done")
+		_, err := store.Close(t.Context(), c.store, "admin", steps[0].ID, nil, "done")
 		require.NoError(t, err)
 		c.completeRun(t.Context(), rs[0].ID)
 	}

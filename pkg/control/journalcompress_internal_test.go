@@ -76,10 +76,10 @@ func TestJournalCompressSweep(t *testing.T) {
 		return s
 	}
 	old, newer, open := mk(), mk(), mk()
-	_, err = c.store.CloseTicket(ctx, "controller", old.ID, nil, "done")
+	_, err = store.Close(ctx, c.store, "controller", old.ID, nil, "done")
 	require.NoError(t, err)
 	clk.advance(23 * time.Hour)
-	_, err = c.store.CloseTicket(ctx, "controller", newer.ID, nil, "done")
+	_, err = store.Close(ctx, c.store, "controller", newer.ID, nil, "done")
 	require.NoError(t, err)
 	clk.advance(2 * time.Hour)
 
@@ -149,7 +149,7 @@ func TestJournalCompressOff(t *testing.T) {
 	c, clk, _ := stallControllerYAML(t, journalYAML)
 	s := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	writeJournal(t, c, s.ID, 3)
-	_, err := c.store.CloseTicket(t.Context(), "controller", s.ID, nil, "done")
+	_, err := store.Close(t.Context(), c.store, "controller", s.ID, nil, "done")
 	require.NoError(t, err)
 	clk.advance(1000 * time.Hour)
 	c.maybeCompressJournals()
