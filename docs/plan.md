@@ -497,6 +497,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Desk under a path prefix: `--base-path`, `X-Forwarded-Prefix` from a
   `--trusted-proxy`, relative build with a runtime `<base href>`,
   `services.jobshop.desk.basePath` (#516, `docs/notes/516-desk-base-path.md`).
+- Learning kinds are config (`learnings.kinds`, globs, packs append);
+  `when.learnings` filters by kinds, scope and source; selfdev's curate
+  counts only its repo and pools (#524, `docs/notes/524-learning-kinds.md`).
 
 ## 5. What's next
 
@@ -656,7 +659,8 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
-proxy header (#515), artifacts (#508), Desk under a path prefix (#516).
+proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
+configurable learning kinds (#524).
 Next: turn on `desk.userHeader` on gasserver.
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
@@ -1346,6 +1350,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-05, #508). Read state, history and live updates come from
   tickets for free; only the files need storage, and the controller
   copies them because sessions cannot write there from the sandbox.
+- Learning kinds and the curate trigger's filters are config, with
+  globs (2026-11-05, #524): an improvement pack per repo needs its own
+  kinds (friction, blocker) and its own count, and one instance's
+  learnings should not start another's curator.
 
 ## 7. Reference: behavior as built
 
@@ -1408,6 +1416,7 @@ moved from the old 7.x list, oldest first:
 - [issue_no_run skips proposed](notes/506-issue-no-run-proposed.md) (#506)
 - [pr_unmerged skips operator and hold PRs](notes/509-pr-unmerged-skip.md) (#509)
 - [Desk under a path prefix](notes/516-desk-base-path.md) (#516)
+- [Learning kinds and trigger filters](notes/524-learning-kinds.md) (#524)
 
 ## 8. Chat gateway
 

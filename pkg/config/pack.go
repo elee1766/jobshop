@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -56,6 +57,8 @@ type packFile struct {
 	PromptRules []PromptRule        `yaml:"prompt_rules"`
 	Hooks       []Hook              `yaml:"hooks"`
 	Escalation  *EscalationChat     `yaml:"escalation"`
+	// Learnings.Kinds are appended to the host's (#524).
+	Learnings *LearningsConfig `yaml:"learnings"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -495,6 +498,27 @@ func mergeInto(dst, src map[string]any, file string, sources map[string][]string
 			hooks, _ := v.([]any)
 			old, _ := dst[k].([]any)
 			dst[k] = append(slices.Clone(old), hooks...)
+			continue
+		}
+		if k == "learnings" {
+			// learnings.kinds is appended like prompt_rules: a pack adds
+			// the kinds it records (#524). Other keys replace.
+			sm, _ := v.(map[string]any)
+			dm, _ := dst[k].(map[string]any)
+			out := maps.Clone(dm)
+			if out == nil {
+				out = map[string]any{}
+			}
+			for sk, sv := range sm {
+				if sk == "kinds" {
+					add, _ := sv.([]any)
+					old, _ := out[sk].([]any)
+					out[sk] = append(slices.Clone(old), add...)
+					continue
+				}
+				out[sk] = sv
+			}
+			dst[k] = out
 			continue
 		}
 		if k == "prompt_rules" {

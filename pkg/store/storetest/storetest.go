@@ -65,6 +65,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ConcurrentClaims", testConcurrentClaims},
 		{"ConcurrentResourceClaims", testConcurrentResourceClaims},
 		{"ClaimAfterSkippedBlocker", testClaimAfterSkippedBlocker},
+		{"CountLearnings", testCountLearnings},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -738,6 +738,13 @@ triggers:
       learnings:
         min: 10
         every: 24h
+        scope:
+        - repo:elee1766/jobshop
+        - pool:dev
+        - pool:plan
+        - pool:refinery
+        - pool:deploy-check
+        - pool:learn
       edits: null
     ticket: null
     run:

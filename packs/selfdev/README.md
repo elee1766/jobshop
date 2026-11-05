@@ -25,6 +25,7 @@ Jobshop's values, through `extends:` in `pack.yaml`:
 | `learn_sessions` | `max_sessions` for the curator's `learn` pool. Default 1 |
 | `curate_min_learnings` | Open learnings since the last pass that start a `curate` run. Default 10 |
 | `curate_every` | Start a pass after this long when at least one learning is open. Default 24h |
+| `curate_scope` | Learning scope globs the curate trigger counts (#524). Default this repo and its pools, so other instances' learnings do not start it |
 
 ```yaml
 packs:

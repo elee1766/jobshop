@@ -347,9 +347,9 @@ type Store interface {
 	UpdateLearning(ctx context.Context, id int64, status, pr string) (Learning, error)
 	// GetLearning reads one learning; ErrNotFound if missing.
 	GetLearning(ctx context.Context, id int64) (Learning, error)
-	// CountLearnings counts learnings created at or after since with
-	// status (empty: any).
-	CountLearnings(ctx context.Context, since time.Time, status string) (int, error)
+	// CountLearnings counts learnings created at or after since that match f
+	// (#524).
+	CountLearnings(ctx context.Context, since time.Time, f LearningCount) (int, error)
 	// LearningsBetween returns learnings recorded in [since, until),
 	// oldest first (#274).
 	LearningsBetween(ctx context.Context, since, until time.Time) ([]Learning, error)
@@ -433,7 +433,9 @@ const (
 	LearningRejected = "rejected"
 )
 
-// LearningKinds lists the valid learning kinds.
+// LearningKinds are the default learning kinds, used when the config
+// sets no learnings.kinds (#524). The controller's own learnings use
+// correction and failure and are always allowed.
 var LearningKinds = []string{LearningCorrection, LearningFailure, LearningWorkaround}
 
 // Learning is a correction, failure or workaround recorded for the curator.

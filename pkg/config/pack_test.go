@@ -240,7 +240,9 @@ packs:
 	assert.Equal(t, "curate", ct.Run.Workflow)
 	assert.Equal(t, "curate", ct.Run.Key)
 	require.NotNil(t, ct.When.Learnings)
-	assert.Equal(t, LearningsWhen{Min: 10, Every: "24h"}, *ct.When.Learnings)
+	assert.Equal(t, LearningsWhen{Min: 10, Every: "24h", Scope: []string{
+		"repo:elee1766/jobshop", "pool:dev", "pool:plan", "pool:refinery", "pool:deploy-check", "pool:learn",
+	}}, *ct.When.Learnings, "other instances' learnings do not start this curator (#524)")
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
 }
 
@@ -801,4 +803,41 @@ func assertPRUnmergedFilter(t *testing.T, check string) {
 	out, err := cmd.Output()
 	require.NoError(t, err)
 	assert.Equal(t, "1 green, unmerged since 2020-01-01T00:00:00Z\n4 green, unmerged since 2020-01-01T00:00:00Z\n", string(out))
+}
+
+// TestLearningKindsConfig: learnings.kinds (#524) defaults to the three
+// built-in kinds, packs append to the host's list, and a pattern that can
+// match no kind is a load error.
+func TestLearningKindsConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"correction", "failure", "workaround"}, c.LearningKinds(), "default unchanged")
+
+	writeFiles(t, dir, map[string]string{
+		"p/pack.yaml":  "learnings:\n  kinds: [blocker]\n",
+		"jobshop.yaml": hostBase + "packs:\n  - path: p\nlearnings:\n  kinds: [friction, \"review-*\"]\n",
+	})
+	c, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"blocker", "friction", "review-*"}, c.LearningKinds())
+
+	for _, bad := range []string{"Friction", "a/b", "["} {
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "learnings:\n  kinds: [\"" + bad + "\"]\n"})
+		_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.ErrorContains(t, err, "learnings.kinds", bad)
+	}
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + `workflows:
+  w:
+    steps: [{id: s, pool: dev, title: t, prompt: p}]
+pools:
+  dev: {agent: a, dir: /tmp}
+triggers:
+  t:
+    when: {learnings: {min: 1, source: human}}
+    run: {workflow: w}
+`})
+	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.ErrorContains(t, err, "learnings.source")
 }
