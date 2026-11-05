@@ -63,12 +63,7 @@ webhook ([generic ingest](docs/ingest.md#generic-endpoints)) that files a
 triage ticket into an on-call pool.
 
 ## Quick start
-
-Linux binaries (amd64, arm64) are on
-[Releases](https://github.com/elee1766/jobshop/releases), or with Nix:
-`nix run github:elee1766/jobshop/v<version>`. Versions are 0.x.y and
-come from conventional-commit PR titles ([notes](docs/notes/644-release.md)).
-
+Linux binaries are on [Releases](https://github.com/elee1766/jobshop/releases), or `nix run github:elee1766/jobshop/v<version>` ([notes](docs/notes/644-release.md)).
 ```
 nix build .#jobshop
 jobshop init ./root          # writes root/jobshop.yaml
