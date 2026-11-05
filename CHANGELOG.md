@@ -1,12 +1,5 @@
 # Changelog
 
-## [0.1.0](https://github.com/elee1766/jobshop/compare/v0.1.0...v0.1.0) (2026-11-05)
-
-
-### Features
-
-* **packs/github:** route release-please prs to refinery with a trigger ([#698](https://github.com/elee1766/jobshop/issues/698)) ([#699](https://github.com/elee1766/jobshop/issues/699)) ([49734d2](https://github.com/elee1766/jobshop/commit/49734d2c0744cf907ed0fb5bd1ab7b072c0da66d))
-
 ## 0.1.0 (2026-11-05)
 
 

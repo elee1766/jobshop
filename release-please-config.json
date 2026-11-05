@@ -1,11 +1,9 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "bootstrap-sha": "c0e6e0c5478f50355886138aee2b0141b546c75f",
   "packages": {
     ".": {
       "release-type": "simple",
       "package-name": "jobshop",
-      "release-as": "0.1.0",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "include-component-in-tag": false,
