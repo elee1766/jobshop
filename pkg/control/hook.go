@@ -138,7 +138,7 @@ func (c *Controller) guard(ctx context.Context, sc scope, p rpc.GuardParams) (an
 
 // askedHuman returns the answer of an earlier ask_human ticket for key.
 func (c *Controller) askedHuman(ctx context.Context, key string) (rpc.GuardResult, bool) {
-	seen, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Newest: true, Limit: 1})
+	seen, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Order: store.OrderNewest, Limit: 1})
 	if err != nil || len(seen) == 0 {
 		return rpc.GuardResult{}, false
 	}

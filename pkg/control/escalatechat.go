@@ -100,7 +100,7 @@ func (c *Controller) causeOf(ctx context.Context, t store.Ticket) escCause {
 			kind: causeRun, run: metaString(t.Meta, runMetaPack, "id"), workflow: metaString(t.Meta, runMetaPack, "workflow"),
 			issueRef: issueRef(t), reason: "a step failed at its retry limit",
 		}
-		if steps, err := c.store.ListChildren(ctx, x.run); err == nil {
+		if steps, err := store.Children(ctx, c.store, x.run); err == nil {
 			for i := len(steps) - 1; i >= 0; i-- {
 				if !exhaustedStep(steps[i]) {
 					continue
@@ -434,7 +434,7 @@ func (c *Controller) sweepEscalationChats(ctx context.Context) {
 		}
 	}
 	// Recently closed escalations that still owe a final message.
-	ts, err := c.store.List(ctx, store.Filter{Label: needsHumanLabel, Status: store.StatusClosed, Newest: true, Limit: 50})
+	ts, err := c.store.List(ctx, store.Filter{Label: needsHumanLabel, Status: store.StatusClosed, Order: store.OrderNewest, Limit: 50})
 	if err != nil {
 		return
 	}

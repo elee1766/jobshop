@@ -1765,7 +1765,7 @@ func (c *Controller) recordGauges() {
 	c.recordInboxGauges(ctx)
 	for name, p := range c.config().Pools {
 		// Ready is capped by the store's default limit; enough for a gauge.
-		if ready, err := c.store.Ready(ctx, p.Project, name, 0); err == nil {
+		if ready, err := c.store.List(ctx, store.Filter{Project: p.Project, Pool: name, Ready: true}); err == nil {
 			c.metrics.Ready.Record(ctx, int64(len(ready)), metric.WithAttributes(
 				telemetry.AttrProject.String(p.Project), telemetry.AttrPool.String(name)))
 		}

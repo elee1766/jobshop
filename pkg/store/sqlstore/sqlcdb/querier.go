@@ -6,7 +6,6 @@ package sqlcdb
 
 import (
 	"context"
-	"database/sql"
 )
 
 type Querier interface {
@@ -37,12 +36,6 @@ type Querier interface {
 	// whose holder just renewed.
 	ExpireWriteTicket(ctx context.Context, arg ExpireWriteTicketParams) (int64, error)
 	ExpiredLeases(ctx context.Context, now int64) ([]string, error)
-	// FindOpenBatchByKey: at most one open batch per project and key (the
-	// controller serializes starts).
-	FindOpenBatchByKey(ctx context.Context, arg FindOpenBatchByKeyParams) (Ticket, error)
-	// FindOpenRunByKey uses tickets_run_key; at most one open run per
-	// workflow and key (the controller serializes starts).
-	FindOpenRunByKey(ctx context.Context, arg FindOpenRunByKeyParams) (Ticket, error)
 	GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error)
 	GetTicket(ctx context.Context, id string) (Ticket, error)
 	// Heartbeat renews a lease without a revision bump or history row.
@@ -60,46 +53,19 @@ type Querier interface {
 	LabelsFor(ctx context.Context, ids []string) ([]Label, error)
 	LastSeq(ctx context.Context) (int64, error)
 	ListChanges(ctx context.Context, arg ListChangesParams) ([]History, error)
-	ListChildren(ctx context.Context, parentID sql.NullString) ([]Ticket, error)
 	ListComments(ctx context.Context, ticketID string) ([]Comment, error)
 	ListEdges(ctx context.Context, id string) ([]Edge, error)
 	ListHistory(ctx context.Context, ticketID string) ([]History, error)
-	ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, error)
 	ListSlots(ctx context.Context) ([]ResourceSlot, error)
-	// Curator gate reads (#274). Memory edits and learnings moved to store
-	// collections (#579, pkg/memedit, pkg/learning).
-	ListStepsCreated(ctx context.Context, arg ListStepsCreatedParams) ([]Ticket, error)
-	// LIMIT CAST(? AS INTEGER), here and in every query with a bound limit:
-	// a bare bound LIMIT makes SQLite re-prepare a cached statement each
-	// time the value changes, which was a fifth of the control tests' CPU
-	// (#433). The expression is evaluated at run time instead.
-	//
-	// A NULL argument turns its filter off. meta_pack/key/value 1-3 are up
-	// to store.MaxMetaFilters meta matches, all required; workflow and
-	// state match the f_ columns; since bounds updated_at; after is a
-	// cursor, the id of the last ticket of the previous page (#541).
-	ListTickets(ctx context.Context, arg ListTicketsParams) ([]Ticket, error)
-	// ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
-	// engine does not bind parameters in ORDER BY, so it is a second query.
-	ListTicketsNewest(ctx context.Context, arg ListTicketsNewestParams) ([]Ticket, error)
 	// MarkSlotsReleasing moves held slots whose claim ended (the ticket is
 	// not in progress, or was claimed again with a new fence) to releasing.
 	MarkSlotsReleasing(ctx context.Context, updatedAt int64) error
-	// Three tiers: my in-progress work, tickets pre-assigned to me, the pool queue.
-	NextClaimCandidate(ctx context.Context, arg NextClaimCandidateParams) (Ticket, error)
-	// OrphanedTickets is open, unclaimed claimable work no pool will pick up:
-	// no pool, or a pool name not in known (the loaded config).
-	// Parameters after a sqlc.slice are bare ?: sqlc numbers named ones ?N
-	// from the unexpanded query, so they would point into the list.
-	OrphanedTickets(ctx context.Context, arg OrphanedTicketsParams) ([]Ticket, error)
 	// ProviderDemand is the waiting side of a provider's demand (#407): open
 	// tickets naming it and the oldest one's created_at.
 	ProviderDemand(ctx context.Context, pool string) (ProviderDemandRow, error)
 	// ProviderEmpty reports whether ticket id needs a provider resource with
 	// no ready slot (#407), for Claim by id. Same rule as ReadyTickets.
 	ProviderEmpty(ctx context.Context, id string) (int64, error)
-	// Parameters are bare ? (see OrphanedTickets).
-	ReadyTickets(ctx context.Context, arg ReadyTicketsParams) ([]Ticket, error)
 	RecallDelete(ctx context.Context, arg RecallDeleteParams) error
 	RecallInsert(ctx context.Context, arg RecallInsertParams) error
 	RecallSearch(ctx context.Context, arg RecallSearchParams) ([]RecallSearchRow, error)

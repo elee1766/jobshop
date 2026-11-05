@@ -79,7 +79,7 @@ func (c *Controller) runAutoSteps() {
 		return
 	}
 	for proj := range cfg.Projects {
-		ready, err := c.store.Ready(ctx, proj, "", 0)
+		ready, err := c.store.List(ctx, store.Filter{Project: proj, Ready: true})
 		if err != nil {
 			continue
 		}
@@ -289,7 +289,7 @@ func (c *Controller) autoStepVars(ctx context.Context, sf store.StepFields) (ste
 	for k, v := range rf.Vars {
 		st.vars[k] = v
 	}
-	steps, err := c.store.ListChildren(ctx, sf.Run)
+	steps, err := store.Children(ctx, c.store, sf.Run)
 	if err != nil {
 		return st, err
 	}

@@ -185,10 +185,22 @@ type Update struct {
 
 // Filter selects tickets for List. Zero values match everything.
 type Filter struct {
-	Project  string
-	Kind     Kind
+	Project string
+	// Kind and Kinds match any of the kinds named.
+	Kind  Kind
+	Kinds []Kind
+	// Status and Statuses match any of the statuses named.
 	Status   Status
+	Statuses []Status
 	Pool     string
+	// PoolNotIn keeps tickets with no pool or a pool not in the list.
+	PoolNotIn []string
+	// Unheld keeps tickets with no holder.
+	Unheld bool
+	// Ready keeps open, unblocked, non-deferred, non-waiting tickets
+	// whose resources have a free slot: the rule ClaimNext uses. With no
+	// Kind it means the claimable kinds.
+	Ready    bool
 	Holder   string
 	ParentID string
 	Label    string
@@ -201,17 +213,38 @@ type Filter struct {
 	// Meta adds more meta matches, all required (#541). With MetaPack
 	// at most MaxMetaFilters in total.
 	Meta []MetaMatch
-	// Workflow and State match fields.workflow and fields.state.
-	Workflow, State string
+	// Key, Workflow and State match fields.key, fields.workflow and
+	// fields.state.
+	Key, Workflow, State string
 	// Since keeps tickets updated at or after it.
 	Since time.Time
+	// Created keeps tickets created in the range.
+	Created *TimeRange
 	// After is a cursor: the id of the last ticket of the previous page,
-	// in the same order.
+	// in the same order. OrderIndex has none.
 	After string
-	// Newest orders newest first instead of by priority.
-	Newest bool
-	Limit  int // 0 means DefaultLimit
+	// Order is one of the Order constants; empty is OrderPriority.
+	Order Order
+	// Limit 0 means DefaultLimit; NoLimit means none.
+	Limit int
 }
+
+// TimeRange is [Since, Until); a zero end is open.
+type TimeRange struct{ Since, Until time.Time }
+
+// Order is a List order.
+type Order string
+
+// List orders. Each ends with id, so a cursor is exact.
+const (
+	OrderPriority Order = "priority" // priority, then oldest
+	OrderNewest   Order = "newest"   // created_at descending
+	OrderOldest   Order = "oldest"   // created_at ascending
+	OrderIndex    Order = "index"    // fields.index, then oldest (a run's steps)
+)
+
+// NoLimit as Filter.Limit returns every match.
+const NoLimit = -1
 
 // MetaMatch is one meta[Pack][Key] == Value condition.
 type MetaMatch struct{ Pack, Key, Value string }
@@ -219,7 +252,7 @@ type MetaMatch struct{ Pack, Key, Value string }
 // MaxMetaFilters bounds the meta matches in one List.
 const MaxMetaFilters = 3
 
-// DefaultLimit bounds List and Ready when no limit is given.
+// DefaultLimit bounds List when no limit is given.
 const DefaultLimit = 500
 
 // ClaimNext describes a claim-next request (the hook).
@@ -248,13 +281,13 @@ var (
 type Store interface {
 	Create(ctx context.Context, actor string, t NewTicket) (Ticket, error)
 	Get(ctx context.Context, id string) (Ticket, error)
+	// List returns tickets matching f. It replaces the per-shape reads:
+	// ready, orphaned, children, runs, by key, by creation time (#579).
 	List(ctx context.Context, f Filter) ([]Ticket, error)
 	Update(ctx context.Context, actor, id string, u Update) (Ticket, error)
 
-	// Ready returns open, unblocked, non-deferred claimable tickets.
-	Ready(ctx context.Context, project, pool string, limit int) ([]Ticket, error)
 	// SetResourceCaps replaces the resource capacities (name -> slots)
-	// that gate Ready and ClaimNext (#400).
+	// that gate List(Filter{Ready: true}) and ClaimNext (#400).
 	SetResourceCaps(ctx context.Context, caps map[string]int) error
 	// Resources reports each resource key in use or waited on.
 	Resources(ctx context.Context) ([]ResourceUse, error)
@@ -285,10 +318,6 @@ type Store interface {
 	SlotReset(ctx context.Context, pool, id string, ok bool) error
 	// SlotDemand reports a provider resource's waiting and slot counts.
 	SlotDemand(ctx context.Context, pool string) (SlotDemand, error)
-	// Orphaned returns open, unclaimed claimable tickets whose pool is
-	// empty or not in pools, so no session will ever claim them. Empty
-	// project means every project.
-	Orphaned(ctx context.Context, project string, pools []string, limit int) ([]Ticket, error)
 
 	// ClaimNext atomically claims the next ticket: the holder's in-progress
 	// work, then tickets pre-assigned to it, then the pool queue.
@@ -346,21 +375,6 @@ type Store interface {
 	// and edges before CreateGraph.
 	NewID(project string) (string, error)
 
-	// ListChildren returns tickets whose parent is id, ordered by
-	// fields.index then age (a run's steps in order).
-	ListChildren(ctx context.Context, id string) ([]Ticket, error)
-	// FindOpenRunByKey returns the open run of workflow with key, or
-	// ErrNotFound.
-	FindOpenRunByKey(ctx context.Context, workflow, key string) (Ticket, error)
-	// FindOpenBatchByKey returns the open batch of project with key, or
-	// ErrNotFound.
-	FindOpenBatchByKey(ctx context.Context, project, key string) (Ticket, error)
-	// ListRuns returns runs newest first. Empty project or state matches all.
-	ListRuns(ctx context.Context, project, state string, limit int) ([]Ticket, error)
-
-	// StepsCreated returns step tickets created in [since, until),
-	// oldest first (#274).
-	StepsCreated(ctx context.Context, since, until time.Time) ([]Ticket, error)
 	// IndexRecall adds or replaces (by kind and ref) one document in the
 	// recall index. Comments are indexed by the backend itself.
 	IndexRecall(ctx context.Context, d RecallDoc) error

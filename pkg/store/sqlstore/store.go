@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nullism/bqb"
+
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
@@ -55,6 +57,12 @@ type Driver struct {
 	// Collection opens store collections (#579). Nil means the backend
 	// has none.
 	Collection CollectionOpener
+	// Render turns a query built in Go into the engine's text and
+	// arguments. Nil means ? placeholders (bqb ToSql).
+	Render func(q *bqb.Query) (string, []any, error)
+	// Conn wraps a database or transaction for queries built in Go, as
+	// Bind does for sqlc's (a statement cache). Nil means use it as is.
+	Conn func(sqlcdb.DBTX) sqlcdb.DBTX
 }
 
 // Store is the backend-neutral ticket store over a Driver. Claims and
@@ -487,22 +495,6 @@ func (s *Store) ApplyGraph(ctx context.Context, actor string, g store.Graph) (ou
 	return out, err
 }
 
-// FindOpenBatchByKey returns the open batch of project with key.
-func (s *Store) FindOpenBatchByKey(ctx context.Context, project, key string) (store.Ticket, error) {
-	row, err := s.q.FindOpenBatchByKey(ctx, sqlcdb.FindOpenBatchByKeyParams{Project: project, Key: nstr(key)})
-	if errors.Is(err, sql.ErrNoRows) {
-		return store.Ticket{}, fmt.Errorf("%w: open batch %s key %q", store.ErrNotFound, project, key)
-	}
-	if err != nil {
-		return store.Ticket{}, err
-	}
-	ts, err := s.withLabels(ctx, s.q, toTickets([]sqlcdb.Ticket{row}))
-	if err != nil {
-		return store.Ticket{}, err
-	}
-	return ts[0], nil
-}
-
 // NewID mints an id with the project's prefix.
 func (s *Store) NewID(project string) (string, error) {
 	return s.ids.Next(s.prefix(project), "")
@@ -517,99 +509,11 @@ func idTag(k store.Kind) string {
 	return ""
 }
 
-// ListChildren returns id's children ordered by fields.index.
-func (s *Store) ListChildren(ctx context.Context, id string) ([]store.Ticket, error) {
-	rows, err := s.q.ListChildren(ctx, sql.NullString{String: id, Valid: true})
-	if err != nil {
-		return nil, err
-	}
-	return s.withLabels(ctx, s.q, toTickets(rows))
-}
-
-// FindOpenRunByKey returns the open run of workflow with key.
-func (s *Store) FindOpenRunByKey(ctx context.Context, workflow, key string) (store.Ticket, error) {
-	row, err := s.q.FindOpenRunByKey(ctx, sqlcdb.FindOpenRunByKeyParams{Key: nstr(key), Workflow: nstr(workflow)})
-	if errors.Is(err, sql.ErrNoRows) {
-		return store.Ticket{}, fmt.Errorf("%w: open run %s key %q", store.ErrNotFound, workflow, key)
-	}
-	if err != nil {
-		return store.Ticket{}, err
-	}
-	ts, err := s.withLabels(ctx, s.q, toTickets([]sqlcdb.Ticket{row}))
-	if err != nil {
-		return store.Ticket{}, err
-	}
-	return ts[0], nil
-}
-
-// ListRuns returns runs newest first.
-func (s *Store) ListRuns(ctx context.Context, project, state string, n int) ([]store.Ticket, error) {
-	rows, err := s.q.ListRuns(ctx, sqlcdb.ListRunsParams{Project: narg(project), State: narg(state), MaxRows: limit(n)})
-	if err != nil {
-		return nil, err
-	}
-	return s.withLabels(ctx, s.q, toTickets(rows))
-}
-
 func limit(n int) int64 {
 	if n <= 0 {
 		return store.DefaultLimit
 	}
 	return int64(n)
-}
-
-func nstr(s string) sql.NullString { return sql.NullString{String: s, Valid: true} }
-
-func narg(s string) any {
-	if s == "" {
-		return nil
-	}
-	return s
-}
-
-// List returns tickets matching f ordered by priority then age.
-func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
-	metas := f.Meta
-	if f.MetaPack != "" && f.MetaKey != "" {
-		metas = append([]store.MetaMatch{{Pack: f.MetaPack, Key: f.MetaKey, Value: f.MetaValue}}, metas...)
-	}
-	if len(metas) > store.MaxMetaFilters {
-		return nil, fmt.Errorf("%w: at most %d meta filters", store.ErrInvalid, store.MaxMetaFilters)
-	}
-	var mp [store.MaxMetaFilters]any
-	var mk, mv [store.MaxMetaFilters]sql.NullString
-	for i, m := range metas {
-		mp[i] = m.Pack
-		mk[i] = sql.NullString{String: m.Key, Valid: true}
-		mv[i] = sql.NullString{String: m.Value, Valid: true}
-	}
-	var since int64
-	if !f.Since.IsZero() {
-		since = ms(f.Since)
-	}
-	var rows []sqlcdb.Ticket
-	var err error
-	if f.Newest {
-		rows, err = s.q.ListTicketsNewest(ctx, sqlcdb.ListTicketsNewestParams{
-			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
-			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
-			Workflow: narg(f.Workflow), State: narg(f.State), Since: since, Label: narg(f.Label),
-			MetaPack: mp[0], MetaKey: mk[0], MetaValue: mv[0], MetaPack2: mp[1], MetaKey2: mk[1], MetaValue2: mv[1],
-			MetaPack3: mp[2], MetaKey3: mk[2], MetaValue3: mv[2], After: narg(f.After), MaxRows: limit(f.Limit),
-		})
-	} else {
-		rows, err = s.q.ListTickets(ctx, sqlcdb.ListTicketsParams{
-			Project: narg(f.Project), Kind: narg(string(f.Kind)), Status: narg(string(f.Status)),
-			Pool: narg(f.Pool), Holder: narg(f.Holder), ParentID: narg(f.ParentID), CreatedBy: narg(f.CreatedBy),
-			Workflow: narg(f.Workflow), State: narg(f.State), Since: since, Label: narg(f.Label),
-			MetaPack: mp[0], MetaKey: mk[0], MetaValue: mv[0], MetaPack2: mp[1], MetaKey2: mk[1], MetaValue2: mv[1],
-			MetaPack3: mp[2], MetaKey3: mk[2], MetaValue3: mv[2], After: narg(f.After), MaxRows: limit(f.Limit),
-		})
-	}
-	if err != nil {
-		return nil, err
-	}
-	return s.withLabels(ctx, s.q, toTickets(rows))
 }
 
 func toTickets(rows []sqlcdb.Ticket) []store.Ticket {
@@ -618,46 +522,6 @@ func toTickets(rows []sqlcdb.Ticket) []store.Ticket {
 		out[i] = toTicket(r)
 	}
 	return out
-}
-
-func kindsList(ks []store.Kind) []string {
-	if len(ks) == 0 {
-		ks = store.ClaimableKinds
-	}
-	out := make([]string, len(ks))
-	for i, k := range ks {
-		out[i] = string(k)
-	}
-	return out
-}
-
-// Ready returns the claimable frontier for a project, optionally one pool.
-func (s *Store) Ready(ctx context.Context, project, pool string, n int) ([]store.Ticket, error) {
-	rows, err := s.q.ReadyTickets(ctx, sqlcdb.ReadyTicketsParams{
-		Project: project, Kinds: kindsList(nil), Column3: boolInt(pool == ""), Pool: pool,
-		DeferUntil: ms(s.now()), Column6: limit(n),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return s.withLabels(ctx, s.q, toTickets(rows))
-}
-
-// Orphaned returns open, unclaimed tickets with no pool or an unknown one.
-func (s *Store) Orphaned(ctx context.Context, project string, pools []string, n int) ([]store.Ticket, error) {
-	// An empty slice binds as IN (NULL), which matches nothing under NOT
-	// IN; "" is never a pool name here (pool = '' is its own case).
-	known := pools
-	if len(known) == 0 {
-		known = []string{""}
-	}
-	rows, err := s.q.OrphanedTickets(ctx, sqlcdb.OrphanedTicketsParams{
-		Column1: boolInt(project == ""), Project: project, Kinds: kindsList(nil), Known: known, Column5: limit(n),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return s.withLabels(ctx, s.q, toTickets(rows))
 }
 
 func (s *Store) claim(t *store.Ticket, holder string, lease time.Duration) (store.Claim, any) {
@@ -710,11 +574,9 @@ func (s *Store) ClaimNext(ctx context.Context, req store.ClaimNext) (t store.Tic
 }
 
 func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store.Ticket, c store.Claim, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
-		r, err := q.NextClaimCandidate(ctx, sqlcdb.NextClaimCandidateParams{
-			Project: req.Project, Kinds: kindsList(req.Kinds), Holder: req.Holder, Holder_2: req.Holder,
-			Pool: req.Pool, DeferUntil: ms(s.now()),
-		})
+	err = s.sqlTx(ctx, func(tx *sql.Tx) error {
+		q := s.drv.Bind(tx)
+		id, err := s.claimCandidate(ctx, tx, req)
 		if errors.Is(err, sql.ErrNoRows) {
 			return store.ErrNoWork
 		}
@@ -722,7 +584,7 @@ func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store
 			return err
 		}
 		fresh := false
-		t, err = s.mutateWith(ctx, q, r.ID, req.Holder, "claim", func(t *store.Ticket) (any, error) {
+		t, err = s.mutateWith(ctx, q, id, req.Holder, "claim", func(t *store.Ticket) (any, error) {
 			// The candidate was read in this transaction, but without a
 			// single-writer database another claimer may have taken it.
 			if t.Status == store.StatusClosed || (t.Holder != "" && t.Holder != req.Holder) {
@@ -805,7 +667,7 @@ func (s *Store) blocked(ctx context.Context, q sqlcdb.Querier, id string) (bool,
 			return true, nil
 		}
 		// A step unblocks the next only when it closed done or skipped
-		// (matches ReadyTickets and NextClaimCandidate).
+		// (matches notBlocked in list.go).
 		if b.Kind == string(store.KindStep) && b.Resolution != "done" && b.Resolution != store.StepSkipped {
 			return true, nil
 		}

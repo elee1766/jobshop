@@ -169,3 +169,14 @@ func (c *stmtCache) bind(d sqlcdb.DBTX) sqlcdb.Querier {
 	}
 	return sqlcdb.New(d)
 }
+
+// conn returns d through the cache, for the store's queries built in Go.
+func (c *stmtCache) conn(d sqlcdb.DBTX) sqlcdb.DBTX {
+	switch v := d.(type) {
+	case *sql.DB:
+		return cachedDB{DB: v, c: c}
+	case *sql.Tx:
+		return cachedTx{Tx: v, c: c}
+	}
+	return d
+}

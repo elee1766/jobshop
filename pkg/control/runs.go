@@ -37,7 +37,7 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	if p.Key != "" {
-		t, err := c.store.FindOpenRunByKey(ctx, p.Workflow, p.Key)
+		t, err := store.OpenRun(ctx, c.store, p.Workflow, p.Key)
 		if err == nil {
 			res, err := c.runResult(ctx, t)
 			if err != nil {
@@ -292,7 +292,7 @@ func (c *Controller) gateSteps(ctx context.Context, runID string) bool {
 	defer c.runMu.Unlock()
 	changed := false
 	for range 64 { // bound: each pass finishes at least one step
-		steps, err := c.store.ListChildren(ctx, runID)
+		steps, err := store.Children(ctx, c.store, runID)
 		if err != nil {
 			return changed
 		}
@@ -383,7 +383,7 @@ func runMeta(w config.Workflow, vars map[string]any) (json.RawMessage, error) {
 }
 
 func (c *Controller) runResult(ctx context.Context, run store.Ticket) (rpc.RunResult, error) {
-	steps, err := c.store.ListChildren(ctx, run.ID)
+	steps, err := store.Children(ctx, c.store, run.ID)
 	if err != nil {
 		return rpc.RunResult{}, err
 	}
@@ -422,7 +422,7 @@ func (c *Controller) runList(ctx context.Context, sc scope, p rpc.RunListParams)
 	if !sc.admin {
 		p.Project = sc.project
 	}
-	return c.store.ListRuns(ctx, p.Project, p.State, p.Limit)
+	return c.store.List(ctx, store.Filter{Kind: store.KindRun, Project: p.Project, State: p.State, Order: store.OrderNewest, Limit: p.Limit})
 }
 
 // setRunState writes fields.state, closing the run with resolution when
@@ -462,7 +462,7 @@ func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.IDParams) (a
 	if t.Status == store.StatusClosed {
 		return nil, fmt.Errorf("%w: run %s", store.ErrClosed, t.ID)
 	}
-	steps, err := c.store.ListChildren(ctx, t.ID)
+	steps, err := store.Children(ctx, c.store, t.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +504,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if t.Status == store.StatusClosed {
 		return nil, fmt.Errorf("%w: run %s", store.ErrClosed, t.ID)
 	}
-	steps, err := c.store.ListChildren(ctx, t.ID)
+	steps, err := store.Children(ctx, c.store, t.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -576,7 +576,7 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 	if err != nil || f.State != store.RunRunning {
 		return
 	}
-	steps, err := c.store.ListChildren(ctx, runID)
+	steps, err := store.Children(ctx, c.store, runID)
 	if err != nil || len(steps) == 0 {
 		return
 	}
@@ -598,7 +598,7 @@ func (c *Controller) sweepRuns() {
 	defer c.recordRunGauges(c.ctx)
 	c.sweepRunDirs()
 	for _, state := range []string{store.RunRunning, store.RunNeedsHuman} {
-		runs, err := c.store.ListRuns(c.ctx, "", state, 0)
+		runs, err := c.store.List(c.ctx, store.Filter{Kind: store.KindRun, State: state, Order: store.OrderNewest})
 		if err != nil {
 			return
 		}

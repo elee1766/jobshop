@@ -216,7 +216,7 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	}
 	f := store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
-		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit, Newest: p.Newest,
+		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit,
 		Workflow: p.Workflow, State: p.State, Since: p.Since, After: p.After,
 	}
 	if p.Run != "" {
@@ -225,10 +225,13 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 		}
 		f.ParentID = p.Run
 	}
+	if p.Newest {
+		f.Order = store.OrderNewest
+	}
 	switch p.Order {
 	case "", "priority":
 	case "newest":
-		f.Newest = true
+		f.Order = store.OrderNewest
 	default:
 		return nil, fmt.Errorf("%w: order %q: want priority or newest", store.ErrInvalid, p.Order)
 	}
@@ -251,7 +254,7 @@ func (c *Controller) ready(ctx context.Context, sc scope, p rpc.ReadyParams) (an
 	if err != nil {
 		return nil, err
 	}
-	return c.store.Ready(ctx, proj, p.Pool, p.Limit)
+	return c.store.List(ctx, store.Filter{Project: proj, Pool: p.Pool, Ready: true, Limit: p.Limit})
 }
 
 func (c *Controller) update(ctx context.Context, sc scope, p rpc.UpdateParams) (any, error) {

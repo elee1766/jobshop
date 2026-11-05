@@ -37,7 +37,7 @@ func (c *Controller) upsert(ctx context.Context, sc scope, p rpc.UpsertParams) (
 	defer upsertMu.Unlock()
 	// Upsert never makes a second open ticket for a key, so the newest
 	// one is the open one if any is open.
-	found, err := c.store.List(ctx, store.Filter{Project: proj, MetaPack: upsertMetaPack, MetaKey: "key", MetaValue: p.Key, Newest: true, Limit: 1})
+	found, err := c.store.List(ctx, store.Filter{Project: proj, MetaPack: upsertMetaPack, MetaKey: "key", MetaValue: p.Key, Order: store.OrderNewest, Limit: 1})
 	if err != nil {
 		return nil, err
 	}

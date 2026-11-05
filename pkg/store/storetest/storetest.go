@@ -55,6 +55,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ListMetaNewest", testListMetaNewest},
 		{"ListCreatedBy", testListCreatedBy},
 		{"ListFilters", testListFilters},
+		{"ListShapes", testListShapes},
 		{"Orphaned", testOrphaned},
 		{"Runs", testRuns},
 		{"StepFailures", testStepFailures},
@@ -123,7 +124,7 @@ func testListMetaNewest(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.ID, b.ID}, ids(l), "priority order by default")
 
-	l, err = s.List(t.Context(), store.Filter{MetaPack: "trigger", MetaKey: "name", MetaValue: "x", Newest: true, Limit: 1})
+	l, err = s.List(t.Context(), store.Filter{MetaPack: "trigger", MetaKey: "name", MetaValue: "x", Order: store.OrderNewest, Limit: 1})
 	require.NoError(t, err)
 	assert.Equal(t, []string{b.ID}, ids(l), "newest first")
 
@@ -158,7 +159,7 @@ func testListFilters(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, []string{a.ID}, list(store.Filter{Limit: 1}))
 	assert.Equal(t, []string{b.ID}, list(store.Filter{Limit: 1, After: a.ID}))
 	assert.Equal(t, []string{cc.ID}, list(store.Filter{After: b.ID}))
-	assert.Equal(t, []string{b.ID, a.ID}, list(store.Filter{Newest: true, After: cc.ID}))
+	assert.Equal(t, []string{b.ID, a.ID}, list(store.Filter{Order: store.OrderNewest, After: cc.ID}))
 
 	// Since: updated at or after.
 	c.Advance(time.Minute)
@@ -261,13 +262,13 @@ func testReadyRespectsEdges(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}))
 	require.NoError(t, s.AddEdge(ctx, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}))
 
-	r, err := s.Ready(ctx, proj, "", 0)
+	r, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
 	require.NoError(t, err)
 	assert.Equal(t, []string{b.ID, c.ID}, ids(r), "a is blocked; tracks does not block")
 
 	_, err = s.CloseTicket(ctx, "test", b.ID, nil, "done")
 	require.NoError(t, err)
-	r, err = s.Ready(ctx, proj, "dev", 0)
+	r, err = s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.ID, c.ID}, ids(r))
 
@@ -300,15 +301,18 @@ func testOrphaned(t *testing.T, s store.Store, _ *Clock) {
 	_, err := s.CloseTicket(ctx, "test", closed.ID, nil, "done")
 	require.NoError(t, err)
 
-	got, err := s.Orphaned(ctx, "", []string{"dev"}, 0)
+	orphaned := func(project string, pools []string) ([]store.Ticket, error) {
+		return s.List(ctx, store.Filter{Project: project, Kinds: store.ClaimableKinds, Status: store.StatusOpen, Unheld: true, PoolNotIn: pools})
+	}
+	got, err := orphaned("", []string{"dev"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{none.ID, gone.ID}, ids(got))
 
-	got, err = s.Orphaned(ctx, "other", []string{"dev"}, 0)
+	got, err = orphaned("other", []string{"dev"})
 	require.NoError(t, err)
 	assert.Empty(t, got)
 
-	got, err = s.Orphaned(ctx, proj, nil, 0)
+	got, err = orphaned(proj, nil)
 	require.NoError(t, err)
 	assert.Len(t, got, 3, "no known pools: every pool is unknown")
 }
@@ -331,31 +335,31 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 	// Inserted out of order: ListChildren orders by fields.index (10 > 2).
 	_, err = s.CreateGraph(ctx, "test", []store.NewTicket{run, step(10, "js-b"), step(2, "js-a")}, nil)
 	require.NoError(t, err)
-	kids, err := s.ListChildren(ctx, runID)
+	kids, err := store.Children(ctx, s, runID)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"js-a", "js-b"}, ids(kids))
 
-	got, err := s.FindOpenRunByKey(ctx, "w", "k1")
+	got, err := store.OpenRun(ctx, s, "w", "k1")
 	require.NoError(t, err)
 	assert.Equal(t, runID, got.ID)
-	_, err = s.FindOpenRunByKey(ctx, "other", "k1")
+	_, err = store.OpenRun(ctx, s, "other", "k1")
 	assert.ErrorIs(t, err, store.ErrNotFound)
 
-	r, err := s.ListRuns(ctx, proj, store.RunRunning, 0)
+	r, err := s.List(ctx, store.Filter{Kind: store.KindRun, Project: proj, State: store.RunRunning, Order: store.OrderNewest, Limit: 0})
 	require.NoError(t, err)
 	assert.Equal(t, []string{runID}, ids(r))
-	r, err = s.ListRuns(ctx, "", store.RunNeedsHuman, 0)
+	r, err = s.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Empty(t, r)
 
 	// Steps are claimable; runs are not.
-	ready, err := s.Ready(ctx, proj, "", 0)
+	ready, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"js-a", "js-b"}, ids(ready))
 
 	_, err = s.CloseTicket(ctx, "test", runID, nil, "done")
 	require.NoError(t, err)
-	_, err = s.FindOpenRunByKey(ctx, "w", "k1")
+	_, err = store.OpenRun(ctx, s, "w", "k1")
 	assert.ErrorIs(t, err, store.ErrNotFound, "closed runs do not dedup")
 }
 
@@ -412,11 +416,11 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusOpen, tk.Status)
 	assert.Equal(t, 2, fails())
-	r, err := s.Ready(ctx, proj, "dev", 0)
+	r, err := s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
 	assert.NotContains(t, ids(r), "js-a")
 	c.Advance(time.Hour)
-	r, err = s.Ready(ctx, proj, "dev", 0)
+	r, err = s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
 	assert.Contains(t, ids(r), "js-a")
 
@@ -446,7 +450,7 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	assert.Contains(t, cs[9].Body, "Retry limit 4 reached")
 
 	// A step closed failed keeps the next step blocked.
-	ready, err := s.Ready(ctx, proj, "", 0)
+	ready, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
 	require.NoError(t, err)
 	assert.Empty(t, ids(ready))
 	_, _, err = s.Claim(ctx, "js-b", "s4", lease)
@@ -620,11 +624,11 @@ func testDeferUntil(t *testing.T, s store.Store, c *Clock) {
 	ctx := t.Context()
 	later := c.T.Add(time.Hour)
 	a := task(t, s, "a", "dev", func(n *store.NewTicket) { n.DeferUntil = later })
-	r, err := s.Ready(ctx, proj, "dev", 0)
+	r, err := s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
 	assert.Empty(t, r)
 	c.Advance(time.Hour)
-	r, err = s.Ready(ctx, proj, "dev", 0)
+	r, err = s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.ID}, ids(r))
 }
@@ -768,7 +772,7 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	require.ErrorIs(t, err, store.ErrNotHolder)
 	_, err = s.Get(ctx, "js-b1")
 	require.ErrorIs(t, err, store.ErrNotFound)
-	_, err = s.FindOpenBatchByKey(ctx, proj, "k")
+	_, err = store.OpenBatch(ctx, s, proj, "k")
 	require.ErrorIs(t, err, store.ErrNotFound)
 
 	out, err := s.ApplyGraph(ctx, "test", store.Graph{
@@ -779,13 +783,13 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	got, err := s.Get(ctx, "js-run")
 	require.NoError(t, err)
 	assert.Equal(t, "js-b2", got.ParentID)
-	kids, err := s.ListChildren(ctx, "js-b2")
+	kids, err := store.Children(ctx, s, "js-b2")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"js-run"}, ids(kids))
-	b, err := s.FindOpenBatchByKey(ctx, proj, "k")
+	b, err := store.OpenBatch(ctx, s, proj, "k")
 	require.NoError(t, err)
 	assert.Equal(t, "js-b2", b.ID)
-	ready, err := s.Ready(ctx, proj, "", 0)
+	ready, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
 	require.NoError(t, err)
 	assert.NotContains(t, ids(ready), "js-b2", "batches are never claimable")
 }

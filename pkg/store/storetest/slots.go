@@ -54,7 +54,7 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	slotSteps(t, s, "emu", "js-a", "js-b")
 	ready := func() []string {
 		t.Helper()
-		r, err := s.Ready(ctx, proj, "dev", 0)
+		r, err := s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 		require.NoError(t, err)
 		return ids(r)
 	}

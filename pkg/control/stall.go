@@ -55,7 +55,7 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 // run for the key, under max_runs, past the cooldown, and under
 // stallMaxOpen open runs in total. why explains an empty result.
 func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigger) (fire []stall, why string, err error) {
-	mine, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: name, Newest: true})
+	mine, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: name, Order: store.OrderNewest})
 	if err != nil {
 		return nil, "", err
 	}
@@ -78,7 +78,7 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 	now := c.now()
 	var reasons []string
 	for _, s := range found {
-		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + s.key(), Newest: true})
+		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + s.key(), Order: store.OrderNewest})
 		if err != nil {
 			return nil, "", err
 		}
@@ -212,7 +212,7 @@ func (c *Controller) workflowTickets(ctx context.Context, workflow string) (ownT
 		if r.Status == store.StatusClosed {
 			continue
 		}
-		steps, err := c.store.ListChildren(ctx, r.ID)
+		steps, err := store.Children(ctx, c.store, r.ID)
 		if err != nil {
 			return o, err
 		}
@@ -315,7 +315,7 @@ func (c *Controller) stallReadyUnclaimed(ctx context.Context, now time.Time, aft
 	cfg := c.config()
 	var out []stall
 	for _, proj := range slices.Sorted(maps.Keys(cfg.Projects)) {
-		ts, err := c.store.Ready(ctx, proj, "", store.DefaultLimit)
+		ts, err := c.store.List(ctx, store.Filter{Project: proj, Ready: true, Limit: store.DefaultLimit})
 		if err != nil {
 			return nil, err
 		}
@@ -366,7 +366,7 @@ func (c *Controller) stallPoolQuarantined() []stall {
 // history or comment for after. Open steps are ready_unclaimed's (or
 // deferred or blocked on purpose).
 func (c *Controller) stallSteps(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
-	runs, err := c.store.ListRuns(ctx, "", store.RunRunning, 0)
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunRunning, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +375,7 @@ func (c *Controller) stallSteps(ctx context.Context, now time.Time, after time.D
 		if r.Status == store.StatusClosed {
 			continue
 		}
-		steps, err := c.store.ListChildren(ctx, r.ID)
+		steps, err := store.Children(ctx, c.store, r.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -438,7 +438,7 @@ func (c *Controller) stallSessions(ctx context.Context, now time.Time, after tim
 // stallNeedsHuman: needs_human runs, and open needs-human tickets that are
 // not a run's escalation (the run covers those), older than after.
 func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
-	runs, err := c.store.ListRuns(ctx, "", store.RunNeedsHuman, 0)
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
 	}

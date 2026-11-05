@@ -83,7 +83,7 @@ func (c *Controller) escalateRun(ctx context.Context, runID string) bool {
 	if f.State != store.RunRunning {
 		return false
 	}
-	steps, err := c.store.ListChildren(ctx, runID)
+	steps, err := store.Children(ctx, c.store, runID)
 	if err != nil {
 		return false
 	}
@@ -153,7 +153,7 @@ func (c *Controller) ensureEscalation(ctx context.Context, run store.Ticket, f s
 // escalationBody lists the run and, per step, its attempts, resolution and
 // last comments, so the escalation agent need not dig.
 func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f store.RunFields) (string, error) {
-	steps, err := c.store.ListChildren(ctx, run.ID)
+	steps, err := store.Children(ctx, c.store, run.ID)
 	if err != nil {
 		return "", err
 	}
@@ -199,7 +199,7 @@ func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f sto
 
 // recordRunGauges sets jobshop.runs.needs_human per project.
 func (c *Controller) recordRunGauges(ctx context.Context) {
-	runs, err := c.store.ListRuns(ctx, "", store.RunNeedsHuman, 0)
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return
 	}

@@ -18,7 +18,7 @@ import (
 // runPR returns the repo and number of the last PR linked from run or
 // its steps, zero when none.
 func (c *Controller) runPR(ctx context.Context, run store.Ticket) (string, int) {
-	steps, err := c.store.ListChildren(ctx, run.ID)
+	steps, err := store.Children(ctx, c.store, run.ID)
 	if err != nil {
 		return "", 0
 	}

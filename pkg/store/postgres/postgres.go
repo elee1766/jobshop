@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/nullism/bqb"
 	"github.com/pressly/goose/v3"
 
 	"github.com/elee1766/jobshop/pkg/store"
@@ -75,6 +76,7 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 		RecallMatch: recallMatch,
 		IsBusy:      isBusy,
 		Collection:  (&registry{}).open,
+		Render:      (*bqb.Query).ToPgsql,
 	}, opt)
 	if err != nil {
 		_ = db.Close()

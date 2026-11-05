@@ -149,7 +149,7 @@ func (c *Controller) trackSessions(ctx context.Context, first bool) error {
 		}
 	}
 	if first {
-		closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Newest: true, Limit: 1000})
+		closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Order: store.OrderNewest, Limit: 1000})
 		if err != nil {
 			return err
 		}

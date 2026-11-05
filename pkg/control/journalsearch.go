@@ -83,7 +83,7 @@ func (c *Controller) journalBackfill(ctx context.Context, sc scope, p rpc.Journa
 	if cl == nil {
 		return nil, errNoVictoriaLogs
 	}
-	closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Newest: true, Limit: 1 << 20})
+	closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Order: store.OrderNewest, Limit: 1 << 20})
 	if err != nil {
 		return nil, err
 	}

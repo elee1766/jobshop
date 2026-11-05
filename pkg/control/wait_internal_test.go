@@ -109,7 +109,7 @@ func sessScope(s store.Ticket) scope {
 
 func readyIDs(t *testing.T, c *Controller) []string {
 	t.Helper()
-	r, err := c.store.Ready(t.Context(), "js", "", 0)
+	r, err := c.store.List(t.Context(), store.Filter{Project: "js", Ready: true})
 	require.NoError(t, err)
 	var ids []string
 	for _, x := range r {

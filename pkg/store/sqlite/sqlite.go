@@ -67,6 +67,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		RecallMatch: recallMatch,
 		IsBusy:      isBusy,
 		Collection:  (&registry{}).open,
+		Conn:        cache.conn,
 	}, opt)
 	if err != nil {
 		_ = db.Close()

@@ -92,7 +92,7 @@ func revertedPR(ctx context.Context, src revertSource, repo string, pr ghPR) (gh
 // repo#n (the "PR <url> head <sha>" handoff), so only PRs jobshop
 // merged through a run count.
 func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (store.Ticket, bool) {
-	runs, err := c.store.ListRuns(ctx, "", "", 0)
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	if err != nil {
 		return store.Ticket{}, false
 	}
@@ -101,7 +101,7 @@ func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (store.T
 		if err != nil || rf.Workflow != "pr-work" || !strings.EqualFold(metaString(r.Meta, "github", "repo"), repo) {
 			continue
 		}
-		steps, err := c.store.ListChildren(ctx, r.ID)
+		steps, err := store.Children(ctx, c.store, r.ID)
 		if err != nil {
 			continue
 		}

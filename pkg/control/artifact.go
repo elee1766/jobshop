@@ -286,7 +286,7 @@ func toArtifact(t store.Ticket, am rpc.ArtifactMeta) rpc.Artifact {
 
 // artifactList lists artifacts unread first, then newest first.
 func (c *Controller) artifactList(ctx context.Context, sc scope, p rpc.ArtifactListParams) (any, error) {
-	f := store.Filter{Kind: store.KindMessage, Label: artifactLabel, Newest: true}
+	f := store.Filter{Kind: store.KindMessage, Label: artifactLabel, Order: store.OrderNewest}
 	if !sc.admin {
 		f.Project = sc.project
 	}

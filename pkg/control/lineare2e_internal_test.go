@@ -165,7 +165,7 @@ func TestLinearEndToEnd(t *testing.T) {
 
 	// 4. The worker asks a question: posted on ENG-5 with Blocked, which
 	// also keeps intake off it; a reply under it answers.
-	steps, err := c.store.ListChildren(ctx, run.ID)
+	steps, err := store.Children(ctx, c.store, run.ID)
 	require.NoError(t, err)
 	sess := mkSession(t, c)
 	_, _, err = c.store.Claim(ctx, steps[0].ID, sess.ID, time.Hour)

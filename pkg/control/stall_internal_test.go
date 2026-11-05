@@ -249,7 +249,7 @@ func TestStallFire(t *testing.T) {
 	c, clk, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
 	runs := func() []store.Ticket {
-		rs, err := c.store.ListRuns(t.Context(), "", "", 0)
+		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {
@@ -266,7 +266,7 @@ func TestStallFire(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "stall:issue_no_run:issue-7", f.Key)
 	assert.Equal(t, map[string]string{"signal": "issue_no_run", "subject": "issue-7", "detail": "no run"}, f.Vars)
-	steps, err := c.store.ListChildren(t.Context(), rs[0].ID)
+	steps, err := store.Children(t.Context(), c.store, rs[0].ID)
 	require.NoError(t, err)
 	assert.Equal(t, "Stall issue_no_run issue-7", steps[0].Title)
 
@@ -288,7 +288,7 @@ func TestStallFire(t *testing.T) {
 	c.runTriggers()
 	rs = runs()
 	require.Len(t, rs, 2, "stall still there after cooldown: second run")
-	steps, err = c.store.ListChildren(t.Context(), rs[0].ID)
+	steps, err = store.Children(t.Context(), c.store, rs[0].ID)
 	require.NoError(t, err)
 	closeRun()
 	clk.advance(11 * time.Minute)
@@ -310,7 +310,7 @@ func TestStallMaxOpen(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\n"), 0o600))
 	c.runTriggers()
 	c.runTriggers()
-	rs, err := c.store.ListRuns(t.Context(), "", "", 0)
+	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Len(t, rs, stallMaxOpen)
 }
