@@ -8,16 +8,22 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Ingest drain (#335): the controller moves spooled webhook deliveries
-// into the inbox. The spool is its own SQLite file, written by `ingest
-// serve` or the controller's Linear listener; the drain is its only
-// deleter.
+// Ingest queue (#335, #679, docs/notes/679-ingest-queue.md). Every
+// source takes one path: a receiver appends to the spool (`ingest
+// serve`, the controller's Linear listener, `ingest put`) or a poller
+// appends to the inbox; the drain moves the spool into the inbox. Every
+// inbox append goes through inboxAppended, which advances the inbox
+// notifier and wakes the waits the new items name. The admission pump
+// and external workers (`ingest.next`) block on the notifier. Timers
+// stay as a reconcile backstop.
 
-// drainEvery is the drain poll interval. The controller's own listener
-// also wakes it, so this only bounds the delay for `ingest serve`
-// writes, which come from another process.
+// drainEvery is the drain timer. Receivers wake the drain on append:
+// the controller's own listener directly, `ingest serve` over the
+// admin socket (ingest.notify), so this only bounds the delay when the
+// controller was unreachable at append time.
 const drainEvery = 5 * time.Second
 
 // ingestDrain holds the controller's open spool and its wakeup.
@@ -72,6 +78,29 @@ func (c *Controller) wakeDrain() {
 	}
 }
 
+// inboxNotifier is the inbox change signal, made on first use so test
+// controllers built as struct literals have one.
+func (c *Controller) inboxNotifier() *ingest.Notifier {
+	c.inboxOnce.Do(func() {
+		if c.inbox == nil {
+			c.inbox = ingest.NewNotifier()
+		}
+	})
+	return c.inbox
+}
+
+// inboxAppended is the one hook after any inbox append, from any source
+// (#679): it wakes the inbox's consumers and the waits whose conditions
+// name a new item's subject. Items are the new ones only; dedupes do not
+// call it.
+func (c *Controller) inboxAppended(items []store.InboxItem) {
+	if len(items) == 0 {
+		return
+	}
+	c.inboxNotifier().Advance()
+	c.wakeWaitsFor(items)
+}
+
 // drainOnce runs one drain until the spool is empty.
 func (c *Controller) drainOnce(ctx context.Context) (ingest.DrainResult, error) {
 	// No spool file means nothing was ever spooled. Opening it would
@@ -90,10 +119,8 @@ func (c *Controller) drainOnce(ctx context.Context) (ingest.DrainResult, error) 
 	if res.Moved > 0 || res.Bad > 0 {
 		c.log.Info("ingest drain", "moved", res.Moved, "fresh", res.Fresh, "bad", res.Bad)
 	}
-	if res.Fresh > 0 {
-		// A webhook may be the review or check a wait is on (#381).
-		c.wakeWaits()
-	}
+	c.inboxAppended(res.Items)
+	c.linearDelivered(res.Items)
 	return res, err
 }
 
@@ -128,14 +155,58 @@ func (c *Controller) ingestDrainMethod(ctx context.Context, sc scope, p rpc.Inge
 		}
 		defer func() { _ = sp.Close() }()
 		res, err := ingest.Drain(ctx, sp, c.store, c.now, c.log)
+		c.inboxAppended(res.Items)
+		c.linearDelivered(res.Items)
 		if err != nil {
 			return nil, err
 		}
-		return rpc.IngestDrainResult(res), nil
+		return drainResult(res), nil
 	}
 	res, err := c.drainOnce(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return rpc.IngestDrainResult(res), nil
+	return drainResult(res), nil
+}
+
+func drainResult(r ingest.DrainResult) rpc.IngestDrainResult {
+	return rpc.IngestDrainResult{Moved: r.Moved, Fresh: r.Fresh, Bad: r.Bad}
+}
+
+// ingestNotify is a receiver's append signal (#679): `ingest serve`
+// calls it after each new spool row, so the drain runs now.
+func (c *Controller) ingestNotify(_ context.Context, sc scope, _ struct{}) (any, error) {
+	if err := requireAdmin(sc, "ingest notify"); err != nil {
+		return nil, err
+	}
+	c.wakeDrain()
+	return nil, nil
+}
+
+// ingestNextMax caps one ingest.next wait below the CLI's 30s call
+// deadline.
+const ingestNextMax = 25 * time.Second
+
+// ingestNext is the inbox long poll (#679): it blocks until the inbox
+// changed since p.After (an append or an admission), the timeout, or
+// controller stop. External workers run a pass after each return.
+func (c *Controller) ingestNext(ctx context.Context, sc scope, p rpc.IngestNextParams) (any, error) {
+	if err := requireAdmin(sc, "ingest next"); err != nil {
+		return nil, err
+	}
+	d := time.Duration(p.TimeoutMS) * time.Millisecond
+	if d <= 0 || d > ingestNextMax {
+		d = ingestNextMax
+	}
+	wctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		select {
+		case <-c.after(d):
+			cancel()
+		case <-wctx.Done():
+		}
+	}()
+	seq := c.inboxNotifier().Wait(p.After, wctx.Done())
+	return rpc.IngestNextResult{Seq: seq, Changed: seq != p.After}, nil
 }

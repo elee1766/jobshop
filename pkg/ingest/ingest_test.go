@@ -67,8 +67,8 @@ func testHandler(t *testing.T, now time.Time) (*Handler, *Spool, *seen) {
 			return Secret{Identity: e.Identity, Key: []byte(k)}, nil
 		},
 		Now: func() time.Time { return now },
-		OnLinear: func(signer string, ev LinearEvent) {
-			s.signers = append(s.signers, signer+":"+ev.IssueKey())
+		OnSpool: func(d Delivery) {
+			s.signers = append(s.signers, d.Endpoint+":"+d.Kind)
 		},
 	}
 	return h, sp, s
@@ -168,7 +168,7 @@ func TestLinearSignatureAndFilters(t *testing.T) {
 	assert.Empty(t, s.signers)
 
 	assert.Equal(t, http.StatusAccepted, post(h, "/linear/lin", good, sig("lin-secret", good)))
-	assert.Equal(t, []string{":ENG-5"}, s.signers, "plain secret: no identity")
+	assert.Equal(t, []string{"lin:Issue"}, s.signers, "plain secret endpoint")
 }
 
 // TestImplicitLinearEndpoints: identity endpoints share /linear/webhook
@@ -181,7 +181,7 @@ func TestImplicitLinearEndpoints(t *testing.T) {
 	got := rows(t, sp)
 	require.Len(t, got, 1)
 	assert.Equal(t, "linear-app2", got[0].Endpoint)
-	assert.Equal(t, []string{"app2:ENG-5"}, s.signers)
+	assert.Equal(t, []string{"linear-app2:Issue"}, s.signers)
 	assert.Equal(t, http.StatusUnauthorized, post(h, config.LinearWebhookPath, b, map[string]string{"Linear-Signature": mac("lin-secret", b)}), "only the path's endpoints")
 }
 

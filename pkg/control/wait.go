@@ -98,30 +98,6 @@ func (c *Controller) waitEvery() time.Duration {
 	return defaultSubInterval
 }
 
-// wakeWaits asks the wait pump for a pass now (a webhook arrived).
-func (c *Controller) wakeWaits() {
-	if c.waitWake == nil {
-		return
-	}
-	select {
-	case c.waitWake <- struct{}{}:
-	default:
-	}
-}
-
-// pumpWaits evaluates waits on an interval and on wakeups.
-func (c *Controller) pumpWaits() {
-	for {
-		c.pollWaits(c.ctx, c.waitSrc(), c.threadSrc())
-		select {
-		case <-c.ctx.Done():
-			return
-		case <-c.after(c.waitEvery()):
-		case <-c.waitWake:
-		}
-	}
-}
-
 func (c *Controller) waitSrc() waitSource {
 	if c.waitSource != nil {
 		return c.waitSource
@@ -402,7 +378,7 @@ func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads thre
 		}
 		return
 	}
-	pass := &waitPass{src: src, threads: threads, linear: c.linearWaitSrc(), prs: map[string]prInfo{}, reviews: map[string][]prReview{}, checks: map[string][]prCheck{}, issues: map[string]linear.Context{}}
+	pass := c.newWaitPass(src, threads)
 	for _, t := range ts {
 		if err := c.evalWait(ctx, pass, t); err != nil && ctx.Err() == nil {
 			c.log.Warn("waits: evaluate", "ticket", t.ID, "err", err)

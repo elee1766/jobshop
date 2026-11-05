@@ -110,7 +110,9 @@ func TestPollerRows(t *testing.T) {
 	 {"id":4,"state":"COMMENTED","user":{"login":"dan"},"submitted_at":"2026-11-03T10:04:00Z"}]`
 	res, err = p.Poll(ctx, "acme/app")
 	require.NoError(t, err)
-	assert.Equal(t, PollResult{Items: 4, Fresh: 4}, res)
+	assert.Equal(t, 4, res.Items)
+	assert.Equal(t, 4, res.Fresh)
+	assert.Len(t, res.New, 4, "the new rows, for the controller's wake")
 
 	byKind := map[string]store.InboxItem{}
 	for _, it := range inbox(t, st) {

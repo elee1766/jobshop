@@ -82,19 +82,43 @@ func (w IngestWorker) Once(ctx context.Context) (int, error) {
 	return n, ctx.Err()
 }
 
-// Run calls Pass every idle until ctx ends. A failed call is logged and
-// retried, so a controller restart does not stop the worker.
+// Run calls Pass until ctx ends. Between passes it long-polls
+// ingest.next (#679), so an item is admitted as it lands; a long poll
+// that fails (a controller restart, or one without the method) falls
+// back to waiting idle. A failed pass is logged and retried, so a
+// controller restart does not stop the worker.
 func (w IngestWorker) Run(ctx context.Context, idle time.Duration, after func(time.Duration) <-chan time.Time) error {
+	// After -1 never matches a seq, so the first call returns the
+	// current one at once: the cursor taken before the first pass.
+	seq, ok := w.next(ctx, -1)
 	for ctx.Err() == nil {
 		if _, _, err := w.Pass(ctx); err != nil && ctx.Err() == nil {
 			w.logger().WarnContext(ctx, "ingest work", "err", err)
+		}
+		if ok {
+			if seq, ok = w.next(ctx, seq); ok {
+				continue
+			}
 		}
 		select {
 		case <-ctx.Done():
 		case <-after(idle):
 		}
+		seq, ok = w.next(ctx, -1)
 	}
 	return nil
+}
+
+// next is one ingest.next call; false when it failed.
+func (w IngestWorker) next(ctx context.Context, after int64) (int64, bool) {
+	var res rpc.IngestNextResult
+	if err := w.Call(ctx, rpc.MethodIngestNext, rpc.IngestNextParams{After: after}, &res); err != nil {
+		if ctx.Err() == nil {
+			w.logger().DebugContext(ctx, "ingest work: next", "err", err)
+		}
+		return 0, false
+	}
+	return res.Seq, true
 }
 
 func (w IngestWorker) logger() *slog.Logger {

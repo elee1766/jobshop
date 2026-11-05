@@ -192,7 +192,31 @@ func (c ingestServeCmd) Run(g *Globals) error {
 		return err
 	}
 	defer func() { _ = sp.Close() }()
-	h := &ingest.Handler{Spool: sp, Endpoints: eps, Secret: ingest.SecretFor(r, cfg), Log: log}
+	// Each new row tells the controller to drain now (#679). One call at
+	// a time, coalesced: the drain takes every row. A controller that is
+	// down misses it; its drain timer picks the rows up.
+	kick := make(chan struct{}, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-kick:
+				if err := g.call(rpc.MethodIngestNotify, nil, nil); err != nil {
+					log.Debug("ingest: notify controller", "err", err)
+				}
+			}
+		}
+	}()
+	h := &ingest.Handler{
+		Spool: sp, Endpoints: eps, Secret: ingest.SecretFor(r, cfg), Log: log,
+		OnSpool: func(ingest.Delivery) {
+			select {
+			case kick <- struct{}{}:
+			default:
+			}
+		},
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("ingest listen: %w", err)

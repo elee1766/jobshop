@@ -96,27 +96,28 @@ func cols(ctx context.Context, st InboxStore) (col, ids store.Collection, err er
 	return col, ids, err
 }
 
-// InboxPutBatch stores items, each deduped like InboxPut, and returns how many
-// were new. It is not atomic: a failure part way leaves the earlier
-// items stored, and a retry dedupes them.
-func InboxPutBatch(ctx context.Context, st InboxStore, its []store.InboxItem) (int, error) {
+// InboxPutBatch stores items, each deduped like InboxPut, and returns the
+// new ones as stored (with their ids): the targeted wait wake reads
+// their subjects (#679). It is not atomic: a failure part way leaves the
+// earlier items stored, and a retry dedupes them.
+func InboxPutBatch(ctx context.Context, st InboxStore, its []store.InboxItem) ([]store.InboxItem, error) {
 	for _, it := range its {
 		if err := checkInbox(it); err != nil {
-			return 0, err
+			return nil, err
 		}
 	}
 	col, ids, err := cols(ctx, st)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	fresh := 0
+	var fresh []store.InboxItem
 	for _, it := range its {
-		_, dup, err := put(ctx, col, ids, it)
+		got, dup, err := put(ctx, col, ids, it)
 		if err != nil {
 			return fresh, err
 		}
 		if !dup {
-			fresh++
+			fresh = append(fresh, got)
 		}
 	}
 	return fresh, nil

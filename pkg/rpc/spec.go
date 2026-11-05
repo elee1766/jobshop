@@ -86,6 +86,8 @@ var Specs = map[string]Spec{
 	MethodIngestAdmit:       {IngestAdmitParams{}, store.InboxItem{}},
 	MethodIngestWorkers:     {empty{}, IngestWorkersResult{}},
 	MethodIngestDispatch:    {IngestClaimParams{}, IngestDispatchResult{}},
+	MethodIngestNext:        {IngestNextParams{}, IngestNextResult{}},
+	MethodIngestNotify:      {empty{}, nil},
 	MethodSubscribe:         {SubscribeParams{}, store.Ticket{}},
 	MethodReport:            {ReportParams{}, ReportResult{}},
 	MethodQuestionAnswer:    {AnswerParams{}, AnswerResult{}},

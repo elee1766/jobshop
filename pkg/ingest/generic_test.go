@@ -74,7 +74,7 @@ func TestGenericDrain(t *testing.T) {
 	assert.True(t, fresh)
 	res, err := Drain(ctx, sp, st, time.Now, quiet)
 	require.NoError(t, err)
-	assert.Equal(t, DrainResult{Moved: 1, Fresh: 1}, res)
+	assert.Equal(t, DrainResult{Moved: 1, Fresh: 1}, counts(res))
 	got, err := InboxList(ctx, st, store.InboxFilter{})
 	require.NoError(t, err)
 	require.Len(t, got, 1)

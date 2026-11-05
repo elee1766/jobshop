@@ -44,6 +44,26 @@ func spoolGH(t *testing.T, sp *Spool, id, payload string) {
 
 var quiet = slog.New(slog.DiscardHandler)
 
+// counts is r without the new items, for comparing counts.
+func counts(r DrainResult) DrainResult {
+	r.Items = nil
+	return r
+}
+
+// TestCheckEventSubject (#679): a check_suite or check_run delivery
+// names the PR it ran for, so a CI event wakes the waits on that PR.
+func TestCheckEventSubject(t *testing.T) {
+	for kind, payload := range map[string]string{
+		"check_suite": `{"repository":{"full_name":"acme/app"},"check_suite":{"pull_requests":[{"number":12}]}}`,
+		"check_run":   `{"repository":{"full_name":"acme/app"},"check_run":{"check_suite":{"pull_requests":[{"number":12}]}}}`,
+	} {
+		it, err := InboxItem(Row{Endpoint: "gh", Source: SourceGitHub, DeliveryID: kind, Kind: kind, Headers: "{}", Payload: payload})
+		require.NoError(t, err, kind)
+		assert.Equal(t, int64(12), it.Number, kind)
+		assert.Equal(t, "acme/app", it.RepoOrTeam, kind)
+	}
+}
+
 // TestDrainInsertsThenDeletes: rows land in the inbox with their subject
 // and natural key, then leave the spool; an empty spool drains to zero.
 func TestDrainInsertsThenDeletes(t *testing.T) {
@@ -54,7 +74,9 @@ func TestDrainInsertsThenDeletes(t *testing.T) {
 
 	res, err := Drain(ctx, sp, st, time.Now, quiet)
 	require.NoError(t, err)
-	assert.Equal(t, DrainResult{Moved: 2, Fresh: 2}, res)
+	assert.Equal(t, DrainResult{Moved: 2, Fresh: 2}, counts(res))
+	require.Len(t, res.Items, 2, "the new items, with their ids")
+	assert.NotZero(t, res.Items[0].ID)
 	rows, err := sp.Rows(ctx, 0)
 	require.NoError(t, err)
 	assert.Empty(t, rows)
@@ -122,7 +144,7 @@ func TestDrainCrashBeforeDelete(t *testing.T) {
 
 	res, err := Drain(ctx, sp, st, time.Now, quiet)
 	require.NoError(t, err)
-	assert.Equal(t, DrainResult{Moved: 1, Fresh: 0}, res)
+	assert.Equal(t, DrainResult{Moved: 1, Fresh: 0}, counts(res))
 	its, err := InboxList(ctx, st, store.InboxFilter{})
 	require.NoError(t, err)
 	assert.Len(t, its, 1)
@@ -137,7 +159,7 @@ func TestDrainBadRow(t *testing.T) {
 	spoolGH(t, sp, "bad", `{"repository":"not an object"}`)
 	res, err := Drain(ctx, sp, st, time.Now, quiet)
 	require.NoError(t, err)
-	assert.Equal(t, DrainResult{Moved: 1, Fresh: 1, Bad: 1}, res)
+	assert.Equal(t, DrainResult{Moved: 1, Fresh: 1, Bad: 1}, counts(res))
 	n, err := sp.BadCount(ctx)
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)

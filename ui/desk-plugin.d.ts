@@ -124,6 +124,8 @@ export interface RpcMethods {
   "ingest.claim": { params: IngestClaimParams; result: IngestClaimResult };
   "ingest.dispatch": { params: IngestClaimParams; result: IngestDispatchResult };
   "ingest.drain": { params: IngestDrainParams; result: IngestDrainResult };
+  "ingest.next": { params: IngestNextParams; result: IngestNextResult };
+  "ingest.notify": { params: Record<string, never>; result: Record<string, never> };
   "ingest.workers": { params: Record<string, never>; result: IngestWorkersResult };
   "journal.backfill": { params: JournalBackfillParams; result: JournalBackfillResult };
   "journal.search": { params: JournalSearchParams; result: JournalSearchResult };
@@ -645,6 +647,16 @@ export interface IngestDrainResult {
   moved: number;
   fresh: number;
   bad: number;
+}
+
+export interface IngestNextParams {
+  after: number;
+  timeout_ms?: number;
+}
+
+export interface IngestNextResult {
+  seq: number;
+  changed: boolean;
 }
 
 export interface IngestWorker {

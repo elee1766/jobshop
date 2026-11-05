@@ -220,6 +220,12 @@ type Controller struct {
 	linearWait linearWaitSource
 	waitWake   chan struct{}
 	waitMu     sync.Mutex
+	// waitPending is what a wake asked of the wait pump (#679).
+	waitWakeMu  sync.Mutex
+	waitPending waitWakes
+	// inbox is the inbox change signal (#679); see inboxNotifier.
+	inbox     *ingest.Notifier
+	inboxOnce sync.Once
 	// activitySrc reads GitHub and Linear activity; nil means live APIs
 	// (tests set a fake). activity is the cache, loaded on first poll.
 	activitySrc activitySource
@@ -777,6 +783,8 @@ func init() {
 		rpc.MethodIngestAdmit:       bind((*Controller).ingestAdmit),
 		rpc.MethodIngestWorkers:     bind((*Controller).ingestWorkersMethod),
 		rpc.MethodIngestDispatch:    bind((*Controller).ingestDispatchMethod),
+		rpc.MethodIngestNext:        bind((*Controller).ingestNext),
+		rpc.MethodIngestNotify:      bind((*Controller).ingestNotify),
 		rpc.MethodTicketCreate:      bind((*Controller).create),
 		rpc.MethodTicketShow:        bind((*Controller).show),
 		rpc.MethodTicketTrace:       bind((*Controller).trace),

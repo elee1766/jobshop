@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -12,16 +13,18 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Linear webhook intake (#300). Linear pushes Issue and Comment events
 // to POST /linear/webhook on linear.webhook_listen. The shared ingest
 // handler (#334) checks the signature, age and actor and writes the
-// delivery to the controller's spool. The payload is only a hint: the
+// delivery to the controller's spool, like every other receiver (#679).
+// The listener only wakes the drain; the drain hands each new Linear
+// inbox item to linearDelivered. The payload is only a hint: the
 // controller then checks organization and actor against the identity,
 // re-reads the issue and runs the polling code early. Polling stays the
-// fallback, so a lost or refused event only costs latency. Until the
-// spool drain lands, this in-memory step runs right after the write.
+// fallback, so a lost or refused event only costs latency.
 
 // linearWebhookHandler is the ingest handler for the controller's
 // listener: the Linear endpoints from ingest.endpoints and the implicit
@@ -39,16 +42,36 @@ func (c *Controller) linearWebhookHandler(sp *ingest.Spool) *ingest.Handler {
 		Secret: func(e config.IngestEndpoint) (ingest.Secret, error) {
 			return ingest.SecretFor(c.root, c.config())(e)
 		},
-		Now: c.now,
-		Log: c.log,
-		OnLinear: func(name string, ev ingest.LinearEvent) {
-			c.wakeDrain()
-			c.wg.Go(func() {
-				if err := c.linearWebhookEvent(c.ctx, name, ev); err != nil {
-					c.log.Warn("linear webhook", "type", ev.Type, "issue", ev.IssueKey(), "err", err)
-				}
-			})
-		},
+		Now:     c.now,
+		Log:     c.log,
+		OnSpool: func(ingest.Delivery) { c.wakeDrain() },
+	}
+}
+
+// linearDelivered runs the Linear consumer for new Linear inbox items
+// from the drain, in the background: it reads Linear. The endpoint names
+// the identity whose secret signed the delivery.
+func (c *Controller) linearDelivered(items []store.InboxItem) {
+	eps := map[string]string{}
+	for _, e := range c.config().IngestEndpoints() {
+		if e.Source == config.IngestLinear {
+			eps[e.Name] = e.Identity
+		}
+	}
+	for _, it := range items {
+		name, ok := eps[it.Endpoint]
+		if it.Source != ingest.SourceLinear || !ok {
+			continue
+		}
+		var ev ingest.LinearEvent
+		if json.Unmarshal(it.Payload, &ev) != nil {
+			continue
+		}
+		c.wg.Go(func() {
+			if err := c.linearWebhookEvent(c.ctx, name, ev); err != nil {
+				c.log.Warn("linear webhook", "type", ev.Type, "issue", ev.IssueKey(), "err", err)
+			}
+		})
 	}
 }
 
