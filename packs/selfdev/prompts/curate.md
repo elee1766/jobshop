@@ -43,9 +43,8 @@ There are two kinds of edit (#592):
    - Prompt fix: file an issue on elee1766/jobshop titled `Curate:
      <short summary>` whose body names the prompt, the wrong instruction
      and the learning ids. Then `git switch -c issue-<n>`, edit under
-     `packs/`, run `go build ./... && go vet ./... && go test ./...`
-     (update `pkg/config/pack_test.go` and the pack golden when they
-     assert the old text), commit with `(#<n>)` in the subject,
+     `packs/`, run `go build ./... && go vet ./... && go test ./...`,
+     commit with `(#<n>)` in the subject,
      `git push -u origin HEAD`, `gh pr create --base master --body
      "Closes #<n>. ..."` with the learning ids. Start its run:
      `jobshop run start pr-work --var issue=<n> --key issue-<n>`, find

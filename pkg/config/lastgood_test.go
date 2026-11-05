@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,11 +13,10 @@ import (
 // and only pack errors fall back to it (#227).
 func TestLastGood(t *testing.T) {
 	dir := t.TempDir()
-	pack, err := filepath.Abs("../../packs/selfdev")
-	require.NoError(t, err)
 	writeFiles(t, dir, map[string]string{
-		"p/pack.yaml":  "pools:\n  dev: {agent: a, dir: /w, prompt: \"hi {{.who}}\"}\n",
-		"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    vars: {repo: /src, agent: a}\n",
+		"good/pack.yaml": "pools:\n  plan: {agent: a, dir: /w}\nworkflows:\n  pr-work:\n    steps: [{id: s, pool: plan, title: t, prompt: \"in {{.repo}}\"}]\n",
+		"p/pack.yaml":    "pools:\n  dev: {agent: a, dir: /w, prompt: \"hi {{.who}}\"}\n",
+		"jobshop.yaml":   hostBase + "packs:\n  - path: good\n    vars: {repo: /src}\n",
 	})
 	r := Root{Dir: dir}
 	c, err := Load(r)

@@ -15,11 +15,9 @@ elee1766/jobshop turn, alongside AGENTS.md.
 - Deferred SQLite transactions get SQLITE_BUSY on the read-to-write
   upgrade (busy_timeout does not wait on it): retry the whole
   transaction, bounded.
-- After changing packs or a config default, run
-  `go test ./pkg/config -run TestPacksGolden -update` and commit the
-  golden. `pkg/config/pack_test.go` asserts pack prompt substrings and
-  admin lists: grep it for text you change under packs/ and update it in
-  the same commit.
+- Tests do not assert pack contents (JOB-2): editing packs/ needs no
+  test change unless the pack stops loading (`TestPacksLoad`). A new
+  pack gets minimal vars in `TestPacksLoad`.
 - A PR that removes or renames a config field the NixOS module sets must
   keep it as a load warning (ignored) for one release, not an error: the
   self-deploy config check runs the new binary on the jobshop.yaml the

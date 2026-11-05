@@ -36,23 +36,8 @@ func TestAgentPoolPack(t *testing.T) {
 		require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	}
 
-	// The isolation vars reach every pool (gasserver sets them).
-	write(", isolation: {limits: {memory: 4G}}, sandbox: {network: none}")
-	c, err := config.LoadFile(root.Config())
-	require.NoError(t, err)
-	for _, p := range []string{"app-primary", "app-review", "app-refinery"} {
-		pool, ok := c.Pools[p]
-		require.True(t, ok, p)
-		require.NotNil(t, pool.Isolation, p)
-		require.NotNil(t, pool.Isolation.Limits, p)
-		require.NotNil(t, pool.Sandbox, p)
-		require.Equal(t, "none", pool.Sandbox.Network, p)
-	}
-	require.Contains(t, c.Workflows, "app-pr-work")
-	require.Contains(t, c.Workflows, "app-ci-repair")
-	require.Contains(t, c.Triggers, "app-main-ci")
-
-	// Unisolated defaults for the run, so it works on any CI host.
+	// Unisolated defaults for the run, so it works on any CI host. Only
+	// the workflow name is assumed (JOB-2: no pack content asserts).
 	write("")
 	_, err = config.LoadFile(root.Config())
 	require.NoError(t, err)
@@ -63,7 +48,7 @@ func TestAgentPoolPack(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	runs, _ := subscribe(ctx, t, root.AdminSocket(), rpc.EventsSubscribeParams{Kinds: []string{rpc.EventKindRun}})
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "app-pr-work", Vars: map[string]string{"task": "add a widget"}, Key: "task-1"})
-	require.Len(t, r.Steps, 3)
+	require.NotEmpty(t, r.Steps)
 	done := func() bool {
 		for _, ev := range runs.get() {
 			if ev.ID == r.Run.ID && ev.Status == store.StatusClosed {

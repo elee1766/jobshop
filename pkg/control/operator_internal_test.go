@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -17,10 +18,18 @@ import (
 // session cannot call the granted ones.
 func TestOperatorGrant(t *testing.T) {
 	t.Parallel()
-	op, err := filepath.Abs("../../packs/operator")
-	require.NoError(t, err)
-	gh, err := filepath.Abs("../../packs/github")
-	require.NoError(t, err)
+	// Fixture packs (JOB-2): a repo pack included with a prefix, and an
+	// operator chat pool holding the grants under test.
+	packs := t.TempDir()
+	for name, body := range map[string]string{
+		"gh/pack.yaml": "pools:\n  dev: {agent: \"{{.agent}}\", dir: /tmp}\nworkflows:\n  pr-work:\n    repo: \"{{.repo}}\"\n    steps: [{id: s, pool: dev, title: t, prompt: p}]\n",
+		"op/pack.yaml": "pools:\n  operator: {type: chat, agent: \"{{.agent}}\", dir: /tmp, admin: [config-reload, config-show, session-list, pool-list, trigger-list, attention]}\n",
+	} {
+		p := filepath.Join(packs, name)
+		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o700))
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+	}
+	gh, op := filepath.Join(packs, "gh"), filepath.Join(packs, "op")
 	c, _ := rulesController(t, fmt.Sprintf(`projects:
   js: {}
 agents:
@@ -28,9 +37,9 @@ agents:
 packs:
   - path: %s
     prefix: acphost-
-    vars: {repo: elee1766/acphost, checkout: /tmp, agent: a, human: wile, check_cmd: make test}
+    vars: {repo: elee1766/acphost, agent: a}
   - path: %s
-    vars: {jobshop_repo: elee1766/jobshop, checkout: /tmp, agent: a}
+    vars: {agent: a}
 `, gh, op))
 	ctx := t.Context()
 	type call func(context.Context, scope) (any, error)
@@ -56,7 +65,7 @@ packs:
 		require.ErrorIs(t, err, rpc.ErrForbidden, "dev cannot call %s", name)
 	}
 	// Runs need no grant: any session reads them.
-	_, err = c.runList(ctx, opSc, rpc.RunListParams{})
+	_, err := c.runList(ctx, opSc, rpc.RunListParams{})
 	require.NoError(t, err)
 
 	res, err := c.configShow(ctx, opSc, struct{}{})
