@@ -300,6 +300,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `jobshop linear create|update|ask|relate` with `--key` idempotency
   (`write_keys` table) and `--dry-run` (#280,
   `docs/notes/280-linear-write.md`).
+- `jobshop linear api`: raw GraphQL with the caller's `LINEAR_API_KEY`
+  or the team identity; mutations ask the guard `linear-api-mutation`
+  (#546, `docs/notes/546-linear-api.md`).
 - Curator gate: `memory_edits` baselines, `edits` trigger condition,
   `evaluate` workflow, `jobshop learn evaluate|edits` (#274,
   `docs/notes/274-curator-gate.md`).
