@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"slices"
 
@@ -122,10 +123,72 @@ func applySlot(spec *host.Spec, u config.IsolationUser, slot *int) error {
 	return nil
 }
 
+// Subordinate id files, variables so tests can point them elsewhere.
+var (
+	subuidPath = "/etc/subuid"
+	subgidPath = "/etc/subgid"
+)
+
+// readSubIDs is the controller user's ranges in path; a missing file is
+// no ranges.
+func readSubIDs(path string) ([]host.Range, error) {
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	name := ""
+	if cu, err := user.Current(); err == nil {
+		name = cu.Username
+	}
+	return host.ParseSubIDs(f, name, os.Geteuid())
+}
+
+// checkSlotRange is a permanent error unless every per-session id,
+// [map_uid, map_uid+range) and [map_gid, map_gid+range), lies in one
+// subuid and one subgid range. acphost only checks the id a session
+// uses, so without this a range that runs past the subuid range would
+// fail only once a high slot is reached. Permanent, so the pool is
+// quarantined as for #388.
+func checkSlotRange(u config.IsolationUser, subuid, subgid []host.Range) error {
+	n := u.Slots()
+	in := func(start int, rs []host.Range) bool {
+		return slices.ContainsFunc(rs, func(r host.Range) bool {
+			return start >= r.Start && start+n <= r.Start+r.Count
+		})
+	}
+	if !in(u.MapUID, subuid) {
+		return host.Permanentf("isolation per_session: uids %d..%d are not all in one subuid range of this user", u.MapUID, u.MapUID+n-1)
+	}
+	if !in(u.MapGID, subgid) {
+		return host.Permanentf("isolation per_session: gids %d..%d are not all in one subgid range of this user", u.MapGID, u.MapGID+n-1)
+	}
+	return nil
+}
+
+// checkSubIDs reads the subordinate id files and runs checkSlotRange.
+func checkSubIDs(u config.IsolationUser) error {
+	subuid, err := readSubIDs(subuidPath)
+	if err != nil {
+		return host.Permanentf("isolation per_session: %s: %w", subuidPath, err)
+	}
+	subgid, err := readSubIDs(subgidPath)
+	if err != nil {
+		return host.Permanentf("isolation per_session: %s: %w", subgidPath, err)
+	}
+	return checkSlotRange(u, subuid, subgid)
+}
+
 // restrictSession moves spec.User to the session's slot and limits the
 // session dir and worktree to the slot's uid, the controller and the
 // pool's first group (#540).
 func (c *Controller) restrictSession(spec *host.Spec, u config.IsolationUser, slot *int, dir string) error {
+	if err := checkSubIDs(u); err != nil {
+		return err
+	}
 	if err := applySlot(spec, u, slot); err != nil {
 		return err
 	}

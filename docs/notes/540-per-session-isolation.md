@@ -27,3 +27,14 @@ isolation:
 - A session with no slot (created before `per_session` was set) or a
   slot outside a range that shrank fails permanently at spawn.
 - `session sandbox` shows the slot and the mapped ids.
+- Before each spawn the controller checks that all of
+  `[map_uid, map_uid+range)` and `[map_gid, map_gid+range)` lie in one
+  subuid and one subgid range of its user (acphost checks only the id in
+  use). If not, the spawn fails permanently and the pool is
+  quarantined, as in #388.
+- NixOS: with `isolation.enable`, an assertion fails the build when a
+  pool's per-session ids in `settings` run past `subIdStart +
+  subIdCount`.
+- Tests: `TestSlotAllocation`, `TestSlotRestart`, `TestCheckSlotRange`,
+  and `TestPerSessionIsolation` (two sessions, distinct host uids,
+  cross-read denied; skipped without the #388 host setup).
