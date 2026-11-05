@@ -56,15 +56,21 @@ func setupCgroupAt(info host.DelegatedInfo, pid int) cgroupSetup {
 	if !info.Writable {
 		return cgroupSetup{err: fmt.Errorf("cgroup %s is not delegated to this user (set Delegate= on the service)", info.Path)}
 	}
-	for _, want := range cgroupControllers {
-		if !slices.Contains(info.Controllers, want) {
-			return cgroupSetup{err: fmt.Errorf("cgroup %s: controller %s not available (cgroup.controllers: %s)", info.Path, want, strings.Join(info.Controllers, " "))}
-		}
-	}
 	own := info.Path
-	// Restarted inside our own leaf: the parent is the delegated root.
+	// Started inside our own leaf (a restart, or systemd's
+	// DelegateSubgroup=controller, JOB-21): the parent is the delegated
+	// root, and its controllers are the ones to check. The leaf lists only
+	// what the parent enabled, which may be nothing yet.
 	if filepath.Base(own) == "controller" {
 		own = filepath.Dir(own)
+		if b, err := os.ReadFile(filepath.Join(own, "cgroup.controllers")); err == nil {
+			info.Controllers = strings.Fields(string(b))
+		}
+	}
+	for _, want := range cgroupControllers {
+		if !slices.Contains(info.Controllers, want) {
+			return cgroupSetup{err: fmt.Errorf("cgroup %s: controller %s not available (cgroup.controllers: %s)", own, want, strings.Join(info.Controllers, " "))}
+		}
 	}
 	leaf := filepath.Join(own, "controller")
 	sessions := filepath.Join(own, "sessions")

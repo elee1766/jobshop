@@ -1248,6 +1248,11 @@ in
             # The controller moves into <own>/controller and puts session
             # cgroups under <own>/sessions (#388).
             Delegate = "cpu memory pids";
+            # systemd starts the controller in <own>/controller itself, so a
+            # restart with live sessions under <own>/sessions never needs to
+            # place a process in the unit cgroup, which has subtree_control
+            # set (no internal processes rule: EBUSY, JOB-21).
+            DelegateSubgroup = "controller";
           };
         }
         // lib.optionalAttrs cfg.isolation.enable {
