@@ -1520,8 +1520,23 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	if err != nil {
 		return err
 	}
-	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir); err != nil {
+	home, err := c.sessionMappedHome(t, f)
+	if err != nil {
 		return err
+	}
+	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir, home); err != nil {
+		return err
+	}
+	if home != "" {
+		// Sandboxed, "~/" binds land at the controller's HOME path, so
+		// HOME stays that path; unsandboxed it is the mapped home itself.
+		h := home
+		if spec.Sandbox != nil {
+			h, _ = os.UserHomeDir()
+		}
+		if h != "" {
+			spec.Env = append(spec.Env, "HOME="+h)
+		}
 	}
 	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
 		return err
@@ -1539,6 +1554,11 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 		}
 		if err := shareDir(spec.Dir, u.Groups[0], true); err != nil {
 			return host.Permanentf("isolation: share worktree: %w", err)
+		}
+	}
+	if home != "" {
+		if err := c.checkMappedAccess(spec.Spec, f.Slot, t.Pool); err != nil {
+			return err
 		}
 	}
 	// A worktree was just made; any other cwd must already exist. The

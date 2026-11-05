@@ -33,13 +33,15 @@ func expandHome(p string) string {
 // pool is not sandboxed. exe is the jobshop binary agents call. It may
 // create configured rw dirs, so it runs on spawn and in the debug view,
 // not for env staleness checks (sandboxKey covers those).
-func (c *Controller) sandboxFor(t store.Ticket, exe, cwd string) (*host.Sandbox, error) {
-	return c.poolSandbox(t.Pool, c.root.SessionDir(t.ID), exe, cwd)
+// home, when set, is the mapped user's home (JOB-19): "~/" rw paths bind
+// from under it instead of from the controller's HOME.
+func (c *Controller) sandboxFor(t store.Ticket, exe, cwd, home string) (*host.Sandbox, error) {
+	return c.poolSandbox(t.Pool, c.root.SessionDir(t.ID), exe, cwd, home)
 }
 
 // poolSandbox is pool's sandbox for a process whose own writable dir is
 // own (a session dir, or a command step's dir) and which runs in cwd.
-func (c *Controller) poolSandbox(pool, own, exe, cwd string) (*host.Sandbox, error) {
+func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbox, error) {
 	cfg := c.config()
 	sb := cfg.SandboxFor(pool)
 	if sb.Backend == "" {
@@ -73,11 +75,28 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd string) (*host.Sandbox, err
 		}
 	}
 	for _, p := range sb.RW {
-		p = expandHome(p)
-		if err := os.MkdirAll(p, 0o700); err != nil {
-			return nil, host.Permanentf("sandbox rw %s: %w", p, err)
+		m := host.Mount{Src: expandHome(p)}
+		mode := os.FileMode(0o700)
+		if rel, ok := strings.CutPrefix(p, "~/"); ok && home != "" {
+			// Same path inside, the mapped user's copy outside. 0770: the
+			// home's default ACL takes its mask from the group bits.
+			m = host.Mount{Src: filepath.Join(home, rel), Dst: m.Src}
+			mode = 0o770
 		}
-		rw(p)
+		if err := os.MkdirAll(m.Src, mode); err != nil {
+			return nil, host.Permanentf("sandbox rw %s: %w", m.Src, err)
+		}
+		s.RW = append(s.RW, m)
+	}
+	if home != "" {
+		// Credentials outside every rw path still need to be seen.
+		for _, p := range agent.Credentials {
+			rel, ok := strings.CutPrefix(p, "~/")
+			if !ok || slices.ContainsFunc(sb.RW, func(r string) bool { return within(p, r) }) {
+				continue
+			}
+			s.RO = append(s.RO, host.Mount{Src: filepath.Join(home, rel), Dst: expandHome(p), SkipMissing: true})
+		}
 	}
 	for _, p := range sb.Hide {
 		s.Hide = append(s.Hide, expandHome(p))
@@ -157,7 +176,11 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 	if err != nil {
 		return nil, err
 	}
-	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir); err != nil {
+	home := ""
+	if _, _, ok, _ := c.mappedUser(t.Pool, f.Slot); ok {
+		home = c.mappedHomeDir(t.Pool, f.Slot)
+	}
+	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir, home); err != nil {
 		return nil, err
 	}
 	res := rpc.SessionSandboxResult{Session: t.ID, Pool: t.Pool, Sandbox: spec.Sandbox}

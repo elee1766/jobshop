@@ -1076,6 +1076,10 @@ type Agent struct {
 	Sandbox *Sandbox `yaml:"sandbox"`
 	// Isolation runs the agent as a mapped user with cgroup limits (#388).
 	Isolation *Isolation `yaml:"isolation"`
+	// Credentials lists the agent's login files ("~/..."). For a pool with
+	// isolation.user they are copied into the mapped user's home before
+	// each spawn, since that user cannot read the controller's (JOB-19).
+	Credentials []string `yaml:"credentials"`
 }
 
 // ACP session config option ids for the model and effort shorthands.
@@ -1308,6 +1312,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		if err := a.Isolation.check(); err != nil {
 			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
+		}
+		for _, p := range a.Credentials {
+			if rest, ok := strings.CutPrefix(p, "~/"); !ok || rest == "" || strings.Contains(rest, "..") {
+				return nil, fmt.Errorf("%s: agent %s: credentials path %q must start with ~/ and stay under it", src("agents", name), name, p)
+			}
 		}
 	}
 	for name, p := range c.Pools {

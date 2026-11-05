@@ -70,7 +70,10 @@ Operator steps (change config, run tests or files a ticket):
 - Add a pool with `isolation: {user: {uid: 1000, map_uid: <subuid start>,
   map_gid: <subgid start>, groups: [jobshop]}, limits: {memory: 4G}}` and
   `sandbox: {backend: bubblewrap, network: pasta, deny: [10.0.0.0/8]}`,
-  reload and file a ticket for it. The readonly blocks above then check
+  and `credentials: ["~/.jcode/auth.json"]` on its agent (JOB-19). The
+  module defaults (`sandbox.rw` under `~`, a 0700 dataDir) work as is:
+  the controller binds `~/` paths from `<dataDir>/homes/<pool>`.
+  Reload and file a ticket for it. The readonly blocks above then check
   its session; also the file the agent wrote is owned by the subuid start:
 
   ```sh
