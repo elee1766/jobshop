@@ -320,17 +320,6 @@ let
     rm $T/badcheck $T/state/failed $T/state/failed.reason
     echo abcdef1234 > $T/green
 
-    # A field the old module still writes and the new binary removed
-    # (#597): the check warns and passes, so the switch that regenerates
-    # jobshop.yaml without it still runs.
-    touch $T/warncheck
-    run
-    [ $rc = 0 ] || fail "removed-field warning blocked deploy: exit $rc"
-    grep -q rebuild $T/log || fail "no switch after a warning-only config check"
-    [ ! -e $T/state/failed ] || fail "warning-only check marked the rev failed"
-    rm $T/warncheck
-    echo 0000000 > $T/cur
-
     # Drill: the switch succeeds, the drill marks it unhealthy.
     touch $T/state/drill
     run
@@ -384,6 +373,17 @@ let
     [ "$(stat -c %Y $T/state/deployed)" = 1000000000 ] || fail "deployed mtime changed"
     [ "$(grep -c 'switched outside self-deploy.*deployed rewritten' $T/out)" = 1 ] || fail "want one WARN"
     ! grep -q rebuild $T/log || fail "reconcile rebuilt"
+
+    # A field the old module still writes and the new binary removed
+    # (#597): the check warns and passes, so the switch that regenerates
+    # jobshop.yaml without it still runs.
+    touch $T/warncheck
+    echo dddddd5970 > $T/green
+    run
+    [ $rc = 0 ] || fail "removed-field warning blocked deploy: exit $rc"
+    grep -q rebuild $T/log || fail "no switch after a warning-only config check"
+    [ "$(cat $T/state/failed 2>/dev/null)" != dddddd5970 ] || fail "warning-only check marked the rev failed"
+    [ "$(cat $T/state/deployed)" = dddddd5970 ] || fail "warning-only rev not deployed"
   '';
 
   units = c: lib.attrNames c.config.systemd.services;
