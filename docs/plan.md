@@ -467,6 +467,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Planner proposes the next target (label `proposed`, var
   `propose_targets`), listed in attention as a decision (#488,
   `docs/notes/488-planner-proposals.md`).
+- `TestNewUserPath` follows `docs/packs.md` end to end with the guide's
+  own pack and config (#494, `docs/notes/494-new-user-path.md`).
 
 ## 5. What's next
 
@@ -1336,6 +1338,7 @@ moved from the old 7.x list, oldest first:
 - [Step needs and when](notes/385-step-needs-when.md) (#385)
 - [Empty run vars rejected](notes/496-empty-run-var.md) (#496)
 - [Session socket bound once](notes/479-session-socket-once.md) (#479)
+- [New-user path test](notes/494-new-user-path.md) (#494)
 
 ## 8. Chat gateway
 
