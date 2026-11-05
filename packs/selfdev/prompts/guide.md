@@ -20,6 +20,10 @@ elee1766/jobshop turn, alongside AGENTS.md.
   golden. `pkg/config/pack_test.go` asserts pack prompt substrings and
   admin lists: grep it for text you change under packs/ and update it in
   the same commit.
+- A PR that removes or renames a config field the NixOS module sets must
+  keep it as a load warning (ignored) for one release, not an error: the
+  self-deploy config check runs the new binary on the jobshop.yaml the
+  old module wrote (#597). Turn it into an error in a later PR.
 - `nix/module-test.nix` greps module output: after changing
   nix/module.nix, grep it and run
   `nix build .#checks.x86_64-linux.module` (CI shows only "builder failed").

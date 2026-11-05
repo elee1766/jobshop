@@ -279,7 +279,7 @@ let
     stub() { printf '#!${pkgs.runtimeShell}\n%s\n' "$2" > $T/bin/$1; chmod +x $T/bin/$1; }
     stub runuser 'shift 3; exec "$@"'
     stub gh 'cat $T/green'
-    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; [ "$1" = ticket ] && exec $T/bin/tickets "$@"; exit 0'
+    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/warncheck ] && echo "warning: jobshop.yaml: attention.rollback_file is removed (#577), ignored" >&2; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; [ "$1" = ticket ] && exec $T/bin/tickets "$@"; exit 0'
     # ticket upsert against a store of one file per open key: created,
     # updated in place, or moved to closed/ (#577).
     mkdir -p $T/tickets/closed
@@ -373,6 +373,17 @@ let
     [ "$(stat -c %Y $T/state/deployed)" = 1000000000 ] || fail "deployed mtime changed"
     [ "$(grep -c 'switched outside self-deploy.*deployed rewritten' $T/out)" = 1 ] || fail "want one WARN"
     ! grep -q rebuild $T/log || fail "reconcile rebuilt"
+
+    # A field the old module still writes and the new binary removed
+    # (#597): the check warns and passes, so the switch that regenerates
+    # jobshop.yaml without it still runs.
+    touch $T/warncheck
+    echo dddddd5970 > $T/green
+    run
+    [ $rc = 0 ] || fail "removed-field warning blocked deploy: exit $rc"
+    grep -q rebuild $T/log || fail "no switch after a warning-only config check"
+    [ "$(cat $T/state/failed 2>/dev/null)" != dddddd5970 ] || fail "warning-only check marked the rev failed"
+    [ "$(cat $T/state/deployed)" = dddddd5970 ] || fail "warning-only rev not deployed"
   '';
 
   units = c: lib.attrNames c.config.systemd.services;

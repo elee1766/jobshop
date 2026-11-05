@@ -1449,6 +1449,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   digests show it with no deploy code. The NixOS self-deploy and its
   Deploys plugin (packs/deploy) are one example wrapper; multi-host or
   staged rollouts build their own the same way.
+- A config field the NixOS module sets is removed as a load warning for
+  one release, then an error (2026-11-05, #597): the self-deploy check
+  reads the jobshop.yaml the old module wrote.
 
 ## 7. Reference: behavior as built
 
