@@ -27,9 +27,9 @@ escalates again.
 sqlc is not on PATH: regenerate with `go generate ./pkg/store/sqlite/`.
 With `sqlc.slice`, named params after the slice bind into the list: put
 named params first or use bare `?`, and check the `?N` in sqlcdb.
-After `gh pr checkout`, check HEAD equals headRefOid (it can stay on
-master); if the branch is in another worktree, `git fetch origin
-<branch>` and `git switch -c pr-<n> FETCH_HEAD`.
+Old runs leave local `issue-<n>` branches: `git branch --list issue-<n>`
+before `git switch -c`; if it exists use `issue-<n>-<slug>`. Do not
+chain the switch with build/test, a failed switch skips them.
 Tests without ticks: wait with pass/passUntil, not require.Eventually.
 Rewrite them one by one: gofmt -r drops comments.
 Local `-race` failures (dial timeouts) when /proc/loadavg is far above
