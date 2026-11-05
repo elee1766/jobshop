@@ -6,8 +6,10 @@
   `attention.config_repo_file` (attention kinds `rollback` and
   `config-repo`), Desk's `--deploy-state`, `/api/deploys`, its deploy
   attention item and the built-in Deploys plugin. A config that still
-  sets either attention key fails to load with a message naming
-  `ticket upsert`.
+  sets either attention key loads with a warning naming `ticket upsert`
+  (2026-11-05: an error blocked self-deploy, whose pre-switch check runs
+  the new binary against the old module's yaml; make it an error once
+  hosts run the new module).
 - Desk's `/api/attention` is now the controller's `attention` RPC, so
   Desk, `jobshop attention`, gateways and digests list the same items.
 - New generic `jobshop ticket upsert --key K [title] [-b body] [-l

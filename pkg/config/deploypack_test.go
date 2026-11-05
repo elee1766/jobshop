@@ -49,13 +49,17 @@ func TestDeployPack(t *testing.T) {
 }
 
 // TestAttentionDeployKeysRemoved: a config that still sets the removed
-// deploy attention keys fails to load, naming the replacement (#577).
+// deploy attention keys loads with a warning naming the replacement
+// (#577). Self-deploy checks the new binary against the old module's
+// yaml, which still sets them, so an error would block the deploy.
 func TestAttentionDeployKeysRemoved(t *testing.T) {
 	for _, key := range []string{"rollback_file", "config_repo_file"} {
 		dir := t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "jobshop.yaml"), []byte("projects:\n  js: {}\nattention: {"+key+": /x}\n"), 0o600))
-		_, err := config.LoadFile(filepath.Join(dir, "jobshop.yaml"))
-		require.ErrorContains(t, err, "attention."+key+" is removed")
-		require.ErrorContains(t, err, "ticket upsert")
+		c, err := config.LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		require.Len(t, c.Warnings, 1)
+		assert.Contains(t, c.Warnings[0], "attention."+key+" is removed")
+		assert.Contains(t, c.Warnings[0], "ticket upsert")
 	}
 }

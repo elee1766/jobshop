@@ -1393,9 +1393,12 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if err := c.checkResources(); err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
+	// A warning for one release, then an error (as conversation_export):
+	// self-deploy checks the new binary against the old module's generated
+	// yaml, which still sets these keys, so an error blocks every deploy.
 	for key, v := range map[string]string{"rollback_file": c.Attention.RollbackFile, "config_repo_file": c.Attention.ConfigRepoFile} {
 		if v != "" {
-			return nil, fmt.Errorf("%s: attention.%s is removed (#577): deploy tools report a problem as a needs-human ticket, `jobshop ticket upsert --key deploy:rollback -l needs-human ...`, and close it when it clears", FileName, key)
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s: attention.%s is removed (#577) and ignored: deploy tools report a problem as a needs-human ticket, `jobshop ticket upsert --key deploy:rollback -l needs-human ...`, and close it when it clears", FileName, key))
 		}
 	}
 	if w := c.Attention.ResourceWait; w != "" {
