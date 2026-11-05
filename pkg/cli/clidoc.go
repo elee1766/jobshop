@@ -2,8 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/alecthomas/kong"
 )
@@ -44,18 +47,40 @@ func cliDoc() (string, error) {
 
 	var b strings.Builder
 	b.WriteString("# jobshop CLI\n\nGenerated from the kong help by `go generate ./pkg/cli`. Do not edit.\n")
-	for _, path := range paths {
-		var buf bytes.Buffer
-		var hr root
-		hp, err := newParser(&hr, func(int) {}, kong.Writers(&buf, &buf))
-		if err != nil {
-			return "", err
-		}
-		// --help prints, then calls Exit, a no-op here, so Parse may go on
-		// to fail on a missing argument; the help is already written.
-		_, _ = hp.Parse(append(append([]string(nil), path...), "--help"))
+	// Each help needs a fresh parser, and building one is the slow part:
+	// render them in parallel (JOB-16), then join in walk order.
+	helps := make([]string, len(paths))
+	errs := make([]error, len(paths))
+	sem := make(chan struct{}, runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	for i, path := range paths {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			helps[i], errs[i] = helpText(path)
+		}()
+	}
+	wg.Wait()
+	if err := errors.Join(errs...); err != nil {
+		return "", err
+	}
+	for i, path := range paths {
 		title := strings.Join(append([]string{"jobshop"}, path...), " ")
-		fmt.Fprintf(&b, "\n## %s\n\n```\n%s```\n", title, buf.String())
+		fmt.Fprintf(&b, "\n## %s\n\n```\n%s```\n", title, helps[i])
 	}
 	return b.String(), nil
+}
+
+func helpText(path []string) (string, error) {
+	var buf bytes.Buffer
+	var hr root
+	hp, err := newParser(&hr, func(int) {}, kong.Writers(&buf, &buf))
+	if err != nil {
+		return "", err
+	}
+	// --help prints, then calls Exit, a no-op here, so Parse may go on
+	// to fail on a missing argument; the help is already written.
+	_, _ = hp.Parse(append(append([]string(nil), path...), "--help"))
+	return buf.String(), nil
 }
