@@ -99,7 +99,7 @@ The rest is in [docs/running.md](docs/running.md).
 | [docs/ingest.md](docs/ingest.md) | Webhooks and generic ingest |
 | [docs/nixos.md](docs/nixos.md) | NixOS module |
 | [docs/desk-plugins.md](docs/desk-plugins.md) | Writing a Desk plugin, with `examples/desk-plugins/csv-table` |
-| [docs/plan.md](docs/plan.md) | Design, phases and the dated decision log |
+| [docs/plan.md](docs/plan.md) | Design archive up to 2026-11-05 (frozen); later decisions are on [#569](https://github.com/elee1766/jobshop/issues/569) |
 | [docs/layout.md](docs/layout.md) | Packages, dependencies, build and deployment |
 | [docs/data-model.md](docs/data-model.md) | Tables and queries |
 | [docs/notes/](docs/notes/) | Behavior as built, one note per change |
