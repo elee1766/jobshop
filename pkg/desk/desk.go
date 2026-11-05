@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -45,6 +46,63 @@ type Config struct {
 	// ChatPool is the type: chat pool Desk chats with (escalation keys and
 	// new desk:<id> sessions). Empty: chat is read-only.
 	ChatPool string
+	// UserHeader names the header an authenticating proxy sets to the
+	// signed-in user (#515). Empty: no user; calls act as "admin".
+	UserHeader string
+	// TrustedProxies are the TCP peers whose UserHeader is believed.
+	// Required when UserHeader is set.
+	TrustedProxies []netip.Prefix
+}
+
+// ParseProxies parses --trusted-proxy values: CIDRs or bare addresses.
+func ParseProxies(vals []string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, v := range vals {
+		if !strings.Contains(v, "/") {
+			a, err := netip.ParseAddr(v)
+			if err != nil {
+				return nil, fmt.Errorf("trusted proxy %q: %w", v, err)
+			}
+			out = append(out, netip.PrefixFrom(a, a.BitLen()))
+			continue
+		}
+		p, err := netip.ParsePrefix(v)
+		if err != nil {
+			return nil, fmt.Errorf("trusted proxy %q: %w", v, err)
+		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
+}
+
+type userKey struct{}
+
+// userFrom is the proxy user of a request, empty when not configured.
+func userFrom(ctx context.Context) string {
+	u, _ := ctx.Value(userKey{}).(string)
+	return u
+}
+
+// proxyUser returns the user for r. ok is false when the request must be
+// refused: an untrusted peer, or a missing or invalid header.
+func (s *Server) proxyUser(r *http.Request) (user string, ok bool) {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return "", false
+	}
+	addr := ap.Addr().Unmap()
+	if !slices.ContainsFunc(s.cfg.TrustedProxies, func(p netip.Prefix) bool { return p.Contains(addr) }) {
+		return "", false
+	}
+	vals := r.Header.Values(s.cfg.UserHeader)
+	if len(vals) != 1 {
+		return "", false
+	}
+	u := strings.TrimSpace(vals[0])
+	if rpc.ValidActor("desk:"+u) != nil || u == "" {
+		return "", false
+	}
+	return u, true
 }
 
 // Server is the Desk HTTP handler.
@@ -90,6 +148,7 @@ func Loopback(addr string) bool {
 // Handler returns the routes behind the Host, CSRF and header checks.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/whoami", s.json(s.whoami))
 	mux.HandleFunc("GET /api/attention", s.json(s.attention))
 	mux.HandleFunc("GET /api/work", s.json(s.work))
 	mux.HandleFunc("GET /api/sessions", s.json(s.sessions))
@@ -119,6 +178,16 @@ func (s *Server) guard(next http.Handler) http.Handler {
 		if !s.hostAllowed(r.Host) {
 			http.Error(w, "host not allowed", http.StatusMisdirectedRequest)
 			return
+		}
+		if s.cfg.UserHeader != "" {
+			// A request that bypasses the proxy must not claim a user.
+			u, ok := s.proxyUser(r)
+			if !ok {
+				http.Error(w, "no trusted user", http.StatusForbidden)
+				return
+			}
+			ctx := context.WithValue(r.Context(), userKey{}, u)
+			r = r.WithContext(rpc.WithActor(ctx, "desk:"+u))
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && (r.Header.Get(CSRFHeader) == "" || !s.sameOrigin(r)) {
 			http.Error(w, "missing "+CSRFHeader+" header", http.StatusForbidden)
@@ -181,6 +250,15 @@ func (s *Server) json(fn func(*http.Request) (any, error)) http.HandlerFunc {
 		}
 		_ = json.NewEncoder(w).Encode(v)
 	}
+}
+
+// Whoami is GET /api/whoami.
+type Whoami struct {
+	User string `json:"user"`
+}
+
+func (s *Server) whoami(r *http.Request) (any, error) {
+	return Whoami{User: userFrom(r.Context())}, nil
 }
 
 // activity proxies activity.list (#255). Query: since (Go duration),

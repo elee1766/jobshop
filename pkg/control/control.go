@@ -637,8 +637,10 @@ type peer struct{ conn *acp.Connection }
 // handler dispatches one socket's requests. The SDK gives each request its
 // own context; it is joined with the socket's so a closing session or
 // controller cancels in-flight work too.
-func (c *Controller) handler(sockCtx context.Context, sc scope) acp.MethodHandler {
+func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.MethodHandler {
 	return func(reqCtx context.Context, name string, params json.RawMessage) (any, *acp.RequestError) {
+		// Per call: _meta.actor must not leak into later calls on the socket.
+		sc := sockScope
 		ctx, cancel := context.WithCancel(reqCtx)
 		defer cancel()
 		stop := context.AfterFunc(sockCtx, cancel)
@@ -648,6 +650,16 @@ func (c *Controller) handler(sockCtx context.Context, sc scope) acp.MethodHandle
 			return nil, acp.NewMethodNotFound(name)
 		}
 		params, meta := rpc.SplitMeta(params)
+		if meta.Actor != "" {
+			// Only the admin socket may name who is behind a call (#515).
+			if !sc.admin {
+				return nil, rpc.ToWire(fmt.Errorf("%w: only the admin socket can set _meta.actor", rpc.ErrForbidden))
+			}
+			if err := rpc.ValidActor(meta.Actor); err != nil {
+				return nil, rpc.ToWire(err)
+			}
+			sc.actor = meta.Actor
+		}
 		ctx = telemetry.WithTraceParent(ctx, meta.TraceParent)
 		ctx, span := c.tracer.Start(ctx, "rpc "+name, trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(telemetry.AttrMethod.String(name), attribute.String("jobshop.actor", sc.actor)))
