@@ -406,9 +406,10 @@ func TestRunResume(t *testing.T) {
 	assert.Contains(t, err.Error(), `no step "nope"`)
 }
 
-// TestSelfdevPRWork loads packs/selfdev and starts pr-work as the planner
-// does: three steps in dev, refinery, refinery, only implement ready, and
-// a repeated start with the same key returns the same run.
+// TestSelfdevPRWork starts a pr-work shaped like packs/selfdev's as the
+// planner does: three steps in dev, refinery, deploy-check, only
+// implement ready, and a repeated start with the same key returns the
+// same run.
 func TestSelfdevPRWork(t *testing.T) {
 	admin := selfdevRoot(t)
 	p := rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "93"}, Key: "issue-93"}
@@ -423,7 +424,6 @@ func TestSelfdevPRWork(t *testing.T) {
 	assert.Equal(t, []string{"dev", "refinery", "deploy-check"}, pools)
 	assert.Equal(t, "Implement #93", titles[0])
 	assert.Contains(t, r.Steps[0].Body, "gh issue view 93 --comments")
-	assert.Contains(t, r.Steps[2].Body, "jobshop version")
 	assert.Equal(t, []string{r.Steps[0].ID}, readyIDs(t, admin), "only implement is ready")
 
 	again := startRun(t, admin, p)
@@ -467,7 +467,9 @@ func TestSelfdevDrill(t *testing.T) {
 	assert.Contains(t, esc[0].Body, "Retry limit 1 reached")
 }
 
-// selfdevRoot starts a controller on packs/selfdev that starts no agents.
+// selfdevRoot starts a controller on a fixture pack shaped like
+// packs/selfdev's pr-work and drill (JOB-2: not packs/, so pack edits do
+// not break it) that starts no agents.
 func selfdevRoot(t *testing.T) *rpc.Client {
 	t.Helper()
 	t.Parallel()
@@ -475,9 +477,31 @@ func selfdevRoot(t *testing.T) *rpc.Client {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	root := config.Root{Dir: dir}
-	pack, err := filepath.Abs("../../packs/selfdev")
-	require.NoError(t, err)
-	// dev_sessions 0 and no master-red check: the test starts no agents.
+	pack := filepath.Join(dir, "pack")
+	require.NoError(t, os.MkdirAll(pack, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, "pack.yaml"), []byte(`pools:
+  dev: {agent: "{{.agent}}", repo: "{{.checkout}}", max_sessions: 0}
+  plan: {agent: "{{.agent}}", repo: "{{.checkout}}", max_sessions: 0}
+  refinery: {agent: "{{.agent}}", repo: "{{.checkout}}", max_sessions: 0}
+  deploy-check: {agent: "{{.agent}}", repo: "{{.checkout}}", max_sessions: 0}
+workflows:
+  pr-work:
+    vars: [issue]
+    issue: issue
+    repo: elee1766/jobshop
+    escalate_pool: plan
+    steps:
+      - {id: implement, pool: dev, retries: 3, title: "Implement #{{.issue}}", prompt: "gh issue view {{.issue}} --comments"}
+      - {id: review-merge, pool: refinery, retries: 2, title: "Merge #{{.issue}}", prompt: merge}
+      - {id: post-merge, pool: deploy-check, retries: 2, title: "Deploy #{{.issue}}", prompt: deploy}
+  drill:
+    vars: [issue]
+    issue: issue
+    repo: elee1766/jobshop
+    escalate_pool: plan
+    steps:
+      - {id: fail, pool: dev, retries: 1, title: "Drill #{{.issue}}", prompt: "jobshop close -r failed"}
+`), 0o600))
 	cfg := fmt.Sprintf(`projects:
   js: {}
 agents:
@@ -485,14 +509,7 @@ agents:
     command: %q
 packs:
   - path: %s
-    vars: {repo: %q, agent: fake, dev_sessions: 0}
-pools:
-  plan: {max_sessions: 0}
-  refinery: {max_sessions: 0}
-  deploy-check: {max_sessions: 0}
-triggers:
-  master-red:
-    when: {check: "false"}
+    vars: {checkout: %q, agent: fake}
 `, os.Args[0], pack, dir)
 	require.NoError(t, os.WriteFile(root.Config(), []byte(cfg), 0o600))
 	ctx, cancel := context.WithCancel(t.Context())

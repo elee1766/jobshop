@@ -17,10 +17,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
-// TestImprovementSession loads the real operator pack (#249): a send keyed
-// improve:<slug> starts a session in a worktree of the checkout whose
-// first turn carries the improvement prompt; a matrix thread does not get
-// it; the pack's hook denies a push to master and allows a branch.
+// TestImprovementSession (#249): a send keyed improve:<slug> starts a
+// session in a worktree of the checkout whose first turn carries the
+// improvement rule; a matrix thread does not get it; the push hook denies
+// master and allows a branch. Uses a fixture pack, not packs/operator.
 func TestImprovementSession(t *testing.T) {
 	root, start := poolRoot(t, "1m")
 	repo := filepath.Join(root.Dir, "repo")
@@ -32,9 +32,42 @@ func TestImprovementSession(t *testing.T) {
 		out, err := exec.Command("git", args...).CombinedOutput()
 		require.NoError(t, err, string(out))
 	}
-	pack, err := filepath.Abs("../../packs/operator")
-	require.NoError(t, err)
-	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npacks:\n  - path: %q\n    vars: {jobshop_repo: acme/jobshop, checkout: %q, agent: fake}\n",
+	// A fixture shaped like packs/operator (JOB-2): a chat pool, an
+	// after rule for improve:* keys and a push hook denying master.
+	pack := filepath.Join(root.Dir, "oppack")
+	for name, body := range map[string]string{
+		"pack.yaml": `pools:
+  operator:
+    type: chat
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/master
+    max_sessions: 0
+    idle_timeout: 12h
+    prompt: "You are the operator's chat assistant."
+prompt_rules:
+  - name: operator-improve
+    file: improve.md
+    at: after
+    match: {pools: [operator], keys: ["improve:*"]}
+hooks:
+  - on: action
+    actions: [push]
+    pools: [operator]
+    command: |
+      ev=$(cat)
+      if ! printf '%s' "$ev" | grep -q '"target":"[^"]'; then
+        echo '{"decision":"deny","reason":"name the branch"}'
+      elif printf '%s' "$ev" | grep -Eq '"target":"([^"]*[:/])?(master|main)"'; then
+        echo '{"decision":"deny","reason":"never push to master"}'
+      fi
+`,
+		"improve.md": "This is an improvement session. Run jobshop guard push --target <branch>.\n",
+	} {
+		require.NoError(t, os.MkdirAll(pack, 0o700))
+		require.NoError(t, os.WriteFile(filepath.Join(pack, name), []byte(body), 0o600))
+	}
+	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npacks:\n  - path: %q\n    vars: {checkout: %q, agent: fake}\n",
 		os.Args[0], pack, repo)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	stop := start()
