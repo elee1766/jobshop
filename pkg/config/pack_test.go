@@ -657,17 +657,23 @@ packs:
 		assert.Equal(t, "esc", w.Escalate.ChatPool, n)
 	}
 	e := c.Workflows["pr-work"].Escalate
-	out, err := Fill(e.Prompt, e.Template, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	vars := map[string]any{}
+	for _, k := range EscalationVars {
+		vars[k] = ""
+	}
+	maps.Copy(vars, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	out, err := Fill(e.Prompt, e.Template, vars)
 	require.NoError(t, err)
-	assert.Contains(t, out, "escalation ticket js-e for run js-r (workflow pr-work)")
+	assert.Contains(t, out, "run js-r (workflow pr-work)")
 	assert.Contains(t, out, "`jobshop run resume js-r")
 	assert.Contains(t, out, "issue 7")
 	assert.True(t, strings.HasSuffix(strings.TrimSpace(out), "BODY"))
 	assert.NotContains(t, out, "gateway")
 	assert.NotContains(t, out, "thread")
-	pout, err := Fill(e.PoolPrompt, e.Template, map[string]any{"ticket": "js-e", "pool": "dev", "error": "boom", "body": "B"})
+	maps.Copy(vars, map[string]any{"pool": "dev", "error": "boom", "body": "B"})
+	pout, err := Fill(e.PoolPrompt, e.Template, vars)
 	require.NoError(t, err)
-	assert.Contains(t, pout, "pool dev starts no sessions")
+	assert.Contains(t, pout, "Pool dev starts no sessions")
 	assert.Contains(t, pout, "jobshop pool unquarantine dev")
 
 	var policy *PromptRule
@@ -697,7 +703,7 @@ func TestEscalationConfig(t *testing.T) {
 		"unknown":   {"escalation: {chat_pool: nope, prompt: x}\n", "unknown pool"},
 		"no prompt": {"escalation: {chat_pool: chat}\n", "needs prompt"},
 		"bad var":   {"escalation: {chat_pool: chat, prompt: \"${issue}\"}\n", "uses ${issue}"},
-		"pool var":  {"escalation: {chat_pool: chat, pool_prompt: \"${run}\"}\n", "uses ${run}"},
+		"hold var":  {"escalation: {chat_pool: chat, hold_prompt: \"${issue}\"}\n", "uses ${issue}"},
 		"empty":     {"escalation: {}\n", ""},
 	} {
 		dir := t.TempDir()
