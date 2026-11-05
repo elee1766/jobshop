@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -113,7 +114,7 @@ func (c *Controller) pumpAdmission() {
 // any other resolution denies. Held is not pruned, so without this an
 // answered item would stay held forever.
 func (c *Controller) releaseAnswered(ctx context.Context) error {
-	held, err := c.store.InboxList(ctx, store.InboxFilter{State: store.InboxHeld, Limit: 200})
+	held, err := ingest.InboxList(ctx, c.store, store.InboxFilter{State: store.InboxHeld, Limit: 200})
 	if err != nil {
 		return err
 	}
@@ -122,7 +123,7 @@ func (c *Controller) releaseAnswered(ctx context.Context) error {
 		if !ok || a.Decision == rpc.GuardAskHuman {
 			continue
 		}
-		if _, err := c.store.InboxRequeue(ctx, it.ID, store.InboxHeld, store.InboxPending); err != nil {
+		if _, err := ingest.InboxRequeue(ctx, c.store, it.ID, store.InboxHeld, store.InboxPending); err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				continue // moved or leased meanwhile
 			}
@@ -147,7 +148,7 @@ func admissionLease(hooks []config.AdmissionHook) time.Duration {
 func (c *Controller) admitNext(ctx context.Context) (bool, error) {
 	cfg := c.config()
 	hooks := admissionHooks(cfg)
-	it, err := c.store.InboxClaim(ctx, []string{store.InboxPending}, admissionHolder, admissionLease(hooks))
+	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, admissionHolder, admissionLease(hooks))
 	if errors.Is(err, store.ErrNotFound) {
 		return false, nil
 	}
@@ -265,7 +266,7 @@ func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, ho
 	if state == store.InboxAdmitted {
 		u.Admitted = admitted
 	}
-	if _, err := c.store.InboxSetState(ctx, it.ID, holder, u); err != nil {
+	if _, err := ingest.InboxSetState(ctx, c.store, it.ID, holder, u); err != nil {
 		return err
 	}
 	c.log.InfoContext(ctx, "inbox admission", "delivery", it.DeliveryID, "state", state, "by", holder)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/writekey"
@@ -67,7 +68,7 @@ func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, erro
 	defer c.dispatchMu.Unlock()
 	var rows []store.InboxItem
 	for range dispatchBatch {
-		it, err := c.store.InboxClaim(ctx, []string{store.InboxAdmitted}, holder, dispatchLease)
+		it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxAdmitted}, holder, dispatchLease)
 		if errors.Is(err, store.ErrNotFound) {
 			break
 		}
@@ -100,7 +101,7 @@ func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, erro
 // claimed again, and the consumers are idempotent.
 func (c *Controller) done(ctx context.Context, holder string, rows []store.InboxItem) {
 	for _, it := range rows {
-		if _, err := c.store.InboxSetState(ctx, it.ID, holder, store.InboxUpdate{State: store.InboxDispatched}); err != nil {
+		if _, err := ingest.InboxSetState(ctx, c.store, it.ID, holder, store.InboxUpdate{State: store.InboxDispatched}); err != nil {
 			c.log.Warn("dispatch: mark dispatched", "delivery", it.DeliveryID, "err", err)
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -38,7 +39,7 @@ func comment(clk *stallClock, id, body string) ghComment {
 
 func inboxStates(t *testing.T, c *Controller) []string {
 	t.Helper()
-	its, err := c.store.InboxList(t.Context(), store.InboxFilter{})
+	its, err := ingest.InboxList(t.Context(), c.store, store.InboxFilter{})
 	require.NoError(t, err)
 	var out []string
 	for _, it := range its {
@@ -109,7 +110,7 @@ func TestDispatchCrashAfterAdmit(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	// A dispatcher claims it and dies.
-	it, err := c.store.InboxClaim(t.Context(), []string{store.InboxAdmitted}, dispatchHolder, dispatchLease)
+	it, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxAdmitted}, dispatchHolder, dispatchLease)
 	require.NoError(t, err)
 	c.ingestPass(t.Context())
 	assert.Empty(t, messagesTo(t, c, sess.ID), "leased by the dead dispatcher")
@@ -119,7 +120,7 @@ func TestDispatchCrashAfterAdmit(t *testing.T) {
 	require.Len(t, messagesTo(t, c, sess.ID), 1, "redelivered after the lease expires")
 
 	// The same row admitted again (a lost dispatched write): no repeat.
-	_, err = c.store.InboxRequeue(t.Context(), it.ID, store.InboxDispatched, store.InboxAdmitted)
+	_, err = ingest.InboxRequeue(t.Context(), c.store, it.ID, store.InboxDispatched, store.InboxAdmitted)
 	require.NoError(t, err)
 	c.ingestPass(t.Context())
 	assert.Len(t, messagesTo(t, c, sess.ID), 1, "the write key stops a second delivery")

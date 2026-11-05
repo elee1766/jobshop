@@ -79,14 +79,14 @@ func (c *Controller) inboxComment(ctx context.Context, th thread, cm ghComment) 
 	if it.Payload, err = json.Marshal(p); err != nil {
 		return err
 	}
-	got, dup, err := c.store.InboxPut(ctx, it)
+	got, dup, err := ingest.InboxPut(ctx, c.store, it)
 	if err != nil || !dup || got.DeliveryID == it.DeliveryID {
 		return err
 	}
 	// The webhook copy came first: keep it (deduped for the record) and
 	// add the poller row the dispatcher delivers.
 	it.NaturalKey = ""
-	_, _, err = c.store.InboxPut(ctx, it)
+	_, _, err = ingest.InboxPut(ctx, c.store, it)
 	return err
 }
 
@@ -132,7 +132,7 @@ func (c *Controller) inboxActivity(ctx context.Context, items []rpc.ActivityItem
 		_ = json.Unmarshal([]byte(a.Ref), &it.Number)
 		its = append(its, it)
 	}
-	if _, err := c.store.InboxPutBatch(ctx, its); err != nil {
+	if _, err := ingest.InboxPutBatch(ctx, c.store, its); err != nil {
 		c.log.Warn("inbox: activity write", "items", len(its), "err", err)
 	}
 }

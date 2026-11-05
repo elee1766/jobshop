@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -65,18 +66,18 @@ func TestIngestWorkerAdmitsControllerDoesNot(t *testing.T) {
 	bad := putInbox(t, c, store.InboxItem{DeliveryID: "b", Actor: "bad"})
 
 	c.ingestPass(t.Context())
-	got, err := c.store.InboxGet(t.Context(), ok1.ID)
+	got, err := ingest.InboxGet(t.Context(), c.store, ok1.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.InboxPending, got.State, "the controller does not admit in external mode")
 
 	n, err := worker(c, "w1").Once(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, 2, n)
-	got, err = c.store.InboxGet(t.Context(), ok1.ID)
+	got, err = ingest.InboxGet(t.Context(), c.store, ok1.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.InboxAdmitted, got.State)
 	assert.JSONEq(t, `{"body":"HELLO","token":"s3cret"}`, string(got.Admitted))
-	got, err = c.store.InboxGet(t.Context(), bad.ID)
+	got, err = ingest.InboxGet(t.Context(), c.store, bad.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.InboxDenied, got.State)
 
@@ -114,7 +115,7 @@ func TestIngestWorkerDeadLeaseExpires(t *testing.T) {
 	n, err = worker(c, "w2").Once(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
-	got, err := c.store.InboxGet(t.Context(), it.ID)
+	got, err := ingest.InboxGet(t.Context(), c.store, it.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.InboxAdmitted, got.State)
 	assert.EqualValues(t, 2, got.Attempts)
@@ -178,7 +179,7 @@ func TestIngestBacklogAttention(t *testing.T) {
 	_, err = worker(c, "w1").Once(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, attentionIDs(t, c), "admitted")
-	counts, err := c.store.InboxCounts(t.Context())
+	counts, err := ingest.InboxCounts(t.Context(), c.store)
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, counts[store.InboxAdmitted])
 	assert.Zero(t, counts[store.InboxPending])

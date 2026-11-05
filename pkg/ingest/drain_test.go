@@ -59,7 +59,7 @@ func TestDrainInsertsThenDeletes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, rows)
 
-	its, err := st.InboxList(ctx, store.InboxFilter{})
+	its, err := InboxList(ctx, st, store.InboxFilter{})
 	require.NoError(t, err)
 	require.Len(t, its, 2)
 	var c store.InboxItem
@@ -80,19 +80,32 @@ func TestDrainInsertsThenDeletes(t *testing.T) {
 	assert.Equal(t, DrainResult{}, res)
 }
 
-// crashAfterInsert commits the inbox batch and then fails, as a crash
-// between the inbox commit and the spool delete would.
+// crashAfterInsert stores every inbox record and then fails, as a crash
+// between the inbox write and the spool delete would.
 type crashAfterInsert struct {
-	Inbox
+	InboxStore
 	err error
 }
 
-func (c crashAfterInsert) InboxPutBatch(ctx context.Context, its []store.InboxItem) (int, error) {
-	n, err := c.Inbox.InboxPutBatch(ctx, its)
-	if err != nil {
-		return n, err
+func (c crashAfterInsert) Collection(ctx context.Context, spec store.CollectionSpec) (store.Collection, error) {
+	col, err := c.InboxStore.Collection(ctx, spec)
+	if err != nil || spec.Name != InboxSpec.Name {
+		return col, err
 	}
-	return n, c.err
+	return crashCol{col, c.err}, nil
+}
+
+type crashCol struct {
+	store.Collection
+	err error
+}
+
+func (c crashCol) Put(ctx context.Context, r store.Record) (store.Record, bool, error) {
+	out, created, err := c.Collection.Put(ctx, r)
+	if err != nil {
+		return out, created, err
+	}
+	return out, created, c.err
 }
 
 // TestDrainCrashBeforeDelete: the inbox commit happened but the spool
@@ -110,7 +123,7 @@ func TestDrainCrashBeforeDelete(t *testing.T) {
 	res, err := Drain(ctx, sp, st, time.Now, quiet)
 	require.NoError(t, err)
 	assert.Equal(t, DrainResult{Moved: 1, Fresh: 0}, res)
-	its, err := st.InboxList(ctx, store.InboxFilter{})
+	its, err := InboxList(ctx, st, store.InboxFilter{})
 	require.NoError(t, err)
 	assert.Len(t, its, 1)
 }
@@ -144,16 +157,16 @@ func TestWebhookAndPollDedupe(t *testing.T) {
 
 	at := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 	key := GitHubKey("acme/app", "comment", "99", at)
-	_, dup, err := st.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "poll:" + key, NaturalKey: key})
+	_, dup, err := InboxPut(ctx, st, store.InboxItem{Source: "github", DeliveryID: "poll:" + key, NaturalKey: key})
 	require.NoError(t, err)
 	assert.True(t, dup)
-	its, err := st.InboxList(ctx, store.InboxFilter{})
+	its, err := InboxList(ctx, st, store.InboxFilter{})
 	require.NoError(t, err)
 	assert.Len(t, its, 1)
 
 	// An edit is a new version, so a new row.
 	key2 := GitHubKey("acme/app", "comment", "99", at.Add(time.Minute))
-	_, dup, err = st.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "poll:" + key2, NaturalKey: key2})
+	_, dup, err = InboxPut(ctx, st, store.InboxItem{Source: "github", DeliveryID: "poll:" + key2, NaturalKey: key2})
 	require.NoError(t, err)
 	assert.False(t, dup)
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/postgres"
@@ -510,7 +511,7 @@ func (c *Controller) pruneInbox() {
 		return
 	}
 	c.inboxPrunedAt = now
-	n, err := c.store.InboxPrune(c.ctx, now.Add(-c.config().Ingest.RetentionDuration()))
+	n, err := ingest.InboxPrune(c.ctx, c.store, now.Add(-c.config().Ingest.RetentionDuration()))
 	if err != nil {
 		if c.ctx.Err() == nil {
 			c.log.Error("inbox prune", "err", err)

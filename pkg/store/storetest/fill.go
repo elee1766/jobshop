@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -68,7 +69,7 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	require.NoError(t, s.IndexRecall(ctx, store.RecallDoc{Kind: store.RecallJournal, Ref: "sess:1", TicketID: f.Task, Project: proj, At: c.T, Body: "journal about nftables"}))
 	_, err = memedit.AddWrite(ctx, s, store.MemoryEdit{Path: "memory/global.md", Before: "old", Existed: true, Learnings: []int64{l.ID}, Pools: []string{"dev"}, MergedAt: c.T})
 	require.NoError(t, err)
-	it, _, err := s.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issues", RepoOrTeam: "a/b", Number: 7, ReceivedAt: c.T, Payload: json.RawMessage(`{"x":1}`)})
+	it, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "d1", Kind: "issues", RepoOrTeam: "a/b", Number: 7, ReceivedAt: c.T, Payload: json.RawMessage(`{"x":1}`)})
 	require.NoError(t, err)
 	f.Inbox = it.ID
 
@@ -127,7 +128,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	require.Len(t, me, 1)
 	assert.Equal(t, "memory/global.md", me[0].Path)
 	assert.True(t, me[0].Existed)
-	in, err := s.InboxGet(ctx, f.Inbox)
+	in, err := ingest.InboxGet(ctx, s, f.Inbox)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"x":1}`, string(in.Payload))
 	sl, err := s.Slots(ctx)
@@ -151,7 +152,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	l2, err := learning.Add(ctx, s, store.Learning{Kind: store.LearningFailure, Summary: "x", Source: "agent"}, "")
 	require.NoError(t, err)
 	assert.Greater(t, l2.ID, f.Learning)
-	it, dup, err := s.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "d2", Payload: json.RawMessage(`{}`)})
+	it, dup, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "d2", Payload: json.RawMessage(`{}`)})
 	require.NoError(t, err)
 	assert.False(t, dup)
 	assert.Greater(t, it.ID, f.Inbox)

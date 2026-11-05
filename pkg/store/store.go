@@ -361,35 +361,6 @@ type Store interface {
 	// StepsCreated returns step tickets created in [since, until),
 	// oldest first (#274).
 	StepsCreated(ctx context.Context, since, until time.Time) ([]Ticket, error)
-	// InboxPut stores an ingested item (#321). A delivery id already
-	// stored is a no-op that returns the existing row and dup true.
-	InboxPut(ctx context.Context, it InboxItem) (out InboxItem, dup bool, err error)
-	// InboxPutBatch stores items in one transaction (#335), each deduped
-	// like InboxPut. It returns how many were new.
-	InboxPutBatch(ctx context.Context, its []InboxItem) (fresh int, err error)
-	// InboxClaim leases the oldest item in one of states whose lease is
-	// empty or expired, adding one to attempts. ErrNotFound if none.
-	InboxClaim(ctx context.Context, states []string, holder string, lease time.Duration) (InboxItem, error)
-	// InboxRenew extends holder's live lease; ErrConflict if not held.
-	InboxRenew(ctx context.Context, id int64, holder string, lease time.Duration) (InboxItem, error)
-	// InboxSetState moves a held item to a new state and drops the
-	// lease. ErrConflict if holder no longer holds a live lease.
-	InboxSetState(ctx context.Context, id int64, holder string, u InboxUpdate) (InboxItem, error)
-	// InboxGet returns one item.
-	InboxGet(ctx context.Context, id int64) (InboxItem, error)
-	// InboxList lists items newest first.
-	InboxList(ctx context.Context, f InboxFilter) ([]InboxItem, error)
-	// InboxRequeue moves an item that no one leases from state from to
-	// state to (held -> pending once a human answered, #353).
-	// ErrConflict if it is not in from or is leased.
-	InboxRequeue(ctx context.Context, id int64, from, to string) (InboxItem, error)
-	// InboxPrune deletes terminal items received before before and
-	// returns how many.
-	InboxPrune(ctx context.Context, before time.Time) (int64, error)
-	// InboxCounts counts items by state, every state present (#443).
-	InboxCounts(ctx context.Context) (map[string]int64, error)
-	// InboxCountOlder counts items in state received before before (#443).
-	InboxCountOlder(ctx context.Context, state string, before time.Time) (int64, error)
 	// IndexRecall adds or replaces (by kind and ref) one document in the
 	// recall index. Comments are indexed by the backend itself.
 	IndexRecall(ctx context.Context, d RecallDoc) error

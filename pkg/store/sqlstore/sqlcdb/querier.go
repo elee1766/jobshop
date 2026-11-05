@@ -49,31 +49,6 @@ type Querier interface {
 	Heartbeat(ctx context.Context, arg HeartbeatParams) (int64, error)
 	// HeldBy covers claimed and pre-assigned tickets, so a dead session strands neither.
 	HeldBy(ctx context.Context, holder string) ([]string, error)
-	// Rows in state received before before: the admission backlog (#443).
-	InboxCountOlder(ctx context.Context, arg InboxCountOlderParams) (int64, error)
-	InboxGet(ctx context.Context, id int64) (Inbox, error)
-	InboxGetByDelivery(ctx context.Context, deliveryID string) (Inbox, error)
-	InboxGetByNaturalKey(ctx context.Context, naturalKey string) (Inbox, error)
-	// No conflict target: a clash on delivery_id or on natural_key (#335)
-	// both mean the item is already stored.
-	InboxInsert(ctx context.Context, arg InboxInsertParams) (int64, error)
-	InboxList(ctx context.Context, arg InboxListParams) ([]Inbox, error)
-	// now comes before the slice: sqlc numbers later parameters ?N, which
-	// would point into an expanded list of two or more states.
-	InboxNextClaimable(ctx context.Context, arg InboxNextClaimableParams) (Inbox, error)
-	InboxPrune(ctx context.Context, before int64) (int64, error)
-	InboxRenew(ctx context.Context, arg InboxRenewParams) (Inbox, error)
-	// Moves an unleased item from one state to another (held -> pending
-	// once its needs-human ticket is answered, #353). Guarded by the
-	// current state so a racing stage cannot be overwritten.
-	InboxRequeue(ctx context.Context, arg InboxRequeueParams) (Inbox, error)
-	// Fenced by holder and a live lease. The lease is dropped so the next
-	// stage can claim the row in its new state.
-	InboxSetState(ctx context.Context, arg InboxSetStateParams) (Inbox, error)
-	InboxStateCounts(ctx context.Context) ([]InboxStateCountsRow, error)
-	// Takes the row only if it is still claimable, so two claimers racing on
-	// the same row cannot both win.
-	InboxTake(ctx context.Context, arg InboxTakeParams) (Inbox, error)
 	InsertComment(ctx context.Context, arg InsertCommentParams) (Comment, error)
 	InsertEdge(ctx context.Context, arg InsertEdgeParams) error
 	InsertHistory(ctx context.Context, arg InsertHistoryParams) error
