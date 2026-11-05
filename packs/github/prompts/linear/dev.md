@@ -6,6 +6,12 @@ update Linear only with `jobshop linear issue|context|comment|state <KEY>`
 and `jobshop linear list|search|catalog --team {{.linear_team}}` (it acts
 as the team's identity); the specs are not GitHub issues.
 
+Linear scope: only team {{.linear_team}}. Never read, list, search,
+comment on, create or update issues, projects or anything else of
+another Linear team, even when an issue links to one or the API would
+allow it. Do not use other Linear tools or tokens (linearis, the API
+directly). If the work needs another team, stop and escalate.
+
 Most tickets are the `implement` step of a `pr-work` run (kind `step`);
 the ticket body below says what to do and when to close. Closing the step
 `done` hands the PR to the refinery through the run; do not change the

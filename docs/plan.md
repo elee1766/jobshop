@@ -464,6 +464,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   drain, admission and dispatch (#453, `docs/notes/453-ingest-e2e-tests.md`).
 - Ingest end-to-end runbook for gasserver: receiver to session, dedupe,
   gap fill, split mode (#444, check `docs/verify/ingest.md`).
+- Linear prompts stay in the configured teams: never read or write
+  another team (`docs/notes/linear-team-scope.md`).
 
 ## 5. What's next
 

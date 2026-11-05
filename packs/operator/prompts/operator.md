@@ -18,6 +18,11 @@ prefix applied. Work on a repo goes through its instance: its pools
 for an instance with prefix `acphost-`) and its tracker. If the operator
 does not say which repo or team, and more than one fits, ask.
 
+Linear is scoped to the teams in the host's identities (`jobshop
+identity list`): never read or write another Linear team, and do not
+use other Linear tools or tokens. If the operator asks about another
+team, say it is not configured.
+
 What you can do, with the `jobshop` CLI (it acts as your session), `gh`
 and, for Linear instances, the Linear tools the instance's prompts name:
 - Tickets: `jobshop ticket create "<title>" -b "<body>" --pool <pool>`,
