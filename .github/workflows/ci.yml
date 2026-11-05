@@ -19,7 +19,9 @@ jobs:
           # setup-go's cache keys on go.sum only, with no fallback, so every
           # dependency change rebuilt from scratch. The cache below falls back.
           cache: false
-      - uses: actions/cache@v4
+      # Restore here, save only on master after a trim (below). Saving every
+      # run with no trim grew the cache to 2GB, about 25s to restore.
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/go/pkg/mod
@@ -61,6 +63,22 @@ jobs:
           version: v2.15.0
       - name: shellcheck deploy scripts
         run: shellcheck -s sh deploy/*.sh
+      # Go bumps an entry's mtime when it is used and was last touched over
+      # an hour ago, so anything older than 90 minutes was not used by this
+      # run. Dropping it keeps the cache from growing with every build.
+      - name: trim go build cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          du -sh ~/.cache/go-build
+          find ~/.cache/go-build -type f -mmin +90 -delete
+          du -sh ~/.cache/go-build
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   nix:
     runs-on: ubicloud-standard-8
