@@ -17,7 +17,7 @@ func TestTriggerBodyFile(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
 		"p/pack.yaml":    trigPool + "triggers:\n  t1:\n    when: {pool: dev, ready_below: 1}\n    ticket:\n      pool: dev\n      title: hi\n      body_file: bodies/t1.md\n",
-		"p/bodies/t1.md": "repo ${repo}\n",
+		"p/bodies/t1.md": "repo {{.repo}}\n",
 		"host.md":        "host ${repo}\n",
 		FileName: hostBase + "packs:\n  - path: p\n    prefix: x-\n    vars: {repo: o/r}\n" +
 			"triggers:\n  t2:\n    when: {pool: x-dev, ready_below: 1}\n    ticket:\n      pool: x-dev\n      title: hi\n      body_file: host.md\n",

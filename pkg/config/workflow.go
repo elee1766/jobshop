@@ -52,9 +52,6 @@ type Workflow struct {
 	// PackVars are the vars of the pack that declared the workflow, set by
 	// the loader, not by users.
 	PackVars map[string]any `yaml:"pack_vars,omitempty"`
-	// Template is the declaring pack's syntax (SyntaxGo or ""), set by
-	// the loader.
-	Template string `yaml:"template,omitempty"`
 }
 
 // Step types (#396). Command and http steps are run by the controller
@@ -252,16 +249,16 @@ func (c *Config) checkTriggerRun(tr *Trigger) error {
 		templates["vars."+k] = v
 	}
 	for where, s := range templates {
-		vs, err := refs(s, r.Template)
+		vs, err := refs(s)
 		if err != nil {
 			return fmt.Errorf("run: %s: %w", where, err)
 		}
 		for _, v := range vs {
 			if v != CheckOutputVar {
-				return fmt.Errorf("run: %s uses %s; only %s is available", where, placeholder(v, r.Template), placeholder(CheckOutputVar, r.Template))
+				return fmt.Errorf("run: %s uses %s; only %s is available", where, placeholder(v), placeholder(CheckOutputVar))
 			}
 			if tr.When.Check == "" {
-				return fmt.Errorf("run: %s uses %s, which needs when.check", where, placeholder(CheckOutputVar, r.Template))
+				return fmt.Errorf("run: %s uses %s, which needs when.check", where, placeholder(CheckOutputVar))
 			}
 		}
 	}
@@ -318,22 +315,12 @@ func setPackVars(m map[string]any, vars map[string]any, file string) error {
 	return nil
 }
 
-// FillTemplate replaces ${name} in s from vars ($$ is a literal $). A
-// missing var is an error.
-func FillTemplate(s string, vars map[string]any) (string, error) {
-	out, err := substitute(s, vars, "", SyntaxDollar)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprint(out), nil
-}
-
 // checkStepPool checks a step's pool. A pool naming a run var is checked
 // at run start (ResolvePool); one filled from pack vars alone is checked
 // here.
 func (c *Config) checkStepPool(w *Workflow, pool string) error {
 	runVar := false
-	vs, err := refs(pool, w.Template)
+	vs, err := refs(pool)
 	if err != nil {
 		return fmt.Errorf("pool: %w", err)
 	}
@@ -343,7 +330,7 @@ func (c *Config) checkStepPool(w *Workflow, pool string) error {
 		case slices.Contains(w.Vars, v):
 			runVar = true
 		case !packed:
-			return fmt.Errorf("pool uses %s, not in workflow vars or pack vars", placeholder(v, w.Template))
+			return fmt.Errorf("pool uses %s, not in workflow vars or pack vars", placeholder(v))
 		}
 	}
 	if runVar {
@@ -366,26 +353,14 @@ func (c *Config) ResolvePool(w *Workflow, pool string, vars map[string]any) (str
 	return name, nil
 }
 
-// Render fills a step title, prompt or pool template of w from vars, in
-// the declaring pack's syntax.
+// Render fills a step title, prompt or pool template of w from vars.
 func (w *Workflow) Render(s string, vars map[string]any) (string, error) {
-	return Fill(s, w.Template, vars)
+	return Fill(s, vars)
 }
 
 // Fill fills a trigger run var or key template from vars.
 func (r *TriggerRun) Fill(s string, vars map[string]any) (string, error) {
-	return Fill(s, r.Template, vars)
-}
-
-// templateVars returns the ${name} references in s ($$ is a literal $).
-func templateVars(s string) []string {
-	var out []string
-	for _, m := range varPattern.FindAllStringSubmatch(s, -1) {
-		if m[1] != "" {
-			out = append(out, m[1])
-		}
-	}
-	return out
+	return Fill(s, vars)
 }
 
 func (c *Config) checkWorkflow(name string, w *Workflow) error {
@@ -515,13 +490,13 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		}
 		ancestors[s.ID] = anc
 		for _, f := range []struct{ key, v string }{{"title", s.Title}, {"prompt", s.Prompt}} {
-			vs, err := refs(f.v, w.Template)
+			vs, err := refs(f.v)
 			if err != nil {
 				return fmt.Errorf("%s: %s: %w", where, f.key, err)
 			}
 			for _, v := range vs {
 				if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) {
-					return fmt.Errorf("%s: %s uses %s, not in workflow vars or pack vars", where, f.key, placeholder(v, w.Template))
+					return fmt.Errorf("%s: %s uses %s, not in workflow vars or pack vars", where, f.key, placeholder(v))
 				}
 			}
 		}
@@ -549,8 +524,6 @@ type EscalationChat struct {
 	// needs-human label. Empty: no chat for those. Vars: EscalationVars.
 	HoldPrompt     string `yaml:"hold_prompt"`
 	HoldPromptFile string `yaml:"hold_prompt_file"`
-	// Template is the declaring pack's syntax (#383), set by the loader.
-	Template string `yaml:"template,omitempty"`
 }
 
 // EscalationVars are the template vars of an escalation chat's first
@@ -570,26 +543,13 @@ var EscalationVars = []string{
 // escalationPassthrough returns vars plus each escalation var mapped to
 // its own reference, so pack substitution leaves them for the controller.
 // Escalation vars win over pack vars of the same name.
-func escalationPassthrough(vars map[string]any, syn string) map[string]any {
+func escalationPassthrough(vars map[string]any) map[string]any {
 	out := make(map[string]any, len(vars)+len(EscalationVars))
 	for k, v := range vars {
 		out[k] = v
 	}
 	for _, k := range EscalationVars {
-		out[k] = placeholder(k, syn)
-	}
-	return out
-}
-
-// stepRef matches ${steps.<id>.output} and ${steps.<id>.json.<path>},
-// the outputs of earlier steps, filled when a command or http step runs.
-var stepRef = regexp.MustCompile(`\$\{steps\.([a-z][a-z0-9_-]*)\.(output|outcome|json\.[A-Za-z0-9_.-]+)\}`)
-
-// StepRefs returns the step ids s refers to with ${steps.<id>...}.
-func StepRefs(s string) []string {
-	var out []string
-	for _, m := range stepRef.FindAllStringSubmatch(s, -1) {
-		out = append(out, m[1])
+		out[k] = placeholder(k)
 	}
 	return out
 }
@@ -663,47 +623,27 @@ func (c *Config) checkEscalation(e *EscalationChat) error {
 		key, v string
 		vars   []string
 	}{{"prompt", e.Prompt, EscalationVars}, {"pool_prompt", e.PoolPrompt, EscalationVars}, {"hold_prompt", e.HoldPrompt, EscalationVars}} {
-		vs, err := refs(f.v, e.Template)
+		vs, err := refs(f.v)
 		if err != nil {
 			return fmt.Errorf("%s: %w", f.key, err)
 		}
 		for _, v := range vs {
 			if !slices.Contains(f.vars, v) {
-				return fmt.Errorf("%s uses %s; available: %v", f.key, placeholder(v, e.Template), f.vars)
+				return fmt.Errorf("%s uses %s; available: %v", f.key, placeholder(v), f.vars)
 			}
 		}
 	}
 	return nil
 }
 
-// FillStepTemplate fills a command or http step template of w. In a
-// ${name} pack it fills ${steps.<id>.output|outcome|json.<path>} from
-// look, then ${name} from vars. In a template: go pack the outputs are
-// the steps var: {{.steps.<id>.output}}, {{.steps.<id>.json.sha}}
-// (index for ids with a dash: {{(index .steps "wait-ci").output}}).
-func (w *Workflow) FillStepTemplate(s string, vars map[string]any, steps map[string]any, look func(id, field string) (string, bool)) (string, error) {
-	if w.Template == SyntaxGo {
-		all := maps.Clone(vars)
-		all[StepsVar] = steps
-		return Fill(s, SyntaxGo, all)
-	}
-	var missing string
-	s = stepRef.ReplaceAllStringFunc(s, func(m string) string {
-		p := stepRef.FindStringSubmatch(m)
-		v, ok := look(p[1], p[2])
-		if !ok {
-			if missing == "" {
-				missing = m
-			}
-			return ""
-		}
-		// Escape so a $ in the output is not read as a var.
-		return strings.ReplaceAll(v, "$", "$$")
-	})
-	if missing != "" {
-		return "", fmt.Errorf("%s: no such step output", missing)
-	}
-	return FillTemplate(s, vars)
+// FillStepTemplate fills a command or http step template of w. Earlier
+// steps' outputs are the steps var: {{.steps.<id>.output}},
+// {{.steps.<id>.json.sha}} (index for ids with a dash:
+// {{(index .steps "wait-ci").output}}).
+func (w *Workflow) FillStepTemplate(s string, vars map[string]any, steps map[string]any) (string, error) {
+	all := maps.Clone(vars)
+	all[StepsVar] = steps
+	return Fill(s, all)
 }
 
 // StepsVar is the template: go var holding earlier steps' outputs.
@@ -760,28 +700,14 @@ func (c *Config) checkAutoStep(w *Workflow, s *Step) error {
 	default:
 		return fmt.Errorf("on_restart %q must be %s or %s", s.OnRestart, OnRestartRetry, OnRestartFail)
 	}
-	self := slices.IndexFunc(w.Steps, func(o Step) bool { return o.ID == s.ID })
 	for _, t := range templates {
-		if w.Template == SyntaxGo {
-			vs, err := refs(t, SyntaxGo)
-			if err != nil {
-				return err
-			}
-			for _, v := range vs {
-				if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) && v != StepsVar {
-					return fmt.Errorf("{{.%s}} is not in workflow vars or pack vars", v)
-				}
-			}
-			continue
+		vs, err := refs(t)
+		if err != nil {
+			return err
 		}
-		for _, id := range StepRefs(t) {
-			if i := slices.IndexFunc(w.Steps, func(o Step) bool { return o.ID == id }); i < 0 || i >= self {
-				return fmt.Errorf("${steps.%s...}: no earlier step %q", id, id)
-			}
-		}
-		for _, v := range templateVars(stepRef.ReplaceAllString(t, "")) {
-			if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) {
-				return fmt.Errorf("${%s} is not in workflow vars or pack vars (write $$ for a literal $)", v)
+		for _, v := range vs {
+			if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) && v != StepsVar {
+				return fmt.Errorf("{{.%s}} is not in workflow vars or pack vars", v)
 			}
 		}
 	}

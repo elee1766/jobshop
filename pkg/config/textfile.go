@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 type textFiles struct {
 	dir, file string
 	vars      map[string]any
-	syn       string // the pack's template syntax
 	// sources records "<key>.<field>" -> the file read, for config show.
 	sources map[string][]string
 }
@@ -43,8 +43,15 @@ func (t textFiles) load(m map[string]any, field, fileField, key string, subst bo
 	}
 	delete(m, fileField)
 	var text any = string(b)
+	if t.vars != nil && (subst || fileField == "prompt_file") {
+		// The removed ${name} syntax in a pack's file is an error (#566).
+		// Prompt rule files stay literal, so they are not checked.
+		if left := leftoverVars(map[string]any{key + "." + fileField: string(b)}, t.file); len(left) > 0 {
+			return errors.New(left[0])
+		}
+	}
 	if subst && t.vars != nil {
-		if text, err = substitute(text, t.vars, key+"."+fileField, t.syn); err != nil {
+		if text, err = substitute(text, t.vars, key+"."+fileField); err != nil {
 			return fmt.Errorf("%s: %w", t.file, err)
 		}
 	}
@@ -71,7 +78,7 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 		wm, _ := wfs[n].(map[string]any)
 		steps, _ := wm["steps"].([]any)
 		for i, s := range steps {
-			// Step prompts keep ${run var} references for run start.
+			// Step prompts keep {{.run var}} references for run start.
 			if sm, ok := s.(map[string]any); ok {
 				if err := t.load(sm, "prompt", "prompt_file", fmt.Sprintf("workflows.%s.steps[%d]", n, i), false); err != nil {
 					return err
@@ -89,17 +96,17 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 		}
 	}
 	// Escalation chat prompts (#379): pack vars at load, the escalation
-	// vars ({{.ticket}} or ${ticket}, ...) kept for the controller.
+	// vars ({{.ticket}}, ...) kept for the controller.
 	et := t
 	if t.vars != nil {
-		et.vars = escalationPassthrough(t.vars, t.syn)
+		et.vars = escalationPassthrough(t.vars)
 	}
 	blocks := escalationBlocks(m)
 	for _, n := range sortedKeys(blocks) {
 		e, _ := blocks[n].(map[string]any)
 		for _, f := range escalationPrompts {
 			if s, ok := e[f].(string); ok && et.vars != nil {
-				v, err := substitute(s, et.vars, n+"."+f, t.syn)
+				v, err := substitute(s, et.vars, n+"."+f)
 				if err != nil {
 					return fmt.Errorf("%s: %w", t.file, err)
 				}

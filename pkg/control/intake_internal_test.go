@@ -73,7 +73,7 @@ func intakeController(t *testing.T, hook string) (*Controller, *fakeLinear) {
 	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: config.SecretPath(tokFile), Workspace: "acme", Teams: []string{"ENG"}}}
 	cfg.Workflows = map[string]config.Workflow{"lw": {
 		Vars: []string{"issue"}, Issue: "issue", Repo: "acme/app", Tracker: config.TrackerLinear, LinearWorkspace: "acme",
-		Steps: []config.Step{{ID: "implement", Pool: "dev", Title: "Implement ${issue}", Prompt: "do ${issue}"}},
+		Steps: []config.Step{{ID: "implement", Pool: "dev", Title: "Implement {{.issue}}", Prompt: "do {{.issue}}"}},
 	}}
 	cfg.Hooks = nil
 	if hook != "" {

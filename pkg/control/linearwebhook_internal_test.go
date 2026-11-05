@@ -54,7 +54,7 @@ workflows:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall ${signal} ${subject}", prompt: x}
+      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: x}
   pr-work:
     vars: [issue]
     issue: issue
@@ -62,7 +62,7 @@ workflows:
     tracker: linear
     linear_workspace: acme
     steps:
-      - {id: implement, pool: dev, title: "Implement ${issue}", prompt: x}
+      - {id: implement, pool: dev, title: "Implement {{.issue}}", prompt: x}
 triggers:
   stall:
     when:
@@ -70,7 +70,7 @@ triggers:
         - {signal: linear_issue_no_run, team: ENG, states: Todo, poll: 1h}
     run:
       workflow: stall-check
-      vars: {signal: "${stall_signal}", subject: "${stall_subject}", detail: "${stall_detail}"}
+      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
 `
 
 // webhookLinear is a fake Linear for the webhook tests: an OAuth token

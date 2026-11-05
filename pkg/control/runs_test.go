@@ -37,7 +37,7 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
 	root := config.Root{Dir: dir}
 	pack := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(filepath.Join(pack, "prompts"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "impl.md"), []byte("Implement #${issue} in ${repo}.\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "impl.md"), []byte("Implement #{{.issue}} in {{.repo}}.\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), []byte(`workflows:
   pr:
     vars: [issue]
@@ -45,37 +45,37 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
     repo: acme/widget
     escalate_pool: dev
     steps:
-      - {id: implement, pool: dev, retries: 3, prompt_file: prompts/impl.md, title: "Implement #${issue}"}
-      - {id: review, pool: refinery, prompt: "Review #${issue}", title: "Review #${issue}"}
-      - {id: deploy, pool: refinery, prompt: "Deploy", title: "Deploy #${issue}"}
+      - {id: implement, pool: dev, retries: 3, prompt_file: prompts/impl.md, title: "Implement #{{.issue}}"}
+      - {id: review, pool: refinery, prompt: "Review #{{.issue}}", title: "Review #{{.issue}}"}
+      - {id: deploy, pool: refinery, prompt: "Deploy", title: "Deploy #{{.issue}}"}
   routed:
     vars: [review_pool]
     steps:
-      - {id: review, pool: "${review_pool}", prompt: "Review", title: "Review"}
+      - {id: review, pool: "{{.review_pool}}", prompt: "Review", title: "Review"}
   locked:
     vars: [pr]
     steps:
-      - {id: work, pool: dev, prompt: "Work", title: "Work ${pr}", needs_resources: ["pr:acme#${pr}", emu]}
+      - {id: work, pool: dev, prompt: "Work", title: "Work {{.pr}}", needs_resources: ["pr:acme#{{.pr}}", emu]}
   placed:
     vars: [pr, risk]
     steps:
       - id: review
         prompt: Review
-        title: "Review ${pr}"
+        title: "Review {{.pr}}"
         placement:
-          required: ["pr:acme#${pr}"]
+          required: ["pr:acme#{{.pr}}"]
           prefer_for: 10m
           options:
             - {pool: refinery, resources: [flagship], weight: 100}
-            - {pool: dev, resources: [workhorse], weight: 10, when: "${risk} != 'high'"}
+            - {pool: dev, resources: [workhorse], weight: 10, when: "{{.risk}} != 'high'"}
   graph:
     vars: [issue]
     steps:
-      - {id: build, pool: dev, prompt: b, title: "Build #${issue}"}
-      - {id: review, pool: refinery, prompt: r, title: "Review #${issue}", needs: [build]}
-      - {id: device, pool: refinery, prompt: d, title: "Device #${issue}", needs: [build]}
-      - {id: rollout, pool: dev, prompt: o, title: "Rollout #${issue}", needs: [review, device], when: {step: review, outcome: approve}}
-      - {id: accept, pool: dev, prompt: a, title: "Accept #${issue}", when: {step: review, outcome: approve}}
+      - {id: build, pool: dev, prompt: b, title: "Build #{{.issue}}"}
+      - {id: review, pool: refinery, prompt: r, title: "Review #{{.issue}}", needs: [build]}
+      - {id: device, pool: refinery, prompt: d, title: "Device #{{.issue}}", needs: [build]}
+      - {id: rollout, pool: dev, prompt: o, title: "Rollout #{{.issue}}", needs: [review, device], when: {step: review, outcome: approve}}
+      - {id: accept, pool: dev, prompt: a, title: "Accept #{{.issue}}", when: {step: review, outcome: approve}}
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
