@@ -68,6 +68,12 @@ Fix in place when you can, one or more of:
   needs-human`). `run resume` reopens only the first unfinished step: when
   a later step (review-merge) failed, pass `--step <that step>` or the
   run escalates again.
+- A step deferred with `release --until` on an event that already
+  happened (its reason names PR checks that are now green, a deploy now
+  live, a merged PR or a pushed tag; check it): `jobshop ticket undefer
+  <step>`, then `jobshop learn correction "<step> parked <event> on a
+  timer" --fix "use jobshop wait add <kind>"` and close this check
+  `done`.
 - A time-gated step that is waiting on purpose (a 24h window, a
   scheduled run): never escalate it. If it is deferred, leave it and say
   until when. If it is not (open and ready, or its run is `needs_human`

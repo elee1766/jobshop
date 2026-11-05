@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ type waitCmd struct {
 }
 
 type waitAddCmd struct {
-	Conds   []string `arg:"" name:"cond" help:"TYPE:key=val,...  Types: github.review (pr, login, head, state), github.checks (pr or repo+sha, state=success|failure, required), github.pr (pr, state=merged|closed|head_changed), github.label (issue, label; met when the issue has the label or is closed), thread.reply (thread, from), time (at). pr is owner/name#n or a PR URL; at is a duration or RFC3339."`
+	Conds   []string `arg:"" name:"cond" help:"TYPE:key=val,...  Types: github.review (pr, login, head, state), github.checks (pr or repo+sha, state=success|failure, required), github.pr (pr, state=merged|closed|head_changed), github.label (issue, label; met when the issue has the label or is closed), github.tag (repo, tag), deploy (repo, sha; met when the controller's build commit contains sha), run (id, state=done|closed), linear.state (issue=KEY, state name or type), linear.label (issue=KEY, label, present=false waits for removal), thread.reply (thread, from), time (at). pr is owner/name#n or a PR URL; at is a duration or RFC3339."`
 	Reason  string   `short:"r" required:"" help:"Why the ticket waits."`
 	Owner   string   `help:"Who must act (a login, team or person)."`
 	Any     bool     `help:"Clear when any condition holds (default: all)."`
@@ -47,6 +48,9 @@ func (c waitAddCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodWaitAdd, p, nil)
 }
 
+// linearKeyRe is a Linear issue key (ENG-12).
+var linearKeyRe = regexp.MustCompile(`^[A-Z][A-Z0-9]*-\d+$`)
+
 // parseWaitCond reads TYPE:key=val,key=val.
 func parseWaitCond(s string, now time.Time) (store.WaitCond, error) {
 	typ, rest, _ := strings.Cut(s, ":")
@@ -70,7 +74,19 @@ func parseWaitCond(s string, now time.Time) (store.WaitCond, error) {
 		case "repo":
 			cd.Repo = v
 		case "issue":
+			if linearKeyRe.MatchString(v) {
+				cd.Thread = v // linear.state, linear.label
+				break
+			}
 			cd.Repo, cd.Issue, _, err = parseThread(v)
+		case "tag", "release":
+			cd.Tag = v
+		case "id":
+			cd.Run = v
+		case "present":
+			var present bool
+			present, err = strconv.ParseBool(v)
+			cd.Absent = !present
 		case "label":
 			cd.Label = v
 		case "head":

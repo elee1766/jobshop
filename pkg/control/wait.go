@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -36,6 +37,30 @@ type waitSource interface {
 	Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error)
 	// Issue reads an issue's state and labels (github.label, #603).
 	Issue(ctx context.Context, repo string, n int) (issueInfo, error)
+	// Tag reports whether tag exists in repo (github.tag, JOB-11).
+	Tag(ctx context.Context, repo, tag string) (bool, error)
+	// Contains reports whether head is sha or a descendant of it in repo
+	// (deploy, JOB-11).
+	Contains(ctx context.Context, repo, sha, head string) (bool, error)
+}
+
+// linearWaitSource reads a Linear issue for linear.state and
+// linear.label. Tests replace it.
+type linearWaitSource interface {
+	IssueContext(ctx context.Context, key string) (linear.Context, error)
+}
+
+// liveLinearWait reads through the identity covering the issue's team.
+type liveLinearWait struct{ c *Controller }
+
+func (l liveLinearWait) IssueContext(ctx context.Context, key string) (linear.Context, error) {
+	cl, err := l.c.linearClient(ctx, key)
+	if err != nil {
+		return linear.Context{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	return cl.GetContext(ctx, key, false)
 }
 
 type issueInfo struct {
@@ -102,6 +127,13 @@ func (c *Controller) waitSrc() waitSource {
 		return c.waitSource
 	}
 	return ghWaitSource{}
+}
+
+func (c *Controller) linearWaitSrc() linearWaitSource {
+	if c.linearWait != nil {
+		return c.linearWait
+	}
+	return liveLinearWait{c: c}
 }
 
 func (c *Controller) threadSrc() threadSource {
@@ -193,6 +225,11 @@ func (c *Controller) waitAdd(ctx context.Context, sc scope, p rpc.WaitAddParams)
 	}
 	if err := w.Validate(); err != nil {
 		return nil, err
+	}
+	for _, cd := range w.Conds {
+		if cd.Type == store.WaitDeploy && c.opt.Commit == "" {
+			return nil, fmt.Errorf("%w: deploy wait: this controller reports no build commit, so it cannot tell what is deployed", store.ErrInvalid)
+		}
 	}
 	fields, err := withWait(t, w)
 	if err != nil {
@@ -298,9 +335,22 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 type waitPass struct {
 	src     waitSource
 	threads threadSource
+	linear  linearWaitSource
 	prs     map[string]prInfo
 	reviews map[string][]prReview
 	checks  map[string][]prCheck
+	issues  map[string]linear.Context
+}
+
+func (p *waitPass) linearIssue(ctx context.Context, key string) (linear.Context, error) {
+	if v, ok := p.issues[key]; ok {
+		return v, nil
+	}
+	v, err := p.linear.IssueContext(ctx, key)
+	if err == nil {
+		p.issues[key] = v
+	}
+	return v, err
 }
 
 func prKey(repo string, n int) string { return fmt.Sprintf("%s#%d", repo, n) }
@@ -352,7 +402,7 @@ func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads thre
 		}
 		return
 	}
-	pass := &waitPass{src: src, threads: threads, prs: map[string]prInfo{}, reviews: map[string][]prReview{}, checks: map[string][]prCheck{}}
+	pass := &waitPass{src: src, threads: threads, linear: c.linearWaitSrc(), prs: map[string]prInfo{}, reviews: map[string][]prReview{}, checks: map[string][]prCheck{}, issues: map[string]linear.Context{}}
 	for _, t := range ts {
 		if err := c.evalWait(ctx, pass, t); err != nil && ctx.Err() == nil {
 			c.log.Warn("waits: evaluate", "ticket", t.ID, "err", err)
@@ -442,6 +492,19 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		return c.evalReply(ctx, pass, w, cd)
 	case store.WaitLabel:
 		return evalLabel(ctx, pass, cd)
+	case store.WaitTag:
+		ok, err := pass.src.Tag(ctx, cd.Repo, cd.Tag)
+		return ok, fmt.Sprintf("tag %s pushed to %s", cd.Tag, cd.Repo), err
+	case store.WaitDeploy:
+		if c.opt.Commit == "" {
+			return false, "", errInvalidated{"this controller reports no build commit"}
+		}
+		ok, err := pass.src.Contains(ctx, cd.Repo, cd.SHA, c.opt.Commit)
+		return ok, fmt.Sprintf("deployed %s contains %s", short(c.opt.Commit), short(cd.SHA)), err
+	case store.WaitRun:
+		return c.evalRun(ctx, cd)
+	case store.WaitLinearState, store.WaitLinearLabel:
+		return evalLinear(ctx, pass, cd)
 	case store.WaitChecks:
 		if cd.PR == 0 {
 			return evalChecks(ctx, pass, cd, cd.SHA)
@@ -502,6 +565,45 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		}
 	}
 	return last != nil && last.State == want, fmt.Sprintf("%s %s by %s on %s", ref, strings.ToLower(want), cd.Login, short(cd.Head)), nil
+}
+
+// evalRun: the run is done (state done) or ended any way (closed). A
+// done wait on a run that was cancelled can never hold.
+func (c *Controller) evalRun(ctx context.Context, cd *store.WaitCond) (bool, string, error) {
+	r, err := c.store.Get(ctx, cd.Run)
+	if err != nil {
+		return false, "", err
+	}
+	f, err := store.DecodeFields[store.RunFields](r)
+	if err != nil {
+		return false, "", err
+	}
+	ended := r.Status == store.StatusClosed || f.State == store.RunDone || f.State == store.RunCancelled
+	if cd.State == "closed" {
+		return ended, fmt.Sprintf("run %s ended (%s)", cd.Run, f.State), nil
+	}
+	if f.State == store.RunCancelled {
+		return false, "", errInvalidated{"run " + cd.Run + " was cancelled"}
+	}
+	return f.State == store.RunDone, "run " + cd.Run + " done", nil
+}
+
+// evalLinear: linear.state matches the state name or type
+// (case-insensitive); linear.label has the label, or lacks it with Absent.
+func evalLinear(ctx context.Context, pass *waitPass, cd *store.WaitCond) (bool, string, error) {
+	is, err := pass.linearIssue(ctx, cd.Thread)
+	if err != nil {
+		return false, "", err
+	}
+	if cd.Type == store.WaitLinearState {
+		ok := strings.EqualFold(is.State.Name, cd.State) || strings.EqualFold(is.State.Type, cd.State)
+		return ok, fmt.Sprintf("%s is %s", cd.Thread, is.State.Name), nil
+	}
+	has := slices.ContainsFunc(is.Labels, func(l string) bool { return strings.EqualFold(l, cd.Label) })
+	if cd.Absent {
+		return !has, fmt.Sprintf("%s no longer labeled %s", cd.Thread, cd.Label), nil
+	}
+	return has, fmt.Sprintf("%s labeled %s", cd.Thread, cd.Label), nil
 }
 
 // evalLabel: the issue carries the label, or is closed (a rejected
@@ -631,6 +733,33 @@ func (ghWaitSource) Checks(ctx context.Context, repo string, n int, sha string, 
 		return nil, nil // nothing reported yet: not green
 	}
 	return nil, err
+}
+
+// Tag reads GET /repos/{repo}/git/ref/tags/{tag}; 404 is not yet.
+func (ghWaitSource) Tag(ctx context.Context, repo, tag string) (bool, error) {
+	_, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/git/ref/tags/%s", repo, tag))
+	if err != nil && strings.Contains(err.Error(), "404") {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// Contains compares sha...head: identical or ahead means head has sha.
+func (ghWaitSource) Contains(ctx context.Context, repo, sha, head string) (bool, error) {
+	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/compare/%s...%s", repo, sha, head), "--jq", ".status")
+	if err != nil {
+		if strings.Contains(err.Error(), "404") {
+			return false, nil // head not pushed (a local build): not deployed
+		}
+		return false, err
+	}
+	return compareContains(string(b)), nil
+}
+
+// compareContains reads the compare API's status.
+func compareContains(status string) bool {
+	s := strings.TrimSpace(status)
+	return s == "identical" || s == "ahead"
 }
 
 // Issue reads GET /repos/{repo}/issues/{n}.

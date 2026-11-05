@@ -216,6 +216,8 @@ type Controller struct {
 	// waitSource reads PR state for waits; nil means gh (#381). waitWake
 	// asks for a pass now; waitMu serializes passes.
 	waitSource waitSource
+	// linearWait reads Linear issues for linear.* waits; nil means live.
+	linearWait linearWaitSource
 	waitWake   chan struct{}
 	waitMu     sync.Mutex
 	// activitySrc reads GitHub and Linear activity; nil means live APIs

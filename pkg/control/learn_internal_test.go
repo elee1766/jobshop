@@ -128,7 +128,7 @@ func TestLearnRelease(t *testing.T) {
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "r1")
 	until := clk.now().Add(time.Hour) // release checks the controller clock
-	_, err := c.release(ctx, sc, rpc.ReleaseParams{Reason: "CI later", Until: &until})
+	_, err := c.release(ctx, sc, rpc.ReleaseParams{Reason: "CI later", Until: &until, TimeWait: true})
 	require.NoError(t, err)
 	assert.Empty(t, learnings(t, c, store.LearningFilter{Ticket: step.ID}), "a deferred release is not a failure")
 
