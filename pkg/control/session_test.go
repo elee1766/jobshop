@@ -766,14 +766,14 @@ func fakeAgent() {
 		cur: map[string]string{"model": "default-model", "reasoning_effort": "medium"},
 	}
 	conn := acp.NewAgentSideConnection(a, os.Stdout, os.Stdin)
-	a.conn = conn
+	a.conn.Store(conn)
 	<-conn.Done()
 }
 
 type agent struct {
 	n      int
-	conn   *acp.AgentSideConnection
-	known  map[acp.SessionId]bool // created or loaded in this process
+	conn   atomic.Pointer[acp.AgentSideConnection] // set after the connection starts serving
+	known  map[acp.SessionId]bool                  // created or loaded in this process
 	cancel chan struct{}
 	cur    map[string]string // config option values (#304)
 	busy   atomic.Bool       // a prompt is running
@@ -862,9 +862,9 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	if strings.Contains(text, "Messages for you:") {
 		// Reply with a tool call and an echo, for session.subscribe. A
 		// message saying "hold" keeps the turn open until cancelled.
-		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("t1", "Reading", acp.WithStartStatus(acp.ToolCallStatusInProgress))})
-		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall("t1", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
-		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("echo: " + text[strings.LastIndex(text, "\n")+1:])})
+		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("t1", "Reading", acp.WithStartStatus(acp.ToolCallStatusInProgress))})
+		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall("t1", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
+		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("echo: " + text[strings.LastIndex(text, "\n")+1:])})
 		if strings.Contains(text, "hold") {
 			_ = os.WriteFile("held", nil, 0o600)
 			<-a.cancel
@@ -912,7 +912,7 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	// A "noclose" file makes every turn end without touching the ticket,
 	// like an agent whose tools all fail.
 	if _, err := os.Stat("noclose"); err == nil {
-		_ = a.conn.SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("Waiting on the CI wake.")})
+		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("Waiting on the CI wake.")})
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 	}
 	c, err := rpc.Dial(ctx, os.Getenv("JOBSHOP_SOCKET"))
