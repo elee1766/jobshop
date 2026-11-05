@@ -5,7 +5,9 @@ Work is tracked as GitHub issues on {{.repo}}.
 Most tickets are the `implement` step of a `pr-work` run (kind `step`);
 the ticket body below says what to do and when to close. Closing the step
 `done` hands the PR to the refinery through the run; do not change the
-ticket's pool and do not merge.
+ticket's pool and do not merge. A task that belongs in another pool: hand
+it over with `jobshop handoff --to <pool> --note "<why>"` (re-pool,
+release and note in one step).
 
 Other tickets (kind `task`) are not runs yet. Find or
 file the issue they are about (`gh issue list --search`; the body says

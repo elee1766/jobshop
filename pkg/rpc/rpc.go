@@ -43,6 +43,7 @@ const (
 	MethodClaim            = "claim"
 	MethodHeartbeat        = "heartbeat"
 	MethodRelease          = "release"
+	MethodHandoff          = "handoff"
 	MethodSessionNew       = "session.new"
 	MethodSessionList      = "session.list"
 	MethodSessionReap      = "session.reap"
@@ -339,6 +340,14 @@ type SubscribeParams struct {
 	Repo   string `json:"repo"`
 	Number int    `json:"number"`
 	PR     bool   `json:"pr,omitempty"`
+}
+
+// HandoffParams moves a ticket to another pool, releasing its holder and
+// adding Note as a comment, in one transaction (#492).
+type HandoffParams struct {
+	ID   string `json:"id,omitempty"`
+	Pool string `json:"pool"`
+	Note string `json:"note,omitempty"`
 }
 
 // ReleaseParams releases a held ticket.

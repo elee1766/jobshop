@@ -473,6 +473,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `attention.orphan_age`, default 72h) are listed in attention with a
   close hint; the github planner closes verified ones (#495,
   `docs/notes/495-stale-adhoc-tickets.md`).
+- `jobshop handoff <ticket> --to <pool> --note`: re-pool, release, fence
+  bump and note in one transaction; stall-check, refinery and dev
+  prompts use it (#492, `docs/notes/492-handoff.md`).
 
 ## 5. What's next
 
@@ -630,6 +633,8 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 
 **Resource pools (#400).** Done: provider-owned slots (#407), waiting
 visibility (#408), placement (#409).
+
+**Hand-offs (#489).** Done: atomic `handoff` (#492).
 
 **Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
 misjudge conflicts: let the controller check mergeStateStatus itself.
@@ -1284,6 +1289,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   approves it by relabeling `proposed` to `target` (2026-11-05, #488).
   The planner never sets `target` itself, so direction stays a human's
   call while the pools no longer idle between phases.
+- Re-pooling a held ticket is one `handoff` write, not `ticket update
+  --pool` then `release` (2026-11-05, #492): between the two the ticket
+  sat held in the new pool with no note. It is not a failed attempt.
+  Sessions hand off only their own ticket; other tickets need admin or
+  the `handoff` pool grant, which the stall-check pool has.
 
 ## 7. Reference: behavior as built
 
