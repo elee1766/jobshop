@@ -147,6 +147,14 @@ type Controller struct {
 	// serving the last good config (#227); cleared by a good reload.
 	configErr   string
 	configErrAt time.Time
+	// watchErr is the last failed watch reload (#533), cleared by a good
+	// reload.
+	watchErr   string
+	watchErrAt time.Time
+	// configSwapped tells the config watcher a reload swapped the config.
+	configSwapped chan struct{}
+	// watcher is the config watcher (#533); nil until Run starts it.
+	watcher *configWatcher
 	// orphanWarned maps orphaned ticket id -> reason already logged.
 	orphanMu     sync.Mutex
 	orphanWarned map[string]string
@@ -301,6 +309,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 		poolQuarantined: map[string]string{},
 		events:          ev,
+		configSwapped:   make(chan struct{}, 1),
 	}
 	// The stream starts at the current end of history; older rows are
 	// only sent as replay.
@@ -365,6 +374,8 @@ func (c *Controller) serve() error {
 	if err != nil {
 		return err
 	}
+	c.watcher = newConfigWatcher(c)
+	c.wg.Go(c.watcher.run)
 	c.wg.Go(c.pumpEvents)
 	c.wg.Go(c.pumpSubscriptions)
 	c.wg.Go(c.pumpWaits)

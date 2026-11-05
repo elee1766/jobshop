@@ -7,6 +7,7 @@ require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/elee1766/acphost v0.3.0
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/pressly/goose/v3 v3.29.0
@@ -56,7 +57,6 @@ require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
 	github.com/fatih/semgroup v1.2.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
-	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/gitleaks/go-gitdiff v0.9.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

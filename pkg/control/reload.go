@@ -42,7 +42,22 @@ func (c *Controller) leaseDur() time.Duration { return c.live.Load().lease }
 // the next turn, agent command, args and env from the next spawned host (adopted hosts go
 // through the env refresh path). Running sessions are not stopped.
 // Telemetry settings need a restart.
-func (c *Controller) reload() error {
+func (c *Controller) reload() error { return c.reloadWith("", nil) }
+
+// reloadWith is reload tagged with its cause: "watch" for the config
+// watcher (#533), which also names the changed files. A failed watch
+// reload raises a config-invalid attention item; any good reload clears
+// it.
+func (c *Controller) reloadWith(by string, files []string) (err error) {
+	defer func() {
+		if err == nil {
+			// Non-blocking: the watcher re-syncs its paths once per burst.
+			select {
+			case c.configSwapped <- struct{}{}:
+			default:
+			}
+		}
+	}()
 	c.reloadMu.Lock()
 	defer c.reloadMu.Unlock()
 	// Swap between passes: a pass that read the old pools must finish
@@ -72,17 +87,26 @@ func (c *Controller) reload() error {
 			if cleared := c.unquarantinePools(""); len(cleared) > 0 {
 				c.log.Info("config reload: pools unquarantined", "pools", cleared)
 			}
-			c.log.Info("config reloaded", "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows))
+			msg := "config reloaded"
+			if by != "" {
+				msg += " (" + by + ")"
+			}
+			c.log.Info(msg, "files", files, "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows))
 			c.saveLastGood(cfg)
 			c.mu.Lock()
-			c.configErr = ""
+			c.configErr, c.watchErr = "", ""
 			c.mu.Unlock()
 			// A removed pool orphans its queue; say so now, not next tick.
 			c.reportOrphans()
 			return nil
 		}
 	}
-	c.log.Error("config reload failed, keeping old config", "err", err)
+	c.log.Error("config reload failed, keeping old config", "err", err, "by", by, "files", files)
+	if by == "watch" {
+		c.mu.Lock()
+		c.watchErr, c.watchErrAt = err.Error(), c.now()
+		c.mu.Unlock()
+	}
 	return err
 }
 
@@ -121,6 +145,9 @@ func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, e
 		return nil, err
 	}
 	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources, Instances: cfg.Instances}
+	if cfg.Reload.Watch {
+		out.Watch = &rpc.ConfigWatch{On: true, Files: len(cfg.Watch.Files), Dirs: len(cfg.Watch.Dirs)}
+	}
 	if err := yaml.Unmarshal(b, &out.Config); err != nil {
 		return nil, err
 	}

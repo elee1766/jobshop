@@ -956,6 +956,16 @@ type ConfigShowResult struct {
 	// Instances are the packs entries with their vars and the pools,
 	// workflows and triggers each declares, prefix applied (#248).
 	Instances []config.PackInstance `json:"instances"`
+	// Watch is set when reload.watch is on (#533).
+	Watch *ConfigWatch `json:"watch,omitempty"`
+}
+
+// ConfigWatch is the config watcher's state: on, and how many files and
+// pack dirs it follows.
+type ConfigWatch struct {
+	On    bool `json:"on"`
+	Files int  `json:"files"`
+	Dirs  int  `json:"dirs"`
 }
 
 // RunStartParams starts a workflow run. Key, when set, dedups: an open run
@@ -1262,6 +1272,9 @@ const (
 	AttentionDecision   = "decision"    // open ticket labeled proposed: a planner-proposed target to approve (#488)
 	AttentionStale      = "stale"       // open ticket no pool will claim, older than attention.orphan_age (#495)
 	AttentionJournalLag = "journal-lag" // journal shipping is behind journal.lag_max (#530)
+	// AttentionConfigInvalid: a change the config watcher saw failed to
+	// load; the running config stays (#533).
+	AttentionConfigInvalid = "config-invalid"
 )
 
 // AttentionItem is one thing waiting on a human.
