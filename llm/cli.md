@@ -84,6 +84,10 @@ Commands:
   ticket reopen <id>
     Reopen a closed ticket (admin).
 
+  ticket undefer <id>
+    Clear a ticket's deferral so it is ready now (admin, or pool grant
+    ticket-undefer in the session's project).
+
   ticket upsert --key=STRING [<title>] [flags]
     Create or update the open ticket with a key, or close it (admin). For
     outside tools that report a problem and clear it.
@@ -110,6 +114,9 @@ Commands:
 
   wait clear <id> [flags]
     Remove a ticket's wait; it becomes ready.
+
+  decision <action> <id> [flags]
+    Approve, reject or dismiss a planner proposal (#603).
 
   send <to> <text> [flags]
     Send a message to a session or pool.
@@ -784,6 +791,10 @@ Commands:
   ticket reopen <id>
     Reopen a closed ticket (admin).
 
+  ticket undefer <id>
+    Clear a ticket's deferral so it is ready now (admin, or pool grant
+    ticket-undefer in the session's project).
+
   ticket upsert --key=STRING [<title>] [flags]
     Create or update the open ticket with a key, or close it (admin). For
     outside tools that report a problem and clear it.
@@ -971,6 +982,27 @@ Flags:
                          else the root's admin socket ($JOBSHOP_SOCKET).
 ```
 
+## jobshop ticket undefer
+
+```
+Usage: jobshop ticket undefer <id>
+
+Clear a ticket's deferral so it is ready now (admin, or pool grant
+ticket-undefer in the session's project).
+
+Arguments:
+  <id>    Ticket id.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+```
+
 ## jobshop ticket upsert
 
 ```
@@ -1140,9 +1172,10 @@ attempt). End the turn after.
 Arguments:
   <cond> ...    TYPE:key=val,... Types: github.review (pr, login, head, state),
                 github.checks (pr or repo+sha, state=success|failure, required),
-                github.pr (pr, state=merged|closed|head_changed), thread.reply
-                (thread, from), time (at). pr is owner/name#n or a PR URL;
-                at is a duration or RFC3339.
+                github.pr (pr, state=merged|closed|head_changed), github.label
+                (issue, label; met when the issue has the label or is closed),
+                thread.reply (thread, from), time (at). pr is owner/name#n or a
+                PR URL; at is a duration or RFC3339.
 
 Flags:
   -h, --help              Show context-sensitive help.
@@ -1202,6 +1235,30 @@ Flags:
                          else the root's admin socket ($JOBSHOP_SOCKET).
 
   -r, --reason=STRING    Why the wait is cleared.
+```
+
+## jobshop decision
+
+```
+Usage: jobshop decision <action> <id> [flags]
+
+Approve, reject or dismiss a planner proposal (#603).
+
+Arguments:
+  <action>    approve (relabel the issue proposed -> target), reject (close the
+              issue as not planned) or dismiss (close only the ticket).
+  <id>        Decision ticket id.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+  -n, --note=STRING      Note for the issue comment and the ticket.
 ```
 
 ## jobshop send

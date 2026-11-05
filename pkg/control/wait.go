@@ -34,6 +34,13 @@ type waitSource interface {
 	// Checks lists the checks of a PR's current head (required only when
 	// asked), or of sha when n is 0.
 	Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error)
+	// Issue reads an issue's state and labels (github.label, #603).
+	Issue(ctx context.Context, repo string, n int) (issueInfo, error)
+}
+
+type issueInfo struct {
+	State  string // open or closed
+	Labels []string
 }
 
 type prInfo struct {
@@ -430,6 +437,8 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		return !now.Before(cd.At), "time " + cd.At.Format(time.RFC3339), nil
 	case store.WaitReply:
 		return c.evalReply(ctx, pass, w, cd)
+	case store.WaitLabel:
+		return evalLabel(ctx, pass, cd)
 	case store.WaitChecks:
 		if cd.PR == 0 {
 			return evalChecks(ctx, pass, cd, cd.SHA)
@@ -487,6 +496,20 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		}
 	}
 	return last != nil && last.State == want, fmt.Sprintf("%s %s by %s on %s", ref, strings.ToLower(want), cd.Login, short(cd.Head)), nil
+}
+
+// evalLabel: the issue carries the label, or is closed (a rejected
+// proposal also ends the wait).
+func evalLabel(ctx context.Context, pass *waitPass, cd *store.WaitCond) (bool, string, error) {
+	is, err := pass.src.Issue(ctx, cd.Repo, cd.Issue)
+	if err != nil {
+		return false, "", err
+	}
+	ref := fmt.Sprintf("%s#%d", cd.Repo, cd.Issue)
+	if is.State == "closed" {
+		return true, ref + " closed", nil
+	}
+	return slices.ContainsFunc(is.Labels, func(l string) bool { return strings.EqualFold(l, cd.Label) }), ref + " labeled " + cd.Label, nil
 }
 
 // evalChecks: success needs at least one check and none pending or
@@ -602,6 +625,32 @@ func (ghWaitSource) Checks(ctx context.Context, repo string, n int, sha string, 
 		return nil, nil // nothing reported yet: not green
 	}
 	return nil, err
+}
+
+// Issue reads GET /repos/{repo}/issues/{n}.
+func (ghWaitSource) Issue(ctx context.Context, repo string, n int) (issueInfo, error) {
+	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/issues/%d", repo, n))
+	if err != nil {
+		return issueInfo{}, err
+	}
+	return parseIssue(b)
+}
+
+func parseIssue(b []byte) (issueInfo, error) {
+	var r struct {
+		State  string `json:"state"`
+		Labels []struct {
+			Name string `json:"name"`
+		} `json:"labels"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return issueInfo{}, fmt.Errorf("issue: %w", err)
+	}
+	out := issueInfo{State: r.State}
+	for _, l := range r.Labels {
+		out.Labels = append(out.Labels, l.Name)
+	}
+	return out, nil
 }
 
 // parsePR reads GET /repos/{repo}/pulls/{n}.

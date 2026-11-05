@@ -593,6 +593,9 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 			Title: fmt.Sprintf("%s has new comments for %s", threadName(th), t.ID),
 			Body:  text, Fields: fields,
 		})
+		if err == nil {
+			c.wakeRunner(t.Holder)
+		}
 		return err
 	case store.StatusOpen:
 		return nil // the comment is in the prompt when it is claimed

@@ -17,6 +17,9 @@ const (
 	WaitPR     = "github.pr"
 	WaitReply  = "thread.reply"
 	WaitTime   = "time"
+	// WaitLabel: an issue has a label, or is closed (#603). Repo, Issue
+	// and Label are required.
+	WaitLabel = "github.label"
 )
 
 // Wait modes.
@@ -49,6 +52,9 @@ type WaitCond struct {
 	Type string `json:"type"`
 	Repo string `json:"repo,omitempty"`
 	PR   int    `json:"pr,omitempty"`
+	// Issue and Label are for github.label.
+	Issue int    `json:"issue,omitempty"`
+	Label string `json:"label,omitempty"`
 	// Head is the PR head the condition is about. Empty means the head
 	// seen on the first evaluation, which is then recorded.
 	Head  string `json:"head,omitempty"`
@@ -133,6 +139,11 @@ func (c WaitCond) validate() error {
 	case WaitTime:
 		if c.At.IsZero() {
 			return fmt.Errorf("%s needs at", c.Type)
+		}
+		return nil
+	case WaitLabel:
+		if !repoRe.MatchString(c.Repo) || c.Issue <= 0 || c.Label == "" {
+			return fmt.Errorf("%s needs repo owner/name, issue and label", c.Type)
 		}
 		return nil
 	}

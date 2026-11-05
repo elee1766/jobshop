@@ -147,9 +147,11 @@
   {#if toasts.items.length}
     <div class="toasts" data-testid="toasts">{#each toasts.items as t (t.id)}<div class="card toast">{t.msg}</div>{/each}</div>
   {/if}
+  <!-- done takes resolve before clearing: c follows confirmBox.open and
+       reads null after it, so OK did nothing (#603). -->
   {#if confirmBox.open}
     {@const c = confirmBox.open}
-    {@const done = (/** @type {boolean} */ v) => { confirmBox.open = null; c.resolve(v); }}
+    {@const done = (/** @type {boolean} */ v) => { const r = c.resolve; confirmBox.open = null; r(v); }}
     <div class="backdrop" role="presentation" onclick={() => done(false)}></div>
     <div class="card confirm" role="dialog" aria-modal="true" data-testid="confirm">
       <p>{c.msg}</p>

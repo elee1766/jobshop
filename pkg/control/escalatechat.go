@@ -397,6 +397,9 @@ func (c *Controller) sendMessage(ctx context.Context, sess store.Ticket, text, m
 	_, err = c.store.Create(ctx, "controller", store.NewTicket{
 		Project: sess.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
 	})
+	if err == nil {
+		c.wakeRunner(sess.ID)
+	}
 	return err
 }
 

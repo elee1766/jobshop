@@ -73,6 +73,8 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	if err != nil {
 		return nil, err
 	}
+	// Wake an idle runner now rather than at its next poll (#603).
+	c.wakeRunner(sess.ID)
 	return rpc.SessionSendResult{Session: sess.ID, Message: m, Started: started}, nil
 }
 

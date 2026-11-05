@@ -256,6 +256,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 			if err != nil {
 				return nil, err
 			}
+			c.wakeRunner(s.ID)
 			res.Message = &m
 		}
 	}

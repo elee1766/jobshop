@@ -25,7 +25,7 @@ function sse(evs, o = {}) {
  * per connection (the last repeats); a body may be a function awaited
  * first, to hold a phase until the test is ready.
  * @param {import('@playwright/test').Page} page
- * @param {{ attention?: () => any[], escalations?: any[], streams?: Record<string, (string | (() => Promise<string>))[]>, older?: (q: URLSearchParams) => any, chat?: (b: any) => any }} o
+ * @param {{ attention?: () => any[], escalations?: any[], streams?: Record<string, (string | (() => Promise<string>))[]>, older?: (q: URLSearchParams) => any, chat?: (b: any) => any, rpc?: (method: string, body: any) => any }} o
  */
 async function mock(page, o = {}) {
   const calls = /** @type {{ path: string, body: any }[]} */ ([]);
@@ -52,6 +52,10 @@ async function mock(page, o = {}) {
     if (path.endsWith('/access')) return json({ write: true });
     if (path.startsWith('/api/ticket/')) return json({ ticket: { id: path.split('/').pop(), title: 'ticket ' + path.split('/').pop(), kind: 'task' }, comments: [] });
     if (path === '/api/attention/chat') return json(o.chat ? o.chat(body) : { session: 'js-s1' });
+    if (o.rpc && path.startsWith('/api/rpc/')) {
+      const r = o.rpc(path.slice('/api/rpc/'.length), body);
+      if (r) return route.fulfill(r);
+    }
     if (path === '/api/chat/send' || path === '/api/chat/cancel' || path.startsWith('/api/rpc/') || path === '/api/attention/ack') {
       return json(path === '/api/chat/cancel' ? { id: body.session, cancelled: true } : { ok: true });
     }
@@ -89,6 +93,9 @@ test('composer: Enter sends, Shift+Enter is a newline, Up recalls the last promp
   await expect(input).toHaveValue('');
   const sent = calls.filter((c) => c.path === '/api/chat/send');
   expect(sent.map((c) => c.body)).toEqual([{ key: 'desk:abc', text: 'line one\nline two', interrupt: false }]);
+  // The sent message shows at once, before the session's turn echoes it (#603).
+  await expect(page.getByTestId('chat-pending')).toContainText('line one');
+  await expect(page.getByTestId('chat-pending')).toContainText('sent, waiting for the session');
 
   // Up on the first line recalls the newest sent prompt, then older ones.
   await input.press('ArrowUp');
@@ -251,6 +258,34 @@ test('a question item: the answer goes through question.answer and the item clea
   await page.getByTestId('session-panel-close').click();
   await page.goto('./');
   await expect(page.getByTestId('attention-empty')).toBeVisible();
+});
+
+test('a decision item: approve, reject and dismiss call decision.resolve; an error shows a toast', async ({ page }) => {
+  let fail = false;
+  const calls = await mock(page, {
+    attention: () => [{ kind: 'decision', id: 'js-d1', title: 'Proposed target: v0.5.0 (#56)', why: 'proposed', since: iso(600e3) }],
+    chat: () => ({ kind: 'decision', id: 'js-d1', key: 'attention:decision:js-d1', session: 'js-s3' }),
+    streams: { 'js-s3': [sse([prompt(2, 'Desk attention item: decision js-d1')], { end: true })] },
+    rpc: (m) => (fail && m === 'decision.resolve' ? { status: 502, json: { error: 'github POST labels: 403 Forbidden' } } : null),
+  });
+  await page.goto('./');
+  await page.getByTestId('attention-row').first().click();
+  await expect(page.getByTestId('resolve')).toHaveText(['Approve as target', 'Reject', 'Dismiss']);
+  for (const [label, action] of [['Approve as target', 'approve'], ['Reject', 'reject'], ['Dismiss', 'dismiss']]) {
+    await page.getByTestId('resolve').filter({ hasText: label }).click();
+    // The confirm dialog shows above the chat panel and takes the click.
+    await expect(page.getByTestId('confirm')).toBeVisible();
+    await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
+    await expect(page.getByTestId('toasts')).toContainText(label + ': done');
+    const sent = calls.filter((c) => c.path === '/api/rpc/decision.resolve').pop();
+    expect(sent?.body).toEqual({ id: 'js-d1', action });
+  }
+  expect(calls.some((c) => c.path === '/api/rpc/label.add' || c.path === '/api/rpc/ticket.close')).toBe(false);
+  fail = true;
+  await page.getByTestId('resolve').filter({ hasText: 'Dismiss' }).click();
+  await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByTestId('toasts')).toContainText('Dismiss failed: ');
+  await expect(page.getByTestId('toasts')).toContainText('403 Forbidden');
 });
 
 test('a stale item starts a chat with the context prompt; a second click reopens it', async ({ page }) => {

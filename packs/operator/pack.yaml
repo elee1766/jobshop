@@ -27,8 +27,10 @@ pools:
     prompt_file: prompts/operator.md
     # What the operator reads and does across instances: the merged
     # config and its instances, sessions, pools, triggers, attention, and
-    # reload. Run list/show and tickets need no grant.
-    admin: [config-reload, config-show, session-list, pool-list, pool-scale, session-cordon, session-config, trigger-list, attention, activity, ticket-release]
+    # reload. Run list/show and tickets need no grant. Desk's attention
+    # chats run here: they resolve decisions and clear the deferrals of
+    # tickets that waited on one (#603).
+    admin: [config-reload, config-show, session-list, pool-list, pool-scale, session-cordon, session-config, trigger-list, attention, activity, ticket-release, ticket-undefer, decision-resolve]
 # Improvement sessions (#249): a session keyed improve:<slug> gets
 # prompts/improve.md after the pool prompt.
 prompt_rules:

@@ -108,6 +108,7 @@ export interface RpcMethods {
   "config.show": { params: Record<string, never>; result: ConfigShowResult };
   "controller.drain": { params: DrainParams; result: DrainResult };
   "controller.shutdown": { params: ShutdownParams; result: Record<string, never> };
+  "decision.resolve": { params: DecisionResolveParams; result: DecisionResolveResult };
   "desk.exec": { params: DeskExecParams; result: DeskExecResult };
   "edge.add": { params: EdgeParams; result: Record<string, never> };
   "edge.remove": { params: EdgeParams; result: Record<string, never> };
@@ -170,6 +171,7 @@ export interface RpcMethods {
   "ticket.reopen": { params: IDParams; result: Ticket };
   "ticket.show": { params: IDParams; result: ShowResult };
   "ticket.trace": { params: TraceParams; result: TraceNode };
+  "ticket.undefer": { params: IDParams; result: Ticket };
   "ticket.update": { params: UpdateParams; result: Ticket };
   "ticket.upsert": { params: UpsertParams; result: UpsertResult };
   "trigger.list": { params: Record<string, never>; result: TriggerInfo[] };
@@ -415,6 +417,17 @@ export interface CreateParams {
   fields?: unknown;
   meta?: unknown;
   force?: boolean;
+}
+
+export interface DecisionResolveParams {
+  id: string;
+  action: string;
+  note?: string;
+}
+
+export interface DecisionResolveResult {
+  ticket: Ticket;
+  undeferred?: string[];
 }
 
 export interface DeskExecParams {
@@ -1294,6 +1307,8 @@ export interface WaitCond {
   type: string;
   repo?: string;
   pr?: number;
+  issue?: number;
+  label?: string;
   head?: string;
   sha?: string;
   login?: string;

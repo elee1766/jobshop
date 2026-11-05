@@ -1602,6 +1602,35 @@ type WaitClearParams struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// Decisions (#603): a planner proposal (a ticket labeled proposed with
+// meta.github naming the proposal issue) is approved, rejected or
+// dismissed through one method, shared by Desk, gateways and sessions.
+const (
+	MethodDecisionResolve = "decision.resolve"
+	// MethodTicketUndefer clears a ticket's defer_until. Sessions need
+	// the pool admin grant ticket-undefer.
+	MethodTicketUndefer = "ticket.undefer"
+
+	DecisionApprove = "approve"
+	DecisionReject  = "reject"
+	DecisionDismiss = "dismiss"
+)
+
+// DecisionResolveParams acts on decision ticket ID. Action is approve,
+// reject or dismiss; Note goes into the GitHub comment and the ticket.
+type DecisionResolveParams struct {
+	ID     string `json:"id"`
+	Action string `json:"action"`
+	Note   string `json:"note,omitempty"`
+}
+
+// DecisionResolveResult is the closed decision ticket and the tickets
+// whose deferral was cleared.
+type DecisionResolveResult struct {
+	Ticket     store.Ticket `json:"ticket"`
+	Undeferred []string     `json:"undeferred,omitempty"`
+}
+
 // Resource slot methods (#407): a resource provider adds, removes and
 // fails its slots; list shows slots and occupancy.
 const (

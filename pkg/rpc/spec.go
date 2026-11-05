@@ -100,6 +100,8 @@ var Specs = map[string]Spec{
 	MethodWaitAdd:           {WaitAddParams{}, store.Ticket{}},
 	MethodWaitList:          {WaitListParams{}, []WaitItem{}},
 	MethodWaitClear:         {WaitClearParams{}, store.Ticket{}},
+	MethodDecisionResolve:   {DecisionResolveParams{}, DecisionResolveResult{}},
+	MethodTicketUndefer:     {IDParams{}, store.Ticket{}},
 	MethodResourceAdd:       {SlotParams{}, store.Slot{}},
 	MethodResourceRemove:    {SlotParams{}, store.Slot{}},
 	MethodResourceUnhealthy: {SlotParams{}, SlotResult{}},
