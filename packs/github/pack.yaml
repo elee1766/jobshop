@@ -273,6 +273,7 @@ workflows:
   # the SHA as key: at most 2 fix attempts per SHA, then needs_human.
   ci-repair:
     vars: [sha]
+    repo: "{{.repo}}"
     escalate_pool: plan
     escalate:
       chat_pool: "{{.escalation_chat_pool}}"

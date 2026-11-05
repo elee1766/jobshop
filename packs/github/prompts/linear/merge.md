@@ -21,10 +21,13 @@ file it with `jobshop linear create --team {{.linear_team}} --title
 `jobshop linear relate <NEW> --related {{.issue}}`, after `jobshop linear
 search` finds no duplicate.
 
-Then do exactly one of these. Releasing this step counts as a failed
-attempt (like a failed close), so wait inside your turn instead of
-releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
-`sleep 300` between checks. Release only if a wait passes an hour.
+Then do exactly one of these. A plain release of this step counts as a
+failed attempt (like a failed close). To wait for CI on a PR head, set
+`jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
+and end the turn: a wait is a deferral, not a failed attempt, and it
+resumes here within a minute of CI finishing. For master CI use
+`github.checks:repo={{.repo}},sha=<sha>` the same way. Do not poll with
+`sleep` or defer with a fixed `release --until` for CI.
 
 1. Master CI red: merge nothing. Make sure a fix is under way (a
    `ci-repair` run in `jobshop run list`, or an open dev ticket); file a

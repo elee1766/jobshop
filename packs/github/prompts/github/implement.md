@@ -16,12 +16,13 @@ Otherwise: `git switch -c issue-{{.issue}}`, make the change, run
 `gh pr create --base master --title "<summary> (#{{.issue}})" --body "Closes #{{.issue}}. ..."`.
 PR body: at most ~10 lines, plain text: what changed, why, how it was
 tested. No long summaries, file lists or pasted output.
-Wait for CI with `gh pr checks --watch`; fix failures and push again.
-Wait inside your turn: ending the turn while holding this step releases
-it and, the second time, counts a failed attempt. If your tool moves a
-long command to the background, keep polling (`gh pr checks <n>`,
-`sleep 60`) until CI finishes; do not end the turn to wait for it. A
-background task's wake never starts a new turn here.
+Wait for CI with a wait, not a fixed deferral or polling: after each push
+run
+`jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
+and end the turn. The controller hands the step back to this session
+within about a minute of CI finishing. On resume, read `gh pr checks <n>`:
+green, comment and close as below; red, fix, push and set the wait again
+(a new head clears the old wait). Do not use `release --until` for CI.
 
 Docs: {{.docs_rule}}
 

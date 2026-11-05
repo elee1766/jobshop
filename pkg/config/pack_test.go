@@ -357,8 +357,9 @@ packs:
 	w := c.Workflows["pr-work"]
 	assert.Equal(t, "make test", w.PackVars["check_cmd"])
 	assert.Contains(t, w.PackVars["docs_rule"], "Never append a numbered section", "docs_rule default (#131)")
-	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
+	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "repo": w.PackVars["repo"], "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
 	require.NoError(t, err)
+	assert.Contains(t, body, "github.checks:pr=acme/widget#<n>", "CI waits use github.checks (#555)")
 	assert.Contains(t, body, "`make test`")
 	assert.Contains(t, body, "Docs: put a design note")
 	assert.Contains(t, w.Steps[1].Prompt, "Conflicts only in docs", "refinery resolves docs-only conflicts (#131)")

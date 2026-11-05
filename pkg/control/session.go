@@ -1318,13 +1318,14 @@ func ticketPromptText(poolPrompt string, t store.Ticket, comments []store.Commen
 - jobshop close                             when the work is done (-r failed if it cannot be done)
 - jobshop release -r "<why>"                hand the ticket back without finishing it
 - jobshop release --until <2h|RFC3339> -r "<why>"   not workable yet; deferred, not a failure
+- jobshop wait add <cond>... --any --resume -r "<why>"   park until outside state holds (CI: github.checks); not a failure
 - jobshop ticket create "<title>" -b "<body>"   file follow-up work
-Close or release the ticket before you end your turn. Ending a turn while
-you hold it releases it, and a repeat counts as a failed attempt. To wait (CI, a
-rebase, a deploy), stay in the turn: if a long command is moved to the
-background, keep polling it (` + "`gh pr checks <n>`, `sleep 60`" + `) until it
-finishes: a background task's wake does not start a new turn here. For
-longer waits, ` + "`jobshop release --until <duration>`" + ` instead.`)
+Close, release or set a wait before you end your turn. Ending a turn while
+you hold it releases it, and a repeat counts as a failed attempt. To wait
+on CI, use ` + "`jobshop wait add 'github.checks:...'`" + ` and end the turn: it
+resumes here when CI finishes (#555). For a short wait with no condition
+(a rebase), stay in the turn: a background task's wake does not start a
+new turn here. For a timed wait, ` + "`jobshop release --until <duration>`" + `.`)
 	return b.String()
 }
 

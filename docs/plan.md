@@ -519,6 +519,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `api`, `POST /api/rpc/{method}` with a session-only policy; Deploys is
   the first built-in plugin (#517, `docs/notes/517-desk-plugins.md`,
   `docs/verify/desk-plugins.md`).
+- GitHub pack steps wait on CI with `github.checks` waits, not fixed
+  `release --until` deferrals (#555, `docs/notes/555-ci-waits.md`).
 - NixOS `workspaces.<name>.config`: run from `jobshop.yaml` in a git
   checkout; each push is checked, reset to last good on failure and
   listed as attention `config-repo` (#532, `docs/notes/532-config-repo.md`).
@@ -1478,6 +1480,7 @@ moved from the old 7.x list, oldest first:
 - [Learning kinds and trigger filters](notes/524-learning-kinds.md) (#524)
 - [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
 - [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
+- [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
 
 ## 8. Chat gateway
 
