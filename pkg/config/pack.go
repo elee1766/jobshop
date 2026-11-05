@@ -61,6 +61,8 @@ type packFile struct {
 	Learnings *LearningsConfig `yaml:"learnings"`
 	// DeskCommands merge per name like pools (#542).
 	DeskCommands map[string]DeskCommand `yaml:"desk_commands"`
+	// SandboxProfiles merge per name like pools (#625).
+	SandboxProfiles map[string]Sandbox `yaml:"sandbox_profiles"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -142,7 +144,7 @@ const maxPackDepth = 8
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
-var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands"}
+var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands", "sandbox_profiles"}
 
 // LoadFile reads a config file, merges the packs it lists, and validates
 // the result. Packs merge in list order, then the file itself.
@@ -630,6 +632,16 @@ func prefixLayers(layers []packLayer, prefix string) {
 			out := make(map[string]any, len(sm))
 			for n, e := range sm {
 				em, _ := e.(map[string]any)
+				if s == "pools" || s == "agents" {
+					if sb, ok := em["sandbox"].(map[string]any); ok {
+						list, _ := sb["profiles"].([]any)
+						for i, v := range list {
+							if p, ok := v.(string); ok && declared["sandbox_profiles"][p] {
+								list[i] = prefix + p
+							}
+						}
+					}
+				}
 				switch {
 				case em == nil:
 				case s == "pools":

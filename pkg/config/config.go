@@ -60,6 +60,10 @@ type Config struct {
 	// SharedTools are dirs mounted read-only into every sandboxed
 	// session (#262).
 	SharedTools []string `yaml:"shared_tools"`
+	// SandboxProfiles are named sandbox fragments (system mounts, env,
+	// network) that sandbox profiles: lists apply (#625). Packs
+	// contribute entries like pools.
+	SandboxProfiles map[string]Sandbox `yaml:"sandbox_profiles,omitempty"`
 	// Attention configures `jobshop attention` (#185).
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
@@ -1242,6 +1246,17 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: default_project %q is not defined", FileName, c.DefaultProject)
 		}
 	}
+	for name, s := range c.SandboxProfiles {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: sandbox_profiles: name %q must match %s", src("sandbox_profiles", name), name, namePattern)
+		}
+		if len(s.Profiles) > 0 {
+			return nil, fmt.Errorf("%s: sandbox_profiles.%s: a profile cannot name profiles", src("sandbox_profiles", name), name)
+		}
+		if err := s.check(nil); err != nil {
+			return nil, fmt.Errorf("%s: sandbox_profiles.%s: %w", src("sandbox_profiles", name), name, err)
+		}
+	}
 	for name, a := range c.Agents {
 		if !namePattern.MatchString(name) {
 			return nil, fmt.Errorf("%s: agent name %q must match %s", src("agents", name), name, namePattern)
@@ -1249,7 +1264,7 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if a.Command == "" {
 			return nil, fmt.Errorf("%s: agent %s: command is required", src("agents", name), name)
 		}
-		if err := a.Sandbox.check(); err != nil {
+		if err := a.Sandbox.check(c.SandboxProfiles); err != nil {
 			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
 		}
 		if err := a.Isolation.check(); err != nil {
@@ -1275,7 +1290,7 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if p.PromptFile != "" {
 			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)
 		}
-		if err := p.Sandbox.check(); err != nil {
+		if err := p.Sandbox.check(c.SandboxProfiles); err != nil {
 			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
 		if err := p.Isolation.check(); err != nil {
@@ -1329,11 +1344,19 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 		c.Pools[name] = p
 	}
-	if err := c.Defaults.Sandbox.check(); err != nil {
+	if err := c.Defaults.Sandbox.check(c.SandboxProfiles); err != nil {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
 	}
 	if err := c.Defaults.Isolation.check(); err != nil {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
+	}
+	for _, name := range slices.Sorted(maps.Keys(c.Pools)) {
+		// Without system mounts a sandboxed agent cannot exec (#625): the
+		// paths moved from code to config, so say so instead of a bare
+		// spawn failure.
+		if sb := c.SandboxFor(name); sb.Backend != "" && len(sb.RO) == 0 && len(c.SharedTools) == 0 {
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s: pool %s: sandboxed with no ro mounts; set sandbox ro or a sandbox profile with the host's system paths (#625)", src("pools", name), name))
+		}
 	}
 	for _, d := range c.SharedTools {
 		if !filepath.IsAbs(d) {

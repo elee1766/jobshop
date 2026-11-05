@@ -418,7 +418,7 @@ func worktreeRoot(t *testing.T, sandbox bool) (config.Root, string) {
 `), 0o600))
 	sb := ""
 	if sandbox {
-		sb = ", sandbox: {backend: bubblewrap}"
+		sb = ", sandbox: {backend: bubblewrap, ro: " + testSystemRO + "}"
 	}
 	cfg := fmt.Sprintf(`packs:
   - path: pk

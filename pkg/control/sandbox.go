@@ -16,25 +16,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// sandboxSystemRO are host paths every sandboxed agent reads: the Nix
-// store and system profile for tools, /etc for users, certs and DNS
-// config, the nix-ld loader, and the resolver sockets nsswitch talks to
-// (#262). Missing ones are skipped, so non-NixOS hosts work too.
-var sandboxSystemRO = []string{
-	"/nix/store", "/etc", "/run/current-system", "/bin", "/usr/bin", "/lib64",
-	// The dynamic loader and libc on FHS hosts (Ubuntu): without them any
-	// dynamically linked agent fails to exec (#623).
-	"/lib", "/usr/lib", "/usr/lib64",
-	"/run/systemd/resolve", "/run/nscd",
-}
-
-// sandboxEnvKeep are controller env names passed into the sandbox on top
-// of the spec env; bwrap clears the rest so host secrets stay out.
-var sandboxEnvKeep = []string{"HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TZ", "TERM", "SSL_CERT_FILE", "NIX_SSL_CERT_FILE", "NIX_PATH", "NIX_LD", "NIX_LD_LIBRARY_PATH", "GOPATH", "GOCACHE", "GOFLAGS", "GOTOOLCHAIN"}
-
-// sandboxEnvKeepPrefixes keep whole families: git identity and config
-// (GIT_CONFIG_*), mise settings.
-var sandboxEnvKeepPrefixes = []string{"GIT_", "MISE_"}
+// System mounts and kept env names are host-specific and come from config
+// (sandbox ro and env_keep, or sandbox_profiles), not from code (#625).
 
 // expandHome turns a leading "~/" into the controller's HOME.
 func expandHome(p string) string {
@@ -64,9 +47,6 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd string) (*host.Sandbox, err
 	}
 	s := &host.Sandbox{Backend: config.SandboxBubblewrap, Network: sb.Network, Deny: sb.Deny}
 	ro := func(p string) { s.RO = append(s.RO, host.Mount{Src: p, SkipMissing: true}) }
-	for _, p := range sandboxSystemRO {
-		ro(p)
-	}
 	// jobshop itself and the agent command, which may live outside the store.
 	ro(filepath.Dir(exe))
 	agent := cfg.Agents[cfg.Pools[pool].Agent]
@@ -104,12 +84,24 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd string) (*host.Sandbox, err
 	}
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
-		if slices.Contains(sandboxEnvKeep, k) || slices.ContainsFunc(sandboxEnvKeepPrefixes, func(p string) bool { return strings.HasPrefix(k, p) }) {
+		if keepEnv(sb.EnvKeep, k) {
 			s.EnvKeep = append(s.EnvKeep, k)
 		}
 	}
 	slices.Sort(s.EnvKeep)
+	s.EnvKeep = slices.Compact(s.EnvKeep)
 	return s, nil
+}
+
+// keepEnv reports whether name matches keep: an exact name, or a prefix
+// written with a trailing *.
+func keepEnv(keep []string, name string) bool {
+	return slices.ContainsFunc(keep, func(k string) bool {
+		if p, ok := strings.CutSuffix(k, "*"); ok {
+			return strings.HasPrefix(name, p)
+		}
+		return k == name
+	})
 }
 
 // sandboxKey is what of the sandbox config feeds EnvHash, so a reload
@@ -123,7 +115,8 @@ func (c *Controller) sandboxKey(pool string) []string {
 	}
 	key := []string{"JOBSHOP_SANDBOX=" + sb.Backend + " net=" + sb.Network +
 		" ro=" + strings.Join(append(slices.Clone(sb.RO), cfg.SharedTools...), ",") +
-		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",") + " deny=" + strings.Join(sb.Deny, ",")}
+		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",") + " deny=" + strings.Join(sb.Deny, ",") +
+		" env=" + strings.Join(sb.EnvKeep, ",")}
 	return key
 }
 

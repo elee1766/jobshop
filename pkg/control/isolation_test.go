@@ -88,11 +88,11 @@ pools:
     max_sessions: 1
     idle_timeout: 1m
     dir: %q
-    sandbox: {backend: bubblewrap, network: pasta, deny: [127.0.0.0/8, 10.0.0.0/8]}
+    sandbox: {backend: bubblewrap, network: pasta, deny: [127.0.0.0/8, 10.0.0.0/8], ro: %s}
     isolation:
       user: {uid: 1000, map_uid: %d, map_gid: %d, groups: [%q]}
       limits: {memory: 64M, pids: 256}
-`, os.Args[0], ln.Addr().String(), work, mapUID, mapGID, strconv.Itoa(os.Getegid()))
+`, os.Args[0], ln.Addr().String(), work, testSystemRO, mapUID, mapGID, strconv.Itoa(os.Getegid()))
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	stop := start()
 	defer stop()

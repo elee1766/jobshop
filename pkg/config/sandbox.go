@@ -17,10 +17,17 @@ const (
 
 // Sandbox configures how a session's agent is confined (#262). It is set
 // under defaults, on agents and on pools. Backend and Network: the pool's
-// wins over the agent's over the default. RO, RW and Hide are appended:
-// the default's, then the agent's, then the pool's. Paths may start with
-// "~/" for the controller's HOME.
+// wins over the agent's over the default. RO, RW, Hide, Deny and EnvKeep
+// are appended: the default's, then the agent's, then the pool's. Paths
+// may start with "~/" for the controller's HOME.
+//
+// Jobshop's code holds no host paths or env names (#625): the system
+// mounts an agent needs (/nix/store, /usr/lib, ...) and the env it keeps
+// come from config, directly or through named Profiles.
 type Sandbox struct {
+	// Profiles names sandbox_profiles entries applied before this level's
+	// own fields, in order.
+	Profiles []string `yaml:"profiles"`
 	// Backend is "none" or "bubblewrap". Empty inherits.
 	Backend string `yaml:"backend"`
 	// RO lists extra read-only binds; missing ones are skipped.
@@ -34,6 +41,10 @@ type Sandbox struct {
 	// Deny lists CIDRs the agent cannot reach; needs network pasta.
 	// Appended like RO.
 	Deny []string `yaml:"deny"`
+	// EnvKeep lists controller env names passed into the sandbox on top
+	// of the spec env; a trailing * keeps every name with that prefix.
+	// bwrap clears the rest.
+	EnvKeep []string `yaml:"env_keep"`
 }
 
 // Defaults are host-wide settings agents and pools inherit.
@@ -42,9 +53,19 @@ type Defaults struct {
 	Isolation *Isolation `yaml:"isolation"`
 }
 
-func (s *Sandbox) check() error {
+func (s *Sandbox) check(profiles map[string]Sandbox) error {
 	if s == nil {
 		return nil
+	}
+	for _, p := range s.Profiles {
+		if _, ok := profiles[p]; !ok {
+			return fmt.Errorf("sandbox profile %q is not in sandbox_profiles", p)
+		}
+	}
+	for _, k := range s.EnvKeep {
+		if k == "" || k == "*" || strings.ContainsAny(strings.TrimSuffix(k, "*"), "=*") {
+			return fmt.Errorf("sandbox env_keep %q must be a name or a prefix ending in *", k)
+		}
 	}
 	switch s.Backend {
 	case "", SandboxNone, SandboxBubblewrap:
@@ -74,11 +95,20 @@ func (s *Sandbox) check() error {
 func (c *Config) SandboxFor(pool string) Sandbox {
 	p := c.Pools[pool]
 	a := c.Agents[p.Agent]
-	var out Sandbox
+	var levels []*Sandbox
 	for _, s := range []*Sandbox{c.Defaults.Sandbox, a.Sandbox, p.Sandbox} {
 		if s == nil {
 			continue
 		}
+		for _, name := range s.Profiles {
+			if pr, ok := c.SandboxProfiles[name]; ok {
+				levels = append(levels, &pr)
+			}
+		}
+		levels = append(levels, s)
+	}
+	var out Sandbox
+	for _, s := range levels {
 		if s.Backend != "" {
 			out.Backend = s.Backend
 		}
@@ -89,6 +119,7 @@ func (c *Config) SandboxFor(pool string) Sandbox {
 		out.RW = append(out.RW, s.RW...)
 		out.Hide = append(out.Hide, s.Hide...)
 		out.Deny = append(out.Deny, s.Deny...)
+		out.EnvKeep = append(out.EnvKeep, s.EnvKeep...)
 	}
 	if out.Backend == SandboxNone {
 		out.Backend = ""

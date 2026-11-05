@@ -4,14 +4,16 @@ Moved from the README (2026-11-05, #551).
 
 - **Bubblewrap sandbox per session.** Set `sandbox:` under `defaults`, on
   agents or on pools. acphost runs bwrap and Jobshop computes the mounts,
-  which are an allow list: system dirs are read-only, and the session dir
+  which are an allow list: system dirs listed in config (`ro`, or a
+  named `sandbox_profiles` entry, #625) are read-only, and the session dir
   (with its worktree), the pool repo's git dir and configured `rw` paths
   are writable. `admin.sock`, `jobshop.db`, `secrets/` and other sessions
-  are not mounted. The env is cleared to a kept list. A missing bwrap or
+  are not mounted. The env is cleared to the configured `env_keep` list. A missing bwrap or
   mount source quarantines the pool. There is no unsandboxed fallback.
   `jobshop session sandbox <id>` shows the mounts and argv. On NixOS set
   `services.jobshop.sandbox.enable` (needs `programs.nix-ld`). mise works
-  inside it. See [notes/262-sandbox.md](notes/262-sandbox.md).
+  inside it. See [notes/262-sandbox.md](notes/262-sandbox.md) and
+  [notes/625-sandbox-config.md](notes/625-sandbox-config.md).
 - **Socket scoping.** A session talks only to its own `cli.sock`, which
   acts as that session (its ticket, pool and project). The admin socket
   is not reachable from a sandbox.
