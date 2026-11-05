@@ -40,7 +40,8 @@ What the signal means and where to start:
   `jobshop run start {{.pack_prefix}}pr-work --var issue={{.subject}} --key
   linear-{{.subject}}` and close this check. If not (an open blocker, a
   question in the thread), comment why on the issue (`jobshop linear
-  comment {{.subject}} "<why>"`) and close.
+  comment {{.subject}} "<why>"`) and close. Only touch Linear team
+  {{.linear_team}}; never read or write another team's issues.
 - `pr_unmerged`: PR #{{.subject}} has green checks but is not merged.
   `gh pr view {{.subject}}`, its run's `review-merge` step.
 - `no_merge`: nothing merged to master for a long time while work is
