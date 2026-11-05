@@ -30,7 +30,11 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
 
 ## Nix
 
-CI also runs `nix build .#jobshop` (`nix/package.nix`). With go2nix's plugin
+CI runs `nix build .#jobshop` (`nix/package.nix`) on master, and on PRs
+only when they change `go.mod`, `go.sum`, `flake.nix`, `flake.lock` or
+`nix/`. A PR that breaks the nix build otherwise shows up red on master
+(and self-deploy waits for a green one), so run the check below when you
+add files the build embeds. With go2nix's plugin
 loaded (`plugin-files`, from `nix build .#go2nix-plugin`, Nix 2.34+) it builds
 one derivation per Go package; without it, one `buildGo127Module` derivation.
 

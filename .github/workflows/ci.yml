@@ -62,6 +62,9 @@ jobs:
       - name: shellcheck deploy scripts
         run: shellcheck -s sh deploy/*.sh
 
+  # Nix builds on master only (about 4 minutes, twice the go job), plus
+  # PRs that touch what breaks it: go.mod/go.sum (vendorHash), the flake
+  # and nix/. Self-deploy still needs a green nix build on master.
   nix:
     runs-on: ubicloud-standard-8
     permissions:
@@ -69,7 +72,21 @@ jobs:
       actions: read # hestia: detect evicted cache entries upfront
     steps:
       - uses: actions/checkout@v5
+      - name: nix inputs changed
+        id: changed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then echo run=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          git fetch -q --depth=1 origin "$BASE"
+          if git diff --name-only "$BASE" HEAD | grep -qE '^(go\.(mod|sum)|flake\.(nix|lock)|nix/)'; then
+            echo run=true >> "$GITHUB_OUTPUT"
+          else
+            echo "no nix inputs changed; nix build runs on master"
+            echo run=false >> "$GITHUB_OUTPUT"
+          fi
       - uses: cachix/install-nix-action@v31
+        if: steps.changed.outputs.run == 'true'
         with:
           # go2nix's plugin needs Nix 2.34, the Nix it is built against.
           install_url: https://releases.nixos.org/nix/nix-2.34.9/install
@@ -77,20 +94,26 @@ jobs:
       # builds (the vendored-modules derivation, jobshop) and substitutes them
       # next run. Paths cache.nixos.org already serves are not stored.
       - uses: Mic92/hestia/action@v3
+        if: steps.changed.outputs.run == 'true'
         with:
           upstream-cache-filter: true
       # The fallback builder (hosts without the plugin) pins a vendorHash.
       # Building only its vendored modules checks the pin; it is cached
       # until go.sum changes.
       - run: nix build .#jobshop.goModules --print-build-logs
+        if: steps.changed.outputs.run == 'true'
       # Loads go2nix's plugin so jobshop builds one derivation per Go package,
       # each cached on its own by hestia.
       - name: go2nix plugin
+        if: steps.changed.outputs.run == 'true'
         run: echo "plugin-files = $(nix build --no-link --print-out-paths .#go2nix-plugin)/lib/nix/plugins/libgo2nix_plugin.so" | sudo tee -a /etc/nix/nix.conf
       - run: nix build .#jobshop --print-build-logs
+        if: steps.changed.outputs.run == 'true'
       - run: ./result/bin/jobshop version
+        if: steps.changed.outputs.run == 'true'
       # NixOS module evaluation checks (nix/module-test.nix).
       - run: nix build .#checks.x86_64-linux.module --print-build-logs
+        if: steps.changed.outputs.run == 'true'
 
   # Desk's built UI is committed in pkg/desk/dist and embedded (#208):
   # svelte-check must pass and the committed build must match ui/src.

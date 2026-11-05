@@ -1159,6 +1159,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
+- The nix CI job runs on master and on PRs that change `go.mod`,
+  `go.sum`, the flake or `nix/` (2026-11-05). It took about 4 minutes per
+  PR, twice the go job, and catches little the go job does not. Master's
+  required check is `go` only; self-deploy still waits for a green `ci`
+  run on master, which includes nix.
 - YAML config. Every new dependency has its reason recorded in
   `docs/layout.md`.
 - Self-deploy runs `jobshop config check` from the new build, against the
