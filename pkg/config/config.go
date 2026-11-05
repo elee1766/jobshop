@@ -47,6 +47,8 @@ type Config struct {
 	Ingest Ingest `yaml:"ingest"`
 	// WriteKeys configures the local idempotency key cache (#415).
 	WriteKeys WriteKeys `yaml:"write_keys"`
+	// Redact configures secret scanning (#578). Host-only.
+	Redact Redact `yaml:"redact"`
 	// Reload configures watch-and-reload of this file and its packs (#533).
 	Reload ReloadConfig `yaml:"reload"`
 	// Artifacts configures delivered artifacts' attachments (#508).
@@ -1374,6 +1376,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if err := c.validateAdmission(); err != nil {
 		return nil, err
+	}
+	if err := c.Redact.compile(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if r := c.Ingest.Retention; r != "" {
 		if d, err := parseDays(r); err != nil || d <= 0 {

@@ -19,7 +19,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -422,7 +421,7 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 	}
 	extra := append(stepEnv(st.vars, attemptKey, t), c.slotEnv(ctx, t)...)
 	env := append(os.Environ(), extra...)
-	res := autoResult{command: redact.Text(strings.Join(argv, " "), env)}
+	res := autoResult{command: c.redactor(env).Text(strings.Join(argv, " "))}
 	pl, err := c.stepPlace(s, sf, st)
 	if err != nil {
 		res.result, res.err = resultFailed, err.Error()
@@ -442,7 +441,7 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	cmd.WaitDelay = 5 * time.Second
 	runErr := cmd.Run()
-	res.output = redact.Text(out.String(), env)
+	res.output = c.redactor(env).Text(out.String())
 	res.outcome = outcomeOf(res.output)
 	var exit *exec.ExitError
 	switch {
@@ -455,7 +454,7 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 	default:
 		res.result = resultFailed
 		res.err = runErr.Error()
-		if tail := strings.TrimSpace(redact.Text(errOut.String(), env)); tail != "" {
+		if tail := strings.TrimSpace(c.redactor(env).Text(errOut.String())); tail != "" {
 			res.err += ": " + lastLines(tail, 5)
 		}
 	}
@@ -536,7 +535,7 @@ func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemp
 	defer func() { _ = resp.Body.Close() }()
 	var out limitedBuffer
 	_, _ = io.Copy(&out, resp.Body)
-	res.output = redact.Text(out.String(), secrets)
+	res.output = c.redactor(secrets).Text(out.String())
 	res.outcome = outcomeOf(res.output)
 	switch code := resp.StatusCode; {
 	case code >= 200 && code < 300:

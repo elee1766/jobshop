@@ -3431,7 +3431,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
 Commands:
@@ -3498,7 +3498,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 ```
 
@@ -3523,7 +3523,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 ```
 
@@ -3548,7 +3548,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 ```
 
@@ -3573,7 +3573,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --all-comments             Every comment (up to 250), not the 10 newest.
@@ -3596,7 +3596,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --team=STRING              Team key, e.g. ENG.
@@ -3627,7 +3627,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --team=STRING              Team key, e.g. ENG.
@@ -3658,7 +3658,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --team=STRING              Team key, e.g. ENG.
@@ -3685,7 +3685,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --skip-labels=SKIP-LABELS,...
@@ -3711,7 +3711,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --team=STRING              Team key, e.g. ENG.
@@ -3748,8 +3748,8 @@ Flags:
                                    CLI socket, else the root's admin socket
                                    ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings      Send writes that hold a gitleaks finding
-                                   (admin callers only).
+      --allow-secret-findings      Send writes that hold a secret finding (admin
+                                   callers only).
 
       --title=STRING               New title.
       --state=STRING               State name.
@@ -3787,7 +3787,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --mention=MENTION,...      User to notify: name, display name or email
@@ -3820,7 +3820,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --blocks=STRING            Issue key this issue blocks.
@@ -3852,7 +3852,7 @@ Flags:
                                  CLI socket, else the root's admin socket
                                  ($JOBSHOP_SOCKET).
 
-      --allow-secret-findings    Send writes that hold a gitleaks finding (admin
+      --allow-secret-findings    Send writes that hold a secret finding (admin
                                  callers only).
 
       --team=STRING              Team key whose identity makes the call

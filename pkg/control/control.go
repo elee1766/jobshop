@@ -823,6 +823,7 @@ func init() {
 		rpc.MethodPoolUnquarantine:  bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:   bind((*Controller).reportIncidents),
 		rpc.MethodGuard:             bind((*Controller).guard),
+		rpc.MethodSecretScan:        bind((*Controller).secretScan),
 		rpc.MethodSubscribe:         bind((*Controller).subscribe),
 		rpc.MethodReport:            bind((*Controller).report),
 		rpc.MethodQuestionAnswer:    bind((*Controller).answerQuestion),

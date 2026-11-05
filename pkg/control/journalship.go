@@ -16,7 +16,6 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/journal"
-	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -177,7 +176,7 @@ func (c *Controller) trackSession(t store.Ticket) *shipSession {
 		closed: t.Status == store.StatusClosed,
 		mapper: &journal.Mapper{
 			Src:    journal.Source{Project: t.Project, Pool: t.Pool, Session: t.ID},
-			Redact: redact.New(journalEnv(c.root.SessionDir(t.ID))),
+			Redact: c.redactor(journalEnv(c.root.SessionDir(t.ID))),
 			Lookup: func(id string) journal.Work { return c.workOf(id) },
 		},
 	}

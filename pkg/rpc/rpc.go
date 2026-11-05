@@ -77,6 +77,7 @@ const (
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
 	MethodGuard            = "guard"
+	MethodSecretScan       = "secret.scan"
 	MethodVersion          = "version"
 	MethodRecall           = "recall"
 	MethodAttention        = "attention"
@@ -1451,6 +1452,30 @@ const (
 	GuardDeny     = "deny"
 	GuardAskHuman = "ask_human"
 )
+
+// SecretScanParams are texts an outbound write would send (#574, #578).
+// The controller scans them with the configured rules.
+type SecretScanParams struct {
+	Texts []SecretText `json:"texts"`
+}
+
+// SecretText is one text and where it came from.
+type SecretText struct {
+	From string `json:"from"`
+	Text string `json:"text"`
+}
+
+// SecretScanResult lists findings, never the secrets.
+type SecretScanResult struct {
+	Findings []SecretFinding `json:"findings"`
+}
+
+// SecretFinding is a rule that matched a text, at a 1-based line.
+type SecretFinding struct {
+	From string `json:"from"`
+	Rule string `json:"rule"`
+	Line int    `json:"line"`
+}
 
 // GuardParams asks the guardrail hooks before an outside action such as
 // push, pr-create, merge, comment or message.

@@ -13,7 +13,6 @@ import (
 	host "github.com/elee1766/acphost"
 
 	"github.com/elee1766/jobshop/pkg/hostspec"
-	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -64,7 +63,7 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 	if err != nil {
 		return nil, err
 	}
-	red := redact.New(journalEnv(dir))
+	red := c.redactor(journalEnv(dir))
 	res := rpc.SessionJournalResult{Frames: []rpc.JournalFrame{}, NextSeq: p.SinceSeq, Done: true}
 	for _, f := range frames {
 		if len(res.Frames) == limit {

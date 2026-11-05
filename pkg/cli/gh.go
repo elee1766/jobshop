@@ -268,7 +268,12 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 		if in != nil {
 			stdin = bytes.NewReader(in)
 		}
-		if found := secretFindings(texts); found != "" {
+		found, err := secretFindings(g, texts)
+		if err != nil {
+			warn(stderr, "jobshop gh: "+err.Error()+" (not run)")
+			return 1
+		}
+		if found != "" {
 			if !allow {
 				warn(stderr, "jobshop gh: refused, the text looks like it holds a secret; remove it and retry (not run):\n"+strings.TrimRight(found, "\n"))
 				return 1

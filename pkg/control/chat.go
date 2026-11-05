@@ -163,8 +163,8 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		return nil, fmt.Errorf("%w: subscribe needs a socket connection", store.ErrInvalid)
 	}
 	// Events reach Desk, chat gateways and A2A peers (#574): redact with
-	// the session's env and gitleaks, built once per subscription.
-	red := redact.New(journalEnv(c.root.SessionDir(p.ID)))
+	// the session's env and the configured rules, built once per subscription.
+	red := c.redactor(journalEnv(c.root.SessionDir(p.ID)))
 	send := func(ev rpc.SessionEvent) error {
 		ev.Session = p.ID
 		redactEvent(red, &ev)
@@ -184,7 +184,7 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		}
 	}
 	path := filepath.Join(c.root.SessionDir(p.ID), host.JournalFile)
-	env := redact.New(journalEnv(c.root.SessionDir(p.ID)))
+	env := c.redactor(journalEnv(c.root.SessionDir(p.ID)))
 	ev := rpc.EventDecoder{Redact: env.Text}
 	var off int64
 	res := rpc.SessionSubscribeResult{Seq: p.SinceSeq}

@@ -156,3 +156,26 @@ read (30s timeout), and its stdout is the secret:
   me-gh: {kind: github-token, token_file: {type: command, command: "pass show gh/jobshop"}, repos: ["acme/*"]}
   me-lin: {kind: linear, token_file: {type: command, command: "op read op://ci/linear/key"}, ...}
 ```
+
+## Secret scanning (redact)
+
+Text leaving the controller (session events, journal reads and shipping,
+command step output, stored comments, reports, learnings, artifacts) and
+`jobshop gh`/`linear` writes are scanned with betterleaks' default rules
+plus jobshop's built-ins (`pkg/redact/rules.toml`). `redact` adds rules
+and turns rules off. Host-only: packs cannot set it.
+
+```yaml
+redact:
+  rules:                 # betterleaks rule fields, snake_case
+    - id: acme-token
+      description: ACME internal token
+      regex: '\bacme_[A-Za-z0-9]{32}\b'
+      keywords: [acme_]  # required
+      value_group: 0     # optional: capture group holding the secret
+  disabled_rules: [generic-api-key]
+```
+
+A bad regex, an id already used, or an unknown id in `disabled_rules`
+fails `jobshop config check` with the rule id. Reload rebuilds the
+scanner; a reload with bad rules keeps the last good one.

@@ -83,7 +83,7 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 	masked := false
 	for i, f := range am.Files {
 		p := filepath.Join(c.artifactDir(id), f.Name)
-		m, err := redactFile(p)
+		m, err := redactFile(c.redactor(nil), p)
 		if err != nil {
 			_ = os.RemoveAll(c.artifactDir(id))
 			return nil, err
