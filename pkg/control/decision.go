@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -14,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -32,10 +35,19 @@ const (
 	grantTicketUndefer   = "ticket-undefer"
 )
 
-// decisionRef is a decision ticket's proposal issue.
+// decisionRef is a decision ticket's proposal issue: a GitHub issue, or a
+// Linear issue key (meta.linear.issue, JOB-17), which wins when set.
 type decisionRef struct {
-	Repo  string
-	Issue int
+	Repo   string
+	Issue  int
+	Linear string
+}
+
+func (r decisionRef) String() string {
+	if r.Linear != "" {
+		return r.Linear
+	}
+	return fmt.Sprintf("%s#%d", r.Repo, r.Issue)
 }
 
 func decisionOf(t store.Ticket) (decisionRef, bool) {
@@ -44,9 +56,15 @@ func decisionOf(t store.Ticket) (decisionRef, bool) {
 			Repo  string `json:"repo"`
 			Issue any    `json:"issue"`
 		} `json:"github"`
+		Linear struct {
+			Issue string `json:"issue"`
+		} `json:"linear"`
 	}
 	if len(t.Meta) == 0 || json.Unmarshal(t.Meta, &m) != nil {
 		return decisionRef{}, false
+	}
+	if m.Linear.Issue != "" {
+		return decisionRef{Linear: m.Linear.Issue}, true
 	}
 	n := refNumber(m.GitHub.Issue)
 	return decisionRef{Repo: m.GitHub.Repo, Issue: n}, m.GitHub.Repo != "" && n > 0
@@ -71,7 +89,7 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 	}
 	ref, ok := decisionOf(t)
 	if !ok && p.Action != rpc.DecisionDismiss {
-		return nil, fmt.Errorf("%w: %s has no meta.github repo and issue", store.ErrInvalid, t.ID)
+		return nil, fmt.Errorf("%w: %s has no meta.github repo and issue or meta.linear issue", store.ErrInvalid, t.ID)
 	}
 	who := sc.actor
 	note := strings.TrimSpace(p.Note)
@@ -86,7 +104,10 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 		if err := c.approveIssue(ctx, ref, body); err != nil {
 			return nil, err
 		}
-		comment = fmt.Sprintf("Approved: %s#%d relabeled %s -> %s.", ref.Repo, ref.Issue, proposedLabel, targetLabel)
+		comment = fmt.Sprintf("Approved: %s relabeled %s -> %s.", ref, proposedLabel, targetLabel)
+		if ref.Linear != "" {
+			comment += " Open sub-issues moved to " + c.linearIntakeState(ref.Linear) + "."
+		}
 	case rpc.DecisionReject:
 		resolution = "rejected"
 		body := fmt.Sprintf("Rejected by %s.", who)
@@ -96,7 +117,7 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 		if err := c.rejectIssue(ctx, ref, body); err != nil {
 			return nil, err
 		}
-		comment = fmt.Sprintf("Rejected: %s#%d closed as not planned.", ref.Repo, ref.Issue)
+		comment = fmt.Sprintf("Rejected: %s closed as not planned.", ref)
 	case rpc.DecisionDismiss:
 		resolution = "dismissed"
 		comment = "Dismissed: not now. The proposal issue is left as is."
@@ -153,10 +174,13 @@ func (c *Controller) undeferWaiting(ctx context.Context, d store.Ticket, ref dec
 
 // waitsOn reports whether t is about the proposal issue.
 func waitsOn(t store.Ticket, ref decisionRef) bool {
-	if r, ok := decisionOf(t); ok && strings.EqualFold(r.Repo, ref.Repo) && r.Issue == ref.Issue {
+	if r, ok := decisionOf(t); ok && strings.EqualFold(r.Repo, ref.Repo) && r.Issue == ref.Issue && strings.EqualFold(r.Linear, ref.Linear) {
 		return true
 	}
 	text := t.Title + "\n" + t.Body
+	if ref.Linear != "" {
+		return containsKey(text, ref.Linear)
+	}
 	full := fmt.Sprintf("%s#%d", ref.Repo, ref.Issue)
 	short := fmt.Sprintf("#%d", ref.Issue)
 	if strings.Contains(strings.ToLower(text), strings.ToLower(full)) {
@@ -211,8 +235,29 @@ func (c *Controller) ticketUndefer(ctx context.Context, sc scope, p rpc.IDParams
 	return c.clearDefer(ctx, t, sc.actor, "by "+sc.actor)
 }
 
-// approveIssue adds target, removes proposed and comments.
+// containsKey: text names the Linear key, "JOB-1" but not "JOB-12".
+func containsKey(text, key string) bool {
+	lt, lk := strings.ToLower(text), strings.ToLower(key)
+	for i := 0; ; {
+		j := strings.Index(lt[i:], lk)
+		if j < 0 {
+			return false
+		}
+		end := i + j + len(lk)
+		if end == len(lt) || lt[end] < '0' || lt[end] > '9' {
+			return true
+		}
+		i = end
+	}
+}
+
+// approveIssue adds target, removes proposed and comments. On Linear it
+// also moves the open sub-issues to the intake state, since the planner
+// files them in Backlog (JOB-17).
 func (c *Controller) approveIssue(ctx context.Context, ref decisionRef, body string) error {
+	if ref.Linear != "" {
+		return c.approveLinear(ctx, ref.Linear, body)
+	}
 	base := fmt.Sprintf("/repos/%s/issues/%d", ref.Repo, ref.Issue)
 	if err := c.githubWrite(ctx, ref.Repo, http.MethodPost, base+"/labels", map[string]any{"labels": []string{targetLabel}}); err != nil {
 		return err
@@ -225,11 +270,79 @@ func (c *Controller) approveIssue(ctx context.Context, ref decisionRef, body str
 
 // rejectIssue comments and closes the issue as not planned.
 func (c *Controller) rejectIssue(ctx context.Context, ref decisionRef, body string) error {
+	if ref.Linear != "" {
+		return c.rejectLinear(ctx, ref.Linear, body)
+	}
 	base := fmt.Sprintf("/repos/%s/issues/%d", ref.Repo, ref.Issue)
 	if err := c.githubWrite(ctx, ref.Repo, http.MethodPost, base+"/comments", map[string]any{"body": body}); err != nil {
 		return err
 	}
 	return c.githubWrite(ctx, ref.Repo, http.MethodPatch, base, map[string]any{"state": "closed", "state_reason": "not_planned"})
+}
+
+func (c *Controller) approveLinear(ctx context.Context, key, body string) error {
+	cl, err := c.linearClient(ctx, key)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := cl.AddLabel(ctx, key, targetLabel); err != nil {
+		return err
+	}
+	if err := cl.RemoveLabel(ctx, key, proposedLabel); err != nil {
+		return err
+	}
+	lc, err := cl.GetContext(ctx, key, false)
+	if err != nil {
+		return err
+	}
+	state := c.linearIntakeState(key)
+	for _, ch := range lc.Children {
+		if !ch.Open() || strings.EqualFold(ch.State.Name, state) {
+			continue
+		}
+		if _, err := cl.SetState(ctx, ch.Identifier, state); err != nil {
+			return fmt.Errorf("move %s to %s: %w", ch.Identifier, state, err)
+		}
+	}
+	return cl.AddComment(ctx, key, body)
+}
+
+func (c *Controller) rejectLinear(ctx context.Context, key, body string) error {
+	cl, err := c.linearClient(ctx, key)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	if err := cl.AddComment(ctx, key, body); err != nil {
+		return err
+	}
+	state, err := cl.CanceledState(ctx, key)
+	if err != nil {
+		return err
+	}
+	_, err = cl.SetState(ctx, key, state)
+	return err
+}
+
+// linearIntakeState is the first of linear_intake_states for the key's
+// team, read from the linear_issue_no_run stall signal; Todo without one.
+func (c *Controller) linearIntakeState(key string) string {
+	team, _ := linear.Team(key)
+	cfg := c.config()
+	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
+		for _, sig := range cfg.Triggers[name].When.Stall {
+			if sig.Signal != config.StallLinearIssueNoRun || !strings.EqualFold(sig.Team, team) {
+				continue
+			}
+			if s := config.SplitList(sig.States); len(s) > 0 {
+				return s[0]
+			}
+		}
+	}
+	return "Todo"
 }
 
 type githubStatusError struct {
