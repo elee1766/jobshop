@@ -1,0 +1,108 @@
+# Port of the gascity factory's agent pool (#634): the implementation
+# pool (gascity routing.primary, formula mol-gfx-pr-work), the independent
+# review and PR refinery pools it hands to, and the main-CI repair order.
+# One instance per repo (load with a prefix, like the gascity rigs).
+# Mapping and gaps: docs/notes/634-agent-pool.md.
+# Vars: agent, checkout (local clone), repo (owner/name), branch.
+defaults:
+  branch: main
+  primary_sessions: 3
+  review_sessions: 2
+  refinery_sessions: 1
+  check_cmd: "true"
+  # Per-pool isolation (#388), passed whole to every pool. {} leaves the
+  # pools unisolated; docs/verify/agent-pool.md sets a mapped uid,
+  # cgroup limits and a pasta network with a deny list.
+  isolation: {}
+  sandbox: {}
+  # main-ci-repair: a failing completed head after this many seconds of
+  # quiet (the gascity order waited 15 minutes).
+  ci_quiet: 900
+pools:
+  primary:
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/{{.branch}}
+    max_sessions: "{{.primary_sessions}}"
+    idle_timeout: 5m
+    turn_timeout: 2h
+    prompt_file: prompts/worker.md
+    isolation: "{{.isolation}}"
+    sandbox: "{{.sandbox}}"
+  review:
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/{{.branch}}
+    max_sessions: "{{.review_sessions}}"
+    idle_timeout: 5m
+    turn_timeout: 2h
+    prompt_file: prompts/reviewer.md
+    isolation: "{{.isolation}}"
+    sandbox: "{{.sandbox}}"
+  refinery:
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/{{.branch}}
+    max_sessions: "{{.refinery_sessions}}"
+    idle_timeout: 5m
+    turn_timeout: 2h
+    prompt_file: prompts/refinery.md
+    isolation: "{{.isolation}}"
+    sandbox: "{{.sandbox}}"
+workflows:
+  # mol-gfx-pr-work: one durable run per task. gascity kept implement and
+  # refinery on one step that moved between pools; here each phase is a
+  # step, and a refinery repair resumes deliver.
+  pr-work:
+    vars: [task]
+    escalate_pool: refinery
+    steps:
+      - id: deliver
+        pool: primary
+        retries: 2
+        title: "Implement: {{.task}}"
+        prompt_file: prompts/deliver.md
+      - id: review
+        pool: review
+        retries: 2
+        title: "Review: {{.task}}"
+        prompt_file: prompts/review.md
+      - id: merge
+        pool: refinery
+        retries: 2
+        title: "Deliver PR: {{.task}}"
+        prompt_file: prompts/merge.md
+  # mol-main-ci-repair: triage only, routes one pr-work run.
+  ci-repair:
+    vars: [sha]
+    escalate_pool: refinery
+    steps:
+      - id: triage
+        pool: primary
+        retries: 1
+        title: "Triage {{.branch}} CI at {{.sha}}"
+        prompt_file: prompts/ci-repair.md
+triggers:
+  # orders/main-ci-retail: one run per failing head after a quiet period.
+  main-ci:
+    when:
+      check: >-
+        gh run list --repo {{.repo}} --branch {{.branch}} --event push
+        --status completed --limit 1 --json conclusion,headSha,updatedAt
+        --jq '.[] | select(.conclusion == "failure")
+        | select((now - (.updatedAt | fromdateiso8601)) > {{.ci_quiet}}) | .headSha' | grep .
+      check_timeout: 30s
+    run:
+      workflow: ci-repair
+      vars: {sha: "{{.check_output}}"}
+      key: "ci-{{.check_output}}"
+prompt_rules:
+  # The gascity worker.md learn-log rule, in jobshop's learning loop.
+  - name: agent-learn
+    at: after
+    match: {pools: [primary, review, refinery]}
+    text: >-
+      Before closing or parking, if this task hit a correction, a failure
+      whose cause you found, a workaround, a blocker or repeated friction,
+      record one line with `jobshop learn <correction|failure|workaround>
+      "<lesson>" --fix "<what worked>"`. Skip routine success.

@@ -24,7 +24,7 @@ after a resume jcode runs tools as `bash -lc`, and NixOS's
 (`jobshop session restart <id>`, or wait for a deploy refresh), then on
 its next turn have the agent run, from its own shell tool:
 
-```sh
+```sh readonly
 command -v jobshop gh; echo "$__NIXOS_SET_ENVIRONMENT_DONE"
 ```
 

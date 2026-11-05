@@ -301,6 +301,10 @@ Commands:
   artifact ack <id> [flags]
     Acknowledge (close) an artifact as read (admin).
 
+  runbook run <file> [flags]
+    Run a runbook's read-only steps (fenced blocks tagged readonly) and print
+    the results.
+
   learn add <kind> <summary> [flags]
     Record a learning of any kind the config allows (learnings.kinds).
 
@@ -2916,6 +2920,53 @@ Flags:
                          else the root's admin socket ($JOBSHOP_SOCKET).
 
   -n, --note=STRING      Note, added as a comment.
+```
+
+## jobshop runbook
+
+```
+Usage: jobshop runbook <command> [flags]
+
+Run a docs/verify runbook's read-only steps (#635).
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+Commands:
+  runbook run <file> [flags]
+    Run a runbook's read-only steps (fenced blocks tagged readonly) and print
+    the results.
+```
+
+## jobshop runbook run
+
+```
+Usage: jobshop runbook run <file> [flags]
+
+Run a runbook's read-only steps (fenced blocks tagged readonly) and print the
+results.
+
+Arguments:
+  <file>    Runbook markdown file, e.g. docs/verify/desk.md.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --dir=STRING       Working directory for the steps (default: the cwd).
+      --timeout=2m       Timeout per step.
+      --json             Print the report as JSON instead of markdown.
 ```
 
 ## jobshop learn
