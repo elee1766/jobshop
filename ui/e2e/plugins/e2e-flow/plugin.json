@@ -1,0 +1,6 @@
+{
+  "name": "e2e-flow",
+  "entry": "index.js",
+  "api": ">=2",
+  "contributes": [{ "slot": "view", "element": "e2e-flow-view", "id": "e2e-flow", "title": "E2E flow" }]
+}

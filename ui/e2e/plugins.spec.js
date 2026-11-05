@@ -45,3 +45,20 @@ test('plugin listing and RPC policy over HTTP', async ({ request }) => {
   expect(res.status()).toBe(403);
   expect((await res.json()).code).toBe('forbidden');
 });
+
+// #542: needs desk_commands.e2e-echo (command: cat) in jobshop.yaml.
+test('a plugin creates a ticket with meta, lists it, gets its event, runs a desk command and reads a session stream', async ({ page }) => {
+  await page.goto('./?view=e2e-flow');
+  await expect(page.getByTestId('flow-create')).toHaveText('create ok');
+  await expect(page.getByTestId('flow-list')).toHaveText('list ok');
+  await expect(page.getByTestId('flow-event')).toHaveText('event ok comment', { timeout: 15000 });
+  await expect(page.getByTestId('flow-exec')).toHaveText('exec ok');
+  await expect(page.getByTestId('flow-stream')).toHaveText(/^stream (ok|skip)/);
+});
+
+test('GET api/rpc has a schema per allowed method', async ({ request }) => {
+  const list = await (await request.get('api/rpc')).json();
+  expect(list.methods).toContain('desk.exec');
+  expect(list.schemas['ticket.create'].params.$ref).toBe('#/$defs/rpc.CreateParams');
+  expect(list.$defs['rpc.CreateParams'].required).toContain('title');
+});

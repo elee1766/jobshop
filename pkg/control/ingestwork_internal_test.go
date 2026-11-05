@@ -39,7 +39,7 @@ func inProcCall(c *Controller) func(ctx context.Context, method string, params, 
 		if err != nil {
 			return err
 		}
-		res, err := methods[method](c, ctx, scope{admin: true, actor: "admin"}, raw)
+		res, err := methods[method].call(c, ctx, scope{admin: true, actor: "admin"}, raw)
 		if err != nil {
 			return err
 		}

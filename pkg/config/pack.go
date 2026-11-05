@@ -59,6 +59,8 @@ type packFile struct {
 	Escalation  *EscalationChat     `yaml:"escalation"`
 	// Learnings.Kinds are appended to the host's (#524).
 	Learnings *LearningsConfig `yaml:"learnings"`
+	// DeskCommands merge per name like pools (#542).
+	DeskCommands map[string]DeskCommand `yaml:"desk_commands"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -140,7 +142,7 @@ const maxPackDepth = 8
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
-var mergedSections = []string{"agents", "pools", "triggers", "workflows"}
+var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands"}
 
 // LoadFile reads a config file, merges the packs it lists, and validates
 // the result. Packs merge in list order, then the file itself.

@@ -75,6 +75,9 @@ type Config struct {
 	Activity *Activity `yaml:"activity"`
 	// Desk configures Desk plugins and the generic RPC endpoint (#517).
 	Desk Desk `yaml:"desk,omitempty"`
+	// DeskCommands are commands Desk plugins run by name (#542). Packs
+	// contribute entries like pools.
+	DeskCommands map[string]DeskCommand `yaml:"desk_commands,omitempty"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
@@ -1295,6 +1298,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	for i, h := range c.Hooks {
 		if err := c.checkHook(h); err != nil {
 			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
+		}
+	}
+	for name, d := range c.DeskCommands {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: desk_commands: name %q must match %s", FileName, name, namePattern)
+		}
+		if err := checkDeskCommand(d); err != nil {
+			return nil, fmt.Errorf("%s: desk_commands.%s: %w", src("desk_commands", name), name, err)
 		}
 	}
 	for _, k := range c.Learnings.Kinds {

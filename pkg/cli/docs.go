@@ -17,11 +17,12 @@ var docTopics = []struct {
 	paths      []string
 }{
 	{"packs", "writing a pack, and the example packs", []string{"docs/packs.md", "packs/"}},
+	{"desk-plugins", "writing a Desk plugin, and the example", []string{"docs/desk-plugins.md", "examples/desk-plugins/"}},
 	{"readme", "overview and running a root", []string{"README.md"}},
 }
 
 type docsCmd struct {
-	Topic string `arg:"" optional:"" help:"Topic (packs, readme). Empty lists topics."`
+	Topic string `arg:"" optional:"" help:"Topic (packs, desk-plugins, readme). Empty lists topics."`
 }
 
 func (c docsCmd) Run() error {
@@ -48,7 +49,7 @@ func docsText(topic, rev string) (string, error) {
 	var b strings.Builder
 	if topic == "" {
 		for _, t := range docTopics {
-			fmt.Fprintf(&b, "%-8s %s\n", t.name, t.help)
+			fmt.Fprintf(&b, "%-13s %s\n", t.name, t.help)
 		}
 		return b.String(), nil
 	}

@@ -53,6 +53,8 @@ flowchart LR
   thread through the gateway (Matrix or Discord), and Desk.
 - **Desk.** A web UI (Svelte) over the admin socket. It shows tickets,
   runs, sessions and attention, and has chat with operator sessions.
+  Its views are plugins; add your own with
+  [`docs/desk-plugins.md`](docs/desk-plugins.md).
 - **Telemetry.** OpenTelemetry traces and logs, a Prometheus endpoint, and
   optional export of agent conversations.
 
@@ -297,6 +299,8 @@ golangci-lint run ./...       # v2.15.0; or nix run .#golangci-lint
 - `docs/plan.md`: design, phases and the dated decision log.
 - `docs/layout.md`: packages, dependencies, build and deployment.
 - `docs/data-model.md`: tables and queries.
+- `docs/desk-plugins.md`: writing a Desk plugin, with
+  `examples/desk-plugins/csv-table`.
 - `docs/notes/<issue>-<slug>.md`: behavior as built, one note per change.
 - `docs/verify/`: runbook checks run against a live host.
 - Progress: the open issues labeled

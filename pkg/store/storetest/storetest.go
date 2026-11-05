@@ -623,6 +623,22 @@ func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	ch, err = s.Changes(ctx, 0, 1)
 	require.NoError(t, err)
 	assert.Len(t, ch, 1)
+
+	// Record adds a row without changing the ticket (#542).
+	before, err := s.Get(ctx, a.ID)
+	require.NoError(t, err)
+	require.NoError(t, s.Record(ctx, "desk:alice", a.ID, "desk_exec", map[string]any{"name": "x"}))
+	h, err = s.History(ctx, a.ID)
+	require.NoError(t, err)
+	lastRow := h[len(h)-1]
+	assert.Equal(t, "desk_exec", lastRow.Op)
+	assert.Equal(t, "desk:alice", lastRow.Actor)
+	assert.Equal(t, before.Revision, lastRow.Revision)
+	assert.JSONEq(t, `{"name":"x"}`, string(lastRow.Diff))
+	after, err := s.Get(ctx, a.ID)
+	require.NoError(t, err)
+	assert.Equal(t, before.Revision, after.Revision)
+	assert.ErrorIs(t, s.Record(ctx, "u", "js-missing", "x", nil), store.ErrNotFound)
 }
 
 func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {

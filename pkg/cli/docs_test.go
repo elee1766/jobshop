@@ -17,6 +17,11 @@ func TestDocsText(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, out, "packs")
 	require.Contains(t, out, "readme")
+	require.Contains(t, out, "desk-plugins")
+
+	out, err = docsText("desk-plugins", "abc123")
+	require.NoError(t, err)
+	require.Contains(t, out, "/blob/abc123/docs/desk-plugins.md\n")
 
 	_, err = docsText("nope", "master")
 	require.Error(t, err)
