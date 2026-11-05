@@ -1162,6 +1162,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
+- CI runs on GitHub-hosted `ubuntu-latest` (2026-11-05): free for a public
+  repo, and its cache restores about twice as fast as Ubicloud's (about
+  65 MB/s there, 2 GB Go cache). Ubicloud cost about $0.045 per run.
 - YAML config. Every new dependency has its reason recorded in
   `docs/layout.md`.
 - Self-deploy runs `jobshop config check` from the new build, against the

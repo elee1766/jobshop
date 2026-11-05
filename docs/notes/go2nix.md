@@ -18,5 +18,5 @@
   gasserver and users without the plugin still build. CI builds the
   fallback's `goModules` to keep the pin honest. The two builds give
   different store paths.
-- CI runs on Ubicloud: `ubicloud-standard-8` for go and nix,
-  `-2` for ui.
+- CI runs on GitHub-hosted `ubuntu-latest` (free for public repos), switched
+  back from Ubicloud on 2026-11-05.
