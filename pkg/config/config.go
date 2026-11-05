@@ -507,6 +507,10 @@ type Ingest struct {
 	// Workers is where admission runs (#443): internal (default) in the
 	// controller, external in `jobshop ingest work` processes.
 	Workers string `yaml:"workers"`
+	// Dispatch is where admitted items are dispatched (#633): internal
+	// (default) in the controller, external in `jobshop ingest work
+	// --dispatch` processes. Several dispatchers are safe either way.
+	Dispatch string `yaml:"dispatch"`
 	// WorkerMissing lists external mode with no worker heartbeat for
 	// this Go duration as attention. Empty: 5m.
 	WorkerMissing string `yaml:"worker_missing"`
@@ -617,6 +621,9 @@ func (c *Config) validateIngest() error {
 	i := c.Ingest
 	if i.Workers != "" && i.Workers != IngestWorkersInternal && i.Workers != IngestWorkersExternal {
 		return fmt.Errorf("%s: ingest.workers %q must be internal or external", FileName, i.Workers)
+	}
+	if i.Dispatch != "" && i.Dispatch != IngestWorkersInternal && i.Dispatch != IngestWorkersExternal {
+		return fmt.Errorf("%s: ingest.dispatch %q must be internal or external", FileName, i.Dispatch)
 	}
 	for k, v := range map[string]string{"worker_missing": i.WorkerMissing, "backlog_after": i.BacklogAfter} {
 		if d, err := time.ParseDuration(v); v != "" && (err != nil || d <= 0) {
@@ -824,6 +831,10 @@ const (
 
 // External reports that admission runs in `jobshop ingest work`, not the controller.
 func (i Ingest) External() bool { return i.Workers == IngestWorkersExternal }
+
+// ExternalDispatch reports that the controller does not dispatch
+// admitted items: `jobshop ingest work --dispatch` does (#633).
+func (i Ingest) ExternalDispatch() bool { return i.Dispatch == IngestWorkersExternal }
 
 // WorkerMissingAfter is WorkerMissing or 5m.
 func (i Ingest) WorkerMissingAfter() time.Duration { return Duration(i.WorkerMissing, 5*time.Minute) }
