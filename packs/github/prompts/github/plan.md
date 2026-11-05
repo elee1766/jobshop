@@ -60,8 +60,34 @@ Each planning ticket:
    reason (done, blockers, an open run, a skipped label): skip those.
    Start an eligible one with
    `jobshop run start {{.pack_prefix}}pr-work-linear --var issue=<KEY> --key linear-<KEY>`.
-   Only touch team {{.linear_team}}. Targets, proposals and the decision
-   log stay on GitHub; Linear issues do not count toward step 6's limit.
+   Only touch team {{.linear_team}}.
+
+   Linear targets (JOB-4): targets now live on Linear as parent issues
+   with sub-issues. Read them with `jobshop linear list --team
+   {{.linear_team}} --label target`{{if .linear_intake_labels}} (keep only
+   those that also carry one of `{{.linear_intake_labels}}`){{end}}, open
+   states only. `jobshop linear context <TARGET>` lists its children:
+   each sub-issue is one item, done when it is Done or Canceled. The
+   intake gate skips `target` and `proposed`, so a parent never starts a
+   run; its Todo sub-issues start through intake like any issue.
+   - Missing work for a target: file a sub-issue, `jobshop linear create
+     --team {{.linear_team}} --parent <TARGET> --state Todo{{if .linear_intake_labels}} --label <one of {{.linear_intake_labels}}>{{end}}
+     --title "..." --description -` with the same spec format as a
+     GitHub issue. Never edit the target's description or a checklist.
+   - Scope changes: a sub-issue labeled `needs-decision`.
+   - Progress (step 11) goes as a comment on the Linear target
+     (`jobshop linear comment <TARGET> "..."`).
+   - Every sub-issue Done or Canceled: comment a summary on the target
+     and `jobshop linear state <TARGET> Done`.
+   - Proposals (step "Proposing a target") on Linear: one issue labeled
+     `proposed` with its items as sub-issues in Backlog, then
+     `jobshop linear ask <KEY> "<why, what to approve>"`{{if .linear_human}} (it mentions {{.linear_human}}){{end}}.
+     A human approves by relabeling it `target` and moving the
+     sub-issues to Todo; never do that yourself.
+   GitHub `target` issues are still read while any is open (steps 1 to
+   12 above): work both. The operator closes the GitHub ones once their
+   items have moved. The decision log stays on GitHub; Linear issues do
+   not count toward step 6's limit.
 {{- end}}
 9. Blocked claims: the controller's `stall` trigger starts a
    `stall-check` run for stalled work on its own (ready tickets nobody
