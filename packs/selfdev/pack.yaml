@@ -39,12 +39,14 @@ extends:
       docs_rule: >-
         behavior as built goes in a new file
         `docs/notes/<issue>-<slug>.md` (short, dated), a runbook check in a
-        new file `docs/verify/<slug>.md`. Never append a numbered section
-        to docs/plan.md or docs/gasserver-verify.md; decisions go in
-        plan.md section 6 and the section 4 and 5 lists.
+        new file `docs/verify/<slug>.md`. Do not edit docs/plan.md (frozen
+        2026-11-05); a design decision is one dated comment on the
+        decision log issue #569. Never append a numbered section to
+        docs/gasserver-verify.md.
       guide: >-
         Jobshop is Go, module github.com/elee1766/jobshop. Read AGENTS.md
-        and docs/ first (docs/plan.md is the plan and decision log).
+        and docs/ first (docs/plan.md is the design archive; newer
+        decisions are on issue #569).
       # Self-deploy promotes the newest green master commit every 10
       # minutes, so a merged change is live once jobshop reports it.
       deploy_check: >-

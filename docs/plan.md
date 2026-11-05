@@ -1,5 +1,12 @@
 # Jobshop plan
 
+Frozen 2026-11-05: do not edit. Parallel PRs kept conflicting on this
+file. Decisions after that date are comments on the decision log issue
+[#569](https://github.com/elee1766/jobshop/issues/569); progress is the
+open [`target`](https://github.com/elee1766/jobshop/issues?q=is%3Aopen+label%3Atarget)
+issues; behavior as built is in `docs/notes/`. This file stays as the
+design archive.
+
 How Jobshop is built, where it stands, and what comes next. Decisions are
 dated. Where this file and the code disagree, the code wins; fix this file.
 Companions: `docs/data-model.md` (tables and queries), `docs/layout.md`

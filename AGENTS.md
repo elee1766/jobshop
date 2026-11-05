@@ -1,8 +1,9 @@
 # Jobshop
 
 Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
-`github.com/elee1766/jobshop`. Design and decisions: `docs/plan.md`,
-`docs/layout.md`, `docs/data-model.md`.
+`github.com/elee1766/jobshop`. Design: `docs/plan.md` (frozen archive,
+up to 2026-11-05), `docs/layout.md`, `docs/data-model.md`. Decisions:
+the pinned decision log issue (#569). Progress: open `target` issues.
 
 - Packages live in `pkg/`; `cmd/jobshop` only calls `cli.Main`.
 - Every write goes through the controller; the CLI never opens the database.
@@ -20,13 +21,13 @@ Multi-agent work orchestration on a SQLite ticket store. Go 1.27, module
 - Store queries are sqlc (`pkg/store/sqlite/sqlc.yaml`); regenerate after
   editing `pkg/store/sqlite/queries/` or `migrations/`. Output goes to
   `pkg/store/sqlstore/sqlcdb`, the backend-neutral core's interface (#404).
-- Record design decisions in `docs/` with the date. In `docs/plan.md`: a
-  decision goes in section 6, behavior as built in a new file
-  `docs/notes/<issue>-<slug>.md` (short, dated), a new runbook check in a
-  new file `docs/verify/<slug>.md`, and update the lists in sections 4
-  and 5. Never add a numbered section to plan.md or gasserver-verify.md:
-  parallel PRs take the same number and conflict (#131).
-  Do not append long paragraphs to other sections.
+- Do not edit `docs/plan.md`: it is frozen (2026-11-05) because parallel
+  PRs kept conflicting on it. Record a design decision as one dated
+  comment on the decision log issue #569 (format in its body). Behavior
+  as built goes in a new file `docs/notes/<issue>-<slug>.md` (short,
+  dated), a new runbook check in a new file `docs/verify/<slug>.md`.
+  Never add a numbered section to gasserver-verify.md (#131).
+  Do not append long paragraphs to other docs.
 - Plain names, short comments explaining why, no marketing language.
 
 ## Nix
