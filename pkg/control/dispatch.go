@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -51,25 +52,22 @@ func (c *Controller) ingestPass(ctx context.Context) {
 			break
 		}
 	}
-	for range 100 {
-		n, err := c.dispatchNext(ctx)
-		if err != nil && ctx.Err() == nil {
-			c.log.Error("dispatch", "err", err)
-		}
-		if n == 0 || err != nil {
-			break
-		}
+	if c.config().Ingest.ExternalDispatch() {
+		return // `jobshop ingest work --dispatch` dispatches (#633)
+	}
+	if _, err := c.dispatchAll(ctx, dispatchHolder); err != nil && ctx.Err() == nil {
+		c.log.Error("dispatch", "err", err)
 	}
 }
 
 // dispatchNext claims up to dispatchBatch admitted rows and hands them
 // off. It returns how many it claimed.
-func (c *Controller) dispatchNext(ctx context.Context) (int, error) {
+func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, error) {
 	c.dispatchMu.Lock()
 	defer c.dispatchMu.Unlock()
 	var rows []store.InboxItem
 	for range dispatchBatch {
-		it, err := c.store.InboxClaim(ctx, []string{store.InboxAdmitted}, dispatchHolder, dispatchLease)
+		it, err := c.store.InboxClaim(ctx, []string{store.InboxAdmitted}, holder, dispatchLease)
 		if errors.Is(err, store.ErrNotFound) {
 			break
 		}
@@ -92,17 +90,17 @@ func (c *Controller) dispatchNext(ctx context.Context) (int, error) {
 			other = append(other, it)
 		}
 	}
-	c.done(ctx, other)
-	c.dispatchActivity(ctx, activity)
-	c.dispatchComments(ctx, comments)
+	c.done(ctx, holder, other)
+	c.dispatchActivity(ctx, holder, activity)
+	c.dispatchComments(ctx, holder, comments)
 	return len(rows), nil
 }
 
 // done marks rows dispatched. A lost lease is logged: the row is then
 // claimed again, and the consumers are idempotent.
-func (c *Controller) done(ctx context.Context, rows []store.InboxItem) {
+func (c *Controller) done(ctx context.Context, holder string, rows []store.InboxItem) {
 	for _, it := range rows {
-		if _, err := c.store.InboxSetState(ctx, it.ID, dispatchHolder, store.InboxUpdate{State: store.InboxDispatched}); err != nil {
+		if _, err := c.store.InboxSetState(ctx, it.ID, holder, store.InboxUpdate{State: store.InboxDispatched}); err != nil {
 			c.log.Warn("dispatch: mark dispatched", "delivery", it.DeliveryID, "err", err)
 		}
 	}
@@ -110,13 +108,13 @@ func (c *Controller) done(ctx context.Context, rows []store.InboxItem) {
 
 // dispatchComments delivers admitted poller comments, grouped by thread
 // so a thread's news arrives as one message, as the poller used to send.
-func (c *Controller) dispatchComments(ctx context.Context, rows []store.InboxItem) {
+func (c *Controller) dispatchComments(ctx context.Context, holder string, rows []store.InboxItem) {
 	if len(rows) == 0 {
 		return
 	}
 	cfg := c.config()
 	if cfg.Subscriptions == nil {
-		c.done(ctx, rows)
+		c.done(ctx, holder, rows)
 		return
 	}
 	now := c.now()
@@ -148,7 +146,7 @@ func (c *Controller) dispatchComments(ctx context.Context, rows []store.InboxIte
 			continue
 		}
 		key := "dispatch/" + it.DeliveryID
-		wk, err := writekey.Claim(ctx, c.store, key, dispatchKeyOp, "controller")
+		wk, err := writekey.Claim(ctx, c.store, key, dispatchKeyOp, holder)
 		if err != nil {
 			c.log.Warn("dispatch: write key", "delivery", it.DeliveryID, "err", err)
 			continue
@@ -168,7 +166,7 @@ func (c *Controller) dispatchComments(ctx context.Context, rows []store.InboxIte
 		g.keys = append(g.keys, key)
 		g.rows = append(g.rows, it)
 	}
-	c.done(ctx, skip)
+	c.done(ctx, holder, skip)
 	for _, k := range order {
 		g := groups[k]
 		if err := c.deliverThread(ctx, g.th, g.cs, byThread[k], now, window); err != nil {
@@ -180,19 +178,19 @@ func (c *Controller) dispatchComments(ctx context.Context, rows []store.InboxIte
 				c.log.Warn("dispatch: finish write key", "key", key, "err", err)
 			}
 		}
-		c.done(ctx, g.rows)
+		c.done(ctx, holder, g.rows)
 	}
 }
 
 // dispatchActivity adds admitted activity items to the feed and checks
 // merges for reverts.
-func (c *Controller) dispatchActivity(ctx context.Context, rows []store.InboxItem) {
+func (c *Controller) dispatchActivity(ctx context.Context, holder string, rows []store.InboxItem) {
 	if len(rows) == 0 {
 		return
 	}
 	cfg := c.config()
 	if cfg.Activity == nil {
-		c.done(ctx, rows)
+		c.done(ctx, holder, rows)
 		return
 	}
 	c.activityMu.Lock()
@@ -223,7 +221,7 @@ func (c *Controller) dispatchActivity(ctx context.Context, rows []store.InboxIte
 	if added > 0 && c.events != nil {
 		c.events.publish([]rpc.Event{{Kind: rpc.EventKindActivity, Time: now}})
 	}
-	c.done(ctx, rows)
+	c.done(ctx, holder, rows)
 }
 
 // activitySource is the configured activity source: the test fake, else
@@ -242,4 +240,38 @@ func admitBudget(external bool) int {
 		return 0
 	}
 	return 1000
+}
+
+// ingestDispatchMethod dispatches admitted rows for `jobshop ingest work
+// --dispatch` (#633). The rows are claimed under the worker's own holder,
+// so its leases fence it against the controller and other workers like
+// any dispatcher; the dispatch/<row id> write key keeps a row whose lease
+// expired mid-hand-off from being delivered twice.
+func (c *Controller) ingestDispatchMethod(ctx context.Context, sc scope, p rpc.IngestClaimParams) (any, error) {
+	if err := requireAdmin(sc, "ingest dispatch"); err != nil {
+		return nil, err
+	}
+	if p.Worker == "" {
+		return nil, fmt.Errorf("%w: worker is required", store.ErrInvalid)
+	}
+	c.beat(p, false, false)
+	n, err := c.dispatchAll(ctx, ingestWorkerPrefix+p.Worker)
+	if err != nil {
+		return nil, err
+	}
+	return rpc.IngestDispatchResult{Dispatched: n}, nil
+}
+
+// dispatchAll runs dispatchNext as holder until nothing admitted is
+// left, bounded, returning how many rows it claimed.
+func (c *Controller) dispatchAll(ctx context.Context, holder string) (int, error) {
+	total := 0
+	for range 100 {
+		n, err := c.dispatchNext(ctx, holder)
+		total += n
+		if n == 0 || err != nil {
+			return total, err
+		}
+	}
+	return total, nil
 }

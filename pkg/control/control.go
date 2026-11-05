@@ -768,6 +768,7 @@ func init() {
 		rpc.MethodIngestClaim:       bind((*Controller).ingestClaim),
 		rpc.MethodIngestAdmit:       bind((*Controller).ingestAdmit),
 		rpc.MethodIngestWorkers:     bind((*Controller).ingestWorkersMethod),
+		rpc.MethodIngestDispatch:    bind((*Controller).ingestDispatchMethod),
 		rpc.MethodTicketCreate:      bind((*Controller).create),
 		rpc.MethodTicketShow:        bind((*Controller).show),
 		rpc.MethodTicketTrace:       bind((*Controller).trace),

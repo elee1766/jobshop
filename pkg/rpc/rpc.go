@@ -122,7 +122,16 @@ const (
 	MethodIngestClaim   = "ingest.claim"
 	MethodIngestAdmit   = "ingest.admit"
 	MethodIngestWorkers = "ingest.workers"
+	// MethodIngestDispatch dispatches admitted items as the calling
+	// worker (#633). Params IngestClaimParams.
+	MethodIngestDispatch = "ingest.dispatch"
 )
+
+// IngestDispatchResult is how many admitted items one ingest.dispatch
+// claimed and handed off.
+type IngestDispatchResult struct {
+	Dispatched int `json:"dispatched"`
+}
 
 // IngestClaimParams is ingest.claim. Worker is a stable id per process.
 type IngestClaimParams struct {

@@ -35,15 +35,20 @@ func (ingestWorkersCmd) Run(g *Globals) error {
 }
 
 type ingestWorkCmd struct {
-	Once   bool          `help:"Admit until nothing is pending and exit."`
-	Worker string        `help:"Worker id (default <host>-<pid>)."`
-	Every  time.Duration `default:"1s" help:"Pause when nothing is pending, without --once. Each claim is the worker's heartbeat."`
+	Once     bool          `help:"Admit until nothing is pending and exit."`
+	Worker   string        `help:"Worker id (default <host>-<pid>)."`
+	Every    time.Duration `default:"1s" help:"Pause when nothing is pending, without --once. Each claim is the worker's heartbeat."`
+	Dispatch bool          `help:"Also dispatch admitted items through the controller (#633). Safe alongside other dispatchers; set ingest.dispatch external to stop the controller's own."`
+	NoAdmit  bool          `name:"no-admit" help:"Only dispatch (with --dispatch), for ingest.workers internal."`
 }
 
 func (c ingestWorkCmd) Run(g *Globals) error {
 	r, err := g.root()
 	if err != nil {
 		return err
+	}
+	if c.NoAdmit && !c.Dispatch {
+		return errors.New("--no-admit needs --dispatch")
 	}
 	host, _ := os.Hostname()
 	id := c.Worker
@@ -52,14 +57,18 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 	}
 	w := control.IngestWorker{
 		Call: func(_ context.Context, method string, params, out any) error { return g.call(method, params, out) },
-		Dir:  r.Dir, Worker: id, Host: host,
+		Dir:  r.Dir, Worker: id, Host: host, Dispatch: c.Dispatch, NoAdmit: c.NoAdmit,
 		Log: slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "ingest-work", "worker", id),
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if c.Once {
-		n, err := w.Once(ctx)
+		n, d, err := w.Pass(ctx)
 		if err != nil {
+			return err
+		}
+		if c.Dispatch {
+			_, err = fmt.Fprintf(stdout, "admitted %d dispatched %d\n", n, d)
 			return err
 		}
 		_, err = fmt.Fprintf(stdout, "admitted %d\n", n)
