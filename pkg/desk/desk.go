@@ -108,6 +108,8 @@ type Server struct {
 	builtin fs.FS
 	rootsMu sync.Mutex
 	roots   map[string]*os.Root
+	// attn is <root>/desk/attention.json (#535).
+	attn attentionFile
 }
 
 // NeedsHuman is the escalation label.
@@ -138,7 +140,11 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 	if _, err := fs.Stat(ui, "plugins"); err == nil {
 		builtin, _ = fs.Sub(ui, "plugins")
 	}
-	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index, builtin: builtin}
+	s := &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index, builtin: builtin}
+	if cfg.Root != "" {
+		s.attn.path = filepath.Join(cfg.Root, "desk", "attention.json")
+	}
+	return s
 }
 
 // basePathRe is what a base path may contain. A leading "//" would make
@@ -302,6 +308,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/escalations", s.json(s.escalations))
 	mux.HandleFunc("POST /api/chat/send", s.json(s.chatSend))
 	mux.HandleFunc("POST /api/chat/new", s.json(s.chatNew))
+	mux.HandleFunc("POST /api/chat/cancel", s.json(s.chatCancel))
+	mux.HandleFunc("POST /api/attention/chat", s.json(s.attentionChat))
+	mux.HandleFunc("POST /api/attention/ack", s.json(s.attentionAck))
+	mux.HandleFunc("GET /api/session/{id}/events", s.json(s.sessionEvents))
 	mux.HandleFunc("POST /api/pool/scale", s.json(s.poolScale))
 	mux.HandleFunc("POST /api/session/cordon", s.json(s.sessionCordon))
 	if s.cfg.Push != nil {
@@ -455,11 +465,13 @@ func (s *Server) activity(r *http.Request) (any, error) {
 
 // AttentionItem is one thing waiting on a human.
 type AttentionItem struct {
-	Kind  string    `json:"kind"` // run, ticket, pool, deploy
+	Kind  string    `json:"kind"` // run, ticket, wait, pool, deploy, and the controller's kinds (rpc.Attention*)
 	ID    string    `json:"id,omitempty"`
 	Title string    `json:"title"`
 	Why   string    `json:"why"`
 	Since time.Time `json:"since,omitzero"`
+	// Ref is the linked issue or PR (#12, PR #3), from the controller.
+	Ref string `json:"ref,omitempty"`
 }
 
 // attention lists what waits on a human, oldest first; empty when healthy.
@@ -505,6 +517,7 @@ func (s *Server) attention(r *http.Request) (any, error) {
 	if d := s.readDeploy(); d.Failed != "" && d.Failed != d.Deployed {
 		out = append(out, AttentionItem{Kind: "deploy", ID: d.Failed, Title: "deploy of " + short(d.Failed) + " rolled back", Why: "self-deploy failed; waiting for a newer green commit", Since: d.FailedAt})
 	}
+	out = s.dropAcked(s.mergeAttention(r, out))
 	sort.SliceStable(out, func(i, j int) bool {
 		a, b := out[i].Since, out[j].Since
 		if a.IsZero() != b.IsZero() {

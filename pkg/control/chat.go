@@ -14,6 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // subscribePoll is how often session.subscribe reads the journal and the
@@ -167,7 +168,8 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		return nil, err
 	}
 	path := filepath.Join(c.root.SessionDir(p.ID), host.JournalFile)
-	ev := eventer{tools: map[string]string{}}
+	env := journalEnv(c.root.SessionDir(p.ID))
+	ev := rpc.EventDecoder{Redact: func(s string) string { return telemetry.RedactText(s, env) }}
 	var off int64
 	res := rpc.SessionSubscribeResult{Seq: p.SinceSeq}
 	last := t
@@ -180,7 +182,7 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		for _, fr := range frames {
 			// Tool titles come from earlier frames, so all are decoded;
 			// only those after SinceSeq are sent.
-			out, ok := ev.event(fr)
+			out, ok := ev.Decode(fr.Seq, fr.T, fr.From, fr.Msg)
 			if !ok || fr.Seq <= p.SinceSeq {
 				continue
 			}
@@ -213,105 +215,6 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		}
 		last = t
 	}
-}
-
-// eventer turns journal frames into session events, keeping tool titles
-// across frames (updates often omit them).
-type eventer struct{ tools map[string]string }
-
-type journalMsg struct {
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
-	Result json.RawMessage `json:"result"`
-	Error  *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-func (e *eventer) event(fr host.Frame) (rpc.SessionEvent, bool) {
-	out := rpc.SessionEvent{Seq: fr.Seq}
-	if fr.T > 0 {
-		at := time.UnixMilli(fr.T).UTC()
-		out.Time = &at
-	}
-	var m journalMsg
-	if json.Unmarshal(fr.Msg, &m) != nil {
-		return out, false
-	}
-	switch {
-	case m.Method == "session/prompt":
-		var p struct {
-			Prompt []struct {
-				Text string `json:"text"`
-			} `json:"prompt"`
-		}
-		_ = json.Unmarshal(m.Params, &p)
-		var parts []string
-		for _, b := range p.Prompt {
-			if b.Text != "" {
-				parts = append(parts, b.Text)
-			}
-		}
-		out.Type = rpc.EventTurnStart
-		out.Text, out.Context = splitContext(strings.Join(parts, "\n"))
-		return out, true
-	case m.Method == "session/update":
-		var u struct {
-			Update struct {
-				Kind    string `json:"sessionUpdate"`
-				Content struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"content"`
-				ToolCallID string `json:"toolCallId"`
-				Title      string `json:"title"`
-				Status     string `json:"status"`
-			} `json:"update"`
-		}
-		if json.Unmarshal(m.Params, &u) != nil {
-			return out, false
-		}
-		up := u.Update
-		switch up.Kind {
-		case "agent_message_chunk":
-			if (up.Content.Type == "text" || up.Content.Type == "") && up.Content.Text != "" {
-				out.Type, out.Text = rpc.EventText, up.Content.Text
-				return out, true
-			}
-		case "tool_call", "tool_call_update":
-			title := up.Title
-			if title == "" {
-				title = e.tools[up.ToolCallID]
-			}
-			if title != "" {
-				e.tools[up.ToolCallID] = title
-			}
-			// Updates without a status are output deltas.
-			if up.Status == "" && up.Kind == "tool_call_update" {
-				return out, false
-			}
-			status := up.Status
-			if status == "" {
-				status = "pending"
-			}
-			out.Type = rpc.EventTool
-			out.Tool = &rpc.ToolSummary{ID: up.ToolCallID, Title: title, Status: status}
-			return out, true
-		}
-	case m.Method == "" && len(m.Result) > 0:
-		// Only session/prompt results carry a stopReason.
-		var res struct {
-			StopReason string `json:"stopReason"`
-		}
-		if json.Unmarshal(m.Result, &res) == nil && res.StopReason != "" {
-			out.Type, out.StopReason = rpc.EventTurnEnd, res.StopReason
-			return out, true
-		}
-	case m.Method == "" && m.Error != nil && fr.From == "agent":
-		out.Type, out.Error = rpc.EventTurnEnd, m.Error.Message
-		return out, true
-	}
-	return out, false
 }
 
 // humanSlot checks that a human-initiated session (a chat send by key, a

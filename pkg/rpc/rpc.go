@@ -47,7 +47,7 @@ func Methods() []string {
 		MethodIngestClaim, MethodIngestAdmit, MethodIngestWorkers, MethodEventsSubscribe, MethodWaitAdd,
 		MethodWaitList, MethodWaitClear, MethodResourceAdd, MethodResourceRemove, MethodResourceUnhealthy,
 		MethodResourceList, MethodArtifactDeliver, MethodArtifactList, MethodArtifactShow, MethodArtifactAck,
-		MethodSessionJournal,
+		MethodSessionJournal, MethodSessionCancel,
 	}
 }
 
@@ -1099,6 +1099,10 @@ const (
 	EventTool      = "tool"       // Tool is set
 	EventTurnEnd   = "turn_end"   // StopReason, or Error
 	EventState     = "state"      // Status and Resolution; Seq is 0
+	// EventReasoning is an agent thought chunk; EventUsage carries Usage
+	// (#535). Older clients ignore types they do not know.
+	EventReasoning = "reasoning"
+	EventUsage     = "usage"
 )
 
 // SessionEvent is one item of a session's output, read from its journal.
@@ -1116,13 +1120,24 @@ type SessionEvent struct {
 	Error      string       `json:"error,omitempty"`
 	Status     store.Status `json:"status,omitempty"`
 	Resolution string       `json:"resolution,omitempty"`
+	Usage      *Usage       `json:"usage,omitempty"`
 }
 
-// ToolSummary is one tool call state change.
+// ToolSummary is one tool call state change. Input and Output are the
+// call's raw input and output when the frame has them, cut to
+// MaxToolIO bytes, for clients that expand a tool row (#535).
 type ToolSummary struct {
 	ID     string `json:"id"`
 	Title  string `json:"title,omitempty"`
 	Status string `json:"status"`
+	Input  string `json:"input,omitempty"`
+	Output string `json:"output,omitempty"`
+}
+
+// Usage is an ACP usage_update: tokens in context and the window size.
+type Usage struct {
+	Used int `json:"used"`
+	Size int `json:"size"`
 }
 
 // Subscribe calls session.subscribe and passes each event to fn until the
@@ -1622,6 +1637,16 @@ type ArtifactAckParams struct {
 
 // MethodSessionJournal reads a session's ACP journal (#529).
 const MethodSessionJournal = "session.journal"
+
+// MethodSessionCancel cancels a session's running turn without sending
+// anything (Desk's Stop, #535). Queued messages are delivered after it.
+const MethodSessionCancel = "session.cancel"
+
+// SessionCancelResult says whether a turn was running to cancel.
+type SessionCancelResult struct {
+	ID        string `json:"id"`
+	Cancelled bool   `json:"cancelled"`
+}
 
 // SessionJournalParams pages a session's journal by seq. Kinds filters
 // on msg.method or params.update.sessionUpdate; From on "agent" or

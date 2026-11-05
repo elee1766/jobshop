@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -100,6 +101,10 @@ type runner struct {
 	restartPending bool
 	restartWake    chan struct{}
 	restartNow     chan struct{}
+	// cancelNow is session.cancel (#535): interruptible cancels the
+	// running turn and sends nothing. inTurn is set while one runs.
+	cancelNow chan struct{}
+	inTurn    atomic.Bool
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
@@ -278,6 +283,7 @@ func (c *Controller) startRunner(t store.Ticket) {
 		log: c.log.With("session", t.ID, "pool", t.Pool), ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), turnEnd: make(chan struct{}, 1),
 		restartWake: make(chan struct{}, 1), restartNow: make(chan struct{}, 1),
+		cancelNow: make(chan struct{}, 1),
 	}
 	if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
 		r.traceParent = f.TraceParent
@@ -1049,7 +1055,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		r.mu.Unlock()
 	}()
 	if c := r.takeContext(); c != "" {
-		text = strings.TrimSpace(contextOpen + "\n" + c + "\n" + contextClose + "\n\n" + text)
+		text = strings.TrimSpace(rpc.ContextOpen + "\n" + c + "\n" + rpc.ContextClose + "\n\n" + text)
 	}
 	busyRetries := 0
 	for {
@@ -1234,28 +1240,6 @@ func (r *runner) setContext(s string) {
 	r.mu.Lock()
 	r.context = s
 	r.mu.Unlock()
-}
-
-// contextOpen and contextClose delimit session.send context in a prompt.
-// ACP text blocks carry no audience on the wire (the SDK drops it), so
-// the event reader splits the block out by these lines.
-const (
-	contextOpen  = "[jobshop context]"
-	contextClose = "[end of jobshop context]"
-)
-
-// splitContext separates a prompt into its visible text and the context
-// block, when it has one.
-func splitContext(s string) (text, ctx string) {
-	before, rest, ok := strings.Cut(s, contextOpen+"\n")
-	if !ok {
-		return s, ""
-	}
-	ctx, after, ok := strings.Cut(rest, "\n"+contextClose)
-	if !ok {
-		return s, ""
-	}
-	return strings.TrimSpace(before + strings.TrimPrefix(after, "\n\n")), ctx
 }
 
 func (r *runner) takeContext() string {

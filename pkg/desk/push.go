@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -155,10 +156,8 @@ func (p *Push) diff(items []AttentionItem) []AttentionItem {
 
 func message(it AttentionItem) PushMessage {
 	// Relative to the service worker's scope, so it works under --base-path.
-	m := PushMessage{Title: it.Title, Body: it.Why, Tag: attentionKey(it), URL: "./"}
-	if it.Kind == "run" || it.Kind == "ticket" {
-		m.URL = "./?ticket=" + it.ID
-	}
+	// The Attention plugin opens the item's resolving chat from ?item= (#535).
+	m := PushMessage{Title: it.Title, Body: it.Why, Tag: attentionKey(it), URL: "./?item=" + url.QueryEscape(attentionKey(it))}
 	return m
 }
 
