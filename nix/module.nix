@@ -118,7 +118,14 @@ let
     }
     // lib.optionalAttrs (cfg.store.dsnFile != null) { dsn_file = toString cfg.store.dsnFile; };
   };
-  moduleAttrs =
+  # Journal compression (#631): only set when after is.
+  jc = cfg.journal.compress;
+  compressAttrs = lib.optionalAttrs (jc.after != "") {
+    journal.compress = {
+      inherit (jc) after level;
+    };
+  };
+  moduleAttrs = lib.recursiveUpdate compressAttrs (
     telemetryAttrs
     // storeAttrs
     // lib.optionalAttrs (vlUrl != "") {
@@ -126,7 +133,8 @@ let
         url = vlUrl;
         retention_hint = vl.retentionPeriod;
       };
-    };
+    }
+  );
   generatedConfig = settingsFormat.generate "jobshop.yaml" (
     lib.recursiveUpdate (withModuleKeys cfg.settings) moduleAttrs
   );
@@ -658,6 +666,20 @@ in
           Authorization = "Bearer \${OTLP_TOKEN}";
         };
         description = "Headers on every OTLP export. \${VAR} expands from the controller environment (see environmentFile).";
+      };
+    };
+
+    journal.compress = {
+      after = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "24h";
+        description = "Compress a closed session's journal with zstd this long after it closed (journal.compress.after, #631). Empty: off.";
+      };
+      level = lib.mkOption {
+        type = lib.types.ints.between 1 22;
+        default = 3;
+        description = "zstd level for journal compression (journal.compress.level).";
       };
     };
 

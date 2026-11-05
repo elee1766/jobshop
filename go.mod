@@ -7,7 +7,7 @@ require (
 	github.com/betterleaks/betterleaks/v2 v2.0.0-rc.7
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/coder/acp-go-sdk v0.13.5
-	github.com/elee1766/acphost v0.6.1-0.20261105104828-091dec9a4f11
+	github.com/elee1766/acphost v0.7.0
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/jackc/pgx/v5 v5.12.0
