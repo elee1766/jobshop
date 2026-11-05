@@ -6,19 +6,20 @@ from this ticket's `parent_id`), or from
 `gh pr list --state merged --search "#{{.issue}}" --json number,mergeCommit`.
 
 Long commands are moved to the background, so do not wait inside the
-turn. Check once; if CI or the deploy is pending, comment what you saw
-and `jobshop release --until 20m` (a deferral, not a failed attempt;
-a plain release is one).
+turn. Check once, then park on what is pending (a deferral, not a
+failed attempt; a plain release is one).
 
 1. Master CI on the merge commit:
    `gh run list --branch master --commit <sha> --json status,conclusion,databaseId`.
-   Pending: release --until as above. Red: file a priority-0 fix issue
+   Pending: `jobshop wait add 'github.checks:repo={{.repo}},sha=<sha>,state=success' 'github.checks:repo={{.repo}},sha=<sha>,state=failure' --any --resume --timeout 1h --reason "master CI on <sha>"`
+   and end the turn; it resumes here within a minute of CI finishing.
+   Red: file a priority-0 fix issue
    (`gh issue list --search` first) and a dev ticket for it, comment
    both here, and `jobshop close -r failed`.
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh on every loop. Do not reuse an earlier result or
-   version, the deploy may have moved since. Not yet: release --until
-   and check again. Still not after an hour of
+   version, the deploy may have moved since. Not yet: comment what you
+   saw, `jobshop release --until 5m -r "deploy pending"`, and check again. Still not after an hour of
    green CI: comment what you saw and `jobshop close -r failed`.
 3. Both good: comment on the issue (`gh issue comment {{.issue}}`) that it
    shipped in <sha> (and is deployed, if step 2 applies), then

@@ -54,6 +54,10 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `deploy-check` pool (`deploy_sessions`, default 3): works `post-merge`
   steps, which wait up to an hour for the deploy, so they never queue a
   review behind them (#167). Prompt: `prompts/deploy-check.md`.
+- CI waits: steps that wait on CI park with `jobshop wait add
+  'github.checks:...' --any --resume` (#381) and resume within a minute
+  of CI finishing, instead of a fixed `release --until` (#555). Only the
+  deploy check keeps a timed `release --until 5m`.
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,
   files the next 2-4 issues and starts their runs, handles escalations.
   Prompt: `prompts/github/plan.md`.
