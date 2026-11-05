@@ -419,6 +419,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/424-rebase-no-failure.md`). The controller checks the PR's
   merge state first and counts a clean PR as failed (#511,
   `docs/notes/511-rebase-merge-state.md`).
+- trigger.list evaluates triggers in parallel, so the Desk pools view
+  no longer waits for every check in turn (#522,
+  `docs/notes/522-trigger-list-parallel.md`).
 - Workflow step graphs: `needs:` for parallel steps, `when:` for steps
   gated on an outcome set with `close --outcome` (#385,
   `docs/notes/385-step-needs-when.md`).
