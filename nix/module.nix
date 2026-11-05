@@ -648,6 +648,32 @@ in
       description = "Chat gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
     };
 
+    desk = {
+      enable = lib.mkEnableOption "jobshop-desk.service running `jobshop desk`";
+      listen = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1:7480";
+        description = "Address Desk serves on. Non-loopback adds --allow-remote.";
+      };
+      hosts = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Extra Host header values Desk accepts.";
+      };
+      userHeader = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "Tailscale-User-Login";
+        description = "Header an authenticating proxy sets to the user; writes record `desk:<user>` (#515). Empty: no user.";
+      };
+      trustedProxies = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "127.0.0.1" ];
+        description = "CIDRs or addresses whose `userHeader` Desk trusts. Required with userHeader.";
+      };
+    };
+
     ingest = {
       enable = lib.mkEnableOption "jobshop-ingest.service running `jobshop ingest serve` (#334) on settings.ingest.listen";
       worker = {
@@ -1005,6 +1031,43 @@ in
             Slice = "jobshop.slice";
             WorkingDirectory = cfg.dataDir;
             ExecStart = "${jobshop} ingest serve";
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
+      (lib.mkIf cfg.desk.enable {
+        assertions = [
+          {
+            assertion = cfg.desk.userHeader == "" || cfg.desk.trustedProxies != [ ];
+            message = "services.jobshop.desk.userHeader needs desk.trustedProxies";
+          }
+        ];
+        systemd.services.jobshop-desk = {
+          description = "Jobshop Desk";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "jobshop.service" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = lib.escapeShellArgs (
+              [
+                "${jobshop}"
+                "desk"
+                "--listen"
+                cfg.desk.listen
+              ]
+              ++ lib.optional (
+                !(lib.hasPrefix "127." cfg.desk.listen || lib.hasPrefix "localhost:" cfg.desk.listen
+                  || lib.hasPrefix "[::1]" cfg.desk.listen)
+              ) "--allow-remote"
+              ++ lib.concatMap (h: [ "--host" h ]) cfg.desk.hosts
+              ++ lib.optionals (cfg.desk.userHeader != "") [ "--user-header" cfg.desk.userHeader ]
+              ++ lib.concatMap (p: [ "--trusted-proxy" p ]) cfg.desk.trustedProxies
+            );
             Restart = "always";
             RestartSec = 5;
           };

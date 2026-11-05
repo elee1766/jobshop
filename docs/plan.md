@@ -485,6 +485,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   and PRs labeled `hold` (#509, `docs/notes/509-pr-unmerged-skip.md`).
 - CI reruns failed tests 20 times, marks each flaky or broken and uploads
   the `failed-tests` artifact (#510, `docs/notes/510-ci-flaky-rerun.md`).
+- Desk takes the user from a trusted proxy header and records writes as
+  `desk:<user>` (#515, `docs/notes/515-desk-proxy-user.md`).
 
 ## 5. What's next
 
@@ -643,7 +645,8 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 **Resource pools (#400).** Done: provider-owned slots (#407), waiting
 visibility (#408), placement (#409).
 
-**Hand-offs (#489).** Done: atomic `handoff` (#492).
+**Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
+proxy header (#515). Next: turn on `desk.userHeader` on gasserver.
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1037,6 +1040,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   their own (2026-11-03, #203): one session per escalation, so the
   operator sees the same conversation from Matrix and Desk. Desk shows
   the session's turns, not other messages in the Matrix room.
+- Desk identity comes from a trusted proxy header and is never
+  self-asserted (2026-11-05, #515): Desk reads `--user-header` only from
+  `--trusted-proxy` peers and refuses other requests with 403; the user
+  reaches the controller as `_meta.actor` (`desk:<user>`), which only the
+  admin socket may set.
 - A replacement escalation thread keeps the original session key
   (2026-11-03, #197): the operator's conversation continues in the same
   session, and the key is already recorded in `meta.gateway`.

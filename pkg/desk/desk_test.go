@@ -28,9 +28,11 @@ type fakeCtl struct {
 	events  []rpc.Event
 	session []rpc.SessionEvent
 	since   int64
+	actors  []string
 }
 
-func (f *fakeCtl) Call(_ context.Context, method string, p, out any) error {
+func (f *fakeCtl) Call(ctx context.Context, method string, p, out any) error {
+	f.actors = append(f.actors, rpc.ActorFrom(ctx))
 	b, _ := json.Marshal(p)
 	f.calls = append(f.calls, method+" "+string(b))
 	key := method

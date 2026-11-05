@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/elee1766/acphost"
@@ -716,12 +718,50 @@ const MetaKey = "_meta"
 // Meta is request metadata.
 type Meta struct {
 	TraceParent string `json:"traceparent,omitempty"`
+	// Actor names the person behind an admin-socket call, such as
+	// "desk:alice" (#515). The controller honors it only on the admin
+	// socket; a session socket's actor is fixed by the socket.
+	Actor string `json:"actor,omitempty"`
 }
 
-// withMeta adds _meta.traceparent from ctx to object params.
+type actorKey struct{}
+
+// WithActor makes calls under ctx carry actor in _meta.actor.
+func WithActor(ctx context.Context, actor string) context.Context {
+	if actor == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, actorKey{}, actor)
+}
+
+// ActorFrom returns the actor set by WithActor.
+func ActorFrom(ctx context.Context) string {
+	a, _ := ctx.Value(actorKey{}).(string)
+	return a
+}
+
+// MaxActor is the longest _meta.actor accepted, in bytes.
+const MaxActor = 256
+
+// ValidActor checks an actor name: at most MaxActor bytes of printable
+// text, no control characters.
+func ValidActor(a string) error {
+	if a == "" || len(a) > MaxActor || !utf8.ValidString(a) {
+		return fmt.Errorf("%w: actor must be 1 to %d bytes of UTF-8", store.ErrInvalid, MaxActor)
+	}
+	for _, r := range a {
+		if !unicode.IsPrint(r) {
+			return fmt.Errorf("%w: actor has a non-printable character", store.ErrInvalid)
+		}
+	}
+	return nil
+}
+
+// withMeta adds _meta (traceparent, actor) from ctx to object params.
 func withMeta(ctx context.Context, params any) (any, error) {
 	tp := telemetry.TraceParent(ctx)
-	if tp == "" {
+	actor := ActorFrom(ctx)
+	if tp == "" && actor == "" {
 		return params, nil
 	}
 	obj := map[string]json.RawMessage{}
@@ -734,7 +774,7 @@ func withMeta(ctx context.Context, params any) (any, error) {
 			return params, nil // not an object: send without metadata
 		}
 	}
-	m, err := json.Marshal(Meta{TraceParent: tp})
+	m, err := json.Marshal(Meta{TraceParent: tp, Actor: actor})
 	if err != nil {
 		return nil, err
 	}

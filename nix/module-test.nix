@@ -292,6 +292,31 @@ let
         })
       )
     ))
+    (expect "desk passes the proxy user flags" (
+      let
+        d = eval {
+          desk = {
+            enable = true;
+            userHeader = "Tailscale-User-Login";
+            trustedProxies = [ "127.0.0.1" ];
+          };
+        };
+        exec = d.config.systemd.services.jobshop-desk.serviceConfig.ExecStart;
+      in
+      failed d == [ ]
+      && lib.hasInfix "--user-header Tailscale-User-Login --trusted-proxy 127.0.0.1" exec
+      && !lib.hasInfix "--allow-remote" exec
+    ))
+    (expect "desk userHeader needs trustedProxies" (
+      lib.any (lib.hasInfix "trustedProxies") (
+        failed (eval {
+          desk = {
+            enable = true;
+            userHeader = "X-Forwarded-User";
+          };
+        })
+      )
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;

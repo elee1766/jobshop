@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { url, go, VIEWS } from './lib/url.svelte.js';
-  import { live, connect, resource } from './lib/api.svelte.js';
+  import { live, connect, resource, get } from './lib/api.svelte.js';
   import Attention from './views/Attention.svelte';
   import Work from './views/Work.svelte';
   import Sessions from './views/Sessions.svelte';
@@ -15,6 +15,9 @@
 
   const attention = resource(() => '/api/attention');
   const count = $derived(attention.data?.length ?? 0);
+  /** @type {{ user: string } | null} */
+  let who = $state(null);
+  onMount(() => { get('/api/whoami').then((w) => (who = w)).catch(() => {}); });
 
   /** @type {Record<string, string>} */
   const names = { attention: 'Attention', chat: 'Chat', work: 'Work', activity: 'Activity', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
@@ -29,6 +32,7 @@
 <div class="shell">
   <nav>
     <div class="brand">Jobshop <span class="muted">Desk</span></div>
+    {#if who?.user}<div class="user faint" title="signed in through the proxy">{who.user}</div>{/if}
     {#each VIEWS as v (v)}
       <a
         href={'?view=' + v}
@@ -66,6 +70,7 @@
     position: sticky; top: 0; height: 100vh; background: var(--bg);
   }
   .brand { font-weight: 600; padding: 4px 10px 14px; }
+  .user { padding: 0 10px 10px; margin-top: -8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   nav a {
     color: var(--muted); padding: 5px 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;
   }
