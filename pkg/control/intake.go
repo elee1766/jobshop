@@ -134,7 +134,7 @@ func (c *Controller) refuseIntake(ctx context.Context, project, key string, x in
 			c.log.WarnContext(ctx, "intake: label", "issue", x.Issue, "err", err)
 		}
 	}
-	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Newest: true, Limit: 1})
+	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Order: store.OrderNewest, Limit: 1})
 	if err == nil && len(open) > 0 && open[0].Status != store.StatusClosed {
 		return
 	}

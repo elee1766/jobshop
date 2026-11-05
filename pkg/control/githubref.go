@@ -34,7 +34,7 @@ func (c *Controller) backfillGitHubRepo(ctx context.Context) error {
 			continue
 		}
 		related := []store.Ticket{run}
-		steps, err := c.store.ListChildren(ctx, run.ID)
+		steps, err := store.Children(ctx, c.store, run.ID)
 		if err != nil {
 			return err
 		}

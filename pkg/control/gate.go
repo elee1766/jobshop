@@ -135,7 +135,7 @@ func jaccard(a, b map[string]bool) float64 {
 
 // measure reads the store and computes metrics over [from, to).
 func (c *Controller) measure(ctx context.Context, cited []store.Learning, pools []string, from, to time.Time) (store.PoolMetrics, error) {
-	steps, err := c.store.StepsCreated(ctx, from, to)
+	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Created: &store.TimeRange{Since: from, Until: to}, Order: store.OrderOldest, Limit: store.NoLimit})
 	if err != nil {
 		return store.PoolMetrics{}, err
 	}
@@ -168,7 +168,7 @@ func (c *Controller) editPools(ctx context.Context, ls []store.Learning) []strin
 			continue
 		}
 		if t.Kind == store.KindRun {
-			if steps, err := c.store.ListChildren(ctx, t.ID); err == nil {
+			if steps, err := store.Children(ctx, c.store, t.ID); err == nil {
 				for _, s := range steps {
 					add(s.Pool)
 				}

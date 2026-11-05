@@ -66,7 +66,7 @@ func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Tri
 	mine := store.Filter{MetaPack: triggerPack, MetaKey: "name", MetaValue: name}
 
 	newest := mine
-	newest.Newest, newest.Limit = true, 1
+	newest.Order, newest.Limit = store.OrderNewest, 1
 	last, err := c.store.List(ctx, newest)
 	if err != nil {
 		return st, err
@@ -267,7 +267,7 @@ func (c *Controller) readyCount(ctx context.Context, w config.TriggerWhen, kind 
 	}
 	n := 0
 	for _, proj := range projects {
-		ts, err := c.store.Ready(ctx, proj, w.Pool, store.DefaultLimit)
+		ts, err := c.store.List(ctx, store.Filter{Project: proj, Pool: w.Pool, Ready: true, Limit: store.DefaultLimit})
 		if err != nil {
 			return 0, err
 		}

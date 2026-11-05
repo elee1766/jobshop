@@ -308,7 +308,7 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		}
 	}
 	if t == nil && havePool && !pool.Chat() {
-		if ready, err := c.store.Ready(ctx, sess.Project, sess.Pool, 1); err == nil && len(ready) > 0 {
+		if ready, err := c.store.List(ctx, store.Filter{Project: sess.Project, Pool: sess.Pool, Ready: true, Limit: 1}); err == nil && len(ready) > 0 {
 			t = &ready[0]
 		}
 	}

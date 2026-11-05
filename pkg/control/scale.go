@@ -223,7 +223,7 @@ func (c *Controller) reconcile() {
 		if p.MaxSessions == 0 {
 			continue // manual sessions only
 		}
-		ready, err := c.store.Ready(ctx, p.Project, name, p.MaxSessions)
+		ready, err := c.store.List(ctx, store.Filter{Project: p.Project, Pool: name, Ready: true, Limit: p.MaxSessions})
 		if err != nil {
 			continue
 		}

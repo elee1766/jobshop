@@ -45,7 +45,7 @@ func testResources(t *testing.T, s store.Store, c *Clock) {
 
 	ready := func() []string {
 		t.Helper()
-		r, err := s.Ready(ctx, proj, "dev", 0)
+		r, err := s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 		require.NoError(t, err)
 		return ids(r)
 	}

@@ -444,7 +444,7 @@ func (ar admissionRunner) postAdmission(ctx context.Context, h config.AdmissionH
 // refused intake (#288). Closing it done admits the item when it is
 // next claimed; any other resolution denies it.
 func (c *Controller) holdForHuman(ctx context.Context, key string, ev admissionEvent, reason string) {
-	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Newest: true, Limit: 1})
+	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Order: store.OrderNewest, Limit: 1})
 	if err == nil && len(open) > 0 && open[0].Status != store.StatusClosed {
 		return
 	}

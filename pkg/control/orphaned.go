@@ -27,7 +27,10 @@ func (c *Controller) orphaned(ctx context.Context, project string, limit int) ([
 		pools = append(pools, name)
 	}
 	sort.Strings(pools)
-	ts, err := c.store.Orphaned(ctx, project, pools, limit)
+	ts, err := c.store.List(ctx, store.Filter{
+		Project: project, Kinds: store.ClaimableKinds, Status: store.StatusOpen, Unheld: true,
+		PoolNotIn: pools, Limit: limit,
+	})
 	if err != nil {
 		return nil, err
 	}

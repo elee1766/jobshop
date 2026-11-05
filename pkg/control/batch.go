@@ -112,7 +112,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
-	if t, err := c.store.FindOpenBatchByKey(ctx, proj, p.Key); err == nil {
+	if t, err := store.OpenBatch(ctx, c.store, proj, p.Key); err == nil {
 		res, err := c.batchResult(ctx, t)
 		if err != nil {
 			return nil, err
@@ -140,7 +140,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	for i, n := range issues {
 		m := &batchMember{issue: n}
 		members[n] = m
-		run, err := c.store.FindOpenRunByKey(ctx, workflow, params[i].Key)
+		run, err := store.OpenRun(ctx, c.store, workflow, params[i].Key)
 		switch {
 		case err == nil:
 			if run.ParentID != "" && run.ParentID != batchID {
@@ -148,7 +148,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 					return nil, fmt.Errorf("%w: issue %s: run %s is already in batch %s", store.ErrInvalid, n, run.ID, parent.ID)
 				}
 			}
-			steps, err := c.store.ListChildren(ctx, run.ID)
+			steps, err := store.Children(ctx, c.store, run.ID)
 			if err != nil {
 				return nil, err
 			}
@@ -201,7 +201,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 // batchResult loads the batch's member runs in fields.issues order.
 func (c *Controller) batchResult(ctx context.Context, b store.Ticket) (rpc.BatchResult, error) {
 	res := rpc.BatchResult{Batch: b, Runs: []rpc.RunResult{}}
-	kids, err := c.store.ListChildren(ctx, b.ID)
+	kids, err := store.Children(ctx, c.store, b.ID)
 	if err != nil {
 		return res, err
 	}
@@ -248,7 +248,7 @@ func (c *Controller) deriveBatch(ctx context.Context, batchID string) {
 	if err != nil {
 		return
 	}
-	kids, err := c.store.ListChildren(ctx, batchID)
+	kids, err := store.Children(ctx, c.store, batchID)
 	if err != nil {
 		return
 	}
@@ -301,7 +301,7 @@ func (c *Controller) batchState(ctx context.Context, cur string, kids []store.Ti
 		if started {
 			continue
 		}
-		steps, err := c.store.ListChildren(ctx, k.ID)
+		steps, err := store.Children(ctx, c.store, k.ID)
 		if err != nil {
 			return "", err
 		}
@@ -353,7 +353,7 @@ func (c *Controller) batchShow(ctx context.Context, sc scope, p rpc.IDParams) (a
 		if perr != nil {
 			return nil, err
 		}
-		b, err = c.store.FindOpenBatchByKey(ctx, proj, p.ID)
+		b, err = store.OpenBatch(ctx, c.store, proj, p.ID)
 	}
 	if err != nil {
 		return nil, err
@@ -426,5 +426,5 @@ func (c *Controller) batchList(ctx context.Context, sc scope, p rpc.BatchListPar
 	if !sc.admin {
 		p.Project = sc.project
 	}
-	return c.store.List(ctx, store.Filter{Project: p.Project, Kind: store.KindBatch, Status: store.StatusOpen, Newest: true, Limit: p.Limit})
+	return c.store.List(ctx, store.Filter{Project: p.Project, Kind: store.KindBatch, Status: store.StatusOpen, Order: store.OrderNewest, Limit: p.Limit})
 }

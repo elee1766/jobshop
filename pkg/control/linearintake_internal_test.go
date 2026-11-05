@@ -95,7 +95,7 @@ func TestLinearIntake(t *testing.T) {
 
 	c.runTriggers()
 	stallRuns := func() []store.Ticket {
-		rs, err := c.store.ListRuns(t.Context(), "", "", 0)
+		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {

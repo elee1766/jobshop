@@ -141,7 +141,7 @@ func (c *Controller) reportIncidents(ctx context.Context, sc scope, p rpc.Incide
 	}
 	res.Sessions, res.Steps = []rpc.SessionIncident{}, []rpc.StepIncident{}
 
-	sessions, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Newest: true, Limit: incidentsLimit})
+	sessions, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Order: store.OrderNewest, Limit: incidentsLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func (c *Controller) reportIncidents(ctx context.Context, sc scope, p rpc.Incide
 		})
 	}
 
-	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Newest: true, Limit: incidentsLimit})
+	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Order: store.OrderNewest, Limit: incidentsLimit})
 	if err != nil {
 		return nil, err
 	}

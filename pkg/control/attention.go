@@ -65,7 +65,7 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 			items = append(items, ticketItem(kind, t))
 		}
 	}
-	runs, err := c.store.ListRuns(ctx, "", store.RunNeedsHuman, math.MaxInt32)
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest, Limit: math.MaxInt32})
 	if err != nil {
 		return nil, err
 	}
