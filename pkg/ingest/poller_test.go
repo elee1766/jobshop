@@ -96,7 +96,7 @@ func TestPollerRows(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, res.Items, "first pass starts at now")
 	assert.Zero(t, fk.hits["/repos/acme/app/issues"], "no read before a cursor exists")
-	cur, err := st.PollCursor(ctx, "gh-poll", "acme/app", "comments")
+	cur, err := GetPollCursor(ctx, st, "gh-poll", "acme/app", "comments")
 	require.NoError(t, err)
 	require.True(t, cur.Found)
 	assert.Equal(t, *now, cur.Since)

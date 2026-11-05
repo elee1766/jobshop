@@ -94,15 +94,6 @@ type MemoryEdit struct {
 	Existed     int64
 }
 
-type PollCursor struct {
-	Poller    string
-	Repo      string
-	Stream    string
-	Since     int64
-	Etag      string
-	UpdatedAt int64
-}
-
 type Recall struct {
 	Body     string
 	Kind     string
@@ -187,14 +178,4 @@ type TicketResource struct {
 	TicketID string
 	Rkey     string
 	Rname    string
-}
-
-type WriteKey struct {
-	Key       string
-	Op        string
-	Result    string
-	Done      int64
-	Actor     string
-	CreatedAt int64
-	UpdatedAt int64
 }

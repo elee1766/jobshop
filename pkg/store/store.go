@@ -391,20 +391,6 @@ type Store interface {
 	// SetMemoryEditResult stores the gate's decision and writes it on
 	// each cited learning's gate.
 	SetMemoryEditResult(ctx context.Context, id int64, state string, after PoolMetrics, reason string) (MemoryEdit, error)
-	// ClaimWriteKey returns the write stored under key, inserting it
-	// pending when new (#280).
-	ClaimWriteKey(ctx context.Context, key, op, actor string) (WriteKey, error)
-	// FinishWriteKey stores a pending write's result; a done key keeps
-	// its first result.
-	FinishWriteKey(ctx context.Context, key, result string) (WriteKey, error)
-	// PruneWriteKeys deletes keys created before before, done or
-	// pending, and returns how many (#415).
-	PruneWriteKeys(ctx context.Context, before time.Time) (int64, error)
-	// PollCursor returns an ingest poller's cursor (#341); Found is
-	// false when none is stored.
-	PollCursor(ctx context.Context, poller, repo, stream string) (PollCursor, error)
-	// SetPollCursor stores a poller's cursor.
-	SetPollCursor(ctx context.Context, c PollCursor) error
 	// InboxPut stores an ingested item (#321). A delivery id already
 	// stored is a no-op that returns the existing row and dup true.
 	InboxPut(ctx context.Context, it InboxItem) (out InboxItem, dup bool, err error)

@@ -46,14 +46,11 @@ type Querier interface {
 	// FindOpenRunByKey uses tickets_run_key; at most one open run per
 	// workflow and key (the controller serializes starts).
 	FindOpenRunByKey(ctx context.Context, arg FindOpenRunByKeyParams) (Ticket, error)
-	FinishWriteKey(ctx context.Context, arg FinishWriteKeyParams) (WriteKey, error)
 	GetLearning(ctx context.Context, id int64) (Learning, error)
 	GetMemoryEdit(ctx context.Context, id int64) (MemoryEdit, error)
 	GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit, error)
-	GetPollCursor(ctx context.Context, arg GetPollCursorParams) (PollCursor, error)
 	GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error)
 	GetTicket(ctx context.Context, id string) (Ticket, error)
-	GetWriteKey(ctx context.Context, key string) (WriteKey, error)
 	// Heartbeat renews a lease without a revision bump or history row.
 	Heartbeat(ctx context.Context, arg HeartbeatParams) (int64, error)
 	// HeldBy covers claimed and pre-assigned tickets, so a dead session strands neither.
@@ -94,7 +91,6 @@ type Querier interface {
 	InsertResourceProvider(ctx context.Context, name string) error
 	InsertSlot(ctx context.Context, arg InsertSlotParams) error
 	InsertTicket(ctx context.Context, arg InsertTicketParams) error
-	InsertWriteKey(ctx context.Context, arg InsertWriteKeyParams) (int64, error)
 	LabelsFor(ctx context.Context, ids []string) ([]Label, error)
 	LastSeq(ctx context.Context) (int64, error)
 	ListChanges(ctx context.Context, arg ListChangesParams) ([]History, error)
@@ -138,7 +134,6 @@ type Querier interface {
 	// ProviderEmpty reports whether ticket id needs a provider resource with
 	// no ready slot (#407), for Claim by id. Same rule as ReadyTickets.
 	ProviderEmpty(ctx context.Context, id string) (int64, error)
-	PruneWriteKeys(ctx context.Context, before int64) (int64, error)
 	// Parameters are bare ? (see OrphanedTickets).
 	ReadyTickets(ctx context.Context, arg ReadyTicketsParams) ([]Ticket, error)
 	RecallDelete(ctx context.Context, arg RecallDeleteParams) error
@@ -169,7 +164,6 @@ type Querier interface {
 	TicketSlots(ctx context.Context, ticket string) ([]ResourceSlot, error)
 	UpdateLearning(ctx context.Context, arg UpdateLearningParams) (Learning, error)
 	UpdateSlot(ctx context.Context, arg UpdateSlotParams) error
-	UpsertPollCursor(ctx context.Context, arg UpsertPollCursorParams) error
 	// WriteTicket stores every mutable column, guarded by the previous revision.
 	WriteTicket(ctx context.Context, arg WriteTicketParams) (int64, error)
 }

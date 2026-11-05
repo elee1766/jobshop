@@ -12,6 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/writekey"
 )
 
 // Linear issue communication (#293). For a run with meta.linear.issue,
@@ -164,7 +165,7 @@ type storeKeys struct {
 }
 
 func (k storeKeys) Claim(ctx context.Context, key, op string) (string, bool, bool, error) {
-	w, err := k.c.store.ClaimWriteKey(ctx, writeKeyName(scope{project: k.project}, key), op, "controller")
+	w, err := writekey.Claim(ctx, k.c.store, writeKeyName(scope{project: k.project}, key), op, "controller")
 	if err != nil {
 		return "", false, false, err
 	}
@@ -172,7 +173,7 @@ func (k storeKeys) Claim(ctx context.Context, key, op string) (string, bool, boo
 }
 
 func (k storeKeys) Finish(ctx context.Context, key, result string) (string, error) {
-	w, err := k.c.store.FinishWriteKey(ctx, writeKeyName(scope{project: k.project}, key), result)
+	w, err := writekey.Finish(ctx, k.c.store, writeKeyName(scope{project: k.project}, key), result)
 	if err != nil {
 		return "", err
 	}

@@ -34,6 +34,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore"
 	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/writekey"
 )
 
 // DefaultLease is the claim lease when the config sets none.
@@ -533,7 +534,7 @@ func (c *Controller) pruneWriteKeys() {
 		return
 	}
 	c.writeKeysPrunedAt = now
-	n, err := c.store.PruneWriteKeys(c.ctx, now.Add(-c.config().WriteKeys.RetentionDuration()))
+	n, err := writekey.Prune(c.ctx, c.store, now.Add(-c.config().WriteKeys.RetentionDuration()))
 	if err != nil {
 		if c.ctx.Err() == nil {
 			c.log.Error("write key prune", "err", err)
