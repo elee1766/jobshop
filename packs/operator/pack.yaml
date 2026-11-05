@@ -4,7 +4,6 @@
 # prefix (#248). Vars: see README.md. Sessions are started per chat
 # thread by the gateway (or `jobshop send` with a pool and key), one
 # session per key.
-template: go
 defaults:
   operator_sessions: 0
   memory_dir: ""

@@ -1,13 +1,10 @@
 package control
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"math"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -106,6 +103,7 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 		return nil, err
 	}
 	items = append(items, ing...)
+	items = append(items, c.journalLagAttention()...)
 	stale, err := c.staleAttention(ctx)
 	if err != nil {
 		return nil, err
@@ -121,18 +119,15 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	if c.configErr != "" {
 		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})
 	}
+	if c.watchErr != "" {
+		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfigInvalid, ID: "config-invalid", Title: "a watched config change failed to load, running config kept: " + c.watchErr, Since: c.watchErrAt})
+	}
 	for p, why := range c.poolQuarantined {
 		if !escalatedPools[p] {
 			items = append(items, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: p, Title: "pool " + p + " quarantined: " + why, Since: c.started})
 		}
 	}
 	c.mu.Unlock()
-	if it, ok := rollbackItem(c.config().Attention.RollbackFile); ok {
-		items = append(items, it)
-	}
-	if it, ok := configRepoItem(c.config().Attention.ConfigRepoFile); ok {
-		items = append(items, it)
-	}
 	slices.SortStableFunc(items, func(a, b rpc.AttentionItem) int {
 		if n := a.Since.Compare(b.Since); n != 0 {
 			return n
@@ -171,48 +166,4 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 		}
 	}
 	return it
-}
-
-// configRepoItem reports a config repo commit that failed its check
-// (#532): path holds the commit on its first line, then the error.
-func configRepoItem(path string) (rpc.AttentionItem, bool) {
-	if path == "" {
-		return rpc.AttentionItem{}, false
-	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		return rpc.AttentionItem{}, false
-	}
-	b, _ := os.ReadFile(path)
-	rev, why, _ := strings.Cut(strings.TrimSpace(string(b)), "\n")
-	title := "config repo commit " + rev + " failed its check, running the last good config"
-	if why = strings.TrimSpace(why); why != "" {
-		title += ": " + why
-	}
-	return rpc.AttentionItem{Kind: rpc.AttentionConfigRepo, ID: rev, Title: title, Since: fi.ModTime().UTC()}, true
-}
-
-// rollbackItem reports a self-deploy rollback: path (the deploy state
-// "failed" file) is newer than "deployed" beside it.
-func rollbackItem(path string) (rpc.AttentionItem, bool) {
-	if path == "" {
-		return rpc.AttentionItem{}, false
-	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		return rpc.AttentionItem{}, false
-	}
-	if di, err := os.Stat(filepath.Join(filepath.Dir(path), "deployed")); err == nil && !di.ModTime().Before(fi.ModTime()) {
-		return rpc.AttentionItem{}, false
-	}
-	b, _ := os.ReadFile(path)
-	rev := strings.TrimSpace(string(b))
-	title := "self-deploy rolled back " + rev
-	// failed.reason is written when the pre-switch config check failed
-	// (#261): the commit was never switched to, and the error names the
-	// pack, the var and the host config to fix.
-	if r, err := os.ReadFile(path + ".reason"); err == nil && len(bytes.TrimSpace(r)) > 0 {
-		title = "self-deploy skipped " + rev + ", config check failed: " + strings.TrimSpace(string(r))
-	}
-	return rpc.AttentionItem{Kind: rpc.AttentionRollback, ID: rev, Title: title, Since: fi.ModTime().UTC()}, true
 }

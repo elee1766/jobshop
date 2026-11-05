@@ -16,18 +16,19 @@ packs:
     vars: {agent: jcode, checkout: /srv/widget}
 ```
 
-- **Vars.** With `template: go` at the top of `pack.yaml` (#383), every
-  string in the pack and its prompt files is a Go `text/template`:
-  `{{.name}}` is filled from the entry's `vars`, else from the pack's
-  `defaults:`. A var with neither is an error at load naming the field.
+- **Vars.** Every string in the pack and its prompt files is a Go
+  `text/template` (#383): `{{.name}}` is filled from the entry's
+  `vars`, else from the pack's `defaults:`. A var with neither is an
+  error at load naming the field.
   `{{if .team}}...{{end}}`, `{{.cmd | default "make test"}}`,
   `{{range .repos}}` and `join`, `quote`, `lower`, `indent`, `toYAML`
   work. A value that is only `{{.n}}` keeps its type (a number stays a
   number); quote it in YAML, since a bare `{{` starts a mapping. Write a
   literal `{{` as `{{"{{"}}`. Step `title`, `prompt` and `pool` keep
   their templates until run start, where run vars (`--var issue=12`) fill
-  them. Packs without `template: go` use the older `${name}` form (`$$`
-  is a literal `$`), which will be removed.
+  them. The older `${name}` form was removed (#566): a pack using it
+  fails to load. `${SESSION_DIR}` in agent args is not pack syntax and
+  is left for the controller.
 - **`prefix:`** on a `packs:` entry renames every pool, agent, trigger
   and workflow the pack declares to `<prefix><name>` and rewrites the
   references between them. Use it to load one pack several times (one
@@ -81,6 +82,11 @@ has `capacity_per_key` slots (default 1) per key. A step whose
 resource is full is not ready, so no session starts for it; the slot
 frees when the step's claim ends.
 
+**Text in files.** Long text can live in files, relative to the file
+that declares it: pool and step `prompt_file`, trigger ticket
+`body_file`, prompt rule `file`. Set the inline field or the file
+field, not both ([notes](notes/382-text-files.md)).
+
 ## A minimal pack
 
 One `work` pool, one prompt and a `change` workflow with `implement` and
@@ -89,7 +95,6 @@ One `work` pool, one prompt and a `change` workflow with `implement` and
 ```yaml
 # A minimal pack: one pool, one workflow with two steps.
 # Vars: agent, checkout.
-template: go
 defaults:
   sessions: 1
 pools:

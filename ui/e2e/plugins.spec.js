@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test';
 
 // Desk plugins (#517). Needs Desk started with the fixtures installed:
 //   cp -r ui/e2e/plugins/* <root>/desk/plugins/
-// and DESK_PLUGINS=1. With them installed, e2e/plugins/deploys replaces
-// the built-in deploys view; desk.spec.js's deploys test then skips.
+// and DESK_PLUGINS=1. e2e/plugins/deploys stands in for packs/deploy's
+// Deploys view; with that pack loaded too, the root copy replaces it.
 test.skip(!process.env.DESK_PLUGINS, 'set DESK_PLUGINS=1 with ui/e2e/plugins installed');
 
 test('a user plugin view calls api.get and api.call; claim is refused', async ({ page }) => {
@@ -21,7 +21,7 @@ test('a plugin that throws shows an error card and Desk keeps working', async ({
   await expect(page.getByTestId('runs')).toBeVisible();
 });
 
-test('a user plugin with a built-in name replaces it', async ({ page }) => {
+test('a root plugin adds a view', async ({ page }) => {
   await page.goto('./?view=deploys');
   await expect(page.getByTestId('user-deploys')).toBeVisible();
   await expect(page.locator('nav a[data-view=deploys]')).toHaveText(/Deploys \(user\)/);
@@ -40,8 +40,25 @@ test('plugin listing and RPC policy over HTTP', async ({ request }) => {
   const list = await (await request.get('api/plugins')).json();
   const names = list.map((/** @type {any} */ p) => p.name);
   expect(names).toEqual(expect.arrayContaining(['deploys', 'e2e-test', 'e2e-throws']));
-  expect(list.find((/** @type {any} */ p) => p.name === 'deploys').overrides).toBe('builtin');
+  expect(list.find((/** @type {any} */ p) => p.name === 'deploys').source).toBe('root');
   const res = await request.post('api/rpc/claim', { data: {}, headers: { 'X-Jobshop-Desk': '1' } });
   expect(res.status()).toBe(403);
   expect((await res.json()).code).toBe('forbidden');
+});
+
+// #542: needs desk_commands.e2e-echo (command: cat) in jobshop.yaml.
+test('a plugin creates a ticket with meta, lists it, gets its event, runs a desk command and reads a session stream', async ({ page }) => {
+  await page.goto('./?view=e2e-flow');
+  await expect(page.getByTestId('flow-create')).toHaveText('create ok');
+  await expect(page.getByTestId('flow-list')).toHaveText('list ok');
+  await expect(page.getByTestId('flow-event')).toHaveText('event ok comment', { timeout: 15000 });
+  await expect(page.getByTestId('flow-exec')).toHaveText('exec ok');
+  await expect(page.getByTestId('flow-stream')).toHaveText(/^stream (ok|skip)/);
+});
+
+test('GET api/rpc has a schema per allowed method', async ({ request }) => {
+  const list = await (await request.get('api/rpc')).json();
+  expect(list.methods).toContain('desk.exec');
+  expect(list.schemas['ticket.create'].params.$ref).toBe('#/$defs/rpc.CreateParams');
+  expect(list.$defs['rpc.CreateParams'].required).toContain('title');
 });

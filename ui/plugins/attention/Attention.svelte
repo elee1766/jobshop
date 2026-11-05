@@ -127,7 +127,7 @@
   {:else if items.length === 0}
     <div class="card empty" data-testid="attention-empty">
       <div class="big">Nothing needs you.</div>
-      <div class="muted">No escalations, questions, decisions, quarantined pools or rolled-back deploys.</div>
+      <div class="muted">No escalations, questions, decisions or other items waiting on you.</div>
     </div>
   {:else}
     <div class="card scroll">

@@ -16,7 +16,8 @@ triggers, Deploys, and a ticket/run drawer. Chat and actions are #203.
   `/api/work` (`run.list`, `batch.list`), `/api/sessions`
   (`session.list`), `/api/pools` (`pool.list`, `trigger.list`),
   `/api/deploys` (`version` plus `deployed`/`failed` files in
-  `--deploy-state`, default `/var/lib/jobshop-deploy`), `/api/ticket/<id>`
+  `--deploy-state`, default `/var/lib/jobshop-deploy`; removed by #577,
+  now packs/deploy), `/api/ticket/<id>`
   (`ticket.show`, `run.show` for runs, `ticket.trace` depth 3).
 - Live updates: `/api/events` is server-sent events proxying
   `events.subscribe`, with `Last-Event-ID` as `since_seq`. Events are

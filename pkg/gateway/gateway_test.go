@@ -84,6 +84,8 @@ func (f *fakeController) Attention(context.Context) (rpc.AttentionResult, error)
 	return rpc.AttentionResult{Items: f.attention}, nil
 }
 
+func (f *fakeController) Comment(context.Context, rpc.CommentParams) error { return nil }
+
 // Answer records the answer and closes the question, as the controller does.
 func (f *fakeController) Answer(_ context.Context, p rpc.AnswerParams) (rpc.AnswerResult, error) {
 	f.mu.Lock()

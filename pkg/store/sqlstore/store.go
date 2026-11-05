@@ -1187,6 +1187,17 @@ func (s *Store) AddLabel(ctx context.Context, actor, id, label string) error {
 	})
 }
 
+// Record adds a history row without changing the ticket.
+func (s *Store) Record(ctx context.Context, actor, id, op string, diff any) error {
+	return s.tx(ctx, func(q sqlcdb.Querier) error {
+		t, err := s.get(ctx, q, id)
+		if err != nil {
+			return err
+		}
+		return history(ctx, q, t, s.now(), actor, op, diff)
+	})
+}
+
 // RemoveLabel removes a user label. Removing a missing label is a no-op.
 func (s *Store) RemoveLabel(ctx context.Context, actor, id, label string) error {
 	return s.tx(ctx, func(q sqlcdb.Querier) error {

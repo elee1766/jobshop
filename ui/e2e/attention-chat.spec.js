@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 const now = Date.now();
 const iso = (/** @type {number} */ msAgo) => new Date(now - msAgo).toISOString();
 
-const builtins = ['attention', 'chat', 'deploys'];
+const builtins = ['attention', 'chat'];
 
 /** @param {string} url */
 const pathOf = (url) => new URL(url).pathname.replace(/^.*?(?=\/api\/)/, '');

@@ -12,7 +12,8 @@
 - **Built-in plugins** (`ui/plugins/`, `api` only, the #517 import check
   passes): `attention` (list, In progress, push opt-in through
   `api.push`), `chat` (session panel body, Chat view with escalation
-  chats, drawer section on session, step and task tickets), `deploys`.
+  chats, drawer section on session, step and task tickets). Deploys is
+  a pack plugin now (`packs/deploy`, #577).
 - Web Push: RFC 8030, aes128gcm (RFC 8291), VAPID (RFC 8292) on the
   standard library. State in `<root>/desk/push.json` (0600): VAPID key
   made on first start, subscriptions, keys already sent. A new attention

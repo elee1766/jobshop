@@ -12,9 +12,9 @@ import (
 
 	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // subscribePoll is how often session.subscribe reads the journal and the
@@ -168,8 +168,8 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		return nil, err
 	}
 	path := filepath.Join(c.root.SessionDir(p.ID), host.JournalFile)
-	env := journalEnv(c.root.SessionDir(p.ID))
-	ev := rpc.EventDecoder{Redact: func(s string) string { return telemetry.RedactText(s, env) }}
+	env := redact.New(journalEnv(c.root.SessionDir(p.ID)))
+	ev := rpc.EventDecoder{Redact: env.Text}
 	var off int64
 	res := rpc.SessionSubscribeResult{Seq: p.SinceSeq}
 	last := t

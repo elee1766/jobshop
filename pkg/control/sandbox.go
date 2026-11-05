@@ -167,7 +167,12 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 	res := rpc.SessionSandboxResult{Session: t.ID, Pool: t.Pool, Sandbox: spec.Sandbox}
 	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
 		res.Error = err.Error()
+	} else if u := c.config().IsolationFor(t.Pool).User; u != nil && u.Slots() > 0 {
+		if err := applySlot(&spec.Spec, *u, f.Slot); err != nil {
+			res.Error = err.Error()
+		}
 	}
+	res.Slot = f.Slot
 	res.User, res.Cgroup = spec.User, spec.Cgroup
 	if res.Cgroup != nil {
 		res.CgroupPath = filepath.Join(res.Cgroup.Parent, t.ID)

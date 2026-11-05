@@ -17,7 +17,7 @@ type Resource struct {
 	// Max is how many steps may hold the resource at once.
 	Max int `yaml:"max"`
 	// Keyed makes slots per key: a step needs "name:<key>" (for example
-	// "pr:${repo}#${pr}"), and each key has CapacityPerKey slots.
+	// "pr:{{.repo}}#{{.pr}}"), and each key has CapacityPerKey slots.
 	Keyed bool `yaml:"keyed"`
 	// CapacityPerKey is the slots per key of a keyed resource. Default 1.
 	CapacityPerKey int `yaml:"capacity_per_key"`
@@ -121,13 +121,13 @@ func (c *Config) checkStepResources(w *Workflow, needs []string) error {
 		if n == "" {
 			return errors.New("needs_resources: empty entry")
 		}
-		vs, err := refs(n, w.Template)
+		vs, err := refs(n)
 		if err != nil {
 			return fmt.Errorf("needs_resources: %w", err)
 		}
 		for _, v := range vs {
 			if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) {
-				return fmt.Errorf("needs_resources uses %s, not in workflow vars or pack vars", placeholder(v, w.Template))
+				return fmt.Errorf("needs_resources uses %s, not in workflow vars or pack vars", placeholder(v))
 			}
 		}
 		name, _, _ := strings.Cut(n, ":")

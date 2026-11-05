@@ -31,3 +31,5 @@
 
 Next: once hosts' own packs have moved, drop `${}`, `varPattern` and the
 `template` key (a follow-up release).
+
+2026-11-05: done in #566, see `docs/notes/566-drop-dollar-templates.md`.

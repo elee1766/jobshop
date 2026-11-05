@@ -123,6 +123,10 @@ pools:
 // file, dial the denied address, then allocate until killed.
 // ISO_PROBE is the denied host:port.
 func isolationProbe() {
+	if os.Getenv("PEER_PROBE") != "" {
+		peerProbe()
+		return
+	}
 	addr := os.Getenv("ISO_PROBE")
 	if addr == "" {
 		return
@@ -142,4 +146,121 @@ func isolationProbe() {
 		hold = append(hold, b)
 		_ = len(hold)
 	}
+}
+
+// TestPerSessionIsolation (#540) runs two sessions of one pool with
+// per_session ids. Each gets its own host uid, and neither can read the
+// other's worktree. Skipped without the environment, like
+// TestIsolatedPool; docs/verify/per-session-isolation.md runs it on
+// gasserver.
+func TestPerSessionIsolation(t *testing.T) {
+	mapUID, mapGID := isolationEnv(t)
+	root, start := poolRootReal(t, "1m")
+	// The mapped uids traverse the root to reach their session dirs.
+	require.NoError(t, os.MkdirAll(filepath.Join(root.Dir, "sessions"), 0o711))
+	require.NoError(t, os.Chmod(root.Dir, 0o711))
+	require.NoError(t, os.Chmod(filepath.Join(root.Dir, "sessions"), 0o711))
+	repo := filepath.Join(root.Dir, "repo")
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "master", repo},
+		{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"},
+	} {
+		out, err := exec.Command("git", args...).CombinedOutput()
+		require.NoError(t, err, string(out))
+	}
+	cfg := fmt.Sprintf(`projects:
+  js: {}
+agents:
+  fake:
+    command: %q
+    args: [fake-agent]
+    env: {PEER_PROBE: "1"}
+pools:
+  dev:
+    project: js
+    agent: fake
+    max_sessions: 2
+    idle_timeout: 1m
+    repo: %q
+    ref: master
+    isolation:
+      user: {uid: 1000, map_uid: %d, map_gid: %d, groups: [%q], per_session: {range: 2}}
+`, os.Args[0], repo, mapUID, mapGID, strconv.Itoa(os.Getegid()))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	for range 2 {
+		var task store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	}
+
+	var work []string
+	passEventually(t, root.Dir, func() bool {
+		var got []store.Ticket
+		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusOpen, Kind: store.KindSession}, &got) != nil || len(got) < 2 {
+			return false
+		}
+		work = work[:0]
+		for _, s := range got[:2] {
+			w := filepath.Join(root.SessionDir(s.ID), "work")
+			if _, err := os.Stat(w); err != nil {
+				return false
+			}
+			work = append(work, w)
+		}
+		return true
+	}, "two sessions with worktrees")
+
+	// Each worktree gets a secret, then a go file naming the other's
+	// secret; the agents wait for it before probing.
+	// 0660: with a default ACL the create mode's group bits are the mask,
+	// so 0600 would shut out the session's own uid.
+	for i, w := range work {
+		require.NoError(t, os.WriteFile(filepath.Join(w, "secret"), []byte("s"), 0o660))
+		require.NoError(t, os.WriteFile(filepath.Join(w, "peer-go"), []byte(filepath.Join(work[1-i], "secret")), 0o660))
+	}
+	uids := map[uint32]bool{}
+	for _, w := range work {
+		res := filepath.Join(w, "peer-probe")
+		passEventually(t, root.Dir, func() bool {
+			_, err := os.Stat(res)
+			return err == nil
+		}, "peer probe result")
+		b, err := os.ReadFile(res)
+		require.NoError(t, err)
+		assert.Equal(t, "own: ok\npeer: denied\n", string(b), w)
+		st, err := os.Stat(res)
+		require.NoError(t, err)
+		uids[st.Sys().(*syscall.Stat_t).Uid] = true
+	}
+	assert.Len(t, uids, 2, "each session writes as its own host uid")
+}
+
+// peerProbe runs in the fake agent for TestPerSessionIsolation: wait for
+// peer-go, read the own secret and the peer's, and record the result.
+func peerProbe() {
+	deadline := time.Now().Add(dialWait)
+	var peer []byte
+	for {
+		b, err := os.ReadFile("peer-go")
+		if err == nil {
+			peer = b
+			break
+		}
+		if time.Now().After(deadline) {
+			return
+		}
+		<-time.After(50 * time.Millisecond)
+	}
+	res := "own: ok\n"
+	if _, err := os.ReadFile("secret"); err != nil {
+		res = "own: " + err.Error() + "\n"
+	}
+	if _, err := os.ReadFile(string(peer)); err == nil {
+		res += "peer: read\n"
+	} else {
+		res += "peer: denied\n"
+	}
+	_ = os.WriteFile("peer-probe", []byte(res), 0o660)
 }

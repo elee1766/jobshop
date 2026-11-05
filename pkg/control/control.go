@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -146,6 +147,14 @@ type Controller struct {
 	// serving the last good config (#227); cleared by a good reload.
 	configErr   string
 	configErrAt time.Time
+	// watchErr is the last failed watch reload (#533), cleared by a good
+	// reload.
+	watchErr   string
+	watchErrAt time.Time
+	// configSwapped tells the config watcher a reload swapped the config.
+	configSwapped chan struct{}
+	// watcher is the config watcher (#533); nil until Run starts it.
+	watcher *configWatcher
 	// orphanWarned maps orphaned ticket id -> reason already logged.
 	orphanMu     sync.Mutex
 	orphanWarned map[string]string
@@ -156,6 +165,9 @@ type Controller struct {
 	// set up once on first need.
 	cgroupOnce sync.Once
 	cgroup     cgroupSetup
+	// slotMu makes picking a per-session id and creating the session one
+	// step (#540).
+	slotMu sync.Mutex
 	// minter caches identity tokens (#200).
 	minter *identity.Minter
 	// ingest is the spool drain (#335).
@@ -199,7 +211,9 @@ type Controller struct {
 	activitySrc activitySource
 	activityMu  sync.Mutex
 	activity    *activityState
-	wg          sync.WaitGroup
+	// ship is journal shipping to VictoriaLogs (#530).
+	ship shipper
+	wg   sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -295,6 +309,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 		poolQuarantined: map[string]string{},
 		events:          ev,
+		configSwapped:   make(chan struct{}, 1),
 	}
 	// The stream starts at the current end of history; older rows are
 	// only sent as replay.
@@ -359,6 +374,8 @@ func (c *Controller) serve() error {
 	if err != nil {
 		return err
 	}
+	c.watcher = newConfigWatcher(c)
+	c.wg.Go(c.watcher.run)
 	c.wg.Go(c.pumpEvents)
 	c.wg.Go(c.pumpSubscriptions)
 	c.wg.Go(c.pumpWaits)
@@ -367,6 +384,7 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpReconcile)
 	c.wg.Go(c.pumpPollers)
 	c.wg.Go(c.pumpAdmission)
+	c.wg.Go(c.pumpJournal)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -681,7 +699,7 @@ func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.Metho
 				telemetry.AttrProject.String(sc.project))
 		}
 		defer c.metrics.Since(ctx, time.Now(), name)
-		res, err := h(c, ctx, sc, params)
+		res, err := h.call(c, ctx, sc, params)
 		if err != nil {
 			if !errors.Is(err, store.ErrNoWork) {
 				span.SetStatus(codes.Error, err.Error())
@@ -693,12 +711,17 @@ func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.Metho
 	}
 }
 
-type method func(c *Controller, ctx context.Context, sc scope, params json.RawMessage) (any, error)
+// method is one handler. params is its parameter type, which a test
+// checks against rpc.Specs (#542).
+type method struct {
+	call   func(c *Controller, ctx context.Context, sc scope, params json.RawMessage) (any, error)
+	params reflect.Type
+}
 
 // bind decodes params into P before calling fn, a (*Controller) method
 // expression.
 func bind[P any](fn func(c *Controller, ctx context.Context, sc scope, p P) (any, error)) method {
-	return func(c *Controller, ctx context.Context, sc scope, raw json.RawMessage) (any, error) {
+	return method{params: reflect.TypeFor[P](), call: func(c *Controller, ctx context.Context, sc scope, raw json.RawMessage) (any, error) {
 		var p P
 		if len(raw) > 0 && string(raw) != "null" {
 			dec := json.NewDecoder(bytesReader(raw))
@@ -708,7 +731,7 @@ func bind[P any](fn func(c *Controller, ctx context.Context, sc scope, p P) (any
 			}
 		}
 		return fn(c, ctx, sc, p)
-	}
+	}}
 }
 
 var methods map[string]method
@@ -732,6 +755,7 @@ func init() {
 		rpc.MethodTicketUpdate:      bind((*Controller).update),
 		rpc.MethodTicketClose:       bind((*Controller).closeTicket),
 		rpc.MethodTicketReopen:      bind((*Controller).reopen),
+		rpc.MethodTicketUpsert:      bind((*Controller).upsert),
 		rpc.MethodReady:             bind((*Controller).ready),
 		rpc.MethodCommentAdd:        bind((*Controller).comment),
 		rpc.MethodEdgeAdd:           bind((*Controller).edgeAdd),
@@ -752,6 +776,8 @@ func init() {
 		rpc.MethodSessionSubscribe:  bind((*Controller).sessionSubscribe),
 		rpc.MethodSessionJournal:    bind((*Controller).sessionJournal),
 		rpc.MethodSessionCancel:     bind((*Controller).sessionCancel),
+		rpc.MethodJournalSearch:     bind((*Controller).journalSearch),
+		rpc.MethodJournalBackfill:   bind((*Controller).journalBackfill),
 		rpc.MethodEventsSubscribe:   bind((*Controller).eventsSubscribe),
 		rpc.MethodShutdown:          bind((*Controller).shutdown),
 		rpc.MethodDrain:             bind((*Controller).drainPools),
@@ -797,6 +823,7 @@ func init() {
 		rpc.MethodWaitAdd:           bind((*Controller).waitAdd),
 		rpc.MethodWaitList:          bind((*Controller).waitList),
 		rpc.MethodWaitClear:         bind((*Controller).waitClear),
+		rpc.MethodDeskExec:          bind((*Controller).deskExec),
 	}
 }
 

@@ -59,6 +59,8 @@ type packFile struct {
 	Escalation  *EscalationChat     `yaml:"escalation"`
 	// Learnings.Kinds are appended to the host's (#524).
 	Learnings *LearningsConfig `yaml:"learnings"`
+	// DeskCommands merge per name like pools (#542).
+	DeskCommands map[string]DeskCommand `yaml:"desk_commands"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -74,8 +76,8 @@ type packHead struct {
 	// so a rename on master does not fail the deploy of hosts not yet
 	// updated.
 	RenamedVars map[string]string `yaml:"renamed_vars"`
-	// Template is the pack's template syntax: "" for ${name}, or "go"
-	// for Go text/template (#383). Per pack during the migration.
+	// Template is the pack's template: key. Only "go" (or unset) is
+	// accepted, as a no-op for one release; ${name} was removed in #566.
 	Template string `yaml:"template"`
 }
 
@@ -140,7 +142,7 @@ const maxPackDepth = 8
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
-var mergedSections = []string{"agents", "pools", "triggers", "workflows"}
+var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands"}
 
 // LoadFile reads a config file, merges the packs it lists, and validates
 // the result. Packs merge in list order, then the file itself.
@@ -166,6 +168,18 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	top, err := decodeMap(b)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	watch := &WatchPaths{}
+	watch.addFile(path)
+	if list, ok := top[IncludeKey].([]any); ok {
+		for _, e := range list {
+			if p, ok := e.(string); ok && p != "" {
+				if !filepath.IsAbs(p) {
+					p = filepath.Join(dir, p)
+				}
+				watch.addFile(p)
+			}
+		}
 	}
 	if top, err = applyIncludes(top, dir, name); err != nil {
 		return nil, err
@@ -215,6 +229,9 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 		}
 		instances = append(instances, packInstance(ref.Path, ref.Prefix, layers))
 		for _, l := range layers {
+			watch.addDir(filepath.Dir(l.file))
+		}
+		for _, l := range layers {
 			mergeInto(merged, l.m, l.file, sources)
 			for k, v := range l.textSources {
 				sources[k] = v
@@ -245,6 +262,16 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	}
 	c.Packs = head.Packs
 	c.Instances = instances
+	// Text files set by a path outside every pack dir are watched alone.
+	for _, files := range sources {
+		for _, f := range files {
+			if filepath.IsAbs(f) && !slices.ContainsFunc(watch.Dirs, func(d string) bool { return f == d || strings.HasPrefix(f, d+string(filepath.Separator)) }) {
+				watch.addFile(f)
+			}
+		}
+	}
+	slices.Sort(watch.Files)
+	c.Watch = *watch
 	c.Warnings = append(warnings, c.Warnings...)
 	return c, nil
 }
@@ -277,8 +304,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	delete(m, "extends")
 	delete(m, "renamed_vars")
 	delete(m, "template")
-	syn := head.Template
-	if err := checkSyntax(syn); err != nil {
+	if err := checkSyntax(head.Template); err != nil {
 		return nil, fmt.Errorf("%s: template: %w", file, err)
 	}
 	given, warnings := renameVars(given, head.RenamedVars, file)
@@ -304,7 +330,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 			p = filepath.Join(dir, p)
 		}
 		// The base's vars are templates over this pack's vars.
-		bv, err := substitute(cloneValue(ref.Vars), vars, fmt.Sprintf("extends[%d].vars", i), syn)
+		bv, err := substitute(cloneValue(ref.Vars), vars, fmt.Sprintf("extends[%d].vars", i))
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", file, err)
 		}
@@ -315,18 +341,24 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		}
 		layers = append(layers, base...)
 	}
-	// Step titles and prompts keep ${run var} references for run start.
+	// ${name} is checked on the raw pack, before vars fill in: the
+	// removed syntax would otherwise pass through as literal text (#566).
+	// A var's value may hold ${...} (shell in a check command).
+	if left := leftoverVars(m, file); len(left) > 0 {
+		return nil, errors.New(strings.Join(left, "\n"))
+	}
+	// Step titles and prompts keep {{.run var}} references for run start.
 	restore := holdTemplates(m)
 	restoreEsc := holdEscalationPrompts(m)
-	// ${check_output} is filled when a trigger fires, not at load.
-	subVars := map[string]any{CheckOutputVar: placeholder(CheckOutputVar, syn)}
+	// {{.check_output}} is filled when a trigger fires, not at load.
+	subVars := map[string]any{CheckOutputVar: placeholder(CheckOutputVar)}
 	for _, k := range StallVars { // likewise, per stall
-		subVars[k] = placeholder(k, syn)
+		subVars[k] = placeholder(k)
 	}
 	for k, v := range vars {
 		subVars[k] = v
 	}
-	v, err := substitute(m, subVars, "", syn)
+	v, err := substitute(m, subVars, "")
 	restore()
 	restoreEsc()
 	if err != nil {
@@ -339,13 +371,9 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := setPackVars(m, vars, file); err != nil {
 		return nil, err
 	}
-	setSyntax(m, syn)
 	textSources := map[string][]string{}
-	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: subVars, syn: syn, sources: textSources}); err != nil {
+	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: subVars, sources: textSources}); err != nil {
 		return nil, err
-	}
-	if syn == SyntaxGo {
-		warnings = append(warnings, leftoverVars(m, file)...)
 	}
 	raw, err = yaml.Marshal(m)
 	if err != nil {
@@ -423,16 +451,14 @@ func decodeMap(b []byte) (map[string]any, error) {
 	return m, nil
 }
 
-var varPattern = regexp.MustCompile(`\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
-
-// substitute replaces ${name} in string values. A string that is exactly
-// one reference takes the var's value with its type, so numbers stay
-// numbers. "$$" is a literal "$" (for ${SESSION_DIR} style agent args).
-func substitute(v any, vars map[string]any, key, syn string) (any, error) {
+// substitute renders Go templates in string values. A string that is
+// exactly one reference takes the var's value with its type, so numbers
+// stay numbers.
+func substitute(v any, vars map[string]any, key string) (any, error) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, e := range x {
-			r, err := substitute(e, vars, joinKey(key, k), syn)
+			r, err := substitute(e, vars, joinKey(key, k))
 			if err != nil {
 				return nil, err
 			}
@@ -441,7 +467,7 @@ func substitute(v any, vars map[string]any, key, syn string) (any, error) {
 		return x, nil
 	case []any:
 		for i, e := range x {
-			r, err := substitute(e, vars, fmt.Sprintf("%s[%d]", key, i), syn)
+			r, err := substitute(e, vars, fmt.Sprintf("%s[%d]", key, i))
 			if err != nil {
 				return nil, err
 			}
@@ -449,39 +475,11 @@ func substitute(v any, vars map[string]any, key, syn string) (any, error) {
 		}
 		return x, nil
 	case string:
-		if syn == SyntaxGo {
-			r, err := tmpl.Value(x, vars)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", key, err)
-			}
-			return r, nil
+		r, err := tmpl.Value(x, vars)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		if m := varPattern.FindStringSubmatch(x); m != nil && m[0] == x && m[1] != "" {
-			val, ok := vars[m[1]]
-			if !ok {
-				return nil, fmt.Errorf("%s: var %q is not set", key, m[1])
-			}
-			return val, nil
-		}
-		var missing string
-		out := varPattern.ReplaceAllStringFunc(x, func(s string) string {
-			if s == "$$" {
-				return "$"
-			}
-			n := s[2 : len(s)-1]
-			val, ok := vars[n]
-			if !ok {
-				if missing == "" {
-					missing = n
-				}
-				return s
-			}
-			return fmt.Sprint(val)
-		})
-		if missing != "" {
-			return nil, fmt.Errorf("%s: var %q is not set", key, missing)
-		}
-		return out, nil
+		return r, nil
 	}
 	return v, nil
 }

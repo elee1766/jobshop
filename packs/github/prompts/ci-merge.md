@@ -10,8 +10,10 @@ and `gh pr diff <n>`. Master is red, so this is the one PR allowed to
 merge while it is: check that it fixes the failure in
 `gh run view <id> --log-failed` and nothing else.
 
-Releasing this step counts as a failed attempt, so wait inside your turn
-(`gh pr checks <n> --watch`, `sleep 300`) instead of releasing.
+A plain release of this step counts as a failed attempt. To wait for CI,
+set `jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
+and end the turn: a wait is a deferral and resumes here within a minute
+of CI finishing.
 
 1. Behind master: `gh pr update-branch <n>`, then wait for CI.
    Conflicts only in docs (`*.md`): rebase on `origin/master`, resolve

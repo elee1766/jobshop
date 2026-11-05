@@ -7,9 +7,10 @@ After a deploy that includes #185, on gasserver:
    `jobshop ticket list --label needs-human -s open`, and nothing else
    when no run is `needs_human` and no pool is quarantined. Healthy:
    `{"items": []}`.
-2. `grep rollback_file /var/lib/jobshop/jobshop.yaml` shows
-   `/var/lib/jobshop-deploy/failed`. If that file is newer than
-   `deployed`, the list has a `rollback` item; otherwise none.
+2. No deploy item while healthy. A self-deploy rollback is one open
+   needs-human ticket titled "self-deploy rolled back <rev>: ..."
+   (`deploy:rollback`, #577), closed by the next good deploy; see
+   `docs/verify/rollback-drill.md`.
 3. With `services.jobshop.gateway.<name>.attentionDigest` set, the
    escalation room gets one digest thread at that time on a day the
    list is non-empty, and none on a healthy day (journal of

@@ -77,7 +77,8 @@ func TestParseErrors(t *testing.T) {
 		{"unknown agent key", "agents:\n  a:\n    command: x\n    cmd: y\n", "cmd"},
 		{"bad timeout", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    idle_timeout: soon\n", "idle_timeout"},
 		{"unknown telemetry key", base + "telemetry:\n  metrics: x\n", "metrics"},
-		{"export without logs endpoint", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n", "conversation_export needs"},
+		{"bad victorialogs url", base + "journal:\n  victorialogs: {url: \"127.0.0.1:9428\"}\n", "journal.victorialogs.url"},
+		{"bad journal lag_max", base + "journal:\n  lag_max: soon\n", "journal.lag_max"},
 		{"bad inbox retention", base + "ingest:\n  retention: 2w\n", "ingest.retention"},
 	}
 	for _, tt := range tests {
@@ -89,11 +90,21 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
-func TestParseConversationExport(t *testing.T) {
-	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\ntelemetry:\n  otlp_endpoint: http://o:4318\npools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n  q:\n    agent: a\n    dir: /w\n"))
+// TestConversationExportRemoved: conversation_export was removed by #530;
+// a config that still sets it loads, without a logs endpoint, and warns.
+func TestConversationExportRemoved(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n  q:\n    agent: a\n    dir: /w\n"))
 	require.NoError(t, err)
-	assert.True(t, c.Pools["p"].ConversationExport)
-	assert.False(t, c.Pools["q"].ConversationExport, "default off")
+	require.Len(t, c.Warnings, 1)
+	assert.Contains(t, c.Warnings[0], "conversation_export is removed, see journal.victorialogs")
+}
+
+func TestParseJournal(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\njournal:\n  victorialogs:\n    url: http://127.0.0.1:9428\n    headers: {Authorization: \"Bearer ${VL_TOKEN}\"}\n"))
+	require.NoError(t, err)
+	require.NotNil(t, c.Journal.VictoriaLogs)
+	assert.Equal(t, "Bearer t", c.Journal.VictoriaLogs.HeaderValues(func(string) string { return "t" })["Authorization"])
+	assert.Equal(t, DefaultJournalLagMax, c.Journal.LagMaxDuration())
 }
 
 // TestSessionOptions (#304): the pool overrides the agent per option id,
@@ -246,6 +257,43 @@ gateway:
 		"escalation room not in rooms": {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    escalation_room: \"!other:x\""},
 		"digest without room":          {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    attention_digest: \"0 9 * * *\""},
 		"bad digest cron":              {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    escalation_room: \"!r:x\"\n    attention_digest: \"daily\""},
+	} {
+		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
+		assert.Error(t, err, name)
+	}
+}
+
+// TestParseA2AGateway (#547): an a2a gateway needs a url, token and chat
+// pool, names only known escalation causes, and takes no rooms.
+func TestParseA2AGateway(t *testing.T) {
+	base := poolsYAML + `  chat:
+    agent: claude
+    type: chat
+    dir: /work
+gateway:
+  hermes:
+    network: a2a
+    url: https://hermes.example/a2a
+    token_file: hermes-token
+    pool: chat
+    escalations: [run, pool]
+    poll: 10s
+`
+	c, err := Parse([]byte(base))
+	require.NoError(t, err)
+	g := c.Gateway["hermes"]
+	assert.Equal(t, []string{"run", "pool"}, g.Escalations)
+	assert.Equal(t, 10*time.Second, g.PollDuration())
+	assert.Equal(t, 30*time.Second, Gateway{}.PollDuration())
+
+	for name, bad := range map[string][2]string{
+		"no url":        {"url: https://hermes.example/a2a", `url: ""`},
+		"url with user": {"url: https://hermes.example/a2a", "url: https://u:p@hermes.example/a2a"},
+		"no token":      {"token_file: hermes-token", `token_file: ""`},
+		"ticket pool":   {"pool: chat", "pool: main"},
+		"unknown cause": {"escalations: [run, pool]", "escalations: [run, nope]"},
+		"short poll":    {"poll: 10s", "poll: 10ms"},
+		"rooms":         {"poll: 10s", "poll: 10s\n    rooms: [\"!r:x\"]"},
 	} {
 		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
 		assert.Error(t, err, name)

@@ -44,15 +44,15 @@ workflows:
     escalate_pool: plan
     escalate:
       chat_pool: chat
-      prompt: "Escalation ${ticket} for run ${run} (${workflow}). Read ${issue_ref}.\n\n${body}"
-      pool_prompt: "Pool ${pool} is quarantined in ${ticket}: ${error}"
+      prompt: "Escalation {{.ticket}} for run {{.run}} ({{.workflow}}). Read {{.issue_ref}}.\n\n{{.body}}"
+      pool_prompt: "Pool {{.pool}} is quarantined in {{.ticket}}: {{.error}}"
     steps:
-      - {id: a, pool: dev, retries: 1, title: "A ${n}", prompt: a}
+      - {id: a, pool: dev, retries: 1, title: "A {{.n}}", prompt: a}
   plain:
     vars: [n]
     escalate_pool: plan
     steps:
-      - {id: a, pool: dev, retries: 1, title: "P ${n}", prompt: a}
+      - {id: a, pool: dev, retries: 1, title: "P {{.n}}", prompt: a}
 `
 
 // escController builds a controller over dir without serving. Calling it

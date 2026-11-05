@@ -43,11 +43,14 @@ let
       inherit (g)
         network
         pool
-        rooms
-        senders
         ;
       token_file = g.tokenFile;
     }
+    // lib.optionalAttrs (g.rooms != [ ]) { inherit (g) rooms; }
+    // lib.optionalAttrs (g.senders != [ ]) { inherit (g) senders; }
+    // lib.optionalAttrs (g.url != "") { inherit (g) url; }
+    // lib.optionalAttrs (g.escalations != [ ]) { inherit (g) escalations; }
+    // lib.optionalAttrs (g.poll != "") { inherit (g) poll; }
     // lib.optionalAttrs (g.homeserver != "") { inherit (g) homeserver; }
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
     // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
@@ -61,24 +64,17 @@ let
     // lib.optionalAttrs (cfg.identities != { }) {
       identities = (base.identities or { }) // cfg.identities;
     }
-    // lib.optionalAttrs (livePacks != [ ]) { packs = (base.packs or [ ]) ++ livePacks; }
+    // lib.optionalAttrs (livePacks != [ ] || deployPack != [ ]) {
+      packs = (base.packs or [ ]) ++ livePacks ++ deployPack;
+    }
     // lib.optionalAttrs (cfg.gateway != { }) {
       gateway = (base.gateway or { }) // gatewaySettings;
     }
-    # Self-deploy rollbacks show in `jobshop attention` (#185).
-    // lib.optionalAttrs cfg.selfDeploy.enable {
-      attention = {
-        rollback_file = "${deployState}/failed";
-      }
-      // (base.attention or { });
-    }
-    # A config repo commit that failed its check (#532).
-    // lib.optionalAttrs repoConfig {
-      attention = {
-        config_repo_file = "${configRepoState}.failed";
-      }
-      // (base.attention or { })
-      // lib.optionalAttrs cfg.selfDeploy.enable { rollback_file = "${deployState}/failed"; };
+    // lib.optionalAttrs cfg.reloadOnChange {
+      # The controller watches its config and packs (#533).
+      reload = (base.reload or { }) // {
+        watch = true;
+      };
     }
     // lib.optionalAttrs cfg.sandbox.enable {
       defaults = (base.defaults or { }) // {
@@ -110,11 +106,22 @@ let
   configRepoState = "${cfg.dataDir}/config-repo";
   userConfig = cfg.configFile != null || repoConfig;
   telemetryAttrs = lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; };
+  # Journal search (#530): the local VictoriaLogs, or an external url.
+  vl = cfg.journal.victorialogs;
+  vlUrl = if vl.url != "" then vl.url else lib.optionalString vl.enable "http://${vl.listenAddress}";
+  moduleAttrs =
+    telemetryAttrs
+    // lib.optionalAttrs (vlUrl != "") {
+      journal.victorialogs = {
+        url = vlUrl;
+        retention_hint = vl.retentionPeriod;
+      };
+    };
   generatedConfig = settingsFormat.generate "jobshop.yaml" (
-    lib.recursiveUpdate (withModuleKeys cfg.settings) telemetryAttrs
+    lib.recursiveUpdate (withModuleKeys cfg.settings) moduleAttrs
   );
   moduleFile = settingsFormat.generate "jobshop.module.yaml" (
-    lib.recursiveUpdate (withModuleKeys { }) telemetryAttrs
+    lib.recursiveUpdate (withModuleKeys { }) moduleAttrs
   );
   # What a switch changes: reload and restart triggers.
   configFile = if userConfig then moduleFile else generatedConfig;
@@ -232,6 +239,50 @@ let
     ghRepoOf cfg.workspaces.${lib.head deployWorkspaces}.url
   );
   deployState = "/var/lib/jobshop-deploy";
+  # Pools in settings with isolation.user.per_session (#540); each one's
+  # [map_uid, map_uid+range) and gids must sit inside the jobshop user's
+  # subuid/subgid range, else the pool is quarantined at its first spawn.
+  isoUser = p: ((cfg.settings.pools.${p}.isolation or { }).user or null);
+  isoPools = lib.filter (p: (isoUser p) != null && (isoUser p) ? per_session) (
+    lib.attrNames (cfg.settings.pools or { })
+  );
+  isoRangeFits =
+    p:
+    let
+      u = isoUser p;
+      n = u.per_session.range or 0;
+      start = cfg.isolation.subIdStart;
+      end = start + cfg.isolation.subIdCount;
+      fits = id: id >= start && id + n <= end;
+    in
+    !cfg.isolation.enable || (fits (u.map_uid or 0) && fits (u.map_gid or 0));
+  # The Deploys view and its state command (#577), from the module's
+  # source so it needs no workspace.
+  deployPack = lib.optional cfg.selfDeploy.enable {
+    path = "${../packs/deploy}";
+    vars.state_dir = deployState;
+  };
+  # Deploy tools report a problem as a needs-human ticket with a stable
+  # key and close it when it clears (#577); nothing in the controller
+  # reads deploy state. `report <key> <title> [body]` upserts,
+  # `report <key> --close [note]` closes. Never fails the caller: the
+  # controller may be down mid-switch, and the state files still hold
+  # the outcome for the next run.
+  reportFn = ''
+    report() {
+      key=$1; shift
+      if [ "''${1:-}" = --close ]; then
+        set -- ticket upsert --key "$key" --close -b "''${2:-}"
+      else
+        set -- ticket upsert --key "$key" -l needs-human -b "''${2:-}" "$1"
+      fi
+      ${lib.optionalString (cfg.reportProject != "") ''set -- "$@" --project ${lib.escapeShellArg cfg.reportProject}''}
+      as=
+      [ "$(id -u)" != 0 ] || as="${pkgs.util-linux}/bin/runuser -u ${cfg.user} --"
+      $as env JOBSHOP_ROOT=${cfg.dataDir} ${jobshop} "$@" >/dev/null 2>&1 \
+        || echo "<4>could not report $key to jobshop (controller down?)"
+    }
+  '';
 
   workspaceModule =
     { name, config, ... }:
@@ -290,7 +341,8 @@ let
             Run the controller from this file in the checkout (#532): dataDir/jobshop.yaml
             links to it, and its relative pack paths resolve in the checkout. The sync unit
             checks each new commit before reloading; a failing commit is reset to the last
-            good one (dataDir/config-repo.last-good) and listed in `jobshop attention`.
+            good one (dataDir/config-repo.last-good) and filed as a needs-human
+            `config-repo:<name>` ticket (#577), which shows in `jobshop attention`.
             The file should include jobshop.module.yaml for the module's keys and secrets.
             At most one workspace; not with configFile or settings.
           '';
@@ -381,7 +433,9 @@ let
           ${lib.optionalString (w.config != null) ''
             # Config repo (#532): a commit runs only after it passes
             # `jobshop config check`; a failing one is reset to the last
-            # good commit and listed in `jobshop attention`.
+            # good commit and filed as a config-repo:${name} needs-human
+            # ticket (#577), closed when a later commit passes.
+            ${reportFn}
             last_good=${configRepoState}.last-good
             failed=${configRepoState}.failed
             [ -s "$last_good" ] || git rev-parse HEAD > "$last_good"
@@ -393,6 +447,8 @@ let
               rev=$(git rev-parse --short "$target")
               printf '%s\n%s\n' "$rev" "checkout not fast-forwardable (local edits or diverged history): $out" > "$failed"
               echo "<3>config repo ${name} not fast-forwardable to $target: $out"
+              report config-repo:${name} "config repo ${name}: $rev not applied, checkout not fast-forwardable" \
+                "$(printf 'The checkout ${w.dir} has local edits or diverged history, so %s was not applied:\n\n%s\n\nReset the checkout to origin; the ticket closes when a commit passes.' "$rev" "$out")"
               exit 1
             fi
             after=$(git rev-parse HEAD)
@@ -401,22 +457,26 @@ let
             # beside it while packs resolve in the checkout.
             if ! out=$(${jobshop} config check --file ${rootConfig} 2>&1); then
               good=$(cat "$last_good")
-              printf '%s\n%s\n' "$(git rev-parse --short "$after")" "$out" > "$failed"
+              rev=$(git rev-parse --short "$after")
+              printf '%s\n%s\n' "$rev" "$out" > "$failed"
               echo "<3>config repo ${name}: $after failed its check, reset to $good: $out"
               git reset --quiet --hard "$good"
+              report config-repo:${name} "config repo ${name}: $rev failed its check, running the last good config" \
+                "$(printf 'Commit %s failed jobshop config check; the host stays on %s.\n\n%s\n\nPush a fix; the ticket closes when a commit passes.' "$rev" "$good" "$out")"
               exit 1
             fi
             echo "$after" > "$last_good"
             rm -f "$failed"
+            report config-repo:${name} --close "$(git rev-parse --short "$after") passed its check."
             echo "config repo moved $before..$after, check passed"
           ''}
           ${lib.optionalString (w.config == null) ''
-          # Only fast-forward: a hand-edited checkout is left alone and logged.
-          if ! git merge --ff-only --quiet "$target"; then
-            echo "<4>workspace ${name} not fast-forwardable to $target, left as is"
-            exit 0
-          fi
-          after=$(git rev-parse HEAD)
+            # Only fast-forward: a hand-edited checkout is left alone and logged.
+            if ! git merge --ff-only --quiet "$target"; then
+              echo "<4>workspace ${name} not fast-forwardable to $target, left as is"
+              exit 0
+            fi
+            after=$(git rev-parse HEAD)
           ''}
           # Reload on any move, not only a diff under livePacks: a live pack
           # extends packs outside that list (selfdev extends ../github), and
@@ -475,6 +535,17 @@ in
       description = "Jobshop root directory: jobshop.yaml (linked from settings), database, sockets, session directories and journals.";
     };
 
+    reportProject = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      example = "js";
+      description = ''
+        Project the module's deploy and config-repo units file their needs-human
+        tickets in (`deploy:rollback`, `deploy:config-check`, `config-repo:<name>`, #577).
+        Empty: the config's default_project.
+      '';
+    };
+
     settings = lib.mkOption {
       type = settingsFormat.type;
       default = { };
@@ -491,7 +562,18 @@ in
         that path, and the module never writes it. The module's own keys
         (identities, gateway, live packs, sandbox, attention, telemetry) go to
         dataDir/jobshop.module.yaml; the file should list it under
-        `include:`. Edits are checked and reloaded by jobshop-config.path.
+        `include:`. Edits are checked and reloaded by jobshop-config.path,
+        or by the controller itself with reloadOnChange.
+      '';
+    };
+
+    reloadOnChange = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Set reload.watch: the controller watches jobshop.yaml, its includes
+        and pack dirs and reloads after a change (#533). Replaces the
+        jobshop-config.path unit of configFile mode.
       '';
     };
 
@@ -545,6 +627,26 @@ in
           Authorization = "Bearer \${OTLP_TOKEN}";
         };
         description = "Headers on every OTLP export. \${VAR} expands from the controller environment (see environmentFile).";
+      };
+    };
+
+    journal.victorialogs = {
+      enable = lib.mkEnableOption "a local VictoriaLogs (nixpkgs services.victorialogs) for journal search, set as journal.victorialogs.url (#530)";
+      listenAddress = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1:9428";
+        description = "Listen address of the local VictoriaLogs. Use another port when the host already runs one (e.g. Gas City's).";
+      };
+      retentionPeriod = lib.mkOption {
+        type = lib.types.str;
+        default = "90d";
+        description = "-retentionPeriod of the local VictoriaLogs; also written as journal.victorialogs.retention_hint.";
+      };
+      url = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "http://logs.internal:9428";
+        description = "An external VictoriaLogs base URL. Overrides the local one; leave enable off to use only this.";
       };
     };
 
@@ -714,8 +816,26 @@ in
               type = lib.types.enum [
                 "matrix"
                 "discord"
+                "a2a"
               ];
               default = "matrix";
+            };
+            url = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              example = "https://hermes.example/a2a";
+              description = "A2A peer base URL; its agent card is under it (a2a only, #547).";
+            };
+            escalations = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "all" ];
+              description = "Escalation causes sent to the A2A peer: `all`, or run, pool, wait, guard, label. Empty: none (a2a only).";
+            };
+            poll = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "GetTask interval for a peer task. Empty: 30s (a2a only).";
             };
             homeserver = lib.mkOption {
               type = lib.types.str;
@@ -733,11 +853,13 @@ in
             };
             rooms = lib.mkOption {
               type = lib.types.listOf lib.types.str;
-              description = "Allowed room ids; messages elsewhere are ignored.";
+              default = [ ];
+              description = "Allowed room ids; messages elsewhere are ignored. Unused for a2a.";
             };
             senders = lib.mkOption {
               type = lib.types.listOf lib.types.str;
-              description = "Allowed sender ids; messages from others are ignored.";
+              default = [ ];
+              description = "Allowed sender ids; messages from others are ignored. Unused for a2a.";
             };
             interruptMarker = lib.mkOption {
               type = lib.types.str;
@@ -895,7 +1017,11 @@ in
             assertion = lib.length configWorkspaces <= 1 && !(repoConfig && cfg.configFile != null);
             message = "services.jobshop: set workspaces.<name>.config on at most one workspace, and not with configFile.";
           }
-        ];
+        ]
+        ++ map (p: {
+          assertion = isoRangeFits p;
+          message = "services.jobshop.isolation: pool ${p} per_session ids run past subIdStart + subIdCount (${toString cfg.isolation.subIdStart} + ${toString cfg.isolation.subIdCount}); raise subIdCount or lower map_uid/map_gid or range (#540).";
+        }) isoPools;
 
         users.users.${cfg.user} = {
           isSystemUser = true;
@@ -1079,6 +1205,10 @@ in
           script = ''
             set -eu
             state=${deployState}
+            ${reportFn}
+            # A failure's report, kept so a later run re-files it if the
+            # controller was down this time.
+            fail_report() { printf '%s\n%s\n%s\n' "$1" "$2" "$3" > $state/failed.report; report "$@"; }
             # The newest master commit with a successful CI run, read as the jobshop
             # user (its gh has the App token). Empty: nothing to do.
             rev=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- env ${
@@ -1095,8 +1225,8 @@ in
             # rollback, a host rebuild or auto-upgrade can leave it naming
             # another commit than the unit runs. Say so once (a rollback if
             # older: live packs may need the newer code, #227), then make it
-            # follow the running binary (#225). The old mtime is kept:
-            # attention compares it with failed, and a fix-up is not a deploy.
+            # follow the running binary (#225). The old mtime is kept: the
+            # Deploys view compares it with failed, and a fix-up is not a deploy.
             last=$(cat $state/deployed 2>/dev/null || true)
             if [ -n "$last" ] && [ -n "$current" ]; then
               case "$last" in
@@ -1112,6 +1242,12 @@ in
             fi
             case "$rev" in "$current"*) echo "already at $current"; exit 0 ;; esac
             if [ "$(cat $state/failed 2>/dev/null)" = "$rev" ]; then
+              # Re-file the report in case the controller was down when the
+              # failure happened; an unchanged upsert is a no-op.
+              if [ -s $state/failed.report ]; then
+                { read -r key; read -r title; body=$(cat); } < $state/failed.report
+                report "$key" "$title" "$body"
+              fi
               echo "$rev failed before, waiting for a newer green commit"; exit 0
             fi
 
@@ -1129,8 +1265,8 @@ in
             ${lib.optionalString (deployWorkspaces != [ ]) ''
               # Config check before the switch (#261): the new build loads this
               # host's jobshop.yaml with the live packs read from the new commit's
-              # source. A pack var the host no longer satisfies fails here, with
-              # the error kept for `jobshop attention`, instead of after a switch.
+              # source. A pack var the host no longer satisfies fails here, filed
+              # as deploy:config-check (#577), instead of after a switch.
               rm -f $state/failed.reason
               src=$(nix flake metadata --json --refresh ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$rev" | jq -r .path)
               newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
@@ -1142,6 +1278,8 @@ in
                 echo "<3>config check failed for $rev, not switching: $check"
                 printf '%s\n' "$check" > $state/failed.reason
                 echo "$rev" > $state/failed
+                fail_report deploy:config-check "self-deploy skipped $rev: config check failed" \
+                  "$(printf 'Commit %s was not switched to: the host config does not load with it.\n\n%s\n\nFix the host config or the pack; the ticket closes on the next good deploy.' "$rev" "$check")"
                 exit 1
               fi
               echo "config check: $check"
@@ -1153,6 +1291,8 @@ in
               echo "$rev" > $state/failed
               nix-env -p /nix/var/nix/profiles/system --set "$prev"
               "$prev/bin/switch-to-configuration" switch || true
+              fail_report deploy:rollback "self-deploy rolled back $rev: switch failed" \
+                "nixos-rebuild switch to $rev failed; the host is back on $prev. See journalctl -u jobshop-self-deploy. The ticket closes on the next good deploy."
               exit 1
             fi
 
@@ -1172,9 +1312,14 @@ in
               echo "$rev" > $state/failed
               nix-env -p /nix/var/nix/profiles/system --set "$prev"
               "$prev/bin/switch-to-configuration" switch
+              fail_report deploy:rollback "self-deploy rolled back $rev: controller unhealthy" \
+                "The controller did not come up healthy on $rev''${drill:+ (rollback drill)}; the host is back on $prev. See journalctl -u jobshop-self-deploy. The ticket closes on the next good deploy."
               exit 1
             fi
             echo "$rev" > $state/deployed
+            report deploy:rollback --close "Deployed $rev."
+            report deploy:config-check --close "Deployed $rev."
+            rm -f $state/failed.report
             # Read by nixos-upgrade (flags below) so the daily auto-upgrade keeps
             # this rev instead of returning to the host flake's locked one.
             echo "--override-input ${sd.inputName} ${sd.inputUrl}&rev=$rev" > $state/override
@@ -1248,7 +1393,7 @@ in
           };
         };
       })
-      (lib.mkIf userConfig {
+      (lib.mkIf (userConfig && !cfg.reloadOnChange) {
         # A user-owned jobshop.yaml changes outside a switch, so
         # reloadTriggers never see it (#531). Check, then reload; a failed
         # check logs and the controller keeps its running config (#227).
@@ -1259,8 +1404,7 @@ in
             PathChanged =
               # With a config repo the sync unit checks and reloads the
               # repo's file (#532); only the module file is watched here.
-              lib.optional (!repoConfig) cfg.configFile
-              ++ [ "${cfg.dataDir}/jobshop.module.yaml" ];
+              lib.optional (!repoConfig) cfg.configFile ++ [ "${cfg.dataDir}/jobshop.module.yaml" ];
             Unit = "jobshop-config.service";
           };
         };
@@ -1276,6 +1420,17 @@ in
             echo "config check: $out"
             ${pkgs.systemd}/bin/systemctl try-reload-or-restart jobshop.service
           '';
+        };
+      })
+      (lib.mkIf (vl.enable && vl.url == "") {
+        services.victorialogs = {
+          enable = true;
+          inherit (vl) listenAddress;
+          extraOptions = [ "-retentionPeriod=${vl.retentionPeriod}" ];
+        };
+        systemd.services.jobshop = {
+          wants = [ "victorialogs.service" ];
+          after = [ "victorialogs.service" ];
         };
       })
       (lib.mkIf cfg.ingest.enable {

@@ -67,6 +67,8 @@ type Controller interface {
 	Attention(ctx context.Context) (rpc.AttentionResult, error)
 	// Answer delivers a reply in a question thread to the asking session.
 	Answer(ctx context.Context, p rpc.AnswerParams) (rpc.AnswerResult, error)
+	// Comment adds a comment, for A2A failures (#547).
+	Comment(ctx context.Context, p rpc.CommentParams) error
 }
 
 // Config is one gateway's routing.

@@ -88,35 +88,6 @@ func (f *attentionFile) update(fn func(*attentionState)) error {
 	return os.Rename(tmp, f.path)
 }
 
-// mergeAttention adds the controller's attention list to Desk's: the
-// controller classifies tickets (question, decision, stale) and knows
-// kinds Desk does not read itself (config, resource, ingest).
-func (s *Server) mergeAttention(r *http.Request, out []AttentionItem) []AttentionItem {
-	var res rpc.AttentionResult
-	if err := s.ctl.Call(r.Context(), rpc.MethodAttention, struct{}{}, &res); err != nil {
-		return out
-	}
-	for _, it := range res.Items {
-		switch it.Kind {
-		case rpc.AttentionRollback, rpc.AttentionPool, rpc.AttentionRun, rpc.AttentionWait:
-			continue // Desk lists these itself
-		}
-		why := it.Kind
-		if it.Ref != "" {
-			why += " " + it.Ref
-		}
-		if i := slices.IndexFunc(out, func(x AttentionItem) bool { return x.ID == it.ID }); i >= 0 {
-			if it.Kind != rpc.AttentionTicket {
-				out[i].Kind, out[i].Why = it.Kind, why
-			}
-			out[i].Ref = it.Ref
-			continue
-		}
-		out = append(out, AttentionItem{Kind: it.Kind, ID: it.ID, Title: it.Title, Why: why, Since: it.Since, Ref: it.Ref})
-	}
-	return out
-}
-
 // dropAcked hides acknowledged items and forgets acks for items gone.
 func (s *Server) dropAcked(out []AttentionItem) []AttentionItem {
 	st := s.attn.load()

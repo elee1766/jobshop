@@ -34,14 +34,14 @@ workflows:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall ${signal} ${subject}", prompt: "Check ${subject}: ${detail}"}
+      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: "Check {{.subject}}: {{.detail}}"}
   work:
     vars: [n]
     issue: n
     repo: acme/widget
     steps:
-      - {id: a, pool: dev, retries: 1, title: "A ${n}", prompt: a}
-      - {id: b, pool: dev, title: "B ${n}", prompt: b}
+      - {id: a, pool: dev, retries: 1, title: "A {{.n}}", prompt: a}
+      - {id: b, pool: dev, title: "B {{.n}}", prompt: b}
 triggers:
   stall:
     when:
@@ -55,7 +55,7 @@ triggers:
         - {signal: issue_no_run, repo: acme/widget, check: "cat %[1]s/issues"}
     run:
       workflow: stall-check
-      vars: {signal: "${stall_signal}", subject: "${stall_subject}", detail: "${stall_detail}"}
+      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
     cooldown: 10m
     max_runs: 2
 `
@@ -328,13 +328,13 @@ triggers:
   st:
 `
 	for name, tc := range map[string]struct{ yaml, err string }{
-		"ok":         {"    when: {stall: [{signal: blocked, after: 1h}, {signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: '${stall_subject}'}}\n", ""},
+		"ok":         {"    when: {stall: [{signal: blocked, after: 1h}, {signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: '{{.stall_subject}}'}}\n", ""},
 		"no after":   {"    when: {stall: [{signal: blocked}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs after"},
 		"no check":   {"    when: {stall: [{signal: pr_unmerged, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs a check"},
 		"check":      {"    when: {stall: [{signal: blocked, after: 1h, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "takes no check"},
 		"ticket":     {"    when: {stall: [{signal: blocked, after: 1h}]}\n    ticket: {title: x}\n", "needs run"},
 		"key":        {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: k}\n", "sets the key"},
-		"bad var":    {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: '${check_output}'}}\n", "only"},
+		"bad var":    {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: '{{.check_output}}'}}\n", "only"},
 		"mixed":      {"    when: {ready_below: 1, stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "no other condition"},
 		"max_runs":   {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_runs: 2\n", "max_runs needs"},
 		"duplicated": {"    when: {stall: [{signal: blocked, after: 1h}, {signal: blocked, after: 2h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "twice"},

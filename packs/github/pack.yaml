@@ -1,7 +1,6 @@
 # Agents that work a GitHub repo through issues and PRs: plan, dev and
 # refinery pools, and the pr-work, ci-repair and stall-check workflows.
 # Vars: see README.md. packs/selfdev is an instance of this pack.
-template: go
 defaults:
   ci_workflow: ci
   # Branch master-red watches. A drill workspace can point it at a
@@ -273,6 +272,7 @@ workflows:
   # the SHA as key: at most 2 fix attempts per SHA, then needs_human.
   ci-repair:
     vars: [sha]
+    repo: "{{.repo}}"
     escalate_pool: plan
     escalate:
       chat_pool: "{{.escalation_chat_pool}}"

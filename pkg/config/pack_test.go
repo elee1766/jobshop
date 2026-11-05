@@ -31,14 +31,14 @@ func TestPackMerge(t *testing.T) {
 		"p1/pack.yaml": `pools:
   dev:
     agent: a
-    repo: ${repo}
-    max_sessions: ${n}
+    repo: "{{.repo}}"
+    max_sessions: "{{.n}}"
     prompt_file: prompts/dev.md
     idle_timeout: 1m
 triggers:
   t:
     when: {pool: dev, ready_below: 1}
-    ticket: {title: "Plan ${repo}", labels: [a, b]}
+    ticket: {title: "Plan {{.repo}}", labels: [a, b]}
 `,
 		"p1/prompts/dev.md": "pack prompt\n",
 		"p2/pack.yaml":      "pools:\n  dev:\n    idle_timeout: 2m\n",
@@ -91,7 +91,7 @@ func TestPackErrors(t *testing.T) {
 		want  []string
 	}{
 		{"missing var", map[string]string{
-			"p/pack.yaml":  "pools:\n  dev:\n    agent: a\n    repo: ${repo}\n",
+			"p/pack.yaml":  "pools:\n  dev:\n    agent: a\n    repo: \"{{.repo}}\"\n",
 			"jobshop.yaml": hostBase + "packs:\n  - path: p\n",
 		}, []string{"p/pack.yaml", "pools.dev.repo", `var "repo" is not set`}},
 		{"prompt and prompt_file", map[string]string{
@@ -357,8 +357,9 @@ packs:
 	w := c.Workflows["pr-work"]
 	assert.Equal(t, "make test", w.PackVars["check_cmd"])
 	assert.Contains(t, w.PackVars["docs_rule"], "Never append a numbered section", "docs_rule default (#131)")
-	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
+	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "repo": w.PackVars["repo"], "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
 	require.NoError(t, err)
+	assert.Contains(t, body, "github.checks:pr=acme/widget#<n>", "CI waits use github.checks (#555)")
 	assert.Contains(t, body, "`make test`")
 	assert.Contains(t, body, "Docs: put a design note")
 	assert.Contains(t, w.Steps[1].Prompt, "Conflicts only in docs", "refinery resolves docs-only conflicts (#131)")
@@ -419,9 +420,9 @@ func TestGithubPackGeneric(t *testing.T) {
 func TestPackExtends(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
-		"base/pack.yaml": "defaults: {n: 1}\npools:\n  dev: {agent: a, dir: /w, max_sessions: \"${n}\", prompt_file: p.md}\n",
-		"base/p.md":      "for ${who}\n",
-		"inst/pack.yaml": "extends:\n  - path: ../base\n    vars: {who: \"${team}\"}\npools:\n  dev: {idle_timeout: 3m}\n",
+		"base/pack.yaml": "defaults: {n: 1}\npools:\n  dev: {agent: a, dir: /w, max_sessions: \"{{.n}}\", prompt_file: p.md}\n",
+		"base/p.md":      "for {{.who}}\n",
+		"inst/pack.yaml": "extends:\n  - path: ../base\n    vars: {who: \"{{.team}}\"}\npools:\n  dev: {idle_timeout: 3m}\n",
 		"jobshop.yaml":   hostBase + "packs:\n  - path: inst\n    vars: {team: ops}\n",
 	})
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
@@ -618,7 +619,7 @@ packs:
 }
 
 func TestPackRenamedVars(t *testing.T) {
-	pack := "renamed_vars: {repo: jobshop_repo}\npools:\n  op:\n    agent: a\n    repo: /src\n    prompt_file: p.md\n    idle_timeout: ${jobshop_repo}\n"
+	pack := "renamed_vars: {repo: jobshop_repo}\npools:\n  op:\n    agent: a\n    repo: /src\n    prompt_file: p.md\n    idle_timeout: \"{{.jobshop_repo}}\"\n"
 	for _, tc := range []struct {
 		name, vars, want string
 		warn             bool
@@ -651,7 +652,7 @@ func TestLoadFileWithRewrite(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
 		"old/op/pack.yaml": "pools:\n  op:\n    agent: a\n    repo: /src\n    idle_timeout: 1m\n",
-		"new/op/pack.yaml": "pools:\n  op:\n    agent: a\n    repo: ${jobshop_repo}\n    idle_timeout: 1m\n",
+		"new/op/pack.yaml": "pools:\n  op:\n    agent: a\n    repo: \"{{.jobshop_repo}}\"\n    idle_timeout: 1m\n",
 		"jobshop.yaml":     hostBase + "packs:\n  - path: old/op\n",
 	})
 	f := filepath.Join(dir, "jobshop.yaml")
@@ -705,7 +706,7 @@ packs:
 		vars[k] = ""
 	}
 	maps.Copy(vars, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
-	out, err := Fill(e.Prompt, e.Template, vars)
+	out, err := Fill(e.Prompt, vars)
 	require.NoError(t, err)
 	assert.Contains(t, out, "run js-r (workflow pr-work)")
 	assert.Contains(t, out, "`jobshop run resume js-r")
@@ -714,7 +715,7 @@ packs:
 	assert.NotContains(t, out, "gateway")
 	assert.NotContains(t, out, "thread")
 	maps.Copy(vars, map[string]any{"pool": "dev", "error": "boom", "body": "B"})
-	pout, err := Fill(e.PoolPrompt, e.Template, vars)
+	pout, err := Fill(e.PoolPrompt, vars)
 	require.NoError(t, err)
 	assert.Contains(t, pout, "Pool dev starts no sessions")
 	assert.Contains(t, pout, "jobshop pool unquarantine dev")
@@ -741,12 +742,12 @@ packs:
 func TestEscalationConfig(t *testing.T) {
 	base := "projects:\n  js: {}\nagents:\n  a: {command: x}\npools:\n  dev: {agent: a, dir: /w}\n  chat: {agent: a, type: chat, dir: /w}\n"
 	for name, tc := range map[string]struct{ yaml, err string }{
-		"ok":        {"escalation: {chat_pool: chat, prompt: \"t ${ticket} ${body}\", pool_prompt: \"p ${pool} ${error}\"}\n", ""},
+		"ok":        {"escalation: {chat_pool: chat, prompt: \"t {{.ticket}} {{.body}}\", pool_prompt: \"p {{.pool}} {{.error}}\"}\n", ""},
 		"not chat":  {"escalation: {chat_pool: dev, prompt: x}\n", "not a chat pool"},
 		"unknown":   {"escalation: {chat_pool: nope, prompt: x}\n", "unknown pool"},
 		"no prompt": {"escalation: {chat_pool: chat}\n", "needs prompt"},
-		"bad var":   {"escalation: {chat_pool: chat, prompt: \"${issue}\"}\n", "uses ${issue}"},
-		"hold var":  {"escalation: {chat_pool: chat, hold_prompt: \"${issue}\"}\n", "uses ${issue}"},
+		"bad var":   {"escalation: {chat_pool: chat, prompt: \"{{.issue}}\"}\n", "uses {{.issue}}"},
+		"hold var":  {"escalation: {chat_pool: chat, hold_prompt: \"{{.issue}}\"}\n", "uses {{.issue}}"},
 		"empty":     {"escalation: {}\n", ""},
 	} {
 		dir := t.TempDir()

@@ -7,8 +7,6 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/alecthomas/kong"
-
 	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hostspec"
@@ -84,9 +82,10 @@ type root struct {
 	Identity  identityCmd  `cmd:"" help:"GitHub App and Linear identities: list, check, tokens and the git credential helper."`
 	Linear    linearCmd    `cmd:"" help:"Read, comment on and move Linear issues as the identity for their team."`
 	Recall    recallCmd    `cmd:"" help:"Search past comments, session journals and learnings. Run it on a failure and before asking a human."`
+	Journal   journalCmd   `cmd:"" help:"Search every session's journal with LogsQL on VictoriaLogs (journal.victorialogs), and backfill it."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
-	Docs      docsCmd      `cmd:"" help:"Print links to the docs for this binary (packs, readme). Needs no root."`
+	Docs      docsCmd      `cmd:"" help:"Print links to the docs for this binary (packs, readme, llm). Needs no root."`
 }
 
 // Main parses args, runs the selected command and returns a process exit code.
@@ -100,12 +99,7 @@ func Main(args []string) int {
 	// kong calls Exit after --help; a no-op would fall through and run the
 	// command, so record the code and stop before Run.
 	exited := -1
-	parser, err := kong.New(&r,
-		kong.Name("jobshop"),
-		kong.Description("Multi-agent work orchestration."),
-		kong.UsageOnError(),
-		kong.Exit(func(code int) { exited = code }),
-	)
+	parser, err := newParser(&r, func(code int) { exited = code })
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2

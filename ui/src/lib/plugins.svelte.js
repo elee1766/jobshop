@@ -45,6 +45,16 @@ export const deskApi = Object.freeze({
   post: (path, body) => post(path, body),
   /** Admin RPC through Desk's policy. @param {string} method @param {any} [params] */
   call: (method, params) => post('api/rpc/' + encodeURIComponent(method), params ?? {}),
+  /**
+   * Runs a desk_commands entry (#542). Resolves to its stdout: parsed
+   * JSON, else text. opts.ticket records the run in that ticket's history.
+   * @param {string} name @param {any} [input] @param {{ ticket?: string }} [opts]
+   */
+  async exec(name, input, opts) {
+    /** @type {{ output?: any, text?: string }} */
+    const r = await post('api/rpc/desk.exec', { name, input: input ?? null, ticket: opts?.ticket || undefined });
+    return r.output !== undefined ? r.output : (r.text ?? '');
+  },
   /** @param {(ev: any) => void} fn */
   subscribe(fn) {
     listeners.add(fn);

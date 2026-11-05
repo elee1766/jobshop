@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   go:
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -19,7 +19,9 @@ jobs:
           # setup-go's cache keys on go.sum only, with no fallback, so every
           # dependency change rebuilt from scratch. The cache below falls back.
           cache: false
-      - uses: actions/cache@v4
+      # Restore here, save only on master after a trim (below). Saving every
+      # run with no trim grew the cache to 2GB, about 25s to restore.
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/go/pkg/mod
@@ -30,6 +32,21 @@ jobs:
             go-${{ runner.os }}-
       - run: go build ./...
       - run: go vet ./...
+      # Journal search tests run against a real VictoriaLogs (#530).
+      - name: install victoria-logs
+        env:
+          VL_VERSION: v1.53.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/vl"
+          cd "$RUNNER_TEMP/vl"
+          f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
+          grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
+          tar xzf "$f"
+          bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
+          echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
+          echo "JOBSHOP_REQUIRE_VICTORIALOGS=1" >> "$GITHUB_ENV"
       # checkptr is off for modernc's machine-translated C only: its pointer
       # arithmetic is ~a third of race-test CPU and is not our code. The
       # race detector still covers it (#433).
@@ -61,9 +78,25 @@ jobs:
           version: v2.15.0
       - name: shellcheck deploy scripts
         run: shellcheck -s sh deploy/*.sh
+      # Go bumps an entry's mtime when it is used and was last touched over
+      # an hour ago, so anything older than 90 minutes was not used by this
+      # run. Dropping it keeps the cache from growing with every build.
+      - name: trim go build cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          du -sh ~/.cache/go-build
+          find ~/.cache/go-build -type f -mmin +90 -delete
+          du -sh ~/.cache/go-build
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   nix:
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read # hestia: detect evicted cache entries upfront
@@ -79,6 +112,9 @@ jobs:
       - uses: Mic92/hestia/action@v3
         with:
           upstream-cache-filter: true
+      # Nix files stay formatted with the flake's formatter (#583).
+      - name: nix fmt check
+        run: nix fmt -- --check $(git ls-files '*.nix')
       # The fallback builder (hosts without the plugin) pins a vendorHash.
       # Building only its vendored modules checks the pin; it is cached
       # until go.sum changes.
@@ -95,7 +131,7 @@ jobs:
   # Desk's built UI is committed in pkg/desk/dist and embedded (#208):
   # svelte-check must pass and the committed build must match ui/src.
   ui:
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ui
@@ -115,7 +151,7 @@ jobs:
   # The store conformance suite against Postgres (#493). The go job runs
   # it against SQLite; pkg/store/postgres's tests skip without the DSN.
   postgres:
-    runs-on: ubicloud-standard-4
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:17

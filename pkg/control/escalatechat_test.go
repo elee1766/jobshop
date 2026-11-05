@@ -25,9 +25,9 @@ func escChatRoot(t *testing.T, chat string) (config.Root, func() func()) {
 	root, start := poolRoot(t, "1m")
 	pack := filepath.Join(root.Dir, "pk")
 	require.NoError(t, os.MkdirAll(filepath.Join(pack, "prompts"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "esc.md"), []byte("ESC-RUN ${ticket} run ${run} wf ${workflow} step ${step} held ${held} (${held_title}) cause ${cause}: ${reason} site ${site}; read ${issue_ref}.\n${body}\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "hold.md"), []byte("ESC-HOLD ${ticket} (${title}) cause ${cause} held ${held} (${held_title}) worker ${worker} site ${site}: ${reason}\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "pool.md"), []byte("ESC-POOL ${ticket} pool ${pool} site ${site}: ${quarantine}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "esc.md"), []byte("ESC-RUN {{.ticket}} run {{.run}} wf {{.workflow}} step {{.step}} held {{.held}} ({{.held_title}}) cause {{.cause}}: {{.reason}} site {{.site}}; read {{.issue_ref}}.\n{{.body}}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "hold.md"), []byte("ESC-HOLD {{.ticket}} ({{.title}}) cause {{.cause}} held {{.held}} ({{.held_title}}) worker {{.worker}} site {{.site}}: {{.reason}}\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pack, "prompts", "pool.md"), []byte("ESC-POOL {{.ticket}} pool {{.pool}} site {{.site}}: {{.quarantine}}\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), fmt.Appendf(nil, `workflows:
   pr:
     vars: [issue]
@@ -36,7 +36,7 @@ func escChatRoot(t *testing.T, chat string) (config.Root, func() func()) {
     escalate_pool: ops
 %s
     steps:
-      - {id: implement, pool: dev, retries: 1, prompt: "Implement #${issue}", title: "Implement #${issue}"}
+      - {id: implement, pool: dev, retries: 1, prompt: "Implement #{{.issue}}", title: "Implement #{{.issue}}"}
 `, chat), 0o600))
 	missing := filepath.Join(root.Dir, "no-such-repo")
 	cfg := fmt.Sprintf(`packs:

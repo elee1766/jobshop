@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -46,8 +47,12 @@ type Config struct {
 	Ingest Ingest `yaml:"ingest"`
 	// WriteKeys configures the local idempotency key cache (#415).
 	WriteKeys WriteKeys `yaml:"write_keys"`
+	// Reload configures watch-and-reload of this file and its packs (#533).
+	Reload ReloadConfig `yaml:"reload"`
 	// Artifacts configures delivered artifacts' attachments (#508).
 	Artifacts Artifacts `yaml:"artifacts"`
+	// Journal configures journal shipping and search (#530).
+	Journal Journal `yaml:"journal"`
 	// Store selects the ticket store backend (#493).
 	Store Store `yaml:"store"`
 	// Defaults hold settings agents and pools inherit (#262).
@@ -75,6 +80,9 @@ type Config struct {
 	Activity *Activity `yaml:"activity"`
 	// Desk configures Desk plugins and the generic RPC endpoint (#517).
 	Desk Desk `yaml:"desk,omitempty"`
+	// DeskCommands are commands Desk plugins run by name (#542). Packs
+	// contribute entries like pools.
+	DeskCommands map[string]DeskCommand `yaml:"desk_commands,omitempty"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
@@ -83,6 +91,8 @@ type Config struct {
 	// Warnings are non-fatal load findings, such as a deprecated pack var
 	// name the host still sets (#261). The controller logs them.
 	Warnings []string `yaml:"-"`
+	// Watch is what a config watcher follows (#533), recorded at load.
+	Watch WatchPaths `yaml:"-"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
 	// BuiltinMetaPacks.
 	MetaPacks []string `yaml:"meta_packs"`
@@ -166,15 +176,12 @@ type StallSignal struct {
 }
 
 // TriggerRun starts a workflow run, like `jobshop run start`. Vars and
-// Key are templates; ${check_output} is the first line of the check's
+// Key are templates; {{.check_output}} is the first line of the check's
 // trimmed stdout. An open run with the same workflow and key dedups.
 type TriggerRun struct {
 	Workflow string            `yaml:"workflow"`
 	Vars     map[string]string `yaml:"vars"`
 	Key      string            `yaml:"key"`
-	// Template is the declaring pack's syntax (SyntaxGo or ""), set by
-	// the loader.
-	Template string `yaml:"template,omitempty"`
 }
 
 // CheckOutputVar is the template var holding a trigger check's output.
@@ -318,7 +325,13 @@ type Activity struct {
 const (
 	GatewayMatrix  = "matrix"
 	GatewayDiscord = "discord"
+	// GatewayA2A routes escalations to another agent over A2A (#547).
+	GatewayA2A = "a2a"
 )
+
+// EscalationCauses are meta.escalation.cause values, the kinds an A2A
+// gateway's escalations list names (the cause var of EscalationVars).
+var EscalationCauses = []string{"run", "pool", "wait", "guard", "label"}
 
 // Gateway connects one chat network account to a chat pool. Messages
 // from rooms or senders not listed are ignored.
@@ -346,6 +359,15 @@ type Gateway struct {
 	ArtifactRoom string `yaml:"artifact_room"`
 	// DeskURL is Desk's base URL for links in artifact lines. Empty: no link.
 	DeskURL string `yaml:"desk_url"`
+	// URL is the A2A peer's base URL; its agent card is fetched from
+	// /.well-known/agent-card.json under it (a2a only).
+	URL string `yaml:"url,omitempty"`
+	// Escalations are the escalation causes sent to the A2A peer: "all"
+	// or a list of EscalationCauses. Empty: none (a2a only).
+	Escalations []string `yaml:"escalations,omitempty"`
+	// Poll is the GetTask interval for a peer task (Go duration, a2a
+	// only). Default 30s.
+	Poll string `yaml:"poll,omitempty"`
 }
 
 // Desk is the desk section. Desk reads it through config.show, so a
@@ -381,16 +403,10 @@ func (d Desk) validate() error {
 
 // Attention configures the attention view: what waits on a human.
 type Attention struct {
-	// RollbackFile is the self-deploy state file holding the commit that
-	// was rolled back (the NixOS module's /var/lib/jobshop-deploy/failed).
-	// The rollback is listed while it is newer than the "deployed" file
-	// beside it, so a later successful deploy clears it. Empty:
-	// rollbacks are not checked.
-	RollbackFile string `yaml:"rollback_file"`
-	// ConfigRepoFile is written by the NixOS module's config repo sync
-	// when a commit fails `jobshop config check` (#532): the first line
-	// is the commit, the rest the error. Listed while it exists; the
-	// sync removes it when a later commit passes. Empty: not checked.
+	// RollbackFile and ConfigRepoFile were read for deploy attention
+	// items, removed by #577: deploy tools report through needs-human
+	// tickets. Still parsed so a load can name the replacement.
+	RollbackFile   string `yaml:"rollback_file"`
 	ConfigRepoFile string `yaml:"config_repo_file"`
 	// ResourceWait lists a step waiting on a full resource longer than
 	// this Go duration (#408). Empty: not listed.
@@ -827,6 +843,64 @@ func (a Artifacts) RetentionDuration() time.Duration {
 	return d
 }
 
+// DefaultJournalLagMax is when unshipped journal frames become an
+// attention item (#530).
+const DefaultJournalLagMax = 10 * time.Minute
+
+// Journal configures journal shipping and search (#530).
+type Journal struct {
+	// VictoriaLogs is where frames are shipped and searched. Absent: no
+	// shipping, and journal.search errors.
+	VictoriaLogs *VictoriaLogs `yaml:"victorialogs"`
+	// LagMax is the oldest unshipped frame age that raises attention
+	// journal-lag (Go duration). Default 10m.
+	LagMax string `yaml:"lag_max"`
+}
+
+// VictoriaLogs is one VictoriaLogs instance.
+type VictoriaLogs struct {
+	// URL is the base URL, e.g. http://127.0.0.1:9428.
+	URL string `yaml:"url"`
+	// Headers go on every request. ${VAR} expands from the controller env.
+	Headers map[string]string `yaml:"headers"`
+	// RetentionHint is the instance's retention as set on its side, for
+	// display only: jobshop does not delete rows.
+	RetentionHint string `yaml:"retention_hint"`
+}
+
+// HeaderValues returns Headers with ${VAR} expanded by getenv.
+func (v VictoriaLogs) HeaderValues(getenv func(string) string) map[string]string {
+	h := make(map[string]string, len(v.Headers))
+	for k, x := range v.Headers {
+		h[k] = os.Expand(x, getenv)
+	}
+	return h
+}
+
+// LagMaxDuration is LagMax parsed, or the default.
+func (j Journal) LagMaxDuration() time.Duration {
+	d, _ := parseDays(j.LagMax)
+	if d <= 0 {
+		return DefaultJournalLagMax
+	}
+	return d
+}
+
+func (j Journal) check() error {
+	if r := j.LagMax; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return fmt.Errorf("journal.lag_max %q must be a positive duration (e.g. 10m)", r)
+		}
+	}
+	if v := j.VictoriaLogs; v != nil {
+		u, err := url.Parse(v.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("journal.victorialogs.url %q must be an http(s) URL", v.URL)
+		}
+	}
+	return nil
+}
+
 // parseDays is time.ParseDuration that also takes "Nd".
 func parseDays(s string) (time.Duration, error) {
 	if n, ok := strings.CutSuffix(s, "d"); ok {
@@ -958,7 +1032,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff", "ticket-release", "session-journal"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff", "ticket-release", "session-journal", "journal-search"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -1009,9 +1083,8 @@ type Pool struct {
 	IdleTimeout string `yaml:"idle_timeout"`
 	// TurnTimeout cancels a single agent turn. Default 2h.
 	TurnTimeout string `yaml:"turn_timeout"`
-	// ConversationExport makes the session host send prompts, agent
-	// messages and tool calls as OTLP log records to the telemetry logs
-	// endpoint, redacted and capped. Default off.
+	// ConversationExport was OTLP conversation export (#45), removed by
+	// #530. Still parsed so an older config loads, with a warning.
 	ConversationExport bool `yaml:"conversation_export"`
 	// Admin lists admin methods (PoolAdminMethods) this pool's session
 	// sockets may call, e.g. [config-reload, session-list] for an
@@ -1045,7 +1118,7 @@ var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 // RepoPattern is a GitHub owner/name.
 var RepoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
-// varName is a ${name} reference name (see varPattern).
+// varName is a valid template var name.
 var varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Load reads and validates the root's config.
@@ -1196,8 +1269,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if p.MinSessions > 0 && p.Chat() {
 			return nil, fmt.Errorf("%s: pool %s: min_sessions does not apply to chat pools", src("pools", name), name)
 		}
-		if p.ConversationExport && c.Telemetry.LogsURL() == "" {
-			return nil, fmt.Errorf("%s: pool %s: conversation_export needs telemetry.otlp_endpoint or otlp_logs_endpoint", src("pools", name), name)
+		if p.ConversationExport {
+			// A warning for one release, then an error (#530, as #325).
+			c.Warnings = append(c.Warnings, fmt.Sprintf("%s: pool %s: conversation_export is removed, see journal.victorialogs; ignored", src("pools", name), name))
 		}
 		for _, d := range []struct{ key, v string }{{"idle_timeout", p.IdleTimeout}, {"turn_timeout", p.TurnTimeout}, {"scale_down_after", p.ScaleDownAfter}} {
 			if d.v == "" {
@@ -1242,6 +1316,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: write_keys.retention %q must be a positive duration (e.g. 48h, 2d)", FileName, r)
 		}
 	}
+	if err := c.Reload.check(); err != nil {
+		return nil, err
+	}
 	if r := c.Artifacts.Retention; r != "" {
 		if d, err := parseDays(r); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: artifacts.retention %q must be a positive duration (e.g. 90d)", FileName, r)
@@ -1249,6 +1326,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if c.Artifacts.MaxBytes < 0 {
 		return nil, fmt.Errorf("%s: artifacts.max_bytes must be >= 0", FileName)
+	}
+	if err := c.Journal.check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if c.Limits.MaxSessions < 0 {
 		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)
@@ -1297,6 +1377,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
 		}
 	}
+	for name, d := range c.DeskCommands {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: desk_commands: name %q must match %s", FileName, name, namePattern)
+		}
+		if err := checkDeskCommand(d); err != nil {
+			return nil, fmt.Errorf("%s: desk_commands.%s: %w", src("desk_commands", name), name, err)
+		}
+	}
 	for _, k := range c.Learnings.Kinds {
 		if err := store.ValidKindPattern(k); err != nil {
 			return nil, fmt.Errorf("%s: learnings.kinds: %w", FileName, err)
@@ -1304,6 +1392,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if err := c.checkResources(); err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
+	}
+	for key, v := range map[string]string{"rollback_file": c.Attention.RollbackFile, "config_repo_file": c.Attention.ConfigRepoFile} {
+		if v != "" {
+			return nil, fmt.Errorf("%s: attention.%s is removed (#577): deploy tools report a problem as a needs-human ticket, `jobshop ticket upsert --key deploy:rollback -l needs-human ...`, and close it when it clears", FileName, key)
+		}
 	}
 	if w := c.Attention.ResourceWait; w != "" {
 		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
@@ -1332,6 +1425,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 }
 
 func (c *Config) checkGateway(g Gateway) error {
+	if g.Network == GatewayA2A {
+		return c.checkA2AGateway(g)
+	}
 	switch g.Network {
 	case GatewayMatrix:
 		if g.Homeserver == "" {
@@ -1339,7 +1435,7 @@ func (c *Config) checkGateway(g Gateway) error {
 		}
 	case GatewayDiscord:
 	default:
-		return fmt.Errorf("network %q must be %q or %q", g.Network, GatewayMatrix, GatewayDiscord)
+		return fmt.Errorf("network %q must be %q, %q or %q", g.Network, GatewayMatrix, GatewayDiscord, GatewayA2A)
 	}
 	if g.TokenFile.IsZero() {
 		return errors.New("token_file is required")
@@ -1535,7 +1631,7 @@ func (c *Config) Prefix(project string) string {
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
 // controller, the gateway on escalation tickets, and Desk's attention
 // chat key, meta.desk.attention_chat, #535).
-var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question", "escalation", "desk"}
+var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question", "escalation", "upsert", "desk"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

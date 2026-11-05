@@ -309,6 +309,10 @@ type Store interface {
 	AddComment(ctx context.Context, author, id, body string) (Comment, error)
 	Comments(ctx context.Context, id string) ([]Comment, error)
 	History(ctx context.Context, id string) ([]HistoryEntry, error)
+	// Record adds a history row for an outside action on a ticket without
+	// changing it (#542: desk_exec). The row carries the ticket's current
+	// revision.
+	Record(ctx context.Context, actor, id, op string, diff any) error
 	// Changes returns history rows of all tickets with seq > after, oldest
 	// first, at most n (0 means DefaultLimit). It feeds events.subscribe.
 	Changes(ctx context.Context, after int64, n int) ([]HistoryEntry, error)

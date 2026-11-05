@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/rpc/rpcschema"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -55,17 +56,31 @@ func globMatch(globs []string, m string) bool {
 	return false
 }
 
-// RPCList is GET /api/rpc.
+// RPCList is GET /api/rpc: the allowed methods, and a JSON schema for
+// each one's params and result (#542). Schema $refs point into Defs.
 type RPCList struct {
-	Methods []string `json:"methods"`
+	Methods []string             `json:"methods"`
+	Schemas map[string]RPCSchema `json:"schemas"`
+	Defs    map[string]any       `json:"$defs"`
+}
+
+// RPCSchema is one method's params and result schemas.
+type RPCSchema struct {
+	Params map[string]any `json:"params"`
+	Result map[string]any `json:"result"`
 }
 
 func (s *Server) rpcList(r *http.Request) (any, error) {
 	dc, _ := s.deskConfig(r)
-	out := RPCList{Methods: []string{}}
+	out := RPCList{Methods: []string{}, Schemas: map[string]RPCSchema{}, Defs: map[string]any{}}
 	for _, m := range rpc.Methods() {
 		if rpcAllowed(m, dc.RPC) {
 			out.Methods = append(out.Methods, m)
+			spec := rpc.Specs[m]
+			out.Schemas[m] = RPCSchema{
+				Params: rpcschema.Schema(spec.Params, out.Defs),
+				Result: rpcschema.Schema(spec.Result, out.Defs),
+			}
 		}
 	}
 	slices.Sort(out.Methods)

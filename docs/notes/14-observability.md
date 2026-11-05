@@ -35,23 +35,11 @@
   `crashed` or `stuck` within `--since` (default 24h), printing id, pool
   and end reason. Used in `docs/verify/baseline.md` (#77).
 - Planned: store transaction spans.
-- Conversation export (decided 2026-11-01, #45): `conversation_export:
-  true` on a pool (default off; needs a logs endpoint, checked at load)
-  makes its hosts emit OTLP log records named
-  `jobshop.conversation.<event>`: `prompt`, `agent_message`,
-  `agent_thought` (chunks joined), `tool_call` (title, kind, input),
-  `tool_result` (status changes, input, output), `turn_end`. Records carry
-  session, pool, project, the ticket (sent in the prompt's
-  `_meta["jobshop/ticket"]`) and the session traceparent. Redaction runs
-  before a record is built: values under secret-named JSON keys,
-  secret-named launch-env values (8+ bytes, exact match) and gitleaks
-  default-rule findings become `[REDACTED]`. Each text field is capped at
-  8 KiB with `jobshop.conversation.truncated=true`. Frames go to a queue
-  of 1024 frames / 16 MiB; overflow drops and counts, the exporter has no
-  retries and a 10s timeout, and the host gives the final flush 5s.
-  Hosts report counts every 10s; the controller exports
-  `jobshop_conversation_export_dropped_total` and
-  `jobshop_conversation_export_truncated_total` by pool. Code:
-  `pkg/telemetry/convexport.go`. The journal stays the record of truth.
+- Conversation export (decided 2026-11-01, #45; removed 2026-11-05 by
+  #530, replaced by journal shipping to VictoriaLogs, see
+  `docs/notes/530-journal-search.md`). It made hosts emit OTLP log
+  records `jobshop.conversation.<event>` per pool with
+  `conversation_export: true`; that key now loads with a warning. Its
+  redaction moved to `pkg/redact`.
 - gasserver backends: VictoriaMetrics, VictoriaLogs, VictoriaTraces, all
   OTLP/HTTP, no collector.

@@ -12,8 +12,13 @@ Deferred SQLite transactions get SQLITE_BUSY on the read-to-write upgrade
 (busy_timeout does not wait on it): retry the whole transaction, bounded.
 Bash calls auto-background after about 3s; redirects into the work tree,
 scratch and session dirs are blocked: write files with the Write tool,
-send logs to /tmp/<dir>/ or pipe to tail. For CI or deploy waits,
-check once, comment the state, then `jobshop release --until 30m`.
+send logs to /tmp/<dir>/ or pipe to tail. To wait on CI, run
+`jobshop wait add 'github.checks:pr=elee1766/jobshop#<n>,state=success'
+'github.checks:pr=elee1766/jobshop#<n>,state=failure' --any --resume
+--timeout 1h -r "CI on PR #<n>"` and end the turn: without
+state=failure a red run never fires, and without --resume the step is
+not handed back. Add it only once `gh pr view --json headRefOid` shows
+the pushed sha, or the wait records the old head.
 Never commit `go test -c` binaries (`*.test`): check `git status`. Several sessions lint on one host: run
 `golangci-lint run --allow-parallel-runners ./...`.
 
@@ -29,6 +34,9 @@ A PR with no checks usually conflicts with master: run
 `git merge-tree --write-tree origin/master HEAD` and rebase before
 pushing an empty commit.
 sqlc is not on PATH: regenerate with `go generate ./pkg/store/sqlite/`.
+Generated files go stale when a rebase brings in new rpc types or CLI
+commands, even if GitHub shows the PR CLEAN: after every rebase rerun
+`go run ./pkg/rpc/rpcschema/cmd/deskgen` and go test ./... before pushing.
 With `sqlc.slice`, named params after the slice bind into the list: put
 named params first or use bare `?`, and check the `?N` in sqlcdb.
 Old runs leave local `issue-<n>` branches: `git branch --list issue-<n>`
@@ -44,3 +52,5 @@ Sandbox and isolation tests skip silently when bwrap, newuidmap, pasta or
 nft are not on PATH: run them under `PATH=$PATH:/run/wrappers/bin nix shell
 nixpkgs#bubblewrap nixpkgs#passt nixpkgs#nftables -c go test -v ...` and
 check the output for SKIP.
+npm is not on agent PATH: in ui/ run `nix shell nixpkgs#nodejs_22 -c sh -c
+'npm ci && npm run check && npm run build'`.

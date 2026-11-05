@@ -63,3 +63,6 @@ steps:
 - Tests: `TestAutoStepsMixedRun`, `TestAutoStepGoTemplate`, `TestAutoStepHTTPRetryAfter`,
   `TestAutoStepFailureEscalates`, `TestAutoStepRestart`,
   `TestAutoStepHTTPRestart`.
+
+2026-11-05 (#566): `${...}` forms here are gone; step outputs are
+`{{.steps.<id>.output}}`. See `docs/notes/566-drop-dollar-templates.md`.

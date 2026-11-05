@@ -82,16 +82,16 @@ func autoRoot(t *testing.T, url string) config.Root {
       # Not yet on the first attempt (exit 75), then JSON output.
       - id: probe
         type: command
-        run: 'if [ ! -f probed ]; then touch probed; exit 75; fi; echo "{\"sha\":\"abc${issue}\",\"outcome\":\"green\"}"'
+        run: 'if [ ! -f probed ]; then touch probed; exit 75; fi; echo "{\"sha\":\"abc{{.issue}}\",\"outcome\":\"green\"}"'
         retry_after: 1m
       - id: notify
         type: http
         url: `+url+`/notify
-        body: '{"sha":"${steps.probe.json.sha}","issue":"${issue}","outcome":"${steps.probe.outcome}"}'
+        body: '{"sha":"{{.steps.probe.json.sha}}","issue":"{{.issue}}","outcome":"{{.steps.probe.outcome}}"}'
       - id: review
         pool: dev
-        title: "Review ${issue}"
-        prompt: "Review ${issue}"
+        title: "Review {{.issue}}"
+        prompt: "Review {{.issue}}"
   later:
     vars: [issue]
     steps:

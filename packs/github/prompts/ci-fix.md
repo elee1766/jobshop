@@ -22,12 +22,13 @@ SHA starts a new run.
    `gh pr create --base master --title "<summary> (#<n>)" --body "Closes #<n>. Master red at {{.sha}}. ..."`.
    PR body: at most ~10 lines, plain text: what changed, why, how it was
    tested. No long summaries, file lists or pasted output.
-4. Wait for CI with `gh pr checks --watch`; fix and push again. Do not
-   end the turn to wait: if a long command is moved to the background,
-   keep polling (`gh pr checks <n>`, `sleep 60`) until CI finishes.
+4. Wait for CI with
+   `jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
+   and end the turn; it resumes here within a minute of CI finishing.
+   Red: fix, push and set the wait again.
 
 Do not merge. When CI is green: `jobshop comment "PR <url> head <sha>"`
-(sha from `git rev-parse HEAD`), then `jobshop close`. Releasing this
-step counts as a failed attempt, so wait inside your turn. If you cannot
+(sha from `git rev-parse HEAD`), then `jobshop close`. A plain release
+of this step counts as a failed attempt; a wait does not. If you cannot
 deliver, `jobshop close -r failed` with a comment saying why; after two
 attempts the run escalates to a human.

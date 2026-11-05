@@ -390,6 +390,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#352, `docs/notes/352-pack-docs.md`).
 - Pack templates in Go `text/template` behind `template: go`; in-repo
   packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
+- `${name}` pack syntax removed; Go templates by default, leftover
+  `${name}` is a load error (#566, `docs/notes/566-drop-dollar-templates.md`).
 - `jobshop wait add|list|clear`: tickets park on a PR review, checks,
   PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
 - Write keys: remote key or hidden GitHub marker is the record, local
@@ -524,9 +526,20 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `api`, `POST /api/rpc/{method}` with a session-only policy; Deploys is
   the first built-in plugin (#517, `docs/notes/517-desk-plugins.md`,
   `docs/verify/desk-plugins.md`).
+- GitHub pack steps wait on CI with `github.checks` waits, not fixed
+  `release --until` deferrals (#555, `docs/notes/555-ci-waits.md`).
+- Deploy state out of core: `jobshop ticket upsert --key`; self-deploy
+  and config-repo sync file needs-human `deploy:*`/`config-repo:*`
+  tickets; Deploys moved to `packs/deploy` (#577,
+  `docs/notes/577-deploy-out-of-core.md`).
 - NixOS `workspaces.<name>.config`: run from `jobshop.yaml` in a git
   checkout; each push is checked, reset to last good on failure and
   listed as attention `config-repo` (#532, `docs/notes/532-config-repo.md`).
+- Desk plugins part 3: `desk_commands` run by `desk.exec`/`api.exec`,
+  `rpc.Specs` with schemas on `GET /api/rpc` and a generated
+  `ui/desk-plugin.d.ts`, the CSV example and `docs/desk-plugins.md`
+  (#542, `docs/notes/542-desk-plugins-part3.md`,
+  `docs/verify/desk-plugin-commands.md`).
 
 ## 5. What's next
 
@@ -691,9 +704,10 @@ visibility (#408), placement (#409).
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
 `session.journal` (#529), Desk plugin host part 1 (#517), config from a
-git repo (#532), Desk PWA and attention chat (#535).
+git repo (#532), plugin commands, typed RPC and docs (#542), Desk PWA and
+attention chat (#535).
 Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
-and plugin API (#541, #542).
+and `api.query`/`api.session` (#541).
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1167,6 +1181,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - Plain `go` for development and CI, Nix flake for the package and NixOS
   module. No Bazel. CI: build, vet, `go test -race`, sqlc diff, golangci-lint,
   shellcheck of `deploy/*.sh`, `nix build`.
+- CI runs on GitHub-hosted `ubuntu-latest` (2026-11-05): free for a public
+  repo, and its cache restores about twice as fast as Ubicloud's (about
+  65 MB/s there, 2 GB Go cache). Ubicloud cost about $0.045 per run.
 - YAML config. Every new dependency has its reason recorded in
   `docs/layout.md`.
 - Self-deploy runs `jobshop config check` from the new build, against the
@@ -1313,6 +1330,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   run and trigger vars later) with one flat var map instead of
   `.pack`/`.vars` namespaces, so prompts read `{{.issue}}` and the
   migration is a mechanical rewrite. Whole-value `{{.x}}` keeps its type.
+- (2026-11-05, #566) `${name}` pack templates removed: Go templates are
+  the only syntax and the default, `template: go` is a no-op for one
+  release, and leftover `${name}` in a pack is a load error so a stale
+  pack fails `config check` before self-deploy switches to it.
+  `${SESSION_DIR}` in agent args is allowlisted (controller expansion).
 - Waits on outside state are `fields.wait` on tasks and steps
   (2026-11-04, #381), typed engine data, not labels or a new column:
   the ready and claim queries skip a ticket with a wait. The controller
@@ -1412,6 +1434,16 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   agent helps decide and the Resolve buttons call existing RPCs. The
   shell keeps only the frame (PWA, push, theme, tab bar, side panel);
   the session panel body is a plugin slot.
+- Plugins run host commands only by name from `desk_commands`, never a
+  command string from the browser (2026-11-05, #542). Plugin types come
+  from one table, `rpc.Specs`, checked against the handler table, so the
+  `.d.ts` and the `/api/rpc` schemas cannot drift from the controller.
+- Deploy and rollout state is not core (2026-11-05, #577). Tools report
+  a problem as a needs-human ticket with a stable key (`ticket upsert
+  --key`) and close it when it clears; attention, Desk, gateways and
+  digests show it with no deploy code. The NixOS self-deploy and its
+  Deploys plugin (packs/deploy) are one example wrapper; multi-host or
+  staged rollouts build their own the same way.
 
 ## 7. Reference: behavior as built
 
@@ -1478,6 +1510,9 @@ moved from the old 7.x list, oldest first:
 - [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
 - [Desk PWA on the plugin model](notes/535-desk-pwa.md) (#535)
 - [Attention opens its chat](notes/535-attention-chat.md) (#535)
+- [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
+- [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
+- [Deploy state out of core](notes/577-deploy-out-of-core.md) (#577)
 
 ## 8. Chat gateway
 

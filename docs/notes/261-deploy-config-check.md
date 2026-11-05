@@ -7,8 +7,9 @@
   that binary's `config check` on the host's jobshop.yaml with the
   selfDeploy workspace dir replaced by the new source. On failure it
   does not switch: the rev goes to `failed`, the error to
-  `failed.reason`, and `jobshop attention` shows "self-deploy skipped
-  <rev>, config check failed: <error>". The rev is not retried; a newer
+  `failed.reason`, and (since #577) a needs-human `deploy:config-check`
+  ticket holds the rev and error; the next good deploy closes it. The
+  rev is not retried; a newer
   green commit or a host config change plus a newer commit moves on.
 - pack.yaml `renamed_vars: {old: new}`: a host still setting the old name
   gets the value under the new name and a logged warning (controller log,

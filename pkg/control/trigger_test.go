@@ -296,15 +296,15 @@ workflows:
   fix:
     vars: [sha]
     steps:
-      - {id: fix, pool: dev, title: "Fix ${sha}", prompt: "Fix master at ${sha}"}
+      - {id: fix, pool: dev, title: "Fix {{.sha}}", prompt: "Fix master at {{.sha}}"}
 triggers:
   red:
     when:
       check: cat sha
     run:
       workflow: fix
-      vars: {sha: "${check_output}"}
-      key: "red-${check_output}"
+      vars: {sha: "{{.check_output}}"}
+      key: "red-{{.check_output}}"
 `
 
 // A check trigger with run: starts one run per check output.

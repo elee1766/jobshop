@@ -2,64 +2,41 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 
 	"github.com/elee1766/jobshop/pkg/config/tmpl"
 )
 
-// Template syntaxes (#383). SyntaxDollar is ${name} with $$ for a literal
-// $; SyntaxGo is Go text/template with missingkey=error and tmpl.Funcs.
-// ${name} goes away once hosts' own packs have moved.
-const (
-	SyntaxDollar = ""
-	SyntaxGo     = "go"
-)
+// Pack templates are Go text/template with missingkey=error and
+// tmpl.Funcs (#383). The older ${name} syntax was removed in #566.
+
+// templateGo is the only accepted value of a pack's template: key, kept
+// as a no-op for one release so packs that still set it load.
+const templateGo = "go"
 
 func checkSyntax(s string) error {
-	if s != SyntaxDollar && s != SyntaxGo {
-		return fmt.Errorf("%q must be empty (${name}) or %q", s, SyntaxGo)
+	if s != "" && s != templateGo {
+		return fmt.Errorf("%q is not supported: packs use Go templates ({{.name}}); the ${name} syntax was removed in #566", s)
 	}
 	return nil
 }
 
 // placeholder is the load-time value of a var filled later (check
 // output, stall vars): a reference to itself, left for the later render.
-func placeholder(name, syn string) string {
-	if syn == SyntaxGo {
-		return "{{." + name + "}}"
-	}
-	return "${" + name + "}"
+func placeholder(name string) string {
+	return "{{." + name + "}}"
 }
 
-// setSyntax records the pack's syntax on the workflows and trigger runs
-// it declares, so run start and trigger firing render them the same way.
-func setSyntax(m map[string]any, syn string) {
-	if syn == SyntaxDollar {
-		return
-	}
-	wfs, _ := m["workflows"].(map[string]any)
-	for _, w := range wfs {
-		if wm, ok := w.(map[string]any); ok {
-			wm["template"] = syn
-			if e, ok := wm["escalate"].(map[string]any); ok {
-				e["template"] = syn
-			}
-		}
-	}
-	if e, ok := m["escalation"].(map[string]any); ok {
-		e["template"] = syn
-	}
-	trs, _ := m["triggers"].(map[string]any)
-	for _, t := range trs {
-		tm, _ := t.(map[string]any)
-		if rm, ok := tm["run"].(map[string]any); ok {
-			rm["template"] = syn
-		}
-	}
-}
+// dollarRef is a leftover ${name} from the removed syntax.
+var dollarRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
-// leftoverVars warns about ${name} left in a Go-template pack, which
-// is a missed migration more often than a literal.
+// dollarAllowed are ${name} forms that are not pack syntax: the
+// controller expands ${SESSION_DIR} in agent args at session start.
+var dollarAllowed = map[string]bool{"SESSION_DIR": true}
+
+// leftoverVars lists ${name} left in a pack. Since #566 that is a load
+// error: it would render as literal text.
 func leftoverVars(m map[string]any, file string) []string {
 	var keys []string
 	var walk func(v any, key string)
@@ -74,8 +51,11 @@ func leftoverVars(m map[string]any, file string) []string {
 				walk(e, fmt.Sprintf("%s[%d]", key, i))
 			}
 		case string:
-			if m := varPattern.FindStringSubmatch(x); m != nil && m[1] != "" {
-				keys = append(keys, fmt.Sprintf("%s: %s has ${%s} in a template: go pack; use {{.%s}}", file, key, m[1], m[1]))
+			for _, m := range dollarRef.FindAllStringSubmatch(x, -1) {
+				if !dollarAllowed[m[1]] {
+					keys = append(keys, fmt.Sprintf("%s: %s has ${%s}; the ${name} syntax was removed in #566, use {{.%s}}", file, key, m[1], m[1]))
+					break
+				}
 			}
 		}
 	}
@@ -84,18 +64,12 @@ func leftoverVars(m map[string]any, file string) []string {
 	return keys
 }
 
-// Fill renders s in syntax syn from vars. A missing var is an error.
-func Fill(s, syn string, vars map[string]any) (string, error) {
-	if syn == SyntaxGo {
-		return tmpl.Render(s, vars)
-	}
-	return FillTemplate(s, vars)
+// Fill renders the Go template s from vars. A missing var is an error.
+func Fill(s string, vars map[string]any) (string, error) {
+	return tmpl.Render(s, vars)
 }
 
-// refs returns the var names s references in syntax syn.
-func refs(s, syn string) ([]string, error) {
-	if syn == SyntaxGo {
-		return tmpl.Vars(s)
-	}
-	return templateVars(s), nil
+// refs returns the var names s references.
+func refs(s string) ([]string, error) {
+	return tmpl.Vars(s)
 }

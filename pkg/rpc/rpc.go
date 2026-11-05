@@ -27,30 +27,6 @@ import (
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
-// Methods lists every admin method name. Desk's generic RPC endpoint
-// checks against it (#517); a control test keeps it equal to the
-// controller's handler table.
-func Methods() []string {
-	return []string{
-		MethodTicketCreate, MethodTicketShow, MethodTicketTrace, MethodTicketList, MethodTicketUpdate,
-		MethodTicketClose, MethodTicketReopen, MethodReady, MethodCommentAdd, MethodEdgeAdd, MethodEdgeRemove,
-		MethodLabelAdd, MethodLabelRemove, MethodClaim, MethodHeartbeat, MethodRelease, MethodHandoff,
-		MethodSessionNew, MethodSessionList, MethodSessionReap, MethodSessionRestart, MethodSessionPrompt,
-		MethodSessionSandbox, MethodSessionSend, MethodSessionSubscribe, MethodWhoami, MethodShutdown,
-		MethodDrain, MethodReload, MethodTriggerList, MethodConfigShow, MethodRunStart, MethodRunShow,
-		MethodRunList, MethodRunCancel, MethodRunResume, MethodBatchStart, MethodBatchShow, MethodBatchList,
-		MethodPoolList, MethodPoolScale, MethodSessionCordon, MethodSessionConfig, MethodPoolUnquarantine,
-		MethodReportIncidents, MethodGuard, MethodVersion, MethodRecall, MethodAttention, MethodIdentityList,
-		MethodIdentityCheck, MethodIdentityToken, MethodIngestDrain, MethodSubscribe, MethodReport,
-		MethodQuestionAnswer, MethodActivityList, MethodActivityRecord, MethodLearnAdd, MethodLearnList,
-		MethodLearnUpdate, MethodLearnEvaluate, MethodLearnEdits, MethodWriteKeyClaim, MethodWriteKeyFinish,
-		MethodIngestClaim, MethodIngestAdmit, MethodIngestWorkers, MethodEventsSubscribe, MethodWaitAdd,
-		MethodWaitList, MethodWaitClear, MethodResourceAdd, MethodResourceRemove, MethodResourceUnhealthy,
-		MethodResourceList, MethodArtifactDeliver, MethodArtifactList, MethodArtifactShow, MethodArtifactAck,
-		MethodSessionJournal, MethodSessionCancel,
-	}
-}
-
 // Method names.
 const (
 	MethodTicketCreate     = "ticket.create"
@@ -60,6 +36,7 @@ const (
 	MethodTicketUpdate     = "ticket.update"
 	MethodTicketClose      = "ticket.close"
 	MethodTicketReopen     = "ticket.reopen"
+	MethodTicketUpsert     = "ticket.upsert"
 	MethodReady            = "ticket.ready"
 	MethodCommentAdd       = "comment.add"
 	MethodEdgeAdd          = "edge.add"
@@ -318,6 +295,29 @@ type UpdateParams struct {
 	Force bool `json:"force,omitempty"`
 }
 
+// UpsertParams creates or updates the open ticket with Key, or closes it
+// (#577). Outside tools use it to report a problem once and clear it
+// when it is gone, e.g. a deploy wrapper's deploy:rollback.
+type UpsertParams struct {
+	Key     string   `json:"key"`
+	Project string   `json:"project,omitempty"`
+	Title   string   `json:"title,omitempty"`
+	Body    string   `json:"body,omitempty"`
+	Pool    string   `json:"pool,omitempty"`
+	Labels  []string `json:"labels,omitempty"`
+	// Close closes the open ticket with Key, if any, with Resolution
+	// (default done). Title and Body then go in a closing comment when set.
+	Close      bool   `json:"close,omitempty"`
+	Resolution string `json:"resolution,omitempty"`
+}
+
+// UpsertResult is the ticket and what happened: created, updated,
+// unchanged, closed or none (Close with no open ticket).
+type UpsertResult struct {
+	Op     string        `json:"op"`
+	Ticket *store.Ticket `json:"ticket,omitempty"`
+}
+
 // CloseParams closes a ticket. In a session scope the session must hold it.
 type CloseParams struct {
 	ID         string `json:"id,omitempty"`
@@ -492,6 +492,8 @@ type SessionSandboxResult struct {
 	User       *acphost.User   `json:"user,omitempty"`
 	Cgroup     *acphost.Cgroup `json:"cgroup,omitempty"`
 	CgroupPath string          `json:"cgroup_path,omitempty"`
+	// Slot is the session's per-session id slot (#540).
+	Slot *int `json:"slot,omitempty"`
 }
 
 // SessionPromptParams names the session whose next prompt to show.
@@ -978,6 +980,16 @@ type ConfigShowResult struct {
 	// Instances are the packs entries with their vars and the pools,
 	// workflows and triggers each declares, prefix applied (#248).
 	Instances []config.PackInstance `json:"instances"`
+	// Watch is set when reload.watch is on (#533).
+	Watch *ConfigWatch `json:"watch,omitempty"`
+}
+
+// ConfigWatch is the config watcher's state: on, and how many files and
+// pack dirs it follows.
+type ConfigWatch struct {
+	On    bool `json:"on"`
+	Files int  `json:"files"`
+	Dirs  int  `json:"dirs"`
 }
 
 // RunStartParams starts a workflow run. Key, when set, dedups: an open run
@@ -1291,19 +1303,21 @@ const (
 	AttentionTicket     = "ticket"      // open ticket labeled needs-human (escalations, pool quarantines)
 	AttentionQuestion   = "question"    // open ticket labeled question: a worker asks a human
 	AttentionPool       = "pool"        // quarantined pool with no open escalation
-	AttentionRollback   = "rollback"    // self-deploy rolled back a commit
 	AttentionConfig     = "config"      // controller serves its last good config: a live pack failed to load (#227)
-	AttentionConfigRepo = "config-repo" // a config repo commit failed its check; the host stays on the last good one (#532)
 	AttentionResource   = "resource"    // step waiting on a full resource past attention.resource_wait (#408)
 	AttentionIngest     = "ingest"      // no live external ingest worker, or an admission backlog (#443)
 	AttentionDecision   = "decision"    // open ticket labeled proposed: a planner-proposed target to approve (#488)
 	AttentionStale      = "stale"       // open ticket no pool will claim, older than attention.orphan_age (#495)
+	AttentionJournalLag = "journal-lag" // journal shipping is behind journal.lag_max (#530)
+	// AttentionConfigInvalid: a change the config watcher saw failed to
+	// load; the running config stays (#533).
+	AttentionConfigInvalid = "config-invalid"
 )
 
 // AttentionItem is one thing waiting on a human.
 type AttentionItem struct {
 	Kind    string    `json:"kind"`
-	ID      string    `json:"id"` // ticket id, pool name or rolled-back commit
+	ID      string    `json:"id"` // ticket id or pool name
 	Project string    `json:"project,omitempty"`
 	Title   string    `json:"title"`
 	Since   time.Time `json:"since"`
@@ -1673,4 +1687,58 @@ type SessionJournalResult struct {
 	Frames  []JournalFrame `json:"frames"`
 	NextSeq int64          `json:"next_seq"`
 	Done    bool           `json:"done"`
+}
+
+// MethodDeskExec runs a desk_commands entry for a Desk plugin (#542).
+const MethodDeskExec = "desk.exec"
+
+// DeskExecParams names the command and its input, passed on stdin.
+// Ticket, if set, gets a desk_exec history row with the actor.
+type DeskExecParams struct {
+	Name   string          `json:"name"`
+	Input  json.RawMessage `json:"input,omitempty"`
+	Ticket string          `json:"ticket,omitempty"`
+}
+
+// DeskExecResult is the command's stdout: Output when it is JSON, else
+// Text.
+type DeskExecResult struct {
+	Output json.RawMessage `json:"output,omitempty"`
+	Text   string          `json:"text,omitempty"`
+}
+
+// Journal search on VictoriaLogs (#530).
+const (
+	MethodJournalSearch   = "journal.search"
+	MethodJournalBackfill = "journal.backfill"
+)
+
+// JournalSearchParams is a LogsQL query over shipped journal rows.
+// Since is a lookback when Start is zero. Limit defaults to 1000, at
+// most 10000.
+type JournalSearchParams struct {
+	Query string        `json:"query"`
+	Since time.Duration `json:"since,omitempty"`
+	Start time.Time     `json:"start,omitzero"`
+	Until time.Time     `json:"until,omitzero"`
+	Limit int           `json:"limit,omitempty"`
+}
+
+// JournalSearchResult holds VictoriaLogs result rows as it returned them:
+// frame rows, or a stats pipe's columns. Truncated means Limit cut it.
+type JournalSearchResult struct {
+	Rows      []json.RawMessage `json:"rows"`
+	Truncated bool              `json:"truncated,omitempty"`
+}
+
+// JournalBackfillParams ships existing journals from their cursors.
+// Since limits it to sessions closed within it (open ones always).
+type JournalBackfillParams struct {
+	Since time.Duration `json:"since,omitempty"`
+}
+
+// JournalBackfillResult counts what a backfill shipped.
+type JournalBackfillResult struct {
+	Sessions int `json:"sessions"`
+	Frames   int `json:"frames"`
 }

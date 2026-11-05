@@ -31,6 +31,12 @@ var stdout io.Writer = os.Stdout
 // call connects to the right socket and runs one request, printing the
 // result as JSON.
 func (g *Globals) call(method string, params, out any) error {
+	return g.callTimeout(30*time.Second, method, params, out)
+}
+
+// callTimeout is call with its own deadline, for slow methods such as
+// journal.backfill.
+func (g *Globals) callTimeout(timeout time.Duration, method string, params, out any) error {
 	sock := g.Socket
 	if sock == "" {
 		r, err := g.root()
@@ -39,7 +45,7 @@ func (g *Globals) call(method string, params, out any) error {
 		}
 		sock = r.AdminSocket()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	// An agent's calls join its session's trace (set by the controller).
 	ctx = telemetry.WithTraceParent(ctx, os.Getenv("JOBSHOP_TRACEPARENT"))
@@ -364,6 +370,29 @@ type ticketCmd struct {
 	Update ticketUpdateCmd `cmd:"" help:"Change a ticket."`
 	Close  closeCmd        `cmd:"" help:"Close a ticket."`
 	Reopen ticketReopenCmd `cmd:"" help:"Reopen a closed ticket (admin)."`
+	Upsert ticketUpsertCmd `cmd:"" help:"Create or update the open ticket with a key, or close it (admin). For outside tools that report a problem and clear it."`
+}
+
+type ticketUpsertCmd struct {
+	Key        string   `required:"" help:"Stable key, e.g. deploy:rollback. At most one open ticket per key and project."`
+	Title      string   `arg:"" optional:"" help:"Title (required unless --close)."`
+	Body       string   `short:"b" help:"Body. Use - to read stdin."`
+	Project    string   `help:"Project (default: the config's default project)."`
+	Pool       string   `help:"Pool to route a new ticket to."`
+	Label      []string `short:"l" help:"Labels to add, e.g. needs-human."`
+	Close      bool     `help:"Close the open ticket with the key, if any; title and body become a closing comment."`
+	Resolution string   `short:"r" help:"Resolution with --close (default done)."`
+}
+
+func (c ticketUpsertCmd) Run(g *Globals) error {
+	body, err := readBody(c.Body)
+	if err != nil {
+		return err
+	}
+	return g.call(rpc.MethodTicketUpsert, rpc.UpsertParams{
+		Key: c.Key, Project: c.Project, Title: c.Title, Body: body, Pool: c.Pool,
+		Labels: c.Label, Close: c.Close, Resolution: c.Resolution,
+	}, nil)
 }
 
 type ticketCreateCmd struct {
@@ -735,7 +764,11 @@ func (c sessionSandboxCmd) Run(g *Globals) error {
 		return err
 	}
 	if u := res.User; u != nil {
-		fmt.Printf("user uid %d gid %d mapped to %d:%d, groups %v\n", u.UID, u.GID, u.MapUID, u.MapGID, u.Groups)
+		slot := ""
+		if res.Slot != nil {
+			slot = fmt.Sprintf(" (per-session slot %d)", *res.Slot)
+		}
+		fmt.Printf("user uid %d gid %d mapped to %d:%d%s, groups %v\n", u.UID, u.GID, u.MapUID, u.MapGID, slot, u.Groups)
 	}
 	if cg := res.Cgroup; cg != nil {
 		fmt.Printf("cgroup %s: cpu.max %q memory.max %q memory.high %q swap.max %q pids.max %d\n",

@@ -19,6 +19,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -265,23 +266,7 @@ type stepTemplates struct {
 
 // fill renders one template.
 func (st stepTemplates) fill(s string) (string, error) {
-	return st.w.FillStepTemplate(s, st.vars, st.steps, st.look)
-}
-
-// look resolves ${steps.<id>.<field>}.
-func (st stepTemplates) look(id, field string) (string, bool) {
-	f, ok := st.out[id]
-	if !ok {
-		return "", false
-	}
-	switch field {
-	case "output":
-		return f.Output, true
-	case "outcome":
-		return f.Outcome, true
-	}
-	path, _ := strings.CutPrefix(field, "json.")
-	return jsonPath(f.Output, path)
+	return st.w.FillStepTemplate(s, st.vars, st.steps)
 }
 
 // autoStepVars loads the run's vars and earlier steps' outputs.
@@ -325,38 +310,6 @@ func (c *Controller) autoStepVars(ctx context.Context, sf store.StepFields) (ste
 		st.steps[f.Step] = m
 	}
 	return st, nil
-}
-
-// jsonPath reads a dotted path (a.b.0.c) from JSON text. Strings come back
-// bare, other values as JSON.
-func jsonPath(text, path string) (string, bool) {
-	var v any
-	if json.Unmarshal([]byte(text), &v) != nil {
-		return "", false
-	}
-	for p := range strings.SplitSeq(path, ".") {
-		switch x := v.(type) {
-		case map[string]any:
-			n, ok := x[p]
-			if !ok {
-				return "", false
-			}
-			v = n
-		case []any:
-			i, err := strconv.Atoi(p)
-			if err != nil || i < 0 || i >= len(x) {
-				return "", false
-			}
-			v = x[i]
-		default:
-			return "", false
-		}
-	}
-	if s, ok := v.(string); ok {
-		return s, true
-	}
-	b, err := json.Marshal(v)
-	return string(b), err == nil
 }
 
 // stepEnv is what a command step gets on top of the controller's env:
@@ -469,7 +422,7 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 	}
 	extra := append(stepEnv(st.vars, attemptKey, t), c.slotEnv(ctx, t)...)
 	env := append(os.Environ(), extra...)
-	res := autoResult{command: telemetry.RedactText(strings.Join(argv, " "), env)}
+	res := autoResult{command: redact.Text(strings.Join(argv, " "), env)}
 	pl, err := c.stepPlace(s, sf, st)
 	if err != nil {
 		res.result, res.err = resultFailed, err.Error()
@@ -489,7 +442,7 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	cmd.WaitDelay = 5 * time.Second
 	runErr := cmd.Run()
-	res.output = telemetry.RedactText(out.String(), env)
+	res.output = redact.Text(out.String(), env)
 	res.outcome = outcomeOf(res.output)
 	var exit *exec.ExitError
 	switch {
@@ -502,7 +455,7 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 	default:
 		res.result = resultFailed
 		res.err = runErr.Error()
-		if tail := strings.TrimSpace(telemetry.RedactText(errOut.String(), env)); tail != "" {
+		if tail := strings.TrimSpace(redact.Text(errOut.String(), env)); tail != "" {
 			res.err += ": " + lastLines(tail, 5)
 		}
 	}
@@ -583,7 +536,7 @@ func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemp
 	defer func() { _ = resp.Body.Close() }()
 	var out limitedBuffer
 	_, _ = io.Copy(&out, resp.Body)
-	res.output = telemetry.RedactText(out.String(), secrets)
+	res.output = redact.Text(out.String(), secrets)
 	res.outcome = outcomeOf(res.output)
 	switch code := resp.StatusCode; {
 	case code >= 200 && code < 300:

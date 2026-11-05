@@ -34,7 +34,7 @@ workflows:
     issue: issue
     repo: elee1766/jobshop
     steps:
-      - {id: implement, pool: dev, title: "Implement #${issue}", prompt: "do it"}
+      - {id: implement, pool: dev, title: "Implement #{{.issue}}", prompt: "do it"}
 activity:
   window: 24h
   max_items: 3

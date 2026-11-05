@@ -1,0 +1,9 @@
+{
+  "name": "csv-table",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "api": ">=1",
+  "contributes": [
+    { "slot": "artifact", "element": "csv-table-artifact", "match": { "type": ["text/csv"], "ext": ["csv"] } }
+  ]
+}

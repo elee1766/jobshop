@@ -17,8 +17,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
-// Push notifies subscribed browsers of new attention items (needs-human
-// runs and tickets, quarantined pools, failed deploys). Desk keeps its
+// Push notifies subscribed browsers of new attention items (the
+// controller's attention list). Desk keeps its
 // own state file, not the database: it is an admin-socket client.
 type Push struct {
 	// File holds the VAPID key, subscriptions and the attention keys
