@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/elee1766/jobshop/compare/v0.1.9...v0.2.0) (2026-11-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **nix:** hosts that relied on the default agent tools must list them in services.jobshop.path (gasserver needs that before deploy). Tested: module eval checks (default PATH has no go/gcc/mise, the warnings fire), nix fmt.
+
+### Features
+
+* **nix:** drop consumer-specific module defaults (JOB-23) ([#720](https://github.com/elee1766/jobshop/issues/720)) ([f725344](https://github.com/elee1766/jobshop/commit/f7253447759aa385c68dac483ec445b76124d0b0))
+
 ## [0.1.9](https://github.com/elee1766/jobshop/compare/v0.1.8...v0.1.9) (2026-11-05)
 
 
