@@ -349,7 +349,14 @@ func lock(path string) (func(), error) {
 		}
 		return nil, err
 	}
-	return func() { _ = f.Close() }, nil
+	// Unlock before close (#601): a flock belongs to the open file
+	// description, and a child forked by another goroutine holds a copy
+	// until its exec closes it, so close alone can leave the lock held and
+	// a restarted controller in the same process fails to take it.
+	return func() {
+		_ = unix.Flock(int(f.Fd()), unix.LOCK_UN)
+		_ = f.Close()
+	}, nil
 }
 
 // listen binds a unix socket, replacing a stale one. The controller lock
