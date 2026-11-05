@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -400,6 +401,11 @@ func (ar admissionRunner) callAdmission(ctx context.Context, h config.AdmissionH
 func (ar admissionRunner) execAdmission(ctx context.Context, h config.AdmissionHook, body []byte) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", h.Command)
 	cmd.Dir = ar.dir
+	// Kill the whole group on timeout: a child of sh (sleep, curl) would
+	// otherwise keep stdout open and hold Output past the timeout.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = time.Second
 	cmd.Stdin = bytes.NewReader(body)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
