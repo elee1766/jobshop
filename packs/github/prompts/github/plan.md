@@ -107,9 +107,17 @@ you propose the next one and a human approves it.
   pool stays idle.
 - Attention: file a ticket so `jobshop attention` lists the decision:
   `jobshop ticket create "Proposed target: <summary> (#<n>)" -l proposed --meta '{"github":{"repo":"{{.repo}}","issue":<n>}}'`.
-  It lands in this pool. When you hold it: if the issue is still
-  `proposed`, `jobshop release --until 24h -r "waiting on approval"`;
-  if it was relabeled `target` or closed, close the ticket.
+  Then close your planning ticket; do not park anything on the
+  proposal with `release --until`. The human resolves the proposal
+  ticket (`jobshop decision approve|reject|dismiss <id>`, or Desk's
+  buttons), which relabels or closes the issue and clears deferrals on
+  tickets naming it. A later pass reads the issue labels. If you hold
+  the proposal ticket itself: issue relabeled `target` or closed, close
+  it; still `proposed`, park it on the label, which clears within a
+  minute of approval or rejection:
+  `jobshop wait add 'github.label:issue={{.repo}}#<n>,label=target' -r "waiting on approval of #<n>"`.
+- A dismissed proposal (ticket closed `dismissed`, issue still open)
+  means "not now": do not propose the same target again for 7 days.
 - Approval is the human's: never add the `target` label yourself, never
   file work for a `proposed` issue, and never edit a proposal after a
   human commented on it. A relabeled `target` is worked on the next pass

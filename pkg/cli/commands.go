@@ -363,14 +363,15 @@ type whoamiCmd struct{}
 func (whoamiCmd) Run(g *Globals) error { return g.call(rpc.MethodWhoami, nil, nil) }
 
 type ticketCmd struct {
-	Create ticketCreateCmd `cmd:"" help:"Create a ticket."`
-	Show   ticketShowCmd   `cmd:"" help:"Show a ticket with edges, comments and history."`
-	Trace  ticketTraceCmd  `cmd:"" help:"Show the chain from a ticket: its trigger, holders, GitHub links and the tickets it led to."`
-	List   ticketListCmd   `cmd:"" help:"List tickets."`
-	Update ticketUpdateCmd `cmd:"" help:"Change a ticket."`
-	Close  closeCmd        `cmd:"" help:"Close a ticket."`
-	Reopen ticketReopenCmd `cmd:"" help:"Reopen a closed ticket (admin)."`
-	Upsert ticketUpsertCmd `cmd:"" help:"Create or update the open ticket with a key, or close it (admin). For outside tools that report a problem and clear it."`
+	Create  ticketCreateCmd  `cmd:"" help:"Create a ticket."`
+	Show    ticketShowCmd    `cmd:"" help:"Show a ticket with edges, comments and history."`
+	Trace   ticketTraceCmd   `cmd:"" help:"Show the chain from a ticket: its trigger, holders, GitHub links and the tickets it led to."`
+	List    ticketListCmd    `cmd:"" help:"List tickets."`
+	Update  ticketUpdateCmd  `cmd:"" help:"Change a ticket."`
+	Close   closeCmd         `cmd:"" help:"Close a ticket."`
+	Reopen  ticketReopenCmd  `cmd:"" help:"Reopen a closed ticket (admin)."`
+	Undefer ticketUndeferCmd `cmd:"" help:"Clear a ticket's deferral so it is ready now (admin, or pool grant ticket-undefer in the session's project)."`
+	Upsert  ticketUpsertCmd  `cmd:"" help:"Create or update the open ticket with a key, or close it (admin). For outside tools that report a problem and clear it."`
 }
 
 type ticketUpsertCmd struct {
@@ -528,6 +529,25 @@ type ticketReopenCmd struct {
 
 func (c ticketReopenCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodTicketReopen, rpc.IDParams{ID: c.ID}, nil)
+}
+
+type ticketUndeferCmd struct {
+	ID string `arg:"" help:"Ticket id."`
+}
+
+func (c ticketUndeferCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodTicketUndefer, rpc.IDParams{ID: c.ID}, nil)
+}
+
+// decision (#603): resolve a planner proposal (a ticket labeled proposed).
+type decisionCmd struct {
+	Action string `arg:"" enum:"approve,reject,dismiss" help:"approve (relabel the issue proposed -> target), reject (close the issue as not planned) or dismiss (close only the ticket)."`
+	ID     string `arg:"" help:"Decision ticket id."`
+	Note   string `short:"n" help:"Note for the issue comment and the ticket."`
+}
+
+func (c decisionCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodDecisionResolve, rpc.DecisionResolveParams{ID: c.ID, Action: c.Action, Note: c.Note}, nil)
 }
 
 type commentCmd struct {

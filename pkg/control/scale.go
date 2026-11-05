@@ -410,7 +410,8 @@ func (c *Controller) setCordon(ctx context.Context, actor, id string, cd *store.
 	return fmt.Errorf("%w: session %s kept changing", store.ErrConflict, id)
 }
 
-// wakeRunner ends a runner's idle wait so it sees a cordon change now.
+// wakeRunner ends a runner's idle wait so it sees a cordon change, or a
+// new message (#603), now instead of at its next poll.
 func (c *Controller) wakeRunner(id string) {
 	c.mu.Lock()
 	r := c.runners[id]

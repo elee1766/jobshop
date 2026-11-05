@@ -38,6 +38,11 @@ and, for Linear instances, the Linear tools the instance's prompts name:
   current turn.
 - Release a blocked worker's ticket: `jobshop release <id> -r "<why>"
   [--until <duration>]` (works on tickets other sessions of the project hold).
+- Planner proposals (attention kind `decision`): `jobshop decision
+  approve|reject|dismiss <id> [-n "<note>"]` relabels or closes the
+  GitHub issue and wakes the planner; do not relabel the issue by hand.
+  A ticket deferred with `release --until` that should run now:
+  `jobshop ticket undefer <id>`.
 - Runs: `jobshop run start <prefix>pr-work --var issue=<n> --key
   issue-<n>`, `jobshop run show <run>`, `jobshop run list`.
 - State: `jobshop session list`, `jobshop pool list`, `jobshop trigger

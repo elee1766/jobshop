@@ -77,6 +77,16 @@
   let draft = $state('');
   let sending = $state(false);
   let notice = $state('');
+  // Sent messages not yet in the transcript (#603): shown at once with
+  // their state, dropped when the turn that delivers them starts.
+  /** @type {{ text: string, state: string }[]} */
+  let pending = $state([]);
+  $effect(() => {
+    const users = (t?.blocks ?? []).filter((b) => b.kind === 'user').map((b) => /** @type {any} */ (b).text || '');
+    if (pending.length && pending.some((p) => users.some((u) => u.includes(p.text)))) {
+      pending = pending.filter((p) => !users.some((u) => u.includes(p.text)));
+    }
+  });
   /** @type {HTMLElement | undefined} */
   let scroller = $state();
   let pinned = $state(true);
@@ -145,6 +155,7 @@
         notice = 'Answer sent to the asking session';
       } else {
         await api.session.send(chatKey ? { key: chatKey, text, interrupt } : { session: id, text, interrupt });
+        pending = [...pending, { text, state: working && !interrupt ? 'queued for after this turn' : 'sent, waiting for the session' }];
         if (working && !interrupt) notice = 'Queued for after this turn';
       }
       rememberPrompt(id, text);
@@ -198,9 +209,12 @@
       case 'run': return [{ label: 'Resume run', run: call('run.resume', { id: itemId }), ask: 'Resume run ' + itemId + '?' }];
       case 'pool': return [{ label: 'Unquarantine pool', run: call('pool.unquarantine', { pool: itemId }), ask: 'Unquarantine pool ' + itemId + '?' }];
       case 'wait': return [{ label: 'Clear wait', run: call('wait.clear', { id: itemId, reason: 'cleared in Desk' }), ask: 'Clear the wait on ' + itemId + '?' }];
+      // decision.resolve acts on the proposal issue, closes the ticket and
+      // wakes whoever waits on it (#603).
       case 'decision': return [
-        { label: 'Approve as target', run: async () => { await api.call('label.add', { id: itemId, label: 'target' }); return api.call('label.remove', { id: itemId, label: 'proposed' }); }, ask: 'Approve ' + itemId + ': relabel proposed to target?' },
-        { label: 'Close proposal', run: call('ticket.close', { id: itemId, resolution: 'rejected' }), ask: 'Close proposal ' + itemId + '?' },
+        { label: 'Approve as target', run: call('decision.resolve', { id: itemId, action: 'approve' }), ask: 'Approve ' + itemId + ': relabel the issue proposed to target?' },
+        { label: 'Reject', run: call('decision.resolve', { id: itemId, action: 'reject' }), ask: 'Reject ' + itemId + ': close the issue as not planned?' },
+        { label: 'Dismiss', run: call('decision.resolve', { id: itemId, action: 'dismiss' }), ask: 'Dismiss ' + itemId + ' for now? The issue is left as is.' },
       ];
       case 'ticket': case 'question': case 'stale':
         return [{ label: 'Close ticket', run: call('ticket.close', { id: itemId }), ask: 'Close ' + itemId + ' as done?' }];
@@ -246,6 +260,9 @@
       <Block block={b} />
     {:else}
       <p class="none">No messages yet.</p>
+    {/each}
+    {#each pending as p, i (i)}
+      <div class="pending" data-testid="chat-pending"><div class="ptext">{p.text}</div><span class="pstate">{p.state}</span></div>
     {/each}
     {#if working}
       <p class="status" data-testid="chat-working"><span class="spin"></span>{runningTool || 'Working'}</p>
@@ -314,6 +331,9 @@
   .scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 12px 16px 16px; }
   .older { font-size: 12px; margin: 0 0 12px; padding: 4px 8px; border: 1px solid var(--desk-border); border-radius: 4px; background: none; color: var(--desk-faint); cursor: pointer; }
   .none { color: var(--desk-faint); text-align: center; padding: 24px 0; margin: 0; }
+  .pending { margin: 8px 0 0 auto; max-width: 85%; padding: 8px 10px; border-radius: var(--desk-radius); border: 1px dashed var(--desk-border); background: var(--desk-raised); }
+  .ptext { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .pstate { display: block; margin-top: 4px; font-size: 11px; color: var(--desk-faint); }
   .err { color: var(--desk-bad); font-size: 12px; }
   .status { display: flex; align-items: center; gap: 8px; color: var(--desk-accent); font-size: 12px; margin: 8px 0 0; overflow-wrap: anywhere; }
   .spin { flex: none; width: 10px; height: 10px; border: 2px solid var(--desk-accent); border-right-color: transparent; border-radius: 50%; animation: spin 0.9s linear infinite; }

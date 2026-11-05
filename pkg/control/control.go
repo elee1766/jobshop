@@ -835,6 +835,8 @@ func init() {
 		rpc.MethodWaitAdd:           bind((*Controller).waitAdd),
 		rpc.MethodWaitList:          bind((*Controller).waitList),
 		rpc.MethodWaitClear:         bind((*Controller).waitClear),
+		rpc.MethodDecisionResolve:   bind((*Controller).decisionResolve),
+		rpc.MethodTicketUndefer:     bind((*Controller).ticketUndefer),
 		rpc.MethodDeskExec:          bind((*Controller).deskExec),
 	}
 }

@@ -47,6 +47,7 @@ type fakePRs struct {
 	pr      map[string]string
 	reviews map[string]string
 	checks  map[string]string
+	issues  map[string]string
 	calls   int
 }
 
@@ -75,10 +76,16 @@ func (f *fakePRs) Checks(_ context.Context, repo string, n int, _ string, _ bool
 	return parsePRChecks([]byte(f.checks[prKey(repo, n)]))
 }
 
+func (f *fakePRs) Issue(_ context.Context, repo string, n int) (issueInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return parseIssue([]byte(f.issues[prKey(repo, n)]))
+}
+
 func waitController(t *testing.T) (*Controller, *stallClock, *fakePRs, *fakeThreads) {
 	t.Helper()
 	c, clk, threads := subController(t)
-	return c, clk, &fakePRs{pr: map[string]string{}, reviews: map[string]string{}, checks: map[string]string{}}, threads
+	return c, clk, &fakePRs{pr: map[string]string{}, reviews: map[string]string{}, checks: map[string]string{}, issues: map[string]string{}}, threads
 }
 
 func sessScope(s store.Ticket) scope {
