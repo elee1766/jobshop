@@ -444,6 +444,11 @@ export interface CreateParams {
   force?: boolean;
 }
 
+export interface DNS {
+  forward: string;
+  host?: string;
+}
+
 export interface DecisionResolveParams {
   id: string;
   action: string;
@@ -1004,6 +1009,8 @@ export interface Sandbox {
   network?: string;
   deny?: string[];
   pasta?: string;
+  dns?: DNS;
+  resolv_conf?: string;
   extra_args?: string[];
 }
 

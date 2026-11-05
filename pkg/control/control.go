@@ -154,6 +154,9 @@ type Controller struct {
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
+	// dnsChecked holds the pool and DNS settings whose sandbox DNS check
+	// passed (JOB-20); guarded by mu.
+	dnsChecked map[string]bool
 	// ingestWorkers is each external ingest worker's last heartbeat (#443).
 	ingestWorkers map[string]*rpc.IngestWorker
 	// configErr is the pack load error the controller started past,

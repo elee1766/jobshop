@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"path/filepath"
 	"strings"
 )
@@ -45,6 +46,24 @@ type Sandbox struct {
 	// of the spec env; a trailing * keeps every name with that prefix.
 	// bwrap clears the rest.
 	EnvKeep []string `yaml:"env_keep"`
+	// DNS is pasta's DNS forwarding (JOB-20, acphost#124): queries the agent
+	// sends to Forward inside the namespace go to Host on the host side.
+	// Needs network pasta. Nil inherits; unset keeps pasta's default.
+	DNS *SandboxDNS `yaml:"dns"`
+	// ResolvConf is a host file bound read-only over /etc/resolv.conf in
+	// the sandbox, usually naming DNS.Forward. Empty inherits.
+	ResolvConf string `yaml:"resolv_conf"`
+	// DNSCheck is a host name a pasta sandbox must resolve before the
+	// pool's first session spawns; on failure the pool is quarantined.
+	// Empty inherits; unset skips the check.
+	DNSCheck string `yaml:"dns_check"`
+}
+
+// SandboxDNS is passed to pasta as --dns-forward and --dns-host. Both are
+// IP addresses; jobshop picks no defaults (host config sets them).
+type SandboxDNS struct {
+	Forward string `yaml:"forward"`
+	Host    string `yaml:"host"`
 }
 
 // Defaults are host-wide settings agents and pools inherit.
@@ -80,12 +99,39 @@ func (s *Sandbox) check(profiles map[string]Sandbox) error {
 	if err := checkDeny(s.Network, s.Deny); err != nil {
 		return err
 	}
+	if err := checkDNS(s); err != nil {
+		return err
+	}
 	for _, l := range [][]string{s.RO, s.RW, s.Hide} {
 		for _, p := range l {
 			if !strings.HasPrefix(p, "~/") && !filepath.IsAbs(p) {
 				return fmt.Errorf("sandbox path %q must be absolute or start with ~/", p)
 			}
 		}
+	}
+	return nil
+}
+
+// checkDNS validates the pasta DNS settings (JOB-20).
+func checkDNS(s *Sandbox) error {
+	if s.DNS != nil {
+		if s.Network != "" && s.Network != NetworkPasta {
+			return fmt.Errorf("sandbox dns needs network %s", NetworkPasta)
+		}
+		if _, err := netip.ParseAddr(s.DNS.Forward); err != nil {
+			return fmt.Errorf("sandbox dns.forward %q must be an IP address", s.DNS.Forward)
+		}
+		if s.DNS.Host != "" {
+			if _, err := netip.ParseAddr(s.DNS.Host); err != nil {
+				return fmt.Errorf("sandbox dns.host %q must be an IP address", s.DNS.Host)
+			}
+		}
+	}
+	if p := s.ResolvConf; p != "" && !strings.HasPrefix(p, "~/") && !filepath.IsAbs(p) {
+		return fmt.Errorf("sandbox resolv_conf %q must be absolute or start with ~/", p)
+	}
+	if s.DNSCheck != "" && strings.ContainsAny(s.DNSCheck, " /") {
+		return fmt.Errorf("sandbox dns_check %q must be a host name", s.DNSCheck)
 	}
 	return nil
 }
@@ -120,13 +166,25 @@ func (c *Config) SandboxFor(pool string) Sandbox {
 		out.Hide = append(out.Hide, s.Hide...)
 		out.Deny = append(out.Deny, s.Deny...)
 		out.EnvKeep = append(out.EnvKeep, s.EnvKeep...)
+		if s.DNS != nil {
+			out.DNS = s.DNS
+		}
+		if s.ResolvConf != "" {
+			out.ResolvConf = s.ResolvConf
+		}
+		if s.DNSCheck != "" {
+			out.DNSCheck = s.DNSCheck
+		}
 	}
 	if out.Backend == SandboxNone {
 		out.Backend = ""
 	}
 	if out.Network != NetworkPasta {
-		// Deny set on a pasta default and a host pool has nothing to filter.
+		// Deny set on a pasta default and a host pool has nothing to filter,
+		// and pasta's DNS settings have no pasta to go to.
 		out.Deny = nil
+		out.DNS = nil
+		out.DNSCheck = ""
 	}
 	return out
 }

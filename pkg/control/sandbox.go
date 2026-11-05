@@ -48,6 +48,12 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbo
 		return nil, nil
 	}
 	s := &host.Sandbox{Backend: config.SandboxBubblewrap, Network: sb.Network, Deny: sb.Deny}
+	if sb.DNS != nil {
+		s.DNS = &host.DNS{Forward: sb.DNS.Forward, Host: sb.DNS.Host}
+	}
+	if sb.ResolvConf != "" {
+		s.ResolvConf = expandHome(sb.ResolvConf)
+	}
 	ro := func(p string) { s.RO = append(s.RO, host.Mount{Src: p, SkipMissing: true}) }
 	// jobshop itself and the agent command, which may live outside the store.
 	ro(filepath.Dir(exe))
@@ -135,8 +141,46 @@ func (c *Controller) sandboxKey(pool string) []string {
 	key := []string{"JOBSHOP_SANDBOX=" + sb.Backend + " net=" + sb.Network +
 		" ro=" + strings.Join(append(slices.Clone(sb.RO), cfg.SharedTools...), ",") +
 		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",") + " deny=" + strings.Join(sb.Deny, ",") +
-		" env=" + strings.Join(sb.EnvKeep, ",")}
+		" env=" + strings.Join(sb.EnvKeep, ",") + " " + dnsKey(sb)}
 	return key
+}
+
+// dnsKey is the part of sb the pasta DNS check depends on.
+func dnsKey(sb config.Sandbox) string {
+	k := "resolv=" + sb.ResolvConf + " dnscheck=" + sb.DNSCheck + " deny=" + strings.Join(sb.Deny, ",")
+	if sb.DNS != nil {
+		k += " dns=" + sb.DNS.Forward + ">" + sb.DNS.Host
+	}
+	return k
+}
+
+// checkSandboxDNS resolves the pool's dns_check name inside a pasta
+// namespace set up like the agent's (JOB-20), once per pool and DNS
+// setting: it spawns pasta, so it is not run per session. A failure is
+// permanent and quarantines the pool with an error naming sandbox.dns,
+// instead of every turn of the agent failing on name resolution.
+func (c *Controller) checkSandboxDNS(pool string, s *host.Sandbox) error {
+	sb := c.config().SandboxFor(pool)
+	if s == nil || sb.Network != config.NetworkPasta || sb.DNSCheck == "" {
+		return nil
+	}
+	key := pool + "\x00" + dnsKey(sb)
+	c.mu.Lock()
+	ok := c.dnsChecked[key]
+	c.mu.Unlock()
+	if ok {
+		return nil
+	}
+	if err := host.CheckSandboxDNS(*s, sb.DNSCheck); err != nil {
+		return host.Permanentf("no DNS in sandbox: %w", err)
+	}
+	c.mu.Lock()
+	if c.dnsChecked == nil {
+		c.dnsChecked = map[string]bool{}
+	}
+	c.dnsChecked[key] = true
+	c.mu.Unlock()
+	return nil
 }
 
 func within(p, root string) bool {
