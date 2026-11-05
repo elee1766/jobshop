@@ -10,6 +10,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/writekey"
 )
 
 // Ingest dispatch (#442, docs/notes/442-ingest-dispatch.md). Pollers only
@@ -147,7 +148,7 @@ func (c *Controller) dispatchComments(ctx context.Context, rows []store.InboxIte
 			continue
 		}
 		key := "dispatch/" + it.DeliveryID
-		wk, err := c.store.ClaimWriteKey(ctx, key, dispatchKeyOp, "controller")
+		wk, err := writekey.Claim(ctx, c.store, key, dispatchKeyOp, "controller")
 		if err != nil {
 			c.log.Warn("dispatch: write key", "delivery", it.DeliveryID, "err", err)
 			continue
@@ -175,7 +176,7 @@ func (c *Controller) dispatchComments(ctx context.Context, rows []store.InboxIte
 			continue // leases expire; retried
 		}
 		for _, key := range g.keys {
-			if _, err := c.store.FinishWriteKey(ctx, key, "delivered"); err != nil {
+			if _, err := writekey.Finish(ctx, c.store, key, "delivered"); err != nil {
 				c.log.Warn("dispatch: finish write key", "key", key, "err", err)
 			}
 		}

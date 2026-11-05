@@ -62,7 +62,6 @@ func Run(t *testing.T, newStore Factory) {
 		{"Resources", testResources},
 		{"ProviderSlots", testProviderSlots},
 		{"ConcurrentSlotClaims", testConcurrentSlotClaims},
-		{"PruneWriteKeys", testPruneWriteKeys},
 		{"ConcurrentClaims", testConcurrentClaims},
 		{"ConcurrentResourceClaims", testConcurrentResourceClaims},
 		{"ClaimAfterSkippedBlocker", testClaimAfterSkippedBlocker},
@@ -790,30 +789,4 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	ready, err := s.Ready(ctx, proj, "", 0)
 	require.NoError(t, err)
 	assert.NotContains(t, ids(ready), "js-b2", "batches are never claimable")
-}
-
-// testPruneWriteKeys: keys older than the cutoff go, done or pending;
-// newer keys stay (#415).
-func testPruneWriteKeys(t *testing.T, s store.Store, c *Clock) {
-	ctx := t.Context()
-	_, err := s.ClaimWriteKey(ctx, "js/old-done", "op", "a")
-	require.NoError(t, err)
-	_, err = s.FinishWriteKey(ctx, "js/old-done", "r")
-	require.NoError(t, err)
-	_, err = s.ClaimWriteKey(ctx, "js/old-pending", "op", "a")
-	require.NoError(t, err)
-	c.Advance(47 * time.Hour)
-	_, err = s.ClaimWriteKey(ctx, "js/new", "op", "a")
-	require.NoError(t, err)
-	c.Advance(2 * time.Hour)
-
-	n, err := s.PruneWriteKeys(ctx, c.Now().Add(-48*time.Hour))
-	require.NoError(t, err)
-	assert.Equal(t, int64(2), n)
-	k, err := s.ClaimWriteKey(ctx, "js/old-done", "op", "a")
-	require.NoError(t, err)
-	assert.True(t, k.New, "pruned key is claimed fresh")
-	k, err = s.ClaimWriteKey(ctx, "js/new", "op", "a")
-	require.NoError(t, err)
-	assert.False(t, k.New, "newer key kept")
 }

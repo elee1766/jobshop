@@ -40,8 +40,7 @@ type Poller struct {
 
 // PollStore is the part of the store a poller uses.
 type PollStore interface {
-	PollCursor(ctx context.Context, poller, repo, stream string) (store.PollCursor, error)
-	SetPollCursor(ctx context.Context, c store.PollCursor) error
+	Collection(ctx context.Context, spec store.CollectionSpec) (store.Collection, error)
 	InboxPutBatch(ctx context.Context, its []store.InboxItem) (int, error)
 }
 
@@ -164,7 +163,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 		res.Items, res.Fresh = len(items), fresh
 	}
 	for _, c := range cursors {
-		if err := p.Store.SetPollCursor(ctx, c); err != nil {
+		if err := SetPollCursor(ctx, p.Store, c); err != nil {
 			return res, err
 		}
 	}
@@ -174,7 +173,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 // cursor loads a stream's cursor. A missing one starts at now and is
 // stored by the caller, so the first pass reads nothing.
 func (p *Poller) cursor(ctx context.Context, repo, stream string) (store.PollCursor, error) {
-	c, err := p.Store.PollCursor(ctx, p.Name, repo, stream)
+	c, err := GetPollCursor(ctx, p.Store, p.Name, repo, stream)
 	if err != nil {
 		return c, err
 	}

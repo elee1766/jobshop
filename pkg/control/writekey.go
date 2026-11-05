@@ -7,6 +7,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/writekey"
 )
 
 // Idempotency keys for tracker writes (#280). The CLI claims a key before
@@ -27,7 +28,7 @@ func (c *Controller) writeKeyClaim(ctx context.Context, sc scope, p rpc.WriteKey
 	if strings.TrimSpace(p.Key) == "" {
 		return nil, fmt.Errorf("%w: writekey.claim needs a key", store.ErrInvalid)
 	}
-	k, err := c.store.ClaimWriteKey(ctx, writeKeyName(sc, p.Key), p.Op, sc.actor)
+	k, err := writekey.Claim(ctx, c.store, writeKeyName(sc, p.Key), p.Op, sc.actor)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +41,7 @@ func (c *Controller) writeKeyFinish(ctx context.Context, sc scope, p rpc.WriteKe
 	if strings.TrimSpace(p.Key) == "" || p.Result == "" {
 		return nil, fmt.Errorf("%w: writekey.finish needs a key and a result", store.ErrInvalid)
 	}
-	k, err := c.store.FinishWriteKey(ctx, writeKeyName(sc, p.Key), p.Result)
+	k, err := writekey.Finish(ctx, c.store, writeKeyName(sc, p.Key), p.Result)
 	if err != nil {
 		return nil, err
 	}
