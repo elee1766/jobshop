@@ -147,6 +147,7 @@ export interface RpcMethods {
   "ticket.show": { params: IDParams; result: ShowResult };
   "ticket.trace": { params: TraceParams; result: TraceNode };
   "ticket.update": { params: UpdateParams; result: Ticket };
+  "ticket.upsert": { params: UpsertParams; result: UpsertResult };
   "trigger.list": { params: Record<string, never>; result: TriggerInfo[] };
   "version": { params: Record<string, never>; result: VersionResult };
   "wait.add": { params: WaitAddParams; result: Ticket };
@@ -1169,6 +1170,22 @@ export interface UpdateParams {
   meta?: unknown;
   if_revision?: number;
   force?: boolean;
+}
+
+export interface UpsertParams {
+  key: string;
+  project?: string;
+  title?: string;
+  body?: string;
+  pool?: string;
+  labels?: string[];
+  close?: boolean;
+  resolution?: string;
+}
+
+export interface UpsertResult {
+  op: string;
+  ticket?: Ticket;
 }
 
 export interface User {

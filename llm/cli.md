@@ -84,6 +84,10 @@ Commands:
   ticket reopen <id>
     Reopen a closed ticket (admin).
 
+  ticket upsert --key=STRING [<title>] [flags]
+    Create or update the open ticket with a key, or close it (admin). For
+    outside tools that report a problem and clear it.
+
   close [<id>] [flags]
     Close a ticket (default: the session's current one).
 
@@ -558,9 +562,6 @@ Flags:
                                    --allow-remote.
       --host=HOST,...              Extra Host header values to accept (e.g.
                                    a tailnet name); loopback is always accepted.
-      --deploy-state="/var/lib/jobshop-deploy"
-                                   Self-deploy state dir with deployed and
-                                   failed files.
       --allow-remote               Allow a non-loopback listen address. Desk
                                    has no login; expose it only on a trusted
                                    network.
@@ -767,6 +768,10 @@ Commands:
 
   ticket reopen <id>
     Reopen a closed ticket (admin).
+
+  ticket upsert --key=STRING [<title>] [flags]
+    Create or update the open ticket with a key, or close it (admin). For
+    outside tools that report a problem and clear it.
 ```
 
 ## jobshop ticket create
@@ -949,6 +954,38 @@ Flags:
                          ($JOBSHOP_ROOT).
       --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
                          else the root's admin socket ($JOBSHOP_SOCKET).
+```
+
+## jobshop ticket upsert
+
+```
+Usage: jobshop ticket upsert --key=STRING [<title>] [flags]
+
+Create or update the open ticket with a key, or close it (admin). For outside
+tools that report a problem and clear it.
+
+Arguments:
+  [<title>]    Title (required unless --close).
+
+Flags:
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
+
+      --key=STRING           Stable key, e.g. deploy:rollback. At most one open
+                             ticket per key and project.
+  -b, --body=STRING          Body. Use - to read stdin.
+      --project=STRING       Project (default: the config's default project).
+      --pool=STRING          Pool to route a new ticket to.
+  -l, --label=LABEL,...      Labels to add, e.g. needs-human.
+      --close                Close the open ticket with the key, if any;
+                             title and body become a closing comment.
+  -r, --resolution=STRING    Resolution with --close (default done).
 ```
 
 ## jobshop close
