@@ -6,9 +6,12 @@
 }:
 
 let
+  # Last release, kept by release-please (#644). Untagged builds report it
+  # too; the commit (rev) tells them apart.
+  version = lib.trim (builtins.readFile ../version.txt);
   args = {
     pname = "jobshop";
-    version = "0-${rev}";
+    inherit version;
 
     src = lib.fileset.toSource {
       root = ../.;
@@ -23,7 +26,7 @@ let
     ldflags = [
       "-s"
       "-w"
-      "-X github.com/elee1766/jobshop/pkg/cli.version=0-${rev}"
+      "-X github.com/elee1766/jobshop/pkg/cli.version=${version}"
       "-X github.com/elee1766/jobshop/pkg/cli.commit=${rev}"
     ];
 
