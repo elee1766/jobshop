@@ -741,6 +741,7 @@ func init() {
 		rpc.MethodSessionSandbox:    bind((*Controller).sessionSandbox),
 		rpc.MethodSessionSend:       bind((*Controller).sessionSend),
 		rpc.MethodSessionSubscribe:  bind((*Controller).sessionSubscribe),
+		rpc.MethodSessionJournal:    bind((*Controller).sessionJournal),
 		rpc.MethodEventsSubscribe:   bind((*Controller).eventsSubscribe),
 		rpc.MethodShutdown:          bind((*Controller).shutdown),
 		rpc.MethodDrain:             bind((*Controller).drainPools),

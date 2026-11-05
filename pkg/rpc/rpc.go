@@ -1589,3 +1589,33 @@ type ArtifactAckParams struct {
 	ID   string `json:"id"`
 	Note string `json:"note,omitempty"`
 }
+
+// MethodSessionJournal reads a session's ACP journal (#529).
+const MethodSessionJournal = "session.journal"
+
+// SessionJournalParams pages a session's journal by seq. Kinds filters
+// on msg.method or params.update.sessionUpdate; From on "agent" or
+// "controller". Limit defaults to 500, at most 5000.
+type SessionJournalParams struct {
+	ID       string   `json:"id"`
+	SinceSeq int64    `json:"since_seq,omitempty"`
+	Limit    int      `json:"limit,omitempty"`
+	Kinds    []string `json:"kinds,omitempty"`
+	From     string   `json:"from,omitempty"`
+}
+
+// JournalFrame is one redacted journal frame.
+type JournalFrame struct {
+	Seq  int64           `json:"seq"`
+	T    int64           `json:"t"`
+	From string          `json:"from"`
+	Msg  json.RawMessage `json:"msg"`
+}
+
+// SessionJournalResult is one page. NextSeq is the since_seq for the
+// next call; Done means the page reached the end of the journal.
+type SessionJournalResult struct {
+	Frames  []JournalFrame `json:"frames"`
+	NextSeq int64          `json:"next_seq"`
+	Done    bool           `json:"done"`
+}

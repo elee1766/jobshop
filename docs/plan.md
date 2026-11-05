@@ -500,6 +500,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Learning kinds are config (`learnings.kinds`, globs, packs append);
   `when.learnings` filters by kinds, scope and source; selfdev's curate
   counts only its repo and pools (#524, `docs/notes/524-learning-kinds.md`).
+- `session.journal`: paged, redacted journal reads for admin, the
+  session itself or a `session-journal` grant in the project;
+  `jobshop session journal`, Desk `/api/session/{id}/journal` (#529,
+  `docs/notes/529-session-journal.md`).
 - NixOS `services.jobshop.configFile`: a user-owned `jobshop.yaml` that
   includes the module's `jobshop.module.yaml` (new `include:` key),
   checked and reloaded on edit by `jobshop-config.path` (#531,
@@ -664,7 +668,8 @@ visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
-configurable learning kinds (#524), user-managed config in the module (#531).
+configurable learning kinds (#524), user-managed config in the module (#531),
+`session.journal` (#529).
 Next: turn on `desk.userHeader` on gasserver.
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
