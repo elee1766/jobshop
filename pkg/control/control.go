@@ -288,10 +288,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	defer func() { _ = st.Close() }()
 	// Resource caps gate claims (#400); reload re-syncs them.
-	if err := st.SetResourceCaps(ctx, cfg.ResourceCaps()); err != nil {
-		return err
-	}
-	if err := st.SetResourceProviders(ctx, cfg.ResourceProviders()); err != nil {
+	if err := st.SetResources(ctx, store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()}); err != nil {
 		return err
 	}
 

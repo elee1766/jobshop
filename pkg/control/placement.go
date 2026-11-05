@@ -58,7 +58,7 @@ func (c *Controller) placeSteps() {
 
 // slotsFree returns whether a resource key has a free slot now.
 func (c *Controller) slotsFree(ctx context.Context) (func(string) bool, error) {
-	use, err := c.store.Resources(ctx)
+	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (c *Controller) slotsFree(ctx context.Context) (func(string) bool, error) {
 		caps[name] = n
 	}
 	held := map[string]int{}
-	for _, u := range use {
+	for _, u := range rep.Use {
 		held[u.Key] = u.Held
 	}
 	return func(key string) bool {

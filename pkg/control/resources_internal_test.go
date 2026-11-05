@@ -20,7 +20,7 @@ func TestResourceWaitStallAndAttention(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := subController(t)
 	ctx := t.Context()
-	require.NoError(t, c.store.SetResourceCaps(ctx, map[string]int{"emu": 1}))
+	require.NoError(t, c.store.SetResources(ctx, store.ResourceConfig{Caps: map[string]int{"emu": 1}}))
 	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
 	step := func(title string) store.Ticket {
 		return mkTicket(t, c, store.NewTicket{

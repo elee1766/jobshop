@@ -29,12 +29,12 @@ func waitText(w store.ResourceWait) string {
 // after (#408). They are out of the ready frontier, so ready_unclaimed
 // does not see them.
 func (c *Controller) stallResourceWait(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
-	waits, err := c.store.ResourceWaits(ctx)
+	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 	var out []stall
-	for _, w := range waits {
+	for _, w := range rep.Waits {
 		t, err := c.store.Get(ctx, w.Ticket)
 		if err != nil {
 			return nil, err
@@ -57,13 +57,13 @@ func (c *Controller) resourceAttention(ctx context.Context) ([]rpc.AttentionItem
 	if after == 0 {
 		return nil, nil
 	}
-	waits, err := c.store.ResourceWaits(ctx)
+	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 	now := c.now()
 	var out []rpc.AttentionItem
-	for _, w := range waits {
+	for _, w := range rep.Waits {
 		t, err := c.store.Get(ctx, w.Ticket)
 		if err != nil {
 			return nil, err
@@ -94,12 +94,12 @@ func (c *Controller) runWaits(ctx context.Context, steps []store.Ticket) ([]stor
 	if len(mine) == 0 {
 		return nil, nil
 	}
-	waits, err := c.store.ResourceWaits(ctx)
+	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 	var out []store.ResourceWait
-	for _, w := range waits {
+	for _, w := range rep.Waits {
 		if mine[w.Ticket] {
 			out = append(out, w)
 		}

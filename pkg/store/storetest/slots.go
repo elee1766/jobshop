@@ -34,7 +34,7 @@ func slotSteps(t *testing.T, s store.Store, res string, ids ...string) {
 
 func slotState(t *testing.T, s store.Store, pool, id string) store.Slot {
 	t.Helper()
-	all, err := s.Slots(t.Context())
+	all, err := allSlots(t.Context(), s)
 	require.NoError(t, err)
 	for _, sl := range all {
 		if sl.Pool == pool && sl.ID == id {
@@ -50,7 +50,7 @@ func slotState(t *testing.T, s store.Store, pool, id string) store.Slot {
 // a failure; remove while held deletes it after the claim.
 func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	ctx := t.Context()
-	require.NoError(t, s.SetResourceProviders(ctx, []string{"emu"}))
+	require.NoError(t, setProviders(ctx, s, []string{"emu"}))
 	slotSteps(t, s, "emu", "js-a", "js-b")
 	ready := func() []string {
 		t.Helper()
@@ -62,7 +62,7 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	_, _, err := s.Claim(ctx, "js-a", "s1", lease)
 	require.ErrorIs(t, err, store.ErrNoWork)
 
-	_, err = s.AddSlot(ctx, "emu", "e1", map[string]string{"ANDROID_SERIAL": "emulator-5554"})
+	_, err = addSlot(ctx, s, "emu", "e1", map[string]string{"ANDROID_SERIAL": "emulator-5554"})
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"js-a", "js-b"}, ready())
 
@@ -72,7 +72,7 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	sl := slotState(t, s, "emu", "e1")
 	assert.Equal(t, store.SlotHeld, sl.State)
 	assert.Equal(t, "js-a", sl.Ticket)
-	held, err := s.TicketSlots(ctx, "js-a")
+	held, err := ticketSlots(ctx, s, "js-a")
 	require.NoError(t, err)
 	require.Len(t, held, 1)
 	assert.Equal(t, "emulator-5554", held[0].Env["ANDROID_SERIAL"])
@@ -93,14 +93,14 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	require.Len(t, rel, 1)
 	assert.Equal(t, store.SlotReleasing, rel[0].State)
-	require.NoError(t, s.SlotReset(ctx, "emu", "e1", true))
-	require.ErrorIs(t, s.SlotReset(ctx, "emu", "e1", true), store.ErrConflict, "reset once")
+	require.NoError(t, slotReset(ctx, s, "emu", "e1", true))
+	require.ErrorIs(t, slotReset(ctx, s, "emu", "e1", true), store.ErrConflict, "reset once")
 	assert.Equal(t, []string{"js-b"}, ready())
 
 	// Unhealthy while held: requeued, failures not counted, slot gone.
 	_, _, err = s.Claim(ctx, "js-b", "s2", lease)
 	require.NoError(t, err)
-	_, reopened, err := s.SlotUnhealthy(ctx, "provider", "emu", "e1", "adb offline")
+	_, reopened, err := slotUnhealthy(ctx, s, "provider", "emu", "e1", "adb offline")
 	require.NoError(t, err)
 	assert.Equal(t, "js-b", reopened)
 	tb, err := s.Get(ctx, "js-b")
@@ -113,7 +113,7 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	assert.Empty(t, ready(), "gone is not ready")
 
 	// Add brings a gone slot back; a failed reset makes it gone.
-	_, err = s.AddSlot(ctx, "emu", "e1", nil)
+	_, err = addSlot(ctx, s, "emu", "e1", nil)
 	require.NoError(t, err)
 	_, cb, err := s.Claim(ctx, "js-b", "s2", lease)
 	require.NoError(t, err)
@@ -121,16 +121,16 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	_, err = s.ReleaseSlots(ctx)
 	require.NoError(t, err)
-	require.NoError(t, s.SlotReset(ctx, "emu", "e1", false))
+	require.NoError(t, slotReset(ctx, s, "emu", "e1", false))
 	assert.Equal(t, store.SlotGone, slotState(t, s, "emu", "e1").State)
 
 	// Lease expiry ends a claim too; remove while held deletes after it.
-	_, err = s.AddSlot(ctx, "emu", "e1", nil)
+	_, err = addSlot(ctx, s, "emu", "e1", nil)
 	require.NoError(t, err)
 	c.Advance(2 * time.Hour)
 	_, _, err = s.Claim(ctx, "js-b", "s3", lease)
 	require.NoError(t, err)
-	_, err = s.RemoveSlot(ctx, "emu", "e1")
+	_, err = removeSlot(ctx, s, "emu", "e1")
 	require.NoError(t, err)
 	assert.True(t, slotState(t, s, "emu", "e1").Removing)
 	c.Advance(lease + time.Minute)
@@ -139,24 +139,24 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 	rel, err = s.ReleaseSlots(ctx)
 	require.NoError(t, err)
 	require.Len(t, rel, 1)
-	require.NoError(t, s.SlotReset(ctx, "emu", "e1", true))
+	require.NoError(t, slotReset(ctx, s, "emu", "e1", true))
 	assert.Equal(t, "absent", slotState(t, s, "emu", "e1").State, "removed slot deleted after its claim")
 
 	// Idle remove deletes at once; demand counts.
-	_, err = s.AddSlot(ctx, "emu", "e2", nil)
+	_, err = addSlot(ctx, s, "emu", "e2", nil)
 	require.NoError(t, err)
-	d, err := s.SlotDemand(ctx, "emu")
+	d, err := slotDemand(ctx, s, "emu")
 	require.NoError(t, err)
 	assert.Equal(t, 1, d.Waiting)
 	assert.Equal(t, 1, d.Ready)
-	_, err = s.RemoveSlot(ctx, "emu", "e2")
+	_, err = removeSlot(ctx, s, "emu", "e2")
 	require.NoError(t, err)
 	assert.Equal(t, "absent", slotState(t, s, "emu", "e2").State)
-	_, err = s.RemoveSlot(ctx, "emu", "e2")
+	_, err = removeSlot(ctx, s, "emu", "e2")
 	require.ErrorIs(t, err, store.ErrNotFound)
 
 	// Not a provider resource any more: no gate.
-	require.NoError(t, s.SetResourceProviders(ctx, nil))
+	require.NoError(t, setProviders(ctx, s, nil))
 	assert.Equal(t, []string{"js-b"}, ready())
 }
 
@@ -164,14 +164,14 @@ func testProviderSlots(t *testing.T, s store.Store, c *Clock) {
 // each claim takes a distinct slot and no more than two run at once.
 func testConcurrentSlotClaims(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
-	require.NoError(t, s.SetResourceProviders(ctx, []string{"emu"}))
+	require.NoError(t, setProviders(ctx, s, []string{"emu"}))
 	var steps []string
 	for i := range 6 {
 		steps = append(steps, fmt.Sprintf("js-q%d", i))
 	}
 	slotSteps(t, s, "emu", steps...)
 	for _, id := range []string{"e1", "e2"} {
-		_, err := s.AddSlot(ctx, "emu", id, nil)
+		_, err := addSlot(ctx, s, "emu", id, nil)
 		require.NoError(t, err)
 	}
 	var mu sync.Mutex
@@ -191,7 +191,7 @@ func testConcurrentSlotClaims(t *testing.T, s store.Store, _ *Clock) {
 	}
 	wg.Wait()
 	assert.Len(t, got, 2)
-	all, err := s.Slots(ctx)
+	all, err := allSlots(ctx, s)
 	require.NoError(t, err)
 	var tickets []string
 	for _, sl := range all {

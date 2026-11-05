@@ -11,6 +11,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // liveConfig is the config and the lease parsed from it, swapped as one
@@ -77,10 +78,7 @@ func (c *Controller) reloadWith(by string, files []string) (err error) {
 		var lc *liveConfig
 		if lc, err = newLiveConfig(cfg); err == nil {
 			// Caps first: a failed write keeps the old config and caps.
-			err = c.store.SetResourceCaps(context.Background(), cfg.ResourceCaps())
-		}
-		if err == nil {
-			err = c.store.SetResourceProviders(context.Background(), cfg.ResourceProviders())
+			err = c.store.SetResources(context.Background(), store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()})
 		}
 		if err == nil {
 			old := c.live.Swap(lc).cfg

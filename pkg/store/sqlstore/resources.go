@@ -10,9 +10,14 @@ import (
 	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
 )
 
-// SetResourceCaps replaces the resource capacities in one transaction.
-func (s *Store) SetResourceCaps(ctx context.Context, caps map[string]int) error {
+// SetResources replaces the resource capacities and provider names in
+// one transaction.
+func (s *Store) SetResources(ctx context.Context, r store.ResourceConfig) error {
+	caps := r.Caps
 	return s.tx(ctx, func(q sqlcdb.Querier) error {
+		if err := setProviders(ctx, q, r.Providers); err != nil {
+			return err
+		}
 		if err := q.DeleteResourceCaps(ctx); err != nil {
 			return err
 		}
@@ -29,8 +34,31 @@ func (s *Store) SetResourceCaps(ctx context.Context, caps map[string]int) error 
 	})
 }
 
-// Resources reports every key held or waited on, with its capacity.
-func (s *Store) Resources(ctx context.Context) ([]store.ResourceUse, error) {
+// Resources reports key use, resource waits and slots (pool's only when
+// pool is set, with its demand).
+func (s *Store) Resources(ctx context.Context, pool string) (store.ResourceReport, error) {
+	var r store.ResourceReport
+	use, err := s.resourceUse(ctx)
+	if err != nil {
+		return r, err
+	}
+	r.Use = use
+	if r.Waits, err = s.resourceWaits(ctx, use); err != nil {
+		return r, err
+	}
+	if r.Slots, err = s.slots(ctx, pool); err != nil {
+		return r, err
+	}
+	if pool != "" {
+		if r.Demand, err = s.slotDemand(ctx, pool, r.Slots); err != nil {
+			return r, err
+		}
+	}
+	return r, nil
+}
+
+// resourceUse reports every key held or waited on, with its capacity.
+func (s *Store) resourceUse(ctx context.Context) ([]store.ResourceUse, error) {
 	caps, err := s.q.ResourceCaps(ctx)
 	if err != nil {
 		return nil, err
@@ -73,14 +101,10 @@ func (s *Store) Resources(ctx context.Context) ([]store.ResourceUse, error) {
 	return out, nil
 }
 
-// ResourceWaits lists tickets waiting on a full resource key, in claim
+// resourceWaits lists tickets waiting on a full resource key, in claim
 // order per key (#408). A ticket naming several full keys is listed under
 // the first.
-func (s *Store) ResourceWaits(ctx context.Context) ([]store.ResourceWait, error) {
-	use, err := s.Resources(ctx)
-	if err != nil {
-		return nil, err
-	}
+func (s *Store) resourceWaits(ctx context.Context, use []store.ResourceUse) ([]store.ResourceWait, error) {
 	full := map[string]store.ResourceUse{}
 	for _, u := range use {
 		if u.Capacity > 0 && u.Held >= u.Capacity {
