@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -169,4 +170,58 @@ func (s CollectionSpec) Lookup(name string) (f Field, unique, ok bool) {
 		}
 	}
 	return Field{}, false, false
+}
+
+// CheckValue returns v if it is a JSON object, {} if empty, else
+// ErrInvalid. Backends call it before every write.
+func (s CollectionSpec) CheckValue(v json.RawMessage) (json.RawMessage, error) {
+	if len(v) == 0 {
+		return json.RawMessage("{}"), nil
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(v, &m); err != nil || m == nil {
+		return nil, fmt.Errorf("%w: %s: value must be a JSON object", ErrInvalid, s.Name)
+	}
+	return v, nil
+}
+
+// FieldText reads the dotted path of a JSON object as text, as the
+// backends' field expressions do: a string as is, other values as JSON.
+// It reports false for a missing path or null.
+func FieldText(v json.RawMessage, path string) (string, bool) {
+	var cur any
+	if err := json.Unmarshal(v, &cur); err != nil {
+		return "", false
+	}
+	for p := range strings.SplitSeq(path, ".") {
+		obj, ok := cur.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		if cur, ok = obj[p]; !ok {
+			return "", false
+		}
+	}
+	switch x := cur.(type) {
+	case nil:
+		return "", false
+	case string:
+		return x, true
+	default:
+		b, err := json.Marshal(x)
+		return string(b), err == nil
+	}
+}
+
+// RecordOrder checks a RecordFilter.Order and returns its column order.
+func RecordOrder(o string) (string, error) {
+	switch o {
+	case "", OrderCreated:
+		return "created_at, key", nil
+	case OrderCreatedDesc:
+		return "created_at DESC, key DESC", nil
+	case OrderUpdated:
+		return "updated_at, key", nil
+	}
+	return "", fmt.Errorf("%w: record order %q", ErrInvalid, o)
 }

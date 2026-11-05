@@ -15,7 +15,6 @@ import (
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlq"
 )
 
 // Options configures New.
@@ -53,12 +52,9 @@ type Driver struct {
 	// IsBusy reports a transaction that lost a write race and may be
 	// rerun (SQLITE_BUSY on a deferred upgrade). Nil means never.
 	IsBusy func(err error) bool
-	// Dialect renders collection SQL (#579).
-	Dialect sqlq.Dialect
-	// SearchMatch turns the words of a collection search into the match
-	// expressions to try in order; the first with hits wins. Nil uses
-	// RecallMatch.
-	SearchMatch func(words []string) []string
+	// Collection opens store collections (#579). Nil means the backend
+	// has none.
+	Collection CollectionOpener
 }
 
 // Store is the backend-neutral ticket store over a Driver. Claims and
@@ -72,7 +68,6 @@ type Store struct {
 	now    func() time.Time
 	prefix func(string) string
 	commit func()
-	colls  collections
 }
 
 var _ store.Store = (*Store)(nil)

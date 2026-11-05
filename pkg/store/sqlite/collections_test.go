@@ -11,7 +11,6 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlq"
 	"github.com/elee1766/jobshop/pkg/store/storetest"
 )
 
@@ -33,6 +32,11 @@ func TestCollectionIndexPlans(t *testing.T) {
 		require.NoError(t, err)
 	}
 	require.NoError(t, s.Close())
+	// A second store builds the statement text; it does not touch the
+	// database the plans run on.
+	ps, err := sqlite.Open(ctx, ":memory:", sqlite.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ps.Close() })
 
 	db, err := sql.Open("sqlite", "file:"+path)
 	require.NoError(t, err)
@@ -42,9 +46,9 @@ func TestCollectionIndexPlans(t *testing.T) {
 
 	plan := func(f store.RecordFilter) string {
 		t.Helper()
-		q, err := sqlq.List(sqlq.SQLite, storetest.TestSpec, f)
+		q, args, err := sqlite.ListSQL(ctx, ps, storetest.TestSpec, f)
 		require.NoError(t, err)
-		rows, err := db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+q.SQL, q.Args...)
+		rows, err := db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+q, args...)
 		require.NoError(t, err)
 		defer func() { _ = rows.Close() }()
 		var out []string
@@ -67,11 +71,18 @@ func TestCollectionIndexPlans(t *testing.T) {
 // indexes and the FTS table.
 func TestCollectionRegisterDDL(t *testing.T) {
 	t.Parallel()
-	ddl := strings.Join(sqlq.SQLite.Register(storetest.TestSpec), "\n")
+	ddl := strings.Join(sqlite.RegisterDDL(storetest.TestSpec), "\n")
 	for _, want := range []string{
 		"ri_test_items_source", "ri_test_items_repo", "ru_test_items_natural_key",
 		"WHERE collection = 'test_items'", "fts_test_items USING fts5",
 	} {
 		require.Contains(t, ddl, want)
 	}
+}
+
+// TestQuoteLit checks the one literal written into collection SQL.
+func TestQuoteLit(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "'test_items'", sqlite.QuoteLit("test_items"))
+	require.Equal(t, "'a''b'''", sqlite.QuoteLit("a'b'"))
 }

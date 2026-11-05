@@ -14,7 +14,6 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlq"
 )
 
 //go:generate go tool sqlc generate
@@ -67,7 +66,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		Classify:    classify,
 		RecallMatch: recallMatch,
 		IsBusy:      isBusy,
-		Dialect:     sqlq.SQLite,
+		Collection:  (&registry{}).open,
 	}, opt)
 	if err != nil {
 		_ = db.Close()

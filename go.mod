@@ -10,6 +10,7 @@ require (
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/jackc/pgx/v5 v5.12.0
+	github.com/nullism/bqb v1.7.4
 	github.com/pressly/goose/v3 v3.29.0
 	github.com/prometheus/client_golang v1.24.1
 	github.com/sony/sonyflake/v2 v2.2.0

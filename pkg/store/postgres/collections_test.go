@@ -11,7 +11,6 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/postgres"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlq"
 	"github.com/elee1766/jobshop/pkg/store/storetest"
 )
 
@@ -66,9 +65,9 @@ func TestCollectionIndexPlans(t *testing.T) {
 
 	plan := func(f store.RecordFilter) string {
 		t.Helper()
-		q, err := sqlq.List(sqlq.Postgres, storetest.TestSpec, f)
+		q, args, err := postgres.ListSQL(ctx, s, storetest.TestSpec, f)
 		require.NoError(t, err)
-		rows, err := conn.QueryContext(ctx, "EXPLAIN "+q.SQL, q.Args...)
+		rows, err := conn.QueryContext(ctx, "EXPLAIN "+q, args...)
 		require.NoError(t, err)
 		defer func() { _ = rows.Close() }()
 		var out []string
@@ -85,4 +84,10 @@ func TestCollectionIndexPlans(t *testing.T) {
 	require.NotContains(t, p, "Seq Scan", p)
 	p = plan(store.RecordFilter{Where: map[string]string{"natural_key": "k"}})
 	require.Contains(t, p, fmt.Sprintf("ru_%s_natural_key", storetest.TestSpec.Name), p)
+}
+
+// TestQuoteLit checks the literal used in partition DDL.
+func TestQuoteLit(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "'a''b'", postgres.QuoteLit("a'b"))
 }

@@ -5,9 +5,15 @@ and the `Collection` handle on both backends. No domain uses it yet;
 poll_cursors, write_keys, memory_edits, learnings and inbox move in
 their own PRs.
 
-- Types and validation: `pkg/store/collection.go`. SQL:
-  `pkg/store/sqlstore/sqlq` (plain SQL, no sqlc), one `Dialect` each for
-  SQLite and Postgres. The handle: `pkg/store/sqlstore/collections.go`.
+- Types, spec validation and value checks: `pkg/store/collection.go`.
+  SQL: each backend owns its own, built with github.com/nullism/bqb
+  (`pkg/store/sqlite/collections.go` with `?`, `pkg/store/postgres/collections.go`
+  with `$n`). No shared dialect; some duplication is expected.
+  `sqlstore` only validates the spec and calls the backend's
+  `Driver.Collection`. Values are always bound. The only literal is the
+  collection name in SQLite queries and DDL (`quoteLit`), because SQLite
+  uses a partial index only when the WHERE repeats its literal; Postgres
+  binds it.
 - Migrations: sqlite `00019_records.sql` (one `records` table,
   `WITHOUT ROWID`), postgres `00004_records.sql` (`PARTITION BY LIST
   (collection)`, no DEFAULT partition).
