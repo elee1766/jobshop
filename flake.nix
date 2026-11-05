@@ -44,8 +44,6 @@
               go = pkgs.go_1_27;
             };
           };
-          # Same linter version for CI, the dev shell and agents on the host.
-          golangci-lint = pkgs.callPackage ./nix/golangci-lint.nix { };
         }
       );
 
@@ -57,7 +55,6 @@
           packages = [
             pkgs.go_1_27
             pkgs.gopls
-            self.packages.${pkgs.stdenv.hostPlatform.system}.golangci-lint
             pkgs.sqlite
           ];
         };
