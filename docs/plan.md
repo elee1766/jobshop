@@ -483,6 +483,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   prompts use it (#492, `docs/notes/492-handoff.md`).
 - `pr_unmerged` skips PRs by the operator or `stall_pr_skip_authors`
   and PRs labeled `hold` (#509, `docs/notes/509-pr-unmerged-skip.md`).
+- CI reruns failed tests 20 times, marks each flaky or broken and uploads
+  the `failed-tests` artifact (#510, `docs/notes/510-ci-flaky-rerun.md`).
 
 ## 5. What's next
 
@@ -642,6 +644,9 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492).
+
+**Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
+artifact (#510). Next: the planner's incident step reads the artifact.
 
 **Rebase route-back (#424).** Done: `close -r rebase`, checked against
 the PR's merge state by the controller (#511).
