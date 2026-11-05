@@ -35,7 +35,7 @@ func TestClassifyGH(t *testing.T) {
 		{args: []string{"pr", "comment", "https://github.com/a/b/pull/7", "-b", "x"}, action: "comment", repo: "a/b", num: "7", body: "x"},
 		{args: []string{"issue", "close", "#4", "-Rgithub.com/o/n"}, action: "issue-close", repo: "o/n", num: "4"},
 		{args: []string{"repo", "deploy-key", "add", "k.pub"}, action: "repo-write"},
-		{args: []string{"api", "repos/o/n/pulls"}},
+		{args: []string{"api", "repos/o/n/pulls"}, repo: "o/n"},
 		{args: []string{"api", "repos/o/n/issues/1/comments", "-f", "body=x"}, action: "api-post", repo: "o/n"},
 		{args: []string{"api", "-X", "DELETE", "/repos/o/n/git/refs/heads/x"}, action: "api-delete", repo: "o/n"},
 		{args: []string{"api", "--method=GET", "user"}},

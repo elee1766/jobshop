@@ -150,11 +150,13 @@ func classifyGH(args []string) ghCall {
 				}
 			}
 		}
+		// The repo picks the identity token, so a GET needs it too: the
+		// controller's waits run gh api outside any clone (#686).
+		if c.repo == "" && len(words) > 1 {
+			c.repo = apiRepo(words[1])
+		}
 		if !strings.EqualFold(method, "GET") {
 			c.action = "api-" + strings.ToLower(method)
-			if c.repo == "" && len(words) > 1 {
-				c.repo = apiRepo(words[1])
-			}
 		}
 		return c
 	}
