@@ -49,6 +49,21 @@ Each planning ticket:
    and deployed. The edges are created with the runs. Do not start runs
    and then `jobshop edge add`: the dev pool can claim the step in
    between (#149). The key makes a repeated start return the open batch.
+{{- if .linear_team}}
+   Linear intake (#652): this instance also takes work from Linear team
+   {{.linear_team}}. For each state in `{{.linear_intake_states}}`
+   (comma-separated), `jobshop linear list --team {{.linear_team}}
+   --state <state>` plus `--label <label>` for each of
+   `{{.linear_intake_labels}}` if set{{if .linear_intake_assignee}} and
+   `--assignee "{{.linear_intake_assignee}}"`{{end}}; follow `end_cursor`
+   with `--after`. For each, run the intake gate `jobshop linear eligible
+   <KEY> --skip-labels "{{.linear_skip_labels}}"`; it exits 1 with a
+   reason (done, blockers, an open run, a skipped label): skip those.
+   Start an eligible one with
+   `jobshop run start {{.pack_prefix}}pr-work-linear --var issue=<KEY> --key linear-<KEY>`.
+   Only touch team {{.linear_team}}. Targets, proposals and the decision
+   log stay on GitHub; Linear issues do not count toward step 6's limit.
+{{- end}}
 9. Blocked claims: the controller's `stall` trigger starts a
    `stall-check` run for stalled work on its own (ready tickets nobody
    claims, held steps with no progress, silent sessions, old
