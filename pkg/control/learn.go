@@ -43,6 +43,7 @@ func (c *Controller) learnAdd(ctx context.Context, sc scope, p rpc.LearnParams) 
 			l.Scope = c.learnScope(ctx, t)
 		}
 	}
+	c.redactWrite(sc, "learning for", l.Ticket, &l.Summary, &l.Fix)
 	return c.store.AddLearning(ctx, l)
 }
 

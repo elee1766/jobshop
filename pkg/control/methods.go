@@ -357,6 +357,7 @@ func (c *Controller) comment(ctx context.Context, sc scope, p rpc.CommentParams)
 	if err != nil {
 		return nil, err
 	}
+	c.redactWrite(sc, "comment on", id, &p.Body)
 	return c.store.AddComment(ctx, sc.actor, id, p.Body)
 }
 

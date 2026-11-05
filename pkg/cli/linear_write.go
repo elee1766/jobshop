@@ -80,6 +80,9 @@ func (c linearCreateCmd) Run(g *Globals, l *linearCmd) error {
 		}
 		desc = b
 	}
+	if err := checkOut(g, "linear create", l.AllowSecretFindings, outText{"title", c.Title}, outText{"description", desc}); err != nil {
+		return err
+	}
 	cl, ctx, cancel, err := l.client(g, teamKey(c.Team))
 	if err != nil {
 		return err
@@ -106,6 +109,9 @@ type linearUpdateCmd struct {
 }
 
 func (c linearUpdateCmd) Run(g *Globals, l *linearCmd) error {
+	if err := checkOut(g, "linear update", l.AllowSecretFindings, outText{"title", c.Title}); err != nil {
+		return err
+	}
 	cl, ctx, cancel, err := l.client(g, c.IssueKey)
 	if err != nil {
 		return err
@@ -131,6 +137,9 @@ type linearAskCmd struct {
 func (c linearAskCmd) Run(g *Globals, l *linearCmd) error {
 	body, err := readBody(c.Body)
 	if err != nil {
+		return err
+	}
+	if err := checkOut(g, "linear ask", l.AllowSecretFindings, outText{"body", body}); err != nil {
 		return err
 	}
 	cl, ctx, cancel, err := l.client(g, c.IssueKey)

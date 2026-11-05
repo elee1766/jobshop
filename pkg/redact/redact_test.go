@@ -32,3 +32,12 @@ func TestText(t *testing.T) {
 	assert.Contains(t, got, Mask)
 	assert.Equal(t, "plain", Text("plain", nil))
 }
+
+func TestFind(t *testing.T) {
+	got := Find("a\nb\ntok " + ghToken)
+	if assert.Len(t, got, 1) {
+		assert.Equal(t, 3, got[0].Line, "1-based line")
+		assert.NotEmpty(t, got[0].Rule)
+	}
+	assert.Empty(t, Find("no secrets here"))
+}

@@ -17,7 +17,10 @@ Moved from the README (2026-11-05, #551).
   is not reachable from a sandbox.
 - **Credentials.** Secrets are files, never inline in yaml. A session gets
   a short-lived scoped token with `jobshop identity token <owner/repo>`
-  instead of holding a key.
+  instead of holding a key. Agent text leaving the controller is checked
+  with gitleaks (#574): session events are masked, comments, reports,
+  learnings and artifacts are stored masked, and `jobshop gh`/`linear`
+  writes holding a finding are refused.
 - **Guardrail hooks.** `hooks` gate claims and outside actions (push, PR,
   merge, comments) with allow, deny or ask a human. A broken hook denies.
 - **Per-pool users, cgroup limits and network.** Optional: a mapped user,

@@ -189,6 +189,9 @@ type ActivityItem struct {
 	Ref     string    `json:"ref,omitempty"`
 	PR      bool      `json:"pr,omitempty"`
 	Tickets []string  `json:"tickets,omitempty"`
+	// Redacted is set when the controller masked secrets in what the
+	// item records (#574).
+	Redacted bool `json:"redacted,omitempty"`
 }
 
 // ActivityListParams filters activity.list. Bots is "humans", "bots" or

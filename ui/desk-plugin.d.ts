@@ -198,6 +198,7 @@ export interface ActivityItem {
   ref?: string;
   pr?: boolean;
   tickets?: string[];
+  redacted?: boolean;
 }
 
 export interface ActivityListParams {
