@@ -21,3 +21,7 @@
 - Linear must reach the address: put a reverse proxy or tunnel in front;
   gasserver has none. Polling is unchanged, with the webhook on or off.
 - Tests: `TestLinearWebhookIssue`, `TestLinearWebhookComment`.
+- 2026-11-05 (#595): delivered comments carry the author's
+  displayName, reply context, the issue title and state, and edits;
+  `subscriptions` entries match Linear users by id, displayName or
+  email (`docs/notes/595-linear-comment-context.md`).
