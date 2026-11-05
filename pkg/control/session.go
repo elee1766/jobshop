@@ -432,7 +432,7 @@ func (r *runner) finish(resolution, reason string) {
 		// Pause before closing: a closed session frees a pool slot, and a
 		// supervisor tick before the pause would start another (#237).
 		// A rejected model repeats on every new session the same way.
-		r.c.poolCrashed(r.pool)
+		r.c.poolCrashed(r.pool, reason)
 	}
 	r.c.metrics.SessionsEnded.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
 		telemetry.AttrResolution.String(resolution)))

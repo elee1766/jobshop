@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -171,9 +172,55 @@ func TestStallPoolQuarantined(t *testing.T) {
 	c, _, _ := stallController(t)
 	assert.Empty(t, stallKeys(t, c))
 	for range poolCrashes {
-		c.poolCrashed("dev")
+		c.poolCrashed("dev", "")
 	}
 	assert.Equal(t, []string{"stall:pool_quarantined:dev@20261102T081500Z"}, stallKeys(t, c))
+}
+
+// TestPoolPauseNamesSpawnError (JOB-27): a crash-loop pause carries the
+// last session error and the failed preflight checks into attention and
+// the stall detail.
+func TestPoolPauseNamesSpawnError(t *testing.T) {
+	t.Parallel()
+	c, _, _ := stallControllerYAML(t, strings.Replace(stallYAML, "dev: {agent: fake, dir: %[1]q}",
+		"dev: {agent: fake, dir: %[1]q, sandbox: {backend: bubblewrap, network: pasta}}", 1))
+	c.opt.Preflight = func(host.Spec) (host.PreflightReport, error) {
+		return host.PreflightReport{Checks: []host.PreflightCheck{
+			{Name: "sandbox.bwrap", OK: true},
+			{Name: "network.nft", Reason: "nft not found", Hint: "install nftables"},
+		}}, nil
+	}
+	spawnErr := `sandbox: deny: exec: "nft": executable file not found`
+	for range poolCrashes {
+		c.poolCrashed("dev", spawnErr)
+	}
+	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"])
+	require.NoError(t, err)
+	require.Len(t, found, 1)
+	assert.Contains(t, found[0].detail, spawnErr)
+	assert.Contains(t, found[0].detail, "FAIL network.nft: nft not found")
+	assert.Contains(t, found[0].detail, "fix: install nftables")
+	assert.NotContains(t, found[0].detail, "sandbox.bwrap", "passing checks are left out")
+
+	items, err := c.attentionItems(t.Context())
+	require.NoError(t, err)
+	var pool []rpc.AttentionItem
+	for _, it := range items {
+		if it.Kind == rpc.AttentionPool {
+			pool = append(pool, it)
+		}
+	}
+	require.Len(t, pool, 1)
+	assert.Equal(t, "dev", pool[0].ID)
+	assert.Contains(t, pool[0].Title, spawnErr)
+	assert.Contains(t, pool[0].Summary, spawnErr)
+
+	c.unquarantinePools("dev")
+	items, err = c.attentionItems(t.Context())
+	require.NoError(t, err)
+	for _, it := range items {
+		assert.NotEqual(t, rpc.AttentionPool, it.Kind)
+	}
 }
 
 func TestStallStepAndSession(t *testing.T) {

@@ -91,12 +91,72 @@ func (c *Controller) maybeQuarantine(ctx context.Context, id string) {
 	c.log.Warn("quarantined ticket", "ticket", id, "sessions", sessions)
 }
 
-// poolCrashed records a crashed session of pool and pauses the pool when
-// poolCrashes happened within poolCrashWindow.
-func (c *Controller) poolCrashed(pool string) {
+// poolCrashed records a crashed session of pool, ended by reason, and
+// pauses the pool when poolCrashes happened within poolCrashWindow. The
+// pause keeps the last reason and the pool's failed preflight checks
+// (JOB-27), so attention and the stall detail name the error.
+func (c *Controller) poolCrashed(pool, reason string) {
 	if pool == "" {
 		return
 	}
+	if !c.poolCrashLocked(pool) {
+		return
+	}
+	why := strings.TrimSpace(reason)
+	if why == "" {
+		why = "sessions crash-looping"
+	}
+	if hint := c.preflightHint(pool); hint != "" {
+		why += "\nisolation preflight:\n" + hint
+	}
+	c.mu.Lock()
+	if c.poolPauseReason == nil {
+		c.poolPauseReason = map[string]string{}
+	}
+	c.poolPauseReason[pool] = why
+	until := c.poolPausedUntil[pool]
+	c.mu.Unlock()
+	c.log.Warn("pool quarantined: sessions crash-looping", "pool", pool, "until", until, "err", why)
+}
+
+// preflightHint is the failed checks of pool's isolation preflight, or
+// "" when the pool is not isolated or the host passes.
+func (c *Controller) preflightHint(pool string) string {
+	cfg := c.config()
+	if cfg == nil {
+		return ""
+	}
+	spec, ok := c.preflightSpec(cfg, pool)
+	if !ok {
+		return ""
+	}
+	check := c.opt.Preflight
+	if check == nil {
+		check = host.Preflight
+	}
+	rep, err := check(spec)
+	if err != nil || rep.OK() {
+		return ""
+	}
+	var failed host.PreflightReport
+	for _, ch := range rep.Checks {
+		if !ch.OK {
+			failed.Checks = append(failed.Checks, ch)
+		}
+	}
+	return failed.String()
+}
+
+// poolPauseWhy is the reason pool was paused for crash-looping.
+func (c *Controller) poolPauseWhy(pool string) string {
+	if why := c.poolPauseReason[pool]; why != "" {
+		return why
+	}
+	return "sessions crash-looping"
+}
+
+// poolCrashLocked logs a crash and reports whether it paused the pool.
+func (c *Controller) poolCrashLocked(pool string) bool {
 	now := c.now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -111,8 +171,9 @@ func (c *Controller) poolCrashed(pool string) {
 	if len(keep) >= poolCrashes {
 		c.poolPausedUntil[pool] = now.Add(poolPause)
 		c.poolCrashLog[pool] = nil
-		c.log.Warn("pool quarantined: sessions crash-looping", "pool", pool, "crashes", len(keep), "until", now.Add(poolPause))
+		return true
 	}
+	return false
 }
 
 // poolPaused reports whether the supervisor should start no sessions for pool.
@@ -210,11 +271,13 @@ func (c *Controller) unquarantinePools(pool string) []string {
 		if pool == "" || p == pool {
 			delete(c.poolQuarantined, p)
 			delete(c.poolPausedUntil, p)
+			delete(c.poolPauseReason, p)
 			out = append(out, p)
 		}
 	}
 	if pool != "" {
 		delete(c.poolPausedUntil, pool)
+		delete(c.poolPauseReason, pool)
 		c.poolCrashLog[pool] = nil
 	}
 	return out
