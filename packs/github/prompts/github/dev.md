@@ -35,8 +35,7 @@ Working notes:
   --body-file -`: a failed command upstream blanks the body. Write the
   body to a file with the Write tool, check it is non-empty, pass the file.
 - `jobshop comment` takes one body argument; another ticket goes in
-  `-t`: `jobshop comment -t <ticket> "<text>"`. `jobshop close -r failed`
-  takes no reason text: comment first, then close. `jobshop close <id>`
+  `-t`: `jobshop comment -t <ticket> "<text>"`. `jobshop close <id>`
   on a ticket you do not hold fails: claim it first, or leave it.
 - Old runs leave local `issue-<n>` branches: `git branch --list
   issue-<n>` before `git switch -c`; if it exists use `issue-<n>-<slug>`.
