@@ -48,14 +48,38 @@ func (c *Controller) stallLinearIssues(ctx context.Context, sig config.StallSign
 	if err != nil {
 		return nil, err
 	}
+	grace := linearGrace(sig)
+	now := c.now()
 	var out []stall
 	for _, is := range issues {
 		if busy[is.Identifier] {
 			continue
 		}
+		if grace > 0 && !is.UpdatedAt.IsZero() && now.Before(is.UpdatedAt.Add(grace)) {
+			continue
+		}
 		out = append(out, stall{config.StallLinearIssueNoRun, is.Identifier, fmt.Sprintf("%s, no run: %s", is.State.Name, is.Title)})
 	}
 	return out, nil
+}
+
+// linearGrace is sig.Grace or DefaultLinearGrace; an explicit 0 is off.
+func linearGrace(sig config.StallSignal) time.Duration {
+	if sig.Grace == "" {
+		return config.DefaultLinearGrace
+	}
+	d, _ := time.ParseDuration(sig.Grace)
+	return d
+}
+
+// linearIssueHasOpenRun rechecks the store just before a stall-check run
+// starts: the planner may have started the issue's run during the scan.
+func (c *Controller) linearIssueHasOpenRun(ctx context.Context, key string) (bool, error) {
+	busy, err := c.linearIssuesWithOpenRun(ctx)
+	if err != nil {
+		return false, err
+	}
+	return busy[strings.ToUpper(key)], nil
 }
 
 // linearIntakeIssues returns the matching issues, read from Linear at most

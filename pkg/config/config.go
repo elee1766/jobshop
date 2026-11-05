@@ -153,6 +153,9 @@ const (
 // DefaultLinearPoll is how often linear_issue_no_run reads Linear.
 const DefaultLinearPoll = 5 * time.Minute
 
+// DefaultLinearGrace is how recently updated an issue linear_issue_no_run skips.
+const DefaultLinearGrace = 5 * time.Minute
+
 // StoreStallSignals lists the signals the controller computes itself.
 var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked, StallResourceWait, StallIngestWorker, StallIngestBacklog}
 
@@ -184,6 +187,10 @@ type StallSignal struct {
 	Labels     string `yaml:"labels"`
 	SkipLabels string `yaml:"skip_labels"`
 	Poll       string `yaml:"poll"`
+	// Grace skips issues updated (moved to Todo, edited) within it, so an
+	// issue the planner is starting a run for is not a stall (JOB-26).
+	// Go duration, default DefaultLinearGrace; "0s" turns it off.
+	Grace string `yaml:"grace"`
 }
 
 // TriggerRun starts a workflow run, like `jobshop run start`. Vars and

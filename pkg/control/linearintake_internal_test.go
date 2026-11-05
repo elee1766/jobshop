@@ -187,3 +187,64 @@ func TestLinearPlannerIntakeKey(t *testing.T) {
 	clk.advance(6 * time.Minute)
 	assert.Empty(t, stallKeys(t, c), "the planner's run hides the issue from intake")
 }
+
+// TestLinearIntakeRunDuringScan (JOB-26): a Todo issue whose run the
+// planner starts while Linear is being read creates no stall-check run,
+// and an issue updated within the grace window is skipped until it passes.
+func TestLinearIntakeRunDuringScan(t *testing.T) {
+	t.Parallel()
+	var c *Controller
+	var started atomic.Bool
+	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if started.CompareAndSwap(false, true) {
+			_, err := c.startRun(r.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
+			assert.NoError(t, err)
+		}
+		issue := func(id, updated string) string {
+			return `{"identifier":"` + id + `","title":"t","url":"u","updatedAt":"` + updated + `","state":{"id":"s","name":"Todo","type":"unstarted"},"assignee":null,"labels":{"nodes":[{"name":"agent"}]}}`
+		}
+		_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[` +
+			issue("ENG-1", "2026-11-01T00:00:00Z") + `,` +
+			issue("ENG-2", "2026-11-02T07:58:00Z") +
+			`],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`))
+	}))
+	t.Cleanup(gql.Close)
+
+	c2, clk, dir := stallControllerYAML(t, linearIntakeYAML)
+	c = c2
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
+	c.minter, c.linearURL = identity.NewMinter(), gql.URL
+
+	stallRuns := func() []string {
+		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
+		require.NoError(t, err)
+		var out []string
+		for _, r := range rs {
+			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "stall-check" {
+				out = append(out, f.Key)
+			}
+		}
+		return out
+	}
+	c.runTriggers()
+	assert.Empty(t, stallRuns(), "ENG-1 got a run during the scan, ENG-2 is inside the grace window")
+
+	clk.advance(6 * time.Minute)
+	c.runTriggers()
+	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-2"}, stallRuns(), "past the grace window")
+}
+
+// TestLinearIssueRecheck (JOB-26): the fire-time recheck sees a run
+// started after detection.
+func TestLinearIssueRecheck(t *testing.T) {
+	t.Parallel()
+	c, _, _ := stallControllerYAML(t, linearIntakeYAML)
+	busy, err := c.linearIssueHasOpenRun(t.Context(), "eng-7")
+	require.NoError(t, err)
+	assert.False(t, busy)
+	_, err = c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-7"}, Key: "linear-ENG-7"}, nil)
+	require.NoError(t, err)
+	busy, err = c.linearIssueHasOpenRun(t.Context(), "eng-7")
+	require.NoError(t, err)
+	assert.True(t, busy)
+}

@@ -41,6 +41,17 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 		return
 	}
 	for _, s := range fire {
+		if s.signal == config.StallLinearIssueNoRun {
+			busy, err := c.linearIssueHasOpenRun(ctx, s.subject)
+			if err != nil {
+				c.log.Error("stall recheck", "trigger", name, "key", s.key(), "err", err)
+				continue
+			}
+			if busy {
+				c.log.Info("stall skipped: issue got a run during the scan", "trigger", name, "key", s.key())
+				continue
+			}
+		}
 		t, err := c.fireStall(ctx, name, tr, s)
 		if err != nil {
 			c.log.Error("stall fire", "trigger", name, "key", s.key(), "err", err)
