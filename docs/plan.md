@@ -512,6 +512,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
   includes the module's `jobshop.module.yaml` (new `include:` key),
   checked and reloaded on edit by `jobshop-config.path` (#531,
   `docs/notes/531-module-config-file.md`).
+- Desk plugin host: plugin loader (built-in, pack `desk/`, root), slots,
+  `api`, `POST /api/rpc/{method}` with a session-only policy; Deploys is
+  the first built-in plugin (#517, `docs/notes/517-desk-plugins.md`,
+  `docs/verify/desk-plugins.md`).
 
 ## 5. What's next
 
@@ -675,8 +679,9 @@ visibility (#408), placement (#409).
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
-`session.journal` (#529).
-Next: turn on `desk.userHeader` on gasserver.
+`session.journal` (#529), Desk plugin host part 1 (#517).
+Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
+and plugin API (#541, #542).
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1379,6 +1384,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   pool sets limits, and every host problem (no delegation, ids outside
   subuid, missing pasta) is a permanent spawn error that quarantines
   just that pool, so a host without the setup runs as before.
+- Desk is a plugin host and its built-in views are plugins on the same
+  `api` a user plugin gets (2026-11-05, #517). Custom elements with a
+  host object, as Home Assistant cards; no shared framework or Module
+  Federation, so a Desk upgrade cannot break a plugin's runtime.
+  Built-ins may not import the shell, which proves the API suffices.
 
 ## 7. Reference: behavior as built
 
@@ -1442,6 +1452,7 @@ moved from the old 7.x list, oldest first:
 - [pr_unmerged skips operator and hold PRs](notes/509-pr-unmerged-skip.md) (#509)
 - [Desk under a path prefix](notes/516-desk-base-path.md) (#516)
 - [Learning kinds and trigger filters](notes/524-learning-kinds.md) (#524)
+- [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
 
 ## 8. Chat gateway
 

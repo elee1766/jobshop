@@ -73,6 +73,8 @@ type Config struct {
 	// Activity polls recent GitHub and Linear activity for Desk (#255).
 	// Absent: off.
 	Activity *Activity `yaml:"activity"`
+	// Desk configures Desk plugins and the generic RPC endpoint (#517).
+	Desk Desk `yaml:"desk,omitempty"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
@@ -344,6 +346,37 @@ type Gateway struct {
 	ArtifactRoom string `yaml:"artifact_room"`
 	// DeskURL is Desk's base URL for links in artifact lines. Empty: no link.
 	DeskURL string `yaml:"desk_url"`
+}
+
+// Desk is the desk section. Desk reads it through config.show, so a
+// reload applies without restarting Desk.
+type Desk struct {
+	// Plugins enables, disables and configures plugins by name. All
+	// plugins are enabled unless listed with enabled: false.
+	Plugins map[string]DeskPlugin `yaml:"plugins,omitempty" json:"plugins,omitempty"`
+	// RPC narrows (deny) or widens (allow) the methods plugins may call.
+	RPC DeskRPC `yaml:"rpc,omitempty" json:"rpc"`
+}
+
+// DeskPlugin is one desk.plugins entry.
+type DeskPlugin struct {
+	Enabled *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Config  map[string]any `yaml:"config,omitempty" json:"config,omitempty"`
+}
+
+// DeskRPC holds path.Match globs over admin method names.
+type DeskRPC struct {
+	Allow []string `yaml:"allow,omitempty" json:"allow,omitempty"`
+	Deny  []string `yaml:"deny,omitempty" json:"deny,omitempty"`
+}
+
+func (d Desk) validate() error {
+	for _, g := range slices.Concat(d.RPC.Allow, d.RPC.Deny) {
+		if _, err := path.Match(g, ""); err != nil {
+			return fmt.Errorf("desk.rpc: bad glob %q: %w", g, err)
+		}
+	}
+	return nil
 }
 
 // Attention configures the attention view: what waits on a human.
@@ -1187,6 +1220,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if err := c.validateIngest(); err != nil {
 		return nil, err
+	}
+	if err := c.Desk.validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if err := c.validateAdmission(); err != nil {
 		return nil, err

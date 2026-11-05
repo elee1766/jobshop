@@ -50,7 +50,7 @@ func (c deskCmd) Run(g *Globals) error {
 		return errors.New("desk: --user-header needs at least one --trusted-proxy")
 	}
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "desk")
-	cfg := desk.Config{Hosts: c.Host, DeployState: c.DeployState, ChatPool: c.ChatPool, UserHeader: c.UserHeader, BasePath: base, TrustedProxies: proxies}
+	cfg := desk.Config{Hosts: c.Host, DeployState: c.DeployState, ChatPool: c.ChatPool, UserHeader: c.UserHeader, BasePath: base, TrustedProxies: proxies, Root: r.Dir}
 	srv := &http.Server{
 		Handler:           desk.New(cfg, desk.Socket{Path: sock}, log).Handler(),
 		ReadHeaderTimeout: 10 * time.Second,

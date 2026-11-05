@@ -27,6 +27,29 @@ import (
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
+// Methods lists every admin method name. Desk's generic RPC endpoint
+// checks against it (#517); a control test keeps it equal to the
+// controller's handler table.
+func Methods() []string {
+	return []string{
+		MethodTicketCreate, MethodTicketShow, MethodTicketTrace, MethodTicketList, MethodTicketUpdate,
+		MethodTicketClose, MethodTicketReopen, MethodReady, MethodCommentAdd, MethodEdgeAdd, MethodEdgeRemove,
+		MethodLabelAdd, MethodLabelRemove, MethodClaim, MethodHeartbeat, MethodRelease, MethodHandoff,
+		MethodSessionNew, MethodSessionList, MethodSessionReap, MethodSessionRestart, MethodSessionPrompt,
+		MethodSessionSandbox, MethodSessionSend, MethodSessionSubscribe, MethodWhoami, MethodShutdown,
+		MethodDrain, MethodReload, MethodTriggerList, MethodConfigShow, MethodRunStart, MethodRunShow,
+		MethodRunList, MethodRunCancel, MethodRunResume, MethodBatchStart, MethodBatchShow, MethodBatchList,
+		MethodPoolList, MethodPoolScale, MethodSessionCordon, MethodSessionConfig, MethodPoolUnquarantine,
+		MethodReportIncidents, MethodGuard, MethodVersion, MethodRecall, MethodAttention, MethodIdentityList,
+		MethodIdentityCheck, MethodIdentityToken, MethodIngestDrain, MethodSubscribe, MethodReport,
+		MethodQuestionAnswer, MethodActivityList, MethodActivityRecord, MethodLearnAdd, MethodLearnList,
+		MethodLearnUpdate, MethodLearnEvaluate, MethodLearnEdits, MethodWriteKeyClaim, MethodWriteKeyFinish,
+		MethodIngestClaim, MethodIngestAdmit, MethodIngestWorkers, MethodEventsSubscribe, MethodWaitAdd,
+		MethodWaitList, MethodWaitClear, MethodResourceAdd, MethodResourceRemove, MethodResourceUnhealthy,
+		MethodResourceList, MethodArtifactDeliver, MethodArtifactList, MethodArtifactShow, MethodArtifactAck,
+	}
+}
+
 // Method names.
 const (
 	MethodTicketCreate     = "ticket.create"
