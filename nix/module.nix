@@ -297,7 +297,12 @@ let
       # the controller when a pack file changed. Session worktrees are separate.
       services."${unit}-sync" = {
         description = "Fast-forward the Jobshop workspace ${name} and reload live packs";
-        after = [ "${unit}.service" ];
+        # After the controller, so a switch that restarts both reloads a
+        # running controller (#475).
+        after = [
+          "${unit}.service"
+          "jobshop.service"
+        ];
         requires = [ "${unit}.service" ];
         inherit path environment;
         serviceConfig = {
@@ -336,7 +341,20 @@ let
           # a missed reload leaves the controller on old pools (#177).
           if [ "$before" != "$after" ]; then
             echo "checkout moved $before..$after, reloading"
-            ${jobshop} reload
+            # A stopped controller loads packs on start, so a skipped reload
+            # loses nothing. Failing here would fail a switch that stops the
+            # controller while this unit runs and roll back a good deploy (#475).
+            if ! ${pkgs.systemd}/bin/systemctl is-active --quiet jobshop.service; then
+              echo "controller not running, reload skipped"
+              exit 0
+            fi
+            if ! ${jobshop} reload; then
+              if ! ${pkgs.systemd}/bin/systemctl is-active --quiet jobshop.service; then
+                echo "controller stopped during reload, reload skipped"
+                exit 0
+              fi
+              exit 1
+            fi
           fi
         '';
       };

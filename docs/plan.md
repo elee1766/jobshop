@@ -599,6 +599,8 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 Model config live check: `docs/verify/model-config.md` (#304).
 Shared mise live check: `docs/verify/sandbox-mise-shared.md` (#316).
 Waits live check: `docs/verify/waits.md` (#381).
+Workspace sync with the controller down: `docs/verify/workspace-sync-controller-down.md`,
+note `docs/notes/475-sync-during-switch.md` (#475).
 
 Ingest inbox (#318): move webhooks and pollers onto the inbox, then
 admission hooks and dispatch; the table and store API landed in #321,
