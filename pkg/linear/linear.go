@@ -132,24 +132,10 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(b))
+	resp, body, err := c.post(ctx, b)
 	if err != nil {
 		return err
 	}
-	// Personal API keys (lin_api_...) go in Authorization as they are;
-	// OAuth tokens, such as a linear-app identity's (#278), need Bearer.
-	auth := c.Token
-	if !strings.HasPrefix(auth, "lin_api_") && !strings.HasPrefix(auth, "Bearer ") {
-		auth = "Bearer " + auth
-	}
-	req.Header.Set("Authorization", auth)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.HTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	var r struct {
 		Data   json.RawMessage `json:"data"`
 		Errors []struct {
@@ -170,6 +156,43 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 		return fmt.Errorf("linear: %s", resp.Status)
 	}
 	return json.Unmarshal(r.Data, out)
+}
+
+// post sends one GraphQL request body and reads the response.
+func (c *Client) post(ctx context.Context, b []byte) (*http.Response, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(b))
+	if err != nil {
+		return nil, nil, err
+	}
+	// Personal API keys (lin_api_...) go in Authorization as they are;
+	// OAuth tokens, such as a linear-app identity's (#278), need Bearer.
+	auth := c.Token
+	if !strings.HasPrefix(auth, "lin_api_") && !strings.HasPrefix(auth, "Bearer ") {
+		auth = "Bearer " + auth
+	}
+	req.Header.Set("Authorization", auth)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	return resp, body, err
+}
+
+// Raw posts body (a JSON GraphQL request) and returns the response body
+// as is (#546). A GraphQL errors response is not an error here, so the
+// caller can print it; a non-200 status is, with the body still returned.
+func (c *Client) Raw(ctx context.Context, body []byte) ([]byte, error) {
+	resp, out, err := c.post(ctx, body)
+	if err != nil {
+		return out, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("linear: %s", resp.Status)
+	}
+	return out, nil
 }
 
 const issueQuery = `query($id: String!) { issue(id: $id) {
