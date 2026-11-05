@@ -1332,6 +1332,7 @@ export interface User {
   gid: number;
   map_uid: number;
   map_gid: number;
+  map_count?: number;
   groups?: number[];
 }
 
