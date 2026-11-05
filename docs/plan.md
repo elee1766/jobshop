@@ -425,6 +425,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - trigger.list evaluates triggers in parallel, so the Desk pools view
   no longer waits for every check in turn (#522,
   `docs/notes/522-trigger-list-parallel.md`).
+- Per-pool isolation: `isolation.user` (mapped uid/gid),
+  `isolation.limits` (delegated cgroup), `sandbox.network: pasta` with
+  `deny`; sessions end `oom` at the memory limit (#388,
+  `docs/notes/388-pool-isolation.md`, `docs/verify/isolation.md`).
 - Workflow step graphs: `needs:` for parallel steps, `when:` for steps
   gated on an outcome set with `close --outcome` (#385,
   `docs/notes/385-step-needs-when.md`).
@@ -500,6 +504,21 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Desk under a path prefix: `--base-path`, `X-Forwarded-Prefix` from a
   `--trusted-proxy`, relative build with a runtime `<base href>`,
   `services.jobshop.desk.basePath` (#516, `docs/notes/516-desk-base-path.md`).
+- Learning kinds are config (`learnings.kinds`, globs, packs append);
+  `when.learnings` filters by kinds, scope and source; selfdev's curate
+  counts only its repo and pools (#524, `docs/notes/524-learning-kinds.md`).
+- `session.journal`: paged, redacted journal reads for admin, the
+  session itself or a `session-journal` grant in the project;
+  `jobshop session journal`, Desk `/api/session/{id}/journal` (#529,
+  `docs/notes/529-session-journal.md`).
+- NixOS `services.jobshop.configFile`: a user-owned `jobshop.yaml` that
+  includes the module's `jobshop.module.yaml` (new `include:` key),
+  checked and reloaded on edit by `jobshop-config.path` (#531,
+  `docs/notes/531-module-config-file.md`).
+- Desk plugin host: plugin loader (built-in, pack `desk/`, root), slots,
+  `api`, `POST /api/rpc/{method}` with a session-only policy; Deploys is
+  the first built-in plugin (#517, `docs/notes/517-desk-plugins.md`,
+  `docs/verify/desk-plugins.md`).
 
 ## 5. What's next
 
@@ -650,7 +669,9 @@ dry run; 2 to 8 write live inbox rows or change config, left for the operator.
 Next: dispatch in a worker too, if one controller is not enough.
 
 **Later.** Moving gasserver to Postgres (#493 built the backend).
-Per-session isolation (`docs/notes/users-security.md`).
+Per-session isolation (`docs/notes/users-security.md`). Per-pool
+isolation is built (#388); next, run it on gasserver
+(`docs/verify/isolation.md`) and port the gascity factory's `agent` pool.
 
 **Test speed (#359).** In-process agent (#361), then move the
 process-tree tests onto the fake clock; sqlite template DB (#363).
@@ -659,8 +680,11 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
-proxy header (#515), artifacts (#508), Desk under a path prefix (#516).
-Next: turn on `desk.userHeader` on gasserver.
+proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
+configurable learning kinds (#524), user-managed config in the module (#531),
+`session.journal` (#529), Desk plugin host part 1 (#517).
+Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
+and plugin API (#541, #542).
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1054,6 +1078,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   their own (2026-11-03, #203): one session per escalation, so the
   operator sees the same conversation from Matrix and Desk. Desk shows
   the session's turns, not other messages in the Matrix room.
+- Config composes by an explicit `include:` list, not a `jobshop.d/`
+  lookup (2026-11-05, #531): the root file names every file it merges,
+  so a stray file cannot change config. The NixOS module's keys live in
+  `jobshop.module.yaml` when the user owns `jobshop.yaml`.
 - Desk identity comes from a trusted proxy header and is never
   self-asserted (2026-11-05, #515): Desk reads `--user-header` only from
   `--trusted-proxy` peers and refuses other requests with 403; the user
@@ -1349,6 +1377,21 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   (2026-11-05, #508). Read state, history and live updates come from
   tickets for free; only the files need storage, and the controller
   copies them because sessions cannot write there from the sandbox.
+- Learning kinds and the curate trigger's filters are config, with
+  globs (2026-11-05, #524): an improvement pack per repo needs its own
+  kinds (friction, blocker) and its own count, and one instance's
+  learnings should not start another's curator.
+- Per-pool isolation is opt-in config passed to acphost v0.3.0
+  (2026-11-05, #388): a mapped user, cgroup limits and a pasta network
+  per pool. The controller sets up the delegated cgroup only when some
+  pool sets limits, and every host problem (no delegation, ids outside
+  subuid, missing pasta) is a permanent spawn error that quarantines
+  just that pool, so a host without the setup runs as before.
+- Desk is a plugin host and its built-in views are plugins on the same
+  `api` a user plugin gets (2026-11-05, #517). Custom elements with a
+  host object, as Home Assistant cards; no shared framework or Module
+  Federation, so a Desk upgrade cannot break a plugin's runtime.
+  Built-ins may not import the shell, which proves the API suffices.
 
 ## 7. Reference: behavior as built
 
@@ -1411,6 +1454,8 @@ moved from the old 7.x list, oldest first:
 - [issue_no_run skips proposed](notes/506-issue-no-run-proposed.md) (#506)
 - [pr_unmerged skips operator and hold PRs](notes/509-pr-unmerged-skip.md) (#509)
 - [Desk under a path prefix](notes/516-desk-base-path.md) (#516)
+- [Learning kinds and trigger filters](notes/524-learning-kinds.md) (#524)
+- [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
 
 ## 8. Chat gateway
 

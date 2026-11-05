@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Config is the parsed jobshop.yaml.
@@ -57,6 +59,8 @@ type Config struct {
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
 	Hooks []Hook `yaml:"hooks"`
+	// Learnings configures the learning loop (#524).
+	Learnings LearningsConfig `yaml:"learnings,omitempty"`
 	// Gateway configures `jobshop gateway <name>` processes, by name.
 	Gateway map[string]Gateway `yaml:"gateway"`
 	// Identities are GitHub Apps and Linear tokens sessions act as (#200).
@@ -69,6 +73,8 @@ type Config struct {
 	// Activity polls recent GitHub and Linear activity for Desk (#255).
 	// Absent: off.
 	Activity *Activity `yaml:"activity"`
+	// Desk configures Desk plugins and the generic RPC endpoint (#517).
+	Desk Desk `yaml:"desk,omitempty"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
@@ -228,6 +234,29 @@ type EditsWhen struct {
 type LearningsWhen struct {
 	Min   int    `yaml:"min"`
 	Every string `yaml:"every"` // Go duration; empty: threshold only
+	// Filters (#524), all optional and ANDed: kind globs, scope globs
+	// (global, repo:<owner/name>, pool:<name>) and source (agent or
+	// controller). Min and Every count only matching learnings.
+	Kinds  []string `yaml:"kinds,omitempty"`
+	Scope  []string `yaml:"scope,omitempty"`
+	Source string   `yaml:"source,omitempty"`
+}
+
+// LearningsConfig is the top-level learnings section (#524).
+type LearningsConfig struct {
+	// Kinds are the learning kinds agents may record: names or
+	// path.Match globs (review-*, *). Packs add to the list. Empty: the
+	// defaults, correction, failure and workaround.
+	Kinds []string `yaml:"kinds,omitempty"`
+}
+
+// LearningKinds is the resolved kind patterns: Learnings.Kinds, or the
+// defaults when unset.
+func (c *Config) LearningKinds() []string {
+	if len(c.Learnings.Kinds) == 0 {
+		return store.LearningKinds
+	}
+	return c.Learnings.Kinds
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -317,6 +346,37 @@ type Gateway struct {
 	ArtifactRoom string `yaml:"artifact_room"`
 	// DeskURL is Desk's base URL for links in artifact lines. Empty: no link.
 	DeskURL string `yaml:"desk_url"`
+}
+
+// Desk is the desk section. Desk reads it through config.show, so a
+// reload applies without restarting Desk.
+type Desk struct {
+	// Plugins enables, disables and configures plugins by name. All
+	// plugins are enabled unless listed with enabled: false.
+	Plugins map[string]DeskPlugin `yaml:"plugins,omitempty" json:"plugins,omitempty"`
+	// RPC narrows (deny) or widens (allow) the methods plugins may call.
+	RPC DeskRPC `yaml:"rpc,omitempty" json:"rpc"`
+}
+
+// DeskPlugin is one desk.plugins entry.
+type DeskPlugin struct {
+	Enabled *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Config  map[string]any `yaml:"config,omitempty" json:"config,omitempty"`
+}
+
+// DeskRPC holds path.Match globs over admin method names.
+type DeskRPC struct {
+	Allow []string `yaml:"allow,omitempty" json:"allow,omitempty"`
+	Deny  []string `yaml:"deny,omitempty" json:"deny,omitempty"`
+}
+
+func (d Desk) validate() error {
+	for _, g := range slices.Concat(d.RPC.Allow, d.RPC.Deny) {
+		if _, err := path.Match(g, ""); err != nil {
+			return fmt.Errorf("desk.rpc: bad glob %q: %w", g, err)
+		}
+	}
+	return nil
 }
 
 // Attention configures the attention view: what waits on a human.
@@ -849,6 +909,8 @@ type Agent struct {
 	ConfigOptions map[string]string `yaml:"config_options"`
 	// Sandbox confines the agent (#262); pools add to it.
 	Sandbox *Sandbox `yaml:"sandbox"`
+	// Isolation runs the agent as a mapped user with cgroup limits (#388).
+	Isolation *Isolation `yaml:"isolation"`
 }
 
 // ACP session config option ids for the model and effort shorthands.
@@ -891,7 +953,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff", "ticket-release", "session-journal"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -960,6 +1022,8 @@ type Pool struct {
 	ConfigOptions map[string]string `yaml:"config_options"`
 	// Sandbox overrides and adds to the agent's sandbox (#262).
 	Sandbox *Sandbox `yaml:"sandbox"`
+	// Isolation overrides the agent's user and limits (#388).
+	Isolation *Isolation `yaml:"isolation"`
 }
 
 // Project is one repo / work area.
@@ -1064,6 +1128,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if err := a.Sandbox.check(); err != nil {
 			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
 		}
+		if err := a.Isolation.check(); err != nil {
+			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
+		}
 	}
 	for name, p := range c.Pools {
 		if !namePattern.MatchString(name) {
@@ -1085,6 +1152,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)
 		}
 		if err := p.Sandbox.check(); err != nil {
+			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
+		}
+		if err := p.Isolation.check(); err != nil {
 			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
 		if p.Type != "" && p.Type != PoolChat {
@@ -1137,6 +1207,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if err := c.Defaults.Sandbox.check(); err != nil {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
 	}
+	if err := c.Defaults.Isolation.check(); err != nil {
+		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
+	}
 	for _, d := range c.SharedTools {
 		if !filepath.IsAbs(d) {
 			return nil, fmt.Errorf("%s: shared_tools: %q must be absolute", FileName, d)
@@ -1147,6 +1220,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if err := c.validateIngest(); err != nil {
 		return nil, err
+	}
+	if err := c.Desk.validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if err := c.validateAdmission(); err != nil {
 		return nil, err
@@ -1214,6 +1290,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	for i, h := range c.Hooks {
 		if err := c.checkHook(h); err != nil {
 			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
+		}
+	}
+	for _, k := range c.Learnings.Kinds {
+		if err := store.ValidKindPattern(k); err != nil {
+			return nil, fmt.Errorf("%s: learnings.kinds: %w", FileName, err)
 		}
 	}
 	if err := c.checkResources(); err != nil {
@@ -1314,6 +1395,19 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 			if d, err := time.ParseDuration(l.Every); err != nil || d <= 0 {
 				return fmt.Errorf("when: learnings.every %q must be a positive duration", l.Every)
 			}
+		}
+		for _, k := range l.Kinds {
+			if err := store.ValidKindPattern(k); err != nil {
+				return fmt.Errorf("when: learnings.kinds: %w", err)
+			}
+		}
+		for _, s := range l.Scope {
+			if _, err := path.Match(s, ""); err != nil || s == "" {
+				return fmt.Errorf("when: learnings.scope %q is not a valid glob", s)
+			}
+		}
+		if l.Source != "" && l.Source != store.LearningSourceAgent && l.Source != store.LearningSourceController {
+			return fmt.Errorf("when: learnings.source %q must be agent or controller", l.Source)
 		}
 	}
 	if w.CheckTimeout != "" {

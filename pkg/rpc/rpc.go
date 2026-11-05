@@ -27,6 +27,30 @@ import (
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
+// Methods lists every admin method name. Desk's generic RPC endpoint
+// checks against it (#517); a control test keeps it equal to the
+// controller's handler table.
+func Methods() []string {
+	return []string{
+		MethodTicketCreate, MethodTicketShow, MethodTicketTrace, MethodTicketList, MethodTicketUpdate,
+		MethodTicketClose, MethodTicketReopen, MethodReady, MethodCommentAdd, MethodEdgeAdd, MethodEdgeRemove,
+		MethodLabelAdd, MethodLabelRemove, MethodClaim, MethodHeartbeat, MethodRelease, MethodHandoff,
+		MethodSessionNew, MethodSessionList, MethodSessionReap, MethodSessionRestart, MethodSessionPrompt,
+		MethodSessionSandbox, MethodSessionSend, MethodSessionSubscribe, MethodWhoami, MethodShutdown,
+		MethodDrain, MethodReload, MethodTriggerList, MethodConfigShow, MethodRunStart, MethodRunShow,
+		MethodRunList, MethodRunCancel, MethodRunResume, MethodBatchStart, MethodBatchShow, MethodBatchList,
+		MethodPoolList, MethodPoolScale, MethodSessionCordon, MethodSessionConfig, MethodPoolUnquarantine,
+		MethodReportIncidents, MethodGuard, MethodVersion, MethodRecall, MethodAttention, MethodIdentityList,
+		MethodIdentityCheck, MethodIdentityToken, MethodIngestDrain, MethodSubscribe, MethodReport,
+		MethodQuestionAnswer, MethodActivityList, MethodActivityRecord, MethodLearnAdd, MethodLearnList,
+		MethodLearnUpdate, MethodLearnEvaluate, MethodLearnEdits, MethodWriteKeyClaim, MethodWriteKeyFinish,
+		MethodIngestClaim, MethodIngestAdmit, MethodIngestWorkers, MethodEventsSubscribe, MethodWaitAdd,
+		MethodWaitList, MethodWaitClear, MethodResourceAdd, MethodResourceRemove, MethodResourceUnhealthy,
+		MethodResourceList, MethodArtifactDeliver, MethodArtifactList, MethodArtifactShow, MethodArtifactAck,
+		MethodSessionJournal,
+	}
+}
+
 // Method names.
 const (
 	MethodTicketCreate     = "ticket.create"
@@ -463,6 +487,11 @@ type SessionSandboxResult struct {
 	Sandbox *acphost.Sandbox `json:"sandbox,omitempty"`
 	Argv    []string         `json:"argv,omitempty"`
 	Error   string           `json:"error,omitempty"`
+	// User and Cgroup are the pool's isolation (#388); CgroupPath is the
+	// session's cgroup directory.
+	User       *acphost.User   `json:"user,omitempty"`
+	Cgroup     *acphost.Cgroup `json:"cgroup,omitempty"`
+	CgroupPath string          `json:"cgroup_path,omitempty"`
 }
 
 // SessionPromptParams names the session whose next prompt to show.
@@ -1028,6 +1057,11 @@ type SessionSendParams struct {
 	Key       string `json:"key,omitempty"`
 	Text      string `json:"text"`
 	Interrupt bool   `json:"interrupt,omitempty"`
+	// Context is background for the session's model, delivered with the
+	// message in its own delimited block of the prompt. Clients that
+	// show the conversation get it apart from the visible text
+	// (SessionEvent.Context).
+	Context string `json:"context,omitempty"`
 	// Attach marks a send from `session attach --rw`; it is refused
 	// unless the session's pool sets attach: rw.
 	Attach bool `json:"attach,omitempty"`
@@ -1069,11 +1103,14 @@ const (
 
 // SessionEvent is one item of a session's output, read from its journal.
 type SessionEvent struct {
-	Session    string       `json:"session"`
-	Seq        int64        `json:"seq,omitempty"`
-	Time       *time.Time   `json:"time,omitempty"`
-	Type       string       `json:"type"`
-	Text       string       `json:"text,omitempty"`
+	Session string     `json:"session"`
+	Seq     int64      `json:"seq,omitempty"`
+	Time    *time.Time `json:"time,omitempty"`
+	Type    string     `json:"type"`
+	Text    string     `json:"text,omitempty"`
+	// Context is the part of a turn_start prompt that was addressed to
+	// the model only (session.send context), kept out of Text.
+	Context    string       `json:"context,omitempty"`
 	Tool       *ToolSummary `json:"tool,omitempty"`
 	StopReason string       `json:"stop_reason,omitempty"`
 	Error      string       `json:"error,omitempty"`
@@ -1580,4 +1617,34 @@ type ArtifactShowResult struct {
 type ArtifactAckParams struct {
 	ID   string `json:"id"`
 	Note string `json:"note,omitempty"`
+}
+
+// MethodSessionJournal reads a session's ACP journal (#529).
+const MethodSessionJournal = "session.journal"
+
+// SessionJournalParams pages a session's journal by seq. Kinds filters
+// on msg.method or params.update.sessionUpdate; From on "agent" or
+// "controller". Limit defaults to 500, at most 5000.
+type SessionJournalParams struct {
+	ID       string   `json:"id"`
+	SinceSeq int64    `json:"since_seq,omitempty"`
+	Limit    int      `json:"limit,omitempty"`
+	Kinds    []string `json:"kinds,omitempty"`
+	From     string   `json:"from,omitempty"`
+}
+
+// JournalFrame is one redacted journal frame.
+type JournalFrame struct {
+	Seq  int64           `json:"seq"`
+	T    int64           `json:"t"`
+	From string          `json:"from"`
+	Msg  json.RawMessage `json:"msg"`
+}
+
+// SessionJournalResult is one page. NextSeq is the since_seq for the
+// next call; Done means the page reached the end of the journal.
+type SessionJournalResult struct {
+	Frames  []JournalFrame `json:"frames"`
+	NextSeq int64          `json:"next_seq"`
+	Done    bool           `json:"done"`
 }

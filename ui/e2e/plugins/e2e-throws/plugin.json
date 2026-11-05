@@ -1,0 +1,5 @@
+{
+  "name": "e2e-throws",
+  "entry": "index.js",
+  "contributes": [{ "slot": "view", "element": "e2e-throws-view", "id": "e2e-throws", "title": "E2E throws" }]
+}

@@ -124,6 +124,8 @@ func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, e
 	if err := yaml.Unmarshal(b, &out.Config); err != nil {
 		return nil, err
 	}
+	// The resolved kind patterns, defaults included (#524).
+	out.Config["learnings"] = map[string]any{"kinds": cfg.LearningKinds()}
 	if out.Sources == nil {
 		out.Sources = map[string][]string{}
 	}

@@ -16,18 +16,21 @@
   import BellOff from '@lucide/svelte/icons/bell-off';
   import Sun from '@lucide/svelte/icons/sun';
   import Moon from '@lucide/svelte/icons/moon';
+  import Puzzle from '@lucide/svelte/icons/puzzle';
+  import { plugins, loadPlugins, contributions, dispatch, who, toasts, confirmBox } from './lib/plugins.svelte.js';
+  import PluginSlot from './views/PluginSlot.svelte';
   import Attention from './views/Attention.svelte';
   import Artifacts from './views/Artifacts.svelte';
   import Work from './views/Work.svelte';
   import Sessions from './views/Sessions.svelte';
   import Pools from './views/Pools.svelte';
-  import Deploys from './views/Deploys.svelte';
   import Activity from './views/Activity.svelte';
   import ChatView from './views/ChatView.svelte';
   import Drawer from './views/Drawer.svelte';
   import SessionPanel from './views/SessionPanel.svelte';
 
-  onMount(connect);
+  onMount(() => connect(dispatch));
+  onMount(loadPlugins);
   onMount(() => { initPush(); });
 
   // Keep the shell as tall as the visible viewport so the chat composer
@@ -57,14 +60,12 @@
 
   const attention = resource(() => 'api/attention');
   const count = $derived(attention.data?.length ?? 0);
-  /** @type {{ user: string } | null} */
-  let who = $state(null);
-  onMount(() => { get('api/whoami').then((w) => (who = w)).catch(() => {}); });
+  onMount(() => { get('api/whoami').then((w) => (who.user = w.user || '')).catch(() => {}); });
   const unread = resource(() => 'api/artifacts?unread=1');
   const unreadCount = $derived(unread.data?.length ?? 0);
 
   /** @type {Record<string, { name: string, icon: any, key: string }>} */
-  const nav = {
+  const builtin = {
     attention: { name: 'Attention', icon: Inbox, key: 'a' },
     artifacts: { name: 'Artifacts', icon: Package, key: 'r' },
     chat: { name: 'Chat', icon: MessageSquare, key: 'c' },
@@ -72,8 +73,18 @@
     activity: { name: 'Activity', icon: ActivityIcon, key: 'y' },
     sessions: { name: 'Sessions', icon: Terminal, key: 's' },
     pools: { name: 'Pools', icon: Boxes, key: 'p' },
+    // Built-in plugin views (#517) keep their icon and key.
     deploys: { name: 'Deploys', icon: Rocket, key: 'd' },
   };
+
+  // Plugin views (#517): one with a built-in's id replaces it.
+  const pviews = $derived(contributions('view'));
+  const pview = $derived(pviews.find((v) => v.c.id === url.view));
+  const nav = $derived([
+    ...VIEWS.map((v) => ({ id: v, title: pviews.find((p) => p.c.id === v)?.c.title || builtin[v].name })),
+    ...pviews.filter((p) => !VIEWS.includes(p.c.id ?? '')).map((p) => ({ id: p.c.id ?? '', title: p.c.title || p.c.id || '' })),
+  ].map((v) => ({ ...v, icon: builtin[v.id]?.icon || Puzzle, key: builtin[v.id]?.key || '' })));
+  const headers = $derived(contributions('header'));
 
   let light = $state(localStorage.getItem('desk-theme') === 'light');
   $effect(() => {
@@ -91,8 +102,8 @@
     if (e.metaKey || e.ctrlKey || e.altKey || el.closest('input, textarea, select, [contenteditable]')) return;
     if (armed && Date.now() - armed < 1200) {
       armed = 0;
-      const v = VIEWS.find((x) => nav[x].key === e.key);
-      if (v) { e.preventDefault(); go({ view: v, ticket: '' }); }
+      const v = nav.find((x) => x.key && x.key === e.key);
+      if (v) { e.preventDefault(); go({ view: v.id, ticket: '' }); }
     } else if (e.key === 'g') {
       armed = Date.now();
     }
@@ -104,21 +115,25 @@
 <div class="shell" class:withpanel={!!url.session} style:--pw={panel.w + 'px'}>
   <div class="brand"><span class="mark"></span>Jobshop <span class="faint">Desk</span></div>
   <nav aria-label="views">
-    {#if who?.user}<div class="user faint" title="signed in through the proxy">{who.user}</div>{/if}
-    {#each VIEWS as v (v)}
-      {@const Icon = nav[v].icon}
+    {#if who.user}<div class="user faint" title="signed in through the proxy">{who.user}</div>{/if}
+    {#each nav as v (v.id)}
+      {@const Icon = v.icon}
       <a
-        href={'?view=' + v}
-        class:active={url.view === v}
-        data-view={v}
-        title={'Go to ' + nav[v].name + ' (g ' + nav[v].key + ')'}
-        onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '', artifact: '' }); }}
+        href={'?view=' + v.id}
+        class:active={url.view === v.id}
+        data-view={v.id}
+        title={'Go to ' + v.title + (v.key ? ' (g ' + v.key + ')' : '')}
+        onclick={(e) => { e.preventDefault(); go({ view: v.id, ticket: '', artifact: '' }); }}
       >
-        <span class="ico"><Icon size={14} />{#if v === 'attention' && count > 0}<span class="tabdot"></span>{/if}</span>
-        <span class="lbl">{nav[v].name}</span>
-        {#if v === 'attention' && count > 0}<span class="badge">{count}</span>{/if}
-        {#if v === 'artifacts' && unreadCount > 0}<span class="badge" data-testid="artifacts-unread">{unreadCount}</span>{/if}
+        <span class="ico"><Icon size={14} />{#if v.id === 'attention' && count > 0}<span class="tabdot"></span>{/if}</span>
+        <span class="lbl">{v.title}</span>
+        {#if v.id === 'attention' && count > 0}<span class="badge">{count}</span>{/if}
+        {#if v.id === 'artifacts' && unreadCount > 0}<span class="badge" data-testid="artifacts-unread">{unreadCount}</span>{/if}
       </a>
+    {/each}
+    {#if plugins.error}<div class="faint perr" data-testid="plugins-error">plugins: {plugins.error}</div>{/if}
+    {#each headers as h (h.plugin.name + h.c.element)}
+      <div class="hdr"><PluginSlot plugin={h.plugin} element={h.c.element} /></div>
     {/each}
   </nav>
   <div class="foot">
@@ -144,18 +159,31 @@
     </span>
   </div>
   <main>
-    {#if url.view === 'attention'}<Attention items={attention} />
+    {#if pview}{#key pview.plugin.name + pview.c.element}<PluginSlot plugin={pview.plugin} element={pview.c.element} />{/key}
     {:else if url.view === 'artifacts'}<Artifacts />
     {:else if url.view === 'chat'}<ChatView />
     {:else if url.view === 'work'}<Work />
     {:else if url.view === 'activity'}<Activity />
     {:else if url.view === 'sessions'}<Sessions />
     {:else if url.view === 'pools'}<Pools />
-    {:else if url.view === 'deploys'}<Deploys />
+    {:else if url.view !== 'attention' && !plugins.loaded}<p class="faint">Loading…</p>
+    {:else}<Attention items={attention} />
     {/if}
   </main>
   {#if url.session}{#key url.session}<SessionPanel id={url.session} />{/key}{/if}
   {#if url.ticket}<Drawer id={url.ticket} />{/if}
+  {#if toasts.items.length}
+    <div class="toasts" data-testid="toasts">{#each toasts.items as t (t.id)}<div class="card toast">{t.msg}</div>{/each}</div>
+  {/if}
+  {#if confirmBox.open}
+    {@const c = confirmBox.open}
+    {@const done = (/** @type {boolean} */ v) => { confirmBox.open = null; c.resolve(v); }}
+    <div class="backdrop" role="presentation" onclick={() => done(false)}></div>
+    <div class="card confirm" role="dialog" aria-modal="true" data-testid="confirm">
+      <p>{c.msg}</p>
+      <div class="row"><button onclick={() => done(false)}>Cancel</button><button class="ok" onclick={() => done(true)}>OK</button></div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -197,6 +225,14 @@
   main { grid-area: main; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; background: var(--bg); }
   /* The sidebar rows stay compact; the main column takes the full height. */
   .shell { grid-template-rows: auto 1fr auto; }
+  .perr { padding: 4px 8px; color: var(--bad); }
+  .hdr { padding: 4px 8px; }
+  .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 6px; z-index: 30; }
+  .toast { padding: 8px 12px; }
+  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 40; }
+  .confirm { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); padding: 16px; z-index: 41; min-width: 280px; }
+  .confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
+  .confirm .ok { border-color: var(--accent); }
 
   @media (max-width: 768px) {
     .shell, .shell.withpanel {

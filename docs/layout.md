@@ -239,7 +239,10 @@ from the root; there are no separate config, data or socket path flags.
 Copying or backing up the directory moves the whole deployment, and
 several roots can run side by side for testing. The NixOS module uses
 `dataDir` as the root and links the generated config into it as
-`jobshop.yaml`. Agents get `JOBSHOP_SOCKET` (their session socket), not
+`jobshop.yaml`. With `services.jobshop.configFile` the user owns
+`jobshop.yaml` instead and includes the module's
+`jobshop.module.yaml`; `jobshop-config.path` checks and reloads edits
+(#531, `docs/notes/531-module-config-file.md`). Agents get `JOBSHOP_SOCKET` (their session socket), not
 the root.
 
 ## Deployment on gasserver (decided 2026-11-01)

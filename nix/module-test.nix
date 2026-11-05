@@ -91,6 +91,67 @@ let
   };
   miseOff = eval { sandbox.enable = true; };
 
+  # User-managed jobshop.yaml (#531): the module writes only
+  # jobshop.module.yaml and watches the user's file.
+  userCfg = eval {
+    configFile = "/etc/jobshop/jobshop.yaml";
+    identities.elee-agent = {
+      kind = "github-token";
+      token_file = "/run/secrets/gh";
+      repos = [ "elee1766/*" ];
+    };
+    sandbox.enable = true;
+  };
+  inPlace = eval { configFile = "/var/lib/jobshop/jobshop.yaml"; };
+  rules = c: c.config.systemd.tmpfiles.rules;
+  linkTarget =
+    c: name:
+    lib.last (
+      lib.splitString " " (lib.findFirst (r: lib.hasInfix "/${name} " r) "" (rules c))
+    );
+  # The check-and-reload script with the real jobshop binary and stubs
+  # for runuser and systemctl; the root is moved to $T.
+  reloadScript = pkgs.writeText "jobshop-config" (
+    lib.replaceStrings
+      [
+        "${pkgs.util-linux}/bin/runuser"
+        "${pkgs.systemd}/bin/systemctl"
+        "${lib.getExe pkgs.hello}"
+        "/var/lib/jobshop/jobshop.yaml"
+      ]
+      [
+        "$T/bin/runuser"
+        "$T/bin/systemctl"
+        "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.jobshop}"
+        "$T/root/jobshop.yaml"
+      ]
+      userCfg.config.systemd.services.jobshop-config.script
+  );
+  userConfigTest = ''
+    export T=$PWD/u
+    mkdir -p $T/bin $T/root
+    printf '#!${pkgs.runtimeShell}\nshift 3; exec "$@"\n' > $T/bin/runuser
+    printf '#!${pkgs.runtimeShell}\necho "systemctl $*" >> $T/log\n' > $T/bin/systemctl
+    chmod +x $T/bin/*
+    cp ${linkTarget userCfg "jobshop.module.yaml"} $T/root/jobshop.module.yaml
+    ufail() { echo "user config test: $*"; cat $T/log $T/out 2>/dev/null; exit 1; }
+    grep -q 'token_file: /run/secrets/gh' $T/root/jobshop.module.yaml || ufail "identity not in module file"
+    grep -q 'backend: bubblewrap' $T/root/jobshop.module.yaml || ufail "sandbox not in module file"
+    printf 'include: [jobshop.module.yaml]\nprojects:\n  js: {identities: [elee-agent]}\n' > $T/root/jobshop.yaml
+    cp $T/root/jobshop.yaml $T/want
+    : > $T/log
+    ${pkgs.bash}/bin/bash ${reloadScript} > $T/out 2>&1 || ufail "good edit failed the check"
+    grep -q 'systemctl try-reload-or-restart jobshop.service' $T/log || ufail "good edit not reloaded"
+    cmp -s $T/root/jobshop.yaml $T/want || ufail "user file changed"
+    # js names an identity only the module file defines: without the
+    # include the check fails and nothing reloads.
+    printf 'projects:\n  js: {identities: [elee-agent]}\n' > $T/root/jobshop.yaml
+    : > $T/log
+    ! ${pkgs.bash}/bin/bash ${reloadScript} > $T/out 2>&1 || ufail "broken edit passed the check"
+    ! grep -q reload $T/log || ufail "broken edit reloaded"
+    grep -q 'keeping the running config' $T/out || ufail "no log line for the broken edit"
+  '';
+
   # The self-deploy script run against stubs: host paths are rewritten to a
   # temp dir, gh/nixos-rebuild/nix-env/systemctl and the controller binary are
   # shell stubs that log their calls.
@@ -331,6 +392,31 @@ let
       in
       lib.hasInfix "desk --listen 127.0.0.1:7480 --base-path /desk/ --trusted-proxy 127.0.0.1" s
     ))
+    (expect "configFile mode links the user file and writes only the module file" (
+      failed userCfg == [ ]
+      && linkTarget userCfg "jobshop.yaml" == "/etc/jobshop/jobshop.yaml"
+      && lib.hasSuffix "jobshop.module.yaml" (linkTarget userCfg "jobshop.module.yaml")
+      && userCfg.config.systemd.paths.jobshop-config.pathConfig.PathChanged == [
+        "/etc/jobshop/jobshop.yaml"
+        "/var/lib/jobshop/jobshop.module.yaml"
+      ]
+    ))
+    (expect "configFile = dataDir/jobshop.yaml leaves it alone" (
+      failed inPlace == [ ]
+      && !lib.any (lib.hasInfix "/var/lib/jobshop/jobshop.yaml ") (rules inPlace)
+    ))
+    (expect "managed mode has no module file or watcher" (
+      !lib.any (lib.hasInfix "jobshop.module.yaml") (rules two)
+      && !(two.config.systemd.paths ? jobshop-config)
+    ))
+    (expect "configFile and settings conflict" (
+      lib.any (lib.hasInfix "configFile or settings") (
+        failed (eval {
+          configFile = "/etc/jobshop/jobshop.yaml";
+          settings.projects.js = { };
+        })
+      )
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;
@@ -338,6 +424,7 @@ in
 assert lib.all lib.id checks;
 pkgs.runCommand "jobshop-module-test" { } ''
   ${rollbackTest}
+  ${userConfigTest}
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
   grep -q 'private_key_file: /run/secrets/k.pem' ${yamlPacks ident}
   grep -q 'exec .* gh "\$@"' ${lib.head ident.config.systemd.services.jobshop.path}/bin/gh

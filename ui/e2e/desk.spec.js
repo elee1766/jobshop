@@ -20,7 +20,9 @@ test('attention is first and shows a list or the empty state', async ({ page }) 
   expect(errors).toEqual([]);
 });
 
-for (const [view, testid] of [['work', 'runs'], ['sessions', 'sessions'], ['pools', 'triggers'], ['deploys', 'deploys']]) {
+// deploys is a built-in plugin (#517); DESK_PLUGINS replaces it with a test one.
+const viewChecks = [['work', 'runs'], ['sessions', 'sessions'], ['pools', 'triggers'], ...(process.env.DESK_PLUGINS ? [] : [['deploys', 'deploys']])];
+for (const [view, testid] of viewChecks) {
   test(`${view} view renders from the URL and the nav`, async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('./?view=' + view);

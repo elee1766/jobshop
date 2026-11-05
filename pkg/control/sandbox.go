@@ -59,7 +59,7 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd string) (*host.Sandbox, err
 	if sb.Backend == "" {
 		return nil, nil
 	}
-	s := &host.Sandbox{Backend: config.SandboxBubblewrap, Network: sb.Network}
+	s := &host.Sandbox{Backend: config.SandboxBubblewrap, Network: sb.Network, Deny: sb.Deny}
 	ro := func(p string) { s.RO = append(s.RO, host.Mount{Src: p, SkipMissing: true}) }
 	for _, p := range sandboxSystemRO {
 		ro(p)
@@ -120,7 +120,7 @@ func (c *Controller) sandboxKey(pool string) []string {
 	}
 	key := []string{"JOBSHOP_SANDBOX=" + sb.Backend + " net=" + sb.Network +
 		" ro=" + strings.Join(append(slices.Clone(sb.RO), cfg.SharedTools...), ",") +
-		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",")}
+		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",") + " deny=" + strings.Join(sb.Deny, ",")}
 	return key
 }
 
@@ -165,9 +165,16 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 		return nil, err
 	}
 	res := rpc.SessionSandboxResult{Session: t.ID, Pool: t.Pool, Sandbox: spec.Sandbox}
+	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
+		res.Error = err.Error()
+	}
+	res.User, res.Cgroup = spec.User, spec.Cgroup
+	if res.Cgroup != nil {
+		res.CgroupPath = filepath.Join(res.Cgroup.Parent, t.ID)
+	}
 	if spec.Sandbox != nil {
 		argv, err := host.SandboxArgs(*spec.Sandbox, spec.Command, spec.Args, spec.Dir)
-		if err != nil {
+		if err != nil && res.Error == "" {
 			res.Error = err.Error()
 		}
 		res.Argv = argv

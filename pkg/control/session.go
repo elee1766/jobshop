@@ -103,6 +103,9 @@ type runner struct {
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
+	// context is a prompt block for the model only, set by deliver for
+	// the next turn (session.send context).
+	context string
 	// resumed is set when a new host takes over an existing conversation
 	// (restart, crash, respawn, self-deploy); the next prompt starts with
 	// recoveryNote. Memory only.
@@ -807,6 +810,11 @@ func (r *runner) dropped(conn *acp.ClientSideConnection) error {
 	select {
 	case <-conn.Done():
 		if ex, ok := host.ReadExit(r.dir); ok {
+			if ex.OOMKill {
+				// The pool's memory limit killed the agent; a restart would
+				// hit it again (#388).
+				return errSessionEnd{resolution: resolutionOOM, reason: fmt.Sprintf("memory limit: agent OOM killed (%s)", ex.Reason)}
+			}
 			return fmt.Errorf("host exited: %s (code %d %s)", ex.Reason, ex.ExitCode, ex.Signal)
 		}
 		return errors.New("host connection lost")
@@ -1040,6 +1048,9 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		}
 		r.mu.Unlock()
 	}()
+	if c := r.takeContext(); c != "" {
+		text = strings.TrimSpace(contextOpen + "\n" + c + "\n" + contextClose + "\n\n" + text)
+	}
 	busyRetries := 0
 	for {
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
@@ -1214,6 +1225,49 @@ func (r *runner) turnSpec(kind string, t *store.Ticket, poolPrompt bool) turnSpe
 // useParts drops rule parts the conversation already holds (#397),
 // records which rules the prompt carries and returns its text.
 func (r *runner) useParts(parts []PromptPart) string {
+	return joinParts(r.useSend(parts))
+}
+
+// setContext queues a prompt block for the model only; the next turn
+// sends it ahead of its visible text.
+func (r *runner) setContext(s string) {
+	r.mu.Lock()
+	r.context = s
+	r.mu.Unlock()
+}
+
+// contextOpen and contextClose delimit session.send context in a prompt.
+// ACP text blocks carry no audience on the wire (the SDK drops it), so
+// the event reader splits the block out by these lines.
+const (
+	contextOpen  = "[jobshop context]"
+	contextClose = "[end of jobshop context]"
+)
+
+// splitContext separates a prompt into its visible text and the context
+// block, when it has one.
+func splitContext(s string) (text, ctx string) {
+	before, rest, ok := strings.Cut(s, contextOpen+"\n")
+	if !ok {
+		return s, ""
+	}
+	ctx, after, ok := strings.Cut(rest, "\n"+contextClose)
+	if !ok {
+		return s, ""
+	}
+	return strings.TrimSpace(before + strings.TrimPrefix(after, "\n\n")), ctx
+}
+
+func (r *runner) takeContext() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s := r.context
+	r.context = ""
+	return s
+}
+
+// useSend is useParts returning the parts to send.
+func (r *runner) useSend(parts []PromptPart) []PromptPart {
 	r.mu.Lock()
 	send, all, next := dedupe(r.c.config(), r.injected, parts)
 	r.injected = next
@@ -1225,7 +1279,7 @@ func (r *runner) useParts(parts []PromptPart) string {
 	if len(names) > 0 {
 		r.log.Info("prompt rules applied", "rules", strings.Join(names, ","))
 	}
-	return joinParts(parts)
+	return parts
 }
 
 // Recent comments in a ticket prompt: a routed-back ticket's finding lives
@@ -1406,7 +1460,7 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (hostspec.S
 	// it refreshes idle sessions like an env change (#262).
 	spec := hostspec.Spec{Spec: host.Spec{
 		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
-		Env: env, EnvHash: envHash(hostInheritedEnv(), append(slices.Clone(env), c.sandboxKey(t.Pool)...)), Dir: c.sessionCwd(t),
+		Env: env, EnvHash: envHash(hostInheritedEnv(), slices.Concat(env, c.sandboxKey(t.Pool), c.isolationKey(t.Pool))), Dir: c.sessionCwd(t),
 		LeaseMS: hostLease.Milliseconds(),
 	}}
 	// Config validation guarantees a logs endpoint when a pool exports.
@@ -1459,6 +1513,20 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	}
 	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir); err != nil {
 		return err
+	}
+	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
+		return err
+	}
+	if u := spec.User; u != nil && len(u.Groups) > 0 {
+		// The mapped user reaches cli.sock and writes the worktree through
+		// the first shared group, so the controller and refinery can still
+		// read and remove what it leaves.
+		if err := shareDir(dir, u.Groups[0], false); err != nil {
+			return host.Permanentf("isolation: share session dir: %w", err)
+		}
+		if err := shareDir(spec.Dir, u.Groups[0], true); err != nil {
+			return host.Permanentf("isolation: share worktree: %w", err)
+		}
 	}
 	// A worktree was just made; any other cwd must already exist.
 	if err := host.CheckSpawn(spec.Spec, worktree); err != nil {
@@ -1674,6 +1742,11 @@ func (c *Controller) recordGauges() {
 	for k, n := range counts {
 		c.metrics.Sessions.Record(ctx, n, metric.WithAttributes(telemetry.AttrPool.String(k[0]), telemetry.AttrState.String(k[1])))
 	}
+	byPool := map[string][]string{}
+	for _, s := range open {
+		byPool[s.Pool] = append(byPool[s.Pool], s.ID)
+	}
+	c.recordCgroupMetrics(ctx, byPool)
 	c.recordInboxGauges(ctx)
 	for name, p := range c.config().Pools {
 		// Ready is capped by the store's default limit; enough for a gauge.

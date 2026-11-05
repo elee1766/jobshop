@@ -6,6 +6,8 @@
   import Chat from './Chat.svelte';
   import SessionLink from './SessionLink.svelte';
   import X from '@lucide/svelte/icons/x';
+  import PluginSlot from './PluginSlot.svelte';
+  import { contributions, matches } from '../lib/plugins.svelte.js';
 
   /** @type {{ id: string }} */
   let { id } = $props();
@@ -28,6 +30,12 @@
   };
   /** @param {any} t */
   const report = (t) => meta(t).report || null;
+  /** Match target for drawer and action plugins (#517). @param {any} t @param {any} run */
+  const target = (t, run) => ({ kind: t.kind, label: t.labels ?? [], pool: t.pool || '', workflow: fields(run?.ticket ?? t).workflow || '' });
+  /** @param {string} slot @param {any} t @param {any} run */
+  const slotted = (slot, t, run) => contributions(slot).filter((x) => matches(x.c.match, target(t, run)));
+  /** @param {any} data */
+  const ctx = (data) => (data.run ? { ticket: data.ticket, run: data.run } : { ticket: data.ticket });
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }} />
@@ -58,6 +66,13 @@
         {#if t.holder}<span class="muted">held by {#if isSessionId(t.holder)}<SessionLink id={t.holder} />{:else}<span class="mono">{t.holder}</span>{/if}</span>{/if}
         <span class="faint">updated {ago(t.updated_at)}</span>
       </div>
+      {#if slotted('action', t, v.data.run).length}
+        <div class="row actions" data-testid="drawer-actions">
+          {#each slotted('action', t, v.data.run) as a (a.plugin.name + a.c.element)}
+            <PluginSlot plugin={a.plugin} element={a.c.element} context={ctx(v.data)} />
+          {/each}
+        </div>
+      {/if}
       {#if t.parent_id}
         <div class="row"><span class="muted">parent</span> <a href={'?ticket=' + t.parent_id} class="mono" onclick={(e) => { e.preventDefault(); go({ ticket: t.parent_id }); }}>{t.parent_id}</a></div>
       {/if}
@@ -110,6 +125,11 @@
           {/each}
         </ul>
       {/if}
+
+      {#each slotted('drawer', t, v.data.run) as d (d.plugin.name + d.c.element)}
+        {#if d.c.title}<h3>{d.c.title}</h3>{/if}
+        <div data-testid="drawer-plugin"><PluginSlot plugin={d.plugin} element={d.c.element} context={ctx(v.data)} /></div>
+      {/each}
 
       {#if v.data.comments?.length}
         <h3>Comments</h3>

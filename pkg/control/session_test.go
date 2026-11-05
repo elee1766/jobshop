@@ -59,6 +59,7 @@ func TestMain(m *testing.M) {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "fake-agent" {
 		sandboxProbe()
+		isolationProbe()
 		fakeAgent()
 		os.Exit(0)
 	}

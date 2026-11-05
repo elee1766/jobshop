@@ -152,6 +152,10 @@ type Controller struct {
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
+	// cgroup is the delegated sessions cgroup for isolation limits (#388),
+	// set up once on first need.
+	cgroupOnce sync.Once
+	cgroup     cgroupSetup
 	// minter caches identity tokens (#200).
 	minter *identity.Minter
 	// ingest is the spool drain (#335).
@@ -306,6 +310,11 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		c.saveLastGood(cfg)
 	}
 	c.loadScale()
+	if anyLimits(cfg) {
+		// Before any session spawns, so the controller is in its leaf
+		// cgroup when it enables controllers for sessions (#388).
+		c.ensureCgroup()
+	}
 	defer c.cancel()
 	return c.serve()
 }
@@ -741,6 +750,7 @@ func init() {
 		rpc.MethodSessionSandbox:    bind((*Controller).sessionSandbox),
 		rpc.MethodSessionSend:       bind((*Controller).sessionSend),
 		rpc.MethodSessionSubscribe:  bind((*Controller).sessionSubscribe),
+		rpc.MethodSessionJournal:    bind((*Controller).sessionJournal),
 		rpc.MethodEventsSubscribe:   bind((*Controller).eventsSubscribe),
 		rpc.MethodShutdown:          bind((*Controller).shutdown),
 		rpc.MethodDrain:             bind((*Controller).drainPools),

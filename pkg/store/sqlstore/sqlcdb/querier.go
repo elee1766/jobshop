@@ -26,7 +26,9 @@ type Querier interface {
 	// ClearTicketResources and AddTicketResource keep ticket_resources in
 	// step with fields.resources (#426).
 	ClearTicketResources(ctx context.Context, ticketID string) error
-	CountLearnings(ctx context.Context, arg CountLearningsParams) (int64, error)
+	// Grouped so the caller can match kind and scope globs (#524) on any
+	// backend: Postgres has no GLOB.
+	CountLearnings(ctx context.Context, arg CountLearningsParams) ([]CountLearningsRow, error)
 	DeleteEdge(ctx context.Context, arg DeleteEdgeParams) (int64, error)
 	DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64, error)
 	DeleteResourceCaps(ctx context.Context) error

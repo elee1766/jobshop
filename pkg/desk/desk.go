@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -62,6 +63,9 @@ type Config struct {
 	// TrustedProxies are the TCP peers whose UserHeader and
 	// X-Forwarded-Prefix are believed. Required when UserHeader is set.
 	TrustedProxies []netip.Prefix
+	// Root is the Jobshop root: <root>/desk/plugins and relative pack
+	// paths resolve against it (#517). Empty: built-in plugins only.
+	Root string
 }
 
 type userKey struct{}
@@ -100,6 +104,10 @@ type Server struct {
 	ui  fs.FS
 	// index is dist/index.html; serveIndex adds the <base> tag.
 	index []byte
+	// builtin is dist/plugins, the embedded plugin set (#517).
+	builtin fs.FS
+	rootsMu sync.Mutex
+	roots   map[string]*os.Root
 }
 
 // NeedsHuman is the escalation label.
@@ -126,7 +134,11 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 	if cfg.BasePath = CleanBasePath(cfg.BasePath); cfg.BasePath == "" {
 		cfg.BasePath = "/"
 	}
-	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index}
+	var builtin fs.FS = emptyFS{}
+	if _, err := fs.Stat(ui, "plugins"); err == nil {
+		builtin, _ = fs.Sub(ui, "plugins")
+	}
+	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index, builtin: builtin}
 }
 
 // basePathRe is what a base path may contain. A leading "//" would make
@@ -284,6 +296,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/ticket/{id}", s.json(s.ticket))
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/session/{id}/stream", s.sessionStream)
+	mux.HandleFunc("GET /api/session/{id}/journal", s.json(s.sessionJournal))
 	mux.HandleFunc("GET /api/session/{id}/access", s.json(s.chatAccess))
 	mux.HandleFunc("GET /api/chat", s.json(s.chatList))
 	mux.HandleFunc("GET /api/escalations", s.json(s.escalations))
@@ -301,6 +314,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/artifacts/{id}", s.json(s.artifactShow))
 	mux.HandleFunc("GET /api/artifacts/{id}/files/{name}", s.artifactFile)
 	mux.HandleFunc("POST /api/artifacts/{id}/ack", s.json(s.artifactAck))
+	mux.HandleFunc("GET /api/plugins", s.json(s.pluginList))
+	mux.HandleFunc("GET /plugins/{name}/{file...}", s.pluginFile)
+	mux.HandleFunc("GET /api/rpc", s.json(s.rpcList))
+	mux.HandleFunc("POST /api/rpc/{method}", s.json(s.rpcCall))
 	mux.Handle("GET /", s.static())
 	return s.guard(s.stripBase(mux))
 }
@@ -386,10 +403,12 @@ func (s *Server) json(fn func(*http.Request) (any, error)) http.HandlerFunc {
 				code = http.StatusBadRequest
 			case errors.Is(err, store.ErrConflict):
 				code = http.StatusConflict
+			case errors.Is(err, errForbidden):
+				code = http.StatusForbidden
 			}
 			s.log.Warn("desk: api", "path", r.URL.Path, "err", err)
 			w.WriteHeader(code)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error(), "code": rpcErrCode(err)})
 			return
 		}
 		_ = json.NewEncoder(w).Encode(v)

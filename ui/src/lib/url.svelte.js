@@ -3,14 +3,17 @@
 
 /** @typedef {{ view: string, ticket: string, session: string, state: string, source: string, repo: string, kind: string, who: string, artifact: string, trigger: string, pool: string, read: string }} UrlState */
 
-const VIEWS = ['attention', 'artifacts', 'chat', 'work', 'activity', 'sessions', 'pools', 'deploys'];
+// Built-in views. A plugin view (#517) is any other id; App falls back
+// to attention when no plugin claims it.
+const VIEWS = ['attention', 'artifacts', 'chat', 'work', 'activity', 'sessions', 'pools'];
+const viewRe = /^[a-z0-9][a-z0-9-]{0,62}$/;
 
 /** @returns {UrlState} */
 function read() {
   const q = new URLSearchParams(location.search);
   const view = q.get('view') ?? 'attention';
   return {
-    view: VIEWS.includes(view) ? view : 'attention',
+    view: viewRe.test(view) ? view : 'attention',
     ticket: q.get('ticket') ?? '',
     session: q.get('session') ?? '',
     state: q.get('state') ?? '',
