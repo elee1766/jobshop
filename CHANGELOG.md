@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.6](https://github.com/elee1766/jobshop/compare/v0.1.5...v0.1.6) (2026-11-05)
+
+
+### Bug fixes
+
+* **control:** wait notes say when a deploy or tag condition is unmet ([#716](https://github.com/elee1766/jobshop/issues/716)) ([#718](https://github.com/elee1766/jobshop/issues/718)) ([dec84fa](https://github.com/elee1766/jobshop/commit/dec84fa71b3dccaef7f7ff73a0514b8d90cf784b))
+* **nix:** start the isolated controller in its cgroup subgroup so restarts work (JOB-21) ([#717](https://github.com/elee1766/jobshop/issues/717)) ([83b7ecb](https://github.com/elee1766/jobshop/commit/83b7ecbe81b5f11e317de8b1b45bd3a229326101))
+
 ## [0.1.5](https://github.com/elee1766/jobshop/compare/v0.1.4...v0.1.5) (2026-11-05)
 
 
