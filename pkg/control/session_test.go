@@ -449,7 +449,11 @@ func TestSessionList(t *testing.T) {
 // waits to be signalled.
 func holdLock(dir string) {
 	f, err := os.Create(filepath.Join(dir, host.LockFile))
-	if err != nil || syscall.Flock(int(f.Fd()), syscall.LOCK_EX) != nil {
+	if err == nil {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hold-lock:", err)
 		os.Exit(1)
 	}
 	_ = os.WriteFile(filepath.Join(dir, host.PidFile), fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600)
@@ -493,11 +497,27 @@ func TestSessionReap(t *testing.T) {
 	odir := root.SessionDir("js-orphan")
 	require.NoError(t, os.MkdirAll(odir, 0o700))
 	holder := exec.Command(os.Args[0], "hold-lock", odir)
+	var holderErr strings.Builder
+	holder.Stderr = &holderErr
 	require.NoError(t, holder.Start())
 	exited := make(chan struct{})
-	go func() { _ = holder.Wait(); close(exited) }()
+	var waitErr error
+	go func() { waitErr = holder.Wait(); close(exited) }()
 	t.Cleanup(func() { _ = holder.Process.Kill(); <-exited })
-	require.Eventually(t, func() bool { return host.Alive(odir) }, dialWait, 10*time.Millisecond)
+	// Fail with the helper's reason if it exits before taking the lock,
+	// instead of waiting out dialWait (#481).
+	gone := func() bool {
+		select {
+		case <-exited:
+			return true
+		default:
+			return false
+		}
+	}
+	require.Eventually(t, func() bool { return gone() || host.Alive(odir) }, dialWait, 10*time.Millisecond)
+	if gone() {
+		t.Fatalf("hold-lock helper exited: %v: %s", waitErr, holderErr.String())
+	}
 
 	params := rpc.SessionReapParams{Closed: true, OlderThan: time.Nanosecond, DryRun: true}
 	var res rpc.SessionReapResult
