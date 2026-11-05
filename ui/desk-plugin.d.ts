@@ -368,6 +368,13 @@ export interface ConfigShowResult {
   config: Record<string, unknown>;
   sources: Record<string, string[]>;
   instances: PackInstance[];
+  watch?: ConfigWatch;
+}
+
+export interface ConfigWatch {
+  on: boolean;
+  files: number;
+  dirs: number;
 }
 
 export interface CreateParams {
