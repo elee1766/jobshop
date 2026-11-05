@@ -427,6 +427,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Store split: backend-neutral core `pkg/store/sqlstore` over sqlc's
   Querier; `pkg/store/sqlite` is a thin driver (#404,
   `docs/notes/404-store-core-split.md`).
+- Postgres store backend `pkg/store/postgres` (pgx), passing the same
+  conformance suite in CI; `store: {driver: postgres, dsn_file}` (#493,
+  `docs/notes/493-postgres.md`).
 - Tests: `Options.Hosts` runs session hosts in-process for
   controller-logic tests (#361, `docs/notes/361-inproc-hosts.md`).
 - Admission releases a held inbox item back to pending once its
@@ -612,7 +615,7 @@ Live check: `docs/verify/ingest.md` on gasserver (#444); step 1 was
 dry run; 2 to 8 write live inbox rows or change config, left for the operator.
 Next: dispatch in a worker too, if one controller is not enough.
 
-**Later.** Postgres backend against the same conformance suite.
+**Later.** Moving gasserver to Postgres (#493 built the backend).
 Per-session isolation (`docs/notes/users-security.md`).
 
 **Test speed (#359).** In-process agent (#361), then move the
@@ -1245,6 +1248,14 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   stays the source of record; meta filters use `ticket_meta`. Recall
   stays the one per-engine module. This prepares for Postgres; it is not
   a decision to build it.
+- Postgres runs sqlite's sqlc code, rewritten at run time (2026-11-05,
+  #493): `?N`/`?` become `$N`, a few casts are adjusted, and queries
+  using an engine feature (recall FTS) have Postgres text in
+  `pkg/store/postgres/queries/overrides.sql`. A second sqlc engine would
+  emit different Go types for the same queries and need hand-copied SQL;
+  this keeps one query source and one Querier. Postgres has its own
+  migrations (one schema file); a test prepares every sqlc query on it,
+  so a new sqlite query Postgres cannot run fails by name.
 - Desk is the operator UI; Matrix and Discord are paused, alternatives
   not companions; the escalation chat is gateway-independent
   (2026-11-04, #379). The controller opens it from pack policy
