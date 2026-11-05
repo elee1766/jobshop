@@ -12,8 +12,8 @@ Two modes, chosen by `services.jobshop.configFile`:
   never writes it. `settings` must be empty (assertion).
 
 What the module still owns goes to `dataDir/jobshop.module.yaml`, linked
-on each switch: `identities`, `gateway`, live packs (`packs`),
-`attention.rollback_file` (self-deploy), `defaults.sandbox` and
+on each switch: `identities`, `gateway`, live packs (`packs`, plus
+`packs/deploy` with self-deploy since #577), `defaults.sandbox` and
 `shared_tools` (sandbox), and `telemetry`. The user's file pulls it in:
 
 ```yaml

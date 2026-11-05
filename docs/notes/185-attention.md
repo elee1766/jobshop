@@ -11,12 +11,11 @@ Built:
   quarantine escalations), `question` (open, labeled `question`, until
   #186 defines worker questions), `run` (`needs_human` with no open
   escalation ticket), `pool` (quarantined with no escalation ticket,
-  since the controller started) and `rollback`. Items carry
-  `meta.github` repo and issue or PR (#183).
-- Rollback: config `attention.rollback_file`, the self-deploy state
-  `failed` file. Listed while it is newer than `deployed` beside it, so
-  the next good deploy clears it. The NixOS module sets it when
-  self-deploy is enabled.
+  since the controller started); `rollback` was removed by #577.
+  Items carry `meta.github` repo and issue or PR (#183).
+- Rollback: was config `attention.rollback_file`; since #577 the
+  self-deploy script files a `deploy:rollback` needs-human ticket
+  instead (`docs/notes/577-deploy-out-of-core.md`).
 - Gateway `attention_digest` (cron, UTC; module option
   `attentionDigest`) opens one thread in `escalation_room` with the
   list, and posts nothing when it is empty.
