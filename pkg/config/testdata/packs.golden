@@ -1138,7 +1138,7 @@ triggers:
         poll: ""
       - signal: issue_no_run
         after: ""
-        check: "gh issue list --repo elee1766/jobshop --state open --limit 200 --json number,labels,title,createdAt,author --jq ' (\"elee1766,zexoverz\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $ok | .[] | select(.author.is_bot or ([.author.login | ascii_downcase] | inside($ok)) or ([.labels[].name] | any(. == \"accepted\"))) | select([.labels[].name] | any(. == \"target\" or . == \"needs-decision\" or . == \"needs-human\" or . == \"tracking\" or . == \"proposed\") | not) | select(.title | test(\"^drill\"; \"i\") | not) | select((now - (.createdAt | fromdateiso8601)) > 1800) | \"\\(.number) open, no run\"'"
+        check: "gh issue list --repo elee1766/jobshop --state open --limit 200 --json number,labels,title,createdAt,author --jq ' (\"elee1766,zexoverz,hhenry88,forgotten-memory\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $ok | .[] | select(.author.is_bot or ([.author.login | ascii_downcase] | inside($ok)) or ([.labels[].name] | any(. == \"accepted\"))) | select([.labels[].name] | any(. == \"target\" or . == \"needs-decision\" or . == \"needs-human\" or . == \"tracking\" or . == \"proposed\") | not) | select(.title | test(\"^drill\"; \"i\") | not) | select((now - (.createdAt | fromdateiso8601)) > 1800) | \"\\(.number) open, no run\"'"
         repo: elee1766/jobshop
         team: ""
         states: ""
