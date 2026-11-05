@@ -72,6 +72,13 @@ Each planning ticket:
    and `jobshop run list --state needs_human`, each with its run id and issue.
 12. When every target item is checked, comment a summary and close the
     target.
+13. Stale tickets: `jobshop attention` lists kind `stale` for open
+    tickets no pool will claim, older than `attention.orphan_age`. For
+    each, check whether the problem it names is already fixed (a merged
+    PR, a closed issue, master CI green on the path it names). If you can
+    verify that, comment the PR (`jobshop comment <id> "Fixed by PR #<n>"`)
+    and close it with the command in the item. If you cannot verify it,
+    leave it open; do not guess.
 {{if eq (print .propose_targets) "true"}}
 Proposing a target (#488): the pools sit idle when targets run out, so
 you propose the next one and a human approves it.

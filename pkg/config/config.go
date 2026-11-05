@@ -321,6 +321,21 @@ type Attention struct {
 	// ResourceWait lists a step waiting on a full resource longer than
 	// this Go duration (#408). Empty: not listed.
 	ResourceWait string `yaml:"resource_wait"`
+	// OrphanAge lists an open ticket no pool will claim (no pool, or a
+	// pool not in the config) once it is older than this Go duration
+	// (#495). Default 72h; "off" disables it.
+	OrphanAge string `yaml:"orphan_age"`
+}
+
+// DefaultOrphanAge is attention.orphan_age when unset.
+const DefaultOrphanAge = 72 * time.Hour
+
+// OrphanAgeDuration is attention.orphan_age, 0 when off.
+func (a Attention) OrphanAgeDuration() time.Duration {
+	if a.OrphanAge == "off" {
+		return 0
+	}
+	return Duration(a.OrphanAge, DefaultOrphanAge)
 }
 
 // DefaultInboxRetention is how long terminal inbox items are kept.
@@ -1155,6 +1170,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if w := c.Attention.ResourceWait; w != "" {
 		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: attention.resource_wait %q must be a positive duration", FileName, w)
+		}
+	}
+	if w := c.Attention.OrphanAge; w != "" && w != "off" {
+		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: attention.orphan_age %q must be a positive duration or off", FileName, w)
 		}
 	}
 	for name, w := range c.Workflows {
