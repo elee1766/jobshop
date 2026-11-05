@@ -116,7 +116,7 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 // reads Linear itself, so it takes no check, repo or after.
 func checkLinearStall(s StallSignal) error {
 	if s.Check != "" || s.Repo != "" || s.After != "" {
-		return fmt.Errorf("when.stall: %s takes team, states, labels, skip_labels and poll, not check, repo or after", s.Signal)
+		return fmt.Errorf("when.stall: %s takes team, states, labels, skip_labels, poll and grace, not check, repo or after", s.Signal)
 	}
 	if s.Team != "" && !linearTeamPattern.MatchString(s.Team) {
 		return fmt.Errorf("when.stall: %s team %q is not a Linear team key like ENG", s.Signal, s.Team)
@@ -124,6 +124,11 @@ func checkLinearStall(s StallSignal) error {
 	if s.Poll != "" {
 		if d, err := time.ParseDuration(s.Poll); err != nil || d <= 0 {
 			return fmt.Errorf("when.stall: %s poll %q must be a positive duration", s.Signal, s.Poll)
+		}
+	}
+	if s.Grace != "" {
+		if d, err := time.ParseDuration(s.Grace); err != nil || d < 0 {
+			return fmt.Errorf("when.stall: %s grace %q must be a non-negative duration", s.Signal, s.Grace)
 		}
 	}
 	return nil
