@@ -158,6 +158,8 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `escalation_chat_pool` | A `type: chat` pool (e.g. the operator pack's `operator`) where the controller opens one escalation chat per escalation ticket with `prompts/escalation.md` or `escalation-pool.md` (#379). Empty (default): ticket only |
 | `propose_targets` | `true` (default): when targets run out the planner files one issue labeled `proposed` (`Proposed target: ...`, created if missing) and a `proposed` ticket that `jobshop attention` lists as a decision. A human approves by relabeling it `target`. `false`: only humans file targets (#488) |
 | `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
+| `stall_pr_skip_authors` | Comma-separated logins whose green PRs `pr_unmerged` does not flag, besides `human` (#509) |
+| `stall_pr_skip_labels` | Comma-separated PR labels `pr_unmerged` does not flag. Default `hold` (#509) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
 | `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |

@@ -479,6 +479,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `jobshop handoff <ticket> --to <pool> --note`: re-pool, release, fence
   bump and note in one transaction; stall-check, refinery and dev
   prompts use it (#492, `docs/notes/492-handoff.md`).
+- `pr_unmerged` skips PRs by the operator or `stall_pr_skip_authors`
+  and PRs labeled `hold` (#509, `docs/notes/509-pr-unmerged-skip.md`).
 
 ## 5. What's next
 
@@ -1305,6 +1307,9 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   sat held in the new pool with no note. It is not a failed attempt.
   Sessions hand off only their own ticket; other tickets need admin or
   the `handoff` pool grant, which the stall-check pool has.
+- A green PR by the operator, or labeled `hold`, is not a stall
+  (2026-11-05, #509): the operator keeps such PRs open on purpose, and
+  flagging them only parked stall-check runs in `needs_human`.
 
 ## 7. Reference: behavior as built
 
@@ -1365,6 +1370,7 @@ moved from the old 7.x list, oldest first:
 - [Session socket bound once](notes/479-session-socket-once.md) (#479)
 - [New-user path test](notes/494-new-user-path.md) (#494)
 - [issue_no_run skips proposed](notes/506-issue-no-run-proposed.md) (#506)
+- [pr_unmerged skips operator and hold PRs](notes/509-pr-unmerged-skip.md) (#509)
 
 ## 8. Chat gateway
 

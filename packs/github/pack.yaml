@@ -29,6 +29,10 @@ defaults:
   # GitHub logins besides {{.human}} whose issues start work (#340).
   # Comma-separated. Others need the accepted label.
   authors: ""
+  # pr_unmerged skips PRs by {{.human}}, by these logins, or with one of
+  # these labels (#509): operator PRs kept open on purpose. Comma-separated.
+  stall_pr_skip_authors: ""
+  stall_pr_skip_labels: hold
   deploy_check: >-
     none (these agents do not deploy this repo); treat this check as
     passed.
@@ -171,12 +175,19 @@ triggers:
           labels: "{{.linear_intake_labels}}"
           skip_labels: "{{.linear_skip_labels}}"
           poll: "{{.linear_poll}}"
-        # Non-draft PRs with all checks green, untouched for 2h.
+        # Non-draft PRs with all checks green, untouched for 2h. PRs by
+        # {{.human}} or stall_pr_skip_authors, or with a
+        # stall_pr_skip_labels label, are held on purpose (#509).
         - signal: pr_unmerged
           check: >-
             gh pr list --repo {{.repo}} --state open
-            --json number,isDraft,updatedAt,statusCheckRollup --jq '.[]
+            --json number,isDraft,updatedAt,statusCheckRollup,author,labels --jq '
+            ("{{.human}},{{.stall_pr_skip_authors}}" | ascii_downcase | split(",") | map(select(. != ""))) as $skipa
+            | ("{{.stall_pr_skip_labels}}" | ascii_downcase | split(",") | map(select(. != ""))) as $skipl
+            | .[]
             | select(.isDraft | not)
+            | select(.author.login | ascii_downcase | IN($skipa[]) | not)
+            | select(any(.labels[].name | ascii_downcase; IN($skipl[])) | not)
             | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[];
             .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL"))
             | select((now - (.updatedAt | fromdateiso8601)) > 7200)

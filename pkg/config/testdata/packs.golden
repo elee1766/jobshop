@@ -691,7 +691,7 @@ triggers:
         poll: 5m
       - signal: pr_unmerged
         after: ""
-        check: "gh pr list --repo elee1766/acphost --state open --json number,isDraft,updatedAt,statusCheckRollup --jq '.[] | select(.isDraft | not) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | select((now - (.updatedAt | fromdateiso8601)) > 7200) | \"\\(.number) green, unmerged since \\(.updatedAt)\"'"
+        check: "gh pr list --repo elee1766/acphost --state open --json number,isDraft,updatedAt,statusCheckRollup,author,labels --jq ' (\"wile,\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipa | (\"hold\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipl | .[] | select(.isDraft | not) | select(.author.login | ascii_downcase | IN($skipa[]) | not) | select(any(.labels[].name | ascii_downcase; IN($skipl[])) | not) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | select((now - (.updatedAt | fromdateiso8601)) > 7200) | \"\\(.number) green, unmerged since \\(.updatedAt)\"'"
         repo: ""
         team: ""
         states: ""
@@ -891,7 +891,7 @@ triggers:
         poll: 5m
       - signal: pr_unmerged
         after: ""
-        check: "gh pr list --repo acme/widget --state open --json number,isDraft,updatedAt,statusCheckRollup --jq '.[] | select(.isDraft | not) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | select((now - (.updatedAt | fromdateiso8601)) > 7200) | \"\\(.number) green, unmerged since \\(.updatedAt)\"'"
+        check: "gh pr list --repo acme/widget --state open --json number,isDraft,updatedAt,statusCheckRollup,author,labels --jq ' (\"wile,\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipa | (\"hold\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipl | .[] | select(.isDraft | not) | select(.author.login | ascii_downcase | IN($skipa[]) | not) | select(any(.labels[].name | ascii_downcase; IN($skipl[])) | not) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | select((now - (.updatedAt | fromdateiso8601)) > 7200) | \"\\(.number) green, unmerged since \\(.updatedAt)\"'"
         repo: ""
         team: ""
         states: ""
@@ -1091,7 +1091,7 @@ triggers:
         poll: 5m
       - signal: pr_unmerged
         after: ""
-        check: "gh pr list --repo elee1766/jobshop --state open --json number,isDraft,updatedAt,statusCheckRollup --jq '.[] | select(.isDraft | not) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | select((now - (.updatedAt | fromdateiso8601)) > 7200) | \"\\(.number) green, unmerged since \\(.updatedAt)\"'"
+        check: "gh pr list --repo elee1766/jobshop --state open --json number,isDraft,updatedAt,statusCheckRollup,author,labels --jq ' (\"elee1766,\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipa | (\"hold\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipl | .[] | select(.isDraft | not) | select(.author.login | ascii_downcase | IN($skipa[]) | not) | select(any(.labels[].name | ascii_downcase; IN($skipl[])) | not) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | select((now - (.updatedAt | fromdateiso8601)) > 7200) | \"\\(.number) green, unmerged since \\(.updatedAt)\"'"
         repo: ""
         team: ""
         states: ""
