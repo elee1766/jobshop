@@ -336,7 +336,7 @@ func (s *Store) insert(ctx context.Context, q sqlcdb.Querier, actor string, nt s
 	}
 	id := nt.ID
 	if id == "" {
-		if id, err = s.ids.Next(s.prefix(nt.Project)); err != nil {
+		if id, err = s.ids.Next(s.prefix(nt.Project), idTag(nt.Kind)); err != nil {
 			return store.Ticket{}, err
 		}
 	}
@@ -496,7 +496,16 @@ func (s *Store) FindOpenBatchByKey(ctx context.Context, project, key string) (st
 
 // NewID mints an id with the project's prefix.
 func (s *Store) NewID(project string) (string, error) {
-	return s.ids.Next(s.prefix(project))
+	return s.ids.Next(s.prefix(project), "")
+}
+
+// idTag is the kind tag in a new id: sessions get one so their ids are
+// distinguishable from ticket ids (#615).
+func idTag(k store.Kind) string {
+	if k == store.KindSession {
+		return ids.SessionTag
+	}
+	return ""
 }
 
 // ListChildren returns id's children ordered by fields.index.

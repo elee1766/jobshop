@@ -7,6 +7,7 @@ import (
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/sony/sonyflake/v2"
@@ -39,14 +40,33 @@ func New() (*Generator, error) {
 	return &Generator{sf: sf}, nil
 }
 
-// Next returns a new id with the given project prefix.
-func (g *Generator) Next(prefix string) (string, error) {
+// SessionTag marks session ids: "<prefix>-s-<sonyflake>" (#615). Ids minted
+// before #615 have no tag, so the shape only proves a new session id.
+const SessionTag = "s"
+
+// Next returns a new id with the given project prefix and kind tag. An empty
+// tag gives "<prefix>-<sonyflake>"; a tag gives "<prefix>-<tag>-<sonyflake>".
+func (g *Generator) Next(prefix, tag string) (string, error) {
 	n, err := g.sf.NextID()
 	if err != nil {
 		return "", fmt.Errorf("ids: %w", err)
 	}
+	if tag != "" {
+		return prefix + "-" + tag + "-" + encode(n), nil
+	}
 	return prefix + "-" + encode(n), nil
 }
+
+// IsSession reports whether id has the session tag. False for ticket ids and
+// for session ids minted before #615: callers fall back to a store lookup.
+func IsSession(id string) bool {
+	// Match from the end: a project prefix may itself contain dashes.
+	n := len(id) - encodedLen
+	return n > len(SessionTag)+2 && strings.HasSuffix(id[:n], "-"+SessionTag+"-")
+}
+
+// encodedLen is the width of an encoded 64-bit id.
+const encodedLen = 13
 
 func encode(n int64) string {
 	var b [8]byte
