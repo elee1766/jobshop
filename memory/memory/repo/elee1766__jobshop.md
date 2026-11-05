@@ -40,3 +40,7 @@ A flaky test: `gh issue list --search <TestName>` first and link the
 existing issue. In pkg/control tests, wait for every asserted condition
 in one pass/passUntil, and run `pass(t, dir, 1)` before creating state
 that startup (reapOrphans) must not touch.
+Sandbox and isolation tests skip silently when bwrap, newuidmap, pasta or
+nft are not on PATH: run them under `PATH=$PATH:/run/wrappers/bin nix shell
+nixpkgs#bubblewrap nixpkgs#passt nixpkgs#nftables -c go test -v ...` and
+check the output for SKIP.
