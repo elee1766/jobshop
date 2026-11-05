@@ -540,11 +540,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `ui/desk-plugin.d.ts`, the CSV example and `docs/desk-plugins.md`
   (#542, `docs/notes/542-desk-plugins-part3.md`,
   `docs/verify/desk-plugin-commands.md`).
-- Desk plugins part 2: every view is a built-in plugin (`ui/shell`,
-  `ui/plugins`, `ui/kit`), plugin API 3 (`go`, `onParams`, `query`,
-  `has`, `mount`), `ticket.list` meta, workflow, state, order, since
-  and cursor filters (#541, `docs/notes/541-desk-plugins-2.md`,
-  `docs/verify/desk-plugins-2.md`).
+- Linear comments: attribution by user id or displayName, `several`
+  for mixed batches, reply lines, title and state header, edits (#595,
+  `docs/notes/595-linear-comment-context.md`).
 
 ## 5. What's next
 
@@ -668,6 +666,8 @@ Linear communication live check: `docs/verify/linear-communication.md`
 (#293).
 Linear webhook live check: "Webhook" section of
 `docs/verify/linear-pack.md`; needs a reverse proxy or tunnel (#300).
+Linear comment context live check:
+`docs/verify/linear-comment-context.md`; waits on #258 (#595).
 
 Sandbox rollout on gasserver, `acphost-dev` first:
 `docs/verify/sandbox.md` (#262).
@@ -710,8 +710,9 @@ proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
 `session.journal` (#529), Desk plugin host part 1 (#517), config from a
 git repo (#532), plugin commands, typed RPC and docs (#542), Desk PWA and
-attention chat (#535), every view a plugin (#541).
-Next: turn on `desk.userHeader` on gasserver.
+attention chat (#535).
+Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
+and `api.query`/`api.session` (#541).
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1432,9 +1433,6 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   host object, as Home Assistant cards; no shared framework or Module
   Federation, so a Desk upgrade cannot break a plugin's runtime.
   Built-ins may not import the shell, which proves the API suffices.
-- All Desk views are plugins, shared code lives in `ui/kit` that each
-  plugin bundles, and the shell keeps only the frame and the nav badges
-  (2026-11-05, #541). Plugins host other plugins through `api.mount`.
 - Attention resolves in a chat (2026-11-05, #535): a click opens the
   item's escalation chat, else a chat-pool session keyed
   `attention:<kind>:<id>` started with a context prompt, so the operator
@@ -1520,7 +1518,6 @@ moved from the old 7.x list, oldest first:
 - [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
 - [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
 - [Deploy state out of core](notes/577-deploy-out-of-core.md) (#577)
-- [Desk plugins, part 2](notes/541-desk-plugins-2.md) (#541)
 
 ## 8. Chat gateway
 
