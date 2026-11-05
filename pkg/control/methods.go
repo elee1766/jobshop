@@ -105,6 +105,21 @@ func (c *Controller) heldClaim(ctx context.Context, sc scope, id string) (store.
 	return store.Claim{TicketID: t.ID, Holder: t.Holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil}, nil
 }
 
+// grantedClaim is the claim on id for a session whose pool holds the
+// ticket-release grant, when the ticket is held by another session of its
+// project. It returns notHolder otherwise.
+func (c *Controller) grantedClaim(ctx context.Context, sc scope, id string, notHolder error) (store.Claim, error) {
+	if sc.admin || c.requireGrant(sc, "ticket-release", "release") != nil {
+		return store.Claim{}, notHolder
+	}
+	t, err := c.store.Get(ctx, id)
+	if err != nil || t.Status != store.StatusInProgress || t.Project != sc.project {
+		return store.Claim{}, notHolder
+	}
+	c.log.Info("release by grant", "ticket", id, "holder", t.Holder, "by", sc.actor)
+	return store.Claim{TicketID: t.ID, Holder: t.Holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil}, nil
+}
+
 func (c *Controller) whoami(_ context.Context, sc scope, _ struct{}) (any, error) {
 	return rpc.Whoami{Actor: sc.actor, Admin: sc.admin, Session: sc.session, Project: sc.project, Pool: sc.pool}, nil
 }
@@ -198,7 +213,7 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	}
 	f := store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
-		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit,
+		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit, Newest: p.Newest,
 	}
 	if p.Report != "" {
 		f.MetaPack, f.MetaKey, f.MetaValue = reportMetaPack, "state", p.Report
@@ -329,7 +344,13 @@ func (c *Controller) edgeRemove(ctx context.Context, sc scope, p rpc.EdgeParams)
 }
 
 func (c *Controller) labelAdd(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {
-	return struct{}{}, c.store.AddLabel(ctx, sc.actor, p.ID, p.Label)
+	if err := c.store.AddLabel(ctx, sc.actor, p.ID, p.Label); err != nil {
+		return nil, err
+	}
+	if p.Label == needsHumanLabel {
+		c.holdChat(ctx, p.ID)
+	}
+	return struct{}{}, nil
 }
 
 func (c *Controller) labelRemove(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {
@@ -422,6 +443,11 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 		return nil, err
 	}
 	cl, err := c.heldClaim(ctx, sc, id)
+	if errors.Is(err, store.ErrNotHolder) {
+		// An escalation chat may hand back a blocked worker's ticket
+		// (pool grant ticket-release), in its own project only.
+		cl, err = c.grantedClaim(ctx, sc, id, err)
+	}
 	if err != nil {
 		return nil, err
 	}

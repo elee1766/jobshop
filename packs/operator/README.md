@@ -29,8 +29,10 @@ jobshop session attach <session id> --rw
 ```
 
 Admin grant: `config-reload`, `config-show`, `session-list`,
-`pool-list`, `trigger-list`, `attention`. Tickets and run list/show need
-no grant.
+`pool-list`, `trigger-list`, `attention`, `ticket-release` (hand back a
+ticket another session of the project holds, for escalation chats, #379).
+Tickets, `jobshop send` to a session, `jobshop wait clear` and run
+list/show/resume need no grant.
 
 ## Vars
 

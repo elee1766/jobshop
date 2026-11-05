@@ -65,9 +65,18 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 		return nil
 	}
 	var b strings.Builder
-	b.WriteString(messagesHeader)
+	var msgCtx []string
 	for _, m := range claimed {
 		f, _ := store.DecodeFields[store.MessageFields](m)
+		if f.Context != "" {
+			msgCtx = append(msgCtx, f.Context)
+		}
+		if m.Title == "" && m.Body == "" {
+			continue // context only
+		}
+		if b.Len() == 0 {
+			b.WriteString(messagesHeader)
+		}
 		fmt.Fprintf(&b, "\n\nFrom %s (%s):\n%s", f.From, m.ID, m.Title)
 		if m.Body != "" {
 			b.WriteString("\n" + m.Body)
@@ -76,7 +85,15 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 	// Chat sessions claim no tickets, so the pool prompt would never reach
 	// them; it leads their first message turn (again after a respawn).
 	poolPrompt := r.c.config().Pools[r.pool].Chat() && r.delivered.IsZero()
-	text := r.useParts(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: b.String()}))
+	parts := r.useSend(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: b.String()}))
+	text := joinParts(parts)
+	if len(msgCtx) > 0 {
+		// A message with context is background for the model: the pool
+		// prompt, rules and the context go in one block the conversation
+		// view does not show, and only the message text stays visible.
+		text = joinParts(parts[len(parts)-1:])
+		r.setContext(joinParts(append(parts[:len(parts)-1:len(parts)-1], PromptPart{Text: strings.Join(msgCtx, "\n\n")})))
+	}
 	r.log.Info("delivering messages", "messages", ids(claimed))
 	// A message turn can be interrupted too (a chat user sending a
 	// correction); the interrupting message is then delivered at once.

@@ -260,6 +260,8 @@ type ListParams struct {
 	Holder   string       `json:"holder,omitempty"`
 	ParentID string       `json:"parent_id,omitempty"`
 	Label    string       `json:"label,omitempty"`
+	// Newest lists the most recently created first.
+	Newest bool `json:"newest,omitempty"`
 	// Report matches tickets whose last worker report has this state (#186).
 	Report string `json:"report,omitempty"`
 	Limit  int    `json:"limit,omitempty"`
@@ -1026,6 +1028,11 @@ type SessionSendParams struct {
 	Key       string `json:"key,omitempty"`
 	Text      string `json:"text"`
 	Interrupt bool   `json:"interrupt,omitempty"`
+	// Context is background for the session's model, delivered with the
+	// message in its own delimited block of the prompt. Clients that
+	// show the conversation get it apart from the visible text
+	// (SessionEvent.Context).
+	Context string `json:"context,omitempty"`
 	// Attach marks a send from `session attach --rw`; it is refused
 	// unless the session's pool sets attach: rw.
 	Attach bool `json:"attach,omitempty"`
@@ -1067,11 +1074,14 @@ const (
 
 // SessionEvent is one item of a session's output, read from its journal.
 type SessionEvent struct {
-	Session    string       `json:"session"`
-	Seq        int64        `json:"seq,omitempty"`
-	Time       *time.Time   `json:"time,omitempty"`
-	Type       string       `json:"type"`
-	Text       string       `json:"text,omitempty"`
+	Session string     `json:"session"`
+	Seq     int64      `json:"seq,omitempty"`
+	Time    *time.Time `json:"time,omitempty"`
+	Type    string     `json:"type"`
+	Text    string     `json:"text,omitempty"`
+	// Context is the part of a turn_start prompt that was addressed to
+	// the model only (session.send context), kept out of Text.
+	Context    string       `json:"context,omitempty"`
 	Tool       *ToolSummary `json:"tool,omitempty"`
 	StopReason string       `json:"stop_reason,omitempty"`
 	Error      string       `json:"error,omitempty"`
