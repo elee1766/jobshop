@@ -587,14 +587,22 @@ func (c *Controller) socketPath(session string) string {
 	return filepath.Join(c.root.SessionDir(session), "cli.sock")
 }
 
+// openSession binds a session's cli.sock once. The admin socket serves
+// before startup reopens the open sessions, so a session created in that
+// window reaches here twice; binding under c.mu and skipping an open
+// session keeps the second call from removing or rebinding the live
+// socket (#479).
 func (c *Controller) openSession(t store.Ticket) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.sessions[t.ID]; ok {
+		return nil
+	}
 	ln, err := listen(c.socketPath(t.ID))
 	if err != nil {
 		return err
 	}
 	sc := scope{actor: t.ID, session: t.ID, project: t.Project, pool: t.Pool}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.sessions[t.ID] = c.start(ln, sc)
 	return nil
 }
