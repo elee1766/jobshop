@@ -206,10 +206,24 @@ type Graph struct {
 	Unclaimed   []string
 }
 
-// Update changes mutable, non-claim fields. Nil pointers are left unchanged.
-// Claim state (status, holder, lease, fence) changes only through Claim*,
-// Release* and Close.
+// Update changes mutable, non-claim fields, labels and comments, and
+// reopens a closed ticket, in one transaction (#579). Nil pointers and
+// empty lists are left unchanged. Other claim state (holder, lease,
+// fence) changes only through Claim, Release and Expire.
+//
+// Order: Reopen, then the fields, then labels, then Comment. Label and
+// comment changes do not bump the revision; each records its own
+// history row (label_add, label_remove, comment).
 type Update struct {
+	// Reopen returns a closed ticket to open; ErrInvalid if not closed.
+	Reopen bool
+	// AddLabels adds labels (existing ones are a no-op); RemoveLabels
+	// removes them (missing ones are a no-op).
+	AddLabels    []string
+	RemoveLabels []string
+	// Comment, when non-empty, appends a comment by the actor.
+	Comment string
+
 	Title      *string
 	Body       *string
 	Priority   *int
@@ -370,16 +384,11 @@ type Store interface {
 	// still hold the ticket; a nil claim is administrative and allowed
 	// only for close and handoff. An empty actor is the claim's holder.
 	Release(ctx context.Context, actor, id string, c *Claim, o Outcome) (Ticket, error)
-	Reopen(ctx context.Context, actor, id string) (Ticket, error)
 
 	// Expire reopens what a dead holder held or was assigned, or, with
 	// holder "", every ticket whose lease expired, and returns the ids.
 	Expire(ctx context.Context, actor, holder, reason string) ([]string, error)
 
-	AddLabel(ctx context.Context, actor, id, label string) error
-	RemoveLabel(ctx context.Context, actor, id, label string) error
-
-	AddComment(ctx context.Context, author, id, body string) (Comment, error)
 	// Thread reads the parts of a ticket's thread that p asks for: edges
 	// in either direction, comments oldest first, history oldest first.
 	// It does not check that id exists.

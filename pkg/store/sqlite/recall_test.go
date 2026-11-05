@@ -19,9 +19,9 @@ func TestRecallNewCommentSearchable(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
 	require.NoError(t, err)
-	_, err = s.AddComment(ctx, "a", tk.ID, "CI failed: golangci-lint gofumpt formatting in pkg/cli")
+	_, err = store.AddComment(ctx, s, "a", tk.ID, "CI failed: golangci-lint gofumpt formatting in pkg/cli")
 	require.NoError(t, err)
-	_, err = s.AddComment(ctx, "a", tk.ID, "unrelated note about the weather")
+	_, err = store.AddComment(ctx, s, "a", tk.ID, "unrelated note about the weather")
 	require.NoError(t, err)
 
 	hits, err := s.Recall(ctx, store.RecallQuery{Text: "gofumpt formatting"})
@@ -83,7 +83,7 @@ func TestRecallBackfill(t *testing.T) {
 	require.NoError(t, err)
 	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
 	require.NoError(t, err)
-	_, err = s.AddComment(ctx, "a", tk.ID, "flaky TestFollowJournal timeout")
+	_, err = store.AddComment(ctx, s, "a", tk.ID, "flaky TestFollowJournal timeout")
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 

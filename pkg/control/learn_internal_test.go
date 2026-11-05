@@ -153,7 +153,7 @@ func TestLearnReviewFinding(t *testing.T) {
 	rs := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "plan", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, _, err = c.store.Claim(ctx, rev.ID, rs.ID, time.Hour)
 	require.NoError(t, err)
-	_, err = c.store.AddComment(ctx, rs.ID, rev.ID, "missing tests for the error path")
+	_, err = store.AddComment(ctx, c.store, rs.ID, rev.ID, "missing tests for the error path")
 	require.NoError(t, err)
 	rsc := scope{actor: rs.ID, session: rs.ID, project: "js", pool: "plan"}
 	_, err = c.resumeRun(ctx, rsc, rpc.RunResumeParams{ID: step.ParentID, Step: "a"})

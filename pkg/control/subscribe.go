@@ -577,7 +577,7 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 	}
 	text := threadText(th, cs)
 	author := deliveryAuthor(th, cs)
-	if _, err := c.store.AddComment(ctx, author, t.ID, text); err != nil {
+	if _, err := store.AddComment(ctx, c.store, author, t.ID, text); err != nil {
 		return err
 	}
 	switch t.Status {
@@ -619,7 +619,7 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 // same conversation continues.
 func (c *Controller) resumeFollower(ctx context.Context, t store.Ticket, th thread) error {
 	last := c.lastHolder(ctx, t.ID)
-	if _, err := c.store.Reopen(ctx, "controller", t.ID); err != nil {
+	if _, err := store.Reopen(ctx, c.store, "controller", t.ID); err != nil {
 		return err
 	}
 	c.log.Info("subscriptions: resumed ticket", "ticket", t.ID, "thread", th.key(), "session", last)

@@ -106,7 +106,7 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 	if note != "" {
 		comment += "\n\n" + note
 	}
-	if _, err := c.store.AddComment(ctx, who, t.ID, comment); err != nil {
+	if _, err := store.AddComment(ctx, c.store, who, t.ID, comment); err != nil {
 		return nil, err
 	}
 	// The ticket may be held (the planner parked it while holding, or a
@@ -183,7 +183,7 @@ func (c *Controller) clearDefer(ctx context.Context, t store.Ticket, who, why st
 	if err != nil {
 		return u, err
 	}
-	if _, err := c.store.AddComment(ctx, who, t.ID, "Deferral cleared: "+why); err != nil {
+	if _, err := store.AddComment(ctx, c.store, who, t.ID, "Deferral cleared: "+why); err != nil {
 		c.log.Warn("undefer comment", "ticket", t.ID, "err", err)
 	}
 	return u, nil

@@ -83,16 +83,16 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	if t, err = c.setReport(ctx, sc.actor, id, rm); err != nil {
 		return nil, err
 	}
-	if _, err := c.store.AddComment(ctx, sc.actor, id, reportComment(rm, p.Question)); err != nil {
+	if _, err := store.AddComment(ctx, c.store, sc.actor, id, reportComment(rm, p.Question)); err != nil {
 		return nil, err
 	}
 	// The blocked label is what the stall signal and the planner see.
 	has := slices.Contains(t.Labels, blockedLabel)
 	switch {
 	case p.State == rpc.ReportBlocked && !has:
-		err = c.store.AddLabel(ctx, sc.actor, id, blockedLabel)
+		err = store.AddLabel(ctx, c.store, sc.actor, id, blockedLabel)
 	case p.State != rpc.ReportBlocked && has:
-		err = c.store.RemoveLabel(ctx, sc.actor, id, blockedLabel)
+		err = store.RemoveLabel(ctx, c.store, sc.actor, id, blockedLabel)
 	}
 	if err != nil {
 		return nil, err
@@ -238,10 +238,10 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 	}
 	res := rpc.AnswerResult{}
 	c.recordAnswer(ctx, qt, qm.Ticket, from, text)
-	if _, err := c.store.AddComment(ctx, sc.actor, qt.ID, "answer from "+from+": "+text); err != nil {
+	if _, err := store.AddComment(ctx, c.store, sc.actor, qt.ID, "answer from "+from+": "+text); err != nil {
 		return nil, err
 	}
-	if _, err := c.store.AddComment(ctx, sc.actor, qm.Ticket, fmt.Sprintf("answer to question %s from %s: %s", qt.ID, from, text)); err != nil {
+	if _, err := store.AddComment(ctx, c.store, sc.actor, qm.Ticket, fmt.Sprintf("answer to question %s from %s: %s", qt.ID, from, text)); err != nil {
 		return nil, err
 	}
 	if qm.Session != "" {
@@ -268,7 +268,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 				return nil, err
 			}
 			if slices.Contains(t.Labels, blockedLabel) {
-				if err := c.store.RemoveLabel(ctx, sc.actor, t.ID, blockedLabel); err != nil {
+				if err := store.RemoveLabel(ctx, c.store, sc.actor, t.ID, blockedLabel); err != nil {
 					return nil, err
 				}
 			}

@@ -44,7 +44,7 @@ func TestRebaseMergeState(t *testing.T) {
 				Kind: store.KindStep, Title: "review-merge", ParentID: run.ID,
 				Fields: json.RawMessage(`{"step":"review-merge","run":"` + run.ID + `"}`),
 			})
-			_, err := c.store.AddComment(t.Context(), "s1", impl.ID, "PR https://github.com/elee1766/jobshop/pull/300 head abc")
+			_, err := store.AddComment(t.Context(), c.store, "s1", impl.ID, "PR https://github.com/elee1766/jobshop/pull/300 head abc")
 			require.NoError(t, err)
 
 			res, why := c.rebaseResolution(t.Context(), review)

@@ -74,7 +74,7 @@ func (c *Controller) maybeQuarantine(ctx context.Context, id string) {
 		c.log.Error("quarantine", "ticket", id, "err", err)
 		return
 	}
-	if err := c.store.AddLabel(ctx, "controller", id, quarantineLabel); err != nil {
+	if err := store.AddLabel(ctx, c.store, "controller", id, quarantineLabel); err != nil {
 		c.log.Error("quarantine label", "ticket", id, "err", err)
 	}
 	var b strings.Builder
@@ -87,7 +87,7 @@ func (c *Controller) maybeQuarantine(ctx context.Context, id string) {
 		fmt.Fprintf(&b, "- %s: %s\n", s, reason)
 	}
 	b.WriteString("Undo with `ticket update " + id + " --defer 0` and `label rm " + id + " quarantined`.")
-	_, _ = c.store.AddComment(ctx, "controller", id, b.String())
+	_, _ = store.AddComment(ctx, c.store, "controller", id, b.String())
 	c.log.Warn("quarantined ticket", "ticket", id, "sessions", sessions)
 }
 

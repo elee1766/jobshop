@@ -331,8 +331,9 @@ func (c *Controller) gateSteps(ctx context.Context, runID string) bool {
 					c.log.Error("skip step", "step", s.ID, "err", err)
 					return changed
 				}
-				_, _ = c.store.AddComment(ctx, "controller", s.ID, fmt.Sprintf("Skipped: step %s outcome %q, wanted %q.",
+				_, _ = store.AddComment(ctx, c.store, "controller", s.ID, fmt.Sprintf("Skipped: step %s outcome %q, wanted %q.",
 					f.When.Step, fields[f.When.Step].Outcome, f.When.Outcome))
+
 				c.log.Info("step skipped", "run", runID, "step", name)
 			}
 			acted, changed = true, true
@@ -544,7 +545,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 		c.recordReviewFinding(ctx, sc, *step)
 	}
 	if step.Status == store.StatusClosed {
-		if _, err := c.store.Reopen(ctx, sc.actor, step.ID); err != nil {
+		if _, err := store.Reopen(ctx, c.store, sc.actor, step.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -556,7 +557,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 			return nil, err
 		}
 	}
-	_, _ = c.store.AddComment(ctx, sc.actor, step.ID, fmt.Sprintf("Resumed by %s; failures reset.", sc.actor))
+	_, _ = store.AddComment(ctx, c.store, sc.actor, step.ID, fmt.Sprintf("Resumed by %s; failures reset.", sc.actor))
 	c.log.Info("run resumed", "run", t.ID, "step", sf.Step, "by", sc.actor)
 	t, err = c.store.Get(ctx, t.ID)
 	if err != nil {

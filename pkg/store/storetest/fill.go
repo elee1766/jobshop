@@ -59,7 +59,7 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	f.Task = tk.ID
 	f.Blocker = task(t, s, "blocker", "dev").ID
 	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: f.Task, To: f.Blocker, Kind: store.EdgeBlocks}))
-	_, err = s.AddComment(ctx, "u", f.Task, "vendorHash mismatch after go.sum change")
+	_, err = store.AddComment(ctx, s, "u", f.Task, "vendorHash mismatch after go.sum change")
 	require.NoError(t, err)
 	_, _, err = s.Claim(ctx, f.Step, "sess", lease)
 	require.NoError(t, err)
@@ -147,7 +147,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	assert.Len(t, found, 1)
 
 	// New rows get ids past the copied ones.
-	c2, err := s.AddComment(ctx, "u", f.Task, "after the copy")
+	c2, err := store.AddComment(ctx, s, "u", f.Task, "after the copy")
 	require.NoError(t, err)
 	assert.Greater(t, c2.ID, cs[0].ID)
 	l2, err := learning.Add(ctx, s, store.Learning{Kind: store.LearningFailure, Summary: "x", Source: "agent"}, "")

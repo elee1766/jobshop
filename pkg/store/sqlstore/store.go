@@ -854,21 +854,20 @@ func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Clai
 	return t, err
 }
 
-// Reopen returns a closed ticket to open, keeping its holder unset.
-func (s *Store) Reopen(ctx context.Context, actor, id string) (t store.Ticket, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
-		t, err = s.mutate(ctx, q, id, actor, "reopen", func(t *store.Ticket) (any, error) {
-			if t.Status != store.StatusClosed {
-				return nil, fmt.Errorf("%w: %s is not closed", store.ErrInvalid, id)
-			}
-			reopen(t)
-			t.Resolution = ""
-			t.ClosedAt = time.Time{}
-			return nil, nil
-		})
-		return err
+// reopen returns a closed ticket to open, keeping its holder unset.
+func (s *Store) reopen(ctx context.Context, q sqlcdb.Querier, actor, id string, ifRev int64) (store.Ticket, error) {
+	return s.mutate(ctx, q, id, actor, "reopen", func(t *store.Ticket) (any, error) {
+		if ifRev != 0 && ifRev != t.Revision {
+			return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, id, t.Revision, ifRev)
+		}
+		if t.Status != store.StatusClosed {
+			return nil, fmt.Errorf("%w: %s is not closed", store.ErrInvalid, id)
+		}
+		reopen(t)
+		t.Resolution = ""
+		t.ClosedAt = time.Time{}
+		return nil, nil
 	})
-	return t, err
 }
 
 func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqlcdb.Querier) ([]string, error), diff any, w writeFn) (out []string, err error) {
@@ -943,60 +942,130 @@ func (s *Store) sweepLeases(ctx context.Context, actor string) ([]string, error)
 		})
 }
 
-// Update applies u. Holder changes (pre-assignment) are allowed only while
-// the ticket is open.
+// Update applies u in one transaction: reopen, fields, labels, comment.
+// Holder changes (pre-assignment) are allowed only while the ticket is
+// open.
 func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t store.Ticket, err error) {
+	if u.Comment != "" && strings.TrimSpace(u.Comment) == "" {
+		return store.Ticket{}, fmt.Errorf("%w: empty comment", store.ErrInvalid)
+	}
+	extras := u.Reopen || len(u.AddLabels) > 0 || len(u.RemoveLabels) > 0 || u.Comment != ""
+	// An update with nothing but labels or a comment leaves the revision
+	// alone, as those writes always have.
+	fields := !extras || u.IfRevision != 0 || u.Title != nil || u.Body != nil || u.Priority != nil ||
+		u.Pool != nil || u.Holder != nil || u.DeferUntil != nil || u.Fields != nil || u.Meta != nil
 	err = s.tx(ctx, func(q sqlcdb.Querier) error {
-		t, err = s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
-			if u.IfRevision != 0 && u.IfRevision != t.Revision {
-				return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, id, t.Revision, u.IfRevision)
+		if u.Reopen {
+			if t, err = s.reopen(ctx, q, actor, id, u.IfRevision); err != nil {
+				return err
 			}
-			d := map[string]any{}
-			set := func(name string, dst *string, v *string) {
-				if v != nil && *v != *dst {
-					*dst = *v
-					d[name] = *v
-				}
+			u.IfRevision = 0
+		}
+		if fields {
+			if t, err = s.updateFields(ctx, q, actor, id, u); err != nil {
+				return err
 			}
-			set("title", &t.Title, u.Title)
-			set("body", &t.Body, u.Body)
-			set("pool", &t.Pool, u.Pool)
-			if u.Holder != nil && *u.Holder != t.Holder {
-				if t.Status != store.StatusOpen {
-					return nil, fmt.Errorf("%w: %s: assign only while open (status %s)", store.ErrInvalid, id, t.Status)
-				}
-				t.Holder = *u.Holder
-				d["holder"] = *u.Holder
+		}
+		if !extras {
+			return nil
+		}
+		if t, err = s.get(ctx, q, id); err != nil {
+			return err
+		}
+		now := s.now()
+		for _, l := range u.AddLabels {
+			if slices.Contains(t.Labels, l) {
+				continue
 			}
-			if u.Priority != nil && *u.Priority != t.Priority {
-				t.Priority = *u.Priority
-				d["priority"] = *u.Priority
+			if err := s.addLabel(ctx, q, id, l); err != nil {
+				return err
 			}
-			if u.DeferUntil != nil {
-				t.DeferUntil = u.DeferUntil.UTC().Truncate(time.Millisecond)
-				d["defer_until"] = t.DeferUntil
+			if err := history(ctx, q, t, now, actor, "label_add", map[string]any{"label": l}); err != nil {
+				return err
 			}
-			if u.Fields != nil {
-				f, err := store.NormalizeFields(t.Kind, u.Fields)
-				if err != nil {
-					return nil, err
-				}
-				t.Fields = f
-				d["fields"] = f
+			t.Labels = append(t.Labels, l)
+		}
+		for _, l := range u.RemoveLabels {
+			n, err := q.DeleteLabel(ctx, sqlcdb.DeleteLabelParams{TicketID: id, Label: l})
+			if err != nil {
+				return err
 			}
-			if u.Meta != nil {
-				m, err := store.NormalizeMeta(u.Meta)
-				if err != nil {
-					return nil, err
-				}
-				t.Meta = m
-				d["meta"] = m
+			if n == 0 {
+				continue
 			}
-			return d, nil
-		})
+			if err := history(ctx, q, t, now, actor, "label_remove", map[string]any{"label": l}); err != nil {
+				return err
+			}
+			t.Labels = slices.DeleteFunc(t.Labels, func(x string) bool { return x == l })
+		}
+		if u.Comment != "" {
+			r, err := q.InsertComment(ctx, sqlcdb.InsertCommentParams{
+				TicketID: id, Author: actor, Body: u.Comment, CreatedAt: ms(now),
+			})
+			if err != nil {
+				return s.classify(err, id)
+			}
+			if err := history(ctx, q, t, now, actor, "comment", map[string]any{"comment": r.ID}); err != nil {
+				return err
+			}
+		}
+		if len(u.AddLabels) > 0 || len(u.RemoveLabels) > 0 {
+			// Read back for the stored label order.
+			t, err = s.get(ctx, q, id)
+		}
 		return err
 	})
 	return t, err
+}
+
+func (s *Store) updateFields(ctx context.Context, q sqlcdb.Querier, actor, id string, u store.Update) (store.Ticket, error) {
+	return s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
+		if u.IfRevision != 0 && u.IfRevision != t.Revision {
+			return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, id, t.Revision, u.IfRevision)
+		}
+		d := map[string]any{}
+		set := func(name string, dst *string, v *string) {
+			if v != nil && *v != *dst {
+				*dst = *v
+				d[name] = *v
+			}
+		}
+		set("title", &t.Title, u.Title)
+		set("body", &t.Body, u.Body)
+		set("pool", &t.Pool, u.Pool)
+		if u.Holder != nil && *u.Holder != t.Holder {
+			if t.Status != store.StatusOpen {
+				return nil, fmt.Errorf("%w: %s: assign only while open (status %s)", store.ErrInvalid, id, t.Status)
+			}
+			t.Holder = *u.Holder
+			d["holder"] = *u.Holder
+		}
+		if u.Priority != nil && *u.Priority != t.Priority {
+			t.Priority = *u.Priority
+			d["priority"] = *u.Priority
+		}
+		if u.DeferUntil != nil {
+			t.DeferUntil = u.DeferUntil.UTC().Truncate(time.Millisecond)
+			d["defer_until"] = t.DeferUntil
+		}
+		if u.Fields != nil {
+			f, err := store.NormalizeFields(t.Kind, u.Fields)
+			if err != nil {
+				return nil, err
+			}
+			t.Fields = f
+			d["fields"] = f
+		}
+		if u.Meta != nil {
+			m, err := store.NormalizeMeta(u.Meta)
+			if err != nil {
+				return nil, err
+			}
+			t.Meta = m
+			d["meta"] = m
+		}
+		return d, nil
+	})
 }
 
 func (s *Store) addEdge(ctx context.Context, q sqlcdb.Querier, actor string, e store.Edge) error {
@@ -1052,23 +1121,6 @@ func (s *Store) addLabel(ctx context.Context, q sqlcdb.Querier, id, label string
 	return s.classify(err, id)
 }
 
-// AddLabel adds a user label. Adding an existing label is a no-op.
-func (s *Store) AddLabel(ctx context.Context, actor, id, label string) error {
-	return s.tx(ctx, func(q sqlcdb.Querier) error {
-		t, err := s.get(ctx, q, id)
-		if err != nil {
-			return err
-		}
-		if slices.Contains(t.Labels, label) {
-			return nil
-		}
-		if err := s.addLabel(ctx, q, id, label); err != nil {
-			return err
-		}
-		return history(ctx, q, t, s.now(), actor, "label_add", map[string]any{"label": label})
-	})
-}
-
 // Record adds a history row without changing the ticket.
 func (s *Store) Record(ctx context.Context, actor, id, op string, diff any) error {
 	return s.tx(ctx, func(q sqlcdb.Querier) error {
@@ -1078,47 +1130,4 @@ func (s *Store) Record(ctx context.Context, actor, id, op string, diff any) erro
 		}
 		return history(ctx, q, t, s.now(), actor, op, diff)
 	})
-}
-
-// RemoveLabel removes a user label. Removing a missing label is a no-op.
-func (s *Store) RemoveLabel(ctx context.Context, actor, id, label string) error {
-	return s.tx(ctx, func(q sqlcdb.Querier) error {
-		t, err := s.get(ctx, q, id)
-		if err != nil {
-			return err
-		}
-		n, err := q.DeleteLabel(ctx, sqlcdb.DeleteLabelParams{TicketID: id, Label: label})
-		if err != nil || n == 0 {
-			return err
-		}
-		return history(ctx, q, t, s.now(), actor, "label_remove", map[string]any{"label": label})
-	})
-}
-
-// AddComment appends a comment and records a "comment" history row (no
-// revision bump), so the change stream sees it.
-func (s *Store) AddComment(ctx context.Context, author, id, body string) (c store.Comment, err error) {
-	if strings.TrimSpace(body) == "" {
-		return store.Comment{}, fmt.Errorf("%w: empty comment", store.ErrInvalid)
-	}
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
-		now := s.now()
-		r, err := q.InsertComment(ctx, sqlcdb.InsertCommentParams{
-			TicketID: id, Author: author, Body: body, CreatedAt: ms(now),
-		})
-		if err != nil {
-			return s.classify(err, id)
-		}
-		c = toComment(r)
-		t, err := s.get(ctx, q, id)
-		if err != nil {
-			return err
-		}
-		return history(ctx, q, t, now, author, "comment", map[string]any{"comment": c.ID})
-	})
-	return c, err
-}
-
-func toComment(r sqlcdb.Comment) store.Comment {
-	return store.Comment{ID: r.ID, TicketID: r.TicketID, Author: r.Author, Body: r.Body, CreatedAt: fromMS(r.CreatedAt)}
 }

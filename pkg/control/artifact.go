@@ -119,7 +119,7 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 		if err := store.AddEdge(ctx, c.store, sc.actor, store.Edge{From: t.ID, To: src.ID, Kind: store.EdgeTracks}); err != nil {
 			return nil, err
 		}
-		if _, err := c.store.AddComment(ctx, sc.actor, src.ID, "artifact delivered: "+t.ID+" "+title); err != nil {
+		if _, err := store.AddComment(ctx, c.store, sc.actor, src.ID, "artifact delivered: "+t.ID+" "+title); err != nil {
 			return nil, err
 		}
 	}
@@ -365,7 +365,7 @@ func (c *Controller) artifactAck(ctx context.Context, sc scope, p rpc.ArtifactAc
 		return nil, fmt.Errorf("%w: artifact %s is already acknowledged", store.ErrClosed, t.ID)
 	}
 	if note := strings.TrimSpace(p.Note); note != "" {
-		if _, err := c.store.AddComment(ctx, sc.actor, t.ID, note); err != nil {
+		if _, err := store.AddComment(ctx, c.store, sc.actor, t.ID, note); err != nil {
 			return nil, err
 		}
 	}

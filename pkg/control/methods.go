@@ -300,7 +300,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		if cur, err := c.store.Get(ctx, id); err == nil {
 			res, why := c.rebaseResolution(ctx, cur)
 			if why != "" {
-				if _, err := c.store.AddComment(ctx, "controller", id, why); err != nil {
+				if _, err := store.AddComment(ctx, c.store, "controller", id, why); err != nil {
 					c.log.Warn("rebase check comment", "step", id, "err", err)
 				}
 			}
@@ -349,7 +349,7 @@ func (c *Controller) reopen(ctx context.Context, sc scope, p rpc.IDParams) (any,
 	if err := requireAdmin(sc, "reopen"); err != nil {
 		return nil, err
 	}
-	return c.store.Reopen(ctx, sc.actor, p.ID)
+	return store.Reopen(ctx, c.store, sc.actor, p.ID)
 }
 
 func (c *Controller) comment(ctx context.Context, sc scope, p rpc.CommentParams) (any, error) {
@@ -358,7 +358,7 @@ func (c *Controller) comment(ctx context.Context, sc scope, p rpc.CommentParams)
 		return nil, err
 	}
 	c.redactWrite(sc, "comment on", id, &p.Body)
-	return c.store.AddComment(ctx, sc.actor, id, p.Body)
+	return store.AddComment(ctx, c.store, sc.actor, id, p.Body)
 }
 
 func (c *Controller) edgeAdd(ctx context.Context, sc scope, p rpc.EdgeParams) (any, error) {
@@ -370,7 +370,7 @@ func (c *Controller) edgeRemove(ctx context.Context, sc scope, p rpc.EdgeParams)
 }
 
 func (c *Controller) labelAdd(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {
-	if err := c.store.AddLabel(ctx, sc.actor, p.ID, p.Label); err != nil {
+	if err := store.AddLabel(ctx, c.store, sc.actor, p.ID, p.Label); err != nil {
 		return nil, err
 	}
 	if p.Label == needsHumanLabel {
@@ -380,7 +380,7 @@ func (c *Controller) labelAdd(ctx context.Context, sc scope, p rpc.LabelParams) 
 }
 
 func (c *Controller) labelRemove(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {
-	return struct{}{}, c.store.RemoveLabel(ctx, sc.actor, p.ID, p.Label)
+	return struct{}{}, store.RemoveLabel(ctx, c.store, sc.actor, p.ID, p.Label)
 }
 
 func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (any, error) {

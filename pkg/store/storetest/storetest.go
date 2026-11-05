@@ -594,7 +594,7 @@ func testFencedClose(t *testing.T, s store.Store, c *Clock) {
 
 	_, err = store.Close(ctx, s, "admin", a.ID, nil, "again")
 	assert.ErrorIs(t, err, store.ErrClosed)
-	re, err := s.Reopen(ctx, "admin", a.ID)
+	re, err := store.Reopen(ctx, s, "admin", a.ID)
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusOpen, re.Status)
 	assert.Empty(t, re.Resolution)
@@ -685,19 +685,19 @@ func testDeferUntil(t *testing.T, s store.Store, c *Clock) {
 func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	a := task(t, s, "a", "")
-	require.NoError(t, s.AddLabel(ctx, "u", a.ID, "bug"))
-	require.NoError(t, s.AddLabel(ctx, "u", a.ID, "bug"))
-	require.NoError(t, s.RemoveLabel(ctx, "u", a.ID, "missing"))
+	require.NoError(t, store.AddLabel(ctx, s, "u", a.ID, "bug"))
+	require.NoError(t, store.AddLabel(ctx, s, "u", a.ID, "bug"))
+	require.NoError(t, store.RemoveLabel(ctx, s, "u", a.ID, "missing"))
 	got, err := s.Get(ctx, a.ID)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"bug"}, got.Labels)
-	assert.ErrorIs(t, s.AddLabel(ctx, "u", "js-missing", "x"), store.ErrNotFound)
+	assert.ErrorIs(t, store.AddLabel(ctx, s, "u", "js-missing", "x"), store.ErrNotFound)
 
-	_, err = s.AddComment(ctx, "u", a.ID, "first")
+	_, err = store.AddComment(ctx, s, "u", a.ID, "first")
 	require.NoError(t, err)
-	_, err = s.AddComment(ctx, "u", a.ID, "second")
+	_, err = store.AddComment(ctx, s, "u", a.ID, "second")
 	require.NoError(t, err)
-	_, err = s.AddComment(ctx, "u", "js-missing", "x")
+	_, err = store.AddComment(ctx, s, "u", "js-missing", "x")
 	assert.ErrorIs(t, err, store.ErrNotFound)
 	cs, err := store.Comments(ctx, s, a.ID)
 	require.NoError(t, err)
@@ -741,6 +741,30 @@ func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, cs, th.Comments)
 	assert.Equal(t, h, th.History)
 	assert.NotNil(t, th.Edges)
+
+	// One Update carries fields, labels and a comment in one transaction
+	// (#579); labels and the comment do not bump the revision.
+	title := "a2"
+	pre, err := s.Get(ctx, a.ID)
+	require.NoError(t, err)
+	got, err = s.Update(ctx, "u", a.ID, store.Update{
+		Title: &title, AddLabels: []string{"x", "y"}, RemoveLabels: []string{"bug"}, Comment: "third",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "a2", got.Title)
+	assert.ElementsMatch(t, []string{"x", "y"}, got.Labels)
+	assert.Equal(t, pre.Revision+1, got.Revision)
+	got, err = s.Update(ctx, "u", a.ID, store.Update{AddLabels: []string{"z"}})
+	require.NoError(t, err)
+	assert.Equal(t, pre.Revision+1, got.Revision)
+	_, err = s.Update(ctx, "u", a.ID, store.Update{Comment: "  "})
+	require.ErrorIs(t, err, store.ErrInvalid)
+	// A failing part rolls back the rest.
+	_, err = s.Update(ctx, "u", a.ID, store.Update{Reopen: true, Comment: "lost"})
+	require.ErrorIs(t, err, store.ErrInvalid)
+	cs, err = store.Comments(ctx, s, a.ID)
+	require.NoError(t, err)
+	assert.Len(t, cs, 3)
 
 	// Record adds a row without changing the ticket (#542).
 	before, err := s.Get(ctx, a.ID)
