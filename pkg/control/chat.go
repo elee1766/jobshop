@@ -179,7 +179,7 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 	if p.SinceSeq == 0 && p.Tail > 0 {
 		// Seq is 1-based and gapless, so the last Tail frames follow
 		// last-Tail (#614).
-		if last, _ := journalTail(c.root.SessionDir(p.ID)); last > 0 {
+		if last, _ := host.JournalTail(c.root.SessionDir(p.ID)); last > 0 {
 			p.SinceSeq = max(last-p.Tail, 0)
 		}
 	}

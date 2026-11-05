@@ -667,7 +667,7 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 			info.Exit = ex.Reason
 		}
 	}
-	if seq, at := journalTail(dir); seq > 0 {
+	if seq, at := host.JournalTail(dir); seq > 0 {
 		info.Seq, info.SeqTime = seq, &at
 	}
 	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
