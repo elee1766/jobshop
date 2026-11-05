@@ -276,7 +276,9 @@ let
       else
         set -- ticket upsert --key "$key" -l needs-human -b "''${2:-}" "$1"
       fi
-      ${lib.optionalString (cfg.reportProject != "") ''set -- "$@" --project ${lib.escapeShellArg cfg.reportProject}''}
+      ${lib.optionalString (
+        cfg.reportProject != ""
+      ) ''set -- "$@" --project ${lib.escapeShellArg cfg.reportProject}''}
       as=
       [ "$(id -u)" != 0 ] || as="${pkgs.util-linux}/bin/runuser -u ${cfg.user} --"
       $as env JOBSHOP_ROOT=${cfg.dataDir} ${jobshop} "$@" >/dev/null 2>&1 \
