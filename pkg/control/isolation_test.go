@@ -21,17 +21,25 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// isolationEnv skips unless this host can run an isolated pool: a
-// subuid/subgid range for this user, newuidmap and pasta on PATH,
-// working bwrap and a delegated cgroup with cpu, memory and pids. It
+// isolationEnv skips unless this host can run an isolated pool: working
+// bwrap, host.Preflight (#724) for newuidmap/newgidmap and pasta, whose
+// report (with fix hints) is the skip reason, a subuid/subgid range for
+// this user, and a delegated cgroup with cpu, memory and pids. It
 // returns the first subuid and subgid.
 func isolationEnv(t *testing.T) (int, int) {
 	t.Helper()
 	bwrapWorks(t)
-	for _, c := range []string{"newuidmap", "newgidmap", "pasta"} {
-		if _, err := exec.LookPath(c); err != nil {
-			t.Skipf("%s not on PATH", c)
-		}
+	// Mapped to the caller's own ids, which need no subid range, so the
+	// tool checks report with their fix hints on any host. The cgroup is
+	// left out: Preflight wants the controllers already enabled in
+	// subtree_control, which the controller does at startup.
+	rep, err := host.Preflight(host.Spec{
+		User:    &host.User{UID: 1000, GID: 1000, MapUID: os.Geteuid(), MapGID: os.Getegid()},
+		Sandbox: &host.Sandbox{Network: "pasta"},
+	})
+	require.NoError(t, err)
+	if !rep.OK() {
+		t.Skipf("isolation preflight:\n%s", rep)
 	}
 	first := func(path string) int {
 		f, err := os.Open(path)
