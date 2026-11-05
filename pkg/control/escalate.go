@@ -172,7 +172,13 @@ func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f sto
 		if res == "" {
 			res = string(s.Status)
 		}
-		fmt.Fprintf(&b, "\n## Step %d %s (%s, pool %s): %s, failures %d/%d\n", sf.Index, sf.Step, s.ID, s.Pool, res, sf.Failures, sf.Retries)
+		// Controller-run steps have no ticket pool, so no session claims
+		// them (#396); name what runs them instead of an empty pool (#669).
+		where := "pool " + s.Pool
+		if s.Pool == "" && sf.Type != "" {
+			where = sf.Type + " step, run by the controller"
+		}
+		fmt.Fprintf(&b, "\n## Step %d %s (%s, %s): %s, failures %d/%d\n", sf.Index, sf.Step, s.ID, where, res, sf.Failures, sf.Retries)
 		comments, err := c.store.Comments(ctx, s.ID)
 		if err != nil {
 			return "", err

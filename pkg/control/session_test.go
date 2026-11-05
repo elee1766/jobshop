@@ -67,6 +67,11 @@ func TestMain(m *testing.M) {
 		holdLock(os.Args[2])
 		os.Exit(0)
 	}
+	if len(os.Args) >= 2 && filepath.Base(os.Args[0]) == "jobshop" && os.Args[1] == "version" {
+		// A command step calling the controller's binary by name (#669).
+		fmt.Println("jobshop test-version")
+		os.Exit(0)
+	}
 	os.Exit(m.Run())
 }
 
