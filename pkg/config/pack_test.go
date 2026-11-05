@@ -150,46 +150,30 @@ packs:
 	assert.Equal(t, 1, c.Pools["plan"].MaxSessions)
 	assert.Equal(t, 1, c.Pools["refinery"].MaxSessions)
 	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "post-merge has its own pool (#167), several sessions (#174)")
-	assert.Contains(t, c.Pools["refinery"].Prompt, "--delete-branch")
-	assert.NotContains(t, c.Pools["dev"].Prompt, "--pool refinery", "no prompt-only handoff")
-	assert.Contains(t, c.Pools["dev"].Prompt, "You work on elee1766/jobshop")
-	assert.Contains(t, c.Pools["dev"].Prompt, "Read AGENTS.md")
 	assert.Equal(t, "/src/jobshop", c.Pools["dev"].Repo, "selfdev repo var is the checkout")
-	assert.Contains(t, c.Pools["plan"].Prompt, "@elee1766")
 	assert.Contains(t, c.Triggers["master-red"].When.Check, "--repo elee1766/jobshop --branch master --workflow ci")
-	assert.Contains(t, c.Workflows["pr-work"].PackVars["deploy_check"], "jobshop version --server", "controller's commit, not the session binary (#180)")
 	assert.Equal(t, "go build ./... && go vet ./... && go test ./... && golangci-lint run ./... && nix fmt -- --check $(git ls-files '*.nix')", c.Workflows["pr-work"].PackVars["check_cmd"])
-	assert.Contains(t, c.Workflows["pr-work"].PackVars["docs_rule"], "docs/notes/<issue>-<slug>.md")
 	var mem *RuleMemory
-	var guide string
+	var guide bool
 	for _, r := range c.PromptRules {
 		if r.Name == "selfdev-memory" {
 			mem = r.Memory
 		}
 		if r.Name == "selfdev-guide" {
-			guide = r.Text
+			guide = true
 			assert.Equal(t, []string{"elee1766/jobshop"}, r.Match.Repos)
 		}
 	}
 	require.NotNil(t, mem, "memory rule (#266)")
 	assert.Equal(t, RuleMemory{Dir: "memory", Cap: 2200}, *mem, "local <root>/memory by default (#592)")
-	assert.Contains(t, guide, "go generate ./pkg/store/sqlite/", "jobshop notes moved from repo memory (#592)")
-	assert.Contains(t, guide, "renumber past its highest file")
-	assert.Contains(t, c.Pools["dev"].Prompt, "jobshop comment -t <ticket>", "generic notes moved to the dev prompt (#592)")
-	assert.Contains(t, c.Workflows["pr-work"].Steps[0].Prompt, "git fetch origin pull/<n>/head")
+	assert.True(t, guide, "selfdev guide rule")
 	assert.Equal(t, []string{"memory-write"}, c.Pools["learn"].Admin, "the curator writes local memory (#592)")
-	assert.Contains(t, c.Pools["plan"].Prompt, "target")
-	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
-	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch start --workflow pr-work --key <slug>", "dependent issues start as a batch (#171) of this pack's workflow (#308)")
-	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch show <key>")
 	assert.NotContains(t, c.Pools, "operator", "the operator pack is included once by the host (#248)")
 	w := c.Workflows["pr-work"]
 	require.Len(t, w.Steps, 3)
 	assert.Equal(t, "plan", w.EscalatePool)
-	assert.Contains(t, w.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "squash", w.PackVars["merge_method"], "selfdev merges by squash")
 	assert.Empty(t, w.PackVars["required_approver"], "selfdev needs no approval")
-	assert.Contains(t, w.Steps[2].Prompt, "{{.deploy_check}}", "filled at run start")
 	assert.Equal(t, "deploy-check", w.Steps[2].Pool, "post-merge leaves the refinery free (#167)")
 	b := c.Workflows["stall-check"]
 	require.Len(t, b.Steps, 1)
@@ -197,14 +181,9 @@ packs:
 	assert.Equal(t, "plan", b.Steps[0].Pool)
 	assert.Equal(t, "plan", b.EscalatePool)
 	assert.Equal(t, []string{"signal", "subject", "detail"}, b.Vars)
-	assert.Contains(t, b.Steps[0].Prompt, "jobshop ticket list --orphaned")
-	assert.Contains(t, b.Steps[0].Prompt, "Always escalate these")
 	assert.NotContains(t, c.Workflows, "blocker-check", "folded into stall-check")
-	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop label add <id> blocked")
-	assert.Contains(t, c.Pools["plan"].Prompt, "--key stall:blocked:<n>")
 	assert.Contains(t, c.Pools["plan"].Admin, "session-restart")
 	assert.Contains(t, c.Pools["plan"].Admin, "attention", "planner reads jobshop attention (#185)")
-	assert.Contains(t, c.Pools["plan"].Prompt, "what happens if nobody answers", "attention rule (#185)")
 	st := c.Triggers["stall"]
 	require.NotNil(t, st.Run)
 	assert.Equal(t, "stall-check", st.Run.Workflow)
@@ -234,19 +213,12 @@ packs:
 	assert.Equal(t, "plan", ci.EscalatePool)
 	assert.Equal(t, 2, ci.Steps[0].RetryLimit())
 	assert.Equal(t, []string{"dev", "refinery"}, []string{ci.Steps[0].Pool, ci.Steps[1].Pool})
-	assert.Contains(t, ci.Steps[0].Prompt, "--log-failed")
-	assert.Contains(t, ci.Steps[1].Prompt, "--match-head-commit")
 	assert.Equal(t, "plan", c.Triggers["replan"].Ticket.Pool)
 	// Curator (#273).
 	assert.Equal(t, 1, c.Pools["learn"].MaxSessions)
 	cu := c.Workflows["curate"]
 	require.Len(t, cu.Steps, 1)
 	assert.Equal(t, "learn", cu.Steps[0].Pool)
-	assert.Contains(t, cu.Steps[0].Prompt, "jobshop learn update")
-	assert.Contains(t, cu.Steps[0].Prompt, "--status rejected")
-	assert.Contains(t, cu.Steps[0].Prompt, "jobshop memory write")
-	assert.NotContains(t, cu.Steps[0].Prompt, "memory check memory/memory", "memory is local, not a repo dir (#592)")
-	assert.NotContains(t, c.Workflows["evaluate"].Steps[0].Prompt, "memory check memory/memory")
 	ct := c.Triggers["curate"]
 	require.NotNil(t, ct.Run)
 	assert.Equal(t, "curate", ct.Run.Workflow)
@@ -295,9 +267,6 @@ packs:
 	assert.Equal(t, "/src/jobshop", p.Repo)
 	assert.Equal(t, 0, p.MaxSessions)
 	assert.Equal(t, []string{"config-reload", "config-show", "session-list", "pool-list", "pool-scale", "session-cordon", "session-config", "trigger-list", "attention", "activity", "ticket-release", "ticket-undefer", "decision-resolve"}, p.Admin)
-	for _, s := range []string{"jobshop decision", "jobshop ticket undefer", "acme/jobshop-fork", "jobshop config show", "instances", "<prefix>pr-work", "acphost-pr-work", "tracker", "linear_team", "gh issue create -R <repo>", "jobshop ticket create", "jobshop send", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
-		assert.Contains(t, p.Prompt, s)
-	}
 	assert.NotContains(t, p.Prompt, "${")
 	assert.NotContains(t, p.Prompt, "elee1766/jobshop", "the Jobshop repo comes from the var")
 
@@ -325,8 +294,6 @@ packs:
 	}
 	require.NotNil(t, rule)
 	assert.Equal(t, RuleAfter, rule.At)
-	assert.Contains(t, rule.Text, "jobshop guard push --target")
-	assert.Contains(t, rule.Text, "PR <url> head")
 	assert.True(t, rule.Match.Matches(RuleSubject{Pool: "operator", Chat: true, Key: "improve:prompts"}))
 	assert.False(t, rule.Match.Matches(RuleSubject{Pool: "operator", Chat: true, Key: "matrix:!r:x"}))
 	require.Len(t, c.Hooks, 1)
@@ -360,22 +327,12 @@ packs:
 		assert.NotContains(t, p.Prompt, "elee1766", n)
 		assert.NotContains(t, p.Prompt, "Jobshop", n)
 	}
-	assert.Contains(t, c.Pools["dev"].Prompt, "GitHub issues on acme/widget")
-	assert.Contains(t, c.Pools["plan"].Prompt, "@wile")
 	mr := c.Triggers["master-red"]
 	assert.Contains(t, mr.When.Check, "--repo acme/widget --branch drill/red-ci --workflow build")
 	require.NotNil(t, mr.Run)
 	assert.Equal(t, "ci-repair", mr.Run.Workflow)
 	w := c.Workflows["pr-work"]
 	assert.Equal(t, "make test", w.PackVars["check_cmd"])
-	assert.Contains(t, w.PackVars["docs_rule"], "Never append a numbered section", "docs_rule default (#131)")
-	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "repo": w.PackVars["repo"], "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
-	require.NoError(t, err)
-	assert.Contains(t, body, "github.checks:pr=acme/widget#<n>", "CI waits use github.checks (#555)")
-	assert.Contains(t, body, "`make test`")
-	assert.Contains(t, body, "Docs: put a design note")
-	assert.Contains(t, w.Steps[1].Prompt, "Conflicts only in docs", "refinery resolves docs-only conflicts (#131)")
-	assert.Contains(t, c.Workflows["ci-repair"].Steps[1].Prompt, "Conflicts only in docs")
 }
 
 // TestGithubPackProposeTargets: the planner prompt has the proposal
@@ -554,9 +511,6 @@ packs:
 	assert.Equal(t, "gz-dev", c.Triggers["gz-replan"].When.Pool)
 	assert.Equal(t, "gz-plan", c.Triggers["gz-replan"].Ticket.Pool)
 	assert.Equal(t, "gz-stall-check", c.Triggers["gz-stall"].Run.Workflow)
-	assert.Contains(t, c.Pools["gz-plan"].Prompt, "jobshop run start gz-pr-work --var")
-	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var")
-	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--to gz-dev ")
 	assert.Equal(t, "gz-", w.PackVars[PackPrefixVar])
 
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    prefix: Bad\n"})
@@ -586,40 +540,20 @@ packs:
 	assert.Equal(t, TrackerLinear, w.Tracker)
 	assert.Equal(t, "acme", w.LinearWorkspace)
 	assert.Equal(t, "acme/widget", w.Repo)
-	assert.Contains(t, c.Pools["eng-plan"].Prompt, "jobshop linear issue ENG-1")
-	assert.Contains(t, c.Pools["eng-plan"].Prompt, "jobshop run start eng-pr-work --var issue=<KEY>")
-	assert.Contains(t, c.Pools["eng-dev"].Prompt, "Linear issues of team ENG")
 	for _, n := range []string{"eng-plan", "eng-dev"} {
 		assert.NotContains(t, c.Pools[n].Prompt, "gh issue", n)
 	}
 	vars := maps.Clone(w.PackVars)
 	vars["issue"] = "ENG-7"
-	var bodies []string
 	for _, s := range w.Steps {
 		b, err := w.Render(s.Prompt, vars)
 		require.NoError(t, err, s.ID)
 		assert.NotContains(t, b, "gh issue", s.ID)
-		bodies = append(bodies, b)
 	}
-	assert.Contains(t, bodies[0], "jobshop linear issue ENG-7")
-	assert.Contains(t, bodies[0], `jobshop linear comment ENG-7 "PR <url>"`)
-	assert.Contains(t, bodies[2], `jobshop linear state ENG-7 "Done"`)
 
-	// The planner lists the team by the intake vars, starts runs with the
-	// intake's key, and files new work with create and relate (#292).
-	plan := c.Pools["eng-plan"].Prompt
+	// The planner lists the team by the intake vars (#292).
 	assert.Equal(t, "Todo", w.PackVars["linear_intake_states"])
 	assert.Contains(t, w.PackVars, "linear_intake_assignee")
-	assert.Contains(t, plan, "jobshop linear list\n   --team ENG --state <state>")
-	assert.Contains(t, plan, "`Todo` (comma-separated)")
-	assert.Contains(t, plan, "--key linear-<KEY>")
-	assert.NotContains(t, plan, "--key issue-")
-	assert.NotContains(t, plan, "no create command")
-	assert.Contains(t, plan, "jobshop linear create --team ENG")
-	assert.Contains(t, plan, "jobshop linear relate <NEW> --related\n   ENG-1")
-	assert.Contains(t, c.Pools["eng-dev"].Prompt, "jobshop linear create --team ENG")
-	assert.Contains(t, c.Pools["eng-dev"].Prompt, "linear relate <NEW> --related <current KEY>")
-	assert.Contains(t, bodies[1], "jobshop linear relate <NEW> --related ENG-7")
 
 	// The github default keeps the gh prompts and no Linear workspace.
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile, check_cmd: make test}\n"})

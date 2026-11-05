@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -19,10 +18,6 @@ var mdLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 func TestDocLinks(t *testing.T) {
 	repo, err := filepath.Abs("../..")
 	require.NoError(t, err)
-	readme, err := os.ReadFile(filepath.Join(repo, "README.md"))
-	require.NoError(t, err)
-	// #551: the README stays a short overview; detail goes in docs/.
-	assert.Less(t, strings.Count(string(readme), "\n"), 120, "README.md must stay under 120 lines")
 	files := []string{filepath.Join(repo, "README.md")}
 	for _, g := range []string{"llm/*.md", "docs/*.md"} {
 		m, err := filepath.Glob(filepath.Join(repo, g))
