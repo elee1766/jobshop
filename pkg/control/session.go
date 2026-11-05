@@ -810,6 +810,11 @@ func (r *runner) dropped(conn *acp.ClientSideConnection) error {
 	select {
 	case <-conn.Done():
 		if ex, ok := host.ReadExit(r.dir); ok {
+			if ex.OOMKill {
+				// The pool's memory limit killed the agent; a restart would
+				// hit it again (#388).
+				return errSessionEnd{resolution: resolutionOOM, reason: fmt.Sprintf("memory limit: agent OOM killed (%s)", ex.Reason)}
+			}
 			return fmt.Errorf("host exited: %s (code %d %s)", ex.Reason, ex.ExitCode, ex.Signal)
 		}
 		return errors.New("host connection lost")
@@ -1455,7 +1460,7 @@ func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (hostspec.S
 	// it refreshes idle sessions like an env change (#262).
 	spec := hostspec.Spec{Spec: host.Spec{
 		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
-		Env: env, EnvHash: envHash(hostInheritedEnv(), append(slices.Clone(env), c.sandboxKey(t.Pool)...)), Dir: c.sessionCwd(t),
+		Env: env, EnvHash: envHash(hostInheritedEnv(), slices.Concat(env, c.sandboxKey(t.Pool), c.isolationKey(t.Pool))), Dir: c.sessionCwd(t),
 		LeaseMS: hostLease.Milliseconds(),
 	}}
 	// Config validation guarantees a logs endpoint when a pool exports.
@@ -1508,6 +1513,20 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	}
 	if spec.Sandbox, err = c.sandboxFor(t, exe, spec.Dir); err != nil {
 		return err
+	}
+	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
+		return err
+	}
+	if u := spec.User; u != nil && len(u.Groups) > 0 {
+		// The mapped user reaches cli.sock and writes the worktree through
+		// the first shared group, so the controller and refinery can still
+		// read and remove what it leaves.
+		if err := shareDir(dir, u.Groups[0], false); err != nil {
+			return host.Permanentf("isolation: share session dir: %w", err)
+		}
+		if err := shareDir(spec.Dir, u.Groups[0], true); err != nil {
+			return host.Permanentf("isolation: share worktree: %w", err)
+		}
 	}
 	// A worktree was just made; any other cwd must already exist.
 	if err := host.CheckSpawn(spec.Spec, worktree); err != nil {
@@ -1723,6 +1742,11 @@ func (c *Controller) recordGauges() {
 	for k, n := range counts {
 		c.metrics.Sessions.Record(ctx, n, metric.WithAttributes(telemetry.AttrPool.String(k[0]), telemetry.AttrState.String(k[1])))
 	}
+	byPool := map[string][]string{}
+	for _, s := range open {
+		byPool[s.Pool] = append(byPool[s.Pool], s.ID)
+	}
+	c.recordCgroupMetrics(ctx, byPool)
 	c.recordInboxGauges(ctx)
 	for name, p := range c.config().Pools {
 		// Ready is capped by the store's default limit; enough for a gauge.

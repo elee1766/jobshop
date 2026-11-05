@@ -30,6 +30,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   acphost-dev:
     project: js
     agent: a
@@ -53,6 +54,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   acphost-plan:
     project: js
     agent: a
@@ -83,6 +85,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   acphost-refinery:
     project: js
     agent: a
@@ -106,6 +109,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   deploy-check:
     project: js
     agent: a
@@ -129,6 +133,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   dev:
     project: js
     agent: a
@@ -152,6 +157,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   eng-deploy-check:
     project: js
     agent: a
@@ -175,6 +181,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   eng-dev:
     project: js
     agent: a
@@ -198,6 +205,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   eng-plan:
     project: js
     agent: a
@@ -228,6 +236,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   eng-refinery:
     project: js
     agent: a
@@ -251,6 +260,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   learn:
     project: js
     agent: a
@@ -274,6 +284,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   operator:
     project: js
     agent: a
@@ -308,6 +319,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   plan:
     project: js
     agent: a
@@ -338,6 +350,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
   refinery:
     project: js
     agent: a
@@ -361,6 +374,7 @@ pools:
     effort: ""
     config_options: {}
     sandbox: null
+    isolation: null
 prompt_rules:
 - name: recall
   match: {}

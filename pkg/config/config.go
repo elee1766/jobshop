@@ -876,6 +876,8 @@ type Agent struct {
 	ConfigOptions map[string]string `yaml:"config_options"`
 	// Sandbox confines the agent (#262); pools add to it.
 	Sandbox *Sandbox `yaml:"sandbox"`
+	// Isolation runs the agent as a mapped user with cgroup limits (#388).
+	Isolation *Isolation `yaml:"isolation"`
 }
 
 // ACP session config option ids for the model and effort shorthands.
@@ -987,6 +989,8 @@ type Pool struct {
 	ConfigOptions map[string]string `yaml:"config_options"`
 	// Sandbox overrides and adds to the agent's sandbox (#262).
 	Sandbox *Sandbox `yaml:"sandbox"`
+	// Isolation overrides the agent's user and limits (#388).
+	Isolation *Isolation `yaml:"isolation"`
 }
 
 // Project is one repo / work area.
@@ -1091,6 +1095,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if err := a.Sandbox.check(); err != nil {
 			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
 		}
+		if err := a.Isolation.check(); err != nil {
+			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
+		}
 	}
 	for name, p := range c.Pools {
 		if !namePattern.MatchString(name) {
@@ -1112,6 +1119,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)
 		}
 		if err := p.Sandbox.check(); err != nil {
+			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
+		}
+		if err := p.Isolation.check(); err != nil {
 			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
 		if p.Type != "" && p.Type != PoolChat {
@@ -1162,6 +1172,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		c.Pools[name] = p
 	}
 	if err := c.Defaults.Sandbox.check(); err != nil {
+		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
+	}
+	if err := c.Defaults.Isolation.check(); err != nil {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
 	}
 	for _, d := range c.SharedTools {
