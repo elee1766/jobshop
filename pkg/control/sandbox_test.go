@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	host "github.com/elee1766/acphost"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -61,6 +62,10 @@ func TestSandboxedSession(t *testing.T) {
 			var res rpc.SessionSandboxResult
 			_ = admin.Call(t.Context(), rpc.MethodSessionSandbox, rpc.SessionSandboxParams{ID: ended[0].ID}, &res)
 			endedWhy = fmt.Sprintf("session %s ended %q before the ticket closed: %s", ended[0].ID, ended[0].Resolution, res.Error)
+			// host.log holds the agent's stderr: why it exited (#623).
+			if b, err := os.ReadFile(filepath.Join(root.SessionDir(ended[0].ID), host.LogFile)); err == nil {
+				endedWhy += "\nhost.log:\n" + string(b)
+			}
 			return true
 		}
 		return false
