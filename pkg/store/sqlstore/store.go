@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"slices"
 	"strings"
 	"time"
@@ -93,8 +94,14 @@ const busyTries = 16
 
 func (s *Store) tx(ctx context.Context, fn func(q sqlcdb.Querier) error) error {
 	var err error
-	for range busyTries {
+	for try := range busyTries {
 		if err = s.txOnce(ctx, fn); !s.isBusy(err) {
+			break
+		}
+		// Rerunning at once lets the same writers collide again in
+		// lockstep until the tries run out (#527); a random, growing
+		// wait spreads them.
+		if try < busyTries-1 && !busyWait(ctx, try) {
 			break
 		}
 	}
@@ -104,6 +111,20 @@ func (s *Store) tx(ctx context.Context, fn func(q sqlcdb.Querier) error) error {
 		return fmt.Errorf("%w: %w", store.ErrConflict, err)
 	}
 	return err
+}
+
+// busyWait sleeps a random time up to 1ms<<try (capped at 64ms). It
+// reports false if ctx ends first.
+func busyWait(ctx context.Context, try int) bool {
+	d := time.Duration(rand.Int64N(int64(time.Millisecond << min(try, 6))))
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 func (s *Store) isBusy(err error) bool {
