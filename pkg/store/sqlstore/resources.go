@@ -7,14 +7,14 @@ import (
 	"slices"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 // SetResources replaces the resource capacities and provider names in
 // one transaction.
 func (s *Store) SetResources(ctx context.Context, r store.ResourceConfig) error {
 	caps := r.Caps
-	return s.tx(ctx, func(q sqlcdb.Querier) error {
+	return s.tx(ctx, func(q sqldb.Querier) error {
 		if err := setProviders(ctx, q, r.Providers); err != nil {
 			return err
 		}
@@ -26,7 +26,7 @@ func (s *Store) SetResources(ctx context.Context, r store.ResourceConfig) error 
 			if n <= 0 {
 				return fmt.Errorf("%w: resource %s: capacity must be > 0", store.ErrInvalid, name)
 			}
-			if err := q.InsertResourceCap(ctx, sqlcdb.InsertResourceCapParams{Name: name, Capacity: int64(n)}); err != nil {
+			if err := q.InsertResourceCap(ctx, sqldb.InsertResourceCapParams{Name: name, Capacity: int64(n)}); err != nil {
 				return err
 			}
 		}

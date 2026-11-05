@@ -6,11 +6,11 @@ import (
 	"sync"
 )
 
-// rewriteMax bounds the rewrite cache. sqlc.slice queries expand to one
+// rewriteMax bounds the rewrite cache. List queries (LabelsFor) expand to one
 // text per list length, so the set is finite but not fixed.
 const rewriteMax = 1024
 
-// rewriter turns the SQL sqlc generated for sqlite into Postgres SQL
+// rewriter turns sqldb's SQLite SQL into Postgres SQL
 // (#493): ?N and ? placeholders become $N, INTEGER casts become BIGINT
 // (times are milliseconds), and queries named in overrides are replaced
 // whole.
@@ -44,7 +44,7 @@ func (r *rewriter) rewrite(q string) string {
 	return out
 }
 
-// queryName returns X from sqlc's leading "-- name: X :kind" line.
+// queryName returns X from sqldb's leading "-- name: X :kind" line.
 func queryName(q string) string {
 	const p = "-- name: "
 	if !strings.HasPrefix(q, p) {
@@ -59,7 +59,7 @@ func queryName(q string) string {
 
 // translate rewrites placeholders and casts outside string literals and
 // comments. A bare ? takes the number after the highest seen so far, as
-// SQLite numbers it, so sqlc's mix of ?N and expanded slices binds the
+// SQLite numbers it, so sqldb's mix of ?N and expanded slices binds the
 // same arguments.
 func translate(q string) string {
 	var b strings.Builder
@@ -103,7 +103,7 @@ func translate(q string) string {
 				n, _ = strconv.Atoi(q[i+1 : j])
 			}
 			high = max(high, n)
-			// sqlc.narg(x) IS NULL: Postgres cannot type a parameter
+			// A nullable arg IS NULL: Postgres cannot type a parameter
 			// that is only tested for NULL. Every such filter is text.
 			if hasFoldPrefix(q[j:], " IS NULL") {
 				b.WriteString("CAST($" + strconv.Itoa(n) + " AS TEXT)")

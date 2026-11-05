@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
-// stmtCacheMax bounds the cache. sqlc queries are a fixed set, but
-// sqlc.slice queries expand to one text per argument count, so the cache
+// stmtCacheMax bounds the cache. sqldb queries are a fixed set, but
+// list queries (LabelsFor) expand to one text per argument count, so the cache
 // stops growing once full and later texts run unprepared (#433).
 const stmtCacheMax = 512
 
@@ -160,18 +160,18 @@ func (t cachedTx) QueryRowContext(ctx context.Context, q string, args ...any) *s
 }
 
 // bind returns the queries over d through the cache.
-func (c *stmtCache) bind(d sqlcdb.DBTX) sqlcdb.Querier {
+func (c *stmtCache) bind(d sqldb.DBTX) sqldb.Querier {
 	switch v := d.(type) {
 	case *sql.DB:
-		return sqlcdb.New(cachedDB{DB: v, c: c})
+		return sqldb.New(cachedDB{DB: v, c: c})
 	case *sql.Tx:
-		return sqlcdb.New(cachedTx{Tx: v, c: c})
+		return sqldb.New(cachedTx{Tx: v, c: c})
 	}
-	return sqlcdb.New(d)
+	return sqldb.New(d)
 }
 
 // conn returns d through the cache, for the store's queries built in Go.
-func (c *stmtCache) conn(d sqlcdb.DBTX) sqlcdb.DBTX {
+func (c *stmtCache) conn(d sqldb.DBTX) sqldb.DBTX {
 	switch v := d.(type) {
 	case *sql.DB:
 		return cachedDB{DB: v, c: c}

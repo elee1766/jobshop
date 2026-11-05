@@ -19,9 +19,10 @@ the pinned decision log issue (#569). Progress: open `target` issues.
   touched before pushing; do not add `//nolint` or relax `.golangci.yml`
   to pass. A finding in code you did not touch that blocks CI: fix it in
   the same PR and say so in the PR body.
-- Store queries are sqlc (`pkg/store/sqlite/sqlc.yaml`); regenerate after
-  editing `pkg/store/sqlite/queries/` or `migrations/`. Output goes to
-  `pkg/store/sqlstore/sqlcdb`, the backend-neutral core's interface (#404).
+- Store queries are plain SQL in Go, no sqlc (#579): collections and
+  `List` build theirs (bqb), the rest are hand-written in
+  `pkg/store/sqlstore/sqldb` (SQLite SQL, rewritten for Postgres).
+  Goose migrations stay in `pkg/store/{sqlite,postgres}/migrations`.
 - Do not edit `docs/plan.md`: it is frozen (2026-11-05) because parallel
   PRs kept conflicting on it. Record a design decision as one dated
   comment on the decision log issue #569 (format in its body). Behavior

@@ -8,7 +8,7 @@ import (
 	"sort"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 // columns are the fields keys queries filter and sort on, copied to
@@ -46,7 +46,7 @@ func fieldColumns(fields json.RawMessage) columns {
 
 // syncMeta rewrites ticket_meta, the lookup rows for List's meta filter,
 // from meta: one row per string value meta[pack][key].
-func syncMeta(ctx context.Context, q sqlcdb.Querier, id string, meta json.RawMessage) error {
+func syncMeta(ctx context.Context, q sqldb.Querier, id string, meta json.RawMessage) error {
 	if err := q.ClearTicketMeta(ctx, id); err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func syncMeta(ctx context.Context, q sqlcdb.Querier, id string, meta json.RawMes
 			if !bytes.HasPrefix(bytes.TrimSpace(v), []byte(`"`)) || json.Unmarshal(v, &s) != nil {
 				continue
 			}
-			if err := q.AddTicketMeta(ctx, sqlcdb.AddTicketMetaParams{TicketID: id, Pack: p, Mkey: k, Value: s}); err != nil {
+			if err := q.AddTicketMeta(ctx, sqldb.AddTicketMetaParams{TicketID: id, Pack: p, Mkey: k, Value: s}); err != nil {
 				return err
 			}
 		}
@@ -75,7 +75,7 @@ func syncMeta(ctx context.Context, q sqlcdb.Querier, id string, meta json.RawMes
 
 // syncResources rewrites ticket_resources from fields.resources (#426),
 // so the slot queries join a table instead of reading JSON.
-func syncResources(ctx context.Context, q sqlcdb.Querier, id string, fields json.RawMessage) error {
+func syncResources(ctx context.Context, q sqldb.Querier, id string, fields json.RawMessage) error {
 	if err := q.ClearTicketResources(ctx, id); err != nil {
 		return err
 	}
@@ -86,7 +86,7 @@ func syncResources(ctx context.Context, q sqlcdb.Querier, id string, fields json
 		return nil
 	}
 	for _, k := range f.Resources {
-		if err := q.AddTicketResource(ctx, sqlcdb.AddTicketResourceParams{TicketID: id, Rkey: k, Rname: store.ResourceName(k)}); err != nil {
+		if err := q.AddTicketResource(ctx, sqldb.AddTicketResourceParams{TicketID: id, Rkey: k, Rname: store.ResourceName(k)}); err != nil {
 			return err
 		}
 	}
