@@ -19,7 +19,7 @@ on each switch: `identities`, `gateway`, live packs (`packs`),
 ```yaml
 include: [jobshop.module.yaml]
 projects:
-  js: {identity: elee-agent}
+  js: {identities: [elee-agent]}
 ```
 
 `include` is a new core config key: a list of files (relative to the

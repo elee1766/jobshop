@@ -98,6 +98,7 @@ let
     identities.elee-agent = {
       kind = "github-token";
       token_file = "/run/secrets/gh";
+      repos = [ "elee1766/*" ];
     };
     sandbox.enable = true;
   };
@@ -136,7 +137,7 @@ let
     ufail() { echo "user config test: $*"; cat $T/log $T/out 2>/dev/null; exit 1; }
     grep -q 'token_file: /run/secrets/gh' $T/root/jobshop.module.yaml || ufail "identity not in module file"
     grep -q 'backend: bubblewrap' $T/root/jobshop.module.yaml || ufail "sandbox not in module file"
-    printf 'include: [jobshop.module.yaml]\nprojects:\n  js: {identity: elee-agent}\n' > $T/root/jobshop.yaml
+    printf 'include: [jobshop.module.yaml]\nprojects:\n  js: {identities: [elee-agent]}\n' > $T/root/jobshop.yaml
     cp $T/root/jobshop.yaml $T/want
     : > $T/log
     ${pkgs.bash}/bin/bash ${reloadScript} > $T/out 2>&1 || ufail "good edit failed the check"
@@ -144,7 +145,7 @@ let
     cmp -s $T/root/jobshop.yaml $T/want || ufail "user file changed"
     # js names an identity only the module file defines: without the
     # include the check fails and nothing reloads.
-    printf 'projects:\n  js: {identity: elee-agent}\n' > $T/root/jobshop.yaml
+    printf 'projects:\n  js: {identities: [elee-agent]}\n' > $T/root/jobshop.yaml
     : > $T/log
     ! ${pkgs.bash}/bin/bash ${reloadScript} > $T/out 2>&1 || ufail "broken edit passed the check"
     ! grep -q reload $T/log || ufail "broken edit reloaded"
