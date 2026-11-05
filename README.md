@@ -9,41 +9,15 @@
 
 Jobshop is self-hosted orchestration for AI coding agents: a multi-agent
 work queue that takes GitHub and Linear issues to reviewed, merged pull
-requests. It drives agents over the Agent Client Protocol (ACP), so it
-works with jcode, Claude Code (through an ACP adapter) or Gemini CLI (its
-ACP mode).
-It is one Go binary with a SQLite (or Postgres) store, meant to replace a
-hosted agent platform or a hand-built multi-agent setup (Gas City style)
-with something you run and read yourself.
-
-Jobshop runs pools of coding agents (any ACP agent, for example
-`jcode acp`) against a ticket store. Agents claim tickets, do the work in
-their own git worktree and sandbox, and close them. Workflows chain steps
-across pools, and humans are pulled in only where needed. Jobshop
-develops itself this way: issues on this repo are planned, implemented,
-reviewed, merged and deployed by Jobshop pools.
+requests. It drives agents over the Agent Client Protocol (ACP): jcode,
+Claude Code (through an ACP adapter) or Gemini CLI (its ACP mode). One Go
+binary and a SQLite (or Postgres) store replace a hosted agent platform or
+a hand-built multi-agent setup (Gas City style) with something you run and
+read yourself. Agents claim tickets, work in their own git worktree and
+sandbox, and close them; workflows chain steps across pools, and humans
+are pulled in only where needed. Jobshop develops itself this way.
 
 ## Features
-
-- [Tickets](docs/data-model.md) with blocking edges, claims, leases and comments.
-- [Pools](docs/running.md#concepts) of agent sessions that scale with ready work.
-- [Workflows](docs/packs.md#the-parts): multi-step runs across pools, with retries and escalation.
-- [Sandboxed worktrees](docs/isolation.md): each session in its own git worktree and sandbox, with scoped credentials.
-- [GitHub and Linear intake](docs/ingest.md): webhooks and polling turn issues and comments into tickets.
-- PR review and merge steps ([`packs/github`](packs/github/README.md)).
-- [Self-deploy](docs/nixos.md) through the NixOS module.
-- [Desk](docs/notes/202-desk.md), a web UI, plus Matrix and Discord gateways.
-
-## Goals
-
-- A small core you own: SQLite, one controller, one binary.
-- Behavior defined in packs you write, not in the core.
-- Agents sandboxed and scoped, never holding long-lived keys.
-- Sessions survive controller restarts and deploys.
-- Humans see what waits on them (attention, Desk, chat) and can step in
-  anywhere.
-
-## How it works
 
 ```mermaid
 flowchart LR
@@ -57,11 +31,17 @@ flowchart LR
 ```
 
 - [**Tickets**](docs/data-model.md): one graph of work items with blocking edges, claims and comments.
-- [**Pools and sessions**](docs/running.md#concepts): a pool runs agent sessions, each in its own worktree and sandbox.
+- [**Pools and sessions**](docs/running.md#concepts): a pool runs agent sessions, each in its own worktree and [sandbox](docs/isolation.md).
 - [**Workflows and runs**](docs/packs.md#the-parts): a run is one ticket per step, each step in a pool, with retries and escalation.
+- [**GitHub and Linear intake**](docs/ingest.md): webhooks and polling turn issues and comments into tickets; PR review and merge steps ship in [`packs/github`](packs/github/README.md).
 - [**Triggers**](docs/notes/26-triggers.md): create tickets or start runs from counts, cron, shell checks or stall signals.
 - [**Packs**](docs/packs.md): directories of pools, prompts, triggers and workflows you write.
 - [**Gateways and Desk**](docs/notes/202-desk.md): chat (Matrix, Discord) and a web UI over the admin socket.
+- [**Self-deploy**](docs/nixos.md): the NixOS module promotes merged commits.
+
+Goals: a small core you own; behavior in packs, not the core; agents
+sandboxed with no long-lived keys; sessions that survive restarts and
+deploys; humans see what waits on them and can step in anywhere.
 
 ## Example flows
 
@@ -73,32 +53,23 @@ Shipped in [`packs/`](packs/):
   then escalate to a human.
 - **Stalled work** (`stall-check`): unclaimed tickets, silent sessions and
   green PRs nobody merged each start a diagnose run that fixes what it can.
-- **Red master** (`ci-repair`): a failing master SHA starts one repair run,
-  keyed by the SHA.
+- **Red master** (`ci-repair`): a failing master SHA starts one repair run, keyed by the SHA.
 - **Linear intake** ([`packs/github`](packs/github/README.md#linear-instance)):
-  an eligible Linear issue starts a run, and comments flow back to the
-  ticket.
+  an eligible Linear issue starts a run; comments flow back to the ticket.
 - **Learning from past work** ([`packs/selfdev`](packs/selfdev/README.md)
   `curate`/`evaluate`): agents record corrections and failures, and a
   curator turns them into learnings later sessions recall.
 
-Planned: **escalation to a human or another agent** (#547). Also possible
-with the same primitives: a nightly dependency-bump cron, or a monitoring
-webhook ([generic ingest](docs/ingest.md#generic-endpoints)) that files a
-triage ticket into an on-call pool.
+Planned: **escalation to a human or another agent** (#547).
 
 ## Quick start
 
-Install with Go or Nix:
-
 ```
-go install github.com/elee1766/jobshop/cmd/jobshop@latest
-# or: nix build github:elee1766/jobshop#jobshop
+go install github.com/elee1766/jobshop/cmd/jobshop@latest   # or: nix build github:elee1766/jobshop
 jobshop init ./root          # writes root/jobshop.yaml
 ```
 
-Point `root/jobshop.yaml` at one pack (the agent pool in
-[`packs/agent`](packs/agent/pack.yaml)):
+Point `root/jobshop.yaml` at one pack ([`packs/agent`](packs/agent/pack.yaml)):
 
 ```yaml
 default_project: js
