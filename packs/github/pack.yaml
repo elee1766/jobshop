@@ -49,8 +49,9 @@ defaults:
   # Labels that keep a Linear issue out of intake (`jobshop linear
   # eligible --skip-labels`, #279). Comma-separated. Blocked is set while
   # a worker question waits on the issue (#293). target and proposed are
-  # planner parents whose sub-issues are the work (JOB-4): never a run.
-  linear_skip_labels: Blocked,target,proposed
+  # planner parents whose sub-issues are the work (JOB-4), and tracking
+  # issues get no run, as on GitHub (#670).
+  linear_skip_labels: Blocked,tracking,target,proposed
   # Linear user (name, display name or email) mentioned by questions and
   # escalations posted on a run's Linear issue (#293). Empty: no mention.
   linear_human: ""
