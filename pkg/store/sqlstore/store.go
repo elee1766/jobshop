@@ -1122,4 +1122,3 @@ func (s *Store) AddComment(ctx context.Context, author, id, body string) (c stor
 func toComment(r sqlcdb.Comment) store.Comment {
 	return store.Comment{ID: r.ID, TicketID: r.TicketID, Author: r.Author, Body: r.Body, CreatedAt: fromMS(r.CreatedAt)}
 }
-
