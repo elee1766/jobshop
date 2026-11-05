@@ -7,37 +7,36 @@ import (
 	"strings"
 	"testing"
 
+	host "github.com/elee1766/acphost"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestJournalTailFile reads the last frame from the end, including one
-// larger than the read block and a trailing partial line.
-func TestJournalTailFile(t *testing.T) {
+// TestJournalTail reads the last frame of a plain journal, skips a torn
+// last line, and reads the same tail once the journal is compressed.
+func TestJournalTail(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "j")
+	path := filepath.Join(dir, host.JournalFile)
 	big := strings.Repeat("x", 1000)
 	body := ""
 	for i := 1; i <= 5; i++ {
 		body += fmt.Sprintf(`{"seq":%d,"t":%d,"from":"agent","msg":{"text":%q}}`+"\n", i, 1000+i, big)
 	}
-	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
-	for _, block := range []int64{16, 999, 1 << 20} {
-		seq, at := journalTailFile(path, block)
-		assert.Equal(t, int64(5), seq, "block %d", block)
-		assert.Equal(t, int64(1005), at.UnixMilli())
-	}
-	// A torn last line is skipped.
 	require.NoError(t, os.WriteFile(path, []byte(body+`{"seq":6,"t":`), 0o600))
-	seq, _ := journalTailFile(path, 16)
+	seq, _ := journalTail(dir)
 	assert.Equal(t, int64(5), seq)
-	// A single frame larger than the block.
-	require.NoError(t, os.WriteFile(path, []byte(`{"seq":1,"t":7,"msg":"`+big+`"}`+"\n"), 0o600))
-	seq, _ = journalTailFile(path, 16)
-	assert.Equal(t, int64(1), seq)
-	seq, _ = journalTailFile(filepath.Join(dir, "missing"), 16)
-	assert.Zero(t, seq)
-	require.NoError(t, os.WriteFile(path, nil, 0o600))
-	seq, _ = journalTailFile(path, 16)
+
+	require.NoError(t, os.WriteFile(path, []byte(body), 0o600))
+	seq, at := journalTail(dir)
+	assert.Equal(t, int64(5), seq)
+	assert.Equal(t, int64(1005), at.UnixMilli())
+
+	require.NoError(t, host.CompressJournal(dir, 3))
+	require.NoFileExists(t, path)
+	seq, at = journalTail(dir)
+	assert.Equal(t, int64(5), seq)
+	assert.Equal(t, int64(1005), at.UnixMilli())
+
+	seq, _ = journalTail(t.TempDir())
 	assert.Zero(t, seq)
 }

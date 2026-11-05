@@ -139,6 +139,10 @@ type Controller struct {
 	inboxPrunedAt time.Time
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
+	// journalsCompressedAt is the last journal compression sweep start
+	// (#631); journalCompressing is set while one runs.
+	journalsCompressedAt time.Time
+	journalCompressing   atomic.Bool
 	// prov is resource provider demand and idle state (#407); tick-only.
 	prov providerState
 	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
@@ -498,6 +502,7 @@ func (c *Controller) tick() {
 	c.pruneInbox()
 	c.pruneWriteKeys()
 	c.pruneArtifacts()
+	c.maybeCompressJournals()
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
