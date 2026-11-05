@@ -143,3 +143,24 @@ func snippet(text, query string) string {
 	}
 	return s
 }
+
+// Load returns the indexed summary of session's journal, or "" when it
+// has none.
+func Load(ctx context.Context, st Store, session string) (string, error) {
+	col, err := st.Collection(ctx, Spec)
+	if err != nil {
+		return "", err
+	}
+	r, err := col.Get(ctx, session)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	var v doc
+	if err := json.Unmarshal(r.Value, &v); err != nil {
+		return "", fmt.Errorf("journal %s: %w", session, err)
+	}
+	return v.Text, nil
+}

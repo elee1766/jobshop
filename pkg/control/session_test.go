@@ -1388,8 +1388,14 @@ func hostPidOf(t *testing.T, dir string) int {
 // session/load fails: the session starts a new conversation and the next
 // prompt opens with a summary of the journal, without crash-looping.
 func TestLoadFallback(t *testing.T) {
-	for _, marker := range []string{"noload", "loadfail"} {
-		t.Run(marker, func(t *testing.T) {
+	// nojournal: session/load fails and the journal file is gone too
+	// (JOB-14); the summary comes from the recall index.
+	for _, name := range []string{"noload", "loadfail", "nojournal"} {
+		t.Run(name, func(t *testing.T) {
+			marker := name
+			if name == "nojournal" {
+				marker = "loadfail"
+			}
 			root, start := poolRootReal(t, "1m")
 			stop := start()
 			defer stop()
@@ -1412,6 +1418,9 @@ func TestLoadFallback(t *testing.T) {
 			pid := hostPidOf(t, sdir)
 
 			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, marker), nil, 0o600))
+			if name == "nojournal" {
+				require.NoError(t, os.Remove(filepath.Join(sdir, host.JournalFile)))
+			}
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
 			passEventually(t, root.Dir, func() bool {
 				p := hostPidOf(t, sdir)
