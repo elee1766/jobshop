@@ -92,6 +92,8 @@ var Specs = map[string]Spec{
 	MethodLearnUpdate:       {LearnUpdateParams{}, []store.Learning{}},
 	MethodLearnEvaluate:     {LearnEvaluateParams{}, []store.MemoryEdit{}},
 	MethodLearnEdits:        {LearnEditsParams{}, []store.MemoryEdit{}},
+	MethodMemoryWrite:       {MemoryWriteParams{}, store.MemoryEdit{}},
+	MethodMemoryShow:        {MemoryShowParams{}, MemoryShowResult{}},
 	MethodWriteKeyClaim:     {WriteKeyParams{}, store.WriteKey{}},
 	MethodWriteKeyFinish:    {WriteKeyParams{}, store.WriteKey{}},
 	MethodEventsSubscribe:   {EventsSubscribeParams{}, EventsSubscribeResult{}},

@@ -1049,6 +1049,8 @@ in
 
         systemd.tmpfiles.rules = [
           "d ${cfg.dataDir} 0700 ${cfg.user} ${cfg.group} -"
+          # Local agent memory (#592): the packs' default memory_dir.
+          "d ${cfg.dataDir}/memory 0750 ${cfg.user} ${cfg.group} -"
           # The root's config is the generated file; L+ replaces the link on each switch.
           # With configFile the user's file is linked (never written) and the
           # module's keys go to jobshop.module.yaml (#531).

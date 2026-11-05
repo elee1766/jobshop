@@ -4,7 +4,8 @@
 defaults:
   dev_sessions: 2
   refinery_sessions: 1
-  memory_dir: ""
+  # Local memory (#592): relative to the root dir, so <root>/memory.
+  memory_dir: memory
   memory_cap: 2200
   # Curator (#273): start a curate pass once this many open learnings
   # were recorded since the last pass, or daily when at least one was.
@@ -55,14 +56,15 @@ extends:
         descendant: `git fetch origin && git merge-base --is-ancestor
         <sha> <commit>`. Self-deploy rebuilds with the newest green master
         commit every 10 minutes.
-# Memory and skills (#266): memory_dir is a git directory holding
-# memory/global.md, memory/repo/<owner>__<name>.md, memory/pool/<name>.md
-# and skills/<name>/SKILL.md. Empty (the default) adds nothing. On
-# gasserver it is a clone of elee1766/jobshop (its memory/ and skills/).
+# Memory and skills (#266): memory_dir holds memory/global.md,
+# memory/repo/<owner>__<name>.md, memory/pool/<name>.md and
+# skills/<name>/SKILL.md. It is local to the host, <root>/memory by
+# default, outside any checkout (#592); "" turns it off.
 # Curator (#273): a learn pool and a curate workflow, started by the
-# curate trigger. Selfdev, not operator: the edits land in this repo's
-# memory/ and packs/ through its pr-work. The open run holds the trigger
-# and its key dedups, so one curate run is open at a time.
+# curate trigger. The curator writes memory through `jobshop memory
+# write` (memory-write grant) and files prompt fixes under packs/ as
+# pr-work issues. The open run holds the trigger and its key dedups, so
+# one curate run is open at a time.
 pools:
   learn:
     agent: "{{.agent}}"
@@ -72,6 +74,7 @@ pools:
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/learn.md
+    admin: [memory-write]
 workflows:
   curate:
     escalate_pool: plan
@@ -98,7 +101,7 @@ workflows:
       - id: evaluate
         pool: learn
         retries: 1
-        title: "Evaluate merged memory edits"
+        title: "Evaluate memory edits"
         prompt_file: prompts/evaluate.md
 triggers:
   evaluate:
@@ -119,3 +122,9 @@ prompt_rules:
     # Ticket pools of every instance; the operator pack's rule covers chat.
     match: {chat: false}
     memory: {dir: "{{.memory_dir}}", cap: "{{.memory_cap}}"}
+  # Jobshop-specific working notes (#592), moved from the old repo
+  # memory/. Lasting guidance lives in prompts, memory stays local.
+  - name: selfdev-guide
+    at: system
+    match: {chat: false, repos: [elee1766/jobshop]}
+    file: prompts/guide.md

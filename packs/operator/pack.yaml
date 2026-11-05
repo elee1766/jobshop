@@ -6,7 +6,8 @@
 # session per key.
 defaults:
   operator_sessions: 0
-  memory_dir: ""
+  # Local memory (#592): relative to the root dir, so <root>/memory.
+  memory_dir: memory
   memory_cap: 2200
 # #248 renamed repo to jobshop_repo; hosts that still set repo keep
 # working with a warning (#261). Remove after the next release.
@@ -35,8 +36,8 @@ prompt_rules:
     file: prompts/improve.md
     at: after
     match: {pools: [operator], keys: ["improve:*"]}
-  # Memory and skills (#266), the same directory as selfdev's
-  # memory_dir. Empty (the default) adds nothing.
+  # Memory and skills (#266), the same local directory as selfdev's
+  # memory_dir (<root>/memory, #592). Set it to "" to turn memory off.
   - name: operator-memory
     at: system
     match: {pools: [operator]}

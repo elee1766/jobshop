@@ -319,6 +319,15 @@ Commands:
     Load and validate a config file with its packs, without a controller.
     Exit 1 on error.
 
+  memory write <scope> [flags]
+    Write a local memory file under <root>/memory and record the edit (#592).
+
+  memory show [<scope>]
+    Print the local memory files.
+
+  memory log [flags]
+    List memory edits with their evaluation, newest first.
+
   memory check [<dir>] [flags]
     Report memory files over the character cap (exits 1 if any).
 
@@ -3061,7 +3070,7 @@ Flags:
 ```
 Usage: jobshop memory <command> [flags]
 
-Memory files and skills from a git directory (#266).
+Local memory files and skills under <root>/memory (#266, #592).
 
 Flags:
   -h, --help             Show context-sensitive help.
@@ -3073,8 +3082,84 @@ Flags:
                          else the root's admin socket ($JOBSHOP_SOCKET).
 
 Commands:
+  memory write <scope> [flags]
+    Write a local memory file under <root>/memory and record the edit (#592).
+
+  memory show [<scope>]
+    Print the local memory files.
+
+  memory log [flags]
+    List memory edits with their evaluation, newest first.
+
   memory check [<dir>] [flags]
     Report memory files over the character cap (exits 1 if any).
+```
+
+## jobshop memory write
+
+```
+Usage: jobshop memory write <scope> [flags]
+
+Write a local memory file under <root>/memory and record the edit (#592).
+
+Arguments:
+  <scope>    global, repo/<owner>__<name>, pool/<name> or skills/<name>.
+
+Flags:
+  -h, --help                       Show context-sensitive help.
+      --root=STRING                Jobshop root directory (holds jobshop.yaml,
+                                   the database, sockets and sessions). Default:
+                                   nearest ancestor of the cwd containing
+                                   jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING              Socket to talk to. Defaults to the session
+                                   CLI socket, else the root's admin socket
+                                   ($JOBSHOP_SOCKET).
+
+      --learnings=LEARNINGS,...    Learning ids the edit addresses
+                                   (comma-separated).
+      --from-file=STRING           Read the new file text from this path.
+                                   Default: stdin.
+```
+
+## jobshop memory show
+
+```
+Usage: jobshop memory show [<scope>]
+
+Print the local memory files.
+
+Arguments:
+  [<scope>]    Only this scope (global, repo/<owner>__<name>, pool/<name>,
+               skills/<name>).
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+```
+
+## jobshop memory log
+
+```
+Usage: jobshop memory log [flags]
+
+List memory edits with their evaluation, newest first.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --state=""         pending, helped or not_helped.
+      --limit=50         Most edits to print.
 ```
 
 ## jobshop memory check
@@ -3086,7 +3171,7 @@ Report memory files over the character cap (exits 1 if any).
 
 Arguments:
   [<dir>]    Memory directory (holds memory/ and skills/). Default: every prompt
-             rule's memory.dir in jobshop.yaml.
+             rule's memory.dir in jobshop.yaml, e.g. <root>/memory.
 
 Flags:
   -h, --help             Show context-sensitive help.

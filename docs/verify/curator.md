@@ -16,5 +16,5 @@ through their states (#273).
    learnings with `pr` set and status `open`.
 4. After the PR merges, the next pass sets them `applied`; for a closed
    unmerged PR, `rejected` with the PR.
-5. `jobshop memory check` on the host's memory dir exits 0 after the
-   merge.
+5. `jobshop memory log` lists the pass's local writes, and `jobshop
+   memory check` on `<root>/memory` exits 0 (#592).

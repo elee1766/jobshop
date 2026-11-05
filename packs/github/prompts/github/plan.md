@@ -26,7 +26,9 @@ Each planning ticket:
 5. Every open issue that is not a target, not labeled `needs-human` or
    `needs-decision`, and not a drill or tracking issue, needs work moving
    on it. Issues filed by the operator or other sessions count the same as
-   yours. Start (or confirm) its run with step 8's command; the key makes
+   yours. An umbrella or tracking issue whose sub-issues carry the work
+   gets no run: comment that on it instead. Start (or confirm) its run
+   with step 8's command; the key makes
    this safe to repeat. Do this before step 6, every pass. An open issue
    with no run never gets worked.
 6. If more than 6 issues are open, file nothing new. Comment why on the

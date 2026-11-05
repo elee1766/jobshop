@@ -48,6 +48,7 @@ type Querier interface {
 	FindOpenRunByKey(ctx context.Context, arg FindOpenRunByKeyParams) (Ticket, error)
 	FinishWriteKey(ctx context.Context, arg FinishWriteKeyParams) (WriteKey, error)
 	GetLearning(ctx context.Context, id int64) (Learning, error)
+	GetMemoryEdit(ctx context.Context, id int64) (MemoryEdit, error)
 	GetMemoryEditByPR(ctx context.Context, pr string) (MemoryEdit, error)
 	GetPollCursor(ctx context.Context, arg GetPollCursorParams) (PollCursor, error)
 	GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error)
@@ -88,6 +89,7 @@ type Querier interface {
 	InsertLabel(ctx context.Context, arg InsertLabelParams) (int64, error)
 	InsertLearning(ctx context.Context, arg InsertLearningParams) (Learning, error)
 	InsertMemoryEdit(ctx context.Context, arg InsertMemoryEditParams) (MemoryEdit, error)
+	InsertMemoryWrite(ctx context.Context, arg InsertMemoryWriteParams) (MemoryEdit, error)
 	InsertResourceCap(ctx context.Context, arg InsertResourceCapParams) error
 	InsertResourceProvider(ctx context.Context, name string) error
 	InsertSlot(ctx context.Context, arg InsertSlotParams) error

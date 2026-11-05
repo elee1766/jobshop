@@ -110,6 +110,8 @@ export interface RpcMethods {
   "learn.evaluate": { params: LearnEvaluateParams; result: MemoryEdit[] };
   "learn.list": { params: LearnListParams; result: Learning[] };
   "learn.update": { params: LearnUpdateParams; result: Learning[] };
+  "memory.show": { params: MemoryShowParams; result: MemoryShowResult };
+  "memory.write": { params: MemoryWriteParams; result: MemoryEdit };
   "pool.list": { params: Record<string, never>; result: PoolStatusResult };
   "pool.scale": { params: PoolScaleParams; result: PoolStatusResult };
   "pool.unquarantine": { params: PoolParams; result: PoolStatusResult };
@@ -708,7 +710,10 @@ export interface LogGroup {
 
 export interface MemoryEdit {
   id: number;
-  pr: string;
+  pr?: string;
+  path?: string;
+  before?: string;
+  existed?: boolean;
   learnings: number[];
   pools: string[];
   merged_at: string;
@@ -718,6 +723,27 @@ export interface MemoryEdit {
   reason?: string;
   evaluated_at?: string;
   created_at: string;
+}
+
+export interface MemoryFile {
+  path: string;
+  chars: number;
+  text: string;
+}
+
+export interface MemoryShowParams {
+  scope?: string;
+}
+
+export interface MemoryShowResult {
+  dir: string;
+  files: MemoryFile[];
+}
+
+export interface MemoryWriteParams {
+  scope: string;
+  text: string;
+  learnings?: number[];
 }
 
 export interface Mount {

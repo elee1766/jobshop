@@ -77,7 +77,7 @@ type root struct {
 	Artifact  artifactCmd  `cmd:"" help:"Deliver reports for a human to read in Desk; list, show and ack them."`
 	Learn     learnCmd     `cmd:"" help:"Record a correction, failure or workaround for the learning loop, or list learnings."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
-	Memory    memoryCmd    `cmd:"" help:"Memory files and skills from a git directory (#266)."`
+	Memory    memoryCmd    `cmd:"" help:"Local memory files and skills under <root>/memory (#266, #592)."`
 	Events    eventsCmd    `cmd:"" help:"Print the change stream as JSON lines (admin, for debugging)."`
 	Identity  identityCmd  `cmd:"" help:"GitHub App and Linear identities: list, check, tokens and the git credential helper."`
 	Linear    linearCmd    `cmd:"" help:"Read, comment on and move Linear issues as the identity for their team."`

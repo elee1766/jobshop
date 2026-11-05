@@ -6,6 +6,14 @@ RETURNING *;
 -- name: GetMemoryEditByPR :one
 SELECT * FROM memory_edits WHERE pr = ?;
 
+-- name: InsertMemoryWrite :one
+INSERT INTO memory_edits (path, before, existed, learnings, pools, merged_at, baseline, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetMemoryEdit :one
+SELECT * FROM memory_edits WHERE id = ?;
+
 -- name: ListMemoryEdits :many
 SELECT * FROM memory_edits
 WHERE (sqlc.narg(state) IS NULL OR state = sqlc.narg(state))

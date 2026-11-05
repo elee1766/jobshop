@@ -161,13 +161,23 @@ packs:
 	assert.Equal(t, "go build ./... && go vet ./... && go test ./... && golangci-lint run ./... && nix fmt -- --check $(git ls-files '*.nix')", c.Workflows["pr-work"].PackVars["check_cmd"])
 	assert.Contains(t, c.Workflows["pr-work"].PackVars["docs_rule"], "docs/notes/<issue>-<slug>.md")
 	var mem *RuleMemory
+	var guide string
 	for _, r := range c.PromptRules {
 		if r.Name == "selfdev-memory" {
 			mem = r.Memory
 		}
+		if r.Name == "selfdev-guide" {
+			guide = r.Text
+			assert.Equal(t, []string{"elee1766/jobshop"}, r.Match.Repos)
+		}
 	}
 	require.NotNil(t, mem, "memory rule (#266)")
-	assert.Equal(t, RuleMemory{Dir: "", Cap: 2200}, *mem, "off unless memory_dir is set")
+	assert.Equal(t, RuleMemory{Dir: "memory", Cap: 2200}, *mem, "local <root>/memory by default (#592)")
+	assert.Contains(t, guide, "go generate ./pkg/store/sqlite/", "jobshop notes moved from repo memory (#592)")
+	assert.Contains(t, guide, "renumber past its highest file")
+	assert.Contains(t, c.Pools["dev"].Prompt, "jobshop comment -t <ticket>", "generic notes moved to the dev prompt (#592)")
+	assert.Contains(t, c.Workflows["pr-work"].Steps[0].Prompt, "git fetch origin pull/<n>/head")
+	assert.Equal(t, []string{"memory-write"}, c.Pools["learn"].Admin, "the curator writes local memory (#592)")
 	assert.Contains(t, c.Pools["plan"].Prompt, "target")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var issue=<n> --key issue-<n>")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop batch start --workflow pr-work --key <slug>", "dependent issues start as a batch (#171) of this pack's workflow (#308)")
@@ -234,7 +244,9 @@ packs:
 	assert.Equal(t, "learn", cu.Steps[0].Pool)
 	assert.Contains(t, cu.Steps[0].Prompt, "jobshop learn update")
 	assert.Contains(t, cu.Steps[0].Prompt, "--status rejected")
-	assert.Contains(t, cu.Steps[0].Prompt, "jobshop memory check")
+	assert.Contains(t, cu.Steps[0].Prompt, "jobshop memory write")
+	assert.NotContains(t, cu.Steps[0].Prompt, "memory check memory/memory", "memory is local, not a repo dir (#592)")
+	assert.NotContains(t, c.Workflows["evaluate"].Steps[0].Prompt, "memory check memory/memory")
 	ct := c.Triggers["curate"]
 	require.NotNil(t, ct.Run)
 	assert.Equal(t, "curate", ct.Run.Workflow)
