@@ -121,12 +121,34 @@ func TestSearch(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestCatalog: one connection per query, following the cursor (#653).
+// A query naming more than one connection gets Linear's "Query too
+// complex" answer, as the combined query did on a real workspace.
 func TestCatalog(t *testing.T) {
-	c, _ := recorded(t, func(cl call) string {
+	c, calls := recorded(t, func(cl call) string {
 		if cl.Variables["team"] == "NOPE" {
 			return ""
 		}
-		return "catalog.json"
+		var conns []string
+		for _, f := range []string{"projects(", "labels(", "states(", "members("} {
+			if strings.Contains(cl.Query, f) {
+				conns = append(conns, strings.TrimSuffix(f, "("))
+			}
+		}
+		if len(conns) != 1 {
+			return "catalog.json"
+		}
+		name := map[string]string{"members": "users"}[conns[0]]
+		if name == "" {
+			name = conns[0]
+		}
+		if name == "labels" {
+			if cl.Variables["after"] == "c-l1" {
+				return "catalog_labels_2.json"
+			}
+			return "catalog_labels_1.json"
+		}
+		return "catalog_" + name + ".json"
 	})
 	want := map[string][]linear.Entry{
 		"projects": {{ID: "p-1", Name: "Reports", Type: "started"}},
@@ -138,6 +160,10 @@ func TestCatalog(t *testing.T) {
 		es, err := c.Catalog(t.Context(), "ENG", kind)
 		require.NoError(t, err, kind)
 		assert.Equal(t, w, es, kind)
+	}
+	assert.Len(t, *calls, 5, "one query per kind, two pages of labels")
+	for _, cl := range *calls {
+		assert.InDelta(t, 100, cl.Variables["first"], 0)
 	}
 	_, err := c.Catalog(t.Context(), "ENG", "cycles")
 	require.ErrorContains(t, err, "not one of")
