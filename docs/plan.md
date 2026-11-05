@@ -1364,6 +1364,7 @@ moved from the old 7.x list, oldest first:
 - [Empty run vars rejected](notes/496-empty-run-var.md) (#496)
 - [Session socket bound once](notes/479-session-socket-once.md) (#479)
 - [New-user path test](notes/494-new-user-path.md) (#494)
+- [issue_no_run skips proposed](notes/506-issue-no-run-proposed.md) (#506)
 
 ## 8. Chat gateway
 
