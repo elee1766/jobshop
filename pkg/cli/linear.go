@@ -30,6 +30,7 @@ type linearCmd struct {
 	Eligible            linearEligibleCmd `cmd:"" help:"Intake gate: print whether an issue may start a run and why not. Exits 1 when not eligible."`
 	Create              linearCreateCmd   `cmd:"" help:"Create an issue. --key makes a retry return the first result."`
 	Update              linearUpdateCmd   `cmd:"" help:"Change title, state, assignee or labels; reads the issue back to verify."`
+	Label               linearLabelCmd    `cmd:"" help:"Add or remove labels: linear label <KEY> add|remove <label>... (same as update --add-label/--remove-label)."`
 	Ask                 linearAskCmd      `cmd:"" help:"Comment a question, mentioning users so they are notified."`
 	Relate              linearRelateCmd   `cmd:"" help:"Mark an issue as blocking or related to another."`
 	API                 linearAPICmd      `cmd:"" name:"api" help:"Raw GraphQL call: LINEAR_API_KEY if set, else the team's identity. Mutations ask the guard (linear-api-mutation)."`
