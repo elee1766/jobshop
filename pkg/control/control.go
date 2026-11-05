@@ -19,6 +19,7 @@ import (
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
+	host "github.com/elee1766/acphost"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -73,6 +74,9 @@ type Options struct {
 	// process per session. Tests run hosts in-process with it so a test of
 	// controller logic does not pay a process spawn per host (#361).
 	Hosts HostRunner
+	// Preflight checks an isolated pool's host prerequisites at start and
+	// reload (#728). Default acphost.Preflight; tests set a fake.
+	Preflight func(host.Spec) (host.PreflightReport, error)
 	// Backoff is the first wait after a provider rate limit, doubling to
 	// 15x. Default 1m; tests shorten it.
 	Backoff time.Duration
@@ -443,6 +447,8 @@ func (c *Controller) serve() error {
 		c.drive(t)
 	}
 	c.reapOrphans(open)
+	// After adoption, before the first pass spawns anything (#728).
+	c.preflightPools(c.ctx)
 	if err := c.backfillGitHubRepo(c.ctx); err != nil {
 		c.log.Warn("backfill github repo", "err", err)
 	}
