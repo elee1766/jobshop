@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -111,7 +112,7 @@ func TestDispatchWorkerDiesMidLease(t *testing.T) {
 	c, clk, src, sess := dispatchController(t)
 	setDispatch(t, c, config.IngestWorkersExternal)
 	bodies := admitComments(t, c, clk, src, 1)
-	dead, err := c.store.InboxClaim(t.Context(), []string{store.InboxAdmitted}, ingestWorkerPrefix+"dead", dispatchLease)
+	dead, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxAdmitted}, ingestWorkerPrefix+"dead", dispatchLease)
 	require.NoError(t, err)
 
 	n, err := worker(c, "w2").DispatchOnce(t.Context())
@@ -126,6 +127,6 @@ func TestDispatchWorkerDiesMidLease(t *testing.T) {
 	assert.Equal(t, 1, deliveredCounts(t, c, sess.ID, bodies)[bodies[0]])
 	assert.Equal(t, []string{store.InboxDispatched}, inboxStates(t, c))
 
-	_, err = c.store.InboxSetState(t.Context(), dead.ID, ingestWorkerPrefix+"dead", store.InboxUpdate{State: store.InboxDispatched})
+	_, err = ingest.InboxSetState(t.Context(), c.store, dead.ID, ingestWorkerPrefix+"dead", store.InboxUpdate{State: store.InboxDispatched})
 	require.ErrorIs(t, err, store.ErrConflict)
 }

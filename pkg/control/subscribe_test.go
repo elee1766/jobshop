@@ -369,7 +369,7 @@ func TestSubscriptionsWriteInbox(t *testing.T) {
 	at := clk.now().Add(time.Minute).Truncate(time.Second)
 	src.add("acme/widget#7", ghComment{ID: "c99", Author: "bob", Kind: "comment", Body: "hi", At: at})
 	c.pollSubscriptions(ctx, src)
-	its, err := c.store.InboxList(ctx, store.InboxFilter{})
+	its, err := ingest.InboxList(ctx, c.store, store.InboxFilter{})
 	require.NoError(t, err)
 	require.Len(t, its, 1)
 	assert.Equal(t, ingest.GitHubKey("acme/widget", "comment", "99", at), its[0].NaturalKey)

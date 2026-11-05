@@ -26,7 +26,6 @@ var Tables = []string{
 	"history",
 	"comments",
 	"recall",
-	"inbox",
 	"resource_caps",
 	"ticket_meta",
 	"resource_providers",
@@ -41,7 +40,6 @@ var identity = map[string]string{
 	"history":  "seq",
 	"comments": "id",
 	"recall":   "id",
-	"inbox":    "id",
 }
 
 // ErrNotEmpty is returned when the target holds rows and Force is off.

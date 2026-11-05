@@ -41,7 +41,6 @@ type Poller struct {
 // PollStore is the part of the store a poller uses.
 type PollStore interface {
 	Collection(ctx context.Context, spec store.CollectionSpec) (store.Collection, error)
-	InboxPutBatch(ctx context.Context, its []store.InboxItem) (int, error)
 }
 
 // PollResult counts one repo pass.
@@ -156,7 +155,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 	}
 
 	if len(items) > 0 {
-		fresh, err := p.Store.InboxPutBatch(ctx, items)
+		fresh, err := InboxPutBatch(ctx, p.Store, items)
 		if err != nil {
 			return res, fmt.Errorf("poller %s: inbox: %w", p.Name, err)
 		}

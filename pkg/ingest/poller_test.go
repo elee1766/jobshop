@@ -79,7 +79,7 @@ func pollFixture(t *testing.T) (*Poller, *fakeGitHub, *sqlite.Store, *time.Time)
 
 func inbox(t *testing.T, st *sqlite.Store) []store.InboxItem {
 	t.Helper()
-	its, err := st.InboxList(t.Context(), store.InboxFilter{})
+	its, err := InboxList(t.Context(), st, store.InboxFilter{})
 	require.NoError(t, err)
 	return its
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -48,7 +49,7 @@ func putInbox(t *testing.T, c *Controller, it store.InboxItem) store.InboxItem {
 		it.Payload = json.RawMessage(`{"body":"hello","token":"s3cret"}`)
 	}
 	it.ReceivedAt = c.now()
-	out, _, err := c.store.InboxPut(t.Context(), it)
+	out, _, err := ingest.InboxPut(t.Context(), c.store, it)
 	require.NoError(t, err)
 	return out
 }
@@ -58,7 +59,7 @@ func admitOne(t *testing.T, c *Controller, id int64) (store.InboxItem, []admissi
 	ok, err := c.admitNext(t.Context())
 	require.NoError(t, err)
 	require.True(t, ok)
-	it, err := c.store.InboxGet(t.Context(), id)
+	it, err := ingest.InboxGet(t.Context(), c.store, id)
 	require.NoError(t, err)
 	var rs []admissionResult
 	require.NoError(t, json.Unmarshal(it.HookResults, &rs))
@@ -165,7 +166,7 @@ func TestAdmissionHeldReleased(t *testing.T) {
 
 			// Unanswered: stays held.
 			require.NoError(t, c.releaseAnswered(t.Context()))
-			got, err := c.store.InboxGet(t.Context(), it.ID)
+			got, err := ingest.InboxGet(t.Context(), c.store, it.ID)
 			require.NoError(t, err)
 			assert.Equal(t, store.InboxHeld, got.State)
 
@@ -176,7 +177,7 @@ func TestAdmissionHeldReleased(t *testing.T) {
 			require.NoError(t, err)
 
 			require.NoError(t, c.releaseAnswered(t.Context()))
-			got, err = c.store.InboxGet(t.Context(), it.ID)
+			got, err = ingest.InboxGet(t.Context(), c.store, it.ID)
 			require.NoError(t, err)
 			assert.Equal(t, store.InboxPending, got.State)
 
@@ -338,7 +339,7 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 	it := putInbox(t, c, store.InboxItem{DeliveryID: "dx"})
 	// A first admitter claims the item, runs the hooks and dies before
 	// storing the result.
-	claimed, err := c.store.InboxClaim(t.Context(), []string{store.InboxPending}, admissionHolder, time.Minute)
+	claimed, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxPending}, admissionHolder, time.Minute)
 	require.NoError(t, err)
 	c.admissionRunner().run(t.Context(), "", admissionHooks(c.config()), claimed, false)
 	ok, err := c.admitNext(t.Context())
