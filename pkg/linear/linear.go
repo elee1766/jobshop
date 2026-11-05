@@ -321,32 +321,25 @@ func (c *Client) AddComment(ctx context.Context, key, body string) error {
 	return nil
 }
 
-const statesQuery = `query($team: String!) { team(id: $team) { states { nodes { id name type } } } }`
-
 const updateMutation = `mutation($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }`
 
 // SetState moves the issue to the team state named name (case-insensitive).
+// The states come from the paged team reader writes use (#683).
 func (c *Client) SetState(ctx context.Context, key, name string) (State, error) {
 	is, err := c.GetIssue(ctx, key)
 	if err != nil {
 		return State{}, err
 	}
-	var sr struct {
-		Team struct {
-			States struct {
-				Nodes []State `json:"nodes"`
-			} `json:"states"`
-		} `json:"team"`
-	}
-	if err := c.do(ctx, statesQuery, map[string]any{"team": is.Team.ID}, &sr); err != nil {
+	var states []State
+	if err := teamConn(ctx, c, is.Team.ID, "states", "id name type", &states); err != nil {
 		return State{}, err
 	}
 	var st *State
 	var names []string
-	for i, s := range sr.Team.States.Nodes {
+	for i, s := range states {
 		names = append(names, s.Name)
 		if strings.EqualFold(s.Name, name) {
-			st = &sr.Team.States.Nodes[i]
+			st = &states[i]
 		}
 	}
 	if st == nil {

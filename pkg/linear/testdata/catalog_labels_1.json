@@ -1,1 +1,1 @@
-{"data":{"teams":{"nodes":[{"labels":{"nodes":[{"id":"l-1","name":"bug"}],"pageInfo":{"hasNextPage":true,"endCursor":"c-l1"}}}]}}}
+{"data":{"team":{"labels":{"nodes":[{"id":"l-1","name":"bug"}],"pageInfo":{"hasNextPage":true,"endCursor":"c-l1"}}}}}

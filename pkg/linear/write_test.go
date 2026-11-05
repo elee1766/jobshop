@@ -32,10 +32,10 @@ type writeServer struct {
 	dropReply bool
 }
 
-const writeTeamResp = `{"data":{"teams":{"nodes":[{"id":"team-1","key":"ENG",
+const writeTeamResp = `{"data":{"team":{"id":"team-1","key":"ENG",
  "states":{"nodes":[{"id":"st-todo","name":"Todo","type":"unstarted"},{"id":"st-done","name":"Done","type":"completed"}]},
  "labels":{"nodes":[{"id":"lb-bug","name":"Bug"},{"id":"lb-ui","name":"UI"}]},
- "members":{"nodes":[{"id":"u-ann","name":"Ann Lee","displayName":"ann","email":"ann@example.com","url":"https://linear.app/acme/profiles/ann"}]}}]}}}`
+ "members":{"nodes":[{"id":"u-ann","name":"Ann Lee","displayName":"ann","email":"ann@example.com","url":"https://linear.app/acme/profiles/ann"}]}}}}`
 
 func newWriteServer(t *testing.T) (*linear.Client, *writeServer) {
 	t.Helper()
@@ -116,7 +116,7 @@ func (ws *writeServer) answer(c call) string {
 	case strings.Contains(q, "issueUpdate"):
 		ws.record(c)
 		return `{"data":{"issueUpdate":{"success":true,"issue":{"id":"iss-1","identifier":"ENG-123","url":"u"}}}}`
-	case strings.Contains(q, "teams(filter"):
+	case strings.Contains(q, "team(id"):
 		return writeTeamResp
 	case strings.Contains(q, "comment(id"):
 		id, _ := c.Variables["id"].(string)

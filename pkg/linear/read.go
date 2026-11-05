@@ -315,7 +315,10 @@ type Entry struct {
 
 // catalogFields maps a kind to the team connection and node fields it
 // reads. One kind per query: all four at 250 each was rejected as "Query
-// too complex" on a real workspace (#653).
+// too complex" on a real workspace (#653). The team is read with
+// team(id: key), one object: under teams(filter:) Linear counts the
+// nested page once per possible team, and 100 states scored 12550 of a
+// 10000 budget (#683).
 var catalogFields = map[string][2]string{
 	"projects": {"projects", "id name state"},
 	"labels":   {"labels", "id name"},
@@ -331,9 +334,9 @@ const catalogMaxPages = 50
 
 func catalogQuery(kind string) string {
 	f := catalogFields[kind]
-	return `query($team: String!, $first: Int!, $after: String) { teams(filter: {key: {eq: $team}}) { nodes {
+	return `query($team: String!, $first: Int!, $after: String) { team(id: $team) {
   ` + f[0] + `(first: $first, after: $after) { nodes { ` + f[1] + ` } pageInfo { hasNextPage endCursor } }
-} } }`
+} }`
 }
 
 // Catalog lists a team's projects, labels, states or users.
@@ -361,17 +364,15 @@ func (c *Client) Catalog(ctx context.Context, team, kind string) ([]Entry, error
 	vars := map[string]any{"team": team, "first": catalogPage}
 	for range catalogMaxPages {
 		var r struct {
-			Teams struct {
-				Nodes []map[string]conn `json:"nodes"`
-			} `json:"teams"`
+			Team map[string]conn `json:"team"`
 		}
 		if err := c.do(ctx, q, vars, &r); err != nil {
 			return nil, err
 		}
-		if len(r.Teams.Nodes) == 0 {
+		if r.Team == nil {
 			return nil, fmt.Errorf("linear: team %s not found", team)
 		}
-		p := r.Teams.Nodes[0][field]
+		p := r.Team[field]
 		for _, n := range p.Nodes {
 			out = append(out, Entry{ID: n.ID, Name: n.Name, Type: n.State + n.Type + n.Email})
 		}

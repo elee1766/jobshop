@@ -57,11 +57,11 @@ func (f *askLinear) handler(t *testing.T) http.HandlerFunc {
 			id, _ := in["id"].(string)
 			f.comments = append(f.comments, map[string]any{"id": id, "body": in["body"], "url": "https://linear.app/c/" + id, "createdAt": f.now().Format(time.RFC3339Nano), "user": map[string]any{"name": "jobshop", "isMe": true}})
 			out(map[string]any{"commentCreate": map[string]any{"success": true, "comment": map[string]any{"id": id, "url": "https://linear.app/c/" + id}}})
-		case strings.Contains(q.Query, "teams(filter"):
-			out(map[string]any{"teams": map[string]any{"nodes": []any{map[string]any{
+		case strings.Contains(q.Query, "team(id"):
+			out(map[string]any{"team": map[string]any{
 				"id": "t", "key": "ENG", "states": map[string]any{"nodes": []any{}}, "labels": map[string]any{"nodes": []any{}},
 				"members": map[string]any{"nodes": []any{map[string]any{"id": "u1", "name": "Wile", "displayName": "wile", "email": "w@acme", "url": "https://linear.app/acme/profiles/wile"}}},
-			}}}})
+			}})
 		case strings.Contains(q.Query, "issueLabels("):
 			out(map[string]any{"issueLabels": map[string]any{"nodes": []any{map[string]any{"id": "lab-blocked", "team": nil}}}})
 		case strings.Contains(q.Query, "issueAddLabel"):

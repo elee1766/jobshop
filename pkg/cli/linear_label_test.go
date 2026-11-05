@@ -49,11 +49,11 @@ func (f *labelLinear) serve(t *testing.T) string {
 				f.labels = slices.DeleteFunc(f.labels, func(l string) bool { return l == labelIDs[id] })
 			}
 			_, _ = io.WriteString(w, `{"data":{"issueUpdate":{"success":true,"issue":{"id":"iss-1","identifier":"JOB-7","url":"u"}}}}`)
-		case strings.Contains(q, "teams(filter"):
-			_, _ = io.WriteString(w, `{"data":{"teams":{"nodes":[{"id":"team-1","key":"JOB",
+		case strings.Contains(q, "team(id"):
+			_, _ = io.WriteString(w, `{"data":{"team":{"id":"team-1","key":"JOB",
  "states":{"nodes":[{"id":"st-todo","name":"Todo","type":"unstarted"}]},
  "labels":{"nodes":[{"id":"lb-blocked","name":"Blocked"},{"id":"lb-tracking","name":"tracking"}]},
- "members":{"nodes":[]}}]}}}`)
+ "members":{"nodes":[]}}}}`)
 		case strings.Contains(q, "updatedAt team"):
 			_, _ = io.WriteString(w, `{"data":{"issue":{"id":"iss-1","updatedAt":"2026-11-05T00:00:00.000Z","team":{"key":"JOB"}}}}`)
 		case strings.Contains(q, "archivedAt"):

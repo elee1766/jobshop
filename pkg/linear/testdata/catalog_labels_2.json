@@ -1,1 +1,1 @@
-{"data":{"teams":{"nodes":[{"labels":{"nodes":[{"id":"l-2","name":"backend"}],"pageInfo":{"hasNextPage":false,"endCursor":"c-l2"}}}]}}}
+{"data":{"team":{"labels":{"nodes":[{"id":"l-2","name":"backend"}],"pageInfo":{"hasNextPage":false,"endCursor":"c-l2"}}}}}
