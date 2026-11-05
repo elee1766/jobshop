@@ -396,7 +396,7 @@ func (c *Controller) batchBlocked(ctx context.Context, res *rpc.BatchResult) err
 		if cur == nil || r.Run.Status == store.StatusClosed {
 			continue
 		}
-		edges, err := c.store.Edges(ctx, cur.ID)
+		edges, err := store.Edges(ctx, c.store, cur.ID)
 		if err != nil {
 			return err
 		}

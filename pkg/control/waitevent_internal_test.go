@@ -67,7 +67,7 @@ func TestWaitEventKinds(t *testing.T) {
 	prs.issues["compare:aaaa1111...dddd0000"] = "ahead"
 	c.pollWaits(ctx, prs, threads)
 	assert.ElementsMatch(t, []string{tag.ID, dep.ID}, readyIDs(t, c))
-	cs, err := c.store.Comments(ctx, dep.ID)
+	cs, err := store.Comments(ctx, c.store, dep.ID)
 	require.NoError(t, err)
 	assert.Contains(t, cs[len(cs)-1].Body, "deployed dddd000 contains aaaa111")
 
@@ -98,10 +98,10 @@ func TestWaitRunCancelled(t *testing.T) {
 		require.NoError(t, err)
 	}
 	c.pollWaits(ctx, prs, threads)
-	cs, err := c.store.Comments(ctx, a.ID)
+	cs, err := store.Comments(ctx, c.store, a.ID)
 	require.NoError(t, err)
 	assert.Contains(t, cs[len(cs)-1].Body, "invalidated: run "+run.ID+" was cancelled")
-	cs, err = c.store.Comments(ctx, b.ID)
+	cs, err = store.Comments(ctx, c.store, b.ID)
 	require.NoError(t, err)
 	assert.Contains(t, cs[len(cs)-1].Body, "condition met: run "+run.ID+" ended (cancelled)")
 }

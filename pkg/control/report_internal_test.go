@@ -93,7 +93,7 @@ func TestReportQuestionAnswer(t *testing.T) {
 	got, _ = c.store.Get(ctx, step.ID)
 	rm, _ = reportOf(got)
 	assert.Equal(t, rpc.ReportProgress, rm.State)
-	cs, err := c.store.Comments(ctx, step.ID)
+	cs, err := store.Comments(ctx, c.store, step.ID)
 	require.NoError(t, err)
 	assert.Contains(t, cs[len(cs)-1].Body, "use main")
 	_, err = c.answerQuestion(ctx, admin, rpc.AnswerParams{ID: q.ID, Text: "again"})

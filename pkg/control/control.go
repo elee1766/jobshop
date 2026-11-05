@@ -327,7 +327,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	// The stream starts at the current end of history; older rows are
 	// only sent as replay.
-	if ev.last, err = st.LastSeq(ctx); err != nil {
+	if ev.last, err = store.LastSeq(ctx, st); err != nil {
 		return err
 	}
 	c.ctx, c.cancel = context.WithCancel(ctx)

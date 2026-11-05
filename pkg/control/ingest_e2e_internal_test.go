@@ -271,7 +271,7 @@ func TestIngestE2ERedaction(t *testing.T) {
 	tks, err := e.c.store.List(t.Context(), store.Filter{Kind: store.KindTask})
 	require.NoError(t, err)
 	for _, tk := range tks {
-		cs, err := e.c.store.Comments(t.Context(), tk.ID)
+		cs, err := store.Comments(t.Context(), e.c.store, tk.ID)
 		require.NoError(t, err)
 		for _, c := range cs {
 			assert.NotContains(t, c.Body, "hunter2", "ticket comment")

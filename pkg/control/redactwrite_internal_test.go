@@ -28,7 +28,7 @@ func TestRedactOnWrite(t *testing.T) {
 
 	_, err := c.comment(ctx, sc, rpc.CommentParams{Body: "token " + fakeGHToken})
 	require.NoError(t, err)
-	cms, err := c.store.Comments(ctx, step.ID)
+	cms, err := store.Comments(ctx, c.store, step.ID)
 	require.NoError(t, err)
 	last := cms[len(cms)-1].Body
 	assert.NotContains(t, last, fakeGHToken)

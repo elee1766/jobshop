@@ -179,7 +179,7 @@ func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f sto
 			where = sf.Type + " step, run by the controller"
 		}
 		fmt.Fprintf(&b, "\n## Step %d %s (%s, %s): %s, failures %d/%d\n", sf.Index, sf.Step, s.ID, where, res, sf.Failures, sf.Retries)
-		comments, err := c.store.Comments(ctx, s.ID)
+		comments, err := store.Comments(ctx, c.store, s.ID)
 		if err != nil {
 			return "", err
 		}

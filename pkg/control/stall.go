@@ -247,7 +247,7 @@ func metaString(raw json.RawMessage, pack, key string) string {
 // ticket nobody works on still ages.
 func (c *Controller) lastActivity(ctx context.Context, t store.Ticket) (time.Time, error) {
 	last := t.CreatedAt
-	hist, err := c.store.History(ctx, t.ID)
+	hist, err := store.History(ctx, c.store, t.ID)
 	if err != nil {
 		return last, err
 	}
@@ -256,7 +256,7 @@ func (c *Controller) lastActivity(ctx context.Context, t store.Ticket) (time.Tim
 			last = h.At
 		}
 	}
-	cs, err := c.store.Comments(ctx, t.ID)
+	cs, err := store.Comments(ctx, c.store, t.ID)
 	if err != nil {
 		return last, err
 	}
@@ -290,7 +290,7 @@ func (c *Controller) waitsOnQuestion(ctx context.Context, t store.Ticket) bool {
 // ready ticket waits from when its last blocker closed, and nothing is
 // written on t itself when that happens (#235).
 func (c *Controller) lastUnblocked(ctx context.Context, t store.Ticket, last time.Time) (time.Time, error) {
-	edges, err := c.store.Edges(ctx, t.ID)
+	edges, err := store.Edges(ctx, c.store, t.ID)
 	if err != nil {
 		return last, err
 	}

@@ -105,10 +105,10 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	ru, err := s.Resources(ctx)
 	require.NoError(t, err)
 	assert.NotEmpty(t, ru)
-	h, err := s.History(ctx, f.Task)
+	h, err := store.History(ctx, s, f.Task)
 	require.NoError(t, err)
 	assert.NotEmpty(t, h)
-	cs, err := s.Comments(ctx, f.Task)
+	cs, err := store.Comments(ctx, s, f.Task)
 	require.NoError(t, err)
 	require.Len(t, cs, 1)
 

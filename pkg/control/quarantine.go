@@ -48,7 +48,7 @@ func (c *Controller) crashRelease(ctx context.Context, sessionID string) {
 // quarantineCrashes crashed sessions have released it since it was last
 // quarantined (removing the label resets the count).
 func (c *Controller) maybeQuarantine(ctx context.Context, id string) {
-	hist, err := c.store.History(ctx, id)
+	hist, err := store.History(ctx, c.store, id)
 	if err != nil {
 		return
 	}

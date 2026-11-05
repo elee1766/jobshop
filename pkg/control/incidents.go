@@ -175,7 +175,7 @@ func (c *Controller) reportIncidents(ctx context.Context, sc scope, p rpc.Incide
 }
 
 func (c *Controller) lastComment(ctx context.Context, id string) string {
-	cs, err := c.store.Comments(ctx, id)
+	cs, err := store.Comments(ctx, c.store, id)
 	if err != nil || len(cs) == 0 {
 		return ""
 	}

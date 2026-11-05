@@ -113,7 +113,7 @@ func (c *Controller) causeOf(ctx context.Context, t store.Ticket) escCause {
 				}
 				if r := failedReason(st); r != "" {
 					x.reason += ": " + clip(r, maxReason)
-				} else if cs, err := c.store.Comments(ctx, st.ID); err == nil && len(cs) > 0 {
+				} else if cs, err := store.Comments(ctx, c.store, st.ID); err == nil && len(cs) > 0 {
 					x.reason += ". Last comment by " + cs[len(cs)-1].Author + ": " + clip(cs[len(cs)-1].Body, maxReason)
 				}
 				break
@@ -140,7 +140,7 @@ func (c *Controller) causeOf(ctx context.Context, t store.Ticket) escCause {
 		x.kind = causeWait
 		x.reason = fmt.Sprintf("wait (%s) passed its timeout %s; owner %s", w.Reason, w.Timeout.Format(time.RFC3339), cmp.Or(w.Owner, "unset"))
 		x.worker = cmp.Or(w.Session, x.worker)
-	} else if hist, err := c.store.History(ctx, t.ID); err == nil {
+	} else if hist, err := store.History(ctx, c.store, t.ID); err == nil {
 		for i := len(hist) - 1; i >= 0; i-- {
 			if hist[i].Op == "label_add" && strings.Contains(string(hist[i].Diff), needsHumanLabel) {
 				if hist[i].Actor != "controller" && hist[i].Actor != "admin" {
@@ -149,7 +149,7 @@ func (c *Controller) causeOf(ctx context.Context, t store.Ticket) escCause {
 				break
 			}
 		}
-		if cs, err := c.store.Comments(ctx, t.ID); err == nil && len(cs) > 0 {
+		if cs, err := store.Comments(ctx, c.store, t.ID); err == nil && len(cs) > 0 {
 			x.reason = clip(cs[len(cs)-1].Body, maxReason)
 		}
 	}

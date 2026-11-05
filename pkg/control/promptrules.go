@@ -315,7 +315,7 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 	var body PromptPart
 	if t != nil {
 		ts.kind, ts.ticket, ts.poolPrompt = turnTicket, t, true
-		comments, err := c.store.Comments(ctx, t.ID)
+		comments, err := store.Comments(ctx, c.store, t.ID)
 		if err != nil {
 			return nil, err
 		}

@@ -106,7 +106,7 @@ func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (store.T
 			continue
 		}
 		for _, s := range append([]store.Ticket{r}, steps...) {
-			cs, err := c.store.Comments(ctx, s.ID)
+			cs, err := store.Comments(ctx, c.store, s.ID)
 			if err != nil {
 				continue
 			}

@@ -51,11 +51,7 @@ type Querier interface {
 	InsertSlot(ctx context.Context, arg InsertSlotParams) error
 	InsertTicket(ctx context.Context, arg InsertTicketParams) error
 	LabelsFor(ctx context.Context, ids []string) ([]Label, error)
-	LastSeq(ctx context.Context) (int64, error)
-	ListChanges(ctx context.Context, arg ListChangesParams) ([]History, error)
-	ListComments(ctx context.Context, ticketID string) ([]Comment, error)
 	ListEdges(ctx context.Context, id string) ([]Edge, error)
-	ListHistory(ctx context.Context, ticketID string) ([]History, error)
 	ListSlots(ctx context.Context) ([]ResourceSlot, error)
 	// MarkSlotsReleasing moves held slots whose claim ended (the ticket is
 	// not in progress, or was claimed again with a new fence) to releasing.

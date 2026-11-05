@@ -165,7 +165,7 @@ func TestSubscriptionsWorkingSession(t *testing.T) {
 	f, err := store.DecodeFields[store.MessageFields](msgs[0])
 	require.NoError(t, err)
 	assert.True(t, f.Interrupt)
-	cs, err := c.store.Comments(ctx, tk.ID)
+	cs, err := store.Comments(ctx, c.store, tk.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "github:alice", cs[len(cs)-1].Author)
 
@@ -309,7 +309,7 @@ func TestSubscriptionsLinear(t *testing.T) {
 	assert.Contains(t, msgs[0].Body, "New on Linear issue ENG-5")
 	assert.Contains(t, msgs[0].Body, "please also fix logout")
 	assert.Contains(t, msgs[0].Body, "https://linear.app/acme/issue/ENG-5")
-	cs, err := c.store.Comments(ctx, tk.ID)
+	cs, err := store.Comments(ctx, c.store, tk.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "linear:Ann", cs[len(cs)-1].Author)
 
@@ -434,7 +434,7 @@ func TestSubscriptionsBots(t *testing.T) {
 	f, err := store.DecodeFields[store.MessageFields](msgs[0])
 	require.NoError(t, err)
 	assert.True(t, f.Interrupt)
-	cs, err := c.store.Comments(ctx, tk.ID)
+	cs, err := store.Comments(ctx, c.store, tk.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "github:kody[bot]", cs[len(cs)-1].Author)
 

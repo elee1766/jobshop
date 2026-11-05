@@ -247,7 +247,7 @@ func (c *Controller) recordReviewFinding(ctx context.Context, sc scope, step sto
 	s := "review resumed " + c.stepName(ctx, step)
 	if !sc.admin {
 		if id, err := c.current(ctx, sc, ""); err == nil && id != step.ID {
-			if cs, err := c.store.Comments(ctx, id); err == nil && len(cs) > 0 {
+			if cs, err := store.Comments(ctx, c.store, id); err == nil && len(cs) > 0 {
 				s += ": " + cs[len(cs)-1].Body
 			}
 		}
