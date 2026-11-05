@@ -4,7 +4,11 @@ Read the issue first: `jobshop linear issue {{.issue}}` (JSON with
 description and comments). The issue is the spec; `jobshop linear
 context {{.issue}}` adds labels, blockers, parent and children. Post progress,
 questions and design notes as Linear comments
-(`jobshop linear comment {{.issue}} "<text>"`), not on the ticket.
+(`jobshop linear comment {{.issue}} "<text>"`), not on the ticket. A
+question only a person can answer, asked on the issue some other way
+than `jobshop report waiting --question` (which labels it for you):
+`jobshop linear label {{.issue}} add Blocked`, so intake leaves the issue
+alone until it is answered.
 
 If the ticket already has a PR (comments on this step or on the run's
 `review-merge` step list refinery findings; `jobshop run show <run>` from

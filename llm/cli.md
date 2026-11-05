@@ -399,6 +399,10 @@ Commands:
   linear update <issue> [flags]
     Change title, state, assignee or labels; reads the issue back to verify.
 
+  linear label <issue> <op> <label> ... [flags]
+    Add or remove labels: linear label <KEY> add|remove <label>... (same as
+    update --add-label/--remove-label).
+
   linear ask <issue> <body> [flags]
     Comment a question, mentioning users so they are notified.
 
@@ -3594,6 +3598,10 @@ Commands:
   linear update <issue> [flags]
     Change title, state, assignee or labels; reads the issue back to verify.
 
+  linear label <issue> <op> <label> ... [flags]
+    Add or remove labels: linear label <KEY> add|remove <label>... (same as
+    update --add-label/--remove-label).
+
   linear ask <issue> <body> [flags]
     Comment a question, mentioning users so they are notified.
 
@@ -3891,6 +3899,38 @@ Flags:
                                    returns the first result instead of writing
                                    again.
       --dry-run                    Print the mutation and send nothing.
+```
+
+## jobshop linear label
+
+```
+Usage: jobshop linear label <issue> <op> <label> ... [flags]
+
+Add or remove labels: linear label <KEY> add|remove <label>... (same as update
+--add-label/--remove-label).
+
+Arguments:
+  <issue>        Issue key.
+  <op>           add or remove.
+  <label> ...    Label names.
+
+Flags:
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings    Send writes that hold a secret finding (admin
+                                 callers only).
+
+      --key=STRING               Idempotency key: a repeat with the same key
+                                 returns the first result instead of writing
+                                 again.
+      --dry-run                  Print the mutation and send nothing.
 ```
 
 ## jobshop linear ask

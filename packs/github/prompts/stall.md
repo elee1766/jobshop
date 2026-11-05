@@ -40,7 +40,10 @@ What the signal means and where to start:
   `jobshop run start {{.pack_prefix}}{{if eq .tracker "linear"}}pr-work{{else}}pr-work-linear{{end}} --var issue={{.subject}} --key
   linear-{{.subject}}` and close this check. If not (an open blocker, a
   question in the thread), comment why on the issue (`jobshop linear
-  comment {{.subject}} "<why>"`) and close. Only touch Linear team
+  comment {{.subject}} "<why>"`) and close. An issue that should never
+  get a run (a tracking issue, one waiting on a person) gets a skip
+  label so this stall stops firing: `jobshop linear label {{.subject}}
+  add <one of {{.linear_skip_labels}}>`. Only touch Linear team
   {{.linear_team}}; never read or write another team's issues.
 - `pr_unmerged`: PR #{{.subject}} has green checks but is not merged.
   `gh pr view {{.subject}}`, its run's `review-merge` step.

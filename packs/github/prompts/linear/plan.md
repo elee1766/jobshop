@@ -42,7 +42,9 @@ Each planning ticket:
    intake gate
    `jobshop linear eligible <KEY> --skip-labels "{{.linear_skip_labels}}"`.
    It exits 1 with a reason (done, canceled, archived, open blockers,
-   an open run, a skipped label); skip those. For an eligible one
+   an open run, a skipped label); skip those. An issue that should never
+   start a run (a tracking issue): `jobshop linear label <KEY> add
+   <one of {{.linear_skip_labels}}>`. For an eligible one
    (`jobshop linear context <KEY>` shows blockers and children), start
    its run:
    `jobshop run start {{.pack_prefix}}pr-work --var issue=<KEY> --key linear-<KEY>`.

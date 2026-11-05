@@ -154,6 +154,26 @@ func (c linearAskCmd) Run(g *Globals, l *linearCmd) error {
 	return c.run(ctx, g, cl, m)
 }
 
+// linearLabelCmd adds or removes labels (JOB-9), like `jobshop label add`
+// for tickets: `update --add-label/--remove-label` under the name agents
+// look for. An unknown label fails with the team's label names.
+type linearLabelCmd struct {
+	IssueKey string   `arg:"" name:"issue" help:"Issue key."`
+	Op       string   `arg:"" enum:"add,remove" help:"add or remove."`
+	Labels   []string `arg:"" name:"label" help:"Label names."`
+	linearWriteFlags
+}
+
+func (c linearLabelCmd) Run(g *Globals, l *linearCmd) error {
+	u := linearUpdateCmd{IssueKey: c.IssueKey, linearWriteFlags: c.linearWriteFlags}
+	if c.Op == "add" {
+		u.AddLabel = c.Labels
+	} else {
+		u.RemoveLabel = c.Labels
+	}
+	return u.Run(g, l)
+}
+
 type linearRelateCmd struct {
 	IssueKey string `arg:"" name:"issue" help:"Issue key."`
 	Blocks   string `xor:"rel" required:"" help:"Issue key this issue blocks."`

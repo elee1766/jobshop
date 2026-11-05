@@ -58,6 +58,8 @@ Each planning ticket:
    with `--after`. For each, run the intake gate `jobshop linear eligible
    <KEY> --skip-labels "{{.linear_skip_labels}}"`; it exits 1 with a
    reason (done, blockers, an open run, a skipped label): skip those.
+   Mark an issue that should never start a run (a tracking issue) with
+   `jobshop linear label <KEY> add <one of {{.linear_skip_labels}}>`.
    Start an eligible one with
    `jobshop run start {{.pack_prefix}}pr-work-linear --var issue=<KEY> --key linear-<KEY>`.
    Only touch team {{.linear_team}}.
