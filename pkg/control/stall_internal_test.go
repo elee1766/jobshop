@@ -347,3 +347,72 @@ triggers:
 		}
 	}
 }
+
+// Two packs' stall triggers watch needs_human with their own workflows.
+const stallCascadeYAML = `projects:
+  js: {}
+agents:
+  fake: {command: /bin/false}
+pools:
+  dev: {agent: fake, dir: %[1]q}
+  plan: {agent: fake, dir: %[1]q}
+workflows:
+  check-a:
+    vars: [subject]
+    steps: [{id: diagnose, pool: plan, retries: 0, title: "A {{.subject}}", prompt: p}]
+  check-b:
+    vars: [subject]
+    steps: [{id: diagnose, pool: plan, retries: 0, title: "B {{.subject}}", prompt: p}]
+  work:
+    vars: [n]
+    steps: [{id: a, pool: dev, retries: 0, title: "W {{.n}}", prompt: a}]
+triggers:
+  a:
+    when: {stall: [{signal: needs_human, after: 2h}]}
+    run: {workflow: check-a, vars: {subject: "{{.stall_subject}}"}}
+  b:
+    when: {stall: [{signal: needs_human, after: 2h}]}
+    run: {workflow: check-b, vars: {subject: "{{.stall_subject}}"}}
+`
+
+// TestStallNoCascade: a needs_human run gets one stall check across both
+// triggers, and that check going needs_human starts no check of its own
+// (#704).
+func TestStallNoCascade(t *testing.T) {
+	t.Parallel()
+	c, clk, _ := stallControllerYAML(t, stallCascadeYAML)
+	ctx := t.Context()
+	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
+	require.NoError(t, err)
+	failStep := func(step store.Ticket) {
+		t.Helper()
+		_, err := store.Close(ctx, c.store, "admin", step.ID, nil, "failed")
+		require.NoError(t, err)
+		require.True(t, c.escalateRun(ctx, step.ParentID))
+	}
+	failStep(res.(rpc.RunResult).Steps[0])
+	checks := func() []store.Ticket {
+		rs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
+		require.NoError(t, err)
+		var out []store.Ticket
+		for _, r := range rs {
+			if isStallRun(r) {
+				out = append(out, r)
+			}
+		}
+		return out
+	}
+	clk.advance(2*time.Hour + time.Minute)
+	c.runTriggers()
+	cs := checks()
+	require.Len(t, cs, 1, "one check per subject across triggers")
+
+	steps, err := store.Children(ctx, c.store, cs[0].ID)
+	require.NoError(t, err)
+	failStep(steps[0])
+	for range 3 {
+		clk.advance(5 * time.Hour)
+		c.runTriggers()
+	}
+	assert.Len(t, checks(), 1, "a needs_human check starts no check, from either trigger")
+}
