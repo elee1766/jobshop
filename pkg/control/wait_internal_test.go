@@ -265,6 +265,85 @@ func TestWaitTimeoutAttention(t *testing.T) {
 	assert.Empty(t, list)
 }
 
+// TestWaitConflictingPR: a checks wait on a PR GitHub reports as dirty
+// (conflicting) is invalidated in one pass with the conflict reason;
+// unknown and clean with pending checks keep waiting (#609).
+func TestWaitConflictingPR(t *testing.T) {
+	t.Parallel()
+	c, _, prs, threads := waitController(t)
+	ctx := t.Context()
+	sess := mkSession(t, c)
+	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
+	_, _, err := c.store.Claim(ctx, a.ID, sess.ID, time.Hour)
+	require.NoError(t, err)
+	pr := func(state string) string {
+		return `{"number":5,"state":"open","merged":false,"mergeable":false,"mergeable_state":"` + state + `","head":{"sha":"aaaa1111bbbb"},"base":{"ref":"master"}}`
+	}
+	prs.set(pr("unknown"), `[[]]`, `[]`)
+	_, err = c.waitAdd(ctx, sessScope(sess), rpc.WaitAddParams{
+		Reason: "CI on PR #5", Resume: true, Any: true,
+		Conds: []store.WaitCond{
+			{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"},
+			{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "failure"},
+		},
+	})
+	require.NoError(t, err)
+	c.pollWaits(ctx, prs, threads)
+	assert.NotNil(t, waitOf(mustGet(t, c, a.ID)), "unknown is retried")
+
+	prs.set(pr("clean"), `[[]]`, recChecks)
+	c.pollWaits(ctx, prs, threads)
+	assert.NotNil(t, waitOf(mustGet(t, c, a.ID)), "clean with pending checks waits")
+
+	prs.set(pr("dirty"), `[[]]`, `[]`)
+	c.pollWaits(ctx, prs, threads)
+	got := mustGet(t, c, a.ID)
+	assert.Nil(t, waitOf(got))
+	assert.Equal(t, sess.ID, got.Holder, "resumed")
+	cs, err := c.store.Comments(ctx, a.ID)
+	require.NoError(t, err)
+	assert.Contains(t, cs[len(cs)-1].Body, "PR #5 conflicts with master; CI will not run")
+}
+
+// TestWaitCINotStarted: a repo+sha checks wait with no check after the
+// grace period shows in attention; one check seen keeps it out (#609).
+func TestWaitCINotStarted(t *testing.T) {
+	t.Parallel()
+	c, clk, prs, threads := waitController(t)
+	ctx := t.Context()
+	admin := scope{admin: true, actor: "admin"}
+	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
+	b := mkTicket(t, c, store.NewTicket{Title: "b", Pool: "dev"})
+	for _, x := range []store.Ticket{a, b} {
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{
+			ID: x.ID, Reason: "master CI",
+			Conds: []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", SHA: "dddd3333eeee" + x.ID, State: "success"}},
+		})
+		require.NoError(t, err)
+	}
+	prs.checks["acme/widget#0"] = `[]`
+	c.pollWaits(ctx, prs, threads)
+	clk.advance(10 * time.Minute)
+	items, err := c.attentionItems(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, items, "within the grace period")
+
+	// b's sha starts CI; a's never does.
+	w := waitOf(mustGet(t, c, b.ID))
+	w.Conds[0].Started = true
+	fields, err := withWait(mustGet(t, c, b.ID), w)
+	require.NoError(t, err)
+	_, err = c.store.Update(ctx, "controller", b.ID, store.Update{Fields: fields})
+	require.NoError(t, err)
+
+	clk.advance(10 * time.Minute)
+	items, err = c.attentionItems(ctx)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, a.ID, items[0].ID)
+	assert.Contains(t, items[0].Title, "CI did not start for dddd333")
+}
+
 func TestWaitValidate(t *testing.T) {
 	t.Parallel()
 	c, _, _, _ := waitController(t)

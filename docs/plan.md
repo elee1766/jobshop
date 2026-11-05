@@ -1522,6 +1522,7 @@ moved from the old 7.x list, oldest first:
 - [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
 - [Deploy state out of core](notes/577-deploy-out-of-core.md) (#577)
 - [Attention rows: summary and inline resolution](notes/607-attention-rows.md) (#607)
+- [CI waits on a conflicting PR](notes/609-wait-conflicting-pr.md) (#609)
 
 ## 8. Chat gateway
 

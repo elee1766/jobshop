@@ -1321,6 +1321,7 @@ export interface WaitCond {
   met?: boolean;
   met_at?: string;
   note?: string;
+  started?: boolean;
 }
 
 export interface WaitItem {

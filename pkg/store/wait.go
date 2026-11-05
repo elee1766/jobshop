@@ -71,6 +71,9 @@ type WaitCond struct {
 	Met    bool      `json:"met,omitempty"`
 	MetAt  time.Time `json:"met_at,omitzero"`
 	Note   string    `json:"note,omitempty"`
+	// Started: a checks condition has seen at least one check, so CI
+	// ran for the sha (#609).
+	Started bool `json:"started,omitempty"`
 }
 
 var (

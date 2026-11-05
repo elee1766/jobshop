@@ -77,12 +77,19 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	}
 	for _, t := range waits {
 		w := waitOf(t)
-		if w.Timeout.IsZero() || c.now().Before(w.Timeout) {
+		pastTimeout := !w.Timeout.IsZero() && !c.now().Before(w.Timeout)
+		sha := ciNotStarted(w, c.now())
+		if !pastTimeout && sha == "" {
 			continue
 		}
 		it := ticketItem(rpc.AttentionWait, t)
-		it.Title = fmt.Sprintf("%s: wait past timeout: %s", t.Title, w.Reason)
-		it.Owner, it.Since = w.Owner, w.Timeout
+		if pastTimeout {
+			it.Title = fmt.Sprintf("%s: wait past timeout: %s", t.Title, w.Reason)
+			it.Owner, it.Since = w.Owner, w.Timeout
+		} else {
+			it.Title = fmt.Sprintf("%s: CI did not start for %s: %s", t.Title, short(sha), w.Reason)
+			it.Owner, it.Since = w.Owner, w.Since.Add(ciStartGrace)
+		}
 		if metaString(t.Meta, "desk", "attention_summary") == "" {
 			it.Summary = summaryOf(w.Reason)
 		}

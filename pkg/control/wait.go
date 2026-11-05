@@ -47,6 +47,10 @@ type prInfo struct {
 	Head   string
 	State  string // open or closed
 	Merged bool
+	// MergeState is GitHub's mergeable_state; dirty means conflicts.
+	// Empty or unknown while GitHub is still computing it.
+	MergeState string
+	Base       string
 }
 
 type prReview struct {
@@ -357,6 +361,24 @@ func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads thre
 	}
 }
 
+// ciStartGrace is how long a sha checks wait may see no check at all
+// before attention reports that CI did not start (#609).
+const ciStartGrace = 15 * time.Minute
+
+// ciNotStarted returns the sha of a repo+sha checks condition that has
+// seen no check ciStartGrace after the wait started, or "".
+func ciNotStarted(w *store.Wait, now time.Time) string {
+	if w == nil || now.Before(w.Since.Add(ciStartGrace)) {
+		return ""
+	}
+	for _, cd := range w.Conds {
+		if cd.Type == store.WaitChecks && cd.PR == 0 && !cd.Met && !cd.Started {
+			return cd.SHA
+		}
+	}
+	return ""
+}
+
 // errInvalidated means a condition can no longer hold as stated.
 type errInvalidated struct{ why string }
 
@@ -474,6 +496,11 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		return false, "", errInvalidated{fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head))}
 	}
 	if cd.Type == store.WaitChecks {
+		// GitHub runs no pull_request CI on a conflicting PR, so the wait
+		// could never be met (#609).
+		if strings.EqualFold(pr.MergeState, "dirty") {
+			return false, "", errInvalidated{fmt.Sprintf("PR #%d conflicts with %s; CI will not run", cd.PR, pr.Base)}
+		}
 		return evalChecks(ctx, pass, cd, pr.Head)
 	}
 	rs, err := pass.reviewsOf(ctx, cd.Repo, cd.PR)
@@ -518,6 +545,9 @@ func evalChecks(ctx context.Context, pass *waitPass, cd *store.WaitCond, head st
 	cs, err := pass.checksOf(ctx, cd.Repo, cd.PR, head, cd.Required)
 	if err != nil {
 		return false, "", err
+	}
+	if len(cs) > 0 {
+		cd.Started = true
 	}
 	what := "checks"
 	if cd.Required {
@@ -658,14 +688,18 @@ func parsePR(b []byte) (prInfo, error) {
 	var r struct {
 		State  string `json:"state"`
 		Merged bool   `json:"merged"`
+		MS     string `json:"mergeable_state"`
 		Head   struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return prInfo{}, fmt.Errorf("pull request: %w", err)
 	}
-	return prInfo{Head: r.Head.SHA, State: r.State, Merged: r.Merged}, nil
+	return prInfo{Head: r.Head.SHA, State: r.State, Merged: r.Merged, MergeState: r.MS, Base: r.Base.Ref}, nil
 }
 
 // parseReviews reads the slurped pages of GET .../pulls/{n}/reviews.
