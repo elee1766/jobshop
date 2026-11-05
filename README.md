@@ -63,7 +63,7 @@ Shipped in [`packs/`](packs/):
 Planned: **escalation to a human or another agent** (#547).
 
 ## Quick start
-
+Linux binaries are on [Releases](https://github.com/elee1766/jobshop/releases), or `nix run github:elee1766/jobshop/v<version>` ([notes](docs/notes/644-release.md)).
 ```
 go install github.com/elee1766/jobshop/cmd/jobshop@latest   # or: nix build github:elee1766/jobshop
 jobshop init ./root          # writes root/jobshop.yaml
