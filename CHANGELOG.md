@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1](https://github.com/elee1766/jobshop/compare/v0.1.0...v0.1.1) (2026-11-05)
+
+
+### Features
+
+* **packs/github:** route release-please prs to refinery with a trigger ([#698](https://github.com/elee1766/jobshop/issues/698)) ([#699](https://github.com/elee1766/jobshop/issues/699)) ([49734d2](https://github.com/elee1766/jobshop/commit/49734d2c0744cf907ed0fb5bd1ab7b072c0da66d))
+
+
+### Bug fixes
+
+* **release:** unpin release-as 0.1.0 ([#701](https://github.com/elee1766/jobshop/issues/701)) ([#702](https://github.com/elee1766/jobshop/issues/702)) ([e1b8231](https://github.com/elee1766/jobshop/commit/e1b8231f32856b0c65077fbb277e34ef56e31712))
+
 ## 0.1.0 (2026-11-05)
 
 
