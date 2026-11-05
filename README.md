@@ -1,6 +1,20 @@
 # jobshop
 
+[![CI](https://github.com/elee1766/jobshop/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/elee1766/jobshop/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/elee1766/jobshop.svg)](https://pkg.go.dev/github.com/elee1766/jobshop)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![Go 1.27](https://img.shields.io/github/go-mod/go-version/elee1766/jobshop)](go.mod)
+
 > Agents: start at [llm/README.md](llm/README.md).
+
+Jobshop is self-hosted orchestration for AI coding agents: a multi-agent
+work queue that takes GitHub and Linear issues to reviewed, merged pull
+requests. It drives agents over the Agent Client Protocol (ACP), so it
+works with jcode, Claude Code (through an ACP adapter) or Gemini CLI (its
+ACP mode).
+It is one Go binary with a SQLite (or Postgres) store, meant to replace a
+hosted agent platform or a hand-built multi-agent setup (Gas City style)
+with something you run and read yourself.
 
 Jobshop runs pools of coding agents (any ACP agent, for example
 `jcode acp`) against a ticket store. Agents claim tickets, do the work in
@@ -8,6 +22,17 @@ their own git worktree and sandbox, and close them. Workflows chain steps
 across pools, and humans are pulled in only where needed. Jobshop
 develops itself this way: issues on this repo are planned, implemented,
 reviewed, merged and deployed by Jobshop pools.
+
+## Features
+
+- [Tickets](docs/data-model.md) with blocking edges, claims, leases and comments.
+- [Pools](docs/running.md#concepts) of agent sessions that scale with ready work.
+- [Workflows](docs/packs.md#the-parts): multi-step runs across pools, with retries and escalation.
+- [Sandboxed worktrees](docs/isolation.md): each session in its own git worktree and sandbox, with scoped credentials.
+- [GitHub and Linear intake](docs/ingest.md): webhooks and polling turn issues and comments into tickets.
+- PR review and merge steps ([`packs/github`](packs/github/README.md)).
+- [Self-deploy](docs/nixos.md) through the NixOS module.
+- [Desk](docs/notes/202-desk.md), a web UI, plus Matrix and Discord gateways.
 
 ## Goals
 
@@ -64,12 +89,16 @@ triage ticket into an on-call pool.
 
 ## Quick start
 
+Install with Go or Nix:
+
 ```
-nix build .#jobshop
+go install github.com/elee1766/jobshop/cmd/jobshop@latest
+# or: nix build github:elee1766/jobshop#jobshop
 jobshop init ./root          # writes root/jobshop.yaml
 ```
 
-Point `root/jobshop.yaml` at one pack:
+Point `root/jobshop.yaml` at one pack (the agent pool in
+[`packs/agent`](packs/agent/pack.yaml)):
 
 ```yaml
 default_project: js
@@ -77,13 +106,13 @@ projects: {js: {}}
 agents:
   jcode: {command: jcode, args: [acp]}
 packs:
-  - path: packs/main
-    vars: {checkout: /srv/widget, agent: jcode}
+  - path: /path/to/jobshop/packs/agent
+    vars: {checkout: /srv/widget, repo: you/widget, agent: jcode}
 ```
 
 ```
 cd root && jobshop serve
-jobshop run start change --var task="add a --verbose flag" --key verbose
+jobshop run start pr-work --var task="add a --verbose flag" --key verbose
 jobshop desk                 # web UI on 127.0.0.1:7480
 ```
 
