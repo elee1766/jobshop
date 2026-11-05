@@ -101,6 +101,28 @@ func TestSessionSendSubscribe(t *testing.T) {
 	res := <-done
 	require.Positive(t, res.Seq)
 
+	// Tail starts at the last N frames (#614): nothing older is sent.
+	var evTail events
+	tailCtx, tailCancel := context.WithCancel(ctx)
+	go func() {
+		r, _ := sub.Subscribe(tailCtx, rpc.SessionSubscribeParams{ID: sent.Session, Tail: 3}, evTail.add)
+		done <- r
+	}()
+	require.Eventually(t, func() bool {
+		for _, e := range evTail.get() {
+			if e.Seq == res.Seq {
+				return true
+			}
+		}
+		return false
+	}, 20*time.Second, 50*time.Millisecond)
+	tailCancel()
+	<-done
+	for _, e := range evTail.get() {
+		if e.Seq > 0 {
+			assert.Greater(t, e.Seq, res.Seq-3, "only the last 3 frames")
+		}
+	}
 	// Reconnect from the last seq: only new events arrive.
 	var ev2 events
 	subCtx, cancel = context.WithCancel(ctx)

@@ -642,28 +642,19 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 // or from Last-Event-ID on reconnect.
 func (s *Server) sessionStream(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	// Headers go out first: the session list below can take seconds on a
-	// busy controller, and the browser shows "connecting" until they do (#520).
+	// Headers go out first so the browser stops showing "connecting" (#520).
 	e, ok := newSSE(w)
 	if !ok {
 		return
 	}
 	since := lastID(r)
-	if since == 0 {
-		tail, _ := strconv.ParseInt(r.URL.Query().Get("tail"), 10, 64)
-		if tail <= 0 {
-			tail = 200
-		}
-		var list []rpc.SessionInfo
-		if err := s.ctl.Call(r.Context(), rpc.MethodSessionList, rpc.SessionListParams{All: true}, &list); err == nil {
-			for _, si := range list {
-				if si.ID == id {
-					since = max(si.Seq-tail, 0)
-				}
-			}
-		}
+	tail, _ := strconv.ParseInt(r.URL.Query().Get("tail"), 10, 64)
+	if tail <= 0 {
+		tail = 200
 	}
-	res, err := s.ctl.Subscribe(r.Context(), rpc.SessionSubscribeParams{ID: id, SinceSeq: since}, func(ev rpc.SessionEvent) {
+	// The controller resolves tail itself; listing every session to find
+	// this one's seq took seconds (#614).
+	res, err := s.ctl.Subscribe(r.Context(), rpc.SessionSubscribeParams{ID: id, SinceSeq: since, Tail: tail}, func(ev rpc.SessionEvent) {
 		e.send("session", ev.Seq, ev)
 	})
 	switch {
