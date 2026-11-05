@@ -918,7 +918,9 @@ in
       enable = lib.mkEnableOption ''
         per-pool isolation (#388): Delegate=cpu memory pids on jobshop.service,
         a subuid/subgid range for the jobshop user, and newuidmap (shadow),
-        pasta (passt) and nft (nftables) on PATH. Pools opt in with isolation: and sandbox.network: pasta
+        pasta (passt) and nft (nftables) on PATH. Pools opt in with isolation: and sandbox.network: pasta.
+        A pool's isolation.user.per_session.range in settings gives each session its own
+        mapped uid, home and credentials, freed when the session ends (#540, JOB-28)
       '';
       subIdStart = lib.mkOption {
         type = lib.types.int;
