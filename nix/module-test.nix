@@ -279,7 +279,7 @@ let
     stub() { printf '#!${pkgs.runtimeShell}\n%s\n' "$2" > $T/bin/$1; chmod +x $T/bin/$1; }
     stub runuser 'shift 3; exec "$@"'
     stub gh 'cat $T/green'
-    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; [ "$1" = ticket ] && exec $T/bin/tickets "$@"; exit 0'
+    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/warncheck ] && echo "warning: jobshop.yaml: attention.rollback_file is removed (#577), ignored" >&2; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; [ "$1" = ticket ] && exec $T/bin/tickets "$@"; exit 0'
     # ticket upsert against a store of one file per open key: created,
     # updated in place, or moved to closed/ (#577).
     mkdir -p $T/tickets/closed
@@ -319,6 +319,17 @@ let
     [ "$(open)" = deploy:config-check ] || fail "config check failure not filed: $(open)"
     rm $T/badcheck $T/state/failed $T/state/failed.reason
     echo abcdef1234 > $T/green
+
+    # A field the old module still writes and the new binary removed
+    # (#597): the check warns and passes, so the switch that regenerates
+    # jobshop.yaml without it still runs.
+    touch $T/warncheck
+    run
+    [ $rc = 0 ] || fail "removed-field warning blocked deploy: exit $rc"
+    grep -q rebuild $T/log || fail "no switch after a warning-only config check"
+    [ ! -e $T/state/failed ] || fail "warning-only check marked the rev failed"
+    rm $T/warncheck
+    echo 0000000 > $T/cur
 
     # Drill: the switch succeeds, the drill marks it unhealthy.
     touch $T/state/drill
