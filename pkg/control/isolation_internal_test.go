@@ -37,6 +37,16 @@ func TestSetupCgroupAt(t *testing.T) {
 	require.NoError(t, again.err)
 	assert.Equal(t, cg.sessions, again.sessions)
 
+	// Started by systemd in the leaf (DelegateSubgroup=controller, JOB-21)
+	// before anything is enabled: the leaf lists no controllers, the
+	// parent's are what count.
+	fresh := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(fresh, "cgroup.controllers"), []byte("cpu io memory pids\n"), 0o600))
+	require.NoError(t, os.Mkdir(filepath.Join(fresh, "controller"), 0o755))
+	sub := setupCgroupAt(host.DelegatedInfo{Path: filepath.Join(fresh, "controller"), Writable: true}, 9)
+	require.NoError(t, sub.err)
+	assert.Equal(t, filepath.Join(fresh, "sessions"), sub.sessions)
+
 	assert.ErrorContains(t, setupCgroupAt(host.DelegatedInfo{Path: own}, 7).err, "not delegated")
 	assert.ErrorContains(t, setupCgroupAt(host.DelegatedInfo{Path: own, Writable: true, Controllers: []string{"cpu"}}, 7).err, "memory")
 }

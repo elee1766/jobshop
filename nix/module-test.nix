@@ -593,6 +593,14 @@ let
       lib.any (lib.hasInfix "pool dev per_session") (failed (eval (iso 101)))
       && !lib.any (lib.hasInfix "per_session") (failed (eval (iso 100)))
     ))
+    # A restart with live sessions must not need a process in the unit
+    # cgroup (JOB-21): systemd starts the controller in <unit>/controller.
+    (expect "isolation starts the controller in the controller subgroup" (
+      let
+        sc = (eval { isolation.enable = true; }).config.systemd.services.jobshop.serviceConfig;
+      in
+      sc.Delegate == "cpu memory pids" && sc.DelegateSubgroup == "controller"
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;
