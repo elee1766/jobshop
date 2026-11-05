@@ -9,6 +9,7 @@ with live packs that follow the checkout), `gateway.<name>`,
 newest green master commit and rolls back on a failed health check. See
 [`nix/module.nix`](../nix/module.nix), and [layout.md](layout.md) for
 deployment. The sandbox option is in [isolation.md](isolation.md).
+The same options as rootless user services: [home-manager.md](home-manager.md).
 
 ## Running from your own repo
 

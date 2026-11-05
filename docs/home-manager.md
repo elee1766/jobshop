@@ -1,0 +1,84 @@
+# home-manager
+
+2026-11-05, JOB-22.
+
+The flake exports `homeManagerModules.default`. It takes the same
+`services.jobshop` options as the NixOS module ([nixos.md](nixos.md))
+and writes the same `jobshop.yaml`, but runs every unit as a systemd
+user service of the user that imports it. No unit runs as root, and
+self-deploy switches the home, not the host.
+
+```nix
+# flake.nix of the host config
+homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
+  pkgs = nixpkgs.legacyPackages.x86_64-linux;
+  modules = [
+    jobshop.homeManagerModules.default
+    {
+      home.username = "jobcity";
+      home.homeDirectory = "/home/jobcity";
+      home.stateVersion = "26.05";
+      services.jobshop = {
+        enable = true;
+        workspaces.jobshop = {
+          url = "https://github.com/elee1766/jobshop.git";
+          livePacks = [ "packs/selfdev" ];
+          selfDeploy = true;
+        };
+        selfDeploy = {
+          enable = true;
+          hostFlake = "git+ssh://git@github.com/me/host.nix#jobcity";
+          inputUrl = "git+ssh://git@github.com/elee1766/jobshop?ref=master";
+        };
+      };
+    }
+  ];
+};
+```
+
+## What differs from NixOS
+
+- **Paths.** `dataDir` defaults to `$XDG_STATE_HOME/jobshop`
+  (`~/.local/state/jobshop`), `sandbox.mise.dir` to
+  `~/.local/state/jobshop-mise`, `selfDeploy.stateDir` to
+  `~/.local/state/jobshop-deploy`. Sockets stay under `dataDir`.
+- **Units.** The same names (`jobshop`, `jobshop-ingest`,
+  `jobshop-ingest-work`, `jobshop-desk`, `jobshop-workspace-<name>`,
+  `jobshop-mise`, ...) under `systemctl --user`. They start with
+  `default.target`. A user manager has no `network-online.target`, so
+  that ordering is dropped.
+- **Self-deploy.** `jobshop-self-deploy` runs as the user. It builds the
+  green rev, runs the config check, then `home-manager switch --flake
+  <hostFlake> --override-input <inputName> <inputUrl>&rev=<sha>`. The
+  health check is the NixOS one. Rollback activates the previous
+  home-manager generation. The unit is `X-SwitchMethod=keep-old`, so a
+  switch never restarts it mid-run.
+- **Secrets.** Secret options take any file the user can read, such as
+  `~/secrets/gh`. Nothing assumes `/run/secrets`.
+- **restrictEgress.** Off by default. A user manager cannot attach
+  `IPAddressDeny`, so setting it is an error. Filter egress on the
+  host, or use per-pool isolation with pasta and a deny list.
+- **VictoriaLogs.** `journal.victorialogs.enable` runs a system service,
+  so it is refused. Point `journal.victorialogs.url` at one the host runs.
+
+## What the host provides (root, once)
+
+- The user, with linger so its units run without a login:
+  `users.users.jobcity = { isNormalUser = true; linger = true; };`
+- For isolation: a subuid/subgid range for the user
+  (`subUidRanges`/`subGidRanges`, matching `isolation.subIdStart` and
+  `subIdCount`), and the setuid `newuidmap`/`newgidmap` in
+  `/run/wrappers` (NixOS has them by default). `bwrap`, `pasta` and
+  `nft` come from the module's PATH.
+- cgroup delegation: systemd delegates cpu, memory and pids to
+  `user@.service` by default. The controller unit sets `Delegate=` with
+  isolation on.
+- `/nix/var/nix/gcroots/per-user/<user>`, owned by the user, so a
+  running session host's binary survives a switch (the NixOS module
+  creates it; the user cannot).
+- `programs.nix-ld.enable = true` if sandboxed sessions run prebuilt
+  binaries (mise). The module sets `NIX_LD` to the NixOS path.
+- Group membership for any socket the host shares (agent-credd).
+- Reverse proxy routes to the user's Desk and ingest ports.
+
+Moving gasserver from the system module: [verify/system-to-user.md](verify/system-to-user.md).

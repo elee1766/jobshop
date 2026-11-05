@@ -7,12 +7,18 @@
     url = "github:numtide/go2nix";
     inputs.nixpkgs.follows = "nixpkgs";
   };
+  # Only for the module check, which evaluates a home-manager configuration.
+  inputs.home-manager = {
+    url = "github:nix-community/home-manager/release-26.05";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
 
   outputs =
     {
       self,
       nixpkgs,
       go2nix,
+      home-manager,
     }:
     let
       systems = [
@@ -47,8 +53,11 @@
         }
       );
 
-      nixosModules.jobshop = import ./nix/module.nix self;
+      nixosModules.jobshop = import ./nix/module.nix self "nixos";
       nixosModules.default = self.nixosModules.jobshop;
+      # The same options as user services (JOB-22, docs/home-manager.md).
+      homeManagerModules.jobshop = import ./nix/module.nix self "home-manager";
+      homeManagerModules.default = self.homeManagerModules.jobshop;
 
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
@@ -61,7 +70,14 @@
       });
 
       checks = forAllSystems (pkgs: {
-        module = import ./nix/module-test.nix { inherit self nixpkgs pkgs; };
+        module = import ./nix/module-test.nix {
+          inherit
+            self
+            nixpkgs
+            pkgs
+            home-manager
+            ;
+        };
       });
 
       formatter = forAllSystems (pkgs: pkgs.nixfmt);
