@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/elee1766/jobshop/compare/v0.1.2...v0.1.3) (2026-11-05)
+
+
+### Bug fixes
+
+* **control:** stall checks per instance, decision approve on linear proposals (JOB-17) ([#709](https://github.com/elee1766/jobshop/issues/709)) ([4e5d3bf](https://github.com/elee1766/jobshop/commit/4e5d3bf496b130f43f3f232311496f7ce366e3d7))
+
 ## [0.1.2](https://github.com/elee1766/jobshop/compare/v0.1.1...v0.1.2) (2026-11-05)
 
 
