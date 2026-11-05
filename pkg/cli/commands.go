@@ -649,6 +649,7 @@ type sessionCmd struct {
 	Reap     sessionReapCmd     `cmd:"" help:"Stop hosts with no open session; with --closed also delete old closed session dirs (admin)."`
 	Restart  sessionRestartCmd  `cmd:"" help:"Restart a session's host with a fresh spec, keeping its conversation and claims (admin)."`
 	Attach   sessionAttachCmd   `cmd:"" help:"Follow a session's conversation; --rw also sends stdin lines as messages. Ctrl-C detaches."`
+	Journal  sessionJournalCmd  `cmd:"" help:"Print a session's journal frames as JSON lines, redacted, through the controller (own session, admin or session-journal grant)."`
 	Prompt   sessionPromptCmd   `cmd:"" help:"Print the prompt a session's next turn would get, each part labeled by source (admin)."`
 	Sandbox  sessionSandboxCmd  `cmd:"" help:"Print the sandbox mounts and bwrap argv a session's next spawn would use (admin)."`
 	Cordon   sessionCordonCmd   `cmd:"" help:"Take a session out of rotation: it finishes its ticket and claims nothing new, but stays open (admin or session-cordon grant)."`

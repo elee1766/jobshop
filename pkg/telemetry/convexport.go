@@ -348,6 +348,21 @@ func RedactText(s string, env []string) string {
 	return (&ConvExporter{env: secretEnvValues(env)}).Redact(s)
 }
 
+// RedactJSON redacts raw JSON as conversation export does: values under
+// secret-named keys, then secret env values (secret-named KEY=value in
+// env) and gitleaks findings in the encoded text. The result is valid
+// JSON when raw is: replacements only touch string contents.
+func RedactJSON(raw json.RawMessage, env []string) json.RawMessage {
+	s := (&ConvExporter{env: secretEnvValues(env)}).Redact(redactJSON(raw))
+	if !json.Valid([]byte(s)) {
+		// A finding spanning an escape broke the encoding; fall back to
+		// a string so nothing unredacted leaks.
+		b, _ := json.Marshal(s)
+		return b
+	}
+	return json.RawMessage(s)
+}
+
 // Redact replaces launch-env secret values and gitleaks findings in s.
 func (e *ConvExporter) Redact(s string) string {
 	for _, v := range e.env {
