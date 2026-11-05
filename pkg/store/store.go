@@ -284,6 +284,10 @@ type Store interface {
 	// Release returns a held ticket to open. A non-zero until defers the
 	// ticket to that time and is not counted as a step failure (#139).
 	Release(ctx context.Context, c Claim, reason string, until time.Time) (Ticket, error)
+	// Handoff moves a ticket to pool, releases its holder, bumps the fence
+	// and adds note as a comment in one transaction (#492). A non-nil claim
+	// must still hold it; a nil claim is an administrative handoff.
+	Handoff(ctx context.Context, actor, id string, c *Claim, pool, note string) (Ticket, error)
 	// CloseTicket closes a ticket. A non-nil claim must still hold it; a nil
 	// claim is an administrative close.
 	CloseTicket(ctx context.Context, actor, id string, c *Claim, resolution string) (Ticket, error)

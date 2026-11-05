@@ -20,5 +20,5 @@ a merge, file a priority-0 issue and a dev ticket for it immediately.
 A ticket that is not a step (an older hand-off: kind `task` with a
 "PR <url> head <sha>" comment) is reviewed the same way as
 `review-merge`. To route one back, comment findings and
-`jobshop ticket update <id> --pool {{.pack_prefix}}dev`, then `jobshop release`. After a
+`jobshop handoff --to {{.pack_prefix}}dev --note "<findings>"`. After a
 merge, `jobshop close`.

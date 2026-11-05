@@ -715,6 +715,7 @@ func init() {
 		rpc.MethodClaim:             bind((*Controller).claim),
 		rpc.MethodHeartbeat:         bind((*Controller).heartbeat),
 		rpc.MethodRelease:           bind((*Controller).release),
+		rpc.MethodHandoff:           bind((*Controller).handoff),
 		rpc.MethodSessionNew:        bind((*Controller).sessionNew),
 		rpc.MethodSessionList:       bind((*Controller).sessionList),
 		rpc.MethodSessionReap:       bind((*Controller).sessionReap),

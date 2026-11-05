@@ -433,6 +433,36 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	return t, nil
 }
 
+// handoff re-pools, releases and notes a ticket in one store write (#492).
+// A session hands off only the ticket it holds; admin, or a pool granted
+// "handoff" (stall-check), any open ticket.
+func (c *Controller) handoff(ctx context.Context, sc scope, p rpc.HandoffParams) (any, error) {
+	if p.Pool == "" {
+		return nil, fmt.Errorf("%w: handoff needs --to <pool>", store.ErrInvalid)
+	}
+	if _, ok := c.config().Pools[p.Pool]; !ok {
+		return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
+	}
+	id, err := c.current(ctx, sc, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	var cl *store.Claim
+	if c.requireGrant(sc, "handoff", "handoff") != nil {
+		h, err := c.heldClaim(ctx, sc, id)
+		if err != nil {
+			return nil, forbidden("handoff of a ticket this session does not hold: %v", err)
+		}
+		cl = &h
+	}
+	t, err := c.store.Handoff(ctx, sc.actor, id, cl, p.Pool, p.Note)
+	if err != nil {
+		return nil, err
+	}
+	c.stepEvent(ctx, t)
+	return t, nil
+}
+
 func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewParams) (any, error) {
 	if err := requireAdmin(sc, "session new"); err != nil {
 		return nil, err

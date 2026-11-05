@@ -537,7 +537,7 @@ packs:
 	assert.Equal(t, "gz-stall-check", c.Triggers["gz-stall"].Run.Workflow)
 	assert.Contains(t, c.Pools["gz-plan"].Prompt, "jobshop run start gz-pr-work --var")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var")
-	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--pool gz-dev`")
+	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--to gz-dev ")
 	assert.Equal(t, "gz-", w.PackVars[PackPrefixVar])
 
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    prefix: Bad\n"})

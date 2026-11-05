@@ -62,6 +62,7 @@ type root struct {
 	Claim     claimCmd     `cmd:"" help:"Claim a ticket, or the next one with --next."`
 	Heartbeat heartbeatCmd `cmd:"" help:"Renew the lease on a held ticket."`
 	Release   releaseCmd   `cmd:"" help:"Hand a held ticket back to the queue."`
+	Handoff   handoffCmd   `cmd:"" help:"Move a held ticket to another pool, release it and leave a note."`
 	Ready     readyCmd     `cmd:"" help:"List claimable tickets."`
 	Edge      edgeCmd      `cmd:"" help:"Manage dependencies between tickets."`
 	Label     labelCmd     `cmd:"" help:"Manage labels."`

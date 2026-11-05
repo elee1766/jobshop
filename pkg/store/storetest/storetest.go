@@ -44,6 +44,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"EdgeCycle", testEdgeCycle},
 		{"ClaimNextTiers", testClaimNextTiers},
 		{"FencedClose", testFencedClose},
+		{"Handoff", testHandoff},
 		{"Heartbeat", testHeartbeat},
 		{"ReleaseHolder", testReleaseHolder},
 		{"SweepLeases", testSweepLeases},
@@ -439,6 +440,34 @@ func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {
 
 	_, _, err = s.Claim(ctx, queue.ID, "s2", lease)
 	assert.ErrorIs(t, err, store.ErrNotHolder)
+}
+
+// testHandoff: pool, release, fence and note in one revision (#492).
+func testHandoff(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	a := task(t, s, "a", "dev")
+	held, cl, err := s.Claim(ctx, a.ID, "s1", lease)
+	require.NoError(t, err)
+	stale := cl
+	stale.Fence--
+	_, err = s.Handoff(ctx, "s1", a.ID, &stale, "refinery", "x")
+	require.ErrorIs(t, err, store.ErrNotHolder)
+
+	got, err := s.Handoff(ctx, "s1", a.ID, &cl, "refinery", "over to you")
+	require.NoError(t, err)
+	assert.Equal(t, "refinery", got.Pool)
+	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Empty(t, got.Holder)
+	assert.Greater(t, got.Fence, cl.Fence)
+	assert.Equal(t, held.Revision+1, got.Revision)
+	cs, err := s.Comments(ctx, a.ID)
+	require.NoError(t, err)
+	require.Len(t, cs, 1)
+	assert.Equal(t, "over to you", cs[0].Body)
+	assert.Equal(t, "s1", cs[0].Author)
+
+	_, err = s.Handoff(ctx, "admin", a.ID, nil, "", "")
+	require.ErrorIs(t, err, store.ErrInvalid)
 }
 
 func testFencedClose(t *testing.T, s store.Store, c *Clock) {

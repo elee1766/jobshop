@@ -820,6 +820,43 @@ func (s *Store) Release(ctx context.Context, c store.Claim, reason string, until
 	return t, err
 }
 
+// Handoff moves a ticket to pool, releases its holder, bumps the fence
+// and adds note as a comment by actor, all in one transaction (#492).
+// A non-nil claim must still hold the ticket. It is not a step failure.
+func (s *Store) Handoff(ctx context.Context, actor, id string, c *store.Claim, pool, note string) (t store.Ticket, err error) {
+	if pool == "" {
+		return store.Ticket{}, fmt.Errorf("%w: handoff needs a pool", store.ErrInvalid)
+	}
+	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+		t, err = s.mutate(ctx, q, id, actor, "handoff", func(t *store.Ticket) (any, error) {
+			if t.Status == store.StatusClosed {
+				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
+			}
+			if c != nil {
+				if err := holds(t, *c); err != nil {
+					return nil, err
+				}
+			}
+			d := map[string]any{"from_pool": t.Pool, "pool": pool, "holder": t.Holder}
+			t.Pool = pool
+			if t.Status == store.StatusInProgress {
+				reopen(t)
+				t.Fence++
+			}
+			if note != "" {
+				d["note"] = note
+			}
+			return d, nil
+		})
+		if err != nil || strings.TrimSpace(note) == "" {
+			return err
+		}
+		_, err = q.InsertComment(ctx, sqlcdb.InsertCommentParams{TicketID: id, Author: actor, Body: note, CreatedAt: ms(s.now())})
+		return err
+	})
+	return t, err
+}
+
 // stepFailure counts a failure when t is a step, in the caller's
 // transaction. At the retry limit the step is closed failed. It returns
 // the comment to add, or "" for non-steps, and records the count in d.
