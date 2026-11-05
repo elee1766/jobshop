@@ -1,8 +1,7 @@
 // Package postgres is the Postgres store backend (#493). It runs the
 // backend-neutral core in pkg/store/sqlstore on the same sqldb queries as
-// pkg/store/sqlite: their SQLite SQL is rewritten for Postgres
-// when it runs (rewrite.go), and the few queries that use an engine
-// feature (full-text search) have Postgres versions in queries/.
+// pkg/store/sqlite: sqldb's SQL runs on both engines (#694). Full-text
+// search, the one engine-specific query, is recallSQL.
 package postgres
 
 import (
@@ -29,8 +28,23 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-//go:embed queries/overrides.sql
-var overridesSQL string
+// recallSQL is Driver.RecallSQL. Lower score is better, as with bm25.
+// ts_rank's own length normalization counts lexemes, which drops
+// stopwords; bm25 counts every word, so the rank is divided by the log
+// of the body's word count instead: a short focused match beats a long
+// one.
+const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS BIGINT) AS at_ms,
+       ts_headline('english', body, q,
+         'StartSel=[, StopSel=], MaxWords=16, MinWords=4, FragmentDelimiter=...') AS snippet,
+       CAST(-ts_rank(tsv, q) / ln(2 + cardinality(regexp_split_to_array(trim(body), '\s+')))
+         AS DOUBLE PRECISION) AS score
+FROM recall, to_tsquery('english', $1) q
+WHERE tsv @@ q
+  AND kind = 'comment'
+  AND ($2 = '' OR project = $2)
+  AND ($3 = '' OR ticket_id = $3)
+ORDER BY score, id
+LIMIT CAST($4 AS BIGINT)`
 
 // Options configures Open.
 type Options = sqlstore.Options
@@ -68,12 +82,12 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	rw := newRewriter(parseOverrides(overridesSQL))
 	s, err := sqlstore.New(sqlstore.Driver{
 		DB:          db,
-		Bind:        func(d sqldb.DBTX) sqldb.Querier { return sqldb.New(pgDB{d: d, rw: rw}) },
+		Bind:        func(d sqldb.DBTX) sqldb.Querier { return sqldb.New(d) },
 		Classify:    classify,
 		RecallMatch: recallMatch,
+		RecallSQL:   recallSQL,
 		IsBusy:      isBusy,
 		Collection:  (&registry{}).open,
 		Render:      (*bqb.Query).ToPgsql,
@@ -102,28 +116,6 @@ func migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("migrate: %w", err)
 	}
 	return nil
-}
-
-// pgDB runs sqldb's queries on d with the SQL rewritten for Postgres.
-type pgDB struct {
-	d  sqldb.DBTX
-	rw *rewriter
-}
-
-func (p pgDB) ExecContext(ctx context.Context, q string, args ...any) (sql.Result, error) {
-	return p.d.ExecContext(ctx, p.rw.rewrite(q), args...)
-}
-
-func (p pgDB) PrepareContext(ctx context.Context, q string) (*sql.Stmt, error) {
-	return p.d.PrepareContext(ctx, p.rw.rewrite(q))
-}
-
-func (p pgDB) QueryContext(ctx context.Context, q string, args ...any) (*sql.Rows, error) {
-	return p.d.QueryContext(ctx, p.rw.rewrite(q), args...)
-}
-
-func (p pgDB) QueryRowContext(ctx context.Context, q string, args ...any) *sql.Row {
-	return p.d.QueryRowContext(ctx, p.rw.rewrite(q), args...)
 }
 
 // isBusy reports a transaction that lost a race: a serialization

@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 // defaultRecallLimit bounds Recall when no limit is given.
@@ -14,7 +13,8 @@ const defaultRecallLimit = 10
 
 // Recall searches ticket comments. It runs the driver's match
 // expressions in order and returns the first that has hits (SQLite: all
-// words, then any word).
+// words, then any word). The query text is the driver's (RecallSQL):
+// full-text search is the one engine-specific query (#694).
 func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.RecallHit, error) {
 	words := strings.Fields(rq.Text)
 	if len(words) == 0 {
@@ -24,25 +24,30 @@ func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.Recal
 	if lim <= 0 {
 		lim = defaultRecallLimit
 	}
-	var rows []sqldb.RecallSearchRow
 	for _, match := range s.drv.RecallMatch(words) {
-		var err error
-		rows, err = s.q.RecallSearch(ctx, sqldb.RecallSearchParams{
-			Query: match, Project: rq.Project, TicketID: rq.TicketID, Lim: int64(lim),
-		})
-		if err != nil {
+		out, err := s.recall(ctx, match, rq.Project, rq.TicketID, lim)
+		if err != nil || len(out) > 0 {
+			return out, err
+		}
+	}
+	return []store.RecallHit{}, nil
+}
+
+func (s *Store) recall(ctx context.Context, match, project, ticket string, lim int) ([]store.RecallHit, error) {
+	rows, err := s.conn(s.db).QueryContext(ctx, s.drv.RecallSQL, match, project, ticket, int64(lim))
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := []store.RecallHit{}
+	for rows.Next() {
+		var h store.RecallHit
+		var at int64
+		if err := rows.Scan(&h.Kind, &h.Ref, &h.TicketID, &h.Project, &at, &h.Snippet, &h.Score); err != nil {
 			return nil, err
 		}
-		if len(rows) > 0 {
-			break
-		}
+		h.At = fromMS(at)
+		out = append(out, h)
 	}
-	out := make([]store.RecallHit, len(rows))
-	for i, r := range rows {
-		out[i] = store.RecallHit{
-			Kind: r.Kind, Ref: r.Ref, TicketID: r.TicketID, Project: r.Project,
-			At: fromMS(r.AtMs), Snippet: r.Snippet, Score: r.Score,
-		}
-	}
-	return out, nil
+	return out, rows.Err()
 }

@@ -6,7 +6,7 @@ import (
 )
 
 const addTicketMeta = `-- name: AddTicketMeta :exec
-INSERT INTO ticket_meta (ticket_id, pack, mkey, value) VALUES (?, ?, ?, ?)
+INSERT INTO ticket_meta (ticket_id, pack, mkey, value) VALUES ($1, $2, $3, $4)
 `
 
 // AddTicketMetaParams are the arguments of AddTicketMeta.
@@ -30,13 +30,13 @@ func (q *Queries) AddTicketMeta(ctx context.Context, arg AddTicketMetaParams) er
 
 const claimWriteTicket = `-- name: ClaimWriteTicket :execrows
 UPDATE tickets SET
-  status      = ?1,
-  holder      = ?2,
-  lease_until = ?3,
-  fence       = ?4,
-  revision    = ?5,
-  updated_at  = ?6
-WHERE tickets.id = ?7 AND tickets.revision = ?8
+  status      = $1,
+  holder      = $2,
+  lease_until = $3,
+  fence       = $4,
+  revision    = $5,
+  updated_at  = $6
+WHERE tickets.id = $7 AND tickets.revision = $8
   AND tickets.status IN ('open', 'in_progress')
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
@@ -94,7 +94,7 @@ func (q *Queries) ClaimWriteTicket(ctx context.Context, arg ClaimWriteTicketPara
 }
 
 const clearTicketMeta = `-- name: ClearTicketMeta :exec
-DELETE FROM ticket_meta WHERE ticket_id = ?
+DELETE FROM ticket_meta WHERE ticket_id = $1
 `
 
 // ClearTicketMeta and AddTicketMeta keep ticket_meta in step with meta.
@@ -105,16 +105,16 @@ func (q *Queries) ClearTicketMeta(ctx context.Context, ticketID string) error {
 
 const expireWriteTicket = `-- name: ExpireWriteTicket :execrows
 UPDATE tickets SET
-  status      = ?1,
-  resolution  = ?2,
-  holder      = ?3,
-  lease_until = ?4,
-  fields      = ?5,
-  revision    = ?6,
-  updated_at  = ?7,
-  closed_at   = ?8
-WHERE id = ?9 AND revision = ?10
-  AND status = 'in_progress' AND lease_until > 0 AND lease_until < ?11
+  status      = $1,
+  resolution  = $2,
+  holder      = $3,
+  lease_until = $4,
+  fields      = $5,
+  revision    = $6,
+  updated_at  = $7,
+  closed_at   = $8
+WHERE id = $9 AND revision = $10
+  AND status = 'in_progress' AND lease_until > 0 AND lease_until < $11
 `
 
 // ExpireWriteTicketParams are the arguments of ExpireWriteTicket.
@@ -158,7 +158,7 @@ func (q *Queries) ExpireWriteTicket(ctx context.Context, arg ExpireWriteTicketPa
 
 const expiredLeases = `-- name: ExpiredLeases :many
 SELECT id FROM tickets
-WHERE status = 'in_progress' AND lease_until > 0 AND lease_until < ?1
+WHERE status = 'in_progress' AND lease_until > 0 AND lease_until < $1
 ORDER BY id
 `
 
@@ -187,7 +187,7 @@ func (q *Queries) ExpiredLeases(ctx context.Context, now int64) ([]string, error
 }
 
 const getTicket = `-- name: GetTicket :one
-SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets WHERE id = ?
+SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets WHERE id = $1
 `
 
 // GetTicket runs the GetTicket query.
@@ -228,10 +228,10 @@ func (q *Queries) GetTicket(ctx context.Context, id string) (Ticket, error) {
 }
 
 const heartbeat = `-- name: Heartbeat :execrows
-UPDATE tickets SET lease_until = ?1, updated_at = ?2
-WHERE id = ?3
-  AND holder = ?4
-  AND fence = ?5
+UPDATE tickets SET lease_until = $1, updated_at = $2
+WHERE id = $3
+  AND holder = $4
+  AND fence = $5
   AND status = 'in_progress'
 `
 
@@ -260,7 +260,7 @@ func (q *Queries) Heartbeat(ctx context.Context, arg HeartbeatParams) (int64, er
 }
 
 const heldBy = `-- name: HeldBy :many
-SELECT id FROM tickets WHERE holder = ? AND status <> 'closed' ORDER BY id
+SELECT id FROM tickets WHERE holder = $1 AND status <> 'closed' ORDER BY id
 `
 
 // HeldBy covers claimed and pre-assigned tickets, so a dead session strands neither.
@@ -294,10 +294,10 @@ INSERT INTO tickets (
   revision, created_by, created_at, updated_at, closed_at,
   f_key, f_to, f_state, f_workflow, f_index, f_waiting
 ) VALUES (
-  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-  ?, ?, ?, ?, ?, ?, ?,
-  ?, ?, ?, ?, ?,
-  ?, ?, ?, ?, ?, ?
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+  $11, $12, $13, $14, $15, $16, $17,
+  $18, $19, $20, $21, $22,
+  $23, $24, $25, $26, $27, $28
 )
 `
 
@@ -369,7 +369,7 @@ func (q *Queries) InsertTicket(ctx context.Context, arg InsertTicketParams) erro
 }
 
 const setParent = `-- name: SetParent :exec
-UPDATE tickets SET parent_id = ?1 WHERE id = ?2
+UPDATE tickets SET parent_id = $1 WHERE id = $2
 `
 
 // SetParentParams are the arguments of SetParent.
@@ -387,28 +387,28 @@ func (q *Queries) SetParent(ctx context.Context, arg SetParentParams) error {
 
 const writeTicket = `-- name: WriteTicket :execrows
 UPDATE tickets SET
-  title       = ?1,
-  body        = ?2,
-  status      = ?3,
-  resolution  = ?4,
-  priority    = ?5,
-  pool        = ?6,
-  holder      = ?7,
-  lease_until = ?8,
-  fence       = ?9,
-  defer_until = ?10,
-  fields      = ?11,
-  f_key       = ?12,
-  f_to        = ?13,
-  f_state     = ?14,
-  f_workflow  = ?15,
-  f_index     = ?16,
-  f_waiting   = ?17,
-  meta        = ?18,
-  revision    = ?19,
-  updated_at  = ?20,
-  closed_at   = ?21
-WHERE id = ?22 AND revision = ?23
+  title       = $1,
+  body        = $2,
+  status      = $3,
+  resolution  = $4,
+  priority    = $5,
+  pool        = $6,
+  holder      = $7,
+  lease_until = $8,
+  fence       = $9,
+  defer_until = $10,
+  fields      = $11,
+  f_key       = $12,
+  f_to        = $13,
+  f_state     = $14,
+  f_workflow  = $15,
+  f_index     = $16,
+  f_waiting   = $17,
+  meta        = $18,
+  revision    = $19,
+  updated_at  = $20,
+  closed_at   = $21
+WHERE id = $22 AND revision = $23
 `
 
 // WriteTicketParams are the arguments of WriteTicket.

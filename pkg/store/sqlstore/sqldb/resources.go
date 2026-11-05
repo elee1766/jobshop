@@ -5,7 +5,7 @@ import (
 )
 
 const addTicketResource = `-- name: AddTicketResource :exec
-INSERT INTO ticket_resources (ticket_id, rkey, rname) VALUES (?, ?, ?)
+INSERT INTO ticket_resources (ticket_id, rkey, rname) VALUES ($1, $2, $3)
 ON CONFLICT DO NOTHING
 `
 
@@ -23,7 +23,7 @@ func (q *Queries) AddTicketResource(ctx context.Context, arg AddTicketResourcePa
 }
 
 const clearTicketResources = `-- name: ClearTicketResources :exec
-DELETE FROM ticket_resources WHERE ticket_id = ?
+DELETE FROM ticket_resources WHERE ticket_id = $1
 `
 
 // ClearTicketResources runs the ClearTicketResources query. ClearTicketResources and AddTicketResource keep ticket_resources in
@@ -54,7 +54,7 @@ func (q *Queries) DeleteResourceProviders(ctx context.Context) error {
 }
 
 const deleteSlot = `-- name: DeleteSlot :exec
-DELETE FROM resource_slots WHERE pool = ? AND id = ?
+DELETE FROM resource_slots WHERE pool = $1 AND id = $2
 `
 
 // DeleteSlotParams are the arguments of DeleteSlot.
@@ -70,7 +70,7 @@ func (q *Queries) DeleteSlot(ctx context.Context, arg DeleteSlotParams) error {
 }
 
 const getSlot = `-- name: GetSlot :one
-SELECT pool, id, state, env, ticket, fence, removing, updated_at FROM resource_slots WHERE pool = ? AND id = ?
+SELECT pool, id, state, env, ticket, fence, removing, updated_at FROM resource_slots WHERE pool = $1 AND id = $2
 `
 
 // GetSlotParams are the arguments of GetSlot.
@@ -97,7 +97,7 @@ func (q *Queries) GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot,
 }
 
 const insertResourceCap = `-- name: InsertResourceCap :exec
-INSERT INTO resource_caps (name, capacity) VALUES (?, ?)
+INSERT INTO resource_caps (name, capacity) VALUES ($1, $2)
 `
 
 // InsertResourceCapParams are the arguments of InsertResourceCap.
@@ -113,7 +113,7 @@ func (q *Queries) InsertResourceCap(ctx context.Context, arg InsertResourceCapPa
 }
 
 const insertResourceProvider = `-- name: InsertResourceProvider :exec
-INSERT INTO resource_providers (name) VALUES (?)
+INSERT INTO resource_providers (name) VALUES ($1)
 `
 
 // InsertResourceProvider runs the InsertResourceProvider query.
@@ -123,7 +123,7 @@ func (q *Queries) InsertResourceProvider(ctx context.Context, name string) error
 }
 
 const insertSlot = `-- name: InsertSlot :exec
-INSERT INTO resource_slots (pool, id, state, env, updated_at) VALUES (?, ?, 'ready', ?, ?)
+INSERT INTO resource_slots (pool, id, state, env, updated_at) VALUES ($1, $2, 'ready', $3, $4)
 `
 
 // InsertSlotParams are the arguments of InsertSlot.
@@ -183,7 +183,7 @@ func (q *Queries) ListSlots(ctx context.Context) ([]ResourceSlot, error) {
 }
 
 const markSlotsReleasing = `-- name: MarkSlotsReleasing :exec
-UPDATE resource_slots SET state = 'releasing', updated_at = ?1
+UPDATE resource_slots SET state = 'releasing', updated_at = $1
 WHERE state = 'held' AND NOT EXISTS (
   SELECT 1 FROM tickets t WHERE t.id = resource_slots.ticket
     AND t.status = 'in_progress' AND t.fence = resource_slots.fence)
@@ -197,9 +197,9 @@ func (q *Queries) MarkSlotsReleasing(ctx context.Context, updatedAt int64) error
 }
 
 const providerDemand = `-- name: ProviderDemand :one
-SELECT count(*) AS waiting, CAST(coalesce(min(t.created_at), 0) AS INTEGER) AS oldest
+SELECT count(*) AS waiting, CAST(coalesce(min(t.created_at), 0) AS BIGINT) AS oldest
 FROM tickets t JOIN ticket_resources r ON r.ticket_id = t.id
-WHERE t.status = 'open' AND r.rkey = CAST(?1 AS TEXT)
+WHERE t.status = 'open' AND r.rkey = CAST($1 AS TEXT)
 `
 
 // ProviderDemandRow is one row of ProviderDemand.
@@ -218,12 +218,12 @@ func (q *Queries) ProviderDemand(ctx context.Context, pool string) (ProviderDema
 }
 
 const providerEmpty = `-- name: ProviderEmpty :one
-SELECT CAST(EXISTS (
+SELECT CAST(CAST(EXISTS (
   SELECT 1 FROM ticket_resources r
   JOIN resource_providers p ON p.name = r.rkey
-  WHERE r.ticket_id = ?1 AND NOT EXISTS (
+  WHERE r.ticket_id = $1 AND NOT EXISTS (
     SELECT 1 FROM resource_slots s WHERE s.pool = p.name AND s.state = 'ready')
-) AS INTEGER) AS is_empty
+) AS INT) AS BIGINT) AS is_empty
 `
 
 // ProviderEmpty runs the ProviderEmpty query. ProviderEmpty reports whether ticket id needs a provider resource with
@@ -264,13 +264,13 @@ func (q *Queries) ResourceCaps(ctx context.Context) ([]ResourceCap, error) {
 }
 
 const resourceFull = `-- name: ResourceFull :one
-SELECT CAST(EXISTS (
+SELECT CAST(CAST(EXISTS (
   SELECT 1 FROM ticket_resources r
   JOIN resource_caps c ON c.name = r.rkey OR c.name = r.rname
-  WHERE r.ticket_id = ?1 AND c.capacity <= (
+  WHERE r.ticket_id = $1 AND c.capacity <= (
     SELECT count(*) FROM ticket_resources hr JOIN tickets h ON h.id = hr.ticket_id
     WHERE h.status = 'in_progress' AND h.id <> r.ticket_id AND hr.rkey = r.rkey)
-) AS INTEGER) AS is_full
+) AS INT) AS BIGINT) AS is_full
 `
 
 // ResourceFull runs the ResourceFull query. ResourceFull reports whether ticket id names a resource key with no
@@ -324,7 +324,7 @@ const resourceWaiters = `-- name: ResourceWaiters :many
 SELECT t.id, r.rkey
 FROM ticket_resources r JOIN tickets t ON t.id = r.ticket_id
 WHERE t.status = 'open'
-  AND t.defer_until <= ?1
+  AND t.defer_until <= $1
   AND t.f_waiting = 0
   AND NOT EXISTS (
     SELECT 1 FROM edges e JOIN tickets b ON b.id = e.to_id
@@ -404,10 +404,10 @@ func (q *Queries) ResourceWaiting(ctx context.Context) ([]ResourceWaitingRow, er
 }
 
 const takeSlot = `-- name: TakeSlot :one
-UPDATE resource_slots SET state = 'held', ticket = ?1, fence = ?2,
-  updated_at = ?3
-WHERE resource_slots.pool = ?4 AND resource_slots.id = (
-  SELECT s.id FROM resource_slots s WHERE s.pool = ?4 AND s.state = 'ready'
+UPDATE resource_slots SET state = 'held', ticket = $1, fence = $2,
+  updated_at = $3
+WHERE resource_slots.pool = $4 AND resource_slots.id = (
+  SELECT s.id FROM resource_slots s WHERE s.pool = $4 AND s.state = 'ready'
   ORDER BY s.updated_at, s.id LIMIT 1)
 RETURNING pool, id, state, env, ticket, fence, removing, updated_at
 `
@@ -446,7 +446,7 @@ const ticketProviderResources = `-- name: TicketProviderResources :many
 SELECT r.rkey AS name
 FROM ticket_resources r
 JOIN resource_providers p ON p.name = r.rkey
-WHERE r.ticket_id = ?1
+WHERE r.ticket_id = $1
 ORDER BY r.rkey
 `
 
@@ -476,9 +476,9 @@ func (q *Queries) TicketProviderResources(ctx context.Context, id string) ([]str
 
 const updateSlot = `-- name: UpdateSlot :exec
 UPDATE resource_slots SET
-  state = ?1, env = ?2, ticket = ?3,
-  fence = ?4, removing = ?5, updated_at = ?6
-WHERE pool = ?7 AND id = ?8
+  state = $1, env = $2, ticket = $3,
+  fence = $4, removing = $5, updated_at = $6
+WHERE pool = $7 AND id = $8
 `
 
 // UpdateSlotParams are the arguments of UpdateSlot.
