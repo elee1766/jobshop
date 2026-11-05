@@ -24,12 +24,13 @@ for (const [view, testid] of [['work', 'runs'], ['sessions', 'sessions'], ['pool
   test(`${view} view renders from the URL and the nav`, async ({ page }) => {
     const errors = watchErrors(page);
     await page.goto('/?view=' + view);
-    await expect(page.getByTestId(testid)).toBeVisible();
+    // /api/pools evaluates every trigger and takes ~5s on gasserver (#520).
+    await expect(page.getByTestId(testid)).toBeVisible({ timeout: 15_000 });
     await page.locator('nav a[data-view=attention]').click();
     await expect(page).toHaveURL(/\/$/);
     await page.goBack();
     await expect(page).toHaveURL(new RegExp('view=' + view));
-    await expect(page.getByTestId(testid)).toBeVisible();
+    await expect(page.getByTestId(testid)).toBeVisible({ timeout: 15_000 });
     expect(errors).toEqual([]);
   });
 }
