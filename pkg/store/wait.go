@@ -20,6 +20,18 @@ const (
 	// WaitLabel: an issue has a label, or is closed (#603). Repo, Issue
 	// and Label are required.
 	WaitLabel = "github.label"
+	// WaitTag: a tag exists in Repo (JOB-11).
+	WaitTag = "github.tag"
+	// WaitDeploy: the deployed commit (the controller's own build) is SHA
+	// or a descendant of it in Repo (JOB-11).
+	WaitDeploy = "deploy"
+	// WaitRun: run Run reached State done (finished) or closed (any end).
+	WaitRun = "run"
+	// WaitLinearState: Linear issue Thread is in state State (a name, or
+	// a type such as completed).
+	WaitLinearState = "linear.state"
+	// WaitLinearLabel: Linear issue Thread has Label, or with Absent lacks it.
+	WaitLinearLabel = "linear.label"
 )
 
 // Wait modes.
@@ -55,6 +67,11 @@ type WaitCond struct {
 	// Issue and Label are for github.label.
 	Issue int    `json:"issue,omitempty"`
 	Label string `json:"label,omitempty"`
+	// Absent: linear.label waits for the label to be gone.
+	Absent bool `json:"absent,omitempty"`
+	// Tag is for github.tag, Run for run.
+	Tag string `json:"tag,omitempty"`
+	Run string `json:"run,omitempty"`
 	// Head is the PR head the condition is about. Empty means the head
 	// seen on the first evaluation, which is then recorded.
 	Head  string `json:"head,omitempty"`
@@ -76,6 +93,8 @@ type WaitCond struct {
 var (
 	repoRe   = regexp.MustCompile(`^[\w.-]+/[\w.-]+$`)
 	threadRe = regexp.MustCompile(`^([\w.-]+/[\w.-]+#\d+|[A-Z][A-Z0-9]*-\d+)$`)
+	linearRe = regexp.MustCompile(`^[A-Z][A-Z0-9]*-\d+$`)
+	shaRe    = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 )
 
 // Validate checks the wait's shape.
@@ -144,6 +163,31 @@ func (c WaitCond) validate() error {
 	case WaitLabel:
 		if !repoRe.MatchString(c.Repo) || c.Issue <= 0 || c.Label == "" {
 			return fmt.Errorf("%s needs repo owner/name, issue and label", c.Type)
+		}
+		return nil
+	case WaitTag:
+		if !repoRe.MatchString(c.Repo) || c.Tag == "" {
+			return fmt.Errorf("%s needs repo owner/name and tag", c.Type)
+		}
+		return nil
+	case WaitDeploy:
+		if !repoRe.MatchString(c.Repo) || !shaRe.MatchString(c.SHA) {
+			return fmt.Errorf("%s needs repo owner/name and a hex sha", c.Type)
+		}
+		return nil
+	case WaitRun:
+		if c.Run == "" || c.State != "done" && c.State != "closed" {
+			return fmt.Errorf("%s needs id and state done or closed", c.Type)
+		}
+		return nil
+	case WaitLinearState:
+		if !linearRe.MatchString(c.Thread) || c.State == "" {
+			return fmt.Errorf("%s needs a Linear issue key and state", c.Type)
+		}
+		return nil
+	case WaitLinearLabel:
+		if !linearRe.MatchString(c.Thread) || c.Label == "" {
+			return fmt.Errorf("%s needs a Linear issue key and label", c.Type)
 		}
 		return nil
 	}

@@ -65,10 +65,16 @@ Docs: {{.docs_rule}}
 Do not merge. When CI is green on the head you pushed:
 `jobshop comment "PR <url> head <sha>"` (sha from `git rev-parse HEAD`),
 then `jobshop close --outcome pr`. The outcome `pr` makes the `review-merge` step ready
-for the refinery (a close without it skips review and merge). If the remaining work can only happen later (a 24h
-window, a scheduled time, a deploy you saw is in progress), do not close
-failed: comment what you wait for, then `jobshop release --until
-<RFC3339 or duration>`. That defers the step without counting a failure
+for the refinery (a close without it skips review and merge). If the
+remaining work can only happen later, do not
+close failed: comment what you wait for and park on it. An event has a
+wait kind: a deploy in progress is `jobshop wait add
+'deploy:repo={{.repo}},sha=<sha>' --resume -r "deploy of <sha>"`, a
+merge `github.pr:pr=...,state=merged`, a tag `github.tag:repo=...,tag=...`,
+another run `run:id=<run>,state=done`, a Linear issue
+`linear.state:issue=<KEY>,state=Done`. Only a real time (a 24h window,
+a scheduled time) is `jobshop release --until <RFC3339 or duration>
+--time-wait -r "<why>"`. Either defers the step without counting a failure
 or reaching a human. If you cannot deliver for any other reason,
 `jobshop close -r failed` with a
 comment saying why; the run retries and then escalates to a human.

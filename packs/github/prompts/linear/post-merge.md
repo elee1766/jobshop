@@ -19,8 +19,12 @@ failed attempt; a plain release is one).
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh on every loop. Do not reuse an earlier result or
    version, the deploy may have moved since. Not yet: comment what you
-   saw, `jobshop release --until 5m -r "deploy pending"`, and check again. Still not after an hour of
-   green CI: comment what you saw and `jobshop close -r failed`.
+   saw, `jobshop wait add 'deploy:repo={{.repo}},sha=<sha>' --resume --timeout 1h --reason "deploy of <sha>"`
+   and end the turn; it resumes when the controller runs a build
+   containing <sha>. Past the timeout, or when `wait add` says this
+   controller reports no build commit, run the check by hand: still not
+   live after an hour of green CI, comment what you saw and
+   `jobshop close -r failed`.
 3. Both good: comment on the issue that it shipped in <sha> (and is
    deployed, if step 2 applies):
    `jobshop linear comment {{.issue}} "Shipped in <sha>"`, move it to

@@ -42,7 +42,10 @@ and, for Linear instances, the Linear tools the instance's prompts name:
   approve|reject|dismiss <id> [-n "<note>"]` relabels or closes the
   GitHub issue and wakes the planner; do not relabel the issue by hand.
   A ticket deferred with `release --until` that should run now:
-  `jobshop ticket undefer <id>`.
+  `jobshop ticket undefer <id>`. A ticket parked on an event belongs in
+  a wait (`jobshop wait add`, kinds in `jobshop wait add --help`); a
+  timed release for CI, a PR, deploy, tag or merge is refused unless
+  `--time-wait` says it is a real timer.
 - Runs: `jobshop run start <prefix>pr-work --var issue=<n> --key
   issue-<n>`, `jobshop run show <run>`, `jobshop run list`.
 - State: `jobshop session list`, `jobshop pool list`, `jobshop trigger

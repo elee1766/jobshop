@@ -415,6 +415,9 @@ type ReleaseParams struct {
 	Reason string `json:"reason,omitempty"`
 	// Until defers the ticket; such a release is not a step failure.
 	Until *time.Time `json:"until,omitempty"`
+	// TimeWait: the deferral is a real timer. Without it a reason that
+	// names CI, a PR, a deploy, a tag or a merge is refused (JOB-11).
+	TimeWait bool `json:"time_wait,omitempty"`
 }
 
 // SessionNewParams creates a session ticket and its CLI socket. With a

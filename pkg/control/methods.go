@@ -483,6 +483,11 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 		if !p.Until.After(c.now()) {
 			return nil, fmt.Errorf("%w: until must be in the future", store.ErrInvalid)
 		}
+		if !p.TimeWait {
+			if err := eventWaitHint(p.Reason); err != nil {
+				return nil, err
+			}
+		}
 		until = *p.Until
 	}
 	t, err := c.store.Release(ctx, cl, p.Reason, until)

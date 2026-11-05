@@ -15,6 +15,8 @@ Implement: {{.task}}
    independent review. Publication alone is not done: close only with
    evidence for every acceptance criterion on that head.
 5. A genuine wait (a decision, credential, another team): `jobshop report
-   waiting "<what>" --question "<decision needed>"`. A timed wait:
-   `jobshop release --until <time>`. Cannot deliver: comment why, then
+   waiting "<what>" --question "<decision needed>"`. An event (CI, a
+   merge, a deploy, a tag): `jobshop wait add` with its kind (`jobshop
+   wait add --help`). A real time: `jobshop release --until <time>
+   --time-wait -r "<why>"`. Cannot deliver: comment why, then
    `jobshop close -r failed`.

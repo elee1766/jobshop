@@ -904,6 +904,7 @@ export interface ReleaseParams {
   id?: string;
   reason?: string;
   until?: string;
+  time_wait?: boolean;
 }
 
 export interface ReloadResult {
@@ -1362,6 +1363,9 @@ export interface WaitCond {
   pr?: number;
   issue?: number;
   label?: string;
+  absent?: boolean;
+  tag?: string;
+  run?: string;
   head?: string;
   sha?: string;
   login?: string;

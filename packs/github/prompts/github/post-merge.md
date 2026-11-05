@@ -19,13 +19,17 @@ failed attempt; a plain release is one).
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh on every loop. Do not reuse an earlier result or
    version, the deploy may have moved since. Not yet: comment what you
-   saw, `jobshop release --until 5m -r "deploy pending"`, and check again. Still not after an hour of
-   green CI: comment what you saw and `jobshop close -r failed`.
+   saw, `jobshop wait add 'deploy:repo={{.repo}},sha=<sha>' --resume --timeout 1h --reason "deploy of <sha>"`
+   and end the turn; it resumes when the controller runs a build
+   containing <sha>. Past the timeout, or when `wait add` says this
+   controller reports no build commit, run the check by hand: still not
+   live after an hour of green CI, comment what you saw and
+   `jobshop close -r failed`.
 3. Release: if the issue asks for a release or a tag, the merge alone
    does not ship it. Check `git ls-remote --tags https://github.com/{{.repo}} <tag>`.
    No tag yet: comment what is missing and
-   `jobshop release --until 30m -r "tag <tag> not pushed"`; never close on
-   the merge alone.
+   `jobshop wait add 'github.tag:repo={{.repo}},tag=<tag>' --resume --reason "tag <tag>"`,
+   then end the turn; never close on the merge alone.
 4. All good: comment on the issue (`gh issue comment {{.issue}}`) that it
    shipped in <sha> (and is deployed, if step 2 applies), then
    `jobshop close`. That finishes the run.

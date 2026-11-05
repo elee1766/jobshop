@@ -1258,12 +1258,16 @@ Park a ticket until conditions hold; a held ticket is released (not a failed
 attempt). End the turn after.
 
 Arguments:
-  <cond> ...    TYPE:key=val,... Types: github.review (pr, login, head, state),
-                github.checks (pr or repo+sha, state=success|failure, required),
-                github.pr (pr, state=merged|closed|head_changed), github.label
-                (issue, label; met when the issue has the label or is closed),
-                thread.reply (thread, from), time (at). pr is owner/name#n or a
-                PR URL; at is a duration or RFC3339.
+  <cond> ...    TYPE:key=val,... Types: github.review (pr, login, head,
+                state), github.checks (pr or repo+sha, state=success|failure,
+                required), github.pr (pr, state=merged|closed|head_changed),
+                github.label (issue, label; met when the issue has the label
+                or is closed), github.tag (repo, tag), deploy (repo, sha;
+                met when the controller's build commit contains sha), run (id,
+                state=done|closed), linear.state (issue=KEY, state name or
+                type), linear.label (issue=KEY, label, present=false waits
+                for removal), thread.reply (thread, from), time (at). pr is
+                owner/name#n or a PR URL; at is a duration or RFC3339.
 
 Flags:
   -h, --help              Show context-sensitive help.
@@ -1467,6 +1471,10 @@ Flags:
   -r, --reason=STRING    Why the ticket is handed back.
       --until=STRING     Defer the ticket: a duration (2h) or RFC3339 time.
                          Not counted as a step failure.
+      --time-wait        The deferral is a real timer (a window, a backoff).
+                         Without it, --until with a reason about CI, checks,
+                         a PR, deploy, tag or merge is refused: use jobshop wait
+                         add.
 ```
 
 ## jobshop handoff

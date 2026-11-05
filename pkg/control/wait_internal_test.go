@@ -82,6 +82,21 @@ func (f *fakePRs) Issue(_ context.Context, repo string, n int) (issueInfo, error
 	return parseIssue([]byte(f.issues[prKey(repo, n)]))
 }
 
+// Tag: issues["tag:<repo>@<tag>"] set means the tag exists.
+func (f *fakePRs) Tag(_ context.Context, repo, tag string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_, ok := f.issues["tag:"+repo+"@"+tag]
+	return ok, nil
+}
+
+// Contains: issues["compare:<sha>...<head>"] holds the compare status.
+func (f *fakePRs) Contains(_ context.Context, _ string, sha, head string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return compareContains(f.issues["compare:"+sha+"..."+head]), nil
+}
+
 func waitController(t *testing.T) (*Controller, *stallClock, *fakePRs, *fakeThreads) {
 	t.Helper()
 	c, clk, threads := subController(t)

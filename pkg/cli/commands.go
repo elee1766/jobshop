@@ -605,10 +605,13 @@ type releaseCmd struct {
 	ID     string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
 	Reason string `short:"r" help:"Why the ticket is handed back."`
 	Until  string `help:"Defer the ticket: a duration (2h) or RFC3339 time. Not counted as a step failure."`
+	// TimeWait: a reason naming CI, a PR, deploy, tag or merge is refused
+	// without it; those have wait kinds (JOB-11).
+	TimeWait bool `name:"time-wait" help:"The deferral is a real timer (a window, a backoff). Without it, --until with a reason about CI, checks, a PR, deploy, tag or merge is refused: use jobshop wait add."`
 }
 
 func (c releaseCmd) Run(g *Globals) error {
-	p := rpc.ReleaseParams{ID: c.ID, Reason: c.Reason}
+	p := rpc.ReleaseParams{ID: c.ID, Reason: c.Reason, TimeWait: c.TimeWait}
 	if c.Until != "" {
 		t, err := parseUntil(c.Until, time.Now())
 		if err != nil {
