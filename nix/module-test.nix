@@ -198,7 +198,7 @@ let
     run
     [ $rc = 1 ] || rfail "diverged exit $rc"
     grep -q 'not fast-forwardable' $T/root/config-repo.failed || rfail "diverged checkout not in attention"
-    grep -q 'config-repo:cfg.*not fast-forwardable' $T/tickets || rfail "diverged checkout not filed"
+    grep -q 'ticket upsert --key config-repo:cfg -l needs-human' $T/tickets && grep -q 'checkout not fast-forwardable' $T/tickets || rfail "diverged checkout not filed"
     cd ..
   '';
   rules = c: c.config.systemd.tmpfiles.rules;
