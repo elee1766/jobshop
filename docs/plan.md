@@ -113,8 +113,7 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Config reload (#38), `session restart` (#37), host backpressure (#39).
 - Per-signal OTLP URLs and headers, nix telemetry options, Grafana
   dashboard (#44).
-- Conversation export with redaction (#45); replaced by journal search on
-  VictoriaLogs (#530).
+- Conversation export with redaction (#45).
 - `session/load` fallback from the journal (#43).
 - `session list --state --since` and the gasserver runbook (#52).
 - Meta pack name validation and `meta_packs:` (#29).
@@ -512,11 +511,6 @@ Short list; behavior details are in `docs/notes/` (section 7).
   session itself or a `session-journal` grant in the project;
   `jobshop session journal`, Desk `/api/session/{id}/journal` (#529,
   `docs/notes/529-session-journal.md`).
-- Journal search on VictoriaLogs: the controller ships every journal frame
-  from a per-session cursor, `journal.search` (LogsQL, project-filtered for
-  pools), `jobshop journal search|backfill`, Desk `/api/journal/search`,
-  `services.jobshop.journal.victorialogs`; OTLP conversation export
-  removed (#530, `docs/notes/530-journal-search.md`).
 - NixOS `services.jobshop.configFile`: a user-owned `jobshop.yaml` that
   includes the module's `jobshop.module.yaml` (new `include:` key),
   checked and reloaded on edit by `jobshop-config.path` (#531,
@@ -525,6 +519,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `api`, `POST /api/rpc/{method}` with a session-only policy; Deploys is
   the first built-in plugin (#517, `docs/notes/517-desk-plugins.md`,
   `docs/verify/desk-plugins.md`).
+- GitHub pack steps wait on CI with `github.checks` waits, not fixed
+  `release --until` deferrals (#555, `docs/notes/555-ci-waits.md`).
 - NixOS `workspaces.<name>.config`: run from `jobshop.yaml` in a git
   checkout; each push is checked, reset to last good on failure and
   listed as attention `config-repo` (#532, `docs/notes/532-config-repo.md`).
@@ -697,11 +693,9 @@ visibility (#408), placement (#409).
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
 `session.journal` (#529), Desk plugin host part 1 (#517), config from a
-git repo (#532), plugin commands, typed RPC and docs (#542), journal
-search on VictoriaLogs (#530).
+git repo (#532), plugin commands, typed RPC and docs (#542).
 Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
-and `api.query`/`api.session` (#541); enable `journal.victorialogs` on
-gasserver and run `docs/verify/journal-search.md`.
+and `api.query`/`api.session` (#541).
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -851,7 +845,7 @@ All dated 2026-11-01 unless noted.
   reading the file, so it shows what runs after the last good reload
   (2026-11-01, #32).
 - Turns are counted by `jobshop.turn.stop_reason`, the key conversation
-  export already used, so a turn's logs and metrics share one label. The
+  export already uses, so a turn's logs and metrics share one label. The
   telemetry check is a shell script, not a CLI command: it reads
   VictoriaMetrics and VictoriaTraces, which the controller does not know
   about (2026-11-01, #55).
@@ -1421,14 +1415,6 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   command string from the browser (2026-11-05, #542). Plugin types come
   from one table, `rpc.Specs`, checked against the handler table, so the
   `.d.ts` and the `/api/rpc` schemas cannot drift from the controller.
-- Journal search is VictoriaLogs, run as its own process next to the
-  controller (or shared by several), the same for single node and HA
-  (2026-11-05, #530). There is no second journal store and no embedded
-  engine: Parquet has no token index, Bleve's index was the size of the
-  data, and embedding `lib/logstorage` brings global flags and `Fatalf`.
-  Without `journal.victorialogs`, `journal.search` errors. OTLP
-  conversation export is removed in the same change; this replaces the
-  2026-11-01 #45 decision.
 
 ## 7. Reference: behavior as built
 
@@ -1494,6 +1480,7 @@ moved from the old 7.x list, oldest first:
 - [Learning kinds and trigger filters](notes/524-learning-kinds.md) (#524)
 - [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
 - [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
+- [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
 
 ## 8. Chat gateway
 
