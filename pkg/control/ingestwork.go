@@ -169,7 +169,7 @@ func (c *Controller) ingestAttention(ctx context.Context) ([]rpc.AttentionItem, 
 // ingest.worker_missing.
 func (c *Controller) missingWorker() (stall, bool) {
 	in := c.config().Ingest
-	if !in.External() {
+	if !in.External() && !in.ExternalDispatch() {
 		return stall{}, false
 	}
 	last := c.lastWorkerBeat()
@@ -178,7 +178,7 @@ func (c *Controller) missingWorker() (stall, bool) {
 	}
 	return stall{
 		signal: config.StallIngestWorker, subject: "ingest-worker@" + last.UTC().Format("20060102T150405Z"),
-		detail: fmt.Sprintf("ingest.workers is external and no `jobshop ingest work` has called for %s; pending items are not admitted", ago(c.now(), last)),
+		detail: fmt.Sprintf("ingest.workers or ingest.dispatch is external and no `jobshop ingest work` has called for %s; pending items are not admitted or admitted ones not dispatched", ago(c.now(), last)),
 	}, true
 }
 

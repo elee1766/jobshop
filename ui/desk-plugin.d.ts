@@ -122,6 +122,7 @@ export interface RpcMethods {
   "identity.token": { params: IdentityParams; result: IdentityTokenResult };
   "ingest.admit": { params: IngestAdmitParams; result: InboxItem };
   "ingest.claim": { params: IngestClaimParams; result: IngestClaimResult };
+  "ingest.dispatch": { params: IngestClaimParams; result: IngestDispatchResult };
   "ingest.drain": { params: IngestDrainParams; result: IngestDrainResult };
   "ingest.workers": { params: Record<string, never>; result: IngestWorkersResult };
   "journal.backfill": { params: JournalBackfillParams; result: JournalBackfillResult };
@@ -630,6 +631,10 @@ export interface IngestClaimResult {
   project?: string;
   answered?: boolean;
   lease_ms?: number;
+}
+
+export interface IngestDispatchResult {
+  dispatched: number;
 }
 
 export interface IngestDrainParams {

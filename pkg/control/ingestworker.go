@@ -21,6 +21,33 @@ type IngestWorker struct {
 	Worker string
 	Host   string
 	Log    *slog.Logger
+	// Dispatch: after admitting, also dispatch admitted items through
+	// the controller (#633). NoAdmit skips admission, for a dispatch-only
+	// worker while the controller admits.
+	Dispatch bool
+	NoAdmit  bool
+}
+
+// DispatchOnce asks the controller to dispatch admitted items under
+// this worker's lease holder, returning how many it claimed.
+func (w IngestWorker) DispatchOnce(ctx context.Context) (int, error) {
+	var res rpc.IngestDispatchResult
+	err := w.Call(ctx, rpc.MethodIngestDispatch, rpc.IngestClaimParams{Worker: w.Worker, Host: w.Host}, &res)
+	return res.Dispatched, err
+}
+
+// Pass admits (unless NoAdmit) then dispatches (with Dispatch),
+// returning the admitted and dispatched counts.
+func (w IngestWorker) Pass(ctx context.Context) (admitted, dispatched int, err error) {
+	if !w.NoAdmit {
+		if admitted, err = w.Once(ctx); err != nil {
+			return admitted, 0, err
+		}
+	}
+	if w.Dispatch {
+		dispatched, err = w.DispatchOnce(ctx)
+	}
+	return admitted, dispatched, err
 }
 
 // Once claims and admits until nothing is pending, returning how many
@@ -55,11 +82,11 @@ func (w IngestWorker) Once(ctx context.Context) (int, error) {
 	return n, ctx.Err()
 }
 
-// Run calls Once every idle until ctx ends. A failed call is logged and
+// Run calls Pass every idle until ctx ends. A failed call is logged and
 // retried, so a controller restart does not stop the worker.
 func (w IngestWorker) Run(ctx context.Context, idle time.Duration, after func(time.Duration) <-chan time.Time) error {
 	for ctx.Err() == nil {
-		if _, err := w.Once(ctx); err != nil && ctx.Err() == nil {
+		if _, _, err := w.Pass(ctx); err != nil && ctx.Err() == nil {
 			w.logger().WarnContext(ctx, "ingest work", "err", err)
 		}
 		select {

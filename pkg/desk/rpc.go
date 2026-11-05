@@ -25,6 +25,7 @@ import (
 var rpcSessionOnly = []string{
 	rpc.MethodClaim, rpc.MethodHeartbeat, rpc.MethodRelease, rpc.MethodHandoff,
 	rpc.MethodWriteKeyClaim, rpc.MethodWriteKeyFinish, rpc.MethodIngestClaim, rpc.MethodIngestAdmit,
+	rpc.MethodIngestDispatch,
 	rpc.MethodGuard, rpc.MethodSessionSubscribe, rpc.MethodEventsSubscribe,
 }
 
