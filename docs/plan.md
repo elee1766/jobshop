@@ -1326,6 +1326,7 @@ moved from the old 7.x list, oldest first:
 - [Prompt text from files](notes/382-text-files.md) (#382)
 - [Subscription bot allowlist](notes/402-subscription-bots.md) (#402)
 - [Step needs and when](notes/385-step-needs-when.md) (#385)
+- [Empty run vars rejected](notes/496-empty-run-var.md) (#496)
 - [Session socket bound once](notes/479-session-socket-once.md) (#479)
 
 ## 8. Chat gateway
