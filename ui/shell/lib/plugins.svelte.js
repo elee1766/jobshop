@@ -4,14 +4,15 @@
 // path, so this file is the whole contract on the browser side.
 
 import { base, api as urlOf, get, post, live } from './api.svelte.js';
-import { url, go, closeSession } from './url.svelte.js';
+import { url, go, navigate, closeSession, onUrl } from './url.svelte.js';
 import { push, pushStatus, enablePush, disablePush, testPush } from './push.svelte.js';
 
 /**
  * Bumped when api gains a member a plugin may need; plugin.json "api": ">=N".
  * 2 (#535): session, push, openSession, closeSession, openTicket, params.
+ * 3 (#541): go, onParams, query, has, mount; params keeps every URL key.
  */
-export const API_VERSION = 2;
+export const API_VERSION = 3;
 
 /**
  * @typedef {{ slot: string, element: string, id?: string, title?: string, match?: Record<string, string[]> }} Contribution
@@ -71,7 +72,7 @@ export const deskApi = Object.freeze({
     });
   },
   /** @param {string} view @param {Record<string, string>} [params] */
-  navigate(view, params) { go({ view, ticket: '', session: '', artifact: '', ...(params || {}) }); },
+  navigate(view, params) { navigate(view, params); },
   /** @param {string} msg */
   toast(msg) {
     const id = ++toastSeq;
@@ -85,8 +86,38 @@ export const deskApi = Object.freeze({
   /** The URL of a file under base. @param {string} path */
   url: (path) => urlOf(path),
   get lastSeq() { return live.lastSeq; },
-  /** A copy of Desk's URL state (view, ticket, session, item, ...). */
-  params: () => ({ ...url }),
+  /**
+   * A copy of Desk's URL state: view, ticket, session, item and every
+   * other key, so a plugin view keeps its filters here and links and
+   * back work (#541).
+   */
+  params: () => /** @type {Record<string, string>} */ ({ ...url }),
+  /** Changes URL state and pushes a history entry. @param {Record<string, string>} patch */
+  go(patch) { go(patch); },
+  /** Called with params() after every URL change. @param {(params: Record<string, string>) => void} fn */
+  onParams(fn) {
+    paramListeners.add(fn);
+    return () => { paramListeners.delete(fn); };
+  },
+  /**
+   * Reactive admin call (#541): fetches, then refetches on a change
+   * event for an id in the result or matching opts.watch, coalesced to
+   * once a second. subscribe(fn) gets {data, error, loading}.
+   * @param {string} method @param {any} [params] @param {{ watch?: Record<string, string> }} [opts]
+   */
+  query(method, params, opts) { return makeQuery(method, params, opts); },
+  /**
+   * Whether an enabled plugin contributes to slot for target (#541).
+   * @param {string} slot @param {Record<string, any>} [target]
+   */
+  has(slot, target) { return !!firstFor(slot, target); },
+  /**
+   * Mounts the first contribution to slot matching target inside host
+   * (#541): how one plugin hosts another, e.g. artifact renderers.
+   * Returns null when nothing matches, else { context(c), destroy() }.
+   * @param {HTMLElement} host @param {string} slot @param {Record<string, any>} target @param {any} [context]
+   */
+  mount(host, slot, target, context) { return mountSlot(host, slot, target, context); },
   /**
    * Opens a session in the side panel (full screen on a phone). item is
    * the attention item it resolves, "kind:id" (#535).
@@ -133,6 +164,101 @@ export const deskApi = Object.freeze({
     test: async () => { await testPush(); return { state: push.state, error: push.error }; },
   }),
 });
+
+/** @param {string} slot @param {Record<string, any>} [target] */
+function firstFor(slot, target) {
+  return contributions(slot).find((x) => matches(x.c.match, target ?? {})) ?? null;
+}
+
+/** @param {HTMLElement} host @param {string} slot @param {Record<string, any>} target @param {any} context */
+function mountSlot(host, slot, target, context) {
+  const hit = firstFor(slot, target);
+  if (!hit) return null;
+  /** @type {any} */
+  let el = null;
+  let gone = false;
+  let ctx = context ?? {};
+  loadPlugin(hit.plugin)
+    .then(() => whenDefined(hit.c.element))
+    .then(() => {
+      if (gone) return;
+      el = document.createElement(hit.c.element);
+      el.api = deskApi;
+      el.config = hit.plugin.config ?? {};
+      el.context = ctx;
+      host.replaceChildren(el);
+    })
+    .catch((e) => {
+      if (gone) return;
+      const d = document.createElement('div');
+      d.className = 'card plugin-error';
+      d.dataset.testid = 'plugin-error';
+      d.textContent = `Plugin ${hit.plugin.name} failed: ${e?.message || e}`;
+      host.replaceChildren(d);
+    });
+  return {
+    /** @param {any} c */
+    context(c) { ctx = c ?? {}; if (el) el.context = ctx; },
+    destroy() { gone = true; host.replaceChildren(); el = null; },
+  };
+}
+
+/** @type {Set<(p: Record<string, string>) => void>} */
+const paramListeners = new Set();
+
+onUrl(() => {
+  const p = { ...url };
+  for (const fn of paramListeners) {
+    try { fn(p); } catch (e) { console.error('desk plugin params handler', e); }
+  }
+});
+
+/** Collects ticket ids in a result so a change to one refetches it. @param {any} v @param {Set<string>} out */
+function idsOf(v, out, depth = 0) {
+  if (!v || typeof v !== 'object' || depth > 4) return out;
+  if (Array.isArray(v)) { for (const x of v) idsOf(x, out, depth + 1); return out; }
+  if (typeof v.id === 'string') out.add(v.id);
+  for (const k of ['ticket', 'run', 'batch', 'steps', 'tickets', 'items']) if (k in v) idsOf(v[k], out, depth + 1);
+  return out;
+}
+
+/** @param {string} method @param {any} params @param {{ watch?: Record<string, string> }} [opts] */
+function makeQuery(method, params, opts) {
+  let state = { data: /** @type {any} */ (null), error: '', loading: true };
+  /** @type {Set<(s: any) => void>} */
+  const subs = new Set();
+  let ids = new Set();
+  let timer = 0;
+  let closed = false;
+  const emit = () => { for (const fn of subs) fn({ ...state }); };
+  const load = () => {
+    deskApi.call(method, params).then(
+      (d) => { if (closed) return; ids = idsOf(d, new Set()); state = { data: d, error: '', loading: false }; emit(); },
+      (e) => { if (closed) return; state = { ...state, error: String(e?.message || e), loading: false }; emit(); },
+    );
+  };
+  const watch = Object.entries(opts?.watch || {});
+  const off = deskApi.subscribe((ev) => {
+    const hit = (ev.id && ids.has(ev.id)) || (watch.length > 0 && watch.every(([k, v]) => ev[k] === v)) || ev.kind === 'lagged';
+    if (hit && !timer) timer = window.setTimeout(() => { timer = 0; load(); }, 1000);
+  });
+  load();
+  return {
+    get data() { return state.data; },
+    get error() { return state.error; },
+    get loading() { return state.loading; },
+    refresh: load,
+    /** @param {(s: any) => void} fn */
+    subscribe(fn) {
+      subs.add(fn);
+      fn({ ...state });
+      return () => {
+        subs.delete(fn);
+        if (subs.size === 0) { closed = true; off(); clearTimeout(timer); }
+      };
+    },
+  };
+}
 
 export const who = $state({ user: '' });
 

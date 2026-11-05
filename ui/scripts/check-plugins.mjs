@@ -1,8 +1,9 @@
 // Fails the build when a built-in plugin imports shell internals (#517):
-// a relative import that leaves its plugin directory, or any import of
-// ui/src. Built-ins must get everything from the api object, which is
-// what proves the API is enough for user plugins.
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+// a relative import that leaves its plugin directory for anywhere but
+// ui/kit (#541), or any import of ui/shell. Built-ins talk to Desk only
+// through the api object, which proves the API is enough for user
+// plugins; ui/kit is plain helpers each plugin bundles its own copy of.
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep } from 'node:path';
 
 const importRe = /(?:^|[\s;])(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\s*\(\s*['"]([^'"]+)['"]\s*\)|^\s*import\s*['"]([^'"]+)['"]/gm;
@@ -22,27 +23,43 @@ function files(dir) {
  */
 export function check(pluginsDir) {
   const bad = [];
+  const kit = resolve(pluginsDir, '..', 'kit');
+  const shell = resolve(pluginsDir, '..', 'shell');
+  // Kit files must not reach into the shell either.
+  if (existsSync(kit)) {
+    for (const f of files(kit)) {
+      for (const spec of imports(f)) {
+        const to = spec.startsWith('.') ? resolve(join(f, '..'), spec) : '';
+        if ((to && relative(kit, to).startsWith('..')) || spec.includes('/shell/')) bad.push(`kit/${relative(kit, f).split(sep).join('/')}: ${spec}`);
+      }
+    }
+  }
   for (const name of readdirSync(pluginsDir)) {
     const root = join(pluginsDir, name);
     if (!statSync(root).isDirectory()) continue;
     for (const f of files(root)) {
-      const text = readFileSync(f, 'utf8');
-      for (const m of text.matchAll(importRe)) {
-        const spec = m[1] || m[2] || m[3];
-        if (!spec) continue;
-        const outside = spec.startsWith('.') && relative(root, resolve(join(f, '..'), spec)).startsWith('..');
-        if (outside || spec.includes('/src/') || spec.startsWith('src/')) bad.push(`${relative(pluginsDir, f).split(sep).join('/')}: ${spec}`);
+      for (const spec of imports(f)) {
+        const to = spec.startsWith('.') ? resolve(join(f, '..'), spec) : '';
+        const outside = to && relative(root, to).startsWith('..') && relative(kit, to).startsWith('..');
+        const intoShell = (to && !relative(shell, to).startsWith('..')) || spec.includes('/shell/') || spec.startsWith('shell/');
+        if (outside || intoShell) bad.push(`${relative(pluginsDir, f).split(sep).join('/')}: ${spec}`);
       }
     }
   }
   return bad;
 }
 
+/** @param {string} f @returns {string[]} */
+function imports(f) {
+  const text = readFileSync(f, 'utf8');
+  return [...text.matchAll(importRe)].map((m) => m[1] || m[2] || m[3]).filter(Boolean);
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = process.argv[2] || new URL('../plugins', import.meta.url).pathname;
   const bad = check(dir);
   if (bad.length) {
-    console.error('ui/plugins must not import the shell (ui/src); use the api object:\n' + bad.join('\n'));
+    console.error('ui/plugins may import only their own files and ui/kit, never ui/shell; use the api object:\n' + bad.join('\n'));
     process.exit(1);
   }
 }

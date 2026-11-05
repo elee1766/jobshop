@@ -100,6 +100,22 @@ Added in api version 2 (#535; declare `"api": ">=2"`):
   `unsupported`, `unavailable` (Desk without `--push`), `denied`, `off`,
   `on`.
 
+Added in api version 3 (#541; declare `"api": ">=3"`). Every
+built-in view (Work, Activity, Sessions, Pools, Artifacts, the ticket
+details in the drawer) is now a plugin using only these:
+
+- `params()` keeps every URL key, so a view stores its filters there;
+  `go(patch)` changes them with a history entry and `onParams(fn)`
+  follows them (back and forward included).
+- `query(method, params, {watch})`: a reactive `call`. It refetches,
+  coalesced to once a second, on an event for an id in the result or
+  one matching `watch`. `subscribe(fn)` gets `{data, error, loading}`.
+- `has(slot, target)`, `mount(host, slot, target, context)`: host
+  another plugin's contribution, e.g. an `artifact` renderer.
+
+Drawer plugins get `{ticket, run, trace, comments}`; built-ins come
+first, so the ticket details lead.
+
 Example: create a ticket with meta, then follow it.
 
 ```js
@@ -139,7 +155,7 @@ apply. Prefer the `--desk-*` tokens (#535), which Desk swaps for
 `--desk-accent-soft`; states `--desk-ok`, `--desk-warn`, `--desk-bad`;
 `--desk-shadow`, `--desk-radius`, `--desk-font`, `--desk-mono`,
 `--desk-tabbar`. The short names (`var(--bad)`, `var(--muted)`) in
-`ui/src/app.css` still work. Classes
+`ui/shell/app.css` still work. Classes
 Desk defines (`card`, `faint`, `mono`) work too. A built-in's own CSS
 loads through a `<link>` to its `style.css`, since the CSP blocks inline
 styles; do the same, or set styles from JS with `element.style`.

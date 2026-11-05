@@ -26,6 +26,27 @@ export interface DeskApi {
   url(path: string): string;
   /** Seq of the last event Desk received. */
   readonly lastSeq: number;
+  /** Desk's URL state: view, ticket, session, item and any other key (api 3 keeps every key). */
+  params(): Record<string, string>;
+  /** Change URL state and push a history entry (api 3, #541). */
+  go(patch: Record<string, string>): void;
+  /** Called with params() after every URL change (api 3). Returns an unsubscribe function. */
+  onParams(fn: (params: Record<string, string>) => void): () => void;
+  /** Reactive admin call (api 3): refetches when a result id or opts.watch matches an event. */
+  query<M extends keyof RpcMethods>(method: M, params?: RpcMethods[M]["params"], opts?: { watch?: Record<string, string> }): DeskQuery<RpcMethods[M]["result"]>;
+  /** Whether an enabled plugin contributes to slot for target (api 3). */
+  has(slot: string, target?: Record<string, unknown>): boolean;
+  /** Mount the first contribution to slot matching target in host (api 3). Null when none matches. */
+  mount(host: HTMLElement, slot: string, target: Record<string, unknown>, context?: unknown): { context(c: unknown): void; destroy(): void } | null;
+}
+
+/** State of an api.query. */
+export interface DeskQuery<T> {
+  readonly data: T | null;
+  readonly error: string;
+  readonly loading: boolean;
+  refresh(): void;
+  subscribe(fn: (s: { data: T | null; error: string; loading: boolean }) => void): () => void;
 }
 
 /** What Desk sets on a plugin element: api, config, and context per slot. */
