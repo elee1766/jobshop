@@ -716,6 +716,7 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 	}
 	a, err := sess()
 	require.NoError(t, err)
+	assert.Regexp(t, `^js-s-[0-9a-z]{13}$`, a.ID, "session ids carry the s tag (#615)")
 	_, err = sess()
 	assert.ErrorIs(t, err, store.ErrAlreadyExist)
 	_, err = s.CloseTicket(ctx, "test", a.ID, nil, "stopped")
