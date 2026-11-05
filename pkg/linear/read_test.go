@@ -28,7 +28,7 @@ func recorded(t *testing.T, pick func(c call) string) (*linear.Client, *[]call) 
 		calls = append(calls, c)
 		name := pick(c)
 		if name == "" {
-			_, _ = io.WriteString(w, `{"data":{"teams":{"nodes":[]}}}`)
+			_, _ = io.WriteString(w, `{"data":{"team":null}}`)
 			return
 		}
 		data, err := os.ReadFile(filepath.Join("testdata", name))

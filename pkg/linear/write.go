@@ -236,28 +236,25 @@ type member struct {
 
 // teamIDQuery reads only the team id. States, labels and members come
 // from one paged query each (teamConn): asking for all three at 250 in
-// one query was rejected as "Query too complex" (#680, like #653).
-const teamIDQuery = `query($team: String!) { teams(filter: {key: {eq: $team}}) { nodes { id key } } }`
+// one query was rejected as "Query too complex" (#680, like #653). Both
+// read the team as team(id: key), not teams(filter:), which Linear
+// scores as a list and rejected even for one connection (#683).
+const teamIDQuery = `query($team: String!) { team(id: $team) { id key } }`
 
 // teamNeed says which lists team reads.
 type teamNeed struct{ states, labels, members bool }
 
 func (c *Client) team(ctx context.Context, key string, need teamNeed) (teamInfo, error) {
 	var r struct {
-		Teams struct {
-			Nodes []struct {
-				ID  string `json:"id"`
-				Key string `json:"key"`
-			} `json:"nodes"`
-		} `json:"teams"`
+		Team *TeamInfo `json:"team"`
 	}
 	if err := c.do(ctx, teamIDQuery, map[string]any{"team": key}, &r); err != nil {
 		return teamInfo{}, err
 	}
-	if len(r.Teams.Nodes) == 0 {
+	if r.Team == nil {
 		return teamInfo{}, fmt.Errorf("linear: team %s not found", key)
 	}
-	t := teamInfo{ID: r.Teams.Nodes[0].ID, Key: r.Teams.Nodes[0].Key}
+	t := teamInfo{ID: r.Team.ID, Key: r.Team.Key}
 	if need.states {
 		if err := teamConn(ctx, c, t.Key, "states", "id name type", &t.States); err != nil {
 			return teamInfo{}, err
@@ -278,9 +275,9 @@ func (c *Client) team(ctx context.Context, key string, need teamNeed) (teamInfo,
 
 // teamConn reads one connection of a team, paged like Catalog, into out.
 func teamConn[T any](ctx context.Context, c *Client, team, conn, fields string, out *[]T) error {
-	q := `query($team: String!, $first: Int!, $after: String) { teams(filter: {key: {eq: $team}}) { nodes {
+	q := `query($team: String!, $first: Int!, $after: String) { team(id: $team) {
   ` + conn + `(first: $first, after: $after) { nodes { ` + fields + ` } pageInfo { hasNextPage endCursor } }
-} } }`
+} }`
 	type page struct {
 		Nodes    []T `json:"nodes"`
 		PageInfo struct {
@@ -291,18 +288,16 @@ func teamConn[T any](ctx context.Context, c *Client, team, conn, fields string, 
 	vars := map[string]any{"team": team, "first": catalogPage}
 	for range catalogMaxPages {
 		var r struct {
-			Teams struct {
-				Nodes []map[string]json.RawMessage `json:"nodes"`
-			} `json:"teams"`
+			Team map[string]json.RawMessage `json:"team"`
 		}
 		if err := c.do(ctx, q, vars, &r); err != nil {
 			return err
 		}
-		if len(r.Teams.Nodes) == 0 {
+		if r.Team == nil {
 			return fmt.Errorf("linear: team %s not found", team)
 		}
 		var p page
-		if raw := r.Teams.Nodes[0][conn]; len(raw) > 0 {
+		if raw := r.Team[conn]; len(raw) > 0 {
 			if err := json.Unmarshal(raw, &p); err != nil {
 				return fmt.Errorf("linear: %s of team %s: %w", conn, team, err)
 			}

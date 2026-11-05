@@ -1,1 +1,1 @@
-{"data":{"teams":{"nodes":[{"states":{"nodes":[{"id":"st-todo","name":"Todo","type":"unstarted"},{"id":"st-done","name":"Done","type":"completed"}],"pageInfo":{"hasNextPage":false,"endCursor":"c-s1"}}}]}}}
+{"data":{"team":{"states":{"nodes":[{"id":"st-todo","name":"Todo","type":"unstarted"},{"id":"st-done","name":"Done","type":"completed"}],"pageInfo":{"hasNextPage":false,"endCursor":"c-s1"}}}}}
