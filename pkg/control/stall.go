@@ -82,7 +82,13 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 		if err != nil {
 			return nil, "", err
 		}
-		if r := stallHeld(runs, tr, now); r != "" {
+		r := stallHeld(runs, tr, now)
+		if r == "" {
+			if r, err = c.stallSubjectHeld(ctx, s); err != nil {
+				return nil, "", err
+			}
+		}
+		if r != "" {
 			reasons = append(reasons, s.key()+": "+r)
 			continue
 		}
@@ -119,6 +125,42 @@ func stallHeld(runs []store.Ticket, tr config.Trigger, now time.Time) string {
 		}
 	}
 	return ""
+}
+
+// stallSubjectHeld says why a stall may not fire from any trigger (#704):
+// another trigger's run for the same key is open, or one of them ended in
+// an escalation that is still open. Keyed on the stall, not the trigger,
+// so two packs watching one subject start one check.
+func (c *Controller) stallSubjectHeld(ctx context.Context, s stall) (string, error) {
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Key: s.key()})
+	if err != nil {
+		return "", err
+	}
+	for _, r := range runs {
+		if !isStallRun(r) {
+			continue
+		}
+		if r.Status != store.StatusClosed {
+			return "run " + r.ID + " is open", nil
+		}
+		esc, err := c.store.List(ctx, store.Filter{Label: needsHumanLabel, MetaPack: runMetaPack, MetaKey: "id", MetaValue: r.ID})
+		if err != nil {
+			return "", err
+		}
+		for _, e := range esc {
+			if e.Status != store.StatusClosed {
+				return "escalation " + e.ID + " of run " + r.ID + " is open", nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// isStallRun: the run was started by a stall trigger (fireStall sets
+// meta.trigger.key to <trigger>/stall:<signal>:<subject>).
+func isStallRun(r store.Ticket) bool {
+	_, k, ok := strings.Cut(metaString(r.Meta, triggerPack, "key"), "/")
+	return ok && strings.HasPrefix(k, "stall:")
 }
 
 // fireStall starts the trigger's workflow for one stall with key
@@ -444,7 +486,9 @@ func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after t
 	}
 	var out []stall
 	for _, r := range runs {
-		if r.Status == store.StatusClosed {
+		if r.Status == store.StatusClosed || isStallRun(r) {
+			// A stall check that needs a human already escalated: a check
+			// on it would only add another escalation (#704).
 			continue
 		}
 		last, err := c.lastActivity(ctx, r)
