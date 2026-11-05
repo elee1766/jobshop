@@ -44,3 +44,5 @@ Sandbox and isolation tests skip silently when bwrap, newuidmap, pasta or
 nft are not on PATH: run them under `PATH=$PATH:/run/wrappers/bin nix shell
 nixpkgs#bubblewrap nixpkgs#passt nixpkgs#nftables -c go test -v ...` and
 check the output for SKIP.
+npm is not on agent PATH: in ui/ run `nix shell nixpkgs#nodejs_22 -c sh -c
+'npm ci && npm run check && npm run build'`.
