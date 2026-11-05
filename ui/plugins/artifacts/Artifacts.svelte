@@ -1,14 +1,16 @@
 <script>
-  import { url, go } from '../lib/url.svelte.js';
-  import { resource, post, api } from '../lib/api.svelte.js';
-  import { ago, bytes, markdown } from '../lib/format.js';
-  import PluginSlot from './PluginSlot.svelte';
-  import { contributions, matches } from '../lib/plugins.svelte.js';
+  import { resource, params, errText, slot } from '../../kit/plugin.svelte.js';
+  import { ago, bytes, markdown } from '../../kit/format.js';
+
+  /** @type {{ api: any, context?: any, config?: any }} */
+  let { api } = $props();
+  const url = params(() => api);
+  const go = (/** @type {Record<string, string>} */ p) => api.go(p);
 
   // Artifacts (#508): deliverables from agents. Unread first; `a` acks
   // and moves to the next, j/k move, o opens the source ticket.
 
-  const list = resource(() => {
+  const list = resource(() => api, () => {
     const q = new URLSearchParams();
     if (!url.read) q.set('unread', '1');
     if (url.trigger) q.set('trigger', url.trigger);
@@ -18,7 +20,7 @@
   const items = $derived(/** @type {any[]} */ (list.data ?? []));
   const current = $derived(url.artifact || items[0]?.ticket.id || '');
   // With nothing selected this re-reads the list; `shown` ignores it.
-  const one = resource(() => (current ? 'api/artifacts/' + encodeURIComponent(current) : 'api/artifacts?unread=1'));
+  const one = resource(() => api, () => (current ? 'api/artifacts/' + encodeURIComponent(current) : 'api/artifacts?unread=1'));
   const shown = $derived(current && one.data?.ticket?.id === current ? one.data : null);
   let ackError = $state('');
 
@@ -35,10 +37,10 @@
     const next = items[i + 1] ?? items[i - 1];
     ackError = '';
     try {
-      await post('api/artifacts/' + encodeURIComponent(current) + '/ack', {});
+      await api.post('api/artifacts/' + encodeURIComponent(current) + '/ack', {});
       go({ artifact: url.read ? current : next && next.ticket.id !== current ? next.ticket.id : '' });
     } catch (e) {
-      ackError = String(/** @type {any} */ (e).message || e);
+      ackError = errText(e);
     }
   }
 
@@ -61,7 +63,7 @@
   /** @param {any} f */
   const isText = (f) => !f.pruned && f.size <= 256 * 1024 && (/^text\//.test(f.type || '') || f.type === 'application/json' || !f.type);
   /** @param {string} name */
-  const fileURL = (name) => api('api/artifacts/' + encodeURIComponent(current) + '/files/' + encodeURIComponent(name));
+  const fileURL = (name) => api.url('api/artifacts/' + encodeURIComponent(current) + '/files/' + encodeURIComponent(name));
 
   /** @param {string} name */
   async function text(name) {
@@ -74,11 +76,9 @@
   const source = (a) => a.artifact.trigger || a.artifact.pool || '';
 
   /** An artifact plugin (#517) matched by MIME type or extension. @param {any} f */
-  const renderer = (f) => {
-    if (f.pruned) return null;
-    const ext = (f.name.match(/\.([^.]+)$/)?.[1] || '').toLowerCase();
-    return contributions('artifact').find((x) => matches(x.c.match, { type: (f.type || '').split(';')[0], ext })) ?? null;
-  };
+  const target = (f) => ({ type: (f.type || '').split(';')[0], ext: (f.name.match(/\.([^.]+)$/)?.[1] || '').toLowerCase() });
+  /** @param {any} f */
+  const renderer = (f) => !f.pruned && api.has('artifact', target(f));
 </script>
 
 <svelte:window onkeydown={key} />
@@ -152,8 +152,7 @@
                 <span class="faint">{bytes(f.size)}</span>
               </div>
               {#if renderer(f)}
-                {@const r = renderer(f)}
-                {#if r}<PluginSlot plugin={r.plugin} element={r.c.element} context={{ artifact: shown, file: { ...f, url: fileURL(f.name) } }} />{/if}
+                <div use:slot={{ api, slot: 'artifact', target: target(f), context: { artifact: shown, file: { ...f, url: fileURL(f.name) } } }}></div>
               {:else if isImage(f)}
                 <img src={fileURL(f.name)} alt={f.name} />
               {:else if isText(f)}

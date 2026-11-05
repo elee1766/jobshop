@@ -1,14 +1,16 @@
 <script>
-  import { resource, post, live } from '../lib/api.svelte.js';
-  import { ago } from '../lib/format.js';
+  import { resource, errText } from '../../kit/plugin.svelte.js';
+  import { ago } from '../../kit/format.js';
 
-  const pools = resource(() => 'api/pools');
+  /** @type {{ api: any, context?: any, config?: any }} */
+  let { api } = $props();
+  const pools = resource(() => api, () => 'api/pools');
   let actErr = $state('');
 
   /** @param {any} body */
   async function scale(body) {
     actErr = '';
-    try { await post('api/pool/scale', body); live.tick++; } catch (e) { actErr = String(/** @type {any} */ (e).message || e); }
+    try { await api.post('api/pool/scale', body); pools.refresh(); } catch (e) { actErr = errText(e); }
   }
 
   /** @param {any} sp */

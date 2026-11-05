@@ -54,6 +54,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"SessionKeyUnique", testSessionKeyUnique},
 		{"ListMetaNewest", testListMetaNewest},
 		{"ListCreatedBy", testListCreatedBy},
+		{"ListFilters", testListFilters},
 		{"Orphaned", testOrphaned},
 		{"Runs", testRuns},
 		{"StepFailures", testStepFailures},
@@ -123,6 +124,45 @@ func testListMetaNewest(t *testing.T, s store.Store, c *Clock) {
 	l, err = s.List(t.Context(), store.Filter{MetaPack: `trigger"."name`, MetaKey: "name", MetaValue: "x"})
 	require.NoError(t, err)
 	assert.Empty(t, l)
+}
+
+func testListFilters(t *testing.T, s store.Store, c *Clock) {
+	ctx := t.Context()
+	withMeta := func(meta string) func(*store.NewTicket) {
+		return func(n *store.NewTicket) { n.Meta = json.RawMessage(meta) }
+	}
+	a := task(t, s, "a", "p", withMeta(`{"myflow":{"stage":"review","owner":"x"}}`))
+	c.Advance(time.Second)
+	b := task(t, s, "b", "p", withMeta(`{"myflow":{"stage":"review","owner":"y"}}`))
+	c.Advance(time.Second)
+	cc := task(t, s, "c", "p", withMeta(`{"myflow":{"stage":"done","owner":"x"}}`))
+
+	list := func(f store.Filter) []string {
+		t.Helper()
+		l, err := s.List(ctx, f)
+		require.NoError(t, err)
+		return ids(l)
+	}
+	assert.Equal(t, []string{a.ID, b.ID}, list(store.Filter{Meta: []store.MetaMatch{{Pack: "myflow", Key: "stage", Value: "review"}}}))
+	assert.Equal(t, []string{a.ID}, list(store.Filter{Meta: []store.MetaMatch{{Pack: "myflow", Key: "stage", Value: "review"}, {Pack: "myflow", Key: "owner", Value: "x"}}}))
+	assert.Equal(t, []string{a.ID, cc.ID}, list(store.Filter{MetaPack: "myflow", MetaKey: "owner", MetaValue: "x"}))
+
+	// Cursor paging in both orders.
+	assert.Equal(t, []string{a.ID}, list(store.Filter{Limit: 1}))
+	assert.Equal(t, []string{b.ID}, list(store.Filter{Limit: 1, After: a.ID}))
+	assert.Equal(t, []string{cc.ID}, list(store.Filter{After: b.ID}))
+	assert.Equal(t, []string{b.ID, a.ID}, list(store.Filter{Newest: true, After: cc.ID}))
+
+	// Since: updated at or after.
+	c.Advance(time.Minute)
+	mark := c.Now()
+	b2 := "b2"
+	_, err := s.Update(ctx, "test", b.ID, store.Update{Title: &b2})
+	require.NoError(t, err)
+	assert.Equal(t, []string{b.ID}, list(store.Filter{Since: mark}))
+
+	_, err = s.List(ctx, store.Filter{Meta: make([]store.MetaMatch, store.MaxMetaFilters+1)})
+	require.ErrorIs(t, err, store.ErrInvalid)
 }
 
 func testListCreatedBy(t *testing.T, s store.Store, _ *Clock) {

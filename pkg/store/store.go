@@ -198,10 +198,26 @@ type Filter struct {
 	// MetaPack and MetaKey with MetaValue match tickets whose
 	// meta[MetaPack][MetaKey] is the string MetaValue.
 	MetaPack, MetaKey, MetaValue string
+	// Meta adds more meta matches, all required (#541). With MetaPack
+	// at most MaxMetaFilters in total.
+	Meta []MetaMatch
+	// Workflow and State match fields.workflow and fields.state.
+	Workflow, State string
+	// Since keeps tickets updated at or after it.
+	Since time.Time
+	// After is a cursor: the id of the last ticket of the previous page,
+	// in the same order.
+	After string
 	// Newest orders newest first instead of by priority.
 	Newest bool
 	Limit  int // 0 means DefaultLimit
 }
+
+// MetaMatch is one meta[Pack][Key] == Value condition.
+type MetaMatch struct{ Pack, Key, Value string }
+
+// MaxMetaFilters bounds the meta matches in one List.
+const MaxMetaFilters = 3
 
 // DefaultLimit bounds List and Ready when no limit is given.
 const DefaultLimit = 500

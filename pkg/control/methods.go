@@ -7,7 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
@@ -214,6 +217,28 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	f := store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
 		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit, Newest: p.Newest,
+		Workflow: p.Workflow, State: p.State, Since: p.Since, After: p.After,
+	}
+	if p.Run != "" {
+		if p.ParentID != "" && p.ParentID != p.Run {
+			return nil, fmt.Errorf("%w: run and parent_id differ", store.ErrInvalid)
+		}
+		f.ParentID = p.Run
+	}
+	switch p.Order {
+	case "", "priority":
+	case "newest":
+		f.Newest = true
+	default:
+		return nil, fmt.Errorf("%w: order %q: want priority or newest", store.ErrInvalid, p.Order)
+	}
+	keys := slices.Sorted(maps.Keys(p.Meta))
+	for _, k := range keys {
+		pack, key, ok := strings.Cut(k, ".")
+		if !ok || pack == "" || key == "" {
+			return nil, fmt.Errorf("%w: meta filter %q: want pack.key", store.ErrInvalid, k)
+		}
+		f.Meta = append(f.Meta, store.MetaMatch{Pack: pack, Key: key, Value: p.Meta[k]})
 	}
 	if p.Report != "" {
 		f.MetaPack, f.MetaKey, f.MetaValue = reportMetaPack, "state", p.Report

@@ -113,6 +113,11 @@ type Querier interface {
 	// a bare bound LIMIT makes SQLite re-prepare a cached statement each
 	// time the value changes, which was a fifth of the control tests' CPU
 	// (#433). The expression is evaluated at run time instead.
+	//
+	// A NULL argument turns its filter off. meta_pack/key/value 1-3 are up
+	// to store.MaxMetaFilters meta matches, all required; workflow and
+	// state match the f_ columns; since bounds updated_at; after is a
+	// cursor, the id of the last ticket of the previous page (#541).
 	ListTickets(ctx context.Context, arg ListTicketsParams) ([]Ticket, error)
 	// ListTicketsNewest is ListTickets ordered newest first. sqlc's sqlite
 	// engine does not bind parameters in ORDER BY, so it is a second query.

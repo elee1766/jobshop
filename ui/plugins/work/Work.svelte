@@ -1,10 +1,14 @@
 <script>
-  import { url, go } from '../lib/url.svelte.js';
-  import { resource } from '../lib/api.svelte.js';
-  import { ago, fields, tone, links } from '../lib/format.js';
+  import { resource, params } from '../../kit/plugin.svelte.js';
+  import { ago, fields, tone, links } from '../../kit/format.js';
+
+  /** @type {{ api: any, context?: any, config?: any }} */
+  let { api } = $props();
+  const url = params(() => api);
+  const go = (/** @type {Record<string, string>} */ p) => api.go(p);
 
   const states = ['', 'running', 'needs_human', 'done', 'cancelled'];
-  const work = resource(() => 'api/work' + (url.state ? '?state=' + encodeURIComponent(url.state) : ''));
+  const work = resource(() => api, () => 'api/work' + (url.state ? '?state=' + encodeURIComponent(url.state) : ''));
 </script>
 
 <header class="vh">

@@ -1,7 +1,6 @@
 <script>
-  import { url, go } from '../lib/url.svelte.js';
-  import { resource } from '../lib/api.svelte.js';
-  import { ago, safe } from '../lib/format.js';
+  import { resource, params } from '../../kit/plugin.svelte.js';
+  import { ago, safe } from '../../kit/format.js';
   import GitCommit from '@lucide/svelte/icons/git-commit-horizontal';
   import GitPullRequest from '@lucide/svelte/icons/git-pull-request';
   import GitMerge from '@lucide/svelte/icons/git-merge';
@@ -17,12 +16,17 @@
   import UserRound from '@lucide/svelte/icons/user-round';
   import ActivityIcon from '@lucide/svelte/icons/activity';
 
+  /** @type {{ api: any, context?: any, config?: any }} */
+  let { api } = $props();
+  const url = params(() => api);
+  const go = (/** @type {Record<string, string>} */ p) => api.go(p);
+
   // Filters live in the URL: source, repo, kind, who (humans default).
   const kinds = ['', 'push', 'pr', 'merge', 'review', 'review_comment', 'comment', 'issue', 'ci', 'branch', 'release', 'state', 'assignee'];
   const whos = ['humans', 'bots', 'all'];
   const who = $derived(url.who || 'humans');
 
-  const feed = resource(() => {
+  const feed = resource(() => api, () => {
     const q = new URLSearchParams({ since: '168h', limit: '300' });
     if (url.source) q.set('source', url.source);
     if (url.repo) q.set('repo', url.repo);

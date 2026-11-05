@@ -1,0 +1,9 @@
+{
+  "name": "pools",
+  "version": "1",
+  "entry": "index.js",
+  "api": ">=3",
+  "contributes": [
+    { "slot": "view", "element": "desk-pools-view", "id": "pools", "title": "Pools" }
+  ]
+}

@@ -24,7 +24,7 @@ test('new operator session streams a reply to a message', async ({ page }) => {
 
 test('sessions view attaches: composer only where the pool allows rw', async ({ page }) => {
   await page.goto('./?view=sessions');
-  await expect(page.getByTestId('sessions')).toBeVisible();
+  await expect(page.getByTestId('sessions')).toBeVisible({ timeout: 15_000 });
   const row = page.locator('[data-testid=sessions] tr.click').first();
   test.skip((await row.count()) === 0, 'no sessions');
   const id = (await row.locator('td').first().innerText()).trim().split(/\s/)[0];

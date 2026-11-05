@@ -111,6 +111,11 @@ WHERE id = sqlc.arg(id)
 -- a bare bound LIMIT makes SQLite re-prepare a cached statement each
 -- time the value changes, which was a fifth of the control tests' CPU
 -- (#433). The expression is evaluated at run time instead.
+--
+-- A NULL argument turns its filter off. meta_pack/key/value 1-3 are up
+-- to store.MaxMetaFilters meta matches, all required; workflow and
+-- state match the f_ columns; since bounds updated_at; after is a
+-- cursor, the id of the last ticket of the previous page (#541).
 -- name: ListTickets :many
 SELECT * FROM tickets
 WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
@@ -120,11 +125,25 @@ WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
   AND (sqlc.narg(holder) IS NULL OR holder = sqlc.narg(holder))
   AND (sqlc.narg(parent_id) IS NULL OR parent_id = sqlc.narg(parent_id))
   AND (sqlc.narg(created_by) IS NULL OR created_by = sqlc.narg(created_by))
+  AND (sqlc.narg(workflow) IS NULL OR f_workflow = sqlc.narg(workflow))
+  AND (sqlc.narg(state) IS NULL OR f_state = sqlc.narg(state))
+  AND tickets.updated_at >= sqlc.arg(since)
   AND (sqlc.narg(label) IS NULL OR EXISTS (
     SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = sqlc.narg(label)))
   AND (sqlc.narg(meta_pack) IS NULL OR EXISTS (
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
       AND m.pack = sqlc.narg(meta_pack) AND m.mkey = sqlc.narg(meta_key) AND m.value = sqlc.narg(meta_value)))
+  AND (sqlc.narg(meta_pack2) IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = sqlc.narg(meta_pack2) AND m.mkey = sqlc.narg(meta_key2) AND m.value = sqlc.narg(meta_value2)))
+  AND (sqlc.narg(meta_pack3) IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = sqlc.narg(meta_pack3) AND m.mkey = sqlc.narg(meta_key3) AND m.value = sqlc.narg(meta_value3)))
+  AND (sqlc.narg(after) IS NULL OR EXISTS (
+    SELECT 1 FROM tickets a WHERE a.id = sqlc.narg(after)
+      AND (tickets.priority > a.priority
+        OR (tickets.priority = a.priority AND (tickets.created_at > a.created_at
+          OR (tickets.created_at = a.created_at AND tickets.id > a.id))))))
 ORDER BY priority, created_at, id
 LIMIT CAST(sqlc.arg(max_rows) AS INTEGER);
 
@@ -139,11 +158,24 @@ WHERE (sqlc.narg(project) IS NULL OR project = sqlc.narg(project))
   AND (sqlc.narg(holder) IS NULL OR holder = sqlc.narg(holder))
   AND (sqlc.narg(parent_id) IS NULL OR parent_id = sqlc.narg(parent_id))
   AND (sqlc.narg(created_by) IS NULL OR created_by = sqlc.narg(created_by))
+  AND (sqlc.narg(workflow) IS NULL OR f_workflow = sqlc.narg(workflow))
+  AND (sqlc.narg(state) IS NULL OR f_state = sqlc.narg(state))
+  AND tickets.updated_at >= sqlc.arg(since)
   AND (sqlc.narg(label) IS NULL OR EXISTS (
     SELECT 1 FROM labels l WHERE l.ticket_id = tickets.id AND l.label = sqlc.narg(label)))
   AND (sqlc.narg(meta_pack) IS NULL OR EXISTS (
     SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
       AND m.pack = sqlc.narg(meta_pack) AND m.mkey = sqlc.narg(meta_key) AND m.value = sqlc.narg(meta_value)))
+  AND (sqlc.narg(meta_pack2) IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = sqlc.narg(meta_pack2) AND m.mkey = sqlc.narg(meta_key2) AND m.value = sqlc.narg(meta_value2)))
+  AND (sqlc.narg(meta_pack3) IS NULL OR EXISTS (
+    SELECT 1 FROM ticket_meta m WHERE m.ticket_id = tickets.id
+      AND m.pack = sqlc.narg(meta_pack3) AND m.mkey = sqlc.narg(meta_key3) AND m.value = sqlc.narg(meta_value3)))
+  AND (sqlc.narg(after) IS NULL OR EXISTS (
+    SELECT 1 FROM tickets a WHERE a.id = sqlc.narg(after)
+      AND (tickets.created_at < a.created_at
+        OR (tickets.created_at = a.created_at AND tickets.id < a.id))))
 ORDER BY created_at DESC, id DESC
 LIMIT CAST(sqlc.arg(max_rows) AS INTEGER);
 
