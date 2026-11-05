@@ -143,8 +143,8 @@ func testListFilters(t *testing.T, s store.Store, c *Clock) {
 		require.NoError(t, err)
 		return ids(l)
 	}
-	assert.Equal(t, []string{a.ID, b.ID}, list(store.Filter{Meta: []store.MetaMatch{{"myflow", "stage", "review"}}}))
-	assert.Equal(t, []string{a.ID}, list(store.Filter{Meta: []store.MetaMatch{{"myflow", "stage", "review"}, {"myflow", "owner", "x"}}}))
+	assert.Equal(t, []string{a.ID, b.ID}, list(store.Filter{Meta: []store.MetaMatch{{Pack: "myflow", Key: "stage", Value: "review"}}}))
+	assert.Equal(t, []string{a.ID}, list(store.Filter{Meta: []store.MetaMatch{{Pack: "myflow", Key: "stage", Value: "review"}, {Pack: "myflow", Key: "owner", Value: "x"}}}))
 	assert.Equal(t, []string{a.ID, cc.ID}, list(store.Filter{MetaPack: "myflow", MetaKey: "owner", MetaValue: "x"}))
 
 	// Cursor paging in both orders.
