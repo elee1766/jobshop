@@ -382,6 +382,13 @@ Commands:
     Search past comments, session journals and learnings. Run it on a failure
     and before asking a human.
 
+  journal search <query> [flags]
+    Search shipped session journals with LogsQL, e.g. 'status:failed | stats by
+    (session) count()' (admin, or journal-search grant for your project).
+
+  journal backfill [flags]
+    Ship existing journals to VictoriaLogs from their cursors now (admin).
+
   whoami [flags]
     Show the caller's scope.
 
@@ -3610,6 +3617,78 @@ Flags:
       --scope=""          Only one source kind: comment, journal or learning.
   -t, --ticket=STRING     Only hits on this ticket.
       --project=STRING    Project (admin only; sessions search their own).
+```
+
+## jobshop journal
+
+```
+Usage: jobshop journal <command> [flags]
+
+Search every session's journal with LogsQL on VictoriaLogs
+(journal.victorialogs), and backfill it.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+Commands:
+  journal search <query> [flags]
+    Search shipped session journals with LogsQL, e.g. 'status:failed | stats by
+    (session) count()' (admin, or journal-search grant for your project).
+
+  journal backfill [flags]
+    Ship existing journals to VictoriaLogs from their cursors now (admin).
+```
+
+## jobshop journal search
+
+```
+Usage: jobshop journal search <query> [flags]
+
+Search shipped session journals with LogsQL, e.g. 'status:failed | stats by
+(session) count()' (admin, or journal-search grant for your project).
+
+Arguments:
+  <query>    LogsQL query. Rows are deduped by (session, seq) with '| uniq by
+             (session, seq)' if a resend made doubles.
+
+Flags:
+  -h, --help              Show context-sensitive help.
+      --root=STRING       Jobshop root directory (holds jobshop.yaml,
+                          the database, sockets and sessions). Default:
+                          nearest ancestor of the cwd containing jobshop.yaml
+                          ($JOBSHOP_ROOT).
+      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
+                          else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --since=DURATION    Look back this far, e.g. 2h. Default: all.
+      --until=TIME        End of the window (RFC3339).
+      --limit=INT         Most rows (default 1000, max 10000).
+```
+
+## jobshop journal backfill
+
+```
+Usage: jobshop journal backfill [flags]
+
+Ship existing journals to VictoriaLogs from their cursors now (admin).
+
+Flags:
+  -h, --help              Show context-sensitive help.
+      --root=STRING       Jobshop root directory (holds jobshop.yaml,
+                          the database, sockets and sessions). Default:
+                          nearest ancestor of the cwd containing jobshop.yaml
+                          ($JOBSHOP_ROOT).
+      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
+                          else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --since=DURATION    Only sessions closed this recently, e.g. 168h (open
+                          sessions always). Default: all.
 ```
 
 ## jobshop whoami
