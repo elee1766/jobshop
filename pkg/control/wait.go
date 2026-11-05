@@ -470,13 +470,20 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		return evalLabel(ctx, pass, cd)
 	case store.WaitTag:
 		ok, err := pass.src.Tag(ctx, cd.Repo, cd.Tag)
-		return ok, fmt.Sprintf("tag %s pushed to %s", cd.Tag, cd.Repo), err
+		// The note is stored on every pass, met or not (#716).
+		if !ok {
+			return false, fmt.Sprintf("tag %s not pushed to %s yet", cd.Tag, cd.Repo), err
+		}
+		return true, fmt.Sprintf("tag %s pushed to %s", cd.Tag, cd.Repo), err
 	case store.WaitDeploy:
 		if c.opt.Commit == "" {
 			return false, "", errInvalidated{"this controller reports no build commit"}
 		}
 		ok, err := pass.src.Contains(ctx, cd.Repo, cd.SHA, c.opt.Commit)
-		return ok, fmt.Sprintf("deployed %s contains %s", short(c.opt.Commit), short(cd.SHA)), err
+		if !ok {
+			return false, fmt.Sprintf("deployed %s does not contain %s yet", short(c.opt.Commit), short(cd.SHA)), err
+		}
+		return true, fmt.Sprintf("deployed %s contains %s", short(c.opt.Commit), short(cd.SHA)), err
 	case store.WaitRun:
 		return c.evalRun(ctx, cd)
 	case store.WaitLinearState, store.WaitLinearLabel:
