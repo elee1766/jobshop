@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -182,6 +183,17 @@ func (f *fakeController) serve(t *testing.T) string {
 						f.keys[p.Key] = p.Result
 					}
 					return store.WriteKey{Key: p.Key, Result: f.keys[p.Key], Done: true}, nil
+				case rpc.MethodSecretScan:
+					// As the controller, with the built-in rules.
+					var p rpc.SecretScanParams
+					_ = json.Unmarshal(raw, &p)
+					res := rpc.SecretScanResult{Findings: []rpc.SecretFinding{}}
+					for _, t := range p.Texts {
+						for _, x := range redact.Find(t.Text) {
+							res.Findings = append(res.Findings, rpc.SecretFinding{From: t.From, Rule: x.Rule, Line: x.Line})
+						}
+					}
+					return res, nil
 				}
 				return nil, acp.NewMethodNotFound(method)
 			}, nc, gate)

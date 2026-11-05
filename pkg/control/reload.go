@@ -9,6 +9,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -35,6 +36,13 @@ func newLiveConfig(cfg *config.Config) (*liveConfig, error) {
 func (c *Controller) config() *config.Config { return c.live.Load().cfg }
 
 func (c *Controller) leaseDur() time.Duration { return c.live.Load().lease }
+
+// scanner is the active secret rule set (#578). A reload swaps it with
+// the config; a reload with bad rules fails and keeps the old one.
+func (c *Controller) scanner() *redact.Scanner { return c.config().Redact.Scanner() }
+
+// redactor is the active rule set with env's secret values.
+func (c *Controller) redactor(env []string) *redact.Redactor { return c.scanner().Redactor(env) }
 
 // Reload re-reads jobshop.yaml and its packs and swaps them in. On any
 // error the old config stays active. Pool limits apply to every

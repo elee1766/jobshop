@@ -1,0 +1,30 @@
+# Built-in secret rules jobshop adds to betterleaks' defaults (#578).
+# Each is anchored on its prefix and has keywords, so the scanner only
+# runs its regex on text that holds the prefix.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "anthropic-oauth-token"
+description = "Anthropic OAuth access token"
+regex = '''\b(sk-ant-oat01-[A-Za-z0-9_\-]{80,120})'''
+keywords = ["sk-ant-oat01-"]
+
+[[rules]]
+id = "matrix-access-token"
+description = "Matrix (Synapse) access token"
+regex = '''\b(syt_[A-Za-z0-9+/=_\-]{2,255}_[A-Za-z0-9]{20}_[A-Za-z0-9]{6})\b'''
+keywords = ["syt_"]
+
+[[rules]]
+id = "linear-oauth-token"
+description = "Linear OAuth access token"
+regex = '''\b(lin_oauth_[a-f0-9]{64})\b'''
+keywords = ["lin_oauth_"]
+
+[[rules]]
+id = "bitwarden-sm-access-token"
+description = "Bitwarden Secrets Manager access token"
+regex = '''\b(0\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[A-Za-z0-9]{20,64}:[A-Za-z0-9+/]{20,64}={0,2})'''
+keywords = ["0."]

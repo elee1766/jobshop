@@ -74,6 +74,7 @@ var Specs = map[string]Spec{
 	MethodPoolUnquarantine:  {PoolParams{}, PoolStatusResult{}},
 	MethodReportIncidents:   {IncidentsParams{}, IncidentsResult{}},
 	MethodGuard:             {GuardParams{}, GuardResult{}},
+	MethodSecretScan:        {SecretScanParams{}, SecretScanResult{}},
 	MethodRecall:            {RecallParams{}, []store.RecallHit{}},
 	MethodAttention:         {empty{}, AttentionResult{}},
 	MethodAttentionChat:     {AttentionChatParams{}, AttentionChatResult{}},

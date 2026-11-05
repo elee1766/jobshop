@@ -1,6 +1,7 @@
 package control
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -12,21 +13,36 @@ import (
 // Redaction on write (#574): comments, reports, learnings and artifacts
 // reach Desk, gateway digests and memory curation (committed to a public
 // repo), so the controller masks secrets before storing them. The
-// session's own env is not known here; gitleaks' rules cover tokens.
+// session's own env is not known here; the configured rules cover tokens.
 
 // maxRedactFile is the largest artifact attachment scanned. Bigger files
 // and binary ones are copied as they are.
 const maxRedactFile = 1 << 20
 
+// secretScan scans an outbound write's texts with the configured rules
+// (#578), so the CLI's check (#574) uses the host's redact config.
+// Open to every caller: it reveals rule ids and lines, not secrets.
+func (c *Controller) secretScan(_ context.Context, _ scope, p rpc.SecretScanParams) (any, error) {
+	sc := c.scanner()
+	res := rpc.SecretScanResult{Findings: []rpc.SecretFinding{}}
+	for _, t := range p.Texts {
+		for _, f := range sc.Find(t.Text) {
+			res.Findings = append(res.Findings, rpc.SecretFinding{From: t.From, Rule: f.Rule, Line: f.Line})
+		}
+	}
+	return res, nil
+}
+
 // redactWrite masks secrets in each of texts, in place. When any changed
 // it records one activity item naming what (never the secret).
 func (c *Controller) redactWrite(sc scope, what, target string, texts ...*string) {
 	changed := false
+	red := c.redactor(nil)
 	for _, s := range texts {
 		if s == nil || *s == "" {
 			continue
 		}
-		if r := redact.Text(*s, nil); r != *s {
+		if r := red.Text(*s); r != *s {
 			*s, changed = r, true
 		}
 	}
@@ -51,7 +67,7 @@ func (c *Controller) recordRedacted(sc scope, what, target string) {
 
 // redactFile masks secrets in a copied artifact attachment, if it is
 // text and at most maxRedactFile. It reports whether anything changed.
-func redactFile(path string) (bool, error) {
+func redactFile(red *redact.Redactor, path string) (bool, error) {
 	st, err := os.Stat(path)
 	if err != nil || st.Size() > maxRedactFile {
 		return false, err
@@ -63,7 +79,7 @@ func redactFile(path string) (bool, error) {
 	if isBinary(b) {
 		return false, nil
 	}
-	r := redact.Text(string(b), nil)
+	r := red.Text(string(b))
 	if r == string(b) {
 		return false, nil
 	}

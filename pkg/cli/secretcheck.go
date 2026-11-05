@@ -6,15 +6,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
 // Outbound secret check (#574): jobshop gh and jobshop linear writes are
-// scanned with gitleaks before anything is sent. A finding refuses the
-// write with the rule and line, never the secret, and nothing is rewritten:
-// the agent fixes its text. Only read when the command writes, so read-only
-// calls never build the detector.
+// scanned before anything is sent. The controller scans them (secret.scan)
+// so the host's redact rules apply (#578); the CLI loads no config. A
+// finding refuses the write with the rule and line, never the secret, and
+// nothing is rewritten: the agent fixes its text. Only read when the
+// command writes.
 
 // allowSecretsFlag skips the check; only admin callers may pass it.
 const allowSecretsFlag = "--allow-secret-findings"
@@ -43,16 +43,27 @@ type outText struct {
 	text string
 }
 
-// secretFindings scans texts and returns one line per finding, naming the
-// rule and where; "" when clean.
-func secretFindings(texts []outText) string {
-	var b strings.Builder
+// secretFindings asks the controller to scan texts and returns one line
+// per finding, naming the rule and where; "" when clean.
+func secretFindings(g *Globals, texts []outText) (string, error) {
+	p := rpc.SecretScanParams{Texts: make([]rpc.SecretText, 0, len(texts))}
 	for _, t := range texts {
-		for _, f := range redact.Find(t.text) {
-			fmt.Fprintf(&b, "  %s: rule %s, line %d\n", t.from, f.Rule, f.Line)
+		if t.text != "" {
+			p.Texts = append(p.Texts, rpc.SecretText{From: t.from, Text: t.text})
 		}
 	}
-	return b.String()
+	if len(p.Texts) == 0 {
+		return "", nil
+	}
+	var r rpc.SecretScanResult
+	if err := g.call(rpc.MethodSecretScan, p, &r); err != nil {
+		return "", fmt.Errorf("secret scan: %w", err)
+	}
+	var b strings.Builder
+	for _, f := range r.Findings {
+		fmt.Fprintf(&b, "  %s: rule %s, line %d\n", f.From, f.Rule, f.Line)
+	}
+	return b.String(), nil
 }
 
 // allowSecrets checks that the caller is admin, for allowSecretsFlag.
@@ -67,10 +78,13 @@ func allowSecrets(g *Globals) error {
 	return nil
 }
 
-// checkOut refuses a write whose texts hold a gitleaks finding, unless
+// checkOut refuses a write whose texts hold a secret finding, unless
 // allow is set by an admin caller. what names the command for the error.
 func checkOut(g *Globals, what string, allow bool, texts ...outText) error {
-	found := secretFindings(texts)
+	found, err := secretFindings(g, texts)
+	if err != nil {
+		return fmt.Errorf("%s: %w", what, err)
+	}
 	if found == "" {
 		return nil
 	}

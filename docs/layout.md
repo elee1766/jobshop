@@ -41,7 +41,7 @@ jobshop/
 │   │                         dist/ is the built UI, embedded
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter
 │   ├── redact/               secret redaction for journal reads, shipping
-│   │                         and command step output (gitleaks, env values)
+│   │                         and command step output (betterleaks, env values)
 │   ├── journal/              journal rows and the VictoriaLogs client (#530)
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
 │   ├── cron/                 5-field cron parser for triggers (no dependency)
@@ -117,7 +117,7 @@ Subcommands:
 | Matrix client-server API (gateway) | `maunium.net/go/mautrix` (2026-11-02, #123): the maintained Go Matrix client, used by the mautrix bridges; pure Go without its optional crypto, so `CGO_ENABLED=0` holds | v0.32.0 |
 | Discord bot API (gateway) | `github.com/bwmarrin/discordgo` (2026-11-03, #182): the most used Go Discord library, REST plus gateway websocket with resume; pure Go | v0.29.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
-| Secret redaction | `github.com/zricethezav/gitleaks/v8` (`detect`) | v8.30.1 |
+| Secret redaction | `github.com/betterleaks/betterleaks/v2` (`scan`, `config`) (2026-11-05, #578): gitleaks' successor, about twice the rules, 9 modules instead of 63, no viper global state. Pinned to an rc until v2.0.0 is out | v2.0.0-rc.7 |
 | Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency. @lucide/svelte for the activity view's icons (2026-11-04, #255); tree-shaken per icon | svelte 5.57.3, vite 8.3.5, @lucide/svelte 1.67.0 |
 | Lint (tool, not a module) | golangci-lint, built by `nix/golangci-lint.nix` with Go 1.27 because nixpkgs builds it with Go 1.26, which refuses go 1.27 modules (2026-11-03). Same version in CI, the dev shell and agents' PATH | v2.15.0 |
 
@@ -144,11 +144,11 @@ Uses:
   ids. They pull in `grpc-gateway` and `otlp` protos (types only, HTTP
   transport). Only imported by `pkg/telemetry`.
 - **errgroup**: controller and host goroutine lifetimes and shutdown.
-- **gitleaks**: its detector and default rule set redact secrets in
-  journal reads and shipped journal rows, plus launch-env secret
-  values (exact match). Large dependency (about 74 modules in its
-  `go.mod`); accepted for rule coverage and maintenance (decided
-  2026-11-01). Only imported by `pkg/redact`.
+- **betterleaks**: its scanner and default rules, plus jobshop's
+  built-ins and the host's `redact` rules, redact secrets in text
+  leaving the controller and refuse `jobshop gh`/`linear` writes
+  holding one; launch-env secret values are masked by exact match.
+  Replaced gitleaks (2026-11-05, #578). Only imported by `pkg/redact`.
 
 Standard library by choice (decided 2026-11-01):
 - `log/slog` for logging, `net/http` for `/metrics`, `text/tabwriter`

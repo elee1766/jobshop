@@ -152,6 +152,7 @@ export interface RpcMethods {
   "run.resume": { params: RunResumeParams; result: RunResult };
   "run.show": { params: IDParams; result: RunResult };
   "run.start": { params: RunStartParams; result: RunResult };
+  "secret.scan": { params: SecretScanParams; result: SecretScanResult };
   "session.cancel": { params: IDParams; result: SessionCancelResult };
   "session.config": { params: SessionConfigParams; result: SessionInfo };
   "session.cordon": { params: SessionCordonParams; result: SessionInfo };
@@ -984,6 +985,25 @@ export interface Secret {
   Type: string;
   Path: string;
   Command: string;
+}
+
+export interface SecretFinding {
+  from: string;
+  rule: string;
+  line: number;
+}
+
+export interface SecretScanParams {
+  texts: SecretText[];
+}
+
+export interface SecretScanResult {
+  findings: SecretFinding[];
+}
+
+export interface SecretText {
+  from: string;
+  text: string;
 }
 
 export interface SessionCancelResult {
