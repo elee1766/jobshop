@@ -194,9 +194,7 @@ let
   rules = c: c.config.systemd.tmpfiles.rules;
   linkTarget =
     c: name:
-    lib.last (
-      lib.splitString " " (lib.findFirst (r: lib.hasInfix "/${name} " r) "" (rules c))
-    );
+    lib.last (lib.splitString " " (lib.findFirst (r: lib.hasInfix "/${name} " r) "" (rules c)));
   # The check-and-reload script with the real jobshop binary and stubs
   # for runuser and systemctl; the root is moved to $T.
   reloadScript = pkgs.writeText "jobshop-config" (
@@ -484,14 +482,14 @@ let
       failed userCfg == [ ]
       && linkTarget userCfg "jobshop.yaml" == "/etc/jobshop/jobshop.yaml"
       && lib.hasSuffix "jobshop.module.yaml" (linkTarget userCfg "jobshop.module.yaml")
-      && userCfg.config.systemd.paths.jobshop-config.pathConfig.PathChanged == [
-        "/etc/jobshop/jobshop.yaml"
-        "/var/lib/jobshop/jobshop.module.yaml"
-      ]
+      &&
+        userCfg.config.systemd.paths.jobshop-config.pathConfig.PathChanged == [
+          "/etc/jobshop/jobshop.yaml"
+          "/var/lib/jobshop/jobshop.module.yaml"
+        ]
     ))
     (expect "configFile = dataDir/jobshop.yaml leaves it alone" (
-      failed inPlace == [ ]
-      && !lib.any (lib.hasInfix "/var/lib/jobshop/jobshop.yaml ") (rules inPlace)
+      failed inPlace == [ ] && !lib.any (lib.hasInfix "/var/lib/jobshop/jobshop.yaml ") (rules inPlace)
     ))
     (expect "managed mode has no module file or watcher" (
       !lib.any (lib.hasInfix "jobshop.module.yaml") (rules two)
@@ -509,9 +507,10 @@ let
       failed repoCfg == [ ]
       && linkTarget repoCfg "jobshop.yaml" == "/var/lib/jobshop/workspaces/cfg/jobshop.yaml"
       && repoCfg.config.systemd.timers ? jobshop-workspace-cfg-sync
-      && repoCfg.config.systemd.paths.jobshop-config.pathConfig.PathChanged == [
-        "/var/lib/jobshop/jobshop.module.yaml"
-      ]
+      &&
+        repoCfg.config.systemd.paths.jobshop-config.pathConfig.PathChanged == [
+          "/var/lib/jobshop/jobshop.module.yaml"
+        ]
     ))
     (expect "config repo and configFile conflict" (
       lib.any (lib.hasInfix "at most one workspace") (

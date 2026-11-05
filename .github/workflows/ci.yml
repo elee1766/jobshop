@@ -112,6 +112,9 @@ jobs:
       - uses: Mic92/hestia/action@v3
         with:
           upstream-cache-filter: true
+      # Nix files stay formatted with the flake's formatter (#583).
+      - name: nix fmt check
+        run: nix fmt -- --check $(git ls-files '*.nix')
       # The fallback builder (hosts without the plugin) pins a vendorHash.
       # Building only its vendored modules checks the pin; it is cached
       # until go.sum changes.
