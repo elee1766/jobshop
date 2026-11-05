@@ -177,7 +177,9 @@ let
     ++ lib.optional cfg.sandbox.enable pkgs.bubblewrap
     # newuidmap/newgidmap must be the setuid wrappers, not the store
     # binaries; /run/wrappers/bin is on the service PATH below.
-    ++ lib.optional cfg.isolation.enable pkgs.passt;
+    ++ lib.optional cfg.isolation.enable pkgs.passt
+    # pasta's deny list runs nft (JOB-19).
+    ++ lib.optional cfg.isolation.enable pkgs.nftables;
 
   credentialHelper =
     if useIdentities then "!${jobshop} identity git-credential" else cfg.gitIdentity.credentialHelper;
@@ -726,8 +728,8 @@ in
     isolation = {
       enable = lib.mkEnableOption ''
         per-pool isolation (#388): Delegate=cpu memory pids on jobshop.service,
-        a subuid/subgid range for the jobshop user, and newuidmap (shadow) and
-        pasta (passt) on PATH. Pools opt in with isolation: and sandbox.network: pasta
+        a subuid/subgid range for the jobshop user, and newuidmap (shadow),
+        pasta (passt) and nft (nftables) on PATH. Pools opt in with isolation: and sandbox.network: pasta
       '';
       subIdStart = lib.mkOption {
         type = lib.types.int;

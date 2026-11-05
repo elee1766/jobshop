@@ -264,3 +264,88 @@ func peerProbe() {
 	}
 	_ = os.WriteFile("peer-probe", []byte(res), 0o660)
 }
+
+// TestMappedUserHome (JOB-19) runs a pool with isolation.user and a
+// "~/" rw path from a 0700 controller root, as the NixOS module sets
+// up. The session starts (the mapped uid gets its own home under
+// <root>/homes), the agent sees its copied login file at the usual path
+// and writes a cache file owned by the mapped uid.
+func TestMappedUserHome(t *testing.T) {
+	mapUID, mapGID := isolationEnv(t)
+	root, start := poolRootReal(t, "1m")
+	require.NoError(t, os.Chmod(root.Dir, 0o700))
+	// The controller's HOME is shared by parallel tests: use a unique
+	// subdir under it.
+	h, err := os.UserHomeDir()
+	require.NoError(t, err)
+	sub := ".jobshop-test-" + filepath.Base(root.Dir)
+	home := filepath.Join(h, sub)
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".agent"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(home, ".agent", "auth.json"), []byte("login"), 0o600))
+	work := filepath.Join(root.Dir, "work")
+	require.NoError(t, os.MkdirAll(work, 0o770))
+	cfg := fmt.Sprintf(`projects:
+  js: {}
+agents:
+  fake:
+    command: %q
+    args: [fake-agent]
+    env: {HOME_PROBE: %q}
+    credentials: ["~/%s/.agent/auth.json"]
+pools:
+  dev:
+    project: js
+    agent: fake
+    max_sessions: 1
+    idle_timeout: 1m
+    dir: %q
+    sandbox: {backend: bubblewrap, ro: %s, rw: ["~/%s/.cache/probe"]}
+    isolation:
+      user: {uid: 1000, map_uid: %d, map_gid: %d, groups: [%q]}
+`, os.Args[0], sub, sub, work, testSystemRO, sub, mapUID, mapGID, strconv.Itoa(os.Getegid()))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
+	require.NoError(t, shareWith(work, os.Getegid()))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+
+	cache := filepath.Join(root.Dir, "homes", "dev", sub, ".cache", "probe", "home-probe")
+	passEventually(t, root.Dir, func() bool {
+		_, err := os.Stat(cache)
+		return err == nil
+	}, "agent wrote its cache file")
+	st, err := os.Stat(cache)
+	require.NoError(t, err)
+	assert.Equal(t, uint32(mapUID), st.Sys().(*syscall.Stat_t).Uid, "cache file owned by the mapped uid")
+	b, err := os.ReadFile(cache)
+	require.NoError(t, err)
+	assert.Equal(t, "login", string(b), "agent read its copied login")
+	_, err = os.Stat(filepath.Join(home, ".cache", "probe", "home-probe"))
+	assert.ErrorIs(t, err, os.ErrNotExist, "nothing written to the controller's home")
+}
+
+// shareWith makes dir group gid rwx with setgid, as the module's
+// workspace dirs are.
+func shareWith(dir string, gid int) error {
+	if err := os.Chown(dir, -1, gid); err != nil {
+		return err
+	}
+	return os.Chmod(dir, 0o2770)
+}
+
+// homeProbe runs in the fake agent for TestMappedUserHome: copy the
+// login it can see at ~/.agent/auth.json into ~/.cache/probe.
+func homeProbe() {
+	if os.Getenv("HOME_PROBE") == "" {
+		return
+	}
+	h := filepath.Join(os.Getenv("HOME"), os.Getenv("HOME_PROBE"))
+	b, err := os.ReadFile(filepath.Join(h, ".agent", "auth.json"))
+	if err != nil {
+		b = []byte("error: " + err.Error())
+	}
+	_ = os.WriteFile(filepath.Join(h, ".cache", "probe", "home-probe"), b, 0o660)
+}

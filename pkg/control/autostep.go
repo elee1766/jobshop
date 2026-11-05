@@ -477,7 +477,7 @@ func (c *Controller) sandboxArgv(pl stepPlace, argv, env []string) ([]string, er
 	if err != nil {
 		return nil, err
 	}
-	sb, err := c.poolSandbox(pl.pool, pl.own, exe, pl.dir)
+	sb, err := c.poolSandbox(pl.pool, pl.own, exe, pl.dir, "")
 	if err != nil || sb == nil {
 		return argv, err
 	}
