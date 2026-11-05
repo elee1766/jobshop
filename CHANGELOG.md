@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/elee1766/jobshop/compare/v0.1.7...v0.1.8) (2026-11-05)
+
+
+### Features
+
+* **sandbox:** pasta dns, resolv_conf and dns_check settings (JOB-20) ([#733](https://github.com/elee1766/jobshop/issues/733)) ([94fe780](https://github.com/elee1766/jobshop/commit/94fe780b9dd63eb581283d69946c2ecbe4be005f))
+
 ## [0.1.7](https://github.com/elee1766/jobshop/compare/v0.1.6...v0.1.7) (2026-11-05)
 
 
