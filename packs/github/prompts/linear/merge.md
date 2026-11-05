@@ -66,6 +66,11 @@ resumes here within a minute of CI finishing. If it resumes with
    checks again; at the retry limit the run escalates to a human.
 6. Ready (required checks green on the current head, required approval
    present, no unresolved review comments, criteria met):
+   the title is the squash commit subject and must be a conventional
+   commit, `<type>(<scope>): <summary> ({{.issue}})` with type feat,
+   fix, perf, refactor, docs, test, ci, build, chore or revert and a
+   lowercase summary; fix a title that is not with
+   `gh pr edit <n> --title "..."` first. Then
    `gh pr merge <n> --{{.merge_method}} --match-head-commit <headRefOid>`.
    Never pass `--delete-branch` (gh then removes the dev session's
    worktree; GitHub deletes the remote branch on merge). Comment the merge
