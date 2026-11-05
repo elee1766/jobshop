@@ -17,6 +17,8 @@ before `jobshop close`.
 If the jobshop CLI socket goes away mid-turn (controller restart), write
 the PR head and CI state on the GitHub issue so the next attempt can
 verify and close instead of redoing the work.
+Run gh from the repo worktree or pass `-R owner/repo`: outside a repo it
+fails, and an empty issue number makes a run keyed `issue-`.
 An umbrella or tracking issue whose sub-issues carry the work gets no
 pr-work run: comment that on it instead of starting one.
 `jobshop close -r failed` takes no reason text: comment first, then close.
