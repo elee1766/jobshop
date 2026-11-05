@@ -25,9 +25,17 @@ Check:
 cat /var/lib/jobshop-deploy/failed       # <rev>
 test ! -e /var/lib/jobshop-deploy/drill  # marker cleared
 jobshop version                          # the commit from before the drill
+jobshop attention                        # one ticket: self-deploy rolled back <rev>: controller unhealthy
 systemctl start jobshop-self-deploy.service
 journalctl -u jobshop-self-deploy -n 5   # "<rev> failed before, waiting ..."
+jobshop attention                        # still one deploy:rollback ticket, not two
 ```
+
+Since #577 the rollback is a needs-human ticket with key
+`deploy:rollback` (`jobshop ticket list -l needs-human`), not an item
+read from the state files. The next good deploy closes it: after a newer
+green commit deploys, `jobshop attention` shows no deploy item, and Desk's
+Deploys view (packs/deploy) shows the drilled rev as superseded.
 
 Clear: delete `drill` if the deploy never ran. To deploy the drilled
 rev without waiting for a newer green commit, delete

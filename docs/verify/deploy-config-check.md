@@ -21,7 +21,8 @@ On the next real self-deploy after this merges, `journalctl -u
 jobshop-self-deploy` shows `config check: ok: ...` before `rebuild`.
 If a check ever fails there, expect no switch, `failed` and
 `failed.reason` in /var/lib/jobshop-deploy, and `jobshop attention`
-listing "self-deploy skipped <rev>, config check failed: ...".
+listing one ticket "self-deploy skipped <rev>: config check failed"
+(`deploy:config-check`, #577), closed by the next good deploy.
 
 Rename shim: with the host setting `repo` on the operator pack entry,
 `config check` prints a `warning: ... var "repo" is renamed to

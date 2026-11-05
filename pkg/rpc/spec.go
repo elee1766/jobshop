@@ -28,6 +28,7 @@ var Specs = map[string]Spec{
 	MethodTicketUpdate:      {UpdateParams{}, store.Ticket{}},
 	MethodTicketClose:       {CloseParams{}, store.Ticket{}},
 	MethodTicketReopen:      {IDParams{}, store.Ticket{}},
+	MethodTicketUpsert:      {UpsertParams{}, UpsertResult{}},
 	MethodReady:             {ReadyParams{}, []store.Ticket{}},
 	MethodCommentAdd:        {CommentParams{}, store.Comment{}},
 	MethodEdgeAdd:           {EdgeParams{}, nil},

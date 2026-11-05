@@ -1,6 +1,6 @@
 {
   "name": "deploys",
-  "version": "1",
+  "version": "2",
   "entry": "index.js",
   "api": ">=1",
   "contributes": [

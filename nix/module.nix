@@ -64,7 +64,9 @@ let
     // lib.optionalAttrs (cfg.identities != { }) {
       identities = (base.identities or { }) // cfg.identities;
     }
-    // lib.optionalAttrs (livePacks != [ ]) { packs = (base.packs or [ ]) ++ livePacks; }
+    // lib.optionalAttrs (livePacks != [ ] || deployPack != [ ]) {
+      packs = (base.packs or [ ]) ++ livePacks ++ deployPack;
+    }
     // lib.optionalAttrs (cfg.gateway != { }) {
       gateway = (base.gateway or { }) // gatewaySettings;
     }
@@ -73,21 +75,6 @@ let
       reload = (base.reload or { }) // {
         watch = true;
       };
-    }
-    # Self-deploy rollbacks show in `jobshop attention` (#185).
-    // lib.optionalAttrs cfg.selfDeploy.enable {
-      attention = {
-        rollback_file = "${deployState}/failed";
-      }
-      // (base.attention or { });
-    }
-    # A config repo commit that failed its check (#532).
-    // lib.optionalAttrs repoConfig {
-      attention = {
-        config_repo_file = "${configRepoState}.failed";
-      }
-      // (base.attention or { })
-      // lib.optionalAttrs cfg.selfDeploy.enable { rollback_file = "${deployState}/failed"; };
     }
     // lib.optionalAttrs cfg.sandbox.enable {
       defaults = (base.defaults or { }) // {
@@ -269,6 +256,33 @@ let
       fits = id: id >= start && id + n <= end;
     in
     !cfg.isolation.enable || (fits (u.map_uid or 0) && fits (u.map_gid or 0));
+  # The Deploys view and its state command (#577), from the module's
+  # source so it needs no workspace.
+  deployPack = lib.optional cfg.selfDeploy.enable {
+    path = "${../packs/deploy}";
+    vars.state_dir = deployState;
+  };
+  # Deploy tools report a problem as a needs-human ticket with a stable
+  # key and close it when it clears (#577); nothing in the controller
+  # reads deploy state. `report <key> <title> [body]` upserts,
+  # `report <key> --close [note]` closes. Never fails the caller: the
+  # controller may be down mid-switch, and the state files still hold
+  # the outcome for the next run.
+  reportFn = ''
+    report() {
+      key=$1; shift
+      if [ "''${1:-}" = --close ]; then
+        set -- ticket upsert --key "$key" --close -b "''${2:-}"
+      else
+        set -- ticket upsert --key "$key" -l needs-human -b "''${2:-}" "$1"
+      fi
+      ${lib.optionalString (cfg.reportProject != "") ''set -- "$@" --project ${lib.escapeShellArg cfg.reportProject}''}
+      as=
+      [ "$(id -u)" != 0 ] || as="${pkgs.util-linux}/bin/runuser -u ${cfg.user} --"
+      $as env JOBSHOP_ROOT=${cfg.dataDir} ${jobshop} "$@" >/dev/null 2>&1 \
+        || echo "<4>could not report $key to jobshop (controller down?)"
+    }
+  '';
 
   workspaceModule =
     { name, config, ... }:
@@ -327,7 +341,8 @@ let
             Run the controller from this file in the checkout (#532): dataDir/jobshop.yaml
             links to it, and its relative pack paths resolve in the checkout. The sync unit
             checks each new commit before reloading; a failing commit is reset to the last
-            good one (dataDir/config-repo.last-good) and listed in `jobshop attention`.
+            good one (dataDir/config-repo.last-good) and filed as a needs-human
+            `config-repo:<name>` ticket (#577), which shows in `jobshop attention`.
             The file should include jobshop.module.yaml for the module's keys and secrets.
             At most one workspace; not with configFile or settings.
           '';
@@ -418,7 +433,9 @@ let
           ${lib.optionalString (w.config != null) ''
             # Config repo (#532): a commit runs only after it passes
             # `jobshop config check`; a failing one is reset to the last
-            # good commit and listed in `jobshop attention`.
+            # good commit and filed as a config-repo:${name} needs-human
+            # ticket (#577), closed when a later commit passes.
+            ${reportFn}
             last_good=${configRepoState}.last-good
             failed=${configRepoState}.failed
             [ -s "$last_good" ] || git rev-parse HEAD > "$last_good"
@@ -430,6 +447,8 @@ let
               rev=$(git rev-parse --short "$target")
               printf '%s\n%s\n' "$rev" "checkout not fast-forwardable (local edits or diverged history): $out" > "$failed"
               echo "<3>config repo ${name} not fast-forwardable to $target: $out"
+              report config-repo:${name} "config repo ${name}: $rev not applied, checkout not fast-forwardable" \
+                "$(printf 'The checkout ${w.dir} has local edits or diverged history, so %s was not applied:\n\n%s\n\nReset the checkout to origin; the ticket closes when a commit passes.' "$rev" "$out")"
               exit 1
             fi
             after=$(git rev-parse HEAD)
@@ -438,13 +457,17 @@ let
             # beside it while packs resolve in the checkout.
             if ! out=$(${jobshop} config check --file ${rootConfig} 2>&1); then
               good=$(cat "$last_good")
-              printf '%s\n%s\n' "$(git rev-parse --short "$after")" "$out" > "$failed"
+              rev=$(git rev-parse --short "$after")
+              printf '%s\n%s\n' "$rev" "$out" > "$failed"
               echo "<3>config repo ${name}: $after failed its check, reset to $good: $out"
               git reset --quiet --hard "$good"
+              report config-repo:${name} "config repo ${name}: $rev failed its check, running the last good config" \
+                "$(printf 'Commit %s failed jobshop config check; the host stays on %s.\n\n%s\n\nPush a fix; the ticket closes when a commit passes.' "$rev" "$good" "$out")"
               exit 1
             fi
             echo "$after" > "$last_good"
             rm -f "$failed"
+            report config-repo:${name} --close "$(git rev-parse --short "$after") passed its check."
             echo "config repo moved $before..$after, check passed"
           ''}
           ${lib.optionalString (w.config == null) ''
@@ -510,6 +533,17 @@ in
       type = lib.types.path;
       default = "/var/lib/jobshop";
       description = "Jobshop root directory: jobshop.yaml (linked from settings), database, sockets, session directories and journals.";
+    };
+
+    reportProject = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      example = "js";
+      description = ''
+        Project the module's deploy and config-repo units file their needs-human
+        tickets in (`deploy:rollback`, `deploy:config-check`, `config-repo:<name>`, #577).
+        Empty: the config's default_project.
+      '';
     };
 
     settings = lib.mkOption {
@@ -1171,6 +1205,10 @@ in
           script = ''
             set -eu
             state=${deployState}
+            ${reportFn}
+            # A failure's report, kept so a later run re-files it if the
+            # controller was down this time.
+            fail_report() { printf '%s\n%s\n%s\n' "$1" "$2" "$3" > $state/failed.report; report "$@"; }
             # The newest master commit with a successful CI run, read as the jobshop
             # user (its gh has the App token). Empty: nothing to do.
             rev=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- env ${
@@ -1187,8 +1225,8 @@ in
             # rollback, a host rebuild or auto-upgrade can leave it naming
             # another commit than the unit runs. Say so once (a rollback if
             # older: live packs may need the newer code, #227), then make it
-            # follow the running binary (#225). The old mtime is kept:
-            # attention compares it with failed, and a fix-up is not a deploy.
+            # follow the running binary (#225). The old mtime is kept: the
+            # Deploys view compares it with failed, and a fix-up is not a deploy.
             last=$(cat $state/deployed 2>/dev/null || true)
             if [ -n "$last" ] && [ -n "$current" ]; then
               case "$last" in
@@ -1204,6 +1242,12 @@ in
             fi
             case "$rev" in "$current"*) echo "already at $current"; exit 0 ;; esac
             if [ "$(cat $state/failed 2>/dev/null)" = "$rev" ]; then
+              # Re-file the report in case the controller was down when the
+              # failure happened; an unchanged upsert is a no-op.
+              if [ -s $state/failed.report ]; then
+                { read -r key; read -r title; body=$(cat); } < $state/failed.report
+                report "$key" "$title" "$body"
+              fi
               echo "$rev failed before, waiting for a newer green commit"; exit 0
             fi
 
@@ -1221,8 +1265,8 @@ in
             ${lib.optionalString (deployWorkspaces != [ ]) ''
               # Config check before the switch (#261): the new build loads this
               # host's jobshop.yaml with the live packs read from the new commit's
-              # source. A pack var the host no longer satisfies fails here, with
-              # the error kept for `jobshop attention`, instead of after a switch.
+              # source. A pack var the host no longer satisfies fails here, filed
+              # as deploy:config-check (#577), instead of after a switch.
               rm -f $state/failed.reason
               src=$(nix flake metadata --json --refresh ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$rev" | jq -r .path)
               newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
@@ -1234,6 +1278,8 @@ in
                 echo "<3>config check failed for $rev, not switching: $check"
                 printf '%s\n' "$check" > $state/failed.reason
                 echo "$rev" > $state/failed
+                fail_report deploy:config-check "self-deploy skipped $rev: config check failed" \
+                  "$(printf 'Commit %s was not switched to: the host config does not load with it.\n\n%s\n\nFix the host config or the pack; the ticket closes on the next good deploy.' "$rev" "$check")"
                 exit 1
               fi
               echo "config check: $check"
@@ -1245,6 +1291,8 @@ in
               echo "$rev" > $state/failed
               nix-env -p /nix/var/nix/profiles/system --set "$prev"
               "$prev/bin/switch-to-configuration" switch || true
+              fail_report deploy:rollback "self-deploy rolled back $rev: switch failed" \
+                "nixos-rebuild switch to $rev failed; the host is back on $prev. See journalctl -u jobshop-self-deploy. The ticket closes on the next good deploy."
               exit 1
             fi
 
@@ -1264,9 +1312,14 @@ in
               echo "$rev" > $state/failed
               nix-env -p /nix/var/nix/profiles/system --set "$prev"
               "$prev/bin/switch-to-configuration" switch
+              fail_report deploy:rollback "self-deploy rolled back $rev: controller unhealthy" \
+                "The controller did not come up healthy on $rev''${drill:+ (rollback drill)}; the host is back on $prev. See journalctl -u jobshop-self-deploy. The ticket closes on the next good deploy."
               exit 1
             fi
             echo "$rev" > $state/deployed
+            report deploy:rollback --close "Deployed $rev."
+            report deploy:config-check --close "Deployed $rev."
+            rm -f $state/failed.report
             # Read by nixos-upgrade (flags below) so the daily auto-upgrade keeps
             # this rev instead of returning to the host flake's locked one.
             echo "--override-input ${sd.inputName} ${sd.inputUrl}&rev=$rev" > $state/override

@@ -403,16 +403,10 @@ func (d Desk) validate() error {
 
 // Attention configures the attention view: what waits on a human.
 type Attention struct {
-	// RollbackFile is the self-deploy state file holding the commit that
-	// was rolled back (the NixOS module's /var/lib/jobshop-deploy/failed).
-	// The rollback is listed while it is newer than the "deployed" file
-	// beside it, so a later successful deploy clears it. Empty:
-	// rollbacks are not checked.
-	RollbackFile string `yaml:"rollback_file"`
-	// ConfigRepoFile is written by the NixOS module's config repo sync
-	// when a commit fails `jobshop config check` (#532): the first line
-	// is the commit, the rest the error. Listed while it exists; the
-	// sync removes it when a later commit passes. Empty: not checked.
+	// RollbackFile and ConfigRepoFile were read for deploy attention
+	// items, removed by #577: deploy tools report through needs-human
+	// tickets. Still parsed so a load can name the replacement.
+	RollbackFile   string `yaml:"rollback_file"`
 	ConfigRepoFile string `yaml:"config_repo_file"`
 	// ResourceWait lists a step waiting on a full resource longer than
 	// this Go duration (#408). Empty: not listed.
@@ -1399,6 +1393,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if err := c.checkResources(); err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
+	for key, v := range map[string]string{"rollback_file": c.Attention.RollbackFile, "config_repo_file": c.Attention.ConfigRepoFile} {
+		if v != "" {
+			return nil, fmt.Errorf("%s: attention.%s is removed (#577): deploy tools report a problem as a needs-human ticket, `jobshop ticket upsert --key deploy:rollback -l needs-human ...`, and close it when it clears", FileName, key)
+		}
+	}
 	if w := c.Attention.ResourceWait; w != "" {
 		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: attention.resource_wait %q must be a positive duration", FileName, w)
@@ -1631,7 +1630,7 @@ func (c *Config) Prefix(project string) string {
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the
 // controller, and the gateway on escalation tickets).
-var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question", "escalation"}
+var BuiltinMetaPacks = []string{"github", "linear", "trigger", "run", "gateway", "pool", "hook", "subscribe", "report", "question", "escalation", "upsert"}
 
 // KnownMetaPack reports whether name may be a top-level meta key: a
 // built-in pack or one listed under meta_packs.

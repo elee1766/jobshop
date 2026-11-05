@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -90,30 +88,22 @@ func get(t *testing.T, h http.Handler, path string, out any) *httptest.ResponseR
 }
 
 func TestAttention(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "deployed"), []byte("aaaa\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "failed"), []byte("bbbbbbbbbb\n"), 0o600))
 	old := time.Now().Add(-3 * time.Hour)
-	mid := time.Now().Add(-time.Hour)
 	ctl := &fakeCtl{results: map[string]any{
-		rpc.MethodRunList + ":" + store.RunNeedsHuman: []store.Ticket{{ID: "r1", Title: "run", UpdatedAt: mid}},
-		rpc.MethodTicketList + ":open":                []store.Ticket{{ID: "t1", Title: "escalation", CreatedAt: old}},
-		rpc.MethodPoolList:                            rpc.PoolStatusResult{Quarantined: map[string]string{"dev": "agent not found"}},
-		rpc.MethodWaitList: []rpc.WaitItem{
-			{ID: "w1", Wait: store.Wait{Reason: "approval", Owner: "bob", TimedOut: true, Timeout: mid.Add(time.Minute)}},
-			{ID: "w2", Wait: store.Wait{Reason: "not yet"}},
-		},
+		rpc.MethodAttention: rpc.AttentionResult{Items: []rpc.AttentionItem{
+			{Kind: rpc.AttentionTicket, ID: "t1", Title: "deploy:rollback", Since: old, Repo: "acme/w", Ref: "#7"},
+			{Kind: rpc.AttentionWait, ID: "w1", Title: "wait", Owner: "bob"},
+		}},
 	}}
-	h := New(Config{DeployState: dir}, ctl, nil).Handler()
+	h := New(Config{}, ctl, nil).Handler()
 	var items []AttentionItem
 	get(t, h, "/api/attention", &items)
-	var got []string
-	for _, it := range items {
-		got = append(got, it.Kind+":"+it.ID)
-	}
-	// Oldest first; items without a time last.
-	assert.Equal(t, []string{"ticket:t1", "run:r1", "wait:w1", "deploy:bbbbbbbbbb", "pool:dev"}, got)
-	assert.Contains(t, strings.Join(ctl.calls, "\n"), `"label":"needs-human"`)
+	// The controller's list, in its order, with no items of Desk's own.
+	assert.Equal(t, []AttentionItem{
+		{Kind: "ticket", ID: "t1", Title: "deploy:rollback", Why: "acme/w #7", Since: items[0].Since},
+		{Kind: "wait", ID: "w1", Title: "wait", Why: "owner bob"},
+	}, items)
+	assert.Equal(t, []string{rpc.MethodAttention + " {}"}, ctl.calls)
 }
 
 func TestAttentionEmpty(t *testing.T) {
@@ -154,10 +144,6 @@ func TestViews(t *testing.T) {
 	var p Pools
 	get(t, h, "/api/pools", &p)
 	assert.Equal(t, "a", p.Triggers[0].Name)
-
-	var d Deploys
-	get(t, h, "/api/deploys", &d)
-	assert.Equal(t, "c", d.Server.Commit)
 
 	var tv TicketView
 	get(t, h, "/api/ticket/r1", &tv)

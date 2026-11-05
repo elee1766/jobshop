@@ -22,7 +22,7 @@ func TestDigest(t *testing.T) {
 
 	ctl.attention = []rpc.AttentionItem{
 		{Kind: rpc.AttentionTicket, ID: "js-1", Title: "Escalate run js-r", Since: time.Now().Add(-3 * time.Hour), Repo: "acme/widget", Ref: "#7"},
-		{Kind: rpc.AttentionRollback, ID: "abc123", Title: "self-deploy rolled back abc123", Since: time.Now().Add(-time.Minute)},
+		{Kind: rpc.AttentionPool, ID: "dev", Title: "pool dev quarantined", Since: time.Now().Add(-time.Minute)},
 	}
 	g.digest(t.Context())
 	require.Equal(t, 1, ad.opened)
@@ -30,5 +30,5 @@ func TestDigest(t *testing.T) {
 	assert.Contains(t, p, "!esc/")
 	assert.Contains(t, p, "2 waiting on a human")
 	assert.Contains(t, p, "- ticket js-1: Escalate run js-r (acme/widget #7), 3h")
-	assert.Contains(t, p, "- rollback abc123: self-deploy rolled back abc123, 1m")
+	assert.Contains(t, p, "- pool dev: pool dev quarantined, 1m")
 }

@@ -18,7 +18,7 @@ func TestInclude(t *testing.T) {
 	}
 	write("jobshop.module.yaml", `
 shared_tools: [/opt/mise]
-attention: {rollback_file: /var/lib/jobshop-deploy/failed}
+attention: {resource_wait: 1h}
 defaults:
   sandbox: {backend: bubblewrap}
 projects:
@@ -34,7 +34,7 @@ projects:
 	c, err := config.LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/opt/mise", "/opt/other"}, c.SharedTools, "lists append, include first")
-	assert.Equal(t, "/var/lib/jobshop-deploy/failed", c.Attention.RollbackFile)
+	assert.Equal(t, "1h", c.Attention.ResourceWait)
 	assert.Equal(t, "bubblewrap", c.Defaults.Sandbox.Backend)
 	assert.Equal(t, "jx", c.Projects["js"].Prefix, "the including file wins")
 	assert.Contains(t, c.Projects, "ot")

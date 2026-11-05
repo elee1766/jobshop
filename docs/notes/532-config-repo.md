@@ -27,9 +27,9 @@ check-and-reset step is new. At most one workspace, and not with
   error to `config-repo.failed`, exit 1, no reload. The same bad commit
   is not checked again until origin moves. A checkout that cannot
   fast-forward (a local edit) also writes `config-repo.failed`.
-- **Attention:** new `attention.config_repo_file` (the module sets it);
-  `jobshop attention` lists kind `config-repo` with the commit and error
-  while the file exists.
+- **Attention:** the sync files a needs-human `config-repo:<name>`
+  ticket with the commit and error, and closes it when a commit passes
+  (#577; was `attention.config_repo_file`, now a load error).
 - `jobshop-config.path` watches only `jobshop.module.yaml` in this mode;
   the sync unit owns reloads of the repo file.
 

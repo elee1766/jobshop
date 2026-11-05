@@ -755,6 +755,7 @@ func init() {
 		rpc.MethodTicketUpdate:      bind((*Controller).update),
 		rpc.MethodTicketClose:       bind((*Controller).closeTicket),
 		rpc.MethodTicketReopen:      bind((*Controller).reopen),
+		rpc.MethodTicketUpsert:      bind((*Controller).upsert),
 		rpc.MethodReady:             bind((*Controller).ready),
 		rpc.MethodCommentAdd:        bind((*Controller).comment),
 		rpc.MethodEdgeAdd:           bind((*Controller).edgeAdd),

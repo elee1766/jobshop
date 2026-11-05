@@ -523,6 +523,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/verify/desk-plugins.md`).
 - GitHub pack steps wait on CI with `github.checks` waits, not fixed
   `release --until` deferrals (#555, `docs/notes/555-ci-waits.md`).
+- Deploy state out of core: `jobshop ticket upsert --key`; self-deploy
+  and config-repo sync file needs-human `deploy:*`/`config-repo:*`
+  tickets; Deploys moved to `packs/deploy` (#577,
+  `docs/notes/577-deploy-out-of-core.md`).
 - NixOS `workspaces.<name>.config`: run from `jobshop.yaml` in a git
   checkout; each push is checked, reset to last good on failure and
   listed as attention `config-repo` (#532, `docs/notes/532-config-repo.md`).
@@ -1422,6 +1426,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   command string from the browser (2026-11-05, #542). Plugin types come
   from one table, `rpc.Specs`, checked against the handler table, so the
   `.d.ts` and the `/api/rpc` schemas cannot drift from the controller.
+- Deploy and rollout state is not core (2026-11-05, #577). Tools report
+  a problem as a needs-human ticket with a stable key (`ticket upsert
+  --key`) and close it when it clears; attention, Desk, gateways and
+  digests show it with no deploy code. The NixOS self-deploy and its
+  Deploys plugin (packs/deploy) are one example wrapper; multi-host or
+  staged rollouts build their own the same way.
 
 ## 7. Reference: behavior as built
 
@@ -1488,6 +1498,7 @@ moved from the old 7.x list, oldest first:
 - [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
 - [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
 - [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
+- [Deploy state out of core](notes/577-deploy-out-of-core.md) (#577)
 
 ## 8. Chat gateway
 

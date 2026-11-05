@@ -117,12 +117,14 @@ let
       [
         "${pkgs.systemd}/bin/systemctl"
         "${lib.getExe pkgs.hello} reload"
+        "${lib.getExe pkgs.hello} \"$@\""
         "${lib.getExe pkgs.hello}"
         "/var/lib/jobshop"
       ]
       [
         "$T/bin/systemctl"
         "$T/bin/reload"
+        "$T/bin/report \"$@\""
         "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.jobshop}"
         "$T/root"
       ]
@@ -134,10 +136,12 @@ let
     mkdir -p $T/bin $T/root/workspaces
     printf '#!${pkgs.runtimeShell}\nexit 0\n' > $T/bin/systemctl
     printf '#!${pkgs.runtimeShell}\necho reload >> $T/log\n' > $T/bin/reload
+    # The sync's ticket reports (#577), logged as "ticket <args>".
+    printf '#!${pkgs.runtimeShell}\necho "ticket $*" >> $T/tickets\n' > $T/bin/report
     chmod +x $T/bin/*
-    rfail() { echo "config repo test: $*"; cat $T/log $T/out 2>/dev/null; exit 1; }
+    rfail() { echo "config repo test: $*"; cat $T/log $T/out $T/tickets 2>/dev/null; exit 1; }
     cp ${linkTarget repoCfg "jobshop.module.yaml"} $T/root/jobshop.module.yaml
-    grep -q 'config_repo_file: /var/lib/jobshop/config-repo.failed' $T/root/jobshop.module.yaml || rfail "no attention file in module file"
+    ! grep -q 'config_repo_file' $T/root/jobshop.module.yaml || rfail "removed attention key in module file"
     git init -q --bare -b main $T/origin.git
     git clone -q $T/origin.git $T/work 2>/dev/null
     cd $T/work
@@ -169,10 +173,14 @@ let
     [ "$(cur)" = "$good" ] || rfail "not reset to last good"
     [ -s $T/root/config-repo.failed ] || rfail "no attention file"
     grep -q pack.yaml $T/root/config-repo.failed || rfail "attention file lacks the error"
+    grep -q 'ticket upsert --key config-repo:cfg -l needs-human' $T/tickets || rfail "check failure not filed"
+    grep -q 'pack.yaml' $T/tickets || rfail "filed ticket lacks the error"
+    : > $T/tickets
     # The same bad commit is not retried every tick.
     run
     [ $rc = 0 ] || rfail "repeat run exit $rc"
     [ "$(cur)" = "$good" ] || rfail "repeat run moved the checkout"
+    [ ! -s $T/tickets ] || rfail "repeat run filed again"
 
     # The next good push recovers.
     (cd $T/work && pool 3 && push fixed)
@@ -181,6 +189,7 @@ let
     grep -q reload $T/log || rfail "fix not reloaded"
     [ ! -e $T/root/config-repo.failed ] || rfail "attention file not cleared"
     [ "$(cat $T/root/config-repo.last-good)" = "$(cur)" ] || rfail "last-good not advanced"
+    grep -q 'ticket upsert --key config-repo:cfg --close' $T/tickets || rfail "report not closed"
 
     # A local edit that blocks the fast-forward raises attention.
     echo edit >> $T/root/workspaces/cfg/packs/p/pack.yaml
@@ -189,6 +198,7 @@ let
     run
     [ $rc = 1 ] || rfail "diverged exit $rc"
     grep -q 'not fast-forwardable' $T/root/config-repo.failed || rfail "diverged checkout not in attention"
+    grep -q 'ticket upsert --key config-repo:cfg -l needs-human' $T/tickets && grep -q 'checkout not fast-forwardable' $T/tickets || rfail "diverged checkout not filed"
     cd ..
   '';
   rules = c: c.config.systemd.tmpfiles.rules;
@@ -250,6 +260,7 @@ let
         ''readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe"''
         "/nix/var/nix/profiles/system"
         "sleep 2"
+        "${lib.getExe pkgs.hello}"
       ]
       [
         "state=$T/state"
@@ -258,6 +269,7 @@ let
         "echo $T/bin/jobshop"
         "$T/system"
         ":"
+        "$T/bin/jobshop"
       ]
       legacy.config.systemd.services.jobshop-self-deploy.script
   );
@@ -267,7 +279,18 @@ let
     stub() { printf '#!${pkgs.runtimeShell}\n%s\n' "$2" > $T/bin/$1; chmod +x $T/bin/$1; }
     stub runuser 'shift 3; exec "$@"'
     stub gh 'cat $T/green'
-    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; exit 0'
+    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; [ "$1" = ticket ] && exec $T/bin/tickets "$@"; exit 0'
+    # ticket upsert against a store of one file per open key: created,
+    # updated in place, or moved to closed/ (#577).
+    mkdir -p $T/tickets/closed
+    stub tickets '
+      shift 2; key= close= title=
+      while [ $# -gt 0 ]; do case "$1" in --key) key=$2; shift 2 ;; --close) close=1; shift ;; -b|-l|--project) shift 2 ;; *) title=$1; shift ;; esac; done
+      f=$T/tickets/$key
+      if [ -n "$close" ]; then [ ! -e "$f" ] || { mv "$f" "$T/tickets/closed/$key.$(ls $T/tickets/closed | wc -l)"; echo "close $key" >> $T/log; }; exit 0; fi
+      [ -e "$f" ] || echo "create $key" >> $T/log
+      echo "$title" > "$f"'
+    open() { ls $T/tickets | grep -v closed || true; }
     stub nix 'case "$1" in flake) echo "{\"path\":\"$T/src\"}" ;; build) echo $T ;; esac'
     stub jq 'sed -n "s/.*\"path\":\"\([^\"]*\)\".*/\1/p"'
     stub systemctl 'exit 0'
@@ -293,6 +316,7 @@ let
     grep -q "check config check --file /var/lib/jobshop/jobshop.yaml --replace /var/lib/jobshop/src/jobshop=$T/src" $T/log || fail "config check not run against the new source"
     [ "$(cat $T/state/failed)" = 9999999aaa ] || fail "failed rev not recorded"
     grep -q 'jobshop_repo' $T/state/failed.reason || fail "reason not kept"
+    [ "$(open)" = deploy:config-check ] || fail "config check failure not filed: $(open)"
     rm $T/badcheck $T/state/failed $T/state/failed.reason
     echo abcdef1234 > $T/green
 
@@ -305,12 +329,18 @@ let
     grep -q "nix-env -p $T/system --set $T/gen1" $T/log || fail "no rollback to prev"
     grep -q "switch gen1 switch" $T/log || fail "prev not switched to"
     [ ! -e $T/state/deployed ] || fail "deployed written on rollback"
+    # A failed switch upserts deploy:rollback (#577).
+    grep -q "create deploy:rollback" $T/log || fail "rollback not filed"
+    grep -q abcdef1234 $T/tickets/deploy:rollback || fail "rollback ticket lacks the rev"
 
-    # The same rev is not retried.
+    # The same rev is not retried, and its report is re-filed without a
+    # second ticket (the controller may have been down the first time).
     echo 0000000 > $T/cur
     run
     [ $rc = 0 ] || fail "retry run exit $rc"
     ! grep -q rebuild $T/log || fail "failed rev rebuilt again"
+    ! grep -q create $T/log || fail "repeat made a second ticket"
+    [ -e $T/tickets/deploy:rollback ] || fail "rollback ticket gone after a repeat"
 
     # Without the drill, a controller still on the old binary is unhealthy too.
     echo bbbbbbb999 > $T/green
@@ -318,13 +348,19 @@ let
     run
     [ $rc = 1 ] || fail "unhealthy run exit $rc"
     [ "$(cat $T/state/failed)" = bbbbbbb999 ] || fail "unhealthy rev not in failed"
+    ! grep -q create $T/log || fail "a repeated failure made a second ticket"
+    grep -q bbbbbbb999 $T/tickets/deploy:rollback || fail "rollback ticket not updated"
 
-    # A newer healthy rev deploys.
+    # A newer healthy rev deploys and closes the open reports.
     rm $T/shipbad
     echo ccccccc777 > $T/green
     run
     [ $rc = 0 ] || fail "healthy run exit $rc"
     [ "$(cat $T/state/deployed)" = ccccccc777 ] || fail "deployed not written"
+    grep -q "close deploy:rollback" $T/log || fail "rollback not closed"
+    grep -q "close deploy:config-check" $T/log || fail "config check not closed"
+    [ -z "$(open)" ] || fail "tickets left open: $(open)"
+    [ ! -e $T/state/failed.report ] || fail "failed.report not cleared"
 
     # The unit runs another commit than deployed says (#225): the next run
     # rewrites deployed with a WARN and keeps its mtime.

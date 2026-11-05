@@ -10,8 +10,9 @@
   message, `<4>jobshop switched outside self-deploy (a rollback if
   older): running Y, last deployed X; deployed rewritten`) and rewrites
   the file with the running commit.
-- The rewrite keeps the file's old mtime: attention lists a rollback
-  while `failed` is newer than `deployed`, and a fix-up is not a new
-  good deploy.
+- The rewrite keeps the file's old mtime: the Deploys view (packs/deploy
+  since #577) marks `failed` as rolled back while it is newer than
+  `deployed`, and a fix-up is not a new good deploy. Attention no longer
+  reads these files (#577): rollbacks are `deploy:rollback` tickets.
 - Test: the rollback script test in `nix/module-test.nix`.
 - Live check: `docs/verify/deploy-state.md`.
