@@ -84,8 +84,6 @@ type Querier interface {
 	TakeSlot(ctx context.Context, arg TakeSlotParams) (ResourceSlot, error)
 	// TicketProviderResources lists the provider resources ticket id needs.
 	TicketProviderResources(ctx context.Context, id string) ([]string, error)
-	// TicketSlots lists the slots ticket id's live claim holds.
-	TicketSlots(ctx context.Context, ticket string) ([]ResourceSlot, error)
 	UpdateSlot(ctx context.Context, arg UpdateSlotParams) error
 	// WriteTicket stores every mutable column, guarded by the previous revision.
 	WriteTicket(ctx context.Context, arg WriteTicketParams) (int64, error)

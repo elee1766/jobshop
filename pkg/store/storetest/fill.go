@@ -31,9 +31,8 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	t.Helper()
 	ctx := t.Context()
 	var f Filled
-	require.NoError(t, s.SetResourceCaps(ctx, map[string]int{"emu": 2}))
-	require.NoError(t, s.SetResourceProviders(ctx, []string{"dev"}))
-	_, err := s.AddSlot(ctx, "dev", "d1", map[string]string{"X": "1"})
+	require.NoError(t, s.SetResources(ctx, store.ResourceConfig{Caps: map[string]int{"emu": 2}, Providers: []string{"dev"}}))
+	_, err := addSlot(ctx, s, "dev", "d1", map[string]string{"X": "1"})
 	require.NoError(t, err)
 
 	var err2 error
@@ -103,7 +102,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusInProgress, step.Status)
 	assert.Equal(t, "sess", step.Holder)
-	ru, err := s.Resources(ctx)
+	ru, err := resourceUse(ctx, s)
 	require.NoError(t, err)
 	assert.NotEmpty(t, ru)
 	h, err := store.History(ctx, s, f.Task)
@@ -132,7 +131,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	in, err := ingest.InboxGet(ctx, s, f.Inbox)
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"x":1}`, string(in.Payload))
-	sl, err := s.Slots(ctx)
+	sl, err := allSlots(ctx, s)
 	require.NoError(t, err)
 	require.Len(t, sl, 1)
 	assert.Equal(t, map[string]string{"X": "1"}, sl[0].Env)

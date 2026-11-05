@@ -127,7 +127,7 @@ func TestTicketResourcesBackfill(t *testing.T) {
 	path := testPath(t)
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
-	require.NoError(t, s.SetResourceCaps(ctx, map[string]int{"pr": 1}))
+	require.NoError(t, s.SetResources(ctx, store.ResourceConfig{Caps: map[string]int{"pr": 1}}))
 	rf, _ := json.Marshal(store.RunFields{Workflow: "w", State: store.RunRunning})
 	run, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf})
 	require.NoError(t, err)
@@ -156,7 +156,7 @@ func TestTicketResourcesBackfill(t *testing.T) {
 	ready, err := s.List(ctx, store.Filter{Project: "p", Pool: "dev", Ready: true})
 	require.NoError(t, err)
 	assert.Empty(t, ready, "pr:x#1 is held by the backfilled claim")
-	use, err := s.Resources(ctx)
+	rep, err := s.Resources(ctx, "")
 	require.NoError(t, err)
-	assert.Equal(t, []store.ResourceUse{{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1}}, use)
+	assert.Equal(t, []store.ResourceUse{{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1}}, rep.Use)
 }

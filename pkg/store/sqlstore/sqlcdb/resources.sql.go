@@ -459,46 +459,6 @@ func (q *Queries) TicketProviderResources(ctx context.Context, id string) ([]str
 	return items, nil
 }
 
-const ticketSlots = `-- name: TicketSlots :many
-SELECT s.pool, s.id, s.state, s.env, s.ticket, s.fence, s.removing, s.updated_at FROM resource_slots s JOIN tickets t ON t.id = s.ticket
-WHERE s.ticket = ?1 AND s.state = 'held'
-  AND t.status = 'in_progress' AND t.fence = s.fence
-ORDER BY s.pool, s.id
-`
-
-// TicketSlots lists the slots ticket id's live claim holds.
-func (q *Queries) TicketSlots(ctx context.Context, ticket string) ([]ResourceSlot, error) {
-	rows, err := q.db.QueryContext(ctx, ticketSlots, ticket)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ResourceSlot{}
-	for rows.Next() {
-		var i ResourceSlot
-		if err := rows.Scan(
-			&i.Pool,
-			&i.ID,
-			&i.State,
-			&i.Env,
-			&i.Ticket,
-			&i.Fence,
-			&i.Removing,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const updateSlot = `-- name: UpdateSlot :exec
 UPDATE resource_slots SET
   state = ?1, env = ?2, ticket = ?3,

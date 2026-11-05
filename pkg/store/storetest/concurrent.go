@@ -85,7 +85,7 @@ func testConcurrentClaims(t *testing.T, s store.Store, _ *Clock) {
 // guarded claim write, so exactly one step is in progress at a time.
 func testConcurrentResourceClaims(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
-	require.NoError(t, s.SetResourceCaps(ctx, map[string]int{"emu": 1}))
+	require.NoError(t, setCaps(ctx, s, map[string]int{"emu": 1}))
 	runID, err := s.NewID(proj)
 	require.NoError(t, err)
 	nts := []store.NewTicket{{

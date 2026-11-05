@@ -97,10 +97,11 @@ func (c *Controller) providerPass() {
 	}
 	c.resetSlots(ctx, cfg)
 	now := c.now()
-	slots, err := c.store.Slots(ctx)
+	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return
 	}
+	slots := rep.Slots
 	// Forget remove marks of slots that are gone or no longer idle.
 	idleNow := map[string]bool{}
 	for _, sl := range slots {
@@ -111,10 +112,11 @@ func (c *Controller) providerPass() {
 	maps.DeleteFunc(c.prov.removing, func(k string, _ time.Time) bool { return !idleNow[k] })
 	for _, name := range cfg.ResourceProviders() {
 		p := cfg.Resources[name].Provider
-		d, err := c.store.SlotDemand(ctx, name)
+		prep, err := c.store.Resources(ctx, name)
 		if err != nil {
 			continue
 		}
+		d := prep.Demand
 		if last, ok := c.prov.demandLast[name]; !ok || last != d || now.Sub(c.prov.demandAt[name]) >= p.DemandEveryDuration() {
 			c.prov.demandAt[name], c.prov.demandLast[name] = now, d
 			c.wg.Go(func() { c.providerAsync(p, providerCall{Op: "demand", Resource: name, Demand: &d}) })
@@ -161,7 +163,7 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 		if !ok || r.Provider == nil || sl.Removing {
 			// No provider any more, or removed while held: nothing to
 			// reset. SlotReset deletes a removing slot.
-			_ = c.store.SlotReset(ctx, sl.Pool, sl.ID, !ok || r.Provider == nil)
+			_, _, _ = c.store.Slot(ctx, "", store.SlotEvent{Op: store.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: !ok || r.Provider == nil})
 			continue
 		}
 		err := c.callProvider(ctx, r.Provider, providerCall{Op: "reset", Resource: sl.Pool, Slot: sl.ID, Env: sl.Env})
@@ -171,7 +173,7 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 		if err != nil {
 			c.log.Warn("resource reset failed: slot gone", "resource", sl.Pool, "slot", sl.ID, "err", err)
 		}
-		if serr := c.store.SlotReset(ctx, sl.Pool, sl.ID, err == nil); serr != nil {
+		if _, _, serr := c.store.Slot(ctx, "", store.SlotEvent{Op: store.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: err == nil}); serr != nil {
 			c.log.Error("record slot reset", "resource", sl.Pool, "slot", sl.ID, "err", serr)
 		}
 	}
@@ -179,12 +181,12 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 
 // slotEnv is the env of the slots t's claim holds, sorted, as KEY=value.
 func (c *Controller) slotEnv(ctx context.Context, t store.Ticket) []string {
-	slots, err := c.store.TicketSlots(ctx, t.ID)
+	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil
 	}
 	var out []string
-	for _, sl := range slots {
+	for _, sl := range store.TicketSlots(rep, t) {
 		out = append(out, "JOBSHOP_SLOT_"+strings.ToUpper(sl.Pool)+"="+sl.ID)
 		for _, k := range slices.Sorted(maps.Keys(sl.Env)) {
 			out = append(out, k+"="+sl.Env[k])
@@ -229,14 +231,16 @@ func (c *Controller) resourceAdd(ctx context.Context, sc scope, p rpc.SlotParams
 	if err := c.providerResource(p.Resource); err != nil {
 		return nil, err
 	}
-	return c.store.AddSlot(ctx, p.Resource, p.Slot, p.Env)
+	sl, _, err := c.store.Slot(ctx, sc.actor, store.SlotEvent{Op: store.SlotAdd, Pool: p.Resource, ID: p.Slot, Env: p.Env})
+	return sl, err
 }
 
 func (c *Controller) resourceRemove(ctx context.Context, sc scope, p rpc.SlotParams) (any, error) {
 	if err := c.requireGrant(sc, rpc.MethodResourceRemove, "resource remove"); err != nil {
 		return nil, err
 	}
-	return c.store.RemoveSlot(ctx, p.Resource, p.Slot)
+	sl, _, err := c.store.Slot(ctx, sc.actor, store.SlotEvent{Op: store.SlotRemove, Pool: p.Resource, ID: p.Slot})
+	return sl, err
 }
 
 func (c *Controller) resourceUnhealthy(ctx context.Context, sc scope, p rpc.SlotParams) (any, error) {
@@ -247,7 +251,7 @@ func (c *Controller) resourceUnhealthy(ctx context.Context, sc scope, p rpc.Slot
 	if reason == "" {
 		reason = "reported by provider"
 	}
-	sl, reopened, err := c.store.SlotUnhealthy(ctx, sc.actor, p.Resource, p.Slot, reason)
+	sl, reopened, err := c.store.Slot(ctx, sc.actor, store.SlotEvent{Op: store.SlotUnhealthy, Pool: p.Resource, ID: p.Slot, Reason: reason})
 	if err != nil {
 		return nil, err
 	}
@@ -263,13 +267,9 @@ func (c *Controller) resourceList(ctx context.Context, sc scope, _ struct{}) (an
 	if err := c.requireGrant(sc, rpc.MethodResourceList, "resource list"); err != nil {
 		return nil, err
 	}
-	slots, err := c.store.Slots(ctx)
+	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	use, err := c.store.Resources(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return rpc.ResourceListResult{Slots: slots, Use: use}, nil
+	return rpc.ResourceListResult{Slots: rep.Slots, Use: rep.Use}, nil
 }

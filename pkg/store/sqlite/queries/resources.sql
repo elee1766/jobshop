@@ -109,13 +109,6 @@ RETURNING *;
 -- name: ListSlots :many
 SELECT * FROM resource_slots ORDER BY pool, id;
 
--- TicketSlots lists the slots ticket id's live claim holds.
--- name: TicketSlots :many
-SELECT s.* FROM resource_slots s JOIN tickets t ON t.id = s.ticket
-WHERE s.ticket = sqlc.arg(ticket) AND s.state = 'held'
-  AND t.status = 'in_progress' AND t.fence = s.fence
-ORDER BY s.pool, s.id;
-
 -- MarkSlotsReleasing moves held slots whose claim ended (the ticket is
 -- not in progress, or was claimed again with a new fence) to releasing.
 -- name: MarkSlotsReleasing :exec
