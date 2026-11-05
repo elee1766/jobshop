@@ -448,12 +448,12 @@ let
             echo "config repo moved $before..$after, check passed"
           ''}
           ${lib.optionalString (w.config == null) ''
-          # Only fast-forward: a hand-edited checkout is left alone and logged.
-          if ! git merge --ff-only --quiet "$target"; then
-            echo "<4>workspace ${name} not fast-forwardable to $target, left as is"
-            exit 0
-          fi
-          after=$(git rev-parse HEAD)
+            # Only fast-forward: a hand-edited checkout is left alone and logged.
+            if ! git merge --ff-only --quiet "$target"; then
+              echo "<4>workspace ${name} not fast-forwardable to $target, left as is"
+              exit 0
+            fi
+            after=$(git rev-parse HEAD)
           ''}
           # Reload on any move, not only a diff under livePacks: a live pack
           # extends packs outside that list (selfdev extends ../github), and
@@ -1351,8 +1351,7 @@ in
             PathChanged =
               # With a config repo the sync unit checks and reloads the
               # repo's file (#532); only the module file is watched here.
-              lib.optional (!repoConfig) cfg.configFile
-              ++ [ "${cfg.dataDir}/jobshop.module.yaml" ];
+              lib.optional (!repoConfig) cfg.configFile ++ [ "${cfg.dataDir}/jobshop.module.yaml" ];
             Unit = "jobshop-config.service";
           };
         };
