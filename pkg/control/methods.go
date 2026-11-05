@@ -195,15 +195,11 @@ func (c *Controller) show(ctx context.Context, sc scope, p rpc.IDParams) (any, e
 	if r.Ticket, err = c.store.Get(ctx, id); err != nil {
 		return nil, err
 	}
-	if r.Edges, err = c.store.Edges(ctx, id); err != nil {
+	th, err := c.store.Thread(ctx, id, store.AllParts)
+	if err != nil {
 		return nil, err
 	}
-	if r.Comments, err = c.store.Comments(ctx, id); err != nil {
-		return nil, err
-	}
-	if r.History, err = c.store.History(ctx, id); err != nil {
-		return nil, err
-	}
+	r.Edges, r.Comments, r.History = th.Edges, th.Comments, th.History
 	return r, nil
 }
 

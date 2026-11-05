@@ -1043,19 +1043,6 @@ func (s *Store) RemoveEdge(ctx context.Context, actor string, e store.Edge) erro
 	})
 }
 
-// Edges returns edges in either direction touching id.
-func (s *Store) Edges(ctx context.Context, id string) ([]store.Edge, error) {
-	rows, err := s.q.ListEdges(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]store.Edge, len(rows))
-	for i, r := range rows {
-		out[i] = store.Edge{From: r.FromID, To: r.ToID, Kind: store.EdgeKind(r.Kind), CreatedAt: fromMS(r.CreatedAt)}
-	}
-	return out, nil
-}
-
 func (s *Store) addLabel(ctx context.Context, q sqlcdb.Querier, id, label string) error {
 	label = strings.TrimSpace(label)
 	if label == "" {
@@ -1134,52 +1121,4 @@ func (s *Store) AddComment(ctx context.Context, author, id, body string) (c stor
 
 func toComment(r sqlcdb.Comment) store.Comment {
 	return store.Comment{ID: r.ID, TicketID: r.TicketID, Author: r.Author, Body: r.Body, CreatedAt: fromMS(r.CreatedAt)}
-}
-
-// Comments lists a ticket's comments oldest first.
-func (s *Store) Comments(ctx context.Context, id string) ([]store.Comment, error) {
-	rows, err := s.q.ListComments(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]store.Comment, len(rows))
-	for i, r := range rows {
-		out[i] = toComment(r)
-	}
-	return out, nil
-}
-
-// History returns a ticket's audit log oldest first.
-func (s *Store) History(ctx context.Context, id string) ([]store.HistoryEntry, error) {
-	rows, err := s.q.ListHistory(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return toHistory(rows), nil
-}
-
-// Changes returns history rows of every ticket after seq, oldest first.
-func (s *Store) Changes(ctx context.Context, after int64, n int) ([]store.HistoryEntry, error) {
-	if n <= 0 {
-		n = store.DefaultLimit
-	}
-	rows, err := s.q.ListChanges(ctx, sqlcdb.ListChangesParams{Seq: after, Lim: int64(n)})
-	if err != nil {
-		return nil, err
-	}
-	return toHistory(rows), nil
-}
-
-// LastSeq is the newest history seq, 0 when there is none.
-func (s *Store) LastSeq(ctx context.Context) (int64, error) { return s.q.LastSeq(ctx) }
-
-func toHistory(rows []sqlcdb.History) []store.HistoryEntry {
-	out := make([]store.HistoryEntry, len(rows))
-	for i, r := range rows {
-		out[i] = store.HistoryEntry{
-			Seq: r.Seq, TicketID: r.TicketID, At: fromMS(r.At), Actor: r.Actor,
-			Op: r.Op, Revision: r.Revision, Diff: json.RawMessage(r.Diff),
-		}
-	}
-	return out
 }

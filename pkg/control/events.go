@@ -113,13 +113,13 @@ func (c *Controller) pumpEvents() {
 
 // changes reads one batch of history after seq as events.
 func (c *Controller) changes(ctx context.Context, after int64) ([]rpc.Event, error) {
-	rows, err := c.store.Changes(ctx, after, 0)
+	page, err := c.store.Changes(ctx, after, 0)
 	if err != nil {
 		return nil, err
 	}
 	tickets := map[string]*store.Ticket{}
-	out := make([]rpc.Event, 0, len(rows))
-	for _, r := range rows {
+	out := make([]rpc.Event, 0, len(page.Changes))
+	for _, r := range page.Changes {
 		t, ok := tickets[r.TicketID]
 		if !ok {
 			if got, err := c.store.Get(ctx, r.TicketID); err == nil {

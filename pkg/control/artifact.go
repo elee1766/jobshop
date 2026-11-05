@@ -341,12 +341,11 @@ func (c *Controller) artifactShow(ctx context.Context, sc scope, p rpc.IDParams)
 		return nil, err
 	}
 	r := rpc.ArtifactShowResult{Artifact: toArtifact(t, am)}
-	if r.Comments, err = c.store.Comments(ctx, t.ID); err != nil {
+	th, err := c.store.Thread(ctx, t.ID, store.Parts{Comments: true, History: true})
+	if err != nil {
 		return nil, err
 	}
-	if r.History, err = c.store.History(ctx, t.ID); err != nil {
-		return nil, err
-	}
+	r.Comments, r.History = th.Comments, th.History
 	if sc.admin {
 		r.Dir = c.artifactDir(t.ID)
 	}

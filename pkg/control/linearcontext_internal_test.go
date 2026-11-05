@@ -58,7 +58,7 @@ func TestLinearCommentContext(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 	c.pollSubscriptions(ctx, src) // nothing new: the edit is not sent again
 
-	cs, err := c.store.Comments(ctx, tk.ID)
+	cs, err := store.Comments(ctx, c.store, tk.ID)
 	require.NoError(t, err)
 	var got []store.Comment
 	for _, cm := range cs {

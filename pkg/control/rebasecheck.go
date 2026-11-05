@@ -24,7 +24,7 @@ func (c *Controller) runPR(ctx context.Context, run store.Ticket) (string, int) 
 	}
 	repo, n := "", 0
 	for _, s := range append([]store.Ticket{run}, steps...) {
-		cs, err := c.store.Comments(ctx, s.ID)
+		cs, err := store.Comments(ctx, c.store, s.ID)
 		if err != nil {
 			continue
 		}

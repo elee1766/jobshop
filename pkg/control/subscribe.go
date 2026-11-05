@@ -312,7 +312,7 @@ func (c *Controller) follow(ctx context.Context, t store.Ticket, now time.Time) 
 	var comments []store.Comment
 	var err error
 	if t.Status != store.StatusClosed || len(sm.Threads) > 0 {
-		if comments, err = c.store.Comments(ctx, t.ID); err != nil {
+		if comments, err = store.Comments(ctx, c.store, t.ID); err != nil {
 			return nil, err
 		}
 	}
@@ -636,7 +636,7 @@ func (c *Controller) resumeFollower(ctx context.Context, t store.Ticket, th thre
 
 // lastHolder is the session that last claimed id.
 func (c *Controller) lastHolder(ctx context.Context, id string) string {
-	hist, err := c.store.History(ctx, id)
+	hist, err := store.History(ctx, c.store, id)
 	if err != nil {
 		return ""
 	}

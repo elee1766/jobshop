@@ -982,7 +982,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		r.lastClaim = r.c.now()
 		r.mu.Unlock()
 		r.setTurnTicket(t.ID)
-		comments, err := r.c.store.Comments(ctx, t.ID)
+		comments, err := store.Comments(ctx, r.c.store, t.ID)
 		if err != nil {
 			r.setTurnTicket("")
 			return err
@@ -1221,7 +1221,7 @@ func (r *runner) turnEndReason() string {
 // releasedUnclosedBefore reports whether the controller already released
 // id for an unclosed turn.
 func (r *runner) releasedUnclosedBefore(ctx context.Context, id string) bool {
-	hist, err := r.c.store.History(ctx, id)
+	hist, err := store.History(ctx, r.c.store, id)
 	if err != nil {
 		return false
 	}

@@ -130,6 +130,29 @@ type HistoryEntry struct {
 	Diff     json.RawMessage `json:"diff,omitempty"`
 }
 
+// Parts selects what Thread reads.
+type Parts struct {
+	Edges, Comments, History bool
+}
+
+// AllParts reads the whole thread.
+var AllParts = Parts{Edges: true, Comments: true, History: true}
+
+// Thread is a ticket's edges, comments and history. A part not asked
+// for is nil.
+type Thread struct {
+	Edges    []Edge
+	Comments []Comment
+	History  []HistoryEntry
+}
+
+// ChangePage is one page of the global history and the newest seq at
+// the time of the read.
+type ChangePage struct {
+	Changes []HistoryEntry
+	Last    int64
+}
+
 // Claim is what a holder needs to heartbeat, close or release a ticket.
 type Claim struct {
 	TicketID   string    `json:"ticket_id"`
@@ -346,23 +369,23 @@ type Store interface {
 
 	AddEdge(ctx context.Context, actor string, e Edge) error
 	RemoveEdge(ctx context.Context, actor string, e Edge) error
-	Edges(ctx context.Context, id string) ([]Edge, error)
 
 	AddLabel(ctx context.Context, actor, id, label string) error
 	RemoveLabel(ctx context.Context, actor, id, label string) error
 
 	AddComment(ctx context.Context, author, id, body string) (Comment, error)
-	Comments(ctx context.Context, id string) ([]Comment, error)
-	History(ctx context.Context, id string) ([]HistoryEntry, error)
+	// Thread reads the parts of a ticket's thread that p asks for: edges
+	// in either direction, comments oldest first, history oldest first.
+	// It does not check that id exists.
+	Thread(ctx context.Context, id string, p Parts) (Thread, error)
 	// Record adds a history row for an outside action on a ticket without
 	// changing it (#542: desk_exec). The row carries the ticket's current
 	// revision.
 	Record(ctx context.Context, actor, id, op string, diff any) error
 	// Changes returns history rows of all tickets with seq > after, oldest
-	// first, at most n (0 means DefaultLimit). It feeds events.subscribe.
-	Changes(ctx context.Context, after int64, n int) ([]HistoryEntry, error)
-	// LastSeq is the newest history seq.
-	LastSeq(ctx context.Context) (int64, error)
+	// first, at most n (0 means DefaultLimit), and the newest seq. It
+	// feeds events.subscribe; n < 0 reads only Last.
+	Changes(ctx context.Context, after int64, n int) (ChangePage, error)
 
 	// CreateGraph inserts tickets and edges in one transaction.
 	CreateGraph(ctx context.Context, actor string, tickets []NewTicket, edges []Edge) ([]Ticket, error)

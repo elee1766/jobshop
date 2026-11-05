@@ -43,18 +43,13 @@ func (c *Controller) traceNode(ctx context.Context, id string, depth int, seen m
 		ID: t.ID, Title: t.Title, Pool: t.Pool, Status: t.Status,
 		Resolution: t.Resolution, CreatedBy: t.CreatedBy, Trigger: triggerName(t.Meta),
 	}
-	if n.Edges, err = c.store.Edges(ctx, id); err != nil {
-		return n, err
-	}
-	comments, err := c.store.Comments(ctx, id)
+	th, err := c.store.Thread(ctx, id, store.AllParts)
 	if err != nil {
 		return n, err
 	}
-	n.Links = links(t.Body, comments)
-	hist, err := c.store.History(ctx, id)
-	if err != nil {
-		return n, err
-	}
+	n.Edges = th.Edges
+	n.Links = links(t.Body, th.Comments)
+	hist := th.History
 	windows := holdWindows(hist, c.now())
 	for _, w := range windows {
 		if !slices.Contains(n.Holders, w.holder) {

@@ -35,18 +35,7 @@ ORDER BY ticket_id, label;
 -- name: InsertHistory :exec
 INSERT INTO history (ticket_id, at, actor, op, revision, diff) VALUES (?, ?, ?, ?, ?, ?);
 
--- name: ListHistory :many
-SELECT * FROM history WHERE ticket_id = ? ORDER BY seq;
-
 -- name: InsertComment :one
 INSERT INTO comments (ticket_id, author, body, created_at) VALUES (?, ?, ?, ?)
 RETURNING *;
 
--- name: ListComments :many
-SELECT * FROM comments WHERE ticket_id = ? AND deleted = 0 ORDER BY id;
-
--- name: ListChanges :many
-SELECT * FROM history WHERE seq > ? ORDER BY seq LIMIT CAST(sqlc.arg(lim) AS INTEGER);
-
--- name: LastSeq :one
-SELECT CAST(COALESCE(MAX(seq), 0) AS INTEGER) FROM history;

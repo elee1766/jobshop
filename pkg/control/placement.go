@@ -139,7 +139,7 @@ func allFree(keys []string, free func(string) bool) bool {
 
 // stepBlocked reports whether a blocker of t is unfinished.
 func (c *Controller) stepBlocked(ctx context.Context, t store.Ticket) (bool, error) {
-	edges, err := c.store.Edges(ctx, t.ID)
+	edges, err := store.Edges(ctx, c.store, t.ID)
 	if err != nil {
 		return false, err
 	}
