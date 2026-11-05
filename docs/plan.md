@@ -529,6 +529,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `ui/desk-plugin.d.ts`, the CSV example and `docs/desk-plugins.md`
   (#542, `docs/notes/542-desk-plugins-part3.md`,
   `docs/verify/desk-plugin-commands.md`).
+- `reload.watch`: the controller watches `jobshop.yaml`, includes and
+  pack dirs and reloads after a debounce; a bad change raises
+  `config-invalid` (#533, `docs/notes/533-config-watch.md`).
 
 ## 5. What's next
 
@@ -693,7 +696,8 @@ visibility (#408), placement (#409).
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
 `session.journal` (#529), Desk plugin host part 1 (#517), config from a
-git repo (#532), plugin commands, typed RPC and docs (#542).
+git repo (#532), plugin commands, typed RPC and docs (#542), config
+watch (#533).
 Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
 and `api.query`/`api.session` (#541).
 

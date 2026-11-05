@@ -65,6 +65,12 @@ let
     // lib.optionalAttrs (cfg.gateway != { }) {
       gateway = (base.gateway or { }) // gatewaySettings;
     }
+    // lib.optionalAttrs cfg.reloadOnChange {
+      # The controller watches its config and packs (#533).
+      reload = (base.reload or { }) // {
+        watch = true;
+      };
+    }
     # Self-deploy rollbacks show in `jobshop attention` (#185).
     // lib.optionalAttrs cfg.selfDeploy.enable {
       attention = {
@@ -502,7 +508,18 @@ in
         that path, and the module never writes it. The module's own keys
         (identities, gateway, live packs, sandbox, attention, telemetry) go to
         dataDir/jobshop.module.yaml; the file should list it under
-        `include:`. Edits are checked and reloaded by jobshop-config.path.
+        `include:`. Edits are checked and reloaded by jobshop-config.path,
+        or by the controller itself with reloadOnChange.
+      '';
+    };
+
+    reloadOnChange = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Set reload.watch: the controller watches jobshop.yaml, its includes
+        and pack dirs and reloads after a change (#533). Replaces the
+        jobshop-config.path unit of configFile mode.
       '';
     };
 
@@ -1279,7 +1296,7 @@ in
           };
         };
       })
-      (lib.mkIf userConfig {
+      (lib.mkIf (userConfig && !cfg.reloadOnChange) {
         # A user-owned jobshop.yaml changes outside a switch, so
         # reloadTriggers never see it (#531). Check, then reload; a failed
         # check logs and the controller keeps its running config (#227).

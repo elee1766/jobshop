@@ -47,6 +47,8 @@ type Config struct {
 	Ingest Ingest `yaml:"ingest"`
 	// WriteKeys configures the local idempotency key cache (#415).
 	WriteKeys WriteKeys `yaml:"write_keys"`
+	// Reload configures watch-and-reload of this file and its packs (#533).
+	Reload ReloadConfig `yaml:"reload"`
 	// Artifacts configures delivered artifacts' attachments (#508).
 	Artifacts Artifacts `yaml:"artifacts"`
 	// Journal configures journal shipping and search (#530).
@@ -89,6 +91,8 @@ type Config struct {
 	// Warnings are non-fatal load findings, such as a deprecated pack var
 	// name the host still sets (#261). The controller logs them.
 	Warnings []string `yaml:"-"`
+	// Watch is what a config watcher follows (#533), recorded at load.
+	Watch WatchPaths `yaml:"-"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
 	// BuiltinMetaPacks.
 	MetaPacks []string `yaml:"meta_packs"`
@@ -1305,6 +1309,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if d, err := parseDays(r); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: write_keys.retention %q must be a positive duration (e.g. 48h, 2d)", FileName, r)
 		}
+	}
+	if err := c.Reload.check(); err != nil {
+		return nil, err
 	}
 	if r := c.Artifacts.Retention; r != "" {
 		if d, err := parseDays(r); err != nil || d <= 0 {

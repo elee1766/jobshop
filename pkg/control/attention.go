@@ -122,6 +122,9 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	if c.configErr != "" {
 		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})
 	}
+	if c.watchErr != "" {
+		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfigInvalid, ID: "config-invalid", Title: "a watched config change failed to load, running config kept: " + c.watchErr, Since: c.watchErrAt})
+	}
 	for p, why := range c.poolQuarantined {
 		if !escalatedPools[p] {
 			items = append(items, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: p, Title: "pool " + p + " quarantined: " + why, Since: c.started})

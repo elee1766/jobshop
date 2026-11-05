@@ -169,6 +169,18 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	watch := &WatchPaths{}
+	watch.addFile(path)
+	if list, ok := top[IncludeKey].([]any); ok {
+		for _, e := range list {
+			if p, ok := e.(string); ok && p != "" {
+				if !filepath.IsAbs(p) {
+					p = filepath.Join(dir, p)
+				}
+				watch.addFile(p)
+			}
+		}
+	}
 	if top, err = applyIncludes(top, dir, name); err != nil {
 		return nil, err
 	}
@@ -217,6 +229,9 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 		}
 		instances = append(instances, packInstance(ref.Path, ref.Prefix, layers))
 		for _, l := range layers {
+			watch.addDir(filepath.Dir(l.file))
+		}
+		for _, l := range layers {
 			mergeInto(merged, l.m, l.file, sources)
 			for k, v := range l.textSources {
 				sources[k] = v
@@ -247,6 +262,16 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	}
 	c.Packs = head.Packs
 	c.Instances = instances
+	// Text files set by a path outside every pack dir are watched alone.
+	for _, files := range sources {
+		for _, f := range files {
+			if filepath.IsAbs(f) && !slices.ContainsFunc(watch.Dirs, func(d string) bool { return f == d || strings.HasPrefix(f, d+string(filepath.Separator)) }) {
+				watch.addFile(f)
+			}
+		}
+	}
+	slices.Sort(watch.Files)
+	c.Watch = *watch
 	c.Warnings = append(warnings, c.Warnings...)
 	return c, nil
 }
