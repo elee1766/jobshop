@@ -139,6 +139,9 @@ type Controller struct {
 	// Pool crash-loop quarantine, memory only (see quarantine.go).
 	poolCrashLog    map[string][]time.Time
 	poolPausedUntil map[string]time.Time
+	// poolPauseReason is the last session error and failed preflight
+	// checks behind a crash-loop pause (JOB-27); nil until first set.
+	poolPauseReason map[string]string
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.

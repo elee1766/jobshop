@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -130,6 +131,17 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 		if !escalatedPools[p] {
 			items = append(items, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: p, Title: "pool " + p + " quarantined: " + why, Since: c.started})
 		}
+	}
+	// Crash-loop pauses (JOB-27) name the last session error.
+	now := c.now()
+	for p, until := range c.poolPausedUntil {
+		if _, permanent := c.poolQuarantined[p]; permanent || !now.Before(until) || escalatedPools[p] {
+			continue
+		}
+		why := c.poolPauseWhy(p)
+		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: p, Since: until.Add(-poolPause),
+			Title:   clipTitle("pool " + p + " paused until " + until.UTC().Format(time.RFC3339) + ", sessions crash-looping: " + why),
+			Summary: summaryOf(why)})
 	}
 	c.mu.Unlock()
 	slices.SortStableFunc(items, func(a, b rpc.AttentionItem) int {
