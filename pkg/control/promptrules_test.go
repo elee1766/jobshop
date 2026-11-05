@@ -117,14 +117,23 @@ func TestPromptRules(t *testing.T) {
 		return admin.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, &pr) == nil && pr.Turn == "ticket"
 	}, "ticket turn after restart")
 	assert.Equal(t, next.ID, pr.Ticket)
-	assert.Equal(t, []string{"dev-only", "hook"}, pr.Rules)
 	var srcs []string
 	for _, part := range pr.Parts {
 		srcs = append(srcs, part.Source)
 	}
 	assert.Equal(t, []string{"pool", "rule:dev-only", "rule:hook", "ticket"}, srcs)
-	// A new controller has no record of what the session holds: new.
-	assert.Contains(t, pr.Text, "=== rule:dev-only (new) ===\nDEV-RULE\n")
+	// The new controller may already have claimed "third" and sent its
+	// turn (held open by block) before this call; the rules are then
+	// injected and show unchanged (#486). Otherwise it has no record of
+	// what the session holds, so they are new.
+	if pr.Parts[1].Status == "unchanged" {
+		assert.Empty(t, pr.Rules)
+		assert.Contains(t, pr.Text, "=== rule:dev-only (unchanged, not sent) ===\n")
+		assert.Equal(t, store.StatusInProgress, show(next.ID).Status, "rules unchanged only after the turn was sent")
+	} else {
+		assert.Equal(t, []string{"dev-only", "hook"}, pr.Rules)
+		assert.Contains(t, pr.Text, "=== rule:dev-only (new) ===\nDEV-RULE\n")
+	}
 	assert.Contains(t, pr.Text, "=== ticket ===\nYou have claimed Jobshop ticket "+next.ID)
 	sess := dial(t, filepath.Join(sdir, "cli.sock"))
 	assert.ErrorIs(t, sess.Call(t.Context(), rpc.MethodSessionPrompt, rpc.SessionPromptParams{ID: id}, nil), rpc.ErrForbidden)
