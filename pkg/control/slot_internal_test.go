@@ -2,10 +2,6 @@ package control
 
 import (
 	"encoding/json"
-	"errors"
-	"os"
-	"path/filepath"
-	"strconv"
 	"testing"
 
 	host "github.com/elee1766/acphost"
@@ -102,40 +98,15 @@ func TestSlotRestart(t *testing.T) {
 	assert.Equal(t, 1, slotOf(t, b), "slot 0 is still taken after restart")
 }
 
-func TestCheckSlotRange(t *testing.T) {
+// TestApplySlotMapCount: the session reserves the ids from its slot to
+// the end of the pool's block, so acphost rejects a range that runs past
+// the subuid entry at slot 0, not only at the last slot (#722).
+func TestApplySlotMapCount(t *testing.T) {
 	u := config.IsolationUser{MapUID: 100000, MapGID: 200000, Groups: []string{"100"}, PerSession: &config.PerSession{Range: 4}}
-	sub := []host.Range{{Start: 100000, Count: 4}}
-	gsub := []host.Range{{Start: 200000, Count: 65536}}
-	var p *host.PermanentError
-	require.NoError(t, checkSlotRange(u, sub, gsub))
-
-	u.PerSession.Range = 5
-	assert.ErrorAs(t, checkSlotRange(u, sub, gsub), &p, "range runs past subuid")
-	u.PerSession.Range = 4
-	assert.ErrorAs(t, checkSlotRange(u, nil, gsub), &p, "no subuid range")
-	assert.ErrorAs(t, checkSlotRange(u, sub, []host.Range{{Start: 200002, Count: 10}}), &p, "range starts before subgid")
-}
-
-// TestCheckSubIDsFiles reads real-format files; a missing file is no
-// range, so the check fails permanently.
-func TestCheckSubIDsFiles(t *testing.T) {
-	dir := t.TempDir()
-	uidf, gidf := filepath.Join(dir, "subuid"), filepath.Join(dir, "subgid")
-	line := []byte("#c\n" + strconv.Itoa(os.Geteuid()) + ":100000:8\n")
-	require.NoError(t, os.WriteFile(uidf, line, 0o600))
-	require.NoError(t, os.WriteFile(gidf, line, 0o600))
-	oldU, oldG := subuidPath, subgidPath
-	t.Cleanup(func() { subuidPath, subgidPath = oldU, oldG })
-	subuidPath, subgidPath = uidf, gidf
-
-	u := config.IsolationUser{MapUID: 100000, MapGID: 100000, PerSession: &config.PerSession{Range: 8}}
-	require.NoError(t, checkSubIDs(u))
-	u.PerSession.Range = 9
-	var p *host.PermanentError
-	assert.ErrorAs(t, checkSubIDs(u), &p)
-
-	subuidPath = filepath.Join(dir, "missing")
-	u.PerSession.Range = 1
-	err := checkSubIDs(u)
-	assert.True(t, errors.As(err, &p), "missing subuid file: %v", err)
+	for slot, want := range []int{4, 3, 2, 1} {
+		spec := host.Spec{User: &host.User{MapUID: 100000, MapGID: 200000}}
+		require.NoError(t, applySlot(&spec, u, &slot))
+		assert.Equal(t, want, spec.User.MapCount, "slot %d", slot)
+		assert.Equal(t, 100000+spec.User.MapCount+slot, 100004, "block end")
+	}
 }
