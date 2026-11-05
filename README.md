@@ -305,3 +305,11 @@ golangci-lint run ./...       # v2.15.0; or nix run .#golangci-lint
 - `docs/verify/`: runbook checks run against a live host.
 - Progress: the open issues labeled
   [`target`](https://github.com/elee1766/jobshop/issues?q=is%3Aopen+label%3Atarget).
+
+## License
+
+Jobshop is licensed under the GNU Affero General Public License v3.0
+(`LICENSE`). The packs in `packs/` and the code in `examples/` are
+licensed under the Apache License 2.0 (`packs/LICENSE`,
+`examples/LICENSE`), so packs and plugins built from them can use any
+license.
