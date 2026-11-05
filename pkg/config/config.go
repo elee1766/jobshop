@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Config is the parsed jobshop.yaml.
@@ -57,6 +59,8 @@ type Config struct {
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
 	Hooks []Hook `yaml:"hooks"`
+	// Learnings configures the learning loop (#524).
+	Learnings LearningsConfig `yaml:"learnings,omitempty"`
 	// Gateway configures `jobshop gateway <name>` processes, by name.
 	Gateway map[string]Gateway `yaml:"gateway"`
 	// Identities are GitHub Apps and Linear tokens sessions act as (#200).
@@ -228,6 +232,29 @@ type EditsWhen struct {
 type LearningsWhen struct {
 	Min   int    `yaml:"min"`
 	Every string `yaml:"every"` // Go duration; empty: threshold only
+	// Filters (#524), all optional and ANDed: kind globs, scope globs
+	// (global, repo:<owner/name>, pool:<name>) and source (agent or
+	// controller). Min and Every count only matching learnings.
+	Kinds  []string `yaml:"kinds,omitempty"`
+	Scope  []string `yaml:"scope,omitempty"`
+	Source string   `yaml:"source,omitempty"`
+}
+
+// LearningsConfig is the top-level learnings section (#524).
+type LearningsConfig struct {
+	// Kinds are the learning kinds agents may record: names or
+	// path.Match globs (review-*, *). Packs add to the list. Empty: the
+	// defaults, correction, failure and workaround.
+	Kinds []string `yaml:"kinds,omitempty"`
+}
+
+// LearningKinds is the resolved kind patterns: Learnings.Kinds, or the
+// defaults when unset.
+func (c *Config) LearningKinds() []string {
+	if len(c.Learnings.Kinds) == 0 {
+		return store.LearningKinds
+	}
+	return c.Learnings.Kinds
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -1216,6 +1243,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
 		}
 	}
+	for _, k := range c.Learnings.Kinds {
+		if err := store.ValidKindPattern(k); err != nil {
+			return nil, fmt.Errorf("%s: learnings.kinds: %w", FileName, err)
+		}
+	}
 	if err := c.checkResources(); err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
@@ -1314,6 +1346,19 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 			if d, err := time.ParseDuration(l.Every); err != nil || d <= 0 {
 				return fmt.Errorf("when: learnings.every %q must be a positive duration", l.Every)
 			}
+		}
+		for _, k := range l.Kinds {
+			if err := store.ValidKindPattern(k); err != nil {
+				return fmt.Errorf("when: learnings.kinds: %w", err)
+			}
+		}
+		for _, s := range l.Scope {
+			if _, err := path.Match(s, ""); err != nil || s == "" {
+				return fmt.Errorf("when: learnings.scope %q is not a valid glob", s)
+			}
+		}
+		if l.Source != "" && l.Source != store.LearningSourceAgent && l.Source != store.LearningSourceController {
+			return fmt.Errorf("when: learnings.source %q must be agent or controller", l.Source)
 		}
 	}
 	if w.CheckTimeout != "" {

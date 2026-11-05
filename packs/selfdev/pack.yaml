@@ -11,6 +11,10 @@ defaults:
   # were recorded since the last pass, or daily when at least one was.
   curate_min_learnings: 10
   curate_every: 24h
+  # Learning scopes the curate trigger counts (#524): this repo and its
+  # pools, so another instance's learnings do not start this curator.
+  # A YAML list of globs.
+  curate_scope: ["repo:elee1766/jobshop", "pool:dev", "pool:plan", "pool:refinery", "pool:deploy-check", "pool:learn"]
   # Curator gate (#274): evaluate a merged curator edit after this many
   # runs in its pools, or this long after its merge.
   evaluate_runs: 20
@@ -96,7 +100,7 @@ triggers:
       key: evaluate
   curate:
     when:
-      learnings: {min: "{{.curate_min_learnings}}", every: "{{.curate_every}}"}
+      learnings: {min: "{{.curate_min_learnings}}", every: "{{.curate_every}}", scope: "{{.curate_scope}}"}
     run:
       workflow: curate
       key: curate

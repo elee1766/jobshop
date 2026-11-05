@@ -9,10 +9,11 @@ import (
 	"context"
 )
 
-const countLearnings = `-- name: CountLearnings :one
-SELECT COUNT(*) FROM learnings
+const countLearnings = `-- name: CountLearnings :many
+SELECT kind, scope, source, COUNT(*) AS n FROM learnings
 WHERE created_at >= ?1
   AND (?2 IS NULL OR status = ?2)
+GROUP BY kind, scope, source
 `
 
 type CountLearningsParams struct {
@@ -20,11 +21,41 @@ type CountLearningsParams struct {
 	Status interface{}
 }
 
-func (q *Queries) CountLearnings(ctx context.Context, arg CountLearningsParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countLearnings, arg.Since, arg.Status)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CountLearningsRow struct {
+	Kind   string
+	Scope  string
+	Source string
+	N      int64
+}
+
+// Grouped so the caller can match kind and scope globs (#524) on any
+// backend: Postgres has no GLOB.
+func (q *Queries) CountLearnings(ctx context.Context, arg CountLearningsParams) ([]CountLearningsRow, error) {
+	rows, err := q.db.QueryContext(ctx, countLearnings, arg.Since, arg.Status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []CountLearningsRow{}
+	for rows.Next() {
+		var i CountLearningsRow
+		if err := rows.Scan(
+			&i.Kind,
+			&i.Scope,
+			&i.Source,
+			&i.N,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getLearning = `-- name: GetLearning :one

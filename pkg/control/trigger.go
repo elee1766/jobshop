@@ -198,7 +198,9 @@ func (c *Controller) learningsHold(ctx context.Context, l config.LearningsWhen, 
 		// millisecond belongs to that pass.
 		from = from.Add(time.Millisecond)
 	}
-	n, err := c.store.CountLearnings(ctx, from, store.LearningOpen)
+	n, err := c.store.CountLearnings(ctx, from, store.LearningCount{
+		Status: store.LearningOpen, Kinds: l.Kinds, Scopes: l.Scope, Source: l.Source,
+	})
 	if err != nil {
 		return "", err
 	}

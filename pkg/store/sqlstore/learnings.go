@@ -65,11 +65,20 @@ func (s *Store) UpdateLearning(ctx context.Context, id int64, status, pr string)
 	return out, err
 }
 
-// CountLearnings counts learnings created at or after since with status
-// (empty: any).
-func (s *Store) CountLearnings(ctx context.Context, since time.Time, status string) (int, error) {
-	n, err := s.q.CountLearnings(ctx, sqlcdb.CountLearningsParams{Since: ms(since), Status: narg(status)})
-	return int(n), err
+// CountLearnings counts learnings created at or after since that match f.
+// Kind and scope globs are matched here, over rows grouped in SQL.
+func (s *Store) CountLearnings(ctx context.Context, since time.Time, f store.LearningCount) (int, error) {
+	rows, err := s.q.CountLearnings(ctx, sqlcdb.CountLearningsParams{Since: ms(since), Status: narg(f.Status)})
+	if err != nil {
+		return 0, err
+	}
+	n := 0
+	for _, r := range rows {
+		if f.Matches(r.Kind, r.Scope, r.Source) {
+			n += int(r.N)
+		}
+	}
+	return n, nil
 }
 
 // GetLearning reads one learning.

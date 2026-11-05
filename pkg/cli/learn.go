@@ -9,6 +9,7 @@ import (
 
 // learnCmd is `jobshop learn` (#264).
 type learnCmd struct {
+	Add        learnAddCmd        `cmd:"" help:"Record a learning of any kind the config allows (learnings.kinds)."`
 	Correction learnCorrectionCmd `cmd:"" help:"Record a correction: a human or reviewer told you to do it differently."`
 	Failure    learnFailureCmd    `cmd:"" help:"Record a failure and its cause."`
 	Workaround learnWorkaroundCmd `cmd:"" help:"Record a workaround for a tool or environment problem."`
@@ -45,10 +46,19 @@ type learnWorkaroundCmd struct{ learnKindCmd }
 
 func (c learnWorkaroundCmd) Run(g *Globals) error { return c.send(g, store.LearningWorkaround) }
 
+// learnAddCmd is `jobshop learn add <kind> <summary>` (#524); the
+// controller checks the kind against learnings.kinds.
+type learnAddCmd struct {
+	Kind string `arg:"" help:"Learning kind, e.g. friction or blocker. Must match learnings.kinds."`
+	learnKindCmd
+}
+
+func (c learnAddCmd) Run(g *Globals) error { return c.send(g, c.Kind) }
+
 type learnListCmd struct {
 	Since  time.Duration `help:"Only learnings newer than this, e.g. 24h."`
 	Scope  string        `help:"global, repo:<owner/name> or pool:<name>."`
-	Kind   string        `enum:",correction,failure,workaround" default:"" help:"correction, failure or workaround."`
+	Kind   string        `help:"Kind or glob, e.g. failure or review-*."`
 	Status string        `enum:",open,applied,rejected" default:"" help:"open, applied or rejected."`
 	Ticket string        `short:"t" help:"Only learnings about this ticket."`
 	Limit  int           `default:"50" help:"Most learnings to print."`

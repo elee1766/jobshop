@@ -19,10 +19,13 @@ SET status = sqlc.arg(status), pr = sqlc.arg(pr)
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
--- name: CountLearnings :one
-SELECT COUNT(*) FROM learnings
+-- name: CountLearnings :many
+-- Grouped so the caller can match kind and scope globs (#524) on any
+-- backend: Postgres has no GLOB.
+SELECT kind, scope, source, COUNT(*) AS n FROM learnings
 WHERE created_at >= sqlc.arg(since)
-  AND (sqlc.narg(status) IS NULL OR status = sqlc.narg(status));
+  AND (sqlc.narg(status) IS NULL OR status = sqlc.narg(status))
+GROUP BY kind, scope, source;
 
 -- name: GetLearning :one
 SELECT * FROM learnings WHERE id = ?;
