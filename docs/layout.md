@@ -119,7 +119,7 @@ Subcommands:
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
 | Secret redaction | `github.com/betterleaks/betterleaks/v2` (`scan`, `config`) (2026-11-05, #578): gitleaks' successor, about twice the rules, 9 modules instead of 63, no viper global state. Pinned to an rc until v2.0.0 is out | v2.0.0-rc.7 |
 | Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency. @lucide/svelte for the activity view's icons (2026-11-04, #255); tree-shaken per icon | svelte 5.57.3, vite 8.3.5, @lucide/svelte 1.67.0 |
-| Lint (tool, not a module) | golangci-lint, built by `nix/golangci-lint.nix` with Go 1.27 because nixpkgs builds it with Go 1.26, which refuses go 1.27 modules (2026-11-03). Same version in CI, the dev shell and agents' PATH | v2.15.0 |
+| Lint (tool, not a module) | golangci-lint, run by CI (`golangci-lint-action`). Not packaged in the flake (2026-11-05): hosts put it on agents' PATH through `services.jobshop.path` | v2.15.0 |
 
 Uses:
 - **sqlc**: queries live as plain `.sql` files in `pkg/store/sqlite/queries/`
@@ -220,7 +220,7 @@ breakage. No Makefile unless a real need appears.
   commit via `-ldflags -X`, `vendorHash` pinned. Tests run in CI, not in
   the Nix build (`doCheck = false`), same as Gas City's flake.
 - `nixosModules.jobshop`: the deployment unit (below).
-- `devShells.default`: go, gopls, golangci-lint, sqlite.
+- `devShells.default`: go, gopls, sqlite.
 
 ## Root directory (decided 2026-11-01)
 
