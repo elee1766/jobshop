@@ -355,6 +355,9 @@ func runMeta(w config.Workflow, vars map[string]any) (json.RawMessage, error) {
 		return nil, nil
 	}
 	if w.Tracker == config.TrackerLinear {
+		if w.LinearWorkspace == "" {
+			return nil, fmt.Errorf("%w: workflow has tracker linear but no linear_workspace (set the pack's linear_workspace var)", store.ErrInvalid)
+		}
 		// The issue is a Linear key; meta.github keeps only the code repo,
 		// so GitHub readers (subscriptions, issue_no_run) do not take
 		// ENG-123 for a GitHub issue (#201).

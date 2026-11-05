@@ -109,7 +109,7 @@ func TestWorkflowErrors(t *testing.T) {
 		{"issue without repo", "  w:\n    vars: [issue]\n    issue: issue\n    steps:\n      - " + step + "\n", "repo (owner/name) is required"},
 		{"bad repo", "  w:\n    vars: [issue]\n    issue: issue\n    repo: /src\n    steps:\n      - " + step + "\n", `repo "/src" must be owner/name`},
 		{"bad tracker", "  w:\n    vars: [issue]\n    issue: issue\n    repo: a/b\n    tracker: jira\n    steps:\n      - " + step + "\n", `tracker "jira" must be`},
-		{"linear without workspace", "  w:\n    vars: [issue]\n    issue: issue\n    repo: a/b\n    tracker: linear\n    steps:\n      - " + step + "\n", "tracker linear needs issue and linear_workspace"},
+		{"linear without issue", "  w:\n    vars: [x]\n    repo: a/b\n    tracker: linear\n    linear_workspace: acme\n    steps:\n      - " + step + "\n", "tracker linear needs issue"},
 		{"workspace without linear", "  w:\n    vars: [issue]\n    issue: issue\n    repo: a/b\n    linear_workspace: acme\n    steps:\n      - " + step + "\n", "linear_workspace needs tracker: linear"},
 		{"issue and pr", "  w:\n    vars: [issue, pr]\n    issue: issue\n    pr: pr\n    repo: a/b\n    steps:\n      - " + step + "\n", "set issue or pr, not both"},
 		{"pr not in vars", "  w:\n    vars: [x]\n    pr: pr\n    repo: a/b\n    steps:\n      - " + step + "\n", `pr "pr" is not in vars`},

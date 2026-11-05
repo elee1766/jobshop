@@ -22,10 +22,20 @@ defaults:
   learn_sessions: 1
   # Passed to packs/github (#379). Empty: no escalation chat.
   escalation_chat_pool: ""
+  # Linear intake next to GitHub issues (#652): empty linear_team leaves
+  # it off. The host sets these in livePackVars.
+  linear_workspace: ""
+  linear_team: ""
+  linear_intake_labels: ""
+  linear_human: ""
 extends:
   - path: ../github
     vars:
       escalation_chat_pool: "{{.escalation_chat_pool}}"
+      linear_workspace: "{{.linear_workspace}}"
+      linear_team: "{{.linear_team}}"
+      linear_intake_labels: "{{.linear_intake_labels}}"
+      linear_human: "{{.linear_human}}"
       repo: elee1766/jobshop
       checkout: "{{.repo}}"
       agent: "{{.agent}}"

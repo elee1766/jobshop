@@ -130,6 +130,49 @@ func TestPackErrors(t *testing.T) {
 	}
 }
 
+// TestSelfdevTwoTrackers (#652): selfdev with linear_team set loads
+// pr-work-linear and the Linear intake signal next to GitHub pr-work;
+// with it empty, the signal is off and pr-work-linear has no workspace.
+func TestSelfdevTwoTrackers(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/selfdev")
+	require.NoError(t, err)
+	load := func(vars string) *Config {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": "projects:\n  js: {}\nagents:\n  jcode: {command: jcode}\npacks:\n  - path: " + pack + "\n    vars: {repo: /src/jobshop, agent: jcode" + vars + "}\n"})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		return c
+	}
+	linearSignal := func(c *Config) StallSignal {
+		for _, s := range c.Triggers["stall"].When.Stall {
+			if s.Signal == StallLinearIssueNoRun {
+				return s
+			}
+		}
+		t.Fatal("no linear_issue_no_run signal")
+		return StallSignal{}
+	}
+
+	c := load(", linear_workspace: gfx-labs, linear_team: JOB, linear_intake_labels: \"repo:github.com/elee1766/jobshop\", linear_human: eddy")
+	gh, lin := c.Workflows["pr-work"], c.Workflows["pr-work-linear"]
+	assert.Equal(t, TrackerGitHub, gh.Tracker)
+	assert.Empty(t, gh.LinearWorkspace, "pr-work stays on GitHub")
+	assert.Equal(t, TrackerLinear, lin.Tracker)
+	assert.Equal(t, "gfx-labs", lin.LinearWorkspace)
+	assert.Equal(t, "elee1766/jobshop", lin.Repo)
+	require.Len(t, lin.Steps, 3)
+	assert.Equal(t, []string{"dev", "refinery", "deploy-check"}, []string{lin.Steps[0].Pool, lin.Steps[1].Pool, lin.Steps[2].Pool})
+	assert.Equal(t, "eddy", lin.PackVars["linear_human"])
+	sig := linearSignal(c)
+	assert.Equal(t, "JOB", sig.Team)
+	assert.Equal(t, "repo:github.com/elee1766/jobshop", sig.Labels)
+
+	c = load("")
+	assert.Empty(t, linearSignal(c).Team, "signal off")
+	assert.Empty(t, c.Workflows["pr-work-linear"].LinearWorkspace)
+	assert.Equal(t, TrackerGitHub, c.Workflows["pr-work"].Tracker)
+}
+
 func TestSelfdevPackLoads(t *testing.T) {
 	dir := t.TempDir()
 	pack, err := filepath.Abs("../../packs/selfdev")
@@ -318,7 +361,7 @@ packs:
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"dev", "plan", "refinery", "deploy-check"}, slices.Collect(maps.Keys(c.Pools)))
-	assert.ElementsMatch(t, []string{"pr-work", "ci-repair", "stall-check", "drill"}, slices.Collect(maps.Keys(c.Workflows)))
+	assert.ElementsMatch(t, []string{"pr-work", "pr-work-linear", "ci-repair", "stall-check", "drill"}, slices.Collect(maps.Keys(c.Workflows)))
 	assert.ElementsMatch(t, []string{"replan", "master-red", "stall"}, slices.Collect(maps.Keys(c.Triggers)))
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions, "dev_sessions default")
 	assert.Equal(t, 3, c.Pools["deploy-check"].MaxSessions, "deploy_sessions default: one sleeping post-merge must not block the rest (#174)")

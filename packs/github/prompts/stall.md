@@ -37,7 +37,7 @@ What the signal means and where to start:
 - `linear_issue_no_run`: Linear issue {{.subject}} is ready for work and
   no open run carries it. `jobshop linear eligible {{.subject}}
   --skip-labels "{{.linear_skip_labels}}"`; if eligible, start it with
-  `jobshop run start {{.pack_prefix}}pr-work --var issue={{.subject}} --key
+  `jobshop run start {{.pack_prefix}}{{if eq .tracker "linear"}}pr-work{{else}}pr-work-linear{{end}} --var issue={{.subject}} --key
   linear-{{.subject}}` and close this check. If not (an open blocker, a
   question in the thread), comment why on the issue (`jobshop linear
   comment {{.subject}} "<why>"`) and close. Only touch Linear team
