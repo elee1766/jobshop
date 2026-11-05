@@ -1,8 +1,9 @@
-// Package sqldb holds the ticket store's SQL, written for SQLite and
-// rewritten for Postgres when it runs (pkg/store/postgres/rewrite.go).
-// It started as sqlc output and is edited by hand since #579 removed
-// sqlc. Each query text keeps its leading "-- name: X" line: Postgres
-// overrides are looked up by that name.
+// Package sqldb holds the ticket store's hand-written SQL. Every query
+// runs as is on SQLite and Postgres (#694): $N placeholders, BIGINT
+// casts, booleans cast to INT before BIGINT. Engine-specific SQL (full-
+// text search, DDL) lives in the backend packages. Each query text
+// keeps a leading "-- name: X" line, which TestEveryQueryPrepares
+// reports failures by.
 package sqldb
 
 import (

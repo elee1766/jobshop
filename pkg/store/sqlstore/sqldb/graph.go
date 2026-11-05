@@ -2,17 +2,18 @@ package sqldb
 
 import (
 	"context"
+	"strconv"
 	"strings"
 )
 
 const blockingPathExists = `-- name: BlockingPathExists :one
 WITH RECURSIVE reach(id) AS (
-  SELECT CAST(?2 AS TEXT)
+  SELECT CAST($2 AS TEXT)
   UNION
   SELECT e.to_id FROM edges e JOIN reach r ON e.from_id = r.id
   WHERE e.kind IN ('blocks','waits_for')
 )
-SELECT EXISTS (SELECT 1 FROM reach WHERE reach.id = CAST(?1 AS TEXT))
+SELECT EXISTS (SELECT 1 FROM reach WHERE reach.id = CAST($1 AS TEXT))
 `
 
 // BlockingPathExistsParams are the arguments of BlockingPathExists.
@@ -31,7 +32,7 @@ func (q *Queries) BlockingPathExists(ctx context.Context, arg BlockingPathExists
 }
 
 const deleteEdge = `-- name: DeleteEdge :execrows
-DELETE FROM edges WHERE from_id = ? AND to_id = ? AND kind = ?
+DELETE FROM edges WHERE from_id = $1 AND to_id = $2 AND kind = $3
 `
 
 // DeleteEdgeParams are the arguments of DeleteEdge.
@@ -51,7 +52,7 @@ func (q *Queries) DeleteEdge(ctx context.Context, arg DeleteEdgeParams) (int64, 
 }
 
 const deleteLabel = `-- name: DeleteLabel :execrows
-DELETE FROM labels WHERE ticket_id = ? AND label = ?
+DELETE FROM labels WHERE ticket_id = $1 AND label = $2
 `
 
 // DeleteLabelParams are the arguments of DeleteLabel.
@@ -70,7 +71,7 @@ func (q *Queries) DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64
 }
 
 const insertComment = `-- name: InsertComment :one
-INSERT INTO comments (ticket_id, author, body, created_at) VALUES (?, ?, ?, ?)
+INSERT INTO comments (ticket_id, author, body, created_at) VALUES ($1, $2, $3, $4)
 RETURNING id, ticket_id, author, body, created_at, edited_at, deleted
 `
 
@@ -104,7 +105,7 @@ func (q *Queries) InsertComment(ctx context.Context, arg InsertCommentParams) (C
 }
 
 const insertEdge = `-- name: InsertEdge :exec
-INSERT INTO edges (from_id, to_id, kind, created_at) VALUES (?, ?, ?, ?)
+INSERT INTO edges (from_id, to_id, kind, created_at) VALUES ($1, $2, $3, $4)
 `
 
 // InsertEdgeParams are the arguments of InsertEdge.
@@ -127,7 +128,7 @@ func (q *Queries) InsertEdge(ctx context.Context, arg InsertEdgeParams) error {
 }
 
 const insertHistory = `-- name: InsertHistory :exec
-INSERT INTO history (ticket_id, at, actor, op, revision, diff) VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO history (ticket_id, at, actor, op, revision, diff) VALUES ($1, $2, $3, $4, $5, $6)
 `
 
 // InsertHistoryParams are the arguments of InsertHistory.
@@ -154,7 +155,7 @@ func (q *Queries) InsertHistory(ctx context.Context, arg InsertHistoryParams) er
 }
 
 const insertLabel = `-- name: InsertLabel :execrows
-INSERT INTO labels (ticket_id, label) VALUES (?, ?)
+INSERT INTO labels (ticket_id, label) VALUES ($1, $2)
 ON CONFLICT DO NOTHING
 `
 
@@ -175,7 +176,7 @@ func (q *Queries) InsertLabel(ctx context.Context, arg InsertLabelParams) (int64
 
 const labelsFor = `-- name: LabelsFor :many
 SELECT ticket_id, label FROM labels
-WHERE ticket_id IN (/*SLICE:ids*/?)
+WHERE ticket_id IN (/*SLICE:ids*/)
 ORDER BY ticket_id, label
 `
 
@@ -184,12 +185,14 @@ func (q *Queries) LabelsFor(ctx context.Context, ids []string) ([]Label, error) 
 	query := labelsFor
 	var queryParams []interface{}
 	if len(ids) > 0 {
-		for _, v := range ids {
+		ph := make([]string, len(ids))
+		for i, v := range ids {
 			queryParams = append(queryParams, v)
+			ph[i] = "$" + strconv.Itoa(i+1)
 		}
-		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+		query = strings.Replace(query, "/*SLICE:ids*/", strings.Join(ph, ","), 1)
 	} else {
-		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+		query = strings.Replace(query, "/*SLICE:ids*/", "NULL", 1)
 	}
 	rows, err := q.db.QueryContext(ctx, query, queryParams...)
 	if err != nil {
@@ -215,7 +218,7 @@ func (q *Queries) LabelsFor(ctx context.Context, ids []string) ([]Label, error) 
 
 const listEdges = `-- name: ListEdges :many
 SELECT from_id, to_id, kind, created_at FROM edges
-WHERE from_id = ?1 OR to_id = ?1
+WHERE from_id = $1 OR to_id = $1
 ORDER BY created_at, from_id, to_id, kind
 `
 

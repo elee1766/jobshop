@@ -19,6 +19,18 @@ import (
 //go:embed migrations/*.sql
 var migrations embed.FS
 
+// recallSQL is Driver.RecallSQL, on the FTS5 recall table.
+const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS INTEGER) AS at_ms,
+       snippet(recall, 0, '[', ']', '...', 16) AS snippet,
+       CAST(bm25(recall) AS REAL) AS score
+FROM recall
+WHERE body MATCH ?1
+  AND kind = 'comment'
+  AND (?2 = '' OR project = ?2)
+  AND (?3 = '' OR ticket_id = ?3)
+ORDER BY score
+LIMIT CAST(?4 AS INTEGER)`
+
 // Options configures Open.
 type Options = sqlstore.Options
 
@@ -63,6 +75,7 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		Bind:        cache.bind,
 		Classify:    classify,
 		RecallMatch: recallMatch,
+		RecallSQL:   recallSQL,
 		IsBusy:      isBusy,
 		Collection:  (&registry{}).open,
 		Conn:        cache.conn,

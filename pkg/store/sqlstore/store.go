@@ -41,8 +41,9 @@ type Driver struct {
 	// DB is the migrated database. Write transactions start with
 	// DB.BeginTx, so the driver sets any locking mode in its DSN.
 	DB *sql.DB
-	// Bind returns the engine's queries over a database or transaction.
-	// The method set and types are sqldb's (database/sql), so the core never converts rows.
+	// Bind returns the store's queries over a database or transaction.
+	// sqldb's SQL runs on both engines ($N placeholders), so the core
+	// never converts rows.
 	Bind func(sqldb.DBTX) sqldb.Querier
 	// Classify maps a constraint failure to store.ErrAlreadyExist,
 	// store.ErrNotFound or store.ErrInvalid; other errors return nil.
@@ -50,6 +51,11 @@ type Driver struct {
 	// RecallMatch turns the words of a recall query into the match
 	// expressions to try in order; the first with hits wins.
 	RecallMatch func(words []string) []string
+	// RecallSQL searches comments: $1 a match expression, $2 project
+	// and $3 ticket id ('' for any), $4 the limit. It returns kind, ref,
+	// ticket_id, project, at (ms), snippet and score, best (lowest)
+	// first. Full-text search is the one query each engine writes.
+	RecallSQL string
 	// IsBusy reports a transaction that lost a write race and may be
 	// rerun (SQLITE_BUSY on a deferred upgrade). Nil means never.
 	IsBusy func(err error) bool
