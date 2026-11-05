@@ -417,6 +417,47 @@ type Attention struct {
 	// pool not in the config) once it is older than this Go duration
 	// (#495). Default 72h; "off" disables it.
 	OrphanAge string `yaml:"orphan_age"`
+	// Prestart starts an item's resolving chat when it enters attention,
+	// so a click in Desk attaches to a session that already answered
+	// (#606). Default true when PrestartPool resolves to a chat pool.
+	Prestart *bool `yaml:"prestart"`
+	// PrestartPool is the chat pool pre-started and clicked attention
+	// chats run in. Default "operator" when that pool is a chat pool.
+	PrestartPool string `yaml:"prestart_pool"`
+	// PrestartMax caps pre-started chats open at once; items past it
+	// start on click. Default 4.
+	PrestartMax int `yaml:"prestart_max"`
+}
+
+// DefaultPrestartMax is attention.prestart_max when unset.
+const DefaultPrestartMax = 4
+
+// AttentionChatPool is the pool attention chats run in, "" when none:
+// prestart_pool, else operator when it is a chat pool.
+func (c *Config) AttentionChatPool() string {
+	if c.Attention.PrestartPool != "" {
+		return c.Attention.PrestartPool
+	}
+	if p, ok := c.Pools["operator"]; ok && p.Chat() {
+		return "operator"
+	}
+	return ""
+}
+
+// PrestartOn reports whether attention chats are pre-started.
+func (c *Config) PrestartOn() bool {
+	if c.Attention.Prestart != nil && !*c.Attention.Prestart {
+		return false
+	}
+	return c.AttentionChatPool() != ""
+}
+
+// PrestartLimit is attention.prestart_max with its default.
+func (a Attention) PrestartLimit() int {
+	if a.PrestartMax > 0 {
+		return a.PrestartMax
+	}
+	return DefaultPrestartMax
 }
 
 // DefaultOrphanAge is attention.orphan_age when unset.
@@ -1406,6 +1447,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if w := c.Attention.ResourceWait; w != "" {
 		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: attention.resource_wait %q must be a positive duration", FileName, w)
+		}
+	}
+	if c.Attention.PrestartMax < 0 {
+		return nil, fmt.Errorf("%s: attention.prestart_max must be >= 0", FileName)
+	}
+	if p := c.Attention.PrestartPool; p != "" {
+		if pl, ok := c.Pools[p]; !ok || !pl.Chat() {
+			return nil, fmt.Errorf("%s: attention.prestart_pool %q is not a chat pool (type: chat)", FileName, p)
 		}
 	}
 	if w := c.Attention.OrphanAge; w != "" && w != "off" {

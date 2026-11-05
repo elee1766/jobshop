@@ -356,6 +356,11 @@ Short list; behavior details are in `docs/notes/` (section 7).
   on an attention item opens the chat that resolves it, `api.push`,
   `session.cancel` (#535, `docs/notes/535-desk-pwa.md`,
   `docs/notes/535-attention-chat.md`, `docs/verify/desk-pwa.md`).
+- Attention chats pre-started by the controller when an item arrives,
+  read-only until a human writes, suspended when idle, closed when the
+  item leaves; a click attaches (#606,
+  `docs/notes/606-attention-prestart.md`,
+  `docs/verify/desk-chat-latency.md`).
 - jcode built-in memory off for agents (`JCODE_MEMORY_ENABLED=0`),
   worthwhile entries imported as learnings (#320,
   `docs/notes/320-jcode-memory-off.md`).
@@ -1439,6 +1444,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   agent helps decide and the Resolve buttons call existing RPCs. The
   shell keeps only the frame (PWA, push, theme, tab bar, side panel);
   the session panel body is a plugin slot.
+- Attention chats are pre-started by the controller (2026-11-05, #606),
+  not by Desk on click, so every client shares one chat per item and
+  the first reply is ready before the click. The first turn is held
+  read-only by the socket and the permission prompt, not only the
+  prompt; `attention.prestart_max` keeps a burst from taking the pool.
 - Plugins run host commands only by name from `desk_commands`, never a
   command string from the browser (2026-11-05, #542). Plugin types come
   from one table, `rpc.Specs`, checked against the handler table, so the
@@ -1518,6 +1528,7 @@ moved from the old 7.x list, oldest first:
 - [Desk plugins, part 1](notes/517-desk-plugins.md) (#517)
 - [Desk PWA on the plugin model](notes/535-desk-pwa.md) (#535)
 - [Attention opens its chat](notes/535-attention-chat.md) (#535)
+- [Pre-started attention chats](notes/606-attention-prestart.md) (#606)
 - [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
 - [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
 - [Deploy state out of core](notes/577-deploy-out-of-core.md) (#577)

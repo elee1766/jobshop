@@ -345,6 +345,25 @@ test('a stale item starts a chat with the context prompt; a second click reopens
   expect(opens.every((c) => c.body.kind === 'stale' && c.body.id === 'js-t9')).toBe(true);
 });
 
+test('a pre-started item shows its first agent reply within 1s of the click (#606)', async ({ page }) => {
+  const calls = await mock(page, {
+    attention: () => [{ kind: 'question', id: 'js-q7', title: 'which branch?', why: 'question', since: iso(60e3) }],
+    chat: () => ({ kind: 'question', id: 'js-q7', key: 'attention:question:js-q7', session: 'js-s7', pool: 'operator' }),
+    streams: { 'js-s7': [sse([
+      { seq: 2, type: 'turn_start', text: '', context: 'Desk attention item: question js-q7', time: iso(30e3) },
+      say(3, 'It asks which branch to deploy. Answer in the composer, or run jobshop question answer js-q7.'),
+      end(4),
+    ])] },
+  });
+  await page.goto('./');
+  const t0 = Date.now();
+  await page.getByTestId('attention-row').first().click();
+  await expect(page.getByTestId('journal')).toContainText('It asks which branch to deploy', { timeout: 1000 });
+  expect(Date.now() - t0).toBeLessThan(1000);
+  // Attaching sends nothing.
+  expect(calls.filter((c) => c.path === '/api/chat/send')).toHaveLength(0);
+});
+
 test('no horizontal scroll at 360px with a chat open', async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 740 });
   const long = 'x'.repeat(400);

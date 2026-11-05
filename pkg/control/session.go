@@ -344,6 +344,12 @@ func (r *runner) run() {
 		if errors.Is(err, errRefresh) {
 			continue
 		}
+		if errors.Is(err, errSuspended) {
+			if !r.suspended() {
+				return
+			}
+			continue
+		}
 		var end errSessionEnd
 		if errors.As(err, &end) {
 			if end.permanent {
@@ -533,6 +539,9 @@ func (r *runner) session() error {
 	fields, err := store.DecodeFields[store.SessionFields](t)
 	if err != nil {
 		return err
+	}
+	if fields.Suspended && !host.Alive(r.dir) {
+		return errSuspended
 	}
 	fresh := false
 	if !host.Alive(r.dir) {
@@ -832,11 +841,14 @@ func (r *runner) dropped(conn *acp.ClientSideConnection) error {
 
 func (r *runner) saveFields(f store.SessionFields) error {
 	// The runner's copy has a stale journal cursor; keep the stored one,
-	// which only the shipper moves (#530).
+	// which only the shipper moves (#530). Prestart, ReadOnly and
+	// Suspended belong to the controller's attention chats (#606).
 	return r.c.updateSessionFields(context.WithoutCancel(r.ctx), r.id, func(cur *store.SessionFields) {
 		shipped := cur.ShippedSeq
+		prestart, readOnly, suspended := cur.Prestart, cur.ReadOnly, cur.Suspended
 		*cur = f
 		cur.ShippedSeq = max(shipped, f.ShippedSeq)
+		cur.Prestart, cur.ReadOnly, cur.Suspended = prestart, readOnly, suspended
 	})
 }
 
@@ -943,9 +955,12 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				// A manually cordoned session stays for whoever cordoned
 				// it; a warm pool keeps min_sessions (or the manual
 				// target) open with no work.
-				if cordon != nil || r.c.keepWarm(ctx, r.pool) {
+				switch {
+				case cordon != nil || r.c.keepWarm(ctx, r.pool):
 					idleSince = r.c.now()
-				} else {
+				case r.prestarted():
+					return r.suspend(nc)
+				default:
 					return errSessionEnd{resolution: resolutionIdle}
 				}
 			}
@@ -1320,7 +1335,14 @@ new turn here. For a timed wait, ` + "`jobshop release --until <duration>`" + `.
 type client struct{ r *runner }
 
 func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
-	for _, kind := range []acp.PermissionOptionKind{acp.PermissionOptionKindAllowAlways, acp.PermissionOptionKindAllowOnce} {
+	kinds := []acp.PermissionOptionKind{acp.PermissionOptionKindAllowAlways, acp.PermissionOptionKindAllowOnce}
+	if c.r.c.isReadOnly(c.r.id) && !readOnlyTool(p.ToolCall.Kind) {
+		// A read-only attention chat (#606) reads; it does not edit,
+		// run or delete until the operator writes. Once only: the same
+		// tool is allowed after that.
+		kinds = []acp.PermissionOptionKind{acp.PermissionOptionKindRejectOnce}
+	}
+	for _, kind := range kinds {
 		for _, o := range p.Options {
 			if o.Kind == kind {
 				return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeSelected(o.OptionId)}, nil

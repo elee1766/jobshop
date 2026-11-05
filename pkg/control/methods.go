@@ -331,6 +331,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 // its worktree.
 func (c *Controller) endSession(ctx context.Context, id, reason string) {
 	c.closeSession(id)
+	c.setReadOnly(id, false)
 	if t, err := c.store.Get(ctx, id); err == nil {
 		c.removeWorktree(t, "endSession: "+reason)
 	}
