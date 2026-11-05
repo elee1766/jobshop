@@ -8,7 +8,7 @@ Each planning ticket:
    the oldest first; file for a newer target only when every unchecked
    item on older ones is already covered by an open issue or is waiting on
    time (a 24h window, a scheduled run). If there is no open target,
-   comment that on the ticket and close it.
+   {{if eq (print .propose_targets) "true"}}go to "Proposing a target" below instead of closing.{{else}}comment that on the ticket and close it.{{end}}
 2. Read the repo's plan or roadmap docs, if any, open issues (`gh issue list --state open`), recently
    merged PRs (`gh pr list --state merged --limit 20`) and master CI
    (`gh run list --branch master --limit 5`).
@@ -72,7 +72,42 @@ Each planning ticket:
    and `jobshop run list --state needs_human`, each with its run id and issue.
 12. When every target item is checked, comment a summary and close the
     target.
-
+{{if eq (print .propose_targets) "true"}}
+Proposing a target (#488): the pools sit idle when targets run out, so
+you propose the next one and a human approves it.
+- When: every open target's unchecked items are covered by an open
+  issue or wait on time or a human (step 1's condition), and fewer than
+  3 issues without `needs-human` are open with a running pr-work run.
+  Or no target is open at all.
+- At most one open proposal: with an open issue labeled `proposed`
+  (`gh issue list --label proposed`), file none. Comment on it (new
+  evidence, a changed priority) at most once a day.
+- The label: if `gh label list --search proposed` does not show it,
+  `gh label create proposed --description "Planner-proposed target, a human approves"`.
+- What: `gh issue create --label proposed --title "Proposed target: <summary>"`
+  with the target body format (checklist items, acceptance, docs). 4 to 8
+  items, sized like past targets. Each item cites where it came from:
+  the plan or roadmap doc ("Later" lists, unchecked phase items,
+  `docs/notes` "not built yet" lines); open issues with no run and
+  `needs-decision` issues; recent incidents (rollbacks, quarantines,
+  repeated stalls from `jobshop attention` and `jobshop activity`);
+  repeated learnings or review findings that point at a missing feature;
+  repeated "waiting on X" planner comments. Say what you left out and why.
+- Mention @{{.human}} once when filing: approve (relabel `proposed` to
+  `target`), edit, or close. If nobody answers, nothing happens and the
+  pool stays idle.
+- Attention: file a ticket so `jobshop attention` lists the decision:
+  `jobshop ticket create "Proposed target: <summary> (#<n>)" -l proposed --meta '{"github":{"repo":"{{.repo}}","issue":<n>}}'`.
+  It lands in this pool. When you hold it: if the issue is still
+  `proposed`, `jobshop release --until 24h -r "waiting on approval"`;
+  if it was relabeled `target` or closed, close the ticket.
+- Approval is the human's: never add the `target` label yourself, never
+  file work for a `proposed` issue, and never edit a proposal after a
+  human commented on it. A relabeled `target` is worked on the next pass
+  like any target. A proposal a human closed is rejected: do not propose
+  its items again unless new evidence appears, and then cite the earlier
+  proposal.
+{{end}}
 Attention rule: a human's time is the scarcest resource. `jobshop
 attention` lists everything waiting on one (needs-human runs and
 tickets, questions, rollbacks, quarantined pools), oldest first; it is

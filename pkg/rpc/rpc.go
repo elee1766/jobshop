@@ -1192,6 +1192,7 @@ const (
 	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
 	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
 	AttentionIngest   = "ingest"   // no live external ingest worker, or an admission backlog (#443)
+	AttentionDecision = "decision" // open ticket labeled proposed: a planner-proposed target to approve (#488)
 )
 
 // AttentionItem is one thing waiting on a human.

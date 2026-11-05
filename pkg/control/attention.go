@@ -18,6 +18,10 @@ import (
 // questionLabel marks a ticket where a worker asks a human (#185, #186).
 const questionLabel = "question"
 
+// proposedLabel marks the planner's proposed next target, which waits
+// on a human to approve (#488).
+const proposedLabel = "proposed"
+
 // attention lists only what waits on a human, across all projects,
 // oldest first (#185). Empty when healthy.
 func (c *Controller) attention(ctx context.Context, sc scope, _ struct{}) (any, error) {
@@ -37,7 +41,7 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	// as the escalation ticket.
 	escalatedRuns, escalatedPools := map[string]bool{}, map[string]bool{}
 	seen := map[string]bool{}
-	for _, label := range []string{needsHumanLabel, questionLabel} {
+	for _, label := range []string{needsHumanLabel, questionLabel, proposedLabel} {
 		ts, err := c.labeledOpen(ctx, label)
 		if err != nil {
 			return nil, err
@@ -54,7 +58,10 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 			}
 			seen[t.ID] = true
 			kind := rpc.AttentionTicket
-			if (label == questionLabel && !slices.Contains(t.Labels, needsHumanLabel)) || metaString(t.Meta, questionMetaPack, "ticket") != "" {
+			switch {
+			case label == proposedLabel && !slices.Contains(t.Labels, needsHumanLabel):
+				kind = rpc.AttentionDecision
+			case (label == questionLabel && !slices.Contains(t.Labels, needsHumanLabel)) || metaString(t.Meta, questionMetaPack, "ticket") != "":
 				kind = rpc.AttentionQuestion
 			}
 			items = append(items, ticketItem(kind, t))
