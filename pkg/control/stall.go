@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -419,7 +418,7 @@ func (c *Controller) stallSessions(ctx context.Context, now time.Time, after tim
 			continue // waiting for an answer is quiet by design
 		}
 		last := s.CreatedAt
-		if _, at := host.JournalTail(c.root.SessionDir(s.ID)); at.After(last) {
+		if _, at := journalTail(c.root.SessionDir(s.ID)); at.After(last) {
 			last = at
 		}
 		hl, err := c.lastActivity(ctx, held[0])

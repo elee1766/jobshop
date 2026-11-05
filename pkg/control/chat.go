@@ -173,6 +173,13 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 	if err := state(t); err != nil {
 		return nil, err
 	}
+	if p.SinceSeq == 0 && p.Tail > 0 {
+		// Seq is 1-based and gapless, so the last Tail frames follow
+		// last-Tail (#614).
+		if last, _ := journalTail(c.root.SessionDir(p.ID)); last > 0 {
+			p.SinceSeq = max(last-p.Tail, 0)
+		}
+	}
 	path := filepath.Join(c.root.SessionDir(p.ID), host.JournalFile)
 	env := redact.New(journalEnv(c.root.SessionDir(p.ID)))
 	ev := rpc.EventDecoder{Redact: env.Text}

@@ -1109,9 +1109,11 @@ type SessionSendResult struct {
 // SessionSubscribeParams streams a session's events after SinceSeq. The
 // call stays open, sending NotifySessionEvent notifications, until the
 // session closes or the client hangs up. Reconnect with the last seq seen.
+// With SinceSeq 0, Tail > 0 starts at the last Tail journal frames.
 type SessionSubscribeParams struct {
 	ID       string `json:"id"`
 	SinceSeq int64  `json:"since_seq,omitempty"`
+	Tail     int64  `json:"tail,omitempty"`
 }
 
 // SessionSubscribeResult is sent when the stream ends.

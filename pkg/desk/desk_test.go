@@ -26,6 +26,7 @@ type fakeCtl struct {
 	events  []rpc.Event
 	session []rpc.SessionEvent
 	since   int64
+	tail    int64
 	actors  []string
 }
 
@@ -67,7 +68,7 @@ func (f *fakeCtl) Events(_ context.Context, p rpc.EventsSubscribeParams, fn func
 }
 
 func (f *fakeCtl) Subscribe(_ context.Context, p rpc.SessionSubscribeParams, fn func(rpc.SessionEvent)) (rpc.SessionSubscribeResult, error) {
-	f.since = p.SinceSeq
+	f.since, f.tail = p.SinceSeq, p.Tail
 	for _, ev := range f.session {
 		fn(ev)
 	}
@@ -235,12 +236,13 @@ func TestEventsSSE(t *testing.T) {
 
 func TestSessionStream(t *testing.T) {
 	ctl := &fakeCtl{
-		results: map[string]any{rpc.MethodSessionList: []rpc.SessionInfo{{ID: "s1", Seq: 500}}},
 		session: []rpc.SessionEvent{{Seq: 450, Type: rpc.EventText, Text: "<b>hi</b>"}},
 	}
 	h := New(Config{}, ctl, nil).Handler()
 	w := get(t, h, "/api/session/s1/stream?tail=100", nil)
-	assert.Equal(t, int64(400), ctl.since)
+	// Tail goes to the controller; no session list (#614).
+	assert.Equal(t, int64(0), ctl.since)
+	assert.Equal(t, int64(100), ctl.tail)
 	assert.Equal(t, []string{"session", "end"}, readSSE(t, w.Body.String()))
 }
 
