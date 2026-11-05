@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -82,6 +83,9 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 		it := ticketItem(rpc.AttentionWait, t)
 		it.Title = fmt.Sprintf("%s: wait past timeout: %s", t.Title, w.Reason)
 		it.Owner, it.Since = w.Owner, w.Timeout
+		if metaString(t.Meta, "desk", "attention_summary") == "" {
+			it.Summary = summaryOf(w.Reason)
+		}
 		if i := slices.IndexFunc(items, func(x rpc.AttentionItem) bool { return x.ID == t.ID }); i >= 0 {
 			items[i] = it
 		} else {
@@ -137,12 +141,44 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	return items, nil
 }
 
+// maxSummary bounds an attention summary, about two lines of a row.
+const maxSummary = 240
+
+// summaryOf is s's first non-empty lines, at most maxSummary bytes, on one line.
+func summaryOf(s string) string {
+	var parts []string
+	n := 0
+	for l := range strings.Lines(s) {
+		l = strings.TrimSpace(l)
+		if l == "" {
+			continue
+		}
+		parts = append(parts, l)
+		if n += len(l); n >= maxSummary || len(parts) == 2 {
+			break
+		}
+	}
+	out := strings.Join(parts, " ")
+	if len(out) > maxSummary {
+		cut := maxSummary
+		for cut > 0 && !utf8.RuneStart(out[cut]) {
+			cut--
+		}
+		out = out[:cut] + "..."
+	}
+	return out
+}
+
 // ticketItem lists t. A run waits since it last changed (when it went
 // needs_human), a ticket since it was filed.
 func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 	it := rpc.AttentionItem{Kind: kind, ID: t.ID, Project: t.Project, Title: t.Title, Since: t.CreatedAt}
 	if kind == rpc.AttentionRun {
 		it.Since = t.UpdatedAt
+	}
+	it.Summary = summaryOf(metaString(t.Meta, "desk", "attention_summary"))
+	if it.Summary == "" {
+		it.Summary = summaryOf(t.Body)
 	}
 	var m struct {
 		GitHub struct {

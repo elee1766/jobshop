@@ -8,6 +8,7 @@
   import { Transcript } from './transcript.svelte.js';
   import { promptHistory, rememberPrompt, tokens } from './format.js';
   import Block from './Block.svelte';
+  import { resolveActions, runAction } from '../../kit/attention.js';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api, context = {} } = $props();
@@ -199,38 +200,16 @@
     }
   }
 
-  // Resolve actions per item kind, each an existing RPC through api.call.
-  /** @type {{ label: string, run: () => Promise<any>, ask: string }[]} */
-  const actions = $derived.by(() => {
-    if (!itemKind) return [];
-    const call = (/** @type {string} */ m, /** @type {any} */ p) => () => api.call(m, p);
-    const ack = () => api.post('api/attention/ack', { kind: itemKind, id: itemId });
-    switch (itemKind) {
-      case 'run': return [{ label: 'Resume run', run: call('run.resume', { id: itemId }), ask: 'Resume run ' + itemId + '?' }];
-      case 'pool': return [{ label: 'Unquarantine pool', run: call('pool.unquarantine', { pool: itemId }), ask: 'Unquarantine pool ' + itemId + '?' }];
-      case 'wait': return [{ label: 'Clear wait', run: call('wait.clear', { id: itemId, reason: 'cleared in Desk' }), ask: 'Clear the wait on ' + itemId + '?' }];
-      // decision.resolve acts on the proposal issue, closes the ticket and
-      // wakes whoever waits on it (#603).
-      case 'decision': return [
-        { label: 'Approve as target', run: call('decision.resolve', { id: itemId, action: 'approve' }), ask: 'Approve ' + itemId + ': relabel the issue proposed to target?' },
-        { label: 'Reject', run: call('decision.resolve', { id: itemId, action: 'reject' }), ask: 'Reject ' + itemId + ': close the issue as not planned?' },
-        { label: 'Dismiss', run: call('decision.resolve', { id: itemId, action: 'dismiss' }), ask: 'Dismiss ' + itemId + ' for now? The issue is left as is.' },
-      ];
-      case 'ticket': case 'question': case 'stale':
-        return [{ label: 'Close ticket', run: call('ticket.close', { id: itemId }), ask: 'Close ' + itemId + ' as done?' }];
-      default: return [{ label: 'Acknowledge', run: ack, ask: 'Acknowledge ' + item + '? It is hidden until it recurs.' }];
-    }
-  });
+  // Resolve actions per item kind, shared with the Attention rows (#607).
+  const actions = $derived(resolveActions(api, itemKind, itemId));
   let acting = $state(false);
-  /** @param {{ label: string, run: () => Promise<any>, ask: string }} a */
+  /** A success closes the panel and returns to the list (#607); a
+   * failure keeps it open with the error toast.
+   * @param {import('../../kit/attention.js').Action} a */
   async function act(a) {
-    if (!(await api.confirm(a.ask))) return;
     acting = true;
     try {
-      await a.run();
-      api.toast(a.label + ': done');
-    } catch (e) {
-      api.toast(a.label + ' failed: ' + String(/** @type {any} */ (e).message || e));
+      if (await runAction(api, a)) api.closeSession();
     } finally {
       acting = false;
     }

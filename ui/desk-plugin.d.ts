@@ -317,6 +317,7 @@ export interface AttentionItem {
   repo?: string;
   ref?: string;
   owner?: string;
+  summary?: string;
 }
 
 export interface AttentionResult {

@@ -2,8 +2,10 @@ package control
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,4 +67,30 @@ func TestAttention(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "acme/widget", items[2].Repo)
 	assert.Equal(t, "#7", items[2].Ref)
+}
+
+// TestAttentionSummary: a row's summary is meta.desk.attention_summary
+// when set, else the body's first lines, clipped (#607).
+func TestAttentionSummary(t *testing.T) {
+	t.Parallel()
+	c, clk, _ := stallController(t)
+	q := mkTicket(t, c, store.NewTicket{Title: "which db?", Body: "\nPostgres or SQLite?\n\nmore context\nand more", Labels: []string{questionLabel}})
+	clk.advance(time.Minute)
+	d := mkTicket(t, c, store.NewTicket{
+		Title: "Proposed target", Body: "long proposal", Labels: []string{proposedLabel},
+		Meta: json.RawMessage(`{"desk":{"attention_summary":"Approve v0.5: it closes 3 bugs."}}`),
+	})
+	clk.advance(time.Minute)
+	long := mkTicket(t, c, store.NewTicket{Title: "long", Body: strings.Repeat("é", 300), Labels: []string{needsHumanLabel}})
+	items, err := c.attentionItems(t.Context())
+	require.NoError(t, err)
+	got := map[string]string{}
+	for _, it := range items {
+		got[it.ID] = it.Summary
+	}
+	assert.Equal(t, "Postgres or SQLite? more context", got[q.ID])
+	assert.Equal(t, "Approve v0.5: it closes 3 bugs.", got[d.ID])
+	assert.True(t, strings.HasSuffix(got[long.ID], "..."))
+	assert.LessOrEqual(t, len(got[long.ID]), maxSummary+3)
+	assert.True(t, utf8.ValidString(got[long.ID]))
 }

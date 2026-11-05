@@ -1521,6 +1521,7 @@ moved from the old 7.x list, oldest first:
 - [Desk plugins, part 3](notes/542-desk-plugins-part3.md) (#542)
 - [CI waits in the GitHub pack](notes/555-ci-waits.md) (#555)
 - [Deploy state out of core](notes/577-deploy-out-of-core.md) (#577)
+- [Attention rows: summary and inline resolution](notes/607-attention-rows.md) (#607)
 
 ## 8. Chat gateway
 

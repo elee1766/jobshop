@@ -4944,9 +4944,83 @@ function lc(e, t) {
 	}), K(e, s), We();
 }
 mr(["click"]);
+// kit/attention.js
+function uc(e, t, n) {
+	if (!t) return [];
+	let r = (t, n) => () => e.call(t, n), i = () => e.post("api/attention/ack", {
+		kind: t,
+		id: n
+	});
+	switch (t) {
+		case "run": return [{
+			label: "Resume run",
+			run: r("run.resume", { id: n }),
+			ask: "Resume run " + n + "?"
+		}];
+		case "pool": return [{
+			label: "Unquarantine pool",
+			run: r("pool.unquarantine", { pool: n }),
+			ask: "Unquarantine pool " + n + "?"
+		}];
+		case "wait": return [{
+			label: "Clear wait",
+			run: r("wait.clear", {
+				id: n,
+				reason: "cleared in Desk"
+			}),
+			ask: "Clear the wait on " + n + "?"
+		}];
+		case "decision": return [
+			{
+				label: "Approve as target",
+				run: r("decision.resolve", {
+					id: n,
+					action: "approve"
+				}),
+				ask: "Approve " + n + ": relabel the issue proposed to target?"
+			},
+			{
+				label: "Reject",
+				run: r("decision.resolve", {
+					id: n,
+					action: "reject"
+				}),
+				ask: "Reject " + n + ": close the issue as not planned?"
+			},
+			{
+				label: "Dismiss",
+				run: r("decision.resolve", {
+					id: n,
+					action: "dismiss"
+				}),
+				ask: "Dismiss " + n + " for now? The issue is left as is."
+			}
+		];
+		case "ticket":
+		case "question":
+		case "stale": return [{
+			label: "Close ticket",
+			run: r("ticket.close", { id: n }),
+			ask: "Close " + n + " as done?"
+		}];
+		default: return [{
+			label: "Acknowledge",
+			run: i,
+			ask: "Acknowledge " + t + ":" + n + "? It is hidden until it recurs."
+		}];
+	}
+}
+async function dc(e, t) {
+	if (!await e.confirm(t.ask)) return !1;
+	try {
+		return await t.run(), e.toast(t.label + ": done"), !0;
+	} catch (n) {
+		return e.toast(t.label + " failed: " + String(n.message || n)), !1;
+	}
+}
 // plugins/chat/Pane.svelte
-var uc = /* @__PURE__ */ G("<span> </span>"), dc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), fc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), pc = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), mc = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), hc = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), gc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), _c = /* @__PURE__ */ G("<label class=\"toggle svelte-wy7o3a\" data-testid=\"answer-toggle\"><input type=\"checkbox\"/> answer the question</label>"), vc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), yc = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"><!> <!></div></div>"), bc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\"> </span>"), xc = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), Sc = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), Cc = /* @__PURE__ */ G("<button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>"), wc = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <!>", 1), Tc = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <span class=\"metadata svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!></span> <!> <span class=\"grow svelte-wy7o3a\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), Ec = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), Dc = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><button class=\"x close svelte-wy7o3a\" aria-label=\"Close chat\" title=\"Close\" data-testid=\"session-panel-close\">✕</button> <div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!></section>");
-function Oc(e, t) {
+var fc = /* @__PURE__ */ G("<span> </span>"), pc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), mc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), hc = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), gc = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), _c = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), vc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), yc = /* @__PURE__ */ G("<label class=\"toggle svelte-wy7o3a\" data-testid=\"answer-toggle\"><input type=\"checkbox\"/> answer the question</label>"), bc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), xc = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"><!> <!></div></div>"), Sc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\"> </span>"), Cc = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), wc = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), Tc = /* @__PURE__ */ G("<button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>"), Ec = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <!>", 1), Dc = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <span class=\"metadata svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!></span> <!> <span class=\"grow svelte-wy7o3a\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), Oc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), kc = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><button class=\"x close svelte-wy7o3a\" aria-label=\"Close chat\" title=\"Close\" data-testid=\"session-panel-close\">✕</button> <div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!></section>");
+function Ac(e, t) {
 	Ue(t, !0);
 	let n = fi(t, "context", 19, () => ({})), r = /* @__PURE__ */ ft(() => String(n().session || "")), i = /* @__PURE__ */ ft(() => String(n().item || "")), a = /* @__PURE__ */ ft(() => W(i).split(":")[0] || ""), o = /* @__PURE__ */ ft(() => W(i).slice(W(a).length + 1)), s = /* @__PURE__ */ I(null);
 	hn(() => {
@@ -5077,92 +5151,24 @@ function Oc(e, t) {
 		let t = e.currentTarget;
 		e.key === "ArrowUp" && !e.shiftKey && t.selectionStart === t.selectionEnd && (W(ee) >= 0 || !W(v).slice(0, t.selectionStart).includes("\n")) ? (e.preventDefault(), ne(!0)) : e.key === "ArrowDown" && !e.shiftKey && W(ee) >= 0 ? (e.preventDefault(), ne(!1)) : e.key === "Enter" && !e.shiftKey ? (e.preventDefault(), oe(e.ctrlKey || e.metaKey)) : e.key === "Escape" && W(f) && (e.preventDefault(), e.stopPropagation(), se());
 	}
-	let le = /* @__PURE__ */ ft(() => {
-		if (!W(a)) return [];
-		let e = (e, n) => () => t.api.call(e, n), n = () => t.api.post("api/attention/ack", {
-			kind: W(a),
-			id: W(o)
-		});
-		switch (W(a)) {
-			case "run": return [{
-				label: "Resume run",
-				run: e("run.resume", { id: W(o) }),
-				ask: "Resume run " + W(o) + "?"
-			}];
-			case "pool": return [{
-				label: "Unquarantine pool",
-				run: e("pool.unquarantine", { pool: W(o) }),
-				ask: "Unquarantine pool " + W(o) + "?"
-			}];
-			case "wait": return [{
-				label: "Clear wait",
-				run: e("wait.clear", {
-					id: W(o),
-					reason: "cleared in Desk"
-				}),
-				ask: "Clear the wait on " + W(o) + "?"
-			}];
-			case "decision": return [
-				{
-					label: "Approve as target",
-					run: e("decision.resolve", {
-						id: W(o),
-						action: "approve"
-					}),
-					ask: "Approve " + W(o) + ": relabel the issue proposed to target?"
-				},
-				{
-					label: "Reject",
-					run: e("decision.resolve", {
-						id: W(o),
-						action: "reject"
-					}),
-					ask: "Reject " + W(o) + ": close the issue as not planned?"
-				},
-				{
-					label: "Dismiss",
-					run: e("decision.resolve", {
-						id: W(o),
-						action: "dismiss"
-					}),
-					ask: "Dismiss " + W(o) + " for now? The issue is left as is."
-				}
-			];
-			case "ticket":
-			case "question":
-			case "stale": return [{
-				label: "Close ticket",
-				run: e("ticket.close", { id: W(o) }),
-				ask: "Close " + W(o) + " as done?"
-			}];
-			default: return [{
-				label: "Acknowledge",
-				run: n,
-				ask: "Acknowledge " + W(i) + "? It is hidden until it recurs."
-			}];
-		}
-	}), ue = /* @__PURE__ */ I(!1);
+	let le = /* @__PURE__ */ ft(() => uc(t.api, W(a), W(o))), ue = /* @__PURE__ */ I(!1);
 	async function de(e) {
-		if (await t.api.confirm(e.ask)) {
-			L(ue, !0);
-			try {
-				await e.run(), t.api.toast(e.label + ": done");
-			} catch (n) {
-				t.api.toast(e.label + " failed: " + String(n.message || n));
-			} finally {
-				L(ue, !1);
-			}
+		L(ue, !0);
+		try {
+			await dc(t.api, e) && t.api.closeSession();
+		} finally {
+			L(ue, !1);
 		}
 	}
-	var fe = Dc(), pe = R(fe), me = R(pe), D = B(me, 2), he = R(D), ge = z(he, !0), _e = B(he, 2), ve = R(_e), ye = z(ve, !0), O = B(ve, 2), be = (e) => {
-		var t = uc(), n = z(t);
+	var fe = kc(), pe = R(fe), me = R(pe), D = B(me, 2), he = R(D), ge = z(he, !0), _e = B(he, 2), ve = R(_e), ye = z(ve, !0), O = B(ve, 2), be = (e) => {
+		var t = fc(), n = z(t);
 		V(() => q(n, `· ${W(c).ticket.pool ?? ""}`)), K(e, t);
 	};
 	J(O, (e) => {
 		W(c)?.ticket?.pool && e(be);
 	});
 	var k = B(O, 2), xe = (e) => {
-		var n = dc(), r = B(nn(n)), i = z(r, !0);
+		var n = pc(), r = B(nn(n)), i = z(r, !0);
 		V(() => {
 			ei(r, "href", "?ticket=" + W(c).current), q(i, W(c).current);
 		}), pr("click", r, (e) => {
@@ -5175,7 +5181,7 @@ function Oc(e, t) {
 	var A = z(B(D, 2), !0);
 	j(pe);
 	var Se = B(pe, 2), Ce = R(Se), we = (e) => {
-		var t = fc(), n = z(t, !0);
+		var t = mc(), n = z(t, !0);
 		V(() => {
 			t.disabled = W(s).loadingOlder, q(n, W(s).loadingOlder ? "Loading history…" : `Load older messages (${W(s).earlier} earlier)`);
 		}), pr("click", t, re), K(e, t);
@@ -5184,7 +5190,7 @@ function Oc(e, t) {
 		W(s) && W(s).earlier > 0 && e(we);
 	});
 	var Te = B(Ce, 2), Ee = (e) => {
-		var t = pc(), n = z(t, !0);
+		var t = hc(), n = z(t, !0);
 		V(() => q(n, W(s).error)), K(e, t);
 	};
 	J(Te, (e) => {
@@ -5196,33 +5202,33 @@ function Oc(e, t) {
 			return W(t);
 		} });
 	}, (e) => {
-		K(e, mc());
+		K(e, gc());
 	});
 	var Oe = B(De, 2);
 	Br(Oe, 17, () => W(x), Ir, (e, t) => {
-		var n = hc(), r = R(n), i = z(r, !0), a = z(B(r), !0);
+		var n = _c(), r = R(n), i = z(r, !0), a = z(B(r), !0);
 		j(n), V(() => {
 			q(i, W(t).text), q(a, W(t).state);
 		}), K(e, n);
 	});
 	var ke = B(Oe, 2), Ae = (e) => {
-		var t = gc(), n = B(R(t), 1, !0);
+		var t = vc(), n = B(R(t), 1, !0);
 		j(t), V(() => q(n, W(p) || "Working")), K(e, t);
 	};
 	J(ke, (e) => {
 		W(f) && e(Ae);
 	}), j(Se), li(Se, (e) => L(S, e), () => W(S));
 	var je = B(Se, 2), Me = (e) => {
-		var t = yc(), n = R(t), r = R(n), i = z(r, !0), s = z(B(r, 2), !0);
+		var t = xc(), n = R(t), r = R(n), i = z(r, !0), s = z(B(r, 2), !0);
 		j(n);
 		var c = B(n, 2), l = R(c), u = (e) => {
-			var t = _c(), n = R(t);
+			var t = yc(), n = R(t);
 			$r(n), M(), j(t), ai(n, () => W(g), (e) => L(g, e)), K(e, t);
 		};
 		J(l, (e) => {
 			W(a) === "question" && e(u);
 		}), Br(B(l, 2), 17, () => W(le), (e) => e.label, (e, t) => {
-			var n = vc(), r = z(n, !0);
+			var n = bc(), r = z(n, !0);
 			V(() => {
 				n.disabled = W(ue), q(r, W(t).label);
 			}), pr("click", n, () => de(W(t))), K(e, n);
@@ -5234,32 +5240,32 @@ function Oc(e, t) {
 		W(i) && e(Me);
 	});
 	var Ne = B(je, 2), Pe = (e) => {
-		var t = Tc(), n = R(t);
+		var t = Dc(), n = R(t);
 		et(n), li(n, (e) => L(w, e), () => W(w));
 		var r = B(n, 2), i = R(r), a = B(i, 2), o = B(a, 2), l = R(o), u = (e) => {
-			var t = bc(), n = z(t, !0);
+			var t = Sc(), n = z(t, !0);
 			V(() => q(n, W(c).model)), K(e, t);
 		};
 		J(l, (e) => {
 			W(c)?.model && e(u);
 		});
 		var d = B(l, 2), p = (e) => {
-			var t = xc(), n = z(t);
+			var t = Cc(), n = z(t);
 			V((e, t) => q(n, `${e ?? ""} / ${t ?? ""} tokens`), [() => qs(W(s).usage.used), () => qs(W(s).usage.size)]), K(e, t);
 		};
 		J(d, (e) => {
 			W(s)?.usage && e(p);
 		}), j(o);
 		var m = B(o, 2), h = (e) => {
-			var t = Sc(), n = z(t, !0);
+			var t = wc(), n = z(t, !0);
 			V(() => q(n, W(b))), K(e, t);
 		};
 		J(m, (e) => {
 			W(b) && e(h);
 		});
 		var g = B(m, 4), x = (e) => {
-			var t = wc(), n = nn(t), r = B(n, 2), i = (e) => {
-				var t = Cc();
+			var t = Ec(), n = nn(t), r = B(n, 2), i = (e) => {
+				var t = Tc();
 				V((e) => t.disabled = e, [() => !W(v).trim() || W(y)]), pr("click", t, () => oe(!0)), K(e, t);
 			};
 			J(r, (e) => {
@@ -5278,7 +5284,7 @@ function Oc(e, t) {
 			L(ee, -1), ae();
 		}), pr("keydown", n, ce), ii(n, () => W(v), (e) => L(v, e)), pr("click", i, () => ne(!0)), pr("click", a, () => ne(!1)), K(e, t);
 	}, Fe = (e) => {
-		var t = Ec(), n = z(t);
+		var t = Oc(), n = z(t);
 		V(() => q(n, `Read-only: ${(W(u).reason || "this session does not accept input") ?? ""}`)), K(e, t);
 	};
 	J(Ne, (e) => {
@@ -5293,8 +5299,8 @@ mr([
 	"keydown"
 ]);
 // plugins/chat/ChatList.svelte
-var kc = /* @__PURE__ */ G("<div class=\"err svelte-162crgi\"> </div>"), Ac = /* @__PURE__ */ G("<a><span></span> <span class=\"name svelte-162crgi\"> </span> <span class=\"mono faint id svelte-162crgi\"> </span></a>"), jc = /* @__PURE__ */ G("<div class=\"faint pad0 svelte-162crgi\">No open operator sessions.</div>"), Mc = /* @__PURE__ */ G("<div class=\"card empty\" data-testid=\"escalations-empty\"><div class=\"muted\">No escalation sessions.</div></div>"), Nc = /* @__PURE__ */ G("<tr data-testid=\"escalation-row\"><td class=\"c-title\"> <div class=\"faint mono\"> <!></div></td><td class=\"c-st\"><span> </span></td><td class=\"muted full\"> </td><td class=\"c-st\"><span> </span></td><td class=\"muted c-time\"> </td></tr>"), Pc = /* @__PURE__ */ G("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"escalations\"><thead><tr><th>Ticket</th><th>Cause</th><th>Why</th><th>State</th><th>Age</th></tr></thead><tbody></tbody></table></div>"), Fc = /* @__PURE__ */ G("<header class=\"vh svelte-162crgi\"><h1>Chat</h1> <span class=\"sub svelte-162crgi\">pool <span class=\"mono\"> </span></span></header> <div class=\"list svelte-162crgi\"><form class=\"new svelte-162crgi\"><textarea rows=\"3\" placeholder=\"What should the operator look at?\" data-testid=\"chat-new-input\" class=\"svelte-162crgi\"></textarea> <div class=\"row svelte-162crgi\"><button type=\"submit\" class=\"primary\" data-testid=\"chat-new\">New session</button></div></form> <!> <div data-testid=\"chat-list\"></div> <h2 class=\"st\">Escalations</h2> <!></div>", 1);
-function Ic(e, t) {
+var jc = /* @__PURE__ */ G("<div class=\"err svelte-162crgi\"> </div>"), Mc = /* @__PURE__ */ G("<a><span></span> <span class=\"name svelte-162crgi\"> </span> <span class=\"mono faint id svelte-162crgi\"> </span></a>"), Nc = /* @__PURE__ */ G("<div class=\"faint pad0 svelte-162crgi\">No open operator sessions.</div>"), Pc = /* @__PURE__ */ G("<div class=\"card empty\" data-testid=\"escalations-empty\"><div class=\"muted\">No escalation sessions.</div></div>"), Fc = /* @__PURE__ */ G("<tr data-testid=\"escalation-row\"><td class=\"c-title\"> <div class=\"faint mono\"> <!></div></td><td class=\"c-st\"><span> </span></td><td class=\"muted full\"> </td><td class=\"c-st\"><span> </span></td><td class=\"muted c-time\"> </td></tr>"), Ic = /* @__PURE__ */ G("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"escalations\"><thead><tr><th>Ticket</th><th>Cause</th><th>Why</th><th>State</th><th>Age</th></tr></thead><tbody></tbody></table></div>"), Lc = /* @__PURE__ */ G("<header class=\"vh svelte-162crgi\"><h1>Chat</h1> <span class=\"sub svelte-162crgi\">pool <span class=\"mono\"> </span></span></header> <div class=\"list svelte-162crgi\"><form class=\"new svelte-162crgi\"><textarea rows=\"3\" placeholder=\"What should the operator look at?\" data-testid=\"chat-new-input\" class=\"svelte-162crgi\"></textarea> <div class=\"row svelte-162crgi\"><button type=\"submit\" class=\"primary\" data-testid=\"chat-new\">New session</button></div></form> <!> <div data-testid=\"chat-list\"></div> <h2 class=\"st\">Escalations</h2> <!></div>", 1);
+function Rc(e, t) {
 	Ue(t, !0);
 	let n = /* @__PURE__ */ I(null), r = /* @__PURE__ */ I(null), i = /* @__PURE__ */ I(""), a = /* @__PURE__ */ I(""), o = /* @__PURE__ */ I(!1), s = /* @__PURE__ */ I("");
 	async function c() {
@@ -5350,14 +5356,14 @@ function Ic(e, t) {
 			}
 		}
 	}
-	var _ = Fc(), v = nn(_), b = B(R(v), 2), x = z(B(R(b)), !0);
+	var _ = Lc(), v = nn(_), b = B(R(v), 2), x = z(B(R(b)), !0);
 	j(b), j(v);
 	var S = B(v, 2), C = R(S), w = R(C);
 	et(w);
 	var ee = z(B(w, 2));
 	j(C);
 	var te = B(C, 2), T = (e) => {
-		var t = kc(), n = z(t, !0);
+		var t = jc(), n = z(t, !0);
 		V(() => q(n, W(i))), K(e, t);
 	};
 	J(te, (e) => {
@@ -5365,7 +5371,7 @@ function Ic(e, t) {
 	});
 	var E = B(te, 2);
 	Br(E, 21, () => W(l), (e) => e.id, (e, t) => {
-		var n = Ac();
+		var n = Mc();
 		let r;
 		var i = R(n);
 		let a;
@@ -5376,14 +5382,14 @@ function Ic(e, t) {
 			e.preventDefault(), h(W(t).id, W(t).key.startsWith("attention:") ? W(t).key.slice(10) : "");
 		}), K(e, n);
 	}, (e) => {
-		K(e, jc());
+		K(e, Nc());
 	}), j(E);
 	var ne = B(E, 4), re = (e) => {
-		K(e, Mc());
+		K(e, Pc());
 	}, ie = (e) => {
-		var t = Pc(), n = R(t), r = B(R(n));
+		var t = Ic(), n = R(t), r = B(R(n));
 		Br(r, 21, () => [...W(u), ...W(d)], (e) => e.ticket, (e, t) => {
-			var n = Nc();
+			var n = Fc();
 			let r;
 			var i = R(n), a = R(i, !0), o = B(a), c = R(o, !0), l = B(c), u = (e) => {
 				var n = Sr();
@@ -5412,8 +5418,8 @@ function Ic(e, t) {
 }
 mr(["click"]);
 // plugins/chat/DrawerChat.svelte
-var Lc = /* @__PURE__ */ G("<div class=\"wrap svelte-1i9xi0d\" data-testid=\"escalation-chat\"><div class=\"bar svelte-1i9xi0d\"><a class=\"svelte-1i9xi0d\">open in side panel</a></div> <div class=\"frame svelte-1i9xi0d\"><!></div></div>");
-function Rc(e, t) {
+var zc = /* @__PURE__ */ G("<div class=\"wrap svelte-1i9xi0d\" data-testid=\"escalation-chat\"><div class=\"bar svelte-1i9xi0d\"><a class=\"svelte-1i9xi0d\">open in side panel</a></div> <div class=\"frame svelte-1i9xi0d\"><!></div></div>");
+function Bc(e, t) {
 	Ue(t, !0);
 	let n = fi(t, "context", 19, () => ({})), r = /* @__PURE__ */ ft(() => n().ticket || {}), i = (e) => typeof e?.meta == "string" ? JSON.parse(e.meta) : e?.meta || {}, a = /* @__PURE__ */ ft(() => {
 		if (W(r).kind === "session") return W(r).id;
@@ -5421,10 +5427,10 @@ function Rc(e, t) {
 		return e?.session ? e.session : W(r).holder && /^[a-z][a-z0-9]*-[0-9a-z]{6,}$/i.test(W(r).holder) ? W(r).holder : "";
 	});
 	var o = Cr(), s = nn(o), c = (e) => {
-		var n = Lc(), r = R(n), i = z(r), o = B(r, 2), s = R(o);
+		var n = zc(), r = R(n), i = z(r), o = B(r, 2), s = R(o);
 		{
 			let e = /* @__PURE__ */ ft(() => ({ session: W(a) }));
-			Oc(s, {
+			Ac(s, {
 				get api() {
 					return t.api;
 				},
@@ -5443,8 +5449,8 @@ function Rc(e, t) {
 }
 mr(["click"]);
 // plugins/chat/index.svelte.js
-var zc = new URL("./style.css", import.meta.url).href;
-function Bc(e) {
+var Vc = new URL("./style.css", import.meta.url).href;
+function Hc(e) {
 	return class extends HTMLElement {
 		#e = /* @__PURE__ */ I(qt({
 			api: null,
@@ -5477,9 +5483,9 @@ function Bc(e) {
 			return this.props.config;
 		}
 		connectedCallback() {
-			if (!document.querySelector(`link[href="${zc}"]`)) {
+			if (!document.querySelector(`link[href="${Vc}"]`)) {
 				let e = document.createElement("link");
-				e.rel = "stylesheet", e.href = zc, document.head.append(e);
+				e.rel = "stylesheet", e.href = Vc, document.head.append(e);
 			}
 			this.style.display = "contents", this.app = Ar(e, {
 				target: this,
@@ -5492,7 +5498,7 @@ function Bc(e) {
 	};
 }
 for (let [e, t] of [
-	["desk-chat-pane", Oc],
-	["desk-chat-view", Ic],
-	["desk-chat-drawer", Rc]
-]) customElements.get(e) || customElements.define(e, Bc(t));
+	["desk-chat-pane", Ac],
+	["desk-chat-view", Rc],
+	["desk-chat-drawer", Bc]
+]) customElements.get(e) || customElements.define(e, Hc(t));
