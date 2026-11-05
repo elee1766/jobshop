@@ -1193,6 +1193,7 @@ const (
 	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
 	AttentionIngest   = "ingest"   // no live external ingest worker, or an admission backlog (#443)
 	AttentionDecision = "decision" // open ticket labeled proposed: a planner-proposed target to approve (#488)
+	AttentionStale    = "stale"    // open ticket no pool will claim, older than attention.orphan_age (#495)
 )
 
 // AttentionItem is one thing waiting on a human.

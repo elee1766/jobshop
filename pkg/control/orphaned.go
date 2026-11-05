@@ -2,10 +2,13 @@ package control
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"time"
 
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -45,6 +48,32 @@ func orphanReason(t store.Ticket) string {
 		return orphanNoPool
 	}
 	return orphanUnknownPool
+}
+
+// staleAttention lists orphaned tickets older than attention.orphan_age
+// (#495): ad-hoc tickets nobody will claim otherwise sit in ready forever.
+// The title carries the command that closes one.
+func (c *Controller) staleAttention(ctx context.Context) ([]rpc.AttentionItem, error) {
+	age := c.config().Attention.OrphanAgeDuration()
+	if age == 0 {
+		return nil, nil
+	}
+	ts, err := c.orphaned(ctx, "", 0)
+	if err != nil {
+		return nil, err
+	}
+	now := c.now()
+	var out []rpc.AttentionItem
+	for _, t := range ts {
+		if now.Sub(t.CreatedAt) < age {
+			continue
+		}
+		it := ticketItem(rpc.AttentionStale, t)
+		it.Title = fmt.Sprintf("%s: no claimable pool (%s) for %s; if fixed: jobshop close %s -r cancelled",
+			t.Title, orphanReason(t), now.Sub(t.CreatedAt).Truncate(time.Hour), t.ID)
+		out = append(out, it)
+	}
+	return out, nil
 }
 
 // reportOrphans runs each tick and after a reload. It warns once per

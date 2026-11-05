@@ -469,6 +469,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/notes/488-planner-proposals.md`).
 - `TestNewUserPath` follows `docs/packs.md` end to end with the guide's
   own pack and config (#494, `docs/notes/494-new-user-path.md`).
+- Stale ad-hoc tickets (no claimable pool, older than
+  `attention.orphan_age`, default 72h) are listed in attention with a
+  close hint; the github planner closes verified ones (#495,
+  `docs/notes/495-stale-adhoc-tickets.md`).
 
 ## 5. What's next
 

@@ -106,6 +106,17 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 		return nil, err
 	}
 	items = append(items, ing...)
+	stale, err := c.staleAttention(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range stale {
+		// A needs-human or question ticket with no pool is listed once,
+		// as itself.
+		if !slices.ContainsFunc(items, func(x rpc.AttentionItem) bool { return x.ID == it.ID }) {
+			items = append(items, it)
+		}
+	}
 	c.mu.Lock()
 	if c.configErr != "" {
 		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})
