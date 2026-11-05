@@ -257,6 +257,17 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 			return nil, err
 		}
 	}
+	if p.Resolution == store.ResolutionRebase {
+		if cur, err := c.store.Get(ctx, id); err == nil {
+			res, why := c.rebaseResolution(ctx, cur)
+			if why != "" {
+				if _, err := c.store.AddComment(ctx, "controller", id, why); err != nil {
+					c.log.Warn("rebase check comment", "step", id, "err", err)
+				}
+			}
+			p.Resolution = res
+		}
+	}
 	t, err := c.store.CloseTicket(ctx, sc.actor, id, cl, p.Resolution)
 	if err != nil {
 		return nil, err

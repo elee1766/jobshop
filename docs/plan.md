@@ -416,7 +416,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `docs/verify/command-step-sandbox.md`).
 - `close -r rebase` reopens a step without counting a failure; the
   refinery uses it for a PR that only conflicts with master (#424,
-  `docs/notes/424-rebase-no-failure.md`).
+  `docs/notes/424-rebase-no-failure.md`). The controller checks the PR's
+  merge state first and counts a clean PR as failed (#511,
+  `docs/notes/511-rebase-merge-state.md`).
 - Workflow step graphs: `needs:` for parallel steps, `when:` for steps
   gated on an outcome set with `close --outcome` (#385,
   `docs/notes/385-step-needs-when.md`).
@@ -641,8 +643,8 @@ visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492).
 
-**Rebase route-back (#424).** Done: `close -r rebase`. Next, if agents
-misjudge conflicts: let the controller check mergeStateStatus itself.
+**Rebase route-back (#424).** Done: `close -r rebase`, checked against
+the PR's merge state by the controller (#511).
 
 Rule for adding features: add what running the system shows is missing, in
 the order it hurts. Bring over Gas City features only for a real need.
@@ -1310,6 +1312,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - A green PR by the operator, or labeled `hold`, is not a stall
   (2026-11-05, #509): the operator keeps such PRs open on purpose, and
   flagging them only parked stall-check runs in `needs_human`.
+- The controller checks a `close -r rebase` against the PR's
+  mergeable_state (2026-11-05, #511): dirty or behind keep the rebase,
+  any other known state counts as failed with a comment. An unreadable
+  state keeps the rebase and logs a WARN, so a GitHub outage never
+  turns a real conflict into a failed attempt.
 
 ## 7. Reference: behavior as built
 

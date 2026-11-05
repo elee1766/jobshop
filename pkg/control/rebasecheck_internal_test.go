@@ -1,0 +1,59 @@
+package control
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+// TestRebaseMergeState: a rebase close on a step whose run's PR is dirty
+// routes back without a failure, a clean PR counts a failure with a
+// comment, and an unreadable PR keeps the rebase (#511).
+func TestRebaseMergeState(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		prs      map[int]ghPR
+		failures int
+		comment  bool
+	}{
+		{"dirty", map[int]ghPR{300: {Number: 300, MergeableState: "dirty"}}, 0, false},
+		{"behind", map[int]ghPR{300: {Number: 300, MergeableState: "behind"}}, 0, false},
+		{"clean", map[int]ghPR{300: {Number: 300, MergeableState: "clean"}}, 1, true},
+		{"read error", nil, 0, false},
+		{"unknown", map[int]ghPR{300: {Number: 300, MergeableState: "unknown"}}, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			c, _, fa := activityController(t)
+			c.activitySrc = &fakeReverts{fakeActivity: fa, prs: tc.prs}
+			run := mkTicket(t, c, store.NewTicket{
+				Kind: store.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`),
+				Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":511}}`),
+			})
+			impl := mkTicket(t, c, store.NewTicket{
+				Kind: store.KindStep, Title: "implement", ParentID: run.ID,
+				Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`),
+			})
+			review := mkTicket(t, c, store.NewTicket{
+				Kind: store.KindStep, Title: "review-merge", ParentID: run.ID,
+				Fields: json.RawMessage(`{"step":"review-merge","run":"` + run.ID + `"}`),
+			})
+			_, err := c.store.AddComment(t.Context(), "s1", impl.ID, "PR https://github.com/elee1766/jobshop/pull/300 head abc")
+			require.NoError(t, err)
+
+			res, why := c.rebaseResolution(t.Context(), review)
+			got, err := c.store.CloseTicket(t.Context(), "admin", review.ID, nil, res)
+			require.NoError(t, err)
+			sf, err := store.DecodeFields[store.StepFields](got)
+			require.NoError(t, err)
+			assert.Equal(t, tc.failures, sf.Failures)
+			assert.Equal(t, tc.comment, strings.HasPrefix(why, "close -r rebase counted as failed"))
+		})
+	}
+}
