@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -58,7 +59,7 @@ func TestMemoryWrite(t *testing.T) {
 	b, err = os.ReadFile(filepath.Join(dir, "memory", "memory", "global.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "Retry gh twice on 502.\n", string(b))
-	edits, err := c.store.MemoryEdits(ctx, "", 0)
+	edits, err := memedit.List(ctx, c.store, "", 0)
 	require.NoError(t, err)
 	assert.Len(t, edits, 2)
 

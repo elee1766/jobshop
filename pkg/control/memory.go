@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -78,7 +79,7 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 	for _, l := range cited {
 		e.Learnings = append(e.Learnings, l.ID)
 	}
-	out, err := c.store.AddMemoryWrite(ctx, e)
+	out, err := memedit.AddWrite(ctx, c.store, e)
 	if err != nil {
 		// Keep the file and the record in step: undo the write.
 		_ = memory.Restore(dir, rel, before, existed)
@@ -126,7 +127,7 @@ func (c *Controller) restoreEdit(ctx context.Context, e store.MemoryEdit) error 
 	if e.Path == "" {
 		return nil
 	}
-	newer, err := c.store.MemoryEdits(ctx, "", 0)
+	newer, err := memedit.List(ctx, c.store, "", 0)
 	if err != nil {
 		return err
 	}

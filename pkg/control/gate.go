@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -209,7 +210,7 @@ func (c *Controller) recordEdit(ctx context.Context, pr string, ids []int64, mer
 	for _, l := range cited {
 		e.Learnings = append(e.Learnings, l.ID)
 	}
-	return c.store.AddMemoryEdit(ctx, e)
+	return memedit.AddPR(ctx, c.store, e)
 }
 
 // editDue reports whether a pending edit has enough evidence: runs runs
@@ -248,7 +249,7 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 	if age <= 0 {
 		age = gateAge
 	}
-	edits, err := c.store.MemoryEdits(ctx, store.EditPending, 0)
+	edits, err := memedit.List(ctx, c.store, store.EditPending, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -266,9 +267,18 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 			continue
 		}
 		state, reason := gateDecide(e.Baseline, after)
-		u, err := c.store.SetMemoryEditResult(ctx, e.ID, state, after, reason)
+		u, err := memedit.SetResult(ctx, c.store, e.ID, state, after, reason, now)
 		if err != nil {
 			return nil, err
+		}
+		// The edit's result is the record; the gate line on each cited
+		// learning is a copy for `learn list`, so a failure here leaves
+		// the edit decided and the next evaluate does not redo it.
+		gate := fmt.Sprintf("%s: %s (%s)", state, reason, memedit.Ref(u))
+		for _, l := range u.Learnings {
+			if err := c.store.SetLearningGate(ctx, l, gate); err != nil {
+				return nil, err
+			}
 		}
 		// A local write that did not help is undone here (#592); a PR edit
 		// is reverted by the evaluate step.
@@ -286,12 +296,12 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 }
 
 func (c *Controller) learnEdits(ctx context.Context, _ scope, p rpc.LearnEditsParams) (any, error) {
-	return c.store.MemoryEdits(ctx, p.State, p.Limit)
+	return memedit.List(ctx, c.store, p.State, p.Limit)
 }
 
 // editsHold returns "" when a pending memory edit is due for evaluation.
 func (c *Controller) editsHold(ctx context.Context, w config.EditsWhen, now time.Time) (string, error) {
-	edits, err := c.store.MemoryEdits(ctx, store.EditPending, 0)
+	edits, err := memedit.List(ctx, c.store, store.EditPending, 0)
 	if err != nil {
 		return "", err
 	}

@@ -2,6 +2,10 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
+	"io/fs"
+
+	"github.com/pressly/goose/v3"
 
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -21,3 +25,17 @@ func ListSQL(ctx context.Context, s *Store, spec store.CollectionSpec, f store.R
 
 // QuoteLit is quoteLit, for tests.
 var QuoteLit = quoteLit
+
+// MigrateDownTo rolls db back to version, for migration tests.
+func MigrateDownTo(ctx context.Context, db *sql.DB, version int64) error {
+	sub, err := fs.Sub(migrations, "migrations")
+	if err != nil {
+		return err
+	}
+	p, err := goose.NewProvider(goose.DialectPostgres, db, sub)
+	if err != nil {
+		return err
+	}
+	_, err = p.DownTo(ctx, version)
+	return err
+}

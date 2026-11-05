@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -112,14 +113,14 @@ func TestCuratorGate(t *testing.T) {
 	const pr = "https://github.com/elee1766/jobshop/pull/900"
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id1}, PR: pr})
 	require.NoError(t, err)
-	edits, err := c.store.MemoryEdits(ctx, "", 0)
+	edits, err := memedit.List(ctx, c.store, "", 0)
 	require.NoError(t, err)
 	assert.Empty(t, edits, "a pending PR is not an edit yet")
 
 	merged := clk.now()
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id1}, Status: store.LearningApplied, MergedAt: merged})
 	require.NoError(t, err)
-	edits, err = c.store.MemoryEdits(ctx, store.EditPending, 0)
+	edits, err = memedit.List(ctx, c.store, store.EditPending, 0)
 	require.NoError(t, err)
 	require.Len(t, edits, 1)
 	e := edits[0]
@@ -132,7 +133,7 @@ func TestCuratorGate(t *testing.T) {
 	// Applying again does not record a second edit.
 	_, err = c.learnUpdate(ctx, admin, rpc.LearnUpdateParams{IDs: []int64{id1}, Status: store.LearningApplied})
 	require.NoError(t, err)
-	edits, err = c.store.MemoryEdits(ctx, "", 0)
+	edits, err = memedit.List(ctx, c.store, "", 0)
 	require.NoError(t, err)
 	assert.Len(t, edits, 1)
 
