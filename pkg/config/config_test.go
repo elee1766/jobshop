@@ -263,6 +263,43 @@ gateway:
 	}
 }
 
+// TestParseA2AGateway (#547): an a2a gateway needs a url, token and chat
+// pool, names only known escalation causes, and takes no rooms.
+func TestParseA2AGateway(t *testing.T) {
+	base := poolsYAML + `  chat:
+    agent: claude
+    type: chat
+    dir: /work
+gateway:
+  hermes:
+    network: a2a
+    url: https://hermes.example/a2a
+    token_file: hermes-token
+    pool: chat
+    escalations: [run, pool]
+    poll: 10s
+`
+	c, err := Parse([]byte(base))
+	require.NoError(t, err)
+	g := c.Gateway["hermes"]
+	assert.Equal(t, []string{"run", "pool"}, g.Escalations)
+	assert.Equal(t, 10*time.Second, g.PollDuration())
+	assert.Equal(t, 30*time.Second, Gateway{}.PollDuration())
+
+	for name, bad := range map[string][2]string{
+		"no url":        {"url: https://hermes.example/a2a", `url: ""`},
+		"url with user": {"url: https://hermes.example/a2a", "url: https://u:p@hermes.example/a2a"},
+		"no token":      {"token_file: hermes-token", `token_file: ""`},
+		"ticket pool":   {"pool: chat", "pool: main"},
+		"unknown cause": {"escalations: [run, pool]", "escalations: [run, nope]"},
+		"short poll":    {"poll: 10s", "poll: 10ms"},
+		"rooms":         {"poll: 10s", "poll: 10s\n    rooms: [\"!r:x\"]"},
+	} {
+		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
+		assert.Error(t, err, name)
+	}
+}
+
 func TestIngestRetention(t *testing.T) {
 	assert.Equal(t, DefaultInboxRetention, Ingest{}.RetentionDuration())
 	assert.Equal(t, 3*24*time.Hour, Ingest{Retention: "3d"}.RetentionDuration())

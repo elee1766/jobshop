@@ -90,6 +90,31 @@ jobshop desk                             # web UI on 127.0.0.1:7480
 reports, events, identities). The full tree is in
 [../llm/cli.md](../llm/cli.md).
 
+## Escalate to another agent
+
+An escalation can go to another agent, not only to a chat room. A
+`network: a2a` gateway sends each escalation chat to an A2A v1.0 peer,
+such as Hermes with its A2A plugin. The conversation's `contextId` is the
+ticket id. The peer's replies go to the escalation session, which still
+resolves the escalation. Desk and humans can answer at any time, and the
+first answer wins. The gateway is outbound only, so Jobshop needs no
+public endpoint.
+
+```yaml
+gateway:
+  hermes:
+    network: a2a
+    url: https://hermes.example/a2a     # card: <url>/.well-known/agent-card.json
+    token_file: /run/secrets/hermes-a2a # bearer token, never in yaml
+    pool: operator
+    escalations: [all]                  # or causes: run, pool, wait, guard, label
+    poll: 30s
+```
+
+`escalations` is the routing policy. A cause that is not listed is not
+sent, and the peer decides whether to ask its own human. See
+[notes/547-a2a-gateway.md](notes/547-a2a-gateway.md).
+
 ## Running as your own user
 
 No GitHub App or Linear App is needed. Give jobshop a personal access

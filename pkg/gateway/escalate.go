@@ -35,6 +35,9 @@ type Escalation struct {
 	Key     string `json:"key"`
 	Session string `json:"session,omitempty"` // set once the first prompt is sent
 	Final   bool   `json:"final,omitempty"`   // the closed message was posted
+	// A2A is each A2A gateway's conversation on this ticket, by gateway
+	// name (#547). Kept beside a chat thread: both may mirror one ticket.
+	A2A map[string]*A2AState `json:"a2a,omitempty"`
 }
 
 // runMeta is meta.run on an escalation ticket, written by the controller.
@@ -138,8 +141,15 @@ var errSkip = errors.New("skip")
 // session claiming or commenting moves the revision). This is the dedup:
 // two gateways or two passes cannot both record a thread.
 func (g *Gateway) updateEscalation(ctx context.Context, id string, fn func(t store.Ticket, e *Escalation, ok bool) error) (store.Ticket, error) {
+	return updateGatewayMeta(ctx, g.ctl, id, fn)
+}
+
+// updateGatewayMeta is updateEscalation for any meta.gateway writer. e
+// holds what was read even when ok is false (no thread recorded), so a
+// writer keeps fields it does not own.
+func updateGatewayMeta(ctx context.Context, ctl Controller, id string, fn func(t store.Ticket, e *Escalation, ok bool) error) (store.Ticket, error) {
 	for attempt := 0; ; attempt++ {
-		r, err := g.ctl.Show(ctx, id)
+		r, err := ctl.Show(ctx, id)
 		if err != nil {
 			return store.Ticket{}, err
 		}
@@ -154,7 +164,7 @@ func (g *Gateway) updateEscalation(ctx context.Context, id string, fn func(t sto
 		if err != nil {
 			return t, err
 		}
-		t, err = g.ctl.Update(ctx, rpc.UpdateParams{ID: id, Meta: mb, IfRevision: t.Revision})
+		t, err = ctl.Update(ctx, rpc.UpdateParams{ID: id, Meta: mb, IfRevision: t.Revision})
 		if errors.Is(err, store.ErrConflict) && attempt < 5 {
 			continue
 		}
@@ -304,7 +314,9 @@ func (g *Gateway) escalation(ctx context.Context, t store.Ticket) error {
 			if ok {
 				return errors.New("another thread was recorded first")
 			}
+			a2a := cur.A2A // an A2A gateway's conversation stays
 			*cur = e
+			cur.A2A = a2a
 			return nil
 		})
 		if err != nil {

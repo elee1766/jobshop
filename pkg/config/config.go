@@ -325,7 +325,13 @@ type Activity struct {
 const (
 	GatewayMatrix  = "matrix"
 	GatewayDiscord = "discord"
+	// GatewayA2A routes escalations to another agent over A2A (#547).
+	GatewayA2A = "a2a"
 )
+
+// EscalationCauses are meta.escalation.cause values, the kinds an A2A
+// gateway's escalations list names (the cause var of EscalationVars).
+var EscalationCauses = []string{"run", "pool", "wait", "guard", "label"}
 
 // Gateway connects one chat network account to a chat pool. Messages
 // from rooms or senders not listed are ignored.
@@ -353,6 +359,15 @@ type Gateway struct {
 	ArtifactRoom string `yaml:"artifact_room"`
 	// DeskURL is Desk's base URL for links in artifact lines. Empty: no link.
 	DeskURL string `yaml:"desk_url"`
+	// URL is the A2A peer's base URL; its agent card is fetched from
+	// /.well-known/agent-card.json under it (a2a only).
+	URL string `yaml:"url,omitempty"`
+	// Escalations are the escalation causes sent to the A2A peer: "all"
+	// or a list of EscalationCauses. Empty: none (a2a only).
+	Escalations []string `yaml:"escalations,omitempty"`
+	// Poll is the GetTask interval for a peer task (Go duration, a2a
+	// only). Default 30s.
+	Poll string `yaml:"poll,omitempty"`
 }
 
 // Desk is the desk section. Desk reads it through config.show, so a
@@ -1411,6 +1426,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 }
 
 func (c *Config) checkGateway(g Gateway) error {
+	if g.Network == GatewayA2A {
+		return c.checkA2AGateway(g)
+	}
 	switch g.Network {
 	case GatewayMatrix:
 		if g.Homeserver == "" {
@@ -1418,7 +1436,7 @@ func (c *Config) checkGateway(g Gateway) error {
 		}
 	case GatewayDiscord:
 	default:
-		return fmt.Errorf("network %q must be %q or %q", g.Network, GatewayMatrix, GatewayDiscord)
+		return fmt.Errorf("network %q must be %q, %q or %q", g.Network, GatewayMatrix, GatewayDiscord, GatewayA2A)
 	}
 	if g.TokenFile.IsZero() {
 		return errors.New("token_file is required")
