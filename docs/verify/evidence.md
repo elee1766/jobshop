@@ -4,7 +4,7 @@ One command per check; paste its output on #36. A session that ends
 `stuck` (agent stopped closing tickets, #62) counts as a failure just like
 `crashed` (#71, 2026-11-01): both must be `[]` for the evidence window.
 
-```sh
+```sh readonly
 jobshop session list --state crashed --since 24h
 jobshop session list --state stuck --since 24h
 ```

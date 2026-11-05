@@ -76,6 +76,7 @@ type root struct {
 	Report    reportCmd    `cmd:"" help:"Report your ticket's state (progress, waiting, ready, blocked, failed, dropped), or reliability reports (admin)."`
 	Answer    answerCmd    `cmd:"" help:"Answer a worker's question; the answer goes to the asking session (admin)."`
 	Artifact  artifactCmd  `cmd:"" help:"Deliver reports for a human to read in Desk; list, show and ack them."`
+	Runbook   runbookCmd   `cmd:"" help:"Run a docs/verify runbook's read-only steps (#635)."`
 	Learn     learnCmd     `cmd:"" help:"Record a correction, failure or workaround for the learning loop, or list learnings."`
 	Config    configCmd    `cmd:"" help:"Inspect the active config (admin)."`
 	Memory    memoryCmd    `cmd:"" help:"Local memory files and skills under <root>/memory (#266, #592)."`

@@ -103,6 +103,30 @@ workflows:
         retries: 1
         title: "Evaluate memory edits"
         prompt_file: prompts/evaluate.md
+  # Live check (#635): run a docs/verify runbook's readonly blocks in a
+  # worktree of master and comment the results on the issue. Unmarked
+  # blocks are listed as left for the operator. A failing block fails the
+  # step. Started by the planner:
+  # jobshop run start live-check --var runbook=docs/verify/<f>.md --var issue=<n>
+  live-check:
+    vars: [runbook, issue]
+    issue: issue
+    repo: elee1766/jobshop
+    escalate_pool: plan
+    steps:
+      - id: check
+        type: command
+        pool: dev
+        worktree: true
+        timeout: 20m
+        retries: 0
+        run: |
+          set +e
+          out=$(jobshop runbook run "$JOBSHOP_VAR_RUNBOOK" 2>&1)
+          rc=$?
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | gh issue comment "$JOBSHOP_VAR_ISSUE" --repo elee1766/jobshop --body-file - >&2
+          [ "$rc" = 0 ] || exit 1
 triggers:
   evaluate:
     when:
@@ -128,3 +152,8 @@ prompt_rules:
     at: system
     match: {chat: false, repos: [elee1766/jobshop]}
     file: prompts/guide.md
+  # Live check (#635): targets stall on runbook-only items.
+  - name: selfdev-live-check
+    at: system
+    match: {chat: false, pools: [plan], repos: [elee1766/jobshop]}
+    file: prompts/live-check.md
