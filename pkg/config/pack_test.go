@@ -212,6 +212,7 @@ packs:
 	assert.Equal(t, "elee1766/jobshop", c.Workflows["pr-work"].Repo)
 	assert.Contains(t, sigs["no_merge"].Check, "repos/elee1766/jobshop/commits/master")
 	assert.Contains(t, sigs["pr_unmerged"].Check, "statusCheckRollup")
+	assertPRUnmergedFilter(t, sigs["pr_unmerged"].Check)
 	mr := c.Triggers["master-red"]
 	assert.Nil(t, mr.Ticket)
 	require.NotNil(t, mr.Run, "master-red starts a run")
@@ -773,4 +774,31 @@ func assertIssueNoRunFilter(t *testing.T, check string) {
 	out, err := cmd.Output()
 	require.NoError(t, err)
 	assert.Equal(t, "1 open, no run\n", string(out))
+}
+
+// assertPRUnmergedFilter runs the pr_unmerged jq filter (#509): PRs by the
+// operator (elee1766 in selfdev) or labeled hold are skipped, other green
+// PRs are flagged.
+func assertPRUnmergedFilter(t *testing.T, check string) {
+	t.Helper()
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Log("jq not on PATH, filter not run")
+		return
+	}
+	_, filter, ok := strings.Cut(check, "--jq '")
+	require.True(t, ok, "check has a --jq filter")
+	filter = strings.TrimSuffix(filter, "'")
+	green := `"isDraft":false,"updatedAt":"2020-01-01T00:00:00Z","statusCheckRollup":[{"conclusion":"SUCCESS"}]`
+	prs := `[
+	 {"number":1,` + green + `,"labels":[],"author":{"login":"elee-agent[bot]"}},
+	 {"number":2,` + green + `,"labels":[{"name":"Hold"}],"author":{"login":"elee-agent[bot]"}},
+	 {"number":3,` + green + `,"labels":[],"author":{"login":"Elee1766"}},
+	 {"number":4,` + green + `,"labels":[{"name":"holding"}],"author":{"login":"elee"}}
+	]`
+	cmd := exec.CommandContext(t.Context(), jq, "-r", filter)
+	cmd.Stdin = strings.NewReader(prs)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Equal(t, "1 green, unmerged since 2020-01-01T00:00:00Z\n4 green, unmerged since 2020-01-01T00:00:00Z\n", string(out))
 }
