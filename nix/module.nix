@@ -43,11 +43,14 @@ let
       inherit (g)
         network
         pool
-        rooms
-        senders
         ;
       token_file = g.tokenFile;
     }
+    // lib.optionalAttrs (g.rooms != [ ]) { inherit (g) rooms; }
+    // lib.optionalAttrs (g.senders != [ ]) { inherit (g) senders; }
+    // lib.optionalAttrs (g.url != "") { inherit (g) url; }
+    // lib.optionalAttrs (g.escalations != [ ]) { inherit (g) escalations; }
+    // lib.optionalAttrs (g.poll != "") { inherit (g) poll; }
     // lib.optionalAttrs (g.homeserver != "") { inherit (g) homeserver; }
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
     // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
@@ -779,8 +782,26 @@ in
               type = lib.types.enum [
                 "matrix"
                 "discord"
+                "a2a"
               ];
               default = "matrix";
+            };
+            url = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              example = "https://hermes.example/a2a";
+              description = "A2A peer base URL; its agent card is under it (a2a only, #547).";
+            };
+            escalations = lib.mkOption {
+              type = lib.types.listOf lib.types.str;
+              default = [ ];
+              example = [ "all" ];
+              description = "Escalation causes sent to the A2A peer: `all`, or run, pool, wait, guard, label. Empty: none (a2a only).";
+            };
+            poll = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "GetTask interval for a peer task. Empty: 30s (a2a only).";
             };
             homeserver = lib.mkOption {
               type = lib.types.str;
@@ -798,11 +819,13 @@ in
             };
             rooms = lib.mkOption {
               type = lib.types.listOf lib.types.str;
-              description = "Allowed room ids; messages elsewhere are ignored.";
+              default = [ ];
+              description = "Allowed room ids; messages elsewhere are ignored. Unused for a2a.";
             };
             senders = lib.mkOption {
               type = lib.types.listOf lib.types.str;
-              description = "Allowed sender ids; messages from others are ignored.";
+              default = [ ];
+              description = "Allowed sender ids; messages from others are ignored. Unused for a2a.";
             };
             interruptMarker = lib.mkOption {
               type = lib.types.str;

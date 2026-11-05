@@ -46,6 +46,15 @@ func (c gatewayCmd) Run(g *Globals) error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("gateway", c.Name)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if gc.Network == config.GatewayA2A {
+		// The token goes only into the Authorization header (#547).
+		a := gateway.NewA2A(gateway.A2AConfig{
+			Name: c.Name, URL: gc.URL, Token: strings.TrimSpace(string(tok)), Pool: gc.Pool,
+			Escalations: gc.Escalations, Poll: gc.PollDuration(), DeskURL: gc.DeskURL,
+		}, socketController{sock: sock}, log)
+		log.Info("gateway: running", "network", gc.Network, "url", gc.URL, "escalations", gc.Escalations)
+		return a.Run(ctx)
+	}
 	var ad gateway.Adapter
 	if gc.Network == config.GatewayDiscord {
 		ad, err = gateway.NewDiscord(strings.TrimSpace(string(tok)), log)
@@ -109,6 +118,10 @@ func (s socketController) Update(ctx context.Context, p rpc.UpdateParams) (store
 func (s socketController) Answer(ctx context.Context, p rpc.AnswerParams) (rpc.AnswerResult, error) {
 	var res rpc.AnswerResult
 	return res, s.call(ctx, rpc.MethodQuestionAnswer, p, &res)
+}
+
+func (s socketController) Comment(ctx context.Context, p rpc.CommentParams) error {
+	return s.call(ctx, rpc.MethodCommentAdd, p, nil)
 }
 
 func (s socketController) Events(ctx context.Context, p rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error) {
