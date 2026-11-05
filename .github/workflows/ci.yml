@@ -10,7 +10,9 @@ permissions:
 
 jobs:
   go:
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04, which has bwrap, so the sandbox tests
+    # stopped skipping and crash there (#619). Pinned until they pass on it.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
