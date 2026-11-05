@@ -57,13 +57,10 @@ Shipped in [`packs/`](packs/):
   `curate`/`evaluate`): agents record corrections and failures, and a
   curator turns them into learnings later sessions recall.
 
-Planned: **escalation to a human or another agent** (#547), where a step
-out of retries opens an escalation chat in Desk, Matrix or an A2A peer.
-
-Not shipped, but built from the same primitives: a nightly cron trigger
-that bumps dependencies and opens PRs, or a webhook from monitoring
-([generic ingest](docs/ingest.md#generic-endpoints)) that files a triage
-ticket into an on-call pool.
+Planned: **escalation to a human or another agent** (#547). Also possible
+with the same primitives: a nightly dependency-bump cron, or a monitoring
+webhook ([generic ingest](docs/ingest.md#generic-endpoints)) that files a
+triage ticket into an on-call pool.
 
 ## Quick start
 
@@ -101,7 +98,6 @@ The rest is in [docs/running.md](docs/running.md).
 | [docs/isolation.md](docs/isolation.md) | Sandbox, sockets, credentials, hooks, limits |
 | [docs/ingest.md](docs/ingest.md) | Webhooks and generic ingest |
 | [docs/nixos.md](docs/nixos.md) | NixOS module |
-| [docs/notes/202-desk.md](docs/notes/202-desk.md) | Desk web UI |
 | [docs/desk-plugins.md](docs/desk-plugins.md) | Writing a Desk plugin, with `examples/desk-plugins/csv-table` |
 | [docs/plan.md](docs/plan.md) | Design, phases and the dated decision log |
 | [docs/layout.md](docs/layout.md) | Packages, dependencies, build and deployment |
@@ -112,17 +108,11 @@ The rest is in [docs/running.md](docs/running.md).
 
 ## Develop
 
-```
-go build ./... && go vet ./... && go test ./... && golangci-lint run ./...
-```
-
+`go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
 Contributor rules for people and agents (sqlc, Desk `dist`, Nix
 `vendorHash`) are in [AGENTS.md](AGENTS.md).
 
 ## License
 
-Jobshop is licensed under the GNU Affero General Public License v3.0
-(`LICENSE`). The packs in `packs/` and the code in `examples/` are
-licensed under the Apache License 2.0 (`packs/LICENSE`,
-`examples/LICENSE`), so packs and plugins built from them can use any
-license.
+AGPL-3.0 ([LICENSE](LICENSE)); `packs/` and `examples/` are Apache-2.0, so
+packs and plugins built from them can use any license.
