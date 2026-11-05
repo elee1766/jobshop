@@ -10,6 +10,23 @@ than `jobshop report waiting --question` (which labels it for you):
 `jobshop linear label {{.issue}} add Blocked`, so intake leaves the issue
 alone until it is answered.
 
+First decide what kind of work it is. Every exit closes with an outcome:
+- **Code change**: the steps below, ending `jobshop close --outcome pr`.
+- **Task with no code** (investigate, run a check, answer a question,
+  operate something this session may operate): do it, post the result
+  as a Linear comment (a long result via `jobshop artifact deliver`,
+  linked), move the issue to `{{.linear_done_state}}` (`jobshop linear
+  state {{.issue}} "{{.linear_done_state}}"`), then `jobshop close
+  --outcome done`. Review and post-merge are skipped.
+- **Needs a person** (a decision, credentials, access this session
+  lacks): `jobshop linear ask {{.issue}}` with the options and what you do
+  by default, and `jobshop report waiting "<what>" --question "<...>"`.
+  The question labels the issue Blocked.
+- **Not work** (a tracking, parent or target issue, a duplicate): comment
+  why on the issue, add the label `{{.linear_skip_labels}}` or move it to
+  Backlog, then `jobshop close --outcome done`. Never open a PR for it.
+Say in your last Linear comment which of these it was.
+
 If the ticket already has a PR (comments on this step or on the run's
 `review-merge` step list refinery findings; `jobshop run show <run>` from
 the ticket's `parent_id`): do not start a new branch. `gh pr checkout <n>`,
@@ -47,8 +64,8 @@ Docs: {{.docs_rule}}
 
 Do not merge. When CI is green on the head you pushed:
 `jobshop comment "PR <url> head <sha>"` (sha from `git rev-parse HEAD`),
-then `jobshop close`. Closing `done` makes the `review-merge` step ready
-for the refinery. If the remaining work can only happen later (a 24h
+then `jobshop close --outcome pr`. The outcome `pr` makes the `review-merge` step ready
+for the refinery (a close without it skips review and merge). If the remaining work can only happen later (a 24h
 window, a scheduled time, a deploy you saw is in progress), do not close
 failed: comment what you wait for, then `jobshop release --until
 <RFC3339 or duration>`. That defers the step without counting a failure

@@ -246,14 +246,18 @@ workflows:
         retries: 3
         title: "Implement #{{.issue}}"
         prompt_file: prompts/{{.tracker}}/implement.md
+      # Only when implement opened a PR (JOB-10); `--outcome done`
+      # (work with no PR) skips this and post-merge.
       - id: review-merge
         pool: refinery
         retries: 2
+        when: {step: implement, outcome: pr}
         title: "Review and merge PR for #{{.issue}}"
         prompt_file: prompts/{{.tracker}}/merge.md
       - id: post-merge
         pool: deploy-check
         retries: 2
+        when: {step: implement, outcome: pr}
         title: "Check master CI and deploy for #{{.issue}}"
         prompt_file: prompts/{{.tracker}}/post-merge.md
   # pr-work for a Linear issue on an instance whose tracker is github
@@ -278,14 +282,18 @@ workflows:
         retries: 3
         title: "Implement {{.issue}}"
         prompt_file: prompts/linear/implement.md
+      # Only when implement opened a PR (JOB-10); `--outcome done`
+      # (work with no PR) skips this and post-merge.
       - id: review-merge
         pool: refinery
         retries: 2
+        when: {step: implement, outcome: pr}
         title: "Review and merge PR for {{.issue}}"
         prompt_file: prompts/linear/merge.md
       - id: post-merge
         pool: deploy-check
         retries: 2
+        when: {step: implement, outcome: pr}
         title: "Check master CI and deploy for {{.issue}}"
         prompt_file: prompts/linear/post-merge.md
   # One run per stall, started by the stall trigger with key

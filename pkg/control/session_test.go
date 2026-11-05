@@ -927,7 +927,12 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	defer func() { _ = c.Close() }()
 	// The current ticket is the session's claim; close it as `jobshop close` would.
 	ctx = telemetry.WithTraceParent(ctx, os.Getenv("JOBSHOP_TRACEPARENT"))
-	_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{}, nil)
+	// An "outcome" file holds the outcome word to close with (#385).
+	var outcome string
+	if b, err := os.ReadFile("outcome"); err == nil {
+		outcome = strings.TrimSpace(string(b))
+	}
+	_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{Outcome: outcome}, nil)
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 }
 
