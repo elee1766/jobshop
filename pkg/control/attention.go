@@ -78,6 +78,14 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	for _, t := range waits {
 		w := waitOf(t)
 		if w.Timeout.IsZero() || c.now().Before(w.Timeout) {
+			// A master CI wait whose sha has no check after noCIAfter
+			// (#609): say so now instead of at the timeout.
+			if i := slices.IndexFunc(w.Conds, func(cd store.WaitCond) bool { return strings.HasPrefix(cd.Note, noCIPrefix) }); i >= 0 {
+				it := ticketItem(rpc.AttentionWait, t)
+				it.Title = fmt.Sprintf("%s: %s", t.Title, w.Conds[i].Note)
+				it.Owner, it.Since = w.Owner, w.Since.Add(noCIAfter)
+				items = append(items, it)
+			}
 			continue
 		}
 		it := ticketItem(rpc.AttentionWait, t)

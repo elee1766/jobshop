@@ -45,9 +45,21 @@ type issueInfo struct {
 
 type prInfo struct {
 	Head   string
+	Base   string
 	State  string // open or closed
 	Merged bool
+	// Conflict: GitHub computed the PR as conflicting with its base
+	// (mergeable false, mergeable_state dirty). A mergeable GitHub has not
+	// computed yet (null) is not a conflict; the next pass reads it again.
+	Conflict bool
 }
+
+// noCIAfter is how long a checks wait on a bare sha may see no check at
+// all before attention reports that CI did not start (#609).
+const noCIAfter = 15 * time.Minute
+
+// noCIPrefix starts the condition note attention looks for.
+const noCIPrefix = "CI did not start for "
 
 type prReview struct {
 	Login  string
@@ -441,7 +453,11 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		return evalLabel(ctx, pass, cd)
 	case store.WaitChecks:
 		if cd.PR == 0 {
-			return evalChecks(ctx, pass, cd, cd.SHA)
+			met, note, err := evalChecks(ctx, pass, cd, cd.SHA)
+			if err == nil && note == "" && !now.Before(w.Since.Add(noCIAfter)) {
+				note = noCIPrefix + short(cd.SHA)
+			}
+			return met, note, err
 		}
 	}
 	pr, err := pass.pr(ctx, cd.Repo, cd.PR)
@@ -474,6 +490,11 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		return false, "", errInvalidated{fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head))}
 	}
 	if cd.Type == store.WaitChecks {
+		// GitHub runs no pull_request CI on a conflicting PR, so neither
+		// success nor failure can come (#609).
+		if pr.Conflict {
+			return false, "", errInvalidated{fmt.Sprintf("PR #%d conflicts with %s; CI will not run", cd.PR, pr.Base)}
+		}
 		return evalChecks(ctx, pass, cd, pr.Head)
 	}
 	rs, err := pass.reviewsOf(ctx, cd.Repo, cd.PR)
@@ -531,6 +552,9 @@ func evalChecks(ctx context.Context, pass *waitPass, cd *store.WaitCond, head st
 		case "pending":
 			pending = append(pending, ch.Name)
 		}
+	}
+	if len(cs) == 0 {
+		return false, "", nil // nothing reported: the caller names it
 	}
 	at := short(head)
 	if cd.State == "failure" {
@@ -656,16 +680,22 @@ func parseIssue(b []byte) (issueInfo, error) {
 // parsePR reads GET /repos/{repo}/pulls/{n}.
 func parsePR(b []byte) (prInfo, error) {
 	var r struct {
-		State  string `json:"state"`
-		Merged bool   `json:"merged"`
-		Head   struct {
+		State          string `json:"state"`
+		Merged         bool   `json:"merged"`
+		Mergeable      *bool  `json:"mergeable"`
+		MergeableState string `json:"mergeable_state"`
+		Head           struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
+		Base struct {
+			Ref string `json:"ref"`
+		} `json:"base"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return prInfo{}, fmt.Errorf("pull request: %w", err)
 	}
-	return prInfo{Head: r.Head.SHA, State: r.State, Merged: r.Merged}, nil
+	conflict := r.Mergeable != nil && !*r.Mergeable && r.MergeableState == "dirty"
+	return prInfo{Head: r.Head.SHA, Base: r.Base.Ref, State: r.State, Merged: r.Merged, Conflict: conflict}, nil
 }
 
 // parseReviews reads the slurped pages of GET .../pulls/{n}/reviews.

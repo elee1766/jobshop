@@ -22,7 +22,9 @@ The controller evaluates waits every subscriptions interval (default 1m)
 and right after the ingest drain moves a new webhook delivery. One pass
 fetches each PR once. All conditions must hold, or one with `--any`.
 A review or checks wait whose PR merged, closed or moved head is
-cleared as invalidated. Clearing comments the reason on the ticket and,
+cleared as invalidated. A checks wait on a PR GitHub reports as
+conflicting is cleared too: GitHub runs no CI on it (#609,
+`docs/notes/609-wait-conflicting-pr.md`). Clearing comments the reason on the ticket and,
 with `--resume`, pre-assigns it to the parking session. Past
 `--timeout` the ticket is labeled needs-human once and `attention` lists
 it as kind `wait` with reason and owner. `wait clear <id>` removes a

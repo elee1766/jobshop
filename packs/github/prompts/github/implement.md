@@ -28,6 +28,9 @@ and end the turn. The controller hands the step back to this session
 within about a minute of CI finishing. On resume, read `gh pr checks <n>`:
 green, comment and close as below; red, fix, push and set the wait again
 (a new head clears the old wait). Do not use `release --until` for CI.
+If the wait cleared with "conflicts with <base>; CI will not run":
+rebase on `origin/<base>`, resolve, `git push --force-with-lease`, and
+set the wait again.
 
 Docs: {{.docs_rule}}
 
