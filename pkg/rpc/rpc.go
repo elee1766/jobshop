@@ -47,6 +47,7 @@ func Methods() []string {
 		MethodIngestClaim, MethodIngestAdmit, MethodIngestWorkers, MethodEventsSubscribe, MethodWaitAdd,
 		MethodWaitList, MethodWaitClear, MethodResourceAdd, MethodResourceRemove, MethodResourceUnhealthy,
 		MethodResourceList, MethodArtifactDeliver, MethodArtifactList, MethodArtifactShow, MethodArtifactAck,
+		MethodSessionJournal,
 	}
 }
 
