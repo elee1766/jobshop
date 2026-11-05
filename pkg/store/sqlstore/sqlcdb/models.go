@@ -112,6 +112,19 @@ type Recall struct {
 	At       string
 }
 
+type Record struct {
+	Collection string
+	Key        string
+	State      string
+	Value      string
+	Revision   int64
+	Holder     string
+	LeaseUntil int64
+	Attempts   int64
+	CreatedAt  int64
+	UpdatedAt  int64
+}
+
 type ResourceCap struct {
 	Name     string
 	Capacity int64
