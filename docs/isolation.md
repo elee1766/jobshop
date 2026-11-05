@@ -1,0 +1,37 @@
+# Isolation
+
+Moved from the README (2026-11-05, #551).
+
+- **Bubblewrap sandbox per session.** Set `sandbox:` under `defaults`, on
+  agents or on pools. acphost runs bwrap and Jobshop computes the mounts,
+  which are an allow list: system dirs are read-only, and the session dir
+  (with its worktree), the pool repo's git dir and configured `rw` paths
+  are writable. `admin.sock`, `jobshop.db`, `secrets/` and other sessions
+  are not mounted. The env is cleared to a kept list. A missing bwrap or
+  mount source quarantines the pool. There is no unsandboxed fallback.
+  `jobshop session sandbox <id>` shows the mounts and argv. On NixOS set
+  `services.jobshop.sandbox.enable` (needs `programs.nix-ld`). mise works
+  inside it. See [notes/262-sandbox.md](notes/262-sandbox.md).
+- **Socket scoping.** A session talks only to its own `cli.sock`, which
+  acts as that session (its ticket, pool and project). The admin socket
+  is not reachable from a sandbox.
+- **Credentials.** Secrets are files, never inline in yaml. A session gets
+  a short-lived scoped token with `jobshop identity token <owner/repo>`
+  instead of holding a key.
+- **Guardrail hooks.** `hooks` gate claims and outside actions (push, PR,
+  merge, comments) with allow, deny or ask a human. A broken hook denies.
+- **Per-pool users, cgroup limits and network.** Optional: a mapped user,
+  cgroup limits and pasta networking per pool. See
+  [notes/388-pool-isolation.md](notes/388-pool-isolation.md).
+- **Limits.** Without per-pool isolation, all processes run as one Unix
+  user, and network is on by default (`sandbox.network: host`). The
+  sandbox guards against mistakes and limits blast radius. It is not a
+  boundary against a hostile agent. See
+  [notes/users-security.md](notes/users-security.md).
+
+```yaml
+defaults:
+  sandbox:
+    backend: bubblewrap
+    rw: [~/.cache/go-build]
+```
