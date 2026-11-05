@@ -28,8 +28,8 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 		return nil, err
 	}
 	// An attach send with no text only checks that rw attach is allowed.
-	probe := p.Attach && p.Text == ""
-	if !probe && strings.TrimSpace(p.Text) == "" {
+	probe := p.Attach && p.Text == "" && p.Context == ""
+	if !probe && strings.TrimSpace(p.Text) == "" && strings.TrimSpace(p.Context) == "" {
 		return nil, fmt.Errorf("%w: text is required", store.ErrInvalid)
 	}
 	var (
@@ -61,7 +61,7 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	if probe {
 		return rpc.SessionSendResult{Session: sess.ID}, nil
 	}
-	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt})
+	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt, Context: strings.TrimSpace(p.Context)})
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +252,8 @@ func (e *eventer) event(fr host.Frame) (rpc.SessionEvent, bool) {
 				parts = append(parts, b.Text)
 			}
 		}
-		out.Type, out.Text = rpc.EventTurnStart, strings.Join(parts, "\n")
+		out.Type = rpc.EventTurnStart
+		out.Text, out.Context = splitContext(strings.Join(parts, "\n"))
 		return out, true
 	case m.Method == "session/update":
 		var u struct {

@@ -541,28 +541,41 @@ type EscalationChat struct {
 	Prompt     string `yaml:"prompt"`
 	PromptFile string `yaml:"prompt_file"`
 	// PoolPrompt is the first message of a pool quarantine escalation
-	// chat. Vars: EscalationPoolVars.
+	// chat. Vars: EscalationVars.
 	PoolPrompt     string `yaml:"pool_prompt"`
 	PoolPromptFile string `yaml:"pool_prompt_file"`
+	// HoldPrompt is the first message for every other hold that needs a
+	// human: a wait past its timeout, a guard ask_human, a worker's
+	// needs-human label. Empty: no chat for those. Vars: EscalationVars.
+	HoldPrompt     string `yaml:"hold_prompt"`
+	HoldPromptFile string `yaml:"hold_prompt_file"`
 	// Template is the declaring pack's syntax (#383), set by the loader.
 	Template string `yaml:"template,omitempty"`
 }
 
-// Escalation chat template vars, filled when the chat starts.
-var (
-	EscalationVars     = []string{"ticket", "run", "workflow", "issue_ref", "body"}
-	EscalationPoolVars = []string{"ticket", "pool", "error", "body"}
-)
+// EscalationVars are the template vars of an escalation chat's first
+// message, besides the pack vars, filled when the chat starts. Every one
+// is always set, empty when the cause has none. ticket and title are the
+// escalation ticket, cause is run, pool, wait, guard or label, reason the
+// short cause text and body the ticket body. held and held_title are the
+// held ticket (the failed step, the waiting ticket, the labeled ticket),
+// worker the session that raised the hold, run, workflow and step its
+// place in a run, issue_ref how to read the issue, pool and quarantine a
+// quarantined pool (error is quarantine, its older name).
+var EscalationVars = []string{
+	"ticket", "title", "cause", "reason", "body", "held", "held_title", "worker",
+	"run", "workflow", "step", "issue_ref", "pool", "quarantine", "error",
+}
 
 // escalationPassthrough returns vars plus each escalation var mapped to
 // its own reference, so pack substitution leaves them for the controller.
 // Escalation vars win over pack vars of the same name.
 func escalationPassthrough(vars map[string]any, syn string) map[string]any {
-	out := make(map[string]any, len(vars)+len(EscalationVars)+len(EscalationPoolVars))
+	out := make(map[string]any, len(vars)+len(EscalationVars))
 	for k, v := range vars {
 		out[k] = v
 	}
-	for _, k := range append(slices.Clone(EscalationVars), EscalationPoolVars...) {
+	for _, k := range EscalationVars {
 		out[k] = placeholder(k, syn)
 	}
 	return out
@@ -581,6 +594,9 @@ func StepRefs(s string) []string {
 	return out
 }
 
+// escalationPrompts are the inline prompt fields of an escalation block.
+var escalationPrompts = []string{"prompt", "pool_prompt", "hold_prompt"}
+
 // holdEscalationPrompts removes inline escalation prompts so pack var
 // substitution of the whole file leaves them alone; the returned func
 // puts them back. resolveEscalationFiles then substitutes them with the
@@ -594,7 +610,7 @@ func holdEscalationPrompts(m map[string]any) func() {
 	var hs []held
 	for _, b := range escalationBlocks(m) {
 		e, _ := b.(map[string]any)
-		for _, k := range []string{"prompt", "pool_prompt"} {
+		for _, k := range escalationPrompts {
 			if v, ok := e[k]; ok {
 				hs = append(hs, held{e, k, v})
 				delete(e, k)
@@ -627,7 +643,7 @@ func escalationBlocks(m map[string]any) map[string]any {
 
 // checkEscalation validates an escalation block.
 func (c *Config) checkEscalation(e *EscalationChat) error {
-	if e.PromptFile != "" || e.PoolPromptFile != "" {
+	if e.PromptFile != "" || e.PoolPromptFile != "" || e.HoldPromptFile != "" {
 		return errors.New("prompt_file needs a config file location")
 	}
 	if e.ChatPool == "" {
@@ -640,13 +656,13 @@ func (c *Config) checkEscalation(e *EscalationChat) error {
 	if !p.Chat() {
 		return fmt.Errorf("chat_pool: pool %s is not a chat pool (type: chat)", e.ChatPool)
 	}
-	if e.Prompt == "" && e.PoolPrompt == "" {
+	if e.Prompt == "" && e.PoolPrompt == "" && e.HoldPrompt == "" {
 		return errors.New("chat_pool needs prompt or prompt_file")
 	}
 	for _, f := range []struct {
 		key, v string
 		vars   []string
-	}{{"prompt", e.Prompt, EscalationVars}, {"pool_prompt", e.PoolPrompt, EscalationPoolVars}} {
+	}{{"prompt", e.Prompt, EscalationVars}, {"pool_prompt", e.PoolPrompt, EscalationVars}, {"hold_prompt", e.HoldPrompt, EscalationVars}} {
 		vs, err := refs(f.v, e.Template)
 		if err != nil {
 			return fmt.Errorf("%s: %w", f.key, err)

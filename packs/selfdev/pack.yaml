@@ -76,6 +76,11 @@ pools:
 workflows:
   curate:
     escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: ../github/prompts/escalation.md
+      pool_prompt_file: ../github/prompts/escalation-pool.md
+      hold_prompt_file: ../github/prompts/escalation-hold.md
     steps:
       - id: curate
         pool: learn
@@ -85,6 +90,11 @@ workflows:
   # Curator gate (#274): started when a merged curator edit is due.
   evaluate:
     escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: ../github/prompts/escalation.md
+      pool_prompt_file: ../github/prompts/escalation-pool.md
+      hold_prompt_file: ../github/prompts/escalation-hold.md
     steps:
       - id: evaluate
         pool: learn

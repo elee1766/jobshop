@@ -417,6 +417,7 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticke
 		}
 		_, _ = c.store.AddComment(ctx, "controller", t.ID, fmt.Sprintf("Wait (%s) passed its timeout %s; owner %s. Clear it with `jobshop wait clear %s`.", w.Reason, w.Timeout.Format(time.RFC3339), owner, t.ID))
 		c.log.Warn("wait timed out", "ticket", t.ID, "reason", w.Reason, "owner", w.Owner)
+		c.holdChat(ctx, t.ID)
 	}
 	return errors.Join(errs...)
 }
