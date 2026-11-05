@@ -30,6 +30,8 @@ and, for Linear instances, the Linear tools the instance's prompts name:
 - Course-correct running work: `jobshop send <session id|key|pool:<name>>
   "<text>"`; add `--interrupt` only when the operator says to stop the
   current turn.
+- Release a blocked worker's ticket: `jobshop release <id> -r "<why>"
+  [--until <duration>]` (works on tickets other sessions of the project hold).
 - Runs: `jobshop run start <prefix>pr-work --var issue=<n> --key
   issue-<n>`, `jobshop run show <run>`, `jobshop run list`.
 - State: `jobshop session list`, `jobshop pool list`, `jobshop trigger

@@ -156,7 +156,12 @@ func (c *Controller) askedHuman(ctx context.Context, key string) (rpc.GuardResul
 }
 
 func (c *Controller) fileAskHuman(ctx context.Context, ev hookEvent, key, reason string) (store.Ticket, error) {
-	meta, err := json.Marshal(map[string]map[string]string{hookMetaPack: {"key": key}})
+	// session, ticket and reason tell an escalation chat who asked and why.
+	hm := map[string]string{"key": key, "session": ev.Session, "reason": clip(reason, maxReasonMeta)}
+	if ev.Ticket != nil {
+		hm["ticket"] = ev.Ticket.ID
+	}
+	meta, err := json.Marshal(map[string]map[string]string{hookMetaPack: hm})
 	if err != nil {
 		return store.Ticket{}, err
 	}
@@ -178,11 +183,18 @@ func (c *Controller) fileAskHuman(ctx context.Context, ev hookEvent, key, reason
 	if project == "" {
 		project = c.config().DefaultProject
 	}
-	return c.store.Create(ctx, "controller", store.NewTicket{
+	t, err := c.store.Create(ctx, "controller", store.NewTicket{
 		Project: project, Kind: store.KindTask, Title: "Approve " + ev.Action + " by " + ev.Session,
 		Body: b.String(), Priority: &prio, Labels: []string{needsHumanLabel}, Meta: meta,
 	})
+	if err == nil {
+		c.holdChat(ctx, t.ID)
+	}
+	return t, err
 }
+
+// maxReasonMeta bounds a hook reason kept in meta.hook.
+const maxReasonMeta = 500
 
 // claimHook runs claim hooks for a session claim; any answer but allow
 // refuses the claim. ask_human on claim is a deny: there is no ticket to

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -166,10 +167,12 @@ func TestEscalationChatRun(t *testing.T) {
 
 	msgs := messagesTo(t, c, e.Session)
 	require.Len(t, msgs, 1)
-	first := msgs[0].Title + "\n" + msgs[0].Body
+	// The pack prompt is model-only context, not a visible message.
+	assert.Empty(t, msgs[0].Title)
+	first := messageContext(t, msgs[0])
 	var run struct{ ID string }
 	require.NoError(t, jsonField(got.Meta, runMetaPack, &run))
-	assert.Equal(t, fmt.Sprintf("Escalation %s for run %s (work). Read its GitHub issue (`gh issue view 7 --repo acme/widget --comments`).", esc.ID, run.ID), msgs[0].Title)
+	assert.True(t, strings.HasPrefix(first, fmt.Sprintf("Escalation %s for run %s (work). Read its GitHub issue (`gh issue view 7 --repo acme/widget --comments`).", esc.ID, run.ID)), first)
 	assert.Contains(t, first, "needs a human: a step failed at its retry limit", "${body} is the ticket body")
 
 	// Sweeps and a restart over the same database open no second chat
@@ -255,10 +258,18 @@ func TestEscalationChatPool(t *testing.T) {
 	require.True(t, ok)
 	msgs := messagesTo(t, c, e.Session)
 	require.Len(t, msgs, 1)
-	assert.Equal(t, fmt.Sprintf("Pool dev is quarantined in %s: spawn: repo /x: no such file", esc[0].ID), msgs[0].Title)
+	assert.Equal(t, fmt.Sprintf("Pool dev is quarantined in %s: spawn: repo /x: no such file", esc[0].ID), messageContext(t, msgs[0]))
 	c.quarantinePool(t.Context(), "dev", "again")
 	c.sweepEscalationChats(t.Context())
 	assert.Len(t, chatSessions(t, c, esc[0].ID), 1)
+}
+
+// messageContext is the model-only context of a message ticket.
+func messageContext(t *testing.T, m store.Ticket) string {
+	t.Helper()
+	f, err := store.DecodeFields[store.MessageFields](m)
+	require.NoError(t, err)
+	return f.Context
 }
 
 // jsonField decodes meta[pack] into v.

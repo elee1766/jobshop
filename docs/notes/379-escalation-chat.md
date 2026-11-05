@@ -32,3 +32,49 @@
   room it opens a thread only once the ticket has a chat, binds the
   thread to `meta.escalation.key` and pool, and posts the session's
   turns. Without escalation chat config it opens no thread.
+
+## Holds beyond runs and pools (2026-11-04)
+
+Every hold that needs a human mints one escalation chat, not only run
+and pool escalations. The pack prompt is context for the model, not a
+visible message: the session's first visible turn is its own summary,
+then the human asks or instructs and the session messages workers or
+adjusts tickets. (This supersedes "first message" above.)
+
+- Causes, in `meta.escalation.cause` and `.held`: `run`
+  (`escalate.prompt`), `pool` (`escalate.pool_prompt`), `wait` (a wait
+  past its timeout, which labels the ticket needs-human), `guard` (a
+  `jobshop guard` ask_human ticket) and `label` (any open task or step
+  labeled needs-human by a worker, a person or a hook). The last three
+  use `escalate.hold_prompt`, from the first workflow (by name) whose
+  chat pool is in the ticket's project, else the top-level block.
+  `label add needs-human`, a guard ask and a wait timeout open the chat
+  at once, the sweep catches the rest.
+- Left out on purpose: questions (`report --question`, `meta.question`)
+  keep their answer path to the asking session. Admission and intake
+  approvals (`question` label) are decisions about inbound text with no
+  worker to unblock. A ticket with no workflow chat for its cause gets
+  none.
+- Template vars, always set (empty when the cause has none): `ticket`,
+  `title`, `cause`, `reason`, `body`, `held`, `held_title`, `worker`,
+  `run`, `workflow`, `step`, `issue_ref`, `pool`, `quarantine`, and
+  `error` (the old name of `quarantine`). `worker` is the session that
+  last held the failed step, raised the guard ask, parked the wait or
+  added the label, only when it is a session.
+- Context: `session.send` has a `context` field, carried in
+  `MessageFields.Context`. The text rides in the prompt inside
+  `[jobshop context]` ... `[end of jobshop context]` lines (ACP drops
+  block annotations), and the session stream's `turn_start` event splits
+  it out (`text` visible, `context` the rest). The escalation chat sends
+  context only. The closing message stays a visible message.
+- Powers: the chat pool gets no admin socket. It already has tickets,
+  comments, labels, meta, `jobshop send` (`--interrupt`), `wait clear`
+  and run resume/cancel in its project. New pool grant `ticket-release`:
+  `release` works on a ticket another session of the same project holds.
+  The operator pack grants it. No other admin method is added.
+- `ListParams.Newest` lists newest first, as in the Desk escalations
+  list (same field in the Desk session panel PR, #392).
+- Tests: `TestEscalationChat` (vars, context-only first turn),
+  `TestEscalationChatHolds` (label and guard paths, question skipped, one
+  chat per hold), `TestEscalationChatSweepsLabel`,
+  `TestEscalationChatPowers` (grant and its limits).

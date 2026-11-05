@@ -97,7 +97,7 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 	blocks := escalationBlocks(m)
 	for _, n := range sortedKeys(blocks) {
 		e, _ := blocks[n].(map[string]any)
-		for _, f := range []string{"prompt", "pool_prompt"} {
+		for _, f := range escalationPrompts {
 			if s, ok := e[f].(string); ok && et.vars != nil {
 				v, err := substitute(s, et.vars, n+"."+f, t.syn)
 				if err != nil {
