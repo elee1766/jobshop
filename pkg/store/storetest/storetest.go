@@ -65,7 +65,6 @@ func Run(t *testing.T, newStore Factory) {
 		{"ConcurrentClaims", testConcurrentClaims},
 		{"ConcurrentResourceClaims", testConcurrentResourceClaims},
 		{"ClaimAfterSkippedBlocker", testClaimAfterSkippedBlocker},
-		{"CountLearnings", testCountLearnings},
 		{"CollectionSpec", testCollectionSpec},
 		{"CollectionPutGet", testCollectionPutGet},
 		{"CollectionUnique", testCollectionUnique},

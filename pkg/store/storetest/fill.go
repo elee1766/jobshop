@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -61,7 +62,7 @@ func Fill(t *testing.T, s store.Store, c *Clock) Filled {
 	_, _, err = s.Claim(ctx, f.Step, "sess", lease)
 	require.NoError(t, err)
 
-	l, err := s.AddLearning(ctx, store.Learning{Kind: store.LearningFailure, Summary: "flaky dial timeout", Fix: "rerun alone", Ticket: f.Task, Source: "agent"})
+	l, err := learning.Add(ctx, s, store.Learning{Kind: store.LearningFailure, Summary: "flaky dial timeout", Fix: "rerun alone", Ticket: f.Task, Source: "agent"}, "")
 	require.NoError(t, err)
 	f.Learning = l.ID
 	require.NoError(t, s.IndexRecall(ctx, store.RecallDoc{Kind: store.RecallJournal, Ref: "sess:1", TicketID: f.Task, Project: proj, At: c.T, Body: "journal about nftables"}))
@@ -110,12 +111,15 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	require.NoError(t, err)
 	require.Len(t, cs, 1)
 
-	for _, q := range []string{"vendorHash mismatch", "flaky dial", "nftables"} {
+	for _, q := range []string{"vendorHash mismatch", "nftables"} {
 		hits, err := s.Recall(ctx, store.RecallQuery{Text: q})
 		require.NoError(t, err)
 		assert.Len(t, hits, 1, q)
 	}
-	lg, err := s.GetLearning(ctx, f.Learning)
+	lhits, err := learning.Recall(ctx, s, "flaky dial", "", "", 0)
+	require.NoError(t, err)
+	assert.Len(t, lhits, 1, "learning search after the copy")
+	lg, err := learning.Get(ctx, s, f.Learning)
 	require.NoError(t, err)
 	assert.Equal(t, "rerun alone", lg.Fix)
 	me, err := memedit.List(ctx, s, "", 0)
@@ -144,7 +148,7 @@ func CheckFilled(t *testing.T, s store.Store, f Filled) {
 	c2, err := s.AddComment(ctx, "u", f.Task, "after the copy")
 	require.NoError(t, err)
 	assert.Greater(t, c2.ID, cs[0].ID)
-	l2, err := s.AddLearning(ctx, store.Learning{Kind: store.LearningFailure, Summary: "x", Source: "agent"})
+	l2, err := learning.Add(ctx, s, store.Learning{Kind: store.LearningFailure, Summary: "x", Source: "agent"}, "")
 	require.NoError(t, err)
 	assert.Greater(t, l2.ID, f.Learning)
 	it, dup, err := s.InboxPut(ctx, store.InboxItem{Source: "github", DeliveryID: "d2", Payload: json.RawMessage(`{}`)})

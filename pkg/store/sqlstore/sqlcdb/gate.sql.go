@@ -9,94 +9,8 @@ import (
 	"context"
 )
 
-const listLearningsBetween = `-- name: ListLearningsBetween :many
-SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr, gate FROM learnings
-WHERE created_at >= ?1 AND created_at < ?2
-ORDER BY created_at, id
-`
-
-type ListLearningsBetweenParams struct {
-	Since int64
-	Until int64
-}
-
-func (q *Queries) ListLearningsBetween(ctx context.Context, arg ListLearningsBetweenParams) ([]Learning, error) {
-	rows, err := q.db.QueryContext(ctx, listLearningsBetween, arg.Since, arg.Until)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Learning{}
-	for rows.Next() {
-		var i Learning
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.Summary,
-			&i.Fix,
-			&i.Scope,
-			&i.Ticket,
-			&i.Session,
-			&i.Source,
-			&i.Status,
-			&i.CreatedAt,
-			&i.Pr,
-			&i.Gate,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listLearningsByPR = `-- name: ListLearningsByPR :many
-SELECT id, kind, summary, fix, scope, ticket, session, source, status, created_at, pr, gate FROM learnings WHERE pr = ? ORDER BY id
-`
-
-func (q *Queries) ListLearningsByPR(ctx context.Context, pr string) ([]Learning, error) {
-	rows, err := q.db.QueryContext(ctx, listLearningsByPR, pr)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []Learning{}
-	for rows.Next() {
-		var i Learning
-		if err := rows.Scan(
-			&i.ID,
-			&i.Kind,
-			&i.Summary,
-			&i.Fix,
-			&i.Scope,
-			&i.Ticket,
-			&i.Session,
-			&i.Source,
-			&i.Status,
-			&i.CreatedAt,
-			&i.Pr,
-			&i.Gate,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listStepsCreated = `-- name: ListStepsCreated :many
+
 SELECT id, project, kind, title, body, status, resolution, priority, pool, holder, lease_until, fence, parent_id, defer_until, ephemeral, fields, meta, revision, created_by, created_at, updated_at, closed_at, f_key, f_to, f_state, f_workflow, f_index, f_waiting FROM tickets
 WHERE kind = 'step' AND created_at >= ?1 AND created_at < ?2
 ORDER BY created_at, id
@@ -107,6 +21,8 @@ type ListStepsCreatedParams struct {
 	Until int64
 }
 
+// Curator gate reads (#274). Memory edits and learnings moved to store
+// collections (#579, pkg/memedit, pkg/learning).
 func (q *Queries) ListStepsCreated(ctx context.Context, arg ListStepsCreatedParams) ([]Ticket, error) {
 	rows, err := q.db.QueryContext(ctx, listStepsCreated, arg.Since, arg.Until)
 	if err != nil {
@@ -157,21 +73,4 @@ func (q *Queries) ListStepsCreated(ctx context.Context, arg ListStepsCreatedPara
 		return nil, err
 	}
 	return items, nil
-}
-
-const setLearningGate = `-- name: SetLearningGate :exec
-
-UPDATE learnings SET gate = ?1 WHERE id = ?2
-`
-
-type SetLearningGateParams struct {
-	Gate string
-	ID   int64
-}
-
-// Curator gate reads (#274). Memory edits moved to the memory_edits
-// collection (#579, pkg/memedit).
-func (q *Queries) SetLearningGate(ctx context.Context, arg SetLearningGateParams) error {
-	_, err := q.db.ExecContext(ctx, setLearningGate, arg.Gate, arg.ID)
-	return err
 }

@@ -26,13 +26,14 @@ import (
 const dsnEnv = "JOBSHOP_TEST_POSTGRES"
 
 // TestTablesComplete: every SQLite table is copied, so a new table
-// cannot be left behind silently.
+// cannot be left behind silently. FTS5 tables (recall's shadow tables,
+// a collection's fts_<name>) are indexes Postgres builds itself.
 func TestTablesComplete(t *testing.T) {
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "jobshop.db")
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
-	rows, err := s.DB().QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'recall_%' AND name != 'goose_db_version'")
+	rows, err := s.DB().QueryContext(ctx, "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'recall_%' AND name NOT LIKE 'fts_%' AND name != 'goose_db_version'")
 	require.NoError(t, err)
 	var got []string
 	for rows.Next() {
@@ -88,7 +89,7 @@ func TestCopy(t *testing.T) {
 	res, err := storemigrate.Copy(ctx, src.DB(), dst.DB(), storemigrate.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), res["tickets"])
-	assert.Equal(t, int64(3), res["recall"], "comment, learning and journal")
+	assert.Equal(t, int64(2), res["recall"], "comment and journal")
 
 	// A second copy refuses a filled target, and --force replaces it.
 	_, err = storemigrate.Copy(ctx, src.DB(), dst.DB(), storemigrate.Options{})

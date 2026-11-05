@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -138,7 +139,7 @@ func (c *Controller) measure(ctx context.Context, cited []store.Learning, pools 
 	if err != nil {
 		return store.PoolMetrics{}, err
 	}
-	ls, err := c.store.LearningsBetween(ctx, from, to)
+	ls, err := learning.Between(ctx, c.store, from, to)
 	if err != nil {
 		return store.PoolMetrics{}, err
 	}
@@ -185,14 +186,14 @@ func (c *Controller) editPools(ctx context.Context, ls []store.Learning) []strin
 func (c *Controller) recordEdit(ctx context.Context, pr string, ids []int64, mergedAt time.Time) (store.MemoryEdit, error) {
 	var cited []store.Learning
 	if len(ids) == 0 {
-		ls, err := c.store.LearningsByPR(ctx, pr)
+		ls, err := learning.ByPR(ctx, c.store, pr)
 		if err != nil {
 			return store.MemoryEdit{}, err
 		}
 		cited = ls
 	}
 	for _, id := range ids {
-		l, err := c.store.GetLearning(ctx, id)
+		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
 			return store.MemoryEdit{}, err
 		}
@@ -230,7 +231,7 @@ func (c *Controller) editDue(ctx context.Context, e store.MemoryEdit, runs int, 
 func (c *Controller) citedLearnings(ctx context.Context, e store.MemoryEdit) ([]store.Learning, error) {
 	out := make([]store.Learning, 0, len(e.Learnings))
 	for _, id := range e.Learnings {
-		l, err := c.store.GetLearning(ctx, id)
+		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
 			return nil, err
 		}
@@ -276,7 +277,7 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 		// the edit decided and the next evaluate does not redo it.
 		gate := fmt.Sprintf("%s: %s (%s)", state, reason, memedit.Ref(u))
 		for _, l := range u.Learnings {
-			if err := c.store.SetLearningGate(ctx, l, gate); err != nil {
+			if err := learning.SetGate(ctx, c.store, l, gate); err != nil {
 				return nil, err
 			}
 		}
