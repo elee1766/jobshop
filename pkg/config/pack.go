@@ -167,6 +167,9 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	if top, err = applyIncludes(top, dir, name); err != nil {
+		return nil, err
+	}
 	// Validate the packs list on its own so its errors are precise.
 	var head struct {
 		Packs []PackRef `yaml:"packs"`

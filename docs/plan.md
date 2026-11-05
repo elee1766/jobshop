@@ -500,6 +500,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - Learning kinds are config (`learnings.kinds`, globs, packs append);
   `when.learnings` filters by kinds, scope and source; selfdev's curate
   counts only its repo and pools (#524, `docs/notes/524-learning-kinds.md`).
+- NixOS `services.jobshop.configFile`: a user-owned `jobshop.yaml` that
+  includes the module's `jobshop.module.yaml` (new `include:` key),
+  checked and reloaded on edit by `jobshop-config.path` (#531,
+  `docs/notes/531-module-config-file.md`).
 
 ## 5. What's next
 
@@ -660,7 +664,7 @@ visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
-configurable learning kinds (#524).
+configurable learning kinds (#524), user-managed config in the module (#531).
 Next: turn on `desk.userHeader` on gasserver.
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
@@ -1055,6 +1059,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   their own (2026-11-03, #203): one session per escalation, so the
   operator sees the same conversation from Matrix and Desk. Desk shows
   the session's turns, not other messages in the Matrix room.
+- Config composes by an explicit `include:` list, not a `jobshop.d/`
+  lookup (2026-11-05, #531): the root file names every file it merges,
+  so a stray file cannot change config. The NixOS module's keys live in
+  `jobshop.module.yaml` when the user owns `jobshop.yaml`.
 - Desk identity comes from a trusted proxy header and is never
   self-asserted (2026-11-05, #515): Desk reads `--user-header` only from
   `--trusted-proxy` peers and refuses other requests with 403; the user
