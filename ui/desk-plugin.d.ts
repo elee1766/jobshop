@@ -1134,6 +1134,7 @@ export interface SessionSendResult {
 export interface SessionSubscribeParams {
   id: string;
   since_seq?: number;
+  tail?: number;
 }
 
 export interface SessionSubscribeResult {
