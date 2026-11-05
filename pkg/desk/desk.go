@@ -625,10 +625,3 @@ func (s *Server) sessionStream(w http.ResponseWriter, r *http.Request) {
 		e.send("end", 0, res)
 	}
 }
-
-func short(rev string) string {
-	if len(rev) > 7 {
-		return rev[:7]
-	}
-	return rev
-}
