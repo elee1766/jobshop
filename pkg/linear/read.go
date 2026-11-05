@@ -313,12 +313,28 @@ type Entry struct {
 	Type string `json:"type,omitempty"`
 }
 
-const catalogQuery = `query($team: String!) { teams(filter: {key: {eq: $team}}) { nodes {
-  projects(first: 250) { nodes { id name state } }
-  labels(first: 250) { nodes { id name } }
-  states(first: 250) { nodes { id name type } }
-  members(first: 250) { nodes { id name email } }
+// catalogFields maps a kind to the team connection and node fields it
+// reads. One kind per query: all four at 250 each was rejected as "Query
+// too complex" on a real workspace (#653).
+var catalogFields = map[string][2]string{
+	"projects": {"projects", "id name state"},
+	"labels":   {"labels", "id name"},
+	"states":   {"states", "id name type"},
+	"users":    {"members", "id name email"},
+}
+
+// catalogPage is the page size; Catalog follows the cursor.
+const catalogPage = 100
+
+// catalogMaxPages bounds the paging so a bad cursor cannot loop.
+const catalogMaxPages = 50
+
+func catalogQuery(kind string) string {
+	f := catalogFields[kind]
+	return `query($team: String!, $first: Int!, $after: String) { teams(filter: {key: {eq: $team}}) { nodes {
+  ` + f[0] + `(first: $first, after: $after) { nodes { ` + f[1] + ` } pageInfo { hasNextPage endCursor } }
 } } }`
+}
 
 // Catalog lists a team's projects, labels, states or users.
 func (c *Client) Catalog(ctx context.Context, team, kind string) ([]Entry, error) {
@@ -332,42 +348,39 @@ func (c *Client) Catalog(ctx context.Context, team, kind string) ([]Entry, error
 		Type  string `json:"type"`
 		Email string `json:"email"`
 	}
-	type nodes struct {
-		Nodes []node `json:"nodes"`
+	type conn struct {
+		Nodes    []node `json:"nodes"`
+		PageInfo struct {
+			HasNextPage bool   `json:"hasNextPage"`
+			EndCursor   string `json:"endCursor"`
+		} `json:"pageInfo"`
 	}
-	var r struct {
-		Teams struct {
-			Nodes []struct {
-				Projects nodes `json:"projects"`
-				Labels   nodes `json:"labels"`
-				States   nodes `json:"states"`
-				Members  nodes `json:"members"`
-			} `json:"nodes"`
-		} `json:"teams"`
+	field := catalogFields[kind][0]
+	q := catalogQuery(kind)
+	out := []Entry{}
+	vars := map[string]any{"team": team, "first": catalogPage}
+	for range catalogMaxPages {
+		var r struct {
+			Teams struct {
+				Nodes []map[string]conn `json:"nodes"`
+			} `json:"teams"`
+		}
+		if err := c.do(ctx, q, vars, &r); err != nil {
+			return nil, err
+		}
+		if len(r.Teams.Nodes) == 0 {
+			return nil, fmt.Errorf("linear: team %s not found", team)
+		}
+		p := r.Teams.Nodes[0][field]
+		for _, n := range p.Nodes {
+			out = append(out, Entry{ID: n.ID, Name: n.Name, Type: n.State + n.Type + n.Email})
+		}
+		if !p.PageInfo.HasNextPage || p.PageInfo.EndCursor == "" {
+			return out, nil
+		}
+		vars["after"] = p.PageInfo.EndCursor
 	}
-	if err := c.do(ctx, catalogQuery, map[string]any{"team": team}, &r); err != nil {
-		return nil, err
-	}
-	if len(r.Teams.Nodes) == 0 {
-		return nil, fmt.Errorf("linear: team %s not found", team)
-	}
-	t := r.Teams.Nodes[0]
-	var ns []node
-	switch kind {
-	case "projects":
-		ns = t.Projects.Nodes
-	case "labels":
-		ns = t.Labels.Nodes
-	case "states":
-		ns = t.States.Nodes
-	case "users":
-		ns = t.Members.Nodes
-	}
-	out := make([]Entry, 0, len(ns))
-	for _, n := range ns {
-		out = append(out, Entry{ID: n.ID, Name: n.Name, Type: n.State + n.Type + n.Email})
-	}
-	return out, nil
+	return nil, fmt.Errorf("linear: catalog %s for %s has more than %d pages", kind, team, catalogMaxPages)
 }
 
 // Eligibility is the intake gate's answer for one issue.

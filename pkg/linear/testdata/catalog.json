@@ -1,5 +1,1 @@
-{"data":{"teams":{"nodes":[{
- "projects":{"nodes":[{"id":"p-1","name":"Reports","state":"started"}]},
- "labels":{"nodes":[{"id":"l-1","name":"bug"},{"id":"l-2","name":"backend"}]},
- "states":{"nodes":[{"id":"st-todo","name":"Todo","type":"unstarted"},{"id":"st-done","name":"Done","type":"completed"}]},
- "members":{"nodes":[{"id":"u-1","name":"Ann","email":"ann@example.com"}]}}]}}}
+{"errors":[{"message":"Query too complex","extensions":{"code":"QUERY_TOO_COMPLEX"}}]}
