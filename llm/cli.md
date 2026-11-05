@@ -268,6 +268,10 @@ Commands:
     Group controller WARN/ERROR lines, crashed or stuck sessions and failed run
     steps.
 
+  report ci-failures --repo=STRING [flags]
+    Group failing tests from the failed-tests artifact of recent failed CI runs,
+    with flaky/broken counts (runs gh).
+
   report progress [<note>] [flags]
     Report progress on your ticket.
 
@@ -2596,6 +2600,10 @@ Commands:
     Group controller WARN/ERROR lines, crashed or stuck sessions and failed run
     steps.
 
+  report ci-failures --repo=STRING [flags]
+    Group failing tests from the failed-tests artifact of recent failed CI runs,
+    with flaky/broken counts (runs gh).
+
   report progress [<note>] [flags]
     Report progress on your ticket.
 
@@ -2634,6 +2642,30 @@ Flags:
 
       --since=24h        How far back to look. Log lines go back to the
                          controller start at most.
+```
+
+## jobshop report ci-failures
+
+```
+Usage: jobshop report ci-failures --repo=STRING [flags]
+
+Group failing tests from the failed-tests artifact of recent failed CI runs,
+with flaky/broken counts (runs gh).
+
+Flags:
+  -h, --help               Show context-sensitive help.
+      --root=STRING        Jobshop root directory (holds jobshop.yaml,
+                           the database, sockets and sessions). Default:
+                           nearest ancestor of the cwd containing jobshop.yaml
+                           ($JOBSHOP_ROOT).
+      --socket=STRING      Socket to talk to. Defaults to the session
+                           CLI socket, else the root's admin socket
+                           ($JOBSHOP_SOCKET).
+
+      --repo=STRING        GitHub repo, owner/name.
+      --branch="master"    Branch whose runs to read.
+      --workflow="ci"      Workflow name or file; empty for all.
+      --limit=5            How many recent failed runs to read.
 ```
 
 ## jobshop report progress

@@ -20,6 +20,7 @@ import (
 	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/flaky"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -933,7 +934,8 @@ func (c sessionNewCmd) Run(g *Globals) error {
 }
 
 type reportCmd struct {
-	Incidents reportIncidentsCmd `cmd:"" help:"Group controller WARN/ERROR lines, crashed or stuck sessions and failed run steps."`
+	Incidents  reportIncidentsCmd  `cmd:"" help:"Group controller WARN/ERROR lines, crashed or stuck sessions and failed run steps."`
+	CIFailures reportCIFailuresCmd `cmd:"" name:"ci-failures" help:"Group failing tests from the failed-tests artifact of recent failed CI runs, with flaky/broken counts (runs gh)."`
 
 	// Worker reports on the held ticket (#186).
 	Progress reportProgressCmd `cmd:"" help:"Report progress on your ticket."`
@@ -950,6 +952,23 @@ type reportIncidentsCmd struct {
 
 func (c reportIncidentsCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodReportIncidents, rpc.IncidentsParams{Since: c.Since}, nil)
+}
+
+type reportCIFailuresCmd struct {
+	Repo     string `required:"" help:"GitHub repo, owner/name."`
+	Branch   string `default:"master" help:"Branch whose runs to read."`
+	Workflow string `default:"ci" help:"Workflow name or file; empty for all."`
+	Limit    int    `default:"5" help:"How many recent failed runs to read."`
+}
+
+// Run reads GitHub directly with gh, not through the controller: it is a
+// read, and the session's gh already carries the repo token (JOB-13).
+func (c reportCIFailuresCmd) Run() error {
+	rep, err := flaky.GH{Repo: c.Repo, Branch: c.Branch, Workflow: c.Workflow}.Report(context.Background(), c.Limit)
+	if err != nil {
+		return err
+	}
+	return printOut(rep)
 }
 
 type attentionCmd struct{}

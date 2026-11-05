@@ -23,6 +23,12 @@ Each planning ticket:
    (`gh issue list --search "<message>"`), file one issue with the evidence:
    counts, times, ids. One issue per cause, not per line. These count
    toward step 6's limit.
+   Then read the failing tests of the last failed master CI runs:
+   `jobshop report ci-failures --repo <owner/name>` (tests grouped across
+   runs from each run's `failed-tests` artifact, with flaky and broken
+   counts and the latest verdict). A broken test, or a flaky one in more
+   than one run, with no open issue (`gh issue list --search <TestName>`)
+   gets one issue naming the test, package, verdicts and run ids.
 5. Every open issue that is not a target, not labeled `needs-human` or
    `needs-decision`, and not a drill or tracking issue, needs work moving
    on it. Issues filed by the operator or other sessions count the same as

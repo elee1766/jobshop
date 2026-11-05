@@ -1,0 +1,5 @@
+[
+  {"databaseId": 1, "headSha": "aaa", "url": "https://example.com/1", "createdAt": "2026-11-04T10:00:00Z"},
+  {"databaseId": 2, "headSha": "bbb", "url": "https://example.com/2", "createdAt": "2026-11-05T10:00:00Z"},
+  {"databaseId": 3, "headSha": "ccc", "url": "https://example.com/3", "createdAt": "2026-11-05T11:00:00Z"}
+]

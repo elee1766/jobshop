@@ -1,0 +1,4 @@
+[
+  {"test": "TestA", "package": "example.com/a", "verdict": "flaky"},
+  {"test": "TestB", "package": "example.com/a", "verdict": "flaky"}
+]
