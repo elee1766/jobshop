@@ -34,6 +34,15 @@ type pollCommentBody struct {
 	URL    string    `json:"url,omitempty"`
 	At     time.Time `json:"at"`
 	Parent string    `json:"parent,omitempty"`
+
+	Linear     bool   `json:"linear,omitempty"`
+	AuthorID   string `json:"author_id,omitempty"`
+	Name       string `json:"name,omitempty"`
+	Handle     string `json:"handle,omitempty"`
+	Email      string `json:"email,omitempty"`
+	Reply      string `json:"reply,omitempty"`
+	Title      string `json:"title,omitempty"`
+	IssueState string `json:"issue_state,omitempty"`
 }
 
 func (b pollCommentBody) comment() ghComment {

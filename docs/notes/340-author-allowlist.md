@@ -13,5 +13,7 @@ would otherwise reach prompts.
   it reproduces or confirms it, comments, then starts the run or closes
   the issue with the reason.
 - `subscriptions.authors`: when set, only those logins' comments are
-  delivered. Others advance `seen` like `ignore`.
+  delivered. Others advance `seen` like `ignore`. On Linear, entries
+  match a user id, displayName or email; a full-name match logs a
+  WARN (#595, `docs/notes/595-linear-comment-context.md`).
 - Ingest admission (#318) should apply the same list.

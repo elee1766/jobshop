@@ -297,12 +297,14 @@ type Subscriptions struct {
 	// Ignore lists logins whose comments are dropped, beyond bots.
 	Ignore []string `yaml:"ignore"`
 	// Bots lists bot logins (exact, with the [bot] suffix on GitHub, the
-	// app actor name on Linear) whose comments and reviews are delivered
+	// app actor id or name on Linear) whose comments and reviews are delivered
 	// like a human's (#402). The host's own identities are dropped even
 	// when listed. Authors does not apply to them.
 	Bots []string `yaml:"bots"`
 	// Authors, when set, are the only logins whose comments are
 	// delivered (#340); the public repo's other commenters are dropped.
+	// On Linear an entry is a user id, displayName or email; a full name
+	// still matches but logs a warning (#595).
 	Authors []string `yaml:"authors"`
 }
 

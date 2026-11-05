@@ -85,7 +85,59 @@ type Comment struct {
 	CreatedAt time.Time `json:"created_at"`
 	// ParentID is the comment this one replies to (GetIssue only).
 	ParentID string `json:"parent_id,omitempty"`
+	// ParentURL is the replied-to comment's URL (GetIssue only).
+	ParentURL string `json:"parent_url,omitempty"`
+	// AuthorID is the user's (or bot actor's) id, Handle the user's
+	// displayName and Email the user's email (#595). Author stays the
+	// full name, which is neither unique nor stable.
+	AuthorID string `json:"author_id,omitempty"`
+	Handle   string `json:"handle,omitempty"`
+	Email    string `json:"email,omitempty"`
+	// EditedAt is when the body was last edited, nil if never (GetIssue).
+	EditedAt *time.Time `json:"edited_at,omitempty"`
 }
+
+// Display is "displayName (name)", or the name alone when they match
+// or there is no displayName (bots).
+func (cm Comment) Display() string {
+	if cm.Handle == "" || cm.Handle == cm.Author {
+		return cm.Author
+	}
+	if cm.Author == "" {
+		return cm.Handle
+	}
+	return cm.Handle + " (" + cm.Author + ")"
+}
+
+// commentUser is a comment's user as the comment queries read it.
+type commentUser struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
+	IsMe        bool   `json:"isMe"`
+}
+
+// commentBot is a comment's bot actor.
+type commentBot struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// setAuthor fills the author fields from the user or bot actor.
+func (cm *Comment) setAuthor(u *commentUser, b *commentBot) {
+	switch {
+	case u != nil:
+		cm.Author, cm.AuthorID, cm.Handle, cm.Email, cm.Self = u.Name, u.ID, u.DisplayName, u.Email, u.IsMe
+	case b != nil:
+		cm.Author, cm.AuthorID, cm.Bot = b.Name, b.ID, true
+	default:
+		cm.Bot = true
+	}
+}
+
+// commentAuthorFields is the selection setAuthor reads.
+const commentAuthorFields = `user { id name displayName email isMe } botActor { id name }`
 
 // Viewer is the user (or app actor) a token acts as.
 type Viewer struct {
@@ -199,7 +251,7 @@ const issueQuery = `query($id: String!) { issue(id: $id) {
   id identifier title description url
   state { id name type }
   team { id key }
-  comments(first: 100) { nodes { id body url createdAt parent { id } user { name isMe } botActor { name } } }
+  comments(first: 100) { nodes { id body url createdAt updatedAt editedAt parent { id url } ` + commentAuthorFields + ` } }
 } }`
 
 // GetIssue reads an issue by key (ENG-123) with its comments, oldest first.
@@ -209,18 +261,17 @@ func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
 			Issue
 			Comments struct {
 				Nodes []struct {
-					ID        string    `json:"id"`
-					Body      string    `json:"body"`
-					URL       string    `json:"url"`
-					CreatedAt time.Time `json:"createdAt"`
-					Parent    *TeamID   `json:"parent"`
-					User      *struct {
-						Name string `json:"name"`
-						IsMe bool   `json:"isMe"`
-					} `json:"user"`
-					BotActor *struct {
-						Name string `json:"name"`
-					} `json:"botActor"`
+					ID        string     `json:"id"`
+					Body      string     `json:"body"`
+					URL       string     `json:"url"`
+					CreatedAt time.Time  `json:"createdAt"`
+					EditedAt  *time.Time `json:"editedAt"`
+					Parent    *struct {
+						ID  string `json:"id"`
+						URL string `json:"url"`
+					} `json:"parent"`
+					User     *commentUser `json:"user"`
+					BotActor *commentBot  `json:"botActor"`
 				} `json:"nodes"`
 			} `json:"comments"`
 		} `json:"issue"`
@@ -234,18 +285,11 @@ func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
 	is := r.Issue.Issue
 	is.Comments = nil
 	for _, n := range r.Issue.Comments.Nodes {
-		cm := Comment{ID: n.ID, Body: n.Body, URL: n.URL, CreatedAt: n.CreatedAt}
+		cm := Comment{ID: n.ID, Body: n.Body, URL: n.URL, CreatedAt: n.CreatedAt, EditedAt: n.EditedAt}
 		if n.Parent != nil {
-			cm.ParentID = n.Parent.ID
+			cm.ParentID, cm.ParentURL = n.Parent.ID, n.Parent.URL
 		}
-		switch {
-		case n.User != nil:
-			cm.Author, cm.Self = n.User.Name, n.User.IsMe
-		case n.BotActor != nil:
-			cm.Author, cm.Bot = n.BotActor.Name, true
-		default:
-			cm.Bot = true
-		}
+		cm.setAuthor(n.User, n.BotActor)
 		is.Comments = append(is.Comments, cm)
 	}
 	// Linear returns newest first.
@@ -329,6 +373,8 @@ type Change struct {
 	Title  string    `json:"title"` // issue title
 	Kind   string    `json:"kind"`  // issue, comment, state, assignee
 	Actor  string    `json:"actor"`
+	// ActorID is the comment author's user or bot id (comments only).
+	ActorID string `json:"actor_id,omitempty"`
 	Self   bool      `json:"self,omitempty"` // by the API key's own user
 	Bot    bool      `json:"bot,omitempty"`  // no user (integration)
 	Text   string    `json:"text"`           // comment body, or "Todo -> Done"
@@ -341,7 +387,7 @@ const activityQuery = `query($team: String!, $since: DateTimeOrDuration!) {
   issues(first: 50, orderBy: updatedAt, filter: {team: {key: {eq: $team}}, updatedAt: {gt: $since}}) { nodes {
     id identifier title url createdAt
     creator { name isMe }
-    comments(first: 50, filter: {createdAt: {gt: $since}}) { nodes { id body url createdAt user { name isMe } botActor { name } } }
+    comments(first: 50, filter: {createdAt: {gt: $since}}) { nodes { id body url createdAt ` + commentAuthorFields + ` } }
     history(first: 50) { nodes { id createdAt actor { name isMe } fromState { name } toState { name } fromAssignee { name } toAssignee { name } } }
   } }
 }`
@@ -373,8 +419,8 @@ func (c *Client) Changes(ctx context.Context, team string, since time.Time) ([]C
 						Body      string    `json:"body"`
 						URL       string    `json:"url"`
 						CreatedAt time.Time `json:"createdAt"`
-						User      *actor    `json:"user"`
-						BotActor  *named    `json:"botActor"`
+						User      *commentUser `json:"user"`
+						BotActor  *commentBot  `json:"botActor"`
 					} `json:"nodes"`
 				} `json:"comments"`
 				History struct {
@@ -422,10 +468,9 @@ func (c *Client) Changes(ctx context.Context, team string, since time.Time) ([]C
 			if cm.URL != "" {
 				ch.URL = cm.URL
 			}
-			ch.Actor, ch.Self, ch.Bot = who(cm.User)
-			if cm.User == nil && cm.BotActor != nil {
-				ch.Actor = cm.BotActor.Name
-			}
+			var a Comment
+			a.setAuthor(cm.User, cm.BotActor)
+			ch.Actor, ch.ActorID, ch.Self, ch.Bot = a.Display(), a.AuthorID, a.Self, a.Bot
 			out = append(out, ch)
 		}
 		for _, h := range is.History.Nodes {

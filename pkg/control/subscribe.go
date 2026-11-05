@@ -34,6 +34,8 @@ const (
 	defaultSubInterval    = time.Minute
 	defaultSubResume      = 7 * 24 * time.Hour
 	subCommentBodyMax     = 4000
+	replyQuoteMax         = 120
+	severalAuthors        = "several"
 	subscribeAuthorPrefix = "github:"
 	linearAuthorPrefix    = "linear:"
 )
@@ -79,6 +81,18 @@ type ghComment struct {
 	At     time.Time
 	// Parent is the comment replied to (Linear threads only).
 	Parent string
+	// Linear-only fields (#595). Linear marks the comment as from a Linear
+	// thread; Author is then "displayName (name)", Name the full name,
+	// Handle the displayName, AuthorID the user or bot actor id. Reply is
+	// the "in reply to ..." line, Title and IssueState the issue's.
+	Linear     bool
+	AuthorID   string
+	Name       string
+	Handle     string
+	Email      string
+	Reply      string
+	Title      string
+	IssueState string
 }
 
 // threadSource reads a thread's comments newer than since. Tests replace
@@ -404,22 +418,57 @@ func (c *Controller) githubSelf(ctx context.Context, repo string) string {
 
 // ignored drops the host's own comments, bots not on subscriptions.bots,
 // CI, configured logins and, when authors is set, every human not on it.
+// Linear comments match entries by user id, displayName or email, and by
+// full name only as a logged fallback (#595).
 func (c *Controller) ignored(cm ghComment) bool {
 	if cm.Self || cm.Author == "" {
 		return true
 	}
 	s := c.config().Subscriptions
 	is := func(l string) bool { return strings.EqualFold(l, cm.Author) }
+	if cm.Linear {
+		is = func(l string) bool { return c.linearMatch(l, cm) }
+	}
 	if s != nil && slices.ContainsFunc(s.Ignore, is) {
 		return true
 	}
 	if cm.Bot || strings.HasSuffix(cm.Author, "[bot]") {
+		if cm.Linear {
+			return s == nil || !slices.ContainsFunc(s.Bots, is)
+		}
 		return s == nil || !slices.Contains(s.Bots, cm.Author)
 	}
 	if s == nil {
 		return false
 	}
 	return len(s.Authors) > 0 && !slices.ContainsFunc(s.Authors, is)
+}
+
+// linearMatch reports whether a subscriptions entry names cm's author:
+// the user or bot actor id, the displayName or the email. The full name
+// is neither unique nor stable, so a match on it alone logs a WARN
+// naming the entry. A bot actor has only a name, so its name matches
+// without the warning.
+func (c *Controller) linearMatch(entry string, cm ghComment) bool {
+	if entry == "" {
+		return false
+	}
+	for _, v := range []string{cm.AuthorID, cm.Handle, cm.Email} {
+		if v != "" && strings.EqualFold(entry, v) {
+			return true
+		}
+	}
+	name := cm.Name
+	if name == "" {
+		name = cm.Author
+	}
+	if !strings.EqualFold(entry, name) {
+		return false
+	}
+	if !cm.Bot {
+		c.log.Warn("subscriptions: Linear entry matched by full name; use the user id, displayName or email", "entry", entry, "user", cm.AuthorID)
+	}
+	return true
 }
 
 // owner picks the follower that gets a thread's news: the one being
@@ -452,7 +501,7 @@ func threadText(th thread, cs []ghComment) string {
 	var b strings.Builder
 	switch {
 	case th.Linear != "":
-		fmt.Fprintf(&b, "New on Linear issue %s:\n", th.Linear)
+		fmt.Fprintf(&b, "New on Linear issue %s%s:\n", th.Linear, linearHeader(cs))
 	case th.PR:
 		fmt.Fprintf(&b, "New on GitHub PR %s:\n", th.key())
 	default:
@@ -467,9 +516,52 @@ func threadText(th thread, cs []ghComment) string {
 		if cm.State != "" {
 			kind += " (" + strings.ToLower(cm.State) + ")"
 		}
-		fmt.Fprintf(&b, "\n[%s] %s %s %s\n%s\n", cm.At.UTC().Format(time.RFC3339), cm.Author, kind, cm.URL, body)
+		fmt.Fprintf(&b, "\n[%s] %s %s %s\n", cm.At.UTC().Format(time.RFC3339), cm.Author, kind, cm.URL)
+		if cm.Reply != "" {
+			b.WriteString(cm.Reply + "\n")
+		}
+		b.WriteString(body + "\n")
 	}
 	return b.String()
+}
+
+// linearHeader is ` "<title>" (<state>)` from the newest comment that
+// carries the issue's title, "" when none does (an older inbox row).
+func linearHeader(cs []ghComment) string {
+	for i := len(cs) - 1; i >= 0; i-- {
+		if cs[i].Title == "" {
+			continue
+		}
+		h := fmt.Sprintf(" %q", cs[i].Title)
+		if cs[i].IssueState != "" {
+			h += " (" + cs[i].IssueState + ")"
+		}
+		return h
+	}
+	return ""
+}
+
+// deliveryAuthor is the ticket comment author for a delivery: the one
+// author, or "several" when the batch mixes authors (#595). Each line
+// of the text still names its own author.
+func deliveryAuthor(th thread, cs []ghComment) string {
+	for _, cm := range cs[1:] {
+		if commentWho(cm) != commentWho(cs[0]) {
+			return th.authorPrefix() + severalAuthors
+		}
+	}
+	if cs[0].Linear && cs[0].Handle != "" {
+		return th.authorPrefix() + cs[0].Handle
+	}
+	return th.authorPrefix() + cs[0].Author
+}
+
+// commentWho identifies a comment's author: the Linear id, else the login.
+func commentWho(cm ghComment) string {
+	if cm.AuthorID != "" {
+		return "id:" + cm.AuthorID
+	}
+	return strings.ToLower(cm.Author)
 }
 
 // deliverThread hands new human comments to the thread's owner.
@@ -484,7 +576,7 @@ func (c *Controller) deliverThread(ctx context.Context, th thread, cs []ghCommen
 		return nil
 	}
 	text := threadText(th, cs)
-	author := th.authorPrefix() + cs[len(cs)-1].Author
+	author := deliveryAuthor(th, cs)
 	if _, err := c.store.AddComment(ctx, author, t.ID, text); err != nil {
 		return err
 	}
@@ -655,20 +747,69 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 		}
 		appSelf = v.Name
 	}
+	byID := map[string]linear.Comment{}
 	for _, cm := range is.Comments {
-		if !cm.CreatedAt.After(since) {
-			continue
-		}
+		byID[cm.ID] = cm
+	}
+	for _, cm := range is.Comments {
 		if cm.Bot && appSelf != "" && cm.Author == appSelf {
 			cm.Self = true
 		}
-		url := cm.URL
-		if url == "" {
-			url = is.URL
-		}
-		out = append(out, ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot, Self: cm.Self, Kind: "comment", Body: cm.Body, URL: url, At: cm.CreatedAt, Parent: cm.ParentID})
+		out = appendLinearComment(out, is, cm, byID, since)
 	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
 	return out, nil
+}
+
+// appendLinearComment adds cm when it is new or edited after since
+// (#595). An edit is delivered at its editedAt with kind "comment
+// (edited)": the inbox key is the id plus that time, so each edit is
+// delivered once. A new comment edited since takes the later time, so
+// the read position passes the edit and it is not sent again. Edits by
+// self or bots are not delivered.
+func appendLinearComment(out []ghComment, is linear.Issue, cm linear.Comment, byID map[string]linear.Comment, since time.Time) []ghComment {
+	at, kind := cm.CreatedAt, "comment"
+	edited := cm.EditedAt != nil && cm.EditedAt.After(since)
+	switch {
+	case cm.CreatedAt.After(since):
+		if edited && cm.EditedAt.After(at) {
+			at = *cm.EditedAt
+		}
+	case edited && !cm.Self && !cm.Bot:
+		at, kind = *cm.EditedAt, "comment (edited)"
+	default:
+		return out
+	}
+	url := cm.URL
+	if url == "" {
+		url = is.URL
+	}
+	return append(out, ghComment{
+		ID: cm.ID, Author: cm.Display(), Bot: cm.Bot, Self: cm.Self, Kind: kind, Body: cm.Body, URL: url, At: at, Parent: cm.ParentID,
+		Linear: true, AuthorID: cm.AuthorID, Name: cm.Author, Handle: cm.Handle, Email: cm.Email,
+		Reply: replyLine(cm, byID), Title: is.Title, IssueState: is.State.Name,
+	})
+}
+
+// replyLine is the "in reply to" line for a reply: the parent's author
+// and first line when it was fetched, else its URL.
+func replyLine(cm linear.Comment, byID map[string]linear.Comment) string {
+	if cm.ParentID == "" {
+		return ""
+	}
+	p, ok := byID[cm.ParentID]
+	if !ok {
+		ref := cm.ParentURL
+		if ref == "" {
+			ref = cm.ParentID
+		}
+		return "in reply to " + ref
+	}
+	first, _, _ := strings.Cut(strings.TrimSpace(p.Body), "\n")
+	if r := []rune(first); len(r) > replyQuoteMax {
+		first = string(r[:replyQuoteMax]) + "..."
+	}
+	return fmt.Sprintf("in reply to %s: %q", p.Display(), first)
 }
 
 // ghSource reads threads with the gh CLI, which has the host's token.
