@@ -4,6 +4,9 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 // Output goes into the Go package so `go:embed` serves it.
 export default defineConfig({
   plugins: [svelte()],
+  // Asset URLs relative to index.html, which Desk serves with a <base
+  // href> for its path prefix (#516): one build works at any prefix.
+  base: './',
   build: {
     outDir: '../pkg/desk/dist',
     emptyOutDir: true,

@@ -9,7 +9,7 @@
   let access = $state({ write: false, reason: '' });
   $effect(() => {
     access = { write: false, reason: '' };
-    get('/api/session/' + encodeURIComponent(id) + '/access').then(
+    get('api/session/' + encodeURIComponent(id) + '/access').then(
       (a) => { access = { write: !!a.write, reason: a.reason || '' }; },
       () => {},
     );

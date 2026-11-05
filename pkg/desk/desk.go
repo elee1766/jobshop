@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -16,6 +18,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -49,30 +52,14 @@ type Config struct {
 	// UserHeader names the header an authenticating proxy sets to the
 	// signed-in user (#515). Empty: no user; calls act as "admin".
 	UserHeader string
-	// TrustedProxies are the TCP peers whose UserHeader is believed.
-	// Required when UserHeader is set.
+	// BasePath is the URL prefix Desk is served under, "/desk/" (#516).
+	// Empty or "/": the root, unless a trusted proxy sends
+	// X-Forwarded-Prefix. Requests with the prefix have it stripped, so a
+	// proxy may keep or strip it.
+	BasePath string
+	// TrustedProxies are the TCP peers whose UserHeader and
+	// X-Forwarded-Prefix are believed. Required when UserHeader is set.
 	TrustedProxies []netip.Prefix
-}
-
-// ParseProxies parses --trusted-proxy values: CIDRs or bare addresses.
-func ParseProxies(vals []string) ([]netip.Prefix, error) {
-	var out []netip.Prefix
-	for _, v := range vals {
-		if !strings.Contains(v, "/") {
-			a, err := netip.ParseAddr(v)
-			if err != nil {
-				return nil, fmt.Errorf("trusted proxy %q: %w", v, err)
-			}
-			out = append(out, netip.PrefixFrom(a, a.BitLen()))
-			continue
-		}
-		p, err := netip.ParsePrefix(v)
-		if err != nil {
-			return nil, fmt.Errorf("trusted proxy %q: %w", v, err)
-		}
-		out = append(out, p.Masked())
-	}
-	return out, nil
 }
 
 type userKey struct{}
@@ -86,12 +73,7 @@ func userFrom(ctx context.Context) string {
 // proxyUser returns the user for r. ok is false when the request must be
 // refused: an untrusted peer, or a missing or invalid header.
 func (s *Server) proxyUser(r *http.Request) (user string, ok bool) {
-	ap, err := netip.ParseAddrPort(r.RemoteAddr)
-	if err != nil {
-		return "", false
-	}
-	addr := ap.Addr().Unmap()
-	if !slices.ContainsFunc(s.cfg.TrustedProxies, func(p netip.Prefix) bool { return p.Contains(addr) }) {
+	if !s.trustedPeer(r) {
 		return "", false
 	}
 	vals := r.Header.Values(s.cfg.UserHeader)
@@ -105,12 +87,17 @@ func (s *Server) proxyUser(r *http.Request) (user string, ok bool) {
 	return u, true
 }
 
+// ForwardedPrefixHeader carries the prefix from a proxy (#516).
+const ForwardedPrefixHeader = "X-Forwarded-Prefix"
+
 // Server is the Desk HTTP handler.
 type Server struct {
 	cfg Config
 	ctl Controller
 	log *slog.Logger
 	ui  fs.FS
+	// index is dist/index.html; serveIndex adds the <base> tag.
+	index []byte
 }
 
 // NeedsHuman is the escalation label.
@@ -129,7 +116,127 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 	if err != nil {
 		panic(err)
 	}
-	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui}
+	index, err := fs.ReadFile(ui, "index.html")
+	if err != nil {
+		panic(err)
+	}
+	// The CLI rejects an invalid base; here it falls back to the root.
+	if cfg.BasePath = CleanBasePath(cfg.BasePath); cfg.BasePath == "" {
+		cfg.BasePath = "/"
+	}
+	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index}
+}
+
+// basePathRe is what a base path may contain. A leading "//" would make
+// <base href> another origin.
+var basePathRe = regexp.MustCompile(`^/([A-Za-z0-9._~-]+/)*$`)
+
+// CleanBasePath returns p with one leading and one trailing slash, or ""
+// when p is not a valid base path. "" and "/" give "/".
+func CleanBasePath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" || p == "/" {
+		return "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	if !basePathRe.MatchString(p) {
+		return ""
+	}
+	return p
+}
+
+// ParseTrustedProxies parses addresses and CIDRs; a bare address is a
+// single-host range.
+func ParseTrustedProxies(vals []string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, v := range vals {
+		if p, err := netip.ParsePrefix(v); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(v)
+		if err != nil {
+			return nil, fmt.Errorf("desk: trusted proxy %q: want an address or CIDR", v)
+		}
+		out = append(out, netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen()))
+	}
+	return out, nil
+}
+
+// trustedPeer reports whether the request's TCP peer is a trusted proxy.
+func (s *Server) trustedPeer(r *http.Request) bool {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	addr := ap.Addr().Unmap()
+	for _, p := range s.cfg.TrustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// basePath is the prefix this request is served under: the flag, else a
+// valid X-Forwarded-Prefix from a trusted proxy, else "/".
+func (s *Server) basePath(r *http.Request) string {
+	if s.cfg.BasePath != "/" {
+		return s.cfg.BasePath
+	}
+	if v := r.Header.Get(ForwardedPrefixHeader); v != "" && s.trustedPeer(r) {
+		if p := CleanBasePath(v); p != "" {
+			return p
+		}
+	}
+	return "/"
+}
+
+// stripBase removes the base from the request path when present (prefix
+// kept by the proxy) and records the base for the index page.
+func (s *Server) stripBase(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		base := s.basePath(r)
+		if base != "/" {
+			if r.URL.Path == strings.TrimSuffix(base, "/") {
+				u := *r.URL
+				u.Path = base
+				http.Redirect(w, r, u.RequestURI(), http.StatusMovedPermanently)
+				return
+			}
+			if rest, ok := strings.CutPrefix(r.URL.Path, base); ok {
+				r = r.Clone(r.Context())
+				r.URL.Path = "/" + rest
+				r.URL.RawPath = ""
+			}
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), baseKey{}, base)))
+	})
+}
+
+type baseKey struct{}
+
+// serveIndex writes index.html with a <base> tag for the request's base,
+// so the relative asset URLs and the UI's API URLs resolve under it.
+func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
+	base, _ := r.Context().Value(baseKey{}).(string)
+	if base == "" {
+		base = "/"
+	}
+	tag := `<base href="` + html.EscapeString(base) + `">`
+	page := strings.Replace(string(s.index), "<head>", "<head>\n    "+tag, 1)
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Cache-Control", "no-cache")
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = io.WriteString(w, page)
 }
 
 // Loopback reports whether addr (host:port) binds only loopback.
@@ -169,13 +276,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/artifacts/{id}/files/{name}", s.artifactFile)
 	mux.HandleFunc("POST /api/artifacts/{id}/ack", s.json(s.artifactAck))
 	mux.Handle("GET /", s.static())
-	return s.guard(mux)
+	return s.guard(s.stripBase(mux))
 }
 
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
@@ -219,11 +326,12 @@ func (s *Server) static() http.Handler {
 	files := http.FileServerFS(s.ui)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Views live in the query string, so every unknown path is the app.
-		if _, err := fs.Stat(s.ui, strings.TrimPrefix(r.URL.Path, "/")); err != nil || r.URL.Path == "/" {
-			r = r.Clone(r.Context())
-			r.URL.Path = "/"
-			w.Header().Set("Cache-Control", "no-cache")
-		} else if strings.HasPrefix(r.URL.Path, "/assets/") {
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if _, err := fs.Stat(s.ui, name); err != nil || name == "" || name == "index.html" {
+			s.serveIndex(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		files.ServeHTTP(w, r)

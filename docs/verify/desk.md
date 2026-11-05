@@ -23,5 +23,13 @@ Pass: every test passes on both projects, with no console errors (a CSP
 violation is a console error). The drawer and journal tests skip only
 when the controller has no runs or sessions.
 
+Under a path prefix (#516): start Desk with `--trusted-proxy 127.0.0.1`
+and run step 3 again with `DESK_PREFIX=1`. Playwright starts
+`e2e/prefix-proxy.mjs`, which serves Desk at `127.0.0.1:7499/desk/`
+(prefix stripped, `X-Forwarded-Prefix` sent). Same pass criteria. With
+`--base-path /desk/` instead, `curl -s 127.0.0.1:7481/desk/ | grep base`
+prints `<base href="/desk/">` and `/desk/api/attention` and
+`/api/attention` both return JSON.
+
 Idle CPU: with one `curl -N .../api/events` open, `utime+stime` in
 `/proc/<pid>/stat` grows by at most a few ticks per minute.

@@ -1,6 +1,6 @@
 <script>
   import { url, go } from '../lib/url.svelte.js';
-  import { resource, post } from '../lib/api.svelte.js';
+  import { resource, post, api } from '../lib/api.svelte.js';
   import { ago, bytes, markdown } from '../lib/format.js';
 
   // Artifacts (#508): deliverables from agents. Unread first; `a` acks
@@ -11,12 +11,12 @@
     if (!url.read) q.set('unread', '1');
     if (url.trigger) q.set('trigger', url.trigger);
     if (url.pool) q.set('pool', url.pool);
-    return '/api/artifacts?' + q.toString();
+    return 'api/artifacts?' + q.toString();
   });
   const items = $derived(/** @type {any[]} */ (list.data ?? []));
   const current = $derived(url.artifact || items[0]?.ticket.id || '');
   // With nothing selected this re-reads the list; `shown` ignores it.
-  const one = resource(() => (current ? '/api/artifacts/' + encodeURIComponent(current) : '/api/artifacts?unread=1'));
+  const one = resource(() => (current ? 'api/artifacts/' + encodeURIComponent(current) : 'api/artifacts?unread=1'));
   const shown = $derived(current && one.data?.ticket?.id === current ? one.data : null);
   let ackError = $state('');
 
@@ -33,7 +33,7 @@
     const next = items[i + 1] ?? items[i - 1];
     ackError = '';
     try {
-      await post('/api/artifacts/' + encodeURIComponent(current) + '/ack', {});
+      await post('api/artifacts/' + encodeURIComponent(current) + '/ack', {});
       go({ artifact: url.read ? current : next && next.ticket.id !== current ? next.ticket.id : '' });
     } catch (e) {
       ackError = String(/** @type {any} */ (e).message || e);
@@ -59,7 +59,7 @@
   /** @param {any} f */
   const isText = (f) => !f.pruned && f.size <= 256 * 1024 && (/^text\//.test(f.type || '') || f.type === 'application/json' || !f.type);
   /** @param {string} name */
-  const fileURL = (name) => '/api/artifacts/' + encodeURIComponent(current) + '/files/' + encodeURIComponent(name);
+  const fileURL = (name) => api('api/artifacts/' + encodeURIComponent(current) + '/files/' + encodeURIComponent(name));
 
   /** @param {string} name */
   async function text(name) {

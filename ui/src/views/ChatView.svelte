@@ -5,7 +5,7 @@
 
   // Operator chat: sessions of the chat pool (desk:<id> sessions and
   // escalation chats), and a button for a fresh one.
-  const chats = resource(() => '/api/chat');
+  const chats = resource(() => 'api/chat');
   let first = $state('');
   let starting = $state(false);
   let error = $state('');
@@ -17,7 +17,7 @@
     starting = true;
     error = '';
     try {
-      const r = await post('/api/chat/new', { text: first });
+      const r = await post('api/chat/new', { text: first });
       first = '';
       go({ session: r.session });
     } catch (e) {

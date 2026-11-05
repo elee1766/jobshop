@@ -14,12 +14,12 @@
 
   onMount(connect);
 
-  const attention = resource(() => '/api/attention');
+  const attention = resource(() => 'api/attention');
   const count = $derived(attention.data?.length ?? 0);
   /** @type {{ user: string } | null} */
   let who = $state(null);
-  onMount(() => { get('/api/whoami').then((w) => (who = w)).catch(() => {}); });
-  const unread = resource(() => '/api/artifacts?unread=1');
+  onMount(() => { get('api/whoami').then((w) => (who = w)).catch(() => {}); });
+  const unread = resource(() => 'api/artifacts?unread=1');
   const unreadCount = $derived(unread.data?.length ?? 0);
 
   /** @type {Record<string, string>} */

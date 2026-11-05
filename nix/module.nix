@@ -661,6 +661,8 @@ in
       description = "Chat gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
     };
 
+    # Desk (#202) as jobshop-desk.service; userHeader (#515), basePath
+    # (#516) and trustedProxies for a reverse proxy in front.
     desk = {
       enable = lib.mkEnableOption "jobshop-desk.service running `jobshop desk`";
       listen = lib.mkOption {
@@ -671,7 +673,7 @@ in
       hosts = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
-        description = "Extra Host header values Desk accepts.";
+        description = "Extra Host header values to accept (--host).";
       };
       userHeader = lib.mkOption {
         type = lib.types.str;
@@ -679,11 +681,22 @@ in
         example = "Tailscale-User-Login";
         description = "Header an authenticating proxy sets to the user; writes record `desk:<user>` (#515). Empty: no user.";
       };
+      basePath = lib.mkOption {
+        type = lib.types.str;
+        default = "/";
+        example = "/desk/";
+        description = "URL prefix Desk is served under (--base-path). The proxy may keep or strip it.";
+      };
       trustedProxies = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
         example = [ "127.0.0.1" ];
-        description = "CIDRs or addresses whose `userHeader` Desk trusts. Required with userHeader.";
+        description = "Peer addresses or CIDRs whose userHeader and X-Forwarded-Prefix Desk trusts (--trusted-proxy). Required with userHeader.";
+      };
+      extraArgs = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "More `jobshop desk` flags.";
       };
     };
 
@@ -1029,26 +1042,6 @@ in
       {
         systemd = lib.mkMerge (lib.mapAttrsToList workspaceUnits workspaces);
       }
-      (lib.mkIf cfg.ingest.enable {
-        # Needs no controller or database: only the spool dir and secrets.
-        systemd.services.jobshop-ingest = {
-          description = "Jobshop webhook receiver";
-          wantedBy = [ "multi-user.target" ];
-          after = [ "network-online.target" ];
-          wants = [ "network-online.target" ];
-          environment.JOBSHOP_ROOT = cfg.dataDir;
-          restartTriggers = [ configFile ];
-          serviceConfig = {
-            User = cfg.user;
-            Group = cfg.group;
-            Slice = "jobshop.slice";
-            WorkingDirectory = cfg.dataDir;
-            ExecStart = "${jobshop} ingest serve";
-            Restart = "always";
-            RestartSec = 5;
-          };
-        };
-      })
       (lib.mkIf cfg.desk.enable {
         assertions = [
           {
@@ -1056,6 +1049,7 @@ in
             message = "services.jobshop.desk.userHeader needs desk.trustedProxies";
           }
         ];
+        # An admin-socket client like the gateway.
         systemd.services.jobshop-desk = {
           description = "Jobshop Desk";
           wantedBy = [ "multi-user.target" ];
@@ -1072,15 +1066,50 @@ in
                 "desk"
                 "--listen"
                 cfg.desk.listen
+                "--base-path"
+                cfg.desk.basePath
               ]
               ++ lib.optional (
-                !(lib.hasPrefix "127." cfg.desk.listen || lib.hasPrefix "localhost:" cfg.desk.listen
-                  || lib.hasPrefix "[::1]" cfg.desk.listen)
+                !(
+                  lib.hasPrefix "127." cfg.desk.listen
+                  || lib.hasPrefix "localhost:" cfg.desk.listen
+                  || lib.hasPrefix "[::1]" cfg.desk.listen
+                )
               ) "--allow-remote"
-              ++ lib.concatMap (h: [ "--host" h ]) cfg.desk.hosts
-              ++ lib.optionals (cfg.desk.userHeader != "") [ "--user-header" cfg.desk.userHeader ]
-              ++ lib.concatMap (p: [ "--trusted-proxy" p ]) cfg.desk.trustedProxies
+              ++ lib.concatMap (h: [
+                "--host"
+                h
+              ]) cfg.desk.hosts
+              ++ lib.optionals (cfg.desk.userHeader != "") [
+                "--user-header"
+                cfg.desk.userHeader
+              ]
+              ++ lib.concatMap (p: [
+                "--trusted-proxy"
+                p
+              ]) cfg.desk.trustedProxies
+              ++ cfg.desk.extraArgs
             );
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
+      (lib.mkIf cfg.ingest.enable {
+        # Needs no controller or database: only the spool dir and secrets.
+        systemd.services.jobshop-ingest = {
+          description = "Jobshop webhook receiver";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "network-online.target" ];
+          wants = [ "network-online.target" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          restartTriggers = [ configFile ];
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = "${jobshop} ingest serve";
             Restart = "always";
             RestartSec = 5;
           };

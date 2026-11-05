@@ -494,6 +494,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   under `<root>/artifacts`, Desk Artifacts view, gateway
   `artifact_room` line (#508, `docs/notes/508-artifacts.md`,
   `docs/verify/artifacts.md`).
+- Desk under a path prefix: `--base-path`, `X-Forwarded-Prefix` from a
+  `--trusted-proxy`, relative build with a runtime `<base href>`,
+  `services.jobshop.desk.basePath` (#516, `docs/notes/516-desk-base-path.md`).
 
 ## 5. What's next
 
@@ -653,7 +656,8 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
-proxy header (#515), artifacts (#508). Next: turn on `desk.userHeader` on gasserver.
+proxy header (#515), artifacts (#508), Desk under a path prefix (#516).
+Next: turn on `desk.userHeader` on gasserver.
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1403,6 +1407,7 @@ moved from the old 7.x list, oldest first:
 - [New-user path test](notes/494-new-user-path.md) (#494)
 - [issue_no_run skips proposed](notes/506-issue-no-run-proposed.md) (#506)
 - [pr_unmerged skips operator and hold PRs](notes/509-pr-unmerged-skip.md) (#509)
+- [Desk under a path prefix](notes/516-desk-base-path.md) (#516)
 
 ## 8. Chat gateway
 
