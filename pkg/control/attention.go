@@ -139,9 +139,11 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 			continue
 		}
 		why := c.poolPauseWhy(p)
-		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: p, Since: until.Add(-poolPause),
+		items = append(items, rpc.AttentionItem{
+			Kind: rpc.AttentionPool, ID: p, Since: until.Add(-poolPause),
 			Title:   clipTitle("pool " + p + " paused until " + until.UTC().Format(time.RFC3339) + ", sessions crash-looping: " + why),
-			Summary: summaryOf(why)})
+			Summary: summaryOf(why),
+		})
 	}
 	c.mu.Unlock()
 	slices.SortStableFunc(items, func(a, b rpc.AttentionItem) int {
