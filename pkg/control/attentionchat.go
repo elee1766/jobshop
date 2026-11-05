@@ -353,6 +353,8 @@ var readOnlyMethods = []string{
 	rpc.MethodBatchList, rpc.MethodAttention, rpc.MethodConfigShow, rpc.MethodPoolList, rpc.MethodSessionList,
 	rpc.MethodSessionJournal, rpc.MethodJournalSearch, rpc.MethodTriggerList, rpc.MethodActivityList,
 	rpc.MethodLearnList, rpc.MethodMemoryShow, rpc.MethodReportIncidents,
+	// Naming itself changes only its label (#626).
+	rpc.MethodSessionRename,
 }
 
 // setReadOnly records a session's read-only state for the socket gate.

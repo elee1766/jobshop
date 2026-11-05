@@ -53,6 +53,7 @@ var Specs = map[string]Spec{
 	MethodJournalBackfill:   {JournalBackfillParams{}, JournalBackfillResult{}},
 	MethodSessionCordon:     {SessionCordonParams{}, SessionInfo{}},
 	MethodSessionConfig:     {SessionConfigParams{}, SessionInfo{}},
+	MethodSessionRename:     {SessionRenameParams{}, SessionInfo{}},
 	MethodWhoami:            {empty{}, Whoami{}},
 	MethodVersion:           {empty{}, VersionResult{}},
 	MethodShutdown:          {ShutdownParams{}, nil},

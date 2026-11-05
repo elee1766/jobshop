@@ -128,7 +128,7 @@ func (c *Controller) keyedSession(ctx context.Context, sc scope, pool, key strin
 	if err := c.humanSlot(ctx, pool); err != nil {
 		return store.Ticket{}, false, err
 	}
-	t, err := c.newSession(ctx, sc.actor, p.Project, pool, p.Agent, key, pool+" "+key)
+	t, err := c.newSession(ctx, sc.actor, p.Project, pool, p.Agent, key, pool+" "+key, "")
 	if errors.Is(err, store.ErrAlreadyExist) {
 		// A concurrent send created it; the key index allows one open.
 		if t, ok, ferr := find(); ferr == nil && ok {

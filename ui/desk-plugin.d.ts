@@ -160,6 +160,7 @@ export interface RpcMethods {
   "session.new": { params: SessionNewParams; result: SessionNewResult };
   "session.prompt": { params: SessionPromptParams; result: SessionPromptResult };
   "session.reap": { params: SessionReapParams; result: SessionReapResult };
+  "session.rename": { params: SessionRenameParams; result: SessionInfo };
   "session.restart": { params: SessionRestartParams; result: SessionRestartResult };
   "session.sandbox": { params: SessionSandboxParams; result: SessionSandboxResult };
   "session.send": { params: SessionSendParams; result: SessionSendResult };
@@ -1012,6 +1013,7 @@ export interface SessionIncident {
 
 export interface SessionInfo {
   id: string;
+  display_name?: string;
   ticket?: Ticket;
   orphan?: boolean;
   alive: boolean;
@@ -1056,6 +1058,7 @@ export interface SessionNewParams {
   agent?: string;
   key?: string;
   title?: string;
+  display_name?: string;
 }
 
 export interface SessionNewResult {
@@ -1086,6 +1089,11 @@ export interface SessionReapResult {
   stopped: string[];
   removed: string[];
   dry_run?: boolean;
+}
+
+export interface SessionRenameParams {
+  id?: string;
+  name: string;
 }
 
 export interface SessionRestartParams {
