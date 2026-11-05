@@ -3,6 +3,7 @@
   import { url, go, VIEWS } from './lib/url.svelte.js';
   import { live, connect, resource, get } from './lib/api.svelte.js';
   import Attention from './views/Attention.svelte';
+  import Artifacts from './views/Artifacts.svelte';
   import Work from './views/Work.svelte';
   import Sessions from './views/Sessions.svelte';
   import Pools from './views/Pools.svelte';
@@ -18,9 +19,11 @@
   /** @type {{ user: string } | null} */
   let who = $state(null);
   onMount(() => { get('/api/whoami').then((w) => (who = w)).catch(() => {}); });
+  const unread = resource(() => '/api/artifacts?unread=1');
+  const unreadCount = $derived(unread.data?.length ?? 0);
 
   /** @type {Record<string, string>} */
-  const names = { attention: 'Attention', chat: 'Chat', work: 'Work', activity: 'Activity', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
+  const names = { attention: 'Attention', artifacts: 'Artifacts', chat: 'Chat', work: 'Work', activity: 'Activity', sessions: 'Sessions', pools: 'Pools', deploys: 'Deploys' };
 
   let light = $state(localStorage.getItem('desk-theme') === 'light');
   $effect(() => {
@@ -38,10 +41,11 @@
         href={'?view=' + v}
         class:active={url.view === v}
         data-view={v}
-        onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '', session: '' }); }}
+        onclick={(e) => { e.preventDefault(); go({ view: v, ticket: '', session: '', artifact: '' }); }}
       >
         {names[v]}
         {#if v === 'attention' && count > 0}<span class="pill warn">{count}</span>{/if}
+        {#if v === 'artifacts' && unreadCount > 0}<span class="pill accent" data-testid="artifacts-unread">{unreadCount}</span>{/if}
       </a>
     {/each}
     <div class="foot">
@@ -52,6 +56,7 @@
   </nav>
   <main>
     {#if url.view === 'attention'}<Attention items={attention} />
+    {:else if url.view === 'artifacts'}<Artifacts />
     {:else if url.view === 'chat'}<ChatView />
     {:else if url.view === 'work'}<Work />
     {:else if url.view === 'activity'}<Activity />

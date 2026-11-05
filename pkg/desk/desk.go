@@ -164,6 +164,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/chat/new", s.json(s.chatNew))
 	mux.HandleFunc("POST /api/pool/scale", s.json(s.poolScale))
 	mux.HandleFunc("POST /api/session/cordon", s.json(s.sessionCordon))
+	mux.HandleFunc("GET /api/artifacts", s.json(s.artifactList))
+	mux.HandleFunc("GET /api/artifacts/{id}", s.json(s.artifactShow))
+	mux.HandleFunc("GET /api/artifacts/{id}/files/{name}", s.artifactFile)
+	mux.HandleFunc("POST /api/artifacts/{id}/ack", s.json(s.artifactAck))
 	mux.Handle("GET /", s.static())
 	return s.guard(mux)
 }

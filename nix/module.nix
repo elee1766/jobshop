@@ -52,6 +52,8 @@ let
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
     // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
     // lib.optionalAttrs (g.attentionDigest != "") { attention_digest = g.attentionDigest; }
+    // lib.optionalAttrs (g.artifactRoom != "") { artifact_room = g.artifactRoom; }
+    // lib.optionalAttrs (g.deskUrl != "") { desk_url = g.deskUrl; }
   ) cfg.gateway;
   settings =
     cfg.settings
@@ -640,6 +642,17 @@ in
               default = "";
               example = "0 9 * * *";
               description = "Cron (UTC) for a digest of `jobshop attention` in `escalationRoom`, posted only when the list is not empty. Empty: none.";
+            };
+            artifactRoom = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Room that gets one line per delivered artifact (#508). Empty: none.";
+            };
+            deskUrl = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              example = "https://desk.example";
+              description = "Desk base URL for links in artifact lines. Empty: no link.";
             };
           };
         }

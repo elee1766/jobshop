@@ -16,6 +16,11 @@ how), then start its run and close the task with a comment naming it:
 `implement` step is then the ticket to work. The key makes a repeated
 start return the existing run.
 
+A one-off task whose result is a report, not a change (a review, an
+audit, a summary): deliver it with `jobshop artifact deliver "<title>"
+--file report.md [--attach <file>]` before closing, so a human reads it
+in Desk's Artifacts view.
+
 Stay in scope. When you find a bug, gap or cleanup outside the current
 issue, do not fix it in this PR: first check `gh issue list --search` for
 a duplicate, then file it with `gh issue create` (what you saw, where,

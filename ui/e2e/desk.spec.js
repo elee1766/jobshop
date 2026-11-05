@@ -72,3 +72,24 @@ test('no horizontal page overflow', async ({ page }) => {
     expect(over, view).toBeLessThanOrEqual(1);
   }
 });
+
+// Artifacts (#508): list, read, ack and next. Needs at least two unread
+// artifacts (`jobshop artifact deliver`); acks the first one.
+test('artifacts list, read, ack and next', async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto('/?view=artifacts');
+  await expect(page.locator('[data-testid=artifacts-empty], [data-testid=artifact-list]')).toBeVisible();
+  const rows = page.locator('[data-testid=artifact-list] .item');
+  test.skip((await rows.count()) < 2, 'needs two unread artifacts');
+  const first = await rows.nth(0).locator('.title').innerText();
+  const second = await rows.nth(1).locator('.title').innerText();
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(first);
+  await page.keyboard.press('j');
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(second);
+  await page.keyboard.press('k');
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(first);
+  await page.keyboard.press('a');
+  await expect(page.getByTestId('artifact-pane').locator('h2')).toHaveText(second);
+  await expect(rows.filter({ hasText: first })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

@@ -1514,3 +1514,68 @@ type ResourceListResult struct {
 	Slots []store.Slot        `json:"slots"`
 	Use   []store.ResourceUse `json:"use"`
 }
+
+// Artifact methods (#508): deliverables a human reads and acks in Desk.
+const (
+	MethodArtifactDeliver = "artifact.deliver"
+	MethodArtifactList    = "artifact.list"
+	MethodArtifactShow    = "artifact.show"
+	MethodArtifactAck     = "artifact.ack"
+)
+
+// ArtifactDeliverParams is artifact.deliver. Files are absolute paths
+// inside the session's dir or worktree; the controller copies them.
+type ArtifactDeliverParams struct {
+	Title  string   `json:"title"`
+	Body   string   `json:"body"`
+	Files  []string `json:"files,omitempty"`
+	Ticket string   `json:"ticket,omitempty"` // source; default the session's held ticket
+}
+
+// ArtifactFile is one attachment in meta.artifact.files.
+type ArtifactFile struct {
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	Type   string `json:"type,omitempty"`
+	Pruned bool   `json:"pruned,omitempty"`
+}
+
+// ArtifactMeta is meta.artifact on an artifact ticket.
+type ArtifactMeta struct {
+	Ticket  string         `json:"ticket,omitempty"`
+	Run     string         `json:"run,omitempty"`
+	Trigger string         `json:"trigger,omitempty"`
+	Pool    string         `json:"pool,omitempty"`
+	Session string         `json:"session,omitempty"`
+	Files   []ArtifactFile `json:"files,omitempty"`
+}
+
+// ArtifactListParams filters artifact.list.
+type ArtifactListParams struct {
+	Unread  bool   `json:"unread,omitempty"`
+	Trigger string `json:"trigger,omitempty"`
+	Pool    string `json:"pool,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+// Artifact is one artifact ticket with its parsed meta.
+type Artifact struct {
+	Ticket store.Ticket `json:"ticket"`
+	Meta   ArtifactMeta `json:"artifact"`
+	Read   bool         `json:"read"`
+}
+
+// ArtifactShowResult is artifact.show: the artifact, its comments and
+// history, and the attachment dir (admin only; Desk serves files from it).
+type ArtifactShowResult struct {
+	Artifact
+	Comments []store.Comment      `json:"comments"`
+	History  []store.HistoryEntry `json:"history"`
+	Dir      string               `json:"dir,omitempty"`
+}
+
+// ArtifactAckParams is artifact.ack.
+type ArtifactAckParams struct {
+	ID   string `json:"id"`
+	Note string `json:"note,omitempty"`
+}

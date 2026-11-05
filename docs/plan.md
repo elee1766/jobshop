@@ -487,6 +487,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
   the `failed-tests` artifact (#510, `docs/notes/510-ci-flaky-rerun.md`).
 - Desk takes the user from a trusted proxy header and records writes as
   `desk:<user>` (#515, `docs/notes/515-desk-proxy-user.md`).
+- Artifacts: `jobshop artifact deliver|list|show|ack`, attachments
+  under `<root>/artifacts`, Desk Artifacts view, gateway
+  `artifact_room` line (#508, `docs/notes/508-artifacts.md`,
+  `docs/verify/artifacts.md`).
 
 ## 5. What's next
 
@@ -646,7 +650,7 @@ process-tree tests onto the fake clock; sqlite template DB (#363).
 visibility (#408), placement (#409).
 
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
-proxy header (#515). Next: turn on `desk.userHeader` on gasserver.
+proxy header (#515), artifacts (#508). Next: turn on `desk.userHeader` on gasserver.
 
 **Flake triage (#505).** Done: CI flaky/broken rerun and `failed-tests`
 artifact (#510). Next: the planner's incident step reads the artifact.
@@ -1330,6 +1334,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   any other known state counts as failed with a comment. An unreadable
   state keeps the rebase and logs a WARN, so a GitHub outage never
   turns a real conflict into a failed attempt.
+- Artifacts are message tickets to `human` with label `artifact`, and
+  attachments are files under `<root>/artifacts/<id>/`, not a new table
+  (2026-11-05, #508). Read state, history and live updates come from
+  tickets for free; only the files need storage, and the controller
+  copies them because sessions cannot write there from the sandbox.
 
 ## 7. Reference: behavior as built
 
