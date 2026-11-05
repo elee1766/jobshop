@@ -1,0 +1,9 @@
+{
+  "name": "e2e-test",
+  "entry": "index.js",
+  "contributes": [
+    { "slot": "view", "element": "e2e-test-view", "id": "e2e-test", "title": "E2E plugin" },
+    { "slot": "drawer", "element": "e2e-test-drawer", "title": "E2E section" },
+    { "slot": "artifact", "element": "e2e-test-csv", "match": { "type": ["text/csv"], "ext": ["csv"] } }
+  ]
+}

@@ -2,6 +2,8 @@
   import { url, go } from '../lib/url.svelte.js';
   import { resource, post, api } from '../lib/api.svelte.js';
   import { ago, bytes, markdown } from '../lib/format.js';
+  import PluginSlot from './PluginSlot.svelte';
+  import { contributions, matches } from '../lib/plugins.svelte.js';
 
   // Artifacts (#508): deliverables from agents. Unread first; `a` acks
   // and moves to the next, j/k move, o opens the source ticket.
@@ -70,6 +72,13 @@
 
   /** @param {any} a */
   const source = (a) => a.artifact.trigger || a.artifact.pool || '';
+
+  /** An artifact plugin (#517) matched by MIME type or extension. @param {any} f */
+  const renderer = (f) => {
+    if (f.pruned) return null;
+    const ext = (f.name.match(/\.([^.]+)$/)?.[1] || '').toLowerCase();
+    return contributions('artifact').find((x) => matches(x.c.match, { type: (f.type || '').split(';')[0], ext })) ?? null;
+  };
 </script>
 
 <svelte:window onkeydown={key} />
@@ -142,7 +151,10 @@
                 {/if}
                 <span class="faint">{bytes(f.size)}</span>
               </div>
-              {#if isImage(f)}
+              {#if renderer(f)}
+                {@const r = renderer(f)}
+                {#if r}<PluginSlot plugin={r.plugin} element={r.c.element} context={{ artifact: shown, file: { ...f, url: fileURL(f.name) } }} />{/if}
+              {:else if isImage(f)}
                 <img src={fileURL(f.name)} alt={f.name} />
               {:else if isText(f)}
                 {#await text(f.name) then body}<pre>{body}</pre>{:catch e}<div class="err">{e.message}</div>{/await}
