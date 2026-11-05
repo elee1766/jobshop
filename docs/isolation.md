@@ -11,8 +11,8 @@ Moved from the README (2026-11-05, #551).
   are not mounted. The env is cleared to the configured `env_keep` list. A missing bwrap or
   mount source quarantines the pool. There is no unsandboxed fallback.
   `jobshop session sandbox <id>` shows the mounts and argv. On NixOS set
-  `services.jobshop.sandbox.enable` (needs `programs.nix-ld`). mise works
-  inside it. See [notes/262-sandbox.md](notes/262-sandbox.md) and
+  `services.jobshop.sandbox.enable`; agent tools and caches are set by
+  the host ([nixos.md](nixos.md#agent-tools)). See [notes/262-sandbox.md](notes/262-sandbox.md) and
   [notes/625-sandbox-config.md](notes/625-sandbox-config.md).
 - **Socket scoping.** A session talks only to its own `cli.sock`, which
   acts as that session (its ticket, pool and project). The admin socket

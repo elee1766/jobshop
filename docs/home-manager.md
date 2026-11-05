@@ -39,12 +39,11 @@ homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
 ## What differs from NixOS
 
 - **Paths.** `dataDir` defaults to `$XDG_STATE_HOME/jobshop`
-  (`~/.local/state/jobshop`), `sandbox.mise.dir` to
-  `~/.local/state/jobshop-mise`, `selfDeploy.stateDir` to
+  (`~/.local/state/jobshop`), `selfDeploy.stateDir` to
   `~/.local/state/jobshop-deploy`. Sockets stay under `dataDir`.
 - **Units.** The same names (`jobshop`, `jobshop-ingest`,
   `jobshop-ingest-work`, `jobshop-desk`, `jobshop-workspace-<name>`,
-  `jobshop-mise`, ...) under `systemctl --user`. They start with
+  ...) under `systemctl --user`. They start with
   `default.target`. A user manager has no `network-online.target`, so
   that ordering is dropped.
 - **Self-deploy.** `jobshop-self-deploy` runs as the user. It builds the
@@ -77,7 +76,7 @@ homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
   running session host's binary survives a switch (the NixOS module
   creates it; the user cannot).
 - `programs.nix-ld.enable = true` if sandboxed sessions run prebuilt
-  binaries (mise). The module sets `NIX_LD` to the NixOS path.
+  binaries (mise). Set `NIX_LD` in `environment` yourself (JOB-23).
 - Group membership for any socket the host shares (agent-credd).
 - Reverse proxy routes to the user's Desk and ingest ports.
 
