@@ -62,6 +62,9 @@ func TestWaitEventKinds(t *testing.T) {
 	prs.issues["compare:aaaa1111...dddd0000"] = "behind"
 	c.pollWaits(ctx, prs, threads)
 	assert.Empty(t, readyIDs(t, c), "nothing holds yet")
+	// #716: an unmet condition's note must not read as met.
+	assert.Equal(t, "deployed dddd000 does not contain aaaa111 yet", waitOf(mustGet(t, c, dep.ID)).Conds[0].Note)
+	assert.Equal(t, "tag v1.2.3 not pushed to acme/widget yet", waitOf(mustGet(t, c, tag.ID)).Conds[0].Note)
 
 	prs.issues["tag:acme/widget@v1.2.3"] = ""
 	prs.issues["compare:aaaa1111...dddd0000"] = "ahead"
