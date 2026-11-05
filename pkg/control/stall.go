@@ -206,7 +206,7 @@ func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger) ([]sta
 		case config.StallSessionSilent:
 			found, err = c.stallSessions(ctx, now, after)
 		case config.StallNeedsHuman:
-			found, err = c.stallNeedsHuman(ctx, now, after)
+			found, err = c.stallNeedsHuman(ctx, now, after, tr.Run.Workflow)
 		case config.StallBlocked:
 			found, err = c.stallBlocked(ctx, now, after)
 		case config.StallResourceWait:
@@ -478,8 +478,9 @@ func (c *Controller) stallSessions(ctx context.Context, now time.Time, after tim
 }
 
 // stallNeedsHuman: needs_human runs, and open needs-human tickets that are
-// not a run's escalation (the run covers those), older than after.
-func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
+// not a run's escalation (the run covers those), older than after. A run
+// of another pack instance is left to that instance's trigger (JOB-17).
+func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after time.Duration, workflow string) ([]stall, error) {
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
@@ -489,6 +490,9 @@ func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after t
 		if r.Status == store.StatusClosed || isStallRun(r) {
 			// A stall check that needs a human already escalated: a check
 			// on it would only add another escalation (#704).
+			continue
+		}
+		if f, err := store.DecodeFields[store.RunFields](r); err == nil && !sameInstance(c.config(), f.Workflow, workflow) {
 			continue
 		}
 		last, err := c.lastActivity(ctx, r)
@@ -516,6 +520,22 @@ func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after t
 		}
 	}
 	return out, nil
+}
+
+// sameInstance: workflows a and b come from the same packs entry, or one
+// of them comes from none (declared in jobshop.yaml itself), so two
+// instances of one pack do not both check a run.
+func sameInstance(cfg *config.Config, a, b string) bool {
+	ia, ib := -1, -1
+	for i, in := range cfg.Instances {
+		if slices.Contains(in.Workflows, a) {
+			ia = i
+		}
+		if slices.Contains(in.Workflows, b) {
+			ib = i
+		}
+	}
+	return ia < 0 || ib < 0 || ia == ib
 }
 
 // stallBlocked: open tickets labeled blocked, unchanged for after. This is

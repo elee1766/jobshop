@@ -416,3 +416,55 @@ func TestStallNoCascade(t *testing.T) {
 	}
 	assert.Len(t, checks(), 1, "a needs_human check starts no check, from either trigger")
 }
+
+// TestStallOwnInstance (JOB-17): with two pack instances, a needs_human
+// run is checked by its own instance's trigger only, and that check
+// escalating starts no further check.
+func TestStallOwnInstance(t *testing.T) {
+	t.Parallel()
+	c, clk, _ := stallControllerYAML(t, stallCascadeYAML)
+	cfg := *c.config()
+	// work belongs to b's instance; trigger a sorts first and would win the
+	// shared stall key without the instance check.
+	cfg.Instances = []config.PackInstance{{Path: "a", Workflows: []string{"check-a"}}, {Path: "b", Workflows: []string{"check-b", "work"}}}
+	lc, err := newLiveConfig(&cfg)
+	require.NoError(t, err)
+	c.live.Store(lc)
+	ctx := t.Context()
+	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
+	require.NoError(t, err)
+	failStep := func(step store.Ticket) {
+		t.Helper()
+		_, err := store.Close(ctx, c.store, "admin", step.ID, nil, "failed")
+		require.NoError(t, err)
+		require.True(t, c.escalateRun(ctx, step.ParentID))
+	}
+	failStep(res.(rpc.RunResult).Steps[0])
+	checks := func() []store.Ticket {
+		rs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
+		require.NoError(t, err)
+		var out []store.Ticket
+		for _, r := range rs {
+			if isStallRun(r) {
+				out = append(out, r)
+			}
+		}
+		return out
+	}
+	for range 3 {
+		clk.advance(2*time.Hour + time.Minute)
+		c.runTriggers()
+	}
+	cs := checks()
+	require.Len(t, cs, 1)
+	assert.Equal(t, "b", metaString(cs[0].Meta, triggerPack, "name"), "the run's own instance checks it")
+
+	steps, err := store.Children(ctx, c.store, cs[0].ID)
+	require.NoError(t, err)
+	failStep(steps[0])
+	for range 3 {
+		clk.advance(5 * time.Hour)
+		c.runTriggers()
+	}
+	assert.Len(t, checks(), 1, "the check escalating starts no other check")
+}

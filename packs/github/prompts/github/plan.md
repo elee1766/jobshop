@@ -84,8 +84,11 @@ Each planning ticket:
    - Proposals (step "Proposing a target") on Linear: one issue labeled
      `proposed` with its items as sub-issues in Backlog, then
      `jobshop linear ask <KEY> "<why, what to approve>"`{{if .linear_human}} (it mentions {{.linear_human}}){{end}}.
-     A human approves by relabeling it `target` and moving the
-     sub-issues to Todo; never do that yourself.
+     A human approves with `jobshop decision approve <ticket>` (file the
+     proposal ticket with `--meta '{"linear":{"issue":"<KEY>"}}'`),
+     which relabels it `target` and moves its open sub-issues from
+     Backlog to `{{.linear_intake_states}}`'s first state, so they start;
+     say so in the proposal text. Never do that yourself.
    GitHub `target` issues are still read while any is open (steps 1 to
    12 above): work both. The operator closes the GitHub ones once their
    items have moved. The decision log stays on GitHub; Linear issues do

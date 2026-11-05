@@ -321,6 +321,25 @@ func (c *Client) AddComment(ctx context.Context, key, body string) error {
 	return nil
 }
 
+// CanceledState is the name of the first canceled-type state of the
+// issue's team, for closing an issue as not planned.
+func (c *Client) CanceledState(ctx context.Context, key string) (string, error) {
+	is, err := c.GetIssue(ctx, key)
+	if err != nil {
+		return "", err
+	}
+	var states []State
+	if err := teamConn(ctx, c, is.Team.ID, "states", "id name type", &states); err != nil {
+		return "", err
+	}
+	for _, s := range states {
+		if s.Type == "canceled" {
+			return s.Name, nil
+		}
+	}
+	return "", fmt.Errorf("linear: team %s has no canceled state", is.Team.Key)
+}
+
 const updateMutation = `mutation($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }`
 
 // SetState moves the issue to the team state named name (case-insensitive).
