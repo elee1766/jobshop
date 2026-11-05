@@ -422,6 +422,10 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - trigger.list evaluates triggers in parallel, so the Desk pools view
   no longer waits for every check in turn (#522,
   `docs/notes/522-trigger-list-parallel.md`).
+- Per-pool isolation: `isolation.user` (mapped uid/gid),
+  `isolation.limits` (delegated cgroup), `sandbox.network: pasta` with
+  `deny`; sessions end `oom` at the memory limit (#388,
+  `docs/notes/388-pool-isolation.md`, `docs/verify/isolation.md`).
 - Workflow step graphs: `needs:` for parallel steps, `when:` for steps
   gated on an outcome set with `close --outcome` (#385,
   `docs/notes/385-step-needs-when.md`).
@@ -658,7 +662,9 @@ dry run; 2 to 8 write live inbox rows or change config, left for the operator.
 Next: dispatch in a worker too, if one controller is not enough.
 
 **Later.** Moving gasserver to Postgres (#493 built the backend).
-Per-session isolation (`docs/notes/users-security.md`).
+Per-session isolation (`docs/notes/users-security.md`). Per-pool
+isolation is built (#388); next, run it on gasserver
+(`docs/verify/isolation.md`) and port the gascity factory's `agent` pool.
 
 **Test speed (#359).** In-process agent (#361), then move the
 process-tree tests onto the fake clock; sqlite template DB (#363).
@@ -1367,6 +1373,12 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   globs (2026-11-05, #524): an improvement pack per repo needs its own
   kinds (friction, blocker) and its own count, and one instance's
   learnings should not start another's curator.
+- Per-pool isolation is opt-in config passed to acphost v0.3.0
+  (2026-11-05, #388): a mapped user, cgroup limits and a pasta network
+  per pool. The controller sets up the delegated cgroup only when some
+  pool sets limits, and every host problem (no delegation, ids outside
+  subuid, missing pasta) is a permanent spawn error that quarantines
+  just that pool, so a host without the setup runs as before.
 
 ## 7. Reference: behavior as built
 

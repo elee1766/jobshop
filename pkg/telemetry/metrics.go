@@ -61,6 +61,10 @@ type Metrics struct {
 	// Ingest inbox items by state and live external workers (#443).
 	Inbox         metric.Int64Gauge
 	IngestWorkers metric.Int64Gauge
+	// Session cgroups of isolated pools (#388), summed per pool each tick.
+	CgroupMemory   metric.Int64Gauge
+	CgroupCPU      metric.Int64Gauge
+	CgroupOOMKills metric.Int64Gauge
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -74,7 +78,7 @@ func NewMetrics() (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [21]error
+	var errs [24]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -111,6 +115,12 @@ func NewMetrics() (*Metrics, error) {
 		metric.WithDescription("Ingest inbox items by state (#443)."))
 	m.IngestWorkers, errs[20] = meter.Int64Gauge("jobshop.ingest.workers",
 		metric.WithDescription("External ingest workers with a heartbeat within ingest.worker_missing (#443)."))
+	m.CgroupMemory, errs[21] = meter.Int64Gauge("jobshop.pool.cgroup.memory", metric.WithUnit("By"),
+		metric.WithDescription("memory.current summed over a pool's live session cgroups (#388)."))
+	m.CgroupCPU, errs[22] = meter.Int64Gauge("jobshop.pool.cgroup.cpu", metric.WithUnit("us"),
+		metric.WithDescription("cpu.stat usage_usec summed over a pool's live session cgroups (#388)."))
+	m.CgroupOOMKills, errs[23] = meter.Int64Gauge("jobshop.pool.cgroup.oom_kills",
+		metric.WithDescription("memory.events oom_kill summed over a pool's live session cgroups (#388)."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err

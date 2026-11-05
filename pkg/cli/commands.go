@@ -720,7 +720,7 @@ func (c sessionPromptCmd) Run(g *Globals) error {
 }
 
 // sessionSandboxCmd prints the mounts and bwrap argv the session's next
-// spawn would use (#262).
+// spawn would use (#262), and its isolation user and cgroup (#388).
 type sessionSandboxCmd struct {
 	ID   string `arg:"" help:"Session id."`
 	JSON bool   `name:"json" help:"Print the result as JSON."`
@@ -734,12 +734,25 @@ func (c sessionSandboxCmd) Run(g *Globals) error {
 	if err := g.call(rpc.MethodSessionSandbox, rpc.SessionSandboxParams{ID: c.ID}, &res); err != nil {
 		return err
 	}
+	if u := res.User; u != nil {
+		fmt.Printf("user uid %d gid %d mapped to %d:%d, groups %v\n", u.UID, u.GID, u.MapUID, u.MapGID, u.Groups)
+	}
+	if cg := res.Cgroup; cg != nil {
+		fmt.Printf("cgroup %s: cpu.max %q memory.max %q memory.high %q swap.max %q pids.max %d\n",
+			res.CgroupPath, cg.CPUMax, cg.MemoryMax, cg.MemoryHigh, cg.SwapMax, cg.PidsMax)
+	}
 	if res.Sandbox == nil {
 		fmt.Printf("session %s (pool %s): not sandboxed\n", res.Session, res.Pool)
+		if res.Error != "" {
+			fmt.Println("error:", res.Error)
+		}
 		return nil
 	}
 	s := res.Sandbox
 	fmt.Printf("session %s (pool %s): %s, network %s\n", res.Session, res.Pool, s.Backend, cmp.Or(s.Network, "host"))
+	if len(s.Deny) > 0 {
+		fmt.Println("deny", strings.Join(s.Deny, " "))
+	}
 	for _, m := range s.RO {
 		fmt.Println("ro  ", m.Src)
 	}

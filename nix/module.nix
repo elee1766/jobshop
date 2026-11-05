@@ -132,7 +132,10 @@ let
     lib.optional useIdentities ghWrapper
     ++ cfg.path
     ++ lib.optionals cfg.defaultPath defaultTools
-    ++ lib.optional cfg.sandbox.enable pkgs.bubblewrap;
+    ++ lib.optional cfg.sandbox.enable pkgs.bubblewrap
+    # newuidmap/newgidmap must be the setuid wrappers, not the store
+    # binaries; /run/wrappers/bin is on the service PATH below.
+    ++ lib.optional cfg.isolation.enable pkgs.passt;
 
   credentialHelper =
     if useIdentities then "!${jobshop} identity git-credential" else cfg.gitIdentity.credentialHelper;
@@ -501,6 +504,24 @@ in
       description = "Deny private, CGNAT/tailnet, link-local and ULA ranges, like gasserver's agent slice.";
     };
 
+    isolation = {
+      enable = lib.mkEnableOption ''
+        per-pool isolation (#388): Delegate=cpu memory pids on jobshop.service,
+        a subuid/subgid range for the jobshop user, and newuidmap (shadow) and
+        pasta (passt) on PATH. Pools opt in with isolation: and sandbox.network: pasta
+      '';
+      subIdStart = lib.mkOption {
+        type = lib.types.int;
+        default = 231072;
+        description = "First subordinate uid and gid of the jobshop user's range (map_uid and map_gid pick from it).";
+      };
+      subIdCount = lib.mkOption {
+        type = lib.types.int;
+        default = 65536;
+        description = "Size of the jobshop user's subuid and subgid range.";
+      };
+    };
+
     sandbox = {
       enable = lib.mkEnableOption "bubblewrap sandboxes for agents (#262): bubblewrap on PATH and defaults.sandbox.backend = bubblewrap";
       sharedTools = lib.mkOption {
@@ -811,6 +832,20 @@ in
           group = cfg.group;
           home = cfg.dataDir;
           createHome = true;
+        }
+        // lib.optionalAttrs cfg.isolation.enable {
+          subUidRanges = [
+            {
+              startUid = cfg.isolation.subIdStart;
+              count = cfg.isolation.subIdCount;
+            }
+          ];
+          subGidRanges = [
+            {
+              startGid = cfg.isolation.subIdStart;
+              count = cfg.isolation.subIdCount;
+            }
+          ];
         };
         users.groups.${cfg.group} = { };
 
@@ -911,7 +946,16 @@ in
             KillMode = "process";
             Restart = "on-failure";
             RestartSec = 2;
+          }
+          // lib.optionalAttrs cfg.isolation.enable {
+            # The controller moves into <own>/controller and puts session
+            # cgroups under <own>/sessions (#388).
+            Delegate = "cpu memory pids";
           };
+        }
+        // lib.optionalAttrs cfg.isolation.enable {
+          # newuidmap/newgidmap setuid wrappers (security.wrappers).
+          path = path ++ [ "/run/wrappers" ];
         };
 
         # Full stop at system shutdown: end every session and reap hosts. Ordered

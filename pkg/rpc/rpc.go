@@ -463,6 +463,11 @@ type SessionSandboxResult struct {
 	Sandbox *acphost.Sandbox `json:"sandbox,omitempty"`
 	Argv    []string         `json:"argv,omitempty"`
 	Error   string           `json:"error,omitempty"`
+	// User and Cgroup are the pool's isolation (#388); CgroupPath is the
+	// session's cgroup directory.
+	User       *acphost.User   `json:"user,omitempty"`
+	Cgroup     *acphost.Cgroup `json:"cgroup,omitempty"`
+	CgroupPath string          `json:"cgroup_path,omitempty"`
 }
 
 // SessionPromptParams names the session whose next prompt to show.
