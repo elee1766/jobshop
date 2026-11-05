@@ -52,6 +52,9 @@ type Driver struct {
 	// IsBusy reports a transaction that lost a write race and may be
 	// rerun (SQLITE_BUSY on a deferred upgrade). Nil means never.
 	IsBusy func(err error) bool
+	// Collection opens store collections (#579). Nil means the backend
+	// has none.
+	Collection CollectionOpener
 }
 
 // Store is the backend-neutral ticket store over a Driver. Claims and
@@ -93,6 +96,12 @@ func (s *Store) Close() error { return s.db.Close() }
 const busyTries = 16
 
 func (s *Store) tx(ctx context.Context, fn func(q sqlcdb.Querier) error) error {
+	return s.sqlTx(ctx, func(tx *sql.Tx) error { return fn(s.drv.Bind(tx)) })
+}
+
+// sqlTx runs fn in a write transaction, rerunning it when it loses a
+// write race. Collections (#579) use it with plain SQL.
+func (s *Store) sqlTx(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	var err error
 	for try := range busyTries {
 		if err = s.txOnce(ctx, fn); !s.isBusy(err) {
@@ -131,13 +140,13 @@ func (s *Store) isBusy(err error) bool {
 	return err != nil && s.drv.IsBusy != nil && s.drv.IsBusy(err)
 }
 
-func (s *Store) txOnce(ctx context.Context, fn func(q sqlcdb.Querier) error) error {
+func (s *Store) txOnce(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := fn(s.drv.Bind(tx)); err != nil {
+	if err := fn(tx); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

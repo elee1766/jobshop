@@ -111,6 +111,7 @@ Subcommands:
 | slog to OTel | `go.opentelemetry.io/contrib/bridges/otelslog` | v0.21.0 |
 | Tests | `github.com/stretchr/testify` | v1.12.1 |
 | Typed SQL (build-time codegen) | `github.com/sqlc-dev/sqlc` | v1.31.1 |
+| Dynamic SQL (store collections) | `github.com/nullism/bqb` (2026-11-05, #579): small, MIT, no dependencies; builds the collection queries sqlc cannot express (filters from a spec), with `?` (SQLite) or `$n` (Postgres) placeholders, so we write no SQL builder of our own | v1.7.4 |
 | Linux syscalls | `golang.org/x/sys/unix` | v0.49.0 |
 | `/proc` parsing (PID start time) | `github.com/prometheus/procfs` | v0.23.0 |
 | Matrix client-server API (gateway) | `maunium.net/go/mautrix` (2026-11-02, #123): the maintained Go Matrix client, used by the mautrix bridges; pure Go without its optional crypto, so `CGO_ENABLED=0` holds | v0.32.0 |
