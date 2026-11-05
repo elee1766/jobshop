@@ -78,3 +78,6 @@ adjusts tickets. (This supersedes "first message" above.)
   `TestEscalationChatHolds` (label and guard paths, question skipped, one
   chat per hold), `TestEscalationChatSweepsLabel`,
   `TestEscalationChatPowers` (grant and its limits).
+
+2026-11-05 (#566): prompts use `{{.ticket}}` only; `${ticket}` was
+removed. See `docs/notes/566-drop-dollar-templates.md`.

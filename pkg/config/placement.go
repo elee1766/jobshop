@@ -156,13 +156,13 @@ func (c *Config) checkPlacement(w *Workflow, s *Step) error {
 		if !strings.Contains(o.When, "==") && !strings.Contains(o.When, "!=") {
 			return fmt.Errorf("placement option %d: when %q: want A == B or A != B", i, o.When)
 		}
-		vs, err := refs(o.When, w.Template)
+		vs, err := refs(o.When)
 		if err != nil {
 			return fmt.Errorf("placement option %d when: %w", i, err)
 		}
 		for _, v := range vs {
 			if _, ok := w.PackVars[v]; !ok && !slices.Contains(w.Vars, v) {
-				return fmt.Errorf("placement option %d: when uses %s, not in workflow vars or pack vars", i, placeholder(v, w.Template))
+				return fmt.Errorf("placement option %d: when uses %s, not in workflow vars or pack vars", i, placeholder(v))
 			}
 		}
 	}

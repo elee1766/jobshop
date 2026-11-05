@@ -34,13 +34,13 @@ func TestPlacementChecks(t *testing.T) {
 		s    Step
 		want string
 	}{
-		{"ok", Step{Placement: &Placement{Required: []string{"pr:${pr}"}, Options: []PlacementOption{opt("a"), {Pool: "b", When: "${risk} != high"}}}}, ""},
+		{"ok", Step{Placement: &Placement{Required: []string{"pr:{{.pr}}"}, Options: []PlacementOption{opt("a"), {Pool: "b", When: "{{.risk}} != high"}}}}, ""},
 		{"with pool", Step{Pool: "a", Placement: &Placement{Options: []PlacementOption{opt("a")}}}, "set one or the other"},
 		{"no options", Step{Placement: &Placement{}}, "at least one option"},
 		{"bad prefer", Step{Placement: &Placement{PreferFor: "soon", Options: []PlacementOption{opt("a")}}}, "prefer_for"},
 		{"bad pool", Step{Placement: &Placement{Options: []PlacementOption{opt("nope")}}}, "unknown pool"},
-		{"bad when", Step{Placement: &Placement{Options: []PlacementOption{{Pool: "a", When: "${risk}"}}}}, "A == B"},
-		{"unknown var", Step{Placement: &Placement{Options: []PlacementOption{{Pool: "a", When: "${z} == 1"}}}}, "not in workflow vars"},
+		{"bad when", Step{Placement: &Placement{Options: []PlacementOption{{Pool: "a", When: "{{.risk}}"}}}}, "A == B"},
+		{"unknown var", Step{Placement: &Placement{Options: []PlacementOption{{Pool: "a", When: "{{.z}} == 1"}}}}, "not in workflow vars"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := c.checkPlacement(w, &tt.s)
@@ -53,8 +53,8 @@ func TestPlacementChecks(t *testing.T) {
 		})
 	}
 
-	p := &Placement{Required: []string{"pr:${pr}"}, Options: []PlacementOption{
-		{Pool: "b", Weight: 10, When: "${risk} != high"},
+	p := &Placement{Required: []string{"pr:{{.pr}}"}, Options: []PlacementOption{
+		{Pool: "b", Weight: 10, When: "{{.risk}} != high"},
 		{Pool: "a", Resources: []string{"big"}, Weight: 100},
 	}}
 	got, err := c.ResolvePlacement(w, p, map[string]any{"pr": "7", "risk": "low"})

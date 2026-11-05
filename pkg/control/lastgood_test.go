@@ -44,7 +44,7 @@ func TestStartWithBadPack(t *testing.T) {
 	require.NoError(t, err)
 
 	// The pack now needs a var this binary does not set.
-	write("p/pack.yaml", "pools:\n  dev: {agent: a, dir: /w, max_sessions: 0, prompt: \"hi ${pack_newvar}\"}\n")
+	write("p/pack.yaml", "pools:\n  dev: {agent: a, dir: /w, max_sessions: 0, prompt: \"hi {{.pack_newvar}}\"}\n")
 	ctx, cancel = context.WithCancel(t.Context())
 	done = make(chan error, 1)
 	go func() { done <- control.Run(ctx, root, control.Options{Tick: time.Hour}) }()

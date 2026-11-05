@@ -17,7 +17,7 @@ func TestLastGood(t *testing.T) {
 	pack, err := filepath.Abs("../../packs/selfdev")
 	require.NoError(t, err)
 	writeFiles(t, dir, map[string]string{
-		"p/pack.yaml":  "pools:\n  dev: {agent: a, dir: /w, prompt: \"hi ${who}\"}\n",
+		"p/pack.yaml":  "pools:\n  dev: {agent: a, dir: /w, prompt: \"hi {{.who}}\"}\n",
 		"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    vars: {repo: /src, agent: a}\n",
 	})
 	r := Root{Dir: dir}

@@ -385,6 +385,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   (#352, `docs/notes/352-pack-docs.md`).
 - Pack templates in Go `text/template` behind `template: go`; in-repo
   packs converted, `${}` still loads (#383, `docs/notes/383-go-templates.md`).
+- `${name}` pack syntax removed; Go templates by default, leftover
+  `${name}` is a load error (#566, `docs/notes/566-drop-dollar-templates.md`).
 - `jobshop wait add|list|clear`: tickets park on a PR review, checks,
   PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
 - Write keys: remote key or hidden GitHub marker is the record, local
@@ -1318,6 +1320,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   run and trigger vars later) with one flat var map instead of
   `.pack`/`.vars` namespaces, so prompts read `{{.issue}}` and the
   migration is a mechanical rewrite. Whole-value `{{.x}}` keeps its type.
+- (2026-11-05, #566) `${name}` pack templates removed: Go templates are
+  the only syntax and the default, `template: go` is a no-op for one
+  release, and leftover `${name}` in a pack is a load error so a stale
+  pack fails `config check` before self-deploy switches to it.
+  `${SESSION_DIR}` in agent args is allowlisted (controller expansion).
 - Waits on outside state are `fields.wait` on tasks and steps
   (2026-11-04, #381), typed engine data, not labels or a new column:
   the ready and claim queries skip a ticket with a wait. The controller

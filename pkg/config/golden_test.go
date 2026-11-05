@@ -82,7 +82,6 @@ packs:
 		}
 		r.Key, err = tr.Run.Fill(r.Key, fire)
 		require.NoError(t, err, n)
-		r.Template = ""
 		tr.Run = &r
 		c.Triggers[n] = tr
 	}

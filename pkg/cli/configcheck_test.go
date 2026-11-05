@@ -29,8 +29,8 @@ func TestConfigCheck(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o700))
 		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
 	}
-	write("old/op/pack.yaml", "pools:\n  op:\n    agent: a\n    repo: ${repo}\n")
-	write("new/op/pack.yaml", "pools:\n  op:\n    agent: a\n    repo: ${jobshop_repo}\n")
+	write("old/op/pack.yaml", "pools:\n  op:\n    agent: a\n    repo: \"{{.repo}}\"\n")
+	write("new/op/pack.yaml", "pools:\n  op:\n    agent: a\n    repo: \"{{.jobshop_repo}}\"\n")
 	cfg := filepath.Join(dir, "jobshop.yaml")
 	write("jobshop.yaml", "projects:\n  js: {}\nagents:\n  a:\n    command: x\npacks:\n  - path: "+filepath.Join(dir, "old/op")+"\n    vars: {repo: /src}\n")
 

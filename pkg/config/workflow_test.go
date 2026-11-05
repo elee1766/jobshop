@@ -23,19 +23,19 @@ workflows:
     escalate_pool: plan
     steps:
       - {id: implement, pool: dev, retries: 3, prompt_file: prompts/implement.md,
-         title: "Implement #${issue}"}
+         title: "Implement #{{.issue}}"}
       - {id: review-merge, pool: refinery, retries: 2, prompt_file: prompts/merge.md,
-         title: "Review and merge PR for #${issue}"}
+         title: "Review and merge PR for #{{.issue}}"}
       - {id: post-merge, pool: refinery, retries: 2, prompt_file: prompts/post-merge.md,
-         title: "Check master CI and self-deploy for #${issue}"}
+         title: "Check master CI and self-deploy for #{{.issue}}"}
   ci-repair:
     vars: [sha]
     escalate_pool: plan
     steps:
       - {id: fix, pool: dev, retries: 2, prompt_file: prompts/ci-fix.md,
-         title: "Fix red master CI at ${sha}"}
+         title: "Fix red master CI at {{.sha}}"}
       - {id: merge, pool: refinery, retries: 2, prompt_file: prompts/merge.md,
-         title: "Merge CI fix for ${sha}"}
+         title: "Merge CI fix for {{.sha}}"}
   blocker-check:
     vars: [ticket, issue]
     issue: issue
@@ -43,17 +43,17 @@ workflows:
     escalate_pool: plan
     steps:
       - {id: assess, pool: plan, retries: 1, prompt_file: prompts/blocker.md,
-         title: "Re-check blocker on ${ticket}"}
+         title: "Re-check blocker on {{.ticket}}"}
 `
 
 func designFiles() map[string]string {
 	return map[string]string{
 		"p/pack.yaml":             designPack,
-		"p/prompts/implement.md":  "Implement issue ${issue} in ${repo}.\n",
-		"p/prompts/merge.md":      "Merge it. Cost: $$5.\n",
+		"p/prompts/implement.md":  "Implement issue {{.issue}} in {{.repo}}.\n",
+		"p/prompts/merge.md":      "Merge it. Cost: $5.\n",
 		"p/prompts/post-merge.md": "Check master.\n",
-		"p/prompts/ci-fix.md":     "Fix ${sha}.\n",
-		"p/prompts/blocker.md":    "Re-check ${ticket} (#${issue}).\n",
+		"p/prompts/ci-fix.md":     "Fix {{.sha}}.\n",
+		"p/prompts/blocker.md":    "Re-check {{.ticket}} (#{{.issue}}).\n",
 		"jobshop.yaml":            hostBase + "packs:\n  - path: p\n    vars: {repo: /src}\n",
 	}
 }
@@ -72,10 +72,10 @@ func TestWorkflowsLoad(t *testing.T) {
 	require.Len(t, pr.Steps, 3)
 	assert.Equal(t, []string{"implement", "review-merge", "post-merge"},
 		[]string{pr.Steps[0].ID, pr.Steps[1].ID, pr.Steps[2].ID})
-	assert.Equal(t, "Implement #${issue}", pr.Steps[0].Title, "run vars stay templates")
-	assert.Equal(t, "Implement issue ${issue} in ${repo}.\n", pr.Steps[0].Prompt,
+	assert.Equal(t, "Implement #{{.issue}}", pr.Steps[0].Title, "run vars stay templates")
+	assert.Equal(t, "Implement issue {{.issue}} in {{.repo}}.\n", pr.Steps[0].Prompt,
 		"prompt_file read, templates kept for run start")
-	assert.Equal(t, "Merge it. Cost: $$5.\n", pr.Steps[1].Prompt)
+	assert.Equal(t, "Merge it. Cost: $5.\n", pr.Steps[1].Prompt)
 	assert.Empty(t, pr.Steps[0].PromptFile)
 	assert.Equal(t, 3, pr.Steps[0].RetryLimit())
 	assert.Equal(t, map[string]any{"repo": "/src", PackPrefixVar: ""}, pr.PackVars)
@@ -103,8 +103,8 @@ func TestWorkflowErrors(t *testing.T) {
 		{"empty steps", "  w:\n    vars: [x]\n", "at least one step"},
 		{"prompt and prompt_file", "  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p, prompt_file: x.md}\n", "steps[0]: set prompt or prompt_file, not both"},
 		{"neither prompt nor prompt_file", "  w:\n    steps:\n      - {id: s, pool: dev, title: t}\n", "step s: set prompt or prompt_file"},
-		{"unknown title var", "  w:\n    steps:\n      - {id: s, pool: dev, title: \"t ${who}\", prompt: p}\n", "title uses ${who}, not in workflow vars or pack vars"},
-		{"unknown prompt var", "  w:\n    vars: [a]\n    steps:\n      - {id: s, pool: dev, title: t, prompt: \"${a} ${b}\"}\n", "prompt uses ${b}"},
+		{"unknown title var", "  w:\n    steps:\n      - {id: s, pool: dev, title: \"t {{.who}}\", prompt: p}\n", "title uses {{.who}}, not in workflow vars or pack vars"},
+		{"unknown prompt var", "  w:\n    vars: [a]\n    steps:\n      - {id: s, pool: dev, title: t, prompt: \"{{.a}} {{.b}}\"}\n", "prompt uses {{.b}}"},
 		{"issue not in vars", "  w:\n    vars: [sha]\n    issue: issue\n    steps:\n      - " + step + "\n", `issue "issue" is not in vars`},
 		{"issue without repo", "  w:\n    vars: [issue]\n    issue: issue\n    steps:\n      - " + step + "\n", "repo (owner/name) is required"},
 		{"bad repo", "  w:\n    vars: [issue]\n    issue: issue\n    repo: /src\n    steps:\n      - " + step + "\n", `repo "/src" must be owner/name`},
@@ -124,8 +124,7 @@ func TestWorkflowErrors(t *testing.T) {
 		{"http bad method", "  w:\n    steps:\n      - {id: s, type: http, url: http://x, method: TRACE}\n", `method "TRACE"`},
 		{"bad timeout", "  w:\n    steps:\n      - {id: s, type: command, run: x, timeout: soon}\n", `timeout "soon"`},
 		{"bad on_restart", "  w:\n    steps:\n      - {id: s, type: command, run: x, on_restart: maybe}\n", `on_restart "maybe"`},
-		{"later step output", "  w:\n    steps:\n      - {id: a, type: command, run: 'echo ${steps.b.output}'}\n      - {id: b, type: command, run: x}\n", `no earlier step "b"`},
-		{"unknown run var", "  w:\n    steps:\n      - {id: a, type: command, run: 'echo ${nope}'}\n", "${nope} is not in workflow vars"},
+		{"unknown run var", "  w:\n    steps:\n      - {id: a, type: command, run: 'echo {{.nope}}'}\n", "{{.nope}} is not in workflow vars"},
 		{"unknown key", "  w:\n    steps:\n      - {id: s, pool: dev, title: t, prompt: p, pol: x}\n", "pol"},
 		{"pack_vars set by user", "  w:\n    pack_vars: {x: 1}\n    steps:\n      - " + step + "\n", "pack_vars is set by the loader"},
 		{"needs later step", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p, needs: [b]}\n      - {id: b, pool: dev, title: t, prompt: p}\n", `step a: needs "b", which is not an earlier step`},
@@ -153,26 +152,26 @@ func TestWorkflowErrors(t *testing.T) {
 func TestWorkflowPackVarAndOverride(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
-		"p/pack.yaml":  "pools:\n  dev: {agent: a, dir: /w}\n  plan: {agent: a, dir: /w}\nworkflows:\n  w:\n    steps:\n      - {id: s, pool: dev, title: \"in ${repo}\", prompt: p}\n",
+		"p/pack.yaml":  "pools:\n  dev: {agent: a, dir: /w}\n  plan: {agent: a, dir: /w}\nworkflows:\n  w:\n    steps:\n      - {id: s, pool: dev, title: \"in {{.repo}}\", prompt: p}\n",
 		"jobshop.yaml": hostBase + "packs:\n  - path: p\n    vars: {repo: /src}\nworkflows:\n  w:\n    escalate_pool: plan\n",
 	})
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
 	w := c.Workflows["w"]
 	assert.Equal(t, "plan", w.EscalatePool)
-	assert.Equal(t, "in ${repo}", w.Steps[0].Title)
+	assert.Equal(t, "in {{.repo}}", w.Steps[0].Title)
 	assert.Equal(t, "/src", w.PackVars["repo"])
 	assert.Len(t, c.Sources["workflows.w"], 2)
 }
 
 func TestTriggerRun(t *testing.T) {
-	base := hostBase + "pools:\n  dev: {agent: a, dir: /w}\nworkflows:\n  fix:\n    vars: [sha, why]\n    steps:\n      - {id: s, pool: dev, title: \"Fix ${sha}\", prompt: p}\ntriggers:\n  t:\n"
-	c, err := Parse([]byte(base + "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: \"${check_output}\", why: red}, key: \"red-${check_output}\"}\n"))
+	base := hostBase + "pools:\n  dev: {agent: a, dir: /w}\nworkflows:\n  fix:\n    vars: [sha, why]\n    steps:\n      - {id: s, pool: dev, title: \"Fix {{.sha}}\", prompt: p}\ntriggers:\n  t:\n"
+	c, err := Parse([]byte(base + "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: \"{{.check_output}}\", why: red}, key: \"red-{{.check_output}}\"}\n"))
 	require.NoError(t, err)
 	r := c.Triggers["t"].Run
 	require.NotNil(t, r)
 	assert.Nil(t, c.Triggers["t"].Ticket)
-	assert.Equal(t, "red-${check_output}", r.Key, "template kept for fire time")
+	assert.Equal(t, "red-{{.check_output}}", r.Key, "template kept for fire time")
 
 	tests := []struct{ name, yaml, want string }{
 		{"both", "    when: {check: 'true'}\n    ticket: {title: x}\n    run: {workflow: fix, vars: {sha: a, why: b}}\n", "exactly one of ticket and run"},
@@ -180,7 +179,7 @@ func TestTriggerRun(t *testing.T) {
 		{"unknown workflow", "    when: {check: 'true'}\n    run: {workflow: nope}\n", `unknown workflow "nope"`},
 		{"missing var", "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: a}}\n", "needs var why"},
 		{"extra var", "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: a, why: b, x: c}}\n", `no var "x"`},
-		{"output without check", "    when: {ready_below: 1}\n    run: {workflow: fix, vars: {sha: a, why: b}, key: \"${check_output}\"}\n", "needs when.check"},
+		{"output without check", "    when: {ready_below: 1}\n    run: {workflow: fix, vars: {sha: a, why: b}, key: \"{{.check_output}}\"}\n", "needs when.check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -37,7 +37,7 @@ workflows:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall ${signal} ${subject}", prompt: "x"}
+      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: "x"}
   pr-work:
     vars: [issue]
     issue: issue
@@ -45,7 +45,7 @@ workflows:
     tracker: linear
     linear_workspace: acme
     steps:
-      - {id: implement, pool: dev, title: "Implement ${issue}", prompt: x}
+      - {id: implement, pool: dev, title: "Implement {{.issue}}", prompt: x}
 triggers:
   stall:
     when:
@@ -53,7 +53,7 @@ triggers:
         - {signal: linear_issue_no_run, team: ENG, states: "Todo, Backlog", labels: agent, skip_labels: "needs-human", poll: 5m}
     run:
       workflow: stall-check
-      vars: {signal: "${stall_signal}", subject: "${stall_subject}", detail: "${stall_detail}"}
+      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
 `
 
 // TestLinearIntake (#287): a matching Linear issue with no run fires one

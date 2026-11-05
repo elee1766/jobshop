@@ -1,7 +1,6 @@
 # Self-development pack: agents that build Jobshop itself. An instance of
 # packs/github with Jobshop's values. Vars: repo (checkout path), agent,
 # dev_sessions. See README.md.
-template: go
 defaults:
   dev_sessions: 2
   refinery_sessions: 1

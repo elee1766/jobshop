@@ -191,7 +191,7 @@ func (c *Controller) escalationChat(ctx context.Context, t store.Ticket) (pool, 
 	if e == nil || e.ChatPool == "" || tmpl == "" {
 		return "", "", x, false
 	}
-	out, err := config.Fill(tmpl, e.Template, map[string]any{
+	out, err := config.Fill(tmpl, map[string]any{
 		"ticket": t.ID, "title": t.Title, "cause": x.kind, "reason": x.reason, "body": t.Body,
 		"held": x.held, "held_title": x.heldTitle, "worker": x.worker,
 		"run": x.run, "workflow": x.workflow, "step": x.step, "issue_ref": x.issueRef,

@@ -176,15 +176,12 @@ type StallSignal struct {
 }
 
 // TriggerRun starts a workflow run, like `jobshop run start`. Vars and
-// Key are templates; ${check_output} is the first line of the check's
+// Key are templates; {{.check_output}} is the first line of the check's
 // trimmed stdout. An open run with the same workflow and key dedups.
 type TriggerRun struct {
 	Workflow string            `yaml:"workflow"`
 	Vars     map[string]string `yaml:"vars"`
 	Key      string            `yaml:"key"`
-	// Template is the declaring pack's syntax (SyntaxGo or ""), set by
-	// the loader.
-	Template string `yaml:"template,omitempty"`
 }
 
 // CheckOutputVar is the template var holding a trigger check's output.
@@ -1112,7 +1109,7 @@ var namePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 // RepoPattern is a GitHub owner/name.
 var RepoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
 
-// varName is a ${name} reference name (see varPattern).
+// varName is a valid template var name.
 var varName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // Load reads and validates the root's config.

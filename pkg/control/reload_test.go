@@ -199,14 +199,14 @@ func TestConfigShow(t *testing.T) {
 
 	// A workflow added to the pack shows up, with its source, after reload.
 	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName),
-		[]byte("pools:\n  dev:\n    prompt: from-pack\n    max_sessions: 3\nworkflows:\n  w:\n    vars: [issue]\n    steps:\n      - {id: s, pool: dev, title: \"Do #${issue}\", prompt: p}\n"), 0o600))
+		[]byte("pools:\n  dev:\n    prompt: from-pack\n    max_sessions: 3\nworkflows:\n  w:\n    vars: [issue]\n    steps:\n      - {id: s, pool: dev, title: \"Do #{{.issue}}\", prompt: p}\n"), 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	res = rpc.ConfigShowResult{}
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodConfigShow, struct{}{}, &res))
 	w := res.Config["workflows"].(map[string]any)["w"].(map[string]any)
 	steps := w["steps"].([]any)
 	require.Len(t, steps, 1)
-	assert.Equal(t, "Do #${issue}", steps[0].(map[string]any)["title"])
+	assert.Equal(t, "Do #{{.issue}}", steps[0].(map[string]any)["title"])
 	assert.Equal(t, []string{filepath.Join(pack, config.PackFileName)}, res.Sources["workflows.w"])
 }
 

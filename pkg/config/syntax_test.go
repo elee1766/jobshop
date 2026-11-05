@@ -8,14 +8,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestGoTemplatePack: a template: go pack (#383) renders conditionals,
-// defaults and loops, keeps whole-value vars typed, escapes a literal
-// {{, defers run vars to run start, and loads next to a ${} pack.
+// TestGoTemplatePack: a pack (#383) renders conditionals, defaults and
+// loops, keeps whole-value vars typed, escapes a literal {{ and defers
+// run vars to run start. Go is the default with no template: key (#566);
+// template: go still loads.
 func TestGoTemplatePack(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
-		"g/pack.yaml": `template: go
-defaults: {n: 2, team: "", repos: [a, b], cmd: ""}
+		"g/pack.yaml": `defaults: {n: 2, team: "", repos: [a, b], cmd: ""}
 pools:
   dev:
     agent: a
@@ -33,8 +33,9 @@ workflows:
       - {id: s, pool: dev, title: "Fix {{.sha}}", prompt: "{{if .team}}team {{.team}}{{else}}no team{{end}} at {{.sha}}"}
 `,
 		"g/dev.md": "{{range .repos}}- {{.}}\n{{end}}run {{.cmd | default \"go test ./...\"}}\nGitHub: ${{\"{{\"}} github.sha }}\n",
-		"d/pack.yaml": `pools:
-  old: {agent: a, repo: /w, max_sessions: "${n}", prompt: "old ${n} $$x"}
+		"d/pack.yaml": `template: go
+pools:
+  old: {agent: a, repo: /w, max_sessions: "{{.n}}", prompt: "old {{.n}} $x"}
 `,
 		"jobshop.yaml": hostBase + "packs:\n  - path: g\n  - path: d\n    vars: {n: 3}\n",
 	})
@@ -43,11 +44,10 @@ workflows:
 	assert.Equal(t, 2, c.Pools["dev"].MaxSessions, "whole-value var stays a number")
 	assert.Equal(t, "- a\n- b\nrun go test ./...\nGitHub: ${{ github.sha }}\n", c.Pools["dev"].Prompt)
 	assert.Equal(t, 3, c.Pools["old"].MaxSessions)
-	assert.Equal(t, "old 3 $x", c.Pools["old"].Prompt, "${} packs still load")
+	assert.Equal(t, "old 3 $x", c.Pools["old"].Prompt, "template: go is a no-op")
 	assert.Empty(t, c.Warnings)
 
 	w := c.Workflows["w"]
-	assert.Equal(t, SyntaxGo, w.Template)
 	vars := map[string]any{"sha": "abc"}
 	for k, v := range w.PackVars {
 		vars[k] = v
@@ -91,7 +91,21 @@ func TestGoTemplatePackErrors(t *testing.T) {
 			"trigger var", "template: go\npools:\n  dev: {agent: a, repo: /w, prompt: x}\nworkflows:\n  w:\n    vars: [v]\n    steps: [{id: s, pool: dev, title: t, prompt: p}]\ntriggers:\n  t:\n    when: {check: x}\n    run: {workflow: w, vars: {v: \"{{.other}}\"}}\n", nil,
 			[]string{`var "other" is not set`},
 		},
-		{"bad syntax name", "template: jinja\n", nil, []string{`template: "jinja"`}},
+		{"bad syntax name", "template: jinja\n", nil, []string{"pack.yaml", `template: "jinja"`, "removed in #566"}},
+		{"empty template value", "template: dollar\n", nil, []string{`"dollar" is not supported`}},
+		{
+			"leftover ${name}", "pools:\n  dev: {agent: a, repo: /w, prompt: \"on ${repo}\"}\n", nil,
+			[]string{"pack.yaml", "pools.dev.prompt has ${repo}", "removed in #566", "{{.repo}}"},
+		},
+		{
+			"leftover ${name} in a step", "pools:\n  dev: {agent: a, repo: /w, prompt: x}\nworkflows:\n  w:\n    vars: [n]\n    steps: [{id: s, pool: dev, title: t, prompt: \"fix ${n}\"}]\n", nil,
+			[]string{"steps[0].prompt has ${n}"},
+		},
+		{
+			"leftover ${name} in a prompt file", "pools:\n  dev: {agent: a, repo: /w, prompt_file: p.md}\n",
+			map[string]string{"p/p.md": "repo ${repo}"},
+			[]string{"pools.dev.prompt_file has ${repo}"},
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -109,16 +123,16 @@ func TestGoTemplatePackErrors(t *testing.T) {
 	}
 }
 
-// TestGoTemplateLeftover: ${name} left in a template: go pack is a
-// missed migration; the loader warns.
-func TestGoTemplateLeftover(t *testing.T) {
+// TestSessionDirArg: ${SESSION_DIR} in a pack's agent args is not pack
+// syntax; it loads unescaped and is left for the controller (#566).
+func TestSessionDirArg(t *testing.T) {
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
-		"p/pack.yaml":  "template: go\npools:\n  dev: {agent: a, repo: /w, prompt: \"on ${repo}\"}\n",
+		"p/pack.yaml":  "agents:\n  j: {command: jcode, args: [acp, --socket, \"${SESSION_DIR}/jcode.sock\"]}\npools:\n  dev: {agent: j, repo: /w, prompt: x}\n",
 		"jobshop.yaml": hostBase + "packs:\n  - path: p\n",
 	})
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
-	require.Len(t, c.Warnings, 1)
-	assert.Contains(t, c.Warnings[0], "pools.dev.prompt has ${repo}")
+	assert.Equal(t, []string{"acp", "--socket", "${SESSION_DIR}/jcode.sock"}, c.Agents["j"].Args)
+	assert.Empty(t, c.Warnings)
 }

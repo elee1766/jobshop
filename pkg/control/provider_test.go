@@ -42,7 +42,7 @@ exit 0
   agent:
     vars: [issue]
     steps:
-      - {id: work, pool: dev, prompt: w, title: "Work ${issue}", needs_resources: [emu]}
+      - {id: work, pool: dev, prompt: w, title: "Work {{.issue}}", needs_resources: [emu]}
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
