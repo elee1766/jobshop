@@ -17,6 +17,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
+// testSystemRO is the host system mounts these tests' configs set, as a
+// host's config would (#625): the code adds none.
+const testSystemRO = "[/nix/store, /etc, /run/current-system, /bin, /usr/bin, /lib, /lib64, /usr/lib, /usr/lib64, /run/systemd/resolve, /run/nscd]"
+
 // bwrapWorks skips the test unless unprivileged bwrap runs here.
 func bwrapWorks(t *testing.T) {
 	t.Helper()
@@ -39,8 +43,8 @@ func TestSandboxedSession(t *testing.T) {
 	require.NoError(t, os.MkdirAll(work, 0o700))
 	// The test binary (host and agent) lives in a temp dir that the
 	// sandbox must see; it is bound through the agent command's dir.
-	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\n    env: {SANDBOX_PROBE: %q}\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n    sandbox: {backend: bubblewrap}\n",
-		os.Args[0], root.Dir+"|"+other, work)
+	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\n    env: {SANDBOX_PROBE: %q}\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: 1m\n    dir: %q\n    sandbox: {backend: bubblewrap, ro: %s}\n",
+		os.Args[0], root.Dir+"|"+other, work, testSystemRO)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	stop := start()
 	defer stop()

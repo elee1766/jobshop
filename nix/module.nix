@@ -81,6 +81,8 @@ let
         sandbox = {
           backend = "bubblewrap";
           inherit (cfg.sandbox) rw;
+          ro = cfg.sandbox.systemRO;
+          env_keep = cfg.sandbox.envKeep;
         }
         // ((base.defaults or { }).sandbox or { });
       };
@@ -698,6 +700,48 @@ in
         type = lib.types.listOf lib.types.str;
         default = [ ];
         description = "Dirs mounted read-only into every sandboxed session (settings.shared_tools).";
+      };
+      # Host paths and env, kept out of jobshop's code (#625).
+      systemRO = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "/nix/store"
+          "/etc"
+          "/run/current-system"
+          "/bin"
+          "/usr/bin"
+          "/lib64"
+          "/lib"
+          "/usr/lib"
+          "/usr/lib64"
+          "/run/systemd/resolve"
+          "/run/nscd"
+        ];
+        description = "System paths mounted read-only into every sandboxed session (defaults.sandbox.ro); missing ones are skipped.";
+      };
+      envKeep = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [
+          "HOME"
+          "USER"
+          "LOGNAME"
+          "LANG"
+          "LC_ALL"
+          "TZ"
+          "TERM"
+          "SSL_CERT_FILE"
+          "NIX_SSL_CERT_FILE"
+          "NIX_PATH"
+          "NIX_LD"
+          "NIX_LD_LIBRARY_PATH"
+          "GOPATH"
+          "GOCACHE"
+          "GOFLAGS"
+          "GOTOOLCHAIN"
+          "GIT_*"
+          "MISE_*"
+        ];
+        description = "Controller env names passed into sandboxed sessions (defaults.sandbox.env_keep); a trailing * keeps a prefix.";
       };
       rw = lib.mkOption {
         type = lib.types.listOf lib.types.str;
