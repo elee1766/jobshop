@@ -208,6 +208,31 @@ func TestWaitHeadMoved(t *testing.T) {
 	assert.ElementsMatch(t, []string{a.ID, b.ID}, readyIDs(t, c))
 }
 
+// TestWaitChecksConflicting: GitHub runs no pull_request CI on a PR that
+// conflicts with its base, so a checks wait on it is invalidated rather
+// than left to time out (#609). mergeable null (still computing) waits.
+func TestWaitChecksConflicting(t *testing.T) {
+	t.Parallel()
+	c, _, prs, threads := waitController(t)
+	ctx := t.Context()
+	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
+	prs.set(`{"state":"open","merged":false,"mergeable":null,"head":{"sha":"aaaa1111bbbb"}}`, `[[]]`, `[]`)
+	_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{
+		ID: a.ID, Reason: "ci",
+		Conds: []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"}},
+	})
+	require.NoError(t, err)
+	c.pollWaits(ctx, prs, threads)
+	assert.NotNil(t, waitOf(mustGet(t, c, a.ID)))
+
+	prs.set(`{"state":"open","merged":false,"mergeable":false,"mergeable_state":"dirty","head":{"sha":"aaaa1111bbbb"}}`, `[[]]`, `[]`)
+	c.pollWaits(ctx, prs, threads)
+	assert.Nil(t, waitOf(mustGet(t, c, a.ID)))
+	cs, err := c.store.Comments(ctx, a.ID)
+	require.NoError(t, err)
+	assert.Contains(t, cs[len(cs)-1].Body, "invalidated: acme/widget#5 conflicts with its base")
+}
+
 // TestWaitTimeoutAttention: past its timeout a wait is labeled
 // needs-human once and listed in attention with reason and owner; a
 // time condition and a reply clear waits.

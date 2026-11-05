@@ -25,7 +25,9 @@ Then do exactly one of these. A plain release of this step counts as a
 failed attempt (like a failed close). To wait for CI on a PR head, set
 `jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
 and end the turn: a wait is a deferral, not a failed attempt, and it
-resumes here within a minute of CI finishing. For master CI use
+resumes here within a minute of CI finishing. If it resumes with
+"conflicts with its base", rebase the PR head on `origin/master`, resolve,
+`push --force-with-lease`, and set the wait again. For master CI use
 `github.checks:repo={{.repo}},sha=<sha>` the same way. Do not poll with
 `sleep` or defer with a fixed `release --until` for CI.
 

@@ -47,6 +47,9 @@ type prInfo struct {
 	Head   string
 	State  string // open or closed
 	Merged bool
+	// Conflicting: GitHub reports mergeable false. No pull_request CI runs
+	// on such a PR, so a checks wait on it would never resolve.
+	Conflicting bool
 }
 
 type prReview struct {
@@ -474,6 +477,9 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		return false, "", errInvalidated{fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head))}
 	}
 	if cd.Type == store.WaitChecks {
+		if pr.Conflicting {
+			return false, "", errInvalidated{ref + " conflicts with its base; CI will not run until it is rebased"}
+		}
 		return evalChecks(ctx, pass, cd, pr.Head)
 	}
 	rs, err := pass.reviewsOf(ctx, cd.Repo, cd.PR)
@@ -656,16 +662,17 @@ func parseIssue(b []byte) (issueInfo, error) {
 // parsePR reads GET /repos/{repo}/pulls/{n}.
 func parsePR(b []byte) (prInfo, error) {
 	var r struct {
-		State  string `json:"state"`
-		Merged bool   `json:"merged"`
-		Head   struct {
+		State     string `json:"state"`
+		Merged    bool   `json:"merged"`
+		Mergeable *bool  `json:"mergeable"` // null while GitHub computes it
+		Head      struct {
 			SHA string `json:"sha"`
 		} `json:"head"`
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
 		return prInfo{}, fmt.Errorf("pull request: %w", err)
 	}
-	return prInfo{Head: r.Head.SHA, State: r.State, Merged: r.Merged}, nil
+	return prInfo{Head: r.Head.SHA, State: r.State, Merged: r.Merged, Conflicting: r.Mergeable != nil && !*r.Mergeable}, nil
 }
 
 // parseReviews reads the slurped pages of GET .../pulls/{n}/reviews.

@@ -399,6 +399,8 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `${name}` is a load error (#566, `docs/notes/566-drop-dollar-templates.md`).
 - `jobshop wait add|list|clear`: tickets park on a PR review, checks,
   PR state, a thread reply or a time (#381, `docs/notes/381-waits.md`).
+- A checks wait on a conflicting PR is invalidated, not left to time out
+  (#609, `docs/notes/609-wait-conflicting-pr.md`).
 - Write keys: remote key or hidden GitHub marker is the record, local
   rows pruned after 48h (#415, `docs/notes/415-write-key-cache.md`).
 - Generic HMAC ingest endpoints with a payload map, and `jobshop ingest
