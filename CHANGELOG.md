@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/elee1766/jobshop/compare/v0.1.3...v0.1.4) (2026-11-05)
+
+
+### Features
+
+* **cli:** report ci-failures groups failed-tests artifacts for the planner (JOB-13) ([#711](https://github.com/elee1766/jobshop/issues/711)) ([a8f77a7](https://github.com/elee1766/jobshop/commit/a8f77a7b29550282e93a37a318d5fd9bd8e2d611))
+
 ## [0.1.3](https://github.com/elee1766/jobshop/compare/v0.1.2...v0.1.3) (2026-11-05)
 
 
