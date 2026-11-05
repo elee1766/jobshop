@@ -741,6 +741,11 @@ Flags:
       --worker=STRING    Worker id (default <host>-<pid>).
       --every=1s         Pause when nothing is pending, without --once. Each
                          claim is the worker's heartbeat.
+      --dispatch         Also dispatch admitted items through the controller
+                         (#633). Safe alongside other dispatchers; set
+                         ingest.dispatch external to stop the controller's own.
+      --no-admit         Only dispatch (with --dispatch), for ingest.workers
+                         internal.
 ```
 
 ## jobshop ingest workers
