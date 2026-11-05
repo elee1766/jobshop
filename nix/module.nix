@@ -111,8 +111,16 @@ let
   # Journal search (#530): the local VictoriaLogs, or an external url.
   vl = cfg.journal.victorialogs;
   vlUrl = if vl.url != "" then vl.url else lib.optionalString vl.enable "http://${vl.listenAddress}";
+  # services.jobshop.store (#632): only set when the driver is chosen.
+  storeAttrs = lib.optionalAttrs (cfg.store.driver != null) {
+    store = {
+      inherit (cfg.store) driver;
+    }
+    // lib.optionalAttrs (cfg.store.dsnFile != null) { dsn_file = toString cfg.store.dsnFile; };
+  };
   moduleAttrs =
     telemetryAttrs
+    // storeAttrs
     // lib.optionalAttrs (vlUrl != "") {
       journal.victorialogs = {
         url = vlUrl;
@@ -599,6 +607,25 @@ in
       description = "systemd EnvironmentFile for secrets, e.g. tokens referenced as \${VAR} in telemetry.otlpHeaders. Kept out of the Nix store. Like environment, it is inherited by session hosts and agents.";
     };
 
+    store = {
+      driver = lib.mkOption {
+        type = lib.types.nullOr (
+          lib.types.enum [
+            "sqlite"
+            "postgres"
+          ]
+        );
+        default = null;
+        description = "Ticket store backend (config store.driver, #493). Null: not set, SQLite at dataDir/jobshop.db. Copy the data first with `jobshop admin store migrate` (docs/verify/postgres-cutover.md).";
+      };
+      dsnFile = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "/run/secrets/jobshop-pg-dsn";
+        description = "File holding the Postgres DSN (config store.dsn_file). Kept out of the Nix store; required with driver postgres.";
+      };
+    };
+
     telemetry = {
       metricsListen = lib.mkOption {
         type = lib.types.str;
@@ -1043,6 +1070,10 @@ in
         );
 
         assertions = [
+          {
+            assertion = cfg.store.driver != "postgres" || cfg.store.dsnFile != null;
+            message = "services.jobshop.store: driver postgres needs dsnFile.";
+          }
           {
             assertion = lib.length deployWorkspaces <= 1;
             message = "services.jobshop.workspaces: selfDeploy is set on more than one workspace (${lib.concatStringsSep ", " deployWorkspaces}).";
