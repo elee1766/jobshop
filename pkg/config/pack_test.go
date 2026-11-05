@@ -359,6 +359,43 @@ packs:
 	assert.Contains(t, c.Workflows["ci-repair"].Steps[1].Prompt, "Conflicts only in docs")
 }
 
+// TestGithubPackProposeTargets: the planner prompt has the proposal
+// rules by default and omits them with propose_targets false (#488).
+func TestGithubPackProposeTargets(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		extra string
+		want  bool
+	}{{"", true}, {", propose_targets: false", false}} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile` + tc.extra + `}
+`})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		p := c.Pools["plan"].Prompt
+		for _, s := range []string{"Proposing a target", "`gh issue create --label proposed", "never add the `target` label yourself", "-l proposed --meta"} {
+			if tc.want {
+				assert.Contains(t, p, s)
+			} else {
+				assert.NotContains(t, p, s)
+			}
+		}
+		if tc.want {
+			assert.NotContains(t, p, "comment that on the ticket and close it")
+		} else {
+			assert.Contains(t, p, "comment that on the ticket and close it")
+			assert.NotContains(t, p, "proposed")
+		}
+	}
+}
+
 // TestGithubPackGeneric: nothing in packs/github names the Jobshop repo.
 func TestGithubPackGeneric(t *testing.T) {
 	err := filepath.WalkDir("../../packs/github", func(path string, d fs.DirEntry, err error) error {

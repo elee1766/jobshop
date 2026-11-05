@@ -67,6 +67,10 @@ defaults:
   # controller opens one escalation chat per escalation ticket (#379).
   # Empty: escalation tickets only, no chat.
   escalation_chat_pool: ""
+  # The planner proposes the next target (label proposed) when work runs
+  # out; a human approves by relabeling it target (#488). false: only
+  # humans file targets.
+  propose_targets: true
 pools:
   dev:
     agent: "{{.agent}}"

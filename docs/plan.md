@@ -464,6 +464,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   drain, admission and dispatch (#453, `docs/notes/453-ingest-e2e-tests.md`).
 - Ingest end-to-end runbook for gasserver: receiver to session, dedupe,
   gap fill, split mode (#444, check `docs/verify/ingest.md`).
+- Planner proposes the next target (label `proposed`, var
+  `propose_targets`), listed in attention as a decision (#488,
+  `docs/notes/488-planner-proposals.md`).
 
 ## 5. What's next
 
@@ -599,6 +602,7 @@ Gateway config follow live check: `docs/verify/gateway-config-follow.md`
 Model config live check: `docs/verify/model-config.md` (#304).
 Shared mise live check: `docs/verify/sandbox-mise-shared.md` (#316).
 Waits live check: `docs/verify/waits.md` (#381).
+Planner proposals live check: `docs/verify/planner-proposals.md` (#488).
 Workspace sync with the controller down: `docs/verify/workspace-sync-controller-down.md`,
 note `docs/notes/475-sync-during-switch.md` (#475).
 
@@ -1270,6 +1274,10 @@ workflow and who starts it (planner or a trigger on blocked tickets).
 - CI's race run skips checkptr in modernc.org packages (2026-11-05,
   #433): translated C we do not maintain, a third of test CPU. Our code
   keeps checkptr and modernc keeps race instrumentation.
+- The planner proposes the next target when work runs out and a human
+  approves it by relabeling `proposed` to `target` (2026-11-05, #488).
+  The planner never sets `target` itself, so direction stays a human's
+  call while the pools no longer idle between phases.
 
 ## 7. Reference: behavior as built
 
