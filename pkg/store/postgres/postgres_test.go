@@ -81,6 +81,13 @@ func withDB(dsn, name string) string {
 // openTest returns a store on a fresh database cloned from the template.
 func openTest(t *testing.T, opt postgres.Options) *postgres.Store {
 	t.Helper()
+	s, _ := openNamed(t, opt)
+	return s
+}
+
+// openNamed is openTest that also returns the database name.
+func openNamed(t *testing.T, opt postgres.Options) (*postgres.Store, string) {
+	t.Helper()
 	dsn := os.Getenv(dsnEnv)
 	if dsn == "" {
 		t.Skip(dsnEnv + " is not set")
@@ -95,7 +102,7 @@ func openTest(t *testing.T, opt postgres.Options) *postgres.Store {
 		_ = s.Close()
 		_, _ = admin.ExecContext(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
-	return s
+	return s, name
 }
 
 func TestConformance(t *testing.T) {

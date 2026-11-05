@@ -67,6 +67,15 @@ func Run(t *testing.T, newStore Factory) {
 		{"ConcurrentResourceClaims", testConcurrentResourceClaims},
 		{"ClaimAfterSkippedBlocker", testClaimAfterSkippedBlocker},
 		{"CountLearnings", testCountLearnings},
+		{"CollectionSpec", testCollectionSpec},
+		{"CollectionPutGet", testCollectionPutGet},
+		{"CollectionUnique", testCollectionUnique},
+		{"CollectionUpdate", testCollectionUpdate},
+		{"CollectionClaim", testCollectionClaim},
+		{"CollectionListCount", testCollectionListCount},
+		{"CollectionDelete", testCollectionDelete},
+		{"CollectionSearch", testCollectionSearch},
+		{"CollectionConcurrentClaims", testCollectionConcurrentClaims},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

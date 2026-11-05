@@ -23,6 +23,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlq"
 )
 
 //go:embed migrations/*.sql
@@ -74,6 +75,7 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 		Classify:    classify,
 		RecallMatch: recallMatch,
 		IsBusy:      isBusy,
+		Dialect:     sqlq.Postgres,
 	}, opt)
 	if err != nil {
 		_ = db.Close()

@@ -440,6 +440,10 @@ type Store interface {
 	// Recall searches the index, best match first.
 	Recall(ctx context.Context, q RecallQuery) ([]RecallHit, error)
 
+	// Collection registers a collection of records (#579) and returns
+	// its handle. Registration is idempotent; call it once at startup.
+	Collection(ctx context.Context, spec CollectionSpec) (Collection, error)
+
 	// Close releases backend resources.
 	Close() error
 }
