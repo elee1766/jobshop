@@ -152,6 +152,9 @@
     notice = '';
     try {
       if (answering) {
+        // A bare number reads as picking a chat option, but it reaches
+        // the asking session verbatim (JOB-23 got "1").
+        if (/^\s*\d+[.)]?\s*$/.test(text) && !(await api.confirm('Send "' + text + '" to the asking session as the whole answer? It gets this text verbatim; write out the answer (for example "yes") if this picks an option from the chat.'))) return;
         await api.call('question.answer', { id: itemId, text });
         notice = 'Answer sent to the asking session';
       } else {

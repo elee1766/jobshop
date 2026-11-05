@@ -235,6 +235,11 @@ func (c *Controller) attentionPrompt(ctx context.Context, it rpc.AttentionItem, 
 		}
 	}
 	b.WriteString("\nThe operator opens this chat from Desk. Read the item with the jobshop CLI (read-only commands only: this session cannot write until the operator sends a message), then reply in a few lines: what blocks it, and the concrete actions available, as Desk's resolve buttons (approve, reject or dismiss for a decision; close, resume, unquarantine, clear wait) and the exact CLI commands. Do not act until the operator agrees.")
+	if it.Kind == rpc.AttentionQuestion {
+		// Desk's composer sends a question chat's text to the asking
+		// session verbatim, so a pick like "1" arrived as the answer.
+		b.WriteString(" Desk sends what the operator types here to the asking session as the answer, word for word, not to you. Do not offer numbered or lettered choices: give each option as the exact answer text to type, for example `yes, merge` or `no, hold`.")
+	}
 	return b.String()
 }
 

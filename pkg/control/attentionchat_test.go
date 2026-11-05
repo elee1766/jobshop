@@ -73,6 +73,7 @@ func TestAttentionPrestart(t *testing.T) {
 	passEventually(t, root.Dir, func() bool {
 		return strings.Contains(promptsFile(t, root), "Desk attention item: question "+q1.ID)
 	}, "the first turn gets the context prompt")
+	assert.Contains(t, promptsFile(t, root), "Do not offer numbered or lettered choices", "a question chat's options are answer text")
 
 	// Another pass starts nothing new.
 	pass(t, root.Dir, 2)

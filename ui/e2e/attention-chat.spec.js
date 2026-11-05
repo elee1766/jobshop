@@ -245,6 +245,12 @@ test('a question item: the answer goes through question.answer and the item clea
   await expect(page.getByTestId('answer-toggle')).toBeVisible();
   await expect(page.getByTestId('answer-toggle').locator('input')).toBeChecked();
   await expect(page.getByTestId('chat-send')).toHaveText('Answer');
+  // A bare number asks first: cancelled, nothing is sent.
+  await page.getByTestId('chat-input').fill('1');
+  await page.getByTestId('chat-input').press('Enter');
+  await expect(page.getByTestId('confirm')).toBeVisible();
+  await page.getByTestId('confirm').getByRole('button', { name: 'Cancel' }).click();
+  expect(calls.filter((c) => c.path === '/api/rpc/question.answer')).toHaveLength(0);
   answered = true;
   await page.getByTestId('chat-input').fill('use main');
   await page.getByTestId('chat-input').press('Enter');
