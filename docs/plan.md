@@ -300,6 +300,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
 - `jobshop linear create|update|ask|relate` with `--key` idempotency
   (`write_keys` table) and `--dry-run` (#280,
   `docs/notes/280-linear-write.md`).
+- `jobshop linear api`: raw GraphQL with the caller's `LINEAR_API_KEY`
+  or the team identity; mutations ask the guard `linear-api-mutation`
+  (#546, `docs/notes/546-linear-api.md`).
 - Curator gate: `memory_edits` baselines, `edits` trigger condition,
   `evaluate` workflow, `jobshop learn evaluate|edits` (#274,
   `docs/notes/274-curator-gate.md`).
@@ -519,6 +522,9 @@ Short list; behavior details are in `docs/notes/` (section 7).
   `api`, `POST /api/rpc/{method}` with a session-only policy; Deploys is
   the first built-in plugin (#517, `docs/notes/517-desk-plugins.md`,
   `docs/verify/desk-plugins.md`).
+- NixOS `workspaces.<name>.config`: run from `jobshop.yaml` in a git
+  checkout; each push is checked, reset to last good on failure and
+  listed as attention `config-repo` (#532, `docs/notes/532-config-repo.md`).
 
 ## 5. What's next
 
@@ -682,7 +688,8 @@ visibility (#408), placement (#409).
 **Hand-offs (#489).** Done: atomic `handoff` (#492), Desk user from a
 proxy header (#515), artifacts (#508), Desk under a path prefix (#516),
 configurable learning kinds (#524), user-managed config in the module (#531),
-`session.journal` (#529), Desk plugin host part 1 (#517).
+`session.journal` (#529), Desk plugin host part 1 (#517), config from a
+git repo (#532).
 Next: turn on `desk.userHeader` on gasserver; #517's remaining built-ins
 and plugin API (#541, #542).
 
@@ -1082,6 +1089,11 @@ workflow and who starts it (planner or a trigger on blocked tickets).
   lookup (2026-11-05, #531): the root file names every file it merges,
   so a stray file cannot change config. The NixOS module's keys live in
   `jobshop.module.yaml` when the user owns `jobshop.yaml`.
+- Pack and prompt file paths resolve against the config file's real
+  directory, links followed (2026-11-05, #532), so a `jobshop.yaml`
+  linked from a git checkout loads that checkout's packs. A config repo
+  is a `workspaces.<name>.config` field, not a separate option, since
+  workspaces already clone and sync.
 - Desk identity comes from a trusted proxy header and is never
   self-asserted (2026-11-05, #515): Desk reads `--user-header` only from
   `--trusted-proxy` peers and refuses other requests with 403; the user

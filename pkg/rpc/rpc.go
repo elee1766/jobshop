@@ -1272,16 +1272,17 @@ func (c *Client) handle(_ context.Context, method string, params json.RawMessage
 
 // Attention item kinds (#185).
 const (
-	AttentionRun      = "run"      // run in needs_human with no open escalation ticket
-	AttentionTicket   = "ticket"   // open ticket labeled needs-human (escalations, pool quarantines)
-	AttentionQuestion = "question" // open ticket labeled question: a worker asks a human
-	AttentionPool     = "pool"     // quarantined pool with no open escalation
-	AttentionRollback = "rollback" // self-deploy rolled back a commit
-	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
-	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
-	AttentionIngest   = "ingest"   // no live external ingest worker, or an admission backlog (#443)
-	AttentionDecision = "decision" // open ticket labeled proposed: a planner-proposed target to approve (#488)
-	AttentionStale    = "stale"    // open ticket no pool will claim, older than attention.orphan_age (#495)
+	AttentionRun        = "run"         // run in needs_human with no open escalation ticket
+	AttentionTicket     = "ticket"      // open ticket labeled needs-human (escalations, pool quarantines)
+	AttentionQuestion   = "question"    // open ticket labeled question: a worker asks a human
+	AttentionPool       = "pool"        // quarantined pool with no open escalation
+	AttentionRollback   = "rollback"    // self-deploy rolled back a commit
+	AttentionConfig     = "config"      // controller serves its last good config: a live pack failed to load (#227)
+	AttentionConfigRepo = "config-repo" // a config repo commit failed its check; the host stays on the last good one (#532)
+	AttentionResource   = "resource"    // step waiting on a full resource past attention.resource_wait (#408)
+	AttentionIngest     = "ingest"      // no live external ingest worker, or an admission backlog (#443)
+	AttentionDecision   = "decision"    // open ticket labeled proposed: a planner-proposed target to approve (#488)
+	AttentionStale      = "stale"       // open ticket no pool will claim, older than attention.orphan_age (#495)
 )
 
 // AttentionItem is one thing waiting on a human.
