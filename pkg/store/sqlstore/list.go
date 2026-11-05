@@ -8,7 +8,7 @@ import (
 	"github.com/nullism/bqb"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 // Ticket reads built in Go (#579 step 3): List builds its WHERE from the
@@ -209,8 +209,8 @@ func candidateQuery(req store.ClaimNext, now int64) *bqb.Query {
 
 type scanner interface{ Scan(dest ...any) error }
 
-func scanTicket(r scanner) (sqlcdb.Ticket, error) {
-	var i sqlcdb.Ticket
+func scanTicket(r scanner) (sqldb.Ticket, error) {
+	var i sqldb.Ticket
 	err := r.Scan(&i.ID, &i.Project, &i.Kind, &i.Title, &i.Body, &i.Status, &i.Resolution, &i.Priority,
 		&i.Pool, &i.Holder, &i.LeaseUntil, &i.Fence, &i.ParentID, &i.DeferUntil, &i.Ephemeral, &i.Fields,
 		&i.Meta, &i.Revision, &i.CreatedBy, &i.CreatedAt, &i.UpdatedAt, &i.ClosedAt, &i.FKey, &i.FTo,
@@ -219,7 +219,7 @@ func scanTicket(r scanner) (sqlcdb.Ticket, error) {
 }
 
 // conn is d with the backend's statement handling (Driver.Conn).
-func (s *Store) conn(d sqlcdb.DBTX) sqlcdb.DBTX {
+func (s *Store) conn(d sqldb.DBTX) sqldb.DBTX {
 	if s.drv.Conn == nil {
 		return d
 	}
@@ -233,7 +233,7 @@ func (s *Store) render(q *bqb.Query) (string, []any, error) {
 	return s.drv.Render(q)
 }
 
-func (s *Store) queryTickets(ctx context.Context, d sqlcdb.DBTX, q *bqb.Query) ([]sqlcdb.Ticket, error) {
+func (s *Store) queryTickets(ctx context.Context, d sqldb.DBTX, q *bqb.Query) ([]sqldb.Ticket, error) {
 	text, args, err := s.render(q)
 	if err != nil {
 		return nil, err
@@ -243,7 +243,7 @@ func (s *Store) queryTickets(ctx context.Context, d sqlcdb.DBTX, q *bqb.Query) (
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	out := []sqlcdb.Ticket{}
+	out := []sqldb.Ticket{}
 	for rows.Next() {
 		t, err := scanTicket(rows)
 		if err != nil {

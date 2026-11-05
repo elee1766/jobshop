@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 // defaultRecallLimit bounds Recall when no limit is given.
@@ -24,10 +24,10 @@ func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.Recal
 	if lim <= 0 {
 		lim = defaultRecallLimit
 	}
-	var rows []sqlcdb.RecallSearchRow
+	var rows []sqldb.RecallSearchRow
 	for _, match := range s.drv.RecallMatch(words) {
 		var err error
-		rows, err = s.q.RecallSearch(ctx, sqlcdb.RecallSearchParams{
+		rows, err = s.q.RecallSearch(ctx, sqldb.RecallSearchParams{
 			Query: match, Project: rq.Project, TicketID: rq.TicketID, Lim: int64(lim),
 		})
 		if err != nil {

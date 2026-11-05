@@ -61,7 +61,7 @@ else
       subPackages = [ "cmd/jobshop" ];
       # Fallback builder only. Update with: nix build .#jobshop 2>&1 | grep got:
       # (without the plugin loaded).
-      vendorHash = "sha256-3EyoxktjMKkubB+tfoz3RKWNXqsoB6XNuYkJwEz+fTc=";
+      vendorHash = "sha256-2P7A+jP+vyBK9YNPlHPuRs0adKJfuE7u3RJ1M0aFVyA=";
       env.CGO_ENABLED = "0";
     }
   )

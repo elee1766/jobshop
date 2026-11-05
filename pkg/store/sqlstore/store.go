@@ -16,7 +16,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 // Options configures New.
@@ -36,15 +36,14 @@ type Options struct {
 }
 
 // Driver is what a backend supplies beyond its SQL files: the opened and
-// migrated database, its sqlc queries, and the engine-specific bits.
+// migrated database, its sqldb queries, and the engine-specific bits.
 type Driver struct {
 	// DB is the migrated database. Write transactions start with
 	// DB.BeginTx, so the driver sets any locking mode in its DSN.
 	DB *sql.DB
 	// Bind returns the engine's queries over a database or transaction.
-	// The method set and types are sqlcdb's (sql_package: database/sql,
-	// emit_interface), so the core never converts rows.
-	Bind func(sqlcdb.DBTX) sqlcdb.Querier
+	// The method set and types are sqldb's (database/sql), so the core never converts rows.
+	Bind func(sqldb.DBTX) sqldb.Querier
 	// Classify maps a constraint failure to store.ErrAlreadyExist,
 	// store.ErrNotFound or store.ErrInvalid; other errors return nil.
 	Classify func(err error) error
@@ -61,8 +60,8 @@ type Driver struct {
 	// arguments. Nil means ? placeholders (bqb ToSql).
 	Render func(q *bqb.Query) (string, []any, error)
 	// Conn wraps a database or transaction for queries built in Go, as
-	// Bind does for sqlc's (a statement cache). Nil means use it as is.
-	Conn func(sqlcdb.DBTX) sqlcdb.DBTX
+	// Bind does for sqldb's (a statement cache). Nil means use it as is.
+	Conn func(sqldb.DBTX) sqldb.DBTX
 }
 
 // Store is the backend-neutral ticket store over a Driver. Claims and
@@ -70,7 +69,7 @@ type Driver struct {
 // their conditions in the same statement (#406).
 type Store struct {
 	db     *sql.DB
-	q      sqlcdb.Querier
+	q      sqldb.Querier
 	drv    Driver
 	ids    *ids.Generator
 	now    func() time.Time
@@ -103,7 +102,7 @@ func (s *Store) Close() error { return s.db.Close() }
 // race (Driver.IsBusy). Only concurrent databases hit it.
 const busyTries = 16
 
-func (s *Store) tx(ctx context.Context, fn func(q sqlcdb.Querier) error) error {
+func (s *Store) tx(ctx context.Context, fn func(q sqldb.Querier) error) error {
 	return s.sqlTx(ctx, func(tx *sql.Tx) error { return fn(s.drv.Bind(tx)) })
 }
 
@@ -180,7 +179,7 @@ func fromMS(v int64) time.Time {
 	return time.UnixMilli(v).UTC()
 }
 
-func toTicket(r sqlcdb.Ticket) store.Ticket {
+func toTicket(r sqldb.Ticket) store.Ticket {
 	return store.Ticket{
 		ID:         r.ID,
 		Project:    r.Project,
@@ -214,7 +213,7 @@ func notFound(err error, id string) error {
 	return err
 }
 
-func (s *Store) withLabels(ctx context.Context, q sqlcdb.Querier, ts []store.Ticket) ([]store.Ticket, error) {
+func (s *Store) withLabels(ctx context.Context, q sqldb.Querier, ts []store.Ticket) ([]store.Ticket, error) {
 	if len(ts) == 0 {
 		return ts, nil
 	}
@@ -235,7 +234,7 @@ func (s *Store) withLabels(ctx context.Context, q sqlcdb.Querier, ts []store.Tic
 	return ts, nil
 }
 
-func (s *Store) get(ctx context.Context, q sqlcdb.Querier, id string) (store.Ticket, error) {
+func (s *Store) get(ctx context.Context, q sqldb.Querier, id string) (store.Ticket, error) {
 	r, err := q.GetTicket(ctx, id)
 	if err != nil {
 		return store.Ticket{}, notFound(err, id)
@@ -252,7 +251,7 @@ func (s *Store) Get(ctx context.Context, id string) (store.Ticket, error) {
 	return s.get(ctx, s.q, id)
 }
 
-func history(ctx context.Context, q sqlcdb.Querier, t store.Ticket, at time.Time, actor, op string, diff any) error {
+func history(ctx context.Context, q sqldb.Querier, t store.Ticket, at time.Time, actor, op string, diff any) error {
 	d := []byte("{}")
 	if diff != nil {
 		var err error
@@ -260,14 +259,14 @@ func history(ctx context.Context, q sqlcdb.Querier, t store.Ticket, at time.Time
 			return err
 		}
 	}
-	return q.InsertHistory(ctx, sqlcdb.InsertHistoryParams{
+	return q.InsertHistory(ctx, sqldb.InsertHistoryParams{
 		TicketID: t.ID, At: ms(at), Actor: actor, Op: op, Revision: t.Revision, Diff: string(d),
 	})
 }
 
 // mutate is the single write path for an existing ticket: load, apply fn,
 // write with a revision guard, record history.
-func (s *Store) mutate(ctx context.Context, q sqlcdb.Querier, id, actor, op string,
+func (s *Store) mutate(ctx context.Context, q sqldb.Querier, id, actor, op string,
 	fn func(t *store.Ticket) (diff any, err error),
 ) (store.Ticket, error) {
 	return s.mutateWith(ctx, q, id, actor, op, fn, nil)
@@ -275,7 +274,7 @@ func (s *Store) mutate(ctx context.Context, q sqlcdb.Querier, id, actor, op stri
 
 // writeFn writes t (already at its new revision) over prev. It returns
 // the rows changed; 0 means the write's guard did not hold.
-type writeFn func(ctx context.Context, q sqlcdb.Querier, t store.Ticket, prev int64, now time.Time) (int64, error)
+type writeFn func(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, now time.Time) (int64, error)
 
 // errGuard is a guarded write that matched no row; callers turn it into
 // the error (or skip) that fits them.
@@ -283,7 +282,7 @@ var errGuard = errors.New("guard did not hold")
 
 // mutateWith is mutate with a custom write. With w non-nil, a write that
 // changes no row returns errGuard wrapped with ErrConflict.
-func (s *Store) mutateWith(ctx context.Context, q sqlcdb.Querier, id, actor, op string,
+func (s *Store) mutateWith(ctx context.Context, q sqldb.Querier, id, actor, op string,
 	fn func(t *store.Ticket) (diff any, err error), w writeFn,
 ) (store.Ticket, error) {
 	t, err := s.get(ctx, q, id)
@@ -312,7 +311,7 @@ func (s *Store) mutateWith(ctx context.Context, q sqlcdb.Querier, id, actor, op 
 		return t, nil
 	}
 	cols := fieldColumns(t.Fields)
-	n, err := q.WriteTicket(ctx, sqlcdb.WriteTicketParams{
+	n, err := q.WriteTicket(ctx, sqldb.WriteTicketParams{
 		Title: t.Title, Body: t.Body, Status: string(t.Status), Resolution: t.Resolution,
 		Priority: int64(t.Priority), Pool: t.Pool, Holder: t.Holder,
 		LeaseUntil: ms(t.LeaseUntil), Fence: t.Fence, DeferUntil: ms(t.DeferUntil),
@@ -339,7 +338,7 @@ func (s *Store) mutateWith(ctx context.Context, q sqlcdb.Querier, id, actor, op 
 	return t, nil
 }
 
-func (s *Store) insert(ctx context.Context, q sqlcdb.Querier, actor string, nt store.NewTicket) (store.Ticket, error) {
+func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt store.NewTicket) (store.Ticket, error) {
 	if nt.Project == "" {
 		return store.Ticket{}, fmt.Errorf("%w: project is required", store.ErrInvalid)
 	}
@@ -367,7 +366,7 @@ func (s *Store) insert(ctx context.Context, q sqlcdb.Querier, actor string, nt s
 		parent = sql.NullString{String: nt.ParentID, Valid: true}
 	}
 	cols := fieldColumns(fields)
-	err = q.InsertTicket(ctx, sqlcdb.InsertTicketParams{
+	err = q.InsertTicket(ctx, sqldb.InsertTicketParams{
 		ID: id, Project: nt.Project, Kind: string(nt.Kind), Title: nt.Title, Body: nt.Body,
 		Status: string(store.StatusOpen), Priority: int64(prio), Pool: nt.Pool, Holder: nt.Holder,
 		ParentID: parent, DeferUntil: ms(nt.DeferUntil), Ephemeral: boolInt(nt.Ephemeral),
@@ -423,7 +422,7 @@ func (s *Store) classify(err error, id string) error {
 // Apply checks Unclaimed, inserts tickets, re-parents, removes and adds
 // edges in one transaction.
 func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []store.Ticket, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		for _, id := range g.Unclaimed {
 			t, err := s.get(ctx, q, id)
 			if err != nil {
@@ -450,7 +449,7 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 			}); err != nil {
 				return err
 			}
-			if err := q.SetParent(ctx, sqlcdb.SetParentParams{ParentID: sql.NullString{String: parent, Valid: parent != ""}, ID: id}); err != nil {
+			if err := q.SetParent(ctx, sqldb.SetParentParams{ParentID: sql.NullString{String: parent, Valid: parent != ""}, ID: id}); err != nil {
 				return err
 			}
 		}
@@ -490,7 +489,7 @@ func limit(n int) int64 {
 	return int64(n)
 }
 
-func toTickets(rows []sqlcdb.Ticket) []store.Ticket {
+func toTickets(rows []sqldb.Ticket) []store.Ticket {
 	out := make([]store.Ticket, len(rows))
 	for i, r := range rows {
 		out[i] = toTicket(r)
@@ -519,8 +518,8 @@ func checkLease(holder string, lease time.Duration) error {
 
 // claimWrite is the guarded write of a claim: it holds only if the
 // ticket is still unblocked when written (#406).
-func claimWrite(ctx context.Context, q sqlcdb.Querier, t store.Ticket, prev int64, now time.Time) (int64, error) {
-	return q.ClaimWriteTicket(ctx, sqlcdb.ClaimWriteTicketParams{
+func claimWrite(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, now time.Time) (int64, error) {
+	return q.ClaimWriteTicket(ctx, sqldb.ClaimWriteTicketParams{
 		Status: string(t.Status), Holder: t.Holder, LeaseUntil: ms(t.LeaseUntil), Fence: t.Fence,
 		Revision: t.Revision, UpdatedAt: ms(now), ID: t.ID, ExpectedRevision: prev,
 	})
@@ -584,7 +583,7 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 	if err := checkLease(holder, lease); err != nil {
 		return t, c, err
 	}
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		blocked, err := s.blocked(ctx, q, id)
 		if err != nil {
 			return err
@@ -624,7 +623,7 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 	return t, c, err
 }
 
-func (s *Store) blocked(ctx context.Context, q sqlcdb.Querier, id string) (bool, error) {
+func (s *Store) blocked(ctx context.Context, q sqldb.Querier, id string) (bool, error) {
 	edges, err := q.ListEdges(ctx, id)
 	if err != nil {
 		return false, err
@@ -656,7 +655,7 @@ func (s *Store) Heartbeat(ctx context.Context, c store.Claim, lease time.Duratio
 	}
 	now := s.now()
 	c.LeaseUntil = now.Add(lease).UTC().Truncate(time.Millisecond)
-	n, err := s.q.Heartbeat(ctx, sqlcdb.HeartbeatParams{
+	n, err := s.q.Heartbeat(ctx, sqldb.HeartbeatParams{
 		LeaseUntil: ms(c.LeaseUntil), Now: ms(now), ID: c.TicketID, Holder: c.Holder, Fence: c.Fence,
 	})
 	if err != nil {
@@ -717,7 +716,7 @@ func (s *Store) Expire(ctx context.Context, actor, holder, reason string) ([]str
 
 // release returns a held ticket to open and unassigned.
 func (s *Store) release(ctx context.Context, c store.Claim, reason string, until time.Time) (t store.Ticket, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, c.TicketID, c.Holder, "release", func(t *store.Ticket) (any, error) {
 			if err := holds(t, c); err != nil {
@@ -751,7 +750,7 @@ func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, p
 	if pool == "" {
 		return store.Ticket{}, fmt.Errorf("%w: handoff needs a pool", store.ErrInvalid)
 	}
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		t, err = s.mutate(ctx, q, id, actor, "handoff", func(t *store.Ticket) (any, error) {
 			if t.Status == store.StatusClosed {
 				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
@@ -775,7 +774,7 @@ func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, p
 		if err != nil || strings.TrimSpace(note) == "" {
 			return err
 		}
-		_, err = q.InsertComment(ctx, sqlcdb.InsertCommentParams{TicketID: id, Author: actor, Body: note, CreatedAt: ms(s.now())})
+		_, err = q.InsertComment(ctx, sqldb.InsertCommentParams{TicketID: id, Author: actor, Body: note, CreatedAt: ms(s.now())})
 		return err
 	})
 	return t, err
@@ -807,17 +806,17 @@ func (s *Store) stepFailure(t *store.Ticket, how string, d map[string]any) (stri
 }
 
 // note adds a controller comment inside a transaction; empty is a no-op.
-func (s *Store) note(ctx context.Context, q sqlcdb.Querier, id, body string) error {
+func (s *Store) note(ctx context.Context, q sqldb.Querier, id, body string) error {
 	if body == "" {
 		return nil
 	}
-	_, err := q.InsertComment(ctx, sqlcdb.InsertCommentParams{TicketID: id, Author: "controller", Body: body, CreatedAt: ms(s.now())})
+	_, err := q.InsertComment(ctx, sqldb.InsertCommentParams{TicketID: id, Author: "controller", Body: body, CreatedAt: ms(s.now())})
 	return err
 }
 
 // closeTicket closes a ticket, fenced by c when non-nil.
 func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Claim, resolution string) (t store.Ticket, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
 			if t.Status == store.StatusClosed {
@@ -855,7 +854,7 @@ func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Clai
 }
 
 // reopen returns a closed ticket to open, keeping its holder unset.
-func (s *Store) reopen(ctx context.Context, q sqlcdb.Querier, actor, id string, ifRev int64) (store.Ticket, error) {
+func (s *Store) reopen(ctx context.Context, q sqldb.Querier, actor, id string, ifRev int64) (store.Ticket, error) {
 	return s.mutate(ctx, q, id, actor, "reopen", func(t *store.Ticket) (any, error) {
 		if ifRev != 0 && ifRev != t.Revision {
 			return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, id, t.Revision, ifRev)
@@ -870,8 +869,8 @@ func (s *Store) reopen(ctx context.Context, q sqlcdb.Querier, actor, id string, 
 	})
 }
 
-func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqlcdb.Querier) ([]string, error), diff any, w writeFn) (out []string, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqldb.Querier) ([]string, error), diff any, w writeFn) (out []string, err error) {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		list, err := ids(q)
 		if err != nil {
 			return err
@@ -923,7 +922,7 @@ func (s *Store) releaseHolder(ctx context.Context, actor, holder, reason string)
 		return nil, fmt.Errorf("%w: holder is required", store.ErrInvalid)
 	}
 	return s.reopenAll(ctx, actor, "release",
-		func(q sqlcdb.Querier) ([]string, error) { return q.HeldBy(ctx, holder) },
+		func(q sqldb.Querier) ([]string, error) { return q.HeldBy(ctx, holder) },
 		map[string]any{"reason": reason}, nil)
 }
 
@@ -932,9 +931,9 @@ func (s *Store) releaseHolder(ctx context.Context, actor, holder, reason string)
 func (s *Store) sweepLeases(ctx context.Context, actor string) ([]string, error) {
 	now := s.now()
 	return s.reopenAll(ctx, actor, "lease_expired",
-		func(q sqlcdb.Querier) ([]string, error) { return q.ExpiredLeases(ctx, ms(now)) }, nil,
-		func(ctx context.Context, q sqlcdb.Querier, t store.Ticket, prev int64, at time.Time) (int64, error) {
-			return q.ExpireWriteTicket(ctx, sqlcdb.ExpireWriteTicketParams{
+		func(q sqldb.Querier) ([]string, error) { return q.ExpiredLeases(ctx, ms(now)) }, nil,
+		func(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, at time.Time) (int64, error) {
+			return q.ExpireWriteTicket(ctx, sqldb.ExpireWriteTicketParams{
 				Status: string(t.Status), Resolution: t.Resolution, Holder: t.Holder,
 				LeaseUntil: ms(t.LeaseUntil), Fields: string(t.Fields), Revision: t.Revision,
 				UpdatedAt: ms(at), ClosedAt: ms(t.ClosedAt), ID: t.ID, ExpectedRevision: prev, Now: ms(now),
@@ -954,7 +953,7 @@ func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t
 	// alone, as those writes always have.
 	fields := !extras || u.IfRevision != 0 || u.Title != nil || u.Body != nil || u.Priority != nil ||
 		u.Pool != nil || u.Holder != nil || u.DeferUntil != nil || u.Fields != nil || u.Meta != nil
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		if u.Reopen {
 			if t, err = s.reopen(ctx, q, actor, id, u.IfRevision); err != nil {
 				return err
@@ -986,7 +985,7 @@ func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t
 			t.Labels = append(t.Labels, l)
 		}
 		for _, l := range u.RemoveLabels {
-			n, err := q.DeleteLabel(ctx, sqlcdb.DeleteLabelParams{TicketID: id, Label: l})
+			n, err := q.DeleteLabel(ctx, sqldb.DeleteLabelParams{TicketID: id, Label: l})
 			if err != nil {
 				return err
 			}
@@ -999,7 +998,7 @@ func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t
 			t.Labels = slices.DeleteFunc(t.Labels, func(x string) bool { return x == l })
 		}
 		if u.Comment != "" {
-			r, err := q.InsertComment(ctx, sqlcdb.InsertCommentParams{
+			r, err := q.InsertComment(ctx, sqldb.InsertCommentParams{
 				TicketID: id, Author: actor, Body: u.Comment, CreatedAt: ms(now),
 			})
 			if err != nil {
@@ -1018,7 +1017,7 @@ func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t
 	return t, err
 }
 
-func (s *Store) updateFields(ctx context.Context, q sqlcdb.Querier, actor, id string, u store.Update) (store.Ticket, error) {
+func (s *Store) updateFields(ctx context.Context, q sqldb.Querier, actor, id string, u store.Update) (store.Ticket, error) {
 	return s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
 		if u.IfRevision != 0 && u.IfRevision != t.Revision {
 			return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, id, t.Revision, u.IfRevision)
@@ -1068,7 +1067,7 @@ func (s *Store) updateFields(ctx context.Context, q sqlcdb.Querier, actor, id st
 	})
 }
 
-func (s *Store) addEdge(ctx context.Context, q sqlcdb.Querier, actor string, e store.Edge) error {
+func (s *Store) addEdge(ctx context.Context, q sqldb.Querier, actor string, e store.Edge) error {
 	if !e.Kind.Valid() {
 		return fmt.Errorf("%w: edge kind %q", store.ErrInvalid, e.Kind)
 	}
@@ -1076,7 +1075,7 @@ func (s *Store) addEdge(ctx context.Context, q sqlcdb.Querier, actor string, e s
 		return fmt.Errorf("%w: self edge on %s", store.ErrInvalid, e.From)
 	}
 	if e.Kind.Blocking() {
-		cycle, err := q.BlockingPathExists(ctx, sqlcdb.BlockingPathExistsParams{Start: e.To, Target: e.From})
+		cycle, err := q.BlockingPathExists(ctx, sqldb.BlockingPathExistsParams{Start: e.To, Target: e.From})
 		if err != nil {
 			return err
 		}
@@ -1085,7 +1084,7 @@ func (s *Store) addEdge(ctx context.Context, q sqlcdb.Querier, actor string, e s
 		}
 	}
 	now := s.now()
-	if err := q.InsertEdge(ctx, sqlcdb.InsertEdgeParams{
+	if err := q.InsertEdge(ctx, sqldb.InsertEdgeParams{
 		FromID: e.From, ToID: e.To, Kind: string(e.Kind), CreatedAt: ms(now),
 	}); err != nil {
 		return s.classify(err, e.From)
@@ -1097,8 +1096,8 @@ func (s *Store) addEdge(ctx context.Context, q sqlcdb.Querier, actor string, e s
 	return history(ctx, q, t, now, actor, "edge_add", map[string]any{"to": e.To, "kind": e.Kind})
 }
 
-func (s *Store) removeEdge(ctx context.Context, q sqlcdb.Querier, actor string, e store.Edge) error {
-	n, err := q.DeleteEdge(ctx, sqlcdb.DeleteEdgeParams{FromID: e.From, ToID: e.To, Kind: string(e.Kind)})
+func (s *Store) removeEdge(ctx context.Context, q sqldb.Querier, actor string, e store.Edge) error {
+	n, err := q.DeleteEdge(ctx, sqldb.DeleteEdgeParams{FromID: e.From, ToID: e.To, Kind: string(e.Kind)})
 	if err != nil {
 		return err
 	}
@@ -1112,18 +1111,18 @@ func (s *Store) removeEdge(ctx context.Context, q sqlcdb.Querier, actor string, 
 	return history(ctx, q, t, s.now(), actor, "edge_remove", map[string]any{"to": e.To, "kind": e.Kind})
 }
 
-func (s *Store) addLabel(ctx context.Context, q sqlcdb.Querier, id, label string) error {
+func (s *Store) addLabel(ctx context.Context, q sqldb.Querier, id, label string) error {
 	label = strings.TrimSpace(label)
 	if label == "" {
 		return fmt.Errorf("%w: empty label", store.ErrInvalid)
 	}
-	_, err := q.InsertLabel(ctx, sqlcdb.InsertLabelParams{TicketID: id, Label: label})
+	_, err := q.InsertLabel(ctx, sqldb.InsertLabelParams{TicketID: id, Label: label})
 	return s.classify(err, id)
 }
 
 // Record adds a history row without changing the ticket.
 func (s *Store) Record(ctx context.Context, actor, id, op string, diff any) error {
-	return s.tx(ctx, func(q sqlcdb.Querier) error {
+	return s.tx(ctx, func(q sqldb.Querier) error {
 		t, err := s.get(ctx, q, id)
 		if err != nil {
 			return err

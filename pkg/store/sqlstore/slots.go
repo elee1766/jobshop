@@ -9,13 +9,13 @@ import (
 	"slices"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 // Provider-owned slots (#407). See store.Slot.
 
 // setProviders replaces the provider resource names.
-func setProviders(ctx context.Context, q sqlcdb.Querier, names []string) error {
+func setProviders(ctx context.Context, q sqldb.Querier, names []string) error {
 	if err := q.DeleteResourceProviders(ctx); err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func (s *Store) Slot(ctx context.Context, actor string, e store.SlotEvent) (stor
 	return store.Slot{}, "", fmt.Errorf("%w: slot op %q", store.ErrInvalid, e.Op)
 }
 
-func slotOf(r sqlcdb.ResourceSlot) store.Slot {
+func slotOf(r sqldb.ResourceSlot) store.Slot {
 	sl := store.Slot{
 		Pool: r.Pool, ID: r.ID, State: r.State, Ticket: r.Ticket, Fence: r.Fence,
 		Removing: r.Removing != 0, UpdatedAt: fromMS(r.UpdatedAt),
@@ -61,16 +61,16 @@ func checkSlot(pool, id string) error {
 	return nil
 }
 
-func (s *Store) getSlot(ctx context.Context, q sqlcdb.Querier, pool, id string) (sqlcdb.ResourceSlot, error) {
-	r, err := q.GetSlot(ctx, sqlcdb.GetSlotParams{Pool: pool, ID: id})
+func (s *Store) getSlot(ctx context.Context, q sqldb.Querier, pool, id string) (sqldb.ResourceSlot, error) {
+	r, err := q.GetSlot(ctx, sqldb.GetSlotParams{Pool: pool, ID: id})
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, fmt.Errorf("%w: slot %s/%s", store.ErrNotFound, pool, id)
 	}
 	return r, err
 }
 
-func (s *Store) writeSlot(ctx context.Context, q sqlcdb.Querier, r sqlcdb.ResourceSlot) error {
-	return q.UpdateSlot(ctx, sqlcdb.UpdateSlotParams{
+func (s *Store) writeSlot(ctx context.Context, q sqldb.Querier, r sqldb.ResourceSlot) error {
+	return q.UpdateSlot(ctx, sqldb.UpdateSlotParams{
 		State: r.State, Env: r.Env, Ticket: r.Ticket, Fence: r.Fence, Removing: r.Removing,
 		UpdatedAt: ms(s.now()), Pool: r.Pool, ID: r.ID,
 	})
@@ -89,11 +89,11 @@ func (s *Store) addSlot(ctx context.Context, pool, id string, env map[string]str
 	if err != nil {
 		return out, err
 	}
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		r, err := s.getSlot(ctx, q, pool, id)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			if err := q.InsertSlot(ctx, sqlcdb.InsertSlotParams{Pool: pool, ID: id, Env: string(b), UpdatedAt: ms(s.now())}); err != nil {
+			if err := q.InsertSlot(ctx, sqldb.InsertSlotParams{Pool: pool, ID: id, Env: string(b), UpdatedAt: ms(s.now())}); err != nil {
 				return err
 			}
 		case err != nil:
@@ -120,7 +120,7 @@ func (s *Store) removeSlot(ctx context.Context, pool, id string) (out store.Slot
 	if err := checkSlot(pool, id); err != nil {
 		return out, err
 	}
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		r, err := s.getSlot(ctx, q, pool, id)
 		if err != nil {
 			return err
@@ -132,7 +132,7 @@ func (s *Store) removeSlot(ctx context.Context, pool, id string) (out store.Slot
 		}
 		out = slotOf(r)
 		out.State = store.SlotGone
-		return q.DeleteSlot(ctx, sqlcdb.DeleteSlotParams{Pool: pool, ID: id})
+		return q.DeleteSlot(ctx, sqldb.DeleteSlotParams{Pool: pool, ID: id})
 	})
 	return out, err
 }
@@ -144,7 +144,7 @@ func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason strin
 	if err := checkSlot(pool, id); err != nil {
 		return out, "", err
 	}
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		r, err := s.getSlot(ctx, q, pool, id)
 		if err != nil {
 			return err
@@ -172,7 +172,7 @@ func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason strin
 		if r.Removing != 0 {
 			out = slotOf(r)
 			out.State = store.SlotGone
-			return q.DeleteSlot(ctx, sqlcdb.DeleteSlotParams{Pool: pool, ID: id})
+			return q.DeleteSlot(ctx, sqldb.DeleteSlotParams{Pool: pool, ID: id})
 		}
 		r.State, r.Ticket, r.Fence = store.SlotGone, "", 0
 		out = slotOf(r)
@@ -201,7 +201,7 @@ func (s *Store) slots(ctx context.Context, pool string) ([]store.Slot, error) {
 // release, lease expiry, dead holder); reading the ticket here covers
 // all of them without a hook in each.
 func (s *Store) ReleaseSlots(ctx context.Context) (out []store.Slot, err error) {
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		if err := q.MarkSlotsReleasing(ctx, ms(s.now())); err != nil {
 			return err
 		}
@@ -224,7 +224,7 @@ func (s *Store) slotReset(ctx context.Context, pool, id string, ok bool) (out st
 	if err := checkSlot(pool, id); err != nil {
 		return out, err
 	}
-	err = s.tx(ctx, func(q sqlcdb.Querier) error {
+	err = s.tx(ctx, func(q sqldb.Querier) error {
 		r, err := s.getSlot(ctx, q, pool, id)
 		if err != nil {
 			return err
@@ -235,7 +235,7 @@ func (s *Store) slotReset(ctx context.Context, pool, id string, ok bool) (out st
 		if r.Removing != 0 {
 			out = slotOf(r)
 			out.State = store.SlotGone
-			return q.DeleteSlot(ctx, sqlcdb.DeleteSlotParams{Pool: pool, ID: id})
+			return q.DeleteSlot(ctx, sqldb.DeleteSlotParams{Pool: pool, ID: id})
 		}
 		r.Ticket, r.Fence = "", 0
 		r.State = store.SlotGone
@@ -271,13 +271,13 @@ func (s *Store) slotDemand(ctx context.Context, pool string, slots []store.Slot)
 // takeSlots holds one ready slot of each provider resource t needs, in
 // the claim transaction. No ready slot is a conflict: another claimer
 // took the last one, and the transaction rolls back.
-func (s *Store) takeSlots(ctx context.Context, q sqlcdb.Querier, t store.Ticket) error {
+func (s *Store) takeSlots(ctx context.Context, q sqldb.Querier, t store.Ticket) error {
 	names, err := q.TicketProviderResources(ctx, t.ID)
 	if err != nil {
 		return err
 	}
 	for _, n := range names {
-		_, err := q.TakeSlot(ctx, sqlcdb.TakeSlotParams{Ticket: t.ID, Fence: t.Fence, UpdatedAt: ms(s.now()), Pool: n})
+		_, err := q.TakeSlot(ctx, sqldb.TakeSlotParams{Ticket: t.ID, Fence: t.Fence, UpdatedAt: ms(s.now()), Pool: n})
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %s: no ready %s slot", store.ErrConflict, t.ID, n)
 		}

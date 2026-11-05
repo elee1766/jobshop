@@ -4,14 +4,12 @@ elee1766/jobshop turn, alongside AGENTS.md.
 - pkg/config and pkg/control change fast: `git fetch` and rebase onto
   origin/master before the first push, and reuse helpers master added.
 - After every rebase, rerun the generators even if GitHub shows the PR
-  clean: `go generate ./pkg/store/sqlite/` (sqlc is not on PATH),
-  `go run ./pkg/rpc/rpcschema/cmd/deskgen`, then `go test ./...`.
+  clean: `go run ./pkg/rpc/rpcschema/cmd/deskgen`, then `go test ./...`.
 - Parallel PRs take the same migration number: before pushing a new
   migration, fetch master, renumber past its highest file in
-  `pkg/store/sqlite/migrations` (and `pkg/store/postgres/migrations`),
-  then regenerate sqlc.
-- With `sqlc.slice`, named params after the slice bind into the list: put
-  named params first or use bare `?`, and check the `?N` in sqlcdb.
+  `pkg/store/sqlite/migrations` (and `pkg/store/postgres/migrations`).
+- In `pkg/store/sqlstore/sqldb` a bare `?` after an expanded list takes
+  the next number: check the `?N` binds the argument you mean.
 - Deferred SQLite transactions get SQLITE_BUSY on the read-to-write
   upgrade (busy_timeout does not wait on it): retry the whole
   transaction, bounded.

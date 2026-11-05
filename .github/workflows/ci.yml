@@ -70,10 +70,6 @@ jobs:
           name: failed-tests
           path: failed-tests.json
           if-no-files-found: ignore
-      - name: sqlc generated code is current
-        run: go tool sqlc diff
-        working-directory: pkg/store/sqlite
-        if: hashFiles('pkg/store/sqlite/sqlc.yaml') != ''
       - uses: golangci/golangci-lint-action@v8
         with:
           # Keep equal to the golangci-lint gasserver.nix puts on agents' PATH.

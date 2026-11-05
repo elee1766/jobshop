@@ -1,6 +1,6 @@
 // Package postgres is the Postgres store backend (#493). It runs the
-// backend-neutral core in pkg/store/sqlstore on the same sqlc queries as
-// pkg/store/sqlite: the generated SQLite SQL is rewritten for Postgres
+// backend-neutral core in pkg/store/sqlstore on the same sqldb queries as
+// pkg/store/sqlite: their SQLite SQL is rewritten for Postgres
 // when it runs (rewrite.go), and the few queries that use an engine
 // feature (full-text search) have Postgres versions in queries/.
 package postgres
@@ -23,7 +23,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqlcdb"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 //go:embed migrations/*.sql
@@ -71,7 +71,7 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 	rw := newRewriter(parseOverrides(overridesSQL))
 	s, err := sqlstore.New(sqlstore.Driver{
 		DB:          db,
-		Bind:        func(d sqlcdb.DBTX) sqlcdb.Querier { return sqlcdb.New(pgDB{d: d, rw: rw}) },
+		Bind:        func(d sqldb.DBTX) sqldb.Querier { return sqldb.New(pgDB{d: d, rw: rw}) },
 		Classify:    classify,
 		RecallMatch: recallMatch,
 		IsBusy:      isBusy,
@@ -104,9 +104,9 @@ func migrate(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// pgDB runs sqlc's queries on d with the SQL rewritten for Postgres.
+// pgDB runs sqldb's queries on d with the SQL rewritten for Postgres.
 type pgDB struct {
-	d  sqlcdb.DBTX
+	d  sqldb.DBTX
 	rw *rewriter
 }
 

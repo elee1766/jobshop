@@ -16,8 +16,6 @@ import (
 	"github.com/elee1766/jobshop/pkg/store/sqlstore"
 )
 
-//go:generate go tool sqlc generate
-
 //go:embed migrations/*.sql
 var migrations embed.FS
 

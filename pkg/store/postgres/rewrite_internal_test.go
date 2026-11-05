@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sqlcQueries returns every query text sqlc generated into sqlcdb.
+// sqlcQueries returns every named query text in sqldb.
 func sqlcQueries(t *testing.T) []string {
 	t.Helper()
-	files, err := filepath.Glob("../sqlstore/sqlcdb/*.sql.go")
+	files, err := filepath.Glob("../sqlstore/sqldb/*.go")
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 	var out []string
@@ -78,7 +78,7 @@ func TestOverridesNameQueries(t *testing.T) {
 		names[queryName(q)] = true
 	}
 	for name := range parseOverrides(overridesSQL) {
-		require.True(t, names[name], "override %s names no sqlc query", name)
+		require.True(t, names[name], "override %s names no sqldb query", name)
 	}
 }
 
