@@ -19,13 +19,18 @@ grep '^jobshop:' /etc/subgid || { echo "FAIL: no subgid range"; exit 1; }
 Running sessions of an isolated pool: at least one open session has a
 mapped user, a session cgroup and, when its pool sets `network: pasta`,
 the pasta network. Each mapped uid is inside the subuid range.
+`session sandbox` needs the admin socket (#677): run this as the
+jobshop user on the host. Without it the block stops with one
+"cannot read sandbox" line instead of reporting no isolated session.
 
 ```sh readonly
 start=$(grep '^jobshop:' /etc/subuid | cut -d: -f2)
 count=$(grep '^jobshop:' /etc/subuid | cut -d: -f3)
 n=0
-for id in $(JOBSHOP_SOCKET= jobshop session list | jq -r '.[] | select(.alive) | .id'); do
-  s=$(JOBSHOP_SOCKET= jobshop session sandbox "$id") || continue
+ids=$(JOBSHOP_SOCKET= jobshop session list 2>&1) || { echo "FAIL: cannot list sessions: $ids"; exit 1; }
+for id in $(echo "$ids" | jq -r '.[] | select(.alive) | .id'); do
+  s=$(JOBSHOP_SOCKET= jobshop session sandbox --json "$id" 2>&1) || { echo "FAIL: cannot read sandbox: $s"; exit 1; }
+  echo "$s" | jq -e . >/dev/null 2>&1 || { echo "FAIL: cannot read sandbox: $s"; exit 1; }
   echo "$s" | jq -e '.user' >/dev/null || continue
   n=$((n + 1))
   echo "$s" | jq -c '{session, pool, user, cgroup_path, cgroup, network: .sandbox.network, deny: .sandbox.deny}'
