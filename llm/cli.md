@@ -374,6 +374,10 @@ Commands:
   linear relate --blocks=STRING --related=STRING <issue> [flags]
     Mark an issue as blocking or related to another.
 
+  linear api [<query>] [flags]
+    Raw GraphQL call: LINEAR_API_KEY if set, else the team's identity. Mutations
+    ask the guard (linear-api-mutation).
+
   recall <query> ... [flags]
     Search past comments, session journals and learnings. Run it on a failure
     and before asking a human.
@@ -3239,6 +3243,10 @@ Commands:
 
   linear relate --blocks=STRING --related=STRING <issue> [flags]
     Mark an issue as blocking or related to another.
+
+  linear api [<query>] [flags]
+    Raw GraphQL call: LINEAR_API_KEY if set, else the team's identity. Mutations
+    ask the guard (linear-api-mutation).
 ```
 
 ## jobshop linear issue
@@ -3547,6 +3555,37 @@ Flags:
       --dry-run           Print the mutation and send nothing.
 ```
 
+## jobshop linear api
+
+```
+Usage: jobshop linear api [<query>] [flags]
+
+Raw GraphQL call: LINEAR_API_KEY if set, else the team's identity. Mutations ask
+the guard (linear-api-mutation).
+
+Arguments:
+  [<query>]    GraphQL document.
+
+Flags:
+  -h, --help                   Show context-sensitive help.
+      --root=STRING            Jobshop root directory (holds jobshop.yaml, the
+                               database, sockets and sessions). Default: nearest
+                               ancestor of the cwd containing jobshop.yaml
+                               ($JOBSHOP_ROOT).
+      --socket=STRING          Socket to talk to. Defaults to the session
+                               CLI socket, else the root's admin socket
+                               ($JOBSHOP_SOCKET).
+
+      --team=STRING            Team key whose identity makes the call (default:
+                               from an issue key in the variables).
+  -f, --field=FIELD            String variable name=value (@file reads the
+                               file). query=... sets the query.
+  -F, --raw-field=RAW-FIELD    Typed variable name=json (number, bool, object;
+                               @file reads the file).
+      --input=STRING           Request body file, - for stdin: a JSON request or
+                               bare GraphQL.
+```
+
 ## jobshop recall
 
 ```
@@ -3619,7 +3658,7 @@ Usage: jobshop docs [<topic>] [flags]
 Print links to the docs for this binary (packs, readme, llm). Needs no root.
 
 Arguments:
-  [<topic>]    Topic (packs, readme, llm). Empty lists topics.
+  [<topic>]    Topic (packs, desk-plugins, readme, llm). Empty lists topics.
 
 Flags:
   -h, --help             Show context-sensitive help.
