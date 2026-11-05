@@ -68,6 +68,9 @@ type SessionFields struct {
 	// The controller saves it every few seconds, so after a crash it
 	// resends a little; rows are deduped by (session, seq) on query.
 	ShippedSeq int64 `json:"shipped_seq,omitempty"`
+	// Slot is the session's index in its pool's isolation per_session id
+	// range (#540): it runs as map_uid+slot. Nil without per_session.
+	Slot *int `json:"slot,omitempty"`
 }
 
 // Cordon reasons (#281).

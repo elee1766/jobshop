@@ -75,10 +75,19 @@ func TestIsolationErrors(t *testing.T) {
 		"  p: {agent: fake, dir: /tmp, sandbox: {network: pasta, deny: [not-a-cidr]}}\n",
 		"  p: {agent: fake, dir: /tmp, sandbox: {network: host, deny: [10.0.0.0/8]}}\n",
 		"  p: {agent: fake, dir: /tmp, sandbox: {network: slirp}}\n",
+		`  p: {agent: fake, dir: /tmp, isolation: {user: {uid: 0, map_uid: 1, map_gid: 1, groups: ["100"], per_session: {range: 0}}}}` + "\n",
+		`  p: {agent: fake, dir: /tmp, isolation: {user: {uid: 0, map_uid: 1, map_gid: 1, per_session: {range: 4}}}}` + "\n",
 	} {
 		_, err := config.Parse([]byte(isoBase + bad))
 		assert.Error(t, err, bad)
 	}
+}
+
+func TestPerSession(t *testing.T) {
+	c, err := config.Parse([]byte(isoBase + `  p: {agent: fake, dir: /tmp, isolation: {user: {uid: 0, map_uid: 100000, map_gid: 100000, groups: ["100"], per_session: {range: 8}}}}` + "\n"))
+	require.NoError(t, err)
+	assert.Equal(t, 8, c.IsolationFor("p").User.Slots())
+	assert.Equal(t, 0, config.IsolationUser{}.Slots())
 }
 
 func TestLimitsValues(t *testing.T) {

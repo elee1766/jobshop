@@ -157,6 +157,9 @@ type Controller struct {
 	// set up once on first need.
 	cgroupOnce sync.Once
 	cgroup     cgroupSetup
+	// slotMu makes picking a per-session id and creating the session one
+	// step (#540).
+	slotMu sync.Mutex
 	// minter caches identity tokens (#200).
 	minter *identity.Minter
 	// ingest is the spool drain (#335).

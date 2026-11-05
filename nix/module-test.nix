@@ -530,6 +530,23 @@ let
       && lib.elem "-retentionPeriod=90d" vlLocal.config.services.victorialogs.extraOptions
     ))
     (expect "an external VictoriaLogs url runs none" (!vlExternal.config.services.victorialogs.enable))
+    (expect "per_session ids past subIdCount fail, inside pass" (
+      let
+        iso = range: {
+          isolation.enable = true;
+          isolation.subIdCount = 100;
+          settings.pools.dev.isolation.user = {
+            uid = 1000;
+            map_uid = 231072;
+            map_gid = 231072;
+            groups = [ "jobshop" ];
+            per_session.range = range;
+          };
+        };
+      in
+      lib.any (lib.hasInfix "pool dev per_session") (failed (eval (iso 101)))
+      && !lib.any (lib.hasInfix "per_session") (failed (eval (iso 100)))
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;

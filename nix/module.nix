@@ -243,6 +243,23 @@ let
     ghRepoOf cfg.workspaces.${lib.head deployWorkspaces}.url
   );
   deployState = "/var/lib/jobshop-deploy";
+  # Pools in settings with isolation.user.per_session (#540); each one's
+  # [map_uid, map_uid+range) and gids must sit inside the jobshop user's
+  # subuid/subgid range, else the pool is quarantined at its first spawn.
+  isoUser = p: ((cfg.settings.pools.${p}.isolation or { }).user or null);
+  isoPools = lib.filter (p: (isoUser p) != null && (isoUser p) ? per_session) (
+    lib.attrNames (cfg.settings.pools or { })
+  );
+  isoRangeFits =
+    p:
+    let
+      u = isoUser p;
+      n = u.per_session.range or 0;
+      start = cfg.isolation.subIdStart;
+      end = start + cfg.isolation.subIdCount;
+      fits = id: id >= start && id + n <= end;
+    in
+    !cfg.isolation.enable || (fits (u.map_uid or 0) && fits (u.map_gid or 0));
 
   workspaceModule =
     { name, config, ... }:
@@ -926,7 +943,11 @@ in
             assertion = lib.length configWorkspaces <= 1 && !(repoConfig && cfg.configFile != null);
             message = "services.jobshop: set workspaces.<name>.config on at most one workspace, and not with configFile.";
           }
-        ];
+        ]
+        ++ map (p: {
+          assertion = isoRangeFits p;
+          message = "services.jobshop.isolation: pool ${p} per_session ids run past subIdStart + subIdCount (${toString cfg.isolation.subIdStart} + ${toString cfg.isolation.subIdCount}); raise subIdCount or lower map_uid/map_gid or range (#540).";
+        }) isoPools;
 
         users.users.${cfg.user} = {
           isSystemUser = true;

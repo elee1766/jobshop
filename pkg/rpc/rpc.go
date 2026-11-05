@@ -468,6 +468,8 @@ type SessionSandboxResult struct {
 	User       *acphost.User   `json:"user,omitempty"`
 	Cgroup     *acphost.Cgroup `json:"cgroup,omitempty"`
 	CgroupPath string          `json:"cgroup_path,omitempty"`
+	// Slot is the session's per-session id slot (#540).
+	Slot *int `json:"slot,omitempty"`
 }
 
 // SessionPromptParams names the session whose next prompt to show.

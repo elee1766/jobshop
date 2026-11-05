@@ -1012,6 +1012,7 @@ export interface SessionSandboxResult {
   user?: User;
   cgroup?: Cgroup;
   cgroup_path?: string;
+  slot?: number;
 }
 
 export interface SessionSendParams {
