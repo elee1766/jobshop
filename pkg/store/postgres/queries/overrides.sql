@@ -15,8 +15,8 @@ SELECT kind, ref, ticket_id, project, CAST(at AS BIGINT) AS at_ms,
          AS DOUBLE PRECISION) AS score
 FROM recall, to_tsquery('english', $1) q
 WHERE tsv @@ q
-  AND ($2 = '' OR project = $2 OR (kind = 'learning' AND project = ''))
-  AND ($3 = '' OR kind = $3)
-  AND ($4 = '' OR ticket_id = $4)
+  AND kind = 'comment'
+  AND ($2 = '' OR project = $2)
+  AND ($3 = '' OR ticket_id = $3)
 ORDER BY score, id
-LIMIT CAST($5 AS BIGINT)
+LIMIT CAST($4 AS BIGINT)

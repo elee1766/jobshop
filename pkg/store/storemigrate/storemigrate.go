@@ -134,10 +134,9 @@ func prepareTarget(ctx context.Context, tx *sql.Tx, force bool) error {
 
 // source returns the query that reads t from SQLite. Comment recall
 // rows are written by the Postgres trigger as comments are copied, so
-// only the other kinds (journal) are read; recall ids are not kept (FTS5
-// rowids, nothing refers to them). Learnings are records; Postgres
-// searches them through an index, so SQLite's fts_learnings is not
-// copied.
+// no other recall rows remain to read (journals and learnings are
+// records, #579); recall ids are not kept. Postgres searches records
+// through an index, so SQLite's fts_* tables are not copied.
 func source(t string) string {
 	switch t {
 	case "recall":

@@ -2,7 +2,6 @@ package sqlite_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -42,35 +41,6 @@ func TestRecallNewCommentSearchable(t *testing.T) {
 	hits, err = s.Recall(ctx, store.RecallQuery{Text: "gofumpt", Project: "other"})
 	require.NoError(t, err)
 	require.Empty(t, hits)
-}
-
-func TestRecallRanking(t *testing.T) {
-	t.Parallel()
-	ctx := t.Context()
-	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
-	require.NoError(t, err)
-	defer func() { _ = s.Close() }()
-	at := time.UnixMilli(1_700_000_000_000)
-	require.NoError(t, s.IndexRecall(ctx, store.RecallDoc{
-		Kind: store.RecallJournal, Ref: "s1:1", Project: "p", At: at,
-		Body: "vendor hash mismatch once, then lots of other text about reviewing and merging and waiting",
-	}))
-	require.NoError(t, s.IndexRecall(ctx, store.RecallDoc{
-		Kind: store.RecallJournal, Ref: "s2:1", Project: "p", At: at,
-		Body: "nix vendor hash mismatch: set vendorHash to the got value",
-	}))
-	hits, err := s.Recall(ctx, store.RecallQuery{Text: "vendor hash mismatch"})
-	require.NoError(t, err)
-	require.Len(t, hits, 2)
-	require.Equal(t, "s2:1", hits[0].Ref)
-	require.Equal(t, at.UTC(), hits[0].At)
-
-	// Re-indexing replaces; an empty body removes.
-	require.NoError(t, s.IndexRecall(ctx, store.RecallDoc{Kind: store.RecallJournal, Ref: "s2:1", Body: ""}))
-	hits, err = s.Recall(ctx, store.RecallQuery{Text: "vendor", Kind: store.RecallJournal})
-	require.NoError(t, err)
-	require.Len(t, hits, 1)
-	require.Equal(t, "s1:1", hits[0].Ref)
 }
 
 // TestRecallBackfill writes comments before the recall migration and checks

@@ -89,7 +89,7 @@ func TestCopy(t *testing.T) {
 	res, err := storemigrate.Copy(ctx, src.DB(), dst.DB(), storemigrate.Options{})
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), res["tickets"])
-	assert.Equal(t, int64(2), res["recall"], "comment and journal")
+	assert.Equal(t, int64(1), res["recall"], "the comment; journals are records")
 
 	// A second copy refuses a filled target, and --force replaces it.
 	_, err = storemigrate.Copy(ctx, src.DB(), dst.DB(), storemigrate.Options{})
