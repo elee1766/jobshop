@@ -1,7 +1,6 @@
 package sqlite_test
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 
@@ -24,7 +23,7 @@ func TestWriteKeysCursorsMigrate(t *testing.T) {
 	require.NoError(t, s.Close())
 
 	since := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := openAt21(t, path)
 	require.NoError(t, err)
 	for _, q := range []string{
 		// 00021 moved memory_edits; undo it so goose reruns from 20.

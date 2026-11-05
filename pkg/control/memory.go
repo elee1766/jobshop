@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -50,7 +51,7 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 	}
 	cited := make([]store.Learning, 0, len(p.Learnings))
 	for _, id := range p.Learnings {
-		l, err := c.store.GetLearning(ctx, id)
+		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +87,7 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 		return nil, err
 	}
 	for _, id := range out.Learnings {
-		if _, err := c.store.UpdateLearning(ctx, id, store.LearningApplied, memoryRef(out.ID)); err != nil {
+		if _, err := learning.Update(ctx, c.store, id, store.LearningApplied, memoryRef(out.ID)); err != nil {
 			return nil, err
 		}
 	}
@@ -149,7 +150,7 @@ func (c *Controller) restoreEdit(ctx context.Context, e store.MemoryEdit) error 
 
 func (c *Controller) rejectCited(ctx context.Context, e store.MemoryEdit) error {
 	for _, id := range e.Learnings {
-		if _, err := c.store.UpdateLearning(ctx, id, store.LearningRejected, memoryRef(e.ID)); err != nil {
+		if _, err := learning.Update(ctx, c.store, id, store.LearningRejected, memoryRef(e.ID)); err != nil {
 			return err
 		}
 	}

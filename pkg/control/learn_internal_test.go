@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -17,7 +18,7 @@ import (
 
 func learnings(t *testing.T, c *Controller, f store.LearningFilter) []store.Learning {
 	t.Helper()
-	ls, err := c.store.Learnings(t.Context(), f)
+	ls, err := learning.List(t.Context(), c.store, f)
 	require.NoError(t, err)
 	return ls
 }
@@ -248,7 +249,7 @@ func TestLearnUpdate(t *testing.T) {
 	require.Len(t, rej, 1)
 	assert.Equal(t, b, rej[0].ID)
 	assert.Equal(t, pr, rej[0].PR)
-	n, err := c.store.CountLearnings(ctx, time.Time{}, store.LearningCount{Status: store.LearningOpen})
+	n, err := learning.Count(ctx, c.store, time.Time{}, store.LearningCount{Status: store.LearningOpen})
 	require.NoError(t, err)
 	assert.Zero(t, n)
 }

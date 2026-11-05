@@ -14,6 +14,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -198,7 +199,7 @@ func (c *Controller) learningsHold(ctx context.Context, l config.LearningsWhen, 
 		// millisecond belongs to that pass.
 		from = from.Add(time.Millisecond)
 	}
-	n, err := c.store.CountLearnings(ctx, from, store.LearningCount{
+	n, err := learning.Count(ctx, c.store, from, store.LearningCount{
 		Status: store.LearningOpen, Kinds: l.Kinds, Scopes: l.Scope, Source: l.Source,
 	})
 	if err != nil {

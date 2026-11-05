@@ -358,30 +358,9 @@ type Store interface {
 	// ListRuns returns runs newest first. Empty project or state matches all.
 	ListRuns(ctx context.Context, project, state string, limit int) ([]Ticket, error)
 
-	// AddLearning records a learning (#264). Kind and Source are
-	// validated; Status defaults to open.
-	AddLearning(ctx context.Context, l Learning) (Learning, error)
-	// Learnings returns learnings newest first.
-	Learnings(ctx context.Context, f LearningFilter) ([]Learning, error)
-	// UpdateLearning sets a learning's status and PR (#273).
-	UpdateLearning(ctx context.Context, id int64, status, pr string) (Learning, error)
-	// GetLearning reads one learning; ErrNotFound if missing.
-	GetLearning(ctx context.Context, id int64) (Learning, error)
-	// CountLearnings counts learnings created at or after since that match f
-	// (#524).
-	CountLearnings(ctx context.Context, since time.Time, f LearningCount) (int, error)
-	// LearningsBetween returns learnings recorded in [since, until),
-	// oldest first (#274).
-	LearningsBetween(ctx context.Context, since, until time.Time) ([]Learning, error)
-	// LearningsByPR returns the learnings whose pr is pr (#274).
-	LearningsByPR(ctx context.Context, pr string) ([]Learning, error)
 	// StepsCreated returns step tickets created in [since, until),
 	// oldest first (#274).
 	StepsCreated(ctx context.Context, since, until time.Time) ([]Ticket, error)
-	// SetLearningGate writes the curator gate's result on a learning
-	// (#274). Memory edits live in pkg/memedit (#579); this goes when
-	// learnings move onto a collection.
-	SetLearningGate(ctx context.Context, id int64, gate string) error
 	// InboxPut stores an ingested item (#321). A delivery id already
 	// stored is a no-op that returns the existing row and dup true.
 	InboxPut(ctx context.Context, it InboxItem) (out InboxItem, dup bool, err error)

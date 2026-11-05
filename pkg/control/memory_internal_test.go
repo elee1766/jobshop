@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -40,7 +41,7 @@ func TestMemoryWrite(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(dir, "memory", "memory", "global.md"))
 	require.NoError(t, err)
 	assert.Equal(t, "Retry gh on 502.\n", string(b))
-	got, err := c.store.GetLearning(ctx, id)
+	got, err := learning.Get(ctx, c.store, id)
 	require.NoError(t, err)
 	assert.Equal(t, store.LearningApplied, got.Status)
 	assert.Equal(t, memoryRef(e.ID), got.PR)
@@ -125,7 +126,7 @@ func TestMemoryWriteRestore(t *testing.T) {
 	assert.Equal(t, "old line\n", string(b), "previous text restored")
 	_, err = os.Stat(poolFile)
 	assert.ErrorIs(t, err, os.ErrNotExist, "a file the write created is removed")
-	got, err := c.store.GetLearning(ctx, id)
+	got, err := learning.Get(ctx, c.store, id)
 	require.NoError(t, err)
 	assert.Equal(t, store.LearningRejected, got.Status)
 	assert.Contains(t, got.Gate, "not_helped: ")

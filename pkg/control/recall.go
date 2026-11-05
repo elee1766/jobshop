@@ -7,6 +7,7 @@ import (
 
 	host "github.com/elee1766/acphost"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -24,9 +25,43 @@ func (c *Controller) recall(ctx context.Context, sc scope, p rpc.RecallParams) (
 			return nil, err
 		}
 	}
-	return c.store.Recall(ctx, store.RecallQuery{
-		Text: p.Query, Project: proj, Kind: p.Kind, TicketID: p.TicketID, Limit: p.Limit,
-	})
+	q := store.RecallQuery{Text: p.Query, Project: proj, Kind: p.Kind, TicketID: p.TicketID, Limit: p.Limit}
+	if q.Limit <= 0 {
+		q.Limit = recallLimit
+	}
+	var idx, ls []store.RecallHit
+	if p.Kind != store.RecallLearning {
+		var err error
+		if idx, err = c.store.Recall(ctx, q); err != nil {
+			return nil, err
+		}
+	}
+	if p.Kind == "" || p.Kind == store.RecallLearning {
+		var err error
+		if ls, err = learning.Recall(ctx, c.store, p.Query, proj, p.TicketID, q.Limit); err != nil {
+			return nil, err
+		}
+	}
+	return mergeRecall(idx, ls, q.Limit), nil
+}
+
+// recallLimit is recall's limit when none is given.
+const recallLimit = 10
+
+// mergeRecall interleaves comment and journal hits with learning hits,
+// each in its own rank order: learnings have their own full-text index
+// (#579) and the two scores do not compare.
+func mergeRecall(a, b []store.RecallHit, limit int) []store.RecallHit {
+	out := make([]store.RecallHit, 0, min(limit, len(a)+len(b)))
+	for i := 0; len(out) < limit && (i < len(a) || i < len(b)); i++ {
+		if i < len(a) {
+			out = append(out, a[i])
+		}
+		if i < len(b) && len(out) < limit {
+			out = append(out, b[i])
+		}
+	}
+	return out
 }
 
 // indexJournal replaces the session's journal document in the recall

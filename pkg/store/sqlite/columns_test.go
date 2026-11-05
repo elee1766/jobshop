@@ -1,7 +1,6 @@
 package sqlite_test
 
 import (
-	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
@@ -87,7 +86,7 @@ func TestPortableColumnsBackfill(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := openAt21(t, path)
 	require.NoError(t, err)
 	for _, q := range undo00013() {
 		_, err = db.ExecContext(ctx, q)
@@ -143,7 +142,7 @@ func TestTicketResourcesBackfill(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := openAt21(t, path)
 	require.NoError(t, err)
 	for _, q := range undo00015() {
 		_, err = db.ExecContext(ctx, q)

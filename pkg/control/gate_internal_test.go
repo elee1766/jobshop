@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -169,7 +170,7 @@ func TestCuratorGate(t *testing.T) {
 	assert.Equal(t, 1, res[0].After.Recurrence)
 	assert.Contains(t, res[0].Reason, "still recurs")
 
-	l, err := c.store.GetLearning(ctx, id1)
+	l, err := learning.Get(ctx, c.store, id1)
 	require.NoError(t, err)
 	assert.Contains(t, l.Gate, "not_helped: ")
 	assert.Contains(t, l.Gate, pr)
@@ -209,7 +210,7 @@ func TestCuratorGateAge(t *testing.T) {
 	res := out.([]store.MemoryEdit)
 	require.Len(t, res, 1)
 	assert.Equal(t, store.EditHelped, res[0].State)
-	got, err := c.store.GetLearning(ctx, id)
+	got, err := learning.Get(ctx, c.store, id)
 	require.NoError(t, err)
 	assert.Contains(t, got.Gate, "helped: no steps")
 }

@@ -25,7 +25,6 @@ var Tables = []string{
 	"labels",
 	"history",
 	"comments",
-	"learnings",
 	"recall",
 	"inbox",
 	"resource_caps",
@@ -39,11 +38,10 @@ var Tables = []string{
 // identity lists tables whose id column is a Postgres identity; its
 // sequence is moved past the copied ids.
 var identity = map[string]string{
-	"history":   "seq",
-	"comments":  "id",
-	"learnings": "id",
-	"recall":    "id",
-	"inbox":     "id",
+	"history":  "seq",
+	"comments": "id",
+	"recall":   "id",
+	"inbox":    "id",
 }
 
 // ErrNotEmpty is returned when the target holds rows and Force is off.
@@ -136,14 +134,16 @@ func prepareTarget(ctx context.Context, tx *sql.Tx, force bool) error {
 	return nil
 }
 
-// source returns the query that reads t from SQLite. Comment and
-// learning recall rows are written by the Postgres triggers as those
-// rows are copied, so only the other kinds (journal) are read; recall
-// ids are not kept (FTS5 rowids, nothing refers to them).
+// source returns the query that reads t from SQLite. Comment recall
+// rows are written by the Postgres trigger as comments are copied, so
+// only the other kinds (journal) are read; recall ids are not kept (FTS5
+// rowids, nothing refers to them). Learnings are records; Postgres
+// searches them through an index, so SQLite's fts_learnings is not
+// copied.
 func source(t string) string {
 	switch t {
 	case "recall":
-		return "SELECT body, kind, ref, ticket_id, project, at FROM recall WHERE kind NOT IN ('comment', 'learning')"
+		return "SELECT body, kind, ref, ticket_id, project, at FROM recall WHERE kind != 'comment'"
 	case "tickets":
 		// Parents are set after every ticket is in (self reference).
 		return "SELECT * FROM tickets ORDER BY created_at, id"

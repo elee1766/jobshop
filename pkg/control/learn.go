@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -44,7 +45,18 @@ func (c *Controller) learnAdd(ctx context.Context, sc scope, p rpc.LearnParams) 
 		}
 	}
 	c.redactWrite(sc, "learning for", l.Ticket, &l.Summary, &l.Fix)
-	return c.store.AddLearning(ctx, l)
+	return c.addLearning(ctx, l)
+}
+
+// addLearning stores l with its ticket's project, which recall filters on.
+func (c *Controller) addLearning(ctx context.Context, l store.Learning) (store.Learning, error) {
+	project := ""
+	if l.Ticket != "" {
+		if t, err := c.store.Get(ctx, l.Ticket); err == nil {
+			project = t.Project
+		}
+	}
+	return learning.Add(ctx, c.store, l, project)
 }
 
 func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListParams) (any, error) {
@@ -67,7 +79,7 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 	if p.Since > 0 {
 		f.Since = c.now().Add(-p.Since)
 	}
-	ls, err := c.store.Learnings(ctx, f)
+	ls, err := learning.List(ctx, c.store, f)
 	if err != nil || !glob {
 		return ls, err
 	}
@@ -97,7 +109,7 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 	}
 	cur := make([]store.Learning, 0, len(p.IDs))
 	for _, id := range p.IDs {
-		l, err := c.store.GetLearning(ctx, id)
+		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
 			return nil, err
 		}
@@ -118,7 +130,7 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 	merged := map[string][]int64{}
 	var prs []string
 	for i, l := range cur {
-		u, err := c.store.UpdateLearning(ctx, l.ID, l.Status, l.PR)
+		u, err := learning.Update(ctx, c.store, l.ID, l.Status, l.PR)
 		if err != nil {
 			return nil, err
 		}
@@ -177,7 +189,7 @@ func (c *Controller) record(ctx context.Context, kind string, t store.Ticket, su
 	if t.Kind == store.KindStep || t.Kind == store.KindTask {
 		l.Session = t.Holder
 	}
-	if _, err := c.store.AddLearning(ctx, l); err != nil {
+	if _, err := c.addLearning(ctx, l); err != nil {
 		c.log.Error("record learning", "ticket", t.ID, "kind", kind, "err", err)
 	}
 }

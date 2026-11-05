@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -41,7 +42,7 @@ func mergeItem(id string, n int, at time.Time) rpc.ActivityItem {
 
 func revertLearnings(t *testing.T, c *Controller) []store.Learning {
 	t.Helper()
-	ls, err := c.store.Learnings(t.Context(), store.LearningFilter{Kind: store.LearningCorrection})
+	ls, err := learning.List(t.Context(), c.store, store.LearningFilter{Kind: store.LearningCorrection})
 	require.NoError(t, err)
 	return ls
 }

@@ -1,7 +1,6 @@
 package sqlite_test
 
 import (
-	"database/sql"
 	"testing"
 	"time"
 
@@ -24,7 +23,7 @@ func TestMemoryEditsMigrate(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := openAt21(t, path)
 	require.NoError(t, err)
 	for _, q := range []string{
 		"DROP INDEX ru_memory_edits_pr",

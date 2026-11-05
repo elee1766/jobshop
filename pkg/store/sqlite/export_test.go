@@ -2,6 +2,9 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
+
+	"github.com/pressly/goose/v3"
 
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -24,3 +27,14 @@ var RegisterDDL = registerDDL
 
 // QuoteLit is quoteLit, for tests.
 var QuoteLit = quoteLit
+
+// MigrateDownTo rolls db back to version with the migrations' Down
+// sections, for migration tests.
+func MigrateDownTo(ctx context.Context, db *sql.DB, version int64) error {
+	p, err := goose.NewProvider(goose.DialectSQLite3, db, mustSub(migrations, "migrations"))
+	if err != nil {
+		return err
+	}
+	_, err = p.DownTo(ctx, version)
+	return err
+}

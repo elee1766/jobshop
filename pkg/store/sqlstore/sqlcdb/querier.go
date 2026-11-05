@@ -26,9 +26,6 @@ type Querier interface {
 	// ClearTicketResources and AddTicketResource keep ticket_resources in
 	// step with fields.resources (#426).
 	ClearTicketResources(ctx context.Context, ticketID string) error
-	// Grouped so the caller can match kind and scope globs (#524) on any
-	// backend: Postgres has no GLOB.
-	CountLearnings(ctx context.Context, arg CountLearningsParams) ([]CountLearningsRow, error)
 	DeleteEdge(ctx context.Context, arg DeleteEdgeParams) (int64, error)
 	DeleteLabel(ctx context.Context, arg DeleteLabelParams) (int64, error)
 	DeleteResourceCaps(ctx context.Context) error
@@ -46,7 +43,6 @@ type Querier interface {
 	// FindOpenRunByKey uses tickets_run_key; at most one open run per
 	// workflow and key (the controller serializes starts).
 	FindOpenRunByKey(ctx context.Context, arg FindOpenRunByKeyParams) (Ticket, error)
-	GetLearning(ctx context.Context, id int64) (Learning, error)
 	GetSlot(ctx context.Context, arg GetSlotParams) (ResourceSlot, error)
 	GetTicket(ctx context.Context, id string) (Ticket, error)
 	// Heartbeat renews a lease without a revision bump or history row.
@@ -82,7 +78,6 @@ type Querier interface {
 	InsertEdge(ctx context.Context, arg InsertEdgeParams) error
 	InsertHistory(ctx context.Context, arg InsertHistoryParams) error
 	InsertLabel(ctx context.Context, arg InsertLabelParams) (int64, error)
-	InsertLearning(ctx context.Context, arg InsertLearningParams) (Learning, error)
 	InsertResourceCap(ctx context.Context, arg InsertResourceCapParams) error
 	InsertResourceProvider(ctx context.Context, name string) error
 	InsertSlot(ctx context.Context, arg InsertSlotParams) error
@@ -94,11 +89,10 @@ type Querier interface {
 	ListComments(ctx context.Context, ticketID string) ([]Comment, error)
 	ListEdges(ctx context.Context, id string) ([]Edge, error)
 	ListHistory(ctx context.Context, ticketID string) ([]History, error)
-	ListLearnings(ctx context.Context, arg ListLearningsParams) ([]Learning, error)
-	ListLearningsBetween(ctx context.Context, arg ListLearningsBetweenParams) ([]Learning, error)
-	ListLearningsByPR(ctx context.Context, pr string) ([]Learning, error)
 	ListRuns(ctx context.Context, arg ListRunsParams) ([]Ticket, error)
 	ListSlots(ctx context.Context) ([]ResourceSlot, error)
+	// Curator gate reads (#274). Memory edits and learnings moved to store
+	// collections (#579, pkg/memedit, pkg/learning).
 	ListStepsCreated(ctx context.Context, arg ListStepsCreatedParams) ([]Ticket, error)
 	// LIMIT CAST(? AS INTEGER), here and in every query with a bound limit:
 	// a bare bound LIMIT makes SQLite re-prepare a cached statement each
@@ -146,9 +140,6 @@ type Querier interface {
 	ResourceWaiters(ctx context.Context, now int64) ([]ResourceWaitersRow, error)
 	// ResourceWaiting counts open tickets per resource key (#400).
 	ResourceWaiting(ctx context.Context) ([]ResourceWaitingRow, error)
-	// Curator gate reads (#274). Memory edits moved to the memory_edits
-	// collection (#579, pkg/memedit).
-	SetLearningGate(ctx context.Context, arg SetLearningGateParams) error
 	// SetParent re-parents a ticket (batch adoption, #169). The caller bumps
 	// the revision and writes history through mutate.
 	SetParent(ctx context.Context, arg SetParentParams) error
@@ -158,7 +149,6 @@ type Querier interface {
 	TicketProviderResources(ctx context.Context, id string) ([]string, error)
 	// TicketSlots lists the slots ticket id's live claim holds.
 	TicketSlots(ctx context.Context, ticket string) ([]ResourceSlot, error)
-	UpdateLearning(ctx context.Context, arg UpdateLearningParams) (Learning, error)
 	UpdateSlot(ctx context.Context, arg UpdateSlotParams) error
 	// WriteTicket stores every mutable column, guarded by the previous revision.
 	WriteTicket(ctx context.Context, arg WriteTicketParams) (int64, error)

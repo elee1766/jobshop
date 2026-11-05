@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -157,7 +158,7 @@ func (c *Controller) checkRevert(ctx context.Context, src revertSource, repo str
 		return nil
 	}
 	key := revertKey(repo, pr.Number)
-	prior, err := c.store.Learnings(ctx, store.LearningFilter{Ticket: run.ID, Kind: store.LearningCorrection})
+	prior, err := learning.List(ctx, c.store, store.LearningFilter{Ticket: run.ID, Kind: store.LearningCorrection})
 	if err != nil {
 		return err
 	}

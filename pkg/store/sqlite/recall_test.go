@@ -1,8 +1,6 @@
 package sqlite_test
 
 import (
-	"database/sql"
-	"strconv"
 	"testing"
 	"time"
 
@@ -91,7 +89,7 @@ func TestRecallBackfill(t *testing.T) {
 
 	// Roll the index back to before 00004 (and later migrations), as on a
 	// database from an older release, then reopen to migrate forward.
-	db, err := sql.Open("sqlite", "file:"+path)
+	db, err := openAt21(t, path)
 	require.NoError(t, err)
 	for _, q := range append(undo00013(), []string{
 		"DROP TABLE resource_caps", "DELETE FROM goose_db_version WHERE version_id = 12",
@@ -121,24 +119,4 @@ func TestRecallBackfill(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, hits, 1)
 	require.Equal(t, tk.ID, hits[0].TicketID)
-}
-
-// TestRecallLearnings: learnings are indexed on insert; a global learning
-// (no ticket, no project) is visible to every project.
-func TestRecallLearnings(t *testing.T) {
-	t.Parallel()
-	ctx := t.Context()
-	s, err := sqlite.Open(ctx, testPath(t), sqlite.Options{})
-	require.NoError(t, err)
-	defer func() { _ = s.Close() }()
-	l, err := s.AddLearning(ctx, store.Learning{
-		Kind: store.LearningWorkaround, Summary: "nix vendorHash mismatch", Fix: "use lib.fakeHash then paste got",
-		Source: store.LearningSourceAgent,
-	})
-	require.NoError(t, err)
-	hits, err := s.Recall(ctx, store.RecallQuery{Text: "fakeHash", Project: "p"})
-	require.NoError(t, err)
-	require.Len(t, hits, 1)
-	require.Equal(t, store.RecallLearning, hits[0].Kind)
-	require.Equal(t, strconv.FormatInt(l.ID, 10), hits[0].Ref)
 }

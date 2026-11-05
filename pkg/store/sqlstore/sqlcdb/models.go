@@ -25,6 +25,11 @@ type Edge struct {
 	CreatedAt int64
 }
 
+type FtsLearning struct {
+	Key  string
+	Body string
+}
+
 type History struct {
 	Seq      int64
 	TicketID string
@@ -60,21 +65,6 @@ type Inbox struct {
 type Label struct {
 	TicketID string
 	Label    string
-}
-
-type Learning struct {
-	ID        int64
-	Kind      string
-	Summary   string
-	Fix       string
-	Scope     string
-	Ticket    string
-	Session   string
-	Source    string
-	Status    string
-	CreatedAt int64
-	Pr        string
-	Gate      string
 }
 
 type Recall struct {
