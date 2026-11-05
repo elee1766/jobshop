@@ -178,7 +178,7 @@ func (c *Controller) isolationKey(pool string) []string {
 	iso := c.config().IsolationFor(pool)
 	var key []string
 	if u := iso.User; u != nil {
-		key = append(key, fmt.Sprintf("JOBSHOP_ISOLATION_USER=%d:%d>%d:%d groups=%s", u.UID, u.GIDOrUID(), u.MapUID, u.MapGID, strings.Join(u.Groups, ",")))
+		key = append(key, fmt.Sprintf("JOBSHOP_ISOLATION_USER=%d:%d>%d:%d groups=%s per_session=%d", u.UID, u.GIDOrUID(), u.MapUID, u.MapGID, strings.Join(u.Groups, ","), u.Slots()))
 	}
 	if l := iso.Limits; l != nil {
 		key = append(key, fmt.Sprintf("JOBSHOP_ISOLATION_LIMITS=cpu=%s mem=%s high=%s swap=%s pids=%d", l.CPU, l.Memory, l.MemoryHigh, l.Swap, l.Pids))

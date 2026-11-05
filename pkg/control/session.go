@@ -1506,7 +1506,11 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
 		return err
 	}
-	if u := spec.User; u != nil && len(u.Groups) > 0 {
+	if u := c.config().IsolationFor(t.Pool).User; u != nil && u.Slots() > 0 {
+		if err := c.restrictSession(&spec.Spec, *u, f.Slot, dir); err != nil {
+			return err
+		}
+	} else if u := spec.User; u != nil && len(u.Groups) > 0 {
 		// The mapped user reaches cli.sock and writes the worktree through
 		// the first shared group, so the controller and refinery can still
 		// read and remove what it leaves.
@@ -1801,8 +1805,17 @@ func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent
 	if agent == "" {
 		return store.Ticket{}, fmt.Errorf("%w: agent is required", store.ErrInvalid)
 	}
-	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key, TraceParent: c.sessionTrace(ctx, project, pool, agent)})
+	// The slot pick and the create are one step, so two creates in the
+	// same pool never take the same per-session id (#540).
+	c.slotMu.Lock()
+	slot, err := c.sessionSlot(ctx, pool)
 	if err != nil {
+		c.slotMu.Unlock()
+		return store.Ticket{}, err
+	}
+	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
+	if err != nil {
+		c.slotMu.Unlock()
 		return store.Ticket{}, err
 	}
 	if title == "" {
@@ -1814,6 +1827,7 @@ func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent
 	t, err := c.store.Create(ctx, actor, store.NewTicket{
 		Project: project, Kind: store.KindSession, Title: title, Pool: pool, Fields: fields,
 	})
+	c.slotMu.Unlock()
 	if err != nil {
 		return t, err
 	}

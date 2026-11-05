@@ -29,6 +29,23 @@ type IsolationUser struct {
 	MapUID int      `yaml:"map_uid"`
 	MapGID int      `yaml:"map_gid"`
 	Groups []string `yaml:"groups"`
+	// PerSession gives each live session its own host uid/gid from
+	// [map_uid, map_uid+range) and [map_gid, map_gid+range) (#540).
+	PerSession *PerSession `yaml:"per_session"`
+}
+
+// PerSession is the size of a pool's per-session id range.
+type PerSession struct {
+	Range int `yaml:"range"`
+}
+
+// Slots is how many distinct sessions the user's ids allow: the
+// per_session range, or 0 when every session shares map_uid.
+func (u IsolationUser) Slots() int {
+	if u.PerSession == nil {
+		return 0
+	}
+	return u.PerSession.Range
 }
 
 // CgroupLimits are cgroup v2 limits for each session of a pool. CPU is a count
@@ -63,6 +80,14 @@ func (i *Isolation) check() error {
 		for _, g := range u.Groups {
 			if n, err := strconv.Atoi(g); (err == nil && n < 0) || g == "" {
 				return fmt.Errorf("isolation user: bad group %q", g)
+			}
+		}
+		if ps := u.PerSession; ps != nil {
+			if ps.Range < 1 {
+				return fmt.Errorf("isolation user per_session range %d must be at least 1", ps.Range)
+			}
+			if len(u.Groups) == 0 {
+				return fmt.Errorf("isolation user per_session needs groups: the first owns each session's worktree with the controller")
 			}
 		}
 	}

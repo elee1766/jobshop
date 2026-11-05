@@ -741,7 +741,11 @@ func (c sessionSandboxCmd) Run(g *Globals) error {
 		return err
 	}
 	if u := res.User; u != nil {
-		fmt.Printf("user uid %d gid %d mapped to %d:%d, groups %v\n", u.UID, u.GID, u.MapUID, u.MapGID, u.Groups)
+		slot := ""
+		if res.Slot != nil {
+			slot = fmt.Sprintf(" (per-session slot %d)", *res.Slot)
+		}
+		fmt.Printf("user uid %d gid %d mapped to %d:%d%s, groups %v\n", u.UID, u.GID, u.MapUID, u.MapGID, slot, u.Groups)
 	}
 	if cg := res.Cgroup; cg != nil {
 		fmt.Printf("cgroup %s: cpu.max %q memory.max %q memory.high %q swap.max %q pids.max %d\n",
