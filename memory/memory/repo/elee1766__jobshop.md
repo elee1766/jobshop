@@ -29,6 +29,9 @@ A PR with no checks usually conflicts with master: run
 `git merge-tree --write-tree origin/master HEAD` and rebase before
 pushing an empty commit.
 sqlc is not on PATH: regenerate with `go generate ./pkg/store/sqlite/`.
+Generated files go stale when a rebase brings in new rpc types or CLI
+commands, even if GitHub shows the PR CLEAN: after every rebase rerun
+`go run ./pkg/rpc/rpcschema/cmd/deskgen` and go test ./... before pushing.
 With `sqlc.slice`, named params after the slice bind into the list: put
 named params first or use bare `?`, and check the `?N` in sqlcdb.
 Old runs leave local `issue-<n>` branches: `git branch --list issue-<n>`
