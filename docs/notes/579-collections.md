@@ -128,11 +128,14 @@ The same rules as the inbox and ticket claims today:
 
 ## Physical layout
 
-**SQLite: one table per collection.**
+**SQLite: one `records` table, partial indexes per collection**
+(operator, 2026-11-05: one table with indexes is enough; a deployment
+that outgrows SQLite moves to Postgres). No per-collection tables.
 
 ```sql
-CREATE TABLE IF NOT EXISTS c_inbox (
-  key         TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS records (
+  collection  TEXT NOT NULL,
+  key         TEXT NOT NULL,
   state       TEXT NOT NULL DEFAULT '',
   value       TEXT NOT NULL DEFAULT '{}',
   revision    INTEGER NOT NULL DEFAULT 1,
@@ -140,21 +143,25 @@ CREATE TABLE IF NOT EXISTS c_inbox (
   lease_until INTEGER NOT NULL DEFAULT 0,
   attempts    INTEGER NOT NULL DEFAULT 0,
   created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL
+  updated_at  INTEGER NOT NULL,
+  PRIMARY KEY (collection, key)
 ) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS c_inbox_claim   ON c_inbox (state, lease_until, created_at);
-CREATE INDEX IF NOT EXISTS c_inbox_created ON c_inbox (created_at);
--- per indexed field
-CREATE INDEX IF NOT EXISTS c_inbox_f_source ON c_inbox (json_extract(value, '$.source'), created_at);
+-- claim, list and prune
+CREATE INDEX IF NOT EXISTS records_state ON records (collection, state, updated_at);
+CREATE INDEX IF NOT EXISTS records_created ON records (collection, created_at);
+-- per indexed field, partial on the collection
+CREATE INDEX IF NOT EXISTS rec_inbox_source ON records (json_extract(value, '$.source'), created_at)
+  WHERE collection = 'inbox';
 -- per unique field
-CREATE UNIQUE INDEX IF NOT EXISTS c_inbox_u_natural_key ON c_inbox (json_extract(value, '$.natural_key'))
-  WHERE json_extract(value, '$.natural_key') != '';
+CREATE UNIQUE INDEX IF NOT EXISTS rec_inbox_u_natural_key ON records (json_extract(value, '$.natural_key'))
+  WHERE collection = 'inbox' AND json_extract(value, '$.natural_key') != '';
 ```
 
-Queries filter with the same `json_extract(value, '$.x')` expression, so
-the planner uses the expression index. If one does not, the field becomes
-a generated column; that is a per-field choice, not an API change.
-Sequences live in one `collection_seq (name, next)` table.
+Queries repeat the index's `collection = '<name>'` literal and the same
+`json_extract(value, '$.x')` expression, so the planner can use the
+partial index (a bound parameter for the collection would not match the
+index's WHERE). The conformance suite checks this with `EXPLAIN QUERY
+PLAN`. Sequences live in one `collection_seq (name, next)` table.
 
 **Postgres: one partitioned parent.**
 
@@ -229,9 +236,10 @@ One goose migration per domain PR, in plan order: poll_cursors and
 write_keys (empty), memory_edits (22), learnings (339), inbox (3,774).
 Each migration:
 
-- **Up:** creates the collection table (SQLite) or partition (Postgres)
+- **Up:** creates the `records` table and the collection's indexes
+  (SQLite) or its partition (Postgres)
   with the same DDL the registration would, then
-  `INSERT INTO c_x SELECT ...` mapping columns into `value` with
+  `INSERT INTO records SELECT '<name>', ...` mapping columns into `value` with
   `json_object(...)` (SQLite) or `jsonb_build_object(...)` (Postgres).
   Keys are the old primary key (ids zero padded), `created_at` the old
   created or received time, and the sequence starts at `max(id) + 1`.
@@ -256,6 +264,9 @@ join tickets in `Ready`/`ClaimNext`; revisit later). The target is about
 final count goes here when step 3 is done.
 
 ## Open questions for review
+
+Status 2026-11-05: the operator has answered none of these yet. This
+note merges only after they are answered here.
 
 1. String keys with zero-padded ids, versus an integer key column.
 2. Queries built in Go for collections, versus keeping sqlc with one
