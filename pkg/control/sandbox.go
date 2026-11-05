@@ -22,6 +22,9 @@ import (
 // (#262). Missing ones are skipped, so non-NixOS hosts work too.
 var sandboxSystemRO = []string{
 	"/nix/store", "/etc", "/run/current-system", "/bin", "/usr/bin", "/lib64",
+	// The dynamic loader and libc on FHS hosts (Ubuntu): without them any
+	// dynamically linked agent fails to exec (#623).
+	"/lib", "/usr/lib", "/usr/lib64",
 	"/run/systemd/resolve", "/run/nscd",
 }
 

@@ -24,6 +24,14 @@ config that still sets it (#261). It must either keep the old name with
 `renamed_vars: {old: new}` in pack.yaml, or list in the PR body the hosts
 that set the var and the config change each needs. Doing neither is case 4.
 
+Before any merge, check that nothing on this issue waits on a human:
+`jobshop ticket list --label needs-human --status open --kind message | jq '[.[] | select(.meta.github.issue == {{.issue}})] | length'`
+must be 0, and the issue and PR must not carry the `needs-decision`
+label. Otherwise it is case 5 (waiting for approval): name the open
+question or label in your comment. A question the operator has not
+answered is not approval, even when the PR already follows earlier
+answers.
+
 Then do exactly one of these. A plain release of this step counts as a
 failed attempt (like a failed close). To wait for CI on a PR head, set
 `jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
@@ -67,11 +75,13 @@ resumes here within a minute of CI finishing. If it resumes with
    behind implement and counts one attempt; at the retry limit the run
    escalates to a human instead.
 5. Waiting for approval (step 6 needs an approval that is missing or is
-   for an older head): comment on this step which approval is missing,
+   for an older head, an open needs-human question on this issue, or a
+   `needs-decision` label): comment on this step which approval is missing,
    then `jobshop close -r failed`. The step reopens and the next attempt
    checks again; at the retry limit the run escalates to a human.
 6. Ready (required checks green on the current head, required approval
-   present, no unresolved review comments, criteria met):
+   present, no open question or `needs-decision` label, no unresolved
+   review comments, criteria met):
    `gh pr merge <n> --{{.merge_method}} --match-head-commit <headRefOid>`.
    Never pass `--delete-branch` (gh then removes the dev session's
    worktree; GitHub deletes the remote branch on merge). Comment the merge
