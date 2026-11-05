@@ -1,7 +1,11 @@
 <script>
   // Built-in Attention view (#535): what waits on a human, a push opt-in,
-  // and runs in progress. A click opens the session chat that resolves
-  // the item (POST api/attention/chat). Uses api only (#517).
+  // and runs in progress. A row shows a summary and its canned resolve
+  // buttons (#607); Open chat (or a click on the row) opens the session
+  // chat that resolves the item (POST api/attention/chat). Uses api only
+  // (#517).
+  import { resolveActions, runAction } from '../../kit/attention.js';
+
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api } = $props();
 
@@ -64,6 +68,22 @@
       if (['run', 'ticket', 'question', 'decision', 'stale', 'wait'].includes(it.kind)) api.openTicket(it.id);
     } finally {
       opening = '';
+    }
+  }
+
+  let acting = $state('');
+  /** A canned button: confirm, resolve, drop the row; no session opens.
+   * @param {any} it @param {import('../../kit/attention.js').Action} a */
+  async function resolve(it, a) {
+    const key = it.kind + ':' + it.id;
+    acting = key;
+    try {
+      if (await runAction(api, a)) {
+        items = (items ?? []).filter((x) => x.kind + ':' + x.id !== key);
+        load();
+      }
+    } finally {
+      acting = '';
     }
   }
 
@@ -135,9 +155,20 @@
         <thead><tr><th>Kind</th><th>Item</th><th>Why</th><th>Since</th></tr></thead>
         <tbody>
           {#each items as it (it.kind + it.id)}
+            {@const key = it.kind + ':' + it.id}
             <tr class="click" class:busy={opening === it.kind + ':' + it.id} onclick={() => open(it)} data-testid="attention-row" data-item={it.kind + ':' + it.id}>
               <td class="c-id"><span class="pill warn">{it.kind}</span></td>
-              <td class="c-title">{it.title || it.id}<div class="faint mono">{it.id}{#if it.ref} · {it.ref}{/if}</div></td>
+              <td class="c-title">
+                {it.title || it.id}<div class="faint mono">{it.id}{#if it.ref} · {it.ref}{/if}</div>
+                {#if it.summary}<div class="summary muted" data-testid="attention-summary">{it.summary}</div>{/if}
+                <!-- Buttons do not open the chat: the row's click is for that. -->
+                <div class="acts" role="presentation" onclick={(e) => e.stopPropagation()}>
+                  {#each resolveActions(api, it.kind, it.id) as a (a.label)}
+                    <button type="button" disabled={acting === key} onclick={() => resolve(it, a)} data-testid="row-resolve">{a.label}</button>
+                  {/each}
+                  <button type="button" class="ghost" disabled={opening === key} onclick={() => open(it)} data-testid="open-chat">Open chat</button>
+                </div>
+              </td>
               <td class="muted full">{it.why}</td>
               <td class="muted c-time">{ago(it.since)}</td>
             </tr>
@@ -192,6 +223,8 @@
 
 <style>
   tr.busy td { opacity: 0.6; }
+  .summary { margin-top: 4px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; cursor: default; }
   .pushna { font-size: 12px; }
   .progress { display: flex; flex-direction: column; gap: 8px; }
   .item { overflow: hidden; }
@@ -210,6 +243,7 @@
   .none { padding: 4px 0; }
   @media (max-width: 768px) {
     .head { min-height: 44px; }
+    .acts button { min-height: 40px; }
     .id { display: none; }
     li a { padding: 8px 0; }
   }

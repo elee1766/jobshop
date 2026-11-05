@@ -1343,6 +1343,10 @@ type AttentionItem struct {
 	Ref  string `json:"ref,omitempty"`
 	// Owner is who must act, for a wait past its timeout (#381).
 	Owner string `json:"owner,omitempty"`
+	// Summary is a short line or two for the row (#607):
+	// meta.desk.attention_summary when set (the pre-started chat's first
+	// reply), else the ticket body or wait reason.
+	Summary string `json:"summary,omitempty"`
 }
 
 // AttentionResult lists what waits on a human, oldest first. Empty when

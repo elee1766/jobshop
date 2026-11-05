@@ -205,6 +205,9 @@ func (s *Server) openChat(r *http.Request, key string) string {
 
 type deskMetaPack struct {
 	AttentionChat string `json:"attention_chat,omitempty"`
+	// AttentionSummary is the row's summary (#607), from the chat's first
+	// reply (#606); the controller lists it in place of the body.
+	AttentionSummary string `json:"attention_summary,omitempty"`
 }
 
 func deskMeta(raw json.RawMessage) deskMetaPack {
@@ -236,7 +239,9 @@ func (s *Server) recordChat(r *http.Request, isTicket bool, t store.Ticket, item
 			return err
 		}
 	}
-	d, err := json.Marshal(deskMetaPack{AttentionChat: key})
+	dm := deskMeta(t.Meta)
+	dm.AttentionChat = key
+	d, err := json.Marshal(dm)
 	if err != nil {
 		return err
 	}

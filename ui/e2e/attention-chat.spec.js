@@ -220,7 +220,7 @@ test('an escalation item opens its existing chat', async ({ page }) => {
     streams: { 'js-s1': [sse([{ seq: 3, type: 'turn_start', text: '', context: 'You are the escalation chat for js-e1', time: iso(1000) }], { end: true })] },
   });
   await page.goto('./');
-  await page.getByTestId('attention-row').first().click();
+  await page.getByTestId('open-chat').first().click();
   await expect(page.getByTestId('session-panel')).toBeVisible();
   await expect(page).toHaveURL(/session=js-s1/);
   await expect(page).toHaveURL(/item=ticket%3Ajs-e1/);
@@ -241,7 +241,7 @@ test('a question item: the answer goes through question.answer and the item clea
     streams: { 'js-s3': [sse([prompt(2, 'Desk attention item: question js-q1'), end(3)], { end: true })] },
   });
   await page.goto('./');
-  await page.getByTestId('attention-row').first().click();
+  await page.getByTestId('open-chat').first().click();
   await expect(page.getByTestId('answer-toggle')).toBeVisible();
   await expect(page.getByTestId('answer-toggle').locator('input')).toBeChecked();
   await expect(page.getByTestId('chat-send')).toHaveText('Answer');
@@ -269,9 +269,9 @@ test('a decision item: approve, reject and dismiss call decision.resolve; an err
     rpc: (m) => (fail && m === 'decision.resolve' ? { status: 502, json: { error: 'github POST labels: 403 Forbidden' } } : null),
   });
   await page.goto('./');
-  await page.getByTestId('attention-row').first().click();
-  await expect(page.getByTestId('resolve')).toHaveText(['Approve as target', 'Reject', 'Dismiss']);
   for (const [label, action] of [['Approve as target', 'approve'], ['Reject', 'reject'], ['Dismiss', 'dismiss']]) {
+    await page.getByTestId('open-chat').first().click();
+    await expect(page.getByTestId('resolve')).toHaveText(['Approve as target', 'Reject', 'Dismiss']);
     await page.getByTestId('resolve').filter({ hasText: label }).click();
     // The confirm dialog shows above the chat panel and takes the click.
     await expect(page.getByTestId('confirm')).toBeVisible();
@@ -279,13 +279,50 @@ test('a decision item: approve, reject and dismiss call decision.resolve; an err
     await expect(page.getByTestId('toasts')).toContainText(label + ': done');
     const sent = calls.filter((c) => c.path === '/api/rpc/decision.resolve').pop();
     expect(sent?.body).toEqual({ id: 'js-d1', action });
+    // A resolution closes the panel and returns to the list (#607).
+    await expect(page.getByTestId('session-panel')).toHaveCount(0);
   }
   expect(calls.some((c) => c.path === '/api/rpc/label.add' || c.path === '/api/rpc/ticket.close')).toBe(false);
   fail = true;
+  await page.getByTestId('open-chat').first().click();
   await page.getByTestId('resolve').filter({ hasText: 'Dismiss' }).click();
   await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
   await expect(page.getByTestId('toasts')).toContainText('Dismiss failed: ');
   await expect(page.getByTestId('toasts')).toContainText('403 Forbidden');
+  // A failure keeps the panel open.
+  await expect(page.getByTestId('session-panel')).toBeVisible();
+});
+
+test('a row shows its summary and canned buttons; a button resolves it without opening a session', async ({ page }) => {
+  let closed = false;
+  const calls = await mock(page, {
+    attention: () => (closed ? [] : [{ kind: 'ticket', id: 'js-t1', title: 'Escalate run js-r1', why: '', summary: 'The deploy step failed 3 times.', since: iso(600e3) }]),
+    rpc: (m) => { if (m === 'ticket.close') closed = true; return null; },
+  });
+  await page.goto('./');
+  const row = page.getByTestId('attention-row').first();
+  await expect(row.getByTestId('attention-summary')).toHaveText('The deploy step failed 3 times.');
+  await expect(row.getByTestId('row-resolve')).toHaveText(['Close ticket']);
+  await expect(row.getByTestId('open-chat')).toBeVisible();
+  await row.getByTestId('row-resolve').click();
+  await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByTestId('toasts')).toContainText('Close ticket: done');
+  await expect(page.getByTestId('attention-empty')).toBeVisible();
+  expect(calls.find((c) => c.path === '/api/rpc/ticket.close')?.body).toEqual({ id: 'js-t1' });
+  expect(calls.some((c) => c.path === '/api/attention/chat')).toBe(false);
+  await expect(page.getByTestId('session-panel')).toHaveCount(0);
+});
+
+test('Open chat on a row opens the session', async ({ page }) => {
+  const calls = await mock(page, {
+    attention: () => [{ kind: 'run', id: 'js-r2', title: 'run stuck', why: '', since: iso(600e3) }],
+    chat: () => ({ kind: 'run', id: 'js-r2', key: 'attention:run:js-r2', session: 'js-s3', started: true }),
+  });
+  await page.goto('./');
+  await page.getByTestId('attention-row').first().getByTestId('open-chat').click();
+  await expect(page.getByTestId('session-panel')).toBeVisible();
+  await expect(page).toHaveURL(/session=js-s3/);
+  expect(calls.filter((c) => c.path === '/api/attention/chat')).toHaveLength(1);
 });
 
 test('a stale item starts a chat with the context prompt; a second click reopens it', async ({ page }) => {
@@ -296,12 +333,12 @@ test('a stale item starts a chat with the context prompt; a second click reopens
     streams: { 'js-s3': [sse([prompt(2, 'Desk attention item: stale js-t9\nTitle: orphan task')], { end: true })] },
   });
   await page.goto('./');
-  await page.getByTestId('attention-row').first().click();
+  await page.getByTestId('open-chat').first().click();
   await expect(page).toHaveURL(/session=js-s3/);
   await expect(page.getByTestId('journal')).toContainText('Desk attention item: stale js-t9');
   await page.getByTestId('session-panel-close').click();
   await expect(page.getByTestId('session-panel')).toHaveCount(0);
-  await page.getByTestId('attention-row').first().click();
+  await page.getByTestId('open-chat').first().click();
   await expect(page).toHaveURL(/session=js-s3/);
   const opens = calls.filter((c) => c.path === '/api/attention/chat');
   expect(opens).toHaveLength(2);
