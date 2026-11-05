@@ -9,6 +9,6 @@ was never regenerated, and every later deploy was skipped.
 Rule (option b on the issue): a removed or renamed field that the NixOS
 module sets becomes a load warning and is ignored for one release. A
 later PR, after the host has switched, makes it an error.
-`attention.rollback_file` and `attention.config_repo_file` now warn.
+`attention.rollback_file` and `attention.config_repo_file` warn since #596.
 The selfdev pack guide states the rule; nix/module-test.nix checks a
 warning-only config check still switches.
