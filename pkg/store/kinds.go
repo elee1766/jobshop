@@ -64,6 +64,10 @@ type SessionFields struct {
 	// Override is `session config` (#304): option values on top of the
 	// pool's until the session ends or the override is reset.
 	Override map[string]string `json:"override,omitempty"`
+	// ShippedSeq is the last journal seq shipped to VictoriaLogs (#530).
+	// The controller saves it every few seconds, so after a crash it
+	// resends a little; rows are deduped by (session, seq) on query.
+	ShippedSeq int64 `json:"shipped_seq,omitempty"`
 }
 
 // Cordon reasons (#281).

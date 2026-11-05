@@ -101,6 +101,8 @@ export interface RpcMethods {
   "ingest.claim": { params: IngestClaimParams; result: IngestClaimResult };
   "ingest.drain": { params: IngestDrainParams; result: IngestDrainResult };
   "ingest.workers": { params: Record<string, never>; result: IngestWorkersResult };
+  "journal.backfill": { params: JournalBackfillParams; result: JournalBackfillResult };
+  "journal.search": { params: JournalSearchParams; result: JournalSearchResult };
   "label.add": { params: LabelParams; result: Record<string, never> };
   "label.remove": { params: LabelParams; result: Record<string, never> };
   "learn.add": { params: LearnParams; result: Learning };
@@ -588,11 +590,33 @@ export interface IngestWorkersResult {
   counts: Record<string, number>;
 }
 
+export interface JournalBackfillParams {
+  since?: number;
+}
+
+export interface JournalBackfillResult {
+  sessions: number;
+  frames: number;
+}
+
 export interface JournalFrame {
   seq: number;
   t: number;
   from: string;
   msg: unknown;
+}
+
+export interface JournalSearchParams {
+  query: string;
+  since?: number;
+  start?: string;
+  until?: string;
+  limit?: number;
+}
+
+export interface JournalSearchResult {
+  rows: unknown[];
+  truncated?: boolean;
 }
 
 export interface LabelParams {

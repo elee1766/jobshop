@@ -31,6 +31,12 @@ var stdout io.Writer = os.Stdout
 // call connects to the right socket and runs one request, printing the
 // result as JSON.
 func (g *Globals) call(method string, params, out any) error {
+	return g.callTimeout(30*time.Second, method, params, out)
+}
+
+// callTimeout is call with its own deadline, for slow methods such as
+// journal.backfill.
+func (g *Globals) callTimeout(timeout time.Duration, method string, params, out any) error {
 	sock := g.Socket
 	if sock == "" {
 		r, err := g.root()
@@ -39,7 +45,7 @@ func (g *Globals) call(method string, params, out any) error {
 		}
 		sock = r.AdminSocket()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	// An agent's calls join its session's trace (set by the controller).
 	ctx = telemetry.WithTraceParent(ctx, os.Getenv("JOBSHOP_TRACEPARENT"))

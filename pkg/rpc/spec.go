@@ -47,6 +47,8 @@ var Specs = map[string]Spec{
 	MethodSessionSend:       {SessionSendParams{}, SessionSendResult{}},
 	MethodSessionSubscribe:  {SessionSubscribeParams{}, SessionSubscribeResult{}},
 	MethodSessionJournal:    {SessionJournalParams{}, SessionJournalResult{}},
+	MethodJournalSearch:     {JournalSearchParams{}, JournalSearchResult{}},
+	MethodJournalBackfill:   {JournalBackfillParams{}, JournalBackfillResult{}},
 	MethodSessionCordon:     {SessionCordonParams{}, SessionInfo{}},
 	MethodSessionConfig:     {SessionConfigParams{}, SessionInfo{}},
 	MethodWhoami:            {empty{}, Whoami{}},

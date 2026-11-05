@@ -89,6 +89,8 @@ let
     sandbox.enable = true;
     sandbox.mise.tools = [ "node@24" ];
   };
+  vlLocal = eval { journal.victorialogs.enable = true; };
+  vlExternal = eval { journal.victorialogs.url = "http://logs.internal:9428"; };
   miseOff = eval { sandbox.enable = true; };
 
   # User-managed jobshop.yaml (#531): the module writes only
@@ -522,6 +524,12 @@ let
         })
       )
     ))
+    (expect "journal.victorialogs.enable runs a local VictoriaLogs" (
+      vlLocal.config.services.victorialogs.enable
+      && vlLocal.config.services.victorialogs.listenAddress == "127.0.0.1:9428"
+      && lib.elem "-retentionPeriod=90d" vlLocal.config.services.victorialogs.extraOptions
+    ))
+    (expect "an external VictoriaLogs url runs none" (!vlExternal.config.services.victorialogs.enable))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;
@@ -539,5 +547,7 @@ pkgs.runCommand "jobshop-module-test" { } ''
   grep -q 'prefix: ot-' ${yamlPacks two}
   [ "$(grep -c 'prefix:' ${yamlPacks two})" = 1 ] || { echo 'selfdev got a prefix'; exit 1; }
   grep -q -- '- /var/lib/jobshop-mise' ${yamlPacks miseShared}
+  grep -q 'url: http://127.0.0.1:9428' ${yamlPacks vlLocal}
+  grep -q 'url: http://logs.internal:9428' ${yamlPacks vlExternal}
   touch $out
 ''

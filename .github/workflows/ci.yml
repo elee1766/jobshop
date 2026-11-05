@@ -32,6 +32,21 @@ jobs:
             go-${{ runner.os }}-
       - run: go build ./...
       - run: go vet ./...
+      # Journal search tests run against a real VictoriaLogs (#530).
+      - name: install victoria-logs
+        env:
+          VL_VERSION: v1.53.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/vl"
+          cd "$RUNNER_TEMP/vl"
+          f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
+          grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
+          tar xzf "$f"
+          bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
+          echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
+          echo "JOBSHOP_REQUIRE_VICTORIALOGS=1" >> "$GITHUB_ENV"
       # checkptr is off for modernc's machine-translated C only: its pointer
       # arithmetic is ~a third of race-test CPU and is not our code. The
       # race detector still covers it (#433).

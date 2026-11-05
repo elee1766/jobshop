@@ -110,11 +110,22 @@ let
   configRepoState = "${cfg.dataDir}/config-repo";
   userConfig = cfg.configFile != null || repoConfig;
   telemetryAttrs = lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; };
+  # Journal search (#530): the local VictoriaLogs, or an external url.
+  vl = cfg.journal.victorialogs;
+  vlUrl = if vl.url != "" then vl.url else lib.optionalString vl.enable "http://${vl.listenAddress}";
+  moduleAttrs =
+    telemetryAttrs
+    // lib.optionalAttrs (vlUrl != "") {
+      journal.victorialogs = {
+        url = vlUrl;
+        retention_hint = vl.retentionPeriod;
+      };
+    };
   generatedConfig = settingsFormat.generate "jobshop.yaml" (
-    lib.recursiveUpdate (withModuleKeys cfg.settings) telemetryAttrs
+    lib.recursiveUpdate (withModuleKeys cfg.settings) moduleAttrs
   );
   moduleFile = settingsFormat.generate "jobshop.module.yaml" (
-    lib.recursiveUpdate (withModuleKeys { }) telemetryAttrs
+    lib.recursiveUpdate (withModuleKeys { }) moduleAttrs
   );
   # What a switch changes: reload and restart triggers.
   configFile = if userConfig then moduleFile else generatedConfig;
@@ -545,6 +556,26 @@ in
           Authorization = "Bearer \${OTLP_TOKEN}";
         };
         description = "Headers on every OTLP export. \${VAR} expands from the controller environment (see environmentFile).";
+      };
+    };
+
+    journal.victorialogs = {
+      enable = lib.mkEnableOption "a local VictoriaLogs (nixpkgs services.victorialogs) for journal search, set as journal.victorialogs.url (#530)";
+      listenAddress = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1:9428";
+        description = "Listen address of the local VictoriaLogs. Use another port when the host already runs one (e.g. Gas City's).";
+      };
+      retentionPeriod = lib.mkOption {
+        type = lib.types.str;
+        default = "90d";
+        description = "-retentionPeriod of the local VictoriaLogs; also written as journal.victorialogs.retention_hint.";
+      };
+      url = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "http://logs.internal:9428";
+        description = "An external VictoriaLogs base URL. Overrides the local one; leave enable off to use only this.";
       };
     };
 
@@ -1276,6 +1307,17 @@ in
             echo "config check: $out"
             ${pkgs.systemd}/bin/systemctl try-reload-or-restart jobshop.service
           '';
+        };
+      })
+      (lib.mkIf (vl.enable && vl.url == "") {
+        services.victorialogs = {
+          enable = true;
+          inherit (vl) listenAddress;
+          extraOptions = [ "-retentionPeriod=${vl.retentionPeriod}" ];
+        };
+        systemd.services.jobshop = {
+          wants = [ "victorialogs.service" ];
+          after = [ "victorialogs.service" ];
         };
       })
       (lib.mkIf cfg.ingest.enable {

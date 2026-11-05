@@ -106,6 +106,7 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 		return nil, err
 	}
 	items = append(items, ing...)
+	items = append(items, c.journalLagAttention()...)
 	stale, err := c.staleAttention(ctx)
 	if err != nil {
 		return nil, err

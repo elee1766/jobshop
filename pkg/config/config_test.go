@@ -77,7 +77,8 @@ func TestParseErrors(t *testing.T) {
 		{"unknown agent key", "agents:\n  a:\n    command: x\n    cmd: y\n", "cmd"},
 		{"bad timeout", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    idle_timeout: soon\n", "idle_timeout"},
 		{"unknown telemetry key", base + "telemetry:\n  metrics: x\n", "metrics"},
-		{"export without logs endpoint", base + "pools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n", "conversation_export needs"},
+		{"bad victorialogs url", base + "journal:\n  victorialogs: {url: \"127.0.0.1:9428\"}\n", "journal.victorialogs.url"},
+		{"bad journal lag_max", base + "journal:\n  lag_max: soon\n", "journal.lag_max"},
 		{"bad inbox retention", base + "ingest:\n  retention: 2w\n", "ingest.retention"},
 	}
 	for _, tt := range tests {
@@ -89,11 +90,21 @@ func TestParseErrors(t *testing.T) {
 	}
 }
 
-func TestParseConversationExport(t *testing.T) {
-	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\ntelemetry:\n  otlp_endpoint: http://o:4318\npools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n  q:\n    agent: a\n    dir: /w\n"))
+// TestConversationExportRemoved: conversation_export was removed by #530;
+// a config that still sets it loads, without a logs endpoint, and warns.
+func TestConversationExportRemoved(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\nagents:\n  a:\n    command: x\npools:\n  p:\n    agent: a\n    dir: /w\n    conversation_export: true\n  q:\n    agent: a\n    dir: /w\n"))
 	require.NoError(t, err)
-	assert.True(t, c.Pools["p"].ConversationExport)
-	assert.False(t, c.Pools["q"].ConversationExport, "default off")
+	require.Len(t, c.Warnings, 1)
+	assert.Contains(t, c.Warnings[0], "conversation_export is removed, see journal.victorialogs")
+}
+
+func TestParseJournal(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\njournal:\n  victorialogs:\n    url: http://127.0.0.1:9428\n    headers: {Authorization: \"Bearer ${VL_TOKEN}\"}\n"))
+	require.NoError(t, err)
+	require.NotNil(t, c.Journal.VictoriaLogs)
+	assert.Equal(t, "Bearer t", c.Journal.VictoriaLogs.HeaderValues(func(string) string { return "t" })["Authorization"])
+	assert.Equal(t, DefaultJournalLagMax, c.Journal.LagMaxDuration())
 }
 
 // TestSessionOptions (#304): the pool overrides the agent per option id,

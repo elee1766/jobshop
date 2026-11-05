@@ -200,7 +200,9 @@ type Controller struct {
 	activitySrc activitySource
 	activityMu  sync.Mutex
 	activity    *activityState
-	wg          sync.WaitGroup
+	// ship is journal shipping to VictoriaLogs (#530).
+	ship shipper
+	wg   sync.WaitGroup
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -368,6 +370,7 @@ func (c *Controller) serve() error {
 	c.wg.Go(c.pumpReconcile)
 	c.wg.Go(c.pumpPollers)
 	c.wg.Go(c.pumpAdmission)
+	c.wg.Go(c.pumpJournal)
 	c.start(admin, scope{admin: true, actor: "admin"})
 	if err := c.serveMetrics(); err != nil {
 		c.cancel()
@@ -757,6 +760,8 @@ func init() {
 		rpc.MethodSessionSend:       bind((*Controller).sessionSend),
 		rpc.MethodSessionSubscribe:  bind((*Controller).sessionSubscribe),
 		rpc.MethodSessionJournal:    bind((*Controller).sessionJournal),
+		rpc.MethodJournalSearch:     bind((*Controller).journalSearch),
+		rpc.MethodJournalBackfill:   bind((*Controller).journalBackfill),
 		rpc.MethodEventsSubscribe:   bind((*Controller).eventsSubscribe),
 		rpc.MethodShutdown:          bind((*Controller).shutdown),
 		rpc.MethodDrain:             bind((*Controller).drainPools),

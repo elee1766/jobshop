@@ -278,6 +278,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/session/{id}/stream", s.sessionStream)
 	mux.HandleFunc("GET /api/session/{id}/journal", s.json(s.sessionJournal))
+	mux.HandleFunc("GET /api/journal/search", s.json(s.journalSearch))
 	mux.HandleFunc("GET /api/session/{id}/access", s.json(s.chatAccess))
 	mux.HandleFunc("GET /api/chat", s.json(s.chatList))
 	mux.HandleFunc("POST /api/chat/send", s.json(s.chatSend))
