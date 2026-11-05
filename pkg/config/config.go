@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Config is the parsed jobshop.yaml.
@@ -44,6 +46,10 @@ type Config struct {
 	Ingest Ingest `yaml:"ingest"`
 	// WriteKeys configures the local idempotency key cache (#415).
 	WriteKeys WriteKeys `yaml:"write_keys"`
+	// Artifacts configures delivered artifacts' attachments (#508).
+	Artifacts Artifacts `yaml:"artifacts"`
+	// Store selects the ticket store backend (#493).
+	Store Store `yaml:"store"`
 	// Defaults hold settings agents and pools inherit (#262).
 	Defaults Defaults `yaml:"defaults"`
 	// SharedTools are dirs mounted read-only into every sandboxed
@@ -53,6 +59,8 @@ type Config struct {
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
 	Hooks []Hook `yaml:"hooks"`
+	// Learnings configures the learning loop (#524).
+	Learnings LearningsConfig `yaml:"learnings,omitempty"`
 	// Gateway configures `jobshop gateway <name>` processes, by name.
 	Gateway map[string]Gateway `yaml:"gateway"`
 	// Identities are GitHub Apps and Linear tokens sessions act as (#200).
@@ -65,6 +73,11 @@ type Config struct {
 	// Activity polls recent GitHub and Linear activity for Desk (#255).
 	// Absent: off.
 	Activity *Activity `yaml:"activity"`
+	// Desk configures Desk plugins and the generic RPC endpoint (#517).
+	Desk Desk `yaml:"desk,omitempty"`
+	// DeskCommands are commands Desk plugins run by name (#542). Packs
+	// contribute entries like pools.
+	DeskCommands map[string]DeskCommand `yaml:"desk_commands,omitempty"`
 	// Packs are pack directories merged before this file (see LoadFile).
 	Packs []PackRef `yaml:"packs"`
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
@@ -224,6 +237,29 @@ type EditsWhen struct {
 type LearningsWhen struct {
 	Min   int    `yaml:"min"`
 	Every string `yaml:"every"` // Go duration; empty: threshold only
+	// Filters (#524), all optional and ANDed: kind globs, scope globs
+	// (global, repo:<owner/name>, pool:<name>) and source (agent or
+	// controller). Min and Every count only matching learnings.
+	Kinds  []string `yaml:"kinds,omitempty"`
+	Scope  []string `yaml:"scope,omitempty"`
+	Source string   `yaml:"source,omitempty"`
+}
+
+// LearningsConfig is the top-level learnings section (#524).
+type LearningsConfig struct {
+	// Kinds are the learning kinds agents may record: names or
+	// path.Match globs (review-*, *). Packs add to the list. Empty: the
+	// defaults, correction, failure and workaround.
+	Kinds []string `yaml:"kinds,omitempty"`
+}
+
+// LearningKinds is the resolved kind patterns: Learnings.Kinds, or the
+// defaults when unset.
+func (c *Config) LearningKinds() []string {
+	if len(c.Learnings.Kinds) == 0 {
+		return store.LearningKinds
+	}
+	return c.Learnings.Kinds
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -308,6 +344,42 @@ type Gateway struct {
 	// `jobshop attention` to EscalationRoom as a new thread, only when the
 	// list is not empty (#185). Empty: no digest.
 	AttentionDigest string `yaml:"attention_digest"`
+	// ArtifactRoom gets one line per delivered artifact (#508). Empty:
+	// artifacts are not posted.
+	ArtifactRoom string `yaml:"artifact_room"`
+	// DeskURL is Desk's base URL for links in artifact lines. Empty: no link.
+	DeskURL string `yaml:"desk_url"`
+}
+
+// Desk is the desk section. Desk reads it through config.show, so a
+// reload applies without restarting Desk.
+type Desk struct {
+	// Plugins enables, disables and configures plugins by name. All
+	// plugins are enabled unless listed with enabled: false.
+	Plugins map[string]DeskPlugin `yaml:"plugins,omitempty" json:"plugins,omitempty"`
+	// RPC narrows (deny) or widens (allow) the methods plugins may call.
+	RPC DeskRPC `yaml:"rpc,omitempty" json:"rpc"`
+}
+
+// DeskPlugin is one desk.plugins entry.
+type DeskPlugin struct {
+	Enabled *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	Config  map[string]any `yaml:"config,omitempty" json:"config,omitempty"`
+}
+
+// DeskRPC holds path.Match globs over admin method names.
+type DeskRPC struct {
+	Allow []string `yaml:"allow,omitempty" json:"allow,omitempty"`
+	Deny  []string `yaml:"deny,omitempty" json:"deny,omitempty"`
+}
+
+func (d Desk) validate() error {
+	for _, g := range slices.Concat(d.RPC.Allow, d.RPC.Deny) {
+		if _, err := path.Match(g, ""); err != nil {
+			return fmt.Errorf("desk.rpc: bad glob %q: %w", g, err)
+		}
+	}
+	return nil
 }
 
 // Attention configures the attention view: what waits on a human.
@@ -318,9 +390,29 @@ type Attention struct {
 	// beside it, so a later successful deploy clears it. Empty:
 	// rollbacks are not checked.
 	RollbackFile string `yaml:"rollback_file"`
+	// ConfigRepoFile is written by the NixOS module's config repo sync
+	// when a commit fails `jobshop config check` (#532): the first line
+	// is the commit, the rest the error. Listed while it exists; the
+	// sync removes it when a later commit passes. Empty: not checked.
+	ConfigRepoFile string `yaml:"config_repo_file"`
 	// ResourceWait lists a step waiting on a full resource longer than
 	// this Go duration (#408). Empty: not listed.
 	ResourceWait string `yaml:"resource_wait"`
+	// OrphanAge lists an open ticket no pool will claim (no pool, or a
+	// pool not in the config) once it is older than this Go duration
+	// (#495). Default 72h; "off" disables it.
+	OrphanAge string `yaml:"orphan_age"`
+}
+
+// DefaultOrphanAge is attention.orphan_age when unset.
+const DefaultOrphanAge = 72 * time.Hour
+
+// OrphanAgeDuration is attention.orphan_age, 0 when off.
+func (a Attention) OrphanAgeDuration() time.Duration {
+	if a.OrphanAge == "off" {
+		return 0
+	}
+	return Duration(a.OrphanAge, DefaultOrphanAge)
 }
 
 // DefaultInboxRetention is how long terminal inbox items are kept.
@@ -706,6 +798,38 @@ func (w WriteKeys) RetentionDuration() time.Duration {
 	return d
 }
 
+// DefaultArtifactMaxBytes caps one artifact's attachments (#508).
+const DefaultArtifactMaxBytes = 10 << 20
+
+// DefaultArtifactRetention is how long attachments are kept after ack.
+const DefaultArtifactRetention = 90 * 24 * time.Hour
+
+// Artifacts configures artifact attachments under <root>/artifacts (#508).
+type Artifacts struct {
+	// MaxBytes caps the total attachment size of one artifact. Default 10MB.
+	MaxBytes int64 `yaml:"max_bytes"`
+	// Retention deletes an acked artifact's attachments this long after
+	// the ack (Go duration or Nd). The ticket stays. Default 90d.
+	Retention string `yaml:"retention"`
+}
+
+// MaxBytesOrDefault is MaxBytes, or the default when unset.
+func (a Artifacts) MaxBytesOrDefault() int64 {
+	if a.MaxBytes <= 0 {
+		return DefaultArtifactMaxBytes
+	}
+	return a.MaxBytes
+}
+
+// RetentionDuration is Retention parsed, or the default.
+func (a Artifacts) RetentionDuration() time.Duration {
+	d, _ := parseDays(a.Retention)
+	if d <= 0 {
+		return DefaultArtifactRetention
+	}
+	return d
+}
+
 // parseDays is time.ParseDuration that also takes "Nd".
 func parseDays(s string) (time.Duration, error) {
 	if n, ok := strings.CutSuffix(s, "d"); ok {
@@ -793,6 +917,8 @@ type Agent struct {
 	ConfigOptions map[string]string `yaml:"config_options"`
 	// Sandbox confines the agent (#262); pools add to it.
 	Sandbox *Sandbox `yaml:"sandbox"`
+	// Isolation runs the agent as a mapped user with cgroup limits (#388).
+	Isolation *Isolation `yaml:"isolation"`
 }
 
 // ACP session config option ids for the model and effort shorthands.
@@ -835,7 +961,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "report-incidents", "attention", "activity", "handoff", "ticket-release", "session-journal"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }
@@ -904,6 +1030,8 @@ type Pool struct {
 	ConfigOptions map[string]string `yaml:"config_options"`
 	// Sandbox overrides and adds to the agent's sandbox (#262).
 	Sandbox *Sandbox `yaml:"sandbox"`
+	// Isolation overrides the agent's user and limits (#388).
+	Isolation *Isolation `yaml:"isolation"`
 }
 
 // Project is one repo / work area.
@@ -1008,6 +1136,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if err := a.Sandbox.check(); err != nil {
 			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
 		}
+		if err := a.Isolation.check(); err != nil {
+			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
+		}
 	}
 	for name, p := range c.Pools {
 		if !namePattern.MatchString(name) {
@@ -1029,6 +1160,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: pool %s: prompt_file needs a config file location", src("pools", name), name)
 		}
 		if err := p.Sandbox.check(); err != nil {
+			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
+		}
+		if err := p.Isolation.check(); err != nil {
 			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
 		if p.Type != "" && p.Type != PoolChat {
@@ -1081,13 +1215,22 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if err := c.Defaults.Sandbox.check(); err != nil {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
 	}
+	if err := c.Defaults.Isolation.check(); err != nil {
+		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
+	}
 	for _, d := range c.SharedTools {
 		if !filepath.IsAbs(d) {
 			return nil, fmt.Errorf("%s: shared_tools: %q must be absolute", FileName, d)
 		}
 	}
+	if err := c.Store.check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
+	}
 	if err := c.validateIngest(); err != nil {
 		return nil, err
+	}
+	if err := c.Desk.validate(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if err := c.validateAdmission(); err != nil {
 		return nil, err
@@ -1101,6 +1244,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if d, err := parseDays(r); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: write_keys.retention %q must be a positive duration (e.g. 48h, 2d)", FileName, r)
 		}
+	}
+	if r := c.Artifacts.Retention; r != "" {
+		if d, err := parseDays(r); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: artifacts.retention %q must be a positive duration (e.g. 90d)", FileName, r)
+		}
+	}
+	if c.Artifacts.MaxBytes < 0 {
+		return nil, fmt.Errorf("%s: artifacts.max_bytes must be >= 0", FileName)
 	}
 	if c.Limits.MaxSessions < 0 {
 		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)
@@ -1149,12 +1300,30 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: hooks[%d]: %w", FileName, i, err)
 		}
 	}
+	for name, d := range c.DeskCommands {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: desk_commands: name %q must match %s", FileName, name, namePattern)
+		}
+		if err := checkDeskCommand(d); err != nil {
+			return nil, fmt.Errorf("%s: desk_commands.%s: %w", src("desk_commands", name), name, err)
+		}
+	}
+	for _, k := range c.Learnings.Kinds {
+		if err := store.ValidKindPattern(k); err != nil {
+			return nil, fmt.Errorf("%s: learnings.kinds: %w", FileName, err)
+		}
+	}
 	if err := c.checkResources(); err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if w := c.Attention.ResourceWait; w != "" {
 		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
 			return nil, fmt.Errorf("%s: attention.resource_wait %q must be a positive duration", FileName, w)
+		}
+	}
+	if w := c.Attention.OrphanAge; w != "" && w != "off" {
+		if d, err := time.ParseDuration(w); err != nil || d <= 0 {
+			return nil, fmt.Errorf("%s: attention.orphan_age %q must be a positive duration or off", FileName, w)
 		}
 	}
 	for name, w := range c.Workflows {
@@ -1242,6 +1411,19 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 			if d, err := time.ParseDuration(l.Every); err != nil || d <= 0 {
 				return fmt.Errorf("when: learnings.every %q must be a positive duration", l.Every)
 			}
+		}
+		for _, k := range l.Kinds {
+			if err := store.ValidKindPattern(k); err != nil {
+				return fmt.Errorf("when: learnings.kinds: %w", err)
+			}
+		}
+		for _, s := range l.Scope {
+			if _, err := path.Match(s, ""); err != nil || s == "" {
+				return fmt.Errorf("when: learnings.scope %q is not a valid glob", s)
+			}
+		}
+		if l.Source != "" && l.Source != store.LearningSourceAgent && l.Source != store.LearningSourceController {
+			return fmt.Errorf("when: learnings.source %q must be agent or controller", l.Source)
 		}
 	}
 	if w.CheckTimeout != "" {

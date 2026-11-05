@@ -28,9 +28,11 @@ type fakeCtl struct {
 	events  []rpc.Event
 	session []rpc.SessionEvent
 	since   int64
+	actors  []string
 }
 
-func (f *fakeCtl) Call(_ context.Context, method string, p, out any) error {
+func (f *fakeCtl) Call(ctx context.Context, method string, p, out any) error {
+	f.actors = append(f.actors, rpc.ActorFrom(ctx))
 	b, _ := json.Marshal(p)
 	f.calls = append(f.calls, method+" "+string(b))
 	key := method
@@ -271,4 +273,76 @@ func TestActivity(t *testing.T) {
 	assert.Contains(t, ctl.calls[0], `"limit":5`)
 	w := get(t, h, "/api/activity?since=soon", nil)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// assetPath is an asset file of the embedded build.
+func assetPath(t *testing.T) string {
+	t.Helper()
+	ents, err := dist.ReadDir("dist/assets")
+	require.NoError(t, err)
+	require.NotEmpty(t, ents)
+	return "assets/" + ents[0].Name()
+}
+
+func TestBasePath(t *testing.T) {
+	ctl := &fakeCtl{results: map[string]any{}}
+	h := New(Config{BasePath: "/desk/"}, ctl, nil).Handler()
+	asset := assetPath(t)
+	// Prefix kept by the proxy, and prefix stripped by it.
+	for name, prefix := range map[string]string{"kept": "/desk/", "stripped": "/"} {
+		t.Run(name, func(t *testing.T) {
+			w := get(t, h, prefix, nil)
+			require.Equal(t, http.StatusOK, w.Code)
+			assert.Contains(t, w.Body.String(), `<base href="/desk/">`)
+			assert.Contains(t, w.Body.String(), `<div id="app">`)
+			assert.NotContains(t, w.Body.String(), `"/assets/`, "asset URLs are relative")
+			var items []AttentionItem
+			get(t, h, prefix+"api/attention", &items)
+			w = get(t, h, prefix+asset, nil)
+			assert.Equal(t, http.StatusOK, w.Code, asset)
+			assert.Contains(t, w.Header().Get("Cache-Control"), "immutable")
+			w = get(t, h, prefix+"?view=work", nil)
+			assert.Contains(t, w.Body.String(), `<base href="/desk/">`)
+		})
+	}
+	w := get(t, h, "/desk?view=work", nil)
+	assert.Equal(t, http.StatusMovedPermanently, w.Code)
+	assert.Equal(t, "/desk/?view=work", w.Header().Get("Location"))
+	assert.Contains(t, w.Header().Get("Content-Security-Policy"), "base-uri 'self'")
+}
+
+func TestForwardedPrefix(t *testing.T) {
+	proxies, err := ParseTrustedProxies([]string{"192.0.2.0/24", "::1"})
+	require.NoError(t, err)
+	page := func(h http.Handler, remote, prefix string) string {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Host = "127.0.0.1"
+		req.RemoteAddr = remote
+		if prefix != "" {
+			req.Header.Set(ForwardedPrefixHeader, prefix)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w.Body.String()
+	}
+	h := New(Config{TrustedProxies: proxies}, &fakeCtl{}, nil).Handler()
+	assert.Contains(t, page(h, "192.0.2.1:1234", "/ops/desk"), `<base href="/ops/desk/">`)
+	assert.Contains(t, page(h, "[::1]:1234", "/x/"), `<base href="/x/">`)
+	assert.Contains(t, page(h, "198.51.100.1:1234", "/ops/"), `<base href="/">`, "untrusted peer")
+	assert.Contains(t, page(h, "192.0.2.1:1234", "//evil.example/"), `<base href="/">`, "invalid prefix")
+	assert.Contains(t, page(h, "192.0.2.1:1234", ""), `<base href="/">`)
+	// The flag wins.
+	h = New(Config{BasePath: "desk", TrustedProxies: proxies}, &fakeCtl{}, nil).Handler()
+	assert.Contains(t, page(h, "192.0.2.1:1234", "/ops/"), `<base href="/desk/">`)
+	_, err = ParseTrustedProxies([]string{"nope"})
+	assert.Error(t, err)
+}
+
+func TestCleanBasePath(t *testing.T) {
+	for in, want := range map[string]string{
+		"": "/", "/": "/", "desk": "/desk/", "/desk": "/desk/", "/a/b/": "/a/b/",
+		"//evil": "", "/a//b/": "", "/a b/": "", `/"x/`: "",
+	} {
+		assert.Equal(t, want, CleanBasePath(in), in)
+	}
 }

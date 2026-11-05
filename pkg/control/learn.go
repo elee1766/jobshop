@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -19,6 +20,9 @@ import (
 const learnSummaryMax = 500
 
 func (c *Controller) learnAdd(ctx context.Context, sc scope, p rpc.LearnParams) (any, error) {
+	if err := store.CheckLearningKind(strings.TrimSpace(p.Kind), c.config().LearningKinds()); err != nil {
+		return nil, err
+	}
 	l := store.Learning{
 		Kind: p.Kind, Summary: p.Summary, Fix: p.Fix, Scope: p.Scope, Ticket: p.Ticket,
 		Session: sc.session, Source: store.LearningSourceAgent,
@@ -44,6 +48,14 @@ func (c *Controller) learnAdd(ctx context.Context, sc scope, p rpc.LearnParams) 
 
 func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListParams) (any, error) {
 	f := store.LearningFilter{Kind: p.Kind, Status: p.Status, Ticket: p.Ticket, Limit: p.Limit}
+	// A glob kind (#524) is matched here: fetch without it, then filter.
+	glob := strings.ContainsAny(p.Kind, "*?[")
+	if glob {
+		if _, err := path.Match(p.Kind, ""); err != nil {
+			return nil, fmt.Errorf("%w: kind %q: %w", store.ErrInvalid, p.Kind, err)
+		}
+		f.Kind, f.Limit = "", store.DefaultLimit
+	}
 	if p.Scope != "" {
 		s, err := store.ParseScope(p.Scope)
 		if err != nil {
@@ -54,7 +66,21 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 	if p.Since > 0 {
 		f.Since = c.now().Add(-p.Since)
 	}
-	return c.store.Learnings(ctx, f)
+	ls, err := c.store.Learnings(ctx, f)
+	if err != nil || !glob {
+		return ls, err
+	}
+	limit := p.Limit
+	if limit <= 0 {
+		limit = store.DefaultLimit
+	}
+	out := []store.Learning{}
+	for _, l := range ls {
+		if store.Glob(p.Kind, l.Kind) && len(out) < limit {
+			out = append(out, l)
+		}
+	}
+	return out, nil
 }
 
 // learnUpdate sets status and PR on learnings (#273). Open to every

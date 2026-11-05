@@ -52,41 +52,73 @@ let
     // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
     // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
     // lib.optionalAttrs (g.attentionDigest != "") { attention_digest = g.attentionDigest; }
+    // lib.optionalAttrs (g.artifactRoom != "") { artifact_room = g.artifactRoom; }
+    // lib.optionalAttrs (g.deskUrl != "") { desk_url = g.deskUrl; }
   ) cfg.gateway;
-  settings =
-    cfg.settings
+  withModuleKeys =
+    base:
+    base
     // lib.optionalAttrs (cfg.identities != { }) {
-      identities = (cfg.settings.identities or { }) // cfg.identities;
+      identities = (base.identities or { }) // cfg.identities;
     }
-    // lib.optionalAttrs (livePacks != [ ]) { packs = (cfg.settings.packs or [ ]) ++ livePacks; }
+    // lib.optionalAttrs (livePacks != [ ]) { packs = (base.packs or [ ]) ++ livePacks; }
     // lib.optionalAttrs (cfg.gateway != { }) {
-      gateway = (cfg.settings.gateway or { }) // gatewaySettings;
+      gateway = (base.gateway or { }) // gatewaySettings;
     }
     # Self-deploy rollbacks show in `jobshop attention` (#185).
     // lib.optionalAttrs cfg.selfDeploy.enable {
       attention = {
         rollback_file = "${deployState}/failed";
       }
-      // (cfg.settings.attention or { });
+      // (base.attention or { });
+    }
+    # A config repo commit that failed its check (#532).
+    // lib.optionalAttrs repoConfig {
+      attention = {
+        config_repo_file = "${configRepoState}.failed";
+      }
+      // (base.attention or { })
+      // lib.optionalAttrs cfg.selfDeploy.enable { rollback_file = "${deployState}/failed"; };
     }
     // lib.optionalAttrs cfg.sandbox.enable {
-      defaults = (cfg.settings.defaults or { }) // {
+      defaults = (base.defaults or { }) // {
         sandbox = {
           backend = "bubblewrap";
           inherit (cfg.sandbox) rw;
         }
-        // ((cfg.settings.defaults or { }).sandbox or { });
+        // ((base.defaults or { }).sandbox or { });
       };
       shared_tools =
-        (cfg.settings.shared_tools or [ ])
+        (base.shared_tools or [ ])
         ++ cfg.sandbox.sharedTools
         ++ lib.optional sharedMise cfg.sandbox.mise.dir;
     };
-  configFile = settingsFormat.generate "jobshop.yaml" (
-    lib.recursiveUpdate settings (
-      lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; }
-    )
+  # Managed mode (configFile = null): jobshop.yaml is generated from
+  # settings plus the module's keys. User mode (#531): the user owns
+  # jobshop.yaml and includes jobshop.module.yaml, which holds only the
+  # module's keys.
+  # A workspace whose checkout holds jobshop.yaml (#532) is user mode too:
+  # its file is the user's file, and its sync unit checks and reloads it.
+  configWorkspaces = lib.attrNames (lib.filterAttrs (_: w: w.config != null) workspaces);
+  repoConfig = configWorkspaces != [ ];
+  repoConfigFile =
+    let
+      w = workspaces.${lib.head configWorkspaces};
+    in
+    "${w.dir}/${w.config}";
+  userFile = if repoConfig then repoConfigFile else cfg.configFile;
+  configRepoState = "${cfg.dataDir}/config-repo";
+  userConfig = cfg.configFile != null || repoConfig;
+  telemetryAttrs = lib.optionalAttrs (telemetrySettings != { }) { telemetry = telemetrySettings; };
+  generatedConfig = settingsFormat.generate "jobshop.yaml" (
+    lib.recursiveUpdate (withModuleKeys cfg.settings) telemetryAttrs
   );
+  moduleFile = settingsFormat.generate "jobshop.module.yaml" (
+    lib.recursiveUpdate (withModuleKeys { }) telemetryAttrs
+  );
+  # What a switch changes: reload and restart triggers.
+  configFile = if userConfig then moduleFile else generatedConfig;
+  rootConfig = "${cfg.dataDir}/jobshop.yaml";
   jobshop = lib.getExe cfg.package;
   sharedMise = cfg.sandbox.enable && cfg.sandbox.mise.tools != [ ];
 
@@ -119,7 +151,10 @@ let
     lib.optional useIdentities ghWrapper
     ++ cfg.path
     ++ lib.optionals cfg.defaultPath defaultTools
-    ++ lib.optional cfg.sandbox.enable pkgs.bubblewrap;
+    ++ lib.optional cfg.sandbox.enable pkgs.bubblewrap
+    # newuidmap/newgidmap must be the setuid wrappers, not the store
+    # binaries; /run/wrappers/bin is on the service PATH below.
+    ++ lib.optional cfg.isolation.enable pkgs.passt;
 
   credentialHelper =
     if useIdentities then "!${jobshop} identity git-credential" else cfg.gitIdentity.credentialHelper;
@@ -247,6 +282,19 @@ let
           default = "2min";
           description = "How often the sync unit fast-forwards the checkout to origin and reloads the controller when it moved.";
         };
+        config = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "jobshop.yaml";
+          description = ''
+            Run the controller from this file in the checkout (#532): dataDir/jobshop.yaml
+            links to it, and its relative pack paths resolve in the checkout. The sync unit
+            checks each new commit before reloading; a failing commit is reset to the last
+            good one (dataDir/config-repo.last-good) and listed in `jobshop attention`.
+            The file should include jobshop.module.yaml for the module's keys and secrets.
+            At most one workspace; not with configFile or settings.
+          '';
+        };
         selfDeploy = lib.mkOption {
           type = lib.types.bool;
           default = false;
@@ -330,12 +378,46 @@ let
             target=$installed
           ''}
           before=$(git rev-parse HEAD)
+          ${lib.optionalString (w.config != null) ''
+            # Config repo (#532): a commit runs only after it passes
+            # `jobshop config check`; a failing one is reset to the last
+            # good commit and listed in `jobshop attention`.
+            last_good=${configRepoState}.last-good
+            failed=${configRepoState}.failed
+            [ -s "$last_good" ] || git rev-parse HEAD > "$last_good"
+            # A commit that already failed stays failed until origin moves on.
+            if [ -s "$failed" ] && [ "$(head -n1 "$failed")" = "$(git rev-parse --short "$target")" ]; then
+              exit 0
+            fi
+            if ! out=$(git merge --ff-only --quiet "$target" 2>&1); then
+              rev=$(git rev-parse --short "$target")
+              printf '%s\n%s\n' "$rev" "checkout not fast-forwardable (local edits or diverged history): $out" > "$failed"
+              echo "<3>config repo ${name} not fast-forwardable to $target: $out"
+              exit 1
+            fi
+            after=$(git rev-parse HEAD)
+            [ "$before" != "$after" ] || exit 0
+            # Through the root's link, so include: finds jobshop.module.yaml
+            # beside it while packs resolve in the checkout.
+            if ! out=$(${jobshop} config check --file ${rootConfig} 2>&1); then
+              good=$(cat "$last_good")
+              printf '%s\n%s\n' "$(git rev-parse --short "$after")" "$out" > "$failed"
+              echo "<3>config repo ${name}: $after failed its check, reset to $good: $out"
+              git reset --quiet --hard "$good"
+              exit 1
+            fi
+            echo "$after" > "$last_good"
+            rm -f "$failed"
+            echo "config repo moved $before..$after, check passed"
+          ''}
+          ${lib.optionalString (w.config == null) ''
           # Only fast-forward: a hand-edited checkout is left alone and logged.
           if ! git merge --ff-only --quiet "$target"; then
             echo "<4>workspace ${name} not fast-forwardable to $target, left as is"
             exit 0
           fi
           after=$(git rev-parse HEAD)
+          ''}
           # Reload on any move, not only a diff under livePacks: a live pack
           # extends packs outside that list (selfdev extends ../github), and
           # a missed reload leaves the controller on old pools (#177).
@@ -358,7 +440,7 @@ let
           fi
         '';
       };
-      timers."${unit}-sync" = lib.mkIf (w.livePacks != [ ]) {
+      timers."${unit}-sync" = lib.mkIf (w.livePacks != [ ] || w.config != null) {
         wantedBy = [ "timers.target" ];
         timerConfig = {
           OnBootSec = "2min";
@@ -396,7 +478,21 @@ in
     settings = lib.mkOption {
       type = settingsFormat.type;
       default = { };
-      description = "Contents of jobshop.yaml.";
+      description = "Contents of jobshop.yaml. Unused, and must be empty, with configFile set.";
+    };
+
+    configFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "/var/lib/jobshop/jobshop.yaml";
+      description = ''
+        A jobshop.yaml the user owns (#531). Null: generated from settings.
+        A path: dataDir/jobshop.yaml links to it, or is left alone when it is
+        that path, and the module never writes it. The module's own keys
+        (identities, gateway, live packs, sandbox, attention, telemetry) go to
+        dataDir/jobshop.module.yaml; the file should list it under
+        `include:`. Edits are checked and reloaded by jobshop-config.path.
+      '';
     };
 
     path = lib.mkOption {
@@ -472,6 +568,24 @@ in
       type = lib.types.bool;
       default = true;
       description = "Deny private, CGNAT/tailnet, link-local and ULA ranges, like gasserver's agent slice.";
+    };
+
+    isolation = {
+      enable = lib.mkEnableOption ''
+        per-pool isolation (#388): Delegate=cpu memory pids on jobshop.service,
+        a subuid/subgid range for the jobshop user, and newuidmap (shadow) and
+        pasta (passt) on PATH. Pools opt in with isolation: and sandbox.network: pasta
+      '';
+      subIdStart = lib.mkOption {
+        type = lib.types.int;
+        default = 231072;
+        description = "First subordinate uid and gid of the jobshop user's range (map_uid and map_gid pick from it).";
+      };
+      subIdCount = lib.mkOption {
+        type = lib.types.int;
+        default = 65536;
+        description = "Size of the jobshop user's subuid and subgid range.";
+      };
     };
 
     sandbox = {
@@ -641,11 +755,61 @@ in
               example = "0 9 * * *";
               description = "Cron (UTC) for a digest of `jobshop attention` in `escalationRoom`, posted only when the list is not empty. Empty: none.";
             };
+            artifactRoom = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              description = "Room that gets one line per delivered artifact (#508). Empty: none.";
+            };
+            deskUrl = lib.mkOption {
+              type = lib.types.str;
+              default = "";
+              example = "https://desk.example";
+              description = "Desk base URL for links in artifact lines. Empty: no link.";
+            };
           };
         }
       );
       default = { };
       description = "Chat gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
+    };
+
+    # Desk (#202) as jobshop-desk.service; userHeader (#515), basePath
+    # (#516) and trustedProxies for a reverse proxy in front.
+    desk = {
+      enable = lib.mkEnableOption "jobshop-desk.service running `jobshop desk`";
+      listen = lib.mkOption {
+        type = lib.types.str;
+        default = "127.0.0.1:7480";
+        description = "Address Desk serves on. Non-loopback adds --allow-remote.";
+      };
+      hosts = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "Extra Host header values to accept (--host).";
+      };
+      userHeader = lib.mkOption {
+        type = lib.types.str;
+        default = "";
+        example = "Tailscale-User-Login";
+        description = "Header an authenticating proxy sets to the user; writes record `desk:<user>` (#515). Empty: no user.";
+      };
+      basePath = lib.mkOption {
+        type = lib.types.str;
+        default = "/";
+        example = "/desk/";
+        description = "URL prefix Desk is served under (--base-path). The proxy may keep or strip it.";
+      };
+      trustedProxies = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        example = [ "127.0.0.1" ];
+        description = "Peer addresses or CIDRs whose userHeader and X-Forwarded-Prefix Desk trusts (--trusted-proxy). Required with userHeader.";
+      };
+      extraArgs = lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "More `jobshop desk` flags.";
+      };
     };
 
     ingest = {
@@ -723,6 +887,14 @@ in
             assertion = !sd.enable || deployWorkspaces != [ ];
             message = "services.jobshop.selfDeploy.enable needs one workspace with selfDeploy = true.";
           }
+          {
+            assertion = !userConfig || cfg.settings == { };
+            message = "services.jobshop: set configFile or settings, not both; with configFile put those keys in your file (the module's own keys go to jobshop.module.yaml).";
+          }
+          {
+            assertion = lib.length configWorkspaces <= 1 && !(repoConfig && cfg.configFile != null);
+            message = "services.jobshop: set workspaces.<name>.config on at most one workspace, and not with configFile.";
+          }
         ];
 
         users.users.${cfg.user} = {
@@ -730,13 +902,37 @@ in
           group = cfg.group;
           home = cfg.dataDir;
           createHome = true;
+        }
+        // lib.optionalAttrs cfg.isolation.enable {
+          subUidRanges = [
+            {
+              startUid = cfg.isolation.subIdStart;
+              count = cfg.isolation.subIdCount;
+            }
+          ];
+          subGidRanges = [
+            {
+              startGid = cfg.isolation.subIdStart;
+              count = cfg.isolation.subIdCount;
+            }
+          ];
         };
         users.groups.${cfg.group} = { };
 
         systemd.tmpfiles.rules = [
           "d ${cfg.dataDir} 0700 ${cfg.user} ${cfg.group} -"
           # The root's config is the generated file; L+ replaces the link on each switch.
-          "L+ ${cfg.dataDir}/jobshop.yaml - - - - ${configFile}"
+          # With configFile the user's file is linked (never written) and the
+          # module's keys go to jobshop.module.yaml (#531).
+        ]
+        ++ (
+          if userConfig then
+            [ "L+ ${cfg.dataDir}/jobshop.module.yaml - - - - ${moduleFile}" ]
+            ++ lib.optional (userFile != rootConfig) "L+ ${rootConfig} - - - - ${userFile}"
+          else
+            [ "L+ ${rootConfig} - - - - ${configFile}" ]
+        )
+        ++ [
           # Per-host GC roots keep a running session host's binary alive across Nix switches.
           "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${cfg.user} ${cfg.group} -"
         ]
@@ -820,7 +1016,16 @@ in
             KillMode = "process";
             Restart = "on-failure";
             RestartSec = 2;
+          }
+          // lib.optionalAttrs cfg.isolation.enable {
+            # The controller moves into <own>/controller and puts session
+            # cgroups under <own>/sessions (#388).
+            Delegate = "cpu memory pids";
           };
+        }
+        // lib.optionalAttrs cfg.isolation.enable {
+          # newuidmap/newgidmap setuid wrappers (security.wrappers).
+          path = path ++ [ "/run/wrappers" ];
         };
 
         # Full stop at system shutdown: end every session and reap hosts. Ordered
@@ -990,6 +1195,89 @@ in
       {
         systemd = lib.mkMerge (lib.mapAttrsToList workspaceUnits workspaces);
       }
+      (lib.mkIf cfg.desk.enable {
+        assertions = [
+          {
+            assertion = cfg.desk.userHeader == "" || cfg.desk.trustedProxies != [ ];
+            message = "services.jobshop.desk.userHeader needs desk.trustedProxies";
+          }
+        ];
+        # An admin-socket client like the gateway.
+        systemd.services.jobshop-desk = {
+          description = "Jobshop Desk";
+          wantedBy = [ "multi-user.target" ];
+          after = [ "jobshop.service" ];
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          serviceConfig = {
+            User = cfg.user;
+            Group = cfg.group;
+            Slice = "jobshop.slice";
+            WorkingDirectory = cfg.dataDir;
+            ExecStart = lib.escapeShellArgs (
+              [
+                "${jobshop}"
+                "desk"
+                "--listen"
+                cfg.desk.listen
+                "--base-path"
+                cfg.desk.basePath
+              ]
+              ++ lib.optional (
+                !(
+                  lib.hasPrefix "127." cfg.desk.listen
+                  || lib.hasPrefix "localhost:" cfg.desk.listen
+                  || lib.hasPrefix "[::1]" cfg.desk.listen
+                )
+              ) "--allow-remote"
+              ++ lib.concatMap (h: [
+                "--host"
+                h
+              ]) cfg.desk.hosts
+              ++ lib.optionals (cfg.desk.userHeader != "") [
+                "--user-header"
+                cfg.desk.userHeader
+              ]
+              ++ lib.concatMap (p: [
+                "--trusted-proxy"
+                p
+              ]) cfg.desk.trustedProxies
+              ++ cfg.desk.extraArgs
+            );
+            Restart = "always";
+            RestartSec = 5;
+          };
+        };
+      })
+      (lib.mkIf userConfig {
+        # A user-owned jobshop.yaml changes outside a switch, so
+        # reloadTriggers never see it (#531). Check, then reload; a failed
+        # check logs and the controller keeps its running config (#227).
+        systemd.paths.jobshop-config = {
+          description = "Watch the user-managed jobshop.yaml";
+          wantedBy = [ "multi-user.target" ];
+          pathConfig = {
+            PathChanged =
+              # With a config repo the sync unit checks and reloads the
+              # repo's file (#532); only the module file is watched here.
+              lib.optional (!repoConfig) cfg.configFile
+              ++ [ "${cfg.dataDir}/jobshop.module.yaml" ];
+            Unit = "jobshop-config.service";
+          };
+        };
+        systemd.services.jobshop-config = {
+          description = "Check and reload a changed jobshop.yaml";
+          environment.JOBSHOP_ROOT = cfg.dataDir;
+          serviceConfig.Type = "oneshot";
+          script = ''
+            if ! out=$(${pkgs.util-linux}/bin/runuser -u ${cfg.user} -- ${jobshop} config check --file ${rootConfig} 2>&1); then
+              echo "<3>jobshop.yaml check failed, keeping the running config: $out"
+              exit 1
+            fi
+            echo "config check: $out"
+            ${pkgs.systemd}/bin/systemctl try-reload-or-restart jobshop.service
+          '';
+        };
+      })
       (lib.mkIf cfg.ingest.enable {
         # Needs no controller or database: only the spool dir and secrets.
         systemd.services.jobshop-ingest = {

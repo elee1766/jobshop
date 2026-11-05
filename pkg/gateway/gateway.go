@@ -83,6 +83,10 @@ type Config struct {
 	// Digest posts the attention list to EscalationRoom on this schedule,
 	// only when it is not empty (#185). Nil: no digest.
 	Digest *cron.Schedule
+	// ArtifactRoom gets one line per delivered artifact (#508). Empty: none.
+	ArtifactRoom string
+	// DeskURL is the Desk base URL used for links in artifact lines.
+	DeskURL string
 	// Fetch, when set, is called every FetchEvery for the current config
 	// (the controller's config.show), applied with Apply (#307).
 	Fetch      func(context.Context) (Config, error)
@@ -99,12 +103,13 @@ type Gateway struct {
 	cfg Config
 	// live holds the settings Apply can change while running (#307):
 	// Rooms, Senders, Marker and EscalationRoom. Read with settings().
-	live  atomic.Pointer[Config]
-	start sync.Once // starts escalations when a room is first set
-	ad    Adapter
-	ctl   Controller
-	log   *slog.Logger
-	retry time.Duration
+	live     atomic.Pointer[Config]
+	start    sync.Once // starts escalations when a room is first set
+	startArt sync.Once // starts artifact lines when a room is first set
+	ad       Adapter
+	ctl      Controller
+	log      *slog.Logger
+	retry    time.Duration
 
 	mu         sync.Mutex
 	watched    map[string]*watch // by session id
@@ -159,9 +164,10 @@ func (g *Gateway) Apply(ctx context.Context, c Config) {
 	}
 	old := g.settings()
 	next := *old
-	next.Rooms, next.Senders, next.Marker, next.EscalationRoom = c.Rooms, c.Senders, c.Marker, c.EscalationRoom
+	next.Rooms, next.Senders, next.Marker, next.EscalationRoom, next.ArtifactRoom, next.DeskURL = c.Rooms, c.Senders, c.Marker, c.EscalationRoom, c.ArtifactRoom, c.DeskURL
 	if slices.Equal(old.Rooms, next.Rooms) && slices.Equal(old.Senders, next.Senders) &&
-		old.Marker == next.Marker && old.EscalationRoom == next.EscalationRoom {
+		old.Marker == next.Marker && old.EscalationRoom == next.EscalationRoom &&
+		old.ArtifactRoom == next.ArtifactRoom && old.DeskURL == next.DeskURL {
 		return
 	}
 	if j, ok := g.ad.(Joiner); ok {
@@ -198,7 +204,14 @@ func (g *Gateway) followConfig(ctx context.Context) {
 		if g.settings().EscalationRoom != "" {
 			g.startEscalations(ctx)
 		}
+		if g.settings().ArtifactRoom != "" {
+			g.startArtifacts(ctx)
+		}
 	}
+}
+
+func (g *Gateway) startArtifacts(ctx context.Context) {
+	g.startArt.Do(func() { g.wg.Go(func() { g.runArtifacts(ctx) }) })
 }
 
 func (g *Gateway) startEscalations(ctx context.Context) {
@@ -234,6 +247,10 @@ func (g *Gateway) Run(ctx context.Context) error {
 	}
 	if g.cfg.Fetch != nil && g.cfg.FetchEvery > 0 {
 		g.wg.Go(func() { g.followConfig(ctx) })
+	}
+	// Started once an artifact room is set, at start or by a reload.
+	if g.settings().ArtifactRoom != "" {
+		g.startArtifacts(ctx)
 	}
 	err := g.ad.Run(ctx, g.Handle)
 	g.wg.Wait()

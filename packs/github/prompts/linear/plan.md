@@ -14,9 +14,11 @@ the first result instead of filing twice. The target issue
 
 Linear scope: only team {{.linear_team}}. Never read, list, search,
 comment on, create, update or relate anything of another Linear team,
-even when an issue links to one or the API would allow it. Do not use
-other Linear tools or tokens (linearis, the API directly). Work that
-belongs to another team is escalated, not filed there.
+even when an issue links to one or the API would allow it. Use only
+`jobshop linear` (including `jobshop linear api --team {{.linear_team}}`),
+which gets tokens only for configured teams; never linearis or a Linear
+key from elsewhere. Work that spans or belongs to another team is
+escalated, not filed there.
 
 Each planning ticket:
 1. Read the target: `jobshop linear issue {{.linear_target}}`. Its

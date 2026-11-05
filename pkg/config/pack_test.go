@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -205,10 +206,13 @@ packs:
 	}
 	assert.Equal(t, "3h", sigs[StallStepStalled].After)
 	assert.Contains(t, sigs[StallIssueNoRun].Check, "gh issue list --repo elee1766/jobshop")
+	assert.Contains(t, sigs[StallIssueNoRun].Check, `. == "proposed"`, "planner proposals wait on a human (#506)")
+	assertIssueNoRunFilter(t, sigs[StallIssueNoRun].Check)
 	assert.Equal(t, "elee1766/jobshop", sigs[StallIssueNoRun].Repo, "issue_no_run matches runs of its repo (#183)")
 	assert.Equal(t, "elee1766/jobshop", c.Workflows["pr-work"].Repo)
 	assert.Contains(t, sigs["no_merge"].Check, "repos/elee1766/jobshop/commits/master")
 	assert.Contains(t, sigs["pr_unmerged"].Check, "statusCheckRollup")
+	assertPRUnmergedFilter(t, sigs["pr_unmerged"].Check)
 	mr := c.Triggers["master-red"]
 	assert.Nil(t, mr.Ticket)
 	require.NotNil(t, mr.Run, "master-red starts a run")
@@ -236,7 +240,9 @@ packs:
 	assert.Equal(t, "curate", ct.Run.Workflow)
 	assert.Equal(t, "curate", ct.Run.Key)
 	require.NotNil(t, ct.When.Learnings)
-	assert.Equal(t, LearningsWhen{Min: 10, Every: "24h"}, *ct.When.Learnings)
+	assert.Equal(t, LearningsWhen{Min: 10, Every: "24h", Scope: []string{
+		"repo:elee1766/jobshop", "pool:dev", "pool:plan", "pool:refinery", "pool:deploy-check", "pool:learn",
+	}}, *ct.When.Learnings, "other instances' learnings do not start this curator (#524)")
 	assert.Equal(t, "${SESSION_DIR}/jcode.sock", c.Agents["jcode"].Args[2], "host strings are not substituted")
 }
 
@@ -276,7 +282,7 @@ packs:
 	p := c.Pools["operator"]
 	assert.Equal(t, "/src/jobshop", p.Repo)
 	assert.Equal(t, 0, p.MaxSessions)
-	assert.Equal(t, []string{"config-reload", "config-show", "session-list", "pool-list", "pool-scale", "session-cordon", "session-config", "trigger-list", "attention", "activity"}, p.Admin)
+	assert.Equal(t, []string{"config-reload", "config-show", "session-list", "pool-list", "pool-scale", "session-cordon", "session-config", "trigger-list", "attention", "activity", "ticket-release"}, p.Admin)
 	for _, s := range []string{"acme/jobshop-fork", "jobshop config show", "instances", "<prefix>pr-work", "acphost-pr-work", "tracker", "linear_team", "gh issue create -R <repo>", "jobshop ticket create", "jobshop send", "jobshop reload", "ticket trace", "session list", "gh pr create", "Replies are short"} {
 		assert.Contains(t, p.Prompt, s)
 	}
@@ -351,12 +357,50 @@ packs:
 	w := c.Workflows["pr-work"]
 	assert.Equal(t, "make test", w.PackVars["check_cmd"])
 	assert.Contains(t, w.PackVars["docs_rule"], "Never append a numbered section", "docs_rule default (#131)")
-	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
+	body, err := w.Render(w.Steps[0].Prompt, map[string]any{"issue": 7, "repo": w.PackVars["repo"], "check_cmd": "make test", "docs_rule": w.PackVars["docs_rule"]})
 	require.NoError(t, err)
+	assert.Contains(t, body, "github.checks:pr=acme/widget#<n>", "CI waits use github.checks (#555)")
 	assert.Contains(t, body, "`make test`")
 	assert.Contains(t, body, "Docs: put a design note")
 	assert.Contains(t, w.Steps[1].Prompt, "Conflicts only in docs", "refinery resolves docs-only conflicts (#131)")
 	assert.Contains(t, c.Workflows["ci-repair"].Steps[1].Prompt, "Conflicts only in docs")
+}
+
+// TestGithubPackProposeTargets: the planner prompt has the proposal
+// rules by default and omits them with propose_targets false (#488).
+func TestGithubPackProposeTargets(t *testing.T) {
+	pack, err := filepath.Abs("../../packs/github")
+	require.NoError(t, err)
+	for _, tc := range []struct {
+		extra string
+		want  bool
+	}{{"", true}, {", propose_targets: false", false}} {
+		dir := t.TempDir()
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": `projects:
+  js: {}
+agents:
+  a: {command: x}
+packs:
+  - path: ` + pack + `
+    vars: {repo: acme/widget, checkout: /src/widget, agent: a, human: wile` + tc.extra + `}
+`})
+		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.NoError(t, err)
+		p := c.Pools["plan"].Prompt
+		for _, s := range []string{"Proposing a target", "`gh issue create --label proposed", "never add the `target` label yourself", "-l proposed --meta"} {
+			if tc.want {
+				assert.Contains(t, p, s)
+			} else {
+				assert.NotContains(t, p, s)
+			}
+		}
+		if tc.want {
+			assert.NotContains(t, p, "comment that on the ticket and close it")
+		} else {
+			assert.Contains(t, p, "comment that on the ticket and close it")
+			assert.NotContains(t, p, "proposed")
+		}
+	}
 }
 
 // TestGithubPackGeneric: nothing in packs/github names the Jobshop repo.
@@ -500,7 +544,7 @@ packs:
 	assert.Equal(t, "gz-stall-check", c.Triggers["gz-stall"].Run.Workflow)
 	assert.Contains(t, c.Pools["gz-plan"].Prompt, "jobshop run start gz-pr-work --var")
 	assert.Contains(t, c.Pools["plan"].Prompt, "jobshop run start pr-work --var")
-	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--pool gz-dev`")
+	assert.Contains(t, c.Pools["gz-refinery"].Prompt, "--to gz-dev ")
 	assert.Equal(t, "gz-", w.PackVars[PackPrefixVar])
 
 	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "packs:\n  - path: " + pack + "\n    prefix: Bad\n"})
@@ -657,17 +701,23 @@ packs:
 		assert.Equal(t, "esc", w.Escalate.ChatPool, n)
 	}
 	e := c.Workflows["pr-work"].Escalate
-	out, err := Fill(e.Prompt, e.Template, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	vars := map[string]any{}
+	for _, k := range EscalationVars {
+		vars[k] = ""
+	}
+	maps.Copy(vars, map[string]any{"ticket": "js-e", "run": "js-r", "workflow": "pr-work", "issue_ref": "issue 7", "body": "BODY"})
+	out, err := Fill(e.Prompt, e.Template, vars)
 	require.NoError(t, err)
-	assert.Contains(t, out, "escalation ticket js-e for run js-r (workflow pr-work)")
+	assert.Contains(t, out, "run js-r (workflow pr-work)")
 	assert.Contains(t, out, "`jobshop run resume js-r")
 	assert.Contains(t, out, "issue 7")
 	assert.True(t, strings.HasSuffix(strings.TrimSpace(out), "BODY"))
 	assert.NotContains(t, out, "gateway")
 	assert.NotContains(t, out, "thread")
-	pout, err := Fill(e.PoolPrompt, e.Template, map[string]any{"ticket": "js-e", "pool": "dev", "error": "boom", "body": "B"})
+	maps.Copy(vars, map[string]any{"pool": "dev", "error": "boom", "body": "B"})
+	pout, err := Fill(e.PoolPrompt, e.Template, vars)
 	require.NoError(t, err)
-	assert.Contains(t, pout, "pool dev starts no sessions")
+	assert.Contains(t, pout, "Pool dev starts no sessions")
 	assert.Contains(t, pout, "jobshop pool unquarantine dev")
 
 	var policy *PromptRule
@@ -697,7 +747,7 @@ func TestEscalationConfig(t *testing.T) {
 		"unknown":   {"escalation: {chat_pool: nope, prompt: x}\n", "unknown pool"},
 		"no prompt": {"escalation: {chat_pool: chat}\n", "needs prompt"},
 		"bad var":   {"escalation: {chat_pool: chat, prompt: \"${issue}\"}\n", "uses ${issue}"},
-		"pool var":  {"escalation: {chat_pool: chat, pool_prompt: \"${run}\"}\n", "uses ${run}"},
+		"hold var":  {"escalation: {chat_pool: chat, hold_prompt: \"${issue}\"}\n", "uses ${issue}"},
 		"empty":     {"escalation: {}\n", ""},
 	} {
 		dir := t.TempDir()
@@ -710,4 +760,91 @@ func TestEscalationConfig(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.err, name)
 		}
 	}
+}
+
+// assertIssueNoRunFilter runs the issue_no_run jq filter on fixture
+// issues: a proposed issue is not emitted, an unlabeled one is (#506).
+func assertIssueNoRunFilter(t *testing.T, check string) {
+	t.Helper()
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Log("jq not on PATH, filter not run")
+		return
+	}
+	_, filter, ok := strings.Cut(check, "--jq '")
+	require.True(t, ok, "check has a --jq filter")
+	filter = strings.TrimSuffix(filter, "'")
+	issues := `[
+	 {"number":1,"title":"plain","labels":[],"createdAt":"2020-01-01T00:00:00Z","author":{"login":"bot","is_bot":true}},
+	 {"number":2,"title":"Proposed target: x","labels":[{"name":"proposed"}],"createdAt":"2020-01-01T00:00:00Z","author":{"login":"bot","is_bot":true}}
+	]`
+	cmd := exec.CommandContext(t.Context(), jq, "-r", filter)
+	cmd.Stdin = strings.NewReader(issues)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Equal(t, "1 open, no run\n", string(out))
+}
+
+// assertPRUnmergedFilter runs the pr_unmerged jq filter (#509): PRs by the
+// operator (elee1766 in selfdev) or labeled hold are skipped, other green
+// PRs are flagged.
+func assertPRUnmergedFilter(t *testing.T, check string) {
+	t.Helper()
+	jq, err := exec.LookPath("jq")
+	if err != nil {
+		t.Log("jq not on PATH, filter not run")
+		return
+	}
+	_, filter, ok := strings.Cut(check, "--jq '")
+	require.True(t, ok, "check has a --jq filter")
+	filter = strings.TrimSuffix(filter, "'")
+	green := `"isDraft":false,"updatedAt":"2020-01-01T00:00:00Z","statusCheckRollup":[{"conclusion":"SUCCESS"}]`
+	prs := `[
+	 {"number":1,` + green + `,"labels":[],"author":{"login":"elee-agent[bot]"}},
+	 {"number":2,` + green + `,"labels":[{"name":"Hold"}],"author":{"login":"elee-agent[bot]"}},
+	 {"number":3,` + green + `,"labels":[],"author":{"login":"Elee1766"}},
+	 {"number":4,` + green + `,"labels":[{"name":"holding"}],"author":{"login":"elee"}}
+	]`
+	cmd := exec.CommandContext(t.Context(), jq, "-r", filter)
+	cmd.Stdin = strings.NewReader(prs)
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Equal(t, "1 green, unmerged since 2020-01-01T00:00:00Z\n4 green, unmerged since 2020-01-01T00:00:00Z\n", string(out))
+}
+
+// TestLearningKindsConfig: learnings.kinds (#524) defaults to the three
+// built-in kinds, packs append to the host's list, and a pattern that can
+// match no kind is a load error.
+func TestLearningKindsConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase})
+	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"correction", "failure", "workaround"}, c.LearningKinds(), "default unchanged")
+
+	writeFiles(t, dir, map[string]string{
+		"p/pack.yaml":  "learnings:\n  kinds: [blocker]\n",
+		"jobshop.yaml": hostBase + "packs:\n  - path: p\nlearnings:\n  kinds: [friction, \"review-*\"]\n",
+	})
+	c, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"blocker", "friction", "review-*"}, c.LearningKinds())
+
+	for _, bad := range []string{"Friction", "a/b", "["} {
+		writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + "learnings:\n  kinds: [\"" + bad + "\"]\n"})
+		_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+		require.ErrorContains(t, err, "learnings.kinds", bad)
+	}
+	writeFiles(t, dir, map[string]string{"jobshop.yaml": hostBase + `workflows:
+  w:
+    steps: [{id: s, pool: dev, title: t, prompt: p}]
+pools:
+  dev: {agent: a, dir: /tmp}
+triggers:
+  t:
+    when: {learnings: {min: 1, source: human}}
+    run: {workflow: w}
+`})
+	_, err = LoadFile(filepath.Join(dir, "jobshop.yaml"))
+	require.ErrorContains(t, err, "learnings.source")
 }

@@ -284,6 +284,10 @@ type Store interface {
 	// Release returns a held ticket to open. A non-zero until defers the
 	// ticket to that time and is not counted as a step failure (#139).
 	Release(ctx context.Context, c Claim, reason string, until time.Time) (Ticket, error)
+	// Handoff moves a ticket to pool, releases its holder, bumps the fence
+	// and adds note as a comment in one transaction (#492). A non-nil claim
+	// must still hold it; a nil claim is an administrative handoff.
+	Handoff(ctx context.Context, actor, id string, c *Claim, pool, note string) (Ticket, error)
 	// CloseTicket closes a ticket. A non-nil claim must still hold it; a nil
 	// claim is an administrative close.
 	CloseTicket(ctx context.Context, actor, id string, c *Claim, resolution string) (Ticket, error)
@@ -305,6 +309,10 @@ type Store interface {
 	AddComment(ctx context.Context, author, id, body string) (Comment, error)
 	Comments(ctx context.Context, id string) ([]Comment, error)
 	History(ctx context.Context, id string) ([]HistoryEntry, error)
+	// Record adds a history row for an outside action on a ticket without
+	// changing it (#542: desk_exec). The row carries the ticket's current
+	// revision.
+	Record(ctx context.Context, actor, id, op string, diff any) error
 	// Changes returns history rows of all tickets with seq > after, oldest
 	// first, at most n (0 means DefaultLimit). It feeds events.subscribe.
 	Changes(ctx context.Context, after int64, n int) ([]HistoryEntry, error)
@@ -343,9 +351,9 @@ type Store interface {
 	UpdateLearning(ctx context.Context, id int64, status, pr string) (Learning, error)
 	// GetLearning reads one learning; ErrNotFound if missing.
 	GetLearning(ctx context.Context, id int64) (Learning, error)
-	// CountLearnings counts learnings created at or after since with
-	// status (empty: any).
-	CountLearnings(ctx context.Context, since time.Time, status string) (int, error)
+	// CountLearnings counts learnings created at or after since that match f
+	// (#524).
+	CountLearnings(ctx context.Context, since time.Time, f LearningCount) (int, error)
 	// LearningsBetween returns learnings recorded in [since, until),
 	// oldest first (#274).
 	LearningsBetween(ctx context.Context, since, until time.Time) ([]Learning, error)
@@ -429,7 +437,9 @@ const (
 	LearningRejected = "rejected"
 )
 
-// LearningKinds lists the valid learning kinds.
+// LearningKinds are the default learning kinds, used when the config
+// sets no learnings.kinds (#524). The controller's own learnings use
+// correction and failure and are always allowed.
 var LearningKinds = []string{LearningCorrection, LearningFailure, LearningWorkaround}
 
 // Learning is a correction, failure or workaround recorded for the curator.

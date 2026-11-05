@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/elee1766/acphost"
@@ -43,6 +45,7 @@ const (
 	MethodClaim            = "claim"
 	MethodHeartbeat        = "heartbeat"
 	MethodRelease          = "release"
+	MethodHandoff          = "handoff"
 	MethodSessionNew       = "session.new"
 	MethodSessionList      = "session.list"
 	MethodSessionReap      = "session.reap"
@@ -257,6 +260,8 @@ type ListParams struct {
 	Holder   string       `json:"holder,omitempty"`
 	ParentID string       `json:"parent_id,omitempty"`
 	Label    string       `json:"label,omitempty"`
+	// Newest lists the most recently created first.
+	Newest bool `json:"newest,omitempty"`
 	// Report matches tickets whose last worker report has this state (#186).
 	Report string `json:"report,omitempty"`
 	Limit  int    `json:"limit,omitempty"`
@@ -339,6 +344,14 @@ type SubscribeParams struct {
 	Repo   string `json:"repo"`
 	Number int    `json:"number"`
 	PR     bool   `json:"pr,omitempty"`
+}
+
+// HandoffParams moves a ticket to another pool, releasing its holder and
+// adding Note as a comment, in one transaction (#492).
+type HandoffParams struct {
+	ID   string `json:"id,omitempty"`
+	Pool string `json:"pool"`
+	Note string `json:"note,omitempty"`
 }
 
 // ReleaseParams releases a held ticket.
@@ -450,6 +463,11 @@ type SessionSandboxResult struct {
 	Sandbox *acphost.Sandbox `json:"sandbox,omitempty"`
 	Argv    []string         `json:"argv,omitempty"`
 	Error   string           `json:"error,omitempty"`
+	// User and Cgroup are the pool's isolation (#388); CgroupPath is the
+	// session's cgroup directory.
+	User       *acphost.User   `json:"user,omitempty"`
+	Cgroup     *acphost.Cgroup `json:"cgroup,omitempty"`
+	CgroupPath string          `json:"cgroup_path,omitempty"`
 }
 
 // SessionPromptParams names the session whose next prompt to show.
@@ -707,12 +725,50 @@ const MetaKey = "_meta"
 // Meta is request metadata.
 type Meta struct {
 	TraceParent string `json:"traceparent,omitempty"`
+	// Actor names the person behind an admin-socket call, such as
+	// "desk:alice" (#515). The controller honors it only on the admin
+	// socket; a session socket's actor is fixed by the socket.
+	Actor string `json:"actor,omitempty"`
 }
 
-// withMeta adds _meta.traceparent from ctx to object params.
+type actorKey struct{}
+
+// WithActor makes calls under ctx carry actor in _meta.actor.
+func WithActor(ctx context.Context, actor string) context.Context {
+	if actor == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, actorKey{}, actor)
+}
+
+// ActorFrom returns the actor set by WithActor.
+func ActorFrom(ctx context.Context) string {
+	a, _ := ctx.Value(actorKey{}).(string)
+	return a
+}
+
+// MaxActor is the longest _meta.actor accepted, in bytes.
+const MaxActor = 256
+
+// ValidActor checks an actor name: at most MaxActor bytes of printable
+// text, no control characters.
+func ValidActor(a string) error {
+	if a == "" || len(a) > MaxActor || !utf8.ValidString(a) {
+		return fmt.Errorf("%w: actor must be 1 to %d bytes of UTF-8", store.ErrInvalid, MaxActor)
+	}
+	for _, r := range a {
+		if !unicode.IsPrint(r) {
+			return fmt.Errorf("%w: actor has a non-printable character", store.ErrInvalid)
+		}
+	}
+	return nil
+}
+
+// withMeta adds _meta (traceparent, actor) from ctx to object params.
 func withMeta(ctx context.Context, params any) (any, error) {
 	tp := telemetry.TraceParent(ctx)
-	if tp == "" {
+	actor := ActorFrom(ctx)
+	if tp == "" && actor == "" {
 		return params, nil
 	}
 	obj := map[string]json.RawMessage{}
@@ -725,7 +781,7 @@ func withMeta(ctx context.Context, params any) (any, error) {
 			return params, nil // not an object: send without metadata
 		}
 	}
-	m, err := json.Marshal(Meta{TraceParent: tp})
+	m, err := json.Marshal(Meta{TraceParent: tp, Actor: actor})
 	if err != nil {
 		return nil, err
 	}
@@ -977,6 +1033,11 @@ type SessionSendParams struct {
 	Key       string `json:"key,omitempty"`
 	Text      string `json:"text"`
 	Interrupt bool   `json:"interrupt,omitempty"`
+	// Context is background for the session's model, delivered with the
+	// message in its own delimited block of the prompt. Clients that
+	// show the conversation get it apart from the visible text
+	// (SessionEvent.Context).
+	Context string `json:"context,omitempty"`
 	// Attach marks a send from `session attach --rw`; it is refused
 	// unless the session's pool sets attach: rw.
 	Attach bool `json:"attach,omitempty"`
@@ -1018,11 +1079,14 @@ const (
 
 // SessionEvent is one item of a session's output, read from its journal.
 type SessionEvent struct {
-	Session    string       `json:"session"`
-	Seq        int64        `json:"seq,omitempty"`
-	Time       *time.Time   `json:"time,omitempty"`
-	Type       string       `json:"type"`
-	Text       string       `json:"text,omitempty"`
+	Session string     `json:"session"`
+	Seq     int64      `json:"seq,omitempty"`
+	Time    *time.Time `json:"time,omitempty"`
+	Type    string     `json:"type"`
+	Text    string     `json:"text,omitempty"`
+	// Context is the part of a turn_start prompt that was addressed to
+	// the model only (session.send context), kept out of Text.
+	Context    string       `json:"context,omitempty"`
 	Tool       *ToolSummary `json:"tool,omitempty"`
 	StopReason string       `json:"stop_reason,omitempty"`
 	Error      string       `json:"error,omitempty"`
@@ -1184,14 +1248,17 @@ func (c *Client) handle(_ context.Context, method string, params json.RawMessage
 
 // Attention item kinds (#185).
 const (
-	AttentionRun      = "run"      // run in needs_human with no open escalation ticket
-	AttentionTicket   = "ticket"   // open ticket labeled needs-human (escalations, pool quarantines)
-	AttentionQuestion = "question" // open ticket labeled question: a worker asks a human
-	AttentionPool     = "pool"     // quarantined pool with no open escalation
-	AttentionRollback = "rollback" // self-deploy rolled back a commit
-	AttentionConfig   = "config"   // controller serves its last good config: a live pack failed to load (#227)
-	AttentionResource = "resource" // step waiting on a full resource past attention.resource_wait (#408)
-	AttentionIngest   = "ingest"   // no live external ingest worker, or an admission backlog (#443)
+	AttentionRun        = "run"         // run in needs_human with no open escalation ticket
+	AttentionTicket     = "ticket"      // open ticket labeled needs-human (escalations, pool quarantines)
+	AttentionQuestion   = "question"    // open ticket labeled question: a worker asks a human
+	AttentionPool       = "pool"        // quarantined pool with no open escalation
+	AttentionRollback   = "rollback"    // self-deploy rolled back a commit
+	AttentionConfig     = "config"      // controller serves its last good config: a live pack failed to load (#227)
+	AttentionConfigRepo = "config-repo" // a config repo commit failed its check; the host stays on the last good one (#532)
+	AttentionResource   = "resource"    // step waiting on a full resource past attention.resource_wait (#408)
+	AttentionIngest     = "ingest"      // no live external ingest worker, or an admission backlog (#443)
+	AttentionDecision   = "decision"    // open ticket labeled proposed: a planner-proposed target to approve (#488)
+	AttentionStale      = "stale"       // open ticket no pool will claim, older than attention.orphan_age (#495)
 )
 
 // AttentionItem is one thing waiting on a human.
@@ -1462,4 +1529,117 @@ type SlotResult struct {
 type ResourceListResult struct {
 	Slots []store.Slot        `json:"slots"`
 	Use   []store.ResourceUse `json:"use"`
+}
+
+// Artifact methods (#508): deliverables a human reads and acks in Desk.
+const (
+	MethodArtifactDeliver = "artifact.deliver"
+	MethodArtifactList    = "artifact.list"
+	MethodArtifactShow    = "artifact.show"
+	MethodArtifactAck     = "artifact.ack"
+)
+
+// ArtifactDeliverParams is artifact.deliver. Files are absolute paths
+// inside the session's dir or worktree; the controller copies them.
+type ArtifactDeliverParams struct {
+	Title  string   `json:"title"`
+	Body   string   `json:"body"`
+	Files  []string `json:"files,omitempty"`
+	Ticket string   `json:"ticket,omitempty"` // source; default the session's held ticket
+}
+
+// ArtifactFile is one attachment in meta.artifact.files.
+type ArtifactFile struct {
+	Name   string `json:"name"`
+	Size   int64  `json:"size"`
+	Type   string `json:"type,omitempty"`
+	Pruned bool   `json:"pruned,omitempty"`
+}
+
+// ArtifactMeta is meta.artifact on an artifact ticket.
+type ArtifactMeta struct {
+	Ticket  string         `json:"ticket,omitempty"`
+	Run     string         `json:"run,omitempty"`
+	Trigger string         `json:"trigger,omitempty"`
+	Pool    string         `json:"pool,omitempty"`
+	Session string         `json:"session,omitempty"`
+	Files   []ArtifactFile `json:"files,omitempty"`
+}
+
+// ArtifactListParams filters artifact.list.
+type ArtifactListParams struct {
+	Unread  bool   `json:"unread,omitempty"`
+	Trigger string `json:"trigger,omitempty"`
+	Pool    string `json:"pool,omitempty"`
+	Limit   int    `json:"limit,omitempty"`
+}
+
+// Artifact is one artifact ticket with its parsed meta.
+type Artifact struct {
+	Ticket store.Ticket `json:"ticket"`
+	Meta   ArtifactMeta `json:"artifact"`
+	Read   bool         `json:"read"`
+}
+
+// ArtifactShowResult is artifact.show: the artifact, its comments and
+// history, and the attachment dir (admin only; Desk serves files from it).
+type ArtifactShowResult struct {
+	Artifact
+	Comments []store.Comment      `json:"comments"`
+	History  []store.HistoryEntry `json:"history"`
+	Dir      string               `json:"dir,omitempty"`
+}
+
+// ArtifactAckParams is artifact.ack.
+type ArtifactAckParams struct {
+	ID   string `json:"id"`
+	Note string `json:"note,omitempty"`
+}
+
+// MethodSessionJournal reads a session's ACP journal (#529).
+const MethodSessionJournal = "session.journal"
+
+// SessionJournalParams pages a session's journal by seq. Kinds filters
+// on msg.method or params.update.sessionUpdate; From on "agent" or
+// "controller". Limit defaults to 500, at most 5000.
+type SessionJournalParams struct {
+	ID       string   `json:"id"`
+	SinceSeq int64    `json:"since_seq,omitempty"`
+	Limit    int      `json:"limit,omitempty"`
+	Kinds    []string `json:"kinds,omitempty"`
+	From     string   `json:"from,omitempty"`
+}
+
+// JournalFrame is one redacted journal frame.
+type JournalFrame struct {
+	Seq  int64           `json:"seq"`
+	T    int64           `json:"t"`
+	From string          `json:"from"`
+	Msg  json.RawMessage `json:"msg"`
+}
+
+// SessionJournalResult is one page. NextSeq is the since_seq for the
+// next call; Done means the page reached the end of the journal.
+type SessionJournalResult struct {
+	Frames  []JournalFrame `json:"frames"`
+	NextSeq int64          `json:"next_seq"`
+	Done    bool           `json:"done"`
+}
+
+// MethodDeskExec runs a desk_commands entry for a Desk plugin (#542).
+const MethodDeskExec = "desk.exec"
+
+// DeskExecParams names the command and its input, passed on stdin.
+// Ticket, if set, gets a desk_exec history row with the actor.
+type DeskExecParams struct {
+	Name   string          `json:"name"`
+	Input  json.RawMessage `json:"input,omitempty"`
+	Ticket string          `json:"ticket,omitempty"`
+}
+
+// DeskExecResult is the command's stdout: Output when it is JSON, else
+// Text.
+type DeskExecResult struct {
+	Output json.RawMessage `json:"output,omitempty"`
+	Text   string          `json:"text,omitempty"`
 }

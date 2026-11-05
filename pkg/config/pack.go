@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -56,6 +57,10 @@ type packFile struct {
 	PromptRules []PromptRule        `yaml:"prompt_rules"`
 	Hooks       []Hook              `yaml:"hooks"`
 	Escalation  *EscalationChat     `yaml:"escalation"`
+	// Learnings.Kinds are appended to the host's (#524).
+	Learnings *LearningsConfig `yaml:"learnings"`
+	// DeskCommands merge per name like pools (#542).
+	DeskCommands map[string]DeskCommand `yaml:"desk_commands"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -137,7 +142,7 @@ const maxPackDepth = 8
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
-var mergedSections = []string{"agents", "pools", "triggers", "workflows"}
+var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands"}
 
 // LoadFile reads a config file, merges the packs it lists, and validates
 // the result. Packs merge in list order, then the file itself.
@@ -164,6 +169,13 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	if top, err = applyIncludes(top, dir, name); err != nil {
+		return nil, err
+	}
+	// Includes name host files next to the root's jobshop.yaml; packs and
+	// prompt files live with the config, which may be a link into a
+	// checkout (#532).
+	dir = fileDir(path)
 	// Validate the packs list on its own so its errors are precise.
 	var head struct {
 		Packs []PackRef `yaml:"packs"`
@@ -495,6 +507,27 @@ func mergeInto(dst, src map[string]any, file string, sources map[string][]string
 			hooks, _ := v.([]any)
 			old, _ := dst[k].([]any)
 			dst[k] = append(slices.Clone(old), hooks...)
+			continue
+		}
+		if k == "learnings" {
+			// learnings.kinds is appended like prompt_rules: a pack adds
+			// the kinds it records (#524). Other keys replace.
+			sm, _ := v.(map[string]any)
+			dm, _ := dst[k].(map[string]any)
+			out := maps.Clone(dm)
+			if out == nil {
+				out = map[string]any{}
+			}
+			for sk, sv := range sm {
+				if sk == "kinds" {
+					add, _ := sv.([]any)
+					old, _ := out[sk].([]any)
+					out[sk] = append(slices.Clone(old), add...)
+					continue
+				}
+				out[sk] = sv
+			}
+			dst[k] = out
 			continue
 		}
 		if k == "prompt_rules" {

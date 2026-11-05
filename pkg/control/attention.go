@@ -18,6 +18,10 @@ import (
 // questionLabel marks a ticket where a worker asks a human (#185, #186).
 const questionLabel = "question"
 
+// proposedLabel marks the planner's proposed next target, which waits
+// on a human to approve (#488).
+const proposedLabel = "proposed"
+
 // attention lists only what waits on a human, across all projects,
 // oldest first (#185). Empty when healthy.
 func (c *Controller) attention(ctx context.Context, sc scope, _ struct{}) (any, error) {
@@ -37,7 +41,7 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	// as the escalation ticket.
 	escalatedRuns, escalatedPools := map[string]bool{}, map[string]bool{}
 	seen := map[string]bool{}
-	for _, label := range []string{needsHumanLabel, questionLabel} {
+	for _, label := range []string{needsHumanLabel, questionLabel, proposedLabel} {
 		ts, err := c.labeledOpen(ctx, label)
 		if err != nil {
 			return nil, err
@@ -54,7 +58,10 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 			}
 			seen[t.ID] = true
 			kind := rpc.AttentionTicket
-			if (label == questionLabel && !slices.Contains(t.Labels, needsHumanLabel)) || metaString(t.Meta, questionMetaPack, "ticket") != "" {
+			switch {
+			case label == proposedLabel && !slices.Contains(t.Labels, needsHumanLabel):
+				kind = rpc.AttentionDecision
+			case (label == questionLabel && !slices.Contains(t.Labels, needsHumanLabel)) || metaString(t.Meta, questionMetaPack, "ticket") != "":
 				kind = rpc.AttentionQuestion
 			}
 			items = append(items, ticketItem(kind, t))
@@ -99,6 +106,17 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 		return nil, err
 	}
 	items = append(items, ing...)
+	stale, err := c.staleAttention(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, it := range stale {
+		// A needs-human or question ticket with no pool is listed once,
+		// as itself.
+		if !slices.ContainsFunc(items, func(x rpc.AttentionItem) bool { return x.ID == it.ID }) {
+			items = append(items, it)
+		}
+	}
 	c.mu.Lock()
 	if c.configErr != "" {
 		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})
@@ -110,6 +128,9 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 	}
 	c.mu.Unlock()
 	if it, ok := rollbackItem(c.config().Attention.RollbackFile); ok {
+		items = append(items, it)
+	}
+	if it, ok := configRepoItem(c.config().Attention.ConfigRepoFile); ok {
 		items = append(items, it)
 	}
 	slices.SortStableFunc(items, func(a, b rpc.AttentionItem) int {
@@ -150,6 +171,25 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 		}
 	}
 	return it
+}
+
+// configRepoItem reports a config repo commit that failed its check
+// (#532): path holds the commit on its first line, then the error.
+func configRepoItem(path string) (rpc.AttentionItem, bool) {
+	if path == "" {
+		return rpc.AttentionItem{}, false
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return rpc.AttentionItem{}, false
+	}
+	b, _ := os.ReadFile(path)
+	rev, why, _ := strings.Cut(strings.TrimSpace(string(b)), "\n")
+	title := "config repo commit " + rev + " failed its check, running the last good config"
+	if why = strings.TrimSpace(why); why != "" {
+		title += ": " + why
+	}
+	return rpc.AttentionItem{Kind: rpc.AttentionConfigRepo, ID: rev, Title: title, Since: fi.ModTime().UTC()}, true
 }
 
 // rollbackItem reports a self-deploy rollback: path (the deploy state

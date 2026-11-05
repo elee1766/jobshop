@@ -50,6 +50,8 @@ func TestAttention(t *testing.T) {
 	clk.advance(time.Minute)
 	q := mkTicket(t, c, store.NewTicket{Title: "which db?", Labels: []string{questionLabel}})
 	clk.advance(time.Minute)
+	prop := mkTicket(t, c, store.NewTicket{Title: "Proposed target: x (#9)", Labels: []string{proposedLabel}})
+	clk.advance(time.Minute)
 	c.poolQuarantined = map[string]string{"dev": "spawn: no such dir", "plan": "spawn: bad agent"}
 	poolEsc := mkTicket(t, c, store.NewTicket{
 		Title: "Pool dev quarantined", Labels: []string{needsHumanLabel},
@@ -60,7 +62,7 @@ func TestAttention(t *testing.T) {
 	// Pool dev has an escalation ticket, so it is listed once, as the
 	// ticket; the escalated run likewise. plan (no escalation) is listed
 	// as a pool, since the controller started (clock start).
-	assert.Equal(t, []string{"pool plan", "run " + bare.ID, "ticket " + esc.ID, "question " + q.ID, "ticket " + poolEsc.ID}, got)
+	assert.Equal(t, []string{"pool plan", "run " + bare.ID, "ticket " + esc.ID, "question " + q.ID, "decision " + prop.ID, "ticket " + poolEsc.ID}, got)
 
 	items, err := c.attentionItems(t.Context())
 	require.NoError(t, err)
@@ -87,4 +89,13 @@ func TestAttention(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(state, "deployed"), []byte("new\n"), 0o600))
 	_, ok = rollbackItem(filepath.Join(state, "failed"))
 	assert.False(t, ok, "a later deploy clears it")
+
+	// Config repo (#532): listed while the failed file exists.
+	repoFile := filepath.Join(dir, "config-repo.failed")
+	_, ok = configRepoItem(repoFile)
+	assert.False(t, ok, "no failed file")
+	require.NoError(t, os.WriteFile(repoFile, []byte("abc123\npacks[0]: pack.yaml: no such file\n"), 0o600))
+	it, ok = configRepoItem(repoFile)
+	require.True(t, ok)
+	assert.Equal(t, rpc.AttentionItem{Kind: rpc.AttentionConfigRepo, ID: "abc123", Title: "config repo commit abc123 failed its check, running the last good config: packs[0]: pack.yaml: no such file", Since: it.Since}, it)
 }

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   go:
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -19,7 +19,9 @@ jobs:
           # setup-go's cache keys on go.sum only, with no fallback, so every
           # dependency change rebuilt from scratch. The cache below falls back.
           cache: false
-      - uses: actions/cache@v4
+      # Restore here, save only on master after a trim (below). Saving every
+      # run with no trim grew the cache to 2GB, about 25s to restore.
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/go/pkg/mod
@@ -33,7 +35,24 @@ jobs:
       # checkptr is off for modernc's machine-translated C only: its pointer
       # arithmetic is ~a third of race-test CPU and is not our code. The
       # race detector still covers it (#433).
-      - run: go test -race -gcflags='modernc.org/...=-d=checkptr=0' ./...
+      - name: go test
+        id: test
+        run: |
+          go test -json -race -gcflags='modernc.org/...=-d=checkptr=0' ./... > test.json 2>&1 || rc=$?
+          # Readable log from the JSON stream.
+          go run ./pkg/flaky/cmd/ci-flaky -print -in test.json
+          exit "${rc:-0}"
+      # On failure, rerun each failed test 20 times: flaky or broken (#510).
+      # The job still fails; failed-tests.json is for the planner.
+      - name: rerun failed tests
+        if: failure() && steps.test.outcome == 'failure'
+        run: go run ./pkg/flaky/cmd/ci-flaky -in test.json -out failed-tests.json -summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.test.outcome == 'failure'
+        with:
+          name: failed-tests
+          path: failed-tests.json
+          if-no-files-found: ignore
       - name: sqlc generated code is current
         run: go tool sqlc diff
         working-directory: pkg/store/sqlite
@@ -44,9 +63,25 @@ jobs:
           version: v2.15.0
       - name: shellcheck deploy scripts
         run: shellcheck -s sh deploy/*.sh
+      # Go bumps an entry's mtime when it is used and was last touched over
+      # an hour ago, so anything older than 90 minutes was not used by this
+      # run. Dropping it keeps the cache from growing with every build.
+      - name: trim go build cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        run: |
+          du -sh ~/.cache/go-build
+          find ~/.cache/go-build -type f -mmin +90 -delete
+          du -sh ~/.cache/go-build
+      - uses: actions/cache/save@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   nix:
-    runs-on: ubicloud-standard-8
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read # hestia: detect evicted cache entries upfront
@@ -78,7 +113,7 @@ jobs:
   # Desk's built UI is committed in pkg/desk/dist and embedded (#208):
   # svelte-check must pass and the committed build must match ui/src.
   ui:
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ui
@@ -94,3 +129,35 @@ jobs:
       - run: npm run build
       - name: pkg/desk/dist is current
         run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"
+
+  # The store conformance suite against Postgres (#493). The go job runs
+  # it against SQLite; pkg/store/postgres's tests skip without the DSN.
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      JOBSHOP_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-pg-${{ runner.os }}-
+      - run: go test -race ./pkg/store/postgres/

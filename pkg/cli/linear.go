@@ -30,6 +30,7 @@ type linearCmd struct {
 	Update   linearUpdateCmd   `cmd:"" help:"Change title, state, assignee or labels; reads the issue back to verify."`
 	Ask      linearAskCmd      `cmd:"" help:"Comment a question, mentioning users so they are notified."`
 	Relate   linearRelateCmd   `cmd:"" help:"Mark an issue as blocking or related to another."`
+	API      linearAPICmd      `cmd:"" name:"api" help:"Raw GraphQL call: LINEAR_API_KEY if set, else the team's identity. Mutations ask the guard (linear-api-mutation)."`
 }
 
 type linearIssueCmd struct {

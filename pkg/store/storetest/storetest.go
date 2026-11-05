@@ -44,6 +44,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"EdgeCycle", testEdgeCycle},
 		{"ClaimNextTiers", testClaimNextTiers},
 		{"FencedClose", testFencedClose},
+		{"Handoff", testHandoff},
 		{"Heartbeat", testHeartbeat},
 		{"ReleaseHolder", testReleaseHolder},
 		{"SweepLeases", testSweepLeases},
@@ -64,6 +65,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ConcurrentClaims", testConcurrentClaims},
 		{"ConcurrentResourceClaims", testConcurrentResourceClaims},
 		{"ClaimAfterSkippedBlocker", testClaimAfterSkippedBlocker},
+		{"CountLearnings", testCountLearnings},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -441,6 +443,34 @@ func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {
 	assert.ErrorIs(t, err, store.ErrNotHolder)
 }
 
+// testHandoff: pool, release, fence and note in one revision (#492).
+func testHandoff(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	a := task(t, s, "a", "dev")
+	held, cl, err := s.Claim(ctx, a.ID, "s1", lease)
+	require.NoError(t, err)
+	stale := cl
+	stale.Fence--
+	_, err = s.Handoff(ctx, "s1", a.ID, &stale, "refinery", "x")
+	require.ErrorIs(t, err, store.ErrNotHolder)
+
+	got, err := s.Handoff(ctx, "s1", a.ID, &cl, "refinery", "over to you")
+	require.NoError(t, err)
+	assert.Equal(t, "refinery", got.Pool)
+	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Empty(t, got.Holder)
+	assert.Greater(t, got.Fence, cl.Fence)
+	assert.Equal(t, held.Revision+1, got.Revision)
+	cs, err := s.Comments(ctx, a.ID)
+	require.NoError(t, err)
+	require.Len(t, cs, 1)
+	assert.Equal(t, "over to you", cs[0].Body)
+	assert.Equal(t, "s1", cs[0].Author)
+
+	_, err = s.Handoff(ctx, "admin", a.ID, nil, "", "")
+	require.ErrorIs(t, err, store.ErrInvalid)
+}
+
 func testFencedClose(t *testing.T, s store.Store, c *Clock) {
 	ctx := t.Context()
 	a := task(t, s, "a", "dev")
@@ -593,6 +623,22 @@ func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	ch, err = s.Changes(ctx, 0, 1)
 	require.NoError(t, err)
 	assert.Len(t, ch, 1)
+
+	// Record adds a row without changing the ticket (#542).
+	before, err := s.Get(ctx, a.ID)
+	require.NoError(t, err)
+	require.NoError(t, s.Record(ctx, "desk:alice", a.ID, "desk_exec", map[string]any{"name": "x"}))
+	h, err = s.History(ctx, a.ID)
+	require.NoError(t, err)
+	lastRow := h[len(h)-1]
+	assert.Equal(t, "desk_exec", lastRow.Op)
+	assert.Equal(t, "desk:alice", lastRow.Actor)
+	assert.Equal(t, before.Revision, lastRow.Revision)
+	assert.JSONEq(t, `{"name":"x"}`, string(lastRow.Diff))
+	after, err := s.Get(ctx, a.ID)
+	require.NoError(t, err)
+	assert.Equal(t, before.Revision, after.Revision)
+	assert.ErrorIs(t, s.Record(ctx, "u", "js-missing", "x", nil), store.ErrNotFound)
 }
 
 func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {

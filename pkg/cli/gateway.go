@@ -63,7 +63,7 @@ func (c gatewayCmd) Run(g *Globals) error {
 	}
 	gw := gateway.New(gateway.Config{
 		Name: c.Name, Pool: gc.Pool, Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker,
-		EscalationRoom: gc.EscalationRoom, Digest: digest,
+		EscalationRoom: gc.EscalationRoom, Digest: digest, ArtifactRoom: gc.ArtifactRoom, DeskURL: gc.DeskURL,
 		Fetch:      socketController{sock: sock}.gatewayConfig(c.Name),
 		FetchEvery: gatewayConfigEvery,
 	}, ad, socketController{sock: sock}, log)
@@ -159,6 +159,6 @@ func (s socketController) gatewayConfig(name string) func(context.Context) (gate
 		if err := yaml.Unmarshal(b, &gc); err != nil {
 			return gateway.Config{}, err
 		}
-		return gateway.Config{Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker, EscalationRoom: gc.EscalationRoom}, nil
+		return gateway.Config{Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker, EscalationRoom: gc.EscalationRoom, ArtifactRoom: gc.ArtifactRoom, DeskURL: gc.DeskURL}, nil
 	}
 }

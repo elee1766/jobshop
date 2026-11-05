@@ -4,7 +4,7 @@
   import { ago, fields, tone, links } from '../lib/format.js';
 
   const states = ['', 'running', 'needs_human', 'done', 'cancelled'];
-  const work = resource(() => '/api/work' + (url.state ? '?state=' + encodeURIComponent(url.state) : ''));
+  const work = resource(() => 'api/work' + (url.state ? '?state=' + encodeURIComponent(url.state) : ''));
 </script>
 
 <h1>Work</h1>

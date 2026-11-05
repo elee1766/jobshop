@@ -21,12 +21,13 @@ config that still sets it (#261). It must either keep the old name with
 `renamed_vars: {old: new}` in pack.yaml, or list in the PR body the hosts
 that set the var and the config change each needs. Doing neither is case 4.
 
-Then do exactly one of these. Releasing this step counts as a failed
-attempt (like a failed close), so wait inside your turn instead of
-releasing: poll with `gh pr checks <n> --watch`, `gh run watch`, or
-`sleep 300` between checks. Do not end the turn to wait: if a long
-command is moved to the background, keep polling until it finishes.
-Release only if a wait passes an hour.
+Then do exactly one of these. A plain release of this step counts as a
+failed attempt (like a failed close). To wait for CI on a PR head, set
+`jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
+and end the turn: a wait is a deferral, not a failed attempt, and it
+resumes here within a minute of CI finishing. For master CI use
+`github.checks:repo={{.repo}},sha=<sha>` the same way. Do not poll with
+`sleep` or defer with a fixed `release --until` for CI.
 
 1. Master CI red: merge nothing. Make sure an open fix issue exists
    (`gh issue list --search`); file it at priority 0 if not. Wait for

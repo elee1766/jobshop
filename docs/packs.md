@@ -161,8 +161,32 @@ loads it. Keep the two in sync.
 - **Linear instead of GitHub issues.** Prompts use `jobshop linear`
   instead of `gh`; a `linear_issue_no_run` stall signal starts runs.
   `packs/github` with `tracker: linear` shows the whole setup.
+  Anything the fixed subcommands miss: `jobshop linear api` (raw
+  GraphQL, like `gh api`; mutations ask the `linear-api-mutation`
+  guard, `docs/notes/546-linear-api.md`).
 - **Several repos.** One `packs:` entry per repo, each with its own
   `prefix:` and `vars`.
+- **A scheduled report (#508).** A cron trigger starts a one-step run
+  whose prompt ends with `jobshop artifact deliver`. The artifact
+  carries the trigger name, so Desk's Artifacts view groups the
+  reports by it:
+
+  ```yaml
+  workflows:
+    weekly-report:
+      steps:
+        - id: report
+          pool: work
+          title: Weekly report
+          prompt: >-
+            Summarize this week's merged PRs and open incidents in
+            report.md. Then run `jobshop artifact deliver "Weekly report"
+            --file report.md` and `jobshop close`.
+  triggers:
+    weekly-report:
+      when: {cron: "0 8 * * 1"}
+      run: {workflow: weekly-report}
+  ```
 
 ## Example packs
 

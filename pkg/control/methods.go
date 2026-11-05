@@ -105,6 +105,21 @@ func (c *Controller) heldClaim(ctx context.Context, sc scope, id string) (store.
 	return store.Claim{TicketID: t.ID, Holder: t.Holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil}, nil
 }
 
+// grantedClaim is the claim on id for a session whose pool holds the
+// ticket-release grant, when the ticket is held by another session of its
+// project. It returns notHolder otherwise.
+func (c *Controller) grantedClaim(ctx context.Context, sc scope, id string, notHolder error) (store.Claim, error) {
+	if sc.admin || c.requireGrant(sc, "ticket-release", "release") != nil {
+		return store.Claim{}, notHolder
+	}
+	t, err := c.store.Get(ctx, id)
+	if err != nil || t.Status != store.StatusInProgress || t.Project != sc.project {
+		return store.Claim{}, notHolder
+	}
+	c.log.Info("release by grant", "ticket", id, "holder", t.Holder, "by", sc.actor)
+	return store.Claim{TicketID: t.ID, Holder: t.Holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil}, nil
+}
+
 func (c *Controller) whoami(_ context.Context, sc scope, _ struct{}) (any, error) {
 	return rpc.Whoami{Actor: sc.actor, Admin: sc.admin, Session: sc.session, Project: sc.project, Pool: sc.pool}, nil
 }
@@ -198,7 +213,7 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	}
 	f := store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
-		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit,
+		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit, Newest: p.Newest,
 	}
 	if p.Report != "" {
 		f.MetaPack, f.MetaKey, f.MetaValue = reportMetaPack, "state", p.Report
@@ -255,6 +270,17 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 	if p.Outcome != "" {
 		if err := c.setStepOutcome(ctx, sc, id, p.Outcome); err != nil {
 			return nil, err
+		}
+	}
+	if p.Resolution == store.ResolutionRebase {
+		if cur, err := c.store.Get(ctx, id); err == nil {
+			res, why := c.rebaseResolution(ctx, cur)
+			if why != "" {
+				if _, err := c.store.AddComment(ctx, "controller", id, why); err != nil {
+					c.log.Warn("rebase check comment", "step", id, "err", err)
+				}
+			}
+			p.Resolution = res
 		}
 	}
 	t, err := c.store.CloseTicket(ctx, sc.actor, id, cl, p.Resolution)
@@ -318,7 +344,13 @@ func (c *Controller) edgeRemove(ctx context.Context, sc scope, p rpc.EdgeParams)
 }
 
 func (c *Controller) labelAdd(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {
-	return struct{}{}, c.store.AddLabel(ctx, sc.actor, p.ID, p.Label)
+	if err := c.store.AddLabel(ctx, sc.actor, p.ID, p.Label); err != nil {
+		return nil, err
+	}
+	if p.Label == needsHumanLabel {
+		c.holdChat(ctx, p.ID)
+	}
+	return struct{}{}, nil
 }
 
 func (c *Controller) labelRemove(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {
@@ -411,6 +443,11 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 		return nil, err
 	}
 	cl, err := c.heldClaim(ctx, sc, id)
+	if errors.Is(err, store.ErrNotHolder) {
+		// An escalation chat may hand back a blocked worker's ticket
+		// (pool grant ticket-release), in its own project only.
+		cl, err = c.grantedClaim(ctx, sc, id, err)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -428,6 +465,36 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	if until.IsZero() {
 		// A plain release of a step counts as a failed attempt.
 		c.recordStepFailure(ctx, t, "released", p.Reason)
+	}
+	c.stepEvent(ctx, t)
+	return t, nil
+}
+
+// handoff re-pools, releases and notes a ticket in one store write (#492).
+// A session hands off only the ticket it holds; admin, or a pool granted
+// "handoff" (stall-check), any open ticket.
+func (c *Controller) handoff(ctx context.Context, sc scope, p rpc.HandoffParams) (any, error) {
+	if p.Pool == "" {
+		return nil, fmt.Errorf("%w: handoff needs --to <pool>", store.ErrInvalid)
+	}
+	if _, ok := c.config().Pools[p.Pool]; !ok {
+		return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
+	}
+	id, err := c.current(ctx, sc, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	var cl *store.Claim
+	if c.requireGrant(sc, "handoff", "handoff") != nil {
+		h, err := c.heldClaim(ctx, sc, id)
+		if err != nil {
+			return nil, forbidden("handoff of a ticket this session does not hold: %v", err)
+		}
+		cl = &h
+	}
+	t, err := c.store.Handoff(ctx, sc.actor, id, cl, p.Pool, p.Note)
+	if err != nil {
+		return nil, err
 	}
 	c.stepEvent(ctx, t)
 	return t, nil

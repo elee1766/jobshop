@@ -415,3 +415,62 @@ func TestTriggerLearnings(t *testing.T) {
 	learn(3)
 	passUntil(t, root.Dir, func() bool { return len(runs()) == 2 }, "trigger")
 }
+
+const scopedCurateYAML = `projects:
+  js: {}
+agents:
+  fake:
+    command: false
+pools:
+  learn:
+    agent: fake
+    dir: %[1]q
+learnings:
+  kinds: [friction, "review-*"]
+workflows:
+  curate:
+    steps:
+      - {id: curate, pool: learn, title: "Curate", prompt: "Curate"}
+triggers:
+  curate:
+    when:
+      learnings: {min: 2, kinds: ["review-*", failure], scope: ["repo:acme/widget", "pool:learn"]}
+    run:
+      workflow: curate
+      key: curate
+`
+
+// TestTriggerLearningsFiltered: with kinds and scope (#524) the curate
+// trigger counts only matching learnings; another repo's and other kinds
+// do not fire it. learnings.kinds admits custom and glob kinds.
+func TestTriggerLearningsFiltered(t *testing.T) {
+	t.Parallel()
+	dir, err := os.MkdirTemp("", "js")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, scopedCurateYAML, dir), 0o600))
+	root := config.Root{Dir: dir}
+	stop := triggerController(t, root, newClock())
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	runs := func() []store.Ticket {
+		var out []store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &out))
+		return out
+	}
+	learn := func(kind, scope string) error {
+		return admin.Call(t.Context(), rpc.MethodLearnAdd, rpc.LearnParams{Kind: kind, Summary: kind + " " + scope, Scope: scope}, nil)
+	}
+	err = learn("blocker", "global")
+	require.ErrorContains(t, err, "friction, review-*", "unlisted kind names the patterns")
+	require.ErrorIs(t, learn("workaround", "global"), store.ErrInvalid, "set kinds replace the defaults")
+	require.NoError(t, learn("correction", "repo:acme/widget"), "the controller's kinds stay allowed")
+	require.NoError(t, learn("review-nit", "repo:other/repo"), "another repo")
+	require.NoError(t, learn("friction", "repo:acme/widget"), "kind not in the trigger")
+	require.NoError(t, learn("failure", "global"), "scope not in the trigger")
+	pass(t, root.Dir, 3)
+	assert.Empty(t, runs(), "nothing matching yet")
+	require.NoError(t, learn("review-nit", "repo:acme/widget"))
+	require.NoError(t, learn("failure", "pool:learn"))
+	passUntil(t, root.Dir, func() bool { return len(runs()) == 1 }, "trigger")
+}

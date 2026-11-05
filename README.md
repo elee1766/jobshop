@@ -53,6 +53,8 @@ flowchart LR
   thread through the gateway (Matrix or Discord), and Desk.
 - **Desk.** A web UI (Svelte) over the admin socket. It shows tickets,
   runs, sessions and attention, and has chat with operator sessions.
+  Its views are plugins; add your own with
+  [`docs/desk-plugins.md`](docs/desk-plugins.md).
 - **Telemetry.** OpenTelemetry traces and logs, a Prometheus endpoint, and
   optional export of agent conversations.
 
@@ -256,6 +258,26 @@ with live packs that follow the checkout), `gateway.<name>`,
 newest green master commit and rolls back on a failed health check. See
 `nix/module.nix`, and `docs/layout.md` for deployment.
 
+#### Running from your own repo
+
+Keep `jobshop.yaml` and `packs/` in a git repo and point a workspace at it:
+
+```nix
+services.jobshop.workspaces.config = {
+  url = "https://github.com/me/jobshop-config.git";
+  config = "jobshop.yaml";
+};
+```
+
+The host links `dataDir/jobshop.yaml` to the checkout, so relative
+`packs[].path` resolve in the repo. The file lists
+`include: [jobshop.module.yaml]`, where the module puts identities and
+secret paths: secrets stay out of the repo. Each push is fast-forwarded,
+checked with `jobshop config check`, then reloaded. A commit that fails
+is reset to the last good one and shows in `jobshop attention` as
+`config-repo`, and so does a checkout a local edit keeps from moving.
+See `docs/notes/532-config-repo.md`.
+
 ## Develop
 
 ```
@@ -277,7 +299,17 @@ golangci-lint run ./...       # v2.15.0; or nix run .#golangci-lint
 - `docs/plan.md`: design, phases and the dated decision log.
 - `docs/layout.md`: packages, dependencies, build and deployment.
 - `docs/data-model.md`: tables and queries.
+- `docs/desk-plugins.md`: writing a Desk plugin, with
+  `examples/desk-plugins/csv-table`.
 - `docs/notes/<issue>-<slug>.md`: behavior as built, one note per change.
 - `docs/verify/`: runbook checks run against a live host.
 - Progress: the open issues labeled
   [`target`](https://github.com/elee1766/jobshop/issues?q=is%3Aopen+label%3Atarget).
+
+## License
+
+Jobshop is licensed under the GNU Affero General Public License v3.0
+(`LICENSE`). The packs in `packs/` and the code in `examples/` are
+licensed under the Apache License 2.0 (`packs/LICENSE`,
+`examples/LICENSE`), so packs and plugins built from them can use any
+license.

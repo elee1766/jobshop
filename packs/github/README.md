@@ -54,6 +54,10 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `deploy-check` pool (`deploy_sessions`, default 3): works `post-merge`
   steps, which wait up to an hour for the deploy, so they never queue a
   review behind them (#167). Prompt: `prompts/deploy-check.md`.
+- CI waits: steps that wait on CI park with `jobshop wait add
+  'github.checks:...' --any --resume` (#381) and resume within a minute
+  of CI finishing, instead of a fixed `release --until` (#555). Only the
+  deploy check keeps a timed `release --until 5m`.
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,
   files the next 2-4 issues and starts their runs, handles escalations.
   Prompt: `prompts/github/plan.md`.
@@ -155,8 +159,11 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `checkout` | Main checkout of the repo on the host (pool `repo:`); sessions get worktrees of it |
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `human` | GitHub user mentioned on escalations |
-| `escalation_chat_pool` | A `type: chat` pool (e.g. the operator pack's `operator`) where the controller opens one escalation chat per escalation ticket with `prompts/escalation.md` or `escalation-pool.md` (#379). Empty (default): ticket only |
+| `propose_targets` | `true` (default): when targets run out the planner files one issue labeled `proposed` (`Proposed target: ...`, created if missing) and a `proposed` ticket that `jobshop attention` lists as a decision. A human approves by relabeling it `target`. `false`: only humans file targets (#488) |
+| `escalation_chat_pool` | Empty (default): an escalation is only a ticket. A `type: chat` pool (e.g. the operator pack's `operator`): the controller opens a chat session there, key `escalation:<ticket id>`, whose first message (model context) is picked by cause, see Escalation chat prompts below, and records it in `meta.escalation`. Desk's chat pool should be the same (#379) |
 | `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
+| `stall_pr_skip_authors` | Comma-separated logins whose green PRs `pr_unmerged` does not flag, besides `human` (#509) |
+| `stall_pr_skip_labels` | Comma-separated PR labels `pr_unmerged` does not flag. Default `hold` (#509) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
 | `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
@@ -176,6 +183,29 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `linear_human` | With `linear`: the Linear user worker questions and run escalations mention when posted on the run's issue (#293). Replies under that comment answer the question |
 | `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` stall starts stall-check for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
 | `linear_intake_assignee` | Planner `linear list --assignee` filter: a name, `me`, or empty for any (#292) |
+
+### Escalation chat prompts
+
+With `escalation_chat_pool` set, a hold that needs a human opens a chat
+session keyed `escalation:<ticket id>` (#379). Its first message is
+context for the model, not a visible message: the session answers with a
+summary. A workflow's `escalate` block picks the prompt by cause:
+`prompt` (run escalation, `prompts/escalation.md`), `pool_prompt` (pool
+quarantine, `prompts/escalation-pool.md`) and `hold_prompt` (a wait past
+its timeout, a guard ask_human, any task or step labeled `needs-human`,
+`prompts/escalation-hold.md`). Questions get no chat. Template vars,
+besides the pack vars, always set and empty when the cause has none:
+
+| Var | Meaning |
+| --- | --- |
+| `ticket`, `title`, `body` | The escalation ticket |
+| `cause` | `run`, `pool`, `wait`, `guard` or `label` |
+| `reason` | Short cause text: the failed step and its last reason, the quarantine error, the wait or guard reason, the last comment |
+| `held`, `held_title` | The held ticket: the failed step, the waiting or labeled ticket, the guard session's ticket |
+| `worker` | The session that raised the hold (last holder of the step, who added the label, who asked the guard) |
+| `run`, `workflow`, `step` | The run, its workflow and the failed step name (run escalations) |
+| `issue_ref` | How to read the issue (`gh issue view ...` or Linear) |
+| `pool`, `quarantine` | The quarantined pool and its error (pool escalations) |
 
 Approval check the refinery runs (prints the number of matching
 approvals, above 0 to merge):

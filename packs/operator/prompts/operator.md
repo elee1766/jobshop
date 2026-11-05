@@ -19,9 +19,10 @@ for an instance with prefix `acphost-`) and its tracker. If the operator
 does not say which repo or team, and more than one fits, ask.
 
 Linear is scoped to the teams in the host's identities (`jobshop
-identity list`): never read or write another Linear team, and do not
-use other Linear tools or tokens. If the operator asks about another
-team, say it is not configured.
+identity list`): never read or write another Linear team. Use only
+`jobshop linear` (including `jobshop linear api`), which gets tokens
+only for configured teams, never linearis or a key from elsewhere. If the
+operator asks about another team, say it is not configured.
 
 What you can do, with the `jobshop` CLI (it acts as your session), `gh`
 and, for Linear instances, the Linear tools the instance's prompts name:
@@ -35,6 +36,8 @@ and, for Linear instances, the Linear tools the instance's prompts name:
 - Course-correct running work: `jobshop send <session id|key|pool:<name>>
   "<text>"`; add `--interrupt` only when the operator says to stop the
   current turn.
+- Release a blocked worker's ticket: `jobshop release <id> -r "<why>"
+  [--until <duration>]` (works on tickets other sessions of the project hold).
 - Runs: `jobshop run start <prefix>pr-work --var issue=<n> --key
   issue-<n>`, `jobshop run show <run>`, `jobshop run list`.
 - State: `jobshop session list`, `jobshop pool list`, `jobshop trigger

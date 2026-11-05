@@ -9,16 +9,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -45,7 +50,49 @@ type Config struct {
 	// ChatPool is the type: chat pool Desk chats with (escalation keys and
 	// new desk:<id> sessions). Empty: chat is read-only.
 	ChatPool string
+	// UserHeader names the header an authenticating proxy sets to the
+	// signed-in user (#515). Empty: no user; calls act as "admin".
+	UserHeader string
+	// BasePath is the URL prefix Desk is served under, "/desk/" (#516).
+	// Empty or "/": the root, unless a trusted proxy sends
+	// X-Forwarded-Prefix. Requests with the prefix have it stripped, so a
+	// proxy may keep or strip it.
+	BasePath string
+	// TrustedProxies are the TCP peers whose UserHeader and
+	// X-Forwarded-Prefix are believed. Required when UserHeader is set.
+	TrustedProxies []netip.Prefix
+	// Root is the Jobshop root: <root>/desk/plugins and relative pack
+	// paths resolve against it (#517). Empty: built-in plugins only.
+	Root string
 }
+
+type userKey struct{}
+
+// userFrom is the proxy user of a request, empty when not configured.
+func userFrom(ctx context.Context) string {
+	u, _ := ctx.Value(userKey{}).(string)
+	return u
+}
+
+// proxyUser returns the user for r. ok is false when the request must be
+// refused: an untrusted peer, or a missing or invalid header.
+func (s *Server) proxyUser(r *http.Request) (user string, ok bool) {
+	if !s.trustedPeer(r) {
+		return "", false
+	}
+	vals := r.Header.Values(s.cfg.UserHeader)
+	if len(vals) != 1 {
+		return "", false
+	}
+	u := strings.TrimSpace(vals[0])
+	if rpc.ValidActor("desk:"+u) != nil || u == "" {
+		return "", false
+	}
+	return u, true
+}
+
+// ForwardedPrefixHeader carries the prefix from a proxy (#516).
+const ForwardedPrefixHeader = "X-Forwarded-Prefix"
 
 // Server is the Desk HTTP handler.
 type Server struct {
@@ -53,6 +100,12 @@ type Server struct {
 	ctl Controller
 	log *slog.Logger
 	ui  fs.FS
+	// index is dist/index.html; serveIndex adds the <base> tag.
+	index []byte
+	// builtin is dist/plugins, the embedded plugin set (#517).
+	builtin fs.FS
+	rootsMu sync.Mutex
+	roots   map[string]*os.Root
 }
 
 // NeedsHuman is the escalation label.
@@ -71,7 +124,131 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 	if err != nil {
 		panic(err)
 	}
-	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui}
+	index, err := fs.ReadFile(ui, "index.html")
+	if err != nil {
+		panic(err)
+	}
+	// The CLI rejects an invalid base; here it falls back to the root.
+	if cfg.BasePath = CleanBasePath(cfg.BasePath); cfg.BasePath == "" {
+		cfg.BasePath = "/"
+	}
+	var builtin fs.FS = emptyFS{}
+	if _, err := fs.Stat(ui, "plugins"); err == nil {
+		builtin, _ = fs.Sub(ui, "plugins")
+	}
+	return &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index, builtin: builtin}
+}
+
+// basePathRe is what a base path may contain. A leading "//" would make
+// <base href> another origin.
+var basePathRe = regexp.MustCompile(`^/([A-Za-z0-9._~-]+/)*$`)
+
+// CleanBasePath returns p with one leading and one trailing slash, or ""
+// when p is not a valid base path. "" and "/" give "/".
+func CleanBasePath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" || p == "/" {
+		return "/"
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	if !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	if !basePathRe.MatchString(p) {
+		return ""
+	}
+	return p
+}
+
+// ParseTrustedProxies parses addresses and CIDRs; a bare address is a
+// single-host range.
+func ParseTrustedProxies(vals []string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, v := range vals {
+		if p, err := netip.ParsePrefix(v); err == nil {
+			out = append(out, p.Masked())
+			continue
+		}
+		a, err := netip.ParseAddr(v)
+		if err != nil {
+			return nil, fmt.Errorf("desk: trusted proxy %q: want an address or CIDR", v)
+		}
+		out = append(out, netip.PrefixFrom(a.Unmap(), a.Unmap().BitLen()))
+	}
+	return out, nil
+}
+
+// trustedPeer reports whether the request's TCP peer is a trusted proxy.
+func (s *Server) trustedPeer(r *http.Request) bool {
+	ap, err := netip.ParseAddrPort(r.RemoteAddr)
+	if err != nil {
+		return false
+	}
+	addr := ap.Addr().Unmap()
+	for _, p := range s.cfg.TrustedProxies {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
+}
+
+// basePath is the prefix this request is served under: the flag, else a
+// valid X-Forwarded-Prefix from a trusted proxy, else "/".
+func (s *Server) basePath(r *http.Request) string {
+	if s.cfg.BasePath != "/" {
+		return s.cfg.BasePath
+	}
+	if v := r.Header.Get(ForwardedPrefixHeader); v != "" && s.trustedPeer(r) {
+		if p := CleanBasePath(v); p != "" {
+			return p
+		}
+	}
+	return "/"
+}
+
+// stripBase removes the base from the request path when present (prefix
+// kept by the proxy) and records the base for the index page.
+func (s *Server) stripBase(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		base := s.basePath(r)
+		if base != "/" {
+			if r.URL.Path == strings.TrimSuffix(base, "/") {
+				u := *r.URL
+				u.Path = base
+				http.Redirect(w, r, u.RequestURI(), http.StatusMovedPermanently)
+				return
+			}
+			if rest, ok := strings.CutPrefix(r.URL.Path, base); ok {
+				r = r.Clone(r.Context())
+				r.URL.Path = "/" + rest
+				r.URL.RawPath = ""
+			}
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), baseKey{}, base)))
+	})
+}
+
+type baseKey struct{}
+
+// serveIndex writes index.html with a <base> tag for the request's base,
+// so the relative asset URLs and the UI's API URLs resolve under it.
+func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
+	base, _ := r.Context().Value(baseKey{}).(string)
+	if base == "" {
+		base = "/"
+	}
+	tag := `<base href="` + html.EscapeString(base) + `">`
+	page := strings.Replace(string(s.index), "<head>", "<head>\n    "+tag, 1)
+	h := w.Header()
+	h.Set("Content-Type", "text/html; charset=utf-8")
+	h.Set("Cache-Control", "no-cache")
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = io.WriteString(w, page)
 }
 
 // Loopback reports whether addr (host:port) binds only loopback.
@@ -90,6 +267,7 @@ func Loopback(addr string) bool {
 // Handler returns the routes behind the Host, CSRF and header checks.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/whoami", s.json(s.whoami))
 	mux.HandleFunc("GET /api/attention", s.json(s.attention))
 	mux.HandleFunc("GET /api/work", s.json(s.work))
 	mux.HandleFunc("GET /api/sessions", s.json(s.sessions))
@@ -99,26 +277,45 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/ticket/{id}", s.json(s.ticket))
 	mux.HandleFunc("GET /api/events", s.events)
 	mux.HandleFunc("GET /api/session/{id}/stream", s.sessionStream)
+	mux.HandleFunc("GET /api/session/{id}/journal", s.json(s.sessionJournal))
 	mux.HandleFunc("GET /api/session/{id}/access", s.json(s.chatAccess))
 	mux.HandleFunc("GET /api/chat", s.json(s.chatList))
 	mux.HandleFunc("POST /api/chat/send", s.json(s.chatSend))
 	mux.HandleFunc("POST /api/chat/new", s.json(s.chatNew))
 	mux.HandleFunc("POST /api/pool/scale", s.json(s.poolScale))
 	mux.HandleFunc("POST /api/session/cordon", s.json(s.sessionCordon))
+	mux.HandleFunc("GET /api/artifacts", s.json(s.artifactList))
+	mux.HandleFunc("GET /api/artifacts/{id}", s.json(s.artifactShow))
+	mux.HandleFunc("GET /api/artifacts/{id}/files/{name}", s.artifactFile)
+	mux.HandleFunc("POST /api/artifacts/{id}/ack", s.json(s.artifactAck))
+	mux.HandleFunc("GET /api/plugins", s.json(s.pluginList))
+	mux.HandleFunc("GET /plugins/{name}/{file...}", s.pluginFile)
+	mux.HandleFunc("GET /api/rpc", s.json(s.rpcList))
+	mux.HandleFunc("POST /api/rpc/{method}", s.json(s.rpcCall))
 	mux.Handle("GET /", s.static())
-	return s.guard(mux)
+	return s.guard(s.stripBase(mux))
 }
 
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'")
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
 		if !s.hostAllowed(r.Host) {
 			http.Error(w, "host not allowed", http.StatusMisdirectedRequest)
 			return
+		}
+		if s.cfg.UserHeader != "" {
+			// A request that bypasses the proxy must not claim a user.
+			u, ok := s.proxyUser(r)
+			if !ok {
+				http.Error(w, "no trusted user", http.StatusForbidden)
+				return
+			}
+			ctx := context.WithValue(r.Context(), userKey{}, u)
+			r = r.WithContext(rpc.WithActor(ctx, "desk:"+u))
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && (r.Header.Get(CSRFHeader) == "" || !s.sameOrigin(r)) {
 			http.Error(w, "missing "+CSRFHeader+" header", http.StatusForbidden)
@@ -146,11 +343,12 @@ func (s *Server) static() http.Handler {
 	files := http.FileServerFS(s.ui)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Views live in the query string, so every unknown path is the app.
-		if _, err := fs.Stat(s.ui, strings.TrimPrefix(r.URL.Path, "/")); err != nil || r.URL.Path == "/" {
-			r = r.Clone(r.Context())
-			r.URL.Path = "/"
-			w.Header().Set("Cache-Control", "no-cache")
-		} else if strings.HasPrefix(r.URL.Path, "/assets/") {
+		name := strings.TrimPrefix(r.URL.Path, "/")
+		if _, err := fs.Stat(s.ui, name); err != nil || name == "" || name == "index.html" {
+			s.serveIndex(w, r)
+			return
+		}
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 		}
 		files.ServeHTTP(w, r)
@@ -173,14 +371,25 @@ func (s *Server) json(fn func(*http.Request) (any, error)) http.HandlerFunc {
 				code = http.StatusBadRequest
 			case errors.Is(err, store.ErrConflict):
 				code = http.StatusConflict
+			case errors.Is(err, errForbidden):
+				code = http.StatusForbidden
 			}
 			s.log.Warn("desk: api", "path", r.URL.Path, "err", err)
 			w.WriteHeader(code)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error(), "code": rpcErrCode(err)})
 			return
 		}
 		_ = json.NewEncoder(w).Encode(v)
 	}
+}
+
+// Whoami is GET /api/whoami.
+type Whoami struct {
+	User string `json:"user"`
+}
+
+func (s *Server) whoami(r *http.Request) (any, error) {
+	return Whoami{User: userFrom(r.Context())}, nil
 }
 
 // activity proxies activity.list (#255). Query: since (Go duration),
@@ -459,6 +668,12 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 // or from Last-Event-ID on reconnect.
 func (s *Server) sessionStream(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Headers go out first: the session list below can take seconds on a
+	// busy controller, and the browser shows "connecting" until they do (#520).
+	e, ok := newSSE(w)
+	if !ok {
+		return
+	}
 	since := lastID(r)
 	if since == 0 {
 		tail, _ := strconv.ParseInt(r.URL.Query().Get("tail"), 10, 64)
@@ -473,10 +688,6 @@ func (s *Server) sessionStream(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	}
-	e, ok := newSSE(w)
-	if !ok {
-		return
 	}
 	res, err := s.ctl.Subscribe(r.Context(), rpc.SessionSubscribeParams{ID: id, SinceSeq: since}, func(ev rpc.SessionEvent) {
 		e.send("session", ev.Seq, ev)

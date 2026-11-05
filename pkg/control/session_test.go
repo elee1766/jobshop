@@ -1,6 +1,7 @@
 package control_test
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -58,6 +59,7 @@ func TestMain(m *testing.M) {
 	}
 	if len(os.Args) >= 2 && os.Args[1] == "fake-agent" {
 		sandboxProbe()
+		isolationProbe()
 		fakeAgent()
 		os.Exit(0)
 	}
@@ -445,14 +447,22 @@ func TestSessionList(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 }
 
-// holdLock poses as a host for dir: takes its lock, writes its pid, and
-// waits to be signalled.
+// holdLock poses as a host for dir: takes its lock, writes its pid, says
+// "ready" on stdout, and waits to be signalled. The test waits on that
+// line, not on polling the lock, so a helper that fails says why (#480).
 func holdLock(dir string) {
 	f, err := os.Create(filepath.Join(dir, host.LockFile))
-	if err != nil || syscall.Flock(int(f.Fd()), syscall.LOCK_EX) != nil {
+	if err == nil {
+		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+	}
+	if err == nil {
+		err = os.WriteFile(filepath.Join(dir, host.PidFile), fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hold-lock:", err)
 		os.Exit(1)
 	}
-	_ = os.WriteFile(filepath.Join(dir, host.PidFile), fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600)
+	fmt.Println("ready")
 	awaitSignal()
 }
 
@@ -493,11 +503,35 @@ func TestSessionReap(t *testing.T) {
 	odir := root.SessionDir("js-orphan")
 	require.NoError(t, os.MkdirAll(odir, 0o700))
 	holder := exec.Command(os.Args[0], "hold-lock", odir)
+	var stderr strings.Builder
+	holder.Stderr = &stderr
+	// An os.Pipe, not StdoutPipe: Wait runs concurrently with the read.
+	out, w, err := os.Pipe()
+	require.NoError(t, err)
+	defer func() { _ = out.Close() }()
+	holder.Stdout = w
 	require.NoError(t, holder.Start())
+	_ = w.Close()
+	ready := make(chan string, 1)
+	go func() {
+		line, _ := bufio.NewReader(out).ReadString('\n')
+		ready <- line
+		_, _ = io.Copy(io.Discard, out)
+	}()
 	exited := make(chan struct{})
-	go func() { _ = holder.Wait(); close(exited) }()
+	var waitErr error
+	go func() { waitErr = holder.Wait(); close(exited) }()
 	t.Cleanup(func() { _ = holder.Process.Kill(); <-exited })
-	require.Eventually(t, func() bool { return host.Alive(odir) }, dialWait, 10*time.Millisecond)
+	select {
+	case line := <-ready:
+		if line != "ready\n" {
+			<-exited
+			t.Fatalf("hold-lock helper not ready: %v, stderr: %s", waitErr, stderr.String())
+		}
+	case <-time.After(dialWait):
+		t.Fatal("hold-lock helper never said ready")
+	}
+	require.True(t, host.Alive(odir), "helper holds the lock")
 
 	params := rpc.SessionReapParams{Closed: true, OlderThan: time.Nanosecond, DryRun: true}
 	var res rpc.SessionReapResult

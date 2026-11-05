@@ -91,6 +91,153 @@ let
   };
   miseOff = eval { sandbox.enable = true; };
 
+  # User-managed jobshop.yaml (#531): the module writes only
+  # jobshop.module.yaml and watches the user's file.
+  userCfg = eval {
+    configFile = "/etc/jobshop/jobshop.yaml";
+    identities.elee-agent = {
+      kind = "github-token";
+      token_file = "/run/secrets/gh";
+      repos = [ "elee1766/*" ];
+    };
+    sandbox.enable = true;
+  };
+  inPlace = eval { configFile = "/var/lib/jobshop/jobshop.yaml"; };
+  # Config repo (#532): jobshop.yaml lives in a workspace checkout.
+  repoCfg = eval {
+    workspaces.cfg = {
+      url = "https://example.com/me/jobshop-config.git";
+      config = "jobshop.yaml";
+    };
+  };
+  repoSync = pkgs.writeText "config-repo-sync" (
+    lib.replaceStrings
+      [
+        "${pkgs.systemd}/bin/systemctl"
+        "${lib.getExe pkgs.hello} reload"
+        "${lib.getExe pkgs.hello}"
+        "/var/lib/jobshop"
+      ]
+      [
+        "$T/bin/systemctl"
+        "$T/bin/reload"
+        "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.jobshop}"
+        "$T/root"
+      ]
+      repoCfg.config.systemd.services.jobshop-workspace-cfg-sync.script
+  );
+  configRepoTest = ''
+    export T=$PWD/r HOME=$PWD/r GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+    export PATH=${pkgs.git}/bin:$PATH
+    mkdir -p $T/bin $T/root/workspaces
+    printf '#!${pkgs.runtimeShell}\nexit 0\n' > $T/bin/systemctl
+    printf '#!${pkgs.runtimeShell}\necho reload >> $T/log\n' > $T/bin/reload
+    chmod +x $T/bin/*
+    rfail() { echo "config repo test: $*"; cat $T/log $T/out 2>/dev/null; exit 1; }
+    cp ${linkTarget repoCfg "jobshop.module.yaml"} $T/root/jobshop.module.yaml
+    grep -q 'config_repo_file: /var/lib/jobshop/config-repo.failed' $T/root/jobshop.module.yaml || rfail "no attention file in module file"
+    git init -q --bare -b main $T/origin.git
+    git clone -q $T/origin.git $T/work 2>/dev/null
+    cd $T/work
+    mkdir -p packs/p
+    printf 'include: [jobshop.module.yaml]\nprojects:\n  js: {}\nagents:\n  a: {command: x}\npacks:\n  - path: packs/p\n' > jobshop.yaml
+    pool() { printf 'pools:\n  dev:\n    agent: a\n    dir: /w\n    prompt: hi\n    max_sessions: %s\n' "$1" > packs/p/pack.yaml; }
+    push() { git add -A && git commit -qm "$1" && git push -q origin HEAD:main; }
+    pool 1; push one
+    git clone -q $T/origin.git $T/root/workspaces/cfg
+    ln -s $T/root/workspaces/cfg/jobshop.yaml $T/root/jobshop.yaml
+    cd $T
+    run() { : > $T/log; rc=0; (cd $T && ${pkgs.bash}/bin/bash ${repoSync}) > $T/out 2>&1 || rc=$?; }
+    cur() { git -C $T/root/workspaces/cfg rev-parse HEAD; }
+
+    # A push that changes a pool: checked, then reloaded.
+    (cd $T/work && pool 2 && push two)
+    run
+    [ $rc = 0 ] || rfail "good push exit $rc"
+    grep -q reload $T/log || rfail "good push not reloaded"
+    good=$(cur)
+    [ "$(cat $T/root/config-repo.last-good)" = "$good" ] || rfail "last-good not recorded"
+    grep -q 'max_sessions: 2' $T/root/workspaces/cfg/packs/p/pack.yaml || rfail "checkout not moved"
+
+    # A broken pack: reset to last good, attention file, no reload.
+    (cd $T/work && printf 'pools: [\n' > packs/p/pack.yaml && push broken)
+    run
+    [ $rc = 1 ] || rfail "broken push exit $rc"
+    ! grep -q reload $T/log || rfail "broken push reloaded"
+    [ "$(cur)" = "$good" ] || rfail "not reset to last good"
+    [ -s $T/root/config-repo.failed ] || rfail "no attention file"
+    grep -q pack.yaml $T/root/config-repo.failed || rfail "attention file lacks the error"
+    # The same bad commit is not retried every tick.
+    run
+    [ $rc = 0 ] || rfail "repeat run exit $rc"
+    [ "$(cur)" = "$good" ] || rfail "repeat run moved the checkout"
+
+    # The next good push recovers.
+    (cd $T/work && pool 3 && push fixed)
+    run
+    [ $rc = 0 ] || rfail "fix push exit $rc"
+    grep -q reload $T/log || rfail "fix not reloaded"
+    [ ! -e $T/root/config-repo.failed ] || rfail "attention file not cleared"
+    [ "$(cat $T/root/config-repo.last-good)" = "$(cur)" ] || rfail "last-good not advanced"
+
+    # A local edit that blocks the fast-forward raises attention.
+    echo edit >> $T/root/workspaces/cfg/packs/p/pack.yaml
+    git -C $T/root/workspaces/cfg commit -qam local
+    (cd $T/work && pool 4 && push four)
+    run
+    [ $rc = 1 ] || rfail "diverged exit $rc"
+    grep -q 'not fast-forwardable' $T/root/config-repo.failed || rfail "diverged checkout not in attention"
+    cd ..
+  '';
+  rules = c: c.config.systemd.tmpfiles.rules;
+  linkTarget =
+    c: name:
+    lib.last (
+      lib.splitString " " (lib.findFirst (r: lib.hasInfix "/${name} " r) "" (rules c))
+    );
+  # The check-and-reload script with the real jobshop binary and stubs
+  # for runuser and systemctl; the root is moved to $T.
+  reloadScript = pkgs.writeText "jobshop-config" (
+    lib.replaceStrings
+      [
+        "${pkgs.util-linux}/bin/runuser"
+        "${pkgs.systemd}/bin/systemctl"
+        "${lib.getExe pkgs.hello}"
+        "/var/lib/jobshop/jobshop.yaml"
+      ]
+      [
+        "$T/bin/runuser"
+        "$T/bin/systemctl"
+        "${lib.getExe self.packages.${pkgs.stdenv.hostPlatform.system}.jobshop}"
+        "$T/root/jobshop.yaml"
+      ]
+      userCfg.config.systemd.services.jobshop-config.script
+  );
+  userConfigTest = ''
+    export T=$PWD/u
+    mkdir -p $T/bin $T/root
+    printf '#!${pkgs.runtimeShell}\nshift 3; exec "$@"\n' > $T/bin/runuser
+    printf '#!${pkgs.runtimeShell}\necho "systemctl $*" >> $T/log\n' > $T/bin/systemctl
+    chmod +x $T/bin/*
+    cp ${linkTarget userCfg "jobshop.module.yaml"} $T/root/jobshop.module.yaml
+    ufail() { echo "user config test: $*"; cat $T/log $T/out 2>/dev/null; exit 1; }
+    grep -q 'token_file: /run/secrets/gh' $T/root/jobshop.module.yaml || ufail "identity not in module file"
+    grep -q 'backend: bubblewrap' $T/root/jobshop.module.yaml || ufail "sandbox not in module file"
+    printf 'include: [jobshop.module.yaml]\nprojects:\n  js: {identities: [elee-agent]}\n' > $T/root/jobshop.yaml
+    cp $T/root/jobshop.yaml $T/want
+    : > $T/log
+    ${pkgs.bash}/bin/bash ${reloadScript} > $T/out 2>&1 || ufail "good edit failed the check"
+    grep -q 'systemctl try-reload-or-restart jobshop.service' $T/log || ufail "good edit not reloaded"
+    cmp -s $T/root/jobshop.yaml $T/want || ufail "user file changed"
+    # js names an identity only the module file defines: without the
+    # include the check fails and nothing reloads.
+    printf 'projects:\n  js: {identities: [elee-agent]}\n' > $T/root/jobshop.yaml
+    : > $T/log
+    ! ${pkgs.bash}/bin/bash ${reloadScript} > $T/out 2>&1 || ufail "broken edit passed the check"
+    ! grep -q reload $T/log || ufail "broken edit reloaded"
+    grep -q 'keeping the running config' $T/out || ufail "no log line for the broken edit"
+  '';
+
   # The self-deploy script run against stubs: host paths are rewritten to a
   # temp dir, gh/nixos-rebuild/nix-env/systemctl and the controller binary are
   # shell stubs that log their calls.
@@ -292,6 +439,89 @@ let
         })
       )
     ))
+    (expect "desk passes the proxy user flags" (
+      let
+        d = eval {
+          desk = {
+            enable = true;
+            userHeader = "Tailscale-User-Login";
+            trustedProxies = [ "127.0.0.1" ];
+          };
+        };
+        exec = d.config.systemd.services.jobshop-desk.serviceConfig.ExecStart;
+      in
+      failed d == [ ]
+      && lib.hasInfix "--user-header Tailscale-User-Login --trusted-proxy 127.0.0.1" exec
+      && !lib.hasInfix "--allow-remote" exec
+    ))
+    (expect "desk userHeader needs trustedProxies" (
+      lib.any (lib.hasInfix "trustedProxies") (
+        failed (eval {
+          desk = {
+            enable = true;
+            userHeader = "X-Forwarded-User";
+          };
+        })
+      )
+    ))
+    # #516: Desk under a path prefix behind a proxy.
+    (expect "desk.basePath and trustedProxies reach jobshop desk" (
+      let
+        s =
+          (eval {
+            desk = {
+              enable = true;
+              basePath = "/desk/";
+              trustedProxies = [ "127.0.0.1" ];
+            };
+          }).config.systemd.services.jobshop-desk.serviceConfig.ExecStart;
+      in
+      lib.hasInfix "desk --listen 127.0.0.1:7480 --base-path /desk/ --trusted-proxy 127.0.0.1" s
+    ))
+    (expect "configFile mode links the user file and writes only the module file" (
+      failed userCfg == [ ]
+      && linkTarget userCfg "jobshop.yaml" == "/etc/jobshop/jobshop.yaml"
+      && lib.hasSuffix "jobshop.module.yaml" (linkTarget userCfg "jobshop.module.yaml")
+      && userCfg.config.systemd.paths.jobshop-config.pathConfig.PathChanged == [
+        "/etc/jobshop/jobshop.yaml"
+        "/var/lib/jobshop/jobshop.module.yaml"
+      ]
+    ))
+    (expect "configFile = dataDir/jobshop.yaml leaves it alone" (
+      failed inPlace == [ ]
+      && !lib.any (lib.hasInfix "/var/lib/jobshop/jobshop.yaml ") (rules inPlace)
+    ))
+    (expect "managed mode has no module file or watcher" (
+      !lib.any (lib.hasInfix "jobshop.module.yaml") (rules two)
+      && !(two.config.systemd.paths ? jobshop-config)
+    ))
+    (expect "configFile and settings conflict" (
+      lib.any (lib.hasInfix "configFile or settings") (
+        failed (eval {
+          configFile = "/etc/jobshop/jobshop.yaml";
+          settings.projects.js = { };
+        })
+      )
+    ))
+    (expect "config repo links the checkout file and syncs on a timer" (
+      failed repoCfg == [ ]
+      && linkTarget repoCfg "jobshop.yaml" == "/var/lib/jobshop/workspaces/cfg/jobshop.yaml"
+      && repoCfg.config.systemd.timers ? jobshop-workspace-cfg-sync
+      && repoCfg.config.systemd.paths.jobshop-config.pathConfig.PathChanged == [
+        "/var/lib/jobshop/jobshop.module.yaml"
+      ]
+    ))
+    (expect "config repo and configFile conflict" (
+      lib.any (lib.hasInfix "at most one workspace") (
+        failed (eval {
+          configFile = "/etc/jobshop/jobshop.yaml";
+          workspaces.cfg = {
+            url = "https://example.com/c.git";
+            config = "jobshop.yaml";
+          };
+        })
+      )
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;
@@ -299,6 +529,8 @@ in
 assert lib.all lib.id checks;
 pkgs.runCommand "jobshop-module-test" { } ''
   ${rollbackTest}
+  ${userConfigTest}
+  ${configRepoTest}
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
   grep -q 'private_key_file: /run/secrets/k.pem' ${yamlPacks ident}
   grep -q 'exec .* gh "\$@"' ${lib.head ident.config.systemd.services.jobshop.path}/bin/gh

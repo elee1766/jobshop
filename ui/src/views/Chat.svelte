@@ -1,5 +1,5 @@
 <script>
-  import { post } from '../lib/api.svelte.js';
+  import { post, api } from '../lib/api.svelte.js';
   import { safe } from '../lib/format.js';
 
   /**
@@ -23,7 +23,7 @@
   $effect(() => {
     lines = [];
     status = 'connecting';
-    const es = new EventSource('/api/session/' + encodeURIComponent(id) + '/stream?tail=' + tail);
+    const es = new EventSource(api('api/session/' + encodeURIComponent(id) + '/stream?tail=' + tail));
     es.addEventListener('open', () => { status = 'live'; });
     es.addEventListener('session', (e) => {
       const ev = JSON.parse(e.data);
@@ -62,7 +62,7 @@
     sending = true;
     error = '';
     try {
-      await post('/api/chat/send', key ? { key, text, interrupt } : { session: id, text, interrupt });
+      await post('api/chat/send', key ? { key, text, interrupt } : { session: id, text, interrupt });
       text = '';
     } catch (e) {
       error = String(/** @type {Error} */ (e).message || e);

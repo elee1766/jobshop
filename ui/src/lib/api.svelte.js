@@ -5,11 +5,27 @@
 export const live = $state({ connected: false, tick: 0, lastSeq: 0 });
 
 /**
+ * Where Desk is served, from the <base href> Desk writes into index.html
+ * (#516): "/" at the root, "/desk/" under a prefix. Always ends in "/".
+ * Every API and event URL is built from it; no other code builds an
+ * absolute path.
+ */
+export const base = new URL('.', document.baseURI).pathname;
+
+/**
+ * The URL of a Desk path under base: api('api/work') -> "/desk/api/work".
+ * @param {string} path relative path, with or without a leading slash
+ */
+export function api(path) {
+  return base + path.replace(/^\/+/, '');
+}
+
+/**
  * @param {string} path
  * @returns {Promise<any>}
  */
 export async function get(path) {
-  const res = await fetch(path, { headers: { Accept: 'application/json' } });
+  const res = await fetch(api(path), { headers: { Accept: 'application/json' } });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || res.status + ' ' + res.statusText);
   return body;
@@ -22,7 +38,7 @@ export async function get(path) {
  * @returns {Promise<any>}
  */
 export async function post(path, data) {
-  const res = await fetch(path, {
+  const res = await fetch(api(path), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Jobshop-Desk': '1' },
     body: JSON.stringify(data),
@@ -53,13 +69,22 @@ export function resource(path) {
 
 let pending = 0;
 
-/** Opens /api/events. Change bursts are coalesced to one refetch per second. */
-export function connect() {
-  const es = new EventSource('/api/events');
+/**
+ * Opens /api/events. Change bursts are coalesced to one refetch per second.
+ * onEvent gets every parsed event (plugins' api.subscribe, #517). On a
+ * reconnect EventSource sends Last-Event-ID, so the server resumes from
+ * the last seq and no event is missed across a drop.
+ * @param {(ev: any) => void} [onEvent]
+ */
+export function connect(onEvent) {
+  const es = new EventSource(api('api/events'));
   es.addEventListener('open', () => { live.connected = true; });
   es.addEventListener('error', () => { live.connected = false; });
   const bump = (/** @type {MessageEvent} */ e) => {
     if (e.lastEventId) live.lastSeq = Number(e.lastEventId);
+    if (onEvent) {
+      try { onEvent({ kind: e.type, ...JSON.parse(e.data || '{}') }); } catch { /* not JSON */ }
+    }
     if (pending) return;
     pending = window.setTimeout(() => { pending = 0; live.tick++; }, 1000);
   };
