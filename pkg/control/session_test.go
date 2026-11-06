@@ -80,6 +80,7 @@ func TestMain(m *testing.M) {
 		fmt.Println("jobshop test-version")
 		os.Exit(0)
 	}
+	noRaceExitSleep()
 	// Like the unit's DelegateSubgroup=controller (JOB-21): move into a
 	// leaf before any test spawns hosts, or a later controller cannot
 	// enable cpu/memory/pids (a cgroup with processes in it is busy).
