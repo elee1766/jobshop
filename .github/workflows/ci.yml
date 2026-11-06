@@ -21,7 +21,7 @@ jobs:
     # ubuntu-latest moved to 26.04, which has bwrap, so the sandbox tests
     # stopped skipping and crash there (#619). Pinned until they pass on it.
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-4x8-with-cache
+      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
       - nscloud-cache-tag-jobshop-go
       - nscloud-cache-size-20gb
       - nscloud-cache-allow-commit-from-master
@@ -102,6 +102,7 @@ jobs:
         run: shellcheck -s sh deploy/*.sh
 
   nix:
+    # 2x4 OOMs evaluating the module check; 4x8 costs the same units as 2x8.
     runs-on:
       - nscloud-ubuntu-24.04-amd64-4x8-with-cache
       - nscloud-cache-tag-jobshop-nix
