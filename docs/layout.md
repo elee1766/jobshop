@@ -285,7 +285,7 @@ as its own user, not as `agent`.
       url = "https://github.com/elee1766/jobshop.git";
       livePacks = [ "packs/selfdev" ];
       livePackVars = { repo = "/var/lib/jobshop/workspaces/jobshop"; };
-      selfDeploy = true; # the repo self-deploy follows; at most one
+      followInstalled = true; # live packs follow the installed binary
     };
     other = {
       url = "https://github.com/elee1766/other.git";

@@ -37,7 +37,6 @@ flowchart LR
 - [**Triggers**](docs/notes/26-triggers.md): create tickets or start runs from counts, cron, shell checks or stall signals.
 - [**Packs**](docs/packs.md): directories of pools, prompts, triggers and workflows you write.
 - [**Desk and A2A**](docs/notes/202-desk.md): a web UI and HTTP API over the admin socket, and an [A2A gateway](docs/notes/547-a2a-gateway.md) that hands escalations to another agent.
-- [**Self-deploy**](docs/nixos.md): the NixOS module promotes merged commits.
 
 Goals: a small core you own; behavior in packs, not the core; agents
 sandboxed with no long-lived keys; sessions that survive restarts and

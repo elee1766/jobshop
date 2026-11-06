@@ -4,8 +4,8 @@ Desk is a plugin host (#517). Every view, drawer section and artifact
 renderer is a plugin, including the built-in ones, and they all use the
 same `api`. This guide covers writing one. The worked example is
 [`examples/desk-plugins/csv-table`](../examples/desk-plugins/csv-table),
-a CSV artifact renderer in plain JS with no build step. `packs/deploy`
-(#577) ships a view plugin and the `desk_commands` entry it runs.
+a CSV artifact renderer in plain JS with no build step. A pack ships a
+view plugin with a `desk_commands` entry it runs the same way.
 
 ## The contract
 
@@ -173,7 +173,7 @@ Sources, later wins on the same name:
 ```yaml
 desk:
   plugins:
-    deploys: { enabled: false }          # hide a plugin (packs/deploy's view)
+    deploys: { enabled: false }          # hide a plugin
     csv-table: { config: { maxRows: 500 } }
   rpc:
     deny: [desk.exec, learn.*]

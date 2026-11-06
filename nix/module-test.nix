@@ -62,7 +62,7 @@ let
     workspaces.jobshop = {
       url = "https://github.com/elee1766/jobshop.git";
       livePacks = [ "packs/selfdev" ];
-      selfDeploy = true;
+      followInstalled = true;
     };
     workspaces.other = {
       url = "git@github.com:elee1766/other.git";
@@ -71,13 +71,10 @@ let
       livePackPrefix = "ot-";
     };
   };
-  bothDeploy = eval {
+  # A host that still sets the removed workspace flag (JOB-74).
+  oldDeploy = eval {
     workspaces.a = {
       url = "https://github.com/x/a.git";
-      selfDeploy = true;
-    };
-    workspaces.b = {
-      url = "https://github.com/x/b.git";
       selfDeploy = true;
     };
   };
@@ -96,11 +93,7 @@ let
     workspace = {
       url = "https://github.com/elee1766/jobshop.git";
       livePacks = [ "packs/selfdev" ];
-    };
-    selfDeploy = {
-      enable = true;
-      hostFlake = "x#y";
-      inputUrl = "git+https://example/jobshop?ref=master";
+      followInstalled = true;
     };
   };
 
@@ -268,144 +261,6 @@ let
     grep -q 'keeping the running config' $T/out || ufail "no log line for the broken edit"
   '';
 
-  # The self-deploy script run against stubs: host paths are rewritten to a
-  # temp dir, gh/nixos-rebuild/nix-env/systemctl and the controller binary are
-  # shell stubs that log their calls.
-  deployScript = pkgs.writeText "self-deploy" (
-    lib.replaceStrings
-      [
-        "state=/var/lib/jobshop-deploy"
-        "${pkgs.util-linux}/bin/runuser"
-        "gh run list"
-        ''readlink -f "/proc/$(systemctl show -p MainPID --value jobshop.service)/exe"''
-        "/nix/var/nix/profiles/system"
-        "sleep 2"
-        "${lib.getExe pkgs.hello}"
-      ]
-      [
-        "state=$T/state"
-        "runuser"
-        "$T/bin/gh run list"
-        "echo $T/bin/jobshop"
-        "$T/system"
-        ":"
-        "$T/bin/jobshop"
-      ]
-      legacy.config.systemd.services.jobshop-self-deploy.script
-  );
-  rollbackTest = ''
-    export T=$PWD/t
-    mkdir -p $T/bin $T/state $T/gen1/bin
-    stub() { printf '#!${pkgs.runtimeShell}\n%s\n' "$2" > $T/bin/$1; chmod +x $T/bin/$1; }
-    stub runuser 'shift 3; exec "$@"'
-    stub gh 'cat $T/green'
-    stub jobshop '[ "$1" = version ] && echo "jobshop v0 ($(cat $T/cur))"; if [ "$1" = config ]; then echo "check $*" >> $T/log; [ -e $T/warncheck ] && echo "warning: jobshop.yaml: attention.rollback_file is removed (#577), ignored" >&2; [ -e $T/badcheck ] && { echo "pools.operator.prompt_file: var \"jobshop_repo\" is not set"; exit 1; }; echo ok; fi; [ "$1" = ticket ] && exec $T/bin/tickets "$@"; exit 0'
-    # ticket upsert against a store of one file per open key: created,
-    # updated in place, or moved to closed/ (#577).
-    mkdir -p $T/tickets/closed
-    stub tickets '
-      shift 2; key= close= title=
-      while [ $# -gt 0 ]; do case "$1" in --key) key=$2; shift 2 ;; --close) close=1; shift ;; -b|-l|--project) shift 2 ;; *) title=$1; shift ;; esac; done
-      f=$T/tickets/$key
-      if [ -n "$close" ]; then [ ! -e "$f" ] || { mv "$f" "$T/tickets/closed/$key.$(ls $T/tickets/closed | wc -l)"; echo "close $key" >> $T/log; }; exit 0; fi
-      [ -e "$f" ] || echo "create $key" >> $T/log
-      echo "$title" > "$f"'
-    open() { ls $T/tickets | grep -v closed || true; }
-    stub nix 'case "$1" in flake) echo "{\"path\":\"$T/src\"}" ;; build) echo $T ;; esac'
-    stub jq 'sed -n "s/.*\"path\":\"\([^\"]*\)\".*/\1/p"'
-    stub systemctl 'exit 0'
-    stub nixos-rebuild 'echo "rebuild $*" >> $T/log; [ -n "$(cat $T/shipbad 2>/dev/null)" ] || cat $T/green > $T/cur'
-    stub nix-env 'echo "nix-env $*" >> $T/log'
-    printf '#!${pkgs.runtimeShell}\necho "switch gen1 $1" >> $T/log\n' > $T/gen1/bin/switch-to-configuration
-    chmod +x $T/gen1/bin/switch-to-configuration
-    ln -s $T/gen1 $T/system
-    export PATH=$T/bin:$PATH
-    run() { : > $T/log; rc=0; ${pkgs.bash}/bin/bash ${deployScript} > $T/out 2>&1 || rc=$?; }
-    fail() { echo "rollback test: $*"; cat $T/log $T/out; exit 1; }
-
-    echo 0000000 > $T/cur
-    echo abcdef1234 > $T/green
-
-    # Config check (#261): a pack var the host config misses fails before
-    # any switch, marks the rev failed and keeps the reason for attention.
-    touch $T/badcheck
-    echo 9999999aaa > $T/green
-    run
-    [ $rc = 1 ] || fail "bad check exit $rc"
-    ! grep -q rebuild $T/log || fail "switched despite a failed config check"
-    grep -q "check config check --file /var/lib/jobshop/jobshop.yaml --replace /var/lib/jobshop/src/jobshop=$T/src" $T/log || fail "config check not run against the new source"
-    [ "$(cat $T/state/failed)" = 9999999aaa ] || fail "failed rev not recorded"
-    grep -q 'jobshop_repo' $T/state/failed.reason || fail "reason not kept"
-    [ "$(open)" = deploy:config-check ] || fail "config check failure not filed: $(open)"
-    rm $T/badcheck $T/state/failed $T/state/failed.reason
-    echo abcdef1234 > $T/green
-
-    # Drill: the switch succeeds, the drill marks it unhealthy.
-    touch $T/state/drill
-    run
-    [ $rc = 1 ] || fail "drill run exit $rc"
-    [ ! -e $T/state/drill ] || fail "drill marker not cleared"
-    [ "$(cat $T/state/failed)" = abcdef1234 ] || fail "rev not written to failed"
-    grep -q "nix-env -p $T/system --set $T/gen1" $T/log || fail "no rollback to prev"
-    grep -q "switch gen1 switch" $T/log || fail "prev not switched to"
-    [ ! -e $T/state/deployed ] || fail "deployed written on rollback"
-    # A failed switch upserts deploy:rollback (#577).
-    grep -q "create deploy:rollback" $T/log || fail "rollback not filed"
-    grep -q abcdef1234 $T/tickets/deploy:rollback || fail "rollback ticket lacks the rev"
-
-    # The same rev is not retried, and its report is re-filed without a
-    # second ticket (the controller may have been down the first time).
-    echo 0000000 > $T/cur
-    run
-    [ $rc = 0 ] || fail "retry run exit $rc"
-    ! grep -q rebuild $T/log || fail "failed rev rebuilt again"
-    ! grep -q create $T/log || fail "repeat made a second ticket"
-    [ -e $T/tickets/deploy:rollback ] || fail "rollback ticket gone after a repeat"
-
-    # Without the drill, a controller still on the old binary is unhealthy too.
-    echo bbbbbbb999 > $T/green
-    echo 1 > $T/shipbad
-    run
-    [ $rc = 1 ] || fail "unhealthy run exit $rc"
-    [ "$(cat $T/state/failed)" = bbbbbbb999 ] || fail "unhealthy rev not in failed"
-    ! grep -q create $T/log || fail "a repeated failure made a second ticket"
-    grep -q bbbbbbb999 $T/tickets/deploy:rollback || fail "rollback ticket not updated"
-
-    # A newer healthy rev deploys and closes the open reports.
-    rm $T/shipbad
-    echo ccccccc777 > $T/green
-    run
-    [ $rc = 0 ] || fail "healthy run exit $rc"
-    [ "$(cat $T/state/deployed)" = ccccccc777 ] || fail "deployed not written"
-    grep -q "close deploy:rollback" $T/log || fail "rollback not closed"
-    grep -q "close deploy:config-check" $T/log || fail "config check not closed"
-    [ -z "$(open)" ] || fail "tickets left open: $(open)"
-    [ ! -e $T/state/failed.report ] || fail "failed.report not cleared"
-
-    # The unit runs another commit than deployed says (#225): the next run
-    # rewrites deployed with a WARN and keeps its mtime.
-    echo 53b6b27 > $T/cur
-    echo 53b6b27aa0 > $T/green
-    touch -d @1000000000 $T/state/deployed
-    run
-    [ $rc = 0 ] || fail "reconcile run exit $rc"
-    [ "$(cat $T/state/deployed)" = 53b6b27aa0 ] || fail "deployed not reconciled to the full green sha"
-    [ "$(stat -c %Y $T/state/deployed)" = 1000000000 ] || fail "deployed mtime changed"
-    [ "$(grep -c 'switched outside self-deploy.*deployed rewritten' $T/out)" = 1 ] || fail "want one WARN"
-    ! grep -q rebuild $T/log || fail "reconcile rebuilt"
-
-    # A field the old module still writes and the new binary removed
-    # (#597): the check warns and passes, so the switch that regenerates
-    # jobshop.yaml without it still runs.
-    touch $T/warncheck
-    echo dddddd5970 > $T/green
-    run
-    [ $rc = 0 ] || fail "removed-field warning blocked deploy: exit $rc"
-    grep -q rebuild $T/log || fail "no switch after a warning-only config check"
-    [ "$(cat $T/state/failed 2>/dev/null)" != dddddd5970 ] || fail "warning-only check marked the rev failed"
-    [ "$(cat $T/state/deployed)" = dddddd5970 ] || fail "warning-only rev not deployed"
-  '';
-
   units = c: lib.attrNames c.config.systemd.services;
   # Settings both modes take, with the paths pinned so the files can match.
   shared = {
@@ -414,14 +269,7 @@ let
     workspaces.jobshop = {
       url = "https://github.com/elee1766/jobshop.git";
       livePacks = [ "packs/selfdev" ];
-      selfDeploy = true;
-    };
-    selfDeploy = {
-      enable = true;
-      hostFlake = "x#y";
-      inputUrl = "git+https://example/jobshop?ref=master";
-      stateDir = "/srv/jobshop-deploy";
-      startCommand = "systemctl start --no-block jobshop-self-deploy.service";
+      followInstalled = true;
     };
     identities.elee-agent = {
       kind = "github-token";
@@ -466,7 +314,6 @@ let
       lib.all (u: hmUnits ? ${u}) [
         "jobshop"
         "jobshop-shutdown"
-        "jobshop-self-deploy"
         "jobshop-workspace-jobshop"
         "jobshop-workspace-jobshop-sync"
       ]
@@ -474,18 +321,7 @@ let
       && !(hmUnits.jobshop.Service ? User)
       && hmUnits.jobshop.Service.ExecStart == [ "${lib.getExe pkgs.hello} serve" ]
       && lib.hasInfix "JOBSHOP_ROOT=/srv/jobshop" (hmEnv "jobshop")
-      && hmUnits.jobshop-self-deploy.Unit.X-SwitchMethod == "keep-old"
       && sharedHM.config.systemd.user.slices ? jobshop
-      && sharedHM.config.systemd.user.timers ? jobshop-self-deploy
-    ))
-    (expect "home-manager: self-deploy switches the home as the user" (
-      let
-        s = sharedHM.config.services.jobshop.units.services.jobshop-self-deploy.script;
-      in
-      lib.hasInfix "home-manager switch --flake 'x#y'" s
-      && lib.hasInfix "systemctl --user is-active" s
-      && !(lib.hasInfix "nixos-rebuild" s)
-      && lib.hasInfix "state=/srv/jobshop-deploy" s
     ))
     (expect "home-manager: XDG defaults and no restrictEgress" (
       hmDefault.config.services.jobshop.dataDir == "/home/jobcity/.local/state/jobshop"
@@ -555,24 +391,13 @@ let
         "jobshop-workspace-other-sync"
       ]
     ))
-    (expect "two selfDeploy workspaces fail" (
-      lib.any (lib.hasInfix "more than one workspace") (failed bothDeploy)
+    (expect "removed workspace selfDeploy fails with a pointer" (
+      lib.any (lib.hasInfix "selfDeploy is removed (JOB-74)") (failed oldDeploy)
     ))
     (expect "legacy workspace maps to workspaces.default" (
       legacy.config.services.jobshop.workspaces.default.dir == "/var/lib/jobshop/src/jobshop"
-      && legacy.config.services.jobshop.workspaces.default.selfDeploy
+      && legacy.config.services.jobshop.workspaces.default.followInstalled
       && failed legacy == [ ]
-    ))
-    (expect "self-deploy uses the selfDeploy workspace's repo" (
-      lib.hasInfix "--repo elee1766/jobshop " legacy.config.systemd.services.jobshop-self-deploy.script
-    ))
-    # JOB-62, #826: a CI success event starts the deploy unit; on NixOS a
-    # polkit rule lets the jobshop user start that one unit.
-    (expect "self-deploy starts on a CI event: polkit rule on NixOS" (
-      lib.hasInfix "jobshop-self-deploy.service" legacy.config.security.polkit.extraConfig
-      && lib.hasInfix ''subject.user == "jobshop"'' legacy.config.security.polkit.extraConfig
-      && lib.hasInfix ''action.lookup("verb") == "start"'' legacy.config.security.polkit.extraConfig
-      && !(lib.hasInfix "jobshop-self-deploy" (eval { }).config.security.polkit.extraConfig)
     ))
     # A live pack extends packs outside livePacks, so the sync reloads on
     # any checkout move, not on a diff of the live paths only (#177).
@@ -618,9 +443,6 @@ let
       && lib.hasInfix "target=$installed" s
       && lib.hasInfix "not moving it" s
       && !(lib.hasInfix "MainPID" s)
-    ))
-    (expect "self-deploy logs a switch outside it" (
-      lib.hasInfix "switched outside self-deploy" legacy.config.systemd.services.jobshop-self-deploy.script
     ))
     # #216: identities go to the yaml, git and gh get tokens from jobshop.
     (expect "jobshopIdentities wires git and gh" (
@@ -762,7 +584,6 @@ in
 # the pack paths in the generated file are checked when the check builds.
 assert lib.all lib.id checks;
 pkgs.runCommand "jobshop-module-test" { } ''
-  ${rollbackTest}
   ${userConfigTest}
   ${configRepoTest}
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
@@ -775,9 +596,5 @@ pkgs.runCommand "jobshop-module-test" { } ''
   ! grep -q -- '- /var/lib/jobshop-mise' ${yamlPacks miseShared}
   grep -q 'url: http://127.0.0.1:9428' ${yamlPacks vlLocal}
   grep -q 'url: http://logs.internal:9428' ${yamlPacks vlExternal}
-  # The yaml writer folds the long line, so match the unit name apart.
-  grep -q 'start_command: .*/bin/systemctl' ${yamlPacks legacy}
-  grep -q 'start --no-block jobshop-self-deploy.service' ${yamlPacks legacy}
-  grep -q 'repo: elee1766/jobshop' ${yamlPacks legacy}
   touch $out
 ''

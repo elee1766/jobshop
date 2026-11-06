@@ -5,8 +5,9 @@ Moved from the README (2026-11-05, #551).
 The flake exports `nixosModules.default`. It gives `services.jobshop` with
 `settings` (the yaml), `workspaces.<name>` (repos cloned before start,
 with live packs that follow the checkout), `gateway.<name>`,
-`identities`, telemetry, and `selfDeploy`. Self-deploy promotes the
-newest green master commit and rolls back on a failed health check. See
+`identities` and telemetry. Deploying jobshop itself is the host's job
+(JOB-74); a host that does it sets `workspaces.<name>.followInstalled`
+so live packs follow the installed binary. See
 [`nix/module.nix`](../nix/module.nix), and [layout.md](layout.md) for
 deployment. The sandbox option is in [isolation.md](isolation.md).
 The same options as rootless user services: [home-manager.md](home-manager.md).
