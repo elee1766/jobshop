@@ -62,7 +62,16 @@ func (c *Controller) runHook(ctx context.Context, h config.Hook, ev hookEvent) h
 	if err != nil {
 		return hookAnswer{rpc.GuardDeny, "hook event: " + err.Error()}
 	}
-	ctx, cancel := context.WithTimeout(ctx, config.Duration(h.Timeout, 30*time.Second))
+	timeout := config.Duration(h.Timeout, 30*time.Second)
+	if h.URL != "" {
+		p := hookPost{url: h.URL, secret: h.SecretFile.In(c.root.Dir), timeout: timeout, retry: h.Retry, after: c.after}
+		out, err := p.do(ctx, in)
+		if err != nil {
+			return hookAnswer{rpc.GuardDeny, "hook " + h.URL + ": " + err.Error()}
+		}
+		return parseHookAnswer(out)
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	// The session's pool sandboxes the hook like the session's agent
 	// (#810); an event with no pool runs it in the root dir unisolated.
@@ -83,7 +92,13 @@ func (c *Controller) runHook(ctx context.Context, h config.Hook, ev hookEvent) h
 	if ex.ExitCode != 0 || ex.Signal != "" {
 		return hookAnswer{rpc.GuardDeny, fmt.Sprintf("hook exited %s: %s", exitText(ex), strings.TrimSpace(stderr.String()))}
 	}
-	out := bytes.TrimSpace(stdout.Bytes())
+	return parseHookAnswer(stdout.Bytes())
+}
+
+// parseHookAnswer reads a hook's answer: empty is allow, anything that is
+// not one JSON decision is deny.
+func parseHookAnswer(out []byte) hookAnswer {
+	out = bytes.TrimSpace(out)
 	if len(out) == 0 {
 		return hookAnswer{Decision: rpc.GuardAllow}
 	}
