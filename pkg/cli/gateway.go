@@ -40,13 +40,14 @@ func (c gatewayCmd) Run(g *Globals) error {
 	// Always the admin socket: JOBSHOP_SOCKET in an agent's env names its
 	// session socket, which cannot send to other sessions.
 	sock := r.AdminSocket()
-	log, err := c.logger()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	tel, err := startTelemetry(ctx, r, "gateway", c.LogFlags)
 	if err != nil {
 		return err
 	}
-	log = log.With("gateway", c.Name)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
+	log := tel.Log.With("gateway", c.Name)
 	if gc.Network != config.GatewayA2A {
 		return fmt.Errorf("gateway %s: network %q: only a2a is supported (Matrix and Discord were removed, use Desk)", c.Name, gc.Network)
 	}

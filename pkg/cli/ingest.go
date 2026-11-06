@@ -50,22 +50,23 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 	if c.NoAdmit && !c.Dispatch {
 		return errors.New("--no-admit needs --dispatch")
 	}
-	log, err := c.logger()
-	if err != nil {
-		return err
-	}
 	host, _ := os.Hostname()
 	id := c.Worker
 	if id == "" {
 		id = fmt.Sprintf("%s-%d", host, os.Getpid())
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	tel, err := startTelemetry(ctx, r, "ingest-work", c.LogFlags)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
 	w := control.IngestWorker{
 		Call: func(_ context.Context, method string, params, out any) error { return g.call(method, params, out) },
 		Dir:  r.Dir, Worker: id, Host: host, Dispatch: c.Dispatch, NoAdmit: c.NoAdmit,
-		Log: log.With("component", "ingest-work", "worker", id),
+		Log: tel.Log.With("component", "ingest-work", "worker", id),
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if c.Once {
 		n, d, err := w.Pass(ctx)
 		if err != nil {
@@ -189,13 +190,14 @@ func (c ingestServeCmd) Run(g *Globals) error {
 	if len(eps) == 0 {
 		return fmt.Errorf("ingest serve: no endpoints: add ingest.endpoints in %s", r.Config())
 	}
-	log, err := c.logger()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	tel, err := startTelemetry(ctx, r, "ingest", c.LogFlags)
 	if err != nil {
 		return err
 	}
-	log = log.With("component", "ingest")
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
+	log := tel.Log.With("component", "ingest")
 	sp, err := ingest.OpenSpool(ctx, path)
 	if err != nil {
 		return err

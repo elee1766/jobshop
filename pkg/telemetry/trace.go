@@ -35,13 +35,10 @@ type Export struct {
 	Headers   map[string]string // sent on both signals
 }
 
-// NewTracing builds the providers. extra processors are for tests.
-func NewTracing(ctx context.Context, ex Export, extra ...sdktrace.SpanProcessor) (*Tracing, error) {
+// NewTracing builds the providers.
+func NewTracing(ctx context.Context, ex Export) (*Tracing, error) {
 	res := resource.NewSchemaless(attribute.String("service.name", "jobshop"))
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(res)}
-	for _, p := range extra {
-		opts = append(opts, sdktrace.WithSpanProcessor(p))
-	}
 	t := &Tracing{}
 	var te *otlptrace.Exporter
 	if ex.TracesURL != "" {

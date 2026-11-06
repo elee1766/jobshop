@@ -1188,7 +1188,8 @@ func TestMetrics(t *testing.T) {
 // session's trace, parented by the traceparent the agent got in its env.
 func TestTraces(t *testing.T) {
 	exp := tracetest.NewInMemoryExporter()
-	root, start := poolRootOpt(t, "1m", control.Options{SpanProcessor: sdktrace.NewSimpleSpanProcessor(exp)})
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
+	root, start := poolRootOpt(t, "1m", control.Options{Tracer: tp.Tracer("test")})
 	ctx := t.Context()
 	defer start()()
 

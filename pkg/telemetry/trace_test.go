@@ -2,8 +2,10 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 
@@ -35,4 +37,28 @@ func TestTracingCustomPathAndHeaders(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Equal(t, map[string]string{"/insert/opentelemetry/v1/traces": "Bearer tok"}, got)
+}
+
+func TestStartExportsLogs(t *testing.T) {
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx := context.Background()
+	var stderr strings.Builder
+	p, err := Start(ctx, "desk", Export{LogsURL: srv.URL + "/v1/logs"}, slog.NewTextHandler(&stderr, nil))
+	require.NoError(t, err)
+	p.Log.Info("hello")
+	require.NoError(t, p.Shutdown(ctx))
+
+	assert.Contains(t, stderr.String(), "process=desk")
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"/v1/logs"}, paths)
 }
