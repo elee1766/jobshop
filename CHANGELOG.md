@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.7](https://github.com/elee1766/jobshop/compare/v0.7.6...v0.7.7) (2026-11-06)
+
+
+### Features
+
+* **cli:** send parsed gh write arguments in the guard event (JOB-113) ([#938](https://github.com/elee1766/jobshop/issues/938)) ([4646273](https://github.com/elee1766/jobshop/commit/4646273d244a1d3ade6941ce1299bf685b2bb406))
+
 ## [0.7.6](https://github.com/elee1766/jobshop/compare/v0.7.5...v0.7.6) (2026-11-06)
 
 
