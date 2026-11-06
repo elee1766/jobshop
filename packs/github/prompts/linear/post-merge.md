@@ -13,6 +13,9 @@ failed attempt; a plain release is one).
    `gh run list --branch master --commit <sha> --json status,conclusion,databaseId`.
    Pending: `jobshop wait add 'github.checks:repo={{.repo}},sha=<sha>,state=success' 'github.checks:repo={{.repo}},sha=<sha>,state=failure' --any --resume --timeout 1h --reason "master CI on <sha>"`
    and end the turn; it resumes here within a minute of CI finishing.
+   Cancelled (the wait ends `invalidated: checks cancelled`): a newer
+   push superseded that run, it is not red. Wait the same way on the
+   newest master commit instead.
    Red: unless a `ci-repair` run for
    that SHA is open (`jobshop run list`), file a priority-0 dev ticket
    for it, comment it here, and `jobshop close -r failed`.

@@ -14,7 +14,9 @@ failed attempt; a plain release is one).
    Pending: `jobshop wait add 'github.checks:repo={{.repo}},sha=<sha>,state=success' 'github.checks:repo={{.repo}},sha=<sha>,state=failure' --any --resume --timeout 1h --reason "master CI on <sha>"`
    and end the turn. Red: file a priority-0 fix issue
    (`gh issue list --search` first) and a dev ticket for it, comment
-   both here, and `jobshop close -r failed`.
+   both here, and `jobshop close -r failed`. Cancelled (the wait ends
+   `invalidated: checks cancelled`): a newer push superseded that run,
+   it is not red. Wait the same way on the newest master commit instead.
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh each time. Not yet: comment what you saw,
    `jobshop wait add 'deploy:repo={{.repo}},sha=<sha>' --resume --timeout 1h --reason "deploy of <sha>"`
