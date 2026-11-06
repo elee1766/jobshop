@@ -59,7 +59,7 @@ func (s *Store) Resources(ctx context.Context, pool string) (store.ResourceRepor
 
 // resourceUse reports every key held or waited on, with its capacity.
 func (s *Store) resourceUse(ctx context.Context) ([]store.ResourceUse, error) {
-	caps, err := s.q.ResourceCaps(ctx)
+	caps, err := s.rq.ResourceCaps(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +67,11 @@ func (s *Store) resourceUse(ctx context.Context) ([]store.ResourceUse, error) {
 	for _, c := range caps {
 		capOf[c.Name] = int(c.Capacity)
 	}
-	use, err := s.q.ResourceUse(ctx)
+	use, err := s.rq.ResourceUse(ctx)
 	if err != nil {
 		return nil, err
 	}
-	wait, err := s.q.ResourceWaiting(ctx)
+	wait, err := s.rq.ResourceWaiting(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (s *Store) resourceWaits(ctx context.Context, use []store.ResourceUse) ([]s
 	if len(full) == 0 {
 		return nil, nil
 	}
-	rows, err := s.q.ResourceWaiters(ctx, ms(s.now()))
+	rows, err := s.rq.ResourceWaiters(ctx, ms(s.now()))
 	if err != nil {
 		return nil, err
 	}
