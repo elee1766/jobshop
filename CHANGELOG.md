@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.2](https://github.com/elee1766/jobshop/compare/v0.3.1...v0.3.2) (2026-11-06)
+
+
+### Features
+
+* **control:** read-only sandbox guidance mounts (JOB-51) ([#773](https://github.com/elee1766/jobshop/issues/773)) ([3599edb](https://github.com/elee1766/jobshop/commit/3599edb8403579875677473407effc0e2886777a))
+* **desk:** show the working session on in-progress cards and traces (JOB-54) ([#777](https://github.com/elee1766/jobshop/issues/777)) ([46ceb02](https://github.com/elee1766/jobshop/commit/46ceb029bd7ca36061fa1a28c82e477c144e7676))
+* **packs:** refinery_model and refinery_effort vars ([#775](https://github.com/elee1766/jobshop/issues/775)) ([398e866](https://github.com/elee1766/jobshop/commit/398e8668c1e96059d8277c7bcc4a32a6632825b5))
+
+
+### Bug fixes
+
+* **nix:** self-deploy reconcile writes the full green sha ([#772](https://github.com/elee1766/jobshop/issues/772)) ([15c4670](https://github.com/elee1766/jobshop/commit/15c4670c7e7a8e63e4d27e5a670f355c9aa21ebc))
+
 ## [0.3.1](https://github.com/elee1766/jobshop/compare/v0.3.0...v0.3.1) (2026-11-06)
 
 
