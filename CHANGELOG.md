@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/elee1766/jobshop/compare/v0.2.0...v0.2.1) (2026-11-06)
+
+
+### Bug fixes
+
+* **desk:** question chats offer answer text, not numbered options ([#740](https://github.com/elee1766/jobshop/issues/740)) ([aadb0ca](https://github.com/elee1766/jobshop/commit/aadb0ca7b40185cfda3ae01205b9cce1fd635821))
+
+
+### Performance
+
+* **store:** serve sqlite reads from a separate reader pool ([#742](https://github.com/elee1766/jobshop/issues/742)) ([41084fa](https://github.com/elee1766/jobshop/commit/41084fae62cac15073602b776c6e8eb2331d1995))
+
 ## [0.2.0](https://github.com/elee1766/jobshop/compare/v0.1.9...v0.2.0) (2026-11-05)
 
 
