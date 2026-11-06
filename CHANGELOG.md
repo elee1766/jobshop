@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/elee1766/jobshop/compare/v0.6.0...v0.6.1) (2026-11-06)
+
+
+### Features
+
+* **linear:** linear assign, app tokens take issues as delegate; jobshop help ([#856](https://github.com/elee1766/jobshop/issues/856)) ([1932895](https://github.com/elee1766/jobshop/commit/1932895c69077b528e45f90a89b624932ee5c60f))
+
 ## [0.6.0](https://github.com/elee1766/jobshop/compare/v0.5.2...v0.6.0) (2026-11-06)
 
 
