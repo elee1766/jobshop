@@ -471,12 +471,13 @@ func (a Attention) OrphanAgeDuration() time.Duration {
 }
 
 // DefaultInboxRetention is how long terminal inbox items are kept.
-const DefaultInboxRetention = 14 * 24 * time.Hour
+const DefaultInboxRetention = 7 * 24 * time.Hour
 
 // Ingest configures the ingest inbox (#321).
 type Ingest struct {
-	// Retention keeps dispatched, denied and failed items this long (Go
-	// duration, or Nd for days). Default 14d.
+	// Retention keeps dispatched, denied and failed items this long
+	// after their last update (Go duration, or Nd for days). Default 7d
+	// (JOB-63). Deliveries are deduped only within it.
 	Retention string `yaml:"retention"`
 	// Listen is the TCP address `jobshop ingest serve` listens on
 	// (#334). Empty: 127.0.0.1:8740.
