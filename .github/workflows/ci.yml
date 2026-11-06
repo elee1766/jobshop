@@ -147,15 +147,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/cache@v4
+      # Restore only: the go job saves this cache on master. Saving here on
+      # every run filled the 10GB Actions cache and evicted hestia's packs.
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-vl-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            go-vl-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            go-vl-${{ runner.os }}-
+            go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-
       - name: install victoria-logs
         env:
           VL_VERSION: v1.53.0
@@ -201,15 +203,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/cache@v4
+      # Restore only, as in victorialogs.
+      - uses: actions/cache/restore@v4
         with:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
-          key: go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          key: go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
           restore-keys: |
-            go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            go-pg-${{ runner.os }}-
+            go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-
       # JOB-35: every case must run on Postgres. A missing DSN or any
       # skipped test fails the job instead of passing silently.
       - name: storetest on postgres
