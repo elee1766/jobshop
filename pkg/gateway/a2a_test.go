@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -136,12 +137,75 @@ func (p *a2aPeer) sent() []a2aMessage {
 	return append([]a2aMessage(nil), p.sends...)
 }
 
-// a2aCtl is fakeController with comments and a journal seq on events.
+// a2aCtl is the controller the A2A gateway sees: tickets in memory,
+// recorded sends and comments, and session events the test emits.
 type a2aCtl struct {
-	fakeController
+	mu       sync.Mutex
+	sends    []rpc.SessionSendParams
+	events   chan rpc.SessionEvent
+	ticket   map[string]store.Ticket
 	cmu      sync.Mutex
 	comments []string
 	seq      int64
+}
+
+// Events sends ready and then blocks: the tests call a.event directly.
+func (f *a2aCtl) Events(ctx context.Context, _ rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error) {
+	fn(rpc.Event{Kind: rpc.EventKindReady})
+	<-ctx.Done()
+	return rpc.EventsSubscribeResult{}, nil
+}
+
+func (f *a2aCtl) List(_ context.Context, p rpc.ListParams) ([]store.Ticket, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []store.Ticket
+	for _, t := range f.ticket {
+		if slices.Contains(t.Labels, p.Label) && (p.Status == "" || t.Status == p.Status) {
+			out = append(out, t)
+		}
+	}
+	return out, nil
+}
+
+func (f *a2aCtl) Show(_ context.Context, id string) (rpc.ShowResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t, ok := f.ticket[id]
+	if !ok {
+		return rpc.ShowResult{}, store.ErrNotFound
+	}
+	return rpc.ShowResult{Ticket: t}, nil
+}
+
+func (f *a2aCtl) Update(_ context.Context, p rpc.UpdateParams) (store.Ticket, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	t := f.ticket[p.ID]
+	if p.IfRevision != 0 && p.IfRevision != t.Revision {
+		return t, store.ErrConflict
+	}
+	t.Meta = p.Meta
+	t.Revision++
+	f.ticket[p.ID] = t
+	return t, nil
+}
+
+func (f *a2aCtl) Subscribe(ctx context.Context, _ rpc.SessionSubscribeParams, fn func(rpc.SessionEvent)) (rpc.SessionSubscribeResult, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return rpc.SessionSubscribeResult{}, nil
+		case ev := <-f.events:
+			fn(ev)
+		}
+	}
+}
+
+func (f *a2aCtl) sent() []rpc.SessionSendParams {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]rpc.SessionSendParams(nil), f.sends...)
 }
 
 func (f *a2aCtl) Comment(_ context.Context, p rpc.CommentParams) error {
@@ -183,7 +247,7 @@ func a2aEsc(id, cause string) store.Ticket {
 
 func a2aSetup(t *testing.T, mode string, tickets ...store.Ticket) (*A2A, *a2aPeer, *a2aCtl, *clock.Fake, context.Context) {
 	peer := newA2APeer(t, mode)
-	ctl := &a2aCtl{fakeController: fakeController{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{}}}
+	ctl := &a2aCtl{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{}}
 	for _, tk := range tickets {
 		ctl.ticket[tk.ID] = tk
 	}

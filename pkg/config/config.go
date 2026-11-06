@@ -341,10 +341,9 @@ type Activity struct {
 	Repos []string `yaml:"repos"`
 }
 
-// Gateway.Network values.
+// Gateway.Network values. Matrix and Discord were removed (2026-11-06):
+// Desk is the operator UI.
 const (
-	GatewayMatrix  = "matrix"
-	GatewayDiscord = "discord"
 	// GatewayA2A routes escalations to another agent over A2A (#547).
 	GatewayA2A = "a2a"
 )
@@ -353,40 +352,22 @@ const (
 // gateway's escalations list names (the cause var of EscalationVars).
 var EscalationCauses = []string{"run", "pool", "wait", "guard", "label"}
 
-// Gateway connects one chat network account to a chat pool. Messages
-// from rooms or senders not listed are ignored.
+// Gateway is one A2A peer that escalations are sent to (#547).
 type Gateway struct {
-	Network string `yaml:"network"` // "matrix" or "discord"
-	// Homeserver is the Matrix client-server base URL (matrix only).
-	// For discord, rooms are channel ids (text or forum), senders user ids.
-	Homeserver string `yaml:"homeserver"`
-	// TokenFile holds the bot access token. Tokens are never in the yaml.
-	TokenFile Secret   `yaml:"token_file"`
-	Pool      string   `yaml:"pool"`    // a type: chat pool
-	Rooms     []string `yaml:"rooms"`   // allowed room ids
-	Senders   []string `yaml:"senders"` // allowed sender ids
-	// InterruptMarker prefixes a message sent with interrupt. Default "!".
-	InterruptMarker string `yaml:"interrupt_marker"`
-	// EscalationRoom gets one new thread per escalation ticket, with a
-	// session of Pool keyed by it. Must be one of Rooms so replies route.
-	EscalationRoom string `yaml:"escalation_room"`
-	// AttentionDigest is a 5-field cron (UTC) at which the gateway posts
-	// `jobshop attention` to EscalationRoom as a new thread, only when the
-	// list is not empty (#185). Empty: no digest.
-	AttentionDigest string `yaml:"attention_digest"`
-	// ArtifactRoom gets one line per delivered artifact (#508). Empty:
-	// artifacts are not posted.
-	ArtifactRoom string `yaml:"artifact_room"`
-	// DeskURL is Desk's base URL for links in artifact lines. Empty: no link.
+	Network string `yaml:"network"` // "a2a"
+	// TokenFile holds the peer's bearer token. Tokens are never in the yaml.
+	TokenFile Secret `yaml:"token_file"`
+	Pool      string `yaml:"pool"` // a type: chat pool
+	// DeskURL is Desk's base URL for links in messages. Empty: no link.
 	DeskURL string `yaml:"desk_url"`
 	// URL is the A2A peer's base URL; its agent card is fetched from
-	// /.well-known/agent-card.json under it (a2a only).
+	// /.well-known/agent-card.json under it.
 	URL string `yaml:"url,omitempty"`
 	// Escalations are the escalation causes sent to the A2A peer: "all"
-	// or a list of EscalationCauses. Empty: none (a2a only).
+	// or a list of EscalationCauses. Empty: none.
 	Escalations []string `yaml:"escalations,omitempty"`
-	// Poll is the GetTask interval for a peer task (Go duration, a2a
-	// only). Default 30s.
+	// Poll is the GetTask interval for a peer task (Go duration).
+	// Default 30s.
 	Poll string `yaml:"poll,omitempty"`
 }
 
@@ -1573,43 +1554,10 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 }
 
 func (c *Config) checkGateway(g Gateway) error {
-	if g.Network == GatewayA2A {
-		return c.checkA2AGateway(g)
+	if g.Network != GatewayA2A {
+		return fmt.Errorf("network %q must be %q (Matrix and Discord were removed; use Desk)", g.Network, GatewayA2A)
 	}
-	switch g.Network {
-	case GatewayMatrix:
-		if g.Homeserver == "" {
-			return errors.New("homeserver is required")
-		}
-	case GatewayDiscord:
-	default:
-		return fmt.Errorf("network %q must be %q, %q or %q", g.Network, GatewayMatrix, GatewayDiscord, GatewayA2A)
-	}
-	if g.TokenFile.IsZero() {
-		return errors.New("token_file is required")
-	}
-	p, ok := c.Pools[g.Pool]
-	if !ok {
-		return fmt.Errorf("unknown pool %q", g.Pool)
-	}
-	if !p.Chat() {
-		return fmt.Errorf("pool %s is not a chat pool", g.Pool)
-	}
-	if len(g.Rooms) == 0 || len(g.Senders) == 0 {
-		return errors.New("rooms and senders are required (others are ignored)")
-	}
-	if g.EscalationRoom != "" && !slices.Contains(g.Rooms, g.EscalationRoom) {
-		return fmt.Errorf("escalation_room %q must be listed in rooms", g.EscalationRoom)
-	}
-	if g.AttentionDigest != "" {
-		if g.EscalationRoom == "" {
-			return errors.New("attention_digest needs escalation_room")
-		}
-		if _, err := cron.Parse(g.AttentionDigest); err != nil {
-			return fmt.Errorf("attention_digest: %w", err)
-		}
-	}
-	return nil
+	return c.checkA2AGateway(g)
 }
 
 func (c *Config) checkTrigger(name string, tr *Trigger) error {

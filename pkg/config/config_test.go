@@ -221,46 +221,21 @@ func TestDuration(t *testing.T) {
 	}
 }
 
-func TestParseGateway(t *testing.T) {
-	base := poolsYAML + `  chat:
+// TestParseGatewayChatRemoved: Matrix and Discord gateways were removed,
+// so a config that still names one fails to load with the reason.
+func TestParseGatewayChatRemoved(t *testing.T) {
+	_, err := Parse([]byte(poolsYAML + `  chat:
     agent: claude
     type: chat
     dir: /work
 gateway:
   ops:
     network: matrix
-    homeserver: http://127.0.0.1:6167
     token_file: matrix-token
     pool: chat
-    rooms: ["!r:x"]
-    senders: ["@op:x"]
-`
-	c, err := Parse([]byte(base))
-	require.NoError(t, err)
-	assert.Equal(t, "chat", c.Gateway["ops"].Pool)
-
-	// discord needs no homeserver; the escalation room is a forum channel id.
-	discord := strings.Replace(base, "network: matrix\n    homeserver: http://127.0.0.1:6167\n", "network: discord\n", 1)
-	discord = strings.Replace(discord, `rooms: ["!r:x"]`, `rooms: ["111", "222"]`+"\n    escalation_room: \"222\"", 1)
-	c, err = Parse([]byte(discord))
-	require.NoError(t, err)
-	assert.Equal(t, "discord", c.Gateway["ops"].Network)
-	assert.Equal(t, "222", c.Gateway["ops"].EscalationRoom)
-	_, err = Parse([]byte(strings.Replace(base, "    homeserver: http://127.0.0.1:6167\n", "", 1)))
-	assert.Error(t, err, "matrix without homeserver")
-
-	for name, bad := range map[string][2]string{
-		"ticket pool":                  {"pool: chat", "pool: main"},
-		"no senders":                   {`senders: ["@op:x"]`, "senders: []"},
-		"no token":                     {"token_file: matrix-token", `token_file: ""`},
-		"network":                      {"network: matrix", "network: irc"},
-		"escalation room not in rooms": {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    escalation_room: \"!other:x\""},
-		"digest without room":          {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    attention_digest: \"0 9 * * *\""},
-		"bad digest cron":              {`senders: ["@op:x"]`, "senders: [\"@op:x\"]\n    escalation_room: \"!r:x\"\n    attention_digest: \"daily\""},
-	} {
-		_, err := Parse([]byte(strings.Replace(base, bad[0], bad[1], 1)))
-		assert.Error(t, err, name)
-	}
+`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Matrix and Discord were removed")
 }
 
 // TestParseA2AGateway (#547): an a2a gateway needs a url, token and chat

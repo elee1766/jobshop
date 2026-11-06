@@ -19,9 +19,9 @@ Include it once per host, without a prefix, next to the repo packs
 the prompt names no repo.
 
 `operator` is a `type: chat` pool with `attach: rw`: one session per
-key, started by the first message for it. The Matrix gateway keys
-sessions by thread; escalation threads (#125) use the same pool. The
-pool prompt leads each session's first message turn. Without a gateway:
+key, started by the first message for it. Desk chat keys sessions by
+conversation; escalation chats (#125, #379) use the same pool. The
+pool prompt leads each session's first message turn. From the CLI:
 
 ```sh
 jobshop send --help   # by pool and key via session.send

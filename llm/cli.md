@@ -38,7 +38,7 @@ Commands:
     Re-read jobshop.yaml and packs; keeps the old config if invalid (admin).
 
   gateway <name> [flags]
-    Run a chat gateway from jobshop.yaml (admin socket client).
+    Run an A2A gateway from jobshop.yaml (admin socket client).
 
   desk [flags]
     Serve Jobshop Desk, the read-only dashboard (admin socket client).
@@ -561,10 +561,10 @@ Flags:
 ```
 Usage: jobshop gateway <name> [flags]
 
-Run a chat gateway from jobshop.yaml (admin socket client).
+Run an A2A gateway from jobshop.yaml (admin socket client).
 
 Arguments:
-  <name>    Gateway name under gateway: in jobshop.yaml.
+  <name>    A2A gateway name under gateway: in jobshop.yaml.
 
 Flags:
   -h, --help             Show context-sensitive help.

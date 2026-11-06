@@ -36,7 +36,7 @@ jobshop/
 │   ├── config/               YAML loading, validation, defaults
 │   ├── hostspec/             jobshop's spec.json on acphost (an older
 │   │                         conv_export field is ignored, #530)
-│   ├── gateway/              chat gateway: adapter interface, routing, Matrix, Discord
+│   ├── gateway/              A2A gateway: escalation chats to another agent (#547)
 │   ├── desk/                 Jobshop Desk HTTP server over the admin API;
 │   │                         dist/ is the built UI, embedded
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter
@@ -114,8 +114,6 @@ Subcommands:
 | Dynamic SQL (store collections) | `github.com/nullism/bqb` (2026-11-05, #579): small, MIT, no dependencies; builds the collection queries sqlc cannot express (filters from a spec), with `?` (SQLite) or `$n` (Postgres) placeholders, so we write no SQL builder of our own | v1.7.4 |
 | Linux syscalls | `golang.org/x/sys/unix` | v0.49.0 |
 | `/proc` parsing (PID start time) | `github.com/prometheus/procfs` | v0.23.0 |
-| Matrix client-server API (gateway) | `maunium.net/go/mautrix` (2026-11-02, #123): the maintained Go Matrix client, used by the mautrix bridges; pure Go without its optional crypto, so `CGO_ENABLED=0` holds | v0.32.0 |
-| Discord bot API (gateway) | `github.com/bwmarrin/discordgo` (2026-11-03, #182): the most used Go Discord library, REST plus gateway websocket with resume; pure Go | v0.29.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
 | Secret redaction | `github.com/betterleaks/betterleaks/v2` (`scan`, `config`) (2026-11-05, #578): gitleaks' successor, about twice the rules, 9 modules instead of 63, no viper global state. Pinned to an rc until v2.0.0 is out | v2.0.0-rc.7 |
 | Desk UI (build-time only, `ui/`) | Svelte 5, Vite, svelte-check, Playwright (2026-11-03, #202): Gas City Desk's stack; output is committed and embedded, so the Go module gains no dependency. @lucide/svelte for the activity view's icons (2026-11-04, #255); tree-shaken per icon | svelte 5.57.3, vite 8.3.5, @lucide/svelte 1.67.0 |

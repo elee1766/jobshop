@@ -10,17 +10,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/goccy/go-yaml"
-
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/cron"
 	"github.com/elee1766/jobshop/pkg/gateway"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type gatewayCmd struct {
-	Name string `arg:"" help:"Gateway name under gateway: in jobshop.yaml."`
+	Name string `arg:"" help:"A2A gateway name under gateway: in jobshop.yaml."`
 }
 
 func (c gatewayCmd) Run(g *Globals) error {
@@ -46,38 +43,16 @@ func (c gatewayCmd) Run(g *Globals) error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("gateway", c.Name)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if gc.Network == config.GatewayA2A {
-		// The token goes only into the Authorization header (#547).
-		a := gateway.NewA2A(gateway.A2AConfig{
-			Name: c.Name, URL: gc.URL, Token: strings.TrimSpace(string(tok)), Pool: gc.Pool,
-			Escalations: gc.Escalations, Poll: gc.PollDuration(), DeskURL: gc.DeskURL,
-		}, socketController{sock: sock}, log)
-		log.Info("gateway: running", "network", gc.Network, "url", gc.URL, "escalations", gc.Escalations)
-		return a.Run(ctx)
+	if gc.Network != config.GatewayA2A {
+		return fmt.Errorf("gateway %s: network %q: only a2a is supported (Matrix and Discord were removed, use Desk)", c.Name, gc.Network)
 	}
-	var ad gateway.Adapter
-	if gc.Network == config.GatewayDiscord {
-		ad, err = gateway.NewDiscord(strings.TrimSpace(string(tok)), log)
-	} else {
-		ad, err = gateway.NewMatrix(ctx, gc.Homeserver, strings.TrimSpace(string(tok)), gc.Rooms, log)
-	}
-	if err != nil {
-		return err
-	}
-	var digest *cron.Schedule
-	if gc.AttentionDigest != "" {
-		if digest, err = cron.Parse(gc.AttentionDigest); err != nil {
-			return err
-		}
-	}
-	gw := gateway.New(gateway.Config{
-		Name: c.Name, Pool: gc.Pool, Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker,
-		EscalationRoom: gc.EscalationRoom, Digest: digest, ArtifactRoom: gc.ArtifactRoom, DeskURL: gc.DeskURL,
-		Fetch:      socketController{sock: sock}.gatewayConfig(c.Name),
-		FetchEvery: gatewayConfigEvery,
-	}, ad, socketController{sock: sock}, log)
-	log.Info("gateway: running", "network", gc.Network, "pool", gc.Pool, "escalation_room", gc.EscalationRoom)
-	return gw.Run(ctx)
+	// The token goes only into the Authorization header (#547).
+	a := gateway.NewA2A(gateway.A2AConfig{
+		Name: c.Name, URL: gc.URL, Token: strings.TrimSpace(string(tok)), Pool: gc.Pool,
+		Escalations: gc.Escalations, Poll: gc.PollDuration(), DeskURL: gc.DeskURL,
+	}, socketController{sock: sock}, log)
+	log.Info("gateway: running", "network", gc.Network, "url", gc.URL, "escalations", gc.Escalations)
+	return a.Run(ctx)
 }
 
 // socketController dials the admin socket per call, so a controller
@@ -115,11 +90,6 @@ func (s socketController) Update(ctx context.Context, p rpc.UpdateParams) (store
 	return res, s.call(ctx, rpc.MethodTicketUpdate, p, &res)
 }
 
-func (s socketController) Answer(ctx context.Context, p rpc.AnswerParams) (rpc.AnswerResult, error) {
-	var res rpc.AnswerResult
-	return res, s.call(ctx, rpc.MethodQuestionAnswer, p, &res)
-}
-
 func (s socketController) Comment(ctx context.Context, p rpc.CommentParams) error {
 	return s.call(ctx, rpc.MethodCommentAdd, p, nil)
 }
@@ -140,38 +110,4 @@ func (s socketController) Subscribe(ctx context.Context, p rpc.SessionSubscribeP
 	}
 	defer func() { _ = c.Close() }()
 	return c.Subscribe(ctx, p, fn)
-}
-
-func (s socketController) Attention(ctx context.Context) (rpc.AttentionResult, error) {
-	var res rpc.AttentionResult
-	return res, s.call(ctx, rpc.MethodAttention, nil, &res)
-}
-
-// gatewayConfigEvery is how often a gateway reads its settings from the
-// controller, so a reload reaches it without a restart (#307).
-const gatewayConfigEvery = 30 * time.Second
-
-// gatewayConfig returns a fetch for gateway name's rooms, senders,
-// marker and escalation room from the controller's active config.
-func (s socketController) gatewayConfig(name string) func(context.Context) (gateway.Config, error) {
-	return func(ctx context.Context) (gateway.Config, error) {
-		var res rpc.ConfigShowResult
-		if err := s.call(ctx, rpc.MethodConfigShow, struct{}{}, &res); err != nil {
-			return gateway.Config{}, err
-		}
-		gws, _ := res.Config["gateway"].(map[string]any)
-		raw, ok := gws[name]
-		if !ok {
-			return gateway.Config{}, fmt.Errorf("no gateway %q in the controller's config", name)
-		}
-		b, err := yaml.Marshal(raw)
-		if err != nil {
-			return gateway.Config{}, err
-		}
-		var gc config.Gateway
-		if err := yaml.Unmarshal(b, &gc); err != nil {
-			return gateway.Config{}, err
-		}
-		return gateway.Config{Rooms: gc.Rooms, Senders: gc.Senders, Marker: gc.InterruptMarker, EscalationRoom: gc.EscalationRoom, ArtifactRoom: gc.ArtifactRoom, DeskURL: gc.DeskURL}, nil
-	}
 }
