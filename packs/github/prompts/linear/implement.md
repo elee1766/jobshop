@@ -39,7 +39,9 @@ Otherwise: take the issue: assign it to yourself and move it to In
 Progress in one call
 (`jobshop linear assign {{.issue}} me --state "In Progress"`;
 if that state name is not one of the team's states, the error lists
-them, pick the started one),
+them, pick the started one; if it fails only on the assignee
+read-back, `jobshop linear issue {{.issue}}` shows the state moved,
+carry on),
 `git switch -c issue-{{.issue}}`, make the change, run
 `{{.check_cmd}}`, commit with
 `({{.issue}})` in the subject, `git push -u origin HEAD`, then
