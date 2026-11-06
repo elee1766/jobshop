@@ -24,6 +24,8 @@ type Options struct {
 	Now func() time.Time
 	// Prefix maps a project to its id prefix. Default: the project name.
 	Prefix func(project string) string
+	// IDs picks a project's id generator (JOB-57). Default: sonyflake.
+	IDs func(project string) ids.Spec
 	// OnCommit, if set, runs after every committed write transaction.
 	// The controller uses it to wake events.subscribe (#147).
 	OnCommit func()
@@ -51,7 +53,8 @@ type Store struct {
 	reg    *registry
 	// busyRetry reruns a transaction on SQLITE_BUSY (Concurrent only).
 	busyRetry bool
-	ids       *ids.Generator
+	ids       *ids.Set
+	idSpec    func(string) ids.Spec
 	now       func() time.Time
 	created   storerules.Clock
 	base      func() time.Time // the clock before Floor
@@ -64,13 +67,9 @@ var _ store.Store = (*Store)(nil)
 // newStore returns a store over the writer db and the reader pool rdb
 // (nil: read on db). Close closes both.
 func newStore(db, rdb *sql.DB, opt Options) (*Store, error) {
-	gen, err := ids.New()
-	if err != nil {
-		return nil, err
-	}
 	s := &Store{
 		db: db, wc: newStmtCache(db), reg: &registry{}, busyRetry: opt.Concurrent,
-		ids: gen, now: opt.Now, prefix: opt.Prefix, commit: opt.OnCommit,
+		ids: &ids.Set{}, idSpec: opt.IDs, now: opt.Now, prefix: opt.Prefix, commit: opt.OnCommit,
 	}
 	s.q = s.wc.bind(db)
 	s.rdb, s.rc, s.rq = db, s.wc, s.q
@@ -343,7 +342,7 @@ func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt st
 	}
 	id := nt.ID
 	if id == "" {
-		if id, err = s.ids.Next(s.prefix(nt.Project), idTag(nt.Kind)); err != nil {
+		if id, err = s.mint(ctx, q, nt.Project, idTag(nt.Kind)); err != nil {
 			return store.Ticket{}, err
 		}
 	}
@@ -461,9 +460,46 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 	return out, err
 }
 
-// NewID mints an id with the project's prefix.
+// NewID mints an id with the project's prefix, in its own transaction
+// (seq bumps a counter).
 func (s *Store) NewID(project string) (string, error) {
-	return s.ids.Next(s.prefix(project), "")
+	var id string
+	err := s.tx(context.Background(), func(q sqldb.Querier) error {
+		var err error
+		id, err = s.mint(context.Background(), q, project, "")
+		return err
+	})
+	return id, err
+}
+
+// mint returns a new id for project inside the write transaction q.
+func (s *Store) mint(ctx context.Context, q sqldb.Querier, project, tag string) (string, error) {
+	var spec ids.Spec
+	if s.idSpec != nil {
+		spec = s.idSpec(project)
+	}
+	g, err := s.ids.Get(spec)
+	if err != nil {
+		return "", err
+	}
+	return ids.Mint(g, s.prefix(project), tag, func(prefix string) (int64, error) {
+		return nextSeq(ctx, q, prefix)
+	}, func(id string) (bool, error) { return q.TicketExists(ctx, id) })
+}
+
+// nextSeq bumps prefix's seq counter. The first use starts it past every
+// seq-shaped id already under the prefix.
+func nextSeq(ctx context.Context, q sqldb.Querier, prefix string) (int64, error) {
+	n, err := q.BumpSeq(ctx, prefix)
+	if !errors.Is(err, sql.ErrNoRows) {
+		return n, err
+	}
+	existing, err := q.TicketIDsWithPrefix(ctx, prefix+"-")
+	if err != nil {
+		return 0, err
+	}
+	n = ids.SeqStart(prefix, existing)
+	return n, q.StartSeq(ctx, prefix, n)
 }
 
 // idTag is the kind tag in a new id: sessions get one so their ids are

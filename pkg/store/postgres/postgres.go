@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -50,6 +51,8 @@ type Options struct {
 	Now func() time.Time
 	// Prefix maps a project to its id prefix. Default: the project name.
 	Prefix func(project string) string
+	// IDs picks a project's id generator (JOB-57). Default: sonyflake.
+	IDs func(project string) ids.Spec
 	// OnCommit, if set, runs after every committed write transaction.
 	// The controller uses it to wake events.subscribe (#147).
 	OnCommit func()
