@@ -67,13 +67,17 @@ func (c *Controller) reloadWith(by string, files []string) (err error) {
 			}
 		}
 	}()
+	start := time.Now()
 	c.reloadMu.Lock()
 	defer c.reloadMu.Unlock()
 	// Swap between passes: a pass that read the old pools must finish
 	// before reload returns (#102).
 	c.tickMu.Lock()
 	defer c.tickMu.Unlock()
+	// Where a slow reload spent its time (JOB-102).
+	locked := time.Now()
 	cfg, err := config.Load(c.root)
+	loaded := time.Now()
 	if err == nil {
 		var lc *liveConfig
 		if lc, err = newLiveConfig(cfg); err == nil {
@@ -97,12 +101,14 @@ func (c *Controller) reloadWith(by string, files []string) (err error) {
 			c.tuneCgroup()
 			// A host still missing a prerequisite quarantines the pool again
 			// now, not at its next spawn (#728).
+			preflight := time.Now()
 			c.preflightPools(context.Background())
 			msg := "config reloaded"
 			if by != "" {
 				msg += " (" + by + ")"
 			}
-			c.log.Info(msg, "files", files, "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows))
+			c.log.Info(msg, "files", files, "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows),
+				"took", time.Since(start), "lock_wait", locked.Sub(start), "load", loaded.Sub(locked), "preflight", time.Since(preflight))
 			c.saveLastGood(cfg)
 			c.mu.Lock()
 			c.configErr, c.watchErr = "", ""

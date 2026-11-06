@@ -158,10 +158,15 @@ func (c serveCmd) Run(g *Globals) error {
 	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Tracer: tel.Tracer, Reload: reload, Version: v, Commit: cm, ShellProbe: control.DefaultShellProbe})
 }
 
-type reloadCmd struct{}
+type reloadCmd struct {
+	// A reload waits for the running supervisor pass and preflights every
+	// isolated pool; on a large config that passed 30s while the reload
+	// still applied, failing the sync unit (JOB-102).
+	Timeout time.Duration `default:"5m" help:"How long to wait for the reload to finish."`
+}
 
-func (reloadCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodReload, struct{}{}, nil)
+func (c reloadCmd) Run(g *Globals) error {
+	return g.callTimeout(c.Timeout, rpc.MethodReload, struct{}{}, nil)
 }
 
 type drainCmd struct {

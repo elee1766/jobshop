@@ -2,8 +2,10 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"slices"
+	"sync"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/acphost/pkg/sandbox"
@@ -50,33 +52,82 @@ func (c *Controller) preflightSpec(cfg *config.Config, pool string) (host.Spec, 
 	return s, s.Sandbox != nil || s.User != nil || s.Cgroup != nil
 }
 
+// preflightParallel bounds the preflight checks run at once. A dns_check
+// spawns pasta and can take seconds.
+const preflightParallel = 8
+
+// preflightResult is one distinct check's report.
+type preflightResult struct {
+	rep host.PreflightReport
+	err error
+}
+
 // preflightPools runs host.Preflight for every isolated pool at start and
 // after a reload, and quarantines a pool whose host is missing something
 // (#728). The escalation then names each failed check and its fix before
 // any session spawns, instead of after the first spawn fails.
+//
+// Pools that ask for the same isolation share one check, and distinct
+// checks run in parallel: a reload holds the tick lock through this, and
+// one serial dns_check per pool took a 58-pool config past the CLI's
+// deadline (JOB-102).
 func (c *Controller) preflightPools(ctx context.Context) {
 	cfg := c.config()
 	check := c.opt.Preflight
 	if check == nil {
 		check = host.Preflight
 	}
+	type job struct {
+		spec host.Spec
+		dns  string
+	}
+	jobs := map[string]job{}
+	keyOf := map[string]string{}
 	for _, pool := range slices.Sorted(maps.Keys(cfg.Pools)) {
 		spec, ok := c.preflightSpec(cfg, pool)
 		if !ok {
 			continue
 		}
-		var opts []host.PreflightOption
-		if name := cfg.SandboxFor(pool).DNSCheck; name != "" {
-			// Spawns pasta, so only here, once per start or reload.
-			opts = append(opts, host.WithDNSCheck(name))
-		}
-		rep, err := check(spec, opts...)
+		dns := cfg.SandboxFor(pool).DNSCheck
+		key, err := json.Marshal(struct {
+			Sandbox, User, Cgroup any
+			DNS                   string
+		}{spec.Sandbox, spec.User, spec.Cgroup, dns})
 		if err != nil {
-			c.log.WarnContext(ctx, "isolation preflight", "pool", pool, "err", err)
+			// Not expected: the spec is plain data. Check it alone.
+			key = []byte("pool:" + pool)
+		}
+		keyOf[pool] = string(key)
+		jobs[string(key)] = job{spec: spec, dns: dns}
+	}
+	results := make(map[string]preflightResult, len(jobs))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, preflightParallel)
+	for key, j := range jobs {
+		wg.Go(func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			var opts []host.PreflightOption
+			if j.dns != "" {
+				// Spawns pasta, so only here, once per start or reload.
+				opts = append(opts, host.WithDNSCheck(j.dns))
+			}
+			rep, err := check(j.spec, opts...)
+			mu.Lock()
+			results[key] = preflightResult{rep: rep, err: err}
+			mu.Unlock()
+		})
+	}
+	wg.Wait()
+	for _, pool := range slices.Sorted(maps.Keys(keyOf)) {
+		res := results[keyOf[pool]]
+		if res.err != nil {
+			c.log.WarnContext(ctx, "isolation preflight", "pool", pool, "err", res.err)
 			continue
 		}
-		if !rep.OK() {
-			c.quarantinePool(ctx, pool, "isolation preflight:\n"+rep.String())
+		if !res.rep.OK() {
+			c.quarantinePool(ctx, pool, "isolation preflight:\n"+res.rep.String())
 		}
 	}
 }

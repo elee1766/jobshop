@@ -572,6 +572,8 @@ Flags:
                          ($JOBSHOP_ROOT).
       --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
                          else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --timeout=5m       How long to wait for the reload to finish.
 ```
 
 ## jobshop gateway
