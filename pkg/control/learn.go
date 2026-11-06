@@ -190,7 +190,7 @@ func (c *Controller) record(ctx context.Context, kind string, t store.Ticket, su
 		l.Session = t.Holder
 	}
 	if _, err := c.addLearning(ctx, l); err != nil {
-		c.log.Error("record learning", "ticket", t.ID, "kind", kind, "err", err)
+		c.log.ErrorContext(ctx, "record learning", "ticket", t.ID, "kind", kind, "err", err)
 	}
 }
 

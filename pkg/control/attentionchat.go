@@ -110,7 +110,7 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, it rpc.AttentionIt
 	if err := c.updateSessionFields(ctx, sess.ID, func(f *store.SessionFields) {
 		f.ReadOnly, f.Prestart = true, prestart
 	}); err != nil {
-		c.log.Warn("attention chat fields", "session", sess.ID, "err", err)
+		c.log.WarnContext(ctx, "attention chat fields", "session", sess.ID, "err", err)
 	}
 	// The prompt is context for the model: the first visible turn is its
 	// own summary, as for escalation chats.
@@ -119,10 +119,10 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, it rpc.AttentionIt
 	}
 	if isTicket {
 		if err := c.recordAttentionChat(ctx, t.ID, res.Key); err != nil {
-			c.log.Warn("record attention chat", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "record attention chat", "ticket", t.ID, "err", err)
 		}
 	}
-	c.log.Info("attention chat opened", "item", it.Kind+":"+it.ID, "session", sess.ID, "prestart", prestart)
+	c.log.InfoContext(ctx, "attention chat opened", "item", it.Kind+":"+it.ID, "session", sess.ID, "prestart", prestart)
 	return res, nil
 }
 
@@ -165,7 +165,7 @@ func (c *Controller) recordAttentionSummary(ctx context.Context, session, said s
 		return
 	}
 	if err := c.updateDeskMeta(ctx, id, "attention_summary", summaryOf(said)); err != nil {
-		c.log.Warn("record attention summary", "ticket", id, "err", err)
+		c.log.WarnContext(ctx, "record attention summary", "ticket", id, "err", err)
 	}
 }
 
@@ -309,7 +309,7 @@ func (c *Controller) sweepAttentionChats(ctx context.Context) {
 		}
 		res, err := c.ensureAttentionChat(ctx, it, "", true)
 		if err != nil {
-			c.log.Warn("prestart attention chat", "item", it.Kind+":"+it.ID, "err", err)
+			c.log.WarnContext(ctx, "prestart attention chat", "item", it.Kind+":"+it.ID, "err", err)
 			continue
 		}
 		if res.Started {
@@ -344,10 +344,10 @@ func (c *Controller) prestartable(ctx context.Context, it rpc.AttentionItem) boo
 
 // closeAttentionChat ends the chat of an item that left attention.
 func (c *Controller) closeAttentionChat(ctx context.Context, s store.Ticket, item string) {
-	c.log.Info("attention item left, closing its chat", "item", item, "session", s.ID)
+	c.log.InfoContext(ctx, "attention item left, closing its chat", "item", item, "session", s.ID)
 	_, err := c.closeTicket(ctx, scope{admin: true, actor: "controller"}, rpc.CloseParams{ID: s.ID, Resolution: "resolved"})
 	if err != nil && !errors.Is(err, store.ErrClosed) {
-		c.log.Warn("close attention chat", "session", s.ID, "err", err)
+		c.log.WarnContext(ctx, "close attention chat", "session", s.ID, "err", err)
 	}
 }
 
@@ -394,7 +394,7 @@ func (c *Controller) humanWrote(ctx context.Context, id string) {
 	}
 	c.setReadOnly(id, false)
 	if err := c.updateSessionFields(ctx, id, func(f *store.SessionFields) { f.ReadOnly = false }); err != nil {
-		c.log.Warn("clear read-only", "session", id, "err", err)
+		c.log.WarnContext(ctx, "clear read-only", "session", id, "err", err)
 	}
 }
 
@@ -409,7 +409,7 @@ func (c *Controller) resumeSession(ctx context.Context, id string) {
 		return
 	}
 	if err := c.updateSessionFields(ctx, id, func(f *store.SessionFields) { f.Suspended = false }); err != nil {
-		c.log.Warn("resume session", "session", id, "err", err)
+		c.log.WarnContext(ctx, "resume session", "session", id, "err", err)
 	}
 	c.wakeRunner(id)
 }
@@ -436,7 +436,7 @@ func (r *runner) suspend(nc net.Conn) error {
 	if err := r.c.updateSessionFields(r.ctx, r.id, func(f *store.SessionFields) { f.Suspended = true }); err != nil {
 		return err
 	}
-	r.log.Info("suspending idle attention chat")
+	r.log.InfoContext(r.ctx, "suspending idle attention chat")
 	r.lifecycle("suspend")
 	_ = nc.Close()
 	r.c.stopHost(r.dir)

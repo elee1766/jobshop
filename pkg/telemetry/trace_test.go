@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -51,7 +52,7 @@ func TestStartExportsLogs(t *testing.T) {
 
 	ctx := context.Background()
 	var stderr strings.Builder
-	p, err := Start(ctx, "desk", Export{LogsURL: srv.URL + "/v1/logs"}, &stderr)
+	p, err := Start(ctx, "desk", Export{LogsURL: srv.URL + "/v1/logs"}, slog.NewTextHandler(&stderr, nil))
 	require.NoError(t, err)
 	p.Log.Info("hello")
 	require.NoError(t, p.Shutdown(ctx))

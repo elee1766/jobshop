@@ -187,15 +187,15 @@ func (c *Controller) runRuleCommand(ctx context.Context, r config.PromptRule, ev
 	err = cmd.Run()
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		c.log.Warn("prompt rule command timed out", "rule", r.Name, "session", ev.Session)
+		c.log.WarnContext(ctx, "prompt rule command timed out", "rule", r.Name, "session", ev.Session)
 		return ""
 	case err != nil:
-		c.log.Warn("prompt rule command failed", "rule", r.Name, "session", ev.Session,
+		c.log.WarnContext(ctx, "prompt rule command failed", "rule", r.Name, "session", ev.Session,
 			"err", err, "stderr", clipLog(stderr.String()))
 		return ""
 	}
 	if out.over {
-		c.log.Warn("prompt rule command output truncated", "rule", r.Name, "max_bytes", config.MaxRuleOutput)
+		c.log.WarnContext(ctx, "prompt rule command output truncated", "rule", r.Name, "max_bytes", config.MaxRuleOutput)
 	}
 	return strings.TrimSpace(strings.ToValidUTF8(out.b.String(), ""))
 }

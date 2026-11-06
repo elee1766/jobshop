@@ -39,33 +39,33 @@ func (s stall) key() string { return "stall:" + s.signal + ":" + s.subject }
 func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config.Trigger) {
 	fire, _, err := c.evalStall(ctx, name, tr)
 	if err != nil {
-		c.log.Error("stall trigger", "trigger", name, "err", err)
+		c.log.ErrorContext(ctx, "stall trigger", "trigger", name, "err", err)
 		return
 	}
 	for _, s := range fire {
 		if s.signal == config.StallLinearIssueNoRun {
 			busy, err := c.linearIssueHasOpenRun(ctx, s.subject)
 			if err != nil {
-				c.log.Error("stall recheck", "trigger", name, "key", s.key(), "err", err)
+				c.log.ErrorContext(ctx, "stall recheck", "trigger", name, "key", s.key(), "err", err)
 				continue
 			}
 			if busy {
-				c.log.Info("stall skipped: issue got a run during the scan", "trigger", name, "key", s.key())
+				c.log.InfoContext(ctx, "stall skipped: issue got a run during the scan", "trigger", name, "key", s.key())
 				continue
 			}
 		}
 		t, existing, err := c.fireStall(ctx, name, tr, s)
 		if err != nil {
-			c.log.Error("stall fire", "trigger", name, "key", s.key(), "err", err)
+			c.log.ErrorContext(ctx, "stall fire", "trigger", name, "key", s.key(), "err", err)
 			continue
 		}
 		if existing {
 			// Already handled by an open run with the same key: not a
 			// new stall to learn from.
-			c.log.Debug("stall already has an open run", "trigger", name, "key", s.key(), "run", t.ID)
+			c.log.DebugContext(ctx, "stall already has an open run", "trigger", name, "key", s.key(), "run", t.ID)
 			continue
 		}
-		c.log.Info("stall trigger fired", "trigger", name, "key", s.key(), "run", t.ID)
+		c.log.InfoContext(ctx, "stall trigger fired", "trigger", name, "key", s.key(), "run", t.ID)
 		c.recordStall(ctx, s, t.ID)
 	}
 }

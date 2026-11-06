@@ -2,9 +2,9 @@ package telemetry
 
 import (
 	"context"
-	"io"
 	"log/slog"
 
+	"github.com/elee1766/jobshop/pkg/logctx"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -17,14 +17,16 @@ type Process struct {
 }
 
 // Start builds the logger and tracer for the process named name (serve,
-// desk, ingest, ...). Logs go to stderr as text and, when ex has a logs
-// URL, to OTLP. Records carry process=name.
-func Start(ctx context.Context, name string, ex Export, stderr io.Writer) (*Process, error) {
+// desk, ingest, ...). Logs go to base (the --log-level/--log-format
+// handler) and, when ex has a logs URL, to OTLP. Records carry
+// process=name and the ids in ctx (logctx, outermost so both sinks get
+// them).
+func Start(ctx context.Context, name string, ex Export, base slog.Handler) (*Process, error) {
 	t, err := NewTracing(ctx, ex)
 	if err != nil {
 		return nil, err
 	}
-	log := slog.New(t.LogHandler(slog.NewTextHandler(stderr, nil))).With("process", name)
+	log := slog.New(logctx.NewHandler(t.LogHandler(logctx.Unwrap(base)))).With("process", name)
 	return &Process{Log: log, Tracer: t.Tracer(), t: t}, nil
 }
 

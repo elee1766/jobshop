@@ -205,7 +205,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 	now := c.now()
 	followers, byThread, order, err := c.followers(ctx, now)
 	if err != nil {
-		c.log.Warn("subscriptions: list", "err", err)
+		c.log.WarnContext(ctx, "subscriptions: list", "err", err)
 		return
 	}
 	wrote := false
@@ -217,7 +217,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 		th, seen := threadOf(fs, k)
 		cs, err := src.Comments(ctx, th, seen)
 		if err != nil {
-			c.log.Warn("subscriptions: fetch", "thread", k, "err", err)
+			c.log.WarnContext(ctx, "subscriptions: fetch", "thread", k, "err", err)
 			continue
 		}
 		last := seen
@@ -234,7 +234,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 				cm.Self = true
 			}
 			if err := c.inboxComment(ctx, th, cm); err != nil {
-				c.log.Warn("inbox: poller write", "thread", k, "err", err)
+				c.log.WarnContext(ctx, "inbox: poller write", "thread", k, "err", err)
 				ok = false
 				break // read position stays; retried next pass
 			}
@@ -284,7 +284,7 @@ func (c *Controller) followers(ctx context.Context, now time.Time) ([]*follower,
 		}
 		f, err := c.follow(ctx, t, now)
 		if err != nil {
-			c.log.Warn("subscriptions: follow", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "subscriptions: follow", "ticket", t.ID, "err", err)
 			continue
 		}
 		if f != nil {
@@ -386,7 +386,7 @@ func (c *Controller) saveThreads(ctx context.Context, f *follower) {
 	}
 	t, err := c.store.Update(ctx, "controller", cur.ID, store.Update{Meta: mb, IfRevision: cur.Revision})
 	if err != nil {
-		c.log.Warn("subscriptions: save", "ticket", cur.ID, "err", err)
+		c.log.WarnContext(ctx, "subscriptions: save", "ticket", cur.ID, "err", err)
 		return
 	}
 	f.t = t
@@ -410,7 +410,7 @@ func (c *Controller) githubSelf(ctx context.Context, repo string) string {
 	}
 	l, err := c.minter.Login(ctx, name, cfg.Identities[name])
 	if err != nil {
-		c.log.Warn("identity: self login", "identity", name, "err", err)
+		c.log.WarnContext(ctx, "identity: self login", "identity", name, "err", err)
 		return ""
 	}
 	return l
@@ -622,7 +622,7 @@ func (c *Controller) resumeFollower(ctx context.Context, t store.Ticket, th thre
 	if _, err := store.Reopen(ctx, c.store, "controller", t.ID); err != nil {
 		return err
 	}
-	c.log.Info("subscriptions: resumed ticket", "ticket", t.ID, "thread", th.key(), "session", last)
+	c.log.InfoContext(ctx, "subscriptions: resumed ticket", "ticket", t.ID, "thread", th.key(), "session", last)
 	if last == "" {
 		return nil
 	}
@@ -630,7 +630,7 @@ func (c *Controller) resumeFollower(ctx context.Context, t store.Ticket, th thre
 		return nil
 	}
 	if _, err := c.store.Update(ctx, "controller", t.ID, store.Update{Holder: &last}); err != nil {
-		c.log.Warn("subscriptions: assign", "ticket", t.ID, "session", last, "err", err)
+		c.log.WarnContext(ctx, "subscriptions: assign", "ticket", t.ID, "session", last, "err", err)
 	}
 	return nil
 }

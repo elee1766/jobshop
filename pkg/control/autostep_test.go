@@ -163,7 +163,7 @@ func startAuto(t *testing.T, root config.Root, clk clock.Clock) (admin *rpc.Clie
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() {
-		done <- control.Run(ctx, root, withPass(root.Dir, control.Options{Tick: time.Hour, Clock: clk}))
+		done <- control.Run(ctx, root, withPass(root.Dir, control.Options{Tick: time.Hour, Clock: clk, Log: testLog(t)}))
 	}()
 	var once sync.Once
 	stop = func() {

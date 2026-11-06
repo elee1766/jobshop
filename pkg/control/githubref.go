@@ -50,14 +50,14 @@ func (c *Controller) backfillGitHubRepo(ctx context.Context) error {
 				continue
 			}
 			if _, err := c.store.Update(ctx, "controller", t.ID, store.Update{Meta: mb, IfRevision: t.Revision}); err != nil {
-				c.log.Warn("backfill github repo", "ticket", t.ID, "err", err)
+				c.log.WarnContext(ctx, "backfill github repo", "ticket", t.ID, "err", err)
 				continue
 			}
 			n++
 		}
 	}
 	if n > 0 {
-		c.log.Info("backfilled meta.github.repo", "tickets", n)
+		c.log.InfoContext(ctx, "backfilled meta.github.repo", "tickets", n)
 	}
 	return nil
 }

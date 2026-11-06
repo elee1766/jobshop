@@ -154,7 +154,7 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 	rel, err := c.store.ReleaseSlots(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
-			c.log.Error("release slots", "err", err)
+			c.log.ErrorContext(ctx, "release slots", "err", err)
 		}
 		return
 	}
@@ -171,10 +171,10 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 			return
 		}
 		if err != nil {
-			c.log.Warn("resource reset failed: slot gone", "resource", sl.Pool, "slot", sl.ID, "err", err)
+			c.log.WarnContext(ctx, "resource reset failed: slot gone", "resource", sl.Pool, "slot", sl.ID, "err", err)
 		}
 		if _, _, serr := c.store.Slot(ctx, "", store.SlotEvent{Op: store.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: err == nil}); serr != nil {
-			c.log.Error("record slot reset", "resource", sl.Pool, "slot", sl.ID, "err", serr)
+			c.log.ErrorContext(ctx, "record slot reset", "resource", sl.Pool, "slot", sl.ID, "err", serr)
 		}
 	}
 }
@@ -256,7 +256,7 @@ func (c *Controller) resourceUnhealthy(ctx context.Context, sc scope, p rpc.Slot
 		return nil, err
 	}
 	if reopened != "" {
-		c.log.Info("resource unhealthy: claim requeued", "resource", p.Resource, "slot", p.Slot, "ticket", reopened)
+		c.log.InfoContext(ctx, "resource unhealthy: claim requeued", "resource", p.Resource, "slot", p.Slot, "ticket", reopened)
 		// The holder's session must stop working the requeued ticket.
 		c.stepEvents(ctx, []string{reopened})
 	}

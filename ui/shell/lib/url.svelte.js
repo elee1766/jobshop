@@ -48,6 +48,8 @@ export function go(patch) {
   // step back instead of stacking another entry (see closeSession).
   const opening = !!patch.session && !url.session;
   const next = /** @type {UrlState} */ ({ ...url });
+  // Read-only (ro=1, JOB-54) belongs to the session it was opened for.
+  if ('session' in patch && !('ro' in patch)) next.ro = '';
   for (const [k, v] of Object.entries(patch)) if (keyRe.test(k)) next[k] = v ?? '';
   if (!viewRe.test(next.view)) next.view = 'attention';
   const q = new URLSearchParams();

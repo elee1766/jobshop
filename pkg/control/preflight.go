@@ -70,7 +70,7 @@ func (c *Controller) preflightPools(ctx context.Context) {
 		}
 		rep, err := check(spec, opts...)
 		if err != nil {
-			c.log.Warn("isolation preflight", "pool", pool, "err", err)
+			c.log.WarnContext(ctx, "isolation preflight", "pool", pool, "err", err)
 			continue
 		}
 		if !rep.OK() {

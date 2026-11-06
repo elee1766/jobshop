@@ -117,6 +117,7 @@ func (c initCmd) Run() error {
 }
 
 type serveCmd struct {
+	LogFlags
 	Tick time.Duration `help:"Lease sweep interval." default:"30s"`
 }
 
@@ -128,7 +129,7 @@ func (c serveCmd) Run(g *Globals) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	// Telemetry is read once: changing the export needs a restart.
-	tel, err := startTelemetry(ctx, r, "serve")
+	tel, err := startTelemetry(ctx, r, "serve", c.LogFlags)
 	if err != nil {
 		return err
 	}

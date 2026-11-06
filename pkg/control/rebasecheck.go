@@ -55,13 +55,13 @@ func (c *Controller) rebaseResolution(ctx context.Context, step store.Ticket) (s
 	}
 	src, ok := c.activitySource().(revertSource)
 	if !ok {
-		c.log.Warn("rebase check: no PR source", "step", step.ID, "repo", repo, "pr", n)
+		c.log.WarnContext(ctx, "rebase check: no PR source", "step", step.ID, "repo", repo, "pr", n)
 		return store.ResolutionRebase, ""
 	}
 	pr, err := src.PullRequest(ctx, repo, n)
 	state := strings.ToLower(pr.MergeableState)
 	if err != nil || state == "" || state == "unknown" {
-		c.log.Warn("rebase check: merge state unreadable, accepting rebase", "step", step.ID, "repo", repo, "pr", n, "state", state, "err", err)
+		c.log.WarnContext(ctx, "rebase check: merge state unreadable, accepting rebase", "step", step.ID, "repo", repo, "pr", n, "state", state, "err", err)
 		return store.ResolutionRebase, ""
 	}
 	if state == "dirty" || state == "behind" {

@@ -34,6 +34,7 @@ func (ingestWorkersCmd) Run(g *Globals) error {
 }
 
 type ingestWorkCmd struct {
+	LogFlags
 	Once     bool          `help:"Admit until nothing is pending and exit."`
 	Worker   string        `help:"Worker id (default <host>-<pid>)."`
 	Every    time.Duration `default:"1s" help:"Pause when nothing is pending, without --once. Each claim is the worker's heartbeat."`
@@ -56,7 +57,7 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	tel, err := startTelemetry(ctx, r, "ingest-work")
+	tel, err := startTelemetry(ctx, r, "ingest-work", c.LogFlags)
 	if err != nil {
 		return err
 	}
@@ -64,7 +65,7 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 	w := control.IngestWorker{
 		Call: func(_ context.Context, method string, params, out any) error { return g.call(method, params, out) },
 		Dir:  r.Dir, Worker: id, Host: host, Dispatch: c.Dispatch, NoAdmit: c.NoAdmit,
-		Log: tel.Log.With("worker", id),
+		Log: tel.Log.With("component", "ingest-work", "worker", id),
 	}
 	if c.Once {
 		n, d, err := w.Pass(ctx)
@@ -161,6 +162,7 @@ func (c ingestDrainCmd) Run(g *Globals) error {
 }
 
 type ingestServeCmd struct {
+	LogFlags
 	Listen string `help:"TCP address (default ingest.listen, else 127.0.0.1:8740)."`
 	Spool  string `help:"Spool database (default ingest.spool, else <root>/ingest/spool.db)."`
 }
@@ -190,12 +192,12 @@ func (c ingestServeCmd) Run(g *Globals) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	tel, err := startTelemetry(ctx, r, "ingest")
+	tel, err := startTelemetry(ctx, r, "ingest", c.LogFlags)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
-	log := tel.Log
+	log := tel.Log.With("component", "ingest")
 	sp, err := ingest.OpenSpool(ctx, path)
 	if err != nil {
 		return err

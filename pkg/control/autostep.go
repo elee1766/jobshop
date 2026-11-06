@@ -106,7 +106,7 @@ func (c *Controller) resumeAutoStep(ctx context.Context, cfg *config.Config, t s
 	if ok && s.OnRestart == config.OnRestartFail {
 		cl := store.Claim{TicketID: t.ID, Holder: autoHolder, Fence: t.Fence}
 		if t2, err := c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "controller restarted during the attempt (on_restart: fail)"}); err == nil {
-			c.log.Warn("step attempt lost on restart", "ticket", t.ID, "step", s.ID)
+			c.log.WarnContext(ctx, "step attempt lost on restart", "ticket", t.ID, "step", s.ID)
 			c.stepEvent(ctx, t2)
 		}
 		return
@@ -231,7 +231,7 @@ func (c *Controller) finishAutoStep(ctx context.Context, t store.Ticket, cl stor
 		_, err = c.store.Update(ctx, autoHolder, t.ID, store.Update{Fields: b})
 	}
 	if err != nil {
-		c.log.Error("step record", "ticket", t.ID, "err", err)
+		c.log.ErrorContext(ctx, "step record", "ticket", t.ID, "err", err)
 	}
 	note := fmt.Sprintf("%s %s: %s", sf.Type, res.command, res.result)
 	if res.err != "" {
@@ -247,10 +247,10 @@ func (c *Controller) finishAutoStep(ctx context.Context, t store.Ticket, cl stor
 		t, err = store.Close(ctx, c.store, autoHolder, t.ID, &cl, "failed")
 	}
 	if err != nil {
-		c.log.Error("step finish", "ticket", t.ID, "result", res.result, "err", err)
+		c.log.ErrorContext(ctx, "step finish", "ticket", t.ID, "result", res.result, "err", err)
 		return
 	}
-	c.log.Info("step attempt", "ticket", t.ID, "step", sf.Step, "type", sf.Type, "result", res.result)
+	c.log.InfoContext(ctx, "step attempt", "ticket", t.ID, "step", sf.Step, "type", sf.Type, "result", res.result)
 	c.stepEvent(ctx, t)
 }
 

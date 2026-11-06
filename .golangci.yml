@@ -8,6 +8,7 @@ linters:
     - gocritic
     - misspell
     - revive
+    - sloglint
     - unconvert
   settings:
     forbidigo:
@@ -17,6 +18,11 @@ linters:
         - pattern: ^time\.Sleep$
           msg: no time.Sleep in tests; wait on an event or run a pass (#359)
       analyze-types: true
+    sloglint:
+      # Log through a passed logger with the ctx in scope, so the
+      # logctx and OTel handlers see it (JOB-49).
+      context: scope
+      no-global: all
   exclusions:
     rules:
       # forbidigo is for tests only; production code may sleep.

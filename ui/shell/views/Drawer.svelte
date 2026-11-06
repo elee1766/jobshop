@@ -21,7 +21,7 @@
       .filter((x) => matches(x.c.match, target(t, run)))
       .sort((a, b) => Number(b.plugin.source === 'builtin') - Number(a.plugin.source === 'builtin'));
   /** @param {any} data */
-  const ctx = (data) => ({ ticket: data.ticket, run: data.run, trace: data.trace, comments: data.comments });
+  const ctx = (data) => ({ ticket: data.ticket, run: data.run, trace: data.trace, comments: data.comments, sessions: data.sessions });
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }} />

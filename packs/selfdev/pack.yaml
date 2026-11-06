@@ -4,6 +4,8 @@
 defaults:
   dev_sessions: 2
   refinery_sessions: 1
+  refinery_model: ""
+  refinery_effort: ""
   # Local memory (#592): relative to the root dir, so <root>/memory.
   memory_dir: memory
   memory_cap: 2200
@@ -41,6 +43,8 @@ extends:
       agent: "{{.agent}}"
       dev_sessions: "{{.dev_sessions}}"
       refinery_sessions: "{{.refinery_sessions}}"
+      refinery_model: "{{.refinery_model}}"
+      refinery_effort: "{{.refinery_effort}}"
       human: elee1766
       # Contributors whose issue reports are picked up (#340).
       authors: zexoverz,hhenry88,forgotten-memory

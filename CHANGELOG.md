@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/elee1766/jobshop/compare/v0.3.0...v0.3.1) (2026-11-06)
+
+
+### Features
+
+* **cli:** log level and format flags, context log ids, quiet tests (JOB-49) ([#769](https://github.com/elee1766/jobshop/issues/769)) ([371a8c6](https://github.com/elee1766/jobshop/commit/371a8c6546f5a2e3bd77fa9f13e693f1cac6ee95))
+
 ## [0.3.0](https://github.com/elee1766/jobshop/compare/v0.2.5...v0.3.0) (2026-11-06)
 
 

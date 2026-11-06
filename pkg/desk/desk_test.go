@@ -157,6 +157,49 @@ func TestViews(t *testing.T) {
 	assert.NotNil(t, ss)
 }
 
+// TestHolderSessions: api/work?detail=1 carries each run's steps, last
+// comment and the holder of its in-progress step, and api/ticket fills
+// trace nodes with their holder session (JOB-54).
+func TestHolderSessions(t *testing.T) {
+	step := store.Ticket{ID: "s1", Status: store.StatusInProgress, Holder: "js-s-abc123"}
+	ctl := &fakeCtl{results: map[string]any{
+		rpc.MethodRunList: []store.Ticket{{ID: "r1", Kind: store.KindRun}},
+		rpc.MethodRunShow: rpc.RunResult{Steps: []store.Ticket{step, {ID: "s2", Status: store.StatusOpen}}},
+		rpc.MethodTicketShow: rpc.ShowResult{
+			Ticket:   store.Ticket{ID: "r1", Kind: store.KindRun},
+			Comments: []store.Comment{{ID: 1, Body: "a"}, {ID: 2, Body: "b"}},
+		},
+		rpc.MethodTicketTrace: rpc.TraceNode{ID: "r1", Children: []rpc.TraceNode{{ID: "s1", Holder: "js-s-abc123"}}},
+		rpc.MethodSessionList: []rpc.SessionInfo{
+			{ID: "js-s-abc123", DisplayName: "dev worker", Alive: true, Busy: true, Tool: "go test", Ticket: &store.Ticket{Pool: "dev"}},
+			{ID: "js-s-other"},
+		},
+	}}
+	h := New(Config{}, ctl, nil).Handler()
+
+	var w Work
+	get(t, h, "/api/work?state=running&detail=1", &w)
+	require.Contains(t, w.Detail, "r1")
+	assert.Len(t, w.Detail["r1"].Steps, 2)
+	require.NotNil(t, w.Detail["r1"].Comment)
+	assert.Equal(t, "b", w.Detail["r1"].Comment.Body)
+	want := rpc.HolderInfo{ID: "js-s-abc123", DisplayName: "dev worker", Pool: "dev", Alive: true, Busy: true, Tool: "go test"}
+	assert.Equal(t, map[string]rpc.HolderInfo{"js-s-abc123": want}, w.Sessions)
+
+	var plain Work
+	get(t, h, "/api/work", &plain)
+	assert.Nil(t, plain.Detail)
+	assert.Nil(t, plain.Sessions)
+
+	var tv TicketView
+	get(t, h, "/api/ticket/r1", &tv)
+	assert.Equal(t, want, tv.Sessions["js-s-abc123"])
+	require.NotNil(t, tv.Trace)
+	require.NotNil(t, tv.Trace.Children[0].Session)
+	assert.Equal(t, "dev worker", tv.Trace.Children[0].Session.DisplayName)
+	assert.Nil(t, tv.Trace.Session)
+}
+
 func TestGuard(t *testing.T) {
 	h := New(Config{Hosts: []string{"desk.tail"}}, &fakeCtl{results: map[string]any{}}, nil).Handler()
 	for host, want := range map[string]int{

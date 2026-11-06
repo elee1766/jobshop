@@ -43,6 +43,9 @@ func (c *Controller) traceNode(ctx context.Context, id string, depth int, seen m
 		ID: t.ID, Title: t.Title, Pool: t.Pool, Status: t.Status,
 		Resolution: t.Resolution, CreatedBy: t.CreatedBy, Trigger: triggerName(t.Meta),
 	}
+	if t.Status == store.StatusInProgress {
+		n.Holder = t.Holder
+	}
 	th, err := c.store.Thread(ctx, id, store.AllParts)
 	if err != nil {
 		return n, err

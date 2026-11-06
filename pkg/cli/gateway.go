@@ -16,6 +16,7 @@ import (
 )
 
 type gatewayCmd struct {
+	LogFlags
 	Name string `arg:"" help:"A2A gateway name under gateway: in jobshop.yaml."`
 }
 
@@ -41,7 +42,7 @@ func (c gatewayCmd) Run(g *Globals) error {
 	sock := r.AdminSocket()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	tel, err := startTelemetry(ctx, r, "gateway")
+	tel, err := startTelemetry(ctx, r, "gateway", c.LogFlags)
 	if err != nil {
 		return err
 	}

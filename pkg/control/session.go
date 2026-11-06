@@ -34,6 +34,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/journal"
+	"github.com/elee1766/jobshop/pkg/logctx"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -107,6 +108,10 @@ type runner struct {
 	// running turn and sends nothing. inTurn is set while one runs.
 	cancelNow chan struct{}
 	inTurn    atomic.Bool
+	// tools maps the running turn's open tool calls to their titles,
+	// for session list (JOB-54). Cleared when a turn starts. Under mu.
+	tools     map[acp.ToolCallId]string
+	toolOrder []acp.ToolCallId
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
@@ -189,7 +194,7 @@ func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnec
 	}
 	frames, _, err := host.ReadJournal(filepath.Join(r.dir, host.JournalFile), 0)
 	if err != nil {
-		r.log.Warn("read journal for summary", "err", err)
+		r.log.WarnContext(ctx, "read journal for summary", "err", err)
 	}
 	summary := host.Summarize(frames, host.DefaultSummaryBytes)
 	source := "journal"
@@ -199,18 +204,18 @@ func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnec
 		source = "recall index"
 		s, err := journal.Load(ctx, r.c.store, r.id)
 		if err != nil {
-			r.log.Warn("load indexed journal summary", "err", err)
+			r.log.WarnContext(ctx, "load indexed journal summary", "err", err)
 		}
 		summary = clipSummary(s, host.DefaultSummaryBytes)
 	}
 	if summary == "" {
-		r.log.Warn("new conversation has no summary", "old", fields.ACPSession,
+		r.log.WarnContext(ctx, "new conversation has no summary", "old", fields.ACPSession,
 			"reason", "no journal frames and no indexed summary")
 	}
 	r.mu.Lock()
 	r.seed = summary
 	r.mu.Unlock()
-	r.log.Warn("started a new conversation", "old", fields.ACPSession, "new", ns.SessionId,
+	r.log.WarnContext(ctx, "started a new conversation", "old", fields.ACPSession, "new", ns.SessionId,
 		"path", "new+summary", "summary_bytes", len(summary), "summary_source", source)
 	fields.ACPSession = string(ns.SessionId)
 	noteAdvertised(fields, ns.ConfigOptions)
@@ -310,10 +315,13 @@ func (c *Controller) startRunner(t store.Ticket) {
 	if _, ok := c.runners[t.ID]; ok {
 		return
 	}
-	ctx, cancel := context.WithCancel(c.ctx)
+	// Session and pool ride in ctx (JOB-49): every log call, store write
+	// and span under the runner carries them.
+	ctx := logctx.With(logctx.With(c.ctx, "session", t.ID), "pool", t.Pool)
+	ctx, cancel := context.WithCancel(ctx)
 	r := &runner{
 		c: c, id: t.ID, pool: t.Pool, dir: c.root.SessionDir(t.ID),
-		log: c.log.With("session", t.ID, "pool", t.Pool), ctx: ctx, cancel: cancel,
+		log: c.log, ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), turnEnd: make(chan struct{}, 1),
 		restartWake: make(chan struct{}, 1), restartNow: make(chan struct{}, 1),
 		cancelNow: make(chan struct{}, 1),
@@ -392,7 +400,7 @@ func (r *runner) run() {
 			r.finish(end.resolution, end.reason)
 			return
 		}
-		r.log.Warn("session interrupted, restarting", "err", err)
+		r.log.WarnContext(r.ctx, "session interrupted, restarting", "err", err)
 		r.lifecycle("restart", attribute.String("error", err.Error()))
 		r.c.metrics.Restarts.Add(r.ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool)))
 		if r.crashed() {
@@ -424,7 +432,7 @@ func (r *runner) crashed() bool {
 
 // finish closes the session ticket, which releases its claims and socket.
 func (r *runner) finish(resolution, reason string) {
-	r.log.Info("session ended", "resolution", resolution, "reason", reason)
+	r.log.InfoContext(r.ctx, "session ended", "resolution", resolution, "reason", reason)
 	r.lifecycle("end", telemetry.AttrResolution.String(resolution))
 	r.c.stopHost(r.dir)
 	ctx := context.WithoutCancel(r.ctx)
@@ -437,7 +445,7 @@ func (r *runner) finish(resolution, reason string) {
 	r.c.metrics.SessionsEnded.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
 		telemetry.AttrResolution.String(resolution)))
 	if _, err := store.Close(ctx, r.c.store, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
-		r.log.Error("close session ticket", "err", err)
+		r.log.ErrorContext(r.ctx, "close session ticket", "err", err)
 	} else if err == nil {
 		r.c.metrics.Closes.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
 			telemetry.AttrKind.String(string(store.KindSession)), telemetry.AttrResolution.String(resolution)))
@@ -622,9 +630,10 @@ func (r *runner) session() error {
 
 	gate := rpc.NewGate(rd)
 	conn := acp.NewClientSideConnection(&client{r: r}, nc, gate)
-	conn.SetLogger(rpc.QuietLogger(r.log))
+	// The ACP library logs without our ctx: name the session here.
+	conn.SetLogger(rpc.QuietLogger(r.log.With("session", r.id, "pool", r.pool)))
 	gate.Open()
-	r.log.Info("connected to host", "host_pid", welcome.Pid, "agent_pid", welcome.AgentPid, "fresh", fresh, "busy", welcome.Busy)
+	r.log.InfoContext(r.ctx, "connected to host", "host_pid", welcome.Pid, "agent_pid", welcome.AgentPid, "fresh", fresh, "busy", welcome.Busy)
 	stale := !fresh && r.staleEnv(t, fields)
 	if r.wantsRestart() && !welcome.Busy {
 		return r.restart(nc)
@@ -691,13 +700,13 @@ func (r *runner) session() error {
 				if err := r.c.updateSessionFields(ctx, r.id, func(f *store.SessionFields) { noteAdvertised(f, ls.ConfigOptions) }); err != nil {
 					return err
 				}
-				r.log.Info("resumed conversation", "acp_session", fields.ACPSession, "path", "load")
+				r.log.InfoContext(r.ctx, "resumed conversation", "acp_session", fields.ACPSession, "path", "load")
 			case ctx.Err() != nil:
 				return r.dropped(conn)
 			default:
 				// A failed load would fail again on every respawn and end
 				// the session as crashed; a new conversation keeps going.
-				r.log.Warn("session/load failed; falling back to a new conversation", "acp_session", fields.ACPSession, "err", err)
+				r.log.WarnContext(r.ctx, "session/load failed; falling back to a new conversation", "acp_session", fields.ACPSession, "err", err)
 			}
 		}
 		if !loaded {
@@ -811,7 +820,7 @@ func (r *runner) clearRestart() {
 // afterTurn: held tickets stay claimed (the supervisor keeps heartbeating
 // them) and the new host is prompted with them again.
 func (r *runner) restart(nc net.Conn) error {
-	r.log.Info("restarting host on request", "host_pid", hostPid(r.dir))
+	r.log.InfoContext(r.ctx, "restarting host on request", "host_pid", hostPid(r.dir))
 	r.lifecycle("restart_requested")
 	_ = nc.Close()
 	r.c.stopHost(r.dir)
@@ -845,7 +854,7 @@ func (r *runner) worktreeMissing() bool {
 }
 
 func (r *runner) refresh(nc net.Conn) error {
-	r.log.Info("refreshing host env", "host_pid", hostPid(r.dir))
+	r.log.InfoContext(r.ctx, "refreshing host env", "host_pid", hostPid(r.dir))
 	_ = nc.Close()
 	r.c.stopHost(r.dir)
 	return errRefresh
@@ -925,7 +934,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			// Every tool call fails in a deleted cwd, so turns would only
 			// claim and drop tickets. Respawning recreates the worktree
 			// (spawnHost) and keeps the conversation and claims.
-			r.log.Warn("session worktree missing, respawning host", "session", r.id,
+			r.log.WarnContext(ctx, "session worktree missing, respawning host",
 				"caller", "runner.worktreeMissing", "host_pid", hostPid(r.dir))
 			r.lifecycle("worktree_missing")
 			_ = nc.Close()
@@ -1100,6 +1109,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 	r.mu.Lock()
 	r.lastStop = ""
 	r.lastSaid.Reset()
+	r.tools, r.toolOrder = nil, nil
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -1121,7 +1131,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		})
 		if err != nil && ctx.Err() == nil && agentBusy(err) && busyRetries < 3 {
 			busyRetries++
-			r.log.Warn("agent still busy with an earlier prompt, cancelling it", "attempt", busyRetries, "err", err)
+			r.log.WarnContext(ctx, "agent still busy with an earlier prompt, cancelling it", "attempt", busyRetries, "err", err)
 			_ = conn.Cancel(context.WithoutCancel(ctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
 			select {
 			case <-ctx.Done():
@@ -1134,7 +1144,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 			// Reconnecting keeps the same stuck agent (the crash loop seen
 			// on gasserver); a new host starts a new agent and reloads the
 			// conversation, and the claim survives for the next prompt.
-			r.log.Warn("agent stuck busy, respawning host", "host_pid", hostPid(r.dir))
+			r.log.WarnContext(ctx, "agent stuck busy, respawning host", "host_pid", hostPid(r.dir))
 			r.lifecycle("agent_stuck_busy")
 			r.c.stopHost(r.dir)
 			return errRefresh
@@ -1142,7 +1152,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		if err == nil || ctx.Err() != nil || !rateLimited(err) {
 			break
 		}
-		r.log.Warn("provider rate limited, backing off", "wait", wait, "err", err)
+		r.log.WarnContext(ctx, "provider rate limited, backing off", "wait", wait, "err", err)
 		r.setBackoff(r.c.now().Add(wait))
 		select {
 		case <-ctx.Done():
@@ -1159,7 +1169,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		}
 		return fmt.Errorf("session/prompt: %w", err)
 	}
-	r.log.Info("turn finished", "stop_reason", res.StopReason)
+	r.log.InfoContext(ctx, "turn finished", "stop_reason", res.StopReason)
 	return nil
 }
 
@@ -1204,7 +1214,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		if repeat {
 			_, _ = r.c.store.Update(ctx, "controller", t.ID, store.Update{DeferUntil: &until})
 		}
-		r.log.Warn("released unclosed ticket", "ticket", t.ID, "failure", repeat)
+		r.log.WarnContext(ctx, "released unclosed ticket", "ticket", t.ID, "failure", repeat)
 		r.c.stepEvent(ctx, t)
 	}
 }
@@ -1330,7 +1340,7 @@ func (r *runner) useSend(parts []PromptPart) []PromptPart {
 	names := ruleNames(parts)
 	r.setTurnRules(names)
 	if len(names) > 0 {
-		r.log.Info("prompt rules applied", "rules", strings.Join(names, ","))
+		r.log.InfoContext(r.ctx, "prompt rules applied", "rules", strings.Join(names, ","))
 	}
 	return parts
 }
@@ -1404,7 +1414,54 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
 }
 
+// trackTool records a tool call's title and drops it once it completes
+// or fails, so runningTool names the latest open call (JOB-54).
+func (r *runner) trackTool(id acp.ToolCallId, title string, st acp.ToolCallStatus) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if st == acp.ToolCallStatusCompleted || st == acp.ToolCallStatusFailed {
+		delete(r.tools, id)
+		r.toolOrder = slices.DeleteFunc(r.toolOrder, func(x acp.ToolCallId) bool { return x == id })
+		return
+	}
+	if r.tools == nil {
+		r.tools = map[acp.ToolCallId]string{}
+	}
+	old, ok := r.tools[id]
+	if !ok {
+		r.toolOrder = append(r.toolOrder, id)
+	}
+	if title == "" {
+		title = old
+	}
+	r.tools[id] = title
+}
+
+// runningTool is the title of the latest open tool call, or "".
+func (r *runner) runningTool() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if n := len(r.toolOrder); n > 0 {
+		return r.tools[r.toolOrder[n-1]]
+	}
+	return ""
+}
+
 func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	if tc := n.Update.ToolCall; tc != nil {
+		c.r.trackTool(tc.ToolCallId, tc.Title, tc.Status)
+	}
+	if tu := n.Update.ToolCallUpdate; tu != nil {
+		title := ""
+		if tu.Title != nil {
+			title = *tu.Title
+		}
+		var st acp.ToolCallStatus
+		if tu.Status != nil {
+			st = *tu.Status
+		}
+		c.r.trackTool(tu.ToolCallId, title, st)
+	}
 	if m := n.Update.AgentMessageChunk; m != nil && m.Content.Text != nil {
 		c.r.mu.Lock()
 		c.r.lastSaid.WriteString(m.Content.Text.Text)

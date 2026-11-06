@@ -117,7 +117,7 @@ func (c *Controller) drainOnce(ctx context.Context) (ingest.DrainResult, error) 
 	defer c.ingest.mu.Unlock()
 	res, err := ingest.Drain(ctx, sp, c.store, c.now, c.log)
 	if res.Moved > 0 || res.Bad > 0 {
-		c.log.Info("ingest drain", "moved", res.Moved, "fresh", res.Fresh, "bad", res.Bad)
+		c.log.InfoContext(ctx, "ingest drain", "moved", res.Moved, "fresh", res.Fresh, "bad", res.Bad)
 	}
 	c.inboxAppended(res.Items)
 	c.linearDelivered(res.Items)

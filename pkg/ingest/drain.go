@@ -43,7 +43,7 @@ func Drain(ctx context.Context, sp *Spool, in InboxStore, now func() time.Time, 
 		for _, r := range rows {
 			it, err := InboxItem(r)
 			if err != nil {
-				log.Warn("ingest drain: bad spool row", "id", r.ID, "endpoint", r.Endpoint, "delivery", r.DeliveryID, "err", err)
+				log.WarnContext(ctx, "ingest drain: bad spool row", "id", r.ID, "endpoint", r.Endpoint, "delivery", r.DeliveryID, "err", err)
 				if err := sp.MarkBad(ctx, r.ID, err.Error(), now()); err != nil {
 					return res, err
 				}

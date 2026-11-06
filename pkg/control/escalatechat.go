@@ -198,7 +198,7 @@ func (c *Controller) escalationChat(ctx context.Context, t store.Ticket) (pool, 
 		"pool": x.pool, "quarantine": x.quarn, "error": x.quarn,
 	})
 	if err != nil {
-		c.log.Warn("escalation prompt", "ticket", t.ID, "cause", x.kind, "err", err)
+		c.log.WarnContext(ctx, "escalation prompt", "ticket", t.ID, "cause", x.kind, "err", err)
 		return "", "", x, false
 	}
 	return e.ChatPool, out, x, true
@@ -315,7 +315,7 @@ func (c *Controller) ensureEscalationChat(ctx context.Context, t store.Ticket) {
 		return nil
 	})
 	if err != nil && !errors.Is(err, errSkipEscalation) {
-		c.log.Warn("record escalation chat", "ticket", t.ID, "err", err)
+		c.log.WarnContext(ctx, "record escalation chat", "ticket", t.ID, "err", err)
 		return
 	}
 	cur, err := c.store.Get(ctx, t.ID)
@@ -329,14 +329,14 @@ func (c *Controller) ensureEscalationChat(ctx context.Context, t store.Ticket) {
 	sc := scope{admin: true, actor: "controller"}
 	sess, started, err := c.keyedSession(ctx, sc, e.Pool, e.Key)
 	if err != nil {
-		c.log.Warn("escalation chat session", "ticket", t.ID, "pool", e.Pool, "err", err)
+		c.log.WarnContext(ctx, "escalation chat session", "ticket", t.ID, "pool", e.Pool, "err", err)
 		return
 	}
 	if started {
 		// The pack prompt is context for the model, not a visible message:
 		// the session's first visible turn is its own summary.
 		if err := c.sendMessage(ctx, sess, "", prompt); err != nil {
-			c.log.Warn("escalation chat prompt", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "escalation chat prompt", "ticket", t.ID, "err", err)
 			return
 		}
 	}
@@ -345,10 +345,10 @@ func (c *Controller) ensureEscalationChat(ctx context.Context, t store.Ticket) {
 		return nil
 	})
 	if err != nil {
-		c.log.Warn("record escalation session", "ticket", t.ID, "err", err)
+		c.log.WarnContext(ctx, "record escalation session", "ticket", t.ID, "err", err)
 		return
 	}
-	c.log.Info("escalation chat opened", "ticket", t.ID, "session", sess.ID, "key", e.Key)
+	c.log.InfoContext(ctx, "escalation chat opened", "ticket", t.ID, "session", sess.ID, "key", e.Key)
 }
 
 // escalationClosed sends the final message once ticket t closed.
@@ -368,7 +368,7 @@ func (c *Controller) escalationClosed(ctx context.Context, t store.Ticket) {
 	})
 	if err != nil {
 		if !errors.Is(err, errSkipEscalation) {
-			c.log.Warn("escalation final", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "escalation final", "ticket", t.ID, "err", err)
 		}
 		return
 	}
@@ -382,7 +382,7 @@ func (c *Controller) escalationClosed(ctx context.Context, t store.Ticket) {
 	}
 	msg := fmt.Sprintf("jobshop: escalation %s closed (%s). Nothing more is needed unless the operator writes again.", t.ID, res)
 	if err := c.sendMessage(ctx, sess, msg, ""); err != nil {
-		c.log.Warn("escalation final", "ticket", t.ID, "err", err)
+		c.log.WarnContext(ctx, "escalation final", "ticket", t.ID, "err", err)
 	}
 }
 

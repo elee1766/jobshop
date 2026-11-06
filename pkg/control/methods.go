@@ -120,7 +120,7 @@ func (c *Controller) grantedClaim(ctx context.Context, sc scope, id string, notH
 	if err != nil || t.Status != store.StatusInProgress || t.Project != sc.project {
 		return store.Claim{}, notHolder
 	}
-	c.log.Info("release by grant", "ticket", id, "holder", t.Holder, "by", sc.actor)
+	c.log.InfoContext(ctx, "release by grant", "ticket", id, "holder", t.Holder, "by", sc.actor)
 	return store.Claim{TicketID: t.ID, Holder: t.Holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil}, nil
 }
 
@@ -302,7 +302,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 			res, why := c.rebaseResolution(ctx, cur)
 			if why != "" {
 				if _, err := store.AddComment(ctx, c.store, "controller", id, why); err != nil {
-					c.log.Warn("rebase check comment", "step", id, "err", err)
+					c.log.WarnContext(ctx, "rebase check comment", "step", id, "err", err)
 				}
 			}
 			p.Resolution = res
@@ -340,12 +340,12 @@ func (c *Controller) endSession(ctx context.Context, id, reason string) {
 	}
 	released, err := c.store.Expire(ctx, "controller", id, reason)
 	if err != nil {
-		c.log.Error("release session claims", "session", id, "err", err)
+		c.log.ErrorContext(ctx, "release session claims", "session", id, "err", err)
 		return
 	}
 	c.stepEvents(ctx, released)
 	if len(released) > 0 {
-		c.log.Info("released session claims", "session", id, "tickets", released)
+		c.log.InfoContext(ctx, "released session claims", "session", id, "tickets", released)
 	}
 }
 
@@ -696,6 +696,10 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 		}
 		r.mu.Unlock()
 		info.Crashes = r.crashCount()
+		if r.inTurn.Load() {
+			info.Busy = true
+			info.Tool = r.runningTool()
+		}
 	}
 	c.mu.Unlock()
 	info.Drained = r != nil && c.poolDrained(r.pool)
@@ -766,14 +770,14 @@ func (c *Controller) sessionRestart(ctx context.Context, sc scope, p rpc.Session
 	if r == nil {
 		return nil, fmt.Errorf("%w: session %s has no controller-driven host", store.ErrInvalid, p.ID)
 	}
-	c.log.Info("session restart requested", "session", p.ID, "now", p.Now)
+	c.log.InfoContext(ctx, "session restart requested", "session", p.ID, "now", p.Now)
 	r.requestRestart(p.Now)
 	return rpc.SessionRestartResult{ID: p.ID, HostPid: hostPid(c.root.SessionDir(p.ID)), Now: p.Now}, nil
 }
 
 // sessionCancel cancels the running turn of a controller-driven session
 // (#535). Nothing is sent; messages already queued are delivered next.
-func (c *Controller) sessionCancel(_ context.Context, sc scope, p rpc.IDParams) (any, error) {
+func (c *Controller) sessionCancel(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
 	if err := requireAdmin(sc, "session cancel"); err != nil {
 		return nil, err
 	}
@@ -793,7 +797,7 @@ func (c *Controller) sessionCancel(_ context.Context, sc scope, p rpc.IDParams) 
 	case r.cancelNow <- struct{}{}:
 	default:
 	}
-	c.log.Info("session cancel requested", "session", p.ID)
+	c.log.InfoContext(ctx, "session cancel requested", "session", p.ID)
 	return rpc.SessionCancelResult{ID: p.ID, Cancelled: true}, nil
 }
 
@@ -815,7 +819,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 	}
 	for _, id := range c.orphans(open) {
 		if !p.DryRun {
-			c.log.Warn("stopping orphaned host", "session", id)
+			c.log.WarnContext(ctx, "stopping orphaned host", "session", id)
 			c.stopHost(c.root.SessionDir(id))
 		}
 		res.Stopped = append(res.Stopped, id)
@@ -839,12 +843,12 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 		// Still alive after the stop above means stopHost could not end it;
 		// leave it for a later run rather than delete under a live host.
 		if !p.DryRun && host.Alive(dir) {
-			c.log.Warn("reap: host still alive, keeping dir", "session", t.ID)
+			c.log.WarnContext(ctx, "reap: host still alive, keeping dir", "session", t.ID)
 			continue
 		}
 		if !p.DryRun {
 			c.removeWorktree(t, "session reap")
-			c.log.Warn("reap: removing session dir", "session", t.ID, "dir", dir)
+			c.log.WarnContext(ctx, "reap: removing session dir", "session", t.ID, "dir", dir)
 			if err := os.RemoveAll(dir); err != nil {
 				return res, fmt.Errorf("remove %s: %w", dir, err)
 			}

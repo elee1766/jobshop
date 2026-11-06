@@ -1,9 +1,10 @@
 <script>
   import { tone, safe } from './format.js';
   import Trace from './Trace.svelte';
+  import Holder from './Holder.svelte';
 
-  /** @type {{ node: any, go: (p: Record<string, string>) => void }} */
-  let { node, go } = $props();
+  /** watch opens a holder session read-only (JOB-54). @type {{ node: any, go: (p: Record<string, string>) => void, watch?: (id: string) => void }} */
+  let { node, go, watch } = $props();
 </script>
 
 <div class="node">
@@ -11,12 +12,13 @@
   <span class="pill {tone(node.status)}">{node.status}</span>
   <span class="t">{node.title}</span>
   {#if node.trigger}<span class="faint">via {node.trigger}</span>{/if}
+  {#if node.holder && watch}<span data-testid="trace-session"><Holder h={node.session ?? { id: node.holder }} onopen={watch} label="View session" /></span>{/if}
   {#each node.links ?? [] as l (l)}
     {#if safe(l)}<a href={l} target="_blank" rel="noopener noreferrer" class="faint">{l.replace(/^https:\/\/github\.com\//, '')}</a>{/if}
   {/each}
   {#if node.children?.length}
     <div class="kids">
-      {#each node.children as c (c.id)}<Trace node={c} {go} />{/each}
+      {#each node.children as c (c.id)}<Trace node={c} {go} {watch} />{/each}
     </div>
   {/if}
 </div>

@@ -149,14 +149,14 @@ func (s *Server) readPlugins(src pluginSource) []Plugin {
 func (s *Server) deskConfig(r *http.Request) (config.Desk, []string) {
 	var show rpc.ConfigShowResult
 	if err := s.ctl.Call(r.Context(), rpc.MethodConfigShow, struct{}{}, &show); err != nil {
-		s.log.Warn("desk: config.show", "err", err)
+		s.log.WarnContext(r.Context(), "desk: config.show", "err", err)
 		return config.Desk{}, nil
 	}
 	var d config.Desk
 	if raw, ok := show.Config["desk"]; ok {
 		b, _ := json.Marshal(raw)
 		if err := json.Unmarshal(b, &d); err != nil {
-			s.log.Warn("desk: desk config", "err", err)
+			s.log.WarnContext(r.Context(), "desk: desk config", "err", err)
 		}
 	}
 	var packs []string

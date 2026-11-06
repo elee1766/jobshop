@@ -41,13 +41,13 @@ const (
 // finds are delivered in the same pass; the admission pump runs it too.
 func (c *Controller) ingestPass(ctx context.Context) {
 	if err := c.releaseAnswered(ctx); err != nil && ctx.Err() == nil {
-		c.log.Error("admission release", "err", err)
+		c.log.ErrorContext(ctx, "admission release", "err", err)
 	}
 	// With ingest.workers external, `jobshop ingest work` admits (#443).
 	for range admitBudget(c.config().Ingest.External()) {
 		ok, err := c.admitNext(ctx)
 		if err != nil && ctx.Err() == nil {
-			c.log.Error("admission", "err", err)
+			c.log.ErrorContext(ctx, "admission", "err", err)
 		}
 		if !ok || err != nil {
 			break
@@ -57,7 +57,7 @@ func (c *Controller) ingestPass(ctx context.Context) {
 		return // `jobshop ingest work --dispatch` dispatches (#633)
 	}
 	if _, err := c.dispatchAll(ctx, dispatchHolder); err != nil && ctx.Err() == nil {
-		c.log.Error("dispatch", "err", err)
+		c.log.ErrorContext(ctx, "dispatch", "err", err)
 	}
 }
 
@@ -102,7 +102,7 @@ func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, erro
 func (c *Controller) done(ctx context.Context, holder string, rows []store.InboxItem) {
 	for _, it := range rows {
 		if _, err := ingest.InboxSetState(ctx, c.store, it.ID, holder, store.InboxUpdate{State: store.InboxDispatched}); err != nil {
-			c.log.Warn("dispatch: mark dispatched", "delivery", it.DeliveryID, "err", err)
+			c.log.WarnContext(ctx, "dispatch: mark dispatched", "delivery", it.DeliveryID, "err", err)
 		}
 	}
 }
@@ -122,7 +122,7 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 	window := config.Duration(cfg.Subscriptions.ResumeWindow, defaultSubResume)
 	_, byThread, _, err := c.followers(ctx, now)
 	if err != nil {
-		c.log.Warn("dispatch: followers", "err", err)
+		c.log.WarnContext(ctx, "dispatch: followers", "err", err)
 		return // leases expire; retried
 	}
 	type group struct {
@@ -149,7 +149,7 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 		key := "dispatch/" + it.DeliveryID
 		wk, err := writekey.Claim(ctx, c.store, key, dispatchKeyOp, holder)
 		if err != nil {
-			c.log.Warn("dispatch: write key", "delivery", it.DeliveryID, "err", err)
+			c.log.WarnContext(ctx, "dispatch: write key", "delivery", it.DeliveryID, "err", err)
 			continue
 		}
 		if wk.Done {
@@ -171,12 +171,12 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 	for _, k := range order {
 		g := groups[k]
 		if err := c.deliverThread(ctx, g.th, g.cs, byThread[k], now, window); err != nil {
-			c.log.Warn("subscriptions: deliver", "thread", k, "err", err)
+			c.log.WarnContext(ctx, "subscriptions: deliver", "thread", k, "err", err)
 			continue // leases expire; retried
 		}
 		for _, key := range g.keys {
 			if _, err := writekey.Finish(ctx, c.store, key, "delivered"); err != nil {
-				c.log.Warn("dispatch: finish write key", "key", key, "err", err)
+				c.log.WarnContext(ctx, "dispatch: finish write key", "key", key, "err", err)
 			}
 		}
 		c.done(ctx, holder, g.rows)

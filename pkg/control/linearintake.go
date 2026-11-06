@@ -41,7 +41,7 @@ func (c *Controller) stallLinearIssues(ctx context.Context, sig config.StallSign
 	}
 	issues, err := c.linearIntakeIssues(ctx, sig)
 	if err != nil {
-		c.log.Warn("linear_issue_no_run", "team", sig.Team, "err", err)
+		c.log.WarnContext(ctx, "linear_issue_no_run", "team", sig.Team, "err", err)
 		return nil, nil
 	}
 	busy, err := c.linearIssuesWithOpenRun(ctx)
@@ -141,7 +141,7 @@ func (c *Controller) readLinearIntake(ctx context.Context, sig config.StallSigna
 		}
 		f.After = p.EndCursor
 	}
-	c.log.Warn("linear_issue_no_run: team has more issues than one read covers", "team", sig.Team, "pages", linearIntakePages)
+	c.log.WarnContext(ctx, "linear_issue_no_run: team has more issues than one read covers", "team", sig.Team, "pages", linearIntakePages)
 	return out, nil
 }
 

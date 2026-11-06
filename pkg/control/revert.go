@@ -136,7 +136,7 @@ func (c *Controller) checkReverts(ctx context.Context, src revertSource, items [
 			continue
 		}
 		if err := c.checkRevert(ctx, src, it.Repo, n); err != nil {
-			c.log.Warn("revert check", "repo", it.Repo, "pr", n, "err", err)
+			c.log.WarnContext(ctx, "revert check", "repo", it.Repo, "pr", n, "err", err)
 		}
 	}
 }

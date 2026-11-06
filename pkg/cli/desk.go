@@ -16,6 +16,7 @@ import (
 )
 
 type deskCmd struct {
+	LogFlags
 	Listen       string   `help:"Address to serve on. Non-loopback needs --allow-remote." default:"127.0.0.1:7480"`
 	Host         []string `help:"Extra Host header values to accept (e.g. a tailnet name); loopback is always accepted."`
 	AllowRemote  bool     `help:"Allow a non-loopback listen address. Desk has no login; expose it only on a trusted network."`
@@ -52,7 +53,7 @@ func (c deskCmd) Run(g *Globals) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	tel, err := startTelemetry(ctx, r, "desk")
+	tel, err := startTelemetry(ctx, r, "desk", c.LogFlags)
 	if err != nil {
 		return err
 	}

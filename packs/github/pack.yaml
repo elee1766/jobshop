@@ -10,6 +10,9 @@ defaults:
   # More than 1 needs branch protection that requires up-to-date checks
   # (strict), so a merge after another merge waits for CI on the new base.
   refinery_sessions: 1
+  # Refinery model and effort (#304 pool options). Empty: the agent's.
+  refinery_model: ""
+  refinery_effort: ""
   # post-merge steps wait on CI and deploy in their own pool (#167).
   deploy_sessions: 3
   # Refinery merge policy (prompts/merge.md, ci-merge.md).
@@ -105,6 +108,8 @@ pools:
     repo: "{{.checkout}}"
     ref: origin/master
     max_sessions: "{{.refinery_sessions}}"
+    model: "{{.refinery_model}}"
+    effort: "{{.refinery_effort}}"
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/refinery.md

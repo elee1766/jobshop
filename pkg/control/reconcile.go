@@ -56,12 +56,12 @@ func (c *Controller) reconcileOnce(ctx context.Context, every time.Duration) {
 		if err != nil {
 			ok = false
 			if ctx.Err() == nil {
-				c.log.Warn("github reconcile", "identity", name, "err", err)
+				c.log.WarnContext(ctx, "github reconcile", "identity", name, "err", err)
 			}
 			continue
 		}
 		if res.Failed > 0 {
-			c.log.Info("github reconcile", "identity", name, "failed", res.Failed, "redelivered", res.Redelivered)
+			c.log.InfoContext(ctx, "github reconcile", "identity", name, "failed", res.Failed, "redelivered", res.Redelivered)
 		}
 	}
 	// A failed pass keeps the old cutoff, so the next pass retries it.

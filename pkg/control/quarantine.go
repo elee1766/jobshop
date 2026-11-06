@@ -36,7 +36,7 @@ func (c *Controller) crashRelease(ctx context.Context, sessionID string) {
 	for _, t := range held {
 		cl := store.Claim{TicketID: t.ID, Holder: sessionID, Fence: t.Fence}
 		if _, err := c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: crashReleaseReason}); err != nil {
-			c.log.Warn("crash release", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "crash release", "ticket", t.ID, "err", err)
 			continue
 		}
 		c.maybeQuarantine(ctx, t.ID)
@@ -71,11 +71,11 @@ func (c *Controller) maybeQuarantine(ctx context.Context, id string) {
 	}
 	until := c.now().Add(quarantineFor)
 	if _, err := c.store.Update(ctx, "controller", id, store.Update{DeferUntil: &until}); err != nil {
-		c.log.Error("quarantine", "ticket", id, "err", err)
+		c.log.ErrorContext(ctx, "quarantine", "ticket", id, "err", err)
 		return
 	}
 	if err := store.AddLabel(ctx, c.store, "controller", id, quarantineLabel); err != nil {
-		c.log.Error("quarantine label", "ticket", id, "err", err)
+		c.log.ErrorContext(ctx, "quarantine label", "ticket", id, "err", err)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Quarantined until %s: released by %d crashed sessions.\n", until.UTC().Format(time.RFC3339), len(sessions))
@@ -88,7 +88,7 @@ func (c *Controller) maybeQuarantine(ctx context.Context, id string) {
 	}
 	b.WriteString("Undo with `ticket update " + id + " --defer 0` and `label rm " + id + " quarantined`.")
 	_, _ = store.AddComment(ctx, c.store, "controller", id, b.String())
-	c.log.Warn("quarantined ticket", "ticket", id, "sessions", sessions)
+	c.log.WarnContext(ctx, "quarantined ticket", "ticket", id, "sessions", sessions)
 }
 
 // poolCrashed records a crashed session of pool, ended by reason, and
@@ -202,7 +202,7 @@ func (c *Controller) quarantinePool(ctx context.Context, pool, reason string) {
 	c.poolQuarantined[pool] = reason
 	c.mu.Unlock()
 	if !already {
-		c.log.Warn("pool quarantined: permanent spawn error", "pool", pool, "err", reason)
+		c.log.WarnContext(ctx, "pool quarantined: permanent spawn error", "pool", pool, "err", reason)
 	}
 	c.ensurePoolEscalation(ctx, pool, reason)
 }
@@ -245,10 +245,10 @@ func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason stri
 		Body: body, Priority: &prio, Pool: dest, Labels: []string{"needs-human"}, Meta: meta,
 	})
 	if err != nil {
-		c.log.Error("create pool escalation", "pool", pool, "err", err)
+		c.log.ErrorContext(ctx, "create pool escalation", "pool", pool, "err", err)
 		return
 	}
-	c.log.Info("pool escalation filed", "pool", pool, "ticket", t.ID)
+	c.log.InfoContext(ctx, "pool escalation filed", "pool", pool, "ticket", t.ID)
 	c.ensureEscalationChat(ctx, t)
 }
 
@@ -283,7 +283,7 @@ func (c *Controller) unquarantinePools(pool string) []string {
 	return out
 }
 
-func (c *Controller) poolUnquarantine(_ context.Context, sc scope, p rpc.PoolParams) (any, error) {
+func (c *Controller) poolUnquarantine(ctx context.Context, sc scope, p rpc.PoolParams) (any, error) {
 	if err := c.requireGrant(sc, "pool-unquarantine", "pool unquarantine"); err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ func (c *Controller) poolUnquarantine(_ context.Context, sc scope, p rpc.PoolPar
 		return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
 	}
 	c.unquarantinePools(p.Pool)
-	c.log.Info("pool unquarantined", "pool", p.Pool)
+	c.log.InfoContext(ctx, "pool unquarantined", "pool", p.Pool)
 	return c.poolStatus(), nil
 }
 
