@@ -77,6 +77,7 @@ const (
 	MethodSessionCordon    = "session.cordon"
 	MethodSessionConfig    = "session.config"
 	MethodSessionRename    = "session.rename"
+	MethodSessionClose     = "session.close"
 	MethodPoolUnquarantine = "pool.unquarantine"
 	MethodReportIncidents  = "report.incidents"
 	MethodGuard            = "guard"
@@ -1029,6 +1030,36 @@ type SessionConfigParams struct {
 	ID      string            `json:"id"`
 	Options map[string]string `json:"options,omitempty"`
 	Reset   bool              `json:"reset,omitempty"`
+}
+
+// SessionCloseParams ends one session now (JOB-111). Its held tickets go
+// back to their own pools, or to Handoff when set. DryRun only lists them,
+// for a confirm.
+type SessionCloseParams struct {
+	ID      string `json:"id"`
+	Handoff string `json:"handoff,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+	DryRun  bool   `json:"dry_run,omitempty"`
+}
+
+// SessionCloseResult names the tickets the session held and, unless
+// DryRun, the closed session ticket.
+type SessionCloseResult struct {
+	ID      string        `json:"id"`
+	DryRun  bool          `json:"dry_run,omitempty"`
+	Held    []HeldTicket  `json:"held"`
+	Session *store.Ticket `json:"session,omitempty"`
+}
+
+// HeldTicket is a ticket a closing session held: claimed (in_progress) or
+// pre-assigned (open). Pool is where it goes; empty when it has none and
+// is only released.
+type HeldTicket struct {
+	ID     string       `json:"id"`
+	Title  string       `json:"title"`
+	Kind   store.Kind   `json:"kind"`
+	Status store.Status `json:"status"`
+	Pool   string       `json:"pool,omitempty"`
 }
 
 // SessionRenameParams sets a session's display name (#626). ID empty

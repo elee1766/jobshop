@@ -176,6 +176,7 @@ export interface RpcMethods {
   "run.start": { params: RunStartParams; result: RunResult };
   "secret.scan": { params: SecretScanParams; result: SecretScanResult };
   "session.cancel": { params: IDParams; result: SessionCancelResult };
+  "session.close": { params: SessionCloseParams; result: SessionCloseResult };
   "session.config": { params: SessionConfigParams; result: SessionInfo };
   "session.cordon": { params: SessionCordonParams; result: SessionInfo };
   "session.journal": { params: SessionJournalParams; result: SessionJournalResult };
@@ -584,6 +585,14 @@ export interface HandoffParams {
   id?: string;
   pool: string;
   note?: string;
+}
+
+export interface HeldTicket {
+  id: string;
+  title: string;
+  kind: string;
+  status: string;
+  pool?: string;
 }
 
 export interface HistoryEntry {
@@ -1136,6 +1145,20 @@ export interface SecretText {
 export interface SessionCancelResult {
   id: string;
   cancelled: boolean;
+}
+
+export interface SessionCloseParams {
+  id: string;
+  handoff?: string;
+  reason?: string;
+  dry_run?: boolean;
+}
+
+export interface SessionCloseResult {
+  id: string;
+  dry_run?: boolean;
+  held: HeldTicket[];
+  session?: Ticket;
 }
 
 export interface SessionConfigParams {

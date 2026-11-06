@@ -195,6 +195,11 @@ Commands:
   session drain <id>
     Cordon a session and end it once it holds nothing.
 
+  session close <id> [flags]
+    End a session now and free its slot: a running turn is cancelled and each
+    claimed ticket goes back to its pool, or to --handoff, without counting a
+    failure. --dry-run lists what it holds (admin or session-close grant).
+
   session config <id> [<options> ...] [flags]
     Set ACP config options (model=<route> effort=<level>) on one session,
     applied between turns; --reset goes back to the pool's (admin or
@@ -1780,6 +1785,11 @@ Commands:
   session drain <id>
     Cordon a session and end it once it holds nothing.
 
+  session close <id> [flags]
+    End a session now and free its slot: a running turn is cancelled and each
+    claimed ticket goes back to its pool, or to --handoff, without counting a
+    failure. --dry-run lists what it holds (admin or session-close grant).
+
   session config <id> [<options> ...] [flags]
     Set ACP config options (model=<route> effort=<level>) on one session,
     applied between turns; --reset goes back to the pool's (admin or
@@ -2048,6 +2058,33 @@ Flags:
                          ($JOBSHOP_ROOT).
       --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
                          else the root's admin socket ($JOBSHOP_SOCKET).
+```
+
+## jobshop session close
+
+```
+Usage: jobshop session close <id> [flags]
+
+End a session now and free its slot: a running turn is cancelled and each
+claimed ticket goes back to its pool, or to --handoff, without counting a
+failure. --dry-run lists what it holds (admin or session-close grant).
+
+Arguments:
+  <id>    Session id.
+
+Flags:
+  -h, --help              Show context-sensitive help.
+      --root=STRING       Jobshop root directory (holds jobshop.yaml,
+                          the database, sockets and sessions). Default:
+                          nearest ancestor of the cwd containing jobshop.yaml
+                          ($JOBSHOP_ROOT).
+      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
+                          else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --handoff=STRING    Hand claimed and pre-assigned tickets to this pool
+                          instead of their own.
+  -r, --reason=STRING     Why, for the session and ticket comments.
+      --dry-run           List the tickets the session holds without closing it.
 ```
 
 ## jobshop session config

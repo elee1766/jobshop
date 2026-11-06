@@ -918,6 +918,7 @@ func init() {
 		rpc.MethodSessionCordon:     bind((*Controller).sessionCordonRPC),
 		rpc.MethodSessionConfig:     bind((*Controller).sessionConfigRPC),
 		rpc.MethodSessionRename:     bind((*Controller).sessionRenameRPC),
+		rpc.MethodSessionClose:      bind((*Controller).sessionCloseRPC),
 		rpc.MethodAttention:         bind((*Controller).attention),
 		rpc.MethodAttentionChat:     bind((*Controller).attentionChat),
 		rpc.MethodPoolUnquarantine:  bind((*Controller).poolUnquarantine),

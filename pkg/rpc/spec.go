@@ -54,6 +54,7 @@ var Specs = map[string]Spec{
 	MethodSessionCordon:     {SessionCordonParams{}, SessionInfo{}},
 	MethodSessionConfig:     {SessionConfigParams{}, SessionInfo{}},
 	MethodSessionRename:     {SessionRenameParams{}, SessionInfo{}},
+	MethodSessionClose:      {SessionCloseParams{}, SessionCloseResult{}},
 	MethodWhoami:            {empty{}, Whoami{}},
 	MethodVersion:           {empty{}, VersionResult{}},
 	MethodShutdown:          {ShutdownParams{}, nil},

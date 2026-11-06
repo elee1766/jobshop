@@ -1,6 +1,7 @@
 <script>
   import { resource, params, errText } from '../../kit/plugin.svelte.js';
   import { ago } from '../../kit/format.js';
+  import { closeSessionFlow } from '../../kit/session.js';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api } = $props();
@@ -16,6 +17,16 @@
     e.stopPropagation();
     actErr = '';
     try { await api.post('api/session/cordon', body); sessions.refresh(); } catch (err) { actErr = errText(err); }
+  }
+
+  /** @param {Event} e @param {string} id */
+  async function close(e, id) {
+    e.stopPropagation();
+    actErr = '';
+    if (await closeSessionFlow(api, id)) {
+      if (url.session === id) closeSession();
+      sessions.refresh();
+    }
   }
 
   /** @param {any} s */
@@ -62,6 +73,9 @@
                     <button onclick={(e) => cordon(e, { id: s.id })}>Cordon</button>
                   {/if}
                 {/if}
+                {#if s.ticket && s.ticket.status !== 'closed'}
+                  <button onclick={(e) => close(e, s.id)} title="End the session now and free its slot" data-testid="session-close">Close</button>
+                {/if}
               </td>
             </tr>
           {:else}
@@ -78,6 +92,7 @@
   .gap { margin-left: 6px; }
   .tk { display: inline-block; padding: 2px 0; }
   .c-act button { height: 24px; }
+  .c-act button + button { margin-left: 4px; }
   @media (max-width: 768px) {
     .tk { padding: 8px 0; }
     tr.sel td { background: transparent; }
