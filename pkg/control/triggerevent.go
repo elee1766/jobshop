@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -232,19 +234,31 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 	if len(fires) == 0 {
 		return
 	}
+	names := make([]string, len(fires))
+	for i, f := range fires {
+		names[i] = f.name
+	}
+	label := strings.Join(slices.Compact(slices.Clone(names)), ",")
 	c.wg.Go(func() {
-		defer c.lockTick(c.ctx, "event")()
+		// A root span per event job (it runs in its own goroutine, on a ctx
+		// with no span): its wait for tickMu, the store calls and the
+		// checks nest under it, and a waiter behind it links it (JOB-109).
+		ctx, span := c.rootSpan(c.ctx, "trigger event "+label, attribute.StringSlice("jobshop.triggers", names))
+		defer span.End()
+		defer c.lockTickFor(ctx, "event", label)()
 		if c.draining() {
 			return
 		}
 		// One config for the whole event pass, like a tick (JOB-104).
 		cfg := c.config()
 		for _, f := range fires {
-			tr, ok := cfg.Triggers[f.name]
-			if !ok {
-				continue // reloaded away
-			}
-			c.onEvent(c.ctx, cfg, f.name, tr, f.ev)
+			c.runTriggerChecks(ctx, cfg, f.name, true, func(ctx context.Context, cfg *config.Config) {
+				tr, ok := cfg.Triggers[f.name]
+				if !ok {
+					return // reloaded away
+				}
+				c.onEvent(ctx, cfg, f.name, tr, f.ev)
+			})
 		}
 	})
 }
@@ -264,6 +278,9 @@ func (c *Controller) onEvent(ctx context.Context, cfg *config.Config, name strin
 // tick lock.
 func (c *Controller) fireOnEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
 	st, err := c.evalTrigger(ctx, cfg, name, tr)
+	if errors.Is(err, errCheckPending) {
+		return // its check runs outside the tick (JOB-109)
+	}
 	if err != nil {
 		c.log.ErrorContext(ctx, "trigger", "trigger", name, "err", err)
 		return

@@ -41,10 +41,19 @@ type triggerState struct {
 func (c *Controller) runTriggers(ctx context.Context, cfg *config.Config) {
 	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
 		tr := cfg.Triggers[name]
+		if c.backgroundChecks && c.checkJobs.running[name] {
+			continue // its check is still running; poll again next tick
+		}
 		if !c.triggerPollDue(name, tr) {
 			continue
 		}
-		c.runTrigger(ctx, cfg, name, tr)
+		c.runTriggerChecks(ctx, cfg, name, false, func(ctx context.Context, cfg *config.Config) {
+			// Looked up again: a replay after the check runs on the then
+			// current config, where the trigger may be gone.
+			if tr, ok := cfg.Triggers[name]; ok {
+				c.runTrigger(ctx, cfg, name, tr)
+			}
+		})
 	}
 }
 
@@ -65,6 +74,10 @@ func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name st
 		return
 	}
 	st, err := c.evalTrigger(ctx, cfg, name, tr)
+	if errors.Is(err, errCheckPending) {
+		result = "check pending"
+		return
+	}
 	if err != nil {
 		result, runErr = "error", err
 		c.log.ErrorContext(ctx, "trigger", "trigger", name, "err", err)
@@ -304,10 +317,28 @@ func (c *Controller) readyCount(ctx context.Context, cfg *config.Config, w confi
 	return n, nil
 }
 
-// runCheck runs w.Check with sh in the root dir. Exit 0: holds, and the
+// runCheck is the check of w: run now, or, under a checkPass on ctx
+// (JOB-109), the stored result, or errCheckPending and a note of the
+// command to run outside the tick.
+func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, why string, err error) {
+	cp, ok := ctx.Value(checkPassKey{}).(*checkPass)
+	if !ok {
+		return c.runCheckNow(ctx, w)
+	}
+	k := checkKey(w)
+	if r, ok := cp.results[k]; ok {
+		return r.out, r.why, r.err
+	}
+	if cp.results == nil && !slices.ContainsFunc(cp.need, func(n checkNeed) bool { return n.key == k }) {
+		cp.need = append(cp.need, checkNeed{key: k, when: w})
+	}
+	return "", "", errCheckPending
+}
+
+// runCheckNow runs w.Check with sh in the root dir. Exit 0: holds, and the
 // trimmed stdout is the dedup key. Non-zero exit: does not hold (why says
 // so); the command failing to start or timing out is an error.
-func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, why string, err error) {
+func (c *Controller) runCheckNow(ctx context.Context, w config.TriggerWhen) (key, why string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, config.Duration(w.CheckTimeout, time.Minute))
 	defer cancel()
 	// Triggers have no pool: unisolated in the root dir, through

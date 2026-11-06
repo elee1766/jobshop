@@ -35,8 +35,11 @@ triggers:
 %s`
 
 // TestReloadDuringPass (JOB-104): a reload while a supervisor pass is
-// held open in a trigger check returns at once, the held pass finishes on
-// the config it started with, and the next pass uses the new one.
+// held open returns at once, the held pass finishes on the config it
+// started with, and the next pass uses the new one. The pass is held in a
+// trigger command, which still runs inside the pass (a trigger check does
+// not, JOB-109). The gate is a file for the command and a ticket labeled
+// go for the triggers that follow it.
 func TestReloadDuringPass(t *testing.T) {
 	root, start := poolRoot(t, "1m")
 	gate := filepath.Join(root.Dir, "gate")
@@ -48,12 +51,12 @@ func TestReloadDuringPass(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	}
 	// Triggers run in name order: a-hold blocks on the fifo once the gate
-	// exists, then b-old files its ticket in the same pass.
+	// file exists, then b-old files its ticket in the same pass.
 	write(fmt.Sprintf(`  a-hold:
-    when: {check: "test -e %[1]s || exit 1; read x < %[2]s; exit 1"}
-    ticket: {title: never, pool: dev}
+    when: {open_below: 100}
+    command: {run: "test -e %[1]s || exit 0; read x < %[2]s"}
   b-old:
-    when: {check: "test -e %[1]s"}
+    when: {label: go, open_above: 0}
     ticket: {title: from-old, pool: dev}
 `, gate, fifo))
 	stop := start()
@@ -65,7 +68,9 @@ func TestReloadDuringPass(t *testing.T) {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindTask}, &ts))
 		var out []string
 		for _, tk := range ts {
-			out = append(out, tk.Title)
+			if tk.Title != "gate" {
+				out = append(out, tk.Title)
+			}
 		}
 		slices.Sort(out)
 		return out
@@ -74,6 +79,7 @@ func TestReloadDuringPass(t *testing.T) {
 	require.Empty(t, titles(), "no gate: nothing fires")
 
 	require.NoError(t, os.WriteFile(gate, nil, 0o600))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "gate", Labels: []string{"go"}}, nil))
 	v, ok := passChans.Load(root.Dir)
 	require.True(t, ok)
 	done := make(chan struct{})
@@ -100,10 +106,10 @@ func TestReloadDuringPass(t *testing.T) {
 		t.Fatal("the pass never reached the held check")
 	}
 
-	write(fmt.Sprintf(`  b-new:
-    when: {check: "test -e %s"}
+	write(`  b-new:
+    when: {label: go, open_above: 0}
     ticket: {title: from-new, pool: dev}
-`, gate))
+`)
 	// Before JOB-104 reload waited for the pass: this call would time out.
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()

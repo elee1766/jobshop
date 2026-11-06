@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -46,6 +47,9 @@ const stallMetaKey = "stall"
 // trigger (#143). ev is the delivery that woke it (JOB-72), nil on a poll.
 func (c *Controller) runStallTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
 	fire, _, err := c.evalStall(ctx, cfg, name, tr, ev)
+	if errors.Is(err, errCheckPending) {
+		return // its checks run outside the tick (JOB-109)
+	}
 	if err != nil {
 		c.log.ErrorContext(ctx, "stall trigger", "trigger", name, "err", err)
 		return
@@ -254,6 +258,7 @@ func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr co
 	}
 	now := c.now()
 	var out []stall
+	pending := false
 	for _, sig := range tr.When.Stall {
 		after := config.Duration(sig.After, 0)
 		var found []stall
@@ -280,6 +285,12 @@ func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr co
 		default:
 			found, err = c.stallCheck(ctx, tr, sig, ev)
 		}
+		if errors.Is(err, errCheckPending) {
+			// Go on: every check of the trigger is collected in one pass,
+			// so they run at the same time (JOB-109).
+			pending = true
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("signal %s: %w", sig.Signal, err)
 		}
@@ -288,6 +299,9 @@ func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr co
 				out = append(out, s)
 			}
 		}
+	}
+	if pending {
+		return nil, errCheckPending
 	}
 	return out, nil
 }
