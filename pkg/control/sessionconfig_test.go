@@ -137,7 +137,10 @@ func TestSessionConfigRejected(t *testing.T) {
 		return true
 	}, dialWait, 50*time.Millisecond)
 	assert.Equal(t, "config_failed", sess.Resolution)
-	assert.Equal(t, 2, strings.Count(configSets(t, root), "model=bad-route"), "one retry")
+	// Count this session's sets only: under load another session may
+	// spawn after it ends and try again (JOB-45).
+	b, _ := os.ReadFile(filepath.Join(root.Dir, "configsets-"+sess.ID))
+	assert.Equal(t, 2, strings.Count(string(b), "model=bad-route"), "one retry")
 	_, err := os.Stat(filepath.Join(root.Dir, "prompts"))
 	assert.ErrorIs(t, err, os.ErrNotExist, "no turn on the wrong model")
 }
