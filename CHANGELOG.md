@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.7.0](https://github.com/elee1766/jobshop/compare/v0.6.20...v0.7.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **control:** `jobshop report <state> -q` now needs `--context` (two or more lines); the CLI refuses a bare question.
+
+### Features
+
+* **control:** questions carry context and suggested options, desk answers in one click (JOB-101) ([#916](https://github.com/elee1766/jobshop/issues/916)) ([feaebb1](https://github.com/elee1766/jobshop/commit/feaebb17c525ad74828cee06f73d3e572beec8e1))
+
 ## [0.6.20](https://github.com/elee1766/jobshop/compare/v0.6.19...v0.6.20) (2026-11-06)
 
 
