@@ -2022,61 +2022,78 @@ function Wr(e) {
 		return !1;
 	}
 }
+function Gr(e, t) {
+	let n = t.title || "", r = t.target || "", i = t.intent || "";
+	return e?.name === "jcode" && i ? {
+		label: i,
+		detail: r || n
+	} : n ? {
+		label: n,
+		detail: r || i
+	} : {
+		label: r || i || "tool",
+		detail: r && i ? i : ""
+	};
+}
 // kit/Holder.svelte
-var Gr = /* @__PURE__ */ X("<span class=\"svelte-bwb1ob\"> </span>"), Kr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-pool\"> </span>"), qr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-name\"> </span>"), Jr = /* @__PURE__ */ X("<span class=\"faint model svelte-bwb1ob\"> </span>"), Yr = /* @__PURE__ */ X("<span class=\"tool muted svelte-bwb1ob\" data-testid=\"holder-tool\"> </span>"), Xr = /* @__PURE__ */ X("<button type=\"button\" class=\"holder svelte-bwb1ob\" data-testid=\"holder\"><span></span> <!> <!> <!> <!></button>");
-function Zr(e, t) {
+var Kr = /* @__PURE__ */ X("<span class=\"svelte-bwb1ob\"> </span>"), qr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-pool\"> </span>"), Jr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-name\"> </span>"), Yr = /* @__PURE__ */ X("<span class=\"faint model svelte-bwb1ob\"> </span>"), Xr = /* @__PURE__ */ X("<span class=\"tool muted svelte-bwb1ob\" data-testid=\"holder-tool\"> </span>"), Zr = /* @__PURE__ */ X("<button type=\"button\" class=\"holder svelte-bwb1ob\" data-testid=\"holder\"><span></span> <!> <!> <!> <!></button>");
+function Qr(e, t) {
 	Be(t, !0);
-	let n = Fr(t, "label", 3, ""), r = /* @__PURE__ */ A(() => t.h.display_name || t.h.id), i = /* @__PURE__ */ A(() => [
+	let n = Fr(t, "label", 3, ""), r = /* @__PURE__ */ A(() => t.h.display_name || t.h.id), i = /* @__PURE__ */ A(() => t.h.tool || t.h.tool_target ? Gr(t.h.agent, {
+		title: t.h.tool,
+		target: t.h.tool_target,
+		intent: t.h.tool_intent
+	}).label : "working"), a = /* @__PURE__ */ A(() => [
 		Y(r),
 		[t.h.pool, t.h.model].filter(Boolean).join(" · "),
-		t.h.busy ? t.h.tool || "working" : "",
+		t.h.busy ? Y(i) : "",
 		t.h.id
 	].filter(Boolean).join("\n") + "\nClick to open read-only");
-	var a = Xr(), o = I(a);
-	let s;
-	var c = R(o, 2), l = (e) => {
-		var t = Gr(), r = L(t, !0);
+	var o = Zr(), s = I(o);
+	let c;
+	var l = R(s, 2), u = (e) => {
+		var t = Kr(), r = L(t, !0);
 		z(() => Q(r, n())), Z(e, t);
 	};
-	$(c, (e) => {
-		n() && e(l);
+	$(l, (e) => {
+		n() && e(u);
 	});
-	var u = R(c, 2), d = (e) => {
-		var n = Kr(), r = L(n, !0);
+	var d = R(l, 2), f = (e) => {
+		var n = qr(), r = L(n, !0);
 		z(() => Q(r, t.h.pool)), Z(e, n);
-	}, f = (e) => {
-		var t = qr(), n = L(t, !0);
+	}, p = (e) => {
+		var t = Jr(), n = L(t, !0);
 		z(() => Q(n, Y(r))), Z(e, t);
 	};
-	$(u, (e) => {
-		t.h.pool ? e(d) : e(f, -1);
+	$(d, (e) => {
+		t.h.pool ? e(f) : e(p, -1);
 	});
-	var p = R(u, 2), m = (e) => {
-		var n = Jr(), r = L(n, !0);
+	var m = R(d, 2), h = (e) => {
+		var n = Yr(), r = L(n, !0);
 		z(() => Q(r, t.h.model)), Z(e, n);
 	};
-	$(p, (e) => {
-		t.h.model && e(m);
+	$(m, (e) => {
+		t.h.model && e(h);
 	});
-	var h = R(p, 2), g = (e) => {
-		var n = Yr(), r = L(n, !0);
-		z(() => Q(r, t.h.tool || "working")), Z(e, n);
+	var g = R(m, 2), _ = (e) => {
+		var t = Xr(), n = L(t, !0);
+		z(() => Q(n, Y(i))), Z(e, t);
 	};
-	$(h, (e) => {
-		t.h.busy && e(g);
-	}), D(a), z(() => {
-		kr(a, "title", Y(i)), kr(a, "data-session", t.h.id), kr(a, "data-name", Y(r)), s = Tr(o, 1, "dot svelte-bwb1ob", null, s, {
+	$(g, (e) => {
+		t.h.busy && e(_);
+	}), D(o), z(() => {
+		kr(o, "title", Y(a)), kr(o, "data-session", t.h.id), kr(o, "data-name", Y(r)), c = Tr(s, 1, "dot svelte-bwb1ob", null, c, {
 			busy: t.h.busy,
 			dead: t.h.alive === !1
 		});
-	}), Gn("click", a, (e) => {
+	}), Gn("click", o, (e) => {
 		e.stopPropagation(), t.onopen(t.h.id);
-	}), Z(e, a), Ve();
+	}), Z(e, o), Ve();
 }
 Kn(["click"]);
 // plugins/attention/Attention.svelte
-var Qr = /* @__PURE__ */ X("<button class=\"ghost\" data-testid=\"push-test\">Test</button>"), $r = /* @__PURE__ */ X("<!> <button data-testid=\"push-toggle\"> </button>", 1), ei = /* @__PURE__ */ X("<span class=\"faint pushna svelte-t4vask\" data-testid=\"push-state\"> </span>"), ti = /* @__PURE__ */ X("<div class=\"card err\"> </div>"), ni = /* @__PURE__ */ X("<p class=\"faint\">Loading…</p>"), ri = /* @__PURE__ */ X("<div class=\"card empty\" data-testid=\"attention-empty\"><div class=\"big\">Nothing needs you.</div> <div class=\"muted\">No escalations, questions, decisions or other items waiting on you.</div></div>"), ii = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\" data-testid=\"attention-ref\"> </a>"), ai = /* @__PURE__ */ X("· <!>", 1), oi = /* @__PURE__ */ X("<div class=\"summary muted svelte-t4vask\" data-testid=\"attention-summary\"> </div>"), si = /* @__PURE__ */ X("<span class=\"muted\" data-testid=\"row-pending\"> </span>"), ci = /* @__PURE__ */ X("<span class=\"warn-text svelte-t4vask\" data-testid=\"row-stuck\"> </span>"), li = /* @__PURE__ */ X("<button type=\"button\" data-testid=\"row-resolve\" class=\"svelte-t4vask\"> </button>"), ui = /* @__PURE__ */ X("<!> <!> <button type=\"button\" class=\"ghost svelte-t4vask\" data-testid=\"open-chat\">Open chat</button>", 1), di = /* @__PURE__ */ X("<tr data-testid=\"attention-row\"><td class=\"c-id svelte-t4vask\"><span class=\"pill warn\"> </span></td><td class=\"c-title svelte-t4vask\"> <div class=\"faint mono\"> <!></div> <!> <div class=\"acts svelte-t4vask\" role=\"presentation\"><!></div></td><td class=\"muted full svelte-t4vask\"> </td><td class=\"muted c-time svelte-t4vask\"> </td></tr>"), fi = /* @__PURE__ */ X("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"attention-list\"><thead><tr><th>Kind</th><th>Item</th><th>Why</th><th>Since</th></tr></thead><tbody></tbody></table></div>"), pi = /* @__PURE__ */ X("<span class=\"step muted svelte-t4vask\"> </span> <!>", 1), mi = /* @__PURE__ */ X("<span class=\"faint\" data-testid=\"no-holder\">waiting for a session</span>"), hi = /* @__PURE__ */ X("<a class=\"mono svelte-t4vask\"> </a>"), gi = /* @__PURE__ */ X("<span class=\"note svelte-t4vask\"> </span>"), _i = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span> </span> <span class=\"step muted svelte-t4vask\"> </span> <!> <!> <span class=\"faint when svelte-t4vask\"> </span></li>"), vi = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span class=\"pill\"> </span><span class=\"step muted svelte-t4vask\"> </span><span class=\"faint\">no report yet</span></li>"), yi = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span class=\"faint\">waiting for a step to start</span></li>"), bi = /* @__PURE__ */ X("<a class=\"svelte-t4vask\"> </a>"), xi = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span class=\"pill\">comment</span><span class=\"step muted mono svelte-t4vask\"><!></span><span class=\"note svelte-t4vask\"> </span><span class=\"faint when svelte-t4vask\"> </span></li>"), Si = /* @__PURE__ */ X("<div class=\"item card svelte-t4vask\" data-testid=\"progress-card\"><button class=\"head svelte-t4vask\"><span class=\"dot accent\"></span> <span class=\"title svelte-t4vask\"> </span> <span class=\"mono faint id svelte-t4vask\"> </span> <span class=\"faint when svelte-t4vask\"> </span></button> <div class=\"who svelte-t4vask\"><!></div> <ul class=\"svelte-t4vask\"><!> <!></ul></div>"), Ci = /* @__PURE__ */ X("<div class=\"progress svelte-t4vask\" data-testid=\"progress\"></div>"), wi = /* @__PURE__ */ X("<div class=\"faint\">Loading…</div>"), Ti = /* @__PURE__ */ X("<div class=\"faint none svelte-t4vask\" data-testid=\"progress-empty\">No runs in progress.</div>"), Ei = /* @__PURE__ */ X("<header class=\"vh\"><h1>Attention</h1> <span class=\"sub\">What waits on a human, oldest first.</span> <span class=\"actions\"><!></span></header> <div class=\"pad\"><!> <!> <h2 class=\"st\">In progress</h2> <!></div>", 1);
-function Di(e, t) {
+var $r = /* @__PURE__ */ X("<button class=\"ghost\" data-testid=\"push-test\">Test</button>"), ei = /* @__PURE__ */ X("<!> <button data-testid=\"push-toggle\"> </button>", 1), ti = /* @__PURE__ */ X("<span class=\"faint pushna svelte-t4vask\" data-testid=\"push-state\"> </span>"), ni = /* @__PURE__ */ X("<div class=\"card err\"> </div>"), ri = /* @__PURE__ */ X("<p class=\"faint\">Loading…</p>"), ii = /* @__PURE__ */ X("<div class=\"card empty\" data-testid=\"attention-empty\"><div class=\"big\">Nothing needs you.</div> <div class=\"muted\">No escalations, questions, decisions or other items waiting on you.</div></div>"), ai = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\" data-testid=\"attention-ref\"> </a>"), oi = /* @__PURE__ */ X("· <!>", 1), si = /* @__PURE__ */ X("<div class=\"summary muted svelte-t4vask\" data-testid=\"attention-summary\"> </div>"), ci = /* @__PURE__ */ X("<span class=\"muted\" data-testid=\"row-pending\"> </span>"), li = /* @__PURE__ */ X("<span class=\"warn-text svelte-t4vask\" data-testid=\"row-stuck\"> </span>"), ui = /* @__PURE__ */ X("<button type=\"button\" data-testid=\"row-resolve\" class=\"svelte-t4vask\"> </button>"), di = /* @__PURE__ */ X("<!> <!> <button type=\"button\" class=\"ghost svelte-t4vask\" data-testid=\"open-chat\">Open chat</button>", 1), fi = /* @__PURE__ */ X("<tr data-testid=\"attention-row\"><td class=\"c-id svelte-t4vask\"><span class=\"pill warn\"> </span></td><td class=\"c-title svelte-t4vask\"> <div class=\"faint mono\"> <!></div> <!> <div class=\"acts svelte-t4vask\" role=\"presentation\"><!></div></td><td class=\"muted full svelte-t4vask\"> </td><td class=\"muted c-time svelte-t4vask\"> </td></tr>"), pi = /* @__PURE__ */ X("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"attention-list\"><thead><tr><th>Kind</th><th>Item</th><th>Why</th><th>Since</th></tr></thead><tbody></tbody></table></div>"), mi = /* @__PURE__ */ X("<span class=\"step muted svelte-t4vask\"> </span> <!>", 1), hi = /* @__PURE__ */ X("<span class=\"faint\" data-testid=\"no-holder\">waiting for a session</span>"), gi = /* @__PURE__ */ X("<a class=\"mono svelte-t4vask\"> </a>"), _i = /* @__PURE__ */ X("<span class=\"note svelte-t4vask\"> </span>"), vi = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span> </span> <span class=\"step muted svelte-t4vask\"> </span> <!> <!> <span class=\"faint when svelte-t4vask\"> </span></li>"), yi = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span class=\"pill\"> </span><span class=\"step muted svelte-t4vask\"> </span><span class=\"faint\">no report yet</span></li>"), bi = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span class=\"faint\">waiting for a step to start</span></li>"), xi = /* @__PURE__ */ X("<a class=\"svelte-t4vask\"> </a>"), Si = /* @__PURE__ */ X("<li class=\"svelte-t4vask\"><span class=\"pill\">comment</span><span class=\"step muted mono svelte-t4vask\"><!></span><span class=\"note svelte-t4vask\"> </span><span class=\"faint when svelte-t4vask\"> </span></li>"), Ci = /* @__PURE__ */ X("<div class=\"item card svelte-t4vask\" data-testid=\"progress-card\"><button class=\"head svelte-t4vask\"><span class=\"dot accent\"></span> <span class=\"title svelte-t4vask\"> </span> <span class=\"mono faint id svelte-t4vask\"> </span> <span class=\"faint when svelte-t4vask\"> </span></button> <div class=\"who svelte-t4vask\"><!></div> <ul class=\"svelte-t4vask\"><!> <!></ul></div>"), wi = /* @__PURE__ */ X("<div class=\"progress svelte-t4vask\" data-testid=\"progress\"></div>"), Ti = /* @__PURE__ */ X("<div class=\"faint\">Loading…</div>"), Ei = /* @__PURE__ */ X("<div class=\"faint none svelte-t4vask\" data-testid=\"progress-empty\">No runs in progress.</div>"), Di = /* @__PURE__ */ X("<header class=\"vh\"><h1>Attention</h1> <span class=\"sub\">What waits on a human, oldest first.</span> <span class=\"actions\"><!></span></header> <div class=\"pad\"><!> <!> <h2 class=\"st\">In progress</h2> <!></div>", 1);
+function Oi(e, t) {
 	Be(t, !0);
 	let n = /* @__PURE__ */ M(null), r = /* @__PURE__ */ M(""), i = /* @__PURE__ */ M(P([])), a = /* @__PURE__ */ M(P({})), o = /* @__PURE__ */ M(!1), s = /* @__PURE__ */ M(""), c = /* @__PURE__ */ M(P({
 		state: "off",
@@ -2194,9 +2211,9 @@ function Di(e, t) {
 		})).filter((e) => e.r && (e.r.note || e.r.state)).sort((e, t) => String(t.r.at).localeCompare(String(e.r.at)));
 	}
 	let ee = (e) => e === "failed" || e === "blocked" ? "bad" : e === "waiting" || e === "dropped" ? "warn" : e === "ready" ? "ok" : "accent", C = (e) => !!e && /^[a-z][a-z0-9]*-[0-9a-z]{6,}$/i.test(e), te = (e) => e?.status === "in_progress" && e.holder ? Y(a)[e.holder] ?? { id: e.holder } : null, ne = (e) => t.api.openSession(e, { readonly: !0 });
-	var re = Ei(), ie = Gt(re), ae = R(I(ie), 4), oe = I(ae), se = (e) => {
-		var t = $r(), n = Gt(t), r = (e) => {
-			var t = Qr();
+	var re = Di(), ie = Gt(re), ae = R(I(ie), 4), oe = I(ae), se = (e) => {
+		var t = ei(), n = Gt(t), r = (e) => {
+			var t = $r();
 			Gn("click", t, y), Z(e, t);
 		};
 		$(n, (e) => {
@@ -2209,7 +2226,7 @@ function Di(e, t) {
 			kr(i, "title", _[Y(c).state]), a = Tr(i, 1, "", null, a, { on: Y(c).state === "on" }), Q(o, Y(c).state === "on" ? "Notifications on" : "Notify me");
 		}), Gn("click", i, v), Z(e, t);
 	}, ce = (e) => {
-		var t = ei(), n = L(t, !0);
+		var t = ti(), n = L(t, !0);
 		z(() => {
 			kr(t, "title", _[Y(c).state]), Q(n, Y(c).state === "unavailable" ? "" : "no notifications");
 		}), Z(e, t);
@@ -2218,30 +2235,30 @@ function Di(e, t) {
 		Y(c).state === "on" || Y(c).state === "off" ? e(se) : e(ce, -1);
 	}), D(ae), D(ie);
 	var le = R(ie, 2), ue = I(le), de = (e) => {
-		var t = ti(), n = L(t, !0);
+		var t = ni(), n = L(t, !0);
 		z(() => Q(n, Y(c).error)), Z(e, t);
 	};
 	$(ue, (e) => {
 		Y(c).error && e(de);
 	});
 	var fe = R(ue, 2), pe = (e) => {
-		var t = ti(), n = L(t, !0);
+		var t = ni(), n = L(t, !0);
 		z(() => Q(n, Y(r))), Z(e, t);
 	}, me = (e) => {
-		Z(e, ni());
-	}, he = (e) => {
 		Z(e, ri());
+	}, he = (e) => {
+		Z(e, ii());
 	}, ge = (e) => {
-		var r = fi(), i = I(r), a = R(I(i));
+		var r = pi(), i = I(r), a = R(I(i));
 		_r(a, 21, () => Y(n), (e) => e.kind + e.id, (e, n) => {
 			let r = /* @__PURE__ */ A(() => Y(n).kind + ":" + Y(n).id), i = /* @__PURE__ */ A(() => l[Y(r)]);
-			var a = di();
+			var a = fi();
 			let o;
 			var c = I(a), d = L(I(c), !0);
 			D(c);
 			var f = R(c), p = I(f, !0), _ = R(p), v = I(_, !0), y = R(v), x = (e) => {
-				var t = ai(), r = R(Gt(t)), i = (e) => {
-					var t = ii(), r = L(t, !0);
+				var t = oi(), r = R(Gt(t)), i = (e) => {
+					var t = ai(), r = L(t, !0);
 					z(() => {
 						kr(t, "href", Y(n).url), Q(r, Y(n).ref);
 					}), Gn("click", t, (e) => e.stopPropagation()), Z(e, t);
@@ -2257,18 +2274,18 @@ function Di(e, t) {
 				Y(n).ref && e(x);
 			}), D(_);
 			var S = R(_, 2), ee = (e) => {
-				var t = oi(), r = L(t, !0);
+				var t = si(), r = L(t, !0);
 				z(() => Q(r, Y(n).summary)), Z(e, t);
 			};
 			$(S, (e) => {
 				Y(n).summary && e(ee);
 			});
 			var C = R(S, 2), te = I(C), ne = (e) => {
-				var t = si(), n = L(t);
+				var t = ci(), n = L(t);
 				z(() => Q(n, `${Y(i).label ?? ""}…`)), Z(e, t);
 			}, re = (e) => {
-				var i = ui(), a = Gt(i), o = (e) => {
-					var t = ci(), n = L(t);
+				var i = di(), a = Gt(i), o = (e) => {
+					var t = li(), n = L(t);
 					z(() => Q(n, `still listed after ${u[Y(r)] ?? ""}`)), Z(e, t);
 				};
 				$(a, (e) => {
@@ -2276,7 +2293,7 @@ function Di(e, t) {
 				});
 				var c = R(a, 2);
 				_r(c, 17, () => Ir(t.api, Y(n).kind, Y(n).id), (e) => e.label, (e, t) => {
-					var i = li(), a = L(i, !0);
+					var i = ui(), a = L(i, !0);
 					z(() => {
 						i.disabled = Y(h) === Y(r), Q(a, Y(t).label);
 					}), Gn("click", i, () => g(Y(n), Y(t))), Z(e, i);
@@ -2300,21 +2317,21 @@ function Di(e, t) {
 		Y(r) ? e(pe) : Y(n) ? Y(n).length === 0 ? e(he, 2) : e(ge, -1) : e(me, 1);
 	});
 	var _e = R(fe, 4), ve = (e) => {
-		var n = Ci();
+		var n = wi();
 		_r(n, 21, () => Y(i), ({ run: e, steps: t, comment: n }) => e.id, (e, n) => {
 			let r = () => Y(n).run, i = () => Y(n).steps, a = () => Y(n).comment, o = /* @__PURE__ */ A(() => S(i())), s = /* @__PURE__ */ A(() => i().find((e) => e.status === "in_progress")), c = /* @__PURE__ */ A(() => te(Y(s)));
-			var l = Si(), u = I(l), d = R(I(u), 2), f = L(d, !0), p = R(d, 2), m = L(p, !0), h = L(R(p, 2), !0);
+			var l = Ci(), u = I(l), d = R(I(u), 2), f = L(d, !0), p = R(d, 2), m = L(p, !0), h = L(R(p, 2), !0);
 			D(u);
 			var g = R(u, 2), _ = I(g), v = (e) => {
-				var t = pi(), n = Gt(t), r = L(n, !0);
-				Zr(R(n, 2), {
+				var t = mi(), n = Gt(t), r = L(n, !0);
+				Qr(R(n, 2), {
 					get h() {
 						return Y(c);
 					},
 					onopen: ne
 				}), z((e) => Q(r, e), [() => x(Y(s), "fields").step || Y(s).title]), Z(e, t);
 			}, y = (e) => {
-				Z(e, mi());
+				Z(e, hi());
 			};
 			$(_, (e) => {
 				Y(c) ? e(v) : e(y, -1);
@@ -2322,15 +2339,15 @@ function Di(e, t) {
 			var re = R(g, 2), ie = I(re);
 			_r(ie, 17, () => Y(o).slice(0, 3), ({ s: e, r: t }) => e.id, (e, t) => {
 				let n = () => Y(t).s, r = () => Y(t).r, i = /* @__PURE__ */ A(() => te(n()));
-				var a = _i(), o = I(a), s = L(o, !0), c = R(o, 2), l = L(c, !0), u = R(c, 2), d = (e) => {
-					Zr(e, {
+				var a = vi(), o = I(a), s = L(o, !0), c = R(o, 2), l = L(c, !0), u = R(c, 2), d = (e) => {
+					Qr(e, {
 						get h() {
 							return Y(i);
 						},
 						onopen: ne
 					});
 				}, f = (e) => {
-					var t = hi(), n = L(t, !0);
+					var t = gi(), n = L(t, !0);
 					z(() => {
 						kr(t, "href", "?session=" + r().by), Q(n, r().by);
 					}), Gn("click", t, (e) => {
@@ -2341,7 +2358,7 @@ function Di(e, t) {
 					Y(i) ? e(d) : Y(p) && e(f, 1);
 				});
 				var m = R(u, 2), h = (e) => {
-					var t = gi(), n = L(t, !0);
+					var t = _i(), n = L(t, !0);
 					z(() => Q(n, r().note)), Z(e, t);
 				};
 				$(m, (e) => {
@@ -2358,7 +2375,7 @@ function Di(e, t) {
 			}, (e) => {
 				var t = tr(), n = Gt(t), r = (e) => {
 					var t = tr(), n = Gt(t), r = (e) => {
-						var t = vi(), n = I(t), r = L(n, !0), i = L(R(n), !0);
+						var t = yi(), n = I(t), r = L(n, !0), i = L(R(n), !0);
 						Se(), D(t), z((e) => {
 							Q(r, Y(s).status), Q(i, e);
 						}, [() => x(Y(s), "fields").step || Y(s).title]), Z(e, t);
@@ -2367,15 +2384,15 @@ function Di(e, t) {
 						Y(c) || e(r);
 					}), Z(e, t);
 				}, i = (e) => {
-					Z(e, yi());
+					Z(e, bi());
 				};
 				$(n, (e) => {
 					Y(s) ? e(r) : e(i, -1);
 				}), Z(e, t);
 			});
 			var ae = R(ie, 2), oe = (e) => {
-				var n = xi(), r = R(I(n)), i = I(r), o = (e) => {
-					var n = bi(), r = L(n, !0);
+				var n = Si(), r = R(I(n)), i = I(r), o = (e) => {
+					var n = xi(), r = L(n, !0);
 					z(() => {
 						kr(n, "href", "?session=" + a().author), Q(r, a().author);
 					}), Gn("click", n, (e) => {
@@ -2400,9 +2417,9 @@ function Di(e, t) {
 			}, [() => b(r().updated_at)]), Gn("click", u, () => t.api.openTicket(r().id)), Z(e, l);
 		}), D(n), Z(e, n);
 	}, ye = (e) => {
-		Z(e, wi());
-	}, w = (e) => {
 		Z(e, Ti());
+	}, w = (e) => {
+		Z(e, Ei());
 	};
 	$(_e, (e) => {
 		Y(i).length ? e(ve) : Y(o) ? e(w, -1) : e(ye, 1);
@@ -2410,7 +2427,7 @@ function Di(e, t) {
 }
 Kn(["click"]);
 // plugins/attention/index.svelte.js
-var Oi = new URL("./style.css", import.meta.url).href, ki = class extends HTMLElement {
+var ki = new URL("./style.css", import.meta.url).href, Ai = class extends HTMLElement {
 	#e = /* @__PURE__ */ M(P({
 		api: null,
 		context: {},
@@ -2442,11 +2459,11 @@ var Oi = new URL("./style.css", import.meta.url).href, ki = class extends HTMLEl
 		return this.props.config;
 	}
 	connectedCallback() {
-		if (!document.querySelector(`link[href="${Oi}"]`)) {
+		if (!document.querySelector(`link[href="${ki}"]`)) {
 			let e = document.createElement("link");
-			e.rel = "stylesheet", e.href = Oi, document.head.append(e);
+			e.rel = "stylesheet", e.href = ki, document.head.append(e);
 		}
-		this.style.display = "contents", this.app = cr(Di, {
+		this.style.display = "contents", this.app = cr(Oi, {
 			target: this,
 			props: this.props
 		});
@@ -2455,4 +2472,4 @@ var Oi = new URL("./style.css", import.meta.url).href, ki = class extends HTMLEl
 		this.app && fr(this.app), this.app = null;
 	}
 };
-customElements.get("desk-attention-view") || customElements.define("desk-attention-view", ki);
+customElements.get("desk-attention-view") || customElements.define("desk-attention-view", Ai);

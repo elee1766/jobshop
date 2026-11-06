@@ -1,4 +1,5 @@
 <script>
+  import { toolLabel } from './format.js';
   // The session holding a step (JOB-54), as a one-line chip: busy dot,
   // pool, model and the running tool. The display name is often a long
   // task title that repeats the run, so it only shows when there is no
@@ -7,7 +8,8 @@
   /** @type {{ h: any, onopen: (id: string) => void, label?: string }} */
   let { h, onopen, label = '' } = $props();
   const name = $derived(h.display_name || h.id);
-  const tip = $derived([name, [h.pool, h.model].filter(Boolean).join(' · '), h.busy ? h.tool || 'working' : '', h.id]
+  const tool = $derived(h.tool || h.tool_target ? toolLabel(h.agent, { title: h.tool, target: h.tool_target, intent: h.tool_intent }).label : 'working');
+  const tip = $derived([name, [h.pool, h.model].filter(Boolean).join(' · '), h.busy ? tool : '', h.id]
     .filter(Boolean).join('\n') + '\nClick to open read-only');
 </script>
 
@@ -16,7 +18,7 @@
   {#if label}<span>{label}</span>{/if}
   {#if h.pool}<span class="name" data-testid="holder-pool">{h.pool}</span>{:else}<span class="name" data-testid="holder-name">{name}</span>{/if}
   {#if h.model}<span class="faint model">{h.model}</span>{/if}
-  {#if h.busy}<span class="tool muted" data-testid="holder-tool">{h.tool || 'working'}</span>{/if}
+  {#if h.busy}<span class="tool muted" data-testid="holder-tool">{tool}</span>{/if}
 </button>
 
 <style>

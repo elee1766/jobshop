@@ -6,7 +6,7 @@
 /**
  * @typedef {{ kind: 'user', text: string, source: string, context: string, seq: number }} UserBlock
  * @typedef {{ kind: 'assistant', text: string, live: boolean, seq: number }} AssistantBlock
- * @typedef {{ kind: 'tool', id: string, name: string, input: string, output: string, state: string, seq: number }} ToolBlock
+ * @typedef {{ kind: 'tool', id: string, name: string, target: string, intent: string, input: string, output: string, state: string, seq: number }} ToolBlock
  * @typedef {{ kind: 'system', text: string, seq: number }} SystemBlock
  * @typedef {{ kind: 'error', text: string, seq: number }} ErrorBlock
  * @typedef {UserBlock | AssistantBlock | ToolBlock | SystemBlock | ErrorBlock} Block
@@ -98,12 +98,14 @@ export class Builder {
         const t = this.tool(id);
         if (t) {
           if (tl.title) t.name = tl.title;
+          if (tl.target) t.target = tl.target;
+          if (tl.intent) t.intent = tl.intent;
           t.state = toolState(tl.status);
           if (tl.input) t.input = tl.input;
           if (tl.output) t.output = tl.output;
         } else {
           this.settle();
-          this.blocks.push({ kind: 'tool', id, name: tl.title || id, input: tl.input || '', output: tl.output || '', state: toolState(tl.status), seq });
+          this.blocks.push({ kind: 'tool', id, name: tl.title || '', target: tl.target || '', intent: tl.intent || '', input: tl.input || '', output: tl.output || '', state: toolState(tl.status), seq });
         }
         break;
       }

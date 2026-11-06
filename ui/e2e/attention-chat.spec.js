@@ -46,7 +46,7 @@ async function mock(page, o = {}) {
     if (path === '/api/plugins') return json(plugins);
     if (path === '/api/attention') return json(o.attention ? o.attention() : []);
     if (path === '/api/chat') return json({ pool: 'operator', sessions: [{ id: 'js-s1', key: 'escalation:js-e1', alive: true }, { id: 'js-s2', key: 'desk:abc', alive: true }, { id: 'js-s3', key: 'attention:stale:js-t9', alive: true }] });
-    if (path === '/api/sessions') return json([{ id: 'js-s2', alive: true, model: 'claude-x', ticket: { pool: 'operator' } }]);
+    if (path === '/api/sessions') return json([{ id: 'js-s2', alive: true, model: 'claude-x', agent: { name: 'jcode' }, ticket: { pool: 'operator' } }]);
     if (path === '/api/escalations') return json(o.escalations ?? []);
     if (path === '/api/work') return json({ runs: [], batches: [] });
     if (path === '/api/push/key') return route.fulfill({ status: 404, json: { error: 'push off' } });
@@ -117,7 +117,7 @@ test('during a turn: Stop, Queue and Interrupt; a tool row updates in place; the
         sse([
           prompt(11, 'look at the logs'),
           { seq: 12, type: 'reasoning', text: 'checking the journal', time: iso(700) },
-          { seq: 13, type: 'tool', tool: { id: 't1', title: 'bash', status: 'in_progress', input: '{"command":"tail log","intent":"Read the log"}' }, time: iso(600) },
+          { seq: 13, type: 'tool', tool: { id: 't1', title: 'Running shell command', status: 'in_progress', input: '{"command":"tail log","intent":"Read the log"}', target: 'tail log', intent: 'Read the log' }, time: iso(600) },
         ]),
         async () => {
           await queued;
@@ -136,10 +136,12 @@ test('during a turn: Stop, Queue and Interrupt; a tool row updates in place; the
   await page.goto('./?view=chat&session=js-s2');
   const tool = page.locator('[data-tool=t1]');
   await expect(tool.getByTestId('tool-state')).toHaveText('running');
-  await expect(tool).toContainText('Read the log');
+  // A jcode session leads with the call's intent, the command after it.
+  await expect(tool.getByTestId('tool-label')).toHaveText('Read the log');
+  await expect(tool.getByTestId('tool-detail')).toHaveText('tail log');
   // Thinking is not shown (2026-11-06).
   await expect(page.getByText('checking the journal')).toHaveCount(0);
-  await expect(page.getByTestId('chat-working')).toContainText('bash');
+  await expect(page.getByTestId('chat-working')).toContainText('Read the log');
   await expect(page.getByTestId('chat-stop')).toBeVisible();
   await expect(page.getByTestId('chat-interrupt')).toBeVisible();
   await expect(page.getByTestId('chat-send')).toHaveText('Queue');

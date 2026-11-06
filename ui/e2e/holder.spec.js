@@ -7,7 +7,7 @@ import { test, expect } from '@playwright/test';
 const builtins = ['desk', 'attention', 'chat', 'ticket'];
 const pathOf = (/** @type {string} */ url) => new URL(url).pathname.replace(/^.*?(?=\/api\/)/, '');
 
-const worker = { id: 'js-s-w1abcd', display_name: 'dev worker', pool: 'dev', model: 'claude-x', alive: true, busy: true, tool: 'go test' };
+const worker = { id: 'js-s-w1abcd', display_name: 'dev worker', pool: 'dev', model: 'claude-x', alive: true, busy: true, tool: 'Running shell command', tool_target: 'go test ./...', tool_intent: 'Run the tests', agent: { name: 'jcode' } };
 const step = { id: 'js-st1', title: 'implement', status: 'in_progress', holder: worker.id, fields: '{"step":"implement"}' };
 const run1 = { id: 'js-r1', kind: 'run', title: 'Fix the thing', status: 'in_progress' };
 const run2 = { id: 'js-r2', kind: 'run', title: 'Idle run', status: 'open' };
@@ -67,7 +67,8 @@ test('in-progress card names its session and opens it read-only', async ({ page 
   await expect(card.getByTestId('holder-pool').first()).toHaveText('dev');
   await expect(card.getByTestId('holder-name')).toHaveCount(0);
   await expect(card.getByTestId('holder').first()).toHaveAttribute('title', /dev worker/);
-  await expect(card.getByTestId('holder-tool').first()).toHaveText('go test');
+  // jcode titles every shell call the same; its intent says which.
+  await expect(card.getByTestId('holder-tool').first()).toHaveText('Run the tests');
   await expect(page.locator('[data-testid=progress-card][data-run=js-r2]').getByTestId('no-holder')).toHaveText('waiting for a session');
 
   await card.getByTestId('holder').first().click();

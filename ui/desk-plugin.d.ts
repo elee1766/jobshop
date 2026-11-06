@@ -273,6 +273,11 @@ export interface AdmissionMatch {
   Bots?: boolean;
 }
 
+export interface AgentInfo {
+  name: string;
+  version?: string;
+}
+
 export interface AnswerParams {
   id: string;
   text: string;
@@ -588,6 +593,9 @@ export interface HolderInfo {
   alive?: boolean;
   busy?: boolean;
   tool?: string;
+  tool_target?: string;
+  tool_intent?: string;
+  agent?: AgentInfo;
 }
 
 export interface IDParams {
@@ -1151,6 +1159,9 @@ export interface SessionInfo {
   override?: Record<string, string>;
   busy?: boolean;
   tool?: string;
+  tool_target?: string;
+  tool_intent?: string;
+  agent?: AgentInfo;
 }
 
 export interface SessionJournalParams {

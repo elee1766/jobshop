@@ -91,7 +91,7 @@ func TestSessionEvents(t *testing.T) {
 	frames := []rpc.JournalFrame{
 		{Seq: 5, T: 1000, From: "controller", Msg: json.RawMessage(`{"method":"session/prompt","params":{"prompt":[{"type":"text","text":"hi"}]}}`)},
 		{Seq: 6, T: 1001, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"hmm"}}}}`)},
-		{Seq: 7, T: 1002, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Read","status":"in_progress","rawInput":{"path":"a.go"}}}}`)},
+		{Seq: 7, T: 1002, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Read","status":"in_progress","rawInput":{"intent":"Look at a","path":"a.go"}}}}`)},
 		{Seq: 8, T: 1003, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed","rawOutput":"package a"}}}`)},
 		{Seq: 9, T: 1004, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"usage_update","used":1200,"size":200000}}}`)},
 		// A reconnect resumes with session/load: the agent replays the
@@ -111,8 +111,10 @@ func TestSessionEvents(t *testing.T) {
 		types = append(types, e.Type)
 	}
 	assert.Equal(t, []string{"turn_start", "reasoning", "tool", "tool", "usage"}, types)
-	assert.Equal(t, `{"path":"a.go"}`, got.Events[2].Tool.Input)
+	assert.Equal(t, `{"intent":"Look at a","path":"a.go"}`, got.Events[2].Tool.Input)
 	assert.Equal(t, "Read", got.Events[3].Tool.Title, "title carried from the start frame")
+	assert.Equal(t, "a.go", got.Events[3].Tool.Target, "target carried from the start frame")
+	assert.Equal(t, "Look at a", got.Events[3].Tool.Intent)
 	assert.Equal(t, "package a", got.Events[3].Tool.Output)
 	assert.Equal(t, &rpc.Usage{Used: 1200, Size: 200000}, got.Events[4].Usage)
 

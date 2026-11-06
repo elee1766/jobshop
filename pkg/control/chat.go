@@ -242,6 +242,8 @@ func redactEvent(red *redact.Redactor, ev *rpc.SessionEvent) {
 	ev.Error = red.Text(ev.Error)
 	if ev.Tool != nil {
 		ev.Tool.Title = red.Text(ev.Tool.Title)
+		ev.Tool.Target = red.Text(ev.Tool.Target)
+		ev.Tool.Intent = red.Text(ev.Tool.Intent)
 	}
 }
 
