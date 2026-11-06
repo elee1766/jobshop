@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -35,6 +34,7 @@ func (ingestWorkersCmd) Run(g *Globals) error {
 }
 
 type ingestWorkCmd struct {
+	LogFlags
 	Once     bool          `help:"Admit until nothing is pending and exit."`
 	Worker   string        `help:"Worker id (default <host>-<pid>)."`
 	Every    time.Duration `default:"1s" help:"Pause when nothing is pending, without --once. Each claim is the worker's heartbeat."`
@@ -50,6 +50,10 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 	if c.NoAdmit && !c.Dispatch {
 		return errors.New("--no-admit needs --dispatch")
 	}
+	log, err := c.logger()
+	if err != nil {
+		return err
+	}
 	host, _ := os.Hostname()
 	id := c.Worker
 	if id == "" {
@@ -58,7 +62,7 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 	w := control.IngestWorker{
 		Call: func(_ context.Context, method string, params, out any) error { return g.call(method, params, out) },
 		Dir:  r.Dir, Worker: id, Host: host, Dispatch: c.Dispatch, NoAdmit: c.NoAdmit,
-		Log: slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "ingest-work", "worker", id),
+		Log: log.With("component", "ingest-work", "worker", id),
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -157,6 +161,7 @@ func (c ingestDrainCmd) Run(g *Globals) error {
 }
 
 type ingestServeCmd struct {
+	LogFlags
 	Listen string `help:"TCP address (default ingest.listen, else 127.0.0.1:8740)."`
 	Spool  string `help:"Spool database (default ingest.spool, else <root>/ingest/spool.db)."`
 }
@@ -184,7 +189,11 @@ func (c ingestServeCmd) Run(g *Globals) error {
 	if len(eps) == 0 {
 		return fmt.Errorf("ingest serve: no endpoints: add ingest.endpoints in %s", r.Config())
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "ingest")
+	log, err := c.logger()
+	if err != nil {
+		return err
+	}
+	log = log.With("component", "ingest")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	sp, err := ingest.OpenSpool(ctx, path)

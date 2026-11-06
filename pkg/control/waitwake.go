@@ -179,7 +179,7 @@ func (c *Controller) pollWaitsOn(ctx context.Context, src waitSource, threads th
 	ts, err := c.waiting(ctx, "")
 	if err != nil {
 		if ctx.Err() == nil {
-			c.log.Warn("waits: list", "err", err)
+			c.log.WarnContext(ctx, "waits: list", "err", err)
 		}
 		return
 	}
@@ -189,7 +189,7 @@ func (c *Controller) pollWaitsOn(ctx context.Context, src waitSource, threads th
 			continue
 		}
 		if err := c.evalWait(ctx, pass, t); err != nil && ctx.Err() == nil {
-			c.log.Warn("waits: evaluate", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "waits: evaluate", "ticket", t.ID, "err", err)
 		}
 	}
 }

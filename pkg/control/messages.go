@@ -56,7 +56,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 			continue // another session took it
 		}
 		if _, err := store.Close(ctx, r.c.store, "controller", t.ID, &cl, resolutionDelivered); err != nil && !errors.Is(err, store.ErrClosed) {
-			r.log.Warn("close delivered message", "message", t.ID, "err", err)
+			r.log.WarnContext(ctx, "close delivered message", "message", t.ID, "err", err)
 			continue
 		}
 		claimed = append(claimed, t)
@@ -94,7 +94,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 		text = joinParts(parts[len(parts)-1:])
 		r.setContext(joinParts(append(parts[:len(parts)-1:len(parts)-1], PromptPart{Text: strings.Join(msgCtx, "\n\n")})))
 	}
-	r.log.Info("delivering messages", "messages", ids(claimed))
+	r.log.InfoContext(ctx, "delivering messages", "messages", ids(claimed))
 	// A message turn can be interrupted too (a chat user sending a
 	// correction); the interrupting message is then delivered at once.
 	interrupted, err := r.interruptible(ctx, conn, acpSession, text)
@@ -135,17 +135,17 @@ func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnecti
 			case <-wctx.Done():
 				return
 			case <-r.restartNow:
-				r.log.Info("restart --now: cancelling turn")
+				r.log.InfoContext(ctx, "restart --now: cancelling turn")
 				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
 				return
 			case <-r.cancelNow:
-				r.log.Info("session cancel: cancelling turn")
+				r.log.InfoContext(ctx, "session cancel: cancelling turn")
 				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
 				return
 			case <-tick.C():
 			}
 			if len(r.inbox(wctx, true)) > 0 {
-				r.log.Info("interrupt message: cancelling turn")
+				r.log.InfoContext(ctx, "interrupt message: cancelling turn")
 				interrupted.Store(true)
 				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
 				return

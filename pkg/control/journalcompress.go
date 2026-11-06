@@ -80,7 +80,7 @@ func (c *Controller) compressJournals(ctx context.Context, cutoff time.Time, lev
 		if zs, err := os.Stat(filepath.Join(dir, host.CompressedJournalFile)); err == nil {
 			after = zs.Size()
 		}
-		c.log.Info("journal compressed", "session", s.ID, "bytes_before", st.Size(), "bytes_after", after)
+		c.log.InfoContext(ctx, "journal compressed", "session", s.ID, "bytes_before", st.Size(), "bytes_after", after)
 		n++
 	}
 	return n, errors.Join(errs...)

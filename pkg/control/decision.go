@@ -148,7 +148,7 @@ func (c *Controller) decisionResolve(ctx context.Context, sc scope, p rpc.Decisi
 func (c *Controller) undeferWaiting(ctx context.Context, d store.Ticket, ref decisionRef, hasRef bool, who string) []string {
 	ts, err := c.store.List(ctx, store.Filter{Project: d.Project, Status: store.StatusOpen, Limit: math.MaxInt32})
 	if err != nil {
-		c.log.Warn("decision: list waiting", "ticket", d.ID, "err", err)
+		c.log.WarnContext(ctx, "decision: list waiting", "ticket", d.ID, "err", err)
 		return nil
 	}
 	now := c.now()
@@ -164,7 +164,7 @@ func (c *Controller) undeferWaiting(ctx context.Context, d store.Ticket, ref dec
 			continue
 		}
 		if _, err := c.clearDefer(ctx, t, who, "decision "+d.ID+" resolved"); err != nil {
-			c.log.Warn("decision: undefer", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "decision: undefer", "ticket", t.ID, "err", err)
 			continue
 		}
 		out = append(out, t.ID)
@@ -208,7 +208,7 @@ func (c *Controller) clearDefer(ctx context.Context, t store.Ticket, who, why st
 		return u, err
 	}
 	if _, err := store.AddComment(ctx, c.store, who, t.ID, "Deferral cleared: "+why); err != nil {
-		c.log.Warn("undefer comment", "ticket", t.ID, "err", err)
+		c.log.WarnContext(ctx, "undefer comment", "ticket", t.ID, "err", err)
 	}
 	return u, nil
 }

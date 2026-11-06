@@ -99,11 +99,11 @@ func (c *Controller) escalateRun(ctx context.Context, runID string) bool {
 	}
 	f.Escalations++
 	if run, err = c.setRunState(ctx, "controller", run, f, store.RunNeedsHuman, ""); err != nil {
-		c.log.Error("run needs_human", "run", runID, "err", err)
+		c.log.ErrorContext(ctx, "run needs_human", "run", runID, "err", err)
 		return false
 	}
 	f.State = store.RunNeedsHuman
-	c.log.Warn("run needs a human", "run", runID, "workflow", f.Workflow, "step", failed.ID)
+	c.log.WarnContext(ctx, "run needs a human", "run", runID, "workflow", f.Workflow, "step", failed.ID)
 	c.ensureEscalation(ctx, run, f)
 	return true
 }
@@ -124,7 +124,7 @@ func (c *Controller) ensureEscalation(ctx context.Context, run store.Ticket, f s
 	}
 	body, err := c.escalationBody(ctx, run, f)
 	if err != nil {
-		c.log.Error("escalation body", "run", run.ID, "err", err)
+		c.log.ErrorContext(ctx, "escalation body", "run", run.ID, "err", err)
 		return
 	}
 	meta := map[string]json.RawMessage{}
@@ -142,10 +142,10 @@ func (c *Controller) ensureEscalation(ctx context.Context, run store.Ticket, f s
 		Body: body, Priority: &prio, Pool: pool, Labels: []string{"needs-human"}, Meta: mb,
 	})
 	if err != nil {
-		c.log.Error("create escalation", "run", run.ID, "err", err)
+		c.log.ErrorContext(ctx, "create escalation", "run", run.ID, "err", err)
 		return
 	}
-	c.log.Info("escalation filed", "run", run.ID, "ticket", t.ID, "pool", pool)
+	c.log.InfoContext(ctx, "escalation filed", "run", run.ID, "ticket", t.ID, "pool", pool)
 	c.record(ctx, store.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: a step failed at its retry limit (escalation %s)", run.ID, f.Workflow, t.ID), "")
 	c.ensureEscalationChat(ctx, t)
 }

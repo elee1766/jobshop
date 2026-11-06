@@ -124,6 +124,6 @@ func (c *Controller) identityToken(ctx context.Context, sc scope, p rpc.Identity
 	if err != nil {
 		return nil, fmt.Errorf("identity token for %s: %w", p.Target, err)
 	}
-	c.log.Info("identity token", "identity", name, "target", p.Target, "actor", sc.actor)
+	c.log.InfoContext(ctx, "identity token", "identity", name, "target", p.Target, "actor", sc.actor)
 	return rpc.IdentityTokenResult{Identity: name, Kind: id.Kind, Token: t.Token, Expires: t.Expires}, nil
 }

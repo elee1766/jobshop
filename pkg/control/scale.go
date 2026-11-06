@@ -442,7 +442,7 @@ func (c *Controller) sessionCordon(ctx context.Context, id string) *store.Cordon
 // scaleEvent counts a scale change and publishes it on events.subscribe.
 func (c *Controller) scaleEvent(ctx context.Context, pool, op, session string, desired int) {
 	c.metrics.ScaleEvents.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(pool), telemetry.AttrReason.String(op)))
-	c.log.Info("pool scale", "pool", pool, "op", op, "session", session, "desired", desired)
+	c.log.InfoContext(ctx, "pool scale", "pool", pool, "op", op, "session", session, "desired", desired)
 	c.events.publish([]rpc.Event{{Kind: rpc.EventKindPool, Op: op, Pool: pool, ID: session, Desired: desired, Time: c.now()}})
 }
 

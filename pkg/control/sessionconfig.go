@@ -86,7 +86,7 @@ func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection
 			r.skipped[id] = true
 			r.mu.Unlock()
 			if first {
-				r.log.Warn("agent does not advertise config option, skipping", "option", id, "value", v, "advertised", f.ConfigIDs)
+				r.log.WarnContext(ctx, "agent does not advertise config option, skipping", "option", id, "value", v, "advertised", f.ConfigIDs)
 			}
 			continue
 		}
@@ -99,7 +99,7 @@ func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection
 			if err == nil || ctx.Err() != nil {
 				break
 			}
-			r.log.Warn("set config option failed", "option", id, "value", v, "attempt", attempt+1, "err", err)
+			r.log.WarnContext(ctx, "set config option failed", "option", id, "value", v, "attempt", attempt+1, "err", err)
 		}
 		if err != nil {
 			if ctx.Err() != nil {
@@ -123,7 +123,7 @@ func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection
 		if err != nil {
 			return err
 		}
-		r.log.Info("session config option set", "option", id, "old", old, "new", v, "current", cur[id])
+		r.log.InfoContext(ctx, "session config option set", "option", id, "old", old, "new", v, "current", cur[id])
 		r.lifecycle("config", attribute.String("jobshop.config.option", id),
 			attribute.String("jobshop.config.old", old), attribute.String("jobshop.config.new", v))
 		r.c.events.publish([]rpc.Event{{
@@ -229,7 +229,7 @@ func (c *Controller) sessionConfigRPC(ctx context.Context, sc scope, p rpc.Sessi
 	if err != nil {
 		return nil, err
 	}
-	c.log.Info("session config override", "session", p.ID, "options", opts, "reset", p.Reset, "by", sc.actor)
+	c.log.InfoContext(ctx, "session config override", "session", p.ID, "options", opts, "reset", p.Reset, "by", sc.actor)
 	c.wakeRunner(p.ID)
 	return c.sessionInfo(ctx, p.ID)
 }

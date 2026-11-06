@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -17,6 +16,7 @@ import (
 )
 
 type deskCmd struct {
+	LogFlags
 	Listen       string   `help:"Address to serve on. Non-loopback needs --allow-remote." default:"127.0.0.1:7480"`
 	Host         []string `help:"Extra Host header values to accept (e.g. a tailnet name); loopback is always accepted."`
 	AllowRemote  bool     `help:"Allow a non-loopback listen address. Desk has no login; expose it only on a trusted network."`
@@ -51,7 +51,11 @@ func (c deskCmd) Run(g *Globals) error {
 	if c.UserHeader != "" && len(proxies) == 0 {
 		return errors.New("desk: --user-header needs at least one --trusted-proxy")
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "desk")
+	log, err := c.logger()
+	if err != nil {
+		return err
+	}
+	log = log.With("component", "desk")
 	cfg := desk.Config{Hosts: c.Host, ChatPool: c.ChatPool, UserHeader: c.UserHeader, BasePath: base, TrustedProxies: proxies, Root: r.Dir}
 	if c.Push {
 		// Under the root, with the key and subscriptions: only Desk reads it.

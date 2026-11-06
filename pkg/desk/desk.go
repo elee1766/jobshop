@@ -413,7 +413,7 @@ func (s *Server) json(fn func(*http.Request) (any, error)) http.HandlerFunc {
 			case errors.Is(err, errForbidden):
 				code = http.StatusForbidden
 			}
-			s.log.Warn("desk: api", "path", r.URL.Path, "err", err)
+			s.log.WarnContext(ctx, "desk: api", "path", r.URL.Path, "err", err)
 			w.WriteHeader(code)
 			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error(), "code": rpcErrCode(err)})
 			return

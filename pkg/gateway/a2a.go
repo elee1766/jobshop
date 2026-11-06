@@ -101,7 +101,7 @@ func (a *A2A) Run(ctx context.Context) error {
 			break
 		}
 		if err != nil {
-			a.log.Warn("a2a: events", "err", err)
+			a.log.WarnContext(ctx, "a2a: events", "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -133,7 +133,7 @@ func (a *A2A) event(ctx context.Context, ev rpc.Event) {
 		}
 		r, err := a.ctl.Show(ctx, ev.ID)
 		if err != nil {
-			a.log.Warn("a2a: show", "ticket", ev.ID, "err", err)
+			a.log.WarnContext(ctx, "a2a: show", "ticket", ev.ID, "err", err)
 			return
 		}
 		a.start(ctx, r.Ticket)
@@ -146,7 +146,7 @@ func (a *A2A) Resync(ctx context.Context) {
 	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
 		ts, err := a.ctl.List(ctx, rpc.ListParams{Label: EscalationLabel, Status: st})
 		if err != nil {
-			a.log.Warn("a2a: list escalations", "err", err)
+			a.log.WarnContext(ctx, "a2a: list escalations", "err", err)
 			return
 		}
 		for _, t := range ts {
@@ -323,7 +323,7 @@ func (c *a2aConv) follow(ctx context.Context, out chan<- a2aTurn) {
 			return
 		}
 		if err != nil && ctx.Err() == nil {
-			c.a.log.Warn("a2a: subscribe", "session", c.chat.Session, "err", err)
+			c.a.log.WarnContext(ctx, "a2a: subscribe", "session", c.chat.Session, "err", err)
 		}
 		if ctx.Err() != nil {
 			return
@@ -413,7 +413,7 @@ func (c *a2aConv) handle(ctx context.Context, r a2aReply) {
 		pool = c.a.cfg.Pool
 	}
 	if _, err := c.a.ctl.Send(ctx, rpc.SessionSendParams{Pool: pool, Key: c.chat.Key, Text: text}); err != nil {
-		c.a.log.Warn("a2a: session send", "ticket", c.ticket.ID, "err", err)
+		c.a.log.WarnContext(ctx, "a2a: session send", "ticket", c.ticket.ID, "err", err)
 	}
 	if r.Task != nil && c.st.State == A2ACompleted {
 		// A finished task: the next session turn opens a new one.
@@ -435,7 +435,7 @@ func (c *a2aConv) poll(ctx context.Context) {
 // failed backs off and comments the first error of a streak.
 func (c *a2aConv) failed(ctx context.Context, err error) {
 	c.backoff = min(max(2*c.backoff, c.a.cfg.Poll), 10*time.Minute)
-	c.a.log.Warn("a2a: peer", "ticket", c.ticket.ID, "err", err, "retry", c.backoff)
+	c.a.log.WarnContext(ctx, "a2a: peer", "ticket", c.ticket.ID, "err", err, "retry", c.backoff)
 	msg := err.Error()
 	if c.st.Error == msg {
 		return
@@ -456,7 +456,7 @@ func (c *a2aConv) finish(ctx context.Context, res, by string) {
 			text += " by " + by
 		}
 		if _, err := c.a.cli.send(ctx, c.st.Context, "", text+". No further reply is needed."); err != nil {
-			c.a.log.Warn("a2a: final message", "ticket", c.ticket.ID, "err", err)
+			c.a.log.WarnContext(ctx, "a2a: final message", "ticket", c.ticket.ID, "err", err)
 		}
 	}
 	c.st.Done, c.st.Task, c.st.State = true, "", ""
@@ -471,7 +471,7 @@ func (c *a2aConv) stop(ctx context.Context, comment string) {
 
 func (c *a2aConv) comment(ctx context.Context, body string) {
 	if err := c.a.ctl.Comment(ctx, rpc.CommentParams{ID: c.ticket.ID, Body: body}); err != nil {
-		c.a.log.Warn("a2a: comment", "ticket", c.ticket.ID, "err", err)
+		c.a.log.WarnContext(ctx, "a2a: comment", "ticket", c.ticket.ID, "err", err)
 	}
 }
 
@@ -486,6 +486,6 @@ func (c *a2aConv) save(ctx context.Context) {
 		return nil
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
-		c.a.log.Warn("a2a: record state", "ticket", c.ticket.ID, "err", err)
+		c.a.log.WarnContext(ctx, "a2a: record state", "ticket", c.ticket.ID, "err", err)
 	}
 }

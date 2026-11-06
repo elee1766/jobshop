@@ -289,7 +289,7 @@ func (c *Controller) sendBatches(ctx context.Context, cl *journal.Client) (int, 
 				c.metrics.JournalErrors.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(p.s.t.Pool)))
 			}
 			if ctx.Err() == nil {
-				c.log.Warn("journal ship", "err", err, "retry_in", wait)
+				c.log.WarnContext(ctx, "journal ship", "err", err, "retry_in", wait)
 			}
 			return total, err
 		}
@@ -322,7 +322,7 @@ func (c *Controller) saveCursors(ctx context.Context, force bool) {
 		err := c.updateSessionFields(ctx, s.t.ID, func(f *store.SessionFields) { f.ShippedSeq = max(f.ShippedSeq, seq) })
 		if err != nil {
 			if ctx.Err() == nil {
-				c.log.Warn("journal ship: save cursor", "session", s.t.ID, "err", err)
+				c.log.WarnContext(ctx, "journal ship: save cursor", "session", s.t.ID, "err", err)
 			}
 			continue
 		}

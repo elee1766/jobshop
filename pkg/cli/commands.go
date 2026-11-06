@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -118,6 +117,7 @@ func (c initCmd) Run() error {
 }
 
 type serveCmd struct {
+	LogFlags
 	Tick time.Duration `help:"Lease sweep interval." default:"30s"`
 }
 
@@ -128,7 +128,10 @@ func (c serveCmd) Run(g *Globals) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	log, err := c.logger()
+	if err != nil {
+		return err
+	}
 	// SIGHUP reloads the config, like `jobshop reload`.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)

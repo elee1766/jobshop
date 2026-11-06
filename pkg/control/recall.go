@@ -93,6 +93,6 @@ func (r *runner) indexJournal(ctx context.Context, ticketID string) {
 		Text: host.Summarize(frames, recallJournalBytes),
 	}
 	if err := journal.Index(context.WithoutCancel(ctx), r.c.store, d); err != nil {
-		r.log.Warn("index journal for recall", "err", err)
+		r.log.WarnContext(ctx, "index journal for recall", "err", err)
 	}
 }

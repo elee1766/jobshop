@@ -91,7 +91,7 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 			return nil, err
 		}
 	}
-	c.log.Info("memory write", "edit", out.ID, "path", rel, "learnings", out.Learnings, "session", sc.session)
+	c.log.InfoContext(ctx, "memory write", "edit", out.ID, "path", rel, "learnings", out.Learnings, "session", sc.session)
 	return out, nil
 }
 
@@ -134,7 +134,7 @@ func (c *Controller) restoreEdit(ctx context.Context, e store.MemoryEdit) error 
 	}
 	for _, n := range newer {
 		if n.Path == e.Path && n.ID > e.ID {
-			c.log.Warn("memory edit not restored: a newer write replaced it", "edit", e.ID, "newer", n.ID, "path", e.Path)
+			c.log.WarnContext(ctx, "memory edit not restored: a newer write replaced it", "edit", e.ID, "newer", n.ID, "path", e.Path)
 			return c.rejectCited(ctx, e)
 		}
 	}
@@ -144,7 +144,7 @@ func (c *Controller) restoreEdit(ctx context.Context, e store.MemoryEdit) error 
 	if err != nil {
 		return err
 	}
-	c.log.Info("memory edit restored", "edit", e.ID, "path", e.Path, "existed", e.Existed)
+	c.log.InfoContext(ctx, "memory edit restored", "edit", e.ID, "path", e.Path, "existed", e.Existed)
 	return c.rejectCited(ctx, e)
 }
 

@@ -121,7 +121,7 @@ func (c *Controller) placeStep(ctx context.Context, t store.Ticket, sf store.Ste
 		return err
 	}
 	if target != from {
-		c.log.Info("step placed", "step", t.ID, "pool", p.Options[target].Pool, "fallback", target > 0)
+		c.log.InfoContext(ctx, "step placed", "step", t.ID, "pool", p.Options[target].Pool, "fallback", target > 0)
 		_, _ = store.AddComment(ctx, c.store, "controller", t.ID, fmt.Sprintf("Placement: moved to pool %s (option %d of %d, weight %d).",
 			p.Options[target].Pool, target+1, len(p.Options), p.Options[target].Weight))
 

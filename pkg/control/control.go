@@ -30,6 +30,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/logctx"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/postgres"
@@ -284,7 +285,8 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		opt.Poll = 5 * time.Second
 	}
 	if opt.Log == nil {
-		opt.Log = slog.Default()
+		// Libraries never log to the process default (JOB-49).
+		opt.Log = slog.New(slog.DiscardHandler)
 	}
 	if opt.Clock == nil {
 		opt.Clock = clock.Real{}
@@ -329,7 +331,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	defer func() { _ = tr.Shutdown(context.WithoutCancel(ctx)) }()
 	incidents := &incidentLog{}
-	log := slog.New(incidentHandler{Handler: tr.LogHandler(opt.Log.Handler()), log: incidents})
+	// logctx outermost: the base handler, the OTel bridge and the
+	// incident log all get the ids carried in ctx (JOB-49).
+	log := slog.New(logctx.NewHandler(incidentHandler{Handler: tr.LogHandler(logctx.Unwrap(opt.Log.Handler())), log: incidents}))
 
 	c := &Controller{
 		root: root, live: live, store: st, opt: opt, log: log, metrics: m, incidents: incidents,
@@ -354,7 +358,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	c.started = c.now()
 	if loadErr != nil {
 		c.configErr, c.configErrAt = loadErr.Error(), c.started
-		c.log.Error("config load failed in a pack, serving the last good config", "err", loadErr, "last_good", root.LastGood())
+		c.log.ErrorContext(ctx, "config load failed in a pack, serving the last good config", "err", loadErr, "last_good", root.LastGood())
 	} else {
 		c.saveLastGood(cfg)
 	}

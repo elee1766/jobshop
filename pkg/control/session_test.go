@@ -610,6 +610,9 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 		done := make(chan error, 1)
 		opt = withPass(dir, opt)
 		opt.Tick, opt.HostExe = time.Hour, os.Args[0]
+		if opt.Log == nil {
+			opt.Log = testLog(t)
+		}
 		if opt.Backoff == 0 {
 			opt.Backoff = 100 * time.Millisecond
 		}
@@ -1051,7 +1054,7 @@ func (h backoffLog) WithGroup(g string) slog.Handler {
 // the retried turn closes the ticket.
 func TestRateLimitBackoff(t *testing.T) {
 	backoffs := new(atomic.Int32)
-	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, Log: slog.New(backoffLog{slog.Default().Handler(), backoffs})})
+	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, Log: slog.New(backoffLog{testLog(t).Handler(), backoffs})})
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "ratelimit"), []byte("3"), 0o600))
 	stop := start()
 	defer stop()

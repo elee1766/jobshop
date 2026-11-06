@@ -307,7 +307,7 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 	if t, err = c.store.Update(ctx, "controller", t.ID, u); err != nil {
 		return t, err
 	}
-	c.log.Info("wait cleared", "ticket", t.ID, "why", why)
+	c.log.InfoContext(ctx, "wait cleared", "ticket", t.ID, "why", why)
 	return t, nil
 }
 
@@ -379,14 +379,14 @@ func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads thre
 	ts, err := c.waiting(ctx, "")
 	if err != nil {
 		if ctx.Err() == nil {
-			c.log.Warn("waits: list", "err", err)
+			c.log.WarnContext(ctx, "waits: list", "err", err)
 		}
 		return
 	}
 	pass := c.newWaitPass(src, threads)
 	for _, t := range ts {
 		if err := c.evalWait(ctx, pass, t); err != nil && ctx.Err() == nil {
-			c.log.Warn("waits: evaluate", "ticket", t.ID, "err", err)
+			c.log.WarnContext(ctx, "waits: evaluate", "ticket", t.ID, "err", err)
 		}
 	}
 }
@@ -457,7 +457,7 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticke
 			owner = "unset"
 		}
 		_, _ = store.AddComment(ctx, c.store, "controller", t.ID, fmt.Sprintf("Wait (%s) passed its timeout %s; owner %s. Clear it with `jobshop wait clear %s`.", w.Reason, w.Timeout.Format(time.RFC3339), owner, t.ID))
-		c.log.Warn("wait timed out", "ticket", t.ID, "reason", w.Reason, "owner", w.Owner)
+		c.log.WarnContext(ctx, "wait timed out", "ticket", t.ID, "reason", w.Reason, "owner", w.Owner)
 		c.holdChat(ctx, t.ID)
 	}
 	return errors.Join(errs...)
