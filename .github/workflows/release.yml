@@ -100,4 +100,6 @@ jobs:
       - name: version matches the release
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
-        run: ./result/bin/jobshop version | tee /dev/stderr | grep -q "jobshop ${VERSION} "
+        # The Nix build adds +<commit> as build metadata (JOB-79): compare
+        # the base version.
+        run: ./result/bin/jobshop version | tee /dev/stderr | grep -q "jobshop ${VERSION}[+ ]"

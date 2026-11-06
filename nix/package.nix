@@ -6,9 +6,13 @@
 }:
 
 let
-  # Last release, kept by release-please (#644). Untagged builds report it
-  # too; the commit (rev) tells them apart.
+  # Last release, kept by release-please (#644). It stays the derivation
+  # version so store paths do not change per commit.
   version = lib.trim (builtins.readFile ../version.txt);
+  # The binary reports the commit as semver build metadata (JOB-79):
+  # self-deploy builds master commits after a release, which would
+  # otherwise report that release and look one version behind.
+  binVersion = if rev == "unknown" then version else "${version}+${rev}";
   args = {
     pname = "jobshop";
     inherit version;
@@ -26,7 +30,7 @@ let
     ldflags = [
       "-s"
       "-w"
-      "-X github.com/elee1766/jobshop/pkg/cli.version=${version}"
+      "-X github.com/elee1766/jobshop/pkg/cli.version=${binVersion}"
       "-X github.com/elee1766/jobshop/pkg/cli.commit=${rev}"
     ];
 
