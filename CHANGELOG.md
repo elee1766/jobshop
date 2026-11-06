@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/elee1766/jobshop/compare/v0.4.4...v0.5.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **nix:** hosts that set `services.jobshop.selfDeploy` or `workspaces.<name>.selfDeploy` fail evaluation; deploy from the host config and set `followInstalled = true`.
+
+### Refactors
+
+* **nix:** move self-deploy out of the jobshop module (JOB-74) ([#844](https://github.com/elee1766/jobshop/issues/844)) ([2c288ef](https://github.com/elee1766/jobshop/commit/2c288efe39a7eb63cda85d5e8a144db0b2906e9e))
+
 ## [0.4.4](https://github.com/elee1766/jobshop/compare/v0.4.3...v0.4.4) (2026-11-06)
 
 
