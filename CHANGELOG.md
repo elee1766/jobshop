@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/elee1766/jobshop/compare/v0.5.0...v0.5.1) (2026-11-06)
+
+
+### Features
+
+* **desk:** remove the built-in artifacts view (JOB-80) ([#848](https://github.com/elee1766/jobshop/issues/848)) ([6a55767](https://github.com/elee1766/jobshop/commit/6a5576730e56bc09659cabb1ba486871d3e381c9))
+
 ## [0.5.0](https://github.com/elee1766/jobshop/compare/v0.4.4...v0.5.0) (2026-11-06)
 
 
