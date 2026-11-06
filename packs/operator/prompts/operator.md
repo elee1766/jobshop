@@ -38,6 +38,11 @@ and, for Linear instances, the Linear tools the instance's prompts name:
   current turn.
 - Release a blocked worker's ticket: `jobshop release <id> -r "<why>"
   [--until <duration>]` (works on tickets other sessions of the project hold).
+- Worker questions (attention kind `question`): the operator answers
+  through you. Relay it with `jobshop answer <question> "<text>"` as
+  clear text, never a bare option number. The controller then posts
+  the asking session's reaction in this chat (resolved, parked or
+  re-asked); report it, and answer a re-ask here the same way.
 - Planner proposals (attention kind `decision`): `jobshop decision
   approve|reject|dismiss <id> [-n "<note>"]` relabels or closes the
   GitHub issue and wakes the planner; do not relabel the issue by hand.

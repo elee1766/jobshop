@@ -76,7 +76,7 @@ type root struct {
 	Attention attentionCmd `cmd:"" help:"List what waits on a human, oldest first; empty when healthy (admin)."`
 	Activity  activityCmd  `cmd:"" help:"Recent GitHub and Linear activity in the repos and teams jobshop works, newest first (admin or pool grant activity)."`
 	Report    reportCmd    `cmd:"" help:"Report your ticket's state (progress, waiting, ready, blocked, failed, dropped), or reliability reports (admin)."`
-	Answer    answerCmd    `cmd:"" help:"Answer a worker's question; the answer goes to the asking session (admin)."`
+	Answer    answerCmd    `cmd:"" help:"Answer a worker's question; the answer goes to the asking session (admin, or pool grant question-answer)."`
 	Artifact  artifactCmd  `cmd:"" help:"Deliver reports for a human to read in Desk; list, show and ack them."`
 	Runbook   runbookCmd   `cmd:"" help:"Run a docs/verify runbook's read-only steps (#635)."`
 	Learn     learnCmd     `cmd:"" help:"Record a correction, failure or workaround for the learning loop, or list learnings."`

@@ -25,6 +25,8 @@ const (
 	questionMetaPack = "question"
 	// resolutionAnswered closes a question ticket that got its answer.
 	resolutionAnswered = "answered"
+	// answerTitlePrefix starts the message carrying an answer.
+	answerTitlePrefix = "Answer to your question "
 )
 
 // reportMeta is meta.report on a reported ticket.
@@ -79,6 +81,9 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 		}
 		res.Question = &qt
 		rm.Question = qt.ID
+		if qm, ok := questionOf(qt); ok {
+			c.threadQuestion(ctx, qt, qm)
+		}
 	}
 	if t, err = c.setReport(ctx, sc.actor, id, rm); err != nil {
 		return nil, err
@@ -213,8 +218,12 @@ func questionOf(t store.Ticket) (questionMeta, bool) {
 // answerQuestion delivers a human's answer: a message to the asking
 // session when it is still open, a comment on the asked ticket (so a new
 // session sees it), a waiting defer lifted, and the question closed.
+//
+// A pool with the question-answer grant may answer too (JOB-52): its
+// question chat relays the operator's answer, recorded as from the
+// operator, and then follows the asker's reaction.
 func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerParams) (any, error) {
-	if err := requireAdmin(sc, "answer"); err != nil {
+	if err := c.requireGrant(sc, grantQuestionAnswer, "answer"); err != nil {
 		return nil, err
 	}
 	text := strings.TrimSpace(p.Text)
@@ -233,7 +242,14 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 		return nil, fmt.Errorf("%w: question %s is already closed (%s)", store.ErrInvalid, qt.ID, qt.Resolution)
 	}
 	from := sc.actor
-	if p.From != "" {
+	switch {
+	case !sc.admin:
+		// A session cannot name someone else as the answerer.
+		if qt.Project != sc.project {
+			return nil, forbidden("question %s is in project %s, not %s", qt.ID, qt.Project, sc.project)
+		}
+		from = c.chatAnswerFrom(ctx, sc)
+	case p.From != "":
 		from = p.From
 	}
 	res := rpc.AnswerResult{}
@@ -252,7 +268,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 			}
 			m, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
 				Project: s.Project, Kind: store.KindMessage,
-				Title: fmt.Sprintf("Answer to your question %s on %s", qt.ID, qm.Ticket), Body: text, Fields: fields,
+				Title: fmt.Sprintf(answerTitlePrefix+"%s on %s", qt.ID, qm.Ticket), Body: text, Fields: fields,
 			})
 			if err != nil {
 				return nil, err
@@ -284,5 +300,8 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 		return nil, err
 	}
 	c.unblockLinear(ctx, qt)
+	if !sc.admin {
+		c.followAnswer(ctx, sc.session, qt, qm, res.Message)
+	}
 	return res, nil
 }

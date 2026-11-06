@@ -83,10 +83,27 @@ type SessionFields struct {
 	// Suspended: the host was stopped while idle and the session stays
 	// open; the next message resumes it with session/load (#606).
 	Suspended bool `json:"suspended,omitempty"`
+	// Operator is the last human who sent the session a message, so a
+	// question a chat answers for them records them as from (JOB-52).
+	Operator string `json:"operator,omitempty"`
+	// Follow is a question chat waiting on the asking worker's reaction
+	// to the answer it relayed (JOB-52).
+	Follow *QuestionFollow `json:"follow,omitempty"`
 	// Ended is the host state read from the session directory when the
 	// session ended (JOB-32), so session list does not read the
 	// directory of every closed session.
 	Ended *SessionEnded `json:"ended,omitempty"`
+}
+
+// QuestionFollow is an answered question whose asker's reaction the chat
+// reports: Ticket is the work ticket, Asker the asking session, Message
+// the answer delivered to it (the turn that delivers it is the reaction).
+type QuestionFollow struct {
+	Question string    `json:"question"`
+	Ticket   string    `json:"ticket"`
+	Asker    string    `json:"asker,omitempty"`
+	Message  string    `json:"message,omitempty"`
+	Since    time.Time `json:"since"`
 }
 
 // SessionEnded is what session list shows for a closed session's host.

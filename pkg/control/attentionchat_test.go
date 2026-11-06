@@ -73,7 +73,7 @@ func TestAttentionPrestart(t *testing.T) {
 	passEventually(t, root.Dir, func() bool {
 		return strings.Contains(promptsFile(t, root), "Desk attention item: question "+q1.ID)
 	}, "the first turn gets the context prompt")
-	assert.Contains(t, promptsFile(t, root), "Do not offer numbered or lettered choices", "a question chat's options are answer text")
+	assert.Contains(t, promptsFile(t, root), "never a bare option number or letter", "a question chat relays clear answer text")
 
 	// Another pass starts nothing new.
 	pass(t, root.Dir, 2)
@@ -110,7 +110,7 @@ func TestAttentionPrestart(t *testing.T) {
 	var made store.Ticket
 	require.NoError(t, sock.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "follow-up"}, &made))
 
-	// Resolving the item closes its chat.
+	// Resolving the item closes its chat once nothing keeps it (JOB-52).
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: q1.ID}, nil))
 	pass(t, root.Dir, 1)
 	assert.Equal(t, store.StatusClosed, getTicket(t, admin, s1.ID).Ticket.Status)

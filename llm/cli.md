@@ -291,7 +291,8 @@ Commands:
     Report the work dropped and why (then close).
 
   answer <question> <text> [flags]
-    Answer a worker's question; the answer goes to the asking session (admin).
+    Answer a worker's question; the answer goes to the asking session (admin,
+    or pool grant question-answer).
 
   artifact deliver <title> [flags]
     Deliver a report for a human to read in Desk, with optional attachments.
@@ -2853,7 +2854,8 @@ Flags:
 ```
 Usage: jobshop answer <question> <text> [flags]
 
-Answer a worker's question; the answer goes to the asking session (admin).
+Answer a worker's question; the answer goes to the asking session (admin,
+or pool grant question-answer).
 
 Arguments:
   <question>    Question ticket id.
