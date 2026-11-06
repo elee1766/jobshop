@@ -26,7 +26,7 @@ func TestAttentionSummaryFromChat(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "It asks which branch. Run jobshop question answer.", metaString(got.Meta, deskMetaPack, "attention_summary"))
 	assert.Equal(t, key, metaString(got.Meta, deskMetaPack, "attention_chat"))
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "It asks which branch. Run jobshop question answer.", items[0].Summary)

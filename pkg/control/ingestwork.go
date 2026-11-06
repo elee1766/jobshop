@@ -151,25 +151,25 @@ func (c *Controller) lastWorkerBeat() time.Time {
 // ingestAttention lists a missing external worker and an admission
 // backlog. The same conditions are the ingest_worker and
 // ingest_backlog stall signals.
-func (c *Controller) ingestAttention(ctx context.Context) ([]rpc.AttentionItem, error) {
+func (c *Controller) ingestAttention(ctx context.Context, cfg *config.Config) ([]rpc.AttentionItem, error) {
 	var items []rpc.AttentionItem
-	if s, ok := c.missingWorker(); ok {
+	if s, ok := c.missingWorker(cfg); ok {
 		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionIngest, ID: "ingest-worker", Title: s.detail, Since: c.lastWorkerBeat()})
 	}
-	s, ok, err := c.ingestBacklog(ctx)
+	s, ok, err := c.ingestBacklog(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	if ok {
-		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionIngest, ID: "ingest-backlog", Title: s.detail, Since: c.now().Add(-c.config().Ingest.BacklogAge())})
+		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionIngest, ID: "ingest-backlog", Title: s.detail, Since: c.now().Add(-cfg.Ingest.BacklogAge())})
 	}
 	return items, nil
 }
 
 // missingWorker: external mode and no worker heartbeat for
 // ingest.worker_missing.
-func (c *Controller) missingWorker() (stall, bool) {
-	in := c.config().Ingest
+func (c *Controller) missingWorker(cfg *config.Config) (stall, bool) {
+	in := cfg.Ingest
 	if !in.External() && !in.ExternalDispatch() {
 		return stall{}, false
 	}
@@ -185,8 +185,8 @@ func (c *Controller) missingWorker() (stall, bool) {
 
 // ingestBacklog: more than ingest.backlog_max pending items older than
 // ingest.backlog_after.
-func (c *Controller) ingestBacklog(ctx context.Context) (stall, bool, error) {
-	in := c.config().Ingest
+func (c *Controller) ingestBacklog(ctx context.Context, cfg *config.Config) (stall, bool, error) {
+	in := cfg.Ingest
 	n, err := ingest.InboxCountOlder(ctx, c.store, store.InboxPending, c.now().Add(-in.BacklogAge()))
 	if err != nil || n <= int64(in.BacklogMax) {
 		return stall{}, false, err
@@ -197,14 +197,14 @@ func (c *Controller) ingestBacklog(ctx context.Context) (stall, bool, error) {
 	}, true, nil
 }
 
-func (c *Controller) stallIngest(ctx context.Context, signal string) ([]stall, error) {
+func (c *Controller) stallIngest(ctx context.Context, cfg *config.Config, signal string) ([]stall, error) {
 	if signal == config.StallIngestWorker {
-		if s, ok := c.missingWorker(); ok {
+		if s, ok := c.missingWorker(cfg); ok {
 			return []stall{s}, nil
 		}
 		return nil, nil
 	}
-	s, ok, err := c.ingestBacklog(ctx)
+	s, ok, err := c.ingestBacklog(ctx, cfg)
 	if !ok {
 		return nil, err
 	}
@@ -212,7 +212,7 @@ func (c *Controller) stallIngest(ctx context.Context, signal string) ([]stall, e
 }
 
 // recordInboxGauges records inbox counts by state and live workers.
-func (c *Controller) recordInboxGauges(ctx context.Context) {
+func (c *Controller) recordInboxGauges(ctx context.Context, cfg *config.Config) {
 	counts, err := ingest.InboxCounts(ctx, c.store)
 	if err != nil {
 		return
@@ -221,7 +221,7 @@ func (c *Controller) recordInboxGauges(ctx context.Context) {
 		c.metrics.Inbox.Record(ctx, n, metric.WithAttributes(telemetry.AttrState.String(st)))
 	}
 	live := int64(0)
-	cutoff := c.now().Add(-c.config().Ingest.WorkerMissingAfter())
+	cutoff := c.now().Add(-cfg.Ingest.WorkerMissingAfter())
 	for _, w := range c.workerList() {
 		if w.Seen.After(cutoff) {
 			live++

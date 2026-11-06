@@ -32,7 +32,7 @@ func startWork(t *testing.T, c *Controller, key string) (store.Ticket, store.Tic
 		require.NoError(t, err)
 		c.metrics = m
 	}
-	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: key}, nil)
+	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: key}, nil)
 	require.NoError(t, err)
 	step := res.(rpc.RunResult).Steps[0]
 	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
@@ -201,7 +201,7 @@ func TestLearnStall(t *testing.T) {
 	t.Parallel()
 	c, _, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	ls := learnings(t, c, store.LearningFilter{Kind: store.LearningFailure})
 	require.Len(t, ls, 1)
 	assert.Contains(t, ls[0].Summary, "stall issue_no_run on issue-7: no run")

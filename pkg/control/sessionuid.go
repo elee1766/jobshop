@@ -63,8 +63,8 @@ func (c *Controller) usedSlots(ctx context.Context, pool string) (map[int]bool, 
 
 // slotCapacity is how many more sessions pool may start, or -1 for no
 // per-session limit.
-func (c *Controller) slotCapacity(ctx context.Context, pool string) int {
-	u := c.config().IsolationFor(pool).User
+func (c *Controller) slotCapacity(ctx context.Context, cfg *config.Config, pool string) int {
+	u := cfg.IsolationFor(pool).User
 	if u == nil || u.Slots() == 0 {
 		return -1
 	}
@@ -86,8 +86,8 @@ var errSlotsFull = errors.New("per_session range full")
 
 // sessionSlot picks a slot for a new session of pool, or nil when the
 // pool does not use per-session ids.
-func (c *Controller) sessionSlot(ctx context.Context, pool string) (*int, error) {
-	u := c.config().IsolationFor(pool).User
+func (c *Controller) sessionSlot(ctx context.Context, cfg *config.Config, pool string) (*int, error) {
+	u := cfg.IsolationFor(pool).User
 	if u == nil || u.Slots() == 0 {
 		return nil, nil
 	}

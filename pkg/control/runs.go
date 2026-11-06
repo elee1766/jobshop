@@ -28,7 +28,7 @@ func (c *Controller) runStart(ctx context.Context, sc scope, p rpc.RunStartParam
 			return nil, err
 		}
 	}
-	return c.startRun(ctx, sc, p, nil)
+	return c.startRun(ctx, c.config(), sc, p, nil)
 }
 
 // eligibleRun is the intake gate (`linear eligible`) for a run start of a
@@ -104,8 +104,8 @@ func (c *Controller) linearSkipLabels(key string) []string {
 
 // startRun is run start for the RPC and for run: triggers. extra is added
 // to the run ticket's meta (the trigger link); steps do not get it.
-func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParams, extra map[string]any) (any, error) {
-	plan, err := c.planRun(ctx, sc, p)
+func (c *Controller) startRun(ctx context.Context, cfg *config.Config, sc scope, p rpc.RunStartParams, extra map[string]any) (any, error) {
+	plan, err := c.planRun(ctx, cfg, sc, p)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 			return nil, err
 		}
 	}
-	g, err := c.buildRun(plan, p, extra, "")
+	g, err := c.buildRun(cfg, plan, p, extra, "")
 	if err != nil {
 		return nil, err
 	}
@@ -149,8 +149,7 @@ type runPlan struct {
 }
 
 // planRun checks p against the config and the caller's scope.
-func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams) (runPlan, error) {
-	cfg := c.config()
+func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, p rpc.RunStartParams) (runPlan, error) {
 	w, ok := cfg.Workflows[p.Workflow]
 	if !ok {
 		return runPlan{}, fmt.Errorf("%w: unknown workflow %q", store.ErrInvalid, p.Workflow)
@@ -244,7 +243,7 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 		}
 	}
 	plan := runPlan{w: w, proj: proj, vars: vars, meta: meta, placements: placements}
-	if err := c.intakeRun(ctx, plan); err != nil {
+	if err := c.intakeRun(ctx, cfg, plan); err != nil {
 		return runPlan{}, err
 	}
 	return plan, nil
@@ -252,8 +251,7 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 
 // buildRun returns the run ticket (first), its steps in order and their
 // edges, without writing. parent is the run's parent_id (a batch, or "").
-func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[string]any, parent string) (store.Graph, error) {
-	cfg := c.config()
+func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartParams, extra map[string]any, parent string) (store.Graph, error) {
 	w, proj, vars, meta := plan.w, plan.proj, plan.vars, plan.meta
 	var g store.Graph
 	runID, err := c.store.NewID(proj)
@@ -643,7 +641,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	}
 	if step.Status == store.StatusClosed || (step.Status == store.StatusOpen && sf.Failures > 0) {
 		// A failed attempt or a rejected result goes to the retry pool.
-		c.escalatePool(ctx, step, "resumed by "+sc.actor)
+		c.escalatePool(ctx, c.config(), step, "resumed by "+sc.actor)
 	}
 	if step.Status == store.StatusClosed {
 		if _, err := store.Reopen(ctx, c.store, sc.actor, step.ID); err != nil {
@@ -700,8 +698,8 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 
 // sweepRuns completes or escalates running runs and repairs escalations
 // for needs_human runs, then sets the needs_human gauge.
-func (c *Controller) sweepRuns(ctx context.Context) {
-	defer c.recordRunGauges(ctx)
+func (c *Controller) sweepRuns(ctx context.Context, cfg *config.Config) {
+	defer c.recordRunGauges(ctx, cfg)
 	c.sweepRunDirs()
 	for _, state := range []string{store.RunRunning, store.RunNeedsHuman} {
 		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: state, Order: store.OrderNewest})
@@ -710,7 +708,7 @@ func (c *Controller) sweepRuns(ctx context.Context) {
 		}
 		for _, r := range runs {
 			if r.Status != store.StatusClosed {
-				c.checkRun(ctx, r.ID)
+				c.checkRun(ctx, cfg, r.ID)
 			}
 		}
 	}

@@ -19,7 +19,7 @@ import (
 func artifactSession(t *testing.T, c *Controller) (scope, store.Ticket) {
 	t.Helper()
 	ctx := t.Context()
-	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
+	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
 	step := res.(rpc.RunResult).Steps[0]
 	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
@@ -113,7 +113,7 @@ func TestArtifactDeliverAck(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n)
 	clk.advance(91 * 24 * time.Hour)
-	c.pruneArtifacts(t.Context())
+	c.pruneArtifacts(t.Context(), c.config())
 	assert.NoDirExists(t, c.artifactDir(b.Ticket.ID))
 	pt, err := c.store.Get(ctx, b.Ticket.ID)
 	require.NoError(t, err)
@@ -159,7 +159,7 @@ func TestArtifactTrigger(t *testing.T) {
 	t.Parallel()
 	c, _, _ := stallController(t)
 	ctx := t.Context()
-	res, err := c.startRun(ctx, scope{admin: true, actor: "controller"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "2"}}, map[string]any{triggerPack: map[string]string{"name": "nightly"}})
+	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "controller"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "2"}}, map[string]any{triggerPack: map[string]string{"name": "nightly"}})
 	require.NoError(t, err)
 	step := res.(rpc.RunResult).Steps[0]
 	out, err := c.artifactDeliver(ctx, scope{admin: true, actor: "admin"}, rpc.ArtifactDeliverParams{Title: "Nightly", Ticket: step.ID})

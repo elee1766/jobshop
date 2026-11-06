@@ -52,8 +52,8 @@ func (c *Controller) stallResourceWait(ctx context.Context, now time.Time, after
 
 // resourceAttention lists resource waits longer than
 // attention.resource_wait (#408). Off when unset.
-func (c *Controller) resourceAttention(ctx context.Context) ([]rpc.AttentionItem, error) {
-	after := config.Duration(c.config().Attention.ResourceWait, 0)
+func (c *Controller) resourceAttention(ctx context.Context, cfg *config.Config) ([]rpc.AttentionItem, error) {
+	after := config.Duration(cfg.Attention.ResourceWait, 0)
 	if after == 0 {
 		return nil, nil
 	}

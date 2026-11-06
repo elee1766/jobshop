@@ -3,7 +3,9 @@ package control
 import (
 	"context"
 	"fmt"
+	"maps"
 	"reflect"
+	"slices"
 	"time"
 
 	"github.com/goccy/go-yaml"
@@ -49,10 +51,11 @@ func (c *Controller) redactor(env []string) *redact.Redactor { return c.scanner(
 
 // Reload re-reads jobshop.yaml and its packs and swaps them in. On any
 // error the old config stays active. Pool limits apply to every
-// supervisor tick after reload returns, prompts and turn timeouts from
-// the next turn, agent command, args and env from the next spawned host (adopted hosts go
-// through the env refresh path). Running sessions are not stopped.
-// Telemetry settings need a restart.
+// supervisor pass that starts after reload returns; a pass in flight
+// finishes on the config it started with (JOB-104). Prompts and turn
+// timeouts apply from the next turn, agent command, args and env from the
+// next spawned host (adopted hosts go through the env refresh path).
+// Running sessions are not stopped. Telemetry settings need a restart.
 func (c *Controller) reload() error { return c.reloadWith(c.ctx, "", nil) }
 
 // reloadWith is reload tagged with its cause: "watch" for the config
@@ -62,6 +65,12 @@ func (c *Controller) reload() error { return c.reloadWith(c.ctx, "", nil) }
 // lock waits, the config load, the resource write and each pool's
 // preflight are its children, so a slow reload names its slow part
 // (JOB-105).
+//
+// It does not wait for a pass in flight: each pass reads the config once
+// at its start (JOB-104). What a pass reads outside the config, pool
+// quarantines, changes under c.mu, conservatively: a pool the new
+// config's preflight fails is quarantined before the swap, and old
+// quarantines are cleared after it.
 func (c *Controller) reloadWith(ctx context.Context, by string, files []string) (err error) {
 	// A client that gives up (the CLI deadline) must not cancel a reload
 	// half done: keep the span and the metrics, drop the cancellation.
@@ -80,9 +89,6 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 	c.reloadMu.Lock()
 	defer c.reloadMu.Unlock()
 	telemetry.RecordSlow(ctx, "wait reloadMu", start, lockSpanThreshold, nil, telemetry.AttrLock.String("reloadMu"))
-	// Swap between passes: a pass that read the old pools must finish
-	// before reload returns (#102).
-	defer c.lockTick(ctx, "reload")()
 	// Where a slow reload spent its time (JOB-102).
 	locked := time.Now()
 	_, loadSpan := telemetry.StartSpan(ctx, "config load")
@@ -98,6 +104,16 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 			telemetry.End(resSpan, err)
 		}
 		if err == nil {
+			// A host still missing a prerequisite quarantines the pool
+			// again now, not at its next spawn (#728). Checked on the new
+			// config before the swap, so no pass sees the pool open.
+			preflight := time.Now()
+			failed := c.preflightFailures(ctx, cfg)
+			preflightTook := time.Since(preflight)
+			already := map[string]bool{}
+			for pool, reason := range failed {
+				already[pool] = c.setQuarantine(pool, reason)
+			}
 			old := c.live.Swap(lc).cfg
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.WarnContext(ctx, "config reload: telemetry changes need a controller restart")
@@ -107,27 +123,29 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 				c.minter.Forget()
 			}
 			// The fix for a permanent spawn error is a config change.
-			if cleared := c.unquarantinePools(""); len(cleared) > 0 {
+			if cleared := c.unquarantineExcept("", failed); len(cleared) > 0 {
 				c.log.InfoContext(ctx, "config reload: pools unquarantined", "pools", cleared)
 			}
+			for _, pool := range slices.Sorted(maps.Keys(failed)) {
+				if !already[pool] {
+					c.log.WarnContext(ctx, "pool quarantined: permanent spawn error", "pool", pool, "err", failed[pool])
+				}
+				c.ensurePoolEscalation(ctx, pool, failed[pool])
+			}
 			// New weights and cap take effect now; hosts moved on first use.
-			c.tuneCgroup()
-			// A host still missing a prerequisite quarantines the pool again
-			// now, not at its next spawn (#728).
-			preflight := time.Now()
-			c.preflightPools(ctx)
+			c.tuneCgroup(cfg)
 			msg := "config reloaded"
 			if by != "" {
 				msg += " (" + by + ")"
 			}
 			c.log.InfoContext(ctx, msg, "files", files, "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows),
-				"took", time.Since(start), "lock_wait", locked.Sub(start), "load", loaded.Sub(locked), "preflight", time.Since(preflight))
+				"took", time.Since(start), "lock_wait", locked.Sub(start), "load", loaded.Sub(locked), "preflight", preflightTook)
 			c.saveLastGood(cfg)
 			c.mu.Lock()
 			c.configErr, c.watchErr = "", ""
 			c.mu.Unlock()
 			// A removed pool orphans its queue; say so now, not next tick.
-			c.step(ctx, "report_orphans", c.reportOrphans)
+			c.passStep(ctx, cfg, "report_orphans", c.reportOrphans)
 			return nil
 		}
 	}

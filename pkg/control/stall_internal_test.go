@@ -105,7 +105,7 @@ func stallControllerYAML(t *testing.T, yaml string) (*Controller, *stallClock, s
 
 func stallKeys(t *testing.T, c *Controller) []string {
 	t.Helper()
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"], nil)
+	found, err := c.detectStalls(t.Context(), c.config(), c.config().Triggers["stall"], nil)
 	require.NoError(t, err)
 	var out []string
 	for _, s := range found {
@@ -194,7 +194,7 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	for range poolCrashes {
 		c.poolCrashed("dev", spawnErr)
 	}
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"], nil)
+	found, err := c.detectStalls(t.Context(), c.config(), c.config().Triggers["stall"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Contains(t, found[0].detail, spawnErr)
@@ -202,7 +202,7 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	assert.Contains(t, found[0].detail, "fix: install nftables")
 	assert.NotContains(t, found[0].detail, "sandbox.bwrap", "passing checks are left out")
 
-	items, err := c.attentionItems(t.Context())
+	items, err := c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	var pool []rpc.AttentionItem
 	for _, it := range items {
@@ -216,7 +216,7 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	assert.Contains(t, pool[0].Summary, spawnErr)
 
 	c.unquarantinePools("dev")
-	items, err = c.attentionItems(t.Context())
+	items, err = c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	for _, it := range items {
 		assert.NotEqual(t, rpc.AttentionPool, it.Kind)
@@ -226,7 +226,7 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 func TestStallStepAndSession(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := stallController(t)
-	res, err := c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
+	res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
 	steps := res.(rpc.RunResult).Steps
 	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Fields: json.RawMessage(`{"agent":"fake"}`)})
@@ -250,7 +250,7 @@ func TestStallStepAndSession(t *testing.T) {
 func TestStallNeedsHumanAndBlocked(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := stallController(t)
-	res, err := c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
+	res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
 	run := res.(rpc.RunResult).Run
 	f, err := store.DecodeFields[store.RunFields](run)
@@ -275,7 +275,7 @@ func TestStallCheckSignal(t *testing.T) {
 	c, _, dir := stallController(t)
 	assert.Empty(t, stallKeys(t, c), "check fails without the file: no stall")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 open, no run\n\nissue-9\n"), 0o600))
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"], nil)
+	found, err := c.detectStalls(t.Context(), c.config(), c.config().Triggers["stall"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 2)
 	assert.Equal(t, stall{"issue_no_run", "issue-7", "open, no run"}, found[0])
@@ -306,7 +306,7 @@ func TestStallFire(t *testing.T) {
 		}
 		return out
 	}
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	rs := runs()
 	require.Len(t, rs, 1)
 	f, err := store.DecodeFields[store.RunFields](rs[0])
@@ -320,7 +320,7 @@ func TestStallFire(t *testing.T) {
 	// Its own step sits ready and unclaimed: not a stall of its own.
 	clk.advance(2 * time.Hour)
 	assert.Equal(t, []string{"stall:issue_no_run:issue-7"}, stallKeys(t, c))
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, runs(), 1, "open run holds the key")
 
 	closeRun := func() {
@@ -329,17 +329,17 @@ func TestStallFire(t *testing.T) {
 		c.completeRun(t.Context(), rs[0].ID)
 	}
 	closeRun()
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, runs(), 1, "cooldown")
 	clk.advance(11 * time.Minute)
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	rs = runs()
 	require.Len(t, rs, 2, "stall still there after cooldown: second run")
 	steps, err = store.Children(t.Context(), c.store, rs[0].ID)
 	require.NoError(t, err)
 	closeRun()
 	clk.advance(11 * time.Minute)
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, runs(), 2, "max_runs 2")
 
 	var infos []rpc.TriggerInfo
@@ -355,8 +355,8 @@ func TestStallMaxOpen(t *testing.T) {
 	t.Parallel()
 	c, _, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\n"), 0o600))
-	c.runTriggers(t.Context())
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
+	c.runTriggers(t.Context(), c.config())
 	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Len(t, rs, config.DefaultStallMaxOpen)
@@ -372,8 +372,8 @@ func TestStallMaxOpenConfigured(t *testing.T) {
 	c, _, dir := stallControllerYAML(t, strings.Replace(stallYAML, "    max_runs: 2\n", "    max_runs: 2\n    max_open: 5\n", 1))
 	require.Equal(t, 5, c.config().Triggers["stall"].StallMaxOpen())
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\nf\ng\n"), 0o600))
-	c.runTriggers(t.Context())
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
+	c.runTriggers(t.Context(), c.config())
 	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Len(t, rs, 5)
@@ -458,13 +458,13 @@ func TestStallNoCascade(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := stallControllerYAML(t, stallCascadeYAML)
 	ctx := t.Context()
-	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
+	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
 	failStep := func(step store.Ticket) {
 		t.Helper()
 		_, err := store.Close(ctx, c.store, "admin", step.ID, nil, "failed")
 		require.NoError(t, err)
-		require.True(t, c.escalateRun(ctx, step.ParentID))
+		require.True(t, c.escalateRun(ctx, c.config(), step.ParentID))
 	}
 	failStep(res.(rpc.RunResult).Steps[0])
 	checks := func() []store.Ticket {
@@ -479,7 +479,7 @@ func TestStallNoCascade(t *testing.T) {
 		return out
 	}
 	clk.advance(2*time.Hour + time.Minute)
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	cs := checks()
 	require.Len(t, cs, 1, "one check per subject across triggers")
 
@@ -488,7 +488,7 @@ func TestStallNoCascade(t *testing.T) {
 	failStep(steps[0])
 	for range 3 {
 		clk.advance(5 * time.Hour)
-		c.runTriggers(t.Context())
+		c.runTriggers(t.Context(), c.config())
 	}
 	assert.Len(t, checks(), 1, "a needs_human check starts no check, from either trigger")
 }
@@ -507,13 +507,13 @@ func TestStallOwnInstance(t *testing.T) {
 	require.NoError(t, err)
 	c.live.Store(lc)
 	ctx := t.Context()
-	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
+	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
 	failStep := func(step store.Ticket) {
 		t.Helper()
 		_, err := store.Close(ctx, c.store, "admin", step.ID, nil, "failed")
 		require.NoError(t, err)
-		require.True(t, c.escalateRun(ctx, step.ParentID))
+		require.True(t, c.escalateRun(ctx, c.config(), step.ParentID))
 	}
 	failStep(res.(rpc.RunResult).Steps[0])
 	checks := func() []store.Ticket {
@@ -529,7 +529,7 @@ func TestStallOwnInstance(t *testing.T) {
 	}
 	for range 3 {
 		clk.advance(2*time.Hour + time.Minute)
-		c.runTriggers(t.Context())
+		c.runTriggers(t.Context(), c.config())
 	}
 	cs := checks()
 	require.Len(t, cs, 1)
@@ -540,7 +540,7 @@ func TestStallOwnInstance(t *testing.T) {
 	failStep(steps[0])
 	for range 3 {
 		clk.advance(5 * time.Hour)
-		c.runTriggers(t.Context())
+		c.runTriggers(t.Context(), c.config())
 	}
 	assert.Len(t, checks(), 1, "the check escalating starts no other check")
 }

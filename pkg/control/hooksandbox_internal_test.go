@@ -51,7 +51,7 @@ hooks:
 	c.ctx = t.Context()
 
 	run := func(pool string) hookAnswer {
-		return c.runHooks(context.Background(), hookEvent{On: config.HookAction, Action: "push", Pool: pool})
+		return c.runHooks(context.Background(), c.config(), hookEvent{On: config.HookAction, Action: "push", Pool: pool})
 	}
 	a := run("dev")
 	assert.Equal(t, "hidden", a.Reason, "sandboxed hook cannot read the secret")

@@ -43,7 +43,7 @@ func TestSessionListState(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, host.JournalFile), []byte(`{"seq":7,"t":1762387200000,"dir":"out"}`+"\n"), 0o600))
 	_, err := store.Close(ctx, c.store, "controller", sess.ID, nil, "done")
 	require.NoError(t, err)
-	c.endSession(ctx, sess.ID, "test")
+	c.endSession(ctx, c.config(), sess.ID, "test")
 
 	// The directory goes; the listing does not read it.
 	require.NoError(t, os.RemoveAll(dir))

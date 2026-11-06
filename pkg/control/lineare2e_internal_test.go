@@ -124,8 +124,8 @@ func TestLinearEndToEnd(t *testing.T) {
 
 	// 1. Intake: ENG-5 is in Todo with no run, so the stall fires once.
 	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-5"}, stallKeys(t, c))
-	c.runTriggers(t.Context())
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
+	c.runTriggers(t.Context(), c.config())
 	checks, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
 	require.NoError(t, err)
 	require.Len(t, checks, 1, "one stall-check run")
@@ -145,7 +145,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	mu.Lock()
 	assert.True(t, needsHuman, "needs-human label set on the issue")
 	mu.Unlock()
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "ENG-5", items[0].Ref)
@@ -173,7 +173,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	out, err := c.report(ctx, scope{actor: sess.ID, session: sess.ID, project: steps[0].Project, pool: "dev"}, rpc.ReportParams{State: rpc.ReportWaiting, Question: "Keep the old login page?"})
 	require.NoError(t, err)
 	q := out.(rpc.ReportResult).Question
-	c.sweepLinearAsks(ctx)
+	c.sweepLinearAsks(ctx, c.config())
 	n, labels := f.state()
 	require.Equal(t, 1, n, "question posted once")
 	assert.Equal(t, []string{linearBlockedLabel}, labels)

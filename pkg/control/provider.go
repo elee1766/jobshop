@@ -88,8 +88,7 @@ func (c *Controller) callProvider(ctx context.Context, p *config.Provider, call 
 }
 
 // providerPass is one supervisor pass over provider resources.
-func (c *Controller) providerPass(ctx context.Context) {
-	cfg := c.config()
+func (c *Controller) providerPass(ctx context.Context, cfg *config.Config) {
 	if len(cfg.ResourceProviders()) == 0 {
 		return
 	}
@@ -259,7 +258,7 @@ func (c *Controller) resourceUnhealthy(ctx context.Context, sc scope, p rpc.Slot
 	if reopened != "" {
 		c.log.InfoContext(ctx, "resource unhealthy: claim requeued", "resource", p.Resource, "slot", p.Slot, "ticket", reopened)
 		// The holder's session must stop working the requeued ticket.
-		c.stepEvents(ctx, []string{reopened})
+		c.stepEvents(ctx, c.config(), []string{reopened})
 	}
 	return rpc.SlotResult{Slot: sl, Requeued: reopened}, nil
 }

@@ -130,8 +130,8 @@ func TestLinearQuestion(t *testing.T) {
 	require.NoError(t, err)
 	q := out.(rpc.ReportResult).Question
 
-	c.sweepLinearAsks(ctx)
-	c.sweepLinearAsks(ctx)
+	c.sweepLinearAsks(ctx, c.config())
+	c.sweepLinearAsks(ctx, c.config())
 	n, labels := f.state()
 	assert.Equal(t, 1, n, "posted once")
 	assert.Equal(t, []string{linearBlockedLabel}, labels)
@@ -186,8 +186,8 @@ func TestLinearEscalation(t *testing.T) {
 		Kind: store.KindTask, Title: "Escalate run r2", Body: "Run r2", Labels: []string{needsHumanLabel},
 		Meta: json.RawMessage(`{"github":{"repo":"acme/app","issue":3},"run":{"id":"r2","escalation":"r2/1"}}`),
 	})
-	c.sweepLinearAsks(ctx)
-	c.sweepLinearAsks(ctx)
+	c.sweepLinearAsks(ctx, c.config())
+	c.sweepLinearAsks(ctx, c.config())
 	n, labels := f.state()
 	assert.Equal(t, 1, n)
 	assert.Empty(t, labels, "escalations do not block intake")
@@ -213,7 +213,7 @@ func TestLinearAskRetry(t *testing.T) {
 		Kind: store.KindTask, Title: "Escalate run r1", Body: "Run r1", Labels: []string{needsHumanLabel},
 		Meta: json.RawMessage(`{"linear":{"issue":"ENG-5"},"run":{"id":"r1","escalation":"r1/1"}}`),
 	})
-	c.sweepLinearAsks(ctx)
+	c.sweepLinearAsks(ctx, c.config())
 	// The crash: meta.linear_ask never saved.
 	got, err := c.store.Get(ctx, esc.ID)
 	require.NoError(t, err)
@@ -221,7 +221,7 @@ func TestLinearAskRetry(t *testing.T) {
 	require.NoError(t, err)
 	n, _ := f.state()
 	require.Equal(t, 1, n)
-	c.sweepLinearAsks(ctx)
+	c.sweepLinearAsks(ctx, c.config())
 	n, _ = f.state()
 	assert.Equal(t, 1, n, "key done: stored result replayed")
 	got, err = c.store.Get(ctx, esc.ID)

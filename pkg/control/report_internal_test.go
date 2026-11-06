@@ -16,7 +16,7 @@ func TestReportQuestionAnswer(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := stallController(t)
 	ctx := t.Context()
-	res, err := c.startRun(ctx, scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
+	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
 	step := res.(rpc.RunResult).Steps[0]
 	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
@@ -70,7 +70,7 @@ func TestReportQuestionAnswer(t *testing.T) {
 	assert.NotContains(t, keys, "stall:session_silent:"+sess.ID)
 
 	// The open question is an attention item of kind question (#185).
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	var qi *rpc.AttentionItem
 	for i := range items {

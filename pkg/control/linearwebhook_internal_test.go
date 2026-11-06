@@ -216,12 +216,12 @@ func TestLinearWebhookIssue(t *testing.T) {
 	t.Parallel()
 	c, clk, f := webhookController(t)
 	// First read is cached for the 1h poll: ENG-5 does not exist yet.
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	require.Equal(t, 0, runCount(t, c))
 	f.mu.Lock()
 	f.listed = true
 	f.mu.Unlock()
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	require.Equal(t, 0, runCount(t, c), "cached read: polling alone waits for the interval")
 
 	now := clk.now()
@@ -260,7 +260,7 @@ func TestLinearWebhookComment(t *testing.T) {
 	out, err := c.report(ctx, scope{actor: sess.ID, session: sess.ID, project: tk.Project, pool: "dev"}, rpc.ReportParams{State: rpc.ReportWaiting, Question: "Keep it?"})
 	require.NoError(t, err)
 	q := out.(rpc.ReportResult).Question
-	c.sweepLinearAsks(ctx)
+	c.sweepLinearAsks(ctx, c.config())
 	f.ask.mu.Lock()
 	askID, _ := f.ask.comments[0]["id"].(string)
 	f.ask.mu.Unlock()
@@ -302,11 +302,11 @@ func TestLinearAgentSessionEnded(t *testing.T) {
 	t.Parallel()
 	c, clk, f := webhookController(t)
 	f.sessions = map[string]string{"s-old": "complete", "s-new": "pending"}
-	c.sweepLinearAgentSessions(t.Context(), false) // takes the poll slot
+	c.sweepLinearAgentSessions(t.Context(), c.config(), false) // takes the poll slot
 	f.mu.Lock()
 	f.answered, f.sessions["s-new2"] = nil, "pending"
 	f.mu.Unlock()
-	c.sweepLinearAgentSessions(t.Context(), false)
+	c.sweepLinearAgentSessions(t.Context(), c.config(), false)
 	assert.Empty(t, f.answered, "polling waits for the interval")
 
 	b, err := json.Marshal(map[string]any{

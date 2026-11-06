@@ -127,7 +127,7 @@ func TestIngestWorkerDeadLeaseExpires(t *testing.T) {
 
 func attentionIDs(t *testing.T, c *Controller) []string {
 	t.Helper()
-	items, err := c.attentionItems(t.Context())
+	items, err := c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	var ids []string
 	for _, it := range items {
@@ -144,7 +144,7 @@ func TestIngestMissingWorkerAttention(t *testing.T) {
 	assert.Empty(t, attentionIDs(t, c))
 	clk.advance(6 * time.Minute)
 	assert.Equal(t, []string{"ingest-worker"}, attentionIDs(t, c), "no worker since start")
-	s, err := c.stallIngest(t.Context(), config.StallIngestWorker)
+	s, err := c.stallIngest(t.Context(), c.config(), config.StallIngestWorker)
 	require.NoError(t, err)
 	require.Len(t, s, 1)
 
@@ -171,7 +171,7 @@ func TestIngestBacklogAttention(t *testing.T) {
 	assert.Empty(t, attentionIDs(t, c), "not old enough")
 	clk.advance(6 * time.Minute)
 	assert.Equal(t, []string{"ingest-backlog"}, attentionIDs(t, c))
-	s, err := c.stallIngest(t.Context(), config.StallIngestBacklog)
+	s, err := c.stallIngest(t.Context(), c.config(), config.StallIngestBacklog)
 	require.NoError(t, err)
 	require.Len(t, s, 1)
 	assert.Contains(t, s[0].detail, "2 pending")

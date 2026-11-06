@@ -44,7 +44,11 @@ func (c *Controller) sandboxFor(t store.Ticket, exe, cwd, home string) (*sandbox
 // poolSandbox is pool's sandbox for a process whose own writable dir is
 // own (a session dir, or a command step's dir) and which runs in cwd.
 func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*sandbox.Sandbox, error) {
-	cfg := c.config()
+	return c.poolSandboxIn(c.config(), pool, own, exe, cwd, home)
+}
+
+// poolSandboxIn is poolSandbox under cfg.
+func (c *Controller) poolSandboxIn(cfg *config.Config, pool, own, exe, cwd, home string) (*sandbox.Sandbox, error) {
 	sb := cfg.SandboxFor(pool)
 	if sb.Backend == "" {
 		return nil, nil

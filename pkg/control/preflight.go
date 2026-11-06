@@ -66,16 +66,23 @@ type preflightResult struct {
 }
 
 // preflightPools runs host.Preflight for every isolated pool at start and
-// after a reload, and quarantines a pool whose host is missing something
-// (#728). The escalation then names each failed check and its fix before
-// any session spawns, instead of after the first spawn fails.
+// quarantines a pool whose host is missing something (#728). The
+// escalation then names each failed check and its fix before any session
+// spawns, instead of after the first spawn fails. Reload runs the checks
+// on the new config before it swaps it in (JOB-104).
+func (c *Controller) preflightPools(ctx context.Context) {
+	for pool, reason := range c.preflightFailures(ctx, c.config()) {
+		c.quarantinePool(ctx, pool, reason)
+	}
+}
+
+// preflightFailures is the quarantine reason of each pool of cfg whose
+// host fails its isolation preflight.
 //
 // Pools that ask for the same isolation share one check, and distinct
-// checks run in parallel: a reload holds the tick lock through this, and
-// one serial dns_check per pool took a 58-pool config past the CLI's
-// deadline (JOB-102).
-func (c *Controller) preflightPools(ctx context.Context) {
-	cfg := c.config()
+// checks run in parallel: one serial dns_check per pool took a 58-pool
+// config past the CLI's reload deadline (JOB-102).
+func (c *Controller) preflightFailures(ctx context.Context, cfg *config.Config) map[string]string {
 	check := c.opt.Preflight
 	if check == nil {
 		check = host.Preflight
@@ -141,6 +148,7 @@ func (c *Controller) preflightPools(ctx context.Context) {
 		})
 	}
 	wg.Wait()
+	failed := map[string]string{}
 	for _, pool := range slices.Sorted(maps.Keys(keyOf)) {
 		res := results[keyOf[pool]]
 		if res.err != nil {
@@ -148,7 +156,8 @@ func (c *Controller) preflightPools(ctx context.Context) {
 			continue
 		}
 		if !res.rep.OK() {
-			c.quarantinePool(ctx, pool, "isolation preflight:\n"+res.rep.String())
+			failed[pool] = "isolation preflight:\n" + res.rep.String()
 		}
 	}
+	return failed
 }

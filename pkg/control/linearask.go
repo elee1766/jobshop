@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -52,7 +53,7 @@ func linearAskOf(t store.Ticket) (linearAsk, bool) {
 // run that is not posted yet. It runs each tick, so a failed post (Linear
 // down, token expiring) is retried; the write key makes a retry after an
 // unknown outcome find the first comment instead of posting again.
-func (c *Controller) sweepLinearAsks(ctx context.Context) {
+func (c *Controller) sweepLinearAsks(ctx context.Context, cfg *config.Config) {
 	for _, f := range []store.Filter{
 		{Kind: store.KindMessage, Status: store.StatusOpen, Label: needsHumanLabel, Limit: 200},
 		{Kind: store.KindTask, Status: store.StatusOpen, Label: needsHumanLabel, Limit: 200},
@@ -63,7 +64,7 @@ func (c *Controller) sweepLinearAsks(ctx context.Context) {
 			return
 		}
 		for _, t := range ts {
-			if err := c.postLinearAsk(ctx, t); err != nil {
+			if err := c.postLinearAsk(ctx, cfg, t); err != nil {
 				c.log.WarnContext(ctx, "linear ask", "ticket", t.ID, "err", err)
 			}
 		}
@@ -72,7 +73,7 @@ func (c *Controller) sweepLinearAsks(ctx context.Context) {
 
 // postLinearAsk posts t when it is a question or escalation on a Linear
 // issue and not posted yet.
-func (c *Controller) postLinearAsk(ctx context.Context, t store.Ticket) error {
+func (c *Controller) postLinearAsk(ctx context.Context, cfg *config.Config, t store.Ticket) error {
 	key := metaString(t.Meta, "linear", "issue")
 	if key == "" {
 		return nil
@@ -85,7 +86,7 @@ func (c *Controller) postLinearAsk(ctx context.Context, t store.Ticket) error {
 	if !question && !escalation {
 		return nil
 	}
-	cl, err := c.linearClient(ctx, key)
+	cl, err := c.linearClientIn(ctx, cfg, key)
 	if err != nil {
 		return err
 	}

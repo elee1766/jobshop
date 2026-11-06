@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -23,8 +24,7 @@ const (
 // claim: their pool is empty or not in the loaded config. A disabled
 // pool's tickets wait for it to be enabled again, so they are not
 // orphans (JOB-24).
-func (c *Controller) orphaned(ctx context.Context, project string, limit int) ([]store.Ticket, error) {
-	cfg := c.config()
+func (c *Controller) orphaned(ctx context.Context, cfg *config.Config, project string, limit int) ([]store.Ticket, error) {
 	pools := make([]string, 0, len(cfg.Pools)+len(cfg.Disabled.Pools))
 	for name := range cfg.Pools {
 		pools = append(pools, name)
@@ -60,12 +60,12 @@ func orphanReason(t store.Ticket) string {
 // staleAttention lists orphaned tickets older than attention.orphan_age
 // (#495): ad-hoc tickets nobody will claim otherwise sit in ready forever.
 // The title carries the command that closes one.
-func (c *Controller) staleAttention(ctx context.Context) ([]rpc.AttentionItem, error) {
-	age := c.config().Attention.OrphanAgeDuration()
+func (c *Controller) staleAttention(ctx context.Context, cfg *config.Config) ([]rpc.AttentionItem, error) {
+	age := cfg.Attention.OrphanAgeDuration()
 	if age == 0 {
 		return nil, nil
 	}
-	ts, err := c.orphaned(ctx, "", 0)
+	ts, err := c.orphaned(ctx, cfg, "", 0)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,8 @@ func (c *Controller) staleAttention(ctx context.Context) ([]rpc.AttentionItem, e
 // reportOrphans runs each tick and after a reload. It warns once per
 // ticket and reason, so a stuck ticket does not log every tick, and sets
 // the jobshop.tickets.orphaned gauge.
-func (c *Controller) reportOrphans(ctx context.Context) {
-	ts, err := c.orphaned(ctx, "", 0)
+func (c *Controller) reportOrphans(ctx context.Context, cfg *config.Config) {
+	ts, err := c.orphaned(ctx, cfg, "", 0)
 	if err != nil {
 		if ctx.Err() == nil {
 			c.log.ErrorContext(ctx, "orphaned tickets", "err", err)

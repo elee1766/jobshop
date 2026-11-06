@@ -24,7 +24,7 @@ func TestStaleAttention(t *testing.T) {
 	human := mkTicket(t, c, store.NewTicket{Title: "ask", Labels: []string{needsHumanLabel}})
 
 	stale := func() []rpc.AttentionItem {
-		items, err := c.attentionItems(ctx)
+		items, err := c.attentionItems(ctx, c.config())
 		require.NoError(t, err)
 		var out []rpc.AttentionItem
 		for _, it := range items {
@@ -48,7 +48,7 @@ func TestStaleAttention(t *testing.T) {
 	assert.Contains(t, got[1].Title, "(unknown_pool)")
 	assert.Len(t, stale(), 2, "a second call lists the same items, not more")
 
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	n := 0
 	for _, it := range items {

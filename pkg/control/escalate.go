@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -26,29 +27,29 @@ const runMetaPack = "run"
 const escalationComments = 3
 
 // stepEvent runs after a call that may have counted a step failure.
-func (c *Controller) stepEvent(ctx context.Context, step store.Ticket) {
+func (c *Controller) stepEvent(ctx context.Context, cfg *config.Config, step store.Ticket) {
 	if step.Kind != store.KindStep || step.ParentID == "" {
 		return
 	}
-	c.checkRun(ctx, step.ParentID)
+	c.checkRun(ctx, cfg, step.ParentID)
 }
 
 // stepEvents is stepEvent for ticket ids (release-all and lease sweep).
-func (c *Controller) stepEvents(ctx context.Context, ids []string) {
+func (c *Controller) stepEvents(ctx context.Context, cfg *config.Config, ids []string) {
 	for _, id := range ids {
 		if t, err := c.store.Get(ctx, id); err == nil {
-			c.stepEvent(ctx, t)
+			c.stepEvent(ctx, cfg, t)
 		}
 	}
 }
 
 // checkRun escalates a running run with an exhausted step, then completes
 // it when every step closed done.
-func (c *Controller) checkRun(ctx context.Context, runID string) {
+func (c *Controller) checkRun(ctx context.Context, cfg *config.Config, runID string) {
 	// Gated steps are decided first: a skip may finish the run.
 	c.gateSteps(ctx, runID)
-	c.escalateFailedSteps(ctx, runID)
-	if !c.escalateRun(ctx, runID) {
+	c.escalateFailedSteps(ctx, cfg, runID)
+	if !c.escalateRun(ctx, cfg, runID) {
 		c.completeRun(ctx, runID)
 	}
 	c.runBatchEvent(ctx, runID)
@@ -79,7 +80,7 @@ func escalationReason(steps []store.Ticket) string {
 
 // escalateRun sets needs_human and files the escalation ticket when a step
 // of a running run is exhausted. It reports whether the run needs a human.
-func (c *Controller) escalateRun(ctx context.Context, runID string) bool {
+func (c *Controller) escalateRun(ctx context.Context, cfg *config.Config, runID string) bool {
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	run, err := c.store.Get(ctx, runID)
@@ -92,7 +93,7 @@ func (c *Controller) escalateRun(ctx context.Context, runID string) bool {
 	}
 	if f.State == store.RunNeedsHuman {
 		// Already escalated; the ticket may still be missing after a crash.
-		c.ensureEscalation(ctx, run, f)
+		c.ensureEscalation(ctx, cfg, run, f)
 		return true
 	}
 	if f.State != store.RunRunning {
@@ -119,20 +120,19 @@ func (c *Controller) escalateRun(ctx context.Context, runID string) bool {
 	}
 	f.State = store.RunNeedsHuman
 	c.log.WarnContext(ctx, "run needs a human", "run", runID, "workflow", f.Workflow, "step", failed.ID)
-	c.ensureEscalation(ctx, run, f)
+	c.ensureEscalation(ctx, cfg, run, f)
 	return true
 }
 
 // ensureEscalation creates the escalation ticket for the run's current
 // needs_human episode unless it exists, so retries after a crash and
 // repeated sweeps file exactly one.
-func (c *Controller) ensureEscalation(ctx context.Context, run store.Ticket, f store.RunFields) {
+func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, run store.Ticket, f store.RunFields) {
 	key := fmt.Sprintf("%s/%d", run.ID, f.Escalations)
 	seen, err := c.store.List(ctx, store.Filter{MetaPack: runMetaPack, MetaKey: "escalation", MetaValue: key, Limit: 1})
 	if err != nil || len(seen) > 0 {
 		return
 	}
-	cfg := c.config()
 	pool := ""
 	if w, ok := cfg.Workflows[f.Workflow]; ok {
 		pool = w.EscalatePool
@@ -162,7 +162,7 @@ func (c *Controller) ensureEscalation(ctx context.Context, run store.Ticket, f s
 	}
 	c.log.InfoContext(ctx, "escalation filed", "run", run.ID, "ticket", t.ID, "pool", pool)
 	c.record(ctx, store.LearningFailure, run, fmt.Sprintf("run %s (workflow %s) escalated to a human: a step failed at its retry limit (escalation %s)", run.ID, f.Workflow, t.ID), "")
-	c.ensureEscalationChat(ctx, t)
+	c.ensureEscalationChat(ctx, cfg, t)
 }
 
 // escalationBody lists the run and, per step, its attempts, resolution and
@@ -217,13 +217,13 @@ func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f sto
 }
 
 // recordRunGauges sets jobshop.runs.needs_human per project.
-func (c *Controller) recordRunGauges(ctx context.Context) {
+func (c *Controller) recordRunGauges(ctx context.Context, cfg *config.Config) {
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return
 	}
 	counts := map[string]int64{}
-	for name := range c.config().Projects {
+	for name := range cfg.Projects {
 		counts[name] = 0
 	}
 	for _, r := range runs {

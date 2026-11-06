@@ -239,8 +239,10 @@ type Controller struct {
 	linSessions linearSessions
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
-	// tickMu is held for a supervisor pass and taken by reload, so once a
-	// reload returns no pass still runs with the old pool limits.
+	// tickMu serializes supervisor passes: the tick and the event paths
+	// that run part of one (trigger events, a Linear issue webhook). A
+	// pass reads the config once at its start (JOB-104), so reload does
+	// not take it.
 	tickMu sync.Mutex
 	// runMu serializes run start (key dedup) and run state changes.
 	runMu sync.Mutex
@@ -397,7 +399,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		// Before any session spawns, so the controller is in its leaf
 		// cgroup when it enables controllers for sessions (#388).
 		c.ensureCgroup()
-		c.tuneCgroup()
+		c.tuneCgroup(cfg)
 	}
 	defer c.cancel()
 	return c.serve()
@@ -484,6 +486,7 @@ func (c *Controller) serve() error {
 		}
 		return err
 	}
+	startCfg := c.config()
 	for _, t := range open {
 		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.ReadOnly {
 			c.setReadOnly(t.ID, true)
@@ -492,7 +495,7 @@ func (c *Controller) serve() error {
 			c.log.Warn("session socket", "session", t.ID, "err", err)
 		}
 		// Adopts a live host, or restarts the agent and resumes it.
-		c.drive(t)
+		c.drive(startCfg, t)
 	}
 	c.reapOrphans(open)
 	// After adoption, before the first pass spawns anything (#728).
@@ -543,29 +546,34 @@ func (c *Controller) tick() {
 	ctx, span := c.tracer.Start(c.ctx, "supervisor tick")
 	defer span.End()
 	defer c.lockTick(ctx, "tick")()
-	c.step(ctx, "sweep", c.sweep)
+	// One config for the whole pass (JOB-104): a reload swaps the pointer
+	// without waiting, and applies from the next pass. Pass code takes
+	// cfg, never c.config() (TestPassReadsConfigOnce).
+	lc := c.live.Load()
+	cfg := lc.cfg
+	c.passStep(ctx, cfg, "sweep", c.sweep)
 	// Right after the sweep, so slots of expired claims reset this pass.
-	c.step(ctx, "provider_pass", c.providerPass)
+	c.passStep(ctx, cfg, "provider_pass", c.providerPass)
 	// Before supervise, so a created ticket can get a session this tick.
 	if !c.draining() {
-		c.step(ctx, "run_triggers", c.runTriggers)
+		c.passStep(ctx, cfg, "run_triggers", c.runTriggers)
 	}
 	// Placement moves steps between pools before sessions are sized (#409).
-	c.step(ctx, "place_steps", c.placeSteps)
-	c.step(ctx, "supervise", c.supervise)
-	c.step(ctx, "run_auto_steps", c.runAutoSteps)
-	c.step(ctx, "report_orphans", c.reportOrphans)
+	c.passStep(ctx, cfg, "place_steps", c.placeSteps)
+	c.step(ctx, "supervise", func(ctx context.Context) { c.supervise(ctx, cfg, lc.lease) })
+	c.passStep(ctx, cfg, "run_auto_steps", c.runAutoSteps)
+	c.passStep(ctx, cfg, "report_orphans", c.reportOrphans)
 	c.step(ctx, "scan_sessions", c.scanSessions)
-	c.step(ctx, "sweep_runs", c.sweepRuns)
-	c.step(ctx, "sweep_escalation_chats", c.sweepEscalationChats)
-	c.step(ctx, "sweep_attention_chats", c.sweepAttentionChats)
+	c.passStep(ctx, cfg, "sweep_runs", c.sweepRuns)
+	c.passStep(ctx, cfg, "sweep_escalation_chats", c.sweepEscalationChats)
+	c.passStep(ctx, cfg, "sweep_attention_chats", c.sweepAttentionChats)
 	c.step(ctx, "sweep_batches", c.sweepBatches)
-	c.step(ctx, "sweep_linear_asks", c.sweepLinearAsks)
-	c.step(ctx, "sweep_linear_agent_sessions", func(ctx context.Context) { c.sweepLinearAgentSessions(ctx, false) })
-	c.step(ctx, "prune_inbox", c.pruneInbox)
-	c.step(ctx, "prune_write_keys", c.pruneWriteKeys)
-	c.step(ctx, "prune_artifacts", c.pruneArtifacts)
-	c.step(ctx, "compress_journals", c.maybeCompressJournals)
+	c.passStep(ctx, cfg, "sweep_linear_asks", c.sweepLinearAsks)
+	c.step(ctx, "sweep_linear_agent_sessions", func(ctx context.Context) { c.sweepLinearAgentSessions(ctx, cfg, false) })
+	c.passStep(ctx, cfg, "prune_inbox", c.pruneInbox)
+	c.passStep(ctx, cfg, "prune_write_keys", c.pruneWriteKeys)
+	c.passStep(ctx, cfg, "prune_artifacts", c.pruneArtifacts)
+	c.passStep(ctx, cfg, "compress_journals", c.maybeCompressJournals)
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
@@ -573,13 +581,13 @@ func (c *Controller) tick() {
 const inboxPruneEvery = time.Hour
 
 // pruneInbox deletes terminal inbox items older than ingest.retention.
-func (c *Controller) pruneInbox(ctx context.Context) {
+func (c *Controller) pruneInbox(ctx context.Context, cfg *config.Config) {
 	now := c.now()
 	if now.Sub(c.inboxPrunedAt) < inboxPruneEvery {
 		return
 	}
 	c.inboxPrunedAt = now
-	n, err := ingest.InboxPrune(ctx, c.store, now.Add(-c.config().Ingest.RetentionDuration()))
+	n, err := ingest.InboxPrune(ctx, c.store, now.Add(-cfg.Ingest.RetentionDuration()))
 	if err != nil {
 		if ctx.Err() == nil {
 			c.log.ErrorContext(ctx, "inbox prune", "err", err)
@@ -597,13 +605,13 @@ const writeKeyPruneEvery = 10 * time.Minute
 // pruneWriteKeys deletes write keys older than write_keys.retention,
 // done or pending (#415). A pending key's retry then checks the remote
 // key or marker instead of the local row.
-func (c *Controller) pruneWriteKeys(ctx context.Context) {
+func (c *Controller) pruneWriteKeys(ctx context.Context, cfg *config.Config) {
 	now := c.now()
 	if now.Sub(c.writeKeysPrunedAt) < writeKeyPruneEvery {
 		return
 	}
 	c.writeKeysPrunedAt = now
-	n, err := writekey.Prune(ctx, c.store, now.Add(-c.config().WriteKeys.RetentionDuration()))
+	n, err := writekey.Prune(ctx, c.store, now.Add(-cfg.WriteKeys.RetentionDuration()))
 	if err != nil {
 		if ctx.Err() == nil {
 			c.log.ErrorContext(ctx, "write key prune", "err", err)
@@ -615,7 +623,7 @@ func (c *Controller) pruneWriteKeys(ctx context.Context) {
 	}
 }
 
-func (c *Controller) sweep(ctx context.Context) {
+func (c *Controller) sweep(ctx context.Context, cfg *config.Config) {
 	ids, err := c.store.Expire(ctx, "controller", "", "")
 	if err != nil {
 		if ctx.Err() == nil {
@@ -626,7 +634,7 @@ func (c *Controller) sweep(ctx context.Context) {
 	for _, id := range ids {
 		c.log.InfoContext(ctx, "lease expired", "ticket", id)
 	}
-	c.stepEvents(ctx, ids)
+	c.stepEvents(ctx, cfg, ids)
 	if len(ids) > 0 {
 		c.metrics.LeaseExpiries.Add(ctx, int64(len(ids)))
 	}

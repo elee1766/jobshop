@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -28,14 +29,14 @@ func (c *Controller) attention(ctx context.Context, sc scope, _ struct{}) (any, 
 	if err := c.requireGrant(sc, "attention", "attention"); err != nil {
 		return nil, err
 	}
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	if err != nil {
 		return nil, err
 	}
 	return rpc.AttentionResult{Items: items}, nil
 }
 
-func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, error) {
+func (c *Controller) attentionItems(ctx context.Context, cfg *config.Config) ([]rpc.AttentionItem, error) {
 	items := []rpc.AttentionItem{}
 	// Runs and pools an open escalation already stands for are listed once,
 	// as the escalation ticket.
@@ -99,18 +100,18 @@ func (c *Controller) attentionItems(ctx context.Context) ([]rpc.AttentionItem, e
 			items = append(items, ticketItem(rpc.AttentionRun, r))
 		}
 	}
-	res, err := c.resourceAttention(ctx)
+	res, err := c.resourceAttention(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	items = append(items, res...)
-	ing, err := c.ingestAttention(ctx)
+	ing, err := c.ingestAttention(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	items = append(items, ing...)
-	items = append(items, c.journalLagAttention()...)
-	stale, err := c.staleAttention(ctx)
+	items = append(items, c.journalLagAttention(cfg)...)
+	stale, err := c.staleAttention(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}

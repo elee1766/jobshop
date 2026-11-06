@@ -155,7 +155,7 @@ func TestDecisionDismiss(t *testing.T) {
 	assert.Equal(t, "dismissed", res.Ticket.Resolution)
 	assert.Equal(t, []string{parked.ID}, res.Undeferred)
 	assert.Empty(t, calls(), "the issue is left as is")
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	for _, it := range items {
 		assert.NotEqual(t, d.ID, it.ID, "dismissed is gone from attention")

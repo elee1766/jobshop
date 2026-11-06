@@ -38,6 +38,9 @@ type isolatedCmd struct {
 	stdout io.Writer
 	stderr io.Writer
 	name   string // cgroup name prefix
+	// cfg is the config the pool's isolation comes from, required with
+	// pool: the pass's in pass code (JOB-104), else c.config().
+	cfg *config.Config
 }
 
 // errSetup is a sandbox or isolation failure: the command never ran.
@@ -98,7 +101,10 @@ func (c *Controller) runIsolatedCmd(ctx context.Context, ic isolatedCmd) (proc.E
 // isolateSpec adds pool's sandbox, user and cgroup to spec. The cleanup
 // removes the scratch dir it made.
 func (c *Controller) isolateSpec(spec *proc.Spec, ic isolatedCmd) (func(), error) {
-	cfg := c.config()
+	cfg := ic.cfg
+	if cfg == nil {
+		return nil, fmt.Errorf("isolated command for pool %s: no config", ic.pool)
+	}
 	var cleanup func()
 	sbCfg := cfg.SandboxFor(ic.pool)
 	if sbCfg.Backend != "" {
@@ -121,7 +127,7 @@ func (c *Controller) isolateSpec(spec *proc.Spec, ic isolatedCmd) (func(), error
 		if err != nil {
 			return cleanup, err
 		}
-		sb, err := c.poolSandbox(ic.pool, own, exe, spec.Dir, "")
+		sb, err := c.poolSandboxIn(cfg, ic.pool, own, exe, spec.Dir, "")
 		if err != nil {
 			return cleanup, err
 		}
@@ -184,11 +190,10 @@ func shArgv(command string) []string { return []string{"sh", "-c", command} }
 // isolates reports whether pool has a sandbox, mapped user or cgroup
 // limits for runIsolated to apply. A pool with none runs commands as
 // before, in the root dir.
-func (c *Controller) isolates(pool string) bool {
+func (c *Controller) isolates(cfg *config.Config, pool string) bool {
 	if pool == "" {
 		return false
 	}
-	cfg := c.config()
 	iso := cfg.IsolationFor(pool)
 	return cfg.SandboxFor(pool).Backend != "" || iso.User != nil || iso.Limits != nil
 }

@@ -490,7 +490,7 @@ func TestWaitTimeoutAttention(t *testing.T) {
 	require.NoError(t, err)
 
 	c.pollWaits(ctx, prs, threads)
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	assert.Empty(t, items)
 
@@ -504,7 +504,7 @@ func TestWaitTimeoutAttention(t *testing.T) {
 	cs, err := store.Comments(ctx, c.store, a.ID)
 	require.NoError(t, err)
 	assert.Len(t, cs, 1, "timeout noted once")
-	items, err = c.attentionItems(ctx)
+	items, err = c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, rpc.AttentionWait, items[0].Kind)

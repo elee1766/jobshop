@@ -96,7 +96,8 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	if workflow == "" {
 		workflow = defaultBatchWorkflow
 	}
-	issueVar := c.config().Workflows[workflow].Issue
+	cfg := c.config()
+	issueVar := cfg.Workflows[workflow].Issue
 	if issueVar == "" {
 		issueVar = "issue"
 	}
@@ -104,7 +105,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	plans := make([]runPlan, len(issues))
 	for i, n := range issues {
 		params[i] = rpc.RunStartParams{Workflow: workflow, Vars: map[string]string{issueVar: n}, Key: "issue-" + n, Project: p.Project}
-		if plans[i], err = c.planRun(ctx, sc, params[i]); err != nil {
+		if plans[i], err = c.planRun(ctx, cfg, sc, params[i]); err != nil {
 			return nil, fmt.Errorf("issue %s: %w", n, err)
 		}
 	}
@@ -159,7 +160,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 			g.Reparent[run.ID] = batchID
 			adopted = append(adopted, run.ID)
 		case errors.Is(err, store.ErrNotFound):
-			if m.newRun, err = c.buildRun(plans[i], params[i], nil, batchID); err != nil {
+			if m.newRun, err = c.buildRun(cfg, plans[i], params[i], nil, batchID); err != nil {
 				return nil, fmt.Errorf("issue %s: %w", n, err)
 			}
 			g.Tickets = append(g.Tickets, m.newRun.Tickets...)

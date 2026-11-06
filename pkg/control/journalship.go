@@ -355,8 +355,7 @@ func (c *Controller) recordLag() {
 
 // journalLagAttention is attention journal-lag: a pool whose oldest
 // unshipped frame is older than journal.lag_max.
-func (c *Controller) journalLagAttention() []rpc.AttentionItem {
-	cfg := c.config()
+func (c *Controller) journalLagAttention(cfg *config.Config) []rpc.AttentionItem {
 	if cfg.Journal.VictoriaLogs == nil {
 		return nil
 	}
