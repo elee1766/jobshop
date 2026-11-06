@@ -426,6 +426,7 @@ export interface CloseParams {
   id?: string;
   resolution?: string;
   outcome?: string;
+  comment?: string;
 }
 
 export interface Comment {

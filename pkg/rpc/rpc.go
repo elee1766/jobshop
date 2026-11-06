@@ -380,6 +380,10 @@ type CloseParams struct {
 	// Outcome is a step's result word (approve, reject, ...), stored in
 	// its fields for later steps' when conditions (#385). Steps only.
 	Outcome string `json:"outcome,omitempty"`
+	// Comment is added to the ticket before it closes. Resolution
+	// request_changes requires it: the findings that reach the reopened
+	// step (JOB-98).
+	Comment string `json:"comment,omitempty"`
 }
 
 // CommentParams adds a comment.

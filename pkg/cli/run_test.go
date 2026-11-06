@@ -134,3 +134,18 @@ func TestPrintRunGraph(t *testing.T) {
 	assert.Contains(t, buf.String(), "needs build  outcome approve")
 	assert.Contains(t, buf.String(), "needs review,device  when review=approve")
 }
+
+// TestPrintRunReviewRounds shows review rounds and an open change
+// request (JOB-98).
+func TestPrintRunReviewRounds(t *testing.T) {
+	rf, _ := json.Marshal(store.RunFields{Workflow: "g", State: store.RunRunning})
+	s0, _ := json.Marshal(store.StepFields{Step: "deliver", Changes: &store.StepChanges{Step: "review", Round: 2}})
+	s1, _ := json.Marshal(store.StepFields{Step: "review", Index: 1, ReviewRounds: 2})
+	var buf bytes.Buffer
+	require.NoError(t, printRun(&buf, rpc.RunResult{
+		Run:   store.Ticket{ID: "js-r", Fields: rf},
+		Steps: []store.Ticket{{ID: "js-a", Fields: s0}, {ID: "js-b", Fields: s1}},
+	}))
+	assert.Contains(t, buf.String(), "changes requested by review (round 2)")
+	assert.Contains(t, buf.String(), "review rounds 2/3")
+}

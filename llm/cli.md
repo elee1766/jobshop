@@ -1089,10 +1089,16 @@ Flags:
                              ($JOBSHOP_SOCKET).
 
   -r, --resolution="done"    Resolution: done, failed, rebase (reopen a step
-                             without counting a failure), cancelled. A workflow
-                             step takes only these; put text in a comment.
-      --outcome=STRING       Workflow step outcome word (approve, reject, ...);
-                             later steps' when: conditions read it.
+                             without counting a failure), request_changes
+                             (a review step: reopen the step it reviews with
+                             --comment as findings), cancelled. A workflow step
+                             takes only these; put text in a comment.
+      --outcome=STRING       Workflow step outcome word (approve, reject,
+                             ...); later steps' when: conditions read it.
+                             request_changes is the request_changes resolution.
+      --comment=STRING       Comment added before closing; with request_changes,
+                             the findings for the reopened step (required).
+                             Use - to read stdin.
 ```
 
 ## jobshop ticket reopen
@@ -1189,10 +1195,16 @@ Flags:
                              ($JOBSHOP_SOCKET).
 
   -r, --resolution="done"    Resolution: done, failed, rebase (reopen a step
-                             without counting a failure), cancelled. A workflow
-                             step takes only these; put text in a comment.
-      --outcome=STRING       Workflow step outcome word (approve, reject, ...);
-                             later steps' when: conditions read it.
+                             without counting a failure), request_changes
+                             (a review step: reopen the step it reviews with
+                             --comment as findings), cancelled. A workflow step
+                             takes only these; put text in a comment.
+      --outcome=STRING       Workflow step outcome word (approve, reject,
+                             ...); later steps' when: conditions read it.
+                             request_changes is the request_changes resolution.
+      --comment=STRING       Comment added before closing; with request_changes,
+                             the findings for the reopened step (required).
+                             Use - to read stdin.
 ```
 
 ## jobshop comment

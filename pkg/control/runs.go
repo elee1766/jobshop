@@ -302,7 +302,10 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 			return g, err
 		}
 		needs := w.StepNeeds(i)
-		stepF := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs, Placement: plan.placements[i], RetryPool: s.RetryPool}
+		stepF := store.StepFields{
+			Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs, Placement: plan.placements[i], RetryPool: s.RetryPool,
+			OnRequestChanges: w.RequestChangesTarget(i), MaxReviewRounds: s.MaxReviewRounds,
+		}
 		pool := s.Pool
 		if s.Auto() {
 			// No pool on the ticket: no session may claim it; the
@@ -628,6 +631,8 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 		return nil, err
 	}
 	sf.Failures = 0
+	// A human resume grants a capped reviewer a fresh set of rounds.
+	sf.ReviewRounds = 0
 	b, err := json.Marshal(sf)
 	if err != nil {
 		return nil, err
@@ -653,7 +658,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 			return nil, err
 		}
 	}
-	_, _ = store.AddComment(ctx, c.store, sc.actor, step.ID, fmt.Sprintf("Resumed by %s; failures reset.", sc.actor))
+	_, _ = store.AddComment(ctx, c.store, sc.actor, step.ID, fmt.Sprintf("Resumed by %s; failures and review rounds reset.", sc.actor))
 	c.log.InfoContext(ctx, "run resumed", "run", t.ID, "step", sf.Step, "by", sc.actor)
 	t, err = c.store.Get(ctx, t.ID)
 	if err != nil {

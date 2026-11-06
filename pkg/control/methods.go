@@ -284,6 +284,9 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 	if p.Resolution == "" {
 		p.Resolution = "done"
 	}
+	if err := closeOutcome(&p); err != nil {
+		return nil, err
+	}
 	var cl *store.Claim
 	if !sc.admin {
 		h, err := c.heldClaim(ctx, sc, id)
@@ -294,6 +297,23 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 	}
 	if err := c.checkStepResolution(ctx, sc, id, p.Resolution); err != nil {
 		return nil, err
+	}
+	if p.Resolution == store.ResolutionRequestChanges {
+		t, err := c.closeRequestChanges(ctx, sc, id, cl, p.Comment)
+		if err != nil {
+			return nil, err
+		}
+		// Within the cap the step is open again: count the close it made.
+		counted := t
+		counted.Resolution = store.ResolutionRequestChanges
+		c.countClose(ctx, counted)
+		c.checkRun(ctx, t.ParentID)
+		return t, nil
+	}
+	if strings.TrimSpace(p.Comment) != "" {
+		if _, err := store.AddComment(ctx, c.store, sc.actor, id, p.Comment); err != nil {
+			return nil, err
+		}
 	}
 	if p.Outcome != "" {
 		if err := c.setStepOutcome(ctx, sc, id, p.Outcome); err != nil {
@@ -336,7 +356,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 // skipped is the controller's: only an admin caller may set it.
 func (c *Controller) checkStepResolution(ctx context.Context, sc scope, id, res string) error {
 	switch res {
-	case "done", "failed", store.ResolutionRebase, store.RunCancelled:
+	case "done", "failed", store.ResolutionRebase, store.ResolutionRequestChanges, store.RunCancelled:
 		return nil
 	case store.StepSkipped:
 		if sc.admin {
@@ -350,7 +370,7 @@ func (c *Controller) checkStepResolution(ctx context.Context, sc scope, id, res 
 	if t.Kind != store.KindStep {
 		return nil
 	}
-	return fmt.Errorf("%w: step %s takes resolution done, failed, rebase or cancelled, not %q; put a summary in a comment (jobshop comment) and a verdict in --outcome",
+	return fmt.Errorf("%w: step %s takes resolution done, failed, rebase, request_changes or cancelled, not %q; put a summary in a comment (jobshop comment) and a verdict in --outcome",
 		store.ErrInvalid, id, res)
 }
 

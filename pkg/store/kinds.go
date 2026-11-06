@@ -179,6 +179,18 @@ const (
 // non-step ticket it is an ordinary close.
 const ResolutionRebase = "rebase"
 
+// ResolutionRequestChanges closes a reviewing step to send its findings
+// back to the step it reviews (JOB-98). In one transaction the reviewer
+// counts a review round and reopens, blocked behind the target, and the
+// target reopens with the findings in fields.changes. No failure is
+// counted. Past the reviewer's round cap the reviewer stays closed with
+// this resolution, the target is left alone and the run needs a human.
+const ResolutionRequestChanges = "request_changes"
+
+// DefaultReviewRounds is a step's review round cap when its workflow
+// sets no max_review_rounds.
+const DefaultReviewRounds = 3
+
 // RunFields is the engine state of a workflow run. Its steps are its
 // children (parent_id).
 type RunFields struct {
@@ -269,6 +281,33 @@ type StepFields struct {
 	// RetryPool is the resolved retry_pool (JOB-59): the controller moves
 	// the step here after a failed attempt or a review resume.
 	RetryPool string `json:"retry_pool,omitempty"`
+	// OnRequestChanges is the step a request_changes close of this step
+	// reopens (JOB-98), MaxReviewRounds how many it may make (nil:
+	// DefaultReviewRounds) and ReviewRounds how many it made.
+	OnRequestChanges string `json:"on_request_changes,omitempty"`
+	MaxReviewRounds  *int   `json:"max_review_rounds,omitempty"`
+	ReviewRounds     int    `json:"review_rounds,omitempty"`
+	// Changes is the open change request against this step: set when a
+	// reviewer's request_changes reopens it, cleared when it closes done.
+	Changes *StepChanges `json:"changes,omitempty"`
+}
+
+// ReviewRoundLimit is MaxReviewRounds or the default.
+func (f StepFields) ReviewRoundLimit() int {
+	if f.MaxReviewRounds == nil {
+		return DefaultReviewRounds
+	}
+	return *f.MaxReviewRounds
+}
+
+// StepChanges is a reviewer's change request (JOB-98), shown to the
+// session that claims the reopened step.
+type StepChanges struct {
+	Step     string `json:"step"`   // the reviewer's step name
+	Ticket   string `json:"ticket"` // the reviewer's ticket id
+	Round    int    `json:"round"`
+	Max      int    `json:"max"`
+	Findings string `json:"findings"`
 }
 
 // StepPlacement records a step's placement options. The ticket's pool
@@ -349,8 +388,8 @@ func (f StepFields) Validate() error {
 	if f.Run == "" || f.Step == "" {
 		return fmt.Errorf("%w: step: run and step are required", ErrInvalid)
 	}
-	if f.Index < 0 || f.Retries < 0 || f.Failures < 0 {
-		return fmt.Errorf("%w: step: index, retries and failures must be >= 0", ErrInvalid)
+	if f.Index < 0 || f.Retries < 0 || f.Failures < 0 || f.ReviewRounds < 0 || (f.MaxReviewRounds != nil && *f.MaxReviewRounds < 0) {
+		return fmt.Errorf("%w: step: index, retries, failures and review rounds must be >= 0", ErrInvalid)
 	}
 	for _, r := range f.Resources {
 		if r == "" {

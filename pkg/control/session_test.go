@@ -1012,6 +1012,9 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	defer func() { _ = c.Close() }()
 	// The current ticket is the session's claim; close it as `jobshop close` would.
 	ctx = telemetry.WithTraceParent(ctx, os.Getenv("JOBSHOP_TRACEPARENT"))
+	if requestChanges(ctx, c, text) {
+		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	}
 	// An "outcome" file holds the outcome word to close with (#385).
 	var outcome string
 	if b, err := os.ReadFile("outcome"); err == nil {
@@ -1019,6 +1022,26 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	}
 	_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{Outcome: outcome}, nil)
 	return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+}
+
+// requestChanges closes a review ticket request_changes while the
+// "request_changes" file holds a count above 0 (JOB-98). A review ticket
+// is one whose title starts with "Review".
+func requestChanges(ctx context.Context, c *rpc.Client, text string) bool {
+	if !strings.Contains(text, "\n# Review ") {
+		return false
+	}
+	b, err := os.ReadFile("request_changes")
+	if err != nil {
+		return false
+	}
+	var n int
+	if _, err := fmt.Sscan(string(b), &n); err != nil || n <= 0 {
+		return false
+	}
+	_ = os.WriteFile("request_changes", fmt.Appendf(nil, "%d", n-1), 0o600)
+	_ = c.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{Resolution: store.ResolutionRequestChanges, Comment: fmt.Sprintf("finding %d: handle the empty case", n)}, nil)
+	return true
 }
 
 func (a *agent) Cancel(context.Context, acp.CancelNotification) error {

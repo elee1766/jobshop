@@ -61,6 +61,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"Orphaned", testOrphaned},
 		{"Runs", testRuns},
 		{"StepFailures", testStepFailures},
+		{"RequestChanges", testRequestChanges},
 		{"ApplyGraph", testApplyGraph},
 		{"Resources", testResources},
 		{"ProviderSlots", testProviderSlots},
@@ -499,6 +500,88 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	tk, err = store.Close(ctx, s, "test", task.ID, nil, "failed")
 	require.NoError(t, err)
 	assert.Equal(t, store.StatusClosed, tk.Status)
+}
+
+// testRequestChanges: a request_changes close of a step reopens it and
+// the step it reviews in one write, with the findings on the reviewed
+// step and no failure counted; past the round cap the reviewer stays
+// closed and nothing reopens (JOB-98).
+func testRequestChanges(t *testing.T, s store.Store, _ *Clock) {
+	ctx := t.Context()
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)}
+	deliver := store.NewTicket{
+		ID: "js-a", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+		Fields: json.RawMessage(`{"run":"js-run","step":"deliver","index":0,"retries":2}`),
+	}
+	review := store.NewTicket{
+		ID: "js-b", Project: proj, Kind: store.KindStep, Pool: "review", ParentID: "js-run",
+		Fields: json.RawMessage(`{"run":"js-run","step":"review","index":1,"retries":2,"on_request_changes":"deliver","max_review_rounds":2}`),
+	}
+	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, deliver, review}, Edges: []store.Edge{{From: "js-b", To: "js-a", Kind: store.EdgeBlocks}}})
+	require.NoError(t, err)
+	fields := func(id string) (store.Ticket, store.StepFields) {
+		t.Helper()
+		tk, err := s.Get(ctx, id)
+		require.NoError(t, err)
+		f, err := store.DecodeFields[store.StepFields](tk)
+		require.NoError(t, err)
+		return tk, f
+	}
+	requestChanges := func(findings string) store.Ticket {
+		t.Helper()
+		_, err := store.Close(ctx, s, "test", "js-a", nil, "done")
+		require.NoError(t, err)
+		_, cl, err := s.Claim(ctx, "js-b", "s1", lease)
+		require.NoError(t, err)
+		tk, err := s.Release(ctx, "", "js-b", &cl, store.Outcome{Close: store.ResolutionRequestChanges, Reopen: "js-a", Note: findings})
+		require.NoError(t, err)
+		return tk
+	}
+
+	for round := 1; round <= 2; round++ {
+		tk := requestChanges(fmt.Sprintf("fix %d", round))
+		assert.Equal(t, store.StatusOpen, tk.Status, "round %d reopens the reviewer", round)
+		assert.Empty(t, tk.Holder)
+		_, rf := fields("js-b")
+		assert.Equal(t, round, rf.ReviewRounds)
+		assert.Zero(t, rf.Failures, "not a failed attempt")
+		a, af := fields("js-a")
+		assert.Equal(t, store.StatusOpen, a.Status)
+		assert.Empty(t, a.Resolution)
+		require.NotNil(t, af.Changes)
+		assert.Equal(t, store.StepChanges{Step: "review", Ticket: "js-b", Round: round, Max: 2, Findings: fmt.Sprintf("fix %d", round)}, *af.Changes)
+		assert.Zero(t, af.Failures)
+		// The reviewer waits behind the reopened step.
+		ready, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"js-a"}, ids(ready))
+	}
+	cs, err := store.Comments(ctx, s, "js-a")
+	require.NoError(t, err)
+	require.Len(t, cs, 2)
+	assert.Contains(t, cs[1].Body, "Changes requested by step review (js-b), review round 2 of 2")
+
+	// Round 3 is over the cap: the reviewer stays closed, deliver is left
+	// alone (closed done, which cleared the request).
+	tk := requestChanges("fix 3")
+	assert.Equal(t, store.StatusClosed, tk.Status)
+	assert.Equal(t, store.ResolutionRequestChanges, tk.Resolution)
+	_, rf := fields("js-b")
+	assert.Equal(t, 3, rf.ReviewRounds)
+	a, af := fields("js-a")
+	assert.Equal(t, store.StatusClosed, a.Status)
+	assert.Nil(t, af.Changes, "a done close clears the request")
+
+	// A target that is not closed rolls the whole close back.
+	_, err = s.Update(ctx, "test", "js-a", store.Update{Reopen: true})
+	require.NoError(t, err)
+	_, err = s.Update(ctx, "test", "js-b", store.Update{Reopen: true, Fields: json.RawMessage(`{"run":"js-run","step":"review","index":1,"retries":2}`)})
+	require.NoError(t, err)
+	_, err = s.Release(ctx, "test", "js-b", nil, store.Outcome{Close: store.ResolutionRequestChanges, Reopen: "js-a", Note: "x"})
+	require.ErrorIs(t, err, store.ErrInvalid)
+	b, bf := fields("js-b")
+	assert.Equal(t, store.StatusOpen, b.Status, "rolled back")
+	assert.Zero(t, bf.ReviewRounds, "rolled back")
 }
 
 func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {

@@ -236,7 +236,72 @@ func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time) (m
 		reopenClosed(t)
 		return d, "Closed for a rebase: reopened without counting a failed attempt.", nil
 	}
+	if resolution == store.ResolutionRequestChanges && t.Kind == store.KindStep {
+		return requestChangesRound(t, d)
+	}
+	if resolution == "done" && t.Kind == store.KindStep {
+		// The change request was answered: later prompts drop it.
+		if f, err := store.DecodeFields[store.StepFields](*t); err == nil && f.Changes != nil {
+			f.Changes = nil
+			if t.Fields, err = json.Marshal(f); err != nil {
+				return nil, "", err
+			}
+		}
+	}
 	return d, "", nil
+}
+
+// requestChangesRound counts a review round on a reviewing step closed
+// request_changes (JOB-98). Within the cap it reopens the step, without
+// counting a failure; past it the step stays closed and the run needs a
+// human.
+func requestChangesRound(t *store.Ticket, d map[string]any) (map[string]any, string, error) {
+	f, err := store.DecodeFields[store.StepFields](*t)
+	if err != nil {
+		return nil, "", err
+	}
+	f.ReviewRounds++
+	if t.Fields, err = json.Marshal(f); err != nil {
+		return nil, "", err
+	}
+	d["review_rounds"] = f.ReviewRounds
+	if f.ReviewRounds > f.ReviewRoundLimit() {
+		return d, fmt.Sprintf("Changes requested in review round %d, over the limit of %d: step closed, run needs a human.", f.ReviewRounds, f.ReviewRoundLimit()), nil
+	}
+	reopenClosed(t)
+	return d, fmt.Sprintf("Changes requested (review round %d of %d): reopened behind the step it reviews, without counting a failed attempt.", f.ReviewRounds, f.ReviewRoundLimit()), nil
+}
+
+// RequestChanges reopens target, a closed step of reviewer's run, with
+// the reviewer's findings in fields.changes (JOB-98). reviewer is the
+// reviewing step after its close counted the round. It returns the
+// history diff and the comment for target.
+func RequestChanges(target *store.Ticket, reviewer store.Ticket, findings string) (map[string]any, string, error) {
+	if target.Kind != store.KindStep || target.ID == reviewer.ID || target.ParentID == "" || target.ParentID != reviewer.ParentID {
+		return nil, "", fmt.Errorf("%w: request_changes: %s is not another step of run %s", store.ErrInvalid, target.ID, reviewer.ParentID)
+	}
+	if target.Status != store.StatusClosed {
+		return nil, "", fmt.Errorf("%w: request_changes: step %s is %s, not closed", store.ErrInvalid, target.ID, target.Status)
+	}
+	rf, err := store.DecodeFields[store.StepFields](reviewer)
+	if err != nil {
+		return nil, "", err
+	}
+	tf, err := store.DecodeFields[store.StepFields](*target)
+	if err != nil {
+		return nil, "", err
+	}
+	tf.Changes = &store.StepChanges{
+		Step: rf.Step, Ticket: reviewer.ID, Round: rf.ReviewRounds, Max: rf.ReviewRoundLimit(), Findings: findings,
+	}
+	if target.Fields, err = json.Marshal(tf); err != nil {
+		return nil, "", err
+	}
+	reopenClosed(target)
+	d := map[string]any{"request_changes": reviewer.ID, "round": rf.ReviewRounds}
+	note := fmt.Sprintf("Changes requested by step %s (%s), review round %d of %d; reopened. The findings are in the prompt and on %s.",
+		rf.Step, reviewer.ID, rf.ReviewRounds, rf.ReviewRoundLimit(), reviewer.ID)
+	return d, note, nil
 }
 
 // ReopenClosed returns a closed ticket to open, checking ifRev when set.

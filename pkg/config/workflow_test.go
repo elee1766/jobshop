@@ -131,6 +131,9 @@ func TestWorkflowErrors(t *testing.T) {
 		{"needs itself", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p, needs: [b]}\n", `step b: needs "b"`},
 		{"when on unrelated step", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p, needs: [a]}\n      - {id: c, pool: dev, title: t, prompt: p, needs: [a], when: {step: b, outcome: ok}}\n", `step c: when.step "b" is not a step it needs`},
 		{"bad outcome", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p, when: {step: a, outcome: \"Not ok\"}}\n", `when.outcome "Not ok" must match`},
+		{"on_request_changes not a need", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p}\n      - {id: c, pool: dev, title: t, prompt: p, on_request_changes: a}\n", `step c: on_request_changes "a" must be a step this agent step needs directly`},
+		{"on_request_changes itself", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p, on_request_changes: a}\n", `step a: on_request_changes "a"`},
+		{"negative max_review_rounds", "  w:\n    steps:\n      - {id: a, pool: dev, title: t, prompt: p}\n      - {id: b, pool: dev, title: t, prompt: p, max_review_rounds: -1}\n", "max_review_rounds must be >= 0"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
