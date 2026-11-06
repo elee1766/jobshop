@@ -21,7 +21,8 @@ import (
 // (the same commentCreate as `jobshop linear ask`), mentioning
 // meta.linear.human. A human reply under the ask comment answers the
 // question. Questions also set the Blocked label until answered. Routine
-// progress stays on GitHub.
+// progress stays on GitHub. linear.ask_on_issue: false turns all of this
+// off (JOB-114): questions and escalations stay on Desk.
 
 const (
 	// linearAskPack is meta.linear_ask on a question or escalation
@@ -54,6 +55,9 @@ func linearAskOf(t store.Ticket) (linearAsk, bool) {
 // down, token expiring) is retried; the write key makes a retry after an
 // unknown outcome find the first comment instead of posting again.
 func (c *Controller) sweepLinearAsks(ctx context.Context, cfg *config.Config) {
+	if !cfg.Linear.AsksOnIssue() {
+		return
+	}
 	for _, f := range []store.Filter{
 		{Kind: store.KindMessage, Status: store.StatusOpen, Label: needsHumanLabel, Limit: 200},
 		{Kind: store.KindTask, Status: store.StatusOpen, Label: needsHumanLabel, Limit: 200},
@@ -203,7 +207,7 @@ func (k storeKeys) Finish(ctx context.Context, key, result string) (string, erro
 // and answers those questions with them; the rest is returned for normal
 // delivery. A failed answer leaves the reply in cs so it is not lost.
 func (c *Controller) linearAnswers(ctx context.Context, th thread, cs []ghComment) []ghComment {
-	if th.Linear == "" {
+	if th.Linear == "" || !c.config().Linear.AsksOnIssue() {
 		return cs
 	}
 	qs, err := c.store.List(ctx, store.Filter{Kind: store.KindMessage, Status: store.StatusOpen, Label: needsHumanLabel, Limit: 200})
@@ -240,7 +244,8 @@ func (c *Controller) linearAnswers(ctx context.Context, th thread, cs []ghCommen
 }
 
 // unblockLinear removes the Blocked label once no other open question on
-// the issue is waiting.
+// the issue is waiting. It runs with ask_on_issue off too: a label posted
+// before the switch was turned off is still cleared.
 func (c *Controller) unblockLinear(ctx context.Context, qt store.Ticket) {
 	a, ok := linearAskOf(qt)
 	if !ok {

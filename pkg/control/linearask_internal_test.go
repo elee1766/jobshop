@@ -229,3 +229,59 @@ func TestLinearAskRetry(t *testing.T) {
 	_, ok := linearAskOf(got)
 	assert.True(t, ok, "meta.linear_ask restored from the stored result")
 }
+
+// TestLinearAskOff: with linear.ask_on_issue false nothing new is posted
+// or labelled, and a reply under an earlier ask comment is delivered as
+// an ordinary comment instead of answering the question (JOB-114).
+func TestLinearAskOff(t *testing.T) {
+	t.Parallel()
+	c, clk, f := askController(t)
+	ctx := t.Context()
+	sess := mkSession(t, c)
+	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"linear":{"workspace":"acme","issue":"ENG-5","human":"wile"},"github":{"repo":"acme/app"}}`)})
+	_, _, err := c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
+	require.NoError(t, err)
+	sc := scope{actor: sess.ID, session: sess.ID, project: tk.Project, pool: "dev"}
+	out, err := c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportWaiting, Question: "Keep the old login page?"})
+	require.NoError(t, err)
+	q := out.(rpc.ReportResult).Question
+	// Posted while the switch was on.
+	c.sweepLinearAsks(ctx, c.config())
+	f.mu.Lock()
+	askID, _ := f.comments[0]["id"].(string)
+	f.mu.Unlock()
+
+	cfg := *c.config()
+	cfg.Linear.AskOnIssue = new(false)
+	lc, err := newLiveConfig(&cfg)
+	require.NoError(t, err)
+	c.live.Store(lc)
+
+	esc := mkTicket(t, c, store.NewTicket{
+		Kind: store.KindTask, Title: "Escalate run r1", Body: "Run r1 needs a human.", Labels: []string{needsHumanLabel},
+		Meta: json.RawMessage(`{"linear":{"issue":"ENG-5"},"run":{"id":"r1","escalation":"r1/1"}}`),
+	})
+	c.sweepLinearAsks(ctx, c.config())
+	n, _ := f.state()
+	assert.Equal(t, 1, n, "nothing new posted")
+	got, err := c.store.Get(ctx, esc.ID)
+	require.NoError(t, err)
+	_, ok := linearAskOf(got)
+	assert.False(t, ok, "escalation stays on Desk")
+
+	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c, url: c.linearURL}}
+	c.pollSubscriptions(ctx, src)
+	clk.advance(time.Minute)
+	f.reply(askID, "yes, keep it", "Wile", clk.now())
+	c.pollSubscriptions(ctx, src)
+
+	got, err = c.store.Get(ctx, q.ID)
+	require.NoError(t, err)
+	assert.Equal(t, store.StatusOpen, got.Status, "a Linear reply is not an answer")
+	var news bool
+	for _, m := range messagesTo(t, c, sess.ID) {
+		assert.NotContains(t, m.Title, "Answer to your question")
+		news = news || strings.Contains(m.Body, "yes, keep it")
+	}
+	assert.True(t, news, "the reply is delivered as a comment")
+}

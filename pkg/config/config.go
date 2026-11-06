@@ -1152,7 +1152,16 @@ type Linear struct {
 	// off, intake and replies are polled only. Linear must reach it, so a
 	// host with no public endpoint needs a reverse proxy or tunnel.
 	WebhookListen string `yaml:"webhook_listen"`
+	// AskOnIssue posts worker questions and run escalations on a run's
+	// Linear issue as a comment, adds Blocked for a question, and takes a
+	// reply as the answer (#293). False: they stay on Desk and Linear
+	// replies are ordinary comments (JOB-114). Default true.
+	AskOnIssue *bool `yaml:"ask_on_issue"`
 }
+
+// AsksOnIssue reports whether questions and escalations go to the Linear
+// issue.
+func (l Linear) AsksOnIssue() bool { return l.AskOnIssue == nil || *l.AskOnIssue }
 
 // Telemetry configures observability.
 type Telemetry struct {
