@@ -56,9 +56,11 @@ type Result map[string]int64
 
 // Copy copies every row of src (a migrated SQLite database) into dst (a
 // migrated Postgres database) in one Postgres transaction, then compares
-// row counts per table and rolls back on a mismatch.
+// row counts per table and rolls back on a mismatch. The transaction is
+// serializable: Postgres connections default to read committed since
+// JOB-41, and the count check must see only this copy's rows.
 func Copy(ctx context.Context, src, dst *sql.DB, opt Options) (Result, error) {
-	tx, err := dst.BeginTx(ctx, nil)
+	tx, err := dst.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, err
 	}

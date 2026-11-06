@@ -106,6 +106,13 @@ func benchClaim(b *testing.B, s store.Store, n int) {
 	left.Store(int64(b.N))
 	var wg sync.WaitGroup
 	errs := make(chan error, n)
+	// A store that counts serialization reruns reports them per op, so
+	// claim contention can be compared across backends (JOB-41).
+	rc, counts := s.(interface{ Retries() int64 })
+	var before int64
+	if counts {
+		before = rc.Retries()
+	}
 	b.ResetTimer()
 	for w := range n {
 		wg.Go(func() {
@@ -120,6 +127,9 @@ func benchClaim(b *testing.B, s store.Store, n int) {
 	}
 	wg.Wait()
 	b.StopTimer()
+	if counts {
+		b.ReportMetric(float64(rc.Retries()-before)/float64(b.N), "retries/op")
+	}
 	close(errs)
 	for err := range errs {
 		b.Fatal(err)

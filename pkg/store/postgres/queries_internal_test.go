@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// sqldbQueries returns every named query text in sqldb, with the
+// sqldbQueries returns every named query text in pgdb, with the
 // LabelsFor list filled in.
 func sqldbQueries(t *testing.T) []string {
 	t.Helper()
-	files, err := filepath.Glob("../sqlstore/sqldb/*.go")
+	files, err := filepath.Glob("pgdb/*.go")
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 	var out []string
@@ -60,10 +60,9 @@ func queryName(q string) string {
 	return rest
 }
 
-// TestEveryQueryPrepares prepares each sqldb query as is on a migrated
-// Postgres database (#694: no rewriting), so a query Postgres cannot run
-// fails here by name instead of deep in the conformance suite. SQLite
-// runs the same text in every sqlite test.
+// TestEveryQueryPrepares prepares each pgdb query on a migrated Postgres
+// database, so a query Postgres cannot run fails here by name instead
+// of deep in the conformance suite.
 func TestEveryQueryPrepares(t *testing.T) {
 	dsn := os.Getenv("JOBSHOP_TEST_POSTGRES")
 	if dsn == "" {
@@ -83,7 +82,7 @@ func TestEveryQueryPrepares(t *testing.T) {
 	}
 }
 
-// TestNoSQLitePlaceholders keeps sqldb on $N: Postgres rejects ? and ?N.
+// TestNoSQLitePlaceholders keeps pgdb on $N: Postgres rejects ? and ?N.
 func TestNoSQLitePlaceholders(t *testing.T) {
 	for _, q := range sqldbQueries(t) {
 		for _, line := range strings.Split(q, "\n") {
