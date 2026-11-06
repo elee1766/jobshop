@@ -35,9 +35,93 @@ const resolutionOOM = "oom"
 // one is writable: the controller moves into <own>/controller and
 // sessions go under <own>/sessions. err says why limits cannot be used;
 // a pool with limits then fails to spawn and is quarantined.
+//
+// Session hosts start in <own>/sessions/hosts (JOB-91), so a session
+// without pool limits still counts against the sessions cap, not the
+// controller's. An agent with pool limits gets its own child of sessions.
+// The controller's own work (hooks, git) stays in <own>/controller.
 type cgroupSetup struct {
 	sessions string
+	hosts    string
 	err      error
+}
+
+// wantsCgroup reports whether the controller should set up its delegated
+// cgroup: some pool has limits, or limits.cgroup asks for the split
+// (JOB-91). A host without delegation is never touched otherwise.
+func wantsCgroup(cfg *config.Config) bool {
+	return cfg.Limits.Cgroup != nil || anyLimits(cfg)
+}
+
+// hostsCgroup is the cgroup directory a new session host starts in, ""
+// when the split is not wanted or the cgroup is unavailable (the host then
+// stays in the controller's, as before).
+func (c *Controller) hostsCgroup() string {
+	if c.config().Limits.Cgroup == nil {
+		return ""
+	}
+	return c.ensureCgroup().hosts
+}
+
+// tuneCgroupAt writes the weights and the sessions cap under own. All
+// writes are tried and the errors joined: a missing weight only loses the
+// reserve, so the controller logs it and runs on.
+func tuneCgroupAt(own string, hc config.HostCgroup) error {
+	capMax, err := hc.SessionsCPUMax()
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, w := range []struct{ file, value string }{
+		{filepath.Join(own, "controller", "cpu.weight"), strconv.Itoa(hc.ControllerWeight())},
+		{filepath.Join(own, "sessions", "cpu.weight"), strconv.Itoa(hc.SessionsWeight())},
+		{filepath.Join(own, "sessions", "cpu.max"), capMax},
+	} {
+		if err := os.WriteFile(w.file, []byte(w.value), 0o644); err != nil {
+			errs = append(errs, fmt.Errorf("cgroup: %w", err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// moveHosts moves every process in <own>/controller except pid into the
+// hosts cgroup. Session hosts that outlived a controller restart (or a
+// deploy that turned limits.cgroup on) sit in the controller's cgroup and
+// would keep its share. Start only: later, the controller's own children
+// are in there too.
+func moveHosts(cg cgroupSetup, pid int) {
+	leaf := filepath.Join(filepath.Dir(cg.sessions), "controller")
+	b, err := os.ReadFile(filepath.Join(leaf, "cgroup.procs"))
+	if err != nil {
+		return
+	}
+	self := strconv.Itoa(pid)
+	for f := range strings.FieldsSeq(string(b)) {
+		if f != self {
+			// A process may have exited since the read.
+			_ = os.WriteFile(filepath.Join(cg.hosts, "cgroup.procs"), []byte(f), 0o644)
+		}
+	}
+}
+
+// tuneCgroup applies limits.cgroup to the controller's cgroup, at start and
+// after each reload. At start it also moves live hosts out of the
+// controller's cgroup.
+func (c *Controller) tuneCgroup() {
+	hc := c.config().Limits.Cgroup
+	if hc == nil {
+		return
+	}
+	cg := c.ensureCgroup()
+	if cg.err != nil {
+		return
+	}
+	if err := tuneCgroupAt(filepath.Dir(cg.sessions), *hc); err != nil {
+		c.log.Warn("isolation: sessions cgroup tuning not applied", "err", err)
+	}
+	if c.hostsMoved.CompareAndSwap(false, true) {
+		moveHosts(cg, os.Getpid())
+	}
 }
 
 // setupCgroup finds the controller's cgroup and, when it is delegated
@@ -77,7 +161,8 @@ func setupCgroupAt(info cgroup.DelegatedInfo, pid int) cgroupSetup {
 	}
 	leaf := filepath.Join(own, "controller")
 	sessions := filepath.Join(own, "sessions")
-	for _, d := range []string{leaf, sessions} {
+	hosts := filepath.Join(sessions, "hosts")
+	for _, d := range []string{leaf, sessions, hosts} {
 		if err := os.Mkdir(d, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
 			return cgroupSetup{err: fmt.Errorf("cgroup: %w", err)}
 		}
@@ -100,7 +185,7 @@ func setupCgroupAt(info cgroup.DelegatedInfo, pid int) cgroupSetup {
 			return cgroupSetup{err: fmt.Errorf("cgroup: enable %s in %s: %w", enable, d, err)}
 		}
 	}
-	return cgroupSetup{sessions: sessions}
+	return cgroupSetup{sessions: sessions, hosts: hosts}
 }
 
 // anyLimits reports whether some pool sets isolation limits.

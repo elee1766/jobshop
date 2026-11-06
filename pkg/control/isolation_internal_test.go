@@ -25,6 +25,7 @@ func TestSetupCgroupAt(t *testing.T) {
 	cg := setupCgroupAt(info, 7)
 	require.NoError(t, cg.err)
 	assert.Equal(t, filepath.Join(own, "sessions"), cg.sessions)
+	assert.Equal(t, filepath.Join(own, "sessions", "hosts"), cg.hosts)
 	b, err := os.ReadFile(filepath.Join(own, "controller", "cgroup.procs"))
 	require.NoError(t, err)
 	assert.Equal(t, "7", string(b), "the controller moved into its leaf")
@@ -125,4 +126,44 @@ func TestReadCgroupStats(t *testing.T) {
 	write("memory.events", strings.Join([]string{"low 0", "high 3", "max 2", "oom 1", "oom_kill 1"}, "\n"))
 	assert.Equal(t, cgroupStats{memory: 1234, cpuUsec: 99, oomKills: 1}, readCgroupStats(d))
 	assert.Equal(t, cgroupStats{}, readCgroupStats(filepath.Join(d, "missing")))
+}
+
+// TestTuneCgroupAt: the controller outweighs sessions and sessions carry
+// the cap (JOB-91).
+func TestTuneCgroupAt(t *testing.T) {
+	own := t.TempDir()
+	for _, d := range []string{"controller", "sessions"} {
+		require.NoError(t, os.Mkdir(filepath.Join(own, d), 0o755))
+	}
+	read := func(rel string) string {
+		b, err := os.ReadFile(filepath.Join(own, rel))
+		require.NoError(t, err)
+		return string(b)
+	}
+	require.NoError(t, tuneCgroupAt(own, config.HostCgroup{SessionsCPU: "5"}))
+	assert.Equal(t, "1000", read("controller/cpu.weight"))
+	assert.Equal(t, "100", read("sessions/cpu.weight"))
+	assert.Equal(t, "500000 100000", read("sessions/cpu.max"))
+
+	require.NoError(t, tuneCgroupAt(own, config.HostCgroup{SessionsCPUWeight: 50, ControllerCPUWeight: 9000}))
+	assert.Equal(t, "9000", read("controller/cpu.weight"))
+	assert.Equal(t, "50", read("sessions/cpu.weight"))
+	assert.Equal(t, "max", read("sessions/cpu.max"), "an unset cap lifts the old one on reload")
+
+	assert.Error(t, tuneCgroupAt(t.TempDir(), config.HostCgroup{}), "missing children are reported")
+}
+
+// TestMoveHosts: hosts left in the controller's cgroup move to hosts,
+// the controller stays (JOB-91).
+func TestMoveHosts(t *testing.T) {
+	own := t.TempDir()
+	hosts := filepath.Join(own, "sessions", "hosts")
+	require.NoError(t, os.MkdirAll(hosts, 0o755))
+	require.NoError(t, os.Mkdir(filepath.Join(own, "controller"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(own, "controller", "cgroup.procs"), []byte("7\n11\n12\n"), 0o600))
+	moveHosts(cgroupSetup{sessions: filepath.Join(own, "sessions"), hosts: hosts}, 7)
+	// A plain file keeps the last write; cgroupfs moves one pid per write.
+	b, err := os.ReadFile(filepath.Join(hosts, "cgroup.procs"))
+	require.NoError(t, err)
+	assert.Equal(t, "12", string(b))
 }
