@@ -34,21 +34,6 @@ jobs:
             go-${{ runner.os }}-
       - run: go build ./...
       - run: go vet ./...
-      # Journal search tests run against a real VictoriaLogs (#530).
-      - name: install victoria-logs
-        env:
-          VL_VERSION: v1.53.0
-        run: |
-          mkdir -p "$RUNNER_TEMP/vl"
-          cd "$RUNNER_TEMP/vl"
-          f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
-          grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
-          tar xzf "$f"
-          bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
-          echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
-          echo "JOBSHOP_REQUIRE_VICTORIALOGS=1" >> "$GITHUB_ENV"
       # checkptr is off for modernc's machine-translated C only: its pointer
       # arithmetic is ~a third of race-test CPU and is not our code. The
       # race detector still covers it (#433).
@@ -74,6 +59,8 @@ jobs:
         with:
           # Keep equal to the golangci-lint gasserver.nix puts on agents' PATH.
           version: v2.15.0
+          # Lint the tagged test files too, or they rot unseen.
+          args: --build-tags=victorialogs
       - name: shellcheck deploy scripts
         run: shellcheck -s sh deploy/*.sh
       # Go bumps an entry's mtime when it is used and was last touched over
@@ -145,6 +132,50 @@ jobs:
       - run: npm run build
       - name: pkg/desk/dist is current
         run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"
+
+  # Tests against a real VictoriaLogs (#530), built with -tags victorialogs.
+  # The go job builds without the tag, so it does not see them. A missing
+  # binary or any skipped test fails the job.
+  victorialogs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-vl-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-vl-${{ runner.os }}-${{ hashFiles('go.sum') }}-
+            go-vl-${{ runner.os }}-
+      - name: install victoria-logs
+        env:
+          VL_VERSION: v1.53.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/vl"
+          cd "$RUNNER_TEMP/vl"
+          f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
+          grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
+          tar xzf "$f"
+          bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
+          echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
+          echo "JOBSHOP_REQUIRE_VICTORIALOGS=1" >> "$GITHUB_ENV"
+      - run: go vet -tags victorialogs ./...
+      # Only the tagged files' tests: the rest of pkg/control runs in the go job.
+      - name: go test
+        shell: bash # pipefail, so a test failure is not hidden by tee
+        run: |
+          tests=$(grep -l '^//go:build victorialogs' $(git ls-files '*_test.go') | xargs grep -ho '^func Test[A-Za-z0-9_]*' | sed 's/^func //' | paste -sd'|')
+          test -n "$tests" || { echo "no victorialogs tests found"; exit 1; }
+          go test -race -v -tags victorialogs -run "^($tests)\$" ./... | tee /tmp/vl-test.log
+          if grep -- '--- SKIP' /tmp/vl-test.log; then echo "tests skipped"; exit 1; fi
 
   # The store conformance suite against Postgres (#493). The go job runs
   # it against SQLite; pkg/store/postgres's tests skip without the DSN.
