@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"maps"
+	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -132,7 +135,7 @@ func (c *Controller) readLinearIntake(ctx context.Context, sig config.StallSigna
 			return nil, err
 		}
 		for _, is := range p.Issues {
-			if linearIntakeMatch(is, states, labels, skip) {
+			if linearIntakeMatch(is, states, labels, skip) && !c.linearIntakeBlocked(ctx, cl, cfg, is.Identifier) {
 				out = append(out, is)
 			}
 		}
@@ -143,6 +146,77 @@ func (c *Controller) readLinearIntake(ctx context.Context, sig config.StallSigna
 	}
 	c.log.WarnContext(ctx, "linear_issue_no_run: team has more issues than one read covers", "team", sig.Team, "pages", linearIntakePages)
 	return out, nil
+}
+
+// linearIntakeBlocked reports whether a matching issue waits on another:
+// an open Linear blocker or an open GitHub issue named by a "Depends on"
+// line (JOB-68). The list read carries neither, so each match is read in
+// full, once per poll. A read error keeps the issue: intake then behaves
+// as before this check.
+func (c *Controller) linearIntakeBlocked(ctx context.Context, cl *linear.Client, cfg *config.Config, key string) bool {
+	is, err := cl.GetContext(ctx, key, false)
+	if err != nil {
+		c.log.WarnContext(ctx, "linear_issue_no_run: read issue", "issue", key, "err", err)
+		return false
+	}
+	if len(is.OpenBlockers()) > 0 {
+		return true
+	}
+	if err := is.CheckDeps(ctx, linearRepoOwner(cfg), c.githubIssueOpen); err != nil {
+		c.log.WarnContext(ctx, "linear_issue_no_run: dependency", "issue", key, "err", err)
+		return false
+	}
+	return len(is.OpenDeps) > 0
+}
+
+// linearRepoOwner is the GitHub owner of the first (by name) Linear
+// tracked workflow's repo, for a bare "Depends on repo#n".
+func linearRepoOwner(cfg *config.Config) string {
+	names := slices.Sorted(maps.Keys(cfg.Workflows))
+	for _, n := range names {
+		w := cfg.Workflows[n]
+		if w.Tracker == config.TrackerLinear {
+			if owner, _, ok := strings.Cut(w.Repo, "/"); ok {
+				return owner
+			}
+		}
+	}
+	return ""
+}
+
+// githubIssueOpen reads a GitHub issue's state as the identity covering
+// its repo. Tests replace it with c.ghIssueOpen.
+func (c *Controller) githubIssueOpen(ctx context.Context, d linear.GitHubDep) (bool, error) {
+	if c.ghIssueOpen != nil {
+		return c.ghIssueOpen(ctx, d)
+	}
+	base, tok, err := c.pollerAuth(ctx, c.config(), "", d.Repo)
+	if err != nil {
+		return false, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/repos/%s/issues/%d", base, d.Repo, d.Number), nil)
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("github issue %s: %s", d, resp.Status)
+	}
+	var v struct {
+		State string `json:"state"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&v); err != nil {
+		return false, err
+	}
+	return v.State == "open", nil
 }
 
 // linearIntakeMatch: open, in one of states (any when empty), with one

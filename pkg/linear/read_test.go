@@ -1,6 +1,7 @@
 package linear_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -207,4 +208,26 @@ func TestEligible(t *testing.T) {
 		assert.Equal(t, "ENG-5", e.Issue)
 	}
 	assert.True(t, linear.Eligible(free, []string{"", "wontfix"}, "").Eligible, "other labels pass")
+
+	// JOB-68: an open stated GitHub dependency blocks; CheckDeps keeps
+	// only the open ones, so a closed one does not.
+	dep := free
+	dep.Description = "Depends on acphost#155 ([link](https://github.com/elee1766/acphost/issues/155)): x\nDepends on elee1766/jobshop#9"
+	open := func(_ context.Context, d linear.GitHubDep) (bool, error) { return d.Number == 155, nil }
+	require.NoError(t, dep.CheckDeps(t.Context(), "elee1766", open))
+	e = linear.Eligible(dep, nil, "")
+	assert.False(t, e.Eligible)
+	assert.Equal(t, "depends on open elee1766/acphost#155", e.Reason)
+	require.NoError(t, dep.CheckDeps(t.Context(), "elee1766", func(context.Context, linear.GitHubDep) (bool, error) { return false, nil }))
+	assert.True(t, linear.Eligible(dep, nil, "").Eligible, "closed dependencies do not block")
+}
+
+func TestDependencies(t *testing.T) {
+	desc := "Depends on acphost#155 (x)\n- depends on: o/r#2\nDepends on https://github.com/a/b/issues/3\nThis depends on z#4 inline\nDepends on acphost#155"
+	var got []string
+	for _, d := range linear.Dependencies(desc, "me") {
+		got = append(got, d.String())
+	}
+	assert.Equal(t, []string{"me/acphost#155", "o/r#2", "a/b#3"}, got, "line starts only, deduped")
+	assert.Empty(t, linear.Dependencies("Depends on acphost#155", ""), "bare repo needs an owner")
 }
