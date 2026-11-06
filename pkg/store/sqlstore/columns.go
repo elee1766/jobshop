@@ -9,11 +9,10 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
+	"github.com/elee1766/jobshop/pkg/store/storerules"
 )
 
-// columns are the fields keys queries filter and sort on, copied to
-// plain columns so SQL needs no JSON functions (#405). A key that is
-// absent, or not the expected JSON type, is NULL, as json_extract was.
+// columns are storerules.Columns as the SQL parameter types.
 type columns struct {
 	key, to, state, workflow sql.NullString
 	index                    sql.NullInt64
@@ -21,24 +20,18 @@ type columns struct {
 }
 
 func fieldColumns(fields json.RawMessage) columns {
-	var c columns
-	var m map[string]json.RawMessage
-	if json.Unmarshal(fields, &m) != nil {
-		return c
-	}
-	str := func(k string) sql.NullString {
-		var s string
-		if v, ok := m[k]; ok && json.Unmarshal(v, &s) == nil && bytes.HasPrefix(bytes.TrimSpace(v), []byte(`"`)) {
-			return sql.NullString{String: s, Valid: true}
+	r := storerules.FieldColumns(fields)
+	str := func(p *string) sql.NullString {
+		if p == nil {
+			return sql.NullString{}
 		}
-		return sql.NullString{}
+		return sql.NullString{String: *p, Valid: true}
 	}
-	c.key, c.to, c.state, c.workflow = str("key"), str("to"), str("state"), str("workflow")
-	var f float64
-	if v, ok := m["index"]; ok && json.Unmarshal(v, &f) == nil {
-		c.index = sql.NullInt64{Int64: int64(f), Valid: true}
+	c := columns{key: str(r.Key), to: str(r.To), state: str(r.State), workflow: str(r.Workflow)}
+	if r.Index != nil {
+		c.index = sql.NullInt64{Int64: *r.Index, Valid: true}
 	}
-	if v, ok := m["wait"]; ok && !bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+	if r.Waiting {
 		c.waiting = 1
 	}
 	return c

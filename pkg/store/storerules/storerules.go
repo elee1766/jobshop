@@ -1,0 +1,319 @@
+// Package storerules holds the I/O-free ticket rules every store must
+// apply the same way (JOB-40): claim and fence decisions, release,
+// handoff, close and step failure transitions, the revision bump, update
+// diffs and the field-derived columns. A store loads a ticket, calls a
+// rule, then writes the result in its own transaction. Plain glue stays
+// in each store; nothing here touches a database.
+package storerules
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+// Stamp is the time stored for now: UTC, millisecond precision, as the
+// stores keep timestamps.
+func Stamp(now time.Time) time.Time { return now.UTC().Truncate(time.Millisecond) }
+
+// Bump moves t to its next revision at now and returns the revision the
+// guarded write must still find.
+func Bump(t *store.Ticket, now time.Time) (prev int64) {
+	prev = t.Revision
+	t.Revision++
+	t.UpdatedAt = Stamp(now)
+	return prev
+}
+
+// CheckLease rejects a claim or heartbeat without a holder or lease.
+func CheckLease(holder string, lease time.Duration) error {
+	if holder == "" || lease <= 0 {
+		return fmt.Errorf("%w: holder and a positive lease are required", store.ErrInvalid)
+	}
+	return nil
+}
+
+// CanClaim is the check for claiming one named ticket: it must be open
+// and unassigned or assigned to holder (or already held by holder, a
+// resume), unblocked, and an open one must not wait for a resource slot.
+func CanClaim(t store.Ticket, holder string, blocked, waitsSlot bool) error {
+	switch {
+	case t.Status == store.StatusClosed:
+		return fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
+	case t.Status == store.StatusInProgress && t.Holder != holder:
+		return fmt.Errorf("%w: %s is held by %s", store.ErrNotHolder, t.ID, t.Holder)
+	case t.Status == store.StatusOpen && t.Holder != "" && t.Holder != holder:
+		return fmt.Errorf("%w: %s is assigned to %s", store.ErrNotHolder, t.ID, t.Holder)
+	case blocked:
+		return fmt.Errorf("%w: %s is blocked", store.ErrNoWork, t.ID)
+	case waitsSlot && t.Status == store.StatusOpen:
+		return fmt.Errorf("%w: %s waits for a resource slot", store.ErrNoWork, t.ID)
+	}
+	return nil
+}
+
+// StillCandidate rechecks a ClaimNext candidate inside the claiming
+// transaction: without a single writer another claimer may have taken it.
+func StillCandidate(t store.Ticket, holder string) error {
+	if t.Status == store.StatusClosed || (t.Holder != "" && t.Holder != holder) {
+		return fmt.Errorf("%w: %s was taken", store.ErrConflict, t.ID)
+	}
+	return nil
+}
+
+// Claim gives t to holder until now+lease. A fresh claim (from open)
+// bumps the fence; a resume by the same holder keeps it. It returns the
+// claim and the history diff; fresh reports whether slots must be taken.
+func Claim(t *store.Ticket, holder string, lease time.Duration, now time.Time) (c store.Claim, diff map[string]any, fresh bool) {
+	resumed := t.Status == store.StatusInProgress
+	t.Status = store.StatusInProgress
+	t.Holder = holder
+	t.LeaseUntil = Stamp(now.Add(lease))
+	if !resumed {
+		t.Fence++
+	}
+	return store.Claim{TicketID: t.ID, Holder: holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil},
+		map[string]any{"holder": holder, "fence": t.Fence, "resumed": resumed}, !resumed
+}
+
+// Holds reports ErrNotHolder unless c is t's current claim.
+func Holds(t store.Ticket, c store.Claim) error {
+	if t.Status != store.StatusInProgress || t.Holder != c.Holder || t.Fence != c.Fence {
+		return fmt.Errorf("%w: %s", store.ErrNotHolder, t.ID)
+	}
+	return nil
+}
+
+// Reopen returns t to open and unassigned. Resolution and closed time
+// are the caller's to clear.
+func Reopen(t *store.Ticket) {
+	t.Status = store.StatusOpen
+	t.Holder = ""
+	t.LeaseUntil = time.Time{}
+}
+
+func reopenClosed(t *store.Ticket) {
+	Reopen(t)
+	t.Resolution = ""
+	t.ClosedAt = time.Time{}
+}
+
+// StepFailure counts a failure when t is a step. At the retry limit the
+// step is closed failed; below it a failed close becomes another
+// attempt. It returns the comment to add ("" for non-steps) and records
+// the count in d.
+func StepFailure(t *store.Ticket, how string, d map[string]any, now time.Time) (string, error) {
+	f, exhausted, isStep, err := store.StepFailure(t)
+	if err != nil || !isStep {
+		return "", err
+	}
+	d["failures"] = f.Failures
+	if exhausted && t.Status != store.StatusClosed {
+		t.Status = store.StatusClosed
+		t.Resolution = "failed"
+		t.Holder = ""
+		t.LeaseUntil = time.Time{}
+		t.ClosedAt = Stamp(now)
+	}
+	if !exhausted && t.Status == store.StatusClosed {
+		reopenClosed(t)
+	}
+	return store.StepFailureComment(f, how, exhausted), nil
+}
+
+// Release returns a ticket held by c to open. With until set it is a
+// deferral ("not yet"), not a failed attempt; otherwise a step counts a
+// failure. It returns the history diff and the controller note.
+func Release(t *store.Ticket, c store.Claim, reason string, until, now time.Time) (map[string]any, string, error) {
+	if err := Holds(*t, c); err != nil {
+		return nil, "", err
+	}
+	Reopen(t)
+	d := map[string]any{"reason": reason}
+	if !until.IsZero() {
+		t.DeferUntil = Stamp(until)
+		d["defer_until"] = t.DeferUntil
+		return d, fmt.Sprintf("Released until %s: %s", t.DeferUntil.Format(time.RFC3339), reason), nil
+	}
+	note, err := StepFailure(t, "released: "+reason, d, now)
+	return d, note, err
+}
+
+// Handoff moves t to pool. A held ticket is released and its fence
+// bumped, so the old holder's claim stops working. A non-nil c must
+// still hold it. It is not a step failure.
+func Handoff(t *store.Ticket, c *store.Claim, pool, note string) (map[string]any, error) {
+	if pool == "" {
+		return nil, fmt.Errorf("%w: handoff needs a pool", store.ErrInvalid)
+	}
+	if t.Status == store.StatusClosed {
+		return nil, fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
+	}
+	if c != nil {
+		if err := Holds(*t, *c); err != nil {
+			return nil, err
+		}
+	}
+	d := map[string]any{"from_pool": t.Pool, "pool": pool, "holder": t.Holder}
+	t.Pool = pool
+	if t.Status == store.StatusInProgress {
+		Reopen(t)
+		t.Fence++
+	}
+	if note != "" {
+		d["note"] = note
+	}
+	return d, nil
+}
+
+// Close closes t with resolution, fenced by c when non-nil. A failed
+// close counts a step failure (and below the limit reopens it); a
+// rebase close of a step reopens it without counting. It returns the
+// history diff and the controller note.
+func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time) (map[string]any, string, error) {
+	if t.Status == store.StatusClosed {
+		return nil, "", fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
+	}
+	if c != nil {
+		if err := Holds(*t, *c); err != nil {
+			return nil, "", err
+		}
+	}
+	t.Status = store.StatusClosed
+	t.Resolution = resolution
+	t.LeaseUntil = time.Time{}
+	t.ClosedAt = Stamp(now)
+	d := map[string]any{"resolution": resolution}
+	if resolution == "failed" {
+		note, err := StepFailure(t, "closed failed", d, now)
+		return d, note, err
+	}
+	if resolution == store.ResolutionRebase && t.Kind == store.KindStep {
+		reopenClosed(t)
+		return d, "Closed for a rebase: reopened without counting a failed attempt.", nil
+	}
+	return d, "", nil
+}
+
+// ReopenClosed returns a closed ticket to open, checking ifRev when set.
+func ReopenClosed(t *store.Ticket, ifRev int64) error {
+	if ifRev != 0 && ifRev != t.Revision {
+		return fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, t.ID, t.Revision, ifRev)
+	}
+	if t.Status != store.StatusClosed {
+		return fmt.Errorf("%w: %s is not closed", store.ErrInvalid, t.ID)
+	}
+	reopenClosed(t)
+	return nil
+}
+
+// Expire reopens a ticket a dead holder held or was assigned, or whose
+// lease ran out (op "release" or "lease_expired"). extra is merged into
+// the diff. A pre-assigned ticket that was never claimed has not failed;
+// a claimed step counts a failure. It returns the diff and the note.
+func Expire(t *store.Ticket, op string, extra map[string]any, now time.Time) (map[string]any, string, error) {
+	d := map[string]any{"holder": t.Holder, "status": t.Status}
+	for k, v := range extra {
+		d[k] = v
+	}
+	claimed := t.Status == store.StatusInProgress
+	Reopen(t)
+	if !claimed {
+		return d, "", nil
+	}
+	how := op
+	if r, ok := d["reason"].(string); ok && r != "" {
+		how += ": " + r
+	}
+	note, err := StepFailure(t, how, d, now)
+	return d, note, err
+}
+
+// ApplyUpdate applies u's field changes to t and returns the history
+// diff: only what changed. Holder changes (pre-assignment) are allowed
+// only while open.
+func ApplyUpdate(t *store.Ticket, u store.Update) (map[string]any, error) {
+	if u.IfRevision != 0 && u.IfRevision != t.Revision {
+		return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, t.ID, t.Revision, u.IfRevision)
+	}
+	d := map[string]any{}
+	set := func(name string, dst *string, v *string) {
+		if v != nil && *v != *dst {
+			*dst = *v
+			d[name] = *v
+		}
+	}
+	set("title", &t.Title, u.Title)
+	set("body", &t.Body, u.Body)
+	set("pool", &t.Pool, u.Pool)
+	if u.Holder != nil && *u.Holder != t.Holder {
+		if t.Status != store.StatusOpen {
+			return nil, fmt.Errorf("%w: %s: assign only while open (status %s)", store.ErrInvalid, t.ID, t.Status)
+		}
+		t.Holder = *u.Holder
+		d["holder"] = *u.Holder
+	}
+	if u.Priority != nil && *u.Priority != t.Priority {
+		t.Priority = *u.Priority
+		d["priority"] = *u.Priority
+	}
+	if u.DeferUntil != nil {
+		t.DeferUntil = Stamp(*u.DeferUntil)
+		d["defer_until"] = t.DeferUntil
+	}
+	if u.Fields != nil {
+		f, err := store.NormalizeFields(t.Kind, u.Fields)
+		if err != nil {
+			return nil, err
+		}
+		t.Fields = f
+		d["fields"] = f
+	}
+	if u.Meta != nil {
+		m, err := store.NormalizeMeta(u.Meta)
+		if err != nil {
+			return nil, err
+		}
+		t.Meta = m
+		d["meta"] = m
+	}
+	return d, nil
+}
+
+// Columns are the fields keys queries filter and sort on, copied to plain
+// columns so SQL needs no JSON functions (#405). A key that is absent, or
+// not the expected JSON type, is nil (NULL).
+type Columns struct {
+	Key, To, State, Workflow *string
+	Index                    *int64
+	Waiting                  bool
+}
+
+// FieldColumns derives Columns from a ticket's fields JSON.
+func FieldColumns(fields json.RawMessage) Columns {
+	var c Columns
+	var m map[string]json.RawMessage
+	if json.Unmarshal(fields, &m) != nil {
+		return c
+	}
+	str := func(k string) *string {
+		var s string
+		if v, ok := m[k]; ok && json.Unmarshal(v, &s) == nil && bytes.HasPrefix(bytes.TrimSpace(v), []byte(`"`)) {
+			return &s
+		}
+		return nil
+	}
+	c.Key, c.To, c.State, c.Workflow = str("key"), str("to"), str("state"), str("workflow")
+	var f float64
+	if v, ok := m["index"]; ok && json.Unmarshal(v, &f) == nil {
+		i := int64(f)
+		c.Index = &i
+	}
+	if v, ok := m["wait"]; ok && !bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+		c.Waiting = true
+	}
+	return c
+}
