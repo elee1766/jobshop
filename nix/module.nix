@@ -157,6 +157,16 @@ let
     coreutils
     diffutils
     openssh
+    # What any agent shell assumes is there (#780): without them a tool
+    # call like `$(dirname $(which go))` fails and the agent blames its
+    # env. NixOS has them in /run/current-system/sw/bin, which is not on
+    # a unit's PATH.
+    gawk
+    which
+    procps
+    util-linux
+    gnutar
+    gzip
   ];
   # The old consumer toolset, kept behind defaultPath (default false).
   defaultTools = with pkgs; [
