@@ -4,9 +4,10 @@
   // buttons (#607); Open chat (or a click on the row) opens the session
   // chat that resolves the item (POST api/attention/chat). Uses api only
   // (#517).
-  import { resolveActions, runAction } from '../../kit/attention.js';
+  import { resolveActions, runAction, pendingItems, markPending, clearPending, onPending } from '../../kit/attention.js';
   import { safe } from '../../kit/format.js';
   import Holder from '../../kit/Holder.svelte';
+  import { untrack } from 'svelte';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api } = $props();
@@ -22,9 +23,38 @@
   let opening = $state('');
   let push = $state({ state: 'off', error: '' });
 
+  /** Rows whose action succeeded, waiting for a load without them
+   * (JOB-60). loads counts loads started after the action that still
+   * listed the item. @type {Record<string, { label: string, loads: number }>} */
+  let pending = $state({});
+  /** Rows a refresh still listed after their action. @type {Record<string, string>} */
+  let stuck = $state({});
+  // Loads that may still list the item before it counts as a no-op: the
+  // first can race the action's commit.
+  const pendingLoads = 2;
+  let retry = 0;
+
   async function load() {
+    const asked = Object.keys(pending);
     try {
-      items = await api.get('api/attention');
+      const got = await api.get('api/attention');
+      const listed = new Set(got.map((/** @type {any} */ x) => x.kind + ':' + x.id));
+      let again = false;
+      for (const key of asked) {
+        const p = pending[key];
+        if (!p) continue;
+        if (!listed.has(key)) {
+          delete pending[key];
+          clearPending(key);
+        } else if (++p.loads >= pendingLoads) {
+          stuck[key] = p.label;
+          delete pending[key];
+          clearPending(key);
+        } else again = true;
+      }
+      items = got;
+      // A pending row gets another refresh soon instead of the next event.
+      if (again && !retry) retry = window.setTimeout(() => { retry = 0; load(); }, 1500);
       error = '';
     } catch (e) {
       error = String(/** @type {any} */ (e).message || e);
@@ -42,7 +72,16 @@
     progressLoaded = true;
   }
 
-  $effect(() => {
+  /** @param {string} key @param {string} label */
+  function setPending(key, label) {
+    delete stuck[key];
+    pending[key] = { label, loads: 0 };
+  }
+
+  $effect(() => untrack(() => {
+    // Actions taken in the chat panel mark the row too.
+    for (const [key, label] of pendingItems()) setPending(key, label);
+    const offPending = onPending((key, label) => { setPending(key, label); load(); });
     load();
     api.push.status().then((/** @type {any} */ s) => (push = s));
     let t = 0;
@@ -55,8 +94,8 @@
       const [kind, ...rest] = p.item.split(':');
       open({ kind, id: rest.join(':') });
     }
-    return () => { off(); clearTimeout(t); };
-  });
+    return () => { off(); offPending(); clearTimeout(t); clearTimeout(retry); retry = 0; };
+  }));
 
   /** @param {{ kind: string, id: string, title?: string, why?: string }} it */
   async function open(it) {
@@ -80,10 +119,8 @@
     const key = it.kind + ':' + it.id;
     acting = key;
     try {
-      if (await runAction(api, a)) {
-        items = (items ?? []).filter((x) => x.kind + ':' + x.id !== key);
-        load();
-      }
+      // markPending notifies onPending above, which refreshes at once.
+      if (await runAction(api, a)) markPending(key, a.label);
     } finally {
       acting = '';
     }
@@ -162,17 +199,23 @@
         <tbody>
           {#each items as it (it.kind + it.id)}
             {@const key = it.kind + ':' + it.id}
-            <tr class="click" class:busy={opening === it.kind + ':' + it.id} onclick={() => open(it)} data-testid="attention-row" data-item={it.kind + ':' + it.id}>
+            {@const pend = pending[key]}
+            <tr class="click" class:busy={opening === key || !!pend} class:pending={!!pend} onclick={() => open(it)} data-testid="attention-row" data-item={it.kind + ':' + it.id}>
               <td class="c-id"><span class="pill warn">{it.kind}</span></td>
               <td class="c-title">
                 {it.title || it.id}<div class="faint mono">{it.id}{#if it.ref} · {#if it.url && safe(it.url)}<a href={it.url} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()} data-testid="attention-ref">{it.ref}</a>{:else}{it.ref}{/if}{/if}</div>
                 {#if it.summary}<div class="summary muted" data-testid="attention-summary">{it.summary}</div>{/if}
                 <!-- Buttons do not open the chat: the row's click is for that. -->
                 <div class="acts" role="presentation" onclick={(e) => e.stopPropagation()}>
-                  {#each resolveActions(api, it.kind, it.id) as a (a.label)}
-                    <button type="button" disabled={acting === key} onclick={() => resolve(it, a)} data-testid="row-resolve">{a.label}</button>
-                  {/each}
-                  <button type="button" class="ghost" disabled={opening === key} onclick={() => open(it)} data-testid="open-chat">Open chat</button>
+                  {#if pend}
+                    <span class="muted" data-testid="row-pending">{pend.label}…</span>
+                  {:else}
+                    {#if stuck[key]}<span class="warn-text" data-testid="row-stuck">still listed after {stuck[key]}</span>{/if}
+                    {#each resolveActions(api, it.kind, it.id) as a (a.label)}
+                      <button type="button" disabled={acting === key} onclick={() => resolve(it, a)} data-testid="row-resolve">{a.label}</button>
+                    {/each}
+                    <button type="button" class="ghost" disabled={opening === key} onclick={() => open(it)} data-testid="open-chat">Open chat</button>
+                  {/if}
                 </div>
               </td>
               <td class="muted full">{it.why}</td>
@@ -239,6 +282,8 @@
 
 <style>
   tr.busy td { opacity: 0.6; }
+  tr.pending { pointer-events: none; }
+  .warn-text { color: var(--desk-warn, #b7791f); font-size: 12px; align-self: center; }
   .summary { margin-top: 4px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; cursor: default; }
   .pushna { font-size: 12px; }
