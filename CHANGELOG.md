@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.4.0](https://github.com/elee1766/jobshop/compare/v0.3.7...v0.4.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **store:** store timestamps in nanoseconds (JOB-58) ([#821](https://github.com/elee1766/jobshop/issues/821))
+
+### Features
+
+* **control:** event triggers with poll fallback and a command action (JOB-62) ([#828](https://github.com/elee1766/jobshop/issues/828)) ([1374500](https://github.com/elee1766/jobshop/commit/1374500176ab28b6a50b692fa0b090d0f0317092))
+* **control:** fall back to a new ACP session on unknown session id (JOB-65) ([#820](https://github.com/elee1766/jobshop/issues/820)) ([bddb7d8](https://github.com/elee1766/jobshop/commit/bddb7d855b9fe15e653d0320ad19be0ed2557a0a))
+* **control:** probe the agent shell PATH before spawning a host (JOB-67) ([#819](https://github.com/elee1766/jobshop/issues/819)) ([cc0a5a2](https://github.com/elee1766/jobshop/commit/cc0a5a24b64fdf28eaff42ddd4456b984e9dff69))
+* **control:** run hooks, prompt rules, desk exec, triggers and command steps through proc.Start ([#810](https://github.com/elee1766/jobshop/issues/810)) ([#823](https://github.com/elee1766/jobshop/issues/823)) ([2e662ca](https://github.com/elee1766/jobshop/commit/2e662ca3f4dd1c43ca75acf6d83a7544d96ee3c2))
+* **control:** run start refuses an ineligible linear issue without --force (JOB-69) ([#816](https://github.com/elee1766/jobshop/issues/816)) ([ee42085](https://github.com/elee1766/jobshop/commit/ee420851ad4ed84403f6752477da2d91866a8cee))
+* **desk:** pending state for attention item actions (JOB-60) ([#807](https://github.com/elee1766/jobshop/issues/807)) ([dc25187](https://github.com/elee1766/jobshop/commit/dc25187d6c8779becdef5fbcf72c70c3d96ef37e))
+* **ids:** configurable ticket id generators (JOB-57) ([#824](https://github.com/elee1766/jobshop/issues/824)) ([fab3ff1](https://github.com/elee1766/jobshop/commit/fab3ff12145adb87c40087fc77691d8ed93ddf68))
+* **packs/github:** route implement steps to dev-sonnet or dev with retry escalation (JOB-59) ([#814](https://github.com/elee1766/jobshop/issues/814)) ([fab4b68](https://github.com/elee1766/jobshop/commit/fab4b683bb3bc1ae132302968666c12e323d306d))
+* **packs:** stall pool with stall_model and stall_effort vars ([#785](https://github.com/elee1766/jobshop/issues/785)) ([87f0545](https://github.com/elee1766/jobshop/commit/87f054588bb393a6142fbdd1a4ffa9b0ca54cf2f))
+* **store:** store timestamps in nanoseconds (JOB-58) ([#821](https://github.com/elee1766/jobshop/issues/821)) ([a4485de](https://github.com/elee1766/jobshop/commit/a4485de6bd3140b1635ff3b8adf55a550ea14186))
+
+
+### Bug fixes
+
+* **control:** back off on provider network errors instead of crashing (JOB-66) ([#809](https://github.com/elee1766/jobshop/issues/809)) ([787ae09](https://github.com/elee1766/jobshop/commit/787ae09c63a9668ede931315afd85c77695fd566))
+* **control:** keep idle sessions with background jobs, refuse release with unpushed commits (JOB-70) ([#813](https://github.com/elee1766/jobshop/issues/813)) ([bd466ad](https://github.com/elee1766/jobshop/commit/bd466ad3c9e24ada8899303bfe48260b488c51ab))
+* **linear:** treat open stated dependencies as intake blockers (JOB-68) ([#815](https://github.com/elee1766/jobshop/issues/815)) ([f6f3372](https://github.com/elee1766/jobshop/commit/f6f3372f6b0dd3ebc0f5983a9f57e848fcd1987f))
+
 ## [0.3.7](https://github.com/elee1766/jobshop/compare/v0.3.6...v0.3.7) (2026-11-06)
 
 
