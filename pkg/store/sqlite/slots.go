@@ -1,4 +1,4 @@
-package sqlstore
+package sqlite
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"slices"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
+	"github.com/elee1766/jobshop/pkg/store/sqlite/sqldb"
 )
 
 // Provider-owned slots (#407). See store.Slot.

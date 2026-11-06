@@ -1,4 +1,4 @@
-package sqlstore
+package sqlite
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/nullism/bqb"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
+	"github.com/elee1766/jobshop/pkg/store/sqlite/sqldb"
 )
 
 // Ticket reads built in Go (#579 step 3): List builds its WHERE from the
@@ -207,9 +207,9 @@ func candidateQuery(req store.ClaimNext, now int64) *bqb.Query {
 		"t.priority, t.created_at, t.id LIMIT 1", w)
 }
 
-type scanner interface{ Scan(dest ...any) error }
+type rowScanner interface{ Scan(dest ...any) error }
 
-func scanTicket(r scanner) (sqldb.Ticket, error) {
+func scanTicket(r rowScanner) (sqldb.Ticket, error) {
 	var i sqldb.Ticket
 	err := r.Scan(&i.ID, &i.Project, &i.Kind, &i.Title, &i.Body, &i.Status, &i.Resolution, &i.Priority,
 		&i.Pool, &i.Holder, &i.LeaseUntil, &i.Fence, &i.ParentID, &i.DeferUntil, &i.Ephemeral, &i.Fields,
@@ -218,20 +218,15 @@ func scanTicket(r scanner) (sqldb.Ticket, error) {
 	return i, err
 }
 
-// conn is d with the backend's statement handling (Driver.Conn).
+// conn is d through its statement cache (#433).
 func (s *Store) conn(d sqldb.DBTX) sqldb.DBTX {
-	if s.drv.Conn == nil {
-		return d
+	if db, ok := d.(*sql.DB); ok && db == s.rdb {
+		return s.rc.conn(d)
 	}
-	return s.drv.Conn(d)
+	return s.wc.conn(d)
 }
 
-func (s *Store) render(q *bqb.Query) (string, []any, error) {
-	if s.drv.Render == nil {
-		return q.ToSql()
-	}
-	return s.drv.Render(q)
-}
+func (s *Store) render(q *bqb.Query) (string, []any, error) { return q.ToSql() }
 
 func (s *Store) queryTickets(ctx context.Context, d sqldb.DBTX, q *bqb.Query) ([]sqldb.Ticket, error) {
 	text, args, err := s.render(q)

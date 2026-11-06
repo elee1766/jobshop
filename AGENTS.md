@@ -21,7 +21,7 @@ the pinned decision log issue (#569). Progress: open `target` issues.
   the same PR and say so in the PR body.
 - Store queries are plain SQL in Go, no sqlc (#579): collections and
   `List` build theirs (bqb), the rest are hand-written in
-  `pkg/store/sqlstore/sqldb` (SQLite SQL, rewritten for Postgres).
+  `pkg/store/sqlite/sqldb` and `pkg/store/postgres/pgdb`, one per engine.
   Goose migrations stay in `pkg/store/{sqlite,postgres}/migrations`.
 - Do not edit `docs/plan.md`: it is frozen (2026-11-05) because parallel
   PRs kept conflicting on it. Record a design decision as one dated

@@ -1,5 +1,5 @@
 // Package pgdb holds the Postgres store's hand-written SQL (JOB-41),
-// separate from the SQLite queries in sqlstore/sqldb so each engine can
+// separate from the SQLite queries in sqlite/sqldb so each engine can
 // use its own features (FOR UPDATE SKIP LOCKED for claims). Each query
 // text keeps a leading "-- name: X" line, which TestEveryQueryPrepares
 // reports failures by.

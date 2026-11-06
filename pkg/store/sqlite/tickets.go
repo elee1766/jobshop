@@ -1,4 +1,4 @@
-package sqlstore
+package sqlite
 
 import (
 	"context"
@@ -12,15 +12,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nullism/bqb"
-
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
+	"github.com/elee1766/jobshop/pkg/store/sqlite/sqldb"
 	"github.com/elee1766/jobshop/pkg/store/storerules"
 )
 
-// Options configures New.
+// Options configures Open.
 type Options struct {
 	// Now overrides the clock, for tests.
 	Now func() time.Time
@@ -32,76 +30,51 @@ type Options struct {
 	// Concurrent opens with deferred transactions and several
 	// connections, so writers are not serialized up front (#406). Tests
 	// use it to check claims do not depend on a single-writer database.
-	// Drivers read it in their Open; the core does not.
+	// Only these databases rerun a transaction on SQLITE_BUSY.
 	Concurrent bool
 }
 
-// Driver is what a backend supplies beyond its SQL files: the opened and
-// migrated database, its sqldb queries, and the engine-specific bits.
-type Driver struct {
-	// DB is the migrated database. Write transactions start with
-	// DB.BeginTx, so the driver sets any locking mode in its DSN.
-	DB *sql.DB
-	// ReadDB, if set, serves reads outside a transaction, so they do not
-	// queue behind writes on DB's connection. Nil means DB.
-	ReadDB *sql.DB
-	// Bind returns the store's queries over a database or transaction.
-	// sqldb's SQL runs on both engines ($N placeholders), so the core
-	// never converts rows.
-	Bind func(sqldb.DBTX) sqldb.Querier
-	// Classify maps a constraint failure to store.ErrAlreadyExist,
-	// store.ErrNotFound or store.ErrInvalid; other errors return nil.
-	Classify func(err error) error
-	// RecallMatch turns the words of a recall query into the match
-	// expressions to try in order; the first with hits wins.
-	RecallMatch func(words []string) []string
-	// RecallSQL searches comments: $1 a match expression, $2 project
-	// and $3 ticket id ('' for any), $4 the limit. It returns kind, ref,
-	// ticket_id, project, at (ms), snippet and score, best (lowest)
-	// first. Full-text search is the one query each engine writes.
-	RecallSQL string
-	// IsBusy reports a transaction that lost a write race and may be
-	// rerun (SQLITE_BUSY on a deferred upgrade). Nil means never.
-	IsBusy func(err error) bool
-	// Collection opens store collections (#579). Nil means the backend
-	// has none.
-	Collection CollectionOpener
-	// Render turns a query built in Go into the engine's text and
-	// arguments. Nil means ? placeholders (bqb ToSql).
-	Render func(q *bqb.Query) (string, []any, error)
-	// Conn wraps a database or transaction for queries built in Go, as
-	// Bind does for sqldb's (a statement cache). Nil means use it as is.
-	Conn func(sqldb.DBTX) sqldb.DBTX
-}
-
-// Store is the backend-neutral ticket store over a Driver. Claims and
-// sweeps do not rely on a single-writer database: their writes re-check
-// their conditions in the same statement (#406).
+// Store is the SQLite ticket store (JOB-42). In production writes run
+// on one connection with BEGIN IMMEDIATE, so they never lose a lock
+// race and are not retried; reads outside a transaction use a separate
+// query-only pool (#742). Claims and sweeps still re-check their
+// conditions in the same statement (#406), which the Concurrent test
+// mode exercises.
 type Store struct {
 	db *sql.DB
 	q  sqldb.Querier
-	// rdb and rq serve reads outside a transaction (Driver.ReadDB).
-	rdb    *sql.DB
-	rq     sqldb.Querier
-	drv    Driver
-	ids    *ids.Generator
-	now    func() time.Time
-	prefix func(string) string
-	commit func()
+	// rdb and rq serve reads outside a transaction.
+	rdb *sql.DB
+	rq  sqldb.Querier
+	// wc and rc are the statement caches of db and rdb (#433).
+	wc, rc *stmtCache
+	reg    *registry
+	// busyRetry reruns a transaction on SQLITE_BUSY (Concurrent only).
+	busyRetry bool
+	ids       *ids.Generator
+	now       func() time.Time
+	prefix    func(string) string
+	commit    func()
 }
 
 var _ store.Store = (*Store)(nil)
 
-// New returns a store over d. Close closes d.DB.
-func New(d Driver, opt Options) (*Store, error) {
+// newStore returns a store over the writer db and the reader pool rdb
+// (nil: read on db). Close closes both.
+func newStore(db, rdb *sql.DB, opt Options) (*Store, error) {
 	gen, err := ids.New()
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{db: d.DB, q: d.Bind(d.DB), drv: d, ids: gen, now: opt.Now, prefix: opt.Prefix, commit: opt.OnCommit}
-	s.rdb, s.rq = s.db, s.q
-	if d.ReadDB != nil {
-		s.rdb, s.rq = d.ReadDB, d.Bind(d.ReadDB)
+	s := &Store{
+		db: db, wc: newStmtCache(db), reg: &registry{}, busyRetry: opt.Concurrent,
+		ids: gen, now: opt.Now, prefix: opt.Prefix, commit: opt.OnCommit,
+	}
+	s.q = s.wc.bind(db)
+	s.rdb, s.rc, s.rq = db, s.wc, s.q
+	if rdb != nil {
+		s.rdb, s.rc = rdb, newStmtCache(rdb)
+		s.rq = s.rc.bind(rdb)
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -121,11 +94,11 @@ func (s *Store) Close() error {
 }
 
 // busyTries bounds how often tx reruns a transaction that lost a write
-// race (Driver.IsBusy). Only concurrent databases hit it.
+// race. Only Concurrent databases hit it.
 const busyTries = 16
 
 func (s *Store) tx(ctx context.Context, fn func(q sqldb.Querier) error) error {
-	return s.sqlTx(ctx, func(tx *sql.Tx) error { return fn(s.drv.Bind(tx)) })
+	return s.sqlTx(ctx, func(tx *sql.Tx) error { return fn(s.wc.bind(tx)) })
 }
 
 // sqlTx runs fn in a write transaction, rerunning it when it loses a
@@ -166,7 +139,7 @@ func busyWait(ctx context.Context, try int) bool {
 }
 
 func (s *Store) isBusy(err error) bool {
-	return err != nil && s.drv.IsBusy != nil && s.drv.IsBusy(err)
+	return s.busyRetry && err != nil && isBusy(err)
 }
 
 func (s *Store) txOnce(ctx context.Context, fn func(tx *sql.Tx) error) error {
@@ -185,20 +158,6 @@ func (s *Store) txOnce(ctx context.Context, fn func(tx *sql.Tx) error) error {
 		s.commit()
 	}
 	return nil
-}
-
-func ms(t time.Time) int64 {
-	if t.IsZero() {
-		return 0
-	}
-	return t.UnixMilli()
-}
-
-func fromMS(v int64) time.Time {
-	if v == 0 {
-		return time.Time{}
-	}
-	return time.UnixMilli(v).UTC()
 }
 
 func toTicket(r sqldb.Ticket) store.Ticket {
@@ -428,7 +387,7 @@ func (s *Store) classify(err error, id string) error {
 	if err == nil {
 		return nil
 	}
-	kind := s.drv.Classify(err)
+	kind := classifyErr(err)
 	switch {
 	case kind == nil:
 		return err
@@ -558,7 +517,7 @@ func (s *Store) ClaimNext(ctx context.Context, req store.ClaimNext) (t store.Tic
 
 func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store.Ticket, c store.Claim, err error) {
 	err = s.sqlTx(ctx, func(tx *sql.Tx) error {
-		q := s.drv.Bind(tx)
+		q := s.wc.bind(tx)
 		id, err := s.claimCandidate(ctx, tx, req)
 		if errors.Is(err, sql.ErrNoRows) {
 			return store.ErrNoWork
