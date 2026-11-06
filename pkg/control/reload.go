@@ -93,6 +93,8 @@ func (c *Controller) reloadWith(by string, files []string) (err error) {
 			if cleared := c.unquarantinePools(""); len(cleared) > 0 {
 				c.log.Info("config reload: pools unquarantined", "pools", cleared)
 			}
+			// New weights and cap take effect now; hosts moved on first use.
+			c.tuneCgroup()
 			// A host still missing a prerequisite quarantines the pool again
 			// now, not at its next spawn (#728).
 			c.preflightPools(context.Background())

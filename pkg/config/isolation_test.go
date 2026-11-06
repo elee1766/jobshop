@@ -103,3 +103,30 @@ func TestLimitsValues(t *testing.T) {
 	_, err = config.ParseBytes("99999999999999999999T")
 	assert.Error(t, err)
 }
+
+// TestHostCgroup: limits.cgroup values and defaults (JOB-91).
+func TestHostCgroup(t *testing.T) {
+	c, err := config.Parse([]byte("projects: {js: {}}\nlimits: {cgroup: {sessions_cpu: \"5\", controller_cpu_weight: 2000}}\n"))
+	require.NoError(t, err)
+	hc := c.Limits.Cgroup
+	require.NotNil(t, hc)
+	capMax, err := hc.SessionsCPUMax()
+	require.NoError(t, err)
+	assert.Equal(t, "500000 100000", capMax)
+	assert.Equal(t, 2000, hc.ControllerWeight())
+	assert.Equal(t, config.DefaultSessionsWeight, hc.SessionsWeight())
+
+	capMax, err = config.HostCgroup{}.SessionsCPUMax()
+	require.NoError(t, err)
+	assert.Equal(t, "max", capMax, "no cap unless set")
+
+	for _, bad := range []string{
+		"{sessions_cpu: lots}",
+		"{sessions_cpu: \"0\"}",
+		"{controller_cpu_weight: 10001}",
+		"{sessions_cpu_weight: -1}",
+	} {
+		_, err := config.Parse([]byte("projects: {js: {}}\nlimits: {cgroup: " + bad + "}\n"))
+		assert.ErrorContains(t, err, "limits.cgroup", bad)
+	}
+}

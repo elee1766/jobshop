@@ -208,6 +208,9 @@ type Controller struct {
 	// set up once on first need.
 	cgroupOnce sync.Once
 	cgroup     cgroupSetup
+	// hostsMoved is set once live hosts were moved out of the controller's
+	// cgroup into the sessions cgroup (JOB-91).
+	hostsMoved atomic.Bool
 	// slotMu makes picking a per-session id and creating the session one
 	// step (#540).
 	slotMu sync.Mutex
@@ -376,10 +379,11 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		c.saveLastGood(cfg)
 	}
 	c.loadScale()
-	if anyLimits(cfg) {
+	if wantsCgroup(cfg) {
 		// Before any session spawns, so the controller is in its leaf
 		// cgroup when it enables controllers for sessions (#388).
 		c.ensureCgroup()
+		c.tuneCgroup()
 	}
 	defer c.cancel()
 	return c.serve()

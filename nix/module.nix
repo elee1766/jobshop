@@ -108,9 +108,40 @@ let
       inherit (jc) after level;
     };
   };
+  # limits.cgroup (JOB-91): sessions get a CPU cap below the slice's and a
+  # lower weight than the controller, so session load cannot starve
+  # admission, ingest or dispatch. Needs the delegated cgroup, so only with
+  # isolation.enable. The default cap is the slice quota minus one CPU.
+  quotaPct =
+    if lib.hasSuffix "%" cfg.cpuQuota then
+      lib.toIntBase10 (lib.removeSuffix "%" cfg.cpuQuota)
+    else
+      null;
+  sessionsCpu =
+    if cfg.sessionsCpu != null then
+      cfg.sessionsCpu
+    else if quotaPct != null then
+      # Whole CPUs as an integer string; a fractional quota keeps its decimals.
+      let
+        m = lib.max 100 (quotaPct - 100);
+      in
+      if lib.mod m 100 == 0 then toString (m / 100) else toString (m / 100.0)
+    else
+      "";
+  cgroupAttrs = lib.optionalAttrs cfg.isolation.enable {
+    limits.cgroup =
+      lib.optionalAttrs (sessionsCpu != "") { sessions_cpu = sessionsCpu; }
+      // lib.optionalAttrs (cfg.sessionsCpuWeight != null) {
+        sessions_cpu_weight = cfg.sessionsCpuWeight;
+      }
+      // lib.optionalAttrs (cfg.controllerCpuWeight != null) {
+        controller_cpu_weight = cfg.controllerCpuWeight;
+      };
+  };
   moduleAttrs = lib.recursiveUpdate compressAttrs (
     telemetryAttrs
     // storeAttrs
+    // cgroupAttrs
     // lib.optionalAttrs (vlUrl != "") {
       journal.victorialogs = {
         url = vlUrl;
@@ -909,6 +940,30 @@ in
       type = lib.types.str;
       default = "600%";
       description = "CPUQuota for jobshop.slice (six cores' worth by default).";
+    };
+
+    sessionsCpu = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      example = "4";
+      description = ''
+        CPUs all session hosts and agents may use together (limits.cgroup.sessions_cpu,
+        JOB-91). Needs isolation.enable. The controller keeps the rest of cpuQuota for
+        admission, ingest and dispatch. Null: cpuQuota minus one CPU, at least one;
+        a cpuQuota that is not a percentage then sets no cap.
+      '';
+    };
+
+    sessionsCpuWeight = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 10000);
+      default = null;
+      description = "cpu.weight of the sessions cgroup (default 100). Needs isolation.enable.";
+    };
+
+    controllerCpuWeight = lib.mkOption {
+      type = lib.types.nullOr (lib.types.ints.between 1 10000);
+      default = null;
+      description = "cpu.weight of the controller's cgroup, where hooks and admission run (default 1000). Needs isolation.enable.";
     };
 
     memoryMax = lib.mkOption {

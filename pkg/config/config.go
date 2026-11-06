@@ -1068,6 +1068,80 @@ type Limits struct {
 	// MaxSessions caps supervisor-started sessions across all ticket
 	// pools. 0 means no host cap.
 	MaxSessions int `yaml:"max_sessions"`
+	// Cgroup splits the controller's delegated cgroup into the controller
+	// and its sessions, so session load cannot starve the controller
+	// (JOB-91). Nil: one cgroup, as before.
+	Cgroup *HostCgroup `yaml:"cgroup"`
+}
+
+// Cgroup weight bounds and defaults (cpu.weight, kernel range 1-10000).
+const (
+	cgroupWeightMax         = 10000
+	DefaultSessionsWeight   = 100
+	DefaultControllerWeight = 1000
+)
+
+// HostCgroup tunes the two children of the controller's delegated cgroup:
+// <own>/controller holds the controller and what it runs itself (admission
+// and other hooks, git), <own>/sessions every session host and agent. It
+// needs a delegated cgroup (Delegate= on the unit); without one the
+// controller logs a warning and runs unsplit.
+type HostCgroup struct {
+	// SessionsCPU caps all sessions together, in CPUs ("5", "0.5"), as
+	// cpu.max. Unset: no cap below the slice's own. Leave the slice room
+	// above it: the gap is what the controller can always use.
+	SessionsCPU string `yaml:"sessions_cpu"`
+	// SessionsCPUWeight and ControllerCPUWeight are cpu.weight of the two
+	// children (1-10000), the share each gets when the slice is full.
+	// Defaults 100 and 1000.
+	SessionsCPUWeight   int `yaml:"sessions_cpu_weight"`
+	ControllerCPUWeight int `yaml:"controller_cpu_weight"`
+}
+
+// SessionsWeight is SessionsCPUWeight or its default.
+func (h HostCgroup) SessionsWeight() int {
+	if h.SessionsCPUWeight == 0 {
+		return DefaultSessionsWeight
+	}
+	return h.SessionsCPUWeight
+}
+
+// ControllerWeight is ControllerCPUWeight or its default.
+func (h HostCgroup) ControllerWeight() int {
+	if h.ControllerCPUWeight == 0 {
+		return DefaultControllerWeight
+	}
+	return h.ControllerCPUWeight
+}
+
+// SessionsCPUMax is SessionsCPU as a cpu.max value, "max" when unset.
+func (h HostCgroup) SessionsCPUMax() (string, error) {
+	v, err := CgroupLimits{CPU: h.SessionsCPU}.CPUMax()
+	if err != nil {
+		return "", fmt.Errorf("limits.cgroup.sessions_cpu: %w", err)
+	}
+	if v == "" {
+		return "max", nil
+	}
+	return v, nil
+}
+
+func (h *HostCgroup) check() error {
+	if h == nil {
+		return nil
+	}
+	if _, err := h.SessionsCPUMax(); err != nil {
+		return err
+	}
+	for _, w := range []struct {
+		k string
+		v int
+	}{{"sessions_cpu_weight", h.SessionsCPUWeight}, {"controller_cpu_weight", h.ControllerCPUWeight}} {
+		if w.v < 0 || w.v > cgroupWeightMax {
+			return fmt.Errorf("limits.cgroup.%s %d must be 1-%d", w.k, w.v, cgroupWeightMax)
+		}
+	}
+	return nil
 }
 
 // Linear configures Linear push delivery (#300).
@@ -1554,6 +1628,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if c.Limits.MaxSessions < 0 {
 		return nil, fmt.Errorf("%s: limits.max_sessions must be >= 0", FileName)
+	}
+	if err := c.Limits.Cgroup.check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	if s := c.Subscriptions; s != nil {
 		for _, d := range []struct{ key, v string }{{"interval", s.Interval}, {"resume_window", s.ResumeWindow}} {

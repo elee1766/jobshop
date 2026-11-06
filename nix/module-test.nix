@@ -106,6 +106,15 @@ let
   };
   vlLocal = eval { journal.victorialogs.enable = true; };
   vlExternal = eval { journal.victorialogs.url = "http://logs.internal:9428"; };
+  # limits.cgroup (JOB-91): only with isolation, derived from cpuQuota.
+  cgDefault = eval { isolation.enable = true; };
+  cgSet = eval {
+    isolation.enable = true;
+    cpuQuota = "400%";
+    sessionsCpu = "2.5";
+    controllerCpuWeight = 5000;
+  };
+  cgOff = eval { };
 
   # User-managed jobshop.yaml (#531): the module writes only
   # jobshop.module.yaml and watches the user's file.
@@ -619,5 +628,10 @@ pkgs.runCommand "jobshop-module-test" { } ''
   ! grep -q -e 'sandbox:' -e 'shared_tools' ${yamlPacks sandboxOn}
   grep -q 'url: http://127.0.0.1:9428' ${yamlPacks vlLocal}
   grep -q 'url: http://logs.internal:9428' ${yamlPacks vlExternal}
+  grep -q 'sessions_cpu: .5.$' ${yamlPacks cgDefault}
+  grep -q 'sessions_cpu: .2.5.$' ${yamlPacks cgSet}
+  grep -q 'controller_cpu_weight: 5000' ${yamlPacks cgSet}
+  ! grep -q 'sessions_cpu_weight' ${yamlPacks cgSet}
+  ! grep -q 'sessions_cpu' ${yamlPacks cgOff}
   touch $out
 ''

@@ -1871,6 +1871,16 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.Env = hostInheritedEnv()
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// In the sessions cgroup, so its load counts against the sessions cap
+	// and not the controller's share (JOB-91).
+	if hd := c.hostsCgroup(); hd != "" {
+		if cg, err := os.Open(hd); err != nil {
+			c.log.Warn("session host stays in the controller cgroup", "session", t.ID, "err", err)
+		} else {
+			defer func() { _ = cg.Close() }()
+			cmd.SysProcAttr.UseCgroupFD, cmd.SysProcAttr.CgroupFD = true, int(cg.Fd())
+		}
+	}
 	// The previous host's exit record would make connect() report this
 	// host as exited before it has taken the lock.
 	_ = os.Remove(filepath.Join(dir, host.ExitFile))
