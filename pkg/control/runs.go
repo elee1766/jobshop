@@ -196,6 +196,11 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 			continue
 		}
 		name, err := cfg.ResolvePool(&w, s.Pool, vars)
+		if err == nil && strings.Contains(s.Pool, "{{") {
+			// A run var routed the step: keep it in the workflow's own
+			// pack instance (#880).
+			err = cfg.CheckInstancePool(p.Workflow, name)
+		}
 		if err != nil {
 			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
 		}

@@ -17,8 +17,10 @@ defaults:
   # runs in the pool named by its dev_pool run var (default dev_pool
   # below); a failed attempt or a review resume moves it to dev. dev is
   # the strong model, dev-sonnet the cheaper one. Empty model or effort:
-  # the agent's.
-  dev_pool: dev
+  # the agent's. The default names this instance's own dev pool (#880):
+  # a prefixed instance's runs started without --var dev_pool stay in
+  # <prefix>dev.
+  dev_pool: "{{.pack_prefix}}dev"
   dev_model: ""
   dev_effort: ""
   dev_sonnet_sessions: 1
