@@ -22,6 +22,8 @@ const (
 {"id":2,"user":{"login":"bob"},"state":"APPROVED","commit_id":"aaaa1111bbbb","submitted_at":"2026-11-03T08:05:00Z"}]]`
 	recChecks    = `[{"name":"build","bucket":"pass"},{"name":"lint","bucket":"pending"}]`
 	recCheckRuns = `{"total_count":2,"check_runs":[{"name":"build","status":"completed","conclusion":"success"},{"name":"nix","status":"completed","conclusion":"failure"}]}`
+	// GET .../actions/runs?head_sha= on a master commit, ci queued.
+	recWorkflowRuns = `{"total_count":2,"workflow_runs":[{"id":42172458357,"name":"ci","status":"queued","conclusion":null,"event":"push"},{"id":42172458351,"name":"release","status":"completed","conclusion":"success","event":"push"}]}`
 )
 
 func TestWaitParseRecorded(t *testing.T) {
@@ -39,6 +41,77 @@ func TestWaitParseRecorded(t *testing.T) {
 	cs, err = parseCheckRuns([]byte(recCheckRuns))
 	require.NoError(t, err)
 	assert.Equal(t, []prCheck{{"build", "pass"}, {"nix", "fail"}}, cs)
+	cs, err = parseRunChecks([]byte(recWorkflowRuns))
+	require.NoError(t, err)
+	assert.Equal(t, []prCheck{{"ci (workflow)", "pending"}, {"release (workflow)", "pass"}}, cs)
+}
+
+// TestWaitChecksCommit: a checks wait on a commit (#831). A cancelled
+// run (superseded on master) is not a failure, and invalidates the wait
+// once nothing else is pending; skipped checks alone are not green; a
+// queued workflow run keeps it pending.
+func TestWaitChecksCommit(t *testing.T) {
+	t.Parallel()
+	c, _, prs, threads := waitController(t)
+	ctx := t.Context()
+	admin := scope{admin: true, actor: "admin"}
+	park := func() store.Ticket {
+		tk := mkTicket(t, c, store.NewTicket{Title: "post-merge", Pool: "dev"})
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{
+			ID: tk.ID, Reason: "master CI", Any: true,
+			Conds: []store.WaitCond{
+				{Type: store.WaitChecks, Repo: "acme/widget", SHA: "aaaa1111", State: "success"},
+				{Type: store.WaitChecks, Repo: "acme/widget", SHA: "aaaa1111", State: "failure"},
+			},
+		})
+		require.NoError(t, err)
+		return tk
+	}
+	set := func(cs string) {
+		prs.mu.Lock()
+		defer prs.mu.Unlock()
+		prs.checks["acme/widget#0"] = cs
+	}
+	lastComment := func(id string) string {
+		cs, err := store.Comments(ctx, c.store, id)
+		require.NoError(t, err)
+		require.NotEmpty(t, cs)
+		return cs[len(cs)-1].Body
+	}
+
+	a := park()
+	// Only release's skipped jobs, ci queued: not green.
+	set(`[{"name":"nix","bucket":"skipping"},{"name":"upload","bucket":"skipping"},{"name":"ci (workflow)","bucket":"pending"}]`)
+	c.pollWaits(ctx, prs, threads)
+	require.NotNil(t, waitOf(mustGet(t, c, a.ID)))
+	set(`[{"name":"nix","bucket":"skipping"},{"name":"upload","bucket":"skipping"}]`)
+	c.pollWaits(ctx, prs, threads)
+	require.NotNil(t, waitOf(mustGet(t, c, a.ID)), "skipped checks alone are not green")
+
+	// go cancelled while nix still runs: neither failed nor green yet.
+	set(`[{"name":"go","bucket":"cancel"},{"name":"nix","bucket":"pending"},{"name":"release-please","bucket":"pass"}]`)
+	c.pollWaits(ctx, prs, threads)
+	require.NotNil(t, waitOf(mustGet(t, c, a.ID)), "a cancelled check is not a failure")
+
+	// Everything else finished: the commit will not go green.
+	set(`[{"name":"go","bucket":"cancel"},{"name":"nix","bucket":"pass"},{"name":"ci (workflow)","bucket":"cancel"}]`)
+	c.pollWaits(ctx, prs, threads)
+	assert.Nil(t, waitOf(mustGet(t, c, a.ID)))
+	assert.Contains(t, lastComment(a.ID), "invalidated: checks cancelled on aaaa111: go, ci (workflow)")
+
+	// A real failure still fires the failure condition.
+	b := park()
+	set(`[{"name":"go","bucket":"fail"},{"name":"nix","bucket":"cancel"}]`)
+	c.pollWaits(ctx, prs, threads)
+	assert.Nil(t, waitOf(mustGet(t, c, b.ID)))
+	assert.Contains(t, lastComment(b.ID), "condition met: checks failed on aaaa111: go")
+
+	// Passed and skipped: green.
+	d := park()
+	set(`[{"name":"go","bucket":"pass"},{"name":"upload","bucket":"skipping"},{"name":"ci (workflow)","bucket":"pass"}]`)
+	c.pollWaits(ctx, prs, threads)
+	assert.Nil(t, waitOf(mustGet(t, c, d.ID)))
+	assert.Contains(t, lastComment(d.ID), "condition met: checks green on aaaa111")
 }
 
 // fakePRs serves recorded responses per PR, replaced as a test goes on.

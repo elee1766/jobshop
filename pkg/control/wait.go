@@ -609,7 +609,15 @@ func evalLabel(ctx context.Context, pass *waitPass, cd *store.WaitCond) (bool, s
 }
 
 // evalChecks: success needs at least one check and none pending or
-// failed; failure is any failed or cancelled check.
+// failed; failure is any failed check. On a PR a cancelled check counts
+// as failed.
+//
+// On a commit (no PR, #831) a cancelled check is not a failure: on
+// master it means a newer push superseded the run. Once nothing is
+// pending or failed and something was cancelled, the commit will never
+// go green, so the wait is invalidated with that reason. Skipped checks
+// count for neither side, and success needs at least one passed check,
+// so the release workflow's skipped jobs alone are not green.
 func evalChecks(ctx context.Context, pass *waitPass, cd *store.WaitCond, head string) (bool, string, error) {
 	cs, err := pass.checksOf(ctx, cd.Repo, cd.PR, head, cd.Required)
 	if err != nil {
@@ -619,20 +627,37 @@ func evalChecks(ctx context.Context, pass *waitPass, cd *store.WaitCond, head st
 	if cd.Required {
 		what = "required checks"
 	}
-	var failed, pending []string
+	commit := cd.PR == 0
+	var failed, pending, cancelled []string
+	passed := 0
 	for _, ch := range cs {
 		switch ch.Bucket {
-		case "fail", "cancel":
+		case "cancel":
+			if commit {
+				cancelled = append(cancelled, ch.Name)
+			} else {
+				failed = append(failed, ch.Name)
+			}
+		case "fail":
 			failed = append(failed, ch.Name)
 		case "pending":
 			pending = append(pending, ch.Name)
+		case "pass":
+			passed++
 		}
 	}
 	at := short(head)
+	if len(cancelled) > 0 && len(failed) == 0 && len(pending) == 0 {
+		return false, "", errInvalidated{fmt.Sprintf("%s cancelled on %s: %s; this commit will not go green, wait on a newer commit that contains it", what, at, strings.Join(cancelled, ", "))}
+	}
 	if cd.State == "failure" {
 		return len(failed) > 0, fmt.Sprintf("%s failed on %s: %s", what, at, strings.Join(failed, ", ")), nil
 	}
-	return len(cs) > 0 && len(failed) == 0 && len(pending) == 0, fmt.Sprintf("%s green on %s", what, at), nil
+	green := len(cs) > 0 && len(failed) == 0 && len(pending) == 0 && len(cancelled) == 0
+	if commit {
+		green = green && passed > 0
+	}
+	return green, fmt.Sprintf("%s green on %s", what, at), nil
 }
 
 // evalReply: a human comment on the thread after the wait started, from
@@ -701,11 +726,7 @@ func (ghWaitSource) Reviews(ctx context.Context, repo string, n int) ([]prReview
 
 func (ghWaitSource) Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error) {
 	if n == 0 {
-		b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/commits/%s/check-runs?per_page=100", repo, sha))
-		if err != nil {
-			return nil, err
-		}
-		return parseCheckRuns(b)
+		return commitChecks(ctx, repo, sha)
 	}
 	args := []string{"pr", "checks", strconv.Itoa(n), "--repo", repo, "--json", "name,bucket"}
 	if required {
@@ -823,6 +844,75 @@ func parsePRChecks(b []byte) ([]prCheck, error) {
 	return out, nil
 }
 
+// commitChecks lists the check runs of sha plus its Actions workflow
+// runs (#831). A workflow run queued behind a concurrency group has no
+// check runs yet; without it a commit looks green once another workflow
+// (release) finishes, and a run cancelled while queued would not show.
+func commitChecks(ctx context.Context, repo, sha string) ([]prCheck, error) {
+	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/commits/%s/check-runs?per_page=100", repo, sha))
+	if err != nil {
+		return nil, err
+	}
+	cs, err := parseCheckRuns(b)
+	if err != nil {
+		return nil, err
+	}
+	full := sha
+	if len(full) < 40 { // head_sha takes only a full sha
+		out, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/commits/%s", repo, sha), "--jq", ".sha")
+		if err != nil {
+			return nil, err
+		}
+		full = strings.TrimSpace(string(out))
+	}
+	b, err = ghRun(ctx, "api", fmt.Sprintf("repos/%s/actions/runs?head_sha=%s&per_page=100", repo, full))
+	if err != nil {
+		return nil, err
+	}
+	rs, err := parseRunChecks(b)
+	if err != nil {
+		return nil, err
+	}
+	return append(cs, rs...), nil
+}
+
+// checkBucket maps a check or workflow run's status and conclusion to
+// gh's buckets.
+func checkBucket(status, conclusion string) string {
+	if status != "completed" {
+		return "pending"
+	}
+	switch conclusion {
+	case "success", "neutral":
+		return "pass"
+	case "skipped":
+		return "skipping"
+	case "cancelled":
+		return "cancel"
+	}
+	return "fail"
+}
+
+// parseRunChecks reads GET .../actions/runs?head_sha=; each run is a
+// check named after its workflow.
+func parseRunChecks(b []byte) ([]prCheck, error) {
+	var r struct {
+		WorkflowRuns []struct {
+			Name       string `json:"name"`
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+		} `json:"workflow_runs"`
+	}
+	if err := json.Unmarshal(b, &r); err != nil {
+		return nil, fmt.Errorf("workflow runs: %w", err)
+	}
+	var out []prCheck
+	for _, wr := range r.WorkflowRuns {
+		out = append(out, prCheck{Name: wr.Name + " (workflow)", Bucket: checkBucket(wr.Status, wr.Conclusion)})
+	}
+	return out, nil
+}
+
 // parseCheckRuns reads GET .../commits/{sha}/check-runs into gh buckets.
 func parseCheckRuns(b []byte) ([]prCheck, error) {
 	var r struct {
@@ -837,20 +927,7 @@ func parseCheckRuns(b []byte) ([]prCheck, error) {
 	}
 	var out []prCheck
 	for _, cr := range r.CheckRuns {
-		bucket := "pending"
-		if cr.Status == "completed" {
-			switch cr.Conclusion {
-			case "success", "neutral":
-				bucket = "pass"
-			case "skipped":
-				bucket = "skipping"
-			case "cancelled":
-				bucket = "cancel"
-			default:
-				bucket = "fail"
-			}
-		}
-		out = append(out, prCheck{Name: cr.Name, Bucket: bucket})
+		out = append(out, prCheck{Name: cr.Name, Bucket: checkBucket(cr.Status, cr.Conclusion)})
 	}
 	return out, nil
 }
