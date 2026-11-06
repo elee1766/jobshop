@@ -12,6 +12,8 @@
 - `{{.event.<field>}}` is available in `run.key`, `run.vars` and
   `command.run`. Fields: source, event, action, repo, branch, workflow,
   conclusion, head_sha, pr, label, delivery. Empty on a poll.
+- Stall triggers take `on:` and `fallback:` too (JOB-72,
+  [notes](JOB-72-stall-event-triggers.md)).
 - `fallback:` is the poll interval. With `on:` the default is 10m, and a
   trigger with `on:` and no `when` conditions is never polled. Without
   `on:`, no fallback keeps the old every-tick poll.

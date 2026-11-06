@@ -62,6 +62,13 @@ first turn. `prompt_rules` add text to many pools at once: `text` or
 - `stall`: stall signals (`ready_unclaimed`, `step_stalled`,
   `needs_human`, ...) each with an `after` threshold.
 
+`on:` (GitHub or Linear webhook matches) fires a trigger when a
+delivery arrives, and `fallback` sets how often it is polled otherwise;
+on a stall trigger an event re-runs its signals, and a check may use
+`{{.event.pr}}` and the other event fields
+([notes](notes/JOB-62-event-triggers.md),
+[stall](notes/JOB-72-stall-event-triggers.md)).
+
 `cooldown` and `max_runs` limit how often a trigger fires.
 
 **Workflows** are how work moves from one pool to the next. A run is

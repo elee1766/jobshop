@@ -35,9 +35,9 @@ type stall struct {
 func (s stall) key() string { return "stall:" + s.signal + ":" + s.subject }
 
 // runStallTrigger starts one run per fireable stall of a when.stall
-// trigger (#143).
-func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config.Trigger) {
-	fire, _, err := c.evalStall(ctx, name, tr)
+// trigger (#143). ev is the delivery that woke it (JOB-72), nil on a poll.
+func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) {
+	fire, _, err := c.evalStall(ctx, name, tr, ev)
 	if err != nil {
 		c.log.ErrorContext(ctx, "stall trigger", "trigger", name, "err", err)
 		return
@@ -65,15 +65,16 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 			c.log.DebugContext(ctx, "stall already has an open run", "trigger", name, "key", s.key(), "run", t.ID)
 			continue
 		}
-		c.log.InfoContext(ctx, "stall trigger fired", "trigger", name, "key", s.key(), "run", t.ID)
+		c.log.InfoContext(ctx, "stall trigger fired", "trigger", name, "key", s.key(), "run", t.ID, "delivery", ev["delivery"])
 		c.recordStall(ctx, s, t.ID)
 	}
 }
 
 // evalStall detects stalls and returns those that may fire now: no open
 // run for the key, under max_runs, past the cooldown, and under
-// stallMaxOpen open runs in total. why explains an empty result.
-func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigger) (fire []stall, why string, err error) {
+// stallMaxOpen open runs in total. why explains an empty result. ev is
+// passed to the checks, nil on a poll.
+func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) (fire []stall, why string, err error) {
 	mine, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: name, Order: store.OrderNewest})
 	if err != nil {
 		return nil, "", err
@@ -87,7 +88,7 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 	if open >= stallMaxOpen {
 		return nil, fmt.Sprintf("%d stall runs open", open), nil
 	}
-	found, err := c.detectStalls(ctx, tr)
+	found, err := c.detectStalls(ctx, tr, ev)
 	if err != nil {
 		return nil, "", err
 	}
@@ -211,8 +212,9 @@ func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigg
 }
 
 // detectStalls evaluates every signal of the trigger, skipping subjects
-// that belong to the trigger's own workflow.
-func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger) ([]stall, error) {
+// that belong to the trigger's own workflow. An event re-evaluates all
+// of them; only a check uses its fields.
+func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger, ev triggerEvent) ([]stall, error) {
 	own, err := c.workflowTickets(ctx, tr.Run.Workflow)
 	if err != nil {
 		return nil, err
@@ -243,7 +245,7 @@ func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger) ([]sta
 		case config.StallLinearIssueNoRun:
 			found, err = c.stallLinearIssues(ctx, sig)
 		default:
-			found, err = c.stallCheck(ctx, tr.When, sig)
+			found, err = c.stallCheck(ctx, tr, sig, ev)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("signal %s: %w", sig.Signal, err)
@@ -599,9 +601,17 @@ func (c *Controller) labeledOpen(ctx context.Context, label string) ([]store.Tic
 }
 
 // stallCheck runs a check signal: each stdout line is "<subject>
-// [detail]". A non-zero exit means no stall.
-func (c *Controller) stallCheck(ctx context.Context, w config.TriggerWhen, sig config.StallSignal) ([]stall, error) {
-	out, why, err := c.runCheck(ctx, config.TriggerWhen{Check: sig.Check, CheckTimeout: w.CheckTimeout})
+// [detail]". A non-zero exit means no stall. On a trigger with on:, the
+// check is a template over {{.event.<field>}}, empty on a poll (JOB-72).
+func (c *Controller) stallCheck(ctx context.Context, tr config.Trigger, sig config.StallSignal, ev triggerEvent) ([]stall, error) {
+	check := sig.Check
+	if len(tr.On) > 0 {
+		var err error
+		if check, err = config.Fill(check, map[string]any{config.EventVar: ev.shellVars()}); err != nil {
+			return nil, fmt.Errorf("check: %w", err)
+		}
+	}
+	out, why, err := c.runCheck(ctx, config.TriggerWhen{Check: check, CheckTimeout: tr.When.CheckTimeout})
 	if err != nil || why != "" {
 		return nil, err
 	}

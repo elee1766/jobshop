@@ -105,7 +105,7 @@ func stallControllerYAML(t *testing.T, yaml string) (*Controller, *stallClock, s
 
 func stallKeys(t *testing.T, c *Controller) []string {
 	t.Helper()
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"])
+	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"], nil)
 	require.NoError(t, err)
 	var out []string
 	for _, s := range found {
@@ -194,7 +194,7 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	for range poolCrashes {
 		c.poolCrashed("dev", spawnErr)
 	}
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"])
+	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Contains(t, found[0].detail, spawnErr)
@@ -275,7 +275,7 @@ func TestStallCheckSignal(t *testing.T) {
 	c, _, dir := stallController(t)
 	assert.Empty(t, stallKeys(t, c), "check fails without the file: no stall")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 open, no run\n\nissue-9\n"), 0o600))
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"])
+	found, err := c.detectStalls(t.Context(), c.config().Triggers["stall"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 2)
 	assert.Equal(t, stall{"issue_no_run", "issue-7", "open, no run"}, found[0])
@@ -375,17 +375,21 @@ triggers:
   st:
 `
 	for name, tc := range map[string]struct{ yaml, err string }{
-		"ok":         {"    when: {stall: [{signal: blocked, after: 1h}, {signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: '{{.stall_subject}}'}}\n", ""},
-		"no after":   {"    when: {stall: [{signal: blocked}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs after"},
-		"no check":   {"    when: {stall: [{signal: pr_unmerged, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs a check"},
-		"check":      {"    when: {stall: [{signal: blocked, after: 1h, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "takes no check"},
-		"ticket":     {"    when: {stall: [{signal: blocked, after: 1h}]}\n    ticket: {title: x}\n", "needs run"},
-		"key":        {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: 'pr-{{.stall_subject}}'}\n", ""},
-		"bad key":    {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: '{{.check_output}}'}\n", "key uses"},
-		"bad var":    {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: '{{.check_output}}'}}\n", "only"},
-		"mixed":      {"    when: {ready_below: 1, stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "no other condition"},
-		"max_runs":   {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_runs: 2\n", "max_runs needs"},
-		"duplicated": {"    when: {stall: [{signal: blocked, after: 1h}, {signal: blocked, after: 2h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "twice"},
+		"ok":              {"    when: {stall: [{signal: blocked, after: 1h}, {signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: '{{.stall_subject}}'}}\n", ""},
+		"no after":        {"    when: {stall: [{signal: blocked}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs after"},
+		"no check":        {"    when: {stall: [{signal: pr_unmerged, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs a check"},
+		"check":           {"    when: {stall: [{signal: blocked, after: 1h, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "takes no check"},
+		"ticket":          {"    when: {stall: [{signal: blocked, after: 1h}]}\n    ticket: {title: x}\n", "needs run"},
+		"key":             {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: 'pr-{{.stall_subject}}'}\n", ""},
+		"bad key":         {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: '{{.check_output}}'}\n", "key uses"},
+		"bad var":         {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: '{{.check_output}}'}}\n", "only"},
+		"mixed":           {"    when: {ready_below: 1, stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "no other condition"},
+		"max_runs":        {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_runs: 2\n", "max_runs needs"},
+		"duplicated":      {"    when: {stall: [{signal: blocked, after: 1h}, {signal: blocked, after: 2h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "twice"},
+		"on":              {"    on: [{github: {event: pull_request}}]\n    fallback: 15m\n    when: {stall: [{signal: x, check: 'gh pr view {{.event.pr}}'}]}\n    run: {workflow: sc, vars: {s: x}}\n", ""},
+		"on bad fallback": {"    on: [{github: {event: pull_request}}]\n    fallback: soon\n    when: {stall: [{signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "fallback"},
+		"on bad source":   {"    on: [{}]\n    when: {stall: [{signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "exactly one"},
+		"on check var":    {"    on: [{github: {event: pull_request}}]\n    when: {stall: [{signal: x, check: 'echo {{.stall_subject}}'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "only"},
 	} {
 		_, err := config.Parse([]byte(base + tc.yaml))
 		if tc.err == "" {

@@ -19,10 +19,14 @@ var StallVars = []string{StallSignalVar, StallSubjectVar, StallDetailVar}
 // condition, starts a run, and its run vars and key may only use the
 // stall vars. An empty key is stall:<signal>:<subject>; a set one (JOB-33,
 // pr-<n>) lets the run dedup with runs started by hand for the subject.
+// With on:, a check may use {{.event.<field>}} (JOB-72).
 func (c *Config) checkStallTrigger(tr *Trigger) error {
 	w := tr.When
 	if w.Cron != "" || w.HasCounts() || w.Check != "" || w.Pool != "" || w.Kind != "" || w.Label != "" {
 		return errors.New("when: stall takes no other condition")
+	}
+	if err := checkTriggerOn(tr); err != nil {
+		return err
 	}
 	if w.CheckTimeout != "" {
 		if d, err := time.ParseDuration(w.CheckTimeout); err != nil || d <= 0 {
@@ -53,6 +57,11 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 			return fmt.Errorf("when.stall: %s is a store signal and takes no check", s.Signal)
 		case !builtin && s.Check == "":
 			return fmt.Errorf("when.stall: %s is not a store signal %v and needs a check", s.Signal, StoreStallSignals)
+		}
+		if len(tr.On) > 0 {
+			if err := checkStallCheckTemplate(s); err != nil {
+				return err
+			}
 		}
 		switch {
 		case s.Signal == StallIssueNoRun && !RepoPattern.MatchString(s.Repo):
@@ -109,6 +118,22 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 			if !slices.Contains(StallVars, ref) {
 				return fmt.Errorf("run: %s uses %s; only %v are available", k, placeholder(ref), StallVars)
 			}
+		}
+	}
+	return nil
+}
+
+// checkStallCheckTemplate checks that the check of a stall signal on a
+// trigger with on: references only {{.event.<field>}}: it is rendered
+// when the signal runs. Without on: it is run as written.
+func checkStallCheckTemplate(s StallSignal) error {
+	vs, err := refs(s.Check)
+	if err != nil {
+		return fmt.Errorf("when.stall: %s check: %w", s.Signal, err)
+	}
+	for _, v := range vs {
+		if v != EventVar {
+			return fmt.Errorf("when.stall: %s check uses %s; only %s is available", s.Signal, placeholder(v), placeholder(EventVar+".<field>"))
 		}
 	}
 	return nil

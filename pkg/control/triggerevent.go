@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os/exec"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -183,6 +184,23 @@ func (ev triggerEvent) vars() map[string]any {
 	return m
 }
 
+// shellSafe matches event values a stall check may get unquoted: repo,
+// pr, sha, action and such. Branch names and labels come from outside
+// and may hold shell syntax.
+var shellSafe = regexp.MustCompile(`^[A-Za-z0-9._/@:+=-]*$`)
+
+// shellVars is vars with every value shellSafe does not match left
+// empty, as on a poll, so a check can paste them into sh -c (JOB-72).
+func (ev triggerEvent) shellVars() map[string]any {
+	m := ev.vars()
+	for k, v := range m {
+		if s, _ := v.(string); !shellSafe.MatchString(s) {
+			m[k] = ""
+		}
+	}
+	return m
+}
+
 // key is the dedup key of an event fire with no check: the commit it is
 // about, else the delivery.
 func (ev triggerEvent) key() string {
@@ -224,9 +242,20 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 			if !ok {
 				continue // reloaded away
 			}
-			c.fireOnEvent(c.ctx, f.name, tr, f.ev)
+			c.onEvent(c.ctx, f.name, tr, f.ev)
 		}
 	})
+}
+
+// onEvent runs one matched trigger for an event: a stall trigger
+// evaluates its signals (JOB-72), any other evaluates and fires. Holds
+// the tick lock.
+func (c *Controller) onEvent(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) {
+	if len(tr.When.Stall) > 0 {
+		c.runStallTrigger(ctx, name, tr, ev)
+		return
+	}
+	c.fireOnEvent(ctx, name, tr, ev)
 }
 
 // fireOnEvent evaluates and fires one trigger for an event. Holds the
@@ -272,7 +301,8 @@ func (c *Controller) triggerKeySeen(ctx context.Context, name, key string) (stri
 // triggerPollDue reports whether a tick should poll tr, and records the
 // poll. A trigger with on: polls every fallback (default
 // config.DefaultTriggerFallback), and never without when conditions;
-// without on:, every tick unless fallback is set. Tick-only state.
+// without on:, every tick unless fallback is set. Stall triggers too
+// (JOB-72). Tick-only state.
 func (c *Controller) triggerPollDue(name string, tr config.Trigger) bool {
 	every := time.Duration(0)
 	if len(tr.On) > 0 {

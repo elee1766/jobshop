@@ -38,11 +38,11 @@ type triggerState struct {
 func (c *Controller) runTriggers() {
 	for _, name := range slices.Sorted(maps.Keys(c.config().Triggers)) {
 		tr := c.config().Triggers[name]
-		if len(tr.When.Stall) > 0 {
-			c.runStallTrigger(c.ctx, name, tr)
+		if !c.triggerPollDue(name, tr) {
 			continue
 		}
-		if !c.triggerPollDue(name, tr) {
+		if len(tr.When.Stall) > 0 {
+			c.runStallTrigger(c.ctx, name, tr, nil)
 			continue
 		}
 		st, err := c.evalTrigger(c.ctx, name, tr)
@@ -392,7 +392,7 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 // triggerInfo evaluates one trigger for trigger.list.
 func (c *Controller) triggerInfo(ctx context.Context, name string, tr config.Trigger) (rpc.TriggerInfo, error) {
 	if len(tr.When.Stall) > 0 {
-		fire, why, err := c.evalStall(ctx, name, tr)
+		fire, why, err := c.evalStall(ctx, name, tr, nil)
 		if err != nil {
 			return rpc.TriggerInfo{}, err
 		}
