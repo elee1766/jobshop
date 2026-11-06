@@ -5116,10 +5116,13 @@ function Ac(e, t) {
 		if (n && !W(y)) {
 			L(y, !0), L(b, "");
 			try {
-				W(_) ? (await t.api.call("question.answer", {
-					id: W(o),
-					text: n
-				}), L(b, "Answer sent to the asking session")) : (await t.api.session.send(W(l) ? {
+				if (W(_)) {
+					if (/^\s*\d+[.)]?\s*$/.test(n) && !await t.api.confirm("Send \"" + n + "\" to the asking session as the whole answer? It gets this text verbatim; write out the answer (for example \"yes\") if this picks an option from the chat.")) return;
+					await t.api.call("question.answer", {
+						id: W(o),
+						text: n
+					}), L(b, "Answer sent to the asking session");
+				} else await t.api.session.send(W(l) ? {
 					key: W(l),
 					text: n,
 					interrupt: e
@@ -5130,7 +5133,8 @@ function Ac(e, t) {
 				}), L(x, [...W(x), {
 					text: n,
 					state: W(f) && !e ? "queued for after this turn" : "sent, waiting for the session"
-				}], !0), W(f) && !e && L(b, "Queued for after this turn")), Xs(W(r), n), L(ee, -1), L(v, ""), L(C, !0), await ir(), ae();
+				}], !0), W(f) && !e && L(b, "Queued for after this turn");
+				Xs(W(r), n), L(ee, -1), L(v, ""), L(C, !0), await ir(), ae();
 			} catch (e) {
 				L(b, String(e.message || e), !0);
 			} finally {
