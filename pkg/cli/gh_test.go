@@ -244,7 +244,11 @@ func TestGHGuard(t *testing.T) {
 			f.mu.Lock()
 			defer f.mu.Unlock()
 			require.Len(t, f.guards, 1)
-			assert.Equal(t, rpc.GuardParams{Action: "comment", Target: "o/n#9", Detail: "hello"}, f.guards[0])
+			want := rpc.GuardParams{
+				Action: "comment", Target: "o/n#9", Detail: "hello",
+				Extra: json.RawMessage(`{"argv":["pr","comment","9","-R","o/n","--body","hello"],"command":"pr comment"}`),
+			}
+			assert.Equal(t, want, f.guards[0])
 			require.Len(t, f.records, 1)
 			assert.Equal(t, tc.decision, f.records[0].Decision)
 			assert.Equal(t, tc.code, f.records[0].ExitCode)

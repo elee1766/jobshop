@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -83,6 +84,8 @@ type ghCall struct {
 	number   string // PR or issue number, "" if none
 	body     string // -b/--body text, for the guard's detail
 	bodyFile string // -F/--body-file for pr/issue, read for detail
+	method   string // gh api HTTP method, upper case
+	apiPath  string // gh api endpoint
 }
 
 // words splits args into positional words, skipping flags and their
@@ -150,10 +153,14 @@ func classifyGH(args []string) ghCall {
 				}
 			}
 		}
+		c.method = strings.ToUpper(method)
+		if aw := apiWords(args); len(aw) > 1 {
+			c.apiPath = aw[1]
+		}
 		// The repo picks the identity token, so a GET needs it too: the
 		// controller's waits run gh api outside any clone (#686).
-		if c.repo == "" && len(words) > 1 {
-			c.repo = apiRepo(words[1])
+		if c.repo == "" {
+			c.repo = apiRepo(c.apiPath)
 		}
 		if !strings.EqualFold(method, "GET") {
 			c.action = "api-" + strings.ToLower(method)
@@ -256,6 +263,7 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 	key, args := cutGHKey(args)
 	allow, args := cutAllowSecrets(args)
 	c := classifyGH(args)
+	var extra json.RawMessage // parsed write arguments for hooks (JOB-113)
 	if key != "" && c.action == "" {
 		warn(stderr, "jobshop gh: "+ghKeyFlag+" is only for writes (not run)")
 		return 1
@@ -270,6 +278,7 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 		if in != nil {
 			stdin = bytes.NewReader(in)
 		}
+		extra = buildGHExtra(c, args, in)
 		found, err := secretFindings(g, texts)
 		if err != nil {
 			warn(stderr, "jobshop gh: "+err.Error()+" (not run)")
@@ -313,7 +322,7 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 		}
 		var r rpc.GuardResult
 		// No controller, no answer: a write fails closed.
-		if err := g.call(rpc.MethodGuard, rpc.GuardParams{Action: c.action, Target: target, Detail: detail}, &r); err != nil {
+		if err := g.call(rpc.MethodGuard, rpc.GuardParams{Action: c.action, Target: target, Detail: detail, Extra: extra}, &r); err != nil {
 			warn(stderr, fmt.Sprintf("jobshop gh: guard %s: %v (not run)", c.action, err))
 			return 1
 		}
