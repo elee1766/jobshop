@@ -117,6 +117,11 @@ type Step struct {
 	// Retries is how many failures the step takes before the run needs a
 	// human. Nil means DefaultStepRetries.
 	Retries *int `yaml:"retries"`
+	// RetryPool is the pool a failed attempt or a review resume moves the
+	// step to (JOB-59): a cheaper model's step escalates to a stronger
+	// one. A template like pool. Empty, or equal to the step's pool, keeps
+	// the step where it is. The move is one way.
+	RetryPool string `yaml:"retry_pool,omitempty"`
 	// NeedsResources are resource keys the step holds while in progress
 	// (#400): a resource name, or "name:<key>" for a keyed resource.
 	// Run vars fill them at run start.
@@ -224,7 +229,7 @@ func (s Step) RetryLimit() int {
 // run, url, body and headers are filled when a command or http step runs
 // (#396). placement holds pools, keys and when conditions filled at run
 // start (#409).
-var templateKeys = []string{"title", "prompt", "pool", "needs_resources", "placement", "run", "url", "body", "headers"}
+var templateKeys = []string{"title", "prompt", "pool", "retry_pool", "needs_resources", "placement", "run", "url", "body", "headers"}
 
 // checkTriggerRun validates a run: trigger. The workflow must exist and
 // every workflow var must be set (by the trigger or by pack vars); vars
@@ -455,6 +460,14 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		} else if s.Pool != "" || !s.Auto() {
 			if err := c.checkStepPool(w, s.Pool); err != nil {
 				return fmt.Errorf("%s: %w", where, err)
+			}
+		}
+		if s.RetryPool != "" {
+			if s.Auto() || s.Placement != nil {
+				return fmt.Errorf("%s: retry_pool is for agent steps with a pool", where)
+			}
+			if err := c.checkStepPool(w, s.RetryPool); err != nil {
+				return fmt.Errorf("%s: retry_pool: %w", where, err)
 			}
 		}
 		if s.Title == "" && s.Auto() {

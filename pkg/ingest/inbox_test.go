@@ -2,6 +2,7 @@ package ingest_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -142,7 +143,7 @@ func TestInboxPrune(t *testing.T) {
 		_, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: id, ReceivedAt: old})
 		require.NoError(t, err)
 	}
-	_, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "new-done", ReceivedAt: old.Add(48 * time.Hour)})
+	_, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "new-done", ReceivedAt: old})
 	require.NoError(t, err)
 	move := func(state string) {
 		it, err := ingest.InboxClaim(ctx, s, []string{store.InboxPending}, "w", time.Minute)
@@ -157,6 +158,8 @@ func TestInboxPrune(t *testing.T) {
 	_, err = ingest.InboxClaim(ctx, s, []string{store.InboxPending}, "w", time.Hour)
 	require.NoError(t, err)
 	move(store.InboxHeld)
+	// new-done finishes two days later: prune goes by updated_at.
+	clock.Add((48 * time.Hour).Milliseconds())
 	move(store.InboxDispatched)
 
 	n, err := ingest.InboxPrune(ctx, s, old.Add(24*time.Hour))
@@ -169,6 +172,30 @@ func TestInboxPrune(t *testing.T) {
 		ids = append(ids, it.DeliveryID)
 	}
 	assert.ElementsMatch(t, []string{"pending", "held", "new-done"}, ids)
+}
+
+// TestInboxPruneBatches: a backlog larger than one delete batch goes in
+// one prune call.
+func TestInboxPruneBatches(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	s, clock := inboxStore(t)
+	const n = 450
+	for i := range n {
+		_, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: fmt.Sprint(i)})
+		require.NoError(t, err)
+		it, err := ingest.InboxClaim(ctx, s, []string{store.InboxPending}, "w", time.Minute)
+		require.NoError(t, err)
+		_, err = ingest.InboxSetState(ctx, s, it.ID, "w", store.InboxUpdate{State: store.InboxDispatched})
+		require.NoError(t, err)
+	}
+	clock.Add(time.Hour.Milliseconds())
+	got, err := ingest.InboxPrune(ctx, s, time.UnixMilli(clock.Load()))
+	require.NoError(t, err)
+	assert.EqualValues(t, n, got)
+	counts, err := ingest.InboxCounts(ctx, s)
+	require.NoError(t, err)
+	assert.Zero(t, counts[store.InboxDispatched])
 }
 
 // TestInboxRequeue (#353): held -> pending only from the named state and

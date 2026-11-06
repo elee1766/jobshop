@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -137,6 +139,15 @@ func (c linearEligibleCmd) Run(g *Globals, l *linearCmd) error {
 		runs = append(runs, rs...)
 	}
 	e := linear.Eligible(is, c.SkipLabels, openLinearRun(runs, is.Identifier))
+	if e.Eligible {
+		// Stated GitHub dependencies (JOB-68) cost a gh call each, so
+		// only check them when nothing else already blocks.
+		owner, _, _ := strings.Cut(originRepo(), "/")
+		if err := is.CheckDeps(ctx, owner, ghIssueOpen); err != nil {
+			return err
+		}
+		e = linear.Eligible(is, c.SkipLabels, openLinearRun(runs, is.Identifier))
+	}
 	if err := printOut(e); err != nil {
 		return err
 	}
@@ -144,6 +155,19 @@ func (c linearEligibleCmd) Run(g *Globals, l *linearCmd) error {
 		return fmt.Errorf("%w: %s", errNotEligible, e.Reason)
 	}
 	return nil
+}
+
+// ghIssueOpen reads a GitHub issue's state with gh.
+func ghIssueOpen(ctx context.Context, d linear.GitHubDep) (bool, error) {
+	gh, err := realGH()
+	if err != nil {
+		return false, err
+	}
+	out, err := exec.CommandContext(ctx, gh, "api", fmt.Sprintf("repos/%s/issues/%d", d.Repo, d.Number), "--jq", ".state").Output()
+	if err != nil {
+		return false, fmt.Errorf("gh api: %w", err)
+	}
+	return strings.TrimSpace(string(out)) == "open", nil
 }
 
 // openLinearRun is the id of an open run whose meta.linear.issue is key.

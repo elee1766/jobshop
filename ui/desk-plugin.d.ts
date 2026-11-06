@@ -339,6 +339,7 @@ export interface AttentionItem {
   since: string;
   repo?: string;
   ref?: string;
+  url?: string;
   owner?: string;
   summary?: string;
 }

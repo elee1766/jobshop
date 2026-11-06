@@ -43,3 +43,36 @@ export async function runAction(api, a) {
     return false;
   }
 }
+
+// Pending item actions (JOB-60): after an action succeeds the item stays
+// in api/attention until the next load (seconds on a big store), so the
+// row shows a pending state until a refreshed list drops it. The chat
+// panel and the Attention view are separate bundles; they share the
+// pending set through a global keyed by a registered symbol and a window
+// event. Client only: a reload forgets it.
+const PENDING = Symbol.for('jobshop.desk.attention.pending');
+const PENDING_EVENT = 'jobshop-attention-pending';
+
+/** @returns {Map<string, string>} item key (kind:id) to action label */
+export function pendingItems() {
+  const g = /** @type {any} */ (globalThis);
+  return (g[PENDING] ??= new Map());
+}
+
+/** Marks an item pending after a successful action. @param {string} key @param {string} label */
+export function markPending(key, label) {
+  pendingItems().set(key, label);
+  globalThis.dispatchEvent?.(new CustomEvent(PENDING_EVENT, { detail: { key, label } }));
+}
+
+/** Forgets a pending item. @param {string} key */
+export function clearPending(key) {
+  pendingItems().delete(key);
+}
+
+/** Calls f on each markPending; returns the unsubscribe. @param {(key: string, label: string) => void} f */
+export function onPending(f) {
+  const h = (/** @type {any} */ e) => f(e.detail.key, e.detail.label);
+  globalThis.addEventListener?.(PENDING_EVENT, h);
+  return () => globalThis.removeEventListener?.(PENDING_EVENT, h);
+}

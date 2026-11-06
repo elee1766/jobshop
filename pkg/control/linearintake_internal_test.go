@@ -1,10 +1,14 @@
 package control
 
 import (
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -67,6 +71,11 @@ func TestLinearIntake(t *testing.T) {
 			_, _ = w.Write([]byte(`{"errors":[{"message":"Authentication required"}]}`))
 			return
 		}
+		b, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(b), "issue(id:") {
+			_, _ = w.Write([]byte(linearContextReply(b)))
+			return
+		}
 		reads.Add(1)
 		issue := func(id, state, typ, label string) string {
 			return `{"identifier":"` + id + `","title":"t ` + id + `","url":"u","updatedAt":"2026-11-01T00:00:00Z","state":{"id":"s","name":"` + state + `","type":"` + typ + `"},"assignee":null,"labels":{"nodes":[{"name":"` + label + `"}]}}`
@@ -125,6 +134,60 @@ func TestLinearIntake(t *testing.T) {
 	clk.advance(6 * time.Minute)
 	assert.Empty(t, stallKeys(t, c))
 	assert.Equal(t, int32(2), reads.Load(), "re-read after the poll interval")
+}
+
+// linearContextReply answers a context read (JOB-68): ENG-7 is blocked in
+// Linear, ENG-8 depends on an open GitHub issue (acme/lib#155), ENG-9 on
+// a closed one; any other issue has neither.
+func linearContextReply(body []byte) string {
+	var q struct {
+		Variables struct {
+			ID string `json:"id"`
+		} `json:"variables"`
+	}
+	_ = json.Unmarshal(body, &q)
+	desc, inv := "", ""
+	switch q.Variables.ID {
+	case "ENG-7":
+		inv = `{"type":"blocks","issue":{"identifier":"OPS-1","title":"x","state":{"name":"Todo","type":"unstarted"}}}`
+	case "ENG-8":
+		desc = "Depends on lib#155 (https://github.com/acme/lib/issues/155): x"
+	case "ENG-9":
+		desc = "Depends on acme/lib#154"
+	}
+	db, _ := json.Marshal(desc)
+	return `{"data":{"issue":{"id":"i","identifier":"` + q.Variables.ID + `","title":"t","description":` + string(db) +
+		`,"state":{"name":"Todo","type":"unstarted"},"team":{"key":"ENG"},"labels":{"nodes":[]},"children":{"nodes":[]},"relations":{"nodes":[]},"inverseRelations":{"nodes":[` + inv + `]},"comments":{"nodes":[]}}}}`
+}
+
+// TestLinearIntakeBlocked (JOB-68): an issue with an open Linear blocker
+// or an open stated GitHub dependency is no stall; a closed dependency
+// does not block.
+func TestLinearIntakeBlocked(t *testing.T) {
+	t.Parallel()
+	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(b), "issue(id:") {
+			_, _ = w.Write([]byte(linearContextReply(b)))
+			return
+		}
+		issue := func(id string) string {
+			return `{"identifier":"` + id + `","title":"t","url":"u","updatedAt":"2026-11-01T00:00:00Z","state":{"id":"s","name":"Todo","type":"unstarted"},"assignee":null,"labels":{"nodes":[{"name":"agent"}]}}`
+		}
+		_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[` + issue("ENG-7") + `,` + issue("ENG-8") + `,` + issue("ENG-9") +
+			`],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`))
+	}))
+	t.Cleanup(gql.Close)
+	c, _, dir := stallControllerYAML(t, linearIntakeYAML)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
+	c.minter, c.linearURL = identity.NewMinter(), gql.URL
+	var asked []string
+	c.ghIssueOpen = func(_ context.Context, d linear.GitHubDep) (bool, error) {
+		asked = append(asked, d.String())
+		return d.String() == "acme/lib#155", nil
+	}
+	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-9"}, stallKeys(t, c))
+	assert.Equal(t, []string{"acme/lib#155", "acme/lib#154"}, asked, "bare repo takes the pr-work repo owner")
 }
 
 // TestLinearIntakeOff: no team, no Linear read; an unreachable Linear

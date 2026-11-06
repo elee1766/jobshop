@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -65,6 +66,52 @@ func TestCollectionIndexPlans(t *testing.T) {
 	require.Contains(t, plan(store.RecordFilter{Where: map[string]string{"source": "github"}}), "ri_"+name+"_source")
 	require.Contains(t, plan(store.RecordFilter{Where: map[string]string{"repo": "a/b"}}), "ri_"+name+"_repo")
 	require.Contains(t, plan(store.RecordFilter{Where: map[string]string{"natural_key": "k"}}), "ru_"+name+"_natural_key")
+}
+
+// TestCollectionCountPlan checks a state count over an age range (the
+// inbox backlog) uses records_state_created, not a walk of
+// records_created that reads every old row (JOB-61).
+func TestCollectionCountPlan(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	path := testPath(t)
+	s, err := sqlite.Open(ctx, path, sqlite.Options{})
+	require.NoError(t, err)
+	col, err := s.Collection(ctx, storetest.TestSpec)
+	require.NoError(t, err)
+	// Mostly terminal rows, a few pending, as a long-running inbox.
+	for i := range 300 {
+		st := "done"
+		if i%30 == 0 {
+			st = "pending"
+		}
+		_, _, err := col.Put(ctx, store.Record{Key: fmt.Sprint(i), State: st, Value: json.RawMessage(`{}`)})
+		require.NoError(t, err)
+	}
+	require.NoError(t, s.Close())
+	ps, err := sqlite.Open(ctx, ":memory:", sqlite.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ps.Close() })
+	db, err := sql.Open("sqlite", "file:"+path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	_, err = db.ExecContext(ctx, "ANALYZE")
+	require.NoError(t, err)
+
+	q, args, err := sqlite.CountSQL(ctx, ps, storetest.TestSpec, store.RecordFilter{States: []string{"pending"}, Until: time.Now()})
+	require.NoError(t, err)
+	rows, err := db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+q, args...)
+	require.NoError(t, err)
+	defer func() { _ = rows.Close() }()
+	var out []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		require.NoError(t, rows.Scan(&id, &parent, &unused, &detail))
+		out = append(out, detail)
+	}
+	require.NoError(t, rows.Err())
+	require.Contains(t, strings.Join(out, "; "), "records_state_created")
 }
 
 // TestCollectionRegisterDDL checks registration creates the named

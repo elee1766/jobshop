@@ -22,6 +22,15 @@ func ListSQL(ctx context.Context, s *Store, spec store.CollectionSpec, f store.R
 	return q.ToSql()
 }
 
+// CountSQL returns the Count statement of spec on s, for plan tests.
+func CountSQL(ctx context.Context, s *Store, spec store.CollectionSpec, f store.RecordFilter) (string, []any, error) {
+	col, err := s.Collection(ctx, spec)
+	if err != nil {
+		return "", nil, err
+	}
+	return col.(*collection).countQuery(f)
+}
+
 // RegisterDDL is registerDDL, for tests.
 var RegisterDDL = registerDDL
 

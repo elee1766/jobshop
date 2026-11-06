@@ -8,30 +8,31 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels its running CI; agents push often.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   go:
     # ubuntu-latest moved to 26.04, which has bwrap, so the sandbox tests
     # stopped skipping and crash there (#619). Pinned until they pass on it.
-    runs-on: ubuntu-24.04
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-4x8-with-cache
+      - nscloud-cache-tag-jobshop-go
+      - nscloud-cache-size-20gb
+      - nscloud-cache-allow-commit-from-master
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-          # setup-go's cache keys on go.sum only, with no fallback, so every
-          # dependency change rebuilt from scratch. The cache below falls back.
           cache: false
-      # Restore here, save only on master after a trim (below). Saving every
-      # run with no trim grew the cache to 2GB, about 25s to restore.
-      - uses: actions/cache/restore@v4
+      # Namespace cache volume (runs-on labels): mounted, no restore or
+      # upload step. Only master commits to it, so PRs share one warm cache.
+      - uses: namespacelabs/nscloud-cache-action@v1
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-
-            go-${{ runner.os }}-
+          cache: go
       - run: go build ./...
       - run: go vet ./...
       # checkptr is off for modernc's machine-translated C only: its pointer
@@ -63,40 +64,24 @@ jobs:
           args: --build-tags=victorialogs
       - name: shellcheck deploy scripts
         run: shellcheck -s sh deploy/*.sh
-      # Go bumps an entry's mtime when it is used and was last touched over
-      # an hour ago, so anything older than 90 minutes was not used by this
-      # run. Dropping it keeps the cache from growing with every build.
-      - name: trim go build cache
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        run: |
-          du -sh ~/.cache/go-build
-          find ~/.cache/go-build -type f -mmin +90 -delete
-          du -sh ~/.cache/go-build
-      - uses: actions/cache/save@v4
-        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-${{ runner.os }}-${{ hashFiles('go.mod') }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
 
   nix:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: read # hestia: detect evicted cache entries upfront
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-4x8-with-cache
+      - nscloud-cache-tag-jobshop-nix
+      - nscloud-cache-size-40gb
+      - nscloud-cache-allow-commit-from-master
     steps:
       - uses: actions/checkout@v5
+      # The Nix store lives on the cache volume, replacing hestia's
+      # Actions-cache binary cache. Must come before Nix is installed.
+      - uses: namespacelabs/nscloud-cache-action@v1
+        with:
+          path: /nix
       - uses: cachix/install-nix-action@v31
         with:
           # go2nix's plugin needs Nix 2.34, the Nix it is built against.
           install_url: https://releases.nixos.org/nix/nix-2.34.9/install
-      # Binary cache in the GitHub Actions cache: uploads each path this job
-      # builds (the vendored-modules derivation, jobshop) and substitutes them
-      # next run. Paths cache.nixos.org already serves are not stored.
-      - uses: Mic92/hestia/action@v3
-        with:
-          upstream-cache-filter: true
       # Nix files stay formatted with the flake's formatter (#583).
       - name: nix fmt check
         run: nix fmt -- --check $(git ls-files '*.nix')
@@ -105,7 +90,7 @@ jobs:
       # until go.sum changes.
       - run: nix build .#jobshop.goModules --print-build-logs
       # Loads go2nix's plugin so jobshop builds one derivation per Go package,
-      # each cached on its own by hestia.
+      # each cached on its own in the store volume.
       - name: go2nix plugin
         run: echo "plugin-files = $(nix build --no-link --print-out-paths .#go2nix-plugin)/lib/nix/plugins/libgo2nix_plugin.so" | sudo tee -a /etc/nix/nix.conf
       - run: nix build .#jobshop --print-build-logs
@@ -116,7 +101,11 @@ jobs:
   # Desk's built UI is committed in pkg/desk/dist and embedded (#208):
   # svelte-check must pass and the committed build must match ui/src.
   ui:
-    runs-on: ubuntu-latest
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
+      - nscloud-cache-tag-jobshop-npm
+      - nscloud-cache-size-20gb
+      - nscloud-cache-allow-commit-from-master
     defaults:
       run:
         working-directory: ui
@@ -125,8 +114,9 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      - uses: namespacelabs/nscloud-cache-action@v1
+        with:
           cache: npm
-          cache-dependency-path: ui/package-lock.json
       - run: npm ci
       - run: npm run check
       - run: npm run build
@@ -137,22 +127,22 @@ jobs:
   # The go job builds without the tag, so it does not see them. A missing
   # binary or any skipped test fails the job.
   victorialogs:
-    runs-on: ubuntu-latest
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
+      - nscloud-cache-tag-jobshop-go
+      - nscloud-cache-size-20gb
+      - nscloud-cache-allow-commit-from-master
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/cache@v4
+      # Namespace cache volume (runs-on labels): mounted, no restore or
+      # upload step. Only master commits to it, so PRs share one warm cache.
+      - uses: namespacelabs/nscloud-cache-action@v1
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-vl-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-vl-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            go-vl-${{ runner.os }}-
+          cache: go
       - name: install victoria-logs
         env:
           VL_VERSION: v1.53.0
@@ -180,7 +170,11 @@ jobs:
   # The store conformance suite against Postgres (#493). The go job runs
   # it against SQLite; pkg/store/postgres's tests skip without the DSN.
   postgres:
-    runs-on: ubuntu-latest
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
+      - nscloud-cache-tag-jobshop-go
+      - nscloud-cache-size-20gb
+      - nscloud-cache-allow-commit-from-master
     services:
       postgres:
         image: postgres:17
@@ -198,15 +192,11 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - uses: actions/cache@v4
+      # Namespace cache volume (runs-on labels): mounted, no restore or
+      # upload step. Only master commits to it, so PRs share one warm cache.
+      - uses: namespacelabs/nscloud-cache-action@v1
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
-            go-pg-${{ runner.os }}-
+          cache: go
       # JOB-35: every case must run on Postgres. A missing DSN or any
       # skipped test fails the job instead of passing silently.
       - name: storetest on postgres

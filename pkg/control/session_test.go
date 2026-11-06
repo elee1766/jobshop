@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -493,6 +494,10 @@ func holdLock(dir string) {
 	}
 	fmt.Println("ready")
 	awaitSignal()
+	// Without this f is unreachable after Flock: under load the GC runs
+	// its finalizer, closing the fd and dropping the lock, so the host
+	// no longer looks alive (JOB-46).
+	runtime.KeepAlive(f)
 }
 
 // awaitSignal blocks a helper process until it is signalled. The minute
@@ -1023,6 +1028,14 @@ func (a *agent) SetSessionConfigOption(_ context.Context, p acp.SetSessionConfig
 	if f, err := os.OpenFile("configsets", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
 		_, _ = f.WriteString(line)
 		_ = f.Close()
+	}
+	// Per session too: under load a second session can spawn and set
+	// options before a test reads the first one's (JOB-45).
+	if id := os.Getenv("JOBSHOP_SESSION"); id != "" {
+		if f, err := os.OpenFile("configsets-"+id, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+			_, _ = f.WriteString(line)
+			_ = f.Close()
+		}
 	}
 	if a.busy.Load() {
 		return acp.SetSessionConfigOptionResponse{}, &acp.RequestError{Code: -32000, Message: "busy; retry when it finishes"}

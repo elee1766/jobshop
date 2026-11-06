@@ -655,6 +655,7 @@ func prefixLayers(layers []packLayer, prefix string) {
 					for _, st := range steps {
 						if sm, ok := st.(map[string]any); ok {
 							ren(sm, "pool", "pools")
+							ren(sm, "retry_pool", "pools")
 						}
 					}
 				case s == "triggers":

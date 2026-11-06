@@ -85,7 +85,10 @@ export function links(t) {
   if (gh.issue) out.push({ label: 'issue #' + gh.issue, href: `https://github.com/${repo}/issues/${gh.issue}` });
   if (gh.pr) out.push({ label: 'PR #' + gh.pr, href: `https://github.com/${repo}/pull/${gh.pr}` });
   const ln = m.linear || {};
-  if (ln.url && safe(ln.url)) out.push({ label: ln.identifier || 'Linear', href: ln.url });
+  // Runs store workspace and issue key (control/runs.go), not a url.
+  const key = ln.issue || ln.identifier;
+  const href = ln.url || (ln.workspace && key ? `https://linear.app/${encodeURIComponent(ln.workspace)}/issue/${encodeURIComponent(key)}` : '');
+  if (href && safe(href)) out.push({ label: key || 'Linear', href });
   return out;
 }
 
