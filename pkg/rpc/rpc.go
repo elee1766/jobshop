@@ -1098,6 +1098,9 @@ type RunStartParams struct {
 	// edges are created with the steps, so no step is claimable before
 	// them (#149). A repeated start with a key adds no edges.
 	After []string `json:"after,omitempty"`
+	// Force skips the intake gate a workflow with a Linear issue var runs
+	// first (`linear eligible`, JOB-69).
+	Force bool `json:"force,omitempty"`
 }
 
 // RunResult is a run ticket and its steps in order.

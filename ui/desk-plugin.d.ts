@@ -1015,6 +1015,7 @@ export interface RunStartParams {
   key?: string;
   project?: string;
   after?: string[];
+  force?: boolean;
 }
 
 export interface Sandbox {

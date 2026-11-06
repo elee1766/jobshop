@@ -90,7 +90,9 @@ func intakeController(t *testing.T, hook string) (*Controller, *fakeLinear) {
 
 func startLinearRun(t *testing.T, c *Controller) error {
 	t.Helper()
-	_, err := c.runStart(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "lw", Vars: map[string]string{"issue": "ENG-5"}, Key: "ENG-5"})
+	// Force skips the eligibility gate (JOB-69), which reads the issue too;
+	// these tests count the intake hook's reads.
+	_, err := c.runStart(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "lw", Vars: map[string]string{"issue": "ENG-5"}, Key: "ENG-5", Force: true})
 	return err
 }
 

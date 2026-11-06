@@ -23,7 +23,83 @@ import (
 // separate (#90).
 
 func (c *Controller) runStart(ctx context.Context, sc scope, p rpc.RunStartParams) (any, error) {
+	if !p.Force {
+		if err := c.eligibleRun(ctx, p); err != nil {
+			return nil, err
+		}
+	}
 	return c.startRun(ctx, sc, p, nil)
+}
+
+// eligibleRun is the intake gate (`linear eligible`) for a run start of a
+// workflow with a Linear issue var (JOB-69). A done, canceled, archived
+// or blocked issue, one with a skip label, or one with an open run under
+// another key is refused with the reason. Blockers are ignored with
+// --after. A start whose key has an open run returns that run, as
+// without the gate. A Linear read error refuses too: --force starts
+// anyway.
+func (c *Controller) eligibleRun(ctx context.Context, p rpc.RunStartParams) error {
+	w, ok := c.config().Workflows[p.Workflow]
+	if !ok || w.Tracker != config.TrackerLinear || w.Issue == "" || w.PR != "" {
+		return nil // planRun reports an unknown workflow
+	}
+	key := strings.ToUpper(strings.TrimSpace(p.Vars[w.Issue]))
+	if !linear.KeyPattern.MatchString(key) {
+		return nil // planRun reports a bad key
+	}
+	if p.Key != "" {
+		if _, err := store.OpenRun(ctx, c.store, p.Workflow, p.Key); err == nil {
+			return nil
+		}
+	}
+	cl, err := c.linearClient(ctx, key)
+	if err != nil {
+		return fmt.Errorf("%w: intake gate for %s: %w (--force skips the gate)", store.ErrInvalid, key, err)
+	}
+	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	is, err := cl.GetContext(lctx, key, false)
+	if err != nil {
+		return fmt.Errorf("%w: intake gate for %s: %w (--force skips the gate)", store.ErrInvalid, key, err)
+	}
+	open := ""
+	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Status: st})
+		if err != nil {
+			return err
+		}
+		for _, r := range runs {
+			if strings.EqualFold(metaString(r.Meta, "linear", "issue"), key) {
+				open = r.ID
+			}
+		}
+	}
+	// With --after the first step waits on the dependency's run (#149),
+	// so a blocker is expected; the other reasons still refuse.
+	if len(p.After) > 0 {
+		is.Blockers = nil
+	}
+	e := linear.Eligible(is, c.linearSkipLabels(key), open)
+	if !e.Eligible {
+		return fmt.Errorf("%w: %s is not eligible: %s (--force starts it anyway)", store.ErrInvalid, key, e.Reason)
+	}
+	return nil
+}
+
+// linearSkipLabels are the skip_labels of the linear_issue_no_run signals
+// for key's team: the labels the pack's linear_skip_labels names.
+func (c *Controller) linearSkipLabels(key string) []string {
+	team, _ := linear.Team(key)
+	cfg := c.config()
+	var out []string
+	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
+		for _, sig := range cfg.Triggers[name].When.Stall {
+			if sig.Signal == config.StallLinearIssueNoRun && strings.EqualFold(sig.Team, team) {
+				out = append(out, config.SplitList(sig.SkipLabels)...)
+			}
+		}
+	}
+	return out
 }
 
 // startRun is run start for the RPC and for run: triggers. extra is added
