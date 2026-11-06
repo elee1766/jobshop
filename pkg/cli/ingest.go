@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -55,13 +54,18 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 	if id == "" {
 		id = fmt.Sprintf("%s-%d", host, os.Getpid())
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	tel, err := startTelemetry(ctx, r, "ingest-work")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
 	w := control.IngestWorker{
 		Call: func(_ context.Context, method string, params, out any) error { return g.call(method, params, out) },
 		Dir:  r.Dir, Worker: id, Host: host, Dispatch: c.Dispatch, NoAdmit: c.NoAdmit,
-		Log: slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "ingest-work", "worker", id),
+		Log: tel.Log.With("worker", id),
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if c.Once {
 		n, d, err := w.Pass(ctx)
 		if err != nil {
@@ -184,9 +188,14 @@ func (c ingestServeCmd) Run(g *Globals) error {
 	if len(eps) == 0 {
 		return fmt.Errorf("ingest serve: no endpoints: add ingest.endpoints in %s", r.Config())
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "ingest")
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	tel, err := startTelemetry(ctx, r, "ingest")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
+	log := tel.Log
 	sp, err := ingest.OpenSpool(ctx, path)
 	if err != nil {
 		return err

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -128,7 +127,13 @@ func (c serveCmd) Run(g *Globals) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	// Telemetry is read once: changing the export needs a restart.
+	tel, err := startTelemetry(ctx, r, "serve")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
+	log := tel.Log
 	// SIGHUP reloads the config, like `jobshop reload`.
 	hup := make(chan os.Signal, 1)
 	signal.Notify(hup, syscall.SIGHUP)
@@ -149,7 +154,7 @@ func (c serveCmd) Run(g *Globals) error {
 	}()
 	bi, _ := debug.ReadBuildInfo()
 	v, cm := versionInfo(version, commit, bi)
-	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Reload: reload, Version: v, Commit: cm})
+	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Tracer: tel.Tracer, Reload: reload, Version: v, Commit: cm})
 }
 
 type reloadCmd struct{}

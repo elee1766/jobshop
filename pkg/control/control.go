@@ -22,7 +22,6 @@ import (
 	host "github.com/elee1766/acphost"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sys/unix"
 
@@ -91,8 +90,10 @@ type Options struct {
 	// MetricsReady, if set, receives the /metrics listen address once it
 	// is bound (tests use ":0" in the config).
 	MetricsReady func(addr string)
-	// SpanProcessor, if set, also receives every span (tests).
-	SpanProcessor sdktrace.SpanProcessor
+	// Tracer makes the controller's spans. The serve command passes the
+	// process tracer from telemetry.Start, with Log from the same call.
+	// Default: spans with no exporter, so trace context still propagates.
+	Tracer trace.Tracer
 	// Reload, if set, triggers a config reload per receive. The serve
 	// command sends on SIGHUP; tests send directly.
 	Reload <-chan struct{}
@@ -315,25 +316,20 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	defer func() { _ = m.Shutdown(context.WithoutCancel(ctx)) }()
 
-	var extra []sdktrace.SpanProcessor
-	if opt.SpanProcessor != nil {
-		extra = append(extra, opt.SpanProcessor)
+	if opt.Tracer == nil {
+		tr, err := telemetry.NewTracing(ctx, telemetry.Export{})
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tr.Shutdown(context.WithoutCancel(ctx)) }()
+		opt.Tracer = tr.Tracer()
 	}
-	tr, err := telemetry.NewTracing(ctx, telemetry.Export{
-		TracesURL: cfg.Telemetry.TracesURL(),
-		LogsURL:   cfg.Telemetry.LogsURL(),
-		Headers:   cfg.Telemetry.Headers(os.Getenv),
-	}, extra...)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tr.Shutdown(context.WithoutCancel(ctx)) }()
 	incidents := &incidentLog{}
-	log := slog.New(incidentHandler{Handler: tr.LogHandler(opt.Log.Handler()), log: incidents})
+	log := slog.New(incidentHandler{Handler: opt.Log.Handler(), log: incidents})
 
 	c := &Controller{
 		root: root, live: live, store: st, opt: opt, log: log, metrics: m, incidents: incidents,
-		tracer:   tr.Tracer(),
+		tracer:   opt.Tracer,
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{}, readOnly: map[string]bool{},
 		minter:       identity.NewMinter(),
 		ingest:       ingestDrain{wake: make(chan struct{}, 1)},

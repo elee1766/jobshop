@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -51,7 +50,14 @@ func (c deskCmd) Run(g *Globals) error {
 	if c.UserHeader != "" && len(proxies) == 0 {
 		return errors.New("desk: --user-header needs at least one --trusted-proxy")
 	}
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("component", "desk")
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	tel, err := startTelemetry(ctx, r, "desk")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
+	log := tel.Log.With("component", "desk")
 	cfg := desk.Config{Hosts: c.Host, ChatPool: c.ChatPool, UserHeader: c.UserHeader, BasePath: base, TrustedProxies: proxies, Root: r.Dir}
 	if c.Push {
 		// Under the root, with the key and subscriptions: only Desk reads it.
@@ -66,8 +72,6 @@ func (c deskCmd) Run(g *Globals) error {
 	if err != nil {
 		return err
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	if err := d.Start(ctx); err != nil {
 		return err
 	}
