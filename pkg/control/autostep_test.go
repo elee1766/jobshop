@@ -300,7 +300,16 @@ func TestAutoStepFailureEscalates(t *testing.T) {
 	root := autoRoot(t, "http://127.0.0.1:1")
 	admin, _ := startAuto(t, root, clock.NewFake(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)))
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "failing", Vars: map[string]string{"issue": "1"}})
-	passUntilWall(t, root, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == store.RunNeedsHuman }, "needs human")
+	devTickets := func() []store.Ticket {
+		var esc []store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Pool: "dev"}, &esc))
+		return esc
+	}
+	// The run goes needs-human before the escalation ticket is written:
+	// wait for both.
+	passUntilWall(t, root, func() bool {
+		return runState(t, showRun(t, admin, r.Run.ID)) == store.RunNeedsHuman && len(devTickets()) > 0
+	}, "needs human with escalation")
 	s := showRun(t, admin, r.Run.ID).Steps[0]
 	assert.Equal(t, "failed", s.Resolution)
 	assert.Equal(t, 2, stepFields(t, s).Failures)
@@ -311,9 +320,7 @@ func TestAutoStepFailureEscalates(t *testing.T) {
 		notes = append(notes, c.Body)
 	}
 	assert.Contains(t, strings.Join(notes, "\n"), "broken", "stderr tail is on the step")
-	var esc []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Pool: "dev"}, &esc))
-	assert.Len(t, esc, 1, "one escalation ticket")
+	assert.Len(t, devTickets(), 1, "one escalation ticket")
 }
 
 // keyLines reads the attempt keys a slow command step appended.
