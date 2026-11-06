@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -174,17 +173,18 @@ func (c *Controller) runRuleCommand(ctx context.Context, r config.PromptRule, ev
 	if err != nil {
 		return ""
 	}
-	cmd := exec.CommandContext(ctx, "sh", "-c", r.Command)
-	cmd.Dir = c.root.Dir
-	cmd.Stdin = bytes.NewReader(in)
-	// A shell child that keeps stdout open must not hold the turn past
-	// the timeout.
-	cmd.WaitDelay = time.Second
+	// The session's pool isolates the command like its agent (#810).
+	ic := isolatedCmd{argv: shArgv(r.Command), pool: ev.Pool, stdin: bytes.NewReader(in), name: "rule"}
+	if !c.isolates(ev.Pool) {
+		ic.pool, ic.dir = "", c.root.Dir
+	}
 	out := &capped{max: config.MaxRuleOutput}
-	cmd.Stdout = out
 	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	err = cmd.Run()
+	ic.stdout, ic.stderr = out, &stderr
+	ex, err := c.runIsolated(ctx, ic)
+	if err == nil && (ex.ExitCode != 0 || ex.Signal != "") {
+		err = fmt.Errorf("exit %s", exitText(ex))
+	}
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		c.log.WarnContext(ctx, "prompt rule command timed out", "rule", r.Name, "session", ev.Session)

@@ -166,3 +166,23 @@ func firstNonEmpty(a, b string) string {
 
 // shArgv is sh -c command.
 func shArgv(command string) []string { return []string{"sh", "-c", command} }
+
+// isolates reports whether pool has a sandbox, mapped user or cgroup
+// limits for runIsolated to apply. A pool with none runs commands as
+// before, in the root dir.
+func (c *Controller) isolates(pool string) bool {
+	if pool == "" {
+		return false
+	}
+	cfg := c.config()
+	iso := cfg.IsolationFor(pool)
+	return cfg.SandboxFor(pool).Backend != "" || iso.User != nil || iso.Limits != nil
+}
+
+// exitText is "code N" or "signal S" for a command's exit.
+func exitText(ex proc.Exit) string {
+	if ex.Signal != "" {
+		return "signal " + ex.Signal
+	}
+	return fmt.Sprintf("%d", ex.ExitCode)
+}
