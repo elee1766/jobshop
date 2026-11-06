@@ -76,6 +76,12 @@ func TestMain(m *testing.M) {
 		fmt.Println("jobshop test-version")
 		os.Exit(0)
 	}
+	// Like the unit's DelegateSubgroup=controller (JOB-21): move into a
+	// leaf before any test spawns hosts, or a later controller cannot
+	// enable cpu/memory/pids (a cgroup with processes in it is busy).
+	if info, err := host.DelegatedCgroup(); err == nil && info.Writable && filepath.Base(info.Path) != "controller" {
+		_, _ = host.SetupDelegation(info.Path, []string{"cpu", "memory", "pids"})
+	}
 	os.Exit(m.Run())
 }
 
@@ -623,7 +629,10 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		opt = withPass(dir, opt)
-		opt.Tick, opt.HostExe = time.Hour, os.Args[0]
+		opt.Tick = time.Hour
+		if opt.HostExe == "" {
+			opt.HostExe = os.Args[0]
+		}
 		if opt.Log == nil {
 			opt.Log = testLog(t)
 		}
