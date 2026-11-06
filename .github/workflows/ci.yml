@@ -168,13 +168,13 @@ jobs:
           echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
           echo "JOBSHOP_REQUIRE_VICTORIALOGS=1" >> "$GITHUB_ENV"
       - run: go vet -tags victorialogs ./...
-      # Only the tagged files' tests: the rest of pkg/control runs in the go job.
+      # Only the tagged package (JOB-47): it drives a controller through its
+      # RPC API, so the rest of pkg/control stays in the go job.
       - name: go test
         shell: bash # pipefail, so a test failure is not hidden by tee
         run: |
-          tests=$(grep -l '^//go:build victorialogs' $(git ls-files '*_test.go') | xargs grep -ho '^func Test[A-Za-z0-9_]*' | sed 's/^func //' | paste -sd'|')
-          test -n "$tests" || { echo "no victorialogs tests found"; exit 1; }
-          go test -race -v -tags victorialogs -run "^($tests)\$" ./... | tee /tmp/vl-test.log
+          go test -race -v -tags victorialogs ./pkg/control/journalvl/ | tee /tmp/vl-test.log
+          grep -q -- '--- PASS' /tmp/vl-test.log || { echo "no victorialogs tests ran"; exit 1; }
           if grep -- '--- SKIP' /tmp/vl-test.log; then echo "tests skipped"; exit 1; fi
 
   # The store conformance suite against Postgres (#493). The go job runs
