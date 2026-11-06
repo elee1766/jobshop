@@ -134,6 +134,10 @@ func TestWaitChecksWorkflow(t *testing.T) {
 		{"rerun of a failed run", "ci", "success", list(run(12, "ci", "ci.yml", "in_progress", ""), run(11, "ci", "ci.yml", "completed", "failure")), false, false, "ci in progress on aaaa111"},
 		{"matched by file", "ci.yml", "success", list(run(10, "ci", "ci.yml", "completed", "success")), true, false, "ci.yml green on aaaa111"},
 		{"matched by path", ".github/workflows/ci.yml", "success", list(run(10, "ci", "ci.yml", "completed", "success")), true, false, ".github/workflows/ci.yml green on aaaa111"},
+		{"name case-insensitive", "ci", "success", list(release, run(10, "CI", "build.yml", "completed", "success")), true, false, "ci green on aaaa111"},
+		{"matched by file stem", "ci", "success", list(release, run(10, "Build and test", "ci.yml", "completed", "success")), true, false, "ci green on aaaa111"},
+		{"file case-insensitive", "CI.yml", "success", list(run(10, "Build", "ci.yml", "completed", "success")), true, false, "CI.yml green on aaaa111"},
+		{"other workflow does not match", "ci", "success", list(release, run(10, "lint", "lint.yml", "completed", "success")), false, false, "ci not started on aaaa111"},
 	} {
 		for _, form := range []string{"sha", "pr"} {
 			t.Run(tc.name+"/"+form, func(t *testing.T) {
