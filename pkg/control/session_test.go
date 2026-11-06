@@ -1012,6 +1012,14 @@ func (a *agent) SetSessionConfigOption(_ context.Context, p acp.SetSessionConfig
 		_, _ = f.WriteString(line)
 		_ = f.Close()
 	}
+	// Per session too: under load a second session can spawn and set
+	// options before a test reads the first one's (JOB-45).
+	if id := os.Getenv("JOBSHOP_SESSION"); id != "" {
+		if f, err := os.OpenFile("configsets-"+id, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
+			_, _ = f.WriteString(line)
+			_ = f.Close()
+		}
+	}
 	if a.busy.Load() {
 		return acp.SetSessionConfigOptionResponse{}, &acp.RequestError{Code: -32000, Message: "busy; retry when it finishes"}
 	}
