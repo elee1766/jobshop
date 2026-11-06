@@ -58,7 +58,7 @@ func (c *Controller) startRun(ctx context.Context, sc scope, p rpc.RunStartParam
 	if err != nil {
 		return nil, err
 	}
-	c.log.Info("run started", "run", out[0].ID, "workflow", p.Workflow, "key", p.Key, "steps", len(out)-1)
+	c.log.InfoContext(ctx, "run started", "run", out[0].ID, "workflow", p.Workflow, "key", p.Key, "steps", len(out)-1)
 	return rpc.RunResult{Run: out[0], Steps: out[1:]}, nil
 }
 
@@ -322,19 +322,19 @@ func (c *Controller) gateSteps(ctx context.Context, runID string) bool {
 			if gate.Resolution == "done" && fields[f.When.Step].Outcome == f.When.Outcome {
 				var zero time.Time
 				if _, err := c.store.Update(ctx, "controller", s.ID, store.Update{DeferUntil: &zero}); err != nil {
-					c.log.Error("open gated step", "step", s.ID, "err", err)
+					c.log.ErrorContext(ctx, "open gated step", "step", s.ID, "err", err)
 					return changed
 				}
-				c.log.Info("gated step opened", "run", runID, "step", name)
+				c.log.InfoContext(ctx, "gated step opened", "run", runID, "step", name)
 			} else {
 				if _, err := store.Close(ctx, c.store, "controller", s.ID, nil, store.StepSkipped); err != nil {
-					c.log.Error("skip step", "step", s.ID, "err", err)
+					c.log.ErrorContext(ctx, "skip step", "step", s.ID, "err", err)
 					return changed
 				}
 				_, _ = store.AddComment(ctx, c.store, "controller", s.ID, fmt.Sprintf("Skipped: step %s outcome %q, wanted %q.",
 					f.When.Step, fields[f.When.Step].Outcome, f.When.Outcome))
 
-				c.log.Info("step skipped", "run", runID, "step", name)
+				c.log.InfoContext(ctx, "step skipped", "run", runID, "step", name)
 			}
 			acted, changed = true, true
 		}
@@ -483,7 +483,7 @@ func (c *Controller) cancelRun(ctx context.Context, sc scope, p rpc.IDParams) (a
 	if _, err := c.setRunState(ctx, sc.actor, t, f, store.RunCancelled, store.RunCancelled); err != nil {
 		return nil, err
 	}
-	c.log.Info("run cancelled", "run", t.ID, "by", sc.actor)
+	c.log.InfoContext(ctx, "run cancelled", "run", t.ID, "by", sc.actor)
 	t, err = c.store.Get(ctx, t.ID)
 	if err != nil {
 		return nil, err
@@ -558,7 +558,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 		}
 	}
 	_, _ = store.AddComment(ctx, c.store, sc.actor, step.ID, fmt.Sprintf("Resumed by %s; failures reset.", sc.actor))
-	c.log.Info("run resumed", "run", t.ID, "step", sf.Step, "by", sc.actor)
+	c.log.InfoContext(ctx, "run resumed", "run", t.ID, "step", sf.Step, "by", sc.actor)
 	t, err = c.store.Get(ctx, t.ID)
 	if err != nil {
 		return nil, err
@@ -591,10 +591,10 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 		}
 	}
 	if _, err := c.setRunState(ctx, "controller", t, f, store.RunDone, "done"); err != nil {
-		c.log.Error("complete run", "run", runID, "err", err)
+		c.log.ErrorContext(ctx, "complete run", "run", runID, "err", err)
 		return
 	}
-	c.log.Info("run done", "run", runID, "workflow", f.Workflow)
+	c.log.InfoContext(ctx, "run done", "run", runID, "workflow", f.Workflow)
 }
 
 // sweepRuns completes or escalates running runs and repairs escalations

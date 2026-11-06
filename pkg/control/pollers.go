@@ -54,12 +54,12 @@ func (c *Controller) pollOnce(ctx context.Context, cfg *config.Config, pc config
 		c.inboxAppended(res.New)
 		if err != nil {
 			if ctx.Err() == nil {
-				c.log.Warn("ingest poller", "poller", pc.Name, "repo", repo, "err", err)
+				c.log.WarnContext(ctx, "ingest poller", "poller", pc.Name, "repo", repo, "err", err)
 			}
 			continue
 		}
 		if res.Fresh > 0 {
-			c.log.Info("ingest poller", "poller", pc.Name, "repo", repo, "items", res.Items, "fresh", res.Fresh)
+			c.log.InfoContext(ctx, "ingest poller", "poller", pc.Name, "repo", repo, "items", res.Items, "fresh", res.Fresh)
 		}
 	}
 }

@@ -135,7 +135,7 @@ func (s *Server) closeAttentionChat(r *http.Request, key string) {
 		if f, _ := store.DecodeFields[store.SessionFields](*si.Ticket); f.Key == key {
 			var out store.Ticket
 			if err := s.ctl.Call(r.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: si.ID, Resolution: "acknowledged"}, &out); err != nil {
-				s.log.Warn("desk: close acknowledged chat", "session", si.ID, "err", err)
+				s.log.WarnContext(r.Context(), "desk: close acknowledged chat", "session", si.ID, "err", err)
 			}
 		}
 	}

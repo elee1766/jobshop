@@ -189,7 +189,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	if err != nil {
 		return nil, err
 	}
-	c.log.Info("batch started", "batch", batchID, "key", p.Key, "issues", issues, "adopted", adopted)
+	c.log.InfoContext(ctx, "batch started", "batch", batchID, "key", p.Key, "issues", issues, "adopted", adopted)
 	res, err := c.batchResult(ctx, out[0])
 	if err != nil {
 		return nil, err
@@ -262,16 +262,16 @@ func (c *Controller) deriveBatch(ctx context.Context, batchID string) {
 		return
 	}
 	if b, err = c.store.Update(ctx, "controller", b.ID, store.Update{Fields: raw, IfRevision: b.Revision}); err != nil {
-		c.log.Error("batch state", "batch", batchID, "err", err)
+		c.log.ErrorContext(ctx, "batch state", "batch", batchID, "err", err)
 		return
 	}
 	if state == store.BatchDone || state == store.BatchFailed {
 		if _, err := store.Close(ctx, c.store, "controller", b.ID, nil, state); err != nil {
-			c.log.Error("close batch", "batch", batchID, "err", err)
+			c.log.ErrorContext(ctx, "close batch", "batch", batchID, "err", err)
 			return
 		}
 	}
-	c.log.Info("batch state", "batch", batchID, "key", f.Key, "state", state)
+	c.log.InfoContext(ctx, "batch state", "batch", batchID, "key", f.Key, "state", state)
 }
 
 // batchState computes the state from the member runs. cur is the stored

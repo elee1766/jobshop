@@ -192,7 +192,7 @@ func (s *Server) runPush(ctx context.Context) {
 	for {
 		items, err := s.attention((&http.Request{}).WithContext(ctx))
 		if err != nil {
-			s.log.Warn("desk: push: attention", "err", err)
+			s.log.WarnContext(ctx, "desk: push: attention", "err", err)
 		} else {
 			for _, it := range p.diff(items.([]AttentionItem)) {
 				p.send(ctx, message(it), s.log.Warn)

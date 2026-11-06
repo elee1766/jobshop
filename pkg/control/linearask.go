@@ -59,12 +59,12 @@ func (c *Controller) sweepLinearAsks(ctx context.Context) {
 	} {
 		ts, err := c.store.List(ctx, f)
 		if err != nil {
-			c.log.Warn("linear ask: list", "err", err)
+			c.log.WarnContext(ctx, "linear ask: list", "err", err)
 			return
 		}
 		for _, t := range ts {
 			if err := c.postLinearAsk(ctx, t); err != nil {
-				c.log.Warn("linear ask", "ticket", t.ID, "err", err)
+				c.log.WarnContext(ctx, "linear ask", "ticket", t.ID, "err", err)
 			}
 		}
 	}
@@ -111,7 +111,7 @@ func (c *Controller) postLinearAsk(ctx context.Context, t store.Ticket) error {
 	if question {
 		// Scope question: Blocked until answered.
 		if err := cl.AddLabel(ctx, key, linearBlockedLabel); err != nil {
-			c.log.Warn("linear ask: blocked label", "issue", key, "err", err)
+			c.log.WarnContext(ctx, "linear ask: blocked label", "issue", key, "err", err)
 		}
 	}
 	if err := c.setMetaPack(ctx, t.ID, linearAskPack, linearAsk{Comment: res.ID, URL: res.URL, Issue: key}); err != nil {
@@ -211,7 +211,7 @@ func (c *Controller) linearAnswers(ctx context.Context, th thread, cs []ghCommen
 		}
 		_, err := c.answerQuestion(ctx, scope{admin: true, actor: "controller"}, rpc.AnswerParams{ID: q.ID, Text: cm.Body, From: linearAuthorPrefix + cm.Author})
 		if err != nil {
-			c.log.Warn("linear answer", "question", q.ID, "err", err)
+			c.log.WarnContext(ctx, "linear answer", "question", q.ID, "err", err)
 			rest = append(rest, cm)
 			continue
 		}
@@ -240,12 +240,12 @@ func (c *Controller) unblockLinear(ctx context.Context, qt store.Ticket) {
 	}
 	cl, err := c.linearClient(ctx, a.Issue)
 	if err != nil {
-		c.log.Warn("linear unblock", "issue", a.Issue, "err", err)
+		c.log.WarnContext(ctx, "linear unblock", "issue", a.Issue, "err", err)
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	if err := cl.RemoveLabel(ctx, a.Issue, linearBlockedLabel); err != nil {
-		c.log.Warn("linear unblock", "issue", a.Issue, "err", err)
+		c.log.WarnContext(ctx, "linear unblock", "issue", a.Issue, "err", err)
 	}
 }

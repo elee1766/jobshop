@@ -141,6 +141,6 @@ func (c *Controller) inboxActivity(ctx context.Context, items []rpc.ActivityItem
 	fresh, err := ingest.InboxPutBatch(ctx, c.store, its)
 	c.inboxAppended(fresh)
 	if err != nil {
-		c.log.Warn("inbox: activity write", "items", len(its), "err", err)
+		c.log.WarnContext(ctx, "inbox: activity write", "items", len(its), "err", err)
 	}
 }

@@ -470,15 +470,19 @@ Usage: jobshop serve [flags]
 Run the controller for the root.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-      --tick=30s         Lease sweep interval.
+      --log-level="info"     Log level: debug, info, warn or error
+                             ($JOBSHOP_LOG_LEVEL).
+      --log-format="text"    Log format: text or json ($JOBSHOP_LOG_FORMAT).
+      --tick=30s             Lease sweep interval.
 ```
 
 ## jobshop shutdown
@@ -567,13 +571,18 @@ Arguments:
   <name>    A2A gateway name under gateway: in jobshop.yaml.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
+
+      --log-level="info"     Log level: debug, info, warn or error
+                             ($JOBSHOP_LOG_LEVEL).
+      --log-format="text"    Log format: text or json ($JOBSHOP_LOG_FORMAT).
 ```
 
 ## jobshop desk
@@ -593,6 +602,10 @@ Flags:
                                    CLI socket, else the root's admin socket
                                    ($JOBSHOP_SOCKET).
 
+      --log-level="info"           Log level: debug, info, warn or error
+                                   ($JOBSHOP_LOG_LEVEL).
+      --log-format="text"          Log format: text or json
+                                   ($JOBSHOP_LOG_FORMAT).
       --listen="127.0.0.1:7480"    Address to serve on. Non-loopback needs
                                    --allow-remote.
       --host=HOST,...              Extra Host header values to accept (e.g.
@@ -668,18 +681,22 @@ Serve the webhook endpoints: verify, filter and spool deliveries. Needs no
 controller or main database.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-      --listen=STRING    TCP address (default ingest.listen, else
-                         127.0.0.1:8740).
-      --spool=STRING     Spool database (default ingest.spool, else
-                         <root>/ingest/spool.db).
+      --log-level="info"     Log level: debug, info, warn or error
+                             ($JOBSHOP_LOG_LEVEL).
+      --log-format="text"    Log format: text or json ($JOBSHOP_LOG_FORMAT).
+      --listen=STRING        TCP address (default ingest.listen, else
+                             127.0.0.1:8740).
+      --spool=STRING         Spool database (default ingest.spool, else
+                             <root>/ingest/spool.db).
 ```
 
 ## jobshop ingest drain
@@ -740,23 +757,28 @@ Admit pending inbox items through the controller (admin) with ingest.workers
 external (#443): claim, run the admission hooks here, report.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-      --once             Admit until nothing is pending and exit.
-      --worker=STRING    Worker id (default <host>-<pid>).
-      --every=1s         Pause when nothing is pending, without --once. Each
-                         claim is the worker's heartbeat.
-      --dispatch         Also dispatch admitted items through the controller
-                         (#633). Safe alongside other dispatchers; set
-                         ingest.dispatch external to stop the controller's own.
-      --no-admit         Only dispatch (with --dispatch), for ingest.workers
-                         internal.
+      --log-level="info"     Log level: debug, info, warn or error
+                             ($JOBSHOP_LOG_LEVEL).
+      --log-format="text"    Log format: text or json ($JOBSHOP_LOG_FORMAT).
+      --once                 Admit until nothing is pending and exit.
+      --worker=STRING        Worker id (default <host>-<pid>).
+      --every=1s             Pause when nothing is pending, without --once.
+                             Each claim is the worker's heartbeat.
+      --dispatch             Also dispatch admitted items through the controller
+                             (#633). Safe alongside other dispatchers; set
+                             ingest.dispatch external to stop the controller's
+                             own.
+      --no-admit             Only dispatch (with --dispatch), for ingest.workers
+                             internal.
 ```
 
 ## jobshop ingest workers

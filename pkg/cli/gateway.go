@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,6 +16,7 @@ import (
 )
 
 type gatewayCmd struct {
+	LogFlags
 	Name string `arg:"" help:"A2A gateway name under gateway: in jobshop.yaml."`
 }
 
@@ -40,7 +40,11 @@ func (c gatewayCmd) Run(g *Globals) error {
 	// Always the admin socket: JOBSHOP_SOCKET in an agent's env names its
 	// session socket, which cannot send to other sessions.
 	sock := r.AdminSocket()
-	log := slog.New(slog.NewTextHandler(os.Stderr, nil)).With("gateway", c.Name)
+	log, err := c.logger()
+	if err != nil {
+		return err
+	}
+	log = log.With("gateway", c.Name)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if gc.Network != config.GatewayA2A {

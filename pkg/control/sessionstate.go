@@ -39,7 +39,7 @@ func (c *Controller) hostEnded(id string) store.SessionEnded {
 func (c *Controller) saveEnded(ctx context.Context, id string) {
 	e := c.hostEnded(id)
 	if err := c.updateSessionFields(ctx, id, func(f *store.SessionFields) { f.Ended = &e }); err != nil {
-		c.log.Warn("save ended session state", "session", id, "err", err)
+		c.log.WarnContext(ctx, "save ended session state", "session", id, "err", err)
 	}
 }
 

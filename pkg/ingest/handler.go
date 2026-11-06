@@ -80,7 +80,7 @@ func (h *Handler) log() *slog.Logger {
 	if h.Log != nil {
 		return h.Log
 	}
-	return slog.Default()
+	return slog.New(slog.DiscardHandler)
 }
 
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request, eps []config.IngestEndpoint) {
@@ -164,7 +164,7 @@ func pick(r *http.Request, names ...string) map[string]string {
 func (h *Handler) write(w http.ResponseWriter, r *http.Request, d Delivery) {
 	fresh, err := h.Spool.Write(r.Context(), d)
 	if err != nil {
-		h.log().Error("ingest: spool write", "endpoint", d.Endpoint, "delivery", d.DeliveryID, "err", err)
+		h.log().ErrorContext(r.Context(), "ingest: spool write", "endpoint", d.Endpoint, "delivery", d.DeliveryID, "err", err)
 		http.Error(w, "spool write failed", http.StatusInternalServerError)
 		return
 	}
