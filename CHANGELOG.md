@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.2](https://github.com/elee1766/jobshop/compare/v0.4.1...v0.4.2) (2026-11-06)
+
+
+### Features
+
+* **control:** on: and fallback: for stall triggers (JOB-72) ([#839](https://github.com/elee1766/jobshop/issues/839)) ([e7083d2](https://github.com/elee1766/jobshop/commit/e7083d2e7e288213d7c7fb519f829316fd38c775))
+* **linear:** agents assign themselves when they take an issue ([#836](https://github.com/elee1766/jobshop/issues/836)) ([d05f2cb](https://github.com/elee1766/jobshop/commit/d05f2cb49942cc929777e28fbc2197debd94163e))
+
+
+### Bug fixes
+
+* **control:** checks waits on a commit ignore cancelled and skipped runs ([#831](https://github.com/elee1766/jobshop/issues/831)) ([#837](https://github.com/elee1766/jobshop/issues/837)) ([615742a](https://github.com/elee1766/jobshop/commit/615742a583ea9da892c63e01d1aaf48202df124d))
+
 ## [0.4.1](https://github.com/elee1766/jobshop/compare/v0.4.0...v0.4.1) (2026-11-06)
 
 
