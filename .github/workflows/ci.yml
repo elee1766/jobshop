@@ -8,9 +8,10 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR cancels its running CI; agents push often.
+# A new push cancels the running CI for the same PR or for master;
+# agents push and merge often. Only the newest master commit matters.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.sha }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
