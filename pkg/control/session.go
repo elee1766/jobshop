@@ -1674,6 +1674,9 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	if err := host.CheckSpawn(spec.Spec, worktree, host.WithHostDir(dir)); err != nil {
 		return err
 	}
+	if err := probeShell(spec.Spec, hostInheritedEnv(), c.opt.ShellProbe); err != nil {
+		return err
+	}
 	if err := hostspec.Write(dir, spec); err != nil {
 		return err
 	}

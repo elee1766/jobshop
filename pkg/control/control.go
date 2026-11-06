@@ -108,6 +108,11 @@ type Options struct {
 	// Version and Commit identify the running binary for the version
 	// method (#180).
 	Version, Commit string
+	// ShellProbe lists the commands an agent's tool shell must find on
+	// its PATH before a host is spawned (JOB-67); a miss quarantines the
+	// pool. The serve command passes DefaultShellProbe; nil skips it, as
+	// test hosts are not named jobshop.
+	ShellProbe []string
 }
 
 // Controller serves one Jobshop root.
