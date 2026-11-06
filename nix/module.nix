@@ -316,7 +316,15 @@ let
   # source so it needs no workspace.
   deployPack = lib.optional cfg.selfDeploy.enable {
     path = "${../packs/deploy}";
-    vars.state_dir = deployState;
+    vars = {
+      state_dir = deployState;
+      # The self-deploy trigger (JOB-62, #826) starts the deploy unit on a
+      # CI success event for this repo and branch. The timer stays as the
+      # fallback for a lost webhook.
+      repo = ghRepo;
+      inherit (sd) branch;
+      start_command = sd.startCommand;
+    };
   };
   # Deploy tools report a problem as a needs-human ticket with a stable
   # key and close it when it clears (#577); nothing in the controller
@@ -1216,6 +1224,16 @@ in
         type = lib.types.str;
         default = "10min";
       };
+      startCommand = lib.mkOption {
+        type = lib.types.str;
+        default = "${systemctl} start --no-block jobshop-self-deploy.service";
+        defaultText = lib.literalExpression ''"systemctl [--user] start --no-block jobshop-self-deploy.service"'';
+        description = ''
+          Command the deploy pack's self-deploy trigger runs when CI succeeds on the
+          deploy branch, so a merge deploys without waiting for the timer. On NixOS the
+          jobshop user may start the unit through a polkit rule the module adds.
+        '';
+      };
       stateDir = lib.mkOption {
         type = lib.types.str;
         default = if isNixos then "/var/lib/jobshop-deploy" else "${config.xdg.stateHome}/jobshop-deploy";
@@ -1542,6 +1560,19 @@ in
         };
       }
       (lib.optionalAttrs isNixos {
+        # The controller runs as an unprivileged user; let it start (only
+        # start) the deploy unit for the self-deploy trigger (#826).
+        security.polkit.enable = lib.mkIf sd.enable (lib.mkDefault true);
+        security.polkit.extraConfig = lib.mkIf sd.enable ''
+          polkit.addRule(function(action, subject) {
+            if (action.id == "org.freedesktop.systemd1.manage-units" &&
+                action.lookup("unit") == "jobshop-self-deploy.service" &&
+                action.lookup("verb") == "start" &&
+                subject.user == "${cfg.user}") {
+              return polkit.Result.YES;
+            }
+          });
+        '';
         users.users.${cfg.user} = {
           isSystemUser = true;
           group = cfg.group;
