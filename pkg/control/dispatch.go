@@ -92,6 +92,9 @@ func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, erro
 		}
 	}
 	c.done(ctx, holder, other)
+	// Webhook rows may fire event triggers (JOB-62); in the background,
+	// under the tick lock.
+	c.triggerEvents(other)
 	c.dispatchActivity(ctx, holder, activity)
 	c.dispatchComments(ctx, holder, comments)
 	return len(rows), nil

@@ -154,6 +154,9 @@ type Controller struct {
 	poolPauseReason map[string]string
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
+	// triggerPolled is each trigger's last poll, for fallback: (JOB-62);
+	// tick-only state.
+	triggerPolled map[string]time.Time
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
 	// journalsCompressedAt is the last journal compression sweep start

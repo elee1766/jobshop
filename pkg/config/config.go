@@ -126,6 +126,59 @@ type Trigger struct {
 	// after that the stall is left to the escalation of the last run.
 	// Default 3. Stall triggers only.
 	MaxRuns int `yaml:"max_runs"`
+	// On fires the trigger when an admitted ingest delivery matches one
+	// entry (JOB-62), between ticks. When conditions still apply, and
+	// dedup is the same as a poll's, so an event and a poll of the same
+	// thing fire once. Event fields are the template var event.
+	On []TriggerEvent `yaml:"on"`
+	// Fallback is how often the trigger is polled (Go duration). Empty:
+	// every tick, or DefaultTriggerFallback with on:. A trigger with on:
+	// and no when conditions is never polled.
+	Fallback string `yaml:"fallback"`
+	// Command runs a host command instead of creating a ticket or run.
+	Command *TriggerCommand `yaml:"command"`
+}
+
+// DefaultTriggerFallback is the poll interval of a trigger with on: and
+// no fallback: a lost webhook only delays it.
+const DefaultTriggerFallback = 10 * time.Minute
+
+// TriggerEvent matches ingest deliveries from one source. Set exactly
+// one of GitHub and Linear.
+type TriggerEvent struct {
+	GitHub *EventMatch `yaml:"github"`
+	Linear *EventMatch `yaml:"linear"`
+}
+
+// EventMatch lists fields a delivery must have; empty fields match any.
+// Values compare case-insensitively. Workflow matches the workflow name
+// or its file name without extension (ci for .github/workflows/ci.yml);
+// Label matches any label on the delivery. Repo is owner/name on GitHub,
+// the team key on Linear.
+type EventMatch struct {
+	Event      string `yaml:"event"`
+	Action     string `yaml:"action"`
+	Repo       string `yaml:"repo"`
+	Branch     string `yaml:"branch"`
+	Workflow   string `yaml:"workflow"`
+	Conclusion string `yaml:"conclusion"`
+	Label      string `yaml:"label"`
+}
+
+// EventVar is the template var holding a firing event's fields.
+const EventVar = "event"
+
+// EventFields are the keys of the event var.
+var EventFields = []string{"source", "event", "action", "repo", "branch", "workflow", "conclusion", "head_sha", "pr", "label", "delivery"}
+
+// TriggerCommand is the command action: sh -c Run in the root dir. Run
+// is a template over check_output and event. Each fire is recorded as a
+// message ticket that holds the trigger while the command runs; a
+// failure keeps it open with the needs-human label, so the trigger stays
+// held until a human closes it.
+type TriggerCommand struct {
+	Run     string `yaml:"run"`
+	Timeout string `yaml:"timeout"` // Go duration, default 1m
 }
 
 // Store stall signals, computed by the controller from the store and its
@@ -282,6 +335,11 @@ func (c *Config) LearningKinds() []string {
 		return store.LearningKinds
 	}
 	return c.Learnings.Kinds
+}
+
+// HasConditions reports whether w has any condition a poll evaluates.
+func (w TriggerWhen) HasConditions() bool {
+	return w.Cron != "" || w.HasCounts() || w.Check != "" || w.Learnings != nil || w.Edits != nil
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -1575,7 +1633,10 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 	if tr.MaxRuns != 0 {
 		return errors.New("max_runs needs when.stall")
 	}
-	if w.Cron == "" && !w.HasCounts() && w.Check == "" && w.Learnings == nil && w.Edits == nil {
+	if err := checkTriggerOn(tr); err != nil {
+		return err
+	}
+	if len(tr.On) == 0 && !w.HasConditions() {
 		return errors.New("when needs a cron, a count threshold, a check, learnings or edits")
 	}
 	if e := w.Edits; e != nil {
@@ -1650,11 +1711,28 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 			return fmt.Errorf("cooldown %q must be a non-negative duration", tr.Cooldown)
 		}
 	}
-	if (tr.Ticket == nil) == (tr.Run == nil) {
-		return errors.New("set exactly one of ticket and run")
+	actions := 0
+	for _, set := range []bool{tr.Ticket != nil, tr.Run != nil, tr.Command != nil} {
+		if set {
+			actions++
+		}
+	}
+	if actions != 1 {
+		return errors.New("set exactly one of ticket, run and command")
 	}
 	if tr.Run != nil {
 		return c.checkTriggerRun(tr)
+	}
+	if cm := tr.Command; cm != nil {
+		if strings.TrimSpace(cm.Run) == "" {
+			return errors.New("command: run is required")
+		}
+		if cm.Timeout != "" {
+			if d, err := time.ParseDuration(cm.Timeout); err != nil || d <= 0 {
+				return fmt.Errorf("command: timeout %q must be a positive duration", cm.Timeout)
+			}
+		}
+		return checkTriggerTemplates(tr, map[string]string{"command.run": cm.Run})
 	}
 	t := tr.Ticket
 	if t.Title == "" {

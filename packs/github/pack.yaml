@@ -172,10 +172,14 @@ triggers:
       priority: 1
       labels: [plan]
     cooldown: 10m
-  # One ci-repair run per failing master SHA. The check runs on every tick
-  # while no master-red run is open; gh needs GH_TOKEN in the controller
-  # environment.
+  # One ci-repair run per failing master SHA. A failed CI run on the
+  # branch fires it at once (JOB-62, needs the repo's webhook to reach
+  # ingest); the check, every fallback, covers a lost webhook. Both dedup
+  # on the SHA. gh needs GH_TOKEN in the controller environment.
   master-red:
+    on:
+      - github: {event: workflow_run, action: completed, repo: "{{.repo}}", workflow: "{{.ci_workflow}}", branch: "{{.ci_branch}}", conclusion: failure}
+    fallback: 5m
     when:
       check: >-
         gh run list --repo {{.repo}} --branch {{.ci_branch}} --workflow {{.ci_workflow}}
@@ -189,8 +193,12 @@ triggers:
   # One release-merge run per green release-please PR (#698): those PRs
   # have no pr-work run, so nothing else merges them. The check prints
   # the lowest such PR number; the key dedups it. The run's open ticket
-  # holds the trigger, so a second release PR waits for the first.
+  # holds the trigger, so a second release PR waits for the first. A
+  # completed check suite fires the check at once (JOB-62).
   release-pr:
+    on:
+      - github: {event: check_suite, action: completed, repo: "{{.repo}}"}
+    fallback: 5m
     when:
       check: >-
         test -n "{{.release_pr_label}}" &&
