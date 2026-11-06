@@ -466,7 +466,14 @@ func (c *Client) PlanUpdate(ctx context.Context, key string, p UpdateParams) (Mu
 			return Mutation{}, err
 		}
 		in[field] = id
-		checks = append(checks, func(g Context) error { return expect("assignee", g.Assignee, name) })
+		// An app with app:assignable that assigns itself becomes the
+		// delegate instead; Linear does that, so either counts.
+		checks = append(checks, func(g Context) error {
+			if strings.EqualFold(g.Delegate, name) {
+				return nil
+			}
+			return expect("assignee", g.Assignee, name)
+		})
 	}
 	if len(p.AddLabels) > 0 {
 		ids, err := t.labelIDs(p.AddLabels)

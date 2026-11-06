@@ -228,6 +228,8 @@ type Controller struct {
 	ghIssueOpen func(context.Context, linear.GitHubDep) (bool, error)
 	// linIntake caches linear_issue_no_run reads between polls (#287).
 	linIntake linearIntake
+	// linSessions throttles the Linear agent-session sweep.
+	linSessions linearSessions
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
 	// tickMu is held for a supervisor pass and taken by reload, so once a
@@ -545,6 +547,7 @@ func (c *Controller) tick() {
 	c.sweepAttentionChats(c.ctx)
 	c.sweepBatches()
 	c.sweepLinearAsks(c.ctx)
+	c.sweepLinearAgentSessions(c.ctx, false)
 	c.pruneInbox()
 	c.pruneWriteKeys()
 	c.pruneArtifacts()

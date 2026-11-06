@@ -80,6 +80,9 @@ type webhookLinear struct {
 	mu     sync.Mutex
 	listed bool
 	ask    *askLinear
+	// sessions are agent session id -> status; answered records replies.
+	sessions map[string]string
+	answered []string
 }
 
 func (f *webhookLinear) serve(t *testing.T) *httptest.Server {
@@ -91,6 +94,31 @@ func (f *webhookLinear) serve(t *testing.T) *httptest.Server {
 		}
 		b, _ := io.ReadAll(r.Body)
 		switch {
+		case bytes.Contains(b, []byte("agentSessions(")):
+			f.mu.Lock()
+			var nodes []any
+			for id, st := range f.sessions {
+				nodes = append(nodes, map[string]any{
+					"id": id, "status": st, "appUser": map[string]any{"id": "app-user"},
+					"issue": map[string]any{"identifier": "ENG-5", "team": map[string]any{"id": "t", "key": "ENG"}},
+				})
+			}
+			f.mu.Unlock()
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"viewer": map[string]any{"id": "app-user"}, "agentSessions": map[string]any{"nodes": nodes}}})
+			return
+		case bytes.Contains(b, []byte("agentActivityCreate")):
+			var req struct {
+				Variables struct {
+					S string `json:"s"`
+				} `json:"variables"`
+			}
+			_ = json.Unmarshal(b, &req)
+			f.mu.Lock()
+			f.sessions[req.Variables.S] = "complete"
+			f.answered = append(f.answered, req.Variables.S)
+			f.mu.Unlock()
+			_, _ = io.WriteString(w, `{"data":{"agentActivityCreate":{"success":true}}}`)
+			return
 		case bytes.Contains(b, []byte("viewer")):
 			_, _ = io.WriteString(w, `{"data":{"viewer":{"id":"app-user","organization":{"id":"org-1"}}}}`)
 			return
@@ -265,4 +293,28 @@ func TestLinearWebhookOff(t *testing.T) {
 	require.NoError(t, c.serveLinearWebhook())
 	c.wg.Wait()
 	assert.Empty(t, fmt.Sprint(c.config().Linear.WebhookListen))
+}
+
+// TestLinearAgentSessionEnded: a delegation opens a Linear agent session.
+// Its webhook gets the session answered (which completes it) at once,
+// without waiting for the poll; a finished session is left alone.
+func TestLinearAgentSessionEnded(t *testing.T) {
+	t.Parallel()
+	c, clk, f := webhookController(t)
+	f.sessions = map[string]string{"s-old": "complete", "s-new": "pending"}
+	c.sweepLinearAgentSessions(t.Context(), false) // takes the poll slot
+	f.mu.Lock()
+	f.answered, f.sessions["s-new2"] = nil, "pending"
+	f.mu.Unlock()
+	c.sweepLinearAgentSessions(t.Context(), false)
+	assert.Empty(t, f.answered, "polling waits for the interval")
+
+	b, err := json.Marshal(map[string]any{
+		"action": "created", "type": ingest.AgentSessionEvent, "organizationId": "org-1",
+		"webhookTimestamp": clk.now().UnixMilli(), "data": map[string]any{"id": "s-new2"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusAccepted, postWebhook(c, b, sign(webhookSecret, b)))
+	assert.Equal(t, []string{"s-new2"}, f.answered)
+	assert.Equal(t, map[string]string{"s-old": "complete", "s-new": "complete", "s-new2": "complete"}, f.sessions)
 }

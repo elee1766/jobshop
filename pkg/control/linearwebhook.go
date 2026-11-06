@@ -117,6 +117,11 @@ func (c *Controller) linearWebhookEvent(ctx context.Context, name string, ev ing
 	if name == "" || !ev.Wanted() {
 		return nil
 	}
+	if ev.Type == ingest.AgentSessionEvent {
+		// Linear shows the app unresponsive after 10s without a reply.
+		c.sweepLinearAgentSessions(ctx, true)
+		return nil
+	}
 	key := ev.IssueKey()
 	team, ok := linear.Team(key)
 	if !ok {
