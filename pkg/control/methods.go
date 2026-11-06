@@ -692,7 +692,7 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 			info.Exit = ex.Reason
 		}
 	}
-	if seq, at := journalTail(dir); seq > 0 {
+	if seq, at := host.JournalTail(dir); seq > 0 {
 		info.Seq, info.SeqTime = seq, &at
 	}
 	if len(held) > 0 {

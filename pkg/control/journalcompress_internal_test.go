@@ -111,7 +111,7 @@ func TestJournalCompressSweep(t *testing.T) {
 	assert.Equal(t, []int64{7, 8, 9, 10}, seqs)
 	assert.NotContains(t, string(out.(rpc.SessionJournalResult).Frames[0].Msg), "sk-supersecret")
 
-	seq, _ := journalTail(c.root.SessionDir(old.ID))
+	seq, _ := host.JournalTail(c.root.SessionDir(old.ID))
 	assert.Equal(t, int64(10), seq)
 
 	subscribe := func(p rpc.SessionSubscribeParams) []int64 {

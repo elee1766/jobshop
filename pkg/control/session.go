@@ -891,6 +891,12 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 		if err == nil {
 			return nc, br, wel, nil
 		}
+		// The host wrote exit.json with spawn_failed and is gone:
+		// retrying until the deadline would only hide why (acphost#100).
+		var se *host.SpawnError
+		if errors.As(err, &se) {
+			return nil, nil, wel, fmt.Errorf("connect to host: %w", err)
+		}
 		if time.Now().After(deadline) || r.ctx.Err() != nil {
 			return nil, nil, wel, fmt.Errorf("connect to host: %w", err)
 		}
