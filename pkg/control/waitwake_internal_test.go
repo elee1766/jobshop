@@ -90,14 +90,35 @@ func TestWaitWebhookResume(t *testing.T) {
 		}
 		return th.Comments[len(th.Comments)-1].Body
 	}
-	require.Eventually(t, func() bool {
+	untilCommit(t, c, func() bool {
 		return waitOf(mustGet(t, c, step.ID)) == nil && strings.Contains(lastComment(), "Wait (CI on PR #5) ended")
-	}, 2*time.Second, 5*time.Millisecond,
-		"the webhook resumes the step within about a second, without a timer")
+	}, "the webhook resumes the step without a timer")
 	assert.Equal(t, start, clk.now(), "fake time did not move")
 	got := mustGet(t, c, step.ID)
 	assert.Equal(t, sess.ID, got.Holder, "resume pre-assigns the parking session")
 	assert.Contains(t, lastComment(), "checks green on aaaa111")
+}
+
+// commitBound fails a commit wait that never comes. It is only reached on
+// failure, so it is generous for a CPU-starved -race run (JOB-84).
+const commitBound = 2 * time.Minute
+
+// untilCommit checks cond after each store commit until it holds. cond
+// runs on the test goroutine, so nothing asserts after the test returns
+// (require.Eventually's condition goroutine could, JOB-84). It needs a
+// controller whose store kicks c.events (subController), with no
+// pumpEvents draining the wake.
+func untilCommit(t *testing.T, c *Controller, cond func() bool, msg string) {
+	t.Helper()
+	bound := time.After(commitBound)
+	for !cond() {
+		select {
+		case <-c.events.wake:
+		case <-bound:
+			require.True(t, cond(), msg)
+			return
+		}
+	}
 }
 
 // TestWaitWakeTargeted (#679): a wake for one PR evaluates only the
