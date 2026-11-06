@@ -21,6 +21,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 
 	"github.com/elee1766/jobshop/pkg/redact"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Prompt _meta keys the controller sets on session/prompt. The shipper
@@ -159,7 +160,7 @@ func (c *Client) http() *http.Client {
 	return defaultHTTP
 }
 
-var defaultHTTP = &http.Client{Timeout: 30 * time.Second}
+var defaultHTTP = telemetry.HTTPClient("journal", 30*time.Second)
 
 func (c *Client) endpoint(path string, q url.Values) string {
 	return strings.TrimRight(c.URL, "/") + path + "?" + q.Encode()

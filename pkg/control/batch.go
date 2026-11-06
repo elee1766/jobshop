@@ -336,13 +336,13 @@ func (c *Controller) runBatchEvent(ctx context.Context, runID string) {
 
 // sweepBatches re-derives every open batch each tick, catching changes
 // made by paths that do not call runBatchEvent.
-func (c *Controller) sweepBatches() {
-	bs, err := c.store.List(c.ctx, store.Filter{Kind: store.KindBatch, Status: store.StatusOpen})
+func (c *Controller) sweepBatches(ctx context.Context) {
+	bs, err := c.store.List(ctx, store.Filter{Kind: store.KindBatch, Status: store.StatusOpen})
 	if err != nil {
 		return
 	}
 	for _, b := range bs {
-		c.deriveBatch(c.ctx, b.ID)
+		c.deriveBatch(ctx, b.ID)
 	}
 }
 

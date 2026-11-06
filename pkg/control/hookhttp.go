@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // hookPost is one url hook call (#348 admission, #188 guardrail): a
@@ -76,7 +77,7 @@ func (p hookPost) do(ctx context.Context, body []byte) ([]byte, error) {
 func (p hookPost) try(ctx context.Context, secret, body []byte) (out []byte, wait time.Duration, retry bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.url, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/hook"), http.MethodPost, p.url, bytes.NewReader(body))
 	if err != nil {
 		return nil, 0, false, err
 	}
@@ -88,7 +89,7 @@ func (p hookPost) try(ctx context.Context, secret, body []byte) (out []byte, wai
 	for k, v := range p.headers {
 		req.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := hookHTTP.Do(req)
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return nil, 0, true, fmt.Errorf("%w after %s", errHookTimeout, p.timeout)

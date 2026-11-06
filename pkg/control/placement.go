@@ -30,8 +30,7 @@ func resolvePlacement(cfg *config.Config, w *config.Workflow, p *config.Placemen
 }
 
 // placeSteps re-places open steps with placement options.
-func (c *Controller) placeSteps() {
-	ctx := c.ctx
+func (c *Controller) placeSteps(ctx context.Context) {
 	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Status: store.StatusOpen, Limit: store.DefaultLimit})
 	if err != nil {
 		return
@@ -51,7 +50,7 @@ func (c *Controller) placeSteps() {
 			}
 		}
 		if err := c.placeStep(ctx, t, sf, free); err != nil {
-			c.log.Warn("placement", "step", t.ID, "err", err)
+			c.log.WarnContext(ctx, "placement", "step", t.ID, "err", err)
 		}
 	}
 }

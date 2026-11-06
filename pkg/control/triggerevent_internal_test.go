@@ -107,7 +107,7 @@ func TestEventTriggerFallback(t *testing.T) {
 
 	fireEvents(c, workflowRun("d1", "master", "failure", "sha1"))
 	require.Len(t, triggerTickets(t, c, "red"), 1, "event fires")
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, triggerTickets(t, c, "red"), 1, "the poll of the same key does not fire again")
 
 	// Close it; a new failure arrives with no event. The poll waits for
@@ -116,10 +116,10 @@ func TestEventTriggerFallback(t *testing.T) {
 	_, err := store.Close(t.Context(), c.store, "admin", red.ID, nil, "done")
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "red"), []byte("sha2\n"), 0o600))
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, triggerTickets(t, c, "red"), 1, "within fallback: no poll")
 	clk.advance(11 * time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, triggerTickets(t, c, "red"), 2, "fallback poll fires without an event")
 }
 
@@ -139,7 +139,7 @@ func TestEventTriggerCommandFails(t *testing.T) {
 	assert.Contains(t, ts[0].Labels, needsHumanLabel)
 	fireEvents(c, push("p2", "s2"))
 	assert.Len(t, triggerTickets(t, c, "broken"), 1, "held while the failure is open")
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, triggerTickets(t, c, "broken"), 1, "no when: never polled")
 }
 

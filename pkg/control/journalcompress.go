@@ -24,7 +24,7 @@ const journalCompressEvery = time.Hour
 // maybeCompressJournals starts a sweep in the background when one is due
 // and none is running: a large journal takes seconds and the tick must
 // not wait on it.
-func (c *Controller) maybeCompressJournals() {
+func (c *Controller) maybeCompressJournals(_ context.Context) {
 	cfg := c.config().Journal.Compress
 	if cfg.AfterDuration() <= 0 {
 		return
@@ -38,10 +38,12 @@ func (c *Controller) maybeCompressJournals() {
 	}
 	c.journalsCompressedAt = now
 	cutoff := now.Add(-cfg.AfterDuration())
+	// The sweep outlives the tick, so it runs on the controller's ctx, not
+	// under the step span.
 	c.wg.Go(func() {
 		defer c.journalCompressing.Store(false)
 		if _, err := c.compressJournals(c.ctx, cutoff, cfg.Level); err != nil && c.ctx.Err() == nil {
-			c.log.Error("journal compress", "err", err)
+			c.log.ErrorContext(c.ctx, "journal compress", "err", err)
 		}
 	})
 }

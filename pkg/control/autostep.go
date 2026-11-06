@@ -62,8 +62,7 @@ type autoSteps struct {
 
 // runAutoSteps starts ready command and http steps, and picks up ones it
 // held when it stopped. Called every tick.
-func (c *Controller) runAutoSteps() {
-	ctx := c.ctx
+func (c *Controller) runAutoSteps(ctx context.Context) {
 	cfg := c.config()
 	// Held by the controller but not running here: a restart cut the
 	// attempt short.
@@ -475,7 +474,7 @@ func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemp
 		res.result, res.err = resultFailed, err.Error()
 		return res
 	}
-	req, err := http.NewRequestWithContext(ctx, s.Method, url, strings.NewReader(body))
+	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/step"), s.Method, url, strings.NewReader(body))
 	if err != nil {
 		res.result, res.err = resultFailed, err.Error()
 		return res
@@ -502,7 +501,7 @@ func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemp
 		secrets = append(secrets, "HEADER_SECRET="+v)
 	}
 	req.Header.Set("Idempotency-Key", attemptKey)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := stepHTTP.Do(req)
 	if err != nil {
 		res.result, res.err = resultFailed, err.Error()
 		if ctx.Err() != nil {

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -22,6 +21,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Activity feed (#255): recent GitHub and Linear activity for every repo
@@ -406,7 +406,9 @@ func (l *liveActivity) githubAuth(ctx context.Context, repo string) (string, str
 	}
 	tok := os.Getenv("GH_TOKEN")
 	if tok == "" {
-		out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
+		cmd, done := telemetry.ExecContext(ctx, "gh-auth-token", "gh", "auth", "token")
+		out, err := cmd.Output()
+		done(err)
 		if err != nil {
 			return "", "", fmt.Errorf("no identity covers %s and gh auth token failed: %w", repo, err)
 		}
@@ -418,7 +420,7 @@ func (l *liveActivity) githubAuth(ctx context.Context, repo string) (string, str
 
 // get fetches url with If-None-Match. A 304 returns nil body, no error.
 func (l *liveActivity) get(ctx context.Context, u, tok, etag string) ([]byte, http.Header, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}/activity"), http.MethodGet, u, nil)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -429,7 +431,7 @@ func (l *liveActivity) get(ctx context.Context, u, tok, etag string) ([]byte, ht
 	}
 	hc := l.http
 	if hc == nil {
-		hc = &http.Client{Timeout: time.Minute}
+		hc = telemetry.HTTPClient("github", time.Minute)
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

@@ -156,11 +156,11 @@ func (c *Controller) linearWebhookEvent(ctx context.Context, name string, ev ing
 	case "Issue":
 		c.linearIntakeInvalidate(is.Team.Key)
 		// Same pass the tick runs, so the stall fires now.
-		c.tickMu.Lock()
+		unlock := c.lockTick(ctx, "webhook")
 		if !c.draining() {
-			c.runTriggers()
+			c.step(ctx, "run_triggers", c.runTriggers)
 		}
-		c.tickMu.Unlock()
+		unlock()
 	case "Comment":
 		c.pollSubscriptionThread(ctx, thread{Linear: is.Identifier})
 	}

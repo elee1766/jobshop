@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Poller reads GitHub repos that send no webhook and writes inbox rows
@@ -334,7 +335,7 @@ func (g ghGet) list(ctx context.Context, u, etag string, out any) (string, error
 	var all []json.RawMessage
 	first := ""
 	for page := 0; u != "" && page < limit; page++ {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}/poll"), http.MethodGet, u, nil)
 		if err != nil {
 			return "", err
 		}
@@ -346,7 +347,7 @@ func (g ghGet) list(ctx context.Context, u, etag string, out any) (string, error
 		}
 		hc := g.http
 		if hc == nil {
-			hc = &http.Client{Timeout: time.Minute}
+			hc = telemetry.HTTPClient("github", time.Minute)
 		}
 		resp, err := hc.Do(req)
 		if err != nil {

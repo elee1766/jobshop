@@ -15,6 +15,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // linearIntakePages bounds one Linear read (250 issues a page).
@@ -193,13 +194,13 @@ func (c *Controller) githubIssueOpen(ctx context.Context, d linear.GitHubDep) (b
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, fmt.Sprintf("%s/repos/%s/issues/%d", base, d.Repo, d.Number), nil)
+	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}/issues/{n}"), http.MethodGet, fmt.Sprintf("%s/repos/%s/issues/%d", base, d.Repo, d.Number), nil)
 	if err != nil {
 		return false, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+tok)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := githubHTTP.Do(req)
 	if err != nil {
 		return false, err
 	}

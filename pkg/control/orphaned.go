@@ -86,12 +86,11 @@ func (c *Controller) staleAttention(ctx context.Context) ([]rpc.AttentionItem, e
 // reportOrphans runs each tick and after a reload. It warns once per
 // ticket and reason, so a stuck ticket does not log every tick, and sets
 // the jobshop.tickets.orphaned gauge.
-func (c *Controller) reportOrphans() {
-	ctx := c.ctx
+func (c *Controller) reportOrphans(ctx context.Context) {
 	ts, err := c.orphaned(ctx, "", 0)
 	if err != nil {
 		if ctx.Err() == nil {
-			c.log.Error("orphaned tickets", "err", err)
+			c.log.ErrorContext(ctx, "orphaned tickets", "err", err)
 		}
 		return
 	}
@@ -103,7 +102,7 @@ func (c *Controller) reportOrphans() {
 		counts[r]++
 		seen[t.ID] = r
 		if c.orphanWarned[t.ID] != r {
-			c.log.Warn("ticket has no claimable pool", "ticket", t.ID, "project", t.Project,
+			c.log.WarnContext(ctx, "ticket has no claimable pool", "ticket", t.ID, "project", t.Project,
 				"pool", t.Pool, "reason", r)
 		}
 	}

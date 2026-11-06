@@ -16,6 +16,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Event triggers (JOB-62, docs/notes/JOB-62-event-triggers.md). A
@@ -232,8 +233,7 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 		return
 	}
 	c.wg.Go(func() {
-		c.tickMu.Lock()
-		defer c.tickMu.Unlock()
+		defer c.lockTick(c.ctx, "event")()
 		if c.draining() {
 			return
 		}
@@ -383,9 +383,10 @@ const triggerOutputMax = 8 << 10
 func (c *Controller) runTriggerCommand(ctx context.Context, script string, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", script)
+	cmd, done := telemetry.ExecContext(ctx, "trigger-command", "sh", "-c", script)
 	cmd.Dir = c.root.Dir
 	b, err := cmd.CombinedOutput()
+	done(err)
 	out := strings.TrimSpace(string(b))
 	if len(out) > triggerOutputMax {
 		out = "..." + out[len(out)-triggerOutputMax:]

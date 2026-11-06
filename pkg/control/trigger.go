@@ -12,11 +12,14 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/cron"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // triggerPack is the meta pack on tickets a trigger created:
@@ -35,31 +38,49 @@ type triggerState struct {
 }
 
 // runTriggers fires every trigger whose conditions hold. Called each tick.
-func (c *Controller) runTriggers() {
+func (c *Controller) runTriggers(ctx context.Context) {
 	for _, name := range slices.Sorted(maps.Keys(c.config().Triggers)) {
 		tr := c.config().Triggers[name]
 		if !c.triggerPollDue(name, tr) {
 			continue
 		}
-		if len(tr.When.Stall) > 0 {
-			c.runStallTrigger(c.ctx, name, tr, nil)
-			continue
-		}
-		st, err := c.evalTrigger(c.ctx, name, tr)
-		if err != nil {
-			c.log.Error("trigger", "trigger", name, "err", err)
-			continue
-		}
-		if !st.holds {
-			continue
-		}
-		t, err := c.fireTrigger(c.ctx, name, tr, st.key)
-		if err != nil {
-			c.log.Error("trigger fire", "trigger", name, "err", err)
-			continue
-		}
-		c.log.Info("trigger fired", "trigger", name, "ticket", t.ID)
+		c.runTrigger(ctx, name, tr)
 	}
+}
+
+// runTrigger evaluates one trigger that is due, under a span naming it and
+// the result: fired, held (conditions do not hold), stall or error
+// (JOB-105).
+func (c *Controller) runTrigger(ctx context.Context, name string, tr config.Trigger) {
+	ctx, span := telemetry.StartSpan(ctx, "trigger "+name, attribute.String("jobshop.trigger", name))
+	result := "held"
+	var runErr error
+	defer func() {
+		span.SetAttributes(attribute.String("jobshop.trigger.result", result))
+		telemetry.End(span, runErr)
+	}()
+	if len(tr.When.Stall) > 0 {
+		c.runStallTrigger(ctx, name, tr, nil)
+		result = "stall"
+		return
+	}
+	st, err := c.evalTrigger(ctx, name, tr)
+	if err != nil {
+		result, runErr = "error", err
+		c.log.ErrorContext(ctx, "trigger", "trigger", name, "err", err)
+		return
+	}
+	if !st.holds {
+		return
+	}
+	t, err := c.fireTrigger(ctx, name, tr, st.key)
+	if err != nil {
+		result, runErr = "error", err
+		c.log.ErrorContext(ctx, "trigger fire", "trigger", name, "err", err)
+		return
+	}
+	result = "fired"
+	c.log.InfoContext(ctx, "trigger fired", "trigger", name, "ticket", t.ID)
 }
 
 // evalTrigger checks dedup, cooldown, cron and counts, in that order.
@@ -293,7 +314,7 @@ func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, w
 	// proc.Start for the process-group kill (#810).
 	var stdout bytes.Buffer
 	var stderr strings.Builder
-	ex, err := c.runIsolated(ctx, isolatedCmd{argv: shArgv(w.Check), dir: c.root.Dir, stdout: &stdout, stderr: &stderr})
+	ex, err := c.runIsolated(ctx, isolatedCmd{argv: shArgv(w.Check), dir: c.root.Dir, stdout: &stdout, stderr: &stderr, name: "trigger-check"})
 	if ctx.Err() != nil {
 		return "", "", fmt.Errorf("check: %w", ctx.Err())
 	}

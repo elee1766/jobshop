@@ -61,7 +61,7 @@ func TestStallKeyPrefix(t *testing.T) {
 		}
 	}
 
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	rs := triggerTickets(t, c, "intake")
 	require.Len(t, rs, 1)
 	assert.Equal(t, []string{"review:review_requested:5@abc"}, stallRunKeys(t, c, "intake"))
@@ -70,7 +70,7 @@ func TestStallKeyPrefix(t *testing.T) {
 	assert.Equal(t, "review_requested:5@abc", metaString(rs[0].Meta, triggerPack, stallMetaKey))
 	assert.True(t, isStallRun(rs[0]), "a prefixed run is a stall run")
 
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, triggerTickets(t, c, "intake"), 1, "open run holds the key")
 
 	closeRun := func(run store.Ticket) {
@@ -82,16 +82,16 @@ func TestStallKeyPrefix(t *testing.T) {
 		c.completeRun(ctx, run.ID)
 	}
 	closeRun(rs[0])
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, triggerTickets(t, c, "intake"), 1, "cooldown")
 	clk.advance(11 * time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	rs, err = c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: "intake", Order: store.OrderNewest})
 	require.NoError(t, err)
 	require.Len(t, rs, 2, "past the cooldown")
 	closeRun(rs[0])
 	clk.advance(11 * time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, triggerTickets(t, c, "intake"), 2, "max_runs 2")
 }
 
@@ -105,7 +105,7 @@ func TestStallKeyPrefixHold(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reviews"), []byte("5@abc\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plain"), []byte("5@abc\n9@fed\n"), 0o600))
 
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Equal(t, []string{"review:review_requested:5@abc"}, stallRunKeys(t, c, "intake"))
 	assert.Equal(t, []string{"stall:review_requested:9@fed"}, stallRunKeys(t, c, "plain"),
 		"5@abc is held by intake's open run under another prefix")
@@ -124,6 +124,6 @@ func TestStallKeyPrefixHold(t *testing.T) {
 		map[string]any{triggerPack: map[string]string{"name": "gone", "key": "gone/stall:review_requested:7@old"}})
 	require.NoError(t, err)
 	require.True(t, isStallRun(old.(rpc.RunResult).Run))
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Equal(t, []string{"review:review_requested:5@abc"}, stallRunKeys(t, c, "intake"), "the old run holds 7@old")
 }

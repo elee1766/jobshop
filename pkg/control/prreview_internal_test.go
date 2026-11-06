@@ -82,7 +82,7 @@ func TestPRReview(t *testing.T) {
 		return out
 	}
 	for range 3 {
-		c.runTriggers()
+		c.runTriggers(t.Context())
 	}
 	got := runs("pr-review")
 	assert.Len(t, got, 2, "one run per PR over repeated ticks")

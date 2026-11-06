@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os/exec"
 	"path"
 	"slices"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Waits (#381). A task or step with fields.wait is out of the ready
@@ -763,13 +763,23 @@ func short(sha string) string {
 // ghWaitSource reads PRs with the gh CLI, like ghSource.
 type ghWaitSource struct{}
 
+// ghCmdName names a gh call for its exec span: the subcommand only ("api",
+// "pr"), never the paths or flags after it.
+func ghCmdName(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
 func ghRun(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", args...)
+	cmd, done := telemetry.ExecContext(ctx, "gh-"+ghCmdName(args), "gh", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	b, err := cmd.Output()
+	done(err)
 	if err != nil {
 		return b, fmt.Errorf("gh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}

@@ -71,6 +71,14 @@ type Metrics struct {
 	CgroupMemory   metric.Int64Gauge
 	CgroupCPU      metric.Int64Gauge
 	CgroupOOMKills metric.Int64Gauge
+	// TickStep is the duration of each supervisor tick step, so a slow
+	// step shows on a dashboard without opening a trace (JOB-105).
+	TickStep metric.Float64Histogram
+	// Outbound is the time to response headers of each outbound HTTP call,
+	// by kind (linear, github, hook, ...) and target host.
+	Outbound metric.Float64Histogram
+	// LockWait is time spent waiting for the tick lock, by waiter.
+	LockWait metric.Float64Histogram
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -84,7 +92,7 @@ func NewMetrics() (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [26]error
+	var errs [29]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -132,6 +140,12 @@ func NewMetrics() (*Metrics, error) {
 		metric.WithDescription("Failed journal ship batches, by pool; the batch is retried."))
 	m.JournalLag, errs[25] = meter.Float64Gauge("jobshop.journal.ship.lag", metric.WithUnit("s"),
 		metric.WithDescription("Age of the oldest unshipped journal frame, by pool; 0 when caught up."))
+	m.TickStep, errs[26] = meter.Float64Histogram("jobshop.tick.step.duration", metric.WithUnit("s"),
+		metric.WithDescription("Supervisor tick step duration by step (JOB-105)."))
+	m.Outbound, errs[27] = meter.Float64Histogram("jobshop.outbound.duration", metric.WithUnit("s"),
+		metric.WithDescription("Outbound HTTP call time to response headers by kind and target host (JOB-105)."))
+	m.LockWait, errs[28] = meter.Float64Histogram("jobshop.lock.wait", metric.WithUnit("s"),
+		metric.WithDescription("Time waiting for the tick lock by lock and waiter (JOB-105)."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err

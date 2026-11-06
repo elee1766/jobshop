@@ -85,7 +85,7 @@ func TestJournalCompressSweep(t *testing.T) {
 	clk.advance(2 * time.Hour)
 
 	c.journalsCompressedAt = time.Time{}
-	c.maybeCompressJournals()
+	c.maybeCompressJournals(t.Context())
 	c.wg.Wait()
 	assert.False(t, c.journalCompressing.Load())
 
@@ -98,7 +98,7 @@ func TestJournalCompressSweep(t *testing.T) {
 
 	// The hour has not passed: no second sweep.
 	before := c.journalsCompressedAt
-	c.maybeCompressJournals()
+	c.maybeCompressJournals(t.Context())
 	assert.Equal(t, before, c.journalsCompressedAt)
 
 	admin := scope{admin: true, actor: "admin"}
@@ -153,7 +153,7 @@ func TestJournalCompressOff(t *testing.T) {
 	_, err := store.Close(t.Context(), c.store, "controller", s.ID, nil, "done")
 	require.NoError(t, err)
 	clk.advance(1000 * time.Hour)
-	c.maybeCompressJournals()
+	c.maybeCompressJournals(t.Context())
 	c.wg.Wait()
 	_, err = os.Stat(filepath.Join(c.root.SessionDir(s.ID), host.JournalFile))
 	require.NoError(t, err)

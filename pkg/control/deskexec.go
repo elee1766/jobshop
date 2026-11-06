@@ -64,7 +64,7 @@ func (c *Controller) runDeskCommand(ctx context.Context, dc config.DeskCommand, 
 	// through proc.Start for the process-group kill (#810).
 	var stdout bytes.Buffer
 	var stderr strings.Builder
-	ex, err := c.runIsolated(ctx, isolatedCmd{argv: shArgv(dc.Command), dir: c.root.Dir, stdin: bytes.NewReader(in), stdout: &stdout, stderr: &stderr})
+	ex, err := c.runIsolated(ctx, isolatedCmd{argv: shArgv(dc.Command), dir: c.root.Dir, stdin: bytes.NewReader(in), stdout: &stdout, stderr: &stderr, name: "desk-exec"})
 	if ctx.Err() != nil {
 		return rpc.DeskExecResult{}, -1, fmt.Errorf("desk command timed out after %s", config.Duration(dc.Timeout, 30*time.Second))
 	}

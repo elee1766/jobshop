@@ -201,7 +201,7 @@ func TestLearnStall(t *testing.T) {
 	t.Parallel()
 	c, _, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	ls := learnings(t, c, store.LearningFilter{Kind: store.LearningFailure})
 	require.Len(t, ls, 1)
 	assert.Contains(t, ls[0].Summary, "stall issue_no_run on issue-7: no run")

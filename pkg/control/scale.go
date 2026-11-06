@@ -203,8 +203,7 @@ type poolScaleView struct {
 
 // reconcile is the desired-state loop: per ticket pool, compute desired,
 // cordon or uncordon, then start sessions within the brakes and host cap.
-func (c *Controller) reconcile() {
-	ctx := c.ctx
+func (c *Controller) reconcile(ctx context.Context) {
 	cfg := c.config()
 	now := c.now()
 	backingOff := c.backingOffPools()
@@ -242,14 +241,14 @@ func (c *Controller) reconcile() {
 		plan := planPool(desired, sessions)
 		for _, id := range plan.Cordon {
 			if err := c.setCordon(ctx, "controller", id, &store.Cordon{Reason: store.CordonScale, By: "controller", At: now}); err != nil {
-				c.log.Warn("scale: cordon", "session", id, "err", err)
+				c.log.WarnContext(ctx, "scale: cordon", "session", id, "err", err)
 				continue
 			}
 			c.scaleEvent(ctx, name, "cordon", id, desired)
 		}
 		for _, id := range plan.Uncordon {
 			if err := c.setCordon(ctx, "controller", id, nil); err != nil {
-				c.log.Warn("scale: uncordon", "session", id, "err", err)
+				c.log.WarnContext(ctx, "scale: uncordon", "session", id, "err", err)
 				continue
 			}
 			c.scaleEvent(ctx, name, "uncordon", id, desired)
@@ -272,7 +271,7 @@ func (c *Controller) reconcile() {
 		p := cfg.Pools[name]
 		for range grants[name] {
 			if _, err := c.newSession(ctx, "controller", p.Project, name, p.Agent, "", "", ""); err != nil {
-				c.log.Error("start session", "pool", name, "err", err)
+				c.log.ErrorContext(ctx, "start session", "pool", name, "err", err)
 				break
 			}
 			c.scaleEvent(ctx, name, "up", "", c.poolScale(name).desired)

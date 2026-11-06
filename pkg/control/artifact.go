@@ -380,21 +380,21 @@ const artifactPruneEvery = time.Hour
 
 // pruneArtifacts deletes attachments of artifacts acked longer than
 // artifacts.retention ago and marks their files pruned. The ticket stays.
-func (c *Controller) pruneArtifacts() {
+func (c *Controller) pruneArtifacts(ctx context.Context) {
 	now := c.now()
 	if now.Sub(c.artifactsPrunedAt) < artifactPruneEvery {
 		return
 	}
 	c.artifactsPrunedAt = now
-	n, err := c.pruneArtifactsBefore(c.ctx, now.Add(-c.config().Artifacts.RetentionDuration()))
+	n, err := c.pruneArtifactsBefore(ctx, now.Add(-c.config().Artifacts.RetentionDuration()))
 	if err != nil {
-		if c.ctx.Err() == nil {
-			c.log.Error("artifact prune", "err", err)
+		if ctx.Err() == nil {
+			c.log.ErrorContext(ctx, "artifact prune", "err", err)
 		}
 		return
 	}
 	if n > 0 {
-		c.log.Info("artifacts pruned", "artifacts", n)
+		c.log.InfoContext(ctx, "artifacts pruned", "artifacts", n)
 	}
 }
 

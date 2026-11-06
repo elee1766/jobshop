@@ -124,8 +124,8 @@ func TestLinearEndToEnd(t *testing.T) {
 
 	// 1. Intake: ENG-5 is in Todo with no run, so the stall fires once.
 	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-5"}, stallKeys(t, c))
-	c.runTriggers()
-	c.runTriggers()
+	c.runTriggers(t.Context())
+	c.runTriggers(t.Context())
 	checks, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
 	require.NoError(t, err)
 	require.Len(t, checks, 1, "one stall-check run")

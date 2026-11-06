@@ -19,6 +19,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Decisions (#603, docs/notes/603-decision-resolve.md). A planner
@@ -374,7 +375,7 @@ func (c *Controller) githubWrite(ctx context.Context, repo, method, path string,
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, method, base+path, rd)
+	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}"), method, base+path, rd)
 	if err != nil {
 		return err
 	}
@@ -383,7 +384,7 @@ func (c *Controller) githubWrite(ctx context.Context, repo, method, path string,
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := githubHTTP.Do(req)
 	if err != nil {
 		return err
 	}

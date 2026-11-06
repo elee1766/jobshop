@@ -46,8 +46,7 @@ func (c *Controller) saveEnded(ctx context.Context, id string) {
 // scanSessions is the supervisor pass's walk of the session directories:
 // it keeps the ids with a live host and no open session ticket, and
 // fills Ended on closed sessions that ended before it was recorded.
-func (c *Controller) scanSessions() {
-	ctx := c.ctx
+func (c *Controller) scanSessions(ctx context.Context) {
 	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Statuses: []store.Status{store.StatusOpen, store.StatusInProgress}, Limit: math.MaxInt32})
 	if err != nil {
 		return

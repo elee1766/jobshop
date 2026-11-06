@@ -216,12 +216,12 @@ func TestLinearWebhookIssue(t *testing.T) {
 	t.Parallel()
 	c, clk, f := webhookController(t)
 	// First read is cached for the 1h poll: ENG-5 does not exist yet.
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	require.Equal(t, 0, runCount(t, c))
 	f.mu.Lock()
 	f.listed = true
 	f.mu.Unlock()
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	require.Equal(t, 0, runCount(t, c), "cached read: polling alone waits for the interval")
 
 	now := clk.now()
