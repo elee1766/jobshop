@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.20](https://github.com/elee1766/jobshop/compare/v0.6.19...v0.6.20) (2026-11-06)
+
+
+### Features
+
+* **telemetry:** child spans for tick steps, outbound http, subprocesses, store and reload ([#914](https://github.com/elee1766/jobshop/issues/914)) ([4657df2](https://github.com/elee1766/jobshop/commit/4657df2f62c7162b93d36f6df310b27790470d19))
+
 ## [0.6.19](https://github.com/elee1766/jobshop/compare/v0.6.18...v0.6.19) (2026-11-06)
 
 
