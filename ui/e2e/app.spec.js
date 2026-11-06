@@ -25,7 +25,7 @@ async function mock(page, o) {
     await page.route('**/plugins/' + x.manifest.name + '/*', (route) => {
       const file = new URL(route.request().url()).pathname.split('/').pop() ?? '';
       if (!(file in x.files)) return route.fulfill({ status: 404, body: 'not found' });
-      return route.fulfill({ contentType: 'text/javascript', body: x.files[file] });
+      return route.fulfill({ contentType: file.endsWith('.css') ? 'text/css' : 'text/javascript', body: x.files[file] });
     });
   }
   list.sort((a, b) => a.name.localeCompare(b.name));
@@ -47,7 +47,7 @@ const miniApp = {
 };
 
 test('the built-in desk app draws the frame and badges attention', async ({ page }) => {
-  await mock(page, { builtins: ['attention', 'desk', 'work'], attention: 2 });
+  await mock(page, { builtins: ['attention', 'desk', 'nav', 'work'], attention: 2 });
   await page.goto('./?view=work');
   await expect(page.getByTestId('desk-app')).toBeVisible();
   await expect(page.getByTestId('runs')).toBeVisible();

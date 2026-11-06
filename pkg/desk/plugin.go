@@ -41,10 +41,28 @@ type Contribution struct {
 	// ID and Title name a view (nav entry, ?view=<id>).
 	ID    string `json:"id,omitempty"`
 	Title string `json:"title,omitempty"`
+	// Icon, Key and Order tell a nav how to list a view (JOB-86): an icon
+	// name the nav knows, the letter after "g" that jumps to it, and its
+	// position (1 and up, lower first; unset lists last).
+	Icon  string `json:"icon,omitempty"`
+	Key   string `json:"key,omitempty"`
+	Order int    `json:"order,omitempty"`
+	// Placement says where the built-in app docks a nav (JOB-86).
+	Placement *Placement `json:"placement,omitempty"`
 	// Match selects targets: kind, label, workflow, pool for drawer and
 	// action; type (MIME) and ext for artifact.
 	Match map[string][]string `json:"match,omitempty"`
 }
+
+// Placement is where the app docks a nav contribution: Wide above the
+// app's breakpoint, Narrow below it. Each is left, right, top, bottom or
+// none (the nav positions itself); unset means left and bottom.
+type Placement struct {
+	Wide   string `json:"wide,omitempty"`
+	Narrow string `json:"narrow,omitempty"`
+}
+
+var placements = []string{"left", "right", "top", "bottom", "none"}
 
 // Plugin is a resolved plugin as GET /api/plugins lists it.
 type Plugin struct {
@@ -66,7 +84,7 @@ type Plugin struct {
 // built-in desk plugin unless another plugin contributes app. Any other
 // slot is plugin-defined (JOB-87): <plugin>:<name>, hosted by the plugin
 // named before the colon through api.slot.
-var PluginSlots = []string{"view", "drawer", "artifact", "action", "header", "session", "app"}
+var PluginSlots = []string{"view", "drawer", "artifact", "action", "header", "session", "app", "nav"}
 
 var (
 	pluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
@@ -75,7 +93,13 @@ var (
 	// Custom element names need a hyphen.
 	elementRe = regexp.MustCompile(`^[a-z][a-z0-9]*-[a-z0-9-]*$`)
 	viewIDRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	// Icon names are lucide's: lowercase words joined by hyphens.
+	iconRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,40}$`)
+	keyRe  = regexp.MustCompile(`^[a-z0-9]$`)
 )
+
+// maxOrder bounds Contribution.Order so a typo cannot overflow a sort.
+const maxOrder = 10000
 
 func (m PluginManifest) validate() error {
 	if !pluginNameRe.MatchString(m.Name) {
@@ -93,6 +117,46 @@ func (m PluginManifest) validate() error {
 		}
 		if c.Slot == "view" && !viewIDRe.MatchString(c.ID) {
 			return fmt.Errorf("contributes[%d]: view id %q: want lowercase letters, digits and hyphens", i, c.ID)
+		}
+		if err := c.validateNav(); err != nil {
+			return fmt.Errorf("contributes[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+// validateNav checks the fields a nav reads: icon, key and order on a
+// view, placement on a nav. On another slot they are an error, so a
+// wrong slot name does not silently drop them.
+func (c Contribution) validateNav() error {
+	if c.Slot != "view" {
+		switch {
+		case c.Icon != "":
+			return fmt.Errorf("icon is only for slot view, not %q", c.Slot)
+		case c.Key != "":
+			return fmt.Errorf("key is only for slot view, not %q", c.Slot)
+		case c.Order != 0:
+			return fmt.Errorf("order is only for slot view, not %q", c.Slot)
+		}
+	}
+	if c.Icon != "" && !iconRe.MatchString(c.Icon) {
+		return fmt.Errorf("icon %q: want lowercase letters, digits and hyphens", c.Icon)
+	}
+	if c.Key != "" && !keyRe.MatchString(c.Key) {
+		return fmt.Errorf("key %q: want one lowercase letter or digit", c.Key)
+	}
+	if c.Order < 0 || c.Order > maxOrder {
+		return fmt.Errorf("order %d: want 0 to %d", c.Order, maxOrder)
+	}
+	if c.Placement == nil {
+		return nil
+	}
+	if c.Slot != "nav" {
+		return fmt.Errorf("placement is only for slot nav, not %q", c.Slot)
+	}
+	for _, p := range []struct{ name, v string }{{"wide", c.Placement.Wide}, {"narrow", c.Placement.Narrow}} {
+		if p.v != "" && !slices.Contains(placements, p.v) {
+			return fmt.Errorf("placement.%s %q: want one of %s", p.name, p.v, strings.Join(placements, ", "))
 		}
 	}
 	return nil

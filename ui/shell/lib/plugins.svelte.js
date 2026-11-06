@@ -15,11 +15,12 @@ import { push, pushStatus, enablePush, disablePush, testPush } from './push.svel
  * 4 (JOB-87): slot, plugin-defined slots named <plugin>:<name>.
  * 5 (JOB-85): the app slot; contributions, badge, badges, live, theme;
  *   has, mount and slot pick a contribution by plugin, element or id.
+ * 6 (JOB-86): the nav slot; views(); view icon, key and order.
  */
-export const API_VERSION = 5;
+export const API_VERSION = 6;
 
 /**
- * @typedef {{ slot: string, element: string, id?: string, title?: string, match?: Record<string, string[]> }} Contribution
+ * @typedef {{ slot: string, element: string, id?: string, title?: string, icon?: string, key?: string, order?: number, placement?: { wide?: string, narrow?: string }, match?: Record<string, string[]> }} Contribution
  * @typedef {{ name: string, version?: string, entry: string, api?: string, contributes: Contribution[], source: string, url: string, config?: any, overrides?: string }} PluginInfo
  */
 
@@ -118,6 +119,15 @@ export const deskApi = Object.freeze({
    */
   has(slot, target) { return !!firstFor(slot, target); },
   /**
+   * Every view, one per id, in nav order (JOB-86): what a nav lists.
+   * Read from the manifests the shell already fetched, so it does not
+   * depend on which plugin loaded first. The first view with an id wins,
+   * as for the page (plugin name order). order sorts first (1 and up,
+   * unset last), then plugin order.
+   * @returns {{ id: string, title: string, icon: string, key: string, order: number, plugin: string }[]}
+   */
+  views() { return views(); },
+  /**
    * Every enabled contribution to slot that target selects, in plugin
    * name order (JOB-85): what an app reads to build its nav, header and
    * drawer. Copies; the list is fixed once the page has loaded.
@@ -214,6 +224,23 @@ export const deskApi = Object.freeze({
   get theme() { return getTheme(); },
   set theme(v) { setTheme(v); },
 });
+
+/** @see deskApi.views */
+function views() {
+  /** @type {Map<string, { id: string, title: string, icon: string, key: string, order: number, plugin: string, i: number }>} */
+  const byId = new Map();
+  let i = 0;
+  for (const { plugin, c } of contributions('view')) {
+    if (!c.id) continue;
+    // The page mounts the first contribution with an id, so the first wins here too.
+    if (byId.has(c.id)) continue;
+    byId.set(c.id, { id: c.id, title: c.title || c.id, icon: c.icon ?? '', key: c.key ?? '', order: c.order || 0, plugin: plugin.name, i: i++ });
+  }
+  const rank = (/** @type {number} */ o) => (o > 0 ? o : Number.MAX_SAFE_INTEGER);
+  return [...byId.values()]
+    .sort((a, b) => (rank(a.order) < rank(b.order) ? -1 : rank(a.order) > rank(b.order) ? 1 : a.i - b.i))
+    .map(({ i: _, ...v }) => v);
+}
 
 /**
  * Whether target selects a contribution (api 5). plugin, element and id

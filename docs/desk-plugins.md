@@ -48,13 +48,14 @@ or plain classes as in the example.
 
 | slot | where | `context` | `match` keys |
 | --- | --- | --- | --- |
-| `view` | a nav entry, `?view=<id>` | `{}` | none; `id` and `title` name the entry |
+| `view` | a nav entry, `?view=<id>` | `{}` | none; `id` and `title` name the entry, `icon`, `key` and `order` say how a nav lists it |
 | `drawer` | a section in the ticket or run drawer | `{ticket, run?}` | `kind`, `label`, `workflow`, `pool` |
 | `action` | a button row in the drawer | `{ticket, run?}` | as drawer |
 | `artifact` | an attachment renderer | `{artifact, file}` with `file.url` | `type` (MIME, `text/*` globs), `ext` |
 | `header` | a widget in the nav bar | `{}` | none |
 | `session` | the session console body (#535): one tab of the built-in app's bottom console on desktop, full screen on a phone; the app owns the frame and tabs, the last one wins | `{session, item, readonly}`, `item` the attention `kind:id` it resolves, or empty | none |
 | `app` | the whole page (JOB-85); the shell mounts one, the last by plugin name, below | `{}` | none |
+| `nav` | the built-in app's navigation (JOB-86); one, the last by plugin name, docked by `placement`, below | `{dock, narrow}` | none |
 | `<plugin>:<name>` | a place a plugin's own page offers, below | per slot | any; checked against the `target` the host passes |
 
 `match` lists accepted values per key; every key listed must accept one
@@ -114,6 +115,49 @@ visible viewport for a full-height page above a phone keyboard. Declare
 error card in place of the page; with no `app` at all the shell says
 so. [`examples/desk-plugins/mini-app`](../examples/desk-plugins/mini-app)
 is a top-bar app in plain JS that hosts the built-in views.
+
+### Replacing the nav
+
+The links, signed-in user, live dot, theme toggle, `header` widgets and
+`g` then a letter keys are the built-in `nav` plugin (JOB-86). The
+built-in `desk` app mounts one `nav` contribution, the last by plugin
+name, and arranges the page around it. A nav declares where it goes:
+
+```json
+{ "slot": "nav", "element": "my-nav", "placement": { "wide": "top", "narrow": "bottom" } }
+```
+
+`wide` is used above the app's 768px breakpoint, `narrow` below it. Each
+is `left`, `right`, `top`, `bottom` or `none`; the default is
+`{wide: left, narrow: bottom}`, today's sidebar and phone tab bar. The app
+sets the element's `context` to `{dock, narrow}` and the nav renders
+inside the box it is given: a side nav is as wide as its content, a top
+or bottom bar spans the page. A top bar, and a bottom bar on a wide page,
+is a container named `nav`, so style it with `@container nav (max-width:
+...)` to adapt to the room it has, not to the window. `none` gives the nav
+no box: it positions itself (a floating menu, a command palette) and the
+page fills the screen. With no nav enabled
+(`desk.plugins.nav.enabled: false`) the page fills the screen too. The
+app draws the brand beside a left or right nav and as the top bar over a
+phone's bottom nav, and with `none`, `top` or no nav it draws none.
+
+A nav lists `api.views()` (below), not the contributions it finds on its
+own, and a view declares how it is listed:
+
+```json
+{ "slot": "view", "element": "my-view", "id": "my", "title": "My", "icon": "rocket", "key": "m", "order": 7 }
+```
+
+`icon` is a lucide icon name (the built-in nav knows about twenty, listed
+in `ui/plugins/nav/icons.js`; any other shows a puzzle piece), `key` the
+letter after `g`, `order` a position from 1 (unset views follow, in plugin
+name order). The built-in views use orders 1 to 6. Desk checks `placement`,
+`icon`, `key` and `order` when it reads `plugin.json` and skips a plugin
+with a bad value, like any other manifest error. They are errors on the
+wrong slot too: `icon`, `key` and `order` only belong to `view`,
+`placement` only to `nav`.
+[`examples/desk-plugins/top-nav`](../examples/desk-plugins/top-nav) is a
+top bar in plain JS with a container query.
 
 ## The api
 
@@ -198,6 +242,14 @@ and any plugin:
 
 `badges` and `live` call `fn` at once and on each change, and return
 an unsubscribe function.
+
+Added in api version 6 (JOB-86; declare `"api": ">=6"`):
+
+- `views()`: every view, one per id, as `{id, title, icon, key, order,
+  plugin}` in nav order (`order` first, then plugin name order). It is
+  read from the manifests Desk already fetched, so it does not depend on
+  which plugin loaded first. The first view with an id wins, the one the
+  page mounts.
 
 Example: create a ticket with meta, then follow it.
 
@@ -287,7 +339,8 @@ scope; the `api` shape stays compatible with them.
   may use; a refused call rejects with `forbidden`.
 - `ui/e2e/plugins/e2e-test` is a fuller plain-JS plugin used by the
   Playwright tests; `ui/e2e/plugins/e2e-slots` adds to Work and Chat
-  through their slots; `e2e/app.spec.js` runs `mini-app` as the app.
+  through their slots; `e2e/app.spec.js` runs `mini-app` as the app and
+  `e2e/nav.spec.js` runs `top-nav` as the nav.
 
 ## Try the example
 
