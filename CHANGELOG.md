@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/elee1766/jobshop/compare/v0.6.2...v0.6.3) (2026-11-06)
+
+
+### Features
+
+* **config:** sandbox and isolation profiles by name or label (JOB-83) ([#862](https://github.com/elee1766/jobshop/issues/862)) ([24e0fe9](https://github.com/elee1766/jobshop/commit/24e0fe93ee2312c1cb6a9e6bea56dc46f0621002))
+
 ## [0.6.2](https://github.com/elee1766/jobshop/compare/v0.6.1...v0.6.2) (2026-11-06)
 
 
