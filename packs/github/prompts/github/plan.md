@@ -68,6 +68,8 @@ Each planning ticket:
    `jobshop linear label <KEY> add <one of {{.linear_skip_labels}}>`.
    Start an eligible one with
    `jobshop run start {{.pack_prefix}}pr-work-linear --var issue=<KEY> --key linear-<KEY>`.
+   Run start repeats the gate and refuses an ineligible issue with its
+   reason (exit 1); do not add `--force` unless a person asked for it.
    Only touch team {{.linear_team}}.
 
    Linear targets (JOB-4): targets now live on Linear as parent issues

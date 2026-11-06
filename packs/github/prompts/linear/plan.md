@@ -49,7 +49,9 @@ Each planning ticket:
    its run:
    `jobshop run start {{.pack_prefix}}pr-work --var issue=<KEY> --key linear-<KEY>`.
    The key is the one the intake stall-check uses, so a repeated start
-   from either returns the open run. Issues that
+   from either returns the open run. Run start repeats the intake gate
+   and refuses an ineligible issue with its reason (exit 1); `--force`
+   is only for a start a person asked for. Issues that
    depend on each other: start the dependency first, then
    `jobshop run start {{.pack_prefix}}pr-work --var issue=<KEY> --key linear-<KEY> --after <dependency run>`
    so the dev pool cannot claim the step before the edge exists (#149).

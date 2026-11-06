@@ -2120,6 +2120,8 @@ Flags:
       --project=STRING       Project (default: the first step's pool project).
       --after=AFTER,...      Ticket or run id the first step waits on
                              (repeatable); the edge is created with the run.
+      --force                Skip the intake gate: start a Linear issue's run
+                             even when linear eligible refuses it.
       --json                 Print JSON.
 ```
 

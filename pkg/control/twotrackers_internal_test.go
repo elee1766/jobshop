@@ -100,7 +100,8 @@ func TestTwoTrackersLinearIntake(t *testing.T) {
 	require.Len(t, runs, 1, "one stall-check run")
 
 	admin := scope{admin: true, actor: "admin"}
-	res, err := c.runStart(ctx, admin, rpc.RunStartParams{Workflow: "pr-work-linear", Vars: map[string]string{"issue": "JOB-1"}, Key: "linear-JOB-1"})
+	// Force: this fake serves no issue context for the intake gate (JOB-69).
+	res, err := c.runStart(ctx, admin, rpc.RunStartParams{Workflow: "pr-work-linear", Vars: map[string]string{"issue": "JOB-1"}, Key: "linear-JOB-1", Force: true})
 	require.NoError(t, err)
 	run := res.(rpc.RunResult).Run
 	var meta struct {
