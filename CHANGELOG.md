@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/elee1766/jobshop/compare/v0.2.2...v0.2.3) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** clear a wait and add its comment in one transaction (JOB-39) ([#750](https://github.com/elee1766/jobshop/issues/750)) ([4b8cccd](https://github.com/elee1766/jobshop/commit/4b8cccdf1575ce6cb0e781a8984b6cb522f57e41))
+
 ## [0.2.2](https://github.com/elee1766/jobshop/compare/v0.2.1...v0.2.2) (2026-11-06)
 
 
