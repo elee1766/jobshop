@@ -265,6 +265,10 @@ type TriggerRun struct {
 	Workflow string            `yaml:"workflow"`
 	Vars     map[string]string `yaml:"vars"`
 	Key      string            `yaml:"key"`
+	// KeyPrefix replaces "stall" in a stall trigger's run keys,
+	// <prefix>:<signal>:<subject>, for triggers that do intake rather
+	// than stuck-work checks (JOB-95). Stall triggers only, not with Key.
+	KeyPrefix string `yaml:"key_prefix"`
 }
 
 // CheckOutputVar is the template var holding a trigger check's output.
@@ -298,7 +302,8 @@ type TriggerWhen struct {
 	CheckTimeout string `yaml:"check_timeout"`
 
 	// Stall lists stall signals. Each stall (signal and subject) starts
-	// its own run with key stall:<signal>:<subject>. A stall trigger has
+	// its own run with key stall:<signal>:<subject> (run.key_prefix
+	// replaces stall, JOB-95). A stall trigger has
 	// no other condition and needs run:. check_timeout bounds its checks.
 	Stall []StallSignal `yaml:"stall"`
 

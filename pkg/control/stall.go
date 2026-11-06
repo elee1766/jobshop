@@ -28,7 +28,19 @@ type stall struct {
 	signal, subject, detail string
 }
 
-func (s stall) key() string { return "stall:" + s.signal + ":" + s.subject }
+// id is the stall's identity, <signal>:<subject>, the same whatever key
+// prefix a trigger uses (JOB-95). Runs carry it in meta.trigger.stall.
+func (s stall) id() string { return s.signal + ":" + s.subject }
+
+// key is the run key with the default prefix, stall:<signal>:<subject>.
+func (s stall) key() string { return s.keyWith(config.DefaultStallKeyPrefix) }
+
+// keyWith is the run key <prefix>:<signal>:<subject>.
+func (s stall) keyWith(prefix string) string { return prefix + ":" + s.id() }
+
+// stallMetaKey is meta.trigger.stall, <signal>:<subject>, set on the runs
+// a stall trigger starts with a stall key (no run.key).
+const stallMetaKey = "stall"
 
 // runStallTrigger starts one run per fireable stall of a when.stall
 // trigger (#143). ev is the delivery that woke it (JOB-72), nil on a poll.
@@ -38,30 +50,32 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 		c.log.ErrorContext(ctx, "stall trigger", "trigger", name, "err", err)
 		return
 	}
+	prefix := tr.StallKeyPrefix()
 	for _, s := range fire {
+		key := s.keyWith(prefix)
 		if s.signal == config.StallLinearIssueNoRun {
 			busy, err := c.linearIssueHasOpenRun(ctx, s.subject)
 			if err != nil {
-				c.log.ErrorContext(ctx, "stall recheck", "trigger", name, "key", s.key(), "err", err)
+				c.log.ErrorContext(ctx, "stall recheck", "trigger", name, "key", key, "err", err)
 				continue
 			}
 			if busy {
-				c.log.InfoContext(ctx, "stall skipped: issue got a run during the scan", "trigger", name, "key", s.key())
+				c.log.InfoContext(ctx, "stall skipped: issue got a run during the scan", "trigger", name, "key", key)
 				continue
 			}
 		}
 		t, existing, err := c.fireStall(ctx, name, tr, s)
 		if err != nil {
-			c.log.ErrorContext(ctx, "stall fire", "trigger", name, "key", s.key(), "err", err)
+			c.log.ErrorContext(ctx, "stall fire", "trigger", name, "key", key, "err", err)
 			continue
 		}
 		if existing {
 			// Already handled by an open run with the same key: not a
 			// new stall to learn from.
-			c.log.DebugContext(ctx, "stall already has an open run", "trigger", name, "key", s.key(), "run", t.ID)
+			c.log.DebugContext(ctx, "stall already has an open run", "trigger", name, "key", key, "run", t.ID)
 			continue
 		}
-		c.log.InfoContext(ctx, "stall trigger fired", "trigger", name, "key", s.key(), "run", t.ID, "delivery", ev["delivery"])
+		c.log.InfoContext(ctx, "stall trigger fired", "trigger", name, "key", key, "run", t.ID, "delivery", ev["delivery"])
 		c.recordStall(ctx, s, t.ID)
 	}
 }
@@ -94,9 +108,11 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 		return nil, "no stall", nil
 	}
 	now := c.now()
+	prefix := tr.StallKeyPrefix()
 	var reasons []string
 	for _, s := range found {
-		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + s.key(), Order: store.OrderNewest})
+		key := s.keyWith(prefix)
+		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + key, Order: store.OrderNewest})
 		if err != nil {
 			return nil, "", err
 		}
@@ -107,7 +123,7 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 			}
 		}
 		if r != "" {
-			reasons = append(reasons, s.key()+": "+r)
+			reasons = append(reasons, key+": "+r)
 			continue
 		}
 		fire = append(fire, s)
@@ -146,18 +162,26 @@ func stallHeld(runs []store.Ticket, tr config.Trigger, now time.Time) string {
 }
 
 // stallSubjectHeld says why a stall may not fire from any trigger (#704):
-// another trigger's run for the same key is open, or one of them ended in
-// an escalation that is still open. Keyed on the stall, not the trigger,
-// so two packs watching one subject start one check.
+// another trigger's run for the same stall is open, or one of them ended
+// in an escalation that is still open. Keyed on the stall's signal and
+// subject (meta.trigger.stall), not the trigger or its key prefix
+// (JOB-95), so two packs watching one subject start one check.
 func (c *Controller) stallSubjectHeld(ctx context.Context, s stall) (string, error) {
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Key: s.key()})
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: stallMetaKey, MetaValue: s.id()})
 	if err != nil {
 		return "", err
 	}
-	for _, r := range runs {
-		if !isStallRun(r) {
+	// Runs started before meta.trigger.stall have only the default key.
+	legacy, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Key: s.key()})
+	if err != nil {
+		return "", err
+	}
+	seen := map[string]bool{}
+	for _, r := range append(runs, legacy...) {
+		if seen[r.ID] || !isStallRun(r) {
 			continue
 		}
+		seen[r.ID] = true
 		if r.Status != store.StatusClosed {
 			return "run " + r.ID + " is open", nil
 		}
@@ -174,20 +198,26 @@ func (c *Controller) stallSubjectHeld(ctx context.Context, s stall) (string, err
 	return "", nil
 }
 
-// isStallRun: the run was started by a stall trigger (fireStall sets
-// meta.trigger.key to <trigger>/stall:<signal>:<subject>).
+// isStallRun: the run was started by a stall trigger. fireStall sets
+// meta.trigger.stall on a stall-keyed run (any key_prefix, JOB-95), and
+// meta.trigger.key is <trigger>/stall:<signal>:<subject> on runs with
+// the default prefix, old ones and those with their own run.key.
 func isStallRun(r store.Ticket) bool {
+	if metaString(r.Meta, triggerPack, stallMetaKey) != "" {
+		return true
+	}
 	_, k, ok := strings.Cut(metaString(r.Meta, triggerPack, "key"), "/")
-	return ok && strings.HasPrefix(k, "stall:")
+	return ok && strings.HasPrefix(k, config.DefaultStallKeyPrefix+":")
 }
 
 // fireStall starts the trigger's workflow for one stall with key
-// stall:<signal>:<subject>, or the trigger's run key filled with the
-// stall vars. existing is true when an open run already had that key
+// <key_prefix>:<signal>:<subject>, or the trigger's run key filled with
+// the stall vars. existing is true when an open run already had that key
 // (one started by hand or by another run, JOB-33).
 func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigger, s stall) (run store.Ticket, existing bool, err error) {
 	tv := map[string]any{config.StallSignalVar: s.signal, config.StallSubjectVar: s.subject, config.StallDetailVar: s.detail}
-	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: s.key()}
+	key := s.keyWith(tr.StallKeyPrefix())
+	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: key}
 	if tr.Run.Key != "" {
 		if p.Key, err = tr.Run.Fill(tr.Run.Key, tv); err != nil {
 			return store.Ticket{}, false, fmt.Errorf("run key: %w", err)
@@ -200,7 +230,12 @@ func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigg
 		}
 		p.Vars[k] = out
 	}
-	m := map[string]string{"name": name, "key": name + "/" + s.key()}
+	m := map[string]string{"name": name, "key": name + "/" + key}
+	if tr.Run.Key == "" {
+		// The #704 hold covers runs keyed on the stall. A run with its
+		// own key (pr-<n>, JOB-33) never took part: leave it out.
+		m[stallMetaKey] = s.id()
+	}
 	res, err := c.startRun(ctx, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
 		return store.Ticket{}, false, err
