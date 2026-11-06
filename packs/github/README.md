@@ -54,6 +54,8 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `deploy-check` pool (`deploy_sessions`, default 3): works `post-merge`
   steps, which wait up to an hour for the deploy, so they never queue a
   review behind them (#167). Prompt: `prompts/deploy-check.md`.
+- `stall` pool (1 session, `stall_model`, `stall_effort`): works `stall-check`
+  `diagnose` steps, apart from the planner.
 - CI waits: steps that wait on CI park with `jobshop wait add
   'github.checks:...' --any --resume` (#381) and resume within a minute
   of CI finishing, instead of a fixed `release --until` (#555). Deploys
@@ -185,6 +187,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `dev_pool` | Default pool of pr-work's `implement` step, also a run var (`--var dev_pool=dev-sonnet`). A failed attempt or review resume moves the step to `dev` (`retry_pool`). Default `dev` |
 | `refinery_sessions` | `max_sessions` for the refinery. Default 1; more needs strict branch protection |
 | `refinery_model`, `refinery_effort` | Refinery pool `model` and `effort` (#304). Default empty: the agent's |
+| `stall_model`, `stall_effort` | `stall` pool `model` and `effort`. Default empty: the agent's |
 | `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
 | `deploy_check` | How `post-merge` and `stall-check` tell a commit is deployed. Default: no deploy, the check passes |
 | `stall_after`, `stall_step_after`, `stall_human_after` | Stall thresholds (Go durations). Defaults 1h, 3h, 4h |
