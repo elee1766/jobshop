@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"os"
 	"slices"
 	"strings"
@@ -585,6 +586,18 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		tickets = append(tickets, ts...)
 	}
 
+	// One query for what every session holds, not one per session.
+	inProgress, err := c.store.List(ctx, store.Filter{Status: store.StatusInProgress, Limit: math.MaxInt32})
+	if err != nil {
+		return nil, err
+	}
+	held := map[string][]store.Ticket{}
+	for _, t := range inProgress {
+		if t.Holder != "" {
+			held[t.Holder] = append(held[t.Holder], t)
+		}
+	}
+
 	out := []rpc.SessionInfo{}
 	seen := map[string]bool{}
 	for i := range tickets {
@@ -595,10 +608,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		if !cutoff.IsZero() && t.ClosedAt.Before(cutoff) {
 			continue
 		}
-		info, err := c.sessionInfo(ctx, t.ID)
-		if err != nil {
-			return nil, err
-		}
+		info := c.sessionInfoOf(t.ID, &t, held[t.ID])
 		info.Ticket = &t
 		// A closed ticket whose host still runs is a leak too.
 		info.Orphan = t.Status == store.StatusClosed && info.Alive
@@ -635,6 +645,20 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 
 // sessionInfo reads the live state of one session directory.
 func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInfo, error) {
+	var sess *store.Ticket
+	if t, err := c.store.Get(ctx, id); err == nil {
+		sess = &t
+	}
+	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
+	if err != nil {
+		return rpc.SessionInfo{ID: id}, err
+	}
+	return c.sessionInfoOf(id, sess, held), nil
+}
+
+// sessionInfoOf is sessionInfo given the session's ticket (nil if it has
+// none) and the in-progress tickets it holds.
+func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.Ticket) rpc.SessionInfo {
 	dir := c.root.SessionDir(id)
 	info := rpc.SessionInfo{ID: id, Alive: host.Alive(dir), HostPid: hostPid(dir)}
 	c.mu.Lock()
@@ -652,9 +676,9 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	c.mu.Unlock()
 	info.Drained = r != nil && c.poolDrained(r.pool)
 	var sessTicket store.Ticket
-	if t, err := c.store.Get(ctx, id); err == nil {
-		sessTicket = t
-		if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
+	if sess != nil {
+		sessTicket = *sess
+		if f, err := store.DecodeFields[store.SessionFields](sessTicket); err == nil {
 			info.DisplayName = f.DisplayName
 			if f.Cordoned != nil {
 				info.Cordon = f.Cordoned.Reason
@@ -671,17 +695,13 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 	if seq, at := journalTail(dir); seq > 0 {
 		info.Seq, info.SeqTime = seq, &at
 	}
-	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
-	if err != nil {
-		return info, err
-	}
 	if len(held) > 0 {
 		info.Current = held[0].ID
 	}
 	if info.DisplayName == "" {
 		info.DisplayName = defaultDisplayName(sessTicket, held)
 	}
-	return info, nil
+	return info
 }
 
 // defaultDisplayName labels a session with no name of its own (#626):
