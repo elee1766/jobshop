@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.4](https://github.com/elee1766/jobshop/compare/v0.6.3...v0.6.4) (2026-11-06)
+
+
+### Bug fixes
+
+* **desk:** hide thinking in chat; a session/load replay is not new output ([#867](https://github.com/elee1766/jobshop/issues/867)) ([6f53661](https://github.com/elee1766/jobshop/commit/6f5366150d039824ab0536d23d06692316da3866))
+
 ## [0.6.3](https://github.com/elee1766/jobshop/compare/v0.6.2...v0.6.3) (2026-11-06)
 
 
