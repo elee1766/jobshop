@@ -74,7 +74,7 @@ func TestReleasePRTrigger(t *testing.T) {
 		return runs
 	}
 	for range 3 {
-		c.runTriggers()
+		c.runTriggers(t.Context())
 	}
 	runs := releaseRuns()
 	require.Len(t, runs, 1, "one run over repeated ticks")
@@ -96,6 +96,6 @@ func TestReleasePRTrigger(t *testing.T) {
 		_, err = store.Close(t.Context(), c.store, "admin", s.ID, nil, "done")
 		require.NoError(t, err)
 	}
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, releaseRuns(), 1, "same key after close")
 }

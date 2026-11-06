@@ -2,16 +2,16 @@ package control
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // reconcileHTTP is the client for the deliveries API.
-var reconcileHTTP = &http.Client{Timeout: 30 * time.Second}
+var reconcileHTTP = telemetry.HTTPClient("reconcile", 30*time.Second)
 
 // pumpReconcile runs the GitHub App delivery reconcile (#335) every
 // ingest.github_reconcile until the controller stops. Each pass covers

@@ -102,7 +102,7 @@ func TestLinearIntake(t *testing.T) {
 	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-1"}, stallKeys(t, c))
 	assert.Equal(t, int32(1), reads.Load())
 
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	stallRuns := func() []store.Ticket {
 		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestLinearIntake(t *testing.T) {
 	assert.Equal(t, "ENG-1", f.Vars["subject"])
 	assert.Equal(t, int32(1), reads.Load(), "within the poll interval the cached read is used")
 
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, stallRuns(), 1, "fires once: the open run holds the key")
 
 	// stall-check starts pr-work with key linear-ENG-1; the issue then
@@ -289,11 +289,11 @@ func TestLinearIntakeRunDuringScan(t *testing.T) {
 		}
 		return out
 	}
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Empty(t, stallRuns(), "ENG-1 got a run during the scan, ENG-2 is inside the grace window")
 
 	clk.advance(6 * time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-2"}, stallRuns(), "past the grace window")
 }
 

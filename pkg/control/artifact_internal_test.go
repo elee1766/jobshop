@@ -113,7 +113,7 @@ func TestArtifactDeliverAck(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n)
 	clk.advance(91 * 24 * time.Hour)
-	c.pruneArtifacts()
+	c.pruneArtifacts(t.Context())
 	assert.NoDirExists(t, c.artifactDir(b.Ticket.ID))
 	pt, err := c.store.Get(ctx, b.Ticket.ID)
 	require.NoError(t, err)

@@ -95,18 +95,18 @@ func TestStallTriggerOn(t *testing.T) {
 	assert.Equal(t, []string{"stall:review_requested:5@abc"}, stallRunKeys(t, c, "review"), "the event narrows the check to its PR")
 	assert.Equal(t, []string{"pr=5 branch="}, readLines(t, seen), "event fields reach the check; unsafe ones are empty")
 
-	c.runTriggers() // first poll
+	c.runTriggers(t.Context()) // first poll
 	assert.ElementsMatch(t, []string{"stall:review_requested:5@abc", "stall:review_requested:7@def"}, stallRunKeys(t, c, "review"),
 		"the poll lists every PR; 5 already has a run")
 	assert.Equal(t, []string{"pr=5 branch=", "pr= branch="}, readLines(t, seen))
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "reviews"), []byte("5@abc\n7@def\n9@fed\n"), 0o600))
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, stallRunKeys(t, c, "review"), 2, "within fallback: not polled")
 	assert.Len(t, readLines(t, seen), 2, "the check did not run")
 
 	clk.advance(16 * time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Contains(t, stallRunKeys(t, c, "review"), "stall:review_requested:9@fed", "the fallback poll fires without an event")
 	assert.Len(t, stallRunKeys(t, c, "review"), 3)
 }
@@ -117,9 +117,9 @@ func TestStallTriggerNoOn(t *testing.T) {
 	t.Parallel()
 	c, _, dir := stallControllerYAML(t, stallEventYAML)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "plain"), []byte("a\n"), 0o600))
-	c.runTriggers()
-	c.runTriggers()
-	c.runTriggers()
+	c.runTriggers(t.Context())
+	c.runTriggers(t.Context())
+	c.runTriggers(t.Context())
 	assert.Len(t, readLines(t, filepath.Join(dir, "seen-plain")), 3, "checked every tick")
 	assert.Equal(t, []string{"stall:plain:a"}, stallRunKeys(t, c, "plain"))
 	fireEvents(c, pullRequest("d1", "review_requested", 5, "feat", "abc"))

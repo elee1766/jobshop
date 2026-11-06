@@ -16,6 +16,7 @@ import (
 	"github.com/elee1766/acphost/pkg/userns"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // isolatedCmd is a command the controller runs for a hook, prompt rule,
@@ -46,6 +47,19 @@ var errSetup = errors.New("isolation setup failed")
 // setup failure (wrapping errSetup) or a wait error; a non-zero exit is
 // not an error.
 func (c *Controller) runIsolated(ctx context.Context, ic isolatedCmd) (proc.Exit, error) {
+	// One exec span per command: the program, what it is for (ic.name) and
+	// the exit, never the script, env or stdin (JOB-105).
+	ctx, done := telemetry.StartExec(ctx, ic.argv[0], ic.name)
+	ex, err := c.runIsolatedCmd(ctx, ic)
+	code := ex.ExitCode
+	if err != nil {
+		code = -1
+	}
+	done(code, err)
+	return ex, err
+}
+
+func (c *Controller) runIsolatedCmd(ctx context.Context, ic isolatedCmd) (proc.Exit, error) {
 	spec := proc.Spec{Command: ic.argv[0], Args: ic.argv[1:], Dir: ic.dir, Env: ic.env}
 	if ic.pool != "" {
 		cleanup, err := c.isolateSpec(&spec, ic)

@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // DefaultAPIURL is the GitHub REST API base.
@@ -54,7 +55,7 @@ type Minter struct {
 
 // NewMinter returns a Minter with a 30s HTTP timeout.
 func NewMinter() *Minter {
-	return &Minter{HTTP: &http.Client{Timeout: 30 * time.Second}, Now: time.Now, cache: map[string]Token{}}
+	return &Minter{HTTP: telemetry.HTTPClient("identity", 30*time.Second), Now: time.Now, cache: map[string]Token{}}
 }
 
 // Token returns a credential for target (owner/repo for github-app, team

@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // DefaultAPIURL is Linear's GraphQL endpoint.
@@ -47,7 +49,7 @@ func New(url, token string) *Client {
 	if url == "" {
 		url = DefaultAPIURL
 	}
-	return &Client{URL: url, Token: token, HTTP: &http.Client{Timeout: 30 * time.Second}}
+	return &Client{URL: url, Token: token, HTTP: telemetry.HTTPClient("linear", 30*time.Second)}
 }
 
 // Issue is the part of a Linear issue the prompts need.

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
-	"os/exec"
 	"slices"
 	"strings"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Provider-owned resource slots (#407). The store keeps slot state and
@@ -50,12 +50,12 @@ func (c *Controller) callProvider(ctx context.Context, p *config.Provider, call 
 		return err
 	}
 	if p.URL != "" {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.URL, bytes.NewReader(body))
+		req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/provider/"+call.Op), http.MethodPost, p.URL, bytes.NewReader(body))
 		if err != nil {
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := providerHTTP.Do(req)
 		if err != nil {
 			return err
 		}
@@ -69,14 +69,16 @@ func (c *Controller) callProvider(ctx context.Context, p *config.Provider, call 
 	if call.Slot != "" {
 		args = append(args, call.Slot)
 	}
-	cmd := exec.CommandContext(ctx, "sh", args...)
+	cmd, done := telemetry.ExecContext(ctx, "provider-"+call.Op, "sh", args...)
 	cmd.Dir = c.root.Dir
 	cmd.Stdin = bytes.NewReader(body)
 	cmd.Env = append(hostInheritedEnv(), "JOBSHOP_RESOURCE="+call.Resource, "JOBSHOP_SLOT="+call.Slot)
 	var errOut limitedBuffer
 	cmd.Stderr = &errOut
 	cmd.WaitDelay = 5 * time.Second
-	if err := cmd.Run(); err != nil {
+	err = cmd.Run()
+	done(err)
+	if err != nil {
 		if tail := strings.TrimSpace(errOut.String()); tail != "" {
 			return fmt.Errorf("%w: %s", err, lastLines(tail, 5))
 		}
@@ -86,8 +88,7 @@ func (c *Controller) callProvider(ctx context.Context, p *config.Provider, call 
 }
 
 // providerPass is one supervisor pass over provider resources.
-func (c *Controller) providerPass() {
-	ctx := c.ctx
+func (c *Controller) providerPass(ctx context.Context) {
 	cfg := c.config()
 	if len(cfg.ResourceProviders()) == 0 {
 		return

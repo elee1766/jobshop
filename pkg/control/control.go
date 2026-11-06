@@ -332,6 +332,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		return err
 	}
 	defer func() { _ = st.Close() }()
+	// Calls over store.SlowCall add a span under the step that made them
+	// (JOB-105).
+	st = store.Traced(st)
 	// Resource caps gate claims (#400); reload re-syncs them.
 	if err := st.SetResources(ctx, store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()}); err != nil {
 		return err
@@ -375,7 +378,9 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	if ev.last, err = store.LastSeq(ctx, st); err != nil {
 		return err
 	}
-	c.ctx, c.cancel = context.WithCancel(ctx)
+	// Metrics ride on the ctx so outbound HTTP below any path records its
+	// timing without a parameter (JOB-105).
+	c.ctx, c.cancel = context.WithCancel(telemetry.WithMetrics(ctx, m))
 	c.started = c.now()
 	if loadErr != nil {
 		c.configErr, c.configErrAt = loadErr.Error(), c.started
@@ -526,35 +531,37 @@ func (c *Controller) stop() {
 	c.log.Info("controller stopped")
 }
 
-// tick runs one supervisor pass under a span.
+// tick runs one supervisor pass under a span, with one child span and one
+// jobshop.tick.step.duration sample per step, so a slow pass names its
+// slow step (JOB-105). Steps get the step span's ctx: the store, HTTP and
+// exec spans below nest under it.
 func (c *Controller) tick() {
-	_, span := c.tracer.Start(c.ctx, "supervisor tick")
+	ctx, span := c.tracer.Start(c.ctx, "supervisor tick")
 	defer span.End()
-	c.tickMu.Lock()
-	defer c.tickMu.Unlock()
-	c.sweep()
+	defer c.lockTick(ctx, "tick")()
+	c.step(ctx, "sweep", c.sweep)
 	// Right after the sweep, so slots of expired claims reset this pass.
-	c.providerPass()
+	c.step(ctx, "provider_pass", c.providerPass)
 	// Before supervise, so a created ticket can get a session this tick.
 	if !c.draining() {
-		c.runTriggers()
+		c.step(ctx, "run_triggers", c.runTriggers)
 	}
 	// Placement moves steps between pools before sessions are sized (#409).
-	c.placeSteps()
-	c.supervise()
-	c.runAutoSteps()
-	c.reportOrphans()
-	c.scanSessions()
-	c.sweepRuns()
-	c.sweepEscalationChats(c.ctx)
-	c.sweepAttentionChats(c.ctx)
-	c.sweepBatches()
-	c.sweepLinearAsks(c.ctx)
-	c.sweepLinearAgentSessions(c.ctx, false)
-	c.pruneInbox()
-	c.pruneWriteKeys()
-	c.pruneArtifacts()
-	c.maybeCompressJournals()
+	c.step(ctx, "place_steps", c.placeSteps)
+	c.step(ctx, "supervise", c.supervise)
+	c.step(ctx, "run_auto_steps", c.runAutoSteps)
+	c.step(ctx, "report_orphans", c.reportOrphans)
+	c.step(ctx, "scan_sessions", c.scanSessions)
+	c.step(ctx, "sweep_runs", c.sweepRuns)
+	c.step(ctx, "sweep_escalation_chats", c.sweepEscalationChats)
+	c.step(ctx, "sweep_attention_chats", c.sweepAttentionChats)
+	c.step(ctx, "sweep_batches", c.sweepBatches)
+	c.step(ctx, "sweep_linear_asks", c.sweepLinearAsks)
+	c.step(ctx, "sweep_linear_agent_sessions", func(ctx context.Context) { c.sweepLinearAgentSessions(ctx, false) })
+	c.step(ctx, "prune_inbox", c.pruneInbox)
+	c.step(ctx, "prune_write_keys", c.pruneWriteKeys)
+	c.step(ctx, "prune_artifacts", c.pruneArtifacts)
+	c.step(ctx, "compress_journals", c.maybeCompressJournals)
 }
 
 // inboxPruneEvery spaces inbox prunes; retention is days, so the 50ms
@@ -562,21 +569,21 @@ func (c *Controller) tick() {
 const inboxPruneEvery = time.Hour
 
 // pruneInbox deletes terminal inbox items older than ingest.retention.
-func (c *Controller) pruneInbox() {
+func (c *Controller) pruneInbox(ctx context.Context) {
 	now := c.now()
 	if now.Sub(c.inboxPrunedAt) < inboxPruneEvery {
 		return
 	}
 	c.inboxPrunedAt = now
-	n, err := ingest.InboxPrune(c.ctx, c.store, now.Add(-c.config().Ingest.RetentionDuration()))
+	n, err := ingest.InboxPrune(ctx, c.store, now.Add(-c.config().Ingest.RetentionDuration()))
 	if err != nil {
-		if c.ctx.Err() == nil {
-			c.log.Error("inbox prune", "err", err)
+		if ctx.Err() == nil {
+			c.log.ErrorContext(ctx, "inbox prune", "err", err)
 		}
 		return
 	}
 	if n > 0 {
-		c.log.Info("inbox pruned", "items", n)
+		c.log.InfoContext(ctx, "inbox pruned", "items", n)
 	}
 }
 
@@ -586,38 +593,38 @@ const writeKeyPruneEvery = 10 * time.Minute
 // pruneWriteKeys deletes write keys older than write_keys.retention,
 // done or pending (#415). A pending key's retry then checks the remote
 // key or marker instead of the local row.
-func (c *Controller) pruneWriteKeys() {
+func (c *Controller) pruneWriteKeys(ctx context.Context) {
 	now := c.now()
 	if now.Sub(c.writeKeysPrunedAt) < writeKeyPruneEvery {
 		return
 	}
 	c.writeKeysPrunedAt = now
-	n, err := writekey.Prune(c.ctx, c.store, now.Add(-c.config().WriteKeys.RetentionDuration()))
+	n, err := writekey.Prune(ctx, c.store, now.Add(-c.config().WriteKeys.RetentionDuration()))
 	if err != nil {
-		if c.ctx.Err() == nil {
-			c.log.Error("write key prune", "err", err)
+		if ctx.Err() == nil {
+			c.log.ErrorContext(ctx, "write key prune", "err", err)
 		}
 		return
 	}
 	if n > 0 {
-		c.log.Info("write keys pruned", "keys", n)
+		c.log.InfoContext(ctx, "write keys pruned", "keys", n)
 	}
 }
 
-func (c *Controller) sweep() {
-	ids, err := c.store.Expire(c.ctx, "controller", "", "")
+func (c *Controller) sweep(ctx context.Context) {
+	ids, err := c.store.Expire(ctx, "controller", "", "")
 	if err != nil {
-		if c.ctx.Err() == nil {
-			c.log.Error("lease sweep", "err", err)
+		if ctx.Err() == nil {
+			c.log.ErrorContext(ctx, "lease sweep", "err", err)
 		}
 		return
 	}
 	for _, id := range ids {
-		c.log.Info("lease expired", "ticket", id)
+		c.log.InfoContext(ctx, "lease expired", "ticket", id)
 	}
-	c.stepEvents(c.ctx, ids)
+	c.stepEvents(ctx, ids)
 	if len(ids) > 0 {
-		c.metrics.LeaseExpiries.Add(c.ctx, int64(len(ids)))
+		c.metrics.LeaseExpiries.Add(ctx, int64(len(ids)))
 	}
 }
 
@@ -769,7 +776,7 @@ func (c *Controller) handler(sockCtx context.Context, sockScope scope) acp.Metho
 			}
 			sc.actor = meta.Actor
 		}
-		ctx = telemetry.WithTraceParent(ctx, meta.TraceParent)
+		ctx = telemetry.WithTraceParent(telemetry.WithMetrics(ctx, c.metrics), meta.TraceParent)
 		ctx, span := c.tracer.Start(ctx, "rpc "+name, trace.WithSpanKind(trace.SpanKindServer),
 			trace.WithAttributes(telemetry.AttrMethod.String(name), attribute.String("jobshop.actor", sc.actor)))
 		defer span.End()

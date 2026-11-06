@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -10,8 +11,10 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/acphost/pkg/sandbox"
 	"github.com/elee1766/acphost/pkg/userns"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // preflightSpec is what pool's sessions ask the host for, enough for
@@ -78,8 +81,9 @@ func (c *Controller) preflightPools(ctx context.Context) {
 		check = host.Preflight
 	}
 	type job struct {
-		spec host.Spec
-		dns  string
+		spec  host.Spec
+		dns   string
+		pools []string // sharing this check, for its span
 	}
 	jobs := map[string]job{}
 	keyOf := map[string]string{}
@@ -98,7 +102,10 @@ func (c *Controller) preflightPools(ctx context.Context) {
 			key = []byte("pool:" + pool)
 		}
 		keyOf[pool] = string(key)
-		jobs[string(key)] = job{spec: spec, dns: dns}
+		j := jobs[string(key)]
+		j.spec, j.dns = spec, dns
+		j.pools = append(j.pools, pool)
+		jobs[string(key)] = j
 	}
 	results := make(map[string]preflightResult, len(jobs))
 	var mu sync.Mutex
@@ -108,12 +115,26 @@ func (c *Controller) preflightPools(ctx context.Context) {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			// One span per distinct check, naming the pools that share it.
+			_, span := telemetry.StartSpan(ctx, "preflight", attribute.StringSlice("jobshop.pools", j.pools),
+				attribute.Bool("jobshop.preflight.dns", j.dns != ""))
 			var opts []host.PreflightOption
 			if j.dns != "" {
 				// Spawns pasta, so only here, once per start or reload.
 				opts = append(opts, host.WithDNSCheck(j.dns))
 			}
 			rep, err := check(j.spec, opts...)
+			spanErr := err
+			if err == nil && !rep.OK() {
+				failed := 0
+				for _, ch := range rep.Checks {
+					if !ch.OK {
+						failed++
+					}
+				}
+				spanErr = fmt.Errorf("%d isolation checks failed", failed)
+			}
+			telemetry.End(span, spanErr)
 			mu.Lock()
 			results[key] = preflightResult{rep: rep, err: err}
 			mu.Unlock()

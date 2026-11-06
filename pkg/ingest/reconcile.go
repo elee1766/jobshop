@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Reconcile asks GitHub to redeliver App webhook deliveries that failed
@@ -126,7 +128,7 @@ func (r *Reconcile) do(ctx context.Context, method, u string, out any) (string, 
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, nil)
+	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/app/hook/deliveries"), method, u, nil)
 	if err != nil {
 		return "", err
 	}
@@ -135,7 +137,7 @@ func (r *Reconcile) do(ctx context.Context, method, u string, out any) (string, 
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	hc := r.HTTP
 	if hc == nil {
-		hc = &http.Client{Timeout: 30 * time.Second}
+		hc = telemetry.HTTPClient("github", 30*time.Second)
 	}
 	resp, err := hc.Do(req)
 	if err != nil {

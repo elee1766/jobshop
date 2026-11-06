@@ -306,7 +306,7 @@ func TestStallFire(t *testing.T) {
 		}
 		return out
 	}
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	rs := runs()
 	require.Len(t, rs, 1)
 	f, err := store.DecodeFields[store.RunFields](rs[0])
@@ -320,7 +320,7 @@ func TestStallFire(t *testing.T) {
 	// Its own step sits ready and unclaimed: not a stall of its own.
 	clk.advance(2 * time.Hour)
 	assert.Equal(t, []string{"stall:issue_no_run:issue-7"}, stallKeys(t, c))
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, runs(), 1, "open run holds the key")
 
 	closeRun := func() {
@@ -329,17 +329,17 @@ func TestStallFire(t *testing.T) {
 		c.completeRun(t.Context(), rs[0].ID)
 	}
 	closeRun()
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, runs(), 1, "cooldown")
 	clk.advance(11 * time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	rs = runs()
 	require.Len(t, rs, 2, "stall still there after cooldown: second run")
 	steps, err = store.Children(t.Context(), c.store, rs[0].ID)
 	require.NoError(t, err)
 	closeRun()
 	clk.advance(11 * time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	assert.Len(t, runs(), 2, "max_runs 2")
 
 	var infos []rpc.TriggerInfo
@@ -355,8 +355,8 @@ func TestStallMaxOpen(t *testing.T) {
 	t.Parallel()
 	c, _, dir := stallController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\n"), 0o600))
-	c.runTriggers()
-	c.runTriggers()
+	c.runTriggers(t.Context())
+	c.runTriggers(t.Context())
 	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Len(t, rs, config.DefaultStallMaxOpen)
@@ -372,8 +372,8 @@ func TestStallMaxOpenConfigured(t *testing.T) {
 	c, _, dir := stallControllerYAML(t, strings.Replace(stallYAML, "    max_runs: 2\n", "    max_runs: 2\n    max_open: 5\n", 1))
 	require.Equal(t, 5, c.config().Triggers["stall"].StallMaxOpen())
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\nf\ng\n"), 0o600))
-	c.runTriggers()
-	c.runTriggers()
+	c.runTriggers(t.Context())
+	c.runTriggers(t.Context())
 	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Len(t, rs, 5)
@@ -479,7 +479,7 @@ func TestStallNoCascade(t *testing.T) {
 		return out
 	}
 	clk.advance(2*time.Hour + time.Minute)
-	c.runTriggers()
+	c.runTriggers(t.Context())
 	cs := checks()
 	require.Len(t, cs, 1, "one check per subject across triggers")
 
@@ -488,7 +488,7 @@ func TestStallNoCascade(t *testing.T) {
 	failStep(steps[0])
 	for range 3 {
 		clk.advance(5 * time.Hour)
-		c.runTriggers()
+		c.runTriggers(t.Context())
 	}
 	assert.Len(t, checks(), 1, "a needs_human check starts no check, from either trigger")
 }
@@ -529,7 +529,7 @@ func TestStallOwnInstance(t *testing.T) {
 	}
 	for range 3 {
 		clk.advance(2*time.Hour + time.Minute)
-		c.runTriggers()
+		c.runTriggers(t.Context())
 	}
 	cs := checks()
 	require.Len(t, cs, 1)
@@ -540,7 +540,7 @@ func TestStallOwnInstance(t *testing.T) {
 	failStep(steps[0])
 	for range 3 {
 		clk.advance(5 * time.Hour)
-		c.runTriggers()
+		c.runTriggers(t.Context())
 	}
 	assert.Len(t, checks(), 1, "the check escalating starts no other check")
 }

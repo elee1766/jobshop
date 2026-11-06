@@ -695,17 +695,17 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 
 // sweepRuns completes or escalates running runs and repairs escalations
 // for needs_human runs, then sets the needs_human gauge.
-func (c *Controller) sweepRuns() {
-	defer c.recordRunGauges(c.ctx)
+func (c *Controller) sweepRuns(ctx context.Context) {
+	defer c.recordRunGauges(ctx)
 	c.sweepRunDirs()
 	for _, state := range []string{store.RunRunning, store.RunNeedsHuman} {
-		runs, err := c.store.List(c.ctx, store.Filter{Kind: store.KindRun, State: state, Order: store.OrderNewest})
+		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: state, Order: store.OrderNewest})
 		if err != nil {
 			return
 		}
 		for _, r := range runs {
 			if r.Status != store.StatusClosed {
-				c.checkRun(c.ctx, r.ID)
+				c.checkRun(ctx, r.ID)
 			}
 		}
 	}

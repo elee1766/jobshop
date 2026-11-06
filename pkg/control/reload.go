@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/goccy/go-yaml"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // liveConfig is the config and the lease parsed from it, swapped as one
@@ -51,13 +53,20 @@ func (c *Controller) redactor(env []string) *redact.Redactor { return c.scanner(
 // the next turn, agent command, args and env from the next spawned host (adopted hosts go
 // through the env refresh path). Running sessions are not stopped.
 // Telemetry settings need a restart.
-func (c *Controller) reload() error { return c.reloadWith("", nil) }
+func (c *Controller) reload() error { return c.reloadWith(c.ctx, "", nil) }
 
 // reloadWith is reload tagged with its cause: "watch" for the config
 // watcher (#533), which also names the changed files. A failed watch
 // reload raises a config-invalid attention item; any good reload clears
-// it.
-func (c *Controller) reloadWith(by string, files []string) (err error) {
+// it. ctx carries the caller's span (the config.reload RPC, the watcher):
+// lock waits, the config load, the resource write and each pool's
+// preflight are its children, so a slow reload names its slow part
+// (JOB-105).
+func (c *Controller) reloadWith(ctx context.Context, by string, files []string) (err error) {
+	// A client that gives up (the CLI deadline) must not cancel a reload
+	// half done: keep the span and the metrics, drop the cancellation.
+	ctx, span := telemetry.StartSpan(context.WithoutCancel(ctx), "config reload", attribute.String("jobshop.reload.by", by))
+	defer func() { telemetry.End(span, err) }()
 	defer func() {
 		if err == nil {
 			// Non-blocking: the watcher re-syncs its paths once per burst.
@@ -70,24 +79,28 @@ func (c *Controller) reloadWith(by string, files []string) (err error) {
 	start := time.Now()
 	c.reloadMu.Lock()
 	defer c.reloadMu.Unlock()
+	telemetry.RecordSlow(ctx, "wait reloadMu", start, lockSpanThreshold, nil, telemetry.AttrLock.String("reloadMu"))
 	// Swap between passes: a pass that read the old pools must finish
 	// before reload returns (#102).
-	c.tickMu.Lock()
-	defer c.tickMu.Unlock()
+	defer c.lockTick(ctx, "reload")()
 	// Where a slow reload spent its time (JOB-102).
 	locked := time.Now()
+	_, loadSpan := telemetry.StartSpan(ctx, "config load")
 	cfg, err := config.Load(c.root)
+	telemetry.End(loadSpan, err)
 	loaded := time.Now()
 	if err == nil {
 		var lc *liveConfig
 		if lc, err = newLiveConfig(cfg); err == nil {
 			// Caps first: a failed write keeps the old config and caps.
-			err = c.store.SetResources(context.Background(), store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()})
+			resCtx, resSpan := telemetry.StartSpan(ctx, "set resources")
+			err = c.store.SetResources(resCtx, store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()})
+			telemetry.End(resSpan, err)
 		}
 		if err == nil {
 			old := c.live.Swap(lc).cfg
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
-				c.log.Warn("config reload: telemetry changes need a controller restart")
+				c.log.WarnContext(ctx, "config reload: telemetry changes need a controller restart")
 			}
 			if !reflect.DeepEqual(old.Identities, cfg.Identities) {
 				// A rotated key or moved installation must not serve old tokens.
@@ -95,30 +108,30 @@ func (c *Controller) reloadWith(by string, files []string) (err error) {
 			}
 			// The fix for a permanent spawn error is a config change.
 			if cleared := c.unquarantinePools(""); len(cleared) > 0 {
-				c.log.Info("config reload: pools unquarantined", "pools", cleared)
+				c.log.InfoContext(ctx, "config reload: pools unquarantined", "pools", cleared)
 			}
 			// New weights and cap take effect now; hosts moved on first use.
 			c.tuneCgroup()
 			// A host still missing a prerequisite quarantines the pool again
 			// now, not at its next spawn (#728).
 			preflight := time.Now()
-			c.preflightPools(context.Background())
+			c.preflightPools(ctx)
 			msg := "config reloaded"
 			if by != "" {
 				msg += " (" + by + ")"
 			}
-			c.log.Info(msg, "files", files, "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows),
+			c.log.InfoContext(ctx, msg, "files", files, "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows),
 				"took", time.Since(start), "lock_wait", locked.Sub(start), "load", loaded.Sub(locked), "preflight", time.Since(preflight))
 			c.saveLastGood(cfg)
 			c.mu.Lock()
 			c.configErr, c.watchErr = "", ""
 			c.mu.Unlock()
 			// A removed pool orphans its queue; say so now, not next tick.
-			c.reportOrphans()
+			c.step(ctx, "report_orphans", c.reportOrphans)
 			return nil
 		}
 	}
-	c.log.Error("config reload failed, keeping old config", "err", err, "by", by, "files", files)
+	c.log.ErrorContext(ctx, "config reload failed, keeping old config", "err", err, "by", by, "files", files)
 	if by == "watch" {
 		c.mu.Lock()
 		c.watchErr, c.watchErrAt = err.Error(), c.now()
@@ -138,11 +151,11 @@ func (c *Controller) saveLastGood(cfg *config.Config) {
 	}
 }
 
-func (c *Controller) reloadConfig(_ context.Context, sc scope, _ struct{}) (any, error) {
+func (c *Controller) reloadConfig(ctx context.Context, sc scope, _ struct{}) (any, error) {
 	if err := c.requireGrant(sc, "config-reload", "config reload"); err != nil {
 		return nil, err
 	}
-	if err := c.reload(); err != nil {
+	if err := c.reloadWith(ctx, "", nil); err != nil {
 		return nil, err
 	}
 	cfg := c.config()

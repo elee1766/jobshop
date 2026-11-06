@@ -2,16 +2,16 @@ package control
 
 import (
 	"context"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // pollerHTTP is the client for ingest pollers.
-var pollerHTTP = &http.Client{Timeout: time.Minute}
+var pollerHTTP = telemetry.HTTPClient("poller", time.Minute)
 
 // pumpPollers runs each ingest.pollers entry (#341) on its interval
 // until the controller stops. It wakes at the shortest interval and polls

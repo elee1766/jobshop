@@ -1980,8 +1980,7 @@ func (c *Controller) removeWorktree(t store.Ticket, caller string) {
 
 // supervise runs once per tick: heartbeats claims held by live sessions and
 // starts sessions for pools with waiting work.
-func (c *Controller) supervise() {
-	ctx := c.ctx
+func (c *Controller) supervise(ctx context.Context) {
 	live := c.liveRunners()
 	for _, id := range live {
 		held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
@@ -1991,21 +1990,20 @@ func (c *Controller) supervise() {
 		for _, t := range held {
 			cl := store.Claim{TicketID: t.ID, Holder: id, Fence: t.Fence}
 			if _, err := c.store.Heartbeat(ctx, cl, c.leaseDur()); err != nil && !errors.Is(err, store.ErrNotHolder) {
-				c.log.Warn("heartbeat", "ticket", t.ID, "err", err)
+				c.log.WarnContext(ctx, "heartbeat", "ticket", t.ID, "err", err)
 			}
 		}
 	}
-	c.recordGauges()
+	c.recordGauges(ctx)
 	if c.draining() {
 		return
 	}
-	c.reconcile()
+	c.reconcile(ctx)
 }
 
 // recordGauges sets the session and ready-ticket gauges for each pool.
 // Session state is backoff, working (holds a ticket) or idle.
-func (c *Controller) recordGauges() {
-	ctx := c.ctx
+func (c *Controller) recordGauges(ctx context.Context) {
 	backoff := map[string]bool{}
 	c.mu.Lock()
 	for id, r := range c.runners {

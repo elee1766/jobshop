@@ -15,6 +15,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // A2A escalation gateway (#547). It mirrors an escalation chat to another
@@ -80,7 +81,7 @@ func NewA2A(cfg A2AConfig, ctl Controller, log *slog.Logger) *A2A {
 		cfg.Clock = clock.Real{}
 	}
 	if cfg.HTTP == nil {
-		cfg.HTTP = &http.Client{Timeout: time.Minute}
+		cfg.HTTP = telemetry.HTTPClient("a2a", time.Minute)
 	}
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)

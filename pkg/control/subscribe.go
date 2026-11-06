@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"os/exec"
 	"regexp"
 	"slices"
 	"sort"
@@ -19,6 +18,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Subscriptions (#187): a ticket follows GitHub issue and PR threads. Its
@@ -843,10 +843,11 @@ func (ghSource) Comments(ctx context.Context, th thread, since time.Time) ([]ghC
 	}
 	var out []ghComment
 	for _, q := range queries {
-		cmd := exec.CommandContext(ctx, "gh", "api", "--paginate", q[0], "--jq", q[1])
+		cmd, done := telemetry.ExecContext(ctx, "gh-api", "gh", "api", "--paginate", q[0], "--jq", q[1])
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		b, err := cmd.Output()
+		done(err)
 		if err != nil {
 			return nil, fmt.Errorf("gh api %s: %w: %s", q[0], err, strings.TrimSpace(stderr.String()))
 		}

@@ -80,6 +80,9 @@ func exportedNames(t *testing.T) map[string]bool {
 	m.ScaleEvents.Add(ctx, 1, all)
 	m.LeaseExpiries.Add(ctx, 1)
 	m.Since(ctx, time.Now(), "ping")
+	m.SinceStep(ctx, "sweep", time.Now())
+	m.SinceLock(ctx, "tick", "reload", time.Now())
+	m.SinceOutbound(ctx, "linear", "api.linear.app", time.Second)
 
 	rec := httptest.NewRecorder()
 	m.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))

@@ -55,7 +55,7 @@ func TestSessionListState(t *testing.T) {
 
 	// An orphan: a locked session directory no ticket names, made after
 	// the first pass, so it is listed only after the next one.
-	c.scanSessions()
+	c.scanSessions(t.Context())
 	odir := c.root.SessionDir("js-orphan")
 	require.NoError(t, os.MkdirAll(odir, 0o700))
 	lf, err := os.Create(filepath.Join(odir, proc.LockFile))
@@ -65,7 +65,7 @@ func TestSessionListState(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(odir, proc.SupervisorPidFile), strconv.AppendInt(nil, int64(os.Getpid()), 10), 0o600))
 	assert.NotContains(t, list(), "js-orphan", "no pass has seen it")
 
-	c.scanSessions()
+	c.scanSessions(t.Context())
 	o, ok := list()["js-orphan"]
 	require.True(t, ok, "the pass found the orphan")
 	assert.True(t, o.Orphan)
@@ -97,7 +97,7 @@ func TestBackfillEnded(t *testing.T) {
 	_, err := store.Close(ctx, c.store, "controller", sess.ID, nil, "done")
 	require.NoError(t, err)
 
-	c.scanSessions()
+	c.scanSessions(t.Context())
 	got, err := c.store.Get(ctx, sess.ID)
 	require.NoError(t, err)
 	f, err := store.DecodeFields[store.SessionFields](got)

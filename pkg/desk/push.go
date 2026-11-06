@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Push notifies subscribed browsers of new attention items (the
@@ -58,7 +59,7 @@ type PushMessage struct {
 func (p *Push) open() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.http = &http.Client{Timeout: 30 * time.Second}
+	p.http = telemetry.HTTPClient("push", 30*time.Second)
 	p.wake = make(chan struct{}, 1)
 	b, err := os.ReadFile(p.File)
 	switch {

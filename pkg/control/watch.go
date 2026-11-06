@@ -157,7 +157,7 @@ func (cw *configWatcher) fire() {
 	files := cw.changed
 	cw.changed, cw.timer = nil, nil
 	slices.Sort(files)
-	err := cw.c.reloadWith("watch", files)
+	err := cw.c.reloadWith(cw.c.ctx, "watch", files)
 	cw.sync()
 	if cw.reloaded != nil {
 		cw.reloaded(files, err)
