@@ -675,7 +675,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		if seen[id] || !host.Alive(c.root.SessionDir(id)) {
+		if seen[id] || !hostAlive(c.root.SessionDir(id)) {
 			continue
 		}
 		info, err := c.sessionInfo(ctx, id)
@@ -711,7 +711,7 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 // none) and the in-progress tickets it holds.
 func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.Ticket) rpc.SessionInfo {
 	dir := c.root.SessionDir(id)
-	info := rpc.SessionInfo{ID: id, Alive: host.Alive(dir), HostPid: hostPid(dir)}
+	info := rpc.SessionInfo{ID: id, Alive: hostAlive(dir), HostPid: hostPid(dir)}
 	c.mu.Lock()
 	r := c.runners[id]
 	if r != nil {
@@ -878,7 +878,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 		}
 		// Still alive after the stop above means stopHost could not end it;
 		// leave it for a later run rather than delete under a live host.
-		if !p.DryRun && host.Alive(dir) {
+		if !p.DryRun && hostAlive(dir) {
 			c.log.WarnContext(ctx, "reap: host still alive, keeping dir", "session", t.ID)
 			continue
 		}

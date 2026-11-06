@@ -31,6 +31,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/journal"
@@ -522,27 +523,6 @@ func (r *runner) finish(resolution, reason string) {
 	r.c.endSession(ctx, r.id, "session "+resolution)
 }
 
-// stopHost asks a host to stop (it forwards SIGTERM to the agent's group)
-// and kills it if it is still alive after 10 seconds.
-func (c *Controller) stopHost(dir string) {
-	if c.opt.Hosts != nil && c.opt.Hosts.Stop(dir) {
-		return
-	}
-	pid := hostPid(dir)
-	if pid <= 1 || !host.Alive(dir) {
-		return
-	}
-	_ = syscall.Kill(pid, syscall.SIGTERM)
-	deadline := time.Now().Add(10 * time.Second)
-	for host.Alive(dir) && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-	}
-	if host.Alive(dir) {
-		_ = syscall.Kill(pid, syscall.SIGKILL)
-	}
-	stopSessionProcs(dir)
-}
-
 // stopSessionProcs stops processes that still carry the session's env
 // after its host is gone. Agents may start a detached daemon (jcode
 // `acp --socket` runs tools in a `jcode serve` outside the host's process
@@ -610,18 +590,6 @@ func sessionProcs(dir string) []int {
 	return out
 }
 
-func hostPid(dir string) int {
-	b, err := os.ReadFile(filepath.Join(dir, host.PidFile))
-	if err != nil {
-		return 0
-	}
-	var pid int
-	if _, err := fmt.Sscan(string(b), &pid); err != nil {
-		return 0
-	}
-	return pid
-}
-
 type errSessionEnd struct {
 	resolution, reason string
 	// permanent marks a spawn error that will repeat (host.Permanent).
@@ -643,13 +611,20 @@ func (r *runner) session() error {
 	if err != nil {
 		return err
 	}
-	if fields.Suspended && !host.Alive(r.dir) {
+	if fields.Suspended && !hostAlive(r.dir) {
 		return errSuspended
 	}
 	fresh := false
-	if !host.Alive(r.dir) {
+	if !hostAlive(r.dir) {
 		r.clearRestart()
 		if err := r.c.spawnHost(t, fields); err != nil {
+			var se *host.SpawnError
+			if errors.As(err, &se) {
+				// The host ran and its agent setup failed. connect() saw
+				// this before StartDetached reported it (#904); restart,
+				// counting toward the crash limit, as then.
+				return fmt.Errorf("spawn: %w", err)
+			}
 			return errSessionEnd{resolution: resolutionCrashed, reason: "spawn: " + err.Error(), permanent: host.Permanent(err)}
 		}
 		r.lifecycle("spawn")
@@ -1022,7 +997,7 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 		if time.Now().After(deadline) || r.ctx.Err() != nil {
 			return nil, nil, wel, fmt.Errorf("connect to host: %w", err)
 		}
-		if ex, exited := host.ReadExit(r.dir); exited && !host.Alive(r.dir) {
+		if ex, exited := host.ReadExit(r.dir); exited && !hostAlive(r.dir) {
 			return nil, nil, wel, fmt.Errorf("host exited: %s", ex.Reason)
 		}
 		time.Sleep(wait)
@@ -1860,38 +1835,32 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 		c.log.Info("spawned host", "session", t.ID, "in_process", true, "agent", f.Agent)
 		return nil
 	}
-	logf, err := os.OpenFile(filepath.Join(dir, host.LogFile), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	d, err := c.startDetachedHost(t.ID, dir)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = logf.Close() }()
-	cmd := exec.Command(exe, "session-host", dir)
-	cmd.Args[0] = "jobshop"
-	cmd.Dir = dir
-	cmd.Stdout, cmd.Stderr = logf, logf
-	cmd.Env = hostInheritedEnv()
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	c.log.Info("spawned host", "session", t.ID, "pid", d.Pid, "agent", f.Agent)
+	return nil
+}
+
+// startDetachedHost starts the session host for dir as this binary
+// re-exec'd in its own session (acphost.StartDetached, #904). It returns
+// once the agent started; a setup failure is a *host.SpawnError, and
+// host.Permanent sees through it.
+func (c *Controller) startDetachedHost(id, dir string) (*proc.Detached, error) {
 	// In the sessions cgroup, so its load counts against the sessions cap
 	// and not the controller's share (JOB-91).
 	if hd := c.hostsCgroup(); hd != "" {
-		if cg, err := os.Open(hd); err != nil {
-			c.log.Warn("session host stays in the controller cgroup", "session", t.ID, "err", err)
-		} else {
-			defer func() { _ = cg.Close() }()
-			cmd.SysProcAttr.UseCgroupFD, cmd.SysProcAttr.CgroupFD = true, int(cg.Fd())
+		d, err := host.StartDetached(dir, hostInheritedEnv(), host.InCgroup(hd))
+		var pe *fs.PathError
+		if err == nil || !errors.As(err, &pe) || pe.Path != hd {
+			return d, err
 		}
+		// InCgroup fails the start when the cgroup cannot be opened; the
+		// host then stays in the controller's, as before.
+		c.log.Warn("session host stays in the controller cgroup", "session", id, "err", err)
 	}
-	// The previous host's exit record would make connect() report this
-	// host as exited before it has taken the lock.
-	_ = os.Remove(filepath.Join(dir, host.ExitFile))
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	// Reap it if it exits while this controller lives; after a controller
-	// restart init reaps it instead.
-	go func() { _ = cmd.Wait() }()
-	c.log.Info("spawned host", "session", t.ID, "pid", cmd.Process.Pid, "agent", f.Agent)
-	return nil
+	return host.StartDetached(dir, hostInheritedEnv())
 }
 
 func (c *Controller) hostExe() (string, error) {
@@ -1993,7 +1962,7 @@ func (c *Controller) removeWorktree(t store.Ticket, caller string) {
 	if _, err := os.Stat(cwd); err != nil {
 		return
 	}
-	if t.Status != store.StatusClosed || host.Alive(c.root.SessionDir(t.ID)) {
+	if t.Status != store.StatusClosed || hostAlive(c.root.SessionDir(t.ID)) {
 		c.log.Warn("refusing to remove worktree of live session", "session", t.ID, "caller", caller,
 			"status", t.Status, "cwd", cwd)
 		return

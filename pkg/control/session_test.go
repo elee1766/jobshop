@@ -46,14 +46,8 @@ import (
 // The test binary is also the session host and the agent, so the test runs
 // the real process tree: controller -> host -> agent.
 func TestMain(m *testing.M) {
-	proc.MaybeChild()
-	if len(os.Args) >= 3 && os.Args[1] == "session-host" {
-		if err := host.Main(os.Args[2]); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
+	// The controller starts detached hosts as this binary (#904).
+	host.MaybeChild(hostspec.HostOptions("")...)
 	if len(os.Args) >= 2 && os.Args[1] == "fake-daemon" {
 		// Record this process and the env it holds, then live on.
 		line := fmt.Sprintf("%d %s\n", os.Getpid(), os.Getenv("DEPLOY"))
@@ -110,11 +104,11 @@ func TestControllerRestart(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	require.Len(t, sessions, 1)
 	sdir := root.SessionDir(sessions[0].ID)
-	pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 
 	stop()
-	require.True(t, host.Alive(sdir), "host outlives the controller")
+	require.True(t, hostRunning(sdir), "host outlives the controller")
 	stop = start()
 	defer stop()
 	// The agent's JOBSHOP_SOCKET is served again by the new controller
@@ -136,7 +130,7 @@ func TestControllerRestart(t *testing.T) {
 		return got
 	}
 	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
-	pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	pid2, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	assert.Equal(t, string(pid), string(pid2), "same host adopted")
 	assert.Equal(t, store.StatusOpen, show(sessions[0].ID).Status)
@@ -163,7 +157,7 @@ func TestEnvRefresh(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	require.Len(t, sessions, 1)
 	sdir := root.SessionDir(sessions[0].ID)
-	pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	stop()
 
@@ -180,8 +174,8 @@ func TestEnvRefresh(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "shellenv"), nil, 0o600))
 	admin = dial(t, root.AdminSocket())
 	passEventually(t, root.Dir, func() bool {
-		pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
-		return err == nil && string(pid2) != string(pid) && host.Alive(sdir)
+		pid2, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
+		return err == nil && string(pid2) != string(pid) && hostRunning(sdir)
 	}, "host respawned")
 	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "shellenv.out"))
@@ -417,7 +411,7 @@ func TestSessionList(t *testing.T) {
 	pass(t, root.Dir, 1)
 	odir := root.SessionDir("js-orphan")
 	require.NoError(t, os.MkdirAll(odir, 0o700))
-	lf, err := os.Create(filepath.Join(odir, host.LockFile))
+	lf, err := os.Create(filepath.Join(odir, proc.LockFile))
 	require.NoError(t, err)
 	defer func() { _ = lf.Close() }()
 	require.NoError(t, syscall.Flock(int(lf.Fd()), syscall.LOCK_EX))
@@ -425,7 +419,7 @@ func TestSessionList(t *testing.T) {
 	sleeper := exec.Command("sleep", "60")
 	require.NoError(t, sleeper.Start())
 	t.Cleanup(func() { _ = sleeper.Process.Kill(); _ = sleeper.Wait() })
-	require.NoError(t, os.WriteFile(filepath.Join(odir, host.PidFile), fmt.Appendf(nil, "%d\n", sleeper.Process.Pid), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(odir, proc.SupervisorPidFile), strconv.AppendInt(nil, int64(sleeper.Process.Pid), 10), 0o600))
 
 	var task store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
@@ -479,23 +473,34 @@ func TestSessionList(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 }
 
-// holdLock poses as a host for dir: takes its lock, writes its pid, says
-// "ready" on stdout, and waits to be signalled. The test waits on that
-// line, not on polling the lock, so a helper that fails says why (#480).
+// holdLock poses as a host for dir: takes its supervisor lock, writes its
+// pid, says "ready" on stdout, and waits to be signalled. The test waits
+// on that line, not on polling the lock, so a helper that fails says why
+// (#480).
 func holdLock(dir string) {
-	f, err := os.Create(filepath.Join(dir, host.LockFile))
+	stubborn := os.Getenv("HOLD_LOCK_IGNORE_TERM") != ""
+	if stubborn {
+		// A host that does not stop on SIGTERM: only SIGKILL ends it.
+		// Before "ready", so the test's SIGTERM cannot beat it.
+		signal.Ignore(syscall.SIGTERM)
+	}
+	f, err := os.Create(filepath.Join(dir, proc.LockFile))
 	if err == nil {
 		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
 	}
 	if err == nil {
-		err = os.WriteFile(filepath.Join(dir, host.PidFile), fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600)
+		err = os.WriteFile(filepath.Join(dir, proc.SupervisorPidFile), strconv.AppendInt(nil, int64(os.Getpid()), 10), 0o600)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hold-lock:", err)
 		os.Exit(1)
 	}
 	fmt.Println("ready")
-	awaitSignal()
+	if stubborn {
+		<-time.After(time.Minute)
+	} else {
+		awaitSignal()
+	}
 	// Without this f is unreachable after Flock: under load the GC runs
 	// its finalizer, closing the fd and dropping the lock, so the host
 	// no longer looks alive (JOB-46).
@@ -567,7 +572,7 @@ func TestSessionReap(t *testing.T) {
 	case <-time.After(dialWait):
 		t.Fatal("hold-lock helper never said ready")
 	}
-	require.True(t, host.Alive(odir), "helper holds the lock")
+	require.True(t, hostRunning(odir), "helper holds the lock")
 
 	// The controller's clock is fake: let the closed session age.
 	advance(t, root.Dir, time.Second)
@@ -576,7 +581,7 @@ func TestSessionReap(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionReap, params, &res))
 	assert.Equal(t, []string{"js-orphan"}, res.Stopped)
 	assert.Equal(t, []string{closed.ID}, res.Removed)
-	assert.True(t, host.Alive(odir), "dry run stops nothing")
+	assert.True(t, hostRunning(odir), "dry run stops nothing")
 	assert.DirExists(t, root.SessionDir(closed.ID), "dry run removes nothing")
 
 	params.DryRun = false
@@ -680,7 +685,7 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 		entries, _ := os.ReadDir(root.SessionDir(""))
 		var pids []int
 		for _, e := range entries {
-			if b, err := os.ReadFile(filepath.Join(root.SessionDir(e.Name()), host.PidFile)); err == nil {
+			if b, err := os.ReadFile(filepath.Join(root.SessionDir(e.Name()), proc.SupervisorPidFile)); err == nil {
 				var p int
 				// An in-process host's pid is this process.
 				if _, err := fmt.Sscan(string(b), &p); err == nil && p > 1 && p != selfPid {
@@ -806,7 +811,7 @@ func TestPoolSession(t *testing.T) {
 
 	passEventually(t, root.Dir, func() bool { return show(sess.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, "idle", show(sess.ID).Resolution)
-	assert.False(t, host.Alive(root.SessionDir(sess.ID)), "host stopped with the session")
+	assert.False(t, hostRunning(root.SessionDir(sess.ID)), "host stopped with the session")
 	_, ok := host.ReadExit(root.SessionDir(sess.ID))
 	assert.True(t, ok, "host wrote exit.json")
 }
@@ -1180,7 +1185,7 @@ func TestRateLimitBackoff(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
 	require.Len(t, sessions, 1, "no extra sessions started")
 	assert.Equal(t, store.StatusOpen, sessions[0].Status)
-	pid, err := os.ReadFile(filepath.Join(root.SessionDir(sessions[0].ID), host.PidFile))
+	pid, err := os.ReadFile(filepath.Join(root.SessionDir(sessions[0].ID), proc.SupervisorPidFile))
 	require.NoError(t, err)
 	assert.Equal(t, fmt.Sprint(hostPid), strings.TrimSpace(string(pid)), "same host")
 	b, err := os.ReadFile(filepath.Join(root.Dir, "ratelimit"))
@@ -1375,7 +1380,7 @@ func TestSessionRestartIdle(t *testing.T) {
 	passEventually(t, root.Dir, func() bool {
 		s, err := hostspec.Read(sdir)
 		p := hostPidOf(t, sdir)
-		return err == nil && slices.Contains(s.Env, "RESTART_MARK=1") && p != 0 && p != pid && host.Alive(sdir)
+		return err == nil && slices.Contains(s.Env, "RESTART_MARK=1") && p != 0 && p != pid && hostRunning(sdir)
 	}, "reload refreshed the host")
 	refreshed, err := hostspec.Read(sdir)
 	require.NoError(t, err)
@@ -1387,7 +1392,7 @@ func TestSessionRestartIdle(t *testing.T) {
 	assert.Equal(t, pid, res.HostPid)
 	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
-		return p != 0 && p != pid && host.Alive(sdir)
+		return p != 0 && p != pid && hostRunning(sdir)
 	}, "host respawned")
 	s, err := hostspec.Read(sdir)
 	require.NoError(t, err)
@@ -1461,7 +1466,7 @@ func TestSessionRestartBusy(t *testing.T) {
 	passEventually(t, root.Dir, func() bool { return show(first.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
 	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
-		return p != 0 && p != pid && host.Alive(sdir)
+		return p != 0 && p != pid && hostRunning(sdir)
 	}, "restarted after the turn")
 	pid = hostPidOf(t, sdir)
 
@@ -1475,7 +1480,7 @@ func TestSessionRestartBusy(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id, Now: true}, nil))
 	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
-		return p != 0 && p != pid && host.Alive(sdir)
+		return p != 0 && p != pid && hostRunning(sdir)
 	}, "restarted at once")
 	got := show(second.ID)
 	assert.Equal(t, store.StatusInProgress, got.Status, "claim kept")
@@ -1492,13 +1497,18 @@ func TestSessionRestartBusy(t *testing.T) {
 
 func hostPidOf(t *testing.T, dir string) int {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(dir, host.PidFile))
+	d, err := proc.Open(dir)
 	if err != nil {
 		return 0
 	}
-	var p int
-	_, _ = fmt.Sscan(string(b), &p)
-	return p
+	return d.Pid
+}
+
+// hostRunning reports whether a host holds the session dir's supervisor
+// lock (#904).
+func hostRunning(dir string) bool {
+	d, err := proc.Open(dir)
+	return err == nil && d.Running()
 }
 
 // TestLoadFallback respawns a session whose agent cannot reload the old
@@ -1542,7 +1552,7 @@ func TestLoadFallback(t *testing.T) {
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
 			passEventually(t, root.Dir, func() bool {
 				p := hostPidOf(t, sdir)
-				return p != 0 && p != pid && host.Alive(sdir)
+				return p != 0 && p != pid && hostRunning(sdir)
 			}, "condition not met after supervisor passes")
 
 			var second store.Ticket

@@ -8,7 +8,6 @@ import (
 	"runtime/debug"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -39,17 +38,16 @@ func (g *Globals) root() (config.Root, error) {
 type root struct {
 	Globals
 
-	Init        initCmd        `cmd:"" help:"Create a Jobshop root (jobshop.yaml) in a directory."`
-	Serve       serveCmd       `cmd:"" help:"Run the controller for the root."`
-	SessionHost sessionHostCmd `cmd:"" name:"session-host" hidden:"" help:"Run a session host (spawned by the controller)."`
-	Shutdown    shutdownCmd    `cmd:"" help:"Stop the controller. Sessions keep running unless --all."`
-	Drain       drainCmd       `cmd:"" help:"Start no new sessions or tickets; running turns finish (admin)."`
-	Undrain     undrainCmd     `cmd:"" help:"Undo drain (admin)."`
-	Reload      reloadCmd      `cmd:"" help:"Re-read jobshop.yaml and packs; keeps the old config if invalid (admin)."`
-	Gateway     gatewayCmd     `cmd:"" help:"Run an A2A gateway from jobshop.yaml (admin socket client)."`
-	Desk        deskCmd        `cmd:"" help:"Serve Jobshop Desk, the read-only dashboard (admin socket client)."`
-	Ingest      ingestCmd      `cmd:"" help:"Receive GitHub and Linear webhooks into the ingest spool."`
-	Admin       adminCmd       `cmd:"" help:"Offline maintenance with the controller stopped (store migrate)."`
+	Init     initCmd     `cmd:"" help:"Create a Jobshop root (jobshop.yaml) in a directory."`
+	Serve    serveCmd    `cmd:"" help:"Run the controller for the root."`
+	Shutdown shutdownCmd `cmd:"" help:"Stop the controller. Sessions keep running unless --all."`
+	Drain    drainCmd    `cmd:"" help:"Start no new sessions or tickets; running turns finish (admin)."`
+	Undrain  undrainCmd  `cmd:"" help:"Undo drain (admin)."`
+	Reload   reloadCmd   `cmd:"" help:"Re-read jobshop.yaml and packs; keeps the old config if invalid (admin)."`
+	Gateway  gatewayCmd  `cmd:"" help:"Run an A2A gateway from jobshop.yaml (admin socket client)."`
+	Desk     deskCmd     `cmd:"" help:"Serve Jobshop Desk, the read-only dashboard (admin socket client)."`
+	Ingest   ingestCmd   `cmd:"" help:"Receive GitHub and Linear webhooks into the ingest spool."`
+	Admin    adminCmd    `cmd:"" help:"Offline maintenance with the controller stopped (store migrate)."`
 
 	Ticket    ticketCmd    `cmd:"" help:"Create, show, list, update and close tickets."`
 	Close     closeCmd     `cmd:"" help:"Close a ticket (default: the session's current one)."`
@@ -95,8 +93,9 @@ type root struct {
 
 // Main parses args, runs the selected command and returns a process exit code.
 func Main(args []string) int {
-	// acphost's isolation helpers re-exec this binary (acphost#157).
-	proc.MaybeChild()
+	// acphost's isolation helpers re-exec this binary (acphost#157), and
+	// so does the controller to start a detached session host (#904).
+	host.MaybeChild(hostspec.HostOptions("")...)
 	if len(args) > 0 && args[0] == "gh" {
 		// Before kong: gh's own flags must reach gh unparsed (#349).
 		g := &Globals{Root: os.Getenv("JOBSHOP_ROOT"), Socket: os.Getenv("JOBSHOP_SOCKET")}
@@ -190,9 +189,3 @@ func versionInfo(v, c string, bi *debug.BuildInfo) (string, string) {
 	}
 	return v, c
 }
-
-type sessionHostCmd struct {
-	Dir string `arg:"" help:"Session directory containing spec.json." type:"path"`
-}
-
-func (c sessionHostCmd) Run() error { return host.Main(c.Dir, hostspec.HostOptions(c.Dir)...) }

@@ -1,14 +1,15 @@
 package control
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"testing"
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -57,11 +58,11 @@ func TestSessionListState(t *testing.T) {
 	c.scanSessions()
 	odir := c.root.SessionDir("js-orphan")
 	require.NoError(t, os.MkdirAll(odir, 0o700))
-	lf, err := os.Create(filepath.Join(odir, host.LockFile))
+	lf, err := os.Create(filepath.Join(odir, proc.LockFile))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = lf.Close() })
 	require.NoError(t, syscall.Flock(int(lf.Fd()), syscall.LOCK_EX))
-	require.NoError(t, os.WriteFile(filepath.Join(odir, host.PidFile), fmt.Appendf(nil, "%d\n", os.Getpid()), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(odir, proc.SupervisorPidFile), strconv.AppendInt(nil, int64(os.Getpid()), 10), 0o600))
 	assert.NotContains(t, list(), "js-orphan", "no pass has seen it")
 
 	c.scanSessions()
@@ -78,7 +79,7 @@ func TestSessionListState(t *testing.T) {
 	// lock to be gone, as a real host's exit would have made it, so the
 	// listing cannot see it flip between its two liveness checks.
 	require.NoError(t, lf.Close())
-	require.Eventually(t, func() bool { return !host.Alive(odir) }, time.Minute, time.Millisecond, "flock released")
+	require.Eventually(t, func() bool { return !hostAlive(odir) }, time.Minute, time.Millisecond, "flock released")
 	assert.NotContains(t, list(), "js-orphan")
 }
 

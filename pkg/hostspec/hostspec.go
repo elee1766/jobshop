@@ -47,6 +47,8 @@ func Read(dir string) (Spec, error) {
 }
 
 // HostOptions returns the acphost.Main options for the session in dir.
-// There are none since conversation export was removed; it stays so the
-// session-host command and in-process hosts have one place to add them.
+// There are none since conversation export was removed; it stays so
+// detached hosts (acphost.MaybeChild in cli.Main, which passes "": its
+// options apply to every host) and in-process hosts have one place to
+// add them.
 func HostOptions(string) []acphost.Option { return nil }
