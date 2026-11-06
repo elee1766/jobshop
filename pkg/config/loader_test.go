@@ -183,7 +183,7 @@ func TestPacksLoad(t *testing.T) {
 		"selfdev":  "{repo: /src/jobshop, agent: a}",
 		"github":   "{repo: acme/widget, checkout: /src/widget, agent: a, human: wile}",
 		"operator": "{jobshop_repo: acme/jobshop, checkout: /src/jobshop, agent: a}",
-		"deploy":   "{state_dir: /tmp/state}",
+		"deploy":   "{state_dir: /tmp/state, repo: acme/widget}",
 		"agent":    "{repo: acme/app, checkout: /src/app, agent: a}",
 	}
 	for _, f := range dirs {

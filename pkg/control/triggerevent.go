@@ -315,7 +315,15 @@ func (c *Controller) fireCommand(ctx context.Context, name string, tr config.Tri
 	if err != nil {
 		return store.Ticket{}, err
 	}
+	// A root with several projects has no default; the record only needs
+	// one to live in.
 	project := c.config().DefaultProject
+	if projects := slices.Sorted(maps.Keys(c.config().Projects)); project == "" && len(projects) > 0 {
+		project = projects[0]
+	}
+	if project == "" {
+		return store.Ticket{}, errors.New("command: no project to record the run in")
+	}
 	t, err := store.Create(ctx, c.store, "controller", store.NewTicket{
 		Project: project, Kind: store.KindMessage, Title: "Trigger " + name + ": command",
 		Body: "```\n" + script + "\n```\n", Labels: []string{commandLabel}, Meta: meta, Fields: fields,

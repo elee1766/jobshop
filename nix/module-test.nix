@@ -421,6 +421,7 @@ let
       hostFlake = "x#y";
       inputUrl = "git+https://example/jobshop?ref=master";
       stateDir = "/srv/jobshop-deploy";
+      startCommand = "systemctl start --no-block jobshop-self-deploy.service";
     };
     identities.elee-agent = {
       kind = "github-token";
@@ -564,6 +565,14 @@ let
     ))
     (expect "self-deploy uses the selfDeploy workspace's repo" (
       lib.hasInfix "--repo elee1766/jobshop " legacy.config.systemd.services.jobshop-self-deploy.script
+    ))
+    # JOB-62, #826: a CI success event starts the deploy unit; on NixOS a
+    # polkit rule lets the jobshop user start that one unit.
+    (expect "self-deploy starts on a CI event: polkit rule on NixOS" (
+      lib.hasInfix "jobshop-self-deploy.service" legacy.config.security.polkit.extraConfig
+      && lib.hasInfix ''subject.user == "jobshop"'' legacy.config.security.polkit.extraConfig
+      && lib.hasInfix ''action.lookup("verb") == "start"'' legacy.config.security.polkit.extraConfig
+      && !(lib.hasInfix "jobshop-self-deploy" (eval { }).config.security.polkit.extraConfig)
     ))
     # A live pack extends packs outside livePacks, so the sync reloads on
     # any checkout move, not on a diff of the live paths only (#177).
@@ -766,5 +775,9 @@ pkgs.runCommand "jobshop-module-test" { } ''
   ! grep -q -- '- /var/lib/jobshop-mise' ${yamlPacks miseShared}
   grep -q 'url: http://127.0.0.1:9428' ${yamlPacks vlLocal}
   grep -q 'url: http://logs.internal:9428' ${yamlPacks vlExternal}
+  # The yaml writer folds the long line, so match the unit name apart.
+  grep -q 'start_command: .*/bin/systemctl' ${yamlPacks legacy}
+  grep -q 'start --no-block jobshop-self-deploy.service' ${yamlPacks legacy}
+  grep -q 'repo: elee1766/jobshop' ${yamlPacks legacy}
   touch $out
 ''

@@ -6,6 +6,14 @@
 template: go
 defaults:
   state_dir: /var/lib/jobshop-deploy
+  # The repo and branch self-deploy follows, and the CI workflow that
+  # gates it (the module sets repo and branch from the selfDeploy
+  # workspace).
+  repo: ""
+  branch: master
+  ci_workflow: ci
+  # Starts the deploy unit. The module sets the system form on NixOS.
+  start_command: systemctl --user start --no-block jobshop-self-deploy.service
 desk_commands:
   # deployed and failed revs with their mtimes (unix seconds), as JSON.
   deploy-state:
@@ -14,3 +22,14 @@ desk_commands:
       d={{quote .state_dir}}
       f() { r=$(tr -dc '0-9a-f' < "$d/$1" 2>/dev/null); t=$(stat -c %Y "$d/$1" 2>/dev/null || echo 0); printf '"%s":"%s","%s_at":%s' "$1" "$r" "$1" "$t"; }
       printf '{%s,%s}\n' "$(f deployed)" "$(f failed)"
+triggers:
+  # Self-deploy within a minute of CI success on the deploy branch
+  # (JOB-62, #826) instead of waiting for the timer, which stays as the
+  # fallback for a lost webhook. One start per commit. A start while a
+  # deploy runs does nothing: the next timer run picks up the newer commit.
+  self-deploy:
+    on:
+      - github: {event: workflow_run, action: completed, repo: "{{.repo}}", workflow: "{{.ci_workflow}}", branch: "{{.branch}}", conclusion: success}
+    command:
+      run: "{{.start_command}}"
+      timeout: 30s
