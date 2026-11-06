@@ -47,6 +47,10 @@ type Querier interface {
 	InsertResourceProvider(ctx context.Context, name string) error
 	InsertSlot(ctx context.Context, arg InsertSlotParams) error
 	InsertTicket(ctx context.Context, arg InsertTicketParams) error
+	BumpSeq(ctx context.Context, prefix string) (int64, error)
+	StartSeq(ctx context.Context, prefix string, last int64) error
+	TicketExists(ctx context.Context, id string) (bool, error)
+	TicketIDsWithPrefix(ctx context.Context, p string) ([]string, error)
 	LabelsFor(ctx context.Context, ids []string) ([]Label, error)
 	ListEdges(ctx context.Context, id string) ([]Edge, error)
 	ListSlots(ctx context.Context) ([]ResourceSlot, error)

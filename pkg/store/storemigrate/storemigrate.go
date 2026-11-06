@@ -32,6 +32,7 @@ var Tables = []string{
 	"resource_slots",
 	"ticket_resources",
 	"records",
+	"id_seqs",
 }
 
 // identity lists tables whose id column is a Postgres identity; its
