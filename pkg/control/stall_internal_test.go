@@ -359,7 +359,24 @@ func TestStallMaxOpen(t *testing.T) {
 	c.runTriggers()
 	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
-	assert.Len(t, rs, stallMaxOpen)
+	assert.Len(t, rs, config.DefaultStallMaxOpen)
+	infos, err := c.triggerList(t.Context(), scope{admin: true}, struct{}{})
+	require.NoError(t, err)
+	assert.Contains(t, infos.([]rpc.TriggerInfo)[0].Why, "max_open 3")
+}
+
+// max_open raises the cap so a backlog is not held behind a few slow
+// runs (JOB-93).
+func TestStallMaxOpenConfigured(t *testing.T) {
+	t.Parallel()
+	c, _, dir := stallControllerYAML(t, strings.Replace(stallYAML, "    max_runs: 2\n", "    max_runs: 2\n    max_open: 5\n", 1))
+	require.Equal(t, 5, c.config().Triggers["stall"].StallMaxOpen())
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\nf\ng\n"), 0o600))
+	c.runTriggers()
+	c.runTriggers()
+	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
+	require.NoError(t, err)
+	assert.Len(t, rs, 5)
 }
 
 func TestStallConfig(t *testing.T) {
@@ -385,6 +402,9 @@ triggers:
 		"bad var":         {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: '{{.check_output}}'}}\n", "only"},
 		"mixed":           {"    when: {ready_below: 1, stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "no other condition"},
 		"max_runs":        {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_runs: 2\n", "max_runs needs"},
+		"max_open":        {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_open: 2\n", "max_open needs"},
+		"max_open < 0":    {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n    max_open: -1\n", "max_open must be"},
+		"max_open ok":     {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n    max_open: 8\n", ""},
 		"duplicated":      {"    when: {stall: [{signal: blocked, after: 1h}, {signal: blocked, after: 2h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "twice"},
 		"on":              {"    on: [{github: {event: pull_request}}]\n    fallback: 15m\n    when: {stall: [{signal: x, check: 'gh pr view {{.event.pr}}'}]}\n    run: {workflow: sc, vars: {s: x}}\n", ""},
 		"on bad fallback": {"    on: [{github: {event: pull_request}}]\n    fallback: soon\n    when: {stall: [{signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "fallback"},

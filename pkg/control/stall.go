@@ -16,10 +16,6 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// stallMaxOpen bounds the open runs of one stall trigger, so a backlog of
-// old stalls (a fresh deploy, a long outage) is worked a few at a time.
-const stallMaxOpen = 3
-
 // needsHumanLabel marks tickets waiting on the operator.
 const needsHumanLabel = "needs-human"
 
@@ -72,8 +68,9 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 
 // evalStall detects stalls and returns those that may fire now: no open
 // run for the key, under max_runs, past the cooldown, and under
-// stallMaxOpen open runs in total. why explains an empty result. ev is
-// passed to the checks, nil on a poll.
+// max_open open runs in total (JOB-93), so a backlog of old stalls (a
+// fresh deploy, a long outage) is worked a few at a time. why explains
+// an empty result. ev is passed to the checks, nil on a poll.
 func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) (fire []stall, why string, err error) {
 	mine, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: name, Order: store.OrderNewest})
 	if err != nil {
@@ -85,8 +82,9 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 			open++
 		}
 	}
-	if open >= stallMaxOpen {
-		return nil, fmt.Sprintf("%d stall runs open", open), nil
+	maxOpen := tr.StallMaxOpen()
+	if open >= maxOpen {
+		return nil, fmt.Sprintf("%d stall runs open (max_open %d)", open, maxOpen), nil
 	}
 	found, err := c.detectStalls(ctx, tr, ev)
 	if err != nil {
@@ -113,7 +111,7 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 			continue
 		}
 		fire = append(fire, s)
-		if open+len(fire) >= stallMaxOpen {
+		if open+len(fire) >= maxOpen {
 			break
 		}
 	}
