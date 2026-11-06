@@ -295,7 +295,7 @@ Commands:
   report dropped [<note>] [flags]
     Report the work dropped and why (then close).
 
-  answer <question> <text> [flags]
+  answer <question> [<text>] [flags]
     Answer a worker's question; the answer goes to the asking session (admin,
     or pool grant question-answer).
 
@@ -2777,18 +2777,34 @@ Arguments:
               dropped.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-  -q, --question=STRING    Ask a human. Files a needs-human question; the answer
-                           is sent to this session.
-  -t, --ticket=STRING      Ticket id (default: the session's current ticket).
+  -q, --question=STRING      Ask a human. Files a needs-human question;
+                             the answer is sent to this session. Needs
+                             --context; offer --option when there are concrete
+                             alternatives.
+      --context=STRING       Markdown context for -q, required with it (- reads
+                             stdin): what you were doing, what you found,
+                             why you cannot decide alone, and what happens under
+                             each answer. At least two lines. The controller
+                             adds links and recent comments.
+      --option=TITLE|DESCRIPTION
+                             A suggested answer for -q, repeatable (at most 5):
+                             a short title, then | and what choosing it does.
+                             Desk shows each as a button; the human may still
+                             answer freely.
+      --options-json=JSON    Options for -q as JSON (- reads stdin):
+                             [{"title":...,"description":...,"recommended":true}].
+                             For long text; not with --option.
+      --recommend=N          Mark option N (1-based) as your recommendation.
+  -t, --ticket=STRING        Ticket id (default: the session's current ticket).
 ```
 
 ## jobshop report waiting
@@ -2803,20 +2819,36 @@ Arguments:
               dropped.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-  -q, --question=STRING    Ask a human. Files a needs-human question; the answer
-                           is sent to this session.
-  -t, --ticket=STRING      Ticket id (default: the session's current ticket).
-      --until=STRING       Release the ticket deferred until then: a duration
-                           (2h) or RFC3339 time.
+  -q, --question=STRING      Ask a human. Files a needs-human question;
+                             the answer is sent to this session. Needs
+                             --context; offer --option when there are concrete
+                             alternatives.
+      --context=STRING       Markdown context for -q, required with it (- reads
+                             stdin): what you were doing, what you found,
+                             why you cannot decide alone, and what happens under
+                             each answer. At least two lines. The controller
+                             adds links and recent comments.
+      --option=TITLE|DESCRIPTION
+                             A suggested answer for -q, repeatable (at most 5):
+                             a short title, then | and what choosing it does.
+                             Desk shows each as a button; the human may still
+                             answer freely.
+      --options-json=JSON    Options for -q as JSON (- reads stdin):
+                             [{"title":...,"description":...,"recommended":true}].
+                             For long text; not with --option.
+      --recommend=N          Mark option N (1-based) as your recommendation.
+  -t, --ticket=STRING        Ticket id (default: the session's current ticket).
+      --until=STRING         Release the ticket deferred until then: a duration
+                             (2h) or RFC3339 time.
 ```
 
 ## jobshop report ready
@@ -2831,18 +2863,34 @@ Arguments:
               dropped.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-  -q, --question=STRING    Ask a human. Files a needs-human question; the answer
-                           is sent to this session.
-  -t, --ticket=STRING      Ticket id (default: the session's current ticket).
+  -q, --question=STRING      Ask a human. Files a needs-human question;
+                             the answer is sent to this session. Needs
+                             --context; offer --option when there are concrete
+                             alternatives.
+      --context=STRING       Markdown context for -q, required with it (- reads
+                             stdin): what you were doing, what you found,
+                             why you cannot decide alone, and what happens under
+                             each answer. At least two lines. The controller
+                             adds links and recent comments.
+      --option=TITLE|DESCRIPTION
+                             A suggested answer for -q, repeatable (at most 5):
+                             a short title, then | and what choosing it does.
+                             Desk shows each as a button; the human may still
+                             answer freely.
+      --options-json=JSON    Options for -q as JSON (- reads stdin):
+                             [{"title":...,"description":...,"recommended":true}].
+                             For long text; not with --option.
+      --recommend=N          Mark option N (1-based) as your recommendation.
+  -t, --ticket=STRING        Ticket id (default: the session's current ticket).
 ```
 
 ## jobshop report blocked
@@ -2857,18 +2905,34 @@ Arguments:
               dropped.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-  -q, --question=STRING    Ask a human. Files a needs-human question; the answer
-                           is sent to this session.
-  -t, --ticket=STRING      Ticket id (default: the session's current ticket).
+  -q, --question=STRING      Ask a human. Files a needs-human question;
+                             the answer is sent to this session. Needs
+                             --context; offer --option when there are concrete
+                             alternatives.
+      --context=STRING       Markdown context for -q, required with it (- reads
+                             stdin): what you were doing, what you found,
+                             why you cannot decide alone, and what happens under
+                             each answer. At least two lines. The controller
+                             adds links and recent comments.
+      --option=TITLE|DESCRIPTION
+                             A suggested answer for -q, repeatable (at most 5):
+                             a short title, then | and what choosing it does.
+                             Desk shows each as a button; the human may still
+                             answer freely.
+      --options-json=JSON    Options for -q as JSON (- reads stdin):
+                             [{"title":...,"description":...,"recommended":true}].
+                             For long text; not with --option.
+      --recommend=N          Mark option N (1-based) as your recommendation.
+  -t, --ticket=STRING        Ticket id (default: the session's current ticket).
 ```
 
 ## jobshop report failed
@@ -2883,18 +2947,34 @@ Arguments:
               dropped.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-  -q, --question=STRING    Ask a human. Files a needs-human question; the answer
-                           is sent to this session.
-  -t, --ticket=STRING      Ticket id (default: the session's current ticket).
+  -q, --question=STRING      Ask a human. Files a needs-human question;
+                             the answer is sent to this session. Needs
+                             --context; offer --option when there are concrete
+                             alternatives.
+      --context=STRING       Markdown context for -q, required with it (- reads
+                             stdin): what you were doing, what you found,
+                             why you cannot decide alone, and what happens under
+                             each answer. At least two lines. The controller
+                             adds links and recent comments.
+      --option=TITLE|DESCRIPTION
+                             A suggested answer for -q, repeatable (at most 5):
+                             a short title, then | and what choosing it does.
+                             Desk shows each as a button; the human may still
+                             answer freely.
+      --options-json=JSON    Options for -q as JSON (- reads stdin):
+                             [{"title":...,"description":...,"recommended":true}].
+                             For long text; not with --option.
+      --recommend=N          Mark option N (1-based) as your recommendation.
+  -t, --ticket=STRING        Ticket id (default: the session's current ticket).
 ```
 
 ## jobshop report dropped
@@ -2909,31 +2989,47 @@ Arguments:
               dropped.
 
 Flags:
-  -h, --help               Show context-sensitive help.
-      --root=STRING        Jobshop root directory (holds jobshop.yaml,
-                           the database, sockets and sessions). Default:
-                           nearest ancestor of the cwd containing jobshop.yaml
-                           ($JOBSHOP_ROOT).
-      --socket=STRING      Socket to talk to. Defaults to the session
-                           CLI socket, else the root's admin socket
-                           ($JOBSHOP_SOCKET).
+  -h, --help                 Show context-sensitive help.
+      --root=STRING          Jobshop root directory (holds jobshop.yaml,
+                             the database, sockets and sessions). Default:
+                             nearest ancestor of the cwd containing jobshop.yaml
+                             ($JOBSHOP_ROOT).
+      --socket=STRING        Socket to talk to. Defaults to the session
+                             CLI socket, else the root's admin socket
+                             ($JOBSHOP_SOCKET).
 
-  -q, --question=STRING    Ask a human. Files a needs-human question; the answer
-                           is sent to this session.
-  -t, --ticket=STRING      Ticket id (default: the session's current ticket).
+  -q, --question=STRING      Ask a human. Files a needs-human question;
+                             the answer is sent to this session. Needs
+                             --context; offer --option when there are concrete
+                             alternatives.
+      --context=STRING       Markdown context for -q, required with it (- reads
+                             stdin): what you were doing, what you found,
+                             why you cannot decide alone, and what happens under
+                             each answer. At least two lines. The controller
+                             adds links and recent comments.
+      --option=TITLE|DESCRIPTION
+                             A suggested answer for -q, repeatable (at most 5):
+                             a short title, then | and what choosing it does.
+                             Desk shows each as a button; the human may still
+                             answer freely.
+      --options-json=JSON    Options for -q as JSON (- reads stdin):
+                             [{"title":...,"description":...,"recommended":true}].
+                             For long text; not with --option.
+      --recommend=N          Mark option N (1-based) as your recommendation.
+  -t, --ticket=STRING        Ticket id (default: the session's current ticket).
 ```
 
 ## jobshop answer
 
 ```
-Usage: jobshop answer <question> <text> [flags]
+Usage: jobshop answer <question> [<text>] [flags]
 
 Answer a worker's question; the answer goes to the asking session (admin,
 or pool grant question-answer).
 
 Arguments:
   <question>    Question ticket id.
-  <text>        Answer text. Use - to read stdin.
+  [<text>]      Answer text, or with --option a note. Use - to read stdin.
 
 Flags:
   -h, --help             Show context-sensitive help.
@@ -2943,6 +3039,10 @@ Flags:
                          ($JOBSHOP_ROOT).
       --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
                          else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --option=N         Pick the question's option N (1-based); the asking
+                         session gets the option's title and description,
+                         plus the note.
 ```
 
 ## jobshop artifact

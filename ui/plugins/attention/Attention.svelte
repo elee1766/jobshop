@@ -2,10 +2,13 @@
   // Built-in Attention view (#535): what waits on a human, a push opt-in,
   // and runs in progress. A row shows a summary and its canned resolve
   // buttons (#607); Open chat (or a click on the row) opens the session
-  // chat that resolves the item (POST api/attention/chat). Uses api only
-  // (#517).
+  // chat that resolves the item (POST api/attention/chat). A question
+  // row (JOB-101) expands the asker's context and shows each suggested
+  // option as a button that answers with it, plus Discuss for the chat.
+  // Uses api only (#517).
   import { resolveActions, runAction, pendingItems, markPending, clearPending, onPending } from '../../kit/attention.js';
   import { safe } from '../../kit/format.js';
+  import { md } from '../../kit/markdown.js';
   import Holder from '../../kit/Holder.svelte';
   import { untrack } from 'svelte';
 
@@ -126,6 +129,13 @@
     }
   }
 
+  /** @param {any} it @param {{ id: number, title: string }} o @returns {import('../../kit/attention.js').Action} */
+  const optionAction = (it, o) => ({
+    label: 'Answered ' + o.title,
+    run: () => api.call('question.answer', { id: it.id, option: o.id }),
+    ask: 'Answer ' + it.id + ' with option ' + o.id + ': ' + o.title + '?',
+  });
+
   /** @type {Record<string, string>} */
   const pushTitle = {
     unsupported: 'This browser has no Web Push (on iOS, add Desk to the home screen first).',
@@ -207,14 +217,34 @@
                 {#if it.summary}<div class="summary muted" data-testid="attention-summary">{it.summary}</div>{/if}
                 <!-- Buttons do not open the chat: the row's click is for that. -->
                 <div class="acts" role="presentation" onclick={(e) => e.stopPropagation()}>
+                  {#if it.context}
+                    <details class="qctx" data-testid="attention-context">
+                      <summary>Context</summary>
+                      <div class="md">{@html md(it.context)}</div>
+                    </details>
+                  {/if}
                   {#if pend}
                     <span class="muted" data-testid="row-pending">{pend.label}…</span>
                   {:else}
                     {#if stuck[key]}<span class="warn-text" data-testid="row-stuck">still listed after {stuck[key]}</span>{/if}
+                    {#if it.options?.length}
+                      <div class="opts" data-testid="question-options">
+                        {#each it.options as o (o.id)}
+                          <button type="button" class="opt" class:primary={o.recommended} disabled={acting === key} onclick={() => resolve(it, optionAction(it, o))} data-testid="question-option" data-option={o.id}>
+                            <span class="ot">{o.id}. {o.title}{#if o.recommended}<span class="rec">{' (recommended)'}</span>{/if}</span>
+                            {#if o.description}<span class="od">{o.description}</span>{/if}
+                          </button>
+                        {/each}
+                      </div>
+                    {/if}
                     {#each resolveActions(api, it.kind, it.id) as a (a.label)}
                       <button type="button" disabled={acting === key} onclick={() => resolve(it, a)} data-testid="row-resolve">{a.label}</button>
                     {/each}
-                    <button type="button" class="ghost" disabled={opening === key} onclick={() => open(it)} data-testid="open-chat">Open chat</button>
+                    {#if it.kind === 'question'}
+                      <button type="button" class="ghost" disabled={opening === key} onclick={() => open(it)} data-testid="open-chat" title="Talk it over or answer in your own words">Discuss</button>
+                    {:else}
+                      <button type="button" class="ghost" disabled={opening === key} onclick={() => open(it)} data-testid="open-chat">Open chat</button>
+                    {/if}
                   {/if}
                 </div>
               </td>
@@ -286,6 +316,15 @@
   .warn-text { color: var(--desk-warn, #b7791f); font-size: 12px; align-self: center; }
   .summary { margin-top: 4px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; cursor: default; }
+  .qctx { flex: 1 1 100%; min-width: 0; }
+  .qctx summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+  .qctx .md { margin-top: 4px; overflow-wrap: anywhere; font-size: 13px; }
+  .qctx .md :global(p), .qctx .md :global(ul) { margin: 4px 0; }
+  .opts { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+  .opt { height: auto; flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 10px; text-align: left; white-space: normal; max-width: 360px; }
+  .opt .ot { font-weight: 500; }
+  .opt .od { font-size: 12px; opacity: 0.85; }
+  .opt .rec { font-weight: 400; font-size: 11px; }
   .pushna { font-size: 12px; }
   .progress { display: flex; flex-direction: column; gap: 8px; }
   .item { overflow: hidden; }

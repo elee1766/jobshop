@@ -397,6 +397,44 @@ test('a row a refresh still lists after its action shows it with the actions bac
   await expect(row.getByTestId('row-resolve')).toHaveText(['Close ticket']);
 });
 
+test('a question with options answers in one click (JOB-101)', async ({ page }) => {
+  let answered = false;
+  const calls = await mock(page, {
+    attention: () => answered ? [] : [{
+      kind: 'question', id: 'js-q5', title: 'Question: which base?', why: '', since: iso(600e3),
+      context: 'I rebased onto **both** branches.\n\n- Ticket: js-t5',
+      options: [{ id: 1, title: 'main', description: 'Ship next minor.', recommended: true }, { id: 2, title: 'release', description: 'Backport the API.' }],
+    }],
+    chat: () => ({ kind: 'question', id: 'js-q5', key: 'attention:question:js-q5', session: 'js-s5', started: true }),
+    rpc: (m) => { if (m === 'question.answer') answered = true; return null; },
+  });
+  await page.goto('./');
+  const row = page.getByTestId('attention-row').first();
+  await expect(row.getByTestId('question-option')).toHaveCount(2);
+  await expect(row.getByTestId('question-option').first()).toContainText('main (recommended)');
+  await expect(row.getByTestId('question-option').nth(1)).toContainText('Backport the API.');
+  await row.getByTestId('attention-context').locator('summary').click();
+  await expect(row.getByTestId('attention-context').locator('strong')).toHaveText('both');
+  await expect(row.getByTestId('open-chat')).toHaveText('Discuss');
+  await row.getByTestId('question-option').nth(1).click();
+  await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByTestId('attention-empty')).toBeVisible();
+  expect(calls.find((c) => c.path === '/api/rpc/question.answer')?.body).toEqual({ id: 'js-q5', option: 2 });
+  expect(calls.some((c) => c.path === '/api/attention/chat')).toBe(false);
+});
+
+test('Discuss on a question opens its chat (JOB-101)', async ({ page }) => {
+  const calls = await mock(page, {
+    attention: () => [{ kind: 'question', id: 'js-q6', title: 'Question: keep it?', why: '', since: iso(600e3), options: [{ id: 1, title: 'yes' }] }],
+    chat: () => ({ kind: 'question', id: 'js-q6', key: 'attention:question:js-q6', session: 'js-s6', started: true }),
+  });
+  await page.goto('./');
+  await page.getByTestId('attention-row').first().getByTestId('open-chat').click();
+  await expect(page).toHaveURL(/session=js-s6/);
+  expect(calls.filter((c) => c.path === '/api/attention/chat')).toHaveLength(1);
+  expect(calls.some((c) => c.path === '/api/rpc/question.answer')).toBe(false);
+});
+
 test('Open chat on a row opens the session', async ({ page }) => {
   const calls = await mock(page, {
     attention: () => [{ kind: 'run', id: 'js-r2', title: 'run stuck', why: '', since: iso(600e3) }],

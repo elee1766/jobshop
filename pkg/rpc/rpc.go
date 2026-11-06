@@ -1493,6 +1493,10 @@ type AttentionItem struct {
 	// meta.desk.attention_summary when set (the pre-started chat's first
 	// reply), else the ticket body or wait reason.
 	Summary string `json:"summary,omitempty"`
+	// Context and Options are a question's meta.question context
+	// (markdown) and suggested answers (JOB-101).
+	Context string           `json:"context,omitempty"`
+	Options []QuestionOption `json:"options,omitempty"`
 }
 
 // AttentionResult lists what waits on a human, oldest first. Empty when
@@ -1643,8 +1647,28 @@ type ReportParams struct {
 	// Question files a needs-human question whose answer is delivered to
 	// the reporting session.
 	Question string `json:"question,omitempty"`
+	// Context (markdown) says what the asker was doing, what it found,
+	// why it cannot decide and what each answer leads to (JOB-101). The
+	// CLI requires it with a question; the controller adds links and
+	// recent comments.
+	Context string `json:"context,omitempty"`
+	// Options are suggested answers, at most MaxQuestionOptions. Their
+	// IDs are assigned 1..n in order.
+	Options []QuestionOption `json:"options,omitempty"`
 	// Until (waiting only) releases the ticket deferred until then.
 	Until *time.Time `json:"until,omitempty"`
+}
+
+// MaxQuestionOptions bounds the options on one question.
+const MaxQuestionOptions = 5
+
+// QuestionOption is a suggested answer to a question (JOB-101).
+// Recommended marks the asker's pick.
+type QuestionOption struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	Recommended bool   `json:"recommended,omitempty"`
 }
 
 // ReportResult is the reported ticket and the question filed, if any.
@@ -1656,8 +1680,11 @@ type ReportResult struct {
 // AnswerParams answers a question ticket (admin).
 type AnswerParams struct {
 	ID   string `json:"id"`
-	Text string `json:"text"`
-	From string `json:"from,omitempty"` // who answered, e.g. a chat sender; default the caller
+	Text string `json:"text,omitempty"`
+	// Option picks one of the question's options (1..n); Text is then an
+	// optional note. Without Option, Text is required.
+	Option int    `json:"option,omitempty"`
+	From   string `json:"from,omitempty"` // who answered, e.g. a chat sender; default the caller
 }
 
 // AnswerResult is the closed question and the message to the asking

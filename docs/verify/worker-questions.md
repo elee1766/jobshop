@@ -3,7 +3,7 @@
 On gasserver after deploying #186, with the Matrix gateway running:
 
 1. Start a session on a scratch ticket and, in it, run
-   `jobshop report waiting "need a decision" -q "Test question: reply 'ok'"`.
+   `jobshop report waiting "need a decision" -q "Test question: reply 'ok'" --context $'Runbook test.\nAny reply closes it.'`.
 2. `jobshop ticket list --label needs-human -s open` lists `Question: ...`
    with `meta.question`; `jobshop ticket list --report waiting` lists
    the scratch ticket.

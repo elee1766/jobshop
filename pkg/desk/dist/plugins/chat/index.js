@@ -4822,7 +4822,7 @@ function Gs() {
 	}, t;
 }
 var Ks = Gs();
-// plugins/chat/format.js
+// kit/markdown.js
 function qs(e) {
 	let t = X.parse(e || "", {
 		async: !1,
@@ -4853,6 +4853,7 @@ function qs(e) {
 	}
 	return r.body.innerHTML;
 }
+// plugins/chat/format.js
 function Js(e) {
 	return e >= 1e6 ? (e / 1e6).toFixed(1) + "M" : e >= 1e3 ? Math.round(e / 1e3) + "k" : String(e);
 }

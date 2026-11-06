@@ -5,7 +5,7 @@ come back (#293). Needs a Linear identity for the team, `tracker:
 linear`, `linear_human` set, and subscriptions on.
 
 1. Start `pr-work` for a test issue. In its implement session run
-   `jobshop report waiting "scope" --question "Keep the old page?"`.
+   `jobshop report waiting "scope" --question "Keep the old page?" --context $'Test question.\nAnswer anything.'`.
 2. Within a tick, the Linear issue has one comment mentioning
    `linear_human` with the question, and the `Blocked` label.
    `jobshop ticket show <question>` has `meta.linear_ask` and an

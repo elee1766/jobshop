@@ -486,6 +486,10 @@ type AttentionItem struct {
 	URL string `json:"url,omitempty"`
 	// Summary is one or two lines for the row (#607).
 	Summary string `json:"summary,omitempty"`
+	// Context (markdown) and Options are a question's (JOB-101): the
+	// row expands the context and shows each option as a button.
+	Context string               `json:"context,omitempty"`
+	Options []rpc.QuestionOption `json:"options,omitempty"`
 }
 
 // attention is the controller's attention list (#577): Desk adds no
@@ -505,7 +509,10 @@ func (s *Server) attention(r *http.Request) (any, error) {
 		if it.Owner != "" {
 			why = append(why, "owner "+it.Owner)
 		}
-		out = append(out, AttentionItem{Kind: it.Kind, ID: it.ID, Title: it.Title, Why: strings.Join(why, ", "), Since: it.Since, Ref: it.Ref, URL: it.URL, Summary: it.Summary})
+		out = append(out, AttentionItem{
+			Kind: it.Kind, ID: it.ID, Title: it.Title, Why: strings.Join(why, ", "), Since: it.Since, Ref: it.Ref, URL: it.URL,
+			Summary: it.Summary, Context: it.Context, Options: it.Options,
+		})
 	}
 	// Items the operator acknowledged in Desk stay hidden (#535).
 	return s.dropAcked(out), nil
