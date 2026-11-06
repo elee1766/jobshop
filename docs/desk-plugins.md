@@ -54,10 +54,38 @@ or plain classes as in the example.
 | `artifact` | an attachment renderer | `{artifact, file}` with `file.url` | `type` (MIME, `text/*` globs), `ext` |
 | `header` | a widget in the nav bar | `{}` | none |
 | `session` | the session panel body (#535); the shell owns the frame, the last one wins | `{session, item}`, `item` the attention `kind:id` it resolves, or empty | none |
+| `<plugin>:<name>` | a place a plugin's own page offers, below | per slot | any; checked against the `target` the host passes |
 
 `match` lists accepted values per key; every key listed must accept one
 of the target's values. No `match` accepts everything. A view whose `id`
 is a built-in's id replaces that view.
+
+### Plugin-defined slots
+
+To add to a page without replacing it, contribute to a slot that page's
+plugin defines (JOB-87). The name is `<plugin>:<name>`, lowercase
+letters, digits and hyphens on both sides; Desk checks only the form, so
+a typo is an empty slot, not a load error. Every matching contribution
+renders, in plugin name order, each in its own box: one that fails to
+load shows an error card in its box and the rest of the page keeps
+working. Declare `"api": ">=4"`.
+
+```json
+{ "slot": "work:toolbar", "element": "my-export-button" }
+```
+
+Slots the built-in views offer:
+
+| view | slot | where | `context` |
+| --- | --- | --- | --- |
+| Work | `work:toolbar` | the header bar, right of the state filter | `{state}`, the filter (`''` for all) |
+| Work | `work:aside` | a column right of the lists (below them on a phone) | `{state, work}`, `work` the `api/work` result or null while loading |
+| Chat | `chat:panel` | under the session list, above Escalations | `{session}`, the selected session or `''` |
+| Chat (session panel) | `chat:composer-actions` | the composer's button row, left of Send | `{session, item, working}` |
+
+A slot shows nothing when no plugin contributes, so a toolbar stays as
+it was. To offer slots in your own view, call `api.slot` (below) on an
+element and document the name and context.
 
 ## The api
 
@@ -115,6 +143,16 @@ details in the drawer) is now a plugin using only these:
 
 Drawer plugins get `{ticket, run, trace, comments}`; built-ins come
 first, so the ticket details lead.
+
+Added in api version 4 (JOB-87; declare `"api": ">=4"`):
+
+- `slot(host, 'work:aside', context, target?)`: mounts every
+  contribution to a plugin-defined slot inside `host`, each in a
+  `div.plugin-host` with `data-plugin` set, and returns `{context(c),
+  destroy()}`, or null when none matches `target` (`{}` if omitted).
+  `mount` still mounts only the first match, for a single renderer such
+  as `artifact`. Call `destroy` in `disconnectedCallback`. Built-ins use
+  the `slots` Svelte action in `ui/kit/plugin.svelte.js`.
 
 Example: create a ticket with meta, then follow it.
 
@@ -203,7 +241,8 @@ scope; the `api` shape stays compatible with them.
 - `curl -s localhost:7480/api/rpc | jq '.methods'` shows what `call`
   may use; a refused call rejects with `forbidden`.
 - `ui/e2e/plugins/e2e-test` is a fuller plain-JS plugin used by the
-  Playwright tests.
+  Playwright tests; `ui/e2e/plugins/e2e-slots` adds to Work and Chat
+  through their slots.
 
 ## Try the example
 

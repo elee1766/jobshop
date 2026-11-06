@@ -1,6 +1,8 @@
 <script>
   // Chat view (#535): the chat pool's sessions, a form for a new one, and
   // the controller's escalation chats. A row opens the session panel.
+  import { slots } from '../../kit/plugin.svelte.js';
+
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api } = $props();
 
@@ -101,6 +103,9 @@
     {/each}
   </div>
 
+  <!-- chat:panel (JOB-87): sections other plugins add under the session list. -->
+  <div class="plugged" data-testid="chat-panels" use:slots={{ api, slot: 'chat:panel', context: { session: sel } }}></div>
+
   <h2 class="st">Escalations</h2>
   {#if escalations && open.length + closed.length === 0}
     <div class="card empty" data-testid="escalations-empty"><div class="muted">No escalation sessions.</div></div>
@@ -136,6 +141,8 @@
   .new textarea { resize: vertical; }
   .new .row { display: flex; justify-content: flex-end; }
   .err { color: var(--desk-bad); padding: 4px 2px; font-size: 12px; }
+  .plugged { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .plugged:empty { display: none; }
   @media (max-width: 768px) {
     .list { padding: 8px 8px 16px; }
     .item { height: 48px; padding: 0 10px; font-size: 14px; border-bottom: 1px solid var(--desk-border); border-radius: 0; }

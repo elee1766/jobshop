@@ -9,6 +9,7 @@
   import { promptHistory, rememberPrompt, tokens } from './format.js';
   import Block from './Block.svelte';
   import { resolveActions, runAction, markPending } from '../../kit/attention.js';
+  import { slots } from '../../kit/plugin.svelte.js';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api, context = {} } = $props();
@@ -73,6 +74,9 @@
     return '';
   });
   const canSend = $derived(access.write || !!chatKey);
+  // chat:composer-actions (JOB-87): buttons other plugins put in the
+  // composer's action row.
+  const actionsCtx = $derived({ session: id, item, working });
   const title = $derived(chatKey.startsWith('escalation:') ? 'Escalation ' + chatKey.slice(11) : chatKey.startsWith('attention:') ? 'Resolve ' + item : chatKey.startsWith('desk:') ? 'Desk chat' : info?.ticket?.title || 'Session');
 
   let draft = $state('');
@@ -284,6 +288,7 @@
         </span>
         {#if notice}<span class="notice" data-testid="chat-notice">{notice}</span>{/if}
         <span class="grow"></span>
+        <span class="plugged" data-testid="chat-composer-actions" use:slots={{ api, slot: 'chat:composer-actions', context: actionsCtx }}></span>
         {#if working}
           <button type="button" class="stop" onclick={stop} title="Cancel the turn (Esc)" data-testid="chat-stop">Stop</button>
           <button type="button" class="interrupt" disabled={!draft.trim() || sending} onclick={() => submit(true)} title="Cancel the turn and send now (Ctrl+Enter)" data-testid="chat-interrupt">Interrupt</button>
@@ -336,6 +341,8 @@
   .model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .usage { flex: none; }
   .grow { flex: 1; }
+  .plugged { display: flex; align-items: center; gap: 6px; flex: none; }
+  .plugged:empty { display: none; }
   .notice { font-size: 11px; color: var(--desk-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .actions .stop { border-color: var(--desk-bad); color: var(--desk-bad); background: none; }
   .actions .send { background: var(--desk-accent); color: var(--desk-accent-fg); border-color: transparent; }
