@@ -89,6 +89,7 @@ type root struct {
 	Journal   journalCmd   `cmd:"" help:"Search every session's journal with LogsQL on VictoriaLogs (journal.victorialogs), and backfill it."`
 	Whoami    whoamiCmd    `cmd:"" help:"Show the caller's scope."`
 	Version   versionCmd   `cmd:"" help:"Print version information."`
+	Help      helpCmd      `cmd:"" help:"Show help for a command, from the same text as --help: jobshop help linear assign."`
 	Docs      docsCmd      `cmd:"" help:"Print links to the docs for this binary (packs, readme, llm). Needs no root."`
 }
 
@@ -123,6 +124,21 @@ func Main(args []string) int {
 		return exitCode(err)
 	}
 	return 0
+}
+
+// helpCmd prints the kong help of a command path, the same text as
+// `<path> --help`, for agents that try `jobshop help <cmd>`.
+type helpCmd struct {
+	Command []string `arg:"" optional:"" help:"Command path, e.g. linear assign. Empty prints the command list."`
+}
+
+func (c helpCmd) Run() error {
+	out, err := helpText(c.Command)
+	if err != nil {
+		return err
+	}
+	fmt.Print(out)
+	return nil
 }
 
 type versionCmd struct {
