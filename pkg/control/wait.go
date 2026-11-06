@@ -289,7 +289,16 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 	if err != nil {
 		return t, err
 	}
-	u := store.Update{Fields: fields, IfRevision: t.Revision}
+	// One Update so no reader sees the wait cleared without its comment
+	// (JOB-39).
+	u := store.Update{
+		Fields:     fields,
+		IfRevision: t.Revision,
+		Comment:    fmt.Sprintf("Wait (%s) ended: %s", w.Reason, why),
+	}
+	if w.TimedOut && slices.Contains(t.Labels, needsHumanLabel) {
+		u.RemoveLabels = []string{needsHumanLabel}
+	}
 	if w.Resume && w.Session != "" && t.Holder == "" {
 		if s, err := c.store.Get(ctx, w.Session); err == nil && s.Kind == store.KindSession && s.Status != store.StatusClosed {
 			u.Holder = &w.Session
@@ -298,10 +307,6 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 	if t, err = c.store.Update(ctx, "controller", t.ID, u); err != nil {
 		return t, err
 	}
-	if w.TimedOut && slices.Contains(t.Labels, needsHumanLabel) {
-		_ = store.RemoveLabel(ctx, c.store, "controller", t.ID, needsHumanLabel)
-	}
-	_, _ = store.AddComment(ctx, c.store, "controller", t.ID, fmt.Sprintf("Wait (%s) ended: %s", w.Reason, why))
 	c.log.Info("wait cleared", "ticket", t.ID, "why", why)
 	return t, nil
 }
