@@ -23,6 +23,8 @@ Store fixes the cases found:
 - Expire and ReleaseSlots reset their result when tx reruns after a
   lost write race. Before, a rolled-back attempt's ids stayed in the
   result, so the sweep reported tickets it did not reopen.
+- Heartbeat runs through the retrying write transaction, so a Postgres
+  serialization failure is rerun instead of returned raw.
 
 Goroutines start on a barrier (16 racers). Expire and AddLabel retry on
 ErrConflict, the error a serialization failure maps to. Run with
