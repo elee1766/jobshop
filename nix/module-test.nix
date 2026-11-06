@@ -205,6 +205,19 @@ let
     [ "$(cat $T/root/config-repo.last-good)" = "$(cur)" ] || rfail "last-good not advanced"
     grep -q 'ticket upsert --key config-repo:cfg --close' $T/tickets || rfail "report not closed"
 
+    # A checkout moved outside the unit (an operator's git pull) is still
+    # checked and reloaded (JOB-90).
+    (cd $T/work && pool 5 && push pulled)
+    git -C $T/root/workspaces/cfg pull -q --ff-only
+    run
+    [ $rc = 0 ] || rfail "pulled checkout exit $rc"
+    grep -q reload $T/log || rfail "pulled checkout not reloaded"
+    [ "$(cat $T/root/config-repo.last-good)" = "$(cur)" ] || rfail "last-good not advanced after pull"
+    # And not again on the next tick.
+    run
+    [ $rc = 0 ] || rfail "idle run exit $rc"
+    ! grep -q reload $T/log || rfail "idle run reloaded"
+
     # A local edit that blocks the fast-forward raises attention.
     echo edit >> $T/root/workspaces/cfg/packs/p/pack.yaml
     git -C $T/root/workspaces/cfg commit -qam local
