@@ -181,6 +181,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `ci_branch` | Branch `master-red` watches. Default `master` |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `refinery_sessions` | `max_sessions` for the refinery. Default 1; more needs strict branch protection |
+| `refinery_model`, `refinery_effort` | Refinery pool `model` and `effort` (#304). Default empty: the agent's |
 | `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
 | `deploy_check` | How `post-merge` and `stall-check` tell a commit is deployed. Default: no deploy, the check passes |
 | `stall_after`, `stall_step_after`, `stall_human_after` | Stall thresholds (Go durations). Defaults 1h, 3h, 4h |
