@@ -184,7 +184,7 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	t.Parallel()
 	c, _, _ := stallControllerYAML(t, strings.Replace(stallYAML, "dev: {agent: fake, dir: %[1]q}",
 		"dev: {agent: fake, dir: %[1]q, sandbox: {backend: bubblewrap, network: pasta}}", 1))
-	c.opt.Preflight = func(host.Spec) (host.PreflightReport, error) {
+	c.opt.Preflight = func(host.Spec, ...host.PreflightOption) (host.PreflightReport, error) {
 		return host.PreflightReport{Checks: []host.PreflightCheck{
 			{Name: "sandbox.bwrap", OK: true},
 			{Name: "network.nft", Reason: "nft not found", Hint: "install nftables"},
