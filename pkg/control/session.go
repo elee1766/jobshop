@@ -997,6 +997,9 @@ func (r *runner) saveFields(f store.SessionFields) error {
 
 func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 	deadline := time.Now().Add(15 * time.Second)
+	// A new host listens within milliseconds: poll quickly at first, then
+	// back off to the old 100ms.
+	wait := 5 * time.Millisecond
 	for {
 		nc, br, wel, err := host.Connect(r.ctx, r.dir)
 		if err == nil {
@@ -1014,7 +1017,8 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 		if ex, exited := host.ReadExit(r.dir); exited && !host.Alive(r.dir) {
 			return nil, nil, wel, fmt.Errorf("host exited: %s", ex.Reason)
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(wait)
+		wait = min(2*wait, 100*time.Millisecond)
 	}
 }
 

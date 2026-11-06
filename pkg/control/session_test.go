@@ -33,6 +33,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/acphost/pkg/cgroup"
 	"github.com/elee1766/acphost/pkg/proc"
+	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
@@ -567,6 +568,8 @@ func TestSessionReap(t *testing.T) {
 	}
 	require.True(t, host.Alive(odir), "helper holds the lock")
 
+	// The controller's clock is fake: let the closed session age.
+	advance(t, root.Dir, time.Second)
 	params := rpc.SessionReapParams{Closed: true, OlderThan: time.Nanosecond, DryRun: true}
 	var res rpc.SessionReapResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionReap, params, &res))
@@ -624,6 +627,14 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	root := config.Root{Dir: dir}
 	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: %s\n    dir: %q\n", os.Args[0], idle, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte(cfg), 0o600))
+	// The controller reads time through its clock, so backoffs, restart
+	// delays and idle polls run on fake time that passEventually and
+	// advance step (JOB-73). A test that passes its own Clock keeps it.
+	if opt.Clock == nil {
+		clk := clock.NewFake(time.Now())
+		fakeClocks.Store(dir, clk)
+		opt.Clock = clk
+	}
 	var inproc *controltest.InProcHosts
 	switch opt.Hosts.(type) {
 	case realHosts:
