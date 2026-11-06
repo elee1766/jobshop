@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.11](https://github.com/elee1766/jobshop/compare/v0.6.10...v0.6.11) (2026-11-06)
+
+
+### Features
+
+* **control:** configurable max_open for stall triggers (JOB-93) ([#891](https://github.com/elee1766/jobshop/issues/891)) ([266440b](https://github.com/elee1766/jobshop/commit/266440b1ecaa4b5b0f0a4bbfe7dacd0c30b5bc96))
+
 ## [0.6.10](https://github.com/elee1766/jobshop/compare/v0.6.9...v0.6.10) (2026-11-06)
 
 
