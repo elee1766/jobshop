@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/stretchr/testify/assert"
@@ -70,8 +71,14 @@ func TestSessionListState(t *testing.T) {
 	assert.True(t, o.Alive)
 	assert.Equal(t, os.Getpid(), o.HostPid)
 
-	// The host stops: the next request drops it before any pass.
+	// The host stops: the next request drops it before any pass. Closing
+	// the file does not drop the flock at once: a process another parallel
+	// test forks in that moment holds a copy of the descriptor until it
+	// execs, and the lock lives as long as any copy (JOB-71). Wait for the
+	// lock to be gone, as a real host's exit would have made it, so the
+	// listing cannot see it flip between its two liveness checks.
 	require.NoError(t, lf.Close())
+	require.Eventually(t, func() bool { return !host.Alive(odir) }, time.Minute, time.Millisecond, "flock released")
 	assert.NotContains(t, list(), "js-orphan")
 }
 
