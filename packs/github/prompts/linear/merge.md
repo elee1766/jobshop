@@ -21,6 +21,17 @@ file it with `jobshop linear create --team {{.linear_team}} --title
 `jobshop linear relate <NEW> --related {{.issue}}`, after `jobshop linear
 search` finds no duplicate.
 
+PR in another repo (JOB-33): if the PR is not in {{.repo}}, do not
+review or merge it here. The implement step's comment names the
+`pr-review` run of that repo's instance (`review run <id>`); with no run
+named, start it yourself (`jobshop run start <prefix>pr-review --var
+pr=<n> --key pr-<n>`, `<prefix>` from a run of that repo in `jobshop run
+list`). Then park on it:
+`jobshop wait add 'run:id=<review run>,state=closed' --resume --timeout 24h --reason "review of <url> by its own instance"`
+and end the turn. On resume: merged (`gh pr view <url> --json state`),
+comment the merge sha here and `jobshop close`; post-merge then checks
+the issue. Closed unmerged: comment that and `jobshop close -r failed`.
+
 Then do exactly one of these. A plain release of this step counts as a
 failed attempt (like a failed close). To wait for CI on a PR head, set
 `jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`

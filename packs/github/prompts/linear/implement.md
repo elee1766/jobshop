@@ -60,6 +60,19 @@ green, comment and close as below; red, fix, push and set the wait again
 If the wait was cleared because the PR conflicts with its base, rebase on
 `origin/master`, resolve, `push --force-with-lease`, and set the wait again.
 
+PR in another instance's repo (JOB-33): when the PR you opened is not in
+{{.repo}}, this run's review-merge cannot merge it; that repo's own
+instance reviews it with its `<prefix>pr-review` workflow (`<prefix>` is
+that repo's `pr-work` prefix: find a run whose `meta.github.repo` is that
+repo in `jobshop run list` and strip `pr-work` from its
+`fields.workflow`). When CI is green, start it:
+`jobshop run start <prefix>pr-review --var pr=<n> --key pr-<n>` (a
+repeated start returns the open run), comment
+`PR <url> head <sha> review run <run id>` on this step, then
+`jobshop close --outcome pr`. No such workflow on this controller:
+`jobshop report waiting "no pr-review for <repo>" --question "Which
+instance reviews <url>?"`.
+
 Docs: {{.docs_rule}}
 
 Do not merge. When CI is green on the head you pushed:

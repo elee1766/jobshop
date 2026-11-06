@@ -59,7 +59,12 @@ func TestReleasePRTrigger(t *testing.T) {
 ]`
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "prs.json"), []byte(prs), 0o600))
 
-	keys := stallKeys(t, c)
+	found, err := c.detectStalls(t.Context(), c.config().Triggers["pr-unmerged"])
+	require.NoError(t, err)
+	var keys []string
+	for _, s := range found {
+		keys = append(keys, s.key())
+	}
 	assert.Contains(t, keys, "stall:pr_unmerged:8")
 	assert.NotContains(t, keys, "stall:pr_unmerged:7", "the release PR is the trigger's, not a stall")
 
