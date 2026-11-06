@@ -13,6 +13,8 @@ defaults:
   dev_sonnet_sessions: 1
   dev_sonnet_model: claude-sonnet-5-5
   dev_sonnet_effort: high
+  stall_model: ""
+  stall_effort: ""
   # Local memory (#592): relative to the root dir, so <root>/memory.
   memory_dir: memory
   memory_cap: 2200
@@ -23,7 +25,7 @@ defaults:
   # Learning scopes the curate trigger counts (#524): this repo and its
   # pools, so another instance's learnings do not start this curator.
   # A YAML list of globs.
-  curate_scope: ["repo:elee1766/jobshop", "pool:dev", "pool:dev-sonnet", "pool:plan", "pool:refinery", "pool:deploy-check", "pool:learn"]
+  curate_scope: ["repo:elee1766/jobshop", "pool:dev", "pool:dev-sonnet", "pool:plan", "pool:refinery", "pool:stall", "pool:deploy-check", "pool:learn"]
   # Curator gate (#274): evaluate a merged curator edit after this many
   # runs in its pools, or this long after its merge.
   evaluate_runs: 20
@@ -57,6 +59,8 @@ extends:
       dev_sonnet_sessions: "{{.dev_sonnet_sessions}}"
       dev_sonnet_model: "{{.dev_sonnet_model}}"
       dev_sonnet_effort: "{{.dev_sonnet_effort}}"
+      stall_model: "{{.stall_model}}"
+      stall_effort: "{{.stall_effort}}"
       human: elee1766
       # Contributors whose issue reports are picked up (#340).
       authors: zexoverz,hhenry88,forgotten-memory

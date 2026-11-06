@@ -24,6 +24,9 @@ defaults:
   dev_sonnet_sessions: 1
   dev_sonnet_model: claude-sonnet-5-5
   dev_sonnet_effort: high
+  # Stall pool model and effort. Empty: the agent's.
+  stall_model: ""
+  stall_effort: ""
   # post-merge steps wait on CI and deploy in their own pool (#167).
   deploy_sessions: 3
   # Refinery merge policy (prompts/merge.md, ci-merge.md).
@@ -125,7 +128,18 @@ pools:
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/{{.tracker}}/plan.md
-    # stall-check steps run here and inspect or restart sessions.
+    admin: [session-list, session-restart, trigger-list, report-incidents, attention, activity, handoff]
+  # stall-check steps run here and inspect or restart sessions. Separate
+  # from plan so they can use a cheaper model and do not queue behind it.
+  stall:
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/master
+    max_sessions: 1
+    model: "{{.stall_model}}"
+    effort: "{{.stall_effort}}"
+    idle_timeout: 10m
+    turn_timeout: 2h
     admin: [session-list, session-restart, trigger-list, report-incidents, attention, activity, handoff]
   refinery:
     agent: "{{.agent}}"
@@ -412,7 +426,7 @@ workflows:
       hold_prompt_file: prompts/escalation-hold.md
     steps:
       - id: diagnose
-        pool: plan
+        pool: stall
         retries: 1
         title: "Stall {{.signal}}: {{.subject}}"
         prompt_file: prompts/stall.md
