@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.14](https://github.com/elee1766/jobshop/compare/v0.6.13...v0.6.14) (2026-11-06)
+
+
+### Features
+
+* **linear:** answer and close agent sessions; self-assign may land as delegate ([#898](https://github.com/elee1766/jobshop/issues/898)) ([008fed8](https://github.com/elee1766/jobshop/commit/008fed81006b00673b272499377b4e45ed9a8766))
+
 ## [0.6.13](https://github.com/elee1766/jobshop/compare/v0.6.12...v0.6.13) (2026-11-06)
 
 
