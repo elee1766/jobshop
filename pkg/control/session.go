@@ -118,6 +118,9 @@ type runner struct {
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
+	// acpSession is the ACP session id turns prompt (SessionFields.ACPSession).
+	// A turn replaces it when the agent no longer knows it (JOB-65). Under mu.
+	acpSession string
 	// context is a prompt block for the model only, set by deliver for
 	// the next turn (session.send context).
 	context string
@@ -222,7 +225,47 @@ func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnec
 		"path", "new+summary", "summary_bytes", len(summary), "summary_source", source)
 	fields.ACPSession = string(ns.SessionId)
 	noteAdvertised(fields, ns.ConfigOptions)
+	r.setACPID(fields.ACPSession)
 	return r.saveFields(*fields)
+}
+
+func (r *runner) acpID() acp.SessionId {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return acp.SessionId(r.acpSession)
+}
+
+func (r *runner) setACPID(id string) {
+	r.mu.Lock()
+	r.acpSession = id
+	r.mu.Unlock()
+}
+
+// unknownSession reports whether a prompt failed because the agent does
+// not know the session id: jcode answers -32602 "Unknown ACP session id"
+// when its process lost the session (seen 2026-11-05 after restarts,
+// JOB-65). A host restart would only repeat it.
+func unknownSession(err error) bool {
+	var re *acp.RequestError
+	if !errors.As(err, &re) || re.Code != -32602 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(fmt.Sprint(re.Message, " ", re.Data)), "unknown acp session")
+}
+
+// replaceConversation opens a new conversation, seeded with the journal
+// summary, in place of one the agent rejected mid-session.
+func (r *runner) replaceConversation(ctx context.Context, conn *acp.ClientSideConnection) error {
+	t, err := r.c.store.Get(ctx, r.id)
+	if err != nil {
+		return err
+	}
+	fields, err := store.DecodeFields[store.SessionFields](t)
+	if err != nil {
+		return err
+	}
+	r.resetInjected()
+	return r.newConversation(ctx, conn, r.c.sessionCwd(t), &fields)
 }
 
 // clipSummary keeps s within n bytes: its header line and its newest
@@ -702,6 +745,7 @@ func (r *runner) session() error {
 	}
 
 	cwd := r.c.sessionCwd(t)
+	r.setACPID(fields.ACPSession)
 	switch {
 	case fields.ACPSession == "":
 		r.resetInjected()
@@ -711,6 +755,7 @@ func (r *runner) session() error {
 		}
 		fields.ACPSession = string(ns.SessionId)
 		noteAdvertised(&fields, ns.ConfigOptions)
+		r.setACPID(fields.ACPSession)
 		if err := r.saveFields(fields); err != nil {
 			return err
 		}
@@ -757,7 +802,7 @@ func (r *runner) session() error {
 		if r.wantsRestart() {
 			return r.restart(nc)
 		}
-		r.afterTurn(ctx, conn, fields.ACPSession, "")
+		r.afterTurn(ctx, conn, "")
 		if stale && r.idle() {
 			return r.refresh(nc)
 		}
@@ -767,7 +812,7 @@ func (r *runner) session() error {
 		default:
 		}
 	}
-	return r.work(ctx, conn, nc, fields.ACPSession, stale)
+	return r.work(ctx, conn, nc, stale)
 }
 
 // errRefresh: the host was stopped so the next session() spawns it with the
@@ -975,7 +1020,7 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 
 // work claims and prompts tickets until the pool has none for idle_timeout.
 // A stale host is refreshed after the first turn that leaves it idle.
-func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc net.Conn, acpSession string, stale bool) error {
+func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc net.Conn, stale bool) error {
 	pool, havePool := r.c.config().Pools[r.pool]
 	def := defaultIdle
 	if pool.Chat() {
@@ -1001,11 +1046,11 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		// Config options (#304) change only between turns: jcode refuses
 		// a change while a prompt runs. A reload or `session config`
 		// shows up here before the next message or claim.
-		if err := r.applyConfig(ctx, conn, acpSession); err != nil {
+		if err := r.applyConfig(ctx, conn); err != nil {
 			return err
 		}
 		// Queued messages go before the next claim, so also after each turn.
-		if err := r.deliver(ctx, conn, acpSession); err != nil {
+		if err := r.deliver(ctx, conn); err != nil {
 			return err
 		}
 		// The env a new host would get can change while this one is live
@@ -1091,7 +1136,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			r.setTurnTicket("")
 			return err
 		}
-		interrupted, err := r.interruptible(ctx, conn, acpSession, slotPrompt(r.c.slotEnv(ctx, t))+r.ticketPrompt(t, comments))
+		interrupted, err := r.interruptible(ctx, conn, slotPrompt(r.c.slotEnv(ctx, t))+r.ticketPrompt(t, comments))
 		if err != nil {
 			r.setTurnTicket("")
 			return err
@@ -1101,11 +1146,11 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			return r.restart(nc)
 		}
 		if interrupted {
-			if err := r.deliver(ctx, conn, acpSession); err != nil {
+			if err := r.deliver(ctx, conn); err != nil {
 				return err
 			}
 		}
-		r.afterTurn(ctx, conn, acpSession, t.ID)
+		r.afterTurn(ctx, conn, t.ID)
 		if r.unclosed >= maxUnclosed {
 			return errSessionEnd{resolution: resolutionStuck, reason: fmt.Sprintf("%d turns in a row ended without closing or releasing; %s", r.unclosed, r.turnEndReason())}
 		}
@@ -1128,13 +1173,13 @@ func (r *runner) project() string {
 }
 
 // turn sends one prompt and waits for the agent to finish it.
-func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSession, text string) error {
+func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text string) error {
 	timeout := config.Duration(r.c.config().Pools[r.pool].TurnTimeout, defaultTurn)
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	stop := context.AfterFunc(tctx, func() {
 		if ctx.Err() == nil { // turn timeout, not a lost connection
-			_ = conn.Cancel(context.Background(), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
+			_ = conn.Cancel(context.Background(), acp.CancelNotification{SessionId: r.acpID()})
 		}
 	})
 	defer stop()
@@ -1180,16 +1225,35 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 		text = strings.TrimSpace(rpc.ContextOpen + "\n" + c + "\n" + rpc.ContextClose + "\n\n" + text)
 	}
 	busyRetries, netRetries := 0, 0
+	replaced := false
 	for {
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
-			SessionId: acp.SessionId(acpSession),
+			SessionId: r.acpID(),
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 			Meta:      r.promptMeta(),
 		})
+		if err != nil && ctx.Err() == nil && unknownSession(err) && !replaced {
+			// The agent lost the conversation (a restart it did not
+			// reload): continue in a new one on this host, keeping the
+			// claims, instead of restarting the host into the same error.
+			replaced = true
+			r.log.WarnContext(ctx, "agent does not know the ACP session, starting a new conversation", "acp_session", r.acpID(), "err", err)
+			r.lifecycle("acp_session_unknown")
+			if err = r.replaceConversation(ctx, conn); err != nil {
+				if ctx.Err() != nil {
+					return r.dropped(conn)
+				}
+				return err
+			}
+			if seed := r.takeSeed(); seed != "" {
+				text = seed + "\n\n" + host.SummaryEnd + "\n\n" + text
+			}
+			continue
+		}
 		if err != nil && ctx.Err() == nil && agentBusy(err) && busyRetries < 3 {
 			busyRetries++
 			r.log.WarnContext(ctx, "agent still busy with an earlier prompt, cancelling it", "attempt", busyRetries, "err", err)
-			_ = conn.Cancel(context.WithoutCancel(ctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
+			_ = conn.Cancel(context.WithoutCancel(ctx), acp.CancelNotification{SessionId: r.acpID()})
 			select {
 			case <-ctx.Done():
 				return r.dropped(conn)
@@ -1245,7 +1309,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 // afterTurn makes sure a ticket does not stay claimed by a session that has
 // stopped working on it. One reminder, then release with a deferral so a
 // confused agent cannot spin on the same ticket.
-func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, acpSession, ticketID string) {
+func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, ticketID string) {
 	defer r.setTurnTicket("")
 	r.indexJournal(ctx, ticketID)
 	held, err := r.promptable(ctx)
@@ -1257,7 +1321,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 		return
 	}
 	if ticketID != "" {
-		if err := r.turn(ctx, conn, acpSession, unclosedReminder(ids(held))); err != nil {
+		if err := r.turn(ctx, conn, unclosedReminder(ids(held))); err != nil {
 			return
 		}
 		if held, err = r.promptable(ctx); err != nil {

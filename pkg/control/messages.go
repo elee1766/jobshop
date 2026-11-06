@@ -48,7 +48,7 @@ func (r *runner) inbox(ctx context.Context, interruptOnly bool) []store.Ticket {
 // claimed (the first session to claim a pool message wins) and closed as
 // delivered before the prompt, so the agent never sees a message as its
 // current ticket. Delivery is at most once: a crash mid-prompt loses it.
-func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, acpSession string) error {
+func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) error {
 	var claimed []store.Ticket
 	for _, m := range r.inbox(ctx, false) {
 		t, cl, err := r.c.store.Claim(ctx, m.ID, r.id, r.c.leaseDur())
@@ -97,7 +97,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 	r.log.InfoContext(ctx, "delivering messages", "messages", ids(claimed))
 	// A message turn can be interrupted too (a chat user sending a
 	// correction); the interrupting message is then delivered at once.
-	interrupted, err := r.interruptible(ctx, conn, acpSession, text)
+	interrupted, err := r.interruptible(ctx, conn, text)
 	// The turn that took an answer is the asker's reaction (JOB-52).
 	r.c.answerDelivered(ctx, claimed)
 	r.mu.Lock()
@@ -111,13 +111,13 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection, ac
 	if err != nil || !interrupted {
 		return err
 	}
-	return r.deliver(ctx, conn, acpSession)
+	return r.deliver(ctx, conn)
 }
 
 // interruptible runs a turn while watching for interrupt messages. On one
 // it sends session/cancel; the turn then ends and the caller delivers.
 // `session restart --now` cancels the turn the same way.
-func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnection, acpSession, text string) (bool, error) {
+func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnection, text string) (bool, error) {
 	var interrupted atomic.Bool
 	// A cancel sent before this turn is not for it.
 	select {
@@ -138,23 +138,23 @@ func (r *runner) interruptible(ctx context.Context, conn *acp.ClientSideConnecti
 				return
 			case <-r.restartNow:
 				r.log.InfoContext(ctx, "restart --now: cancelling turn")
-				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
+				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: r.acpID()})
 				return
 			case <-r.cancelNow:
 				r.log.InfoContext(ctx, "session cancel: cancelling turn")
-				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
+				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: r.acpID()})
 				return
 			case <-tick.C():
 			}
 			if len(r.inbox(wctx, true)) > 0 {
 				r.log.InfoContext(ctx, "interrupt message: cancelling turn")
 				interrupted.Store(true)
-				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: acp.SessionId(acpSession)})
+				_ = conn.Cancel(context.WithoutCancel(wctx), acp.CancelNotification{SessionId: r.acpID()})
 				return
 			}
 		}
 	}()
-	err := r.turn(ctx, conn, acpSession, text)
+	err := r.turn(ctx, conn, text)
 	stop()
 	<-done
 	return interrupted.Load(), err
