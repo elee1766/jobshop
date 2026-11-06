@@ -223,7 +223,6 @@
 
 <section class="pane" data-testid="chat-pane" aria-label={title}>
   <header class="head">
-    <button class="x close" onclick={() => api.closeSession()} aria-label="Close chat" title="Close" data-testid="session-panel-close">✕</button>
     <div class="who">
       <div class="name">{title}</div>
       <div class="meta">
@@ -282,10 +281,6 @@
       <div class="actions">
         <button type="button" class="history" onclick={() => recall(true)} aria-label="Previous sent message" title="Previous sent message (Up arrow)">↑</button>
         <button type="button" class="history" onclick={() => recall(false)} disabled={historyIndex < 0} aria-label="Next sent message" title="Next sent message (Down arrow)">↓</button>
-        <span class="metadata" data-testid="chat-usage">
-          {#if info?.model}<span class="model">{info.model}</span>{/if}
-          {#if t?.usage}<span class="usage">{tokens(t.usage.used)} / {tokens(t.usage.size)} tokens</span>{/if}
-        </span>
         {#if notice}<span class="notice" data-testid="chat-notice">{notice}</span>{/if}
         <span class="grow"></span>
         <span class="plugged" data-testid="chat-composer-actions" use:slots={{ api, slot: 'chat:composer-actions', context: actionsCtx }}></span>
@@ -301,19 +296,23 @@
   {:else}
     <p class="ro" data-testid="chat-readonly">Read-only: {access.reason || 'this session does not accept input'}</p>
   {/if}
+  <footer class="foot" data-testid="chat-usage">
+    {#if info?.model}<span class="model" data-testid="chat-model">{info.model}{info.effort ? ' · ' + info.effort : ''}</span>{/if}
+    {#if t?.usage}<span class="usage">{tokens(t.usage.used)} / {tokens(t.usage.size)} tokens</span>{/if}
+    <span class="grow"></span>
+    <span class="mono fid">{id}</span>
+  </footer>
 </section>
 
 <style>
   .pane { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; background: var(--desk-bg); color: var(--desk-text); font: 13px/1.5 var(--desk-font); }
-  .head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 10px 0 6px; border-bottom: 1px solid var(--desk-border); background: var(--desk-panel); }
+  .head { flex: none; display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; border-bottom: 1px solid var(--desk-border); background: var(--desk-panel); }
   .who { flex: 1; min-width: 0; }
   .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta { font-size: 11px; color: var(--desk-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .meta a { color: var(--desk-accent); }
   .mono { font-family: var(--desk-mono); }
   .state { font-size: 11px; color: var(--desk-faint); flex: none; }
-  .x { background: none; border: 0; color: var(--desk-muted); width: 32px; height: 32px; border-radius: var(--desk-radius); cursor: pointer; }
-  .x:hover { background: var(--desk-hover); color: var(--desk-text); }
   .scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 12px 16px 16px; }
   .older { font-size: 12px; margin: 0 0 12px; padding: 4px 8px; border: 1px solid var(--desk-border); border-radius: 4px; background: none; color: var(--desk-faint); cursor: pointer; }
   .none { color: var(--desk-faint); text-align: center; padding: 24px 0; margin: 0; }
@@ -331,13 +330,14 @@
   .iacts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .iacts button, .actions button { height: 28px; padding: 0 10px; font-size: 12px; border-radius: var(--desk-radius); border: 1px solid var(--desk-border); background: var(--desk-raised); color: var(--desk-text); cursor: pointer; white-space: nowrap; }
   .iacts button:disabled, .actions button:disabled { opacity: 0.45; cursor: default; }
-  .composer { flex: none; border-top: 1px solid var(--desk-border); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--desk-panel); }
+  .composer { flex: none; border-top: 1px solid var(--desk-border); padding: 8px 12px; background: var(--desk-panel); }
   textarea { display: block; width: 100%; resize: none; padding: 8px 10px; border: 1px solid var(--desk-border); border-radius: 6px; background: var(--desk-bg); color: var(--desk-text); font: inherit; max-height: 40vh; box-sizing: border-box; }
   textarea:focus { outline: none; border-color: var(--desk-accent); }
   .actions { display: flex; align-items: center; gap: 6px; margin-top: 6px; min-width: 0; }
   .actions > button { flex: none; }
   .actions .history { width: 28px; padding: 0; background: none; border-color: transparent; color: var(--desk-muted); }
-  .metadata { display: flex; gap: 8px; min-width: 0; color: var(--desk-faint); font-size: 11px; white-space: nowrap; overflow: hidden; }
+  .foot { flex: none; display: flex; gap: 10px; align-items: center; min-width: 0; height: 22px; padding: 0 12px calc(env(safe-area-inset-bottom)); border-top: 1px solid var(--desk-border); background: var(--desk-panel); color: var(--desk-faint); font-size: 11px; white-space: nowrap; overflow: hidden; }
+  .fid { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .model { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .usage { flex: none; }
   .grow { flex: 1; }
@@ -348,12 +348,10 @@
   .actions .send { background: var(--desk-accent); color: var(--desk-accent-fg); border-color: transparent; }
   .ro { flex: none; margin: 0; padding: 12px; border-top: 1px solid var(--desk-border); color: var(--desk-faint); font-size: 12px; text-align: center; }
   @media (max-width: 768px) {
-    .head { min-height: 52px; }
-    .x { width: 40px; height: 40px; }
+    .foot { height: calc(24px + env(safe-area-inset-bottom)); }
     .scroll { padding: 10px 12px 12px; }
     textarea { font-size: 16px; }
     .iacts button, .actions button { height: 40px; }
     .actions .history { width: 36px; }
-    .metadata { display: none; }
   }
 </style>

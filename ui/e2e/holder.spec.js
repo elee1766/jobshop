@@ -35,7 +35,12 @@ async function mock(page) {
       });
     }
     if (path === '/api/chat') return json({ pool: 'operator', sessions: [] });
-    if (path === '/api/sessions') return json([{ id: worker.id, alive: true, current: step.id, ticket: { pool: 'dev' } }]);
+    if (path === '/api/sessions') {
+      return json([
+        { id: worker.id, alive: true, current: step.id, model: 'claude-x', ticket: { pool: 'dev' } },
+        { id: 'js-s-w2abcd', alive: true, model: 'gpt-y', ticket: { pool: 'plan' } },
+      ]);
+    }
     // A live worker the admin could write to: read-only must still hide the composer.
     if (path.endsWith('/access')) return json({ write: true });
     if (path === '/api/ticket/' + run1.id) {
@@ -85,4 +90,47 @@ test('a run trace shows View session on its running step and opens it read-only'
   await expect(panel.getByTestId('journal')).toContainText('running the tests now');
   await expect(panel.getByTestId('chat-readonly')).toBeVisible();
   await expect(panel.getByTestId('chat-input')).toHaveCount(0);
+});
+
+test('sessions open as console tabs with the model in the footer', async ({ page, isMobile }) => {
+  await mock(page);
+  await page.goto('./?session=' + worker.id + '&ro=1');
+  const panel = page.getByTestId('session-panel');
+  await expect(panel.getByTestId('chat-model')).toHaveText('claude-x');
+  const vp = /** @type {{ width: number, height: number }} */ (page.viewportSize());
+  const box = /** @type {{ y: number, width: number, height: number }} */ (await panel.boundingBox());
+  if (isMobile) {
+    expect(box.height).toBeGreaterThanOrEqual(vp.height - 1);
+  } else {
+    // A strip along the bottom, the page above it.
+    expect(box.y).toBeGreaterThan(vp.height / 4);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(vp.height - 1);
+  }
+
+  await page.goto('./?session=js-s-w2abcd');
+  const tabs = page.getByTestId('console-tab');
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(0)).toContainText('dev');
+  await expect(tabs.nth(1)).toContainText('plan');
+  await expect(panel.getByTestId('chat-model')).toHaveText('gpt-y');
+  await tabs.nth(0).locator('.tl').click();
+  await expect(page).toHaveURL(new RegExp('session=' + worker.id));
+  await expect(panel.getByTestId('chat-model')).toHaveText('claude-x');
+
+  // Minimize keeps the tabs; the console restores to a tab.
+  await page.getByTestId('session-panel-close').click();
+  await expect(panel).toHaveCount(0);
+  if (!isMobile) {
+    await expect(tabs).toHaveCount(2);
+    await page.getByTestId('console-restore').click();
+    await expect(panel).toBeVisible();
+  } else {
+    await page.goto('./?session=' + worker.id);
+  }
+  // Closing the active tab moves to the other one, closing the last hides the console.
+  await page.getByTestId('console-tab').filter({ hasText: 'dev' }).getByTestId('console-tab-close').click();
+  await expect(page).toHaveURL(/session=js-s-w2abcd/);
+  await page.getByTestId('console-tab-close').click();
+  await expect(page.getByTestId('console-tab')).toHaveCount(0);
+  await expect(page).not.toHaveURL(/session=/);
 });
