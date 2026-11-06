@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/elee1766/jobshop/compare/v0.7.0...v0.7.1) (2026-11-06)
+
+
+### Features
+
+* **telemetry:** set instance and resource attributes on every signal (JOB-106) ([#917](https://github.com/elee1766/jobshop/issues/917)) ([2cc4b5c](https://github.com/elee1766/jobshop/commit/2cc4b5c5ac4e93ba10c4e044fed4a339e75d9278))
+
 ## [0.7.0](https://github.com/elee1766/jobshop/compare/v0.6.20...v0.7.0) (2026-11-06)
 
 
