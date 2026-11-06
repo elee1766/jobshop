@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.6](https://github.com/elee1766/jobshop/compare/v0.6.5...v0.6.6) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** match github.checks workflow= case-insensitively and by file stem (JOB-88) ([#873](https://github.com/elee1766/jobshop/issues/873)) ([b48961e](https://github.com/elee1766/jobshop/commit/b48961ec853262dc493ccee927d78fc82f8a44a2))
+
 ## [0.6.5](https://github.com/elee1766/jobshop/compare/v0.6.4...v0.6.5) (2026-11-06)
 
 
