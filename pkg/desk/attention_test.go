@@ -94,13 +94,18 @@ func TestSessionEvents(t *testing.T) {
 		{Seq: 7, T: 1002, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call","toolCallId":"t1","title":"Read","status":"in_progress","rawInput":{"path":"a.go"}}}}`)},
 		{Seq: 8, T: 1003, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"completed","rawOutput":"package a"}}}`)},
 		{Seq: 9, T: 1004, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"usage_update","used":1200,"size":200000}}}`)},
+		// A reconnect resumes with session/load: the agent replays the
+		// conversation, which is history and shows nothing.
+		{Seq: 10, T: 1005, From: "controller", Msg: json.RawMessage(`{"id":2,"method":"session/load","params":{}}`)},
+		{Seq: 11, T: 1005, From: "agent", Msg: json.RawMessage(`{"method":"session/update","params":{"update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"old reply"}}}}`)},
+		{Seq: 12, T: 1005, From: "agent", Msg: json.RawMessage(`{"id":2,"result":{}}`)},
 	}
 	ctl := &fakeCtl{results: map[string]any{rpc.MethodSessionJournal: rpc.SessionJournalResult{Frames: frames}}}
 	h := New(Config{}, ctl, nil).Handler()
 	var got SessionEvents
-	get(t, h, "/api/session/s1/events?before=10&limit=6", &got)
+	get(t, h, "/api/session/s1/events?before=13&limit=9", &got)
 	assert.Equal(t, int64(4), got.First)
-	assert.Equal(t, rpc.MethodSessionJournal+` {"id":"s1","since_seq":3,"limit":6}`, ctl.calls[0])
+	assert.Equal(t, rpc.MethodSessionJournal+` {"id":"s1","since_seq":3,"limit":9}`, ctl.calls[0])
 	var types []string
 	for _, e := range got.Events {
 		types = append(types, e.Type)

@@ -6,11 +6,10 @@
 /**
  * @typedef {{ kind: 'user', text: string, source: string, context: string, seq: number }} UserBlock
  * @typedef {{ kind: 'assistant', text: string, live: boolean, seq: number }} AssistantBlock
- * @typedef {{ kind: 'reasoning', text: string, live: boolean, seq: number }} ReasoningBlock
  * @typedef {{ kind: 'tool', id: string, name: string, input: string, output: string, state: string, seq: number }} ToolBlock
  * @typedef {{ kind: 'system', text: string, seq: number }} SystemBlock
  * @typedef {{ kind: 'error', text: string, seq: number }} ErrorBlock
- * @typedef {UserBlock | AssistantBlock | ReasoningBlock | ToolBlock | SystemBlock | ErrorBlock} Block
+ * @typedef {UserBlock | AssistantBlock | ToolBlock | SystemBlock | ErrorBlock} Block
  */
 
 const messagesHeader = 'Messages for you:';
@@ -65,7 +64,7 @@ export class Builder {
   }
 
   settle() {
-    for (const b of this.blocks) if ((b.kind === 'assistant' || b.kind === 'reasoning') && b.live) b.live = false;
+    for (const b of this.blocks) if (b.kind === 'assistant' && b.live) b.live = false;
   }
 
   /** @param {any} ev */
@@ -87,13 +86,10 @@ export class Builder {
         else this.blocks.push({ kind: 'assistant', text: ev.text || '', live: true, seq });
         break;
       }
-      case 'reasoning': {
+      case 'reasoning':
+        // Thinking is not shown; it still means the agent is working.
         this.busy = true;
-        const b = this.last('reasoning');
-        if (b?.live) b.text += ev.text;
-        else this.blocks.push({ kind: 'reasoning', text: ev.text || '', live: true, seq });
         break;
-      }
       case 'tool': {
         const tl = ev.tool;
         if (!tl) break;
