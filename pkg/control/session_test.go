@@ -31,6 +31,7 @@ import (
 	host "github.com/elee1766/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/control/controltest"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -567,7 +568,7 @@ func TestSessionReap(t *testing.T) {
 
 // poolRoot writes a root with one fake-agent pool. start runs a controller
 // and returns a func that stops it (leaving sessions running). Hosts run
-// in-process (inProcHosts) unless the test uses poolRootReal.
+// in-process (controltest.InProcHosts) unless the test uses poolRootReal.
 func poolRoot(t *testing.T, idle string) (config.Root, func() func()) {
 	return poolRootOpt(t, idle, control.Options{})
 }
@@ -596,12 +597,12 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	root := config.Root{Dir: dir}
 	cfg := fmt.Sprintf("projects:\n  js: {}\nagents:\n  fake:\n    command: %q\n    args: [fake-agent]\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 1\n    idle_timeout: %s\n    dir: %q\n", os.Args[0], idle, dir)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), []byte(cfg), 0o600))
-	var inproc *inProcHosts
+	var inproc *controltest.InProcHosts
 	switch opt.Hosts.(type) {
 	case realHosts:
 		opt.Hosts = nil
 	case nil:
-		inproc = newInProcHosts()
+		inproc = controltest.NewInProcHosts()
 		opt.Hosts = inproc
 	}
 	start := func() func() {
@@ -629,7 +630,7 @@ func poolRootOpt(t *testing.T, idle string, opt control.Options) (config.Root, f
 	t.Cleanup(func() {
 		// Stop leftover hosts so the test leaves no processes behind.
 		if inproc != nil {
-			inproc.stopAll()
+			inproc.StopAll()
 		}
 		entries, _ := os.ReadDir(root.SessionDir(""))
 		var pids []int
