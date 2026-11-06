@@ -668,6 +668,15 @@ func (r *runner) session() error {
 			ClientInfo:      &acp.Implementation{Name: "jobshop", Version: "1"},
 		})
 		if err != nil {
+			// The agent died before answering (an OOM kill at startup is
+			// final, not a restart): use the host's exit record.
+			select {
+			case <-conn.Done():
+				if d := r.dropped(conn); errors.As(d, new(errSessionEnd)) {
+					return d
+				}
+			default:
+			}
 			return fmt.Errorf("initialize: %w", err)
 		}
 	}

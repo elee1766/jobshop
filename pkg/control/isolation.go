@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 
 	host "github.com/elee1766/acphost"
 	"go.opentelemetry.io/otel/metric"
@@ -198,6 +199,16 @@ func (c *Controller) isolationKey(pool string) []string {
 // too. Used for pools with isolation.user (#388).
 func shareDir(dir string, gid int, recursive bool) error {
 	fix := func(p string, d fs.DirEntry) error {
+		// Files the mapped user made (a respawn after it wrote the
+		// worktree) are not ours to chown; the setgid dir gave them the
+		// group already.
+		var st syscall.Stat_t
+		if err := syscall.Lstat(p, &st); err != nil {
+			return err
+		}
+		if int(st.Uid) != os.Geteuid() {
+			return nil
+		}
 		if err := os.Lchown(p, -1, gid); err != nil {
 			return err
 		}

@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -29,6 +30,17 @@ import (
 func isolationEnv(t *testing.T) (int, int) {
 	t.Helper()
 	bwrapWorks(t)
+	// Test roots live under os.TempDir(); the mapped uid must search every
+	// dir above it (a TMPDIR in a 0700 home fails the spawn pre-check).
+	// Lifted by JOB-53, which checks only what the agent opens.
+	for d := os.TempDir(); ; d = filepath.Dir(d) {
+		if st, err := os.Stat(d); err != nil || st.Mode().Perm()&0o001 == 0 {
+			t.Skipf("isolation: %s is not searchable by other uids; set TMPDIR to a dir like /tmp", d)
+		}
+		if d == filepath.Dir(d) {
+			break
+		}
+	}
 	// Mapped to the caller's own ids, which need no subid range, so the
 	// tool checks report with their fix hints on any host. The cgroup is
 	// left out: Preflight wants the controllers already enabled in
@@ -66,6 +78,47 @@ func isolationEnv(t *testing.T) (int, int) {
 	return uid, gid
 }
 
+// insideID is the uid, and so the primary gid, agents get in these
+// pools. The pools also pass the caller's gid through as a group, which
+// cannot be the primary gid too; a login user's gid is often 1000.
+func insideID() int {
+	if os.Getegid() == 1000 {
+		return 1001
+	}
+	return 1000
+}
+
+// isolatedRoot is poolRootReal with the test binary, which is both the
+// session host and the fake agent, copied to a 0755 temp dir: go test
+// runs it from a 0700 build dir the mapped uid cannot search. It returns
+// the copy for the agent command.
+func isolatedRoot(t *testing.T) (config.Root, func() func(), string) {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "jsagent")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	require.NoError(t, os.Chmod(dir, 0o755))
+	b, err := os.ReadFile(os.Args[0])
+	require.NoError(t, err)
+	p := filepath.Join(dir, "agent.test")
+	require.NoError(t, os.WriteFile(p, b, 0o755))
+	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, HostExe: p})
+	return root, start, p
+}
+
+// quarantined fails the test at once when pool dev is quarantined: the
+// spawn error is permanent, so waiting for the session only burns the
+// deadline.
+func quarantined(t *testing.T, admin *rpc.Client) {
+	t.Helper()
+	var st rpc.PoolStatusResult
+	if admin.Call(t.Context(), rpc.MethodPoolList, nil, &st) == nil {
+		if msg, ok := st.Quarantined["dev"]; ok {
+			t.Fatalf("pool dev quarantined: %s", msg)
+		}
+	}
+}
+
 // TestIsolatedPool (#388) runs one pool as a mapped uid with a memory
 // limit and a pasta network that denies a CIDR. The fake agent writes a
 // file (owned by the mapped host uid), tries the denied CIDR (refused),
@@ -74,7 +127,7 @@ func isolationEnv(t *testing.T) (int, int) {
 // gasserver.
 func TestIsolatedPool(t *testing.T) {
 	mapUID, mapGID := isolationEnv(t)
-	root, start := poolRootReal(t, "1m")
+	root, start, exe := isolatedRoot(t)
 	work := filepath.Join(root.Dir, "work")
 	require.NoError(t, os.MkdirAll(work, 0o777))
 	require.NoError(t, os.Chmod(work, 0o777))
@@ -98,9 +151,9 @@ pools:
     dir: %q
     sandbox: {backend: bubblewrap, network: pasta, deny: [127.0.0.0/8, 10.0.0.0/8], ro: %s}
     isolation:
-      user: {uid: 1000, map_uid: %d, map_gid: %d, groups: [%q]}
+      user: {uid: %d, map_uid: %d, map_gid: %d, groups: [%q]}
       limits: {memory: 64M, pids: 256}
-`, os.Args[0], ln.Addr().String(), work, testSystemRO, mapUID, mapGID, strconv.Itoa(os.Getegid()))
+`, exe, ln.Addr().String(), work, testSystemRO, insideID(), mapUID, mapGID, strconv.Itoa(os.Getegid()))
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	stop := start()
 	defer stop()
@@ -110,11 +163,18 @@ pools:
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	var ended store.Ticket
 	passEventually(t, root.Dir, func() bool {
+		// The first session ends oom; a retry may then quarantine the pool
+		// (the agent's files are the mapped uid's), so check ended first.
 		var got []store.Ticket
-		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindSession}, &got) == nil && len(got) > 0 {
-			ended = got[0]
-			return true
+		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindSession}, &got) == nil {
+			for _, s := range got {
+				if s.Resolution == "oom" {
+					ended = s
+					return true
+				}
+			}
 		}
+		quarantined(t, admin)
 		return false
 	}, "isolated session ended")
 	assert.Equal(t, "oom", ended.Resolution, "the memory limit killed the agent")
@@ -163,7 +223,7 @@ func isolationProbe() {
 // gasserver.
 func TestPerSessionIsolation(t *testing.T) {
 	mapUID, mapGID := isolationEnv(t)
-	root, start := poolRootReal(t, "1m")
+	root, start, exe := isolatedRoot(t)
 	// The mapped uids traverse the root to reach their session dirs.
 	require.NoError(t, os.MkdirAll(filepath.Join(root.Dir, "sessions"), 0o711))
 	require.NoError(t, os.Chmod(root.Dir, 0o711))
@@ -192,8 +252,8 @@ pools:
     repo: %q
     ref: master
     isolation:
-      user: {uid: 1000, map_uid: %d, map_gid: %d, groups: [%q], per_session: {range: 2}}
-`, os.Args[0], repo, mapUID, mapGID, strconv.Itoa(os.Getegid()))
+      user: {uid: %d, map_uid: %d, map_gid: %d, groups: [%q], per_session: {range: 2}}
+`, exe, repo, insideID(), mapUID, mapGID, strconv.Itoa(os.Getegid()))
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	stop := start()
 	defer stop()
@@ -205,6 +265,7 @@ pools:
 
 	var work, homes []string
 	passEventually(t, root.Dir, func() bool {
+		quarantined(t, admin)
 		var got []store.Ticket
 		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusOpen, Kind: store.KindSession}, &got) != nil || len(got) < 2 {
 			return false
@@ -323,7 +384,7 @@ func peerProbe() {
 // and writes a cache file owned by the mapped uid.
 func TestMappedUserHome(t *testing.T) {
 	mapUID, mapGID := isolationEnv(t)
-	root, start := poolRootReal(t, "1m")
+	root, start, exe := isolatedRoot(t)
 	require.NoError(t, os.Chmod(root.Dir, 0o700))
 	// The controller's HOME is shared by parallel tests: use a unique
 	// subdir under it.
@@ -353,8 +414,8 @@ pools:
     dir: %q
     sandbox: {backend: bubblewrap, ro: %s, rw: ["~/%s/.cache/probe"]}
     isolation:
-      user: {uid: 1000, map_uid: %d, map_gid: %d, groups: [%q]}
-`, os.Args[0], sub, sub, work, testSystemRO, sub, mapUID, mapGID, strconv.Itoa(os.Getegid()))
+      user: {uid: %d, map_uid: %d, map_gid: %d, groups: [%q]}
+`, exe, sub, sub, work, testSystemRO, sub, insideID(), mapUID, mapGID, strconv.Itoa(os.Getegid()))
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	require.NoError(t, shareWith(work, os.Getegid()))
 	stop := start()
@@ -365,13 +426,16 @@ pools:
 
 	cache := filepath.Join(root.Dir, "homes", "dev", sub, ".cache", "probe", "home-probe")
 	passEventually(t, root.Dir, func() bool {
-		_, err := os.Stat(cache)
+		quarantined(t, admin)
+		_, err := os.Stat(filepath.Join(work, "home-probe"))
 		return err == nil
 	}, "agent wrote its cache file")
 	st, err := os.Stat(cache)
 	require.NoError(t, err)
 	assert.Equal(t, uint32(mapUID), st.Sys().(*syscall.Stat_t).Uid, "cache file owned by the mapped uid")
-	b, err := os.ReadFile(cache)
+	// The cache file is the mapped uid's own; the copy in the shared work
+	// dir (setgid, the caller's group) is what the test can read.
+	b, err := os.ReadFile(filepath.Join(work, "home-probe"))
 	require.NoError(t, err)
 	assert.Equal(t, "login", string(b), "agent read its copied login")
 	_, err = os.Stat(filepath.Join(home, ".cache", "probe", "home-probe"))
@@ -399,4 +463,5 @@ func homeProbe() {
 		b = []byte("error: " + err.Error())
 	}
 	_ = os.WriteFile(filepath.Join(h, ".cache", "probe", "home-probe"), b, 0o660)
+	_ = os.WriteFile("home-probe", b, 0o660)
 }
