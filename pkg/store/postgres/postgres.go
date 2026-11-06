@@ -27,7 +27,7 @@ import (
 var migrations embed.FS
 
 // recallSQL searches comments: $1 a to_tsquery expression, $2 project
-// and $3 ticket id ('' for any), $4 the limit. Lower score is better.
+// and $3 ticket id (” for any), $4 the limit. Lower score is better.
 // ts_rank's own length normalization counts lexemes, which drops
 // stopwords; it is divided by the log of the body's word count
 // instead, so a short focused match beats a long one.
