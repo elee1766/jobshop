@@ -261,7 +261,7 @@
               </li>
             {:else}
               {#if active}
-                <li><span class="pill">{active.status}</span><span class="step muted">{parse(active, 'fields').step || active.title}</span><span class="faint">no report yet</span></li>
+                {#if !ah}<li><span class="pill">{active.status}</span><span class="step muted">{parse(active, 'fields').step || active.title}</span><span class="faint">no report yet</span></li>{/if}
               {:else}
                 <li><span class="faint">waiting for a step to start</span></li>
               {/if}

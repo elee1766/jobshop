@@ -57,8 +57,11 @@ test('in-progress card names its session and opens it read-only', async ({ page 
   await mock(page);
   await page.goto('./');
   const card = page.locator('[data-testid=progress-card][data-run=js-r1]');
-  await expect(card.getByTestId('holder-name').first()).toHaveText('dev worker');
-  await expect(card.getByTestId('holder-pool').first()).toContainText('dev');
+  // The chip shows pool, model and tool; the long display name is only in
+  // the tooltip so a task-title name cannot stretch the card.
+  await expect(card.getByTestId('holder-pool').first()).toHaveText('dev');
+  await expect(card.getByTestId('holder-name')).toHaveCount(0);
+  await expect(card.getByTestId('holder').first()).toHaveAttribute('title', /dev worker/);
   await expect(card.getByTestId('holder-tool').first()).toHaveText('go test');
   await expect(page.locator('[data-testid=progress-card][data-run=js-r2]').getByTestId('no-holder')).toHaveText('waiting for a session');
 
@@ -75,7 +78,8 @@ test('a run trace shows View session on its running step and opens it read-only'
   await page.goto('./?ticket=js-r1');
   const node = page.getByTestId('trace-session');
   await expect(node).toContainText('View session');
-  await expect(node).toContainText('dev worker');
+  await expect(node).toContainText('dev');
+  await expect(node.getByTestId('holder')).toHaveAttribute('title', /dev worker/);
   await node.getByTestId('holder').click();
   const panel = page.getByTestId('session-panel');
   await expect(panel.getByTestId('journal')).toContainText('running the tests now');
