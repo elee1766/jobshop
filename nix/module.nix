@@ -62,8 +62,8 @@ let
     // lib.optionalAttrs (cfg.identities != { }) {
       identities = (base.identities or { }) // cfg.identities;
     }
-    // lib.optionalAttrs (livePacks != [ ] || deployPack != [ ]) {
-      packs = (base.packs or [ ]) ++ livePacks ++ deployPack;
+    // lib.optionalAttrs (livePacks != [ ]) {
+      packs = (base.packs or [ ]) ++ livePacks;
     }
     // lib.optionalAttrs (cfg.gateway != { }) {
       gateway = (base.gateway or { }) // gatewaySettings;
@@ -255,8 +255,6 @@ let
       HOME = cfg.dataDir;
     };
 
-  sd = cfg.selfDeploy;
-  # GitHub owner/repo from a workspace URL.
   ghRepoOf =
     url:
     lib.removeSuffix ".git" (
@@ -264,37 +262,6 @@ let
         lib.splitString "github.com/" (lib.replaceStrings [ "github.com:" ] [ "github.com/" ] url)
       )
     );
-  deployWorkspaces = lib.attrNames (lib.filterAttrs (_: w: w.selfDeploy) cfg.workspaces);
-  # The workspace whose default branch self-deploy follows, for `gh` in the deploy pick.
-  ghRepo = lib.optionalString (deployWorkspaces != [ ]) (
-    ghRepoOf cfg.workspaces.${lib.head deployWorkspaces}.url
-  );
-  deployState = sd.stateDir;
-  # How self-deploy switches and rolls back: the system profile with
-  # nixos-rebuild as root, or the home-manager profile as the user.
-  hmPackage = if isNixos then null else config.programs.home-manager.package or pkgs.home-manager;
-  deployTool = if isNixos then "nixos-rebuild" else "home-manager";
-  journalFlag = lib.optionalString (!isNixos) "--user ";
-  # systemctl from the deploy unit's PATH (tests stub it there).
-  sctl = "systemctl" + lib.optionalString (!isNixos) " --user";
-  overrideArgs = ''--refresh --override-input ${sd.inputName} ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$1"'';
-  deploySwitch =
-    if isNixos then
-      ''
-        profile=/nix/var/nix/profiles/system
-        prev=$(readlink -f $profile)
-        switch_to() { nixos-rebuild switch --flake ${lib.escapeShellArg sd.hostFlake} ${overrideArgs}; }
-        rollback() { nix-env -p $profile --set "$prev" && "$prev/bin/switch-to-configuration" switch; }
-      ''
-    else
-      ''
-        # home-manager keeps its generations in the user's profiles dir.
-        profile=''${XDG_STATE_HOME:-$HOME/.local/state}/nix/profiles/home-manager
-        [ -e "$profile" ] || profile=/nix/var/nix/profiles/per-user/$USER/home-manager
-        prev=$(readlink -f "$profile")
-        switch_to() { home-manager switch --flake ${lib.escapeShellArg sd.hostFlake} ${overrideArgs}; }
-        rollback() { "$prev/activate"; }
-      '';
   # Pools in settings with isolation.user.per_session (#540); each one's
   # [map_uid, map_uid+range) and gids must sit inside the jobshop user's
   # subuid/subgid range, else the pool is quarantined at its first spawn.
@@ -312,20 +279,6 @@ let
       fits = id: id >= start && id + n <= end;
     in
     !cfg.isolation.enable || (fits (u.map_uid or 0) && fits (u.map_gid or 0));
-  # The Deploys view and its state command (#577), from the module's
-  # source so it needs no workspace.
-  deployPack = lib.optional cfg.selfDeploy.enable {
-    path = "${../packs/deploy}";
-    vars = {
-      state_dir = deployState;
-      # The self-deploy trigger (JOB-62, #826) starts the deploy unit on a
-      # CI success event for this repo and branch. The timer stays as the
-      # fallback for a lost webhook.
-      repo = ghRepo;
-      inherit (sd) branch;
-      start_command = sd.startCommand;
-    };
-  };
   # Deploy tools report a problem as a needs-human ticket with a stable
   # key and close it when it clears (#577); nothing in the controller
   # reads deploy state. `report <key> <title> [body]` upserts,
@@ -413,23 +366,21 @@ let
             At most one workspace; not with configFile or settings.
           '';
         };
+        # Removed with self-deploy (JOB-74); kept so a host that still sets it
+        # gets this message instead of an unknown-option error.
         selfDeploy = lib.mkOption {
           type = lib.types.bool;
           default = false;
-          description = ''
-            This is the Jobshop repo: selfDeploy follows its default branch, and its
-            live packs follow the deployed binary's commit. At most one workspace.
-          '';
+          visible = false;
         };
         followInstalled = lib.mkOption {
           type = lib.types.bool;
-          default = config.selfDeploy && cfg.selfDeploy.enable;
-          defaultText = lib.literalExpression "selfDeploy && services.jobshop.selfDeploy.enable";
+          default = false;
           description = ''
             Hold the checkout at the installed jobshop binary's commit instead of
             origin, so a live pack that needs newer code never loads into an older
-            controller (#227). For a host that deploys jobshop from this repo by
-            its own means.
+            controller (#227). For a host that deploys jobshop from this repo; the
+            deploy itself is the host's (JOB-74).
           '';
         };
       };
@@ -706,6 +657,26 @@ let
     };
 in
 {
+  # Self-deploy moved to the host config (JOB-74): a host deploys jobshop with
+  # its own unit and sets workspaces.<name>.followInstalled.
+  imports =
+    map
+      (
+        o:
+        lib.mkRemovedOptionModule [ "services" "jobshop" "selfDeploy" o ]
+          "Self-deploy is no longer part of the jobshop module (JOB-74): deploy jobshop from the host config and set services.jobshop.workspaces.<name>.followInstalled = true."
+      )
+      [
+        "enable"
+        "hostFlake"
+        "inputName"
+        "inputUrl"
+        "branch"
+        "interval"
+        "startCommand"
+        "stateDir"
+      ];
+
   options.services.jobshop = {
     enable = lib.mkEnableOption "the Jobshop controller";
 
@@ -1095,7 +1066,7 @@ in
           jobshop = {
             url = "https://github.com/elee1766/jobshop.git";
             livePacks = [ "packs/selfdev" ];
-            selfDeploy = true;
+            followInstalled = true;
           };
           other.url = "https://github.com/elee1766/other.git";
         }
@@ -1198,7 +1169,7 @@ in
     };
 
     # Old single-workspace option. Its definitions go to workspaces.default,
-    # with the old dir default and selfDeploy, so existing hosts evaluate
+    # with the old dir default, so existing hosts evaluate
     # unchanged and keep their checkout.
     workspace = lib.mkOption {
       type = lib.types.submodule workspaceModule;
@@ -1206,52 +1177,6 @@ in
       description = "Alias of {option}`services.jobshop.workspaces.default`.";
     };
 
-    selfDeploy = {
-      enable = lib.mkEnableOption ''
-        unit that switches this host (NixOS, as root: nixos-rebuild) or this home
-        (home-manager, as the user: home-manager switch) with the jobshop flake input overridden to the
-        newest green commit on the default branch of the workspace with selfDeploy set, then checks the controller
-        and rolls back on failure. The host flake's lock is not edited'';
-      hostFlake = lib.mkOption {
-        type = lib.types.str;
-        example = "git+ssh://git@github.com/elee1766/gasserver.nix#gasserver";
-        description = "Flake output to switch: `<flake>#<host>` for NixOS (as system.autoUpgrade.flake), `<flake>#<user>` for a homeConfigurations entry.";
-      };
-      inputName = lib.mkOption {
-        type = lib.types.str;
-        default = "jobshop";
-        description = "Name of the jobshop input in the host flake.";
-      };
-      inputUrl = lib.mkOption {
-        type = lib.types.str;
-        example = "git+ssh://git@github-jobshop/elee1766/jobshop?ref=master";
-        description = "URL the deploying user (root, or the home-manager user) can fetch the jobshop flake from; `&rev=<sha>` is appended.";
-      };
-      branch = lib.mkOption {
-        type = lib.types.str;
-        default = "master";
-      };
-      interval = lib.mkOption {
-        type = lib.types.str;
-        default = "10min";
-      };
-      startCommand = lib.mkOption {
-        type = lib.types.str;
-        default = "${systemctl} start --no-block jobshop-self-deploy.service";
-        defaultText = lib.literalExpression ''"systemctl [--user] start --no-block jobshop-self-deploy.service"'';
-        description = ''
-          Command the deploy pack's self-deploy trigger runs when CI succeeds on the
-          deploy branch, so a merge deploys without waiting for the timer. On NixOS the
-          jobshop user may start the unit through a polkit rule the module adds.
-        '';
-      };
-      stateDir = lib.mkOption {
-        type = lib.types.str;
-        default = if isNixos then "/var/lib/jobshop-deploy" else "${config.xdg.stateHome}/jobshop-deploy";
-        defaultText = lib.literalExpression ''"/var/lib/jobshop-deploy" (NixOS), "''${config.xdg.stateHome}/jobshop-deploy" (home-manager)'';
-        description = "Self-deploy state (deployed, failed, override); the deploy pack's Deploys view reads it.";
-      };
-    };
   };
 
   config = lib.mkIf cfg.enable (
@@ -1262,7 +1187,6 @@ in
             (lib.mkAliasDefinitions opts.workspace)
             {
               dir = lib.mkDefault "${cfg.dataDir}/src/${lib.removeSuffix ".git" (baseNameOf cfg.workspace.url)}";
-              selfDeploy = lib.mkDefault sd.enable;
             }
           ]
         );
@@ -1273,16 +1197,8 @@ in
             message = "services.jobshop.store: driver postgres needs dsnFile.";
           }
           {
-            assertion = lib.length deployWorkspaces <= 1;
-            message = "services.jobshop.workspaces: selfDeploy is set on more than one workspace (${lib.concatStringsSep ", " deployWorkspaces}).";
-          }
-          {
             assertion = !(useIdentities && cfg.gitIdentity.credentialHelper != "");
             message = "services.jobshop.gitIdentity: set jobshopIdentities or credentialHelper, not both.";
-          }
-          {
-            assertion = !sd.enable || deployWorkspaces != [ ];
-            message = "services.jobshop.selfDeploy.enable needs one workspace with selfDeploy = true.";
           }
           {
             assertion = !userConfig || cfg.settings == { };
@@ -1293,6 +1209,10 @@ in
             message = "services.jobshop: set workspaces.<name>.config on at most one workspace, and not with configFile.";
           }
         ]
+        ++ lib.mapAttrsToList (n: w: {
+          assertion = !w.selfDeploy;
+          message = "services.jobshop.workspaces.${n}.selfDeploy is removed (JOB-74): deploy jobshop from the host config and set followInstalled = true.";
+        }) cfg.workspaces
         ++ map (p: {
           assertion = isoRangeFits p;
           message = "services.jobshop.isolation: pool ${p} per_session ids run past subIdStart + subIdCount (${toString cfg.isolation.subIdStart} + ${toString cfg.isolation.subIdCount}); raise subIdCount or lower map_uid/map_gid or range (#540).";
@@ -1410,180 +1330,8 @@ in
           };
         };
 
-        # Self-deploy: rebuild with the jobshop input pinned to the newest master
-        # commit whose CI passed, then check the controller; on failure switch
-        # back to the previous generation. The host flake's lock is not edited, so
-        # the next manual deploy or auto-upgrade uses the locked rev until the host
-        # repo bumps it.
-        services.jobshop.units.services.jobshop-self-deploy = lib.mkIf sd.enable {
-          description = "Deploy the newest green Jobshop commit";
-          after = [ "network-online.target" ];
-          wants = [ "network-online.target" ];
-          # A switch restarts units; this one must not be one of them mid-run.
-          restartIfChanged = false;
-          path =
-            (with pkgs; [
-              nix
-              git
-              openssh
-              jq
-              coreutils
-              util-linux
-            ])
-            ++ [ (if isNixos then config.system.build.nixos-rebuild else hmPackage) ];
-          environment = lib.optionalAttrs isNixos { HOME = "/root"; };
-          serviceConfig = {
-            Type = "oneshot";
-            TimeoutStartSec = "30min";
-          }
-          // lib.optionalAttrs isNixos { StateDirectory = "jobshop-deploy"; };
-          script = ''
-            set -eu
-            state=${deployState}
-            mkdir -p $state
-            ${reportFn}
-            # A failure's report, kept so a later run re-files it if the
-            # controller was down this time.
-            fail_report() { printf '%s\n%s\n%s\n' "$1" "$2" "$3" > $state/failed.report; report "$@"; }
-            # The newest master commit with a successful CI run, read as the jobshop
-            # user (its gh has the App token). Empty: nothing to do.
-            rev=$(${asUser}env ${
-              lib.concatStringsSep " " (lib.mapAttrsToList (k: v: "${k}=${lib.escapeShellArg v}") environment)
-            } PATH=${lib.makeBinPath path}:$PATH \
-              gh run list --repo ${ghRepo} --branch ${sd.branch} --workflow ci --status success \
-                --limit 1 --json headSha --jq '.[0].headSha // empty')
-            [ -n "$rev" ] || { echo "no green ${sd.branch} run"; exit 0; }
-            # The running controller's binary, not this unit's eval-time package,
-            # which is the version from before the last self-deploy.
-            running() { readlink -f "/proc/$(${sctl} show -p MainPID --value jobshop.service)/exe"; }
-            current=$("$(running)" version | sed -n 's/.*(\([0-9a-f]*\)).*/\1/p')
-            # deployed is only written after a good switch, so a manual
-            # rollback, a host rebuild or auto-upgrade can leave it naming
-            # another commit than the unit runs. Say so once (a rollback if
-            # older: live packs may need the newer code, #227), then make it
-            # follow the running binary (#225). The old mtime is kept: the
-            # Deploys view compares it with failed, and a fix-up is not a deploy.
-            last=$(cat $state/deployed 2>/dev/null || true)
-            if [ -n "$last" ] && [ -n "$current" ]; then
-              case "$last" in
-                "$current"*) ;;
-                *)
-                  echo "<4>jobshop switched outside self-deploy (a rollback if older): running $current, last deployed $last; deployed rewritten"
-                  touch -r $state/deployed $state/deployed.mtime
-                  # Full sha when it is the green rev: deployed feeds
-                  # --override-input rev=, which refuses a short one.
-                  case "$rev" in "$current"*) echo "$rev" ;; *) echo "$current" ;; esac > $state/deployed
-                  touch -r $state/deployed.mtime $state/deployed
-                  rm -f $state/deployed.mtime
-                  ;;
-              esac
-            fi
-            case "$rev" in "$current"*) echo "already at $current"; exit 0 ;; esac
-            if [ "$(cat $state/failed 2>/dev/null)" = "$rev" ]; then
-              # Re-file the report in case the controller was down when the
-              # failure happened; an unchanged upsert is a no-op.
-              if [ -s $state/failed.report ]; then
-                { read -r key; read -r title; body=$(cat); } < $state/failed.report
-                report "$key" "$title" "$body"
-              fi
-              echo "$rev failed before, waiting for a newer green commit"; exit 0
-            fi
-
-            # Rollback drill (docs/verify/rollback-drill.md): with $state/drill
-            # present, this deploy reports the new controller unhealthy. The
-            # marker is removed first so it applies to one deploy only.
-            drill=
-            if [ -e $state/drill ]; then
-              rm -f $state/drill
-              drill=1
-              echo "<4>rollback drill: $rev will be reported unhealthy"
-            fi
-
-            echo "deploying ${sd.inputName} $current -> $rev"
-            ${lib.optionalString (deployWorkspaces != [ ]) ''
-              # Config check before the switch (#261): the new build loads this
-              # host's jobshop.yaml with the live packs read from the new commit's
-              # source. A pack var the host no longer satisfies fails here, filed
-              # as deploy:config-check (#577), instead of after a switch.
-              rm -f $state/failed.reason
-              src=$(nix flake metadata --json --refresh ${lib.escapeShellArg "${sd.inputUrl}&rev="}"$rev" | jq -r .path)
-              newpkg=$(nix build --no-link --print-out-paths "path:$src#jobshop")
-              if ! check=$(${asUser}\
-                   "$newpkg/bin/jobshop" config check --file ${cfg.dataDir}/jobshop.yaml \
-                   --replace ${
-                     lib.escapeShellArg cfg.workspaces.${lib.head deployWorkspaces}.dir
-                   }="$src" 2>&1); then
-                echo "<3>config check failed for $rev, not switching: $check"
-                printf '%s\n' "$check" > $state/failed.reason
-                echo "$rev" > $state/failed
-                fail_report deploy:config-check "self-deploy skipped $rev: config check failed" \
-                  "$(printf 'Commit %s was not switched to: the host config does not load with it.\n\n%s\n\nFix the host config or the pack; the ticket closes on the next good deploy.' "$rev" "$check")"
-                exit 1
-              fi
-              echo "config check: $check"
-            ''}
-            ${deploySwitch}
-            if ! switch_to "$rev"; then
-              echo "<3>switch to $rev failed, rolling back"
-              echo "$rev" > $state/failed
-              rollback || true
-              fail_report deploy:rollback "self-deploy rolled back $rev: switch failed" \
-                "${deployTool} switch to $rev failed; the host is back on $prev. See journalctl ${journalFlag}-u jobshop-self-deploy. The ticket closes on the next good deploy."
-              exit 1
-            fi
-
-            # Health: the new binary answers and the controller is serving.
-            ok=
-            for _ in $(seq 30); do
-              [ -z "$drill" ] || break
-              if ${sctl} is-active --quiet jobshop.service \
-                 && ${asUser}env JOBSHOP_ROOT=${cfg.dataDir} "$(running)" session list >/dev/null 2>&1 \
-                 && "$(running)" version | grep -q "(''${rev:0:7}"; then
-                ok=1; break
-              fi
-              sleep 2
-            done
-            if [ -z "$ok" ]; then
-              echo "<3>controller unhealthy after $rev, rolling back to $prev"
-              echo "$rev" > $state/failed
-              rollback
-              fail_report deploy:rollback "self-deploy rolled back $rev: controller unhealthy" \
-                "The controller did not come up healthy on $rev''${drill:+ (rollback drill)}; the host is back on $prev. See journalctl ${journalFlag}-u jobshop-self-deploy. The ticket closes on the next good deploy."
-              exit 1
-            fi
-            echo "$rev" > $state/deployed
-            report deploy:rollback --close "Deployed $rev."
-            report deploy:config-check --close "Deployed $rev."
-            rm -f $state/failed.report
-            # Read by nixos-upgrade (flags below) so the daily auto-upgrade keeps
-            # this rev instead of returning to the host flake's locked one.
-            # Under home-manager a manual switch can pass the same flags.
-            echo "--override-input ${sd.inputName} ${sd.inputUrl}&rev=$rev" > $state/override
-            echo "deployed $rev"
-          '';
-        };
-        services.jobshop.units.timers.jobshop-self-deploy = lib.mkIf sd.enable {
-          wantedBy = [ "timers.target" ];
-          timerConfig = {
-            OnBootSec = "10min";
-            OnUnitActiveSec = sd.interval;
-          };
-        };
       }
       (lib.optionalAttrs isNixos {
-        # The controller runs as an unprivileged user; let it start (only
-        # start) the deploy unit for the self-deploy trigger (#826).
-        security.polkit.enable = lib.mkIf sd.enable (lib.mkDefault true);
-        security.polkit.extraConfig = lib.mkIf sd.enable ''
-          polkit.addRule(function(action, subject) {
-            if (action.id == "org.freedesktop.systemd1.manage-units" &&
-                action.lookup("unit") == "jobshop-self-deploy.service" &&
-                action.lookup("verb") == "start" &&
-                subject.user == "${cfg.user}") {
-              return polkit.Result.YES;
-            }
-          });
-        '';
         users.users.${cfg.user} = {
           isSystemUser = true;
           group = cfg.group;
@@ -1614,9 +1362,6 @@ in
             ;
           tmpfiles.rules = cfg.units.tmpfiles;
         };
-        # Expanded by the nixos-upgrade shell script; empty until the first
-        # self-deploy, so auto-upgrade then uses the locked rev as before.
-        system.autoUpgrade.flags = lib.mkIf sd.enable [ "$(cat ${deployState}/override 2>/dev/null)" ];
       })
       (lib.optionalAttrs (!isNixos) {
         assertions = [

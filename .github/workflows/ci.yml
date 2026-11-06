@@ -10,7 +10,7 @@ permissions:
 
 # A new push cancels the running CI for the same PR; agents push often.
 # Master runs are never cancelled: merges land every few minutes and
-# self-deploy needs a green master commit (#830). The group still keeps
+# the host deploy needs a green master commit (#830). The group still keeps
 # one master run going and only the newest one queued.
 concurrency:
   group: ci-${{ github.ref }}

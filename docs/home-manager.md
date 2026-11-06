@@ -5,8 +5,7 @@
 The flake exports `homeManagerModules.default`. It takes the same
 `services.jobshop` options as the NixOS module ([nixos.md](nixos.md))
 and writes the same `jobshop.yaml`, but runs every unit as a systemd
-user service of the user that imports it. No unit runs as root, and
-self-deploy switches the home, not the host.
+user service of the user that imports it. No unit runs as root.
 
 ```nix
 # flake.nix of the host config
@@ -23,12 +22,6 @@ homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
         workspaces.jobshop = {
           url = "https://github.com/elee1766/jobshop.git";
           livePacks = [ "packs/selfdev" ];
-          selfDeploy = true;
-        };
-        selfDeploy = {
-          enable = true;
-          hostFlake = "git+ssh://git@github.com/me/host.nix#jobcity";
-          inputUrl = "git+ssh://git@github.com/elee1766/jobshop?ref=master";
         };
       };
     }
@@ -39,19 +32,12 @@ homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
 ## What differs from NixOS
 
 - **Paths.** `dataDir` defaults to `$XDG_STATE_HOME/jobshop`
-  (`~/.local/state/jobshop`), `selfDeploy.stateDir` to
-  `~/.local/state/jobshop-deploy`. Sockets stay under `dataDir`.
+  (`~/.local/state/jobshop`). Sockets stay under `dataDir`.
 - **Units.** The same names (`jobshop`, `jobshop-ingest`,
   `jobshop-ingest-work`, `jobshop-desk`, `jobshop-workspace-<name>`,
   ...) under `systemctl --user`. They start with
   `default.target`. A user manager has no `network-online.target`, so
   that ordering is dropped.
-- **Self-deploy.** `jobshop-self-deploy` runs as the user. It builds the
-  green rev, runs the config check, then `home-manager switch --flake
-  <hostFlake> --override-input <inputName> <inputUrl>&rev=<sha>`. The
-  health check is the NixOS one. Rollback activates the previous
-  home-manager generation. The unit is `X-SwitchMethod=keep-old`, so a
-  switch never restarts it mid-run.
 - **Secrets.** Secret options take any file the user can read, such as
   `~/secrets/gh`. Nothing assumes `/run/secrets`.
 - **restrictEgress.** Off by default. A user manager cannot attach
