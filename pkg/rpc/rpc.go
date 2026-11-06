@@ -1418,9 +1418,11 @@ type AttentionItem struct {
 	Project string    `json:"project,omitempty"`
 	Title   string    `json:"title"`
 	Since   time.Time `json:"since"`
-	// Repo and Ref are meta.github's repo and issue or PR, when set.
+	// Repo and Ref are meta.github's repo and issue or PR, or
+	// meta.linear's issue key, when set. URL links to Ref.
 	Repo string `json:"repo,omitempty"`
 	Ref  string `json:"ref,omitempty"`
+	URL  string `json:"url,omitempty"`
 	// Owner is who must act, for a wait past its timeout (#381).
 	Owner string `json:"owner,omitempty"`
 	// Summary is a short line or two for the row (#607):

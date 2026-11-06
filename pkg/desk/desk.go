@@ -467,8 +467,10 @@ type AttentionItem struct {
 	Title string    `json:"title"`
 	Why   string    `json:"why"`
 	Since time.Time `json:"since,omitzero"`
-	// Ref is the linked issue or PR (#12, PR #3), from the controller.
+	// Ref is the linked issue or PR (#12, PR #3, JOB-5), from the
+	// controller. URL links to it.
 	Ref string `json:"ref,omitempty"`
+	URL string `json:"url,omitempty"`
 	// Summary is one or two lines for the row (#607).
 	Summary string `json:"summary,omitempty"`
 }
@@ -490,7 +492,7 @@ func (s *Server) attention(r *http.Request) (any, error) {
 		if it.Owner != "" {
 			why = append(why, "owner "+it.Owner)
 		}
-		out = append(out, AttentionItem{Kind: it.Kind, ID: it.ID, Title: it.Title, Why: strings.Join(why, ", "), Since: it.Since, Ref: it.Ref, Summary: it.Summary})
+		out = append(out, AttentionItem{Kind: it.Kind, ID: it.ID, Title: it.Title, Why: strings.Join(why, ", "), Since: it.Since, Ref: it.Ref, URL: it.URL, Summary: it.Summary})
 	}
 	// Items the operator acknowledged in Desk stay hidden (#535).
 	return s.dropAcked(out), nil

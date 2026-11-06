@@ -339,6 +339,8 @@ export interface AttentionItem {
   since: string;
   repo?: string;
   ref?: string;
+  /** Link to ref: the GitHub issue or PR, or the Linear issue. */
+  url?: string;
   owner?: string;
   summary?: string;
 }
