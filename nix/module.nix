@@ -1318,6 +1318,8 @@ in
 
         # Full stop at system shutdown: end every session and reap hosts. Ordered
         # after jobshop.service so it stops first, while the controller is still up.
+        # Any other stop (a switch that stopped jobshop.slice, a manual stop)
+        # leaves sessions running: a full stop is `jobshop shutdown` (JOB-96).
         services.jobshop.units.services.jobshop-shutdown = {
           description = "Stop all Jobshop sessions at system shutdown";
           wantedBy = [ "multi-user.target" ];
@@ -1333,7 +1335,18 @@ in
             Group = cfg.group;
             Slice = "jobshop.slice";
             ExecStart = "${pkgs.coreutils}/bin/true";
-            ExecStop = "${jobshop} shutdown";
+            ExecStop = "${pkgs.writeShellScript "jobshop-shutdown-stop" ''
+              # A switch or manual stop runs while the manager is up; any
+              # other state (stopping, or no answer) is treated as shutdown.
+              state=$(${systemctl} is-system-running 2>/dev/null || true)
+              case "$state" in
+                running | degraded)
+                  echo "service manager is $state, not stopping: sessions left running"
+                  exit 0
+                  ;;
+              esac
+              exec ${jobshop} shutdown
+            ''}";
             TimeoutStopSec = 120;
           };
         };
@@ -1386,7 +1399,12 @@ in
           services = lib.mapAttrs hmService cfg.units.services;
           timers = lib.mapAttrs (hmSimple "Timer") cfg.units.timers;
           paths = lib.mapAttrs (hmSimple "Path") cfg.units.paths;
-          slices = lib.mapAttrs (hmSimple "Slice") cfg.units.slices;
+          # sd-switch stop-starts a changed active unit, and stopping a
+          # slice stops every unit in it; only the slice came back (JOB-96).
+          # daemon-reload applies the new limits to the running slice.
+          slices = lib.mapAttrs (
+            n: u: lib.recursiveUpdate (hmSimple "Slice" n u) { Unit.X-SwitchMethod = "keep-old"; }
+          ) cfg.units.slices;
           tmpfiles.rules = cfg.units.tmpfiles;
         };
       })
