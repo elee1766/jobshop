@@ -36,9 +36,10 @@ See [notes/532-config-repo.md](notes/532-config-repo.md).
 
 The module puts on PATH only what jobshop itself runs: git, bash,
 coreutils, diffutils, openssh, the `gh` wrapper with identities, bwrap
-with `sandbox.enable`, pasta and nft with `isolation.enable`. Sandbox
-`rw` is empty and `envKeep` is generic (JOB-23). Your agents' tools,
-caches and env are yours to set. A host like gasserver (Go, mise, jcode,
+with `sandbox.enable`, pasta and nft with `isolation.enable`.
+`sandbox.enable` writes no sandbox config: no backend, mounts or env
+(2026-11-06). Sandboxed pools set `sandbox:` and the mounts in
+`settings`. Your agents' tools, caches and env are yours to set. A host like gasserver (Go, mise, jcode,
 nix-ld) writes:
 
 ```nix
@@ -53,14 +54,21 @@ services.jobshop = {
     MISE_TRUSTED_CONFIG_PATHS = "/var/lib/jobshop/sessions:/var/lib/jobshop/workspaces";
     MISE_SHARED_INSTALL_DIRS = "/var/lib/jobshop-mise/installs";
   };
-  sandbox = {
-    enable = true;
-    rw = [ "~/go" "~/.cache/go-build" "~/.npm" "~/.jcode" "~/.local/share/mise" "~/.cache/mise" ];
-    envKeep = [ "HOME" "USER" "LOGNAME" "LANG" "LC_ALL" "TZ" "TERM" "SSL_CERT_FILE"
-      "NIX_SSL_CERT_FILE" "NIX_PATH" "NIX_LD" "NIX_LD_LIBRARY_PATH" "GOPATH" "GOCACHE"
-      "GOFLAGS" "GOTOOLCHAIN" "GIT_*" "MISE_*" ];
-    # Shared mise installs, read-only in every sandbox (was sandbox.mise).
-    sharedTools = [ "/var/lib/jobshop-mise" ];
+  sandbox.enable = true; # bubblewrap on PATH only
+  settings = {
+    # A profile pools opt into with sandbox.profiles; nothing is sandboxed by default.
+    sandbox_profiles.host = {
+      backend = "bubblewrap";
+      ro = [ "/nix/store" "/etc" "/run/current-system" "/run/systemd/resolve" ];
+      rw = [ "~/go" "~/.cache/go-build" "~/.npm" "~/.jcode" "~/.local/share/mise" "~/.cache/mise" ];
+      env_keep = [ "HOME" "USER" "LOGNAME" "LANG" "LC_ALL" "TZ" "TERM" "SSL_CERT_FILE"
+        "NIX_SSL_CERT_FILE" "NIX_PATH" "NIX_LD" "NIX_LD_LIBRARY_PATH" "GOPATH" "GOCACHE"
+        "GOFLAGS" "GOTOOLCHAIN" "GIT_*" "MISE_*" ];
+    };
+    # Shared mise installs, read-only in every sandbox.
+    shared_tools = [ "/var/lib/jobshop-mise" ];
+    pools.dev.sandbox.profiles = [ "host" ];
+  };
   };
 };
 systemd.tmpfiles.rules = [ "d /var/lib/jobshop-mise 0755 jobshop jobshop -" ];
@@ -80,5 +88,6 @@ systemd.services.jobshop-mise = {
 };
 ```
 
-`defaultPath = true` still adds the old toolset with a warning, and
-`sandbox.mise.*` is ignored with a warning, for one release.
+`defaultPath = true` still adds the old toolset with a warning.
+`sandbox.systemRO`, `envKeep`, `rw`, `sharedTools` and `mise` are
+removed: evaluation fails with a message pointing at `settings`.
