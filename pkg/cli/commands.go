@@ -634,8 +634,8 @@ func (c releaseCmd) Run(g *Globals) error {
 }
 
 type handoffCmd struct {
-	ID   string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
-	To   string `required:"" help:"Pool to move the ticket to."`
+	ID    string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
+	To    string `required:"" help:"Pool to move the ticket to."`
 	Note  string `help:"Comment to add for the next holder."`
 	Force bool   `help:"Hand off even though the current git branch has commits no remote has."`
 }
