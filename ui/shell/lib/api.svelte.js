@@ -4,6 +4,29 @@
 
 export const live = $state({ connected: false, tick: 0, lastSeq: 0 });
 
+/** @type {Set<(connected: boolean) => void>} */
+const liveFns = new Set();
+
+/**
+ * Called with the connection state now and on every change (api.live,
+ * JOB-85). Returns an unsubscribe function.
+ * @param {(connected: boolean) => void} fn
+ */
+export function onLive(fn) {
+  liveFns.add(fn);
+  fn(live.connected);
+  return () => { liveFns.delete(fn); };
+}
+
+/** @param {boolean} v */
+function setLive(v) {
+  if (live.connected === v) return;
+  live.connected = v;
+  for (const fn of liveFns) {
+    try { fn(v); } catch (e) { console.error('desk live handler', e); }
+  }
+}
+
 /**
  * Where Desk is served, from the <base href> Desk writes into index.html
  * (#516): "/" at the root, "/desk/" under a prefix. Always ends in "/".
@@ -78,8 +101,8 @@ let pending = 0;
  */
 export function connect(onEvent) {
   const es = new EventSource(api('api/events'));
-  es.addEventListener('open', () => { live.connected = true; });
-  es.addEventListener('error', () => { live.connected = false; });
+  es.addEventListener('open', () => setLive(true));
+  es.addEventListener('error', () => setLive(false));
   const bump = (/** @type {MessageEvent} */ e) => {
     if (e.lastEventId) live.lastSeq = Number(e.lastEventId);
     if (onEvent) {

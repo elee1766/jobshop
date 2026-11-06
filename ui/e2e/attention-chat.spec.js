@@ -7,7 +7,8 @@ import { test, expect } from '@playwright/test';
 const now = Date.now();
 const iso = (/** @type {number} */ msAgo) => new Date(now - msAgo).toISOString();
 
-const builtins = ['attention', 'chat'];
+// desk is the built-in app, the frame around every view (JOB-85).
+const builtins = ['desk', 'attention', 'chat'];
 
 /** @param {string} url */
 const pathOf = (url) => new URL(url).pathname.replace(/^.*?(?=\/api\/)/, '');

@@ -34,15 +34,28 @@ export interface DeskApi {
   onParams(fn: (params: Record<string, string>) => void): () => void;
   /** Reactive admin call (api 3): refetches when a result id or opts.watch matches an event. */
   query<M extends keyof RpcMethods>(method: M, params?: RpcMethods[M]["params"], opts?: { watch?: Record<string, string> }): DeskQuery<RpcMethods[M]["result"]>;
-  /** Whether an enabled plugin contributes to slot for target (api 3). */
+  /** Whether an enabled plugin contributes to slot for target (api 3). Target keys plugin, element, id select by name (api 5). */
   has(slot: string, target?: Record<string, unknown>): boolean;
-  /** Mount the first contribution to slot matching target in host (api 3). Null when none matches. */
+  /**
+   * Mount the first contribution to slot matching target in host (api 3). Null when none matches.
+   * Target keys plugin, element and id select by name instead of match (api 5): mount(host, 'view', {id: 'work'}).
+   */
   mount(host: HTMLElement, slot: string, target: Record<string, unknown>, context?: unknown): { context(c: unknown): void; destroy(): void } | null;
   /**
    * Mount every contribution to a plugin-defined slot ("work:toolbar") in host, each in its own box (api 4).
    * A failing one shows an error card in its box only. Null when none matches target.
    */
   slot(host: HTMLElement, slot: `${string}:${string}`, context?: unknown, target?: Record<string, unknown>): { context(c: unknown): void; destroy(): void } | null;
+  /** Every enabled contribution to slot that target selects, in plugin name order (api 5): an app builds its nav from contributions('view'). */
+  contributions(slot: string, target?: Record<string, unknown>): (Contribution & { plugin: string; source: string })[];
+  /** Set the count shown on a view's nav entry, 0 to clear (api 5). Desk sets attention's. */
+  badge(view: string, n: number): void;
+  /** Called with {view: count} now and on every change (api 5). Returns an unsubscribe function. */
+  badges(fn: (badges: Record<string, number>) => void): () => void;
+  /** Called with whether Desk's event stream is connected, now and on every change (api 5). Returns an unsubscribe function. */
+  live(fn: (connected: boolean) => void): () => void;
+  /** The theme; setting it applies and remembers it (api 5). */
+  theme: "dark" | "light";
 }
 
 /** State of an api.query. */
@@ -74,9 +87,9 @@ export interface ArtifactContext {
   file: ArtifactFile & { url: string };
 }
 
-/** One plugin.json contributes entry. A slot named "<plugin>:<name>" is one a plugin hosts with api.slot. */
+/** One plugin.json contributes entry. A slot named "<plugin>:<name>" is one a plugin hosts with api.slot; "app" is the whole page (api 5). */
 export interface Contribution {
-  slot: "view" | "drawer" | "action" | "artifact" | "header" | "session" | `${string}:${string}`;
+  slot: "view" | "drawer" | "action" | "artifact" | "header" | "session" | "app" | `${string}:${string}`;
   element: string;
   id?: string;
   title?: string;

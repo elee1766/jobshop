@@ -1,0 +1,9 @@
+{
+  "name": "mini-app",
+  "version": "1.0.0",
+  "entry": "index.js",
+  "api": ">=5",
+  "contributes": [
+    { "slot": "app", "element": "mini-app" }
+  ]
+}

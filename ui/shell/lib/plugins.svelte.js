@@ -3,7 +3,8 @@
 // and config on each element it creates. Built-in views use the same
 // path, so this file is the whole contract on the browser side.
 
-import { base, api as urlOf, get, post, live } from './api.svelte.js';
+import { base, api as urlOf, get, post, live, onLive } from './api.svelte.js';
+import { setBadge, onBadges, getTheme, setTheme } from './signals.js';
 import { url, go, navigate, closeSession, onUrl } from './url.svelte.js';
 import { push, pushStatus, enablePush, disablePush, testPush } from './push.svelte.js';
 
@@ -12,8 +13,10 @@ import { push, pushStatus, enablePush, disablePush, testPush } from './push.svel
  * 2 (#535): session, push, openSession, closeSession, openTicket, params.
  * 3 (#541): go, onParams, query, has, mount; params keeps every URL key.
  * 4 (JOB-87): slot, plugin-defined slots named <plugin>:<name>.
+ * 5 (JOB-85): the app slot; contributions, badge, badges, live, theme;
+ *   has, mount and slot pick a contribution by plugin, element or id.
  */
-export const API_VERSION = 4;
+export const API_VERSION = 5;
 
 /**
  * @typedef {{ slot: string, element: string, id?: string, title?: string, match?: Record<string, string[]> }} Contribution
@@ -109,12 +112,26 @@ export const deskApi = Object.freeze({
   query(method, params, opts) { return makeQuery(method, params, opts); },
   /**
    * Whether an enabled plugin contributes to slot for target (#541).
+   * A target naming plugin, element or id picks by those instead of
+   * match (api 5).
    * @param {string} slot @param {Record<string, any>} [target]
    */
   has(slot, target) { return !!firstFor(slot, target); },
   /**
+   * Every enabled contribution to slot that target selects, in plugin
+   * name order (JOB-85): what an app reads to build its nav, header and
+   * drawer. Copies; the list is fixed once the page has loaded.
+   * @param {string} slot @param {Record<string, any>} [target]
+   */
+  contributions(slot, target) {
+    return contributions(slot)
+      .filter((x) => selects(x, target))
+      .map((x) => ({ ...$state.snapshot(x.c), plugin: x.plugin.name, source: x.plugin.source }));
+  },
+  /**
    * Mounts the first contribution to slot matching target inside host
-   * (#541): how one plugin hosts another, e.g. artifact renderers.
+   * (#541): how one plugin hosts another, e.g. artifact renderers, or an
+   * app the built-in views ({plugin: 'work'} or {id: 'work'}).
    * Returns null when nothing matches, else { context(c), destroy() }.
    * @param {HTMLElement} host @param {string} slot @param {Record<string, any>} target @param {any} [context]
    */
@@ -175,11 +192,52 @@ export const deskApi = Object.freeze({
     unsubscribe: async () => { await disablePush(); return { state: push.state, error: push.error }; },
     test: async () => { await testPush(); return { state: push.state, error: push.error }; },
   }),
+  /**
+   * Sets the count an app shows on a view's nav entry, 0 to clear
+   * (JOB-85). The shell sets attention's from api/attention.
+   * @param {string} view @param {number} n
+   */
+  badge(view, n) { setBadge(view, n); },
+  /**
+   * Called with {view: count} now and on every change. Returns an
+   * unsubscribe function.
+   * @param {(b: Record<string, number>) => void} fn
+   */
+  badges(fn) { return onBadges(fn); },
+  /**
+   * Called with whether the event stream is connected, now and on every
+   * change. Returns an unsubscribe function.
+   * @param {(connected: boolean) => void} fn
+   */
+  live(fn) { return onLive(fn); },
+  /** 'dark' or 'light'; setting it applies and remembers it. */
+  get theme() { return getTheme(); },
+  set theme(v) { setTheme(v); },
 });
+
+/**
+ * Whether target selects a contribution (api 5). plugin, element and id
+ * are names, not match keys: each one given must equal the
+ * contribution's. The other keys go to match, which is skipped when only
+ * names are given, since the caller chose the contribution already.
+ * @param {{ plugin: PluginInfo, c: Contribution }} x @param {Record<string, any>} [target]
+ */
+function selects(x, target) {
+  const rest = { ...(target ?? {}) };
+  let named = false;
+  for (const [k, v] of /** @type {[string, string][]} */ ([['plugin', x.plugin.name], ['element', x.c.element], ['id', x.c.id ?? '']])) {
+    if (typeof rest[k] !== 'string') continue;
+    if (rest[k] !== v) return false;
+    named = true;
+    delete rest[k];
+  }
+  if (named && Object.keys(rest).length === 0) return true;
+  return matches(x.c.match, rest);
+}
 
 /** @param {string} slot @param {Record<string, any>} [target] */
 function firstFor(slot, target) {
-  return contributions(slot).find((x) => matches(x.c.match, target ?? {})) ?? null;
+  return contributions(slot).find((x) => selects(x, target)) ?? null;
 }
 
 /** @param {HTMLElement} host @param {string} slot @param {Record<string, any>} target @param {any} context */
@@ -191,7 +249,7 @@ function mountSlot(host, slot, target, context) {
 
 /** @param {HTMLElement} host @param {string} slot @param {any} context @param {Record<string, any>} [target] */
 function mountAll(host, slot, context, target) {
-  const hits = contributions(slot).filter((x) => matches(x.c.match, target ?? {}));
+  const hits = contributions(slot).filter((x) => selects(x, target));
   if (!hits.length) return null;
   const boxes = hits.map((hit) => {
     const box = document.createElement('div');

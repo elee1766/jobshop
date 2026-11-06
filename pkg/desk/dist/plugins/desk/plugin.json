@@ -1,0 +1,9 @@
+{
+  "name": "desk",
+  "version": "1",
+  "entry": "index.js",
+  "api": ">=5",
+  "contributes": [
+    { "slot": "app", "element": "desk-app" }
+  ]
+}

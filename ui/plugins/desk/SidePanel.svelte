@@ -1,18 +1,17 @@
 <script>
-  // The session panel frame (shell, #535): a resizable column beside the
-  // page on desktop, full screen on a phone. Its body is the `session`
-  // slot; the built-in chat plugin fills it. The shell owns only the
-  // frame: width, focus, scroll lock and Escape.
-  import { url } from '../lib/url.svelte.js';
-  import { contributions } from '../lib/plugins.svelte.js';
-  import { panel, setWidth, resetWidth } from '../lib/panel.svelte.js';
-  import PluginSlot from './PluginSlot.svelte';
+  // The session panel frame (#535): a resizable column beside the page
+  // on desktop, full screen on a phone. Its body is the `session` slot;
+  // the built-in chat plugin fills it. The frame owns only width, focus,
+  // scroll lock and Escape.
+  import { slot } from '../../kit/plugin.svelte.js';
+  import { panel, setWidth, resetWidth } from './panel.svelte.js';
 
-  /** @type {{ id: string }} */
-  let { id } = $props();
+  /** @type {{ api: any, id: string, item: string, readonly: boolean }} */
+  let { api, id, item, readonly } = $props();
 
   // The last session contribution wins, so a user plugin can replace the chat.
-  const body = $derived(contributions('session').at(-1));
+  /** @type {{ plugin: string, element: string } | undefined} */
+  const body = $derived(api.contributions('session').at(-1));
 
   // Phone: the panel covers the page, so the page behind must not scroll.
   $effect(() => {
@@ -62,8 +61,8 @@
     ></div>
   {/if}
   {#if body}
-    {#key id + url.item + (url.ro || '')}
-      <PluginSlot plugin={body.plugin} element={body.c.element} context={{ session: id, item: url.item, readonly: url.ro === '1' }} />
+    {#key id + item + readonly}
+      <div class="plugin-host" data-plugin={body.plugin} use:slot={{ api, slot: 'session', target: { plugin: body.plugin, element: body.element }, context: { session: id, item, readonly } }}></div>
     {/key}
   {:else}
     <p class="faint none">No plugin shows sessions (slot <span class="mono">session</span>).</p>

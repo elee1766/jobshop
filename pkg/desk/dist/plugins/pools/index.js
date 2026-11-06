@@ -1984,7 +1984,12 @@ function qr(e, t) {
 		/* @vite-ignore */
 		"./style.css",
 		import.meta.url
-	).href;
+	).href, r = null, i = !1, a = () => (r ??= new Promise((e) => {
+		let t = document.querySelector(`link[href="${n}"]`) ?? document.createElement("link");
+		t.sheet ? e() : (t.addEventListener("load", () => e(), { once: !0 }), t.addEventListener("error", () => e(), { once: !0 }), t.isConnected || (t.rel = "stylesheet", t.href = n, document.head.append(t)));
+	}).then(() => {
+		i = !0;
+	}), r);
 	customElements.define(e, class extends HTMLElement {
 		#e = /* @__PURE__ */ jt(Bt({
 			api: null,
@@ -2017,14 +2022,14 @@ function qr(e, t) {
 			return this.props.config;
 		}
 		connectedCallback() {
-			if (!document.querySelector(`link[href="${n}"]`)) {
-				let e = document.createElement("link");
-				e.rel = "stylesheet", e.href = n, document.head.append(e);
-			}
-			this.style.display = "contents", this.app ||= pr(t, {
+			this.style.display = "contents";
+			let e = a();
+			this.app ||= pr(t, {
 				target: this,
 				props: this.props
-			});
+			}), i || (this.style.visibility = "hidden", e.then(() => {
+				this.style.visibility = "";
+			}));
 		}
 		disconnectedCallback() {
 			this.app && _r(this.app), this.app = null;
@@ -2072,7 +2077,7 @@ function Jr(e, t) {
 	}), n;
 }
 function Yr(e) {
-	let t = Bt({});
+	let t = Bt({ ...e()?.params?.() ?? {} });
 	return ln(() => {
 		let n = e();
 		if (!n) return;

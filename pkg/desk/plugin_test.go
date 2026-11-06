@@ -84,6 +84,7 @@ func TestPluginSlotNames(t *testing.T) {
 	for slot, ok := range map[string]bool{
 		"view":                  true,
 		"session":               true,
+		"app":                   true,
 		"work:toolbar":          true,
 		"chat:composer-actions": true,
 		"my-plugin:a1":          true,

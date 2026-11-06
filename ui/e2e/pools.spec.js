@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
 // in 3 instances, nearly all idle. The API is mocked, so this needs no
 // live controller beyond the Desk that serves the UI.
 
-const builtins = ['attention', 'pools'];
+// desk is the built-in app, the frame around every view (JOB-85).
+const builtins = ['desk', 'attention', 'pools'];
 const pathOf = (/** @type {string} */ url) => new URL(url).pathname.replace(/^.*?(?=\/api\/)/, '');
 
 const row = (/** @type {string} */ name, /** @type {string[]} */ labels, /** @type {any} */ extra = {}) =>
