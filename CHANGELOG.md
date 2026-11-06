@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.8](https://github.com/elee1766/jobshop/compare/v0.6.7...v0.6.8) (2026-11-06)
+
+
+### Features
+
+* **desk:** --favicon replaces the tab icon ([#878](https://github.com/elee1766/jobshop/issues/878)) ([a331035](https://github.com/elee1766/jobshop/commit/a3310350451873e03e966eeab857b993a8c258ab))
+* **desk:** app slot so a plugin can replace the whole frame (JOB-85) ([#881](https://github.com/elee1766/jobshop/issues/881)) ([ec1e8e2](https://github.com/elee1766/jobshop/commit/ec1e8e280f9ec567f5d6dc277cf293f744e19bb6))
+* **desk:** label tool calls by intent and target; sessions report their agent ([#883](https://github.com/elee1766/jobshop/issues/883)) ([a19a480](https://github.com/elee1766/jobshop/commit/a19a480b34d37271e069b495235a22542d3739dc))
+* **desk:** session console with tabs at the bottom; model in the chat footer ([#882](https://github.com/elee1766/jobshop/issues/882)) ([8b4af2c](https://github.com/elee1766/jobshop/commit/8b4af2c25f55a95bb4c0eaedbb8b63cb7017e532))
+
+
+### Bug fixes
+
+* **desk:** compact session chip; name moves to the tooltip ([#879](https://github.com/elee1766/jobshop/issues/879)) ([91890c9](https://github.com/elee1766/jobshop/commit/91890c99404e56360755f7399d472cf2fe88f300))
+* **packs/github:** prefix the dev_pool default per instance ([#880](https://github.com/elee1766/jobshop/issues/880)) ([#885](https://github.com/elee1766/jobshop/issues/885)) ([3c78218](https://github.com/elee1766/jobshop/commit/3c78218d3d8e83a19425184b4c7517d0c300b09b))
+
 ## [0.6.7](https://github.com/elee1766/jobshop/compare/v0.6.6...v0.6.7) (2026-11-06)
 
 
