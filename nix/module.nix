@@ -421,6 +421,17 @@ let
             live packs follow the deployed binary's commit. At most one workspace.
           '';
         };
+        followInstalled = lib.mkOption {
+          type = lib.types.bool;
+          default = config.selfDeploy && cfg.selfDeploy.enable;
+          defaultText = lib.literalExpression "selfDeploy && services.jobshop.selfDeploy.enable";
+          description = ''
+            Hold the checkout at the installed jobshop binary's commit instead of
+            origin, so a live pack that needs newer code never loads into an older
+            controller (#227). For a host that deploys jobshop from this repo by
+            its own means.
+          '';
+        };
       };
     };
 
@@ -601,7 +612,7 @@ let
           git fetch --quiet origin
           branch=$(git symbolic-ref --short HEAD)
           target="origin/$branch"
-          ${lib.optionalString (sd.enable && w.selfDeploy) ''
+          ${lib.optionalString w.followInstalled ''
             # Packs follow the installed binary, so a pack that needs newer code
             # never loads into an older controller (#227). The commit comes from
             # this generation's package, not the running process, so a stopped
