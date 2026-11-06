@@ -176,4 +176,11 @@ jobs:
           restore-keys: |
             go-pg-${{ runner.os }}-${{ hashFiles('go.sum') }}-
             go-pg-${{ runner.os }}-
-      - run: go test -race ./pkg/store/postgres/ ./pkg/store/storemigrate/
+      # JOB-35: every case must run on Postgres. A missing DSN or any
+      # skipped test fails the job instead of passing silently.
+      - name: storetest on postgres
+        shell: bash # explicit bash sets pipefail, so a test failure is not hidden by tee
+        run: |
+          test -n "$JOBSHOP_TEST_POSTGRES" || { echo "JOBSHOP_TEST_POSTGRES is not set"; exit 1; }
+          go test -race -v ./pkg/store/postgres/ ./pkg/store/storemigrate/ | tee /tmp/pg-test.log
+          if grep -- '--- SKIP' /tmp/pg-test.log; then echo "tests skipped on postgres"; exit 1; fi
