@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+// AgentSessionEvent is the webhook type for a Linear agent session
+// (delegation or mention of the app). It needs only an app subscribed to
+// agent session events; the consumer answers it.
+const AgentSessionEvent = "AgentSessionEvent"
+
 // LinearMaxAge is how far webhookTimestamp may be from now.
 const LinearMaxAge = 60 * time.Second
 
@@ -54,6 +59,9 @@ func (e LinearEvent) Fresh(now time.Time) bool {
 // their writes need no push. The organization and self checks need a
 // Linear token and stay with the consumer.
 func (e LinearEvent) Wanted() bool {
+	if e.Type == AgentSessionEvent {
+		return e.Action == "created" || e.Action == "prompted"
+	}
 	if e.Type != "Issue" && e.Type != "Comment" {
 		return false
 	}
