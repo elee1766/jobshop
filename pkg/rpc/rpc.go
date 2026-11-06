@@ -619,6 +619,10 @@ type SessionInfo struct {
 	Model    string            `json:"model,omitempty"`
 	Effort   string            `json:"effort,omitempty"`
 	Override map[string]string `json:"override,omitempty"`
+	// Busy is set while the controller runs a turn on the session;
+	// Tool is the title of its running tool call, if any (JOB-54).
+	Busy bool   `json:"busy,omitempty"`
+	Tool string `json:"tool,omitempty"`
 }
 
 // SessionReapParams cleans up session leftovers. Hosts with no open session
@@ -1021,11 +1025,28 @@ type TraceNode struct {
 	CreatedBy  string       `json:"created_by,omitempty"`
 	Trigger    string       `json:"trigger,omitempty"` // meta.trigger.name
 	// Sessions that claimed the ticket, oldest first.
-	Holders []string     `json:"holders,omitempty"`
+	Holders []string `json:"holders,omitempty"`
+	// Holder is the session holding the ticket now (JOB-54).
+	Holder string `json:"holder,omitempty"`
+	// Session is the holder's display name and busy state, filled by
+	// Desk (JOB-54); the controller leaves it empty.
+	Session *HolderInfo  `json:"session,omitempty"`
 	Edges   []store.Edge `json:"edges,omitempty"`
 	// GitHub issue and PR URLs found in the body and comments.
 	Links    []string    `json:"links,omitempty"`
 	Children []TraceNode `json:"children,omitempty"`
+}
+
+// HolderInfo is what Desk shows for the session holding a ticket
+// (JOB-54): its label, pool, model and whether a turn runs.
+type HolderInfo struct {
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name,omitempty"`
+	Pool        string `json:"pool,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Alive       bool   `json:"alive,omitempty"`
+	Busy        bool   `json:"busy,omitempty"`
+	Tool        string `json:"tool,omitempty"`
 }
 
 // TriggerInfo is one configured trigger's state now.

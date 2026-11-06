@@ -385,11 +385,11 @@ let
     # The unit runs another commit than deployed says (#225): the next run
     # rewrites deployed with a WARN and keeps its mtime.
     echo 53b6b27 > $T/cur
-    echo 53b6b27 > $T/green
+    echo 53b6b27aa0 > $T/green
     touch -d @1000000000 $T/state/deployed
     run
     [ $rc = 0 ] || fail "reconcile run exit $rc"
-    [ "$(cat $T/state/deployed)" = 53b6b27 ] || fail "deployed not reconciled"
+    [ "$(cat $T/state/deployed)" = 53b6b27aa0 ] || fail "deployed not reconciled to the full green sha"
     [ "$(stat -c %Y $T/state/deployed)" = 1000000000 ] || fail "deployed mtime changed"
     [ "$(grep -c 'switched outside self-deploy.*deployed rewritten' $T/out)" = 1 ] || fail "want one WARN"
     ! grep -q rebuild $T/log || fail "reconcile rebuilt"

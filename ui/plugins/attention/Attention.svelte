@@ -5,6 +5,7 @@
   // chat that resolves the item (POST api/attention/chat). Uses api only
   // (#517).
   import { resolveActions, runAction } from '../../kit/attention.js';
+  import Holder from '../../kit/Holder.svelte';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api } = $props();
@@ -14,6 +15,8 @@
   let error = $state('');
   /** @type {{ run: any, steps: any[], comment: any }[]} */
   let progress = $state([]);
+  /** Holder sessions of in-progress steps, by id (JOB-54). @type {Record<string, any>} */
+  let holders = $state({});
   let progressLoaded = $state(false);
   let opening = $state('');
   let push = $state({ state: 'off', error: '' });
@@ -26,15 +29,13 @@
       error = String(/** @type {any} */ (e).message || e);
     }
     try {
-      const w = await api.get('api/work?state=running&limit=6');
-      progress = await Promise.all((w.runs ?? []).slice(0, 6).map(async (/** @type {any} */ run) => {
-        try {
-          const v = await api.get('api/ticket/' + encodeURIComponent(run.id));
-          const cs = v.comments ?? [];
-          return { run, steps: v.run?.steps ?? [], comment: cs.length ? cs[cs.length - 1] : null };
-        } catch {
-          return { run, steps: [], comment: null };
-        }
+      // One request: steps, last comment and holder sessions come with
+      // the runs (JOB-54).
+      const w = await api.get('api/work?state=running&limit=6&detail=1');
+      const d = w.detail ?? {};
+      holders = w.sessions ?? {};
+      progress = (w.runs ?? []).slice(0, 6).map((/** @type {any} */ run) => ({
+        run, steps: d[run.id]?.steps ?? [], comment: d[run.id]?.comment ?? null,
       }));
     } catch { /* progress is a side list */ }
     progressLoaded = true;
@@ -124,6 +125,10 @@
   /** @param {string} s */
   const rtone = (s) => (s === 'failed' || s === 'blocked' ? 'bad' : s === 'waiting' || s === 'dropped' ? 'warn' : s === 'ready' ? 'ok' : 'accent');
   const isSession = (/** @type {string} */ s) => !!s && /^[a-z][a-z0-9]*-[0-9a-z]{6,}$/i.test(s);
+  /** The holder session of an in-progress step. @param {any} s */
+  const holderOf = (s) => (s?.status === 'in_progress' && s.holder ? holders[s.holder] ?? { id: s.holder } : null);
+  /** @param {string} id */
+  const watch = (id) => api.openSession(id, { readonly: true });
 </script>
 
 <header class="vh">
@@ -184,19 +189,29 @@
       {#each progress as { run, steps, comment } (run.id)}
         {@const rep = reported(steps)}
         {@const active = steps.find((s) => s.status === 'in_progress')}
-        <div class="item card">
+        {@const ah = holderOf(active)}
+        <div class="item card" data-testid="progress-card" data-run={run.id}>
           <button class="head" onclick={() => api.openTicket(run.id)}>
             <span class="dot accent"></span>
             <span class="title">{run.title}</span>
             <span class="mono faint id">{run.id}</span>
             <span class="faint when">{ago(run.updated_at)}</span>
           </button>
+          <div class="who">
+            {#if ah}
+              <span class="step muted">{parse(active, 'fields').step || active.title}</span>
+              <Holder h={ah} onopen={watch} />
+            {:else}
+              <span class="faint" data-testid="no-holder">waiting for a session</span>
+            {/if}
+          </div>
           <ul>
             {#each rep.slice(0, 3) as { s, r } (s.id)}
+              {@const sh = holderOf(s)}
               <li>
                 <span class="pill {rtone(r.state)}">{r.state}</span>
                 <span class="step muted">{parse(s, 'fields').step || s.title}</span>
-                {#if isSession(r.by)}<a href={'?session=' + r.by} class="mono" onclick={(e) => { e.preventDefault(); api.openSession(r.by); }}>{r.by}</a>{/if}
+                {#if sh}<Holder h={sh} onopen={watch} />{:else if isSession(r.by)}<a href={'?session=' + r.by} class="mono" onclick={(e) => { e.preventDefault(); watch(r.by); }}>{r.by}</a>{/if}
                 {#if r.note}<span class="note">{r.note}</span>{/if}
                 <span class="faint when">{ago(r.at)}</span>
               </li>
@@ -228,6 +243,7 @@
   .pushna { font-size: 12px; }
   .progress { display: flex; flex-direction: column; gap: 8px; }
   .item { overflow: hidden; }
+  .who { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; padding: 0 12px 6px 28px; min-width: 0; }
   .head {
     width: 100%; height: auto; min-height: 32px; justify-content: flex-start; gap: 8px; padding: 6px 12px; border: 0; border-radius: 0;
     background: transparent; text-align: left; white-space: normal;

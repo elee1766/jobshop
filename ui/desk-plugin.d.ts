@@ -560,6 +560,16 @@ export interface HistoryEntry {
   diff?: unknown;
 }
 
+export interface HolderInfo {
+  id: string;
+  display_name?: string;
+  pool?: string;
+  model?: string;
+  alive?: boolean;
+  busy?: boolean;
+  tool?: string;
+}
+
 export interface IDParams {
   id?: string;
 }
@@ -1083,6 +1093,8 @@ export interface SessionInfo {
   model?: string;
   effort?: string;
   override?: Record<string, string>;
+  busy?: boolean;
+  tool?: string;
 }
 
 export interface SessionJournalParams {
@@ -1292,6 +1304,8 @@ export interface TraceNode {
   created_by?: string;
   trigger?: string;
   holders?: string[];
+  holder?: string;
+  session?: HolderInfo;
   edges?: Edge[];
   links?: string[];
   children?: TraceNode[];

@@ -1441,7 +1441,9 @@ in
                 *)
                   echo "<4>jobshop switched outside self-deploy (a rollback if older): running $current, last deployed $last; deployed rewritten"
                   touch -r $state/deployed $state/deployed.mtime
-                  echo "$current" > $state/deployed
+                  # Full sha when it is the green rev: deployed feeds
+                  # --override-input rev=, which refuses a short one.
+                  case "$rev" in "$current"*) echo "$rev" ;; *) echo "$current" ;; esac > $state/deployed
                   touch -r $state/deployed.mtime $state/deployed
                   rm -f $state/deployed.mtime
                   ;;
