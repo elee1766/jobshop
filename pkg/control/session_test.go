@@ -163,11 +163,23 @@ func TestEnvRefresh(t *testing.T) {
 
 	stop = start()
 	defer stop()
+	// The respawned agent's tool shell keeps the session env (#780).
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "shellenv"), nil, 0o600))
 	admin = dial(t, root.AdminSocket())
 	passEventually(t, root.Dir, func() bool {
 		pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
 		return err == nil && string(pid2) != string(pid) && host.Alive(sdir)
 	}, "host respawned")
+	passEventually(t, root.Dir, func() bool {
+		_, err := os.Stat(filepath.Join(root.Dir, "shellenv.out"))
+		return err == nil
+	}, "respawned agent ran its shell")
+	out, err := os.ReadFile(filepath.Join(root.Dir, "shellenv.out"))
+	require.NoError(t, err)
+	shell := strings.TrimSpace(string(out))
+	assert.True(t, strings.HasPrefix(shell, filepath.Dir(os.Args[0])+":"), "jobshop's dir first on the shell PATH: %s", shell)
+	assert.True(t, strings.HasSuffix(shell, "|"+sessions[0].ID), "JOBSHOP_SESSION in the shell: %s", shell)
+	assert.Contains(t, shell, os.Getenv("PATH"), "the controller PATH is kept")
 	passEventually(t, root.Dir, func() bool {
 		s, err := hostspec.Read(sdir)
 		return err == nil && s.EnvHash != "old"
@@ -791,6 +803,15 @@ type agent struct {
 }
 
 func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
+	// A "shellenv" file asks the agent to record what its tool shell
+	// sees (#780): a `bash -c` child, as agents run tools.
+	if _, err := os.Stat("shellenv"); err == nil {
+		out, err := exec.Command("bash", "-c", `echo "$PATH|$JOBSHOP_SESSION"`).CombinedOutput()
+		if err != nil {
+			out = append(out, []byte(" error: "+err.Error())...)
+		}
+		_ = os.WriteFile("shellenv.out", out, 0o600)
+	}
 	// A "daemon" file makes the agent start a detached helper that keeps
 	// the agent's env, like jcode's `serve` daemon behind `acp --socket`.
 	if _, err := os.Stat("daemon"); err == nil {

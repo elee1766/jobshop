@@ -17,6 +17,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
+	"github.com/elee1766/jobshop/pkg/store/storerules"
 )
 
 // Options configures New.
@@ -315,9 +316,7 @@ func (s *Store) mutateWith(ctx context.Context, q sqldb.Querier, id, actor, op s
 		return store.Ticket{}, err
 	}
 	now := s.now()
-	prev := t.Revision
-	t.Revision++
-	t.UpdatedAt = now.UTC().Truncate(time.Millisecond)
+	prev := storerules.Bump(&t, now)
 	if w != nil {
 		n, err := w(ctx, q, t, prev, now)
 		if err != nil {
@@ -519,22 +518,12 @@ func toTickets(rows []sqldb.Ticket) []store.Ticket {
 }
 
 func (s *Store) claim(t *store.Ticket, holder string, lease time.Duration) (store.Claim, any) {
-	resumed := t.Status == store.StatusInProgress
-	t.Status = store.StatusInProgress
-	t.Holder = holder
-	t.LeaseUntil = s.now().Add(lease).UTC().Truncate(time.Millisecond)
-	if !resumed {
-		t.Fence++
-	}
-	return store.Claim{TicketID: t.ID, Holder: holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil},
-		map[string]any{"holder": holder, "fence": t.Fence, "resumed": resumed}
+	c, d, _ := storerules.Claim(t, holder, lease, s.now())
+	return c, d
 }
 
 func checkLease(holder string, lease time.Duration) error {
-	if holder == "" || lease <= 0 {
-		return fmt.Errorf("%w: holder and a positive lease are required", store.ErrInvalid)
-	}
-	return nil
+	return storerules.CheckLease(holder, lease)
 }
 
 // claimWrite is the guarded write of a claim: it holds only if the
@@ -579,10 +568,8 @@ func (s *Store) claimNextOnce(ctx context.Context, req store.ClaimNext) (t store
 		}
 		fresh := false
 		t, err = s.mutateWith(ctx, q, id, req.Holder, "claim", func(t *store.Ticket) (any, error) {
-			// The candidate was read in this transaction, but without a
-			// single-writer database another claimer may have taken it.
-			if t.Status == store.StatusClosed || (t.Holder != "" && t.Holder != req.Holder) {
-				return nil, fmt.Errorf("%w: %s was taken", store.ErrConflict, t.ID)
+			if err := storerules.StillCandidate(*t, req.Holder); err != nil {
+				return nil, err
 			}
 			fresh = t.Status == store.StatusOpen
 			var d any
@@ -619,17 +606,8 @@ func (s *Store) Claim(ctx context.Context, id, holder string, lease time.Duratio
 		}
 		fresh := false
 		t, err = s.mutateWith(ctx, q, id, holder, "claim", func(t *store.Ticket) (any, error) {
-			switch {
-			case t.Status == store.StatusClosed:
-				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
-			case t.Status == store.StatusInProgress && t.Holder != holder:
-				return nil, fmt.Errorf("%w: %s is held by %s", store.ErrNotHolder, id, t.Holder)
-			case t.Status == store.StatusOpen && t.Holder != "" && t.Holder != holder:
-				return nil, fmt.Errorf("%w: %s is assigned to %s", store.ErrNotHolder, id, t.Holder)
-			case blocked:
-				return nil, fmt.Errorf("%w: %s is blocked", store.ErrNoWork, id)
-			case (full != 0 || empty != 0) && t.Status == store.StatusOpen:
-				return nil, fmt.Errorf("%w: %s waits for a resource slot", store.ErrNoWork, id)
+			if err := storerules.CanClaim(*t, holder, blocked, full != 0 || empty != 0); err != nil {
+				return nil, err
 			}
 			fresh = t.Status == store.StatusOpen
 			var d any
@@ -675,7 +653,7 @@ func (s *Store) Heartbeat(ctx context.Context, c store.Claim, lease time.Duratio
 		return c, err
 	}
 	now := s.now()
-	c.LeaseUntil = now.Add(lease).UTC().Truncate(time.Millisecond)
+	c.LeaseUntil = storerules.Stamp(now.Add(lease))
 	// Through tx so a lost race (Postgres 40001) is rerun and, at the
 	// limit, reported as ErrConflict, not a raw driver error (JOB-38).
 	var n int64
@@ -695,18 +673,7 @@ func (s *Store) Heartbeat(ctx context.Context, c store.Claim, lease time.Duratio
 	return c, nil
 }
 
-func holds(t *store.Ticket, c store.Claim) error {
-	if t.Status != store.StatusInProgress || t.Holder != c.Holder || t.Fence != c.Fence {
-		return fmt.Errorf("%w: %s", store.ErrNotHolder, t.ID)
-	}
-	return nil
-}
-
-func reopen(t *store.Ticket) {
-	t.Status = store.StatusOpen
-	t.Holder = ""
-	t.LeaseUntil = time.Time{}
-}
+func reopen(t *store.Ticket) { storerules.Reopen(t) }
 
 // Release lets go of a ticket as o says (#579): close, hand off, or
 // return to open.
@@ -747,21 +714,9 @@ func (s *Store) release(ctx context.Context, c store.Claim, reason string, until
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, c.TicketID, c.Holder, "release", func(t *store.Ticket) (any, error) {
-			if err := holds(t, c); err != nil {
-				return nil, err
-			}
-			reopen(t)
-			d := map[string]any{"reason": reason}
-			if !until.IsZero() {
-				// A deferred release is "not yet", not a failed attempt.
-				t.DeferUntil = until.UTC().Truncate(time.Millisecond)
-				d["defer_until"] = t.DeferUntil
-				note = fmt.Sprintf("Released until %s: %s", t.DeferUntil.Format(time.RFC3339), reason)
-				return d, nil
-			}
-			var ferr error
-			note, ferr = s.stepFailure(t, "released: "+reason, d)
-			return d, ferr
+			d, n, err := storerules.Release(t, c, reason, until, s.now())
+			note = n
+			return d, err
 		})
 		if err != nil {
 			return err
@@ -780,24 +735,7 @@ func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, p
 	}
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		t, err = s.mutate(ctx, q, id, actor, "handoff", func(t *store.Ticket) (any, error) {
-			if t.Status == store.StatusClosed {
-				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
-			}
-			if c != nil {
-				if err := holds(t, *c); err != nil {
-					return nil, err
-				}
-			}
-			d := map[string]any{"from_pool": t.Pool, "pool": pool, "holder": t.Holder}
-			t.Pool = pool
-			if t.Status == store.StatusInProgress {
-				reopen(t)
-				t.Fence++
-			}
-			if note != "" {
-				d["note"] = note
-			}
-			return d, nil
+			return storerules.Handoff(t, c, pool, note)
 		})
 		if err != nil || strings.TrimSpace(note) == "" {
 			return err
@@ -806,31 +744,6 @@ func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, p
 		return err
 	})
 	return t, err
-}
-
-// stepFailure counts a failure when t is a step, in the caller's
-// transaction. At the retry limit the step is closed failed. It returns
-// the comment to add, or "" for non-steps, and records the count in d.
-func (s *Store) stepFailure(t *store.Ticket, how string, d map[string]any) (string, error) {
-	f, exhausted, isStep, err := store.StepFailure(t)
-	if err != nil || !isStep {
-		return "", err
-	}
-	d["failures"] = f.Failures
-	if exhausted && t.Status != store.StatusClosed {
-		t.Status = store.StatusClosed
-		t.Resolution = "failed"
-		t.Holder = ""
-		t.LeaseUntil = time.Time{}
-		t.ClosedAt = s.now().UTC().Truncate(time.Millisecond)
-	}
-	if !exhausted && t.Status == store.StatusClosed {
-		// Below the limit a failed close becomes another attempt.
-		reopen(t)
-		t.Resolution = ""
-		t.ClosedAt = time.Time{}
-	}
-	return store.StepFailureComment(f, how, exhausted), nil
 }
 
 // note adds a controller comment inside a transaction; empty is a no-op.
@@ -847,31 +760,9 @@ func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Clai
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
-			if t.Status == store.StatusClosed {
-				return nil, fmt.Errorf("%w: %s", store.ErrClosed, id)
-			}
-			if c != nil {
-				if err := holds(t, *c); err != nil {
-					return nil, err
-				}
-			}
-			t.Status = store.StatusClosed
-			t.Resolution = resolution
-			t.LeaseUntil = time.Time{}
-			t.ClosedAt = s.now().UTC().Truncate(time.Millisecond)
-			d := map[string]any{"resolution": resolution}
-			if resolution == "failed" {
-				var ferr error
-				note, ferr = s.stepFailure(t, "closed failed", d)
-				return d, ferr
-			}
-			if resolution == store.ResolutionRebase && t.Kind == store.KindStep {
-				reopen(t)
-				t.Resolution = ""
-				t.ClosedAt = time.Time{}
-				note = "Closed for a rebase: reopened without counting a failed attempt."
-			}
-			return d, nil
+			d, n, err := storerules.Close(t, c, resolution, s.now())
+			note = n
+			return d, err
 		})
 		if err != nil {
 			return err
@@ -884,16 +775,7 @@ func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Clai
 // reopen returns a closed ticket to open, keeping its holder unset.
 func (s *Store) reopen(ctx context.Context, q sqldb.Querier, actor, id string, ifRev int64) (store.Ticket, error) {
 	return s.mutate(ctx, q, id, actor, "reopen", func(t *store.Ticket) (any, error) {
-		if ifRev != 0 && ifRev != t.Revision {
-			return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, id, t.Revision, ifRev)
-		}
-		if t.Status != store.StatusClosed {
-			return nil, fmt.Errorf("%w: %s is not closed", store.ErrInvalid, id)
-		}
-		reopen(t)
-		t.Resolution = ""
-		t.ClosedAt = time.Time{}
-		return nil, nil
+		return nil, storerules.ReopenClosed(t, ifRev)
 	})
 }
 
@@ -909,25 +791,10 @@ func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqld
 		for _, id := range list {
 			var note string
 			_, err := s.mutateWith(ctx, q, id, actor, op, func(t *store.Ticket) (any, error) {
-				d := map[string]any{"holder": t.Holder, "status": t.Status}
-				if m, ok := diff.(map[string]any); ok {
-					for k, v := range m {
-						d[k] = v
-					}
-				}
-				// A pre-assigned step that was never claimed has not failed.
-				claimed := t.Status == store.StatusInProgress
-				reopen(t)
-				if !claimed {
-					return d, nil
-				}
-				how := op
-				if r, ok := d["reason"].(string); ok && r != "" {
-					how += ": " + r
-				}
-				var ferr error
-				note, ferr = s.stepFailure(t, how, d)
-				return d, ferr
+				extra, _ := diff.(map[string]any)
+				d, n, err := storerules.Expire(t, op, extra, s.now())
+				note = n
+				return d, err
 			}, w)
 			if errors.Is(err, store.ErrConflict) {
 				// Changed since the list was read (renewed, released or
@@ -1050,51 +917,7 @@ func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t
 
 func (s *Store) updateFields(ctx context.Context, q sqldb.Querier, actor, id string, u store.Update) (store.Ticket, error) {
 	return s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
-		if u.IfRevision != 0 && u.IfRevision != t.Revision {
-			return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, id, t.Revision, u.IfRevision)
-		}
-		d := map[string]any{}
-		set := func(name string, dst *string, v *string) {
-			if v != nil && *v != *dst {
-				*dst = *v
-				d[name] = *v
-			}
-		}
-		set("title", &t.Title, u.Title)
-		set("body", &t.Body, u.Body)
-		set("pool", &t.Pool, u.Pool)
-		if u.Holder != nil && *u.Holder != t.Holder {
-			if t.Status != store.StatusOpen {
-				return nil, fmt.Errorf("%w: %s: assign only while open (status %s)", store.ErrInvalid, id, t.Status)
-			}
-			t.Holder = *u.Holder
-			d["holder"] = *u.Holder
-		}
-		if u.Priority != nil && *u.Priority != t.Priority {
-			t.Priority = *u.Priority
-			d["priority"] = *u.Priority
-		}
-		if u.DeferUntil != nil {
-			t.DeferUntil = u.DeferUntil.UTC().Truncate(time.Millisecond)
-			d["defer_until"] = t.DeferUntil
-		}
-		if u.Fields != nil {
-			f, err := store.NormalizeFields(t.Kind, u.Fields)
-			if err != nil {
-				return nil, err
-			}
-			t.Fields = f
-			d["fields"] = f
-		}
-		if u.Meta != nil {
-			m, err := store.NormalizeMeta(u.Meta)
-			if err != nil {
-				return nil, err
-			}
-			t.Meta = m
-			d["meta"] = m
-		}
-		return d, nil
+		return storerules.ApplyUpdate(t, u)
 	})
 }
 

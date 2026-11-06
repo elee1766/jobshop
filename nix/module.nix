@@ -157,6 +157,16 @@ let
     coreutils
     diffutils
     openssh
+    # What any agent shell assumes is there (#780): without them a tool
+    # call like `$(dirname $(which go))` fails and the agent blames its
+    # env. NixOS has them in /run/current-system/sw/bin, which is not on
+    # a unit's PATH.
+    gawk
+    which
+    procps
+    util-linux
+    gnutar
+    gzip
   ];
   # The old consumer toolset, kept behind defaultPath (default false).
   defaultTools = with pkgs; [
@@ -1431,7 +1441,9 @@ in
                 *)
                   echo "<4>jobshop switched outside self-deploy (a rollback if older): running $current, last deployed $last; deployed rewritten"
                   touch -r $state/deployed $state/deployed.mtime
-                  echo "$current" > $state/deployed
+                  # Full sha when it is the green rev: deployed feeds
+                  # --override-input rev=, which refuses a short one.
+                  case "$rev" in "$current"*) echo "$rev" ;; *) echo "$current" ;; esac > $state/deployed
                   touch -r $state/deployed.mtime $state/deployed
                   rm -f $state/deployed.mtime
                   ;;
