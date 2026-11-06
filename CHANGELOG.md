@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.3](https://github.com/elee1766/jobshop/compare/v0.3.2...v0.3.3) (2026-11-06)
+
+
+### Features
+
+* **control:** question chats answer, follow the worker and close when settled (JOB-52) ([#779](https://github.com/elee1766/jobshop/issues/779)) ([b3e772c](https://github.com/elee1766/jobshop/commit/b3e772c3826cf2d7a6cb55f9a4957965a59b31e8))
+* **sandbox:** overlay mounts merging layer dirs per target (JOB-55) ([#782](https://github.com/elee1766/jobshop/issues/782)) ([0dbfbcb](https://github.com/elee1766/jobshop/commit/0dbfbcb9675c7efb1affb635501127c14e720c71))
+
+
+### Bug fixes
+
+* **nix:** put which, awk, ps and friends back on the agent shell PATH ([#780](https://github.com/elee1766/jobshop/issues/780)) ([#781](https://github.com/elee1766/jobshop/issues/781)) ([870ee15](https://github.com/elee1766/jobshop/commit/870ee15255509ebed12ee2d86614e1fdab96e16a))
+
 ## [0.3.2](https://github.com/elee1766/jobshop/compare/v0.3.1...v0.3.2) (2026-11-06)
 
 
