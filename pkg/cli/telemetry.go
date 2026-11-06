@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"os"
+	"runtime/debug"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -24,9 +25,23 @@ func startTelemetry(ctx context.Context, r config.Root, name string, f LogFlags)
 		}
 		tc = cfg.Telemetry
 	}
+	bi, _ := debug.ReadBuildInfo()
+	v, cm := versionInfo(version, commit, bi)
+	// One resource for traces, logs and metrics (JOB-106).
+	res, err := telemetry.NewResource(ctx, telemetry.Identity{
+		Instance:   tc.Instance,
+		Root:       r.Dir,
+		Version:    v,
+		Commit:     cm,
+		Attributes: tc.ResourceAttrs(os.Getenv),
+	})
+	if err != nil {
+		return nil, err
+	}
 	return telemetry.Start(ctx, name, telemetry.Export{
 		TracesURL: tc.TracesURL(),
 		LogsURL:   tc.LogsURL(),
 		Headers:   tc.Headers(os.Getenv),
+		Resource:  res,
 	}, base.Handler())
 }

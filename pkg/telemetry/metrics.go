@@ -11,6 +11,7 @@ import (
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
 )
 
 // Attribute keys shared by all signals (plan section 9).
@@ -82,14 +83,19 @@ type Metrics struct {
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
-// instruments.
-func NewMetrics() (*Metrics, error) {
+// instruments with the minimal jobshop resource (tests).
+func NewMetrics() (*Metrics, error) { return NewMetricsFor(nil) }
+
+// NewMetricsFor builds the meter provider, Prometheus exporter and
+// instruments. res is the process resource (NewResource): the exporter
+// serves it as target_info. Nil: service.name=jobshop only.
+func NewMetricsFor(res *resource.Resource) (*Metrics, error) {
 	reg := prometheus.NewRegistry()
 	exp, err := otelprom.New(otelprom.WithRegisterer(reg))
 	if err != nil {
 		return nil, err
 	}
-	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(exp))
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithResource(orDefault(res)), sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
 	var errs [29]error

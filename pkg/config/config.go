@@ -1170,6 +1170,18 @@ type Telemetry struct {
 	// OTLPHeaders are sent on every export. Values expand ${VAR} from the
 	// controller environment so tokens stay out of the file.
 	OTLPHeaders map[string]string `yaml:"otlp_headers"`
+	// Instance names this jobshop on every signal (service.instance.id
+	// and jobshop.instance, JOB-106). Empty: the root directory's base
+	// name, or hostname:root when that is "jobshop".
+	Instance string `yaml:"instance"`
+	// Resource adds resource attributes to traces, logs and metrics, e.g.
+	// deployment.environment. Values expand ${VAR} like OTLPHeaders.
+	Resource map[string]string `yaml:"resource"`
+}
+
+// ResourceAttrs returns Resource with ${VAR} expanded by getenv.
+func (t Telemetry) ResourceAttrs(getenv func(string) string) map[string]string {
+	return expandValues(t.Resource, getenv)
 }
 
 // TracesURL is the traces export URL, or "" for none.
@@ -1191,11 +1203,15 @@ func (t Telemetry) signalURL(full, path string) string {
 // Headers returns OTLPHeaders with ${VAR} expanded by getenv. Expansion
 // happens at use, not parse, so config show never prints secrets.
 func (t Telemetry) Headers(getenv func(string) string) map[string]string {
-	if len(t.OTLPHeaders) == 0 {
+	return expandValues(t.OTLPHeaders, getenv)
+}
+
+func expandValues(m map[string]string, getenv func(string) string) map[string]string {
+	if len(m) == 0 {
 		return nil
 	}
-	h := make(map[string]string, len(t.OTLPHeaders))
-	for k, v := range t.OTLPHeaders {
+	h := make(map[string]string, len(m))
+	for k, v := range m {
 		h[k] = os.Expand(v, getenv)
 	}
 	return h

@@ -115,6 +115,8 @@ let
     controllerCpuWeight = 5000;
   };
   cgOff = eval { };
+  # telemetry.instance (JOB-106): written only when set.
+  telInstance = eval { telemetry.instance = "selfdev"; };
 
   # User-managed jobshop.yaml (#531): the module writes only
   # jobshop.module.yaml and watches the user's file.
@@ -666,5 +668,7 @@ pkgs.runCommand "jobshop-module-test" { } ''
   grep -q 'controller_cpu_weight: 5000' ${yamlPacks cgSet}
   ! grep -q 'sessions_cpu_weight' ${yamlPacks cgSet}
   ! grep -q 'sessions_cpu' ${yamlPacks cgOff}
+  grep -q 'instance: selfdev' ${yamlPacks telInstance}
+  ! grep -q 'instance:' ${yamlPacks cgOff}
   touch $out
 ''

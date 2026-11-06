@@ -203,6 +203,13 @@ telemetry:
 	require.NoError(t, err)
 	assert.Equal(t, "http://vt/x", c.Telemetry.TracesURL(), "override alone enables traces")
 	assert.Empty(t, c.Telemetry.LogsURL())
+
+	c, err = Parse([]byte("telemetry:\n  instance: selfdev\n  resource:\n    deployment.environment: ${ENV}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "selfdev", c.Telemetry.Instance)
+	assert.Equal(t, "${ENV}", c.Telemetry.Resource["deployment.environment"], "stored unexpanded")
+	assert.Equal(t, map[string]string{"deployment.environment": "prod"},
+		c.Telemetry.ResourceAttrs(func(string) string { return "prod" }))
 }
 
 func TestDuration(t *testing.T) {

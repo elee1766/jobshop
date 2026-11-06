@@ -25,6 +25,7 @@ let
     otlp_traces_endpoint = tel.otlpTracesEndpoint;
     otlp_logs_endpoint = tel.otlpLogsEndpoint;
     otlp_headers = tel.otlpHeaders;
+    instance = if tel.instance == null then "" else tel.instance;
   };
   # Workspaces with a url; the others are declared but cloned by nobody.
   workspaces = lib.filterAttrs (_: w: w.url != "") cfg.workspaces;
@@ -899,6 +900,12 @@ in
           Authorization = "Bearer \${OTLP_TOKEN}";
         };
         description = "Headers on every OTLP export. \${VAR} expands from the controller environment (see environmentFile).";
+      };
+      instance = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        example = "selfdev";
+        description = "Instance name on traces, logs and metrics (telemetry.instance: service.instance.id and jobshop.instance, JOB-106). Null: jobshop's default, the dataDir base name, or hostname:dataDir when that is jobshop.";
       };
     };
 
