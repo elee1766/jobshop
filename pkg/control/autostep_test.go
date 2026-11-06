@@ -282,8 +282,11 @@ func TestAutoStepHTTPRetryAfter(t *testing.T) {
 	clk := clock.NewFake(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
 	admin, _ := startAuto(t, root, clk)
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "later", Vars: map[string]string{"issue": "1"}})
+	// finishAutoStep writes the result, then releases with defer_until:
+	// wait for both, or the read can land between them.
 	passUntilWall(t, root, func() bool {
-		return stepFields(t, showRun(t, admin, r.Run.ID).Steps[0]).Result == "not_yet"
+		s := showRun(t, admin, r.Run.ID).Steps[0]
+		return stepFields(t, s).Result == "not_yet" && !s.DeferUntil.IsZero()
 	}, "deferred")
 	s := showRun(t, admin, r.Run.ID).Steps[0]
 	assert.Equal(t, clk.Now().Add(30*time.Second), s.DeferUntil.UTC())
