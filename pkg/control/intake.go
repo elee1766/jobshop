@@ -12,6 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Intake hooks (#288): Linear issue text is untrusted. Before it reaches
@@ -79,18 +80,34 @@ func (c *Controller) intakeIssue(ctx context.Context, cfg *config.Config, projec
 	return c.intake(ctx, cfg, project, "intake/"+key, x)
 }
 
-// intakeRun gates a run start for a Linear workflow.
+// intakeRun gates a run start for a Linear workflow. Started from a pass
+// (a trigger), the Linear read and the hooks run outside the tick like a
+// check (JOB-103): the start returns errCheckPending and the replay has
+// the answer.
 func (c *Controller) intakeRun(ctx context.Context, cfg *config.Config, plan runPlan) error {
 	if plan.w.Tracker != config.TrackerLinear || !hasIntakeHooks(cfg) {
 		return nil
 	}
 	key := metaString(plan.meta, "linear", "issue")
-	a := c.intakeIssue(ctx, cfg, plan.proj, key)
+	res, err := offTick(ctx, checkNeed{
+		key: "intake\x00" + plan.proj + "\x00" + key, poller: "intake", timeout: intakeTimeout,
+		run: func(ctx context.Context) checkResult {
+			return checkResult{val: c.intakeIssue(ctx, cfg, plan.proj, key)}
+		},
+	})
+	if err != nil {
+		return err
+	}
+	a, _ := res.val.(hookAnswer)
 	if a.Decision == rpc.GuardAllow {
 		return nil
 	}
 	return forbidden("intake hook %s for %s: %s", a.Decision, key, a.Reason)
 }
+
+// intakeTimeout bounds an intake check: the Linear read and the hooks,
+// each with its own timeout.
+const intakeTimeout = 5 * time.Minute
 
 // linearClient returns a client for the identity covering key's team.
 func (c *Controller) linearClient(ctx context.Context, key string) (*linear.Client, error) {
@@ -125,6 +142,17 @@ func (c *Controller) newLinear(url, name string, id config.Identity, team, token
 			return t.Token, err
 		}
 	}
+	return cl
+}
+
+// linearRequestTimeout bounds one Linear request made off the tick by a
+// poller (JOB-103); the default client allows 30s.
+const linearRequestTimeout = 15 * time.Second
+
+// pollerLinear is newLinear with linearRequestTimeout per request.
+func (c *Controller) pollerLinear(url, name string, id config.Identity, team, token string) *linear.Client {
+	cl := c.newLinear(url, name, id, team, token)
+	cl.HTTP = telemetry.HTTPClient("linear", linearRequestTimeout)
 	return cl
 }
 

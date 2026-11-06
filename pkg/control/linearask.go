@@ -64,12 +64,32 @@ func (c *Controller) sweepLinearAsks(ctx context.Context, cfg *config.Config) {
 			return
 		}
 		for _, t := range ts {
-			if err := c.postLinearAsk(ctx, cfg, t); err != nil {
-				c.log.WarnContext(ctx, "linear ask", "ticket", t.ID, "err", err)
+			if metaString(t.Meta, "linear", "issue") == "" {
+				continue
 			}
+			if _, ok := linearAskOf(t); ok {
+				continue
+			}
+			// Outside the tick (JOB-103), one post per ticket at a time.
+			c.offGo("linear-ask\x00"+t.ID, "linear_ask", linearAskTimeout, false, func(ctx context.Context) any {
+				// Read again: a post that ended after this pass listed
+				// the ticket has set meta.linear_ask.
+				cur, err := c.store.Get(ctx, t.ID)
+				if err != nil || cur.Status != store.StatusOpen {
+					return nil
+				}
+				if err := c.postLinearAsk(ctx, cfg, cur); err != nil && c.ctx.Err() == nil {
+					c.log.WarnContext(ctx, "linear ask", "ticket", t.ID, "err", err)
+				}
+				return nil
+			})
 		}
 	}
 }
+
+// linearAskTimeout bounds one ask post: the token, the comment, the label
+// and the store writes.
+const linearAskTimeout = 2 * time.Minute
 
 // postLinearAsk posts t when it is a question or escalation on a Linear
 // issue and not posted yet.
@@ -90,8 +110,6 @@ func (c *Controller) postLinearAsk(ctx context.Context, cfg *config.Config, t st
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
 	var mention []string
 	if h := metaString(t.Meta, "linear", "human"); h != "" {
 		mention = []string{h}

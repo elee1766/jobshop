@@ -3,11 +3,16 @@ package control
 import (
 	"context"
 	"errors"
+	"maps"
+	"slices"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Trigger checks run outside the tick (JOB-109). A check is a shell
@@ -31,16 +36,24 @@ var errCheckPending = errors.New("trigger check has not run yet")
 // maxTriggerChecks bounds the check commands running at once.
 const maxTriggerChecks = 8
 
-// checkResult is what one check run found: runCheck's three values.
+// checkResult is what one check run found: runCheck's three values. A
+// call that is not a check command (a Linear read, intake hooks) keeps
+// its value in val.
 type checkResult struct {
 	out, why string
 	err      error
+	val      any
 }
 
-// checkNeed is a check an evaluation reached.
+// checkNeed is a call an evaluation reached: a check command (when), or
+// any other call off the tick (run, JOB-103). poller names it in the
+// timeout log and metric.
 type checkNeed struct {
-	key  string
-	when config.TriggerWhen
+	key     string
+	when    config.TriggerWhen
+	poller  string
+	timeout time.Duration
+	run     func(ctx context.Context) checkResult
 }
 
 // checkPass is on the ctx of an evaluation under runTriggerChecks. results
@@ -50,6 +63,37 @@ type checkPass struct {
 	results map[string]checkResult
 	need    []checkNeed
 }
+
+// offTick returns the result of call n for the evaluation on ctx: run
+// now when no checkPass is there (trigger.list, a run.start RPC, tests),
+// the replay's result, or errCheckPending and a note of the call to make
+// outside the tick (JOB-103).
+func offTick(ctx context.Context, n checkNeed) (checkResult, error) {
+	cp, ok := ctx.Value(checkPassKey{}).(*checkPass)
+	if !ok {
+		ctx, cancel := context.WithTimeout(ctx, n.timeout)
+		defer cancel()
+		return n.run(ctx), nil
+	}
+	if r, ok := cp.results[n.key]; ok {
+		return r, nil
+	}
+	cp.note(n)
+	return checkResult{}, errCheckPending
+}
+
+// note records a call the evaluation needs, once. A replay notes the calls
+// it reached past the first round's (an intake read at the run start
+// after the check), and checkLoop runs them in another round.
+func (cp *checkPass) note(n checkNeed) {
+	if !slices.ContainsFunc(cp.need, func(m checkNeed) bool { return m.key == n.key }) {
+		cp.need = append(cp.need, n)
+	}
+}
+
+// maxCheckRounds bounds the replays of one check job: a check, then the
+// intake read of the run it starts, then a spare.
+const maxCheckRounds = 3
 
 type checkPassKey struct{}
 
@@ -115,11 +159,29 @@ func (c *Controller) checkLoop(name string, job checkJob) {
 		// started it): the commands, the wait for the tick lock and the
 		// replay nest under it, and a waiter behind the replay links it.
 		ctx, span := c.rootSpan(c.ctx, "trigger checks "+name, attribute.String("jobshop.trigger", name))
-		results := c.runChecks(ctx, job.need)
-		unlock := c.lockTickFor(ctx, "check", name)
-		if ctx.Err() == nil && !c.draining() {
+		results := map[string]checkResult{}
+		need := job.need
+		var unlock func()
+		for round := 1; ; round++ {
+			maps.Copy(results, c.runChecks(ctx, need))
+			unlock = c.lockTickFor(ctx, "check", name)
+			if ctx.Err() != nil || c.draining() {
+				break
+			}
 			// One config for the replay, like an event pass (JOB-104).
-			job.run(withCheckPass(ctx, &checkPass{results: results}), c.config())
+			cp := &checkPass{results: results}
+			job.run(withCheckPass(ctx, cp), c.config())
+			if len(cp.need) == 0 {
+				break
+			}
+			if round == maxCheckRounds {
+				c.log.WarnContext(ctx, "trigger still waits on calls after its check rounds", "trigger", name, "rounds", round)
+				break
+			}
+			// The replay reached a call outside the tick (an intake
+			// read when it starts a run, JOB-103): run it and replay again.
+			unlock()
+			need = cp.need
 		}
 		next, more := c.checkJobs.queued[name]
 		delete(c.checkJobs.queued, name)
@@ -148,9 +210,20 @@ func (c *Controller) runChecks(ctx context.Context, need []checkNeed) map[string
 				return
 			}
 			defer c.releaseCheck()
-			key, why, err := c.runCheckNow(ctx, n.when)
+			var r checkResult
+			if n.run != nil {
+				rctx, cancel := context.WithTimeout(ctx, n.timeout)
+				r = n.run(rctx)
+				c.offTimedOut(rctx, n.poller, n.key, n.timeout)
+				cancel()
+			} else {
+				r.out, r.why, r.err = c.runCheckNow(ctx, n.when)
+				if errors.Is(r.err, context.DeadlineExceeded) && ctx.Err() == nil {
+					c.checkTimedOut(n)
+				}
+			}
 			mu.Lock()
-			out[n.key] = checkResult{out: key, why: why, err: err}
+			out[n.key] = r
 			mu.Unlock()
 		})
 	}
@@ -169,3 +242,13 @@ func (c *Controller) acquireCheck(ctx context.Context) bool {
 }
 
 func (c *Controller) releaseCheck() { <-c.checkSlots }
+
+// checkTimedOut logs and counts a check command that ran out its
+// check_timeout (JOB-103).
+func (c *Controller) checkTimedOut(n checkNeed) {
+	timeout := config.Duration(n.when.CheckTimeout, time.Minute)
+	c.log.WarnContext(c.ctx, "off-pass call exceeded its timeout", "poller", "check", "timeout", timeout, "check", n.when.Check)
+	if c.metrics != nil {
+		c.metrics.PollerTimeouts.Add(c.ctx, 1, metric.WithAttributes(telemetry.AttrPoller.String("check")))
+	}
+}

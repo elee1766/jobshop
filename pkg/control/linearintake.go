@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -44,6 +45,9 @@ func (c *Controller) stallLinearIssues(ctx context.Context, cfg *config.Config, 
 		return nil, nil
 	}
 	issues, err := c.linearIntakeIssues(ctx, cfg, sig)
+	if errors.Is(err, errCheckPending) {
+		return nil, err
+	}
 	if err != nil {
 		c.log.WarnContext(ctx, "linear_issue_no_run", "team", sig.Team, "err", err)
 		return nil, nil
@@ -84,26 +88,46 @@ func (c *Controller) linearIssueHasOpenRun(ctx context.Context, key string) (boo
 }
 
 // linearIntakeIssues returns the matching issues, read from Linear at most
-// once per poll interval.
+// once per poll interval. In a pass the read runs outside the tick like a
+// check (JOB-103): the signal returns errCheckPending and the replay has
+// the issues.
 func (c *Controller) linearIntakeIssues(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]linear.Summary, error) {
 	key := strings.Join([]string{sig.Team, sig.States, sig.Labels, sig.SkipLabels}, "|")
 	poll := config.Duration(sig.Poll, config.DefaultLinearPoll)
 	now := c.now()
 	c.linIntake.mu.Lock()
-	defer c.linIntake.mu.Unlock()
-	if r, ok := c.linIntake.cache[key]; ok && now.Before(r.at.Add(poll)) {
+	r, ok := c.linIntake.cache[key]
+	c.linIntake.mu.Unlock()
+	if ok && now.Before(r.at.Add(poll)) {
 		return r.issues, nil
 	}
-	issues, err := c.readLinearIntake(ctx, cfg, sig)
+	res, err := offTick(ctx, checkNeed{
+		key: "linear\x00" + key, poller: "linear_issue_no_run", timeout: linearIntakeTimeout,
+		run: func(ctx context.Context) checkResult {
+			issues, err := c.readLinearIntake(ctx, cfg, sig)
+			return checkResult{val: issues, err: err}
+		},
+	})
+	if err == nil {
+		err = res.err
+	}
 	if err != nil {
 		return nil, err
 	}
+	issues, _ := res.val.([]linear.Summary)
+	c.linIntake.mu.Lock()
+	defer c.linIntake.mu.Unlock()
 	if c.linIntake.cache == nil {
 		c.linIntake.cache = map[string]linearIntakeRead{}
 	}
 	c.linIntake.cache[key] = linearIntakeRead{at: now, issues: issues}
 	return issues, nil
 }
+
+// linearIntakeTimeout bounds one intake read: up to linearIntakePages list
+// pages and a context read per match, each request within
+// linearRequestTimeout.
+const linearIntakeTimeout = 2 * time.Minute
 
 // readLinearIntake lists the team's issues as the identity covering the
 // team and keeps the open ones that match. Filtering is done here: the
@@ -120,9 +144,7 @@ func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, s
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	cl := c.newLinear(c.linearURL, name, cfg.Identities[name], sig.Team, tok.Token)
+	cl := c.pollerLinear(c.linearURL, name, cfg.Identities[name], sig.Team, tok.Token)
 	states, labels, skip := config.SplitList(sig.States), config.SplitList(sig.Labels), config.SplitList(sig.SkipLabels)
 	f := linear.Filter{Team: sig.Team, Limit: 250}
 	var out []linear.Summary

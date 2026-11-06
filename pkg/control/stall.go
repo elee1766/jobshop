@@ -69,6 +69,9 @@ func (c *Controller) runStallTrigger(ctx context.Context, cfg *config.Config, na
 			}
 		}
 		t, existing, err := c.fireStall(ctx, cfg, name, tr, s)
+		if errors.Is(err, errCheckPending) {
+			continue // its intake check runs outside the tick (JOB-103)
+		}
 		if err != nil {
 			c.log.ErrorContext(ctx, "stall fire", "trigger", name, "key", key, "err", err)
 			continue
