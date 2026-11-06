@@ -22,12 +22,12 @@ are pulled in only where needed. Jobshop develops itself this way.
 ```mermaid
 flowchart LR
   CLI[jobshop CLI] -- admin.sock / cli.sock --> C[controller]
-  C --> S[(SQLite)]
+  C --> S[(SQLite or Postgres)]
   C -- ACP over acp.sock --> H[session host: acphost, one per session]
   H -- stdio --> A[agent]
   A -- jobshop CLI --> C
-  G[gateway: Matrix, Discord] --> C
-  D[Desk: web UI] --> C
+  G[A2A gateway: escalations to another agent] --> C
+  D[Desk: web UI and HTTP API] --> C
 ```
 
 - [**Tickets**](docs/data-model.md): one graph of work items with blocking edges, claims and comments.
@@ -36,7 +36,7 @@ flowchart LR
 - [**GitHub and Linear intake**](docs/ingest.md): webhooks and polling turn issues and comments into tickets; PR review and merge steps ship in [`packs/github`](packs/github/README.md).
 - [**Triggers**](docs/notes/26-triggers.md): create tickets or start runs from counts, cron, shell checks or stall signals.
 - [**Packs**](docs/packs.md): directories of pools, prompts, triggers and workflows you write.
-- [**Gateways and Desk**](docs/notes/202-desk.md): chat (Matrix, Discord) and a web UI over the admin socket.
+- [**Desk and A2A**](docs/notes/202-desk.md): a web UI and HTTP API over the admin socket, and an [A2A gateway](docs/notes/547-a2a-gateway.md) that hands escalations to another agent.
 - [**Self-deploy**](docs/nixos.md): the NixOS module promotes merged commits.
 
 Goals: a small core you own; behavior in packs, not the core; agents

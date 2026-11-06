@@ -38,9 +38,6 @@ func (c *Config) checkA2AGateway(g Gateway) error {
 			return fmt.Errorf("poll %q must be a duration of at least 1s", g.Poll)
 		}
 	}
-	if len(g.Rooms) > 0 || len(g.Senders) > 0 || g.EscalationRoom != "" || g.AttentionDigest != "" || g.ArtifactRoom != "" {
-		return errors.New("rooms, senders, escalation_room, attention_digest and artifact_room are for chat networks, not a2a")
-	}
 	return nil
 }
 

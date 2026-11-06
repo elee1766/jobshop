@@ -45,7 +45,7 @@ type root struct {
 	Drain       drainCmd       `cmd:"" help:"Start no new sessions or tickets; running turns finish (admin)."`
 	Undrain     undrainCmd     `cmd:"" help:"Undo drain (admin)."`
 	Reload      reloadCmd      `cmd:"" help:"Re-read jobshop.yaml and packs; keeps the old config if invalid (admin)."`
-	Gateway     gatewayCmd     `cmd:"" help:"Run a chat gateway from jobshop.yaml (admin socket client)."`
+	Gateway     gatewayCmd     `cmd:"" help:"Run an A2A gateway from jobshop.yaml (admin socket client)."`
 	Desk        deskCmd        `cmd:"" help:"Serve Jobshop Desk, the read-only dashboard (admin socket client)."`
 	Ingest      ingestCmd      `cmd:"" help:"Receive GitHub and Linear webhooks into the ingest spool."`
 	Admin       adminCmd       `cmd:"" help:"Offline maintenance with the controller stopped (store migrate)."`

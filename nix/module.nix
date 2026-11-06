@@ -48,19 +48,12 @@ let
       inherit (g)
         network
         pool
+        url
         ;
       token_file = g.tokenFile;
     }
-    // lib.optionalAttrs (g.rooms != [ ]) { inherit (g) rooms; }
-    // lib.optionalAttrs (g.senders != [ ]) { inherit (g) senders; }
-    // lib.optionalAttrs (g.url != "") { inherit (g) url; }
     // lib.optionalAttrs (g.escalations != [ ]) { inherit (g) escalations; }
     // lib.optionalAttrs (g.poll != "") { inherit (g) poll; }
-    // lib.optionalAttrs (g.homeserver != "") { inherit (g) homeserver; }
-    // lib.optionalAttrs (g.interruptMarker != "") { interrupt_marker = g.interruptMarker; }
-    // lib.optionalAttrs (g.escalationRoom != "") { escalation_room = g.escalationRoom; }
-    // lib.optionalAttrs (g.attentionDigest != "") { attention_digest = g.attentionDigest; }
-    // lib.optionalAttrs (g.artifactRoom != "") { artifact_room = g.artifactRoom; }
     // lib.optionalAttrs (g.deskUrl != "") { desk_url = g.deskUrl; }
   ) cfg.gateway;
   withModuleKeys =
@@ -1086,86 +1079,45 @@ in
         lib.types.submodule {
           options = {
             network = lib.mkOption {
-              type = lib.types.enum [
-                "matrix"
-                "discord"
-                "a2a"
-              ];
-              default = "matrix";
+              # Matrix and Discord were removed (2026-11-06); Desk is the operator UI.
+              type = lib.types.enum [ "a2a" ];
+              default = "a2a";
             };
             url = lib.mkOption {
               type = lib.types.str;
-              default = "";
               example = "https://hermes.example/a2a";
-              description = "A2A peer base URL; its agent card is under it (a2a only, #547).";
+              description = "A2A peer base URL; its agent card is under it (#547).";
             };
             escalations = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
               example = [ "all" ];
-              description = "Escalation causes sent to the A2A peer: `all`, or run, pool, wait, guard, label. Empty: none (a2a only).";
+              description = "Escalation causes sent to the A2A peer: `all`, or run, pool, wait, guard, label. Empty: none.";
             };
             poll = lib.mkOption {
               type = lib.types.str;
               default = "";
-              description = "GetTask interval for a peer task. Empty: 30s (a2a only).";
-            };
-            homeserver = lib.mkOption {
-              type = lib.types.str;
-              default = "";
-              example = "http://127.0.0.1:6167";
-              description = "Matrix client-server URL. Unused for discord.";
+              description = "GetTask interval for a peer task. Empty: 30s.";
             };
             tokenFile = lib.mkOption {
               type = lib.types.either lib.types.str (lib.types.attrsOf lib.types.str);
-              description = "File with the bot access token, readable by the jobshop user (not a Nix store path), or a secret mapping such as `{ type = \"command\"; command = \"pass show matrix/bot\"; }` (#435).";
+              description = "File with the peer's bearer token, readable by the jobshop user (not a Nix store path), or a secret mapping such as `{ type = \"command\"; command = \"pass show a2a/peer\"; }` (#435).";
             };
             pool = lib.mkOption {
               type = lib.types.str;
               description = "A `type: chat` pool.";
             };
-            rooms = lib.mkOption {
-              type = lib.types.listOf lib.types.str;
-              default = [ ];
-              description = "Allowed room ids; messages elsewhere are ignored. Unused for a2a.";
-            };
-            senders = lib.mkOption {
-              type = lib.types.listOf lib.types.str;
-              default = [ ];
-              description = "Allowed sender ids; messages from others are ignored. Unused for a2a.";
-            };
-            interruptMarker = lib.mkOption {
-              type = lib.types.str;
-              default = "";
-              description = "Prefix that sends a message with interrupt. Empty: `!`.";
-            };
-            escalationRoom = lib.mkOption {
-              type = lib.types.str;
-              default = "";
-              description = "Room (one of `rooms`) that gets one new thread per escalation ticket. Empty: none.";
-            };
-            attentionDigest = lib.mkOption {
-              type = lib.types.str;
-              default = "";
-              example = "0 9 * * *";
-              description = "Cron (UTC) for a digest of `jobshop attention` in `escalationRoom`, posted only when the list is not empty. Empty: none.";
-            };
-            artifactRoom = lib.mkOption {
-              type = lib.types.str;
-              default = "";
-              description = "Room that gets one line per delivered artifact (#508). Empty: none.";
-            };
             deskUrl = lib.mkOption {
               type = lib.types.str;
               default = "";
               example = "https://desk.example";
-              description = "Desk base URL for links in artifact lines. Empty: no link.";
+              description = "Desk base URL for links in messages. Empty: no link.";
             };
           };
         }
       );
       default = { };
-      description = "Chat gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
+      description = "A2A gateways: each is written to settings.gateway.<name> and runs as jobshop-gateway-<name>.service.";
     };
 
     # Desk (#202) as jobshop-desk.service; userHeader (#515), basePath

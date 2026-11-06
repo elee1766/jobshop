@@ -40,13 +40,13 @@ webhooks in [ingest.md](ingest.md), NixOS in [nixos.md](nixos.md).
   command output into matching sessions' prompts. `hooks` gate claims and
   outside actions (see [isolation.md](isolation.md)).
 - **Humans.** Workers report progress and ask questions (`jobshop
-  report`). Questions and escalations go to the `attention` list, a chat
-  thread through the gateway (Matrix or Discord), and Desk.
-- **Gateways and Desk.** Gateways connect chat (Matrix, Discord) to chat
-  pools. Desk is a web UI (Svelte) over the admin socket. It shows
-  tickets, runs, sessions and attention, and has chat with operator
-  sessions. See [notes/202-desk.md](notes/202-desk.md) and
-  [notes/123-gateway-matrix.md](notes/123-gateway-matrix.md).
+  report`). Questions and escalations go to the `attention` list and Desk,
+  and optionally to an A2A peer (below).
+- **Desk and A2A.** Desk is a web UI (Svelte) and HTTP API over the admin
+  socket. It shows tickets, runs, sessions and attention, and has chat
+  with operator sessions. An A2A gateway hands escalation chats to
+  another agent. The Matrix and Discord gateways were removed
+  (2026-11-06). See [notes/202-desk.md](notes/202-desk.md).
 - **Telemetry.** OpenTelemetry traces and logs, a Prometheus endpoint, and
   optional export of agent conversations.
 
