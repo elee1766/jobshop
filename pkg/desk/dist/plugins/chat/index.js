@@ -5053,7 +5053,7 @@ function gc(e, t) {
 	};
 }
 // plugins/chat/Pane.svelte
-var _c = /* @__PURE__ */ G("<span> </span>"), vc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), yc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), bc = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), xc = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), Sc = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), Cc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), wc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), Tc = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"></div></div>"), Ec = /* @__PURE__ */ G("<a class=\"mono svelte-wy7o3a\" data-testid=\"chat-ro-ticket\"> </a>"), Dc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\">Read-only: a worker's turn is not driven from here.<!></p>"), Oc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\"> </span>"), kc = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), Ac = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), jc = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>", 1), Mc = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <span class=\"metadata svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!></span> <!> <span class=\"grow svelte-wy7o3a\"></span> <span class=\"plugged svelte-wy7o3a\" data-testid=\"chat-composer-actions\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), Nc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-closed\"> </p>"), Pc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), Fc = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><button class=\"x close svelte-wy7o3a\" aria-label=\"Close chat\" title=\"Close\" data-testid=\"session-panel-close\">✕</button> <div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!></section>");
+var _c = /* @__PURE__ */ G("<span> </span>"), vc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), yc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), bc = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), xc = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), Sc = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), Cc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), wc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), Tc = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"></div></div>"), Ec = /* @__PURE__ */ G("<a class=\"mono svelte-wy7o3a\" data-testid=\"chat-ro-ticket\"> </a>"), Dc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\">Read-only: a worker's turn is not driven from here.<!></p>"), Oc = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), kc = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>", 1), Ac = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <!> <span class=\"grow svelte-wy7o3a\"></span> <span class=\"plugged svelte-wy7o3a\" data-testid=\"chat-composer-actions\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), jc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-closed\"> </p>"), Mc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), Nc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\" data-testid=\"chat-model\"> </span>"), Pc = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), Fc = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!> <footer class=\"foot svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!> <span class=\"grow svelte-wy7o3a\"></span> <span class=\"mono fid svelte-wy7o3a\"> </span></footer></section>");
 function Ic(e, t) {
 	We(t, !0);
 	let n = pi(t, "context", 19, () => ({})), r = /* @__PURE__ */ N(() => String(n().session || "")), i = /* @__PURE__ */ N(() => String(n().item || "")), a = /* @__PURE__ */ N(() => W(i).split(":")[0] || ""), o = /* @__PURE__ */ N(() => W(i).slice(W(a).length + 1)), s = /* @__PURE__ */ N(() => !!n().readonly), c = /* @__PURE__ */ I(null);
@@ -5195,14 +5195,14 @@ function Ic(e, t) {
 			L(fe, !1);
 		}
 	}
-	var me = Fc(), he = R(me), E = R(he), ge = B(E, 2), _e = R(ge), ve = z(_e, !0), ye = B(_e, 2), be = R(ye), D = z(be, !0), xe = B(be, 2), O = (e) => {
+	var me = Fc(), he = R(me), E = R(he), ge = R(E), _e = z(ge, !0), ve = B(ge, 2), ye = R(ve), be = z(ye, !0), D = B(ye, 2), xe = (e) => {
 		var t = _c(), n = z(t);
 		V(() => q(n, `· ${W(l).ticket.pool ?? ""}`)), K(e, t);
 	};
-	J(xe, (e) => {
-		W(l)?.ticket?.pool && e(O);
+	J(D, (e) => {
+		W(l)?.ticket?.pool && e(xe);
 	});
-	var Se = B(xe, 2), k = (e) => {
+	var O = B(D, 2), Se = (e) => {
 		var n = vc(), r = B(nn(n)), i = z(r, !0);
 		V(() => {
 			ni(r, "href", "?ticket=" + W(l).current), q(i, W(l).current);
@@ -5210,50 +5210,50 @@ function Ic(e, t) {
 			e.preventDefault(), t.api.openTicket(W(l).current);
 		}), K(e, n);
 	};
-	J(Se, (e) => {
-		W(l)?.current && e(k);
-	}), A(ye), A(ge);
-	var j = z(B(ge, 2), !0);
+	J(O, (e) => {
+		W(l)?.current && e(Se);
+	}), A(ve), A(E);
+	var k = z(B(E, 2), !0);
 	A(he);
-	var Ce = B(he, 2), we = R(Ce), Te = (e) => {
+	var j = B(he, 2), Ce = R(j), we = (e) => {
 		var t = yc(), n = z(t, !0);
 		V(() => {
 			t.disabled = W(c).loadingOlder, q(n, W(c).loadingOlder ? "Loading history…" : `Load older messages (${W(c).earlier} earlier)`);
 		}), hr("click", t, ae), K(e, t);
 	};
-	J(we, (e) => {
-		W(c) && W(c).earlier > 0 && e(Te);
+	J(Ce, (e) => {
+		W(c) && W(c).earlier > 0 && e(we);
 	});
-	var Ee = B(we, 2), De = (e) => {
+	var Te = B(Ce, 2), Ee = (e) => {
 		var t = bc(), n = z(t, !0);
 		V(() => q(n, W(c).error)), K(e, t);
 	};
-	J(Ee, (e) => {
-		W(c)?.error && e(De);
+	J(Te, (e) => {
+		W(c)?.error && e(Ee);
 	});
-	var Oe = B(Ee, 2);
-	Hr(Oe, 17, () => W(c)?.blocks ?? [], Rr, (e, t) => {
+	var De = B(Te, 2);
+	Hr(De, 17, () => W(c)?.blocks ?? [], Rr, (e, t) => {
 		lc(e, { get block() {
 			return W(t);
 		} });
 	}, (e) => {
 		K(e, xc());
 	});
-	var ke = B(Oe, 2);
-	Hr(ke, 17, () => W(S), Rr, (e, t) => {
+	var Oe = B(De, 2);
+	Hr(Oe, 17, () => W(S), Rr, (e, t) => {
 		var n = Sc(), r = R(n), i = z(r, !0), a = z(B(r), !0);
 		A(n), V(() => {
 			q(i, W(t).text), q(a, W(t).state);
 		}), K(e, n);
 	});
-	var Ae = B(ke, 2), je = (e) => {
+	var ke = B(Oe, 2), Ae = (e) => {
 		var t = Cc(), n = B(R(t), 1, !0);
 		A(t), V(() => q(n, W(h) || "Working")), K(e, t);
 	};
-	J(Ae, (e) => {
-		W(m) && e(je);
-	}), A(Ce), ui(Ce, (e) => L(C, e), () => W(C));
-	var Me = B(Ce, 2), Ne = (e) => {
+	J(ke, (e) => {
+		W(m) && e(Ae);
+	}), A(j), ui(j, (e) => L(C, e), () => W(C));
+	var je = B(j, 2), Me = (e) => {
 		var t = Tc(), n = R(t), r = R(n), i = z(r, !0), s = z(B(r, 2), !0);
 		A(n);
 		var c = B(n, 2);
@@ -5266,10 +5266,10 @@ function Ic(e, t) {
 			q(i, W(a)), q(s, W(f)?.title || W(o));
 		}), K(e, t);
 	};
-	J(Me, (e) => {
-		W(i) && e(Ne);
+	J(je, (e) => {
+		W(i) && e(Me);
 	});
-	var Pe = B(Me, 2), Fe = (e) => {
+	var Ne = B(je, 2), Pe = (e) => {
 		var n = Dc(), r = B(R(n)), i = (e) => {
 			var n = Ec(), r = z(n, !0);
 			V(() => {
@@ -5281,63 +5281,65 @@ function Ic(e, t) {
 		J(r, (e) => {
 			W(l)?.current && e(i);
 		}), A(n), K(e, n);
-	}, Ie = (e) => {
-		var n = Mc(), r = R(n);
+	}, Fe = (e) => {
+		var n = Ac(), r = R(n);
 		tt(r), ui(r, (e) => L(ee, e), () => W(ee));
-		var i = B(r, 2), a = R(i), o = B(a, 2), s = B(o, 2), u = R(s), d = (e) => {
+		var i = B(r, 2), a = R(i), o = B(a, 2), s = B(o, 2), c = (e) => {
 			var t = Oc(), n = z(t, !0);
-			V(() => q(n, W(l).model)), K(e, t);
-		};
-		J(u, (e) => {
-			W(l)?.model && e(d);
-		});
-		var f = B(u, 2), p = (e) => {
-			var t = kc(), n = z(t);
-			V((e, t) => q(n, `${e ?? ""} / ${t ?? ""} tokens`), [() => Js(W(c).usage.used), () => Js(W(c).usage.size)]), K(e, t);
-		};
-		J(f, (e) => {
-			W(c)?.usage && e(p);
-		}), A(s);
-		var h = B(s, 2), g = (e) => {
-			var t = Ac(), n = z(t, !0);
 			V(() => q(n, W(x))), K(e, t);
 		};
-		J(h, (e) => {
-			W(x) && e(g);
+		J(s, (e) => {
+			W(x) && e(c);
 		});
-		var v = B(h, 4);
-		Yr(v, (e, t) => gc?.(e, t), () => ({
+		var l = B(s, 4);
+		Yr(l, (e, t) => gc?.(e, t), () => ({
 			api: t.api,
 			slot: "chat:composer-actions",
 			context: W(_)
 		}));
-		var S = B(v, 2), C = (e) => {
-			var t = jc(), n = nn(t), r = B(n, 2);
+		var u = B(l, 2), d = (e) => {
+			var t = kc(), n = nn(t), r = B(n, 2);
 			V((e) => r.disabled = e, [() => !W(y).trim() || W(b)]), hr("click", n, le), hr("click", r, () => ce(!0)), K(e, t);
 		};
-		J(S, (e) => {
-			W(m) && e(C);
+		J(u, (e) => {
+			W(m) && e(d);
 		});
-		var w = B(S, 2), T = z(w, !0);
+		var f = B(u, 2), p = z(f, !0);
 		A(i), A(n), V((e) => {
-			ni(r, "placeholder", W(m) ? "Queued for after this turn" : "Message"), o.disabled = W(te) < 0, w.disabled = e, q(T, W(m) ? "Queue" : "Send");
+			ni(r, "placeholder", W(m) ? "Queued for after this turn" : "Message"), o.disabled = W(te) < 0, f.disabled = e, q(p, W(m) ? "Queue" : "Send");
 		}, [() => !W(y).trim() || W(b)]), mr("submit", n, (e) => {
 			e.preventDefault(), ce(!1);
 		}), hr("input", r, () => {
 			L(te, -1), se();
 		}), hr("keydown", r, ue), oi(r, () => W(y), (e) => L(y, e)), hr("click", a, () => ie(!0)), hr("click", o, () => ie(!1)), K(e, n);
-	}, Le = (e) => {
-		var t = Nc(), n = z(t);
+	}, Ie = (e) => {
+		var t = jc(), n = z(t);
 		V(() => q(n, `Session closed${W(c)?.ended && W(c).ended !== "closed" ? " · " + W(c).ended : ""}`)), K(e, t);
-	}, Re = (e) => {
-		var t = Pc(), n = z(t);
+	}, Le = (e) => {
+		var t = Mc(), n = z(t);
 		V(() => q(n, `Read-only: ${(W(d).reason || "this session does not accept input") ?? ""}`)), K(e, t);
 	};
-	J(Pe, (e) => {
-		W(s) ? e(Fe) : W(g) && !W(p) ? e(Ie, 1) : W(p) ? e(Le, 2) : e(Re, -1);
-	}), A(me), V(() => {
-		ni(me, "aria-label", W(v)), q(ve, W(v)), q(D, W(r)), q(j, W(c)?.status ?? "connecting");
-	}), hr("click", E, () => t.api.closeSession()), mr("scroll", Ce, oe), K(e, me), Ge();
+	J(Ne, (e) => {
+		W(s) ? e(Pe) : W(g) && !W(p) ? e(Fe, 1) : W(p) ? e(Ie, 2) : e(Le, -1);
+	});
+	var Re = B(Ne, 2), ze = R(Re), Be = (e) => {
+		var t = Nc(), n = z(t);
+		V(() => q(n, `${W(l).model ?? ""}${W(l).effort ? " · " + W(l).effort : ""}`)), K(e, t);
+	};
+	J(ze, (e) => {
+		W(l)?.model && e(Be);
+	});
+	var Ve = B(ze, 2), He = (e) => {
+		var t = Pc(), n = z(t);
+		V((e, t) => q(n, `${e ?? ""} / ${t ?? ""} tokens`), [() => Js(W(c).usage.used), () => Js(W(c).usage.size)]), K(e, t);
+	};
+	J(Ve, (e) => {
+		W(c)?.usage && e(He);
+	});
+	var Ue = z(B(Ve, 4), !0);
+	A(Re), A(me), V(() => {
+		ni(me, "aria-label", W(v)), q(_e, W(v)), q(be, W(r)), q(k, W(c)?.status ?? "connecting"), q(Ue, W(r));
+	}), mr("scroll", j, oe), K(e, me), Ge();
 }
 gr([
 	"click",

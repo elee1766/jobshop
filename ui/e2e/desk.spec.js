@@ -76,8 +76,9 @@ test('session chat panel opens from the sessions list and closes', async ({ page
     expect(box.height).toBeGreaterThanOrEqual(vp.height - 1);
     expect(await page.evaluate(() => getComputedStyle(document.body).overflow)).toBe('hidden');
   } else {
-    // Side panel: the list stays visible beside it.
-    expect(box.width).toBeLessThan(vp.width / 2);
+    // Bottom console: the list stays visible above it.
+    expect(box.y).toBeGreaterThan(vp.height / 4);
+    expect(box.y + box.height).toBeGreaterThanOrEqual(vp.height - 1);
     await expect(page.getByTestId('sessions')).toBeVisible({ timeout: 15_000 });
   }
 

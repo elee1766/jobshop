@@ -53,7 +53,7 @@ or plain classes as in the example.
 | `action` | a button row in the drawer | `{ticket, run?}` | as drawer |
 | `artifact` | an attachment renderer | `{artifact, file}` with `file.url` | `type` (MIME, `text/*` globs), `ext` |
 | `header` | a widget in the nav bar | `{}` | none |
-| `session` | the session panel body (#535); the app owns the frame, the last one wins | `{session, item, readonly}`, `item` the attention `kind:id` it resolves, or empty | none |
+| `session` | the session console body (#535): one tab of the built-in app's bottom console on desktop, full screen on a phone; the app owns the frame and tabs, the last one wins | `{session, item, readonly}`, `item` the attention `kind:id` it resolves, or empty | none |
 | `app` | the whole page (JOB-85); the shell mounts one, the last by plugin name, below | `{}` | none |
 | `<plugin>:<name>` | a place a plugin's own page offers, below | per slot | any; checked against the `target` the host passes |
 

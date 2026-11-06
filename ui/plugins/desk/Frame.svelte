@@ -15,9 +15,8 @@
   import Moon from '@lucide/svelte/icons/moon';
   import Puzzle from '@lucide/svelte/icons/puzzle';
   import { params, slot } from '../../kit/plugin.svelte.js';
-  import { panel } from './panel.svelte.js';
+  import Console from './Console.svelte';
   import Drawer from './Drawer.svelte';
-  import SidePanel from './SidePanel.svelte';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api } = $props();
@@ -94,7 +93,7 @@
 
 <svelte:window onkeydown={onkey} />
 
-<div class="shell" class:withpanel={!!url.session} style:--pw={panel.w + 'px'} data-testid="desk-app">
+<div class="shell" data-testid="desk-app">
   <div class="brand"><span class="mark"></span>Jobshop <span class="faint">Desk</span></div>
   <nav aria-label="views">
     {#if user}<div class="user faint" title="signed in through the proxy">{user}</div>{/if}
@@ -127,6 +126,7 @@
       </button>
     </span>
   </div>
+  <div class="col">
   <main>
     {#if pview}
       {#key pview.plugin + pview.element}
@@ -135,7 +135,8 @@
     {:else}<p class="faint pad" data-testid="view-missing">No plugin shows <span class="mono">{view}</span>.</p>
     {/if}
   </main>
-  {#if url.session}{#key url.session}<SidePanel {api} id={url.session} item={url.item || ''} readonly={url.ro === '1'} />{/key}{/if}
+  <Console {api} {url} />
+  </div>
   {#if url.ticket}<Drawer {api} id={url.ticket} />{/if}
 </div>
 
@@ -145,10 +146,6 @@
     display: grid; grid-template-columns: 212px minmax(0, 1fr); grid-template-rows: auto 1fr auto;
     grid-template-areas: 'brand main' 'nav main' 'foot main';
     align-content: start;
-  }
-  .shell.withpanel {
-    grid-template-columns: 212px minmax(0, 1fr) var(--pw);
-    grid-template-areas: 'brand main panel' 'nav main panel' 'foot main panel';
   }
   .shell > * { min-width: 0; }
   .brand, nav, .foot { background: var(--side); border-right: 1px solid var(--border); }
@@ -173,11 +170,12 @@
   .foot { grid-area: foot; display: flex; align-items: center; gap: 4px; padding: 8px 12px; border-top: 1px solid var(--border); }
   .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
   .tools { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
-  main { grid-area: main; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; background: var(--bg); }
+  .col { grid-area: main; min-height: 0; display: flex; flex-direction: column; }
+  main { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; background: var(--bg); }
   .hdr { padding: 4px 8px; }
 
   @media (max-width: 768px) {
-    .shell, .shell.withpanel {
+    .shell {
       grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto;
       grid-template-areas: 'top' 'main' 'tabs'; align-content: stretch;
     }
@@ -187,7 +185,7 @@
     .brand { padding: calc(env(safe-area-inset-top) + 0px) 12px 0; justify-self: start; align-self: center; height: 40px; }
     .foot { justify-self: end; align-self: center; padding: calc(env(safe-area-inset-top) + 0px) 4px 0 0; height: 40px; }
     .tools .ghost.icon { width: 40px; height: 40px; }
-    main { grid-area: main; }
+    .col { grid-area: main; }
     nav {
       grid-area: tabs; flex-direction: row; justify-content: space-around; gap: 0; padding: 0 4px env(safe-area-inset-bottom);
       border-right: 0; border-top: 1px solid var(--border); overflow: visible;
