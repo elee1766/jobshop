@@ -290,7 +290,7 @@ func TestAdmissionURLSignature(t *testing.T) {
 	var deliveries []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if !hmac.Equal([]byte(r.Header.Get("X-Jobshop-Signature-256")), []byte(admissionSignature(secret, body))) {
+		if !hmac.Equal([]byte(r.Header.Get("X-Jobshop-Signature-256")), []byte(hookSignature(secret, body))) {
 			http.Error(w, "bad signature", http.StatusUnauthorized)
 			return
 		}
@@ -310,7 +310,7 @@ func TestAdmissionURLSignature(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 	req, err := http.NewRequest(http.MethodPost, srv.URL, strings.NewReader(`{}`))
 	require.NoError(t, err)
-	req.Header.Set("X-Jobshop-Signature-256", admissionSignature([]byte("wrong"), []byte(`{}`)))
+	req.Header.Set("X-Jobshop-Signature-256", hookSignature([]byte("wrong"), []byte(`{}`)))
 	resp, err = http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	_ = resp.Body.Close()

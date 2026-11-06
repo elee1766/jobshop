@@ -3,15 +3,9 @@ package control
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -144,7 +138,7 @@ func (c *Controller) releaseAnswered(ctx context.Context) error {
 func admissionLease(hooks []config.AdmissionHook) time.Duration {
 	lease := time.Minute
 	for _, h := range hooks {
-		lease += config.Duration(h.Timeout, 30*time.Second)
+		lease += h.Retry.Budget(config.Duration(h.Timeout, 30*time.Second))
 	}
 	return lease
 }
@@ -190,9 +184,13 @@ type admissionRun struct {
 // external `ingest work` process uses it too.
 type admissionRunner struct {
 	dir string // working dir for commands, root for secret files
+	// after waits between url hook retries; nil is time.After.
+	after func(time.Duration) <-chan time.Time
 }
 
-func (c *Controller) admissionRunner() admissionRunner { return admissionRunner{dir: c.root.Dir} }
+func (c *Controller) admissionRunner() admissionRunner {
+	return admissionRunner{dir: c.root.Dir, after: c.after}
+}
 
 // run runs the mutating hooks, then, unless a human already answered,
 // the validating hooks.
@@ -383,16 +381,20 @@ func (ar admissionRunner) callAdmission(ctx context.Context, h config.AdmissionH
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, config.Duration(h.Timeout, 30*time.Second))
-	defer cancel()
-	var out []byte
+	timeout := config.Duration(h.Timeout, 30*time.Second)
 	if h.URL != "" {
-		out, err = ar.postAdmission(ctx, h, ev.DeliveryID, body)
-	} else {
-		out, err = ar.execAdmission(ctx, h, body)
+		p := hookPost{
+			url: h.URL, secret: h.SecretFile.In(ar.dir), timeout: timeout, retry: h.Retry, after: ar.after,
+			headers: map[string]string{"X-Jobshop-Delivery": ev.DeliveryID},
+		}
+		out, err := p.do(ctx, body)
+		return bytes.TrimSpace(out), err
 	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	out, err := ar.execAdmission(ctx, h, body)
 	if ctx.Err() != nil {
-		return nil, fmt.Errorf("timed out after %s", config.Duration(h.Timeout, 30*time.Second))
+		return nil, fmt.Errorf("timed out after %s", timeout)
 	}
 	return bytes.TrimSpace(out), err
 }
@@ -416,44 +418,6 @@ func (ar admissionRunner) execAdmission(ctx context.Context, h config.AdmissionH
 		return nil, fmt.Errorf("exited %s: %s", exitText(ex), strings.TrimSpace(stderr.String()))
 	}
 	return stdout.Bytes(), nil
-}
-
-// admissionSignature is the X-Jobshop-Signature-256 value for body.
-func admissionSignature(secret, body []byte) string {
-	m := hmac.New(sha256.New, secret)
-	m.Write(body)
-	return "sha256=" + hex.EncodeToString(m.Sum(nil))
-}
-
-func (ar admissionRunner) postAdmission(ctx context.Context, h config.AdmissionHook, delivery string, body []byte) ([]byte, error) {
-	secret, err := config.ReadSecret(ctx, h.SecretFile.In(ar.dir))
-	if err != nil {
-		return nil, fmt.Errorf("secret: %w", err)
-	}
-	secret = bytes.TrimSpace(secret)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.URL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	reqID := make([]byte, 16)
-	_, _ = rand.Read(reqID)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Jobshop-Request-Id", hex.EncodeToString(reqID))
-	req.Header.Set("X-Jobshop-Delivery", delivery)
-	req.Header.Set("X-Jobshop-Signature-256", admissionSignature(secret, body))
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	out, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(out[:min(len(out), 200)])))
-	}
-	return out, nil
 }
 
 // holdForHuman files one needs-human ticket per held delivery, like a

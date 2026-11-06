@@ -379,7 +379,7 @@ func TestIngestE2EURLHookSignature(t *testing.T) {
 	const hookSecret = "hooksecret"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		if !hmac.Equal([]byte(r.Header.Get("X-Jobshop-Signature-256")), []byte(admissionSignature([]byte(hookSecret), body))) {
+		if !hmac.Equal([]byte(r.Header.Get("X-Jobshop-Signature-256")), []byte(hookSignature([]byte(hookSecret), body))) {
 			http.Error(w, "bad signature", http.StatusUnauthorized)
 			return
 		}

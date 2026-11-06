@@ -257,6 +257,7 @@ export interface AdmissionHook {
   Command: string;
   URL: string;
   SecretFile: Secret;
+  Retry: HTTPRetry;
   Timeout: string;
   FailurePolicy: string;
   Match: AdmissionMatch;
@@ -567,6 +568,12 @@ export interface GuardResult {
   decision: string;
   reason?: string;
   ticket?: string;
+}
+
+export interface HTTPRetry {
+  Attempts: number;
+  Backoff: string;
+  MaxBackoff: string;
 }
 
 export interface HandoffParams {

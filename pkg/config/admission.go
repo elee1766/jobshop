@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net/url"
 	"path"
 	"slices"
 	"time"
@@ -34,7 +33,8 @@ type AdmissionHook struct {
 	// SecretFile, relative to the root, signs url requests
 	// (X-Jobshop-Signature-256). Required with url.
 	SecretFile    Secret         `yaml:"secret_file"`
-	Timeout       string         `yaml:"timeout"` // Go duration, default 30s
+	Retry         HTTPRetry      `yaml:"retry"`   // url only
+	Timeout       string         `yaml:"timeout"` // Go duration per try, default 30s
 	FailurePolicy string         `yaml:"failure_policy"`
 	Match         AdmissionMatch `yaml:"match"`
 	// Intake marks an on: intake hook (#288) run as a validating hook;
@@ -117,19 +117,8 @@ func (c *Config) checkAdmission(h AdmissionHook, names map[string]bool) error {
 	if h.Type != AdmissionMutating && h.Type != AdmissionValidating {
 		return fmt.Errorf("type %q must be mutating or validating", h.Type)
 	}
-	if (h.Command == "") == (h.URL == "") {
-		return errors.New("set exactly one of command and url")
-	}
-	if h.URL != "" {
-		u, err := url.Parse(h.URL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return fmt.Errorf("url %q must be an http or https URL", h.URL)
-		}
-		if h.SecretFile.IsZero() {
-			return errors.New("secret_file is required with url")
-		}
-	} else if !h.SecretFile.IsZero() {
-		return errors.New("secret_file is for url hooks")
+	if err := checkHookURL(h.Command, h.URL, h.SecretFile, h.Retry); err != nil {
+		return err
 	}
 	if h.Timeout != "" {
 		if d, err := time.ParseDuration(h.Timeout); err != nil || d <= 0 {

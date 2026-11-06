@@ -32,13 +32,19 @@ const ActionLinearAPIMutation = "linear-api-mutation"
 // stdout with exit 0 is allow; a non-zero exit, a timeout or bad output
 // is deny (fail closed).
 type Hook struct {
-	On      string `yaml:"on"`
-	Command string `yaml:"command"` // sh -c, in the root dir
+	On string `yaml:"on"`
+	// Exactly one of Command (sh -c in the root dir, JSON on stdin, the
+	// answer on stdout) and URL (HTTP POST of the JSON, the answer in the
+	// response body, signed with SecretFile like admission url hooks).
+	Command    string    `yaml:"command"`
+	URL        string    `yaml:"url"`
+	SecretFile Secret    `yaml:"secret_file"`
+	Retry      HTTPRetry `yaml:"retry"` // url only
 	// Actions limits an action hook to these action names; empty is all.
 	Actions []string `yaml:"actions"`
 	// Pools limits the hook to sessions of these pools; empty is all.
 	Pools   []string `yaml:"pools"`
-	Timeout string   `yaml:"timeout"` // Go duration, default 30s
+	Timeout string   `yaml:"timeout"` // Go duration per try, default 30s
 }
 
 // Applies reports whether h runs for point on, the action and pool.
@@ -57,8 +63,8 @@ func (c *Config) checkHook(h Hook) error {
 	if !slices.Contains(HookPoints, h.On) {
 		return fmt.Errorf("on %q must be one of %v", h.On, HookPoints)
 	}
-	if h.Command == "" {
-		return errors.New("command is required")
+	if err := checkHookURL(h.Command, h.URL, h.SecretFile, h.Retry); err != nil {
+		return err
 	}
 	if len(h.Actions) > 0 && (h.On == HookClaim || h.On == HookIntake) {
 		return errors.New("actions needs on: action or merge")
