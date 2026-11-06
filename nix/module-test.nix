@@ -284,6 +284,30 @@ let
     grep -q 'keeping the running config' $T/out || ufail "no log line for the broken edit"
   '';
 
+  # jobshop-shutdown's ExecStop with stubs: `jobshop shutdown` runs only
+  # when the manager is going down, not on a switch or manual stop (JOB-96).
+  shutdownStop = sharedHM.config.systemd.user.services.jobshop-shutdown.Service.ExecStop;
+  shutdownStopTest = ''
+    export S=$PWD/s
+    mkdir -p $S/bin
+    printf '#!${pkgs.runtimeShell}\necho "$*" >> $S/log\n' > $S/bin/jobshop
+    printf '#!${pkgs.runtimeShell}\necho "$STATE"\n' > $S/bin/systemctl
+    chmod +x $S/bin/*
+    sed -e 's|${pkgs.systemd}/bin/systemctl|$S/bin/systemctl|' \
+      -e 's|${lib.getExe pkgs.hello}|$S/bin/jobshop|' ${toString shutdownStop} > $S/stop
+    sfail() { echo "shutdown stop test: $*"; cat $S/log 2>/dev/null; exit 1; }
+    for st in running degraded; do
+      : > $S/log
+      STATE=$st ${pkgs.bash}/bin/bash $S/stop > /dev/null || sfail "$st exit"
+      ! grep -q shutdown $S/log || sfail "$st ran jobshop shutdown"
+    done
+    for st in stopping ""; do
+      : > $S/log
+      STATE=$st ${pkgs.bash}/bin/bash $S/stop > /dev/null || sfail "'$st' exit"
+      grep -q '^shutdown$' $S/log || sfail "'$st' skipped jobshop shutdown"
+    done
+  '';
+
   units = c: lib.attrNames c.config.systemd.services;
   # Settings both modes take, with the paths pinned so the files can match.
   shared = {
@@ -345,6 +369,14 @@ let
       && hmUnits.jobshop.Service.ExecStart == [ "${lib.getExe pkgs.hello} serve" ]
       && lib.hasInfix "JOBSHOP_ROOT=/srv/jobshop" (hmEnv "jobshop")
       && sharedHM.config.systemd.user.slices ? jobshop
+    ))
+    # A switch that changes the slice limits must not stop the slice and
+    # every unit in it (JOB-96); daemon-reload applies them.
+    (expect "home-manager: jobshop.slice is kept on switch" (
+      let
+        s = (evalHM { memoryHigh = "10G"; }).config.systemd.user.slices.jobshop;
+      in
+      s.Unit.X-SwitchMethod == "keep-old" && s.Slice.MemoryHigh == "10G"
     ))
     (expect "home-manager: XDG defaults and no restrictEgress" (
       hmDefault.config.services.jobshop.dataDir == "/home/jobcity/.local/state/jobshop"
@@ -617,6 +649,7 @@ in
 assert lib.all lib.id checks;
 pkgs.runCommand "jobshop-module-test" { } ''
   ${userConfigTest}
+  ${shutdownStopTest}
   ${configRepoTest}
   grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
   grep -q 'private_key_file: /run/secrets/k.pem' ${yamlPacks ident}
