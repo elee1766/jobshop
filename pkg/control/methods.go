@@ -332,6 +332,8 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 func (c *Controller) endSession(ctx context.Context, id, reason string) {
 	c.closeSession(id)
 	c.setReadOnly(id, false)
+	// Every caller stopped the host first, so exit.json is written.
+	c.saveEnded(ctx, id)
 	if t, err := c.store.Get(ctx, id); err == nil {
 		c.removeWorktree(t, "endSession: "+reason)
 		c.removeSlotHome(t)
@@ -598,6 +600,21 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		}
 	}
 
+	var open []store.Ticket
+	if !ended {
+		for _, t := range tickets {
+			if t.Status != store.StatusClosed {
+				open = append(open, t)
+			}
+		}
+	}
+	// The supervisor pass walks the session directories (JOB-32); a
+	// request only rechecks the hosts it found.
+	orphans := map[string]bool{}
+	for _, id := range c.scannedOrphans(open) {
+		orphans[id] = true
+	}
+
 	out := []rpc.SessionInfo{}
 	seen := map[string]bool{}
 	for i := range tickets {
@@ -608,7 +625,13 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		if !cutoff.IsZero() && t.ClosedAt.Before(cutoff) {
 			continue
 		}
-		info := c.sessionInfoOf(t.ID, &t, held[t.ID])
+		var info rpc.SessionInfo
+		if t.Status == store.StatusClosed && !orphans[t.ID] {
+			// Its host is stopped: the state saved at the end is current.
+			info = closedSessionInfo(t)
+		} else {
+			info = c.sessionInfoOf(t.ID, &t, held[t.ID])
+		}
 		info.Ticket = &t
 		// A closed ticket whose host still runs is a leak too.
 		info.Orphan = t.Status == store.StatusClosed && info.Alive
@@ -619,22 +642,23 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		return out, nil
 	}
 
-	entries, err := os.ReadDir(c.root.SessionDir(""))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, err
+	ids := make([]string, 0, len(orphans))
+	for id := range orphans {
+		ids = append(ids, id)
 	}
-	for _, e := range entries {
-		if !e.IsDir() || seen[e.Name()] || !host.Alive(c.root.SessionDir(e.Name())) {
+	slices.Sort(ids)
+	for _, id := range ids {
+		if seen[id] || !host.Alive(c.root.SessionDir(id)) {
 			continue
 		}
-		info, err := c.sessionInfo(ctx, e.Name())
+		info, err := c.sessionInfo(ctx, id)
 		if err != nil {
 			return nil, err
 		}
-		if t, err := c.store.Get(ctx, e.Name()); err == nil {
+		if t, err := c.store.Get(ctx, id); err == nil {
 			info.Ticket = &t
 			if t.Kind == store.KindSession && t.Status != store.StatusClosed {
-				continue // listed above unless the store changed under us
+				continue // opened since the pass
 			}
 		}
 		info.Orphan = true

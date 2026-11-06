@@ -177,6 +177,13 @@ type Controller struct {
 	// orphanWarned maps orphaned ticket id -> reason already logged.
 	orphanMu     sync.Mutex
 	orphanWarned map[string]string
+	// sessOrphans is the last supervisor pass's live hosts with no open
+	// session ticket (JOB-32); endedFilled is set once every closed
+	// session has its Ended state.
+	sessScanMu  sync.Mutex
+	sessOrphans []string
+	sessScanned bool
+	endedFilled bool
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
 	gitMu sync.Mutex
@@ -511,6 +518,7 @@ func (c *Controller) tick() {
 	c.supervise()
 	c.runAutoSteps()
 	c.reportOrphans()
+	c.scanSessions()
 	c.sweepRuns()
 	c.sweepEscalationChats(c.ctx)
 	c.sweepAttentionChats(c.ctx)
