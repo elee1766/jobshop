@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/elee1766/jobshop/compare/v0.5.1...v0.5.2) (2026-11-06)
+
+
+### Features
+
+* **desk:** pool labels and a pools view grouped by instance (JOB-81) ([#850](https://github.com/elee1766/jobshop/issues/850)) ([251ecff](https://github.com/elee1766/jobshop/commit/251ecff296f0144bc89381f57143e08b8b817d53))
+
 ## [0.5.1](https://github.com/elee1766/jobshop/compare/v0.5.0...v0.5.1) (2026-11-06)
 
 
