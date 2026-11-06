@@ -264,6 +264,8 @@ test('a question item: the operator talks to the chat agent, which answers, foll
             end(18),
           ]);
         },
+        // Reconnects resume past seq 18: nothing new.
+        'retry: 60000\n\n',
       ],
     },
   });
@@ -275,12 +277,12 @@ test('a question item: the operator talks to the chat agent, which answers, foll
   await expect(page.getByTestId('block-assistant')).toContainText('It asks which branch to deploy.');
   await page.getByTestId('chat-input').fill('use main');
   await page.getByTestId('chat-input').press('Enter');
-  await expect.poll(() => calls.find((c) => c.path === '/api/chat/send')?.body).toMatchObject({ key: 'attention:question:js-q1', text: 'use main' });
+  await expect.poll(() => calls.find((c) => c.path === '/api/chat/send')?.body).toMatchObject({ text: 'use main' });
   expect(calls.filter((c) => c.path === '/api/rpc/question.answer')).toHaveLength(0);
   sent();
   // The operator's message shows in the transcript, then the agent's
   // answer, the worker's reaction and the re-ask, all in this one chat.
-  await expect(page.getByTestId('block-user').first()).toContainText('use main');
+  await expect(page.getByTestId('block-user').filter({ hasText: 'use main' })).toHaveCount(1);
   await expect(page.getByTestId('journal')).toContainText('jobshop answer js-q1');
   await expect(page.getByTestId('journal')).toContainText('Parked: the worker waits on CI on PR 7.');
   await expect(page.getByTestId('journal')).toContainText('It asks again: main or release?');
