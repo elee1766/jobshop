@@ -17,7 +17,6 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/elee1766/acphost/pkg/sandbox"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -433,62 +432,35 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 		res.result, res.err = resultFailed, err.Error()
 		return res
 	}
-	run := argv
-	if pl.pool != "" {
-		if run, err = c.sandboxArgv(pl, argv, extra); err != nil {
-			res.result, res.err = resultFailed, err.Error()
-			return res
-		}
+	ic := isolatedCmd{argv: argv, dir: pl.dir, own: pl.own, env: extra, name: "step"}
+	if c.isolates(pl.pool) {
+		// The pool's sandbox, user and cgroup, as its sessions get (#810).
+		ic.pool = pl.pool
 	}
-	cmd := exec.CommandContext(ctx, run[0], run[1:]...)
-	cmd.Dir = pl.dir
-	cmd.Env = env
 	var out, errOut limitedBuffer
-	cmd.Stdout, cmd.Stderr = &out, &errOut
-	cmd.WaitDelay = 5 * time.Second
-	runErr := cmd.Run()
+	ic.stdout, ic.stderr = &out, &errOut
+	ex, runErr := c.runIsolated(ctx, ic)
 	res.output = c.redactor(env).Text(out.String())
 	res.outcome = outcomeOf(res.output)
-	var exit *exec.ExitError
 	switch {
-	case runErr == nil:
-		res.result = resultOK
 	case ctx.Err() != nil:
 		res.result, res.err = resultFailed, "timed out"
-	case errors.As(runErr, &exit) && exit.ExitCode() == ExitNotYet:
+	case runErr == nil && ex.ExitCode == 0 && ex.Signal == "":
+		res.result = resultOK
+	case runErr == nil && ex.Signal == "" && ex.ExitCode == ExitNotYet:
 		res.result = resultNotYet
 	default:
 		res.result = resultFailed
-		res.err = runErr.Error()
+		if runErr != nil {
+			res.err = runErr.Error()
+		} else {
+			res.err = "exit " + exitText(ex)
+		}
 		if tail := strings.TrimSpace(c.redactor(env).Text(errOut.String())); tail != "" {
 			res.err += ": " + lastLines(tail, 5)
 		}
 	}
 	return res
-}
-
-// sandboxArgv wraps argv in the pool's bubblewrap sandbox, with the step
-// env set inside it. Unsandboxed pools return argv.
-func (c *Controller) sandboxArgv(pl stepPlace, argv, env []string) ([]string, error) {
-	if c.config().SandboxFor(pl.pool).Backend == "" {
-		return argv, nil
-	}
-	exe, err := c.hostExe()
-	if err != nil {
-		return nil, err
-	}
-	sb, err := c.poolSandbox(pl.pool, pl.own, exe, pl.dir, "")
-	if err != nil || sb == nil {
-		return argv, err
-	}
-	// bwrap clears the env and PATH is not in sandboxEnvKeep (sessions
-	// set their own), so pass the controller's.
-	for _, kv := range append([]string{"PATH=" + os.Getenv("PATH")}, env...) {
-		if k, v, ok := strings.Cut(kv, "="); ok {
-			sb.ExtraArgs = append(sb.ExtraArgs, "--setenv", k, v)
-		}
-	}
-	return sandbox.Args(*sb, argv[0], argv[1:], pl.dir)
 }
 
 func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemplates, attemptKey string) autoResult {

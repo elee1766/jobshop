@@ -12,11 +12,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os/exec"
 	"strings"
-	"syscall"
 	"time"
 
+	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -399,22 +398,24 @@ func (ar admissionRunner) callAdmission(ctx context.Context, h config.AdmissionH
 }
 
 func (ar admissionRunner) execAdmission(ctx context.Context, h config.AdmissionHook, body []byte) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, "sh", "-c", h.Command)
-	cmd.Dir = ar.dir
-	// Kill the whole group on timeout: a child of sh (sleep, curl) would
-	// otherwise keep stdout open and hold Output past the timeout.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-	cmd.WaitDelay = time.Second
-	cmd.Stdin = bytes.NewReader(body)
+	// proc.Start runs it in its own process group and kills the group on
+	// timeout, so a child of sh (sleep, curl) cannot hold stdout open.
+	// Admission has no pool: no sandbox (#810).
+	spec := proc.Spec{Command: "sh", Args: []string{"-c", h.Command}, Dir: ar.dir}
+	var stdout bytes.Buffer
 	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return nil, fmt.Errorf("exited %d: %s", exit.ExitCode(), strings.TrimSpace(stderr.String()))
+	p, err := proc.Start(ctx, spec, proc.Stdin(bytes.NewReader(body)), proc.Stdout(&stdout), proc.Stderr(&stderr))
+	if err != nil {
+		return nil, err
 	}
-	return out, err
+	ex, err := p.Wait()
+	if err != nil {
+		return nil, err
+	}
+	if ex.ExitCode != 0 || ex.Signal != "" {
+		return nil, fmt.Errorf("exited %s: %s", exitText(ex), strings.TrimSpace(stderr.String()))
+	}
+	return stdout.Bytes(), nil
 }
 
 // admissionSignature is the X-Jobshop-Signature-256 value for body.

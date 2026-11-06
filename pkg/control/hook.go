@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -66,23 +64,26 @@ func (c *Controller) runHook(ctx context.Context, h config.Hook, ev hookEvent) h
 	}
 	ctx, cancel := context.WithTimeout(ctx, config.Duration(h.Timeout, 30*time.Second))
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", h.Command)
-	cmd.Dir = c.root.Dir
-	cmd.Stdin = bytes.NewReader(in)
+	// The session's pool sandboxes the hook like the session's agent
+	// (#810); an event with no pool runs it in the root dir unisolated.
+	ic := isolatedCmd{argv: shArgv(h.Command), pool: ev.Pool, stdin: bytes.NewReader(in), name: "hook"}
+	if !c.isolates(ev.Pool) {
+		ic.pool, ic.dir = "", c.root.Dir
+	}
+	var stdout bytes.Buffer
 	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	ic.stdout, ic.stderr = &stdout, &stderr
+	ex, err := c.runIsolated(ctx, ic)
 	if ctx.Err() != nil {
 		return hookAnswer{rpc.GuardDeny, "hook timed out: " + h.Command}
-	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return hookAnswer{rpc.GuardDeny, fmt.Sprintf("hook exited %d: %s", exit.ExitCode(), strings.TrimSpace(stderr.String()))}
 	}
 	if err != nil {
 		return hookAnswer{rpc.GuardDeny, "hook: " + err.Error()}
 	}
-	out = bytes.TrimSpace(out)
+	if ex.ExitCode != 0 || ex.Signal != "" {
+		return hookAnswer{rpc.GuardDeny, fmt.Sprintf("hook exited %s: %s", exitText(ex), strings.TrimSpace(stderr.String()))}
+	}
+	out := bytes.TrimSpace(stdout.Bytes())
 	if len(out) == 0 {
 		return hookAnswer{Decision: rpc.GuardAllow}
 	}

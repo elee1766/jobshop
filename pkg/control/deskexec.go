@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -62,22 +60,21 @@ func (c *Controller) deskExec(ctx context.Context, sc scope, p rpc.DeskExecParam
 func (c *Controller) runDeskCommand(ctx context.Context, dc config.DeskCommand, in []byte) (rpc.DeskExecResult, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, config.Duration(dc.Timeout, 30*time.Second))
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", dc.Command)
-	cmd.Dir = c.root.Dir
-	cmd.Stdin = bytes.NewReader(in)
+	// No pool applies to Desk exec: it runs unisolated in the root dir,
+	// through proc.Start for the process-group kill (#810).
+	var stdout bytes.Buffer
 	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	ex, err := c.runIsolated(ctx, isolatedCmd{argv: shArgv(dc.Command), dir: c.root.Dir, stdin: bytes.NewReader(in), stdout: &stdout, stderr: &stderr})
 	if ctx.Err() != nil {
 		return rpc.DeskExecResult{}, -1, fmt.Errorf("desk command timed out after %s", config.Duration(dc.Timeout, 30*time.Second))
-	}
-	var ee *exec.ExitError
-	if errors.As(err, &ee) {
-		return rpc.DeskExecResult{}, ee.ExitCode(), fmt.Errorf("desk command exited %d: %s", ee.ExitCode(), truncate(strings.TrimSpace(stderr.String())))
 	}
 	if err != nil {
 		return rpc.DeskExecResult{}, -1, fmt.Errorf("desk command: %w", err)
 	}
+	if ex.ExitCode != 0 || ex.Signal != "" {
+		return rpc.DeskExecResult{}, ex.ExitCode, fmt.Errorf("desk command exited %s: %s", exitText(ex), truncate(strings.TrimSpace(stderr.String())))
+	}
+	out := stdout.Bytes()
 	if len(out) > maxDeskExecOutput {
 		return rpc.DeskExecResult{}, 0, fmt.Errorf("desk command output over %d bytes", maxDeskExecOutput)
 	}

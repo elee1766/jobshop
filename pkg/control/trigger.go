@@ -1,12 +1,12 @@
 package control
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
-	"os/exec"
 	"slices"
 	"strings"
 	"sync"
@@ -286,22 +286,21 @@ func (c *Controller) readyCount(ctx context.Context, w config.TriggerWhen, kind 
 func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, why string, err error) {
 	ctx, cancel := context.WithTimeout(ctx, config.Duration(w.CheckTimeout, time.Minute))
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", w.Check)
-	cmd.Dir = c.root.Dir
+	// Triggers have no pool: unisolated in the root dir, through
+	// proc.Start for the process-group kill (#810).
+	var stdout bytes.Buffer
 	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	ex, err := c.runIsolated(ctx, isolatedCmd{argv: shArgv(w.Check), dir: c.root.Dir, stdout: &stdout, stderr: &stderr})
 	if ctx.Err() != nil {
 		return "", "", fmt.Errorf("check: %w", ctx.Err())
-	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		return "", fmt.Sprintf("check exited %d", exit.ExitCode()), nil
 	}
 	if err != nil {
 		return "", "", fmt.Errorf("check: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	return strings.TrimSpace(string(out)), "", nil
+	if ex.ExitCode != 0 || ex.Signal != "" {
+		return "", "check exited " + exitText(ex), nil
+	}
+	return strings.TrimSpace(stdout.String()), "", nil
 }
 
 func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Trigger, key string) (store.Ticket, error) {
