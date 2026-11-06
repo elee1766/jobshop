@@ -44,7 +44,11 @@ type Identity struct {
 	Repos          []string         `yaml:"repos"`
 	APIURL         string           `yaml:"api_url"`
 	// GitHub token (#340): TokenFile holds the PAT; Repos and APIURL as
-	// for an App, no installations.
+	// for an App, no installations. Slug is the App's slug for a token
+	// that is really an installation token (a command secret that mints
+	// one): GET /user is refused for it, so the self login is
+	// "<slug>[bot]" (JOB-108). An App identity may set it to skip GET /app.
+	Slug string `yaml:"slug"`
 	// Linear: TokenFile holds the API key, Workspace names the workspace,
 	// Teams are the team keys covered ("*" for all).
 	TokenFile Secret   `yaml:"token_file"`
@@ -168,7 +172,7 @@ func checkRepoGlobs(repos []string) error {
 }
 
 func (i Identity) githubSet() bool {
-	return i.AppID != 0 || !i.PrivateKeyFile.IsZero() || len(i.Installations) > 0 || len(i.Repos) > 0 || i.APIURL != ""
+	return i.AppID != 0 || !i.PrivateKeyFile.IsZero() || len(i.Installations) > 0 || len(i.Repos) > 0 || i.APIURL != "" || i.Slug != ""
 }
 
 func (i Identity) linearAppSet() bool {

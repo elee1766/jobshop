@@ -410,9 +410,13 @@ func (c *Controller) githubSelf(ctx context.Context, repo string) string {
 	}
 	l, err := c.minter.Login(ctx, name, cfg.Identities[name])
 	if err != nil {
-		c.log.WarnContext(ctx, "identity: self login", "identity", name, "err", err)
+		// Polled per repo every minute: log a changed error, not each call.
+		if prev, _ := c.selfLoginErr.Swap(name, err.Error()); prev != err.Error() {
+			c.log.WarnContext(ctx, "identity: self login", "identity", name, "err", err)
+		}
 		return ""
 	}
+	c.selfLoginErr.Delete(name)
 	return l
 }
 

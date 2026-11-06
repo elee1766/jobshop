@@ -43,10 +43,13 @@ const (
 
 // repoPoll is the per-repo poll state kept across restarts.
 type repoPoll struct {
-	EventsETag    string    `json:"events_etag,omitempty"`
-	RunsETag      string    `json:"runs_etag,omitempty"`
-	DefaultBranch string    `json:"default_branch,omitempty"`
-	Next          time.Time `json:"next,omitzero"` // X-Poll-Interval
+	EventsETag string `json:"events_etag,omitempty"`
+	RunsETag   string `json:"runs_etag,omitempty"`
+	// ETags holds one per per-resource endpoint read for a github-app
+	// identity (JOB-108), keyed by endpoint name.
+	ETags         map[string]string `json:"etags,omitempty"`
+	DefaultBranch string            `json:"default_branch,omitempty"`
+	Next          time.Time         `json:"next,omitzero"` // X-Poll-Interval
 }
 
 // activityState is the cache file.
@@ -472,38 +475,45 @@ func (l *liveActivity) GitHub(ctx context.Context, repo string, st *repoPoll) ([
 
 // fetchGitHub reads repo events and completed default-branch runs, each
 // with its ETag: an unchanged repo is two 304s, which cost no rate limit.
+// A github-app identity reads the per-resource endpoints instead of
+// events, which are empty for an installation token (JOB-108).
 func (l *liveActivity) fetchGitHub(ctx context.Context, base, tok, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
 	var out []rpc.ActivityItem
-	body, h, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/events?per_page=100", base, repo), tok, st.EventsETag)
-	if err != nil {
-		return nil, err
-	}
-	if s, err := strconv.Atoi(h.Get("X-Poll-Interval")); err == nil && s > 0 {
-		st.Next = l.c.now().Add(time.Duration(s) * time.Second)
-	}
-	if body != nil {
-		items, err := parseRepoEvents(repo, body)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, items...)
-		st.EventsETag = h.Get("ETag")
-	}
 	if st.DefaultBranch == "" {
 		b, _, err := l.get(ctx, fmt.Sprintf("%s/repos/%s", base, repo), tok, "")
 		if err != nil {
-			return out, err
+			return nil, err
 		}
 		var r struct {
 			DefaultBranch string `json:"default_branch"`
 		}
 		if err := json.Unmarshal(b, &r); err != nil {
-			return out, err
+			return nil, err
 		}
 		st.DefaultBranch = r.DefaultBranch
 	}
+	var appErr error
+	if l.appActivity(repo, tok) {
+		out, appErr = l.fetchAppActivity(ctx, base, tok, repo, st)
+	} else {
+		body, h, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/events?per_page=100", base, repo), tok, st.EventsETag)
+		if err != nil {
+			return nil, err
+		}
+		if s, err := strconv.Atoi(h.Get("X-Poll-Interval")); err == nil && s > 0 {
+			st.Next = l.c.now().Add(time.Duration(s) * time.Second)
+		}
+		if body != nil {
+			items, err := parseRepoEvents(repo, body)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, items...)
+			st.EventsETag = h.Get("ETag")
+		}
+	}
 	u := fmt.Sprintf("%s/repos/%s/actions/runs?status=completed&per_page=30&branch=%s", base, repo, url.QueryEscape(st.DefaultBranch))
-	body, h, err = l.get(ctx, u, tok, st.RunsETag)
+	body, h, err := l.get(ctx, u, tok, st.RunsETag)
 	if err != nil {
 		return out, err
 	}
@@ -515,7 +525,7 @@ func (l *liveActivity) fetchGitHub(ctx context.Context, base, tok, repo string, 
 		out = append(out, items...)
 		st.RunsETag = h.Get("ETag")
 	}
-	return out, nil
+	return out, appErr
 }
 
 // PullRequest reads one PR for revert detection (#272).

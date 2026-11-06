@@ -156,8 +156,10 @@ func (m *Minter) Renew(ctx context.Context, name string, id config.Identity, tar
 
 // Login returns the GitHub login an identity acts as, cached until
 // Forget: GET /user for a github-token (#340), "<slug>[bot]" from GET
-// /app for a github-app (#402). Its comments are filtered so they are not
-// delivered back to itself.
+// /app for a github-app (#402). A configured slug answers without a call,
+// and is how a github-token holding an installation token (which GET /user
+// refuses with 403) names itself (JOB-108). Its comments are filtered so
+// they are not delivered back to itself.
 func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (string, error) {
 	if !config.IsGitHub(id.Kind) {
 		return "", fmt.Errorf("identity %s: login is for GitHub identities, not %s", name, id.Kind)
@@ -166,6 +168,16 @@ func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (st
 	l, ok := m.logins[name]
 	m.mu.Unlock()
 	if ok {
+		return l, nil
+	}
+	if id.Slug != "" {
+		l := strings.TrimSuffix(id.Slug, "[bot]") + "[bot]"
+		m.mu.Lock()
+		if m.logins == nil {
+			m.logins = map[string]string{}
+		}
+		m.logins[name] = l
+		m.mu.Unlock()
 		return l, nil
 	}
 	path, auth := "/user", ""
@@ -179,6 +191,9 @@ func (m *Minter) Login(ctx context.Context, name string, id config.Identity) (st
 		tok, err := m.Token(ctx, name, id, "")
 		if err != nil {
 			return "", err
+		}
+		if strings.HasPrefix(tok.Token, "ghs_") {
+			return "", fmt.Errorf("identity %s: its token is a GitHub App installation token, which cannot read GET /user; set slug to the App's slug", name)
 		}
 		auth = tok.Token
 	}
