@@ -18,6 +18,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -26,6 +27,9 @@ type Config struct {
 	// DefaultProject is used when a request names no project.
 	DefaultProject string             `yaml:"default_project"`
 	Projects       map[string]Project `yaml:"projects"`
+	// IDs picks the ticket id generator (JOB-57); a project's ids block
+	// overrides it. Default sonyflake.
+	IDs ids.Spec `yaml:"ids"`
 	// Lease is the claim lease (Go duration). Default 30m.
 	Lease     string              `yaml:"lease"`
 	Agents    map[string]Agent    `yaml:"agents"`
@@ -1198,6 +1202,8 @@ type Project struct {
 	// Prefix starts every ticket id, e.g. "js" gives js-0031w02j0r012.
 	// Default: the project name.
 	Prefix string `yaml:"prefix"`
+	// IDs overrides the global ids block for this project (JOB-57).
+	IDs *ids.Spec `yaml:"ids"`
 	// Identities the project's sessions may act as (#200).
 	Identities []string `yaml:"identities"`
 }
@@ -1259,6 +1265,14 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: projects %s and %s share prefix %q", FileName, other, name, p.Prefix)
 		}
 		seen[p.Prefix] = name
+		if p.IDs != nil {
+			if err := p.IDs.Check(); err != nil {
+				return nil, fmt.Errorf("%s: project %s: %w", FileName, name, err)
+			}
+		}
+	}
+	if err := c.IDs.Check(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 	for name, i := range c.Identities {
 		if !namePattern.MatchString(name) {
@@ -1726,6 +1740,15 @@ func (c *Config) Prefix(project string) string {
 		return p.Prefix
 	}
 	return project
+}
+
+// IDSpec is the id generator for project: its own ids block, else the
+// global one (JOB-57).
+func (c *Config) IDSpec(project string) ids.Spec {
+	if p, ok := c.Projects[project]; ok && p.IDs != nil {
+		return p.IDs.Normal()
+	}
+	return c.IDs.Normal()
 }
 
 // BuiltinMetaPacks are the meta pack names jobshop itself writes (the

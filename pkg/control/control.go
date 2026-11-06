@@ -27,6 +27,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	idgen "github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -313,6 +314,8 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	st, err := openStore(ctx, root, cfg.Store, storeOptions{Now: opt.Clock.Now, OnCommit: ev.kick, Prefix: func(p string) string {
 		// Follows reloads, so a project added later gets its prefix.
 		return live.Load().cfg.Prefix(p)
+	}, IDs: func(p string) idgen.Spec {
+		return live.Load().cfg.IDSpec(p)
 	}})
 	if err != nil {
 		return err
@@ -904,6 +907,7 @@ func init() {
 type storeOptions struct {
 	Now      func() time.Time
 	Prefix   func(string) string
+	IDs      func(string) idgen.Spec
 	OnCommit func()
 }
 
@@ -911,11 +915,11 @@ type storeOptions struct {
 // root.DB() unless store.driver is postgres.
 func openStore(ctx context.Context, root config.Root, sc config.Store, opt storeOptions) (store.Store, error) {
 	if sc.DriverName() != config.StorePostgres {
-		return sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Now, Prefix: opt.Prefix, OnCommit: opt.OnCommit})
+		return sqlite.Open(ctx, root.DB(), sqlite.Options{Now: opt.Now, Prefix: opt.Prefix, IDs: opt.IDs, OnCommit: opt.OnCommit})
 	}
 	dsn, err := sc.DSN(ctx, root.Dir)
 	if err != nil {
 		return nil, err
 	}
-	return postgres.Open(ctx, dsn, postgres.Options{Now: opt.Now, Prefix: opt.Prefix, OnCommit: opt.OnCommit})
+	return postgres.Open(ctx, dsn, postgres.Options{Now: opt.Now, Prefix: opt.Prefix, IDs: opt.IDs, OnCommit: opt.OnCommit})
 }
