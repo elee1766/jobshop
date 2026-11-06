@@ -228,3 +228,53 @@ func TestGitHubAppLogin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "my-app[bot]", l)
 }
+
+// TestLinearAppRenew (#866): another mint for the same Linear app revokes
+// the cached token, so a token the API refused is replaced at once, and
+// callers that all hold the same refused token cause one mint.
+func TestLinearAppRenew(t *testing.T) {
+	now := time.Date(2026, 11, 6, 8, 0, 0, 0, time.UTC)
+	srv, calls, _ := fakeLinearOAuth(t, 30*24*time.Hour)
+	id := config.Identity{
+		Kind: config.IdentityLinearApp, ClientIDFile: config.SecretPath(writeFile(t, "id", "cid")),
+		ClientSecretFile: config.SecretPath(writeFile(t, "secret", "good")), TokenURL: srv.URL, Workspace: "acme", Teams: []string{"ENG"},
+	}
+	m := identity.NewMinter()
+	m.Now = func() time.Time { return now }
+	ctx := t.Context()
+
+	t1, err := m.Token(ctx, "lapp", id, "ENG")
+	require.NoError(t, err)
+	assert.Equal(t, "lin_oauth_1", t1.Token)
+
+	// The cache holds a different token than the refused one: it answers.
+	got, err := m.Renew(ctx, "lapp", id, "ENG", "some-older-token")
+	require.NoError(t, err)
+	assert.Equal(t, "lin_oauth_1", got.Token)
+	assert.Equal(t, int32(1), calls.Load())
+
+	// The cache holds the refused one: mint, and keep the result cached.
+	got, err = m.Renew(ctx, "lapp", id, "ENG", "lin_oauth_1")
+	require.NoError(t, err)
+	assert.Equal(t, "lin_oauth_2", got.Token)
+	again, err := m.Renew(ctx, "lapp", id, "ENG", "lin_oauth_1")
+	require.NoError(t, err)
+	assert.Equal(t, "lin_oauth_2", again.Token, "a second caller with the same refused token")
+	cur, err := m.Token(ctx, "lapp", id, "ENG")
+	require.NoError(t, err)
+	assert.Equal(t, "lin_oauth_2", cur.Token)
+	assert.Equal(t, int32(2), calls.Load())
+
+	// A bad secret is an error naming neither secret nor token.
+	bad := id
+	bad.ClientSecretFile = config.SecretPath(writeFile(t, "bad", "s3cret-wrong"))
+	_, err = m.Renew(ctx, "lapp", bad, "ENG", "lin_oauth_2")
+	require.ErrorContains(t, err, "invalid_client")
+	assert.NotContains(t, err.Error(), "s3cret-wrong")
+
+	// A static key does not change by asking again.
+	lin := writeFile(t, "lin", "lin_api_static")
+	st, err := m.Renew(ctx, "lin", config.Identity{Kind: config.IdentityLinear, TokenFile: config.SecretPath(lin)}, "ENG", "lin_api_static")
+	require.NoError(t, err)
+	assert.Equal(t, "lin_api_static", st.Token)
+}

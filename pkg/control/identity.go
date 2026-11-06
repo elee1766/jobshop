@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -119,9 +120,19 @@ func (c *Controller) identityToken(ctx context.Context, sc scope, p rpc.Identity
 	if err != nil {
 		return nil, err
 	}
-	t, err := c.minter.Token(ctx, name, id, p.Target)
+	var t identity.Token
+	renewed := false
+	if p.Stale != "" && config.IsLinear(id.Kind) {
+		t, err = c.minter.Renew(ctx, name, id, p.Target, p.Stale)
+		renewed = err == nil
+	} else {
+		t, err = c.minter.Token(ctx, name, id, p.Target)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("identity token for %s: %w", p.Target, err)
+	}
+	if renewed {
+		c.log.WarnContext(ctx, "linear token refused for a session, renewed", "identity", name, "target", p.Target, "actor", sc.actor)
 	}
 	c.log.InfoContext(ctx, "identity token", "identity", name, "target", p.Target, "actor", sc.actor)
 	return rpc.IdentityTokenResult{Identity: name, Kind: id.Kind, Token: t.Token, Expires: t.Expires}, nil

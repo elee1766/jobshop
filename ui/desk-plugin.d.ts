@@ -603,6 +603,7 @@ export interface IdentityInfo {
 
 export interface IdentityParams {
   target: string;
+  stale?: string;
 }
 
 export interface IdentityTokenResult {

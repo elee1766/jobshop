@@ -468,6 +468,9 @@ type VersionResult struct {
 // IdentityParams names a target: an owner/repo or a Linear team key.
 type IdentityParams struct {
 	Target string `json:"target"`
+	// Stale is a token the API refused. For a Linear app the controller
+	// then renews its token instead of handing back its cache (#866).
+	Stale string `json:"stale,omitempty"`
 }
 
 // IdentityInfo describes one identity, without secrets.

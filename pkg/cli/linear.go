@@ -61,7 +61,23 @@ func (l *linearCmd) client(g *Globals, key string) (*linear.Client, context.Cont
 		return nil, nil, nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	return linear.New(l.APIURL, r.Token), ctx, cancel, nil
+	return identityLinearClient(g, l.APIURL, team, r.Token), ctx, cancel, nil
+}
+
+// identityLinearClient is a Linear client for token. When Linear refuses
+// it, the client asks the controller for a renewed one, naming the refused
+// token, and resends once (#866): the controller's cache can hold a token
+// that another mint for the same Linear app revoked.
+func identityLinearClient(g *Globals, url, team, token string) *linear.Client {
+	cl := linear.New(url, token)
+	cl.Renew = func(context.Context) (string, error) {
+		var r rpc.IdentityTokenResult
+		if err := g.call(rpc.MethodIdentityToken, rpc.IdentityParams{Target: team, Stale: cl.Token}, &r); err != nil {
+			return "", err
+		}
+		return r.Token, nil
+	}
+	return cl
 }
 
 func (c linearIssueCmd) Run(g *Globals, l *linearCmd) error {

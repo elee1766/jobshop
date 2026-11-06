@@ -99,7 +99,11 @@ func (c linearAPICmd) Run(g *Globals, l *linearCmd) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	out, err := linear.New(l.APIURL, token).Raw(ctx, body)
+	cl := linear.New(l.APIURL, token)
+	if os.Getenv("LINEAR_API_KEY") == "" {
+		cl = identityLinearClient(g, l.APIURL, team, token)
+	}
+	out, err := cl.Raw(ctx, body)
 	if len(out) > 0 {
 		_, _ = stdout.Write(out)
 		if out[len(out)-1] != '\n' {

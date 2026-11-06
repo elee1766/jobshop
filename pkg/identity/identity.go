@@ -127,6 +127,32 @@ func (m *Minter) Drop(name string) {
 	m.mu.Unlock()
 }
 
+// Renew answers a caller whose token (stale) the API refused. For a
+// linear-app the cache is checked first: when it already holds a
+// different token, another caller renewed and that one is returned, so
+// sessions that all hold the same dead token cause one mint, not one
+// each (#866). Otherwise the cache is dropped and a token minted. Other
+// kinds return their current token, which asking again does not change.
+func (m *Minter) Renew(ctx context.Context, name string, id config.Identity, target, stale string) (Token, error) {
+	if id.Kind != config.IdentityLinearApp {
+		return m.Token(ctx, name, id, target)
+	}
+	scopes := id.LinearScopes()
+	key := name + "/linear-app/" + strings.Join(scopes, ",")
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if t, ok := m.cache[key]; ok && t.Token != stale {
+		return t, nil
+	}
+	t, err := m.mintLinear(ctx, id, scopes, m.Now())
+	if err != nil {
+		return Token{}, fmt.Errorf("identity %s: %w", name, err)
+	}
+	t.Identity, t.Kind = name, id.Kind
+	m.cache[key] = t
+	return t, nil
+}
+
 // Login returns the GitHub login an identity acts as, cached until
 // Forget: GET /user for a github-token (#340), "<slug>[bot]" from GET
 // /app for a github-app (#402). Its comments are filtered so they are not
