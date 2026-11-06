@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.17](https://github.com/elee1766/jobshop/compare/v0.6.16...v0.6.17) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** reject free-text resolutions on step tickets (JOB-92) ([#892](https://github.com/elee1766/jobshop/issues/892)) ([f2ef3d1](https://github.com/elee1766/jobshop/commit/f2ef3d1cb122caf580ba6c6553272d7d726f792c))
+* **nix:** keep jobshop.slice on home-manager switch (JOB-96) ([#907](https://github.com/elee1766/jobshop/issues/907)) ([98d0eec](https://github.com/elee1766/jobshop/commit/98d0eecc4b7ee476d87bb0f802fdc6e0c5343bd2))
+
 ## [0.6.16](https://github.com/elee1766/jobshop/compare/v0.6.15...v0.6.16) (2026-11-06)
 
 
