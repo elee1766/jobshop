@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -566,7 +565,7 @@ func (l *liveActivity) Linear(ctx context.Context, team string, since time.Time)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	chs, err := linear.New(l.linURL, tok.Token).Changes(ctx, team, since)
+	chs, err := l.c.newLinear(l.linURL, name, cfg.Identities[name], team, tok.Token).Changes(ctx, team, since)
 	if err != nil {
 		return nil, err
 	}

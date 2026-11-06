@@ -410,8 +410,8 @@ Commands:
     Change title, state, assignee or labels; reads the issue back to verify.
 
   linear assign <issue> <user> [flags]
-    Take an issue: assign it to a user, or to yourself with me (an app token
-    becomes the issue's delegate). linear assign <KEY> me.
+    Take an issue: assign it to a user, or to yourself with me. linear assign
+    <KEY> me.
 
   linear label <issue> <op> <label> ... [flags]
     Add or remove labels: linear label <KEY> add|remove <label>... (same as
@@ -3719,8 +3719,8 @@ Commands:
     Change title, state, assignee or labels; reads the issue back to verify.
 
   linear assign <issue> <user> [flags]
-    Take an issue: assign it to a user, or to yourself with me (an app token
-    becomes the issue's delegate). linear assign <KEY> me.
+    Take an issue: assign it to a user, or to yourself with me. linear assign
+    <KEY> me.
 
   linear label <issue> <op> <label> ... [flags]
     Add or remove labels: linear label <KEY> add|remove <label>... (same as
@@ -3980,7 +3980,7 @@ Flags:
       --state=STRING             State name.
       --label=LABEL,...          Label name (repeatable).
       --assignee=STRING          Assignee name, display name or email; me is the
-                                 token's user (an app becomes the delegate).
+                                 token's user.
       --parent=STRING            Parent issue key.
       --key=STRING               Idempotency key: a repeat with the same key
                                  returns the first result instead of writing
@@ -4014,8 +4014,7 @@ Flags:
       --title=STRING               New title.
       --state=STRING               State name.
       --assignee=STRING            Assignee name, display name or email;
-                                   me is the token's user (an app becomes the
-                                   delegate).
+                                   me is the token's user.
       --add-label=ADD-LABEL,...    Label to add (repeatable).
       --remove-label=REMOVE-LABEL,...
                                    Label to remove (repeatable).
@@ -4033,8 +4032,8 @@ Flags:
 ```
 Usage: jobshop linear assign <issue> <user> [flags]
 
-Take an issue: assign it to a user, or to yourself with me (an app token becomes
-the issue's delegate). linear assign <KEY> me.
+Take an issue: assign it to a user, or to yourself with me. linear assign <KEY>
+me.
 
 Arguments:
   <issue>    Issue key.

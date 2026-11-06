@@ -1,6 +1,7 @@
 package linear_test
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -132,4 +133,31 @@ func TestChanges(t *testing.T) {
 	assert.Equal(t, "assignee", chs[3].Kind)
 	assert.Equal(t, "none -> Bo", chs[3].Text)
 	assert.True(t, chs[3].Bot)
+}
+
+// A revoked app token gets a 401; the client renews it once and retries.
+func TestRenewAfter401(t *testing.T) {
+	const unauth = `{"errors":[{"message":"Authentication required, not authenticated","extensions":{"type":"authentication error","code":"AUTHENTICATION_ERROR","statusCode":401}}]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer fresh" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, unauth)
+			return
+		}
+		_, _ = io.WriteString(w, issueResp)
+	}))
+	defer srv.Close()
+
+	cl := linear.New(srv.URL, "revoked")
+	_, err := cl.GetIssue(t.Context(), "ENG-123")
+	require.ErrorContains(t, err, "Authentication required")
+
+	renews := 0
+	cl.Renew = func(context.Context) (string, error) { renews++; return "fresh", nil }
+	is, err := cl.GetIssue(t.Context(), "ENG-123")
+	require.NoError(t, err)
+	assert.Equal(t, "ENG-123", is.Identifier)
+	_, err = cl.GetIssue(t.Context(), "ENG-123")
+	require.NoError(t, err)
+	assert.Equal(t, 1, renews)
 }

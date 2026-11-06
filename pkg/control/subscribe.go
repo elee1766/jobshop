@@ -736,7 +736,8 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	is, err := linear.New(s.url, tok.Token).GetIssue(ctx, th.Linear)
+	cl := s.c.newLinear(s.url, name, cfg.Identities[name], team, tok.Token)
+	is, err := cl.GetIssue(ctx, th.Linear)
 	if err != nil {
 		return nil, err
 	}
@@ -745,7 +746,7 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 	// match the viewer's name so a listed bot never wakes on itself (#402).
 	appSelf := ""
 	if cfg.Identities[name].Kind == config.IdentityLinearApp && cfg.Subscriptions != nil && len(cfg.Subscriptions.Bots) > 0 {
-		v, err := linear.New(s.url, tok.Token).Viewer(ctx)
+		v, err := cl.Viewer(ctx)
 		if err != nil {
 			return nil, err
 		}

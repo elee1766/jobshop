@@ -107,7 +107,21 @@ func (c *Controller) linearClient(ctx context.Context, key string) (*linear.Clie
 	if err != nil {
 		return nil, err
 	}
-	return linear.New(c.linearURL, tok.Token), nil
+	return c.newLinear(c.linearURL, name, cfg.Identities[name], team, tok.Token), nil
+}
+
+// newLinear returns a client for name's token that, on a 401, drops the
+// cached token and mints a new one once.
+func (c *Controller) newLinear(url, name string, id config.Identity, team, token string) *linear.Client {
+	cl := linear.New(url, token)
+	if id.Kind == config.IdentityLinearApp {
+		cl.Renew = func(ctx context.Context) (string, error) {
+			c.minter.Drop(name)
+			t, err := c.minter.Token(ctx, name, id, team)
+			return t.Token, err
+		}
+	}
+	return cl
 }
 
 func (c *Controller) linearIssue(ctx context.Context, key string) (linear.Issue, error) {

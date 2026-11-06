@@ -116,6 +116,17 @@ func (m *Minter) Forget() {
 	m.mu.Unlock()
 }
 
+// Drop forgets name's cached tokens, e.g. after the API refused one.
+func (m *Minter) Drop(name string) {
+	m.mu.Lock()
+	for k := range m.cache {
+		if strings.HasPrefix(k, name+"/") {
+			delete(m.cache, k)
+		}
+	}
+	m.mu.Unlock()
+}
+
 // Login returns the GitHub login an identity acts as, cached until
 // Forget: GET /user for a github-token (#340), "<slug>[bot]" from GET
 // /app for a github-app (#402). Its comments are filtered so they are not
