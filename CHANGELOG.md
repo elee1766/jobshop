@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/elee1766/jobshop/compare/v0.4.3...v0.4.4) (2026-11-06)
+
+
+### Features
+
+* **nix:** workspace followInstalled holds live packs at the installed binary ([#840](https://github.com/elee1766/jobshop/issues/840)) ([e3a26e8](https://github.com/elee1766/jobshop/commit/e3a26e8bc23c04fb2d097a84c5e8181e172f729c))
+
 ## [0.4.3](https://github.com/elee1766/jobshop/compare/v0.4.2...v0.4.3) (2026-11-06)
 
 
