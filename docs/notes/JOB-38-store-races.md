@@ -16,6 +16,14 @@ engines through `storetest.Run`:
 - ReadAfterWrite: Get and List see create, update, claim and close at
   once from any goroutine (SQLite reader pool).
 
+Store fixes the cases found:
+
+- Postgres reads outside a transaction use a read committed pool
+  (Driver.ReadDB). Under serializable, Get and List failed with 40001.
+- Expire and ReleaseSlots reset their result when tx reruns after a
+  lost write race. Before, a rolled-back attempt's ids stayed in the
+  result, so the sweep reported tickets it did not reopen.
+
 Goroutines start on a barrier (16 racers). Expire and AddLabel retry on
 ErrConflict, the error a serialization failure maps to. Run with
 `go test -race ./pkg/store/...`.

@@ -202,6 +202,7 @@ func (s *Store) slots(ctx context.Context, pool string) ([]store.Slot, error) {
 // all of them without a hook in each.
 func (s *Store) ReleaseSlots(ctx context.Context) (out []store.Slot, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
+		out = nil // tx may rerun this after a lost write race
 		if err := q.MarkSlotsReleasing(ctx, ms(s.now())); err != nil {
 			return err
 		}

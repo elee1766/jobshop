@@ -892,6 +892,9 @@ func (s *Store) reopen(ctx context.Context, q sqldb.Querier, actor, id string, i
 
 func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqldb.Querier) ([]string, error), diff any, w writeFn) (out []string, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
+		// tx reruns this after a lost write race: ids a rolled-back
+		// attempt reopened must not be reported (JOB-38).
+		out = nil
 		list, err := ids(q)
 		if err != nil {
 			return err
