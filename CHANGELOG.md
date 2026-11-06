@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.4](https://github.com/elee1766/jobshop/compare/v0.3.3...v0.3.4) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** isolation tests run on dev machines; oom at startup ends the session ([#789](https://github.com/elee1766/jobshop/issues/789)) ([31e9b74](https://github.com/elee1766/jobshop/commit/31e9b7429022e3a778a52a70dfbec9217408ecdf))
+* **control:** wait for escalation ticket in TestAutoStepFailureEscalates ([#786](https://github.com/elee1766/jobshop/issues/786)) ([#787](https://github.com/elee1766/jobshop/issues/787)) ([5955be3](https://github.com/elee1766/jobshop/commit/5955be31f2f3adaa24a96030f289c82f13bc48ab))
+
 ## [0.3.3](https://github.com/elee1766/jobshop/compare/v0.3.2...v0.3.3) (2026-11-06)
 
 
