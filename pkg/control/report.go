@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -82,6 +83,10 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	opts, err := questionOptions(p.Options)
 	if err != nil {
 		return nil, err
+	}
+	// Choices written only in prose give Desk no answer buttons (JOB-115).
+	if q != "" && c.config().Questions.RequireOptions && len(opts) < config.MinRequiredOptions {
+		return nil, fmt.Errorf("%w: -q needs at least %d --option (or --options-json) here, got %d: questions.require_options is set so Desk can show answer buttons; offer the concrete answers as \"Title|what choosing it does\"", store.ErrInvalid, config.MinRequiredOptions, len(opts))
 	}
 	texts := []*string{&p.Note, &p.Question, &p.Context}
 	for i := range opts {

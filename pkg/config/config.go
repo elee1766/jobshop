@@ -76,6 +76,8 @@ type Config struct {
 	IsolationProfiles map[string]Isolation `yaml:"isolation_profiles,omitempty"`
 	// Attention configures `jobshop attention` (#185).
 	Attention Attention `yaml:"attention"`
+	// Questions configures questions sessions ask humans (JOB-115).
+	Questions Questions `yaml:"questions,omitempty"`
 	// Hooks are guardrail commands (#188). Default none.
 	Hooks []Hook `yaml:"hooks"`
 	// Learnings configures the learning loop (#524).
@@ -499,6 +501,18 @@ type Attention struct {
 	// start on click. Default 4.
 	PrestartMax int `yaml:"prestart_max"`
 }
+
+// Questions configures `report -q` questions (JOB-115).
+type Questions struct {
+	// RequireOptions refuses a question with fewer than
+	// MinRequiredOptions options, so Desk has answer buttons to show.
+	// Default false.
+	RequireOptions bool `yaml:"require_options"`
+}
+
+// MinRequiredOptions is how many options a question needs under
+// questions.require_options: one option is not a choice.
+const MinRequiredOptions = 2
 
 // DefaultPrestartMax is attention.prestart_max when unset.
 const DefaultPrestartMax = 4

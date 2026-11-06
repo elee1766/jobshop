@@ -99,6 +99,15 @@ func TestConversationExportRemoved(t *testing.T) {
 	assert.Contains(t, c.Warnings[0], "conversation_export is removed, see journal.victorialogs")
 }
 
+func TestParseQuestions(t *testing.T) {
+	c, err := Parse([]byte("projects:\n  js: {}\n"))
+	require.NoError(t, err)
+	assert.False(t, c.Questions.RequireOptions)
+	c, err = Parse([]byte("projects:\n  js: {}\nquestions:\n  require_options: true\n"))
+	require.NoError(t, err)
+	assert.True(t, c.Questions.RequireOptions)
+}
+
 func TestParseJournal(t *testing.T) {
 	c, err := Parse([]byte("projects:\n  js: {}\njournal:\n  victorialogs:\n    url: http://127.0.0.1:9428\n    headers: {Authorization: \"Bearer ${VL_TOKEN}\"}\n"))
 	require.NoError(t, err)

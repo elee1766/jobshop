@@ -131,6 +131,36 @@ func TestReportQuestionAnswer(t *testing.T) {
 	assert.True(t, got.DeferUntil.Equal(until))
 }
 
+// TestReportRequireOptions (JOB-115): with questions.require_options a
+// question needs two options; a report without a question is unaffected.
+func TestReportRequireOptions(t *testing.T) {
+	t.Parallel()
+	c, _, _ := stallController(t)
+	c.config().Questions.RequireOptions = true
+	ctx := t.Context()
+	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
+	require.NoError(t, err)
+	step := res.(rpc.RunResult).Steps[0]
+	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	_, _, err = c.store.Claim(ctx, step.ID, sess.ID, time.Hour)
+	require.NoError(t, err)
+	sc := scope{actor: sess.ID, session: sess.ID, project: "js", pool: "dev"}
+
+	for _, opts := range [][]rpc.QuestionOption{nil, {{Title: "keep"}}} {
+		_, err = c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportWaiting, Question: "close or keep?", Context: "a\nb", Options: opts})
+		require.ErrorIs(t, err, store.ErrInvalid)
+		assert.ErrorContains(t, err, "questions.require_options")
+	}
+	_, err = c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportProgress, Note: "no question"})
+	require.NoError(t, err)
+	out, err := c.report(ctx, sc, rpc.ReportParams{
+		State: rpc.ReportWaiting, Question: "close or keep?", Context: "a\nb",
+		Options: []rpc.QuestionOption{{Title: "close"}, {Title: "keep", Recommended: true}},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, out.(rpc.ReportResult).Question)
+}
+
 // runnerInbox is the inbox a session runner for id would read.
 func runnerInbox(t *testing.T, c *Controller, id string) []store.Ticket {
 	t.Helper()

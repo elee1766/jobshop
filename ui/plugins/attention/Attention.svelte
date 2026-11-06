@@ -5,6 +5,7 @@
   // chat that resolves the item (POST api/attention/chat). A question
   // row (JOB-101) expands the asker's context and shows each suggested
   // option as a button that answers with it, plus Discuss for the chat.
+  // A question without options gets a one-line answer box (JOB-115).
   // Uses api only (#517).
   import { resolveActions, runAction, pendingItems, markPending, clearPending, onPending } from '../../kit/attention.js';
   import { safe } from '../../kit/format.js';
@@ -136,6 +137,23 @@
     ask: 'Answer ' + it.id + ' with option ' + o.id + ': ' + o.title + '?',
   });
 
+  /** Free-text answers being typed, by row key (JOB-115). @type {Record<string, string>} */
+  let typed = $state({});
+  /** @param {any} it @param {string} text @returns {import('../../kit/attention.js').Action} */
+  const textAction = (it, text) => ({
+    label: 'Answered',
+    run: () => api.call('question.answer', { id: it.id, text }),
+    ask: 'Answer ' + it.id + ': "' + text + '"?',
+  });
+  /** @param {any} it */
+  async function answerText(it) {
+    const key = it.kind + ':' + it.id;
+    const text = (typed[key] || '').trim();
+    if (!text) return;
+    await resolve(it, textAction(it, text));
+    if (pending[key]) delete typed[key];
+  }
+
   /** @type {Record<string, string>} */
   const pushTitle = {
     unsupported: 'This browser has no Web Push (on iOS, add Desk to the home screen first).',
@@ -236,6 +254,12 @@
                           </button>
                         {/each}
                       </div>
+                    {:else if it.kind === 'question'}
+                      <!-- No options: answer in one line without opening a chat (JOB-115). -->
+                      <form class="qans" onsubmit={(e) => { e.preventDefault(); answerText(it); }} data-testid="question-answer">
+                        <input type="text" placeholder="Answer…" aria-label="Answer" bind:value={typed[key]} disabled={acting === key} data-testid="question-answer-text" />
+                        <button type="submit" class="primary" disabled={acting === key || !(typed[key] || '').trim()} data-testid="question-answer-send">Answer</button>
+                      </form>
                     {/if}
                     {#each resolveActions(api, it.kind, it.id) as a (a.label)}
                       <button type="button" disabled={acting === key} onclick={() => resolve(it, a)} data-testid="row-resolve">{a.label}</button>
@@ -325,6 +349,8 @@
   .opt .ot { font-weight: 500; }
   .opt .od { font-size: 12px; opacity: 0.85; }
   .opt .rec { font-weight: 400; font-size: 11px; }
+  .qans { flex: 1 1 100%; display: flex; gap: 6px; }
+  .qans input { flex: 1; min-width: 0; }
   .pushna { font-size: 12px; }
   .progress { display: flex; flex-direction: column; gap: 8px; }
   .item { overflow: hidden; }

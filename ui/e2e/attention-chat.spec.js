@@ -423,6 +423,24 @@ test('a question with options answers in one click (JOB-101)', async ({ page }) 
   expect(calls.some((c) => c.path === '/api/attention/chat')).toBe(false);
 });
 
+test('a question without options answers in one line (JOB-115)', async ({ page }) => {
+  let answered = false;
+  const calls = await mock(page, {
+    attention: () => answered ? [] : [{ kind: 'question', id: 'js-q8', title: 'Question: close or keep?', why: '', since: iso(600e3) }],
+    rpc: (m) => { if (m === 'question.answer') answered = true; return null; },
+  });
+  await page.goto('./');
+  const row = page.getByTestId('attention-row').first();
+  await expect(row.getByTestId('question-option')).toHaveCount(0);
+  await expect(row.getByTestId('question-answer-send')).toBeDisabled();
+  await row.getByTestId('question-answer-text').fill('keep it');
+  await row.getByTestId('question-answer-text').press('Enter');
+  await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByTestId('attention-empty')).toBeVisible();
+  expect(calls.find((c) => c.path === '/api/rpc/question.answer')?.body).toEqual({ id: 'js-q8', text: 'keep it' });
+  expect(calls.some((c) => c.path === '/api/attention/chat')).toBe(false);
+});
+
 test('Discuss on a question opens its chat (JOB-101)', async ({ page }) => {
   const calls = await mock(page, {
     attention: () => [{ kind: 'question', id: 'js-q6', title: 'Question: keep it?', why: '', since: iso(600e3), options: [{ id: 1, title: 'yes' }] }],
@@ -479,7 +497,9 @@ test('a pre-started item shows its first agent reply within 1s of the click (#60
   });
   await page.goto('./');
   const t0 = Date.now();
-  await page.getByTestId('attention-row').first().click();
+  // The row's corner: a question without options has an answer box in
+  // the middle (JOB-115), which does not open the chat.
+  await page.getByTestId('attention-row').first().click({ position: { x: 8, y: 8 } });
   await expect(page.getByTestId('journal')).toContainText('It asks which branch to deploy', { timeout: 1000 });
   expect(Date.now() - t0).toBeLessThan(1000);
   // Attaching sends nothing.
