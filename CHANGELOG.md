@@ -11,6 +11,7 @@
 ### Bug fixes
 
 * **control:** wait for both step writes in TestAutoStepHTTPRetryAfter ([#757](https://github.com/elee1766/jobshop/issues/757)) ([#758](https://github.com/elee1766/jobshop/issues/758)) ([ed1651f](https://github.com/elee1766/jobshop/commit/ed1651f27f43c0b2c0514828db8e8d72d85bf611))
+* **store:** race storetest cases, postgres reads read committed (JOB-38) ([#754](https://github.com/elee1766/jobshop/issues/754)) ([a27348d](https://github.com/elee1766/jobshop/commit/a27348d96b1a4f9e7d5f32ce84ddfe1b82c11c9c))
 
 
 ### Performance
