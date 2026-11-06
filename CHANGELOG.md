@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.4](https://github.com/elee1766/jobshop/compare/v0.2.3...v0.2.4) (2026-11-06)
+
+
+### Features
+
+* **packs/github:** hand cross-repo prs to the owning instance's pr-review (JOB-33) ([#760](https://github.com/elee1766/jobshop/issues/760)) ([16efd81](https://github.com/elee1766/jobshop/commit/16efd8111265abf686e22d4c4179a81a0370bb36))
+
+
+### Bug fixes
+
+* **control:** wait for both step writes in TestAutoStepHTTPRetryAfter ([#757](https://github.com/elee1766/jobshop/issues/757)) ([#758](https://github.com/elee1766/jobshop/issues/758)) ([ed1651f](https://github.com/elee1766/jobshop/commit/ed1651f27f43c0b2c0514828db8e8d72d85bf611))
+
+
+### Performance
+
+* **control:** list closed sessions from saved state, scan orphans in the pass (JOB-32) ([#747](https://github.com/elee1766/jobshop/issues/747)) ([698a31b](https://github.com/elee1766/jobshop/commit/698a31b81aaa0d501352484815f11fd6577f468e))
+
 ## [0.2.3](https://github.com/elee1766/jobshop/compare/v0.2.2...v0.2.3) (2026-11-06)
 
 
