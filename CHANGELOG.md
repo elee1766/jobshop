@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/elee1766/jobshop/compare/v0.7.1...v0.7.2) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** wait for the escalation ticket in TestRequestChanges ([#923](https://github.com/elee1766/jobshop/issues/923)) ([#924](https://github.com/elee1766/jobshop/issues/924)) ([cc36b21](https://github.com/elee1766/jobshop/commit/cc36b212de10832c6d411751ea4fb9a435842bf9))
+
 ## [0.7.1](https://github.com/elee1766/jobshop/compare/v0.7.0...v0.7.1) (2026-11-06)
 
 
