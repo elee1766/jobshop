@@ -63,6 +63,8 @@ type packFile struct {
 	DeskCommands map[string]DeskCommand `yaml:"desk_commands"`
 	// SandboxProfiles merge per name like pools (#625).
 	SandboxProfiles map[string]Sandbox `yaml:"sandbox_profiles"`
+	// IsolationProfiles merge per name like pools (JOB-83).
+	IsolationProfiles map[string]Isolation `yaml:"isolation_profiles"`
 }
 
 // packHead is the part of pack.yaml read before substitution.
@@ -78,6 +80,11 @@ type packHead struct {
 	// so a rename on master does not fail the deploy of hosts not yet
 	// updated.
 	RenamedVars map[string]string `yaml:"renamed_vars"`
+	// RemovedVars maps a removed var name to what replaces it (JOB-83). A
+	// host that still sets one fails to load, with that text in the error:
+	// a var that carried config cannot keep working without a rendering
+	// the pack no longer has.
+	RemovedVars map[string]string `yaml:"removed_vars"`
 	// Template is the pack's template: key. Only "go" (or unset) is
 	// accepted, as a no-op for one release; ${name} was removed in #566.
 	Template string `yaml:"template"`
@@ -144,7 +151,7 @@ const maxPackDepth = 8
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
-var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands", "sandbox_profiles"}
+var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands", "sandbox_profiles", "isolation_profiles"}
 
 // LoadFile reads a config file, merges the packs it lists, and validates
 // the result. Packs merge in list order, then the file itself.
@@ -265,6 +272,14 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	c.Packs = head.Packs
 	c.Instances = instances
 	c.addInstanceLabels()
+	// Label rules match the instance labels just added, so the merged
+	// sandboxes can only be checked now.
+	if err := c.checkSandboxes(); err != nil {
+		if len(head.Packs) > 0 && strings.Contains(err.Error(), PackFileName) {
+			return nil, packErr(err)
+		}
+		return nil, err
+	}
 	// Text files set by a path outside every pack dir are watched alone.
 	for _, files := range sources {
 		for _, f := range files {
@@ -296,7 +311,7 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	var head packHead
-	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"], "renamed_vars": m["renamed_vars"], "template": m["template"]})
+	raw, err := yaml.Marshal(map[string]any{"defaults": m["defaults"], "extends": m["extends"], "renamed_vars": m["renamed_vars"], "removed_vars": m["removed_vars"], "template": m["template"]})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
@@ -306,9 +321,13 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	delete(m, "defaults")
 	delete(m, "extends")
 	delete(m, "renamed_vars")
+	delete(m, "removed_vars")
 	delete(m, "template")
 	if err := checkSyntax(head.Template); err != nil {
 		return nil, fmt.Errorf("%s: template: %w", file, err)
+	}
+	if err := checkRemovedVars(given, head.RemovedVars, file); err != nil {
+		return nil, err
 	}
 	given, warnings := renameVars(given, head.RenamedVars, file)
 	// Given vars win over defaults.
@@ -566,6 +585,9 @@ func mergeInto(dst, src map[string]any, file string, sources map[string][]string
 		}
 		for name, entry := range sm {
 			merged := mergeValue(dm[name], entry)
+			if k == "pools" || k == "agents" {
+				unionProfiles(merged, dm[name], entry)
+			}
 			if k == "pools" {
 				unionLabels(merged, dm[name], entry)
 			}
@@ -672,11 +694,13 @@ func prefixLayers(layers []packLayer, prefix string) {
 			for n, e := range sm {
 				em, _ := e.(map[string]any)
 				if s == "pools" || s == "agents" {
-					if sb, ok := em["sandbox"].(map[string]any); ok {
-						list, _ := sb["profiles"].([]any)
-						for i, v := range list {
-							if p, ok := v.(string); ok && declared["sandbox_profiles"][p] {
-								list[i] = prefix + p
+					for key, section := range map[string]string{"sandbox": "sandbox_profiles", "isolation": "isolation_profiles"} {
+						if sb, ok := em[key].(map[string]any); ok {
+							list, _ := sb["profiles"].([]any)
+							for i, v := range list {
+								if p, ok := v.(string); ok && declared[section][p] {
+									list[i] = prefix + p
+								}
 							}
 						}
 					}

@@ -250,6 +250,11 @@ Commands:
     Show each pool's labels, min, max, desired, open, working, idle and cordoned
     sessions, plus quarantined and paused pools. --label filters.
 
+  pool show <pool> [flags]
+    Show a pool's labels and, with --sandbox, its merged sandbox and isolation
+    with the level that set each entry: defaults, label rule, agent, pool or a
+    profile.
+
   pool scale <pool> <target>
     Set a pool's desired session count, or 'auto' to follow ready work again.
     Persisted (admin or pool-scale grant).
@@ -2505,6 +2510,11 @@ Commands:
     Show each pool's labels, min, max, desired, open, working, idle and cordoned
     sessions, plus quarantined and paused pools. --label filters.
 
+  pool show <pool> [flags]
+    Show a pool's labels and, with --sandbox, its merged sandbox and isolation
+    with the level that set each entry: defaults, label rule, agent, pool or a
+    profile.
+
   pool scale <pool> <target>
     Set a pool's desired session count, or 'auto' to follow ready work again.
     Persisted (admin or pool-scale grant).
@@ -2533,6 +2543,31 @@ Flags:
 
   -l, --label=LABEL,...    Only pools with this label: a label, or k=v for k:v.
                            Repeat to require several.
+```
+
+## jobshop pool show
+
+```
+Usage: jobshop pool show <pool> [flags]
+
+Show a pool's labels and, with --sandbox, its merged sandbox and isolation with
+the level that set each entry: defaults, label rule, agent, pool or a profile.
+
+Arguments:
+  <pool>    Pool name.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --sandbox          Print the merged sandbox and isolation with the source
+                         of each entry.
+      --json             Print the result as JSON.
 ```
 
 ## jobshop pool scale

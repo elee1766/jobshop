@@ -253,7 +253,20 @@ let
   # Pools in settings with isolation.user.per_session (#540); each one's
   # [map_uid, map_uid+range) and gids must sit inside the jobshop user's
   # subuid/subgid range, else the pool is quarantined at its first spawn.
-  isoUser = p: ((cfg.settings.pools.${p}.isolation or { }).user or null);
+  # The user comes from the pool's own isolation or the last of its
+  # isolation.profiles that sets one (JOB-83). Pools that get theirs from a
+  # label rule or a pack are not checked here: the controller quarantines
+  # them at the first spawn instead.
+  isoUser =
+    p:
+    let
+      iso = cfg.settings.pools.${p}.isolation or { };
+      profs = cfg.settings.isolation_profiles or { };
+      fromProfiles = lib.filter (u: u != null) (
+        map (n: (profs.${n} or { }).user or null) (iso.profiles or [ ])
+      );
+    in
+    iso.user or (if fromProfiles == [ ] then null else lib.last fromProfiles);
   isoPools = lib.filter (p: (isoUser p) != null && (isoUser p) ? per_session) (
     lib.attrNames (cfg.settings.pools or { })
   );

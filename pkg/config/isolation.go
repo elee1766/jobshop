@@ -14,8 +14,11 @@ import (
 // pool's fields win over the agent's over the default. Optional: with no
 // isolation config nothing changes.
 type Isolation struct {
-	User   *IsolationUser `yaml:"user"`
-	Limits *CgroupLimits  `yaml:"limits"`
+	// Profiles names isolation_profiles entries applied before this
+	// level's own fields, in order (JOB-83).
+	Profiles []string       `yaml:"profiles,omitempty"`
+	User     *IsolationUser `yaml:"user"`
+	Limits   *CgroupLimits  `yaml:"limits"`
 }
 
 // IsolationUser maps the agent's uid/gid to host ids in the controller
@@ -69,9 +72,14 @@ func (u IsolationUser) GIDOrUID() int {
 	return u.UID
 }
 
-func (i *Isolation) check() error {
+func (i *Isolation) check(profiles map[string]Isolation) error {
 	if i == nil {
 		return nil
+	}
+	for _, p := range i.Profiles {
+		if _, ok := profiles[p]; !ok {
+			return fmt.Errorf("isolation profile %q is not in isolation_profiles", p)
+		}
 	}
 	if u := i.User; u != nil {
 		if u.UID < 0 || u.GIDOrUID() < 0 || u.MapUID <= 0 || u.MapGID <= 0 {
@@ -155,25 +163,69 @@ func ParseBytes(s string) (string, error) {
 	return strconv.FormatUint(n*mult, 10), nil
 }
 
-// IsolationFor merges the default, agent and pool isolation of pool. Each
-// of user and limits is taken whole from the most specific level that
-// sets it.
-func (c *Config) IsolationFor(pool string) Isolation {
+// isolationLevels lists the fragments that make up pool's isolation,
+// lowest precedence first, like sandboxLevels.
+func (c *Config) isolationLevels(pool string) []isolationLevel {
 	p := c.Pools[pool]
 	a := c.Agents[p.Agent]
-	var out Isolation
-	for _, i := range []*Isolation{c.Defaults.Isolation, a.Isolation, p.Isolation} {
-		if i == nil {
-			continue
+	var out []isolationLevel
+	add := func(source string, s *Isolation) {
+		if s == nil {
+			return
 		}
-		if i.User != nil {
-			out.User = i.User
+		for _, name := range s.Profiles {
+			if pr, ok := c.IsolationProfiles[name]; ok {
+				out = append(out, isolationLevel{"profile " + name + " (" + source + ")", &pr})
+			}
 		}
-		if i.Limits != nil {
-			out.Limits = i.Limits
+		out = append(out, isolationLevel{source, s})
+	}
+	add("defaults", c.Defaults.Isolation)
+	for i, r := range c.Defaults.IsolationByLabel {
+		if p.HasLabels(r.Labels) {
+			add(ruleSource(i, r.Labels), &r.Isolation)
 		}
 	}
+	add("agent "+p.Agent, a.Isolation)
+	add("pool", p.Isolation)
 	return out
+}
+
+type isolationLevel struct {
+	source string
+	iso    *Isolation
+}
+
+// IsolationFor merges the default, label rule, agent and pool isolation of
+// pool. Each of user and limits is taken whole from the most specific
+// level that sets it.
+func (c *Config) IsolationFor(pool string) Isolation {
+	out, _ := c.mergeIsolation(pool)
+	return out
+}
+
+// ExplainIsolation is IsolationFor with the level that set user and
+// limits (JOB-83).
+func (c *Config) ExplainIsolation(pool string) []MergedEntry {
+	_, e := c.mergeIsolation(pool)
+	return e
+}
+
+func (c *Config) mergeIsolation(pool string) (Isolation, []MergedEntry) {
+	var out Isolation
+	var ex entries
+	for _, l := range c.isolationLevels(pool) {
+		if u := l.iso.User; u != nil {
+			out.User = u
+			gid := u.GIDOrUID()
+			ex.set("user", fmt.Sprintf("uid %d gid %d mapped to %d:%d groups %v", u.UID, gid, u.MapUID, u.MapGID, u.Groups), l.source)
+		}
+		if lim := l.iso.Limits; lim != nil {
+			out.Limits = lim
+			ex.set("limits", fmt.Sprintf("cpu %q memory %q memory_high %q swap %q pids %d", lim.CPU, lim.Memory, lim.MemoryHigh, lim.Swap, lim.Pids), l.source)
+		}
+	}
+	return out, ex.all
 }
 
 // LookupGroup resolves a group name or numeric gid to a gid.

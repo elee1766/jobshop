@@ -866,6 +866,7 @@ func init() {
 		rpc.MethodBatchList:         bind((*Controller).batchList),
 		rpc.MethodPoolList:          bind((*Controller).poolList),
 		rpc.MethodPoolScale:         bind((*Controller).poolScaleRPC),
+		rpc.MethodPoolShow:          bind((*Controller).poolShow),
 		rpc.MethodSessionCordon:     bind((*Controller).sessionCordonRPC),
 		rpc.MethodSessionConfig:     bind((*Controller).sessionConfigRPC),
 		rpc.MethodSessionRename:     bind((*Controller).sessionRenameRPC),

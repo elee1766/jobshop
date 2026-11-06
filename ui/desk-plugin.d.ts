@@ -140,6 +140,7 @@ export interface RpcMethods {
   "memory.write": { params: MemoryWriteParams; result: MemoryEdit };
   "pool.list": { params: PoolListParams; result: PoolStatusResult };
   "pool.scale": { params: PoolScaleParams; result: PoolStatusResult };
+  "pool.show": { params: PoolShowParams; result: PoolShowResult };
   "pool.unquarantine": { params: PoolParams; result: PoolStatusResult };
   "question.answer": { params: AnswerParams; result: AnswerResult };
   "recall": { params: RecallParams; result: RecallHit[] };
@@ -848,6 +849,12 @@ export interface MemoryWriteParams {
   learnings?: number[];
 }
 
+export interface MergedEntry {
+  field: string;
+  value: string;
+  source: string;
+}
+
 export interface Mount {
   src: string;
   dst?: string;
@@ -910,6 +917,19 @@ export interface PoolScaleParams {
   pool: string;
   target?: number;
   auto?: boolean;
+}
+
+export interface PoolShowParams {
+  pool: string;
+}
+
+export interface PoolShowResult {
+  pool: string;
+  agent: string;
+  project?: string;
+  labels?: string[];
+  sandbox?: MergedEntry[];
+  isolation?: MergedEntry[];
 }
 
 export interface PoolStatusResult {

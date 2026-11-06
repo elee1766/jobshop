@@ -73,6 +73,7 @@ const (
 	MethodBatchList        = "batch.list"
 	MethodPoolList         = "pool.list"
 	MethodPoolScale        = "pool.scale"
+	MethodPoolShow         = "pool.show"
 	MethodSessionCordon    = "session.cordon"
 	MethodSessionConfig    = "session.config"
 	MethodSessionRename    = "session.rename"
@@ -950,6 +951,24 @@ type PoolStatusResult struct {
 // exactly, or k=v for the label k:v (JOB-81). Empty lists every pool.
 type PoolListParams struct {
 	Label []string `json:"label,omitempty"`
+}
+
+// PoolShowParams names the pool whose merged sandbox and isolation to
+// explain.
+type PoolShowParams struct {
+	Pool string `json:"pool"`
+}
+
+// PoolShowResult is a pool with its merged sandbox and isolation, each
+// entry with the level that set it (JOB-83): defaults, a label rule, the
+// agent, the pool, or a profile applied at one of those.
+type PoolShowResult struct {
+	Pool      string               `json:"pool"`
+	Agent     string               `json:"agent"`
+	Project   string               `json:"project,omitempty"`
+	Labels    []string             `json:"labels,omitempty"`
+	Sandbox   []config.MergedEntry `json:"sandbox,omitempty"`
+	Isolation []config.MergedEntry `json:"isolation,omitempty"`
 }
 
 // PoolScale is one ticket pool's scaling state. Target is the manual

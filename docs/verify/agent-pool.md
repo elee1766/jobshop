@@ -4,9 +4,22 @@ On gasserver, with isolation deployed (`docs/verify/isolation.md`) and
 gascity still running. Pick one rig repo with low traffic.
 
 1. Add an instance to jobshop.yaml (a checkout jobshop can read, not the
-   gascity worktrees), with the subuid start from `/etc/subuid`:
+   gascity worktrees), with the subuid start from `/etc/subuid`. Sandbox
+   and isolation are profiles the pools name, not pack vars (JOB-83):
 
    ```yaml
+   sandbox_profiles:
+     host: {backend: bubblewrap, ro: [/nix/store, /etc/ssl]}
+     egress-deny: {network: pasta, deny: [10.0.0.0/8]}
+   isolation_profiles:
+     mapped:
+       user: {uid: 1000, map_uid: <subuid start>, map_gid: <subgid start>, groups: [jobshop]}
+       limits: {memory: 8G, pids: 4096}
+   defaults:
+     sandbox_by_label:
+       - {labels: [instance:app], profiles: [host, egress-deny]}
+     isolation_by_label:
+       - {labels: [instance:app], profiles: [mapped]}
    packs:
      - path: /var/lib/jobshop/src/jobshop/packs/agent
        prefix: app-
@@ -17,11 +30,11 @@ gascity still running. Pick one rig repo with low traffic.
          branch: main
          primary_sessions: 1
          review_sessions: 1
-         isolation:
-           user: {uid: 1000, map_uid: <subuid start>, map_gid: <subgid start>, groups: [jobshop]}
-           limits: {memory: 8G, pids: 4096}
-         sandbox: {backend: bubblewrap, network: pasta, deny: [10.0.0.0/8]}
    ```
+
+   To attach per pool instead, set `pools.app-primary.sandbox.profiles`
+   (and the review and refinery pools). Setting the old `sandbox` or
+   `isolation` var fails `jobshop config check` naming this.
 
    `jobshop config check` then `jobshop reload`. Lower the gascity
    `routing.primary` cap for that rig by the same count so the host
@@ -30,6 +43,8 @@ gascity still running. Pick one rig repo with low traffic.
    compare-1`. Give the same task to gascity (`gc sling
    <rig>/routing.primary`).
 3. Check, for the jobshop run:
+   - `jobshop pool show app-primary --sandbox` lists the merged sandbox
+     and isolation with the profile, label rule or pool that set each entry.
    - `jobshop session sandbox <id>` shows the mapped uid, the cgroup
      limits and pasta with the deny list.
    - `jobshop run show <run>`: deliver, review, merge close done, the PR

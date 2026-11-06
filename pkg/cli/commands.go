@@ -312,8 +312,44 @@ func pathRewrite(pairs []string) (func(string) string, error) {
 
 type poolCmd struct {
 	List         poolListCmd         `cmd:"" help:"Show each pool's labels, min, max, desired, open, working, idle and cordoned sessions, plus quarantined and paused pools. --label filters."`
+	Show         poolShowCmd         `cmd:"" help:"Show a pool's labels and, with --sandbox, its merged sandbox and isolation with the level that set each entry: defaults, label rule, agent, pool or a profile."`
 	Scale        poolScaleCmd        `cmd:"" help:"Set a pool's desired session count, or 'auto' to follow ready work again. Persisted (admin or pool-scale grant)."`
 	Unquarantine poolUnquarantineCmd `cmd:"" help:"Let a quarantined or paused pool start sessions again."`
+}
+
+type poolShowCmd struct {
+	Pool    string `arg:"" help:"Pool name."`
+	Sandbox bool   `help:"Print the merged sandbox and isolation with the source of each entry."`
+	JSON    bool   `name:"json" help:"Print the result as JSON."`
+}
+
+func (c poolShowCmd) Run(g *Globals) error {
+	p := rpc.PoolShowParams{Pool: c.Pool}
+	if c.JSON {
+		return g.call(rpc.MethodPoolShow, p, nil)
+	}
+	var res rpc.PoolShowResult
+	if err := g.call(rpc.MethodPoolShow, p, &res); err != nil {
+		return err
+	}
+	fmt.Printf("pool %s: agent %s, project %s, labels %s\n", res.Pool, res.Agent, cmp.Or(res.Project, "-"), cmp.Or(strings.Join(res.Labels, " "), "-"))
+	if !c.Sandbox {
+		return nil
+	}
+	for _, sec := range []struct {
+		name    string
+		entries []config.MergedEntry
+	}{{"sandbox", res.Sandbox}, {"isolation", res.Isolation}} {
+		if len(sec.entries) == 0 {
+			fmt.Printf("%s: none\n", sec.name)
+			continue
+		}
+		fmt.Printf("%s:\n", sec.name)
+		for _, e := range sec.entries {
+			fmt.Printf("  %-22s %-40s %s\n", e.Field, e.Value, e.Source)
+		}
+	}
+	return nil
 }
 
 type poolScaleCmd struct {

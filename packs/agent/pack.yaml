@@ -4,17 +4,17 @@
 # One instance per repo (load with a prefix, like the gascity rigs).
 # Mapping and gaps: docs/notes/634-agent-pool.md.
 # Vars: agent, checkout (local clone), repo (owner/name), branch.
+# Sandbox and isolation are not vars: the host attaches profiles to the
+# pools by name, pools.<prefix>primary.sandbox.profiles (JOB-83).
+removed_vars:
+  sandbox: "attach sandbox_profiles to the pools: pools.<prefix>primary.sandbox.profiles (and review, refinery), or defaults.sandbox_by_label"
+  isolation: "attach isolation_profiles to the pools: pools.<prefix>primary.isolation.profiles (and review, refinery), or defaults.isolation_by_label"
 defaults:
   branch: main
   primary_sessions: 3
   review_sessions: 2
   refinery_sessions: 1
   check_cmd: "true"
-  # Per-pool isolation (#388), passed whole to every pool. {} leaves the
-  # pools unisolated; docs/verify/agent-pool.md sets a mapped uid,
-  # cgroup limits and a pasta network with a deny list.
-  isolation: {}
-  sandbox: {}
   # main-ci-repair: a failing completed head after this many seconds of
   # quiet (the gascity order waited 15 minutes).
   ci_quiet: 900
@@ -27,8 +27,6 @@ pools:
     idle_timeout: 5m
     turn_timeout: 2h
     prompt_file: prompts/worker.md
-    isolation: "{{.isolation}}"
-    sandbox: "{{.sandbox}}"
   review:
     agent: "{{.agent}}"
     repo: "{{.checkout}}"
@@ -37,8 +35,6 @@ pools:
     idle_timeout: 5m
     turn_timeout: 2h
     prompt_file: prompts/reviewer.md
-    isolation: "{{.isolation}}"
-    sandbox: "{{.sandbox}}"
   refinery:
     agent: "{{.agent}}"
     repo: "{{.checkout}}"
@@ -47,8 +43,6 @@ pools:
     idle_timeout: 5m
     turn_timeout: 2h
     prompt_file: prompts/refinery.md
-    isolation: "{{.isolation}}"
-    sandbox: "{{.sandbox}}"
 workflows:
   # mol-gfx-pr-work: one durable run per task. gascity kept implement and
   # refinery on one step that moved between pools; here each phase is a

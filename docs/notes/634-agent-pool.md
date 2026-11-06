@@ -8,8 +8,9 @@ Load it once per repo with a `prefix:` (gascity loaded it once per rig).
 gasserver is not switched over: `docs/verify/agent-pool.md`.
 
 Vars: `agent`, `checkout`, `repo`, `branch` (main), session caps,
-`check_cmd`, `ci_quiet`, and `isolation` / `sandbox`, passed whole to
-all three pools (#388). Their default `{}` leaves pools unisolated.
+`check_cmd`, `ci_quiet`. Sandbox and isolation are not vars (JOB-83): the
+host attaches profiles to the pools by name
+([JOB-83-profiles.md](JOB-83-profiles.md)).
 
 | gascity | jobshop |
 | --- | --- |
@@ -46,5 +47,4 @@ No equivalent, not built here:
   `improvement-sweep`, `review-lessons` (selfdev's curate covers part).
 - The worker name pool (`namepool`).
 
-Test: `TestAgentPoolPack` loads the pack with isolation vars set (all
-three pools get them), then runs `pr-work` end to end with the fake agent.
+Test: `TestAgentPoolPack` loads the pack, then runs `pr-work` end to end with the fake agent.

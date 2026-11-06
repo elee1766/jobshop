@@ -10,7 +10,6 @@ import (
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -311,6 +310,22 @@ func (c *Controller) poolStatus() rpc.PoolStatusResult {
 	return res
 }
 
+// poolShow explains a pool's merged sandbox and isolation (JOB-83).
+func (c *Controller) poolShow(_ context.Context, sc scope, p rpc.PoolShowParams) (any, error) {
+	if err := c.requireGrant(sc, "pool-list", "pool show"); err != nil {
+		return nil, err
+	}
+	cfg := c.config()
+	pool, ok := cfg.Pools[p.Pool]
+	if !ok {
+		return nil, fmt.Errorf("%w: pool %q", store.ErrNotFound, p.Pool)
+	}
+	return rpc.PoolShowResult{
+		Pool: p.Pool, Agent: pool.Agent, Project: pool.Project, Labels: pool.Labels,
+		Sandbox: cfg.ExplainSandbox(p.Pool), Isolation: cfg.ExplainIsolation(p.Pool),
+	}, nil
+}
+
 func (c *Controller) poolList(ctx context.Context, sc scope, p rpc.PoolListParams) (any, error) {
 	if err := c.requireGrant(sc, "pool-list", "pool list"); err != nil {
 		return nil, err
@@ -324,7 +339,7 @@ func (c *Controller) poolList(ctx context.Context, sc scope, p rpc.PoolListParam
 	keep := map[string]bool{}
 	cfg := c.config()
 	for name, pool := range cfg.Pools {
-		if poolHasLabels(pool, p.Label) {
+		if pool.HasLabels(p.Label) {
 			keep[name] = true
 		}
 	}
@@ -332,15 +347,4 @@ func (c *Controller) poolList(ctx context.Context, sc scope, p rpc.PoolListParam
 	maps.DeleteFunc(res.Quarantined, func(name, _ string) bool { return !keep[name] })
 	maps.DeleteFunc(res.Paused, func(name string, _ time.Time) bool { return !keep[name] })
 	return res, nil
-}
-
-// poolHasLabels reports whether the pool carries every wanted label. k=v
-// matches the label k:v.
-func poolHasLabels(p config.Pool, want []string) bool {
-	for _, w := range want {
-		if !slices.Contains(p.Labels, w) && !slices.Contains(p.Labels, strings.Replace(w, "=", ":", 1)) {
-			return false
-		}
-	}
-	return true
 }

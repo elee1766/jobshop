@@ -27,6 +27,17 @@ func checkLabels(labels []string) error {
 	return nil
 }
 
+// HasLabels reports whether the pool carries every wanted label. k=v
+// matches the label k:v.
+func (p Pool) HasLabels(want []string) bool {
+	for _, w := range want {
+		if !slices.Contains(p.Labels, w) && !slices.Contains(p.Labels, strings.Replace(w, "=", ":", 1)) {
+			return false
+		}
+	}
+	return true
+}
+
 // InstanceLabels are the labels a packs entry gives every pool it
 // declares: instance:<name> from the entry's prefix (or the pack's name
 // without one) and pack:<pack> (JOB-81).
