@@ -178,6 +178,12 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 				return err
 			}
 		}
+		if sf.RetryPool != "" {
+			// JOB-59: where a failed attempt goes.
+			if _, err := fmt.Fprintf(w, "   retry pool %s\n", sf.RetryPool); err != nil {
+				return err
+			}
+		}
 		if sf.Auto() && sf.Command != "" {
 			// Command and http steps (#396): what ran and what it said.
 			if _, err := fmt.Fprintf(w, "   %s %s -> %s\n", sf.Type, sf.Command, sf.Result); err != nil {

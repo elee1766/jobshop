@@ -47,6 +47,7 @@ func (c *Controller) stepEvents(ctx context.Context, ids []string) {
 func (c *Controller) checkRun(ctx context.Context, runID string) {
 	// Gated steps are decided first: a skip may finish the run.
 	c.gateSteps(ctx, runID)
+	c.escalateFailedSteps(ctx, runID)
 	if !c.escalateRun(ctx, runID) {
 		c.completeRun(ctx, runID)
 	}

@@ -262,6 +262,9 @@ type StepFields struct {
 	// Placement is the step's resolved placement (#409): its options by
 	// weight and which one the ticket is on now.
 	Placement *StepPlacement `json:"placement,omitempty"`
+	// RetryPool is the resolved retry_pool (JOB-59): the controller moves
+	// the step here after a failed attempt or a review resume.
+	RetryPool string `json:"retry_pool,omitempty"`
 }
 
 // StepPlacement records a step's placement options. The ticket's pool

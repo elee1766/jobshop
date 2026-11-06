@@ -52,6 +52,11 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
     vars: [review_pool]
     steps:
       - {id: review, pool: "{{.review_pool}}", prompt: "Review", title: "Review"}
+  tiered:
+    vars: [dev_pool]
+    steps:
+      - {id: implement, pool: "{{.dev_pool}}", retry_pool: refinery, retries: 3, prompt: "Do", title: "Do"}
+      - {id: review, pool: refinery, prompt: "Review", title: "Review"}
   locked:
     vars: [pr]
     steps:
@@ -79,7 +84,7 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
 `), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
-    vars: {repo: /src, review_pool: refinery}
+    vars: {repo: /src, review_pool: refinery, dev_pool: refinery}
 lease: %q
 resources:
   pr: {keyed: true}
@@ -205,6 +210,43 @@ func TestRunStepPoolVar(t *testing.T) {
 	var runs []store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
 	assert.Len(t, runs, 2, "a bad pool creates no ticket")
+}
+
+// TestRunRetryPool: a step routed to a cheaper pool moves to its
+// retry_pool after a failed attempt or a review resume, and never back
+// (JOB-59). A step already on its retry pool stays put.
+func TestRunRetryPool(t *testing.T) {
+	admin := runRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "tiered", Vars: map[string]string{"dev_pool": "dev"}})
+	require.Equal(t, "dev", r.Steps[0].Pool)
+	sf, err := store.DecodeFields[store.StepFields](r.Steps[0])
+	require.NoError(t, err)
+	assert.Equal(t, "refinery", sf.RetryPool)
+
+	closeStep(t, admin, r.Steps[0].ID, "failed")
+	got := showRun(t, admin, r.Run.ID)
+	assert.Equal(t, store.StatusOpen, got.Steps[0].Status)
+	assert.Equal(t, "refinery", got.Steps[0].Pool, "failed attempt escalates")
+	closeStep(t, admin, r.Steps[0].ID, "failed")
+	assert.Equal(t, "refinery", showRun(t, admin, r.Run.ID).Steps[0].Pool, "never back down")
+
+	// A review resume of a finished step on the cheap pool escalates it.
+	r = startRun(t, admin, rpc.RunStartParams{Workflow: "tiered", Vars: map[string]string{"dev_pool": "dev"}})
+	closeStep(t, admin, r.Steps[0].ID, "done")
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: r.Run.ID, Step: "implement"}, &got))
+	assert.Equal(t, store.StatusOpen, got.Steps[0].Status)
+	assert.Equal(t, "refinery", got.Steps[0].Pool)
+
+	// Started on the retry pool (the pack default): nothing to move.
+	r = startRun(t, admin, rpc.RunStartParams{Workflow: "tiered"})
+	assert.Equal(t, "refinery", r.Steps[0].Pool)
+	sf, err = store.DecodeFields[store.StepFields](r.Steps[0])
+	require.NoError(t, err)
+	assert.Empty(t, sf.RetryPool)
+
+	err = admin.Call(t.Context(), rpc.MethodRunStart, rpc.RunStartParams{Workflow: "tiered", Vars: map[string]string{"dev_pool": "nope"}}, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `unknown pool "nope"`)
 }
 
 // TestRunStepResources: needs_resources is filled from run vars, and a
