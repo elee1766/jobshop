@@ -11,6 +11,7 @@
   import { toolLabel } from '../../kit/format.js';
   import { resolveActions, runAction, markPending } from '../../kit/attention.js';
   import { slots } from '../../kit/plugin.svelte.js';
+  import { closeSessionFlow } from '../../kit/session.js';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api, context = {} } = $props();
@@ -202,6 +203,14 @@
     }
   }
 
+  // Close ends the session and frees its slot (JOB-111); the transcript
+  // stays, and the closed state arrives on the stream.
+  let ending = $state(false);
+  async function endSession() {
+    ending = true;
+    try { await closeSessionFlow(api, id); } finally { ending = false; }
+  }
+
   // Resolve actions per item kind, shared with the Attention rows (#607).
   const actions = $derived(resolveActions(api, itemKind, itemId));
   let acting = $state(false);
@@ -233,6 +242,9 @@
       </div>
     </div>
     <span class="state" data-testid="chat-status">{t?.status ?? 'connecting'}</span>
+    {#if t && !closed && info?.ticket?.status !== 'closed'}
+      <button type="button" class="end" disabled={ending} onclick={endSession} title="End the session now and free its slot" data-testid="chat-close-session">Close</button>
+    {/if}
   </header>
 
   <div class="scroll" bind:this={scroller} onscroll={onScroll} data-testid="journal">
@@ -314,6 +326,9 @@
   .meta a { color: var(--desk-accent); }
   .mono { font-family: var(--desk-mono); }
   .state { font-size: 11px; color: var(--desk-faint); flex: none; }
+  .end { flex: none; height: 24px; padding: 0 8px; font-size: 12px; border-radius: var(--desk-radius); border: 1px solid var(--desk-border); background: none; color: var(--desk-muted); cursor: pointer; }
+  .end:hover { color: var(--desk-bad); border-color: var(--desk-bad); }
+  .end:disabled { opacity: 0.45; cursor: default; }
   .scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 12px 16px 16px; }
   .older { font-size: 12px; margin: 0 0 12px; padding: 4px 8px; border: 1px solid var(--desk-border); border-radius: 4px; background: none; color: var(--desk-faint); cursor: pointer; }
   .none { color: var(--desk-faint); text-align: center; padding: 24px 0; margin: 0; }

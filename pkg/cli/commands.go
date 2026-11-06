@@ -775,6 +775,7 @@ type sessionCmd struct {
 	Cordon   sessionCordonCmd   `cmd:"" help:"Take a session out of rotation: it finishes its ticket and claims nothing new, but stays open (admin or session-cordon grant)."`
 	Uncordon sessionUncordonCmd `cmd:"" help:"Return a cordoned session to rotation."`
 	Drain    sessionDrainCmd    `cmd:"" help:"Cordon a session and end it once it holds nothing."`
+	Close    sessionCloseCmd    `cmd:"" help:"End a session now and free its slot: a running turn is cancelled and each claimed ticket goes back to its pool, or to --handoff, without counting a failure. --dry-run lists what it holds (admin or session-close grant)."`
 	Config   sessionConfigCmd   `cmd:"" help:"Set ACP config options (model=<route> effort=<level>) on one session, applied between turns; --reset goes back to the pool's (admin or session-config grant)."`
 	Rename   sessionRenameCmd   `cmd:"" help:"Set this session's display name, a non-unique label for lists; --id renames another (admin or session-rename grant). An empty name restores the default."`
 }
@@ -828,6 +829,17 @@ type sessionDrainCmd struct {
 
 func (c sessionDrainCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodSessionCordon, rpc.SessionCordonParams{ID: c.ID, Drain: true}, nil)
+}
+
+type sessionCloseCmd struct {
+	ID      string `arg:"" help:"Session id."`
+	Handoff string `help:"Hand claimed and pre-assigned tickets to this pool instead of their own."`
+	Reason  string `short:"r" help:"Why, for the session and ticket comments."`
+	DryRun  bool   `help:"List the tickets the session holds without closing it."`
+}
+
+func (c sessionCloseCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodSessionClose, rpc.SessionCloseParams{ID: c.ID, Handoff: c.Handoff, Reason: c.Reason, DryRun: c.DryRun}, nil)
 }
 
 // sessionPromptCmd shows pool prompt, prompt rules and ticket as the

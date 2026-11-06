@@ -78,5 +78,7 @@
   .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.4); z-index: 60; }
   .confirm { position: fixed; left: 50%; top: 30%; transform: translateX(-50%); padding: 16px; z-index: 61; min-width: 280px; }
   .confirm .row { display: flex; gap: 8px; justify-content: flex-end; }
+  /* A multi-line question (a session close lists held tickets, JOB-111). */
+  .confirm p { white-space: pre-line; max-width: min(560px, 90vw); overflow-wrap: anywhere; }
   .confirm .ok { border-color: var(--accent); }
 </style>
