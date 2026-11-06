@@ -1087,7 +1087,8 @@ Flags:
                              ($JOBSHOP_SOCKET).
 
   -r, --resolution="done"    Resolution: done, failed, rebase (reopen a step
-                             without counting a failure), cancelled, ...
+                             without counting a failure), cancelled. A workflow
+                             step takes only these; put text in a comment.
       --outcome=STRING       Workflow step outcome word (approve, reject, ...);
                              later steps' when: conditions read it.
 ```
@@ -1186,7 +1187,8 @@ Flags:
                              ($JOBSHOP_SOCKET).
 
   -r, --resolution="done"    Resolution: done, failed, rebase (reopen a step
-                             without counting a failure), cancelled, ...
+                             without counting a failure), cancelled. A workflow
+                             step takes only these; put text in a comment.
       --outcome=STRING       Workflow step outcome word (approve, reject, ...);
                              later steps' when: conditions read it.
 ```

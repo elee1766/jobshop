@@ -292,6 +292,9 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		}
 		cl = &h
 	}
+	if err := c.checkStepResolution(ctx, sc, id, p.Resolution); err != nil {
+		return nil, err
+	}
 	if p.Outcome != "" {
 		if err := c.setStepOutcome(ctx, sc, id, p.Outcome); err != nil {
 			return nil, err
@@ -325,6 +328,30 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 	}
 	c.escalationClosed(ctx, t)
 	return t, nil
+}
+
+// checkStepResolution refuses a step close whose resolution the run
+// engine does not act on (JOB-92). A free-text resolution closed the step
+// but never finished it (store.StepFinished), so the run stayed open.
+// skipped is the controller's: only an admin caller may set it.
+func (c *Controller) checkStepResolution(ctx context.Context, sc scope, id, res string) error {
+	switch res {
+	case "done", "failed", store.ResolutionRebase, store.RunCancelled:
+		return nil
+	case store.StepSkipped:
+		if sc.admin {
+			return nil
+		}
+	}
+	t, err := c.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if t.Kind != store.KindStep {
+		return nil
+	}
+	return fmt.Errorf("%w: step %s takes resolution done, failed, rebase or cancelled, not %q; put a summary in a comment (jobshop comment) and a verdict in --outcome",
+		store.ErrInvalid, id, res)
 }
 
 // endSession stops a session's socket, frees everything it held and removes
