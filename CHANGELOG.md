@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.8.0](https://github.com/elee1766/jobshop/compare/v0.7.7...v0.8.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **control:** worker questions and run escalations are no longer posted on the Linear issue by default. Instances that want the #293 behavior must set `linear: {ask_on_issue: true}`.
+
+### Features
+
+* **control:** make linear asks on the issue opt-in, off by default (JOB-114) ([#937](https://github.com/elee1766/jobshop/issues/937)) ([b7133df](https://github.com/elee1766/jobshop/commit/b7133df876e353645abeb626ad5a8fced2acf560))
+
 ## [0.7.7](https://github.com/elee1766/jobshop/compare/v0.7.6...v0.7.7) (2026-11-06)
 
 
