@@ -20,7 +20,9 @@ import (
 	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
-	"github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/cgroup"
+	"github.com/elee1766/acphost/pkg/sandbox"
+	"github.com/elee1766/acphost/pkg/userns"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -541,14 +543,14 @@ type SessionSandboxParams struct {
 type SessionSandboxResult struct {
 	Session string           `json:"session"`
 	Pool    string           `json:"pool"`
-	Sandbox *acphost.Sandbox `json:"sandbox,omitempty"`
+	Sandbox *sandbox.Sandbox `json:"sandbox,omitempty"`
 	Argv    []string         `json:"argv,omitempty"`
 	Error   string           `json:"error,omitempty"`
 	// User and Cgroup are the pool's isolation (#388); CgroupPath is the
 	// session's cgroup directory.
-	User       *acphost.User   `json:"user,omitempty"`
-	Cgroup     *acphost.Cgroup `json:"cgroup,omitempty"`
-	CgroupPath string          `json:"cgroup_path,omitempty"`
+	User       *userns.User   `json:"user,omitempty"`
+	Cgroup     *cgroup.Cgroup `json:"cgroup,omitempty"`
+	CgroupPath string         `json:"cgroup_path,omitempty"`
 	// Slot is the session's per-session id slot (#540).
 	Slot *int `json:"slot,omitempty"`
 }
