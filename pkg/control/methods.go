@@ -696,6 +696,10 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 		}
 		r.mu.Unlock()
 		info.Crashes = r.crashCount()
+		if r.inTurn.Load() {
+			info.Busy = true
+			info.Tool = r.runningTool()
+		}
 	}
 	c.mu.Unlock()
 	info.Drained = r != nil && c.poolDrained(r.pool)

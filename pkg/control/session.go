@@ -108,6 +108,10 @@ type runner struct {
 	// running turn and sends nothing. inTurn is set while one runs.
 	cancelNow chan struct{}
 	inTurn    atomic.Bool
+	// tools maps the running turn's open tool calls to their titles,
+	// for session list (JOB-54). Cleared when a turn starts. Under mu.
+	tools     map[acp.ToolCallId]string
+	toolOrder []acp.ToolCallId
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
@@ -1105,6 +1109,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 	r.mu.Lock()
 	r.lastStop = ""
 	r.lastSaid.Reset()
+	r.tools, r.toolOrder = nil, nil
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -1409,7 +1414,54 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
 }
 
+// trackTool records a tool call's title and drops it once it completes
+// or fails, so runningTool names the latest open call (JOB-54).
+func (r *runner) trackTool(id acp.ToolCallId, title string, st acp.ToolCallStatus) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if st == acp.ToolCallStatusCompleted || st == acp.ToolCallStatusFailed {
+		delete(r.tools, id)
+		r.toolOrder = slices.DeleteFunc(r.toolOrder, func(x acp.ToolCallId) bool { return x == id })
+		return
+	}
+	if r.tools == nil {
+		r.tools = map[acp.ToolCallId]string{}
+	}
+	old, ok := r.tools[id]
+	if !ok {
+		r.toolOrder = append(r.toolOrder, id)
+	}
+	if title == "" {
+		title = old
+	}
+	r.tools[id] = title
+}
+
+// runningTool is the title of the latest open tool call, or "".
+func (r *runner) runningTool() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if n := len(r.toolOrder); n > 0 {
+		return r.tools[r.toolOrder[n-1]]
+	}
+	return ""
+}
+
 func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	if tc := n.Update.ToolCall; tc != nil {
+		c.r.trackTool(tc.ToolCallId, tc.Title, tc.Status)
+	}
+	if tu := n.Update.ToolCallUpdate; tu != nil {
+		title := ""
+		if tu.Title != nil {
+			title = *tu.Title
+		}
+		var st acp.ToolCallStatus
+		if tu.Status != nil {
+			st = *tu.Status
+		}
+		c.r.trackTool(tu.ToolCallId, title, st)
+	}
 	if m := n.Update.AgentMessageChunk; m != nil && m.Content.Text != nil {
 		c.r.mu.Lock()
 		c.r.lastSaid.WriteString(m.Content.Text.Text)

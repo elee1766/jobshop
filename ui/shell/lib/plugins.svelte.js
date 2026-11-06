@@ -120,10 +120,12 @@ export const deskApi = Object.freeze({
   mount(host, slot, target, context) { return mountSlot(host, slot, target, context); },
   /**
    * Opens a session in the side panel (full screen on a phone). item is
-   * the attention item it resolves, "kind:id" (#535).
-   * @param {string} id @param {{ item?: string }} [opts]
+   * the attention item it resolves, "kind:id" (#535). readonly hides the
+   * composer whatever access allows (JOB-54): a view mode for watching a
+   * worker, not a permission.
+   * @param {string} id @param {{ item?: string, readonly?: boolean }} [opts]
    */
-  openSession(id, opts) { go({ session: id, item: opts?.item || '', ticket: '' }); },
+  openSession(id, opts) { go({ session: id, item: opts?.item || '', ticket: '', ro: opts?.readonly ? '1' : '' }); },
   closeSession() { closeSession(); },
   /** @param {string} id */
   openTicket(id) { go({ ticket: id }); },
