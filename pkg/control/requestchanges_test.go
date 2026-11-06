@@ -87,7 +87,11 @@ func TestRequestChanges(t *testing.T) {
 	// Over the cap: rounds 1 and 2 reopen deliver, round 3 escalates.
 	require.NoError(t, os.WriteFile(rounds, []byte("10"), 0o600))
 	r = startRun(t, admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"task": "endless"}, Key: "endless"})
-	passEventually(t, root.Dir, func() bool { return runState(t, showRun(t, admin, r.Run.ID)) == store.RunNeedsHuman }, "run did not reach needs_human")
+	// The controller sets needs_human, then files the escalation ticket in
+	// a later write, so wait for both (#923).
+	passEventually(t, root.Dir, func() bool {
+		return runState(t, showRun(t, admin, r.Run.ID)) == store.RunNeedsHuman && len(escalations(t, admin, r.Run.ID)) > 0
+	}, "run did not reach needs_human with an escalation")
 	s = stepByName(t, showRun(t, admin, r.Run.ID))
 	assert.Equal(t, store.ResolutionRequestChanges, s["review"].Resolution)
 	rf, err = store.DecodeFields[store.StepFields](s["review"])
