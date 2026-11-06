@@ -442,6 +442,22 @@ let
     c: lib.last (lib.splitString " " (lib.findFirst (r: lib.hasInfix "/jobshop.yaml " r) "" (hmTmp c)));
   expect = name: cond: if cond then true else throw "module-test: ${name} failed";
   checks = [
+    (expect "agent shell tools on the controller PATH (#780)" (
+      let
+        p = map lib.getName sharedNixos.config.systemd.services.jobshop.path;
+      in
+      lib.all (n: lib.elem n p) [
+        "gawk"
+        "which"
+        "procps"
+        "util-linux"
+      ]
+      && lib.all (n: lib.hasInfix "-${n}-" (hmEnv "jobshop")) [
+        "gawk"
+        "which"
+        "procps"
+      ]
+    ))
     (expect "home-manager: same yaml as NixOS" (
       hmYaml sharedHM == yamlPacks sharedNixos && hmFailed sharedHM == [ ] && failed sharedNixos == [ ]
     ))
