@@ -300,6 +300,10 @@ type Controller struct {
 	checkJobs        checkJobs
 	checkSlots       chan struct{}
 	checkSlotsOnce   sync.Once
+	// off is the pass's calls running outside it (JOB-103, offpass.go);
+	// offWake asks the serve loop for a pass that records a finished one.
+	off     offCalls
+	offWake chan struct{}
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -405,6 +409,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	// Metrics ride on the ctx so outbound HTTP below any path records its
 	// timing without a parameter (JOB-105).
 	c.backgroundChecks = true
+	c.offWake = make(chan struct{}, 1)
 	c.ctx, c.cancel = context.WithCancel(telemetry.WithMetrics(ctx, m))
 	c.started = c.now()
 	if loadErr != nil {
@@ -543,6 +548,7 @@ func (c *Controller) serve() error {
 			// tick below applies new pool limits right away.
 			_ = c.reload()
 		case passDone = <-c.opt.Pass:
+		case <-c.offWake:
 		}
 	}
 }

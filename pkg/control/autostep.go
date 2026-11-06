@@ -377,19 +377,28 @@ func (c *Controller) removeRunDir(runID string) {
 	if _, err := os.Stat(dir); err != nil {
 		return
 	}
-	work := filepath.Join(dir, "work")
-	if gd := gitCommonDir(work); gd != "" {
-		c.gitMu.Lock()
-		// Locked at add; two --force override the lock.
-		if out, err := exec.Command("git", "--git-dir", gd, "worktree", "remove", "--force", "--force", work).CombinedOutput(); err != nil {
-			c.log.Warn("git worktree remove", "run", runID, "err", err, "out", strings.TrimSpace(string(out)))
+	// git worktree remove and a large RemoveAll take a while: outside the
+	// tick and the close RPC (JOB-103), one per run dir. A dir left behind
+	// is removed by a later sweepRunDirs.
+	c.offGo("rundir\x00"+runID, "run_dir", runDirRemoveTimeout, false, func(ctx context.Context) any {
+		work := filepath.Join(dir, "work")
+		if gd := gitCommonDir(work); gd != "" {
+			c.gitMu.Lock()
+			// Locked at add; two --force override the lock.
+			if out, err := exec.CommandContext(ctx, "git", "--git-dir", gd, "worktree", "remove", "--force", "--force", work).CombinedOutput(); err != nil {
+				c.log.WarnContext(ctx, "git worktree remove", "run", runID, "err", err, "out", strings.TrimSpace(string(out)))
+			}
+			c.gitMu.Unlock()
 		}
-		c.gitMu.Unlock()
-	}
-	if err := os.RemoveAll(dir); err != nil {
-		c.log.Warn("remove run dir", "run", runID, "err", err)
-	}
+		if err := os.RemoveAll(dir); err != nil {
+			c.log.WarnContext(ctx, "remove run dir", "run", runID, "err", err)
+		}
+		return nil
+	})
 }
+
+// runDirRemoveTimeout bounds git worktree remove for one run dir.
+const runDirRemoveTimeout = 5 * time.Minute
 
 // sweepRunDirs removes run dirs whose run is closed or gone: a close
 // that raced a running attempt, or a restart between close and removal.

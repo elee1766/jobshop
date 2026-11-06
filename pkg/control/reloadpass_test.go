@@ -3,16 +3,17 @@ package control_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -34,31 +35,60 @@ pools:
 triggers:
 %s`
 
+// holdLog blocks the controller goroutine that logs msg until release is
+// closed, after telling held. A supervisor pass logs under tickMu, so
+// blocking one of its records holds the pass where it is. Since JOB-103
+// nothing in a pass runs a command or network call to hold it in.
+type holdLog struct {
+	slog.Handler
+	msg     string
+	held    chan<- struct{}
+	release <-chan struct{}
+}
+
+func (h holdLog) Handle(ctx context.Context, r slog.Record) error {
+	if r.Message == h.msg {
+		select {
+		case h.held <- struct{}{}:
+			<-h.release
+		default:
+		}
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h holdLog) WithAttrs(a []slog.Attr) slog.Handler {
+	return holdLog{h.Handler.WithAttrs(a), h.msg, h.held, h.release}
+}
+
+func (h holdLog) WithGroup(g string) slog.Handler {
+	return holdLog{h.Handler.WithGroup(g), h.msg, h.held, h.release}
+}
+
 // TestReloadDuringPass (JOB-104): a reload while a supervisor pass is
 // held open returns at once, the held pass finishes on the config it
-// started with, and the next pass uses the new one. The pass is held in a
-// trigger command, which still runs inside the pass (a trigger check does
-// not, JOB-109). The gate is a file for the command and a ticket labeled
-// go for the triggers that follow it.
+// started with, and the next pass uses the new one. The pass is held in
+// the log record of a-hold firing; a ticket labeled go lets the triggers
+// fire.
 func TestReloadDuringPass(t *testing.T) {
-	root, start := poolRoot(t, "1m")
-	gate := filepath.Join(root.Dir, "gate")
-	fifo := filepath.Join(root.Dir, "hold")
-	require.NoError(t, syscall.Mkfifo(fifo, 0o600))
+	held := make(chan struct{})
+	release := make(chan struct{})
+	log := slog.New(holdLog{testLog(t).Handler(), "trigger fired", held, release})
+	root, start := poolRootOpt(t, "1m", control.Options{Log: log})
 	write := func(triggers string) {
 		t.Helper()
 		cfg := fmt.Sprintf(reloadPassYAML, os.Args[0], root.Dir, triggers)
 		require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.FileName), []byte(cfg), 0o600))
 	}
-	// Triggers run in name order: a-hold blocks on the fifo once the gate
-	// file exists, then b-old files its ticket in the same pass.
-	write(fmt.Sprintf(`  a-hold:
-    when: {open_below: 100}
-    command: {run: "test -e %[1]s || exit 0; read x < %[2]s"}
+	// Triggers run in name order: a-hold fires first and its log record
+	// holds the pass, then b-old files its ticket in the same pass.
+	write(`  a-hold:
+    when: {label: go, open_above: 0}
+    ticket: {title: hold, pool: dev}
   b-old:
     when: {label: go, open_above: 0}
     ticket: {title: from-old, pool: dev}
-`, gate, fifo))
+`)
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
@@ -68,7 +98,7 @@ func TestReloadDuringPass(t *testing.T) {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindTask}, &ts))
 		var out []string
 		for _, tk := range ts {
-			if tk.Title != "gate" {
+			if tk.Title != "gate" && tk.Title != "hold" {
 				out = append(out, tk.Title)
 			}
 		}
@@ -78,7 +108,6 @@ func TestReloadDuringPass(t *testing.T) {
 	pass(t, root.Dir, 1)
 	require.Empty(t, titles(), "no gate: nothing fires")
 
-	require.NoError(t, os.WriteFile(gate, nil, 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "gate", Labels: []string{"go"}}, nil))
 	v, ok := passChans.Load(root.Dir)
 	require.True(t, ok)
@@ -88,22 +117,10 @@ func TestReloadDuringPass(t *testing.T) {
 	case <-time.After(dialWait):
 		t.Fatal("controller took no pass")
 	}
-	// Opening the fifo for writing returns once a-hold's check opened it
-	// for reading: the pass is held there.
-	opened := make(chan *os.File, 1)
-	go func() {
-		f, err := os.OpenFile(fifo, os.O_WRONLY, 0)
-		if err != nil {
-			f = nil
-		}
-		opened <- f
-	}()
-	var w *os.File
 	select {
-	case w = <-opened:
-		require.NotNil(t, w, "open fifo")
+	case <-held:
 	case <-time.After(dialWait):
-		t.Fatal("the pass never reached the held check")
+		t.Fatal("the pass never fired a-hold")
 	}
 
 	write(`  b-new:
@@ -116,9 +133,7 @@ func TestReloadDuringPass(t *testing.T) {
 	require.NoError(t, admin.Call(ctx, rpc.MethodReload, struct{}{}, nil), "reload returns while the pass is held")
 	require.Empty(t, titles(), "the held pass has not reached b-old yet")
 
-	_, err := w.WriteString("go\n")
-	require.NoError(t, err)
-	require.NoError(t, w.Close())
+	close(release)
 	select {
 	case <-done:
 	case <-time.After(dialWait):

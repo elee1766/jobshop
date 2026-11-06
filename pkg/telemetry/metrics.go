@@ -31,6 +31,7 @@ const (
 	AttrStopReason = attribute.Key("jobshop.turn.stop_reason")
 	AttrModel      = attribute.Key("jobshop.session.model")
 	AttrEffort     = attribute.Key("jobshop.session.effort")
+	AttrPoller     = attribute.Key("jobshop.poller")
 )
 
 // Metrics holds the controller's instruments. Each Metrics has its own
@@ -80,6 +81,9 @@ type Metrics struct {
 	Outbound metric.Float64Histogram
 	// LockWait is time spent waiting for the tick lock, by waiter.
 	LockWait metric.Float64Histogram
+	// PollerTimeouts counts calls run off the pass (checks, Linear reads,
+	// provider calls, hooks) that ran out their timeout (JOB-103).
+	PollerTimeouts metric.Int64Counter
 }
 
 // NewMetrics builds the meter provider, Prometheus exporter and
@@ -98,7 +102,7 @@ func NewMetricsFor(res *resource.Resource) (*Metrics, error) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithResource(orDefault(res)), sdkmetric.WithReader(exp))
 	meter := mp.Meter("github.com/elee1766/jobshop")
 	m := &Metrics{provider: mp, handler: promhttp.HandlerFor(reg, promhttp.HandlerOpts{})}
-	var errs [29]error
+	var errs [30]error
 	m.Sessions, errs[0] = meter.Int64Gauge("jobshop.sessions", metric.WithDescription("Open sessions by pool and state."))
 	m.Restarts, errs[1] = meter.Int64Counter("jobshop.session.restarts", metric.WithDescription("Session agent or host restarts."))
 	m.Ready, errs[2] = meter.Int64Gauge("jobshop.tickets.ready", metric.WithDescription("Ready tickets per pool, from the supervisor tick."))
@@ -152,6 +156,8 @@ func NewMetricsFor(res *resource.Resource) (*Metrics, error) {
 		metric.WithDescription("Outbound HTTP call time to response headers by kind and target host (JOB-105)."))
 	m.LockWait, errs[28] = meter.Float64Histogram("jobshop.lock.wait", metric.WithUnit("s"),
 		metric.WithDescription("Time waiting for the tick lock by lock and waiter (JOB-105)."))
+	m.PollerTimeouts, errs[29] = meter.Int64Counter("jobshop.poller.timeouts",
+		metric.WithDescription("Calls run off the supervisor pass that ran out their timeout, by poller (JOB-103)."))
 	for _, err := range errs {
 		if err != nil {
 			return nil, err

@@ -298,6 +298,9 @@ func (c *Controller) fireOnEvent(ctx context.Context, cfg *config.Config, name s
 		}
 	}
 	t, err := c.fireTriggerEvent(ctx, cfg, name, tr, key, ev)
+	if errors.Is(err, errCheckPending) {
+		return // the run's intake check runs outside the tick (JOB-103)
+	}
 	if err != nil {
 		c.log.ErrorContext(ctx, "trigger fire", "trigger", name, "err", err)
 		return
@@ -380,18 +383,37 @@ func (c *Controller) fireCommand(ctx context.Context, cfg *config.Config, name s
 	if err != nil {
 		return store.Ticket{}, err
 	}
-	out, runErr := c.runTriggerCommand(ctx, script, config.Duration(cm.Timeout, time.Minute))
+	// The open record holds the trigger, so the command runs outside the
+	// tick (JOB-103) and closes or flags the record when it ends. Its
+	// timeout is the command's own, logged as a failure on the record.
+	timeout := config.Duration(cm.Timeout, time.Minute)
+	c.offGo("command\x00"+t.ID, "trigger_command", timeout+time.Minute, false, func(ctx context.Context) any {
+		c.finishCommand(ctx, name, t, script, timeout)
+		return nil
+	})
+	return t, nil
+}
+
+// finishCommand runs a trigger command and closes its record, or marks
+// it needs-human with the output when the command fails.
+func (c *Controller) finishCommand(ctx context.Context, name string, t store.Ticket, script string, timeout time.Duration) {
+	out, runErr := c.runTriggerCommand(ctx, script, timeout)
 	if runErr == nil {
 		if out != "" {
 			_, _ = store.AddComment(ctx, c.store, "controller", t.ID, "Output:\n```\n"+out+"\n```")
 		}
 		c.log.InfoContext(ctx, "trigger command ran", "trigger", name, "ticket", t.ID)
-		return store.Close(ctx, c.store, "controller", t.ID, nil, "done")
+		if _, err := store.Close(ctx, c.store, "controller", t.ID, nil, "done"); err != nil && c.ctx.Err() == nil {
+			c.log.ErrorContext(ctx, "trigger command close", "trigger", name, "ticket", t.ID, "err", err)
+		}
+		return
 	}
 	c.log.ErrorContext(ctx, "trigger command failed", "trigger", name, "ticket", t.ID, "err", runErr)
 	body := fmt.Sprintf("Command failed: %v\n\nOutput:\n```\n%s\n```\nThe trigger fires again once this ticket is closed.", runErr, out)
 	_, _ = store.AddComment(ctx, c.store, "controller", t.ID, body)
-	return c.store.Update(ctx, "controller", t.ID, store.Update{AddLabels: []string{needsHumanLabel}})
+	if _, err := c.store.Update(ctx, "controller", t.ID, store.Update{AddLabels: []string{needsHumanLabel}}); err != nil && c.ctx.Err() == nil {
+		c.log.ErrorContext(ctx, "trigger command flag", "trigger", name, "ticket", t.ID, "err", err)
+	}
 }
 
 // triggerOutputMax bounds the command output kept on the ticket.
@@ -411,6 +433,7 @@ func (c *Controller) runTriggerCommand(ctx context.Context, script string, timeo
 		out = "..." + out[len(out)-triggerOutputMax:]
 	}
 	if ctx.Err() != nil {
+		c.offTimedOut(ctx, "trigger_command", "command", timeout)
 		return out, fmt.Errorf("timed out after %s", timeout)
 	}
 	var exit *exec.ExitError

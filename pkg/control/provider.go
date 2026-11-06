@@ -148,8 +148,9 @@ func (c *Controller) providerAsync(p *config.Provider, call providerCall) {
 }
 
 // resetSlots asks the provider to reset each slot whose claim ended,
-// once: ok -> ready, failure -> gone. Calls run in this pass so a slot
-// is never reset twice; providers bound them with timeout.
+// once: ok -> ready, failure -> gone. The call runs outside the tick
+// (JOB-103), one per slot; the pass that finds it finished records it,
+// so a slot is never reset twice. Providers bound calls with timeout.
 func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 	rel, err := c.store.ReleaseSlots(ctx)
 	if err != nil {
@@ -166,10 +167,22 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 			_, _, _ = c.store.Slot(ctx, "", store.SlotEvent{Op: store.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: !ok || r.Provider == nil})
 			continue
 		}
-		err := c.callProvider(ctx, r.Provider, providerCall{Op: "reset", Resource: sl.Pool, Slot: sl.ID, Env: sl.Env})
+		p := r.Provider
+		key := "slot\x00" + sl.Pool + "\x00" + sl.ID
+		v, done := c.offTake(key)
+		if !done {
+			call := providerCall{Op: "reset", Resource: sl.Pool, Slot: sl.ID, Env: sl.Env}
+			c.offGo(key, "provider", p.TimeoutDuration(), true, func(ctx context.Context) any {
+				return c.callProvider(ctx, p, call)
+			})
+			if v, done = c.offTake(key); !done {
+				continue // recorded by a later pass
+			}
+		}
 		if ctx.Err() != nil {
 			return
 		}
+		err, _ := v.(error)
 		if err != nil {
 			c.log.WarnContext(ctx, "resource reset failed: slot gone", "resource", sl.Pool, "slot", sl.ID, "err", err)
 		}

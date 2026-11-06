@@ -87,6 +87,10 @@ func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name st
 		return
 	}
 	t, err := c.fireTrigger(ctx, cfg, name, tr, st.key)
+	if errors.Is(err, errCheckPending) {
+		result = "check pending" // the run's intake check (JOB-103)
+		return
+	}
 	if err != nil {
 		result, runErr = "error", err
 		c.log.ErrorContext(ctx, "trigger fire", "trigger", name, "err", err)
@@ -329,9 +333,7 @@ func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, w
 	if r, ok := cp.results[k]; ok {
 		return r.out, r.why, r.err
 	}
-	if cp.results == nil && !slices.ContainsFunc(cp.need, func(n checkNeed) bool { return n.key == k }) {
-		cp.need = append(cp.need, checkNeed{key: k, when: w})
-	}
+	cp.note(checkNeed{key: k, when: w})
 	return "", "", errCheckPending
 }
 
