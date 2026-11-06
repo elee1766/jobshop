@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/elee1766/jobshop/compare/v0.5.2...v0.6.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **nix:** sandbox.enable only puts bubblewrap on PATH ([#853](https://github.com/elee1766/jobshop/issues/853))
+
+### Bug fixes
+
+* **github:** agents file Linear issues in Todo so intake picks them up ([#851](https://github.com/elee1766/jobshop/issues/851)) ([ab587e2](https://github.com/elee1766/jobshop/commit/ab587e266e42c2f9e0fa79758e7e7ef1386523f6))
+
+
+### Refactors
+
+* **nix:** sandbox.enable only puts bubblewrap on PATH ([#853](https://github.com/elee1766/jobshop/issues/853)) ([a60f495](https://github.com/elee1766/jobshop/commit/a60f4952c14b4333e24d4a41ba0f9c76468ff006))
+
 ## [0.5.2](https://github.com/elee1766/jobshop/compare/v0.5.1...v0.5.2) (2026-11-06)
 
 
