@@ -38,7 +38,7 @@ const MaxToolIO = 8 << 10
 // show a transcript the same way. Redact, when set, is applied to tool
 // input and output.
 type EventDecoder struct {
-	tools  map[string]string
+	tools  map[string]toolLabel
 	Redact func(string) string
 	// loading is set from a controller session/load until the agent's
 	// reply: the agent replays the whole conversation as session/update
@@ -59,7 +59,7 @@ type journalMsg struct {
 // show nothing.
 func (e *EventDecoder) Decode(seq, t int64, from string, msg json.RawMessage) (SessionEvent, bool) {
 	if e.tools == nil {
-		e.tools = map[string]string{}
+		e.tools = map[string]toolLabel{}
 	}
 	out := SessionEvent{Seq: seq}
 	if t > 0 {
@@ -125,8 +125,11 @@ func (e *EventDecoder) update(out SessionEvent, params json.RawMessage) (Session
 			Status     string          `json:"status"`
 			RawInput   json.RawMessage `json:"rawInput"`
 			RawOutput  json.RawMessage `json:"rawOutput"`
-			Used       int             `json:"used"`
-			Size       int             `json:"size"`
+			Locations  []struct {
+				Path string `json:"path"`
+			} `json:"locations"`
+			Used int `json:"used"`
+			Size int `json:"size"`
 		} `json:"update"`
 	}
 	if json.Unmarshal(params, &u) != nil {
@@ -151,13 +154,21 @@ func (e *EventDecoder) update(out SessionEvent, params json.RawMessage) (Session
 		out.Type, out.Usage = EventUsage, &Usage{Used: up.Used, Size: up.Size}
 		return out, true
 	case "tool_call", "tool_call_update":
-		title := up.Title
-		if title == "" {
-			title = e.tools[up.ToolCallID]
+		l := e.tools[up.ToolCallID]
+		if up.Title != "" {
+			l.title = up.Title
 		}
-		if title != "" {
-			e.tools[up.ToolCallID] = title
+		var locs []string
+		for _, x := range up.Locations {
+			locs = append(locs, x.Path)
 		}
+		if t := ToolTarget(up.RawInput, locs); t != "" {
+			l.target = e.redact(t)
+		}
+		if i := ToolIntent(up.RawInput); i != "" {
+			l.intent = e.redact(i)
+		}
+		e.tools[up.ToolCallID] = l
 		// Updates without a status are output deltas.
 		if up.Status == "" && up.Kind == "tool_call_update" {
 			return out, false
@@ -167,7 +178,7 @@ func (e *EventDecoder) update(out SessionEvent, params json.RawMessage) (Session
 			status = "pending"
 		}
 		out.Type = EventTool
-		out.Tool = &ToolSummary{ID: up.ToolCallID, Title: title, Status: status, Input: e.io(up.RawInput), Output: e.io(up.RawOutput)}
+		out.Tool = &ToolSummary{ID: up.ToolCallID, Title: l.title, Status: status, Input: e.io(up.RawInput), Output: e.io(up.RawOutput), Target: l.target, Intent: l.intent}
 		if out.Tool.Output == "" {
 			out.Tool.Output = e.io(toolText(up.Content))
 		}
@@ -194,6 +205,17 @@ func toolText(raw json.RawMessage) json.RawMessage {
 		return nil
 	}
 	s, _ := json.Marshal(b.String())
+	return s
+}
+
+// toolLabel is what the decoder keeps of a tool call between frames:
+// updates often omit the title and input.
+type toolLabel struct{ title, target, intent string }
+
+func (e *EventDecoder) redact(s string) string {
+	if e.Redact != nil {
+		return e.Redact(s)
+	}
 	return s
 }
 

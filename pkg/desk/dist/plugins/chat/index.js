@@ -2238,10 +2238,12 @@ var _i = class {
 				if (!n) break;
 				this.busy = !0;
 				let r = n.id || n.title, i = this.tool(r);
-				i ? (n.title && (i.name = n.title), i.state = hi(n.status), n.input && (i.input = n.input), n.output && (i.output = n.output)) : (this.settle(), this.blocks.push({
+				i ? (n.title && (i.name = n.title), n.target && (i.target = n.target), n.intent && (i.intent = n.intent), i.state = hi(n.status), n.input && (i.input = n.input), n.output && (i.output = n.output)) : (this.settle(), this.blocks.push({
 					kind: "tool",
 					id: r,
-					name: n.title || r,
+					name: n.title || "",
+					target: n.target || "",
+					intent: n.intent || "",
 					input: n.input || "",
 					output: n.output || "",
 					state: hi(n.status),
@@ -4869,25 +4871,35 @@ function Zs(e, t) {
 		localStorage.setItem(Ys(e), JSON.stringify([...n.reverse(), t].slice(-100)));
 	} catch {}
 }
+// kit/format.js
+function Qs(e, t) {
+	let n = t.title || "", r = t.target || "", i = t.intent || "";
+	return e?.name === "jcode" && i ? {
+		label: i,
+		detail: r || n
+	} : n ? {
+		label: n,
+		detail: r || i
+	} : {
+		label: r || i || "tool",
+		detail: r && i ? i : ""
+	};
+}
 // plugins/chat/Block.svelte
-var Qs = /* @__PURE__ */ G("<details class=\"prompt svelte-5n3hzh\"><summary class=\"svelte-5n3hzh\"> </summary><pre class=\"svelte-5n3hzh\"> </pre></details>"), $s = /* @__PURE__ */ G("<div class=\"md svelte-5n3hzh\"></div>"), ec = /* @__PURE__ */ G("<div class=\"user svelte-5n3hzh\" data-testid=\"block-user\"><span class=\"tag svelte-5n3hzh\"> </span> <!></div>"), tc = /* @__PURE__ */ G("<div data-testid=\"block-assistant\"></div>"), nc = /* @__PURE__ */ G("<pre class=\"io svelte-5n3hzh\"> </pre>"), rc = /* @__PURE__ */ G("<pre class=\"io out svelte-5n3hzh\"> </pre>"), ic = /* @__PURE__ */ G("<!> <!>", 1), ac = /* @__PURE__ */ G("<div class=\"tool svelte-5n3hzh\" data-testid=\"block-tool\"><button class=\"tool-head svelte-5n3hzh\"><span class=\"tname svelte-5n3hzh\"> </span> <span class=\"tintent svelte-5n3hzh\"> </span> <span class=\"tstate svelte-5n3hzh\" data-testid=\"tool-state\"> </span></button> <!></div>"), oc = /* @__PURE__ */ G("<p class=\"error svelte-5n3hzh\" data-testid=\"block-error\"> </p>"), sc = /* @__PURE__ */ G("<pre class=\"svelte-5n3hzh\"> </pre>"), cc = /* @__PURE__ */ G("<details class=\"system svelte-5n3hzh\" data-testid=\"block-system\"><summary class=\"svelte-5n3hzh\"> </summary> <!></details>");
-function lc(e, t) {
+var $s = /* @__PURE__ */ G("<details class=\"prompt svelte-5n3hzh\"><summary class=\"svelte-5n3hzh\"> </summary><pre class=\"svelte-5n3hzh\"> </pre></details>"), ec = /* @__PURE__ */ G("<div class=\"md svelte-5n3hzh\"></div>"), tc = /* @__PURE__ */ G("<div class=\"user svelte-5n3hzh\" data-testid=\"block-user\"><span class=\"tag svelte-5n3hzh\"> </span> <!></div>"), nc = /* @__PURE__ */ G("<div data-testid=\"block-assistant\"></div>"), rc = /* @__PURE__ */ G("<pre class=\"io svelte-5n3hzh\"> </pre>"), ic = /* @__PURE__ */ G("<pre class=\"io out svelte-5n3hzh\"> </pre>"), ac = /* @__PURE__ */ G("<!> <!>", 1), oc = /* @__PURE__ */ G("<div class=\"tool svelte-5n3hzh\" data-testid=\"block-tool\"><button class=\"tool-head svelte-5n3hzh\"><span class=\"tname svelte-5n3hzh\" data-testid=\"tool-label\"> </span> <span class=\"tintent svelte-5n3hzh\" data-testid=\"tool-detail\"> </span> <span class=\"tstate svelte-5n3hzh\" data-testid=\"tool-state\"> </span></button> <!></div>"), sc = /* @__PURE__ */ G("<p class=\"error svelte-5n3hzh\" data-testid=\"block-error\"> </p>"), cc = /* @__PURE__ */ G("<pre class=\"svelte-5n3hzh\"> </pre>"), lc = /* @__PURE__ */ G("<details class=\"system svelte-5n3hzh\" data-testid=\"block-system\"><summary class=\"svelte-5n3hzh\"> </summary> <!></details>");
+function uc(e, t) {
 	We(t, !0);
-	let n = /* @__PURE__ */ I(!1);
-	function r(e, t = 140) {
+	let n = pi(t, "agent", 3, null), r = /* @__PURE__ */ I(!1);
+	function i(e, t = 140) {
 		let n = (e || "").replace(/\s+/g, " ").trim();
 		return n.length > t ? n.slice(0, t) + "…" : n;
 	}
-	function i(e) {
+	function a(e) {
 		try {
 			return JSON.stringify(JSON.parse(e), null, 2);
 		} catch {
 			return e;
 		}
-	}
-	function a(e) {
-		let t = /"intent"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(e || "");
-		return t ? t[1] : "";
 	}
 	let o = {
 		operator: "operator",
@@ -4896,13 +4908,13 @@ function lc(e, t) {
 		message: "message"
 	};
 	var s = Tr(), c = nn(s), l = (e) => {
-		var n = ec(), i = R(n), a = z(i, !0), s = B(i, 2), c = (e) => {
-			var n = Qs(), i = R(n), a = z(i, !0), o = z(B(i), !0);
+		var n = tc(), r = R(n), a = z(r, !0), s = B(r, 2), c = (e) => {
+			var n = $s(), r = R(n), a = z(r, !0), o = z(B(r), !0);
 			A(n), V((e) => {
 				q(a, e), q(o, t.block.text);
-			}, [() => r(t.block.text, 120)]), K(e, n);
+			}, [() => i(t.block.text, 120)]), K(e, n);
 		}, l = (e) => {
-			var n = $s();
+			var n = ec();
 			Jr(n, () => qs(t.block.text), !0), A(n), K(e, n);
 		};
 		J(s, (e) => {
@@ -4911,44 +4923,49 @@ function lc(e, t) {
 			ni(n, "data-source", t.block.source), q(a, o[t.block.source] || t.block.source);
 		}), K(e, n);
 	}, u = (e) => {
-		var n = tc();
+		var n = nc();
 		let r;
 		Jr(n, () => qs(t.block.text), !0), A(n), V(() => r = Qr(n, 1, "assistant md svelte-5n3hzh", null, r, { live: t.block.live })), K(e, n);
 	}, d = (e) => {
-		var o = ac(), s = R(o), c = R(s), l = z(c, !0), u = B(c, 2), d = z(u, !0), f = z(B(u, 2), !0);
-		A(s);
-		var p = B(s, 2), m = (e) => {
-			var n = ic(), r = nn(n), a = (e) => {
-				var n = nc(), r = z(n, !0);
-				V((e) => q(r, e), [() => i(t.block.input)]), K(e, n);
+		let o = /* @__PURE__ */ N(() => Qs(n(), {
+			title: t.block.name,
+			target: t.block.target,
+			intent: t.block.intent
+		}));
+		var s = oc(), c = R(s), l = R(c), u = z(l, !0), d = B(l, 2), f = z(d, !0), p = z(B(d, 2), !0);
+		A(c);
+		var m = B(c, 2), h = (e) => {
+			var n = ac(), r = nn(n), i = (e) => {
+				var n = rc(), r = z(n, !0);
+				V((e) => q(r, e), [() => a(t.block.input)]), K(e, n);
 			};
 			J(r, (e) => {
-				t.block.input && e(a);
+				t.block.input && e(i);
 			});
 			var o = B(r, 2), s = (e) => {
-				var n = rc(), r = z(n, !0);
+				var n = ic(), r = z(n, !0);
 				V(() => q(r, t.block.output)), K(e, n);
 			};
 			J(o, (e) => {
 				t.block.output && e(s);
 			}), K(e, n);
 		};
-		J(p, (e) => {
-			W(n) && e(m);
-		}), A(o), V((e) => {
-			ni(o, "data-state", t.block.state), ni(o, "data-tool", t.block.id), ni(s, "aria-expanded", W(n)), q(l, t.block.name), q(d, e), q(f, t.block.state);
-		}, [() => a(t.block.input) || r(t.block.input, 80)]), hr("click", s, () => L(n, !W(n))), K(e, o);
+		J(m, (e) => {
+			W(r) && e(h);
+		}), A(s), V((e) => {
+			ni(s, "data-state", t.block.state), ni(s, "data-tool", t.block.id), ni(c, "aria-expanded", W(r)), q(u, W(o).label), q(f, e), q(p, t.block.state);
+		}, [() => W(o).detail || i(t.block.input, 80)]), hr("click", c, () => L(r, !W(r))), K(e, s);
 	}, f = (e) => {
-		var n = oc(), r = z(n, !0);
+		var n = sc(), r = z(n, !0);
 		V(() => q(r, t.block.text)), K(e, n);
 	}, p = (e) => {
-		var n = cc(), i = R(n), a = z(i, !0), o = B(i, 2), s = (e) => {
-			var n = sc(), r = z(n, !0);
+		var n = lc(), r = R(n), a = z(r, !0), o = B(r, 2), s = (e) => {
+			var n = cc(), r = z(n, !0);
 			V(() => q(r, t.block.text)), K(e, n);
 		}, c = /* @__PURE__ */ N(() => t.block.text.length > 160 || t.block.text.includes("\n"));
 		J(o, (e) => {
 			W(c) && e(s);
-		}), A(n), V((e) => q(a, e), [() => r(t.block.text, 160)]), K(e, n);
+		}), A(n), V((e) => q(a, e), [() => i(t.block.text, 160)]), K(e, n);
 	};
 	J(c, (e) => {
 		t.block.kind === "user" ? e(l) : t.block.kind === "assistant" ? e(u, 1) : t.block.kind === "tool" ? e(d, 2) : t.block.kind === "error" ? e(f, 3) : e(p, -1);
@@ -4956,7 +4973,7 @@ function lc(e, t) {
 }
 gr(["click"]);
 // kit/attention.js
-function uc(e, t, n) {
+function dc(e, t, n) {
 	if (!t) return [];
 	let r = (t, n) => () => e.call(t, n), i = () => e.post("api/attention/ack", {
 		kind: t,
@@ -5021,7 +5038,7 @@ function uc(e, t, n) {
 		}];
 	}
 }
-async function dc(e, t) {
+async function fc(e, t) {
 	if (!await e.confirm(t.ask)) return !1;
 	try {
 		return await t.run(), e.toast(t.label + ": done"), !0;
@@ -5029,19 +5046,19 @@ async function dc(e, t) {
 		return e.toast(t.label + " failed: " + String(n.message || n)), !1;
 	}
 }
-var fc = Symbol.for("jobshop.desk.attention.pending"), pc = "jobshop-attention-pending";
-function mc() {
+var pc = Symbol.for("jobshop.desk.attention.pending"), mc = "jobshop-attention-pending";
+function hc() {
 	let e = globalThis;
-	return e[fc] ??= /* @__PURE__ */ new Map();
+	return e[pc] ??= /* @__PURE__ */ new Map();
 }
-function hc(e, t) {
-	mc().set(e, t), globalThis.dispatchEvent?.(new CustomEvent(pc, { detail: {
+function gc(e, t) {
+	hc().set(e, t), globalThis.dispatchEvent?.(new CustomEvent(mc, { detail: {
 		key: e,
 		label: t
 	} }));
 }
 // kit/plugin.svelte.js
-function gc(e, t) {
+function _c(e, t) {
 	let n = t.api.slot(e, t.slot, t.context, t.target);
 	return {
 		update(r) {
@@ -5053,8 +5070,8 @@ function gc(e, t) {
 	};
 }
 // plugins/chat/Pane.svelte
-var _c = /* @__PURE__ */ G("<span> </span>"), vc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), yc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), bc = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), xc = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), Sc = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), Cc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), wc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), Tc = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"></div></div>"), Ec = /* @__PURE__ */ G("<a class=\"mono svelte-wy7o3a\" data-testid=\"chat-ro-ticket\"> </a>"), Dc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\">Read-only: a worker's turn is not driven from here.<!></p>"), Oc = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), kc = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>", 1), Ac = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <!> <span class=\"grow svelte-wy7o3a\"></span> <span class=\"plugged svelte-wy7o3a\" data-testid=\"chat-composer-actions\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), jc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-closed\"> </p>"), Mc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), Nc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\" data-testid=\"chat-model\"> </span>"), Pc = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), Fc = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!> <footer class=\"foot svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!> <span class=\"grow svelte-wy7o3a\"></span> <span class=\"mono fid svelte-wy7o3a\"> </span></footer></section>");
-function Ic(e, t) {
+var vc = /* @__PURE__ */ G("<span> </span>"), yc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), bc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), xc = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), Sc = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), Cc = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), wc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), Tc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), Ec = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"></div></div>"), Dc = /* @__PURE__ */ G("<a class=\"mono svelte-wy7o3a\" data-testid=\"chat-ro-ticket\"> </a>"), Oc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\">Read-only: a worker's turn is not driven from here.<!></p>"), kc = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), Ac = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>", 1), jc = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <!> <span class=\"grow svelte-wy7o3a\"></span> <span class=\"plugged svelte-wy7o3a\" data-testid=\"chat-composer-actions\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), Mc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-closed\"> </p>"), Nc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), Pc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\" data-testid=\"chat-model\"> </span>"), Fc = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), Ic = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!> <footer class=\"foot svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!> <span class=\"grow svelte-wy7o3a\"></span> <span class=\"mono fid svelte-wy7o3a\"> </span></footer></section>");
+function Lc(e, t) {
 	We(t, !0);
 	let n = pi(t, "context", 19, () => ({})), r = /* @__PURE__ */ N(() => String(n().session || "")), i = /* @__PURE__ */ N(() => String(n().item || "")), a = /* @__PURE__ */ N(() => W(i).split(":")[0] || ""), o = /* @__PURE__ */ N(() => W(i).slice(W(a).length + 1)), s = /* @__PURE__ */ N(() => !!n().readonly), c = /* @__PURE__ */ I(null);
 	hn(() => {
@@ -5109,7 +5126,11 @@ function Ic(e, t) {
 		let e = W(c)?.blocks ?? [];
 		for (let t = e.length - 1; t >= 0; t--) {
 			let n = e[t];
-			if (n.kind === "tool" && (n.state === "running" || n.state === "input")) return n.name;
+			if (n.kind === "tool" && (n.state === "running" || n.state === "input")) return Qs(W(l)?.agent, {
+				title: n.name,
+				target: n.target,
+				intent: n.intent
+			}).label;
 		}
 		return "";
 	}), g = /* @__PURE__ */ N(() => W(d).write || !!W(u)), _ = /* @__PURE__ */ N(() => ({
@@ -5186,24 +5207,24 @@ function Ic(e, t) {
 		let t = e.currentTarget;
 		e.key === "ArrowUp" && !e.shiftKey && t.selectionStart === t.selectionEnd && (W(te) >= 0 || !W(y).slice(0, t.selectionStart).includes("\n")) ? (e.preventDefault(), ie(!0)) : e.key === "ArrowDown" && !e.shiftKey && W(te) >= 0 ? (e.preventDefault(), ie(!1)) : e.key === "Enter" && !e.shiftKey ? (e.preventDefault(), ce(e.ctrlKey || e.metaKey)) : e.key === "Escape" && W(m) && (e.preventDefault(), e.stopPropagation(), le());
 	}
-	let de = /* @__PURE__ */ N(() => uc(t.api, W(a), W(o))), fe = /* @__PURE__ */ I(!1);
+	let de = /* @__PURE__ */ N(() => dc(t.api, W(a), W(o))), fe = /* @__PURE__ */ I(!1);
 	async function pe(e) {
 		L(fe, !0);
 		try {
-			await dc(t.api, e) && (hc(W(a) + ":" + W(o), e.label), t.api.closeSession());
+			await fc(t.api, e) && (gc(W(a) + ":" + W(o), e.label), t.api.closeSession());
 		} finally {
 			L(fe, !1);
 		}
 	}
-	var me = Fc(), he = R(me), E = R(he), ge = R(E), _e = z(ge, !0), ve = B(ge, 2), ye = R(ve), be = z(ye, !0), D = B(ye, 2), xe = (e) => {
-		var t = _c(), n = z(t);
+	var me = Ic(), he = R(me), E = R(he), ge = R(E), _e = z(ge, !0), ve = B(ge, 2), ye = R(ve), be = z(ye, !0), D = B(ye, 2), xe = (e) => {
+		var t = vc(), n = z(t);
 		V(() => q(n, `· ${W(l).ticket.pool ?? ""}`)), K(e, t);
 	};
 	J(D, (e) => {
 		W(l)?.ticket?.pool && e(xe);
 	});
 	var O = B(D, 2), Se = (e) => {
-		var n = vc(), r = B(nn(n)), i = z(r, !0);
+		var n = yc(), r = B(nn(n)), i = z(r, !0);
 		V(() => {
 			ni(r, "href", "?ticket=" + W(l).current), q(i, W(l).current);
 		}), hr("click", r, (e) => {
@@ -5216,7 +5237,7 @@ function Ic(e, t) {
 	var k = z(B(E, 2), !0);
 	A(he);
 	var j = B(he, 2), Ce = R(j), we = (e) => {
-		var t = yc(), n = z(t, !0);
+		var t = bc(), n = z(t, !0);
 		V(() => {
 			t.disabled = W(c).loadingOlder, q(n, W(c).loadingOlder ? "Loading history…" : `Load older messages (${W(c).earlier} earlier)`);
 		}), hr("click", t, ae), K(e, t);
@@ -5225,7 +5246,7 @@ function Ic(e, t) {
 		W(c) && W(c).earlier > 0 && e(we);
 	});
 	var Te = B(Ce, 2), Ee = (e) => {
-		var t = bc(), n = z(t, !0);
+		var t = xc(), n = z(t, !0);
 		V(() => q(n, W(c).error)), K(e, t);
 	};
 	J(Te, (e) => {
@@ -5233,32 +5254,40 @@ function Ic(e, t) {
 	});
 	var De = B(Te, 2);
 	Hr(De, 17, () => W(c)?.blocks ?? [], Rr, (e, t) => {
-		lc(e, { get block() {
-			return W(t);
-		} });
+		{
+			let n = /* @__PURE__ */ N(() => W(l)?.agent);
+			uc(e, {
+				get block() {
+					return W(t);
+				},
+				get agent() {
+					return W(n);
+				}
+			});
+		}
 	}, (e) => {
-		K(e, xc());
+		K(e, Sc());
 	});
 	var Oe = B(De, 2);
 	Hr(Oe, 17, () => W(S), Rr, (e, t) => {
-		var n = Sc(), r = R(n), i = z(r, !0), a = z(B(r), !0);
+		var n = Cc(), r = R(n), i = z(r, !0), a = z(B(r), !0);
 		A(n), V(() => {
 			q(i, W(t).text), q(a, W(t).state);
 		}), K(e, n);
 	});
 	var ke = B(Oe, 2), Ae = (e) => {
-		var t = Cc(), n = B(R(t), 1, !0);
+		var t = wc(), n = B(R(t), 1, !0);
 		A(t), V(() => q(n, W(h) || "Working")), K(e, t);
 	};
 	J(ke, (e) => {
 		W(m) && e(Ae);
 	}), A(j), ui(j, (e) => L(C, e), () => W(C));
 	var je = B(j, 2), Me = (e) => {
-		var t = Tc(), n = R(t), r = R(n), i = z(r, !0), s = z(B(r, 2), !0);
+		var t = Ec(), n = R(t), r = R(n), i = z(r, !0), s = z(B(r, 2), !0);
 		A(n);
 		var c = B(n, 2);
 		Hr(c, 21, () => W(de), (e) => e.label, (e, t) => {
-			var n = wc(), r = z(n, !0);
+			var n = Tc(), r = z(n, !0);
 			V(() => {
 				n.disabled = W(fe), q(r, W(t).label);
 			}), hr("click", n, () => pe(W(t))), K(e, n);
@@ -5270,8 +5299,8 @@ function Ic(e, t) {
 		W(i) && e(Me);
 	});
 	var Ne = B(je, 2), Pe = (e) => {
-		var n = Dc(), r = B(R(n)), i = (e) => {
-			var n = Ec(), r = z(n, !0);
+		var n = Oc(), r = B(R(n)), i = (e) => {
+			var n = Dc(), r = z(n, !0);
 			V(() => {
 				ni(n, "href", "?ticket=" + W(l).current), q(r, W(l).current);
 			}), hr("click", n, (e) => {
@@ -5282,23 +5311,23 @@ function Ic(e, t) {
 			W(l)?.current && e(i);
 		}), A(n), K(e, n);
 	}, Fe = (e) => {
-		var n = Ac(), r = R(n);
+		var n = jc(), r = R(n);
 		tt(r), ui(r, (e) => L(ee, e), () => W(ee));
 		var i = B(r, 2), a = R(i), o = B(a, 2), s = B(o, 2), c = (e) => {
-			var t = Oc(), n = z(t, !0);
+			var t = kc(), n = z(t, !0);
 			V(() => q(n, W(x))), K(e, t);
 		};
 		J(s, (e) => {
 			W(x) && e(c);
 		});
 		var l = B(s, 4);
-		Yr(l, (e, t) => gc?.(e, t), () => ({
+		Yr(l, (e, t) => _c?.(e, t), () => ({
 			api: t.api,
 			slot: "chat:composer-actions",
 			context: W(_)
 		}));
 		var u = B(l, 2), d = (e) => {
-			var t = kc(), n = nn(t), r = B(n, 2);
+			var t = Ac(), n = nn(t), r = B(n, 2);
 			V((e) => r.disabled = e, [() => !W(y).trim() || W(b)]), hr("click", n, le), hr("click", r, () => ce(!0)), K(e, t);
 		};
 		J(u, (e) => {
@@ -5313,24 +5342,24 @@ function Ic(e, t) {
 			L(te, -1), se();
 		}), hr("keydown", r, ue), oi(r, () => W(y), (e) => L(y, e)), hr("click", a, () => ie(!0)), hr("click", o, () => ie(!1)), K(e, n);
 	}, Ie = (e) => {
-		var t = jc(), n = z(t);
+		var t = Mc(), n = z(t);
 		V(() => q(n, `Session closed${W(c)?.ended && W(c).ended !== "closed" ? " · " + W(c).ended : ""}`)), K(e, t);
 	}, Le = (e) => {
-		var t = Mc(), n = z(t);
+		var t = Nc(), n = z(t);
 		V(() => q(n, `Read-only: ${(W(d).reason || "this session does not accept input") ?? ""}`)), K(e, t);
 	};
 	J(Ne, (e) => {
 		W(s) ? e(Pe) : W(g) && !W(p) ? e(Fe, 1) : W(p) ? e(Ie, 2) : e(Le, -1);
 	});
 	var Re = B(Ne, 2), ze = R(Re), Be = (e) => {
-		var t = Nc(), n = z(t);
+		var t = Pc(), n = z(t);
 		V(() => q(n, `${W(l).model ?? ""}${W(l).effort ? " · " + W(l).effort : ""}`)), K(e, t);
 	};
 	J(ze, (e) => {
 		W(l)?.model && e(Be);
 	});
 	var Ve = B(ze, 2), He = (e) => {
-		var t = Pc(), n = z(t);
+		var t = Fc(), n = z(t);
 		V((e, t) => q(n, `${e ?? ""} / ${t ?? ""} tokens`), [() => Js(W(c).usage.used), () => Js(W(c).usage.size)]), K(e, t);
 	};
 	J(Ve, (e) => {
@@ -5347,8 +5376,8 @@ gr([
 	"keydown"
 ]);
 // plugins/chat/ChatList.svelte
-var Lc = /* @__PURE__ */ G("<div class=\"err svelte-162crgi\"> </div>"), Rc = /* @__PURE__ */ G("<a><span></span> <span class=\"name svelte-162crgi\"> </span> <span class=\"mono faint id svelte-162crgi\"> </span></a>"), zc = /* @__PURE__ */ G("<div class=\"faint pad0 svelte-162crgi\">No open operator sessions.</div>"), Bc = /* @__PURE__ */ G("<div class=\"card empty\" data-testid=\"escalations-empty\"><div class=\"muted\">No escalation sessions.</div></div>"), Vc = /* @__PURE__ */ G("<tr data-testid=\"escalation-row\"><td class=\"c-title\"> <div class=\"faint mono\"> <!></div></td><td class=\"c-st\"><span> </span></td><td class=\"muted full\"> </td><td class=\"c-st\"><span> </span></td><td class=\"muted c-time\"> </td></tr>"), Hc = /* @__PURE__ */ G("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"escalations\"><thead><tr><th>Ticket</th><th>Cause</th><th>Why</th><th>State</th><th>Age</th></tr></thead><tbody></tbody></table></div>"), Uc = /* @__PURE__ */ G("<header class=\"vh svelte-162crgi\"><h1>Chat</h1> <span class=\"sub svelte-162crgi\">pool <span class=\"mono\"> </span></span></header> <div class=\"list svelte-162crgi\"><form class=\"new svelte-162crgi\"><textarea rows=\"3\" placeholder=\"What should the operator look at?\" data-testid=\"chat-new-input\" class=\"svelte-162crgi\"></textarea> <div class=\"row svelte-162crgi\"><button type=\"submit\" class=\"primary\" data-testid=\"chat-new\">New session</button></div></form> <!> <div data-testid=\"chat-list\"></div> <div class=\"plugged svelte-162crgi\" data-testid=\"chat-panels\"></div> <h2 class=\"st\">Escalations</h2> <!></div>", 1);
-function Wc(e, t) {
+var Rc = /* @__PURE__ */ G("<div class=\"err svelte-162crgi\"> </div>"), zc = /* @__PURE__ */ G("<a><span></span> <span class=\"name svelte-162crgi\"> </span> <span class=\"mono faint id svelte-162crgi\"> </span></a>"), Bc = /* @__PURE__ */ G("<div class=\"faint pad0 svelte-162crgi\">No open operator sessions.</div>"), Vc = /* @__PURE__ */ G("<div class=\"card empty\" data-testid=\"escalations-empty\"><div class=\"muted\">No escalation sessions.</div></div>"), Hc = /* @__PURE__ */ G("<tr data-testid=\"escalation-row\"><td class=\"c-title\"> <div class=\"faint mono\"> <!></div></td><td class=\"c-st\"><span> </span></td><td class=\"muted full\"> </td><td class=\"c-st\"><span> </span></td><td class=\"muted c-time\"> </td></tr>"), Uc = /* @__PURE__ */ G("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"escalations\"><thead><tr><th>Ticket</th><th>Cause</th><th>Why</th><th>State</th><th>Age</th></tr></thead><tbody></tbody></table></div>"), Wc = /* @__PURE__ */ G("<header class=\"vh svelte-162crgi\"><h1>Chat</h1> <span class=\"sub svelte-162crgi\">pool <span class=\"mono\"> </span></span></header> <div class=\"list svelte-162crgi\"><form class=\"new svelte-162crgi\"><textarea rows=\"3\" placeholder=\"What should the operator look at?\" data-testid=\"chat-new-input\" class=\"svelte-162crgi\"></textarea> <div class=\"row svelte-162crgi\"><button type=\"submit\" class=\"primary\" data-testid=\"chat-new\">New session</button></div></form> <!> <div data-testid=\"chat-list\"></div> <div class=\"plugged svelte-162crgi\" data-testid=\"chat-panels\"></div> <h2 class=\"st\">Escalations</h2> <!></div>", 1);
+function Gc(e, t) {
 	We(t, !0);
 	let n = /* @__PURE__ */ I(null), r = /* @__PURE__ */ I(null), i = /* @__PURE__ */ I(""), a = /* @__PURE__ */ I(""), o = /* @__PURE__ */ I(!1), s = /* @__PURE__ */ I("");
 	async function c() {
@@ -5404,14 +5433,14 @@ function Wc(e, t) {
 			}
 		}
 	}
-	var _ = Uc(), v = nn(_), b = B(R(v), 2), x = z(B(R(b)), !0);
+	var _ = Wc(), v = nn(_), b = B(R(v), 2), x = z(B(R(b)), !0);
 	A(b), A(v);
 	var S = B(v, 2), C = R(S), w = R(C);
 	tt(w);
 	var ee = z(B(w, 2));
 	A(C);
 	var te = B(C, 2), T = (e) => {
-		var t = Lc(), n = z(t, !0);
+		var t = Rc(), n = z(t, !0);
 		V(() => q(n, W(i))), K(e, t);
 	};
 	J(te, (e) => {
@@ -5419,7 +5448,7 @@ function Wc(e, t) {
 	});
 	var ne = B(te, 2);
 	Hr(ne, 21, () => W(l), (e) => e.id, (e, t) => {
-		var n = Rc();
+		var n = zc();
 		let r;
 		var i = R(n);
 		let a;
@@ -5430,20 +5459,20 @@ function Wc(e, t) {
 			e.preventDefault(), h(W(t).id, W(t).key.startsWith("attention:") ? W(t).key.slice(10) : "");
 		}), K(e, n);
 	}, (e) => {
-		K(e, zc());
+		K(e, Bc());
 	}), A(ne);
 	var re = B(ne, 2);
-	Yr(re, (e, t) => gc?.(e, t), () => ({
+	Yr(re, (e, t) => _c?.(e, t), () => ({
 		api: t.api,
 		slot: "chat:panel",
 		context: { session: W(s) }
 	}));
 	var ie = B(re, 4), ae = (e) => {
-		K(e, Bc());
+		K(e, Vc());
 	}, oe = (e) => {
-		var t = Hc(), n = R(t), r = B(R(n));
+		var t = Uc(), n = R(t), r = B(R(n));
 		Hr(r, 21, () => [...W(u), ...W(d)], (e) => e.ticket, (e, t) => {
-			var n = Vc();
+			var n = Hc();
 			let r;
 			var i = R(n), a = R(i, !0), o = B(a), c = R(o, !0), l = B(c), u = (e) => {
 				var n = wr();
@@ -5472,8 +5501,8 @@ function Wc(e, t) {
 }
 gr(["click"]);
 // plugins/chat/DrawerChat.svelte
-var Gc = /* @__PURE__ */ G("<div class=\"wrap svelte-1i9xi0d\" data-testid=\"escalation-chat\"><div class=\"bar svelte-1i9xi0d\"><a class=\"svelte-1i9xi0d\">open in side panel</a></div> <div class=\"frame svelte-1i9xi0d\"><!></div></div>");
-function Kc(e, t) {
+var Kc = /* @__PURE__ */ G("<div class=\"wrap svelte-1i9xi0d\" data-testid=\"escalation-chat\"><div class=\"bar svelte-1i9xi0d\"><a class=\"svelte-1i9xi0d\">open in side panel</a></div> <div class=\"frame svelte-1i9xi0d\"><!></div></div>");
+function qc(e, t) {
 	We(t, !0);
 	let n = pi(t, "context", 19, () => ({})), r = /* @__PURE__ */ N(() => n().ticket || {}), i = (e) => typeof e?.meta == "string" ? JSON.parse(e.meta) : e?.meta || {}, a = /* @__PURE__ */ N(() => {
 		if (W(r).kind === "session") return W(r).id;
@@ -5481,10 +5510,10 @@ function Kc(e, t) {
 		return e?.session ? e.session : W(r).holder && /^[a-z][a-z0-9]*-[0-9a-z]{6,}$/i.test(W(r).holder) ? W(r).holder : "";
 	});
 	var o = Tr(), s = nn(o), c = (e) => {
-		var n = Gc(), r = R(n), i = z(r), o = B(r, 2), s = R(o);
+		var n = Kc(), r = R(n), i = z(r), o = B(r, 2), s = R(o);
 		{
 			let e = /* @__PURE__ */ N(() => ({ session: W(a) }));
-			Ic(s, {
+			Lc(s, {
 				get api() {
 					return t.api;
 				},
@@ -5503,8 +5532,8 @@ function Kc(e, t) {
 }
 gr(["click"]);
 // plugins/chat/index.svelte.js
-var qc = new URL("./style.css", import.meta.url).href;
-function Jc(e) {
+var Jc = new URL("./style.css", import.meta.url).href;
+function Yc(e) {
 	return class extends HTMLElement {
 		#e = /* @__PURE__ */ I(qt({
 			api: null,
@@ -5537,9 +5566,9 @@ function Jc(e) {
 			return this.props.config;
 		}
 		connectedCallback() {
-			if (!document.querySelector(`link[href="${qc}"]`)) {
+			if (!document.querySelector(`link[href="${Jc}"]`)) {
 				let e = document.createElement("link");
-				e.rel = "stylesheet", e.href = qc, document.head.append(e);
+				e.rel = "stylesheet", e.href = Jc, document.head.append(e);
 			}
 			this.style.display = "contents", this.app = Mr(e, {
 				target: this,
@@ -5552,7 +5581,7 @@ function Jc(e) {
 	};
 }
 for (let [e, t] of [
-	["desk-chat-pane", Ic],
-	["desk-chat-view", Wc],
-	["desk-chat-drawer", Kc]
-]) customElements.get(e) || customElements.define(e, Jc(t));
+	["desk-chat-pane", Lc],
+	["desk-chat-view", Gc],
+	["desk-chat-drawer", qc]
+]) customElements.get(e) || customElements.define(e, Yc(t));

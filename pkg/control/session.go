@@ -111,9 +111,9 @@ type runner struct {
 	// running turn and sends nothing. inTurn is set while one runs.
 	cancelNow chan struct{}
 	inTurn    atomic.Bool
-	// tools maps the running turn's open tool calls to their titles,
+	// tools maps the running turn's open tool calls to their labels,
 	// for session list (JOB-54). Cleared when a turn starts. Under mu.
-	tools     map[acp.ToolCallId]string
+	tools     map[acp.ToolCallId]openTool
 	toolOrder []acp.ToolCallId
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
@@ -744,6 +744,14 @@ func (r *runner) session() error {
 		}
 	}
 
+	if ai := init.AgentInfo; ai != nil && (ai.Name != fields.AgentName || ai.Version != fields.AgentVersion) {
+		fields.AgentName, fields.AgentVersion = ai.Name, ai.Version
+		if err := r.c.updateSessionFields(ctx, r.id, func(f *store.SessionFields) {
+			f.AgentName, f.AgentVersion = ai.Name, ai.Version
+		}); err != nil {
+			return err
+		}
+	}
 	cwd := r.c.sessionCwd(t)
 	r.setACPID(fields.ACPSession)
 	switch {
@@ -1556,9 +1564,30 @@ func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionReq
 	return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
 }
 
-// trackTool records a tool call's title and drops it once it completes
-// or fails, so runningTool names the latest open call (JOB-54).
-func (r *runner) trackTool(id acp.ToolCallId, title string, st acp.ToolCallStatus) {
+// openTool is a running tool call's title and what it acts on.
+type openTool struct{ title, target, intent string }
+
+// toolInput is rawInput as JSON for rpc.ToolTarget; nil when absent.
+func toolInput(v any) json.RawMessage {
+	if v == nil {
+		return nil
+	}
+	b, _ := json.Marshal(v)
+	return b
+}
+
+func toolPaths(l []acp.ToolCallLocation) []string {
+	var out []string
+	for _, x := range l {
+		out = append(out, x.Path)
+	}
+	return out
+}
+
+// trackTool records a tool call's label and drops it once it completes
+// or fails, so runningTool names the latest open call (JOB-54). Empty
+// fields keep what an earlier frame said.
+func (r *runner) trackTool(id acp.ToolCallId, t openTool, st acp.ToolCallStatus) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if st == acp.ToolCallStatusCompleted || st == acp.ToolCallStatusFailed {
@@ -1567,31 +1596,38 @@ func (r *runner) trackTool(id acp.ToolCallId, title string, st acp.ToolCallStatu
 		return
 	}
 	if r.tools == nil {
-		r.tools = map[acp.ToolCallId]string{}
+		r.tools = map[acp.ToolCallId]openTool{}
 	}
 	old, ok := r.tools[id]
 	if !ok {
 		r.toolOrder = append(r.toolOrder, id)
 	}
-	if title == "" {
-		title = old
+	if t.title == "" {
+		t.title = old.title
 	}
-	r.tools[id] = title
+	if t.target == "" {
+		t.target = old.target
+	}
+	if t.intent == "" {
+		t.intent = old.intent
+	}
+	r.tools[id] = t
 }
 
-// runningTool is the title of the latest open tool call, or "".
-func (r *runner) runningTool() string {
+// runningTool is the latest open tool call, or zero.
+func (r *runner) runningTool() openTool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if n := len(r.toolOrder); n > 0 {
 		return r.tools[r.toolOrder[n-1]]
 	}
-	return ""
+	return openTool{}
 }
 
 func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
 	if tc := n.Update.ToolCall; tc != nil {
-		c.r.trackTool(tc.ToolCallId, tc.Title, tc.Status)
+		in := toolInput(tc.RawInput)
+		c.r.trackTool(tc.ToolCallId, openTool{tc.Title, rpc.ToolTarget(in, toolPaths(tc.Locations)), rpc.ToolIntent(in)}, tc.Status)
 	}
 	if tu := n.Update.ToolCallUpdate; tu != nil {
 		title := ""
@@ -1602,7 +1638,8 @@ func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) err
 		if tu.Status != nil {
 			st = *tu.Status
 		}
-		c.r.trackTool(tu.ToolCallId, title, st)
+		in := toolInput(tu.RawInput)
+		c.r.trackTool(tu.ToolCallId, openTool{title, rpc.ToolTarget(in, toolPaths(tu.Locations)), rpc.ToolIntent(in)}, st)
 	}
 	if m := n.Update.AgentMessageChunk; m != nil && m.Content.Text != nil {
 		c.r.mu.Lock()

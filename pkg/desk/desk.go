@@ -592,7 +592,10 @@ func (s *Server) holders(ctx context.Context, ids []string) map[string]rpc.Holde
 		if _, ok := out[si.ID]; !ok {
 			continue
 		}
-		h := rpc.HolderInfo{ID: si.ID, DisplayName: si.DisplayName, Model: si.Model, Alive: si.Alive, Busy: si.Busy, Tool: si.Tool}
+		h := rpc.HolderInfo{
+			ID: si.ID, DisplayName: si.DisplayName, Model: si.Model, Alive: si.Alive, Busy: si.Busy, Tool: si.Tool,
+			ToolTarget: si.ToolTarget, ToolIntent: si.ToolIntent, Agent: si.Agent,
+		}
 		if si.Ticket != nil {
 			h.Pool = si.Ticket.Pool
 		}

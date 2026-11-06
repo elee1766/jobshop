@@ -629,6 +629,13 @@ type SessionInfo struct {
 	// Tool is the title of its running tool call, if any (JOB-54).
 	Busy bool   `json:"busy,omitempty"`
 	Tool string `json:"tool,omitempty"`
+	// ToolTarget and ToolIntent describe the running tool call, as
+	// ToolSummary does.
+	ToolTarget string `json:"tool_target,omitempty"`
+	ToolIntent string `json:"tool_intent,omitempty"`
+	// Agent is the agent's own name and version from initialize, once
+	// a host connected.
+	Agent *AgentInfo `json:"agent,omitempty"`
 }
 
 // SessionReapParams cleans up session leftovers. Hosts with no open session
@@ -1074,13 +1081,16 @@ type TraceNode struct {
 // HolderInfo is what Desk shows for the session holding a ticket
 // (JOB-54): its label, pool, model and whether a turn runs.
 type HolderInfo struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"display_name,omitempty"`
-	Pool        string `json:"pool,omitempty"`
-	Model       string `json:"model,omitempty"`
-	Alive       bool   `json:"alive,omitempty"`
-	Busy        bool   `json:"busy,omitempty"`
-	Tool        string `json:"tool,omitempty"`
+	ID          string     `json:"id"`
+	DisplayName string     `json:"display_name,omitempty"`
+	Pool        string     `json:"pool,omitempty"`
+	Model       string     `json:"model,omitempty"`
+	Alive       bool       `json:"alive,omitempty"`
+	Busy        bool       `json:"busy,omitempty"`
+	Tool        string     `json:"tool,omitempty"`
+	ToolTarget  string     `json:"tool_target,omitempty"`
+	ToolIntent  string     `json:"tool_intent,omitempty"`
+	Agent       *AgentInfo `json:"agent,omitempty"`
 }
 
 // TriggerInfo is one configured trigger's state now.
@@ -1279,6 +1289,18 @@ type ToolSummary struct {
 	Status string `json:"status"`
 	Input  string `json:"input,omitempty"`
 	Output string `json:"output,omitempty"`
+	// Target is what the call acts on (command, path, query), one line;
+	// Intent is the input's intent field (jcode). Both persist across
+	// the call's updates, like Title.
+	Target string `json:"target,omitempty"`
+	Intent string `json:"intent,omitempty"`
+}
+
+// AgentInfo is the agentInfo an ACP agent reports from initialize,
+// so clients can switch display on the agent (jcode, claude-code, ...).
+type AgentInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version,omitempty"`
 }
 
 // Usage is an ACP usage_update: tokens in context and the window size.

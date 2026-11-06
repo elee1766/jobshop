@@ -1,9 +1,11 @@
 <script>
   // One transcript block, after jcode-web's Block.svelte (#535).
   import { md } from './format.js';
+  import { toolLabel } from '../../kit/format.js';
 
-  /** @type {{ block: import('./transcript.svelte.js').Block }} */
-  let { block } = $props();
+  /** agent is the session's agentInfo, for agent-specific tool labels.
+   * @type {{ block: import('./transcript.svelte.js').Block, agent?: { name?: string } | null }} */
+  let { block, agent = null } = $props();
   let open = $state(false);
 
   /** @param {string} s @param {number} [n] */
@@ -14,11 +16,6 @@
   /** @param {string} s */
   function pretty(s) {
     try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; }
-  }
-  /** The intent field of a tool's JSON input, as jcode tools send it. @param {string} s */
-  function intent(s) {
-    const m = /"intent"\s*:\s*"((?:[^"\\]|\\.)*)"/.exec(s || '');
-    return m ? m[1] : '';
   }
   /** @type {Record<string, string>} */
   const sources = { operator: 'operator', desk: 'Desk user', controller: 'controller prompt', message: 'message' };
@@ -36,10 +33,11 @@
 {:else if block.kind === 'assistant'}
   <div class="assistant md" class:live={block.live} data-testid="block-assistant">{@html md(block.text)}</div>
 {:else if block.kind === 'tool'}
+  {@const l = toolLabel(agent, { title: block.name, target: block.target, intent: block.intent })}
   <div class="tool" data-state={block.state} data-testid="block-tool" data-tool={block.id}>
     <button class="tool-head" onclick={() => (open = !open)} aria-expanded={open}>
-      <span class="tname">{block.name}</span>
-      <span class="tintent">{intent(block.input) || brief(block.input, 80)}</span>
+      <span class="tname" data-testid="tool-label">{l.label}</span>
+      <span class="tintent" data-testid="tool-detail">{l.detail || brief(block.input, 80)}</span>
       <span class="tstate" data-testid="tool-state">{block.state}</span>
     </button>
     {#if open}

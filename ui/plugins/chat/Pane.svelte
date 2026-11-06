@@ -8,6 +8,7 @@
   import { Transcript } from './transcript.svelte.js';
   import { promptHistory, rememberPrompt, tokens } from './format.js';
   import Block from './Block.svelte';
+  import { toolLabel } from '../../kit/format.js';
   import { resolveActions, runAction, markPending } from '../../kit/attention.js';
   import { slots } from '../../kit/plugin.svelte.js';
 
@@ -69,7 +70,7 @@
     const bs = t?.blocks ?? [];
     for (let i = bs.length - 1; i >= 0; i--) {
       const b = bs[i];
-      if (b.kind === 'tool' && (b.state === 'running' || b.state === 'input')) return b.name;
+      if (b.kind === 'tool' && (b.state === 'running' || b.state === 'input')) return toolLabel(info?.agent, { title: b.name, target: b.target, intent: b.intent }).label;
     }
     return '';
   });
@@ -240,7 +241,7 @@
     {/if}
     {#if t?.error}<p class="err">{t.error}</p>{/if}
     {#each t?.blocks ?? [] as b, i (i)}
-      <Block block={b} />
+      <Block block={b} agent={info?.agent} />
     {:else}
       <p class="none">No messages yet.</p>
     {/each}

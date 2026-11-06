@@ -59,6 +59,10 @@ type SessionFields struct {
 	// them (#304), for session list, Desk and telemetry.
 	Model  string `json:"model,omitempty"`
 	Effort string `json:"effort,omitempty"`
+	// AgentName and AgentVersion are the agentInfo the agent reported
+	// from ACP initialize (e.g. "jcode"), so clients can switch display.
+	AgentName    string `json:"agent_name,omitempty"`
+	AgentVersion string `json:"agent_version,omitempty"`
 	// Options are the ACP config options the controller set on the
 	// conversation; ConfigIDs the option ids the agent advertised. Both
 	// survive a controller restart, so an adopted host is not set again.

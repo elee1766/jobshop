@@ -698,10 +698,16 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 		info.Crashes = r.crashCount()
 		if r.inTurn.Load() {
 			info.Busy = true
-			info.Tool = r.runningTool()
+			t := r.runningTool()
+			info.Tool, info.ToolTarget, info.ToolIntent = t.title, t.target, t.intent
 		}
 	}
 	c.mu.Unlock()
+	if info.ToolTarget != "" || info.ToolIntent != "" {
+		// A command line can carry a secret: redact as the journal is.
+		red := c.redactor(journalEnv(dir))
+		info.ToolTarget, info.ToolIntent = red.Text(info.ToolTarget), red.Text(info.ToolIntent)
+	}
 	info.Drained = r != nil && c.poolDrained(r.pool)
 	var sessTicket store.Ticket
 	if sess != nil {
@@ -712,6 +718,9 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 				info.Cordon = f.Cordoned.Reason
 			}
 			info.Model, info.Effort, info.Override = f.Model, f.Effort, f.Override
+			if f.AgentName != "" {
+				info.Agent = &rpc.AgentInfo{Name: f.AgentName, Version: f.AgentVersion}
+			}
 		}
 	}
 	if !info.Alive {

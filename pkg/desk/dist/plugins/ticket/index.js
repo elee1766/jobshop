@@ -2068,74 +2068,91 @@ function Ur(e) {
 function Wr(e) {
 	return !!e && /^[a-z][a-z0-9]*-[0-9a-z]{6,}$/i.test(e);
 }
+function Gr(e, t) {
+	let n = t.title || "", r = t.target || "", i = t.intent || "";
+	return e?.name === "jcode" && i ? {
+		label: i,
+		detail: r || n
+	} : n ? {
+		label: n,
+		detail: r || i
+	} : {
+		label: r || i || "tool",
+		detail: r && i ? i : ""
+	};
+}
 // kit/Holder.svelte
-var Gr = /* @__PURE__ */ X("<span class=\"svelte-bwb1ob\"> </span>"), Kr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-pool\"> </span>"), qr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-name\"> </span>"), Jr = /* @__PURE__ */ X("<span class=\"faint model svelte-bwb1ob\"> </span>"), Yr = /* @__PURE__ */ X("<span class=\"tool muted svelte-bwb1ob\" data-testid=\"holder-tool\"> </span>"), Xr = /* @__PURE__ */ X("<button type=\"button\" class=\"holder svelte-bwb1ob\" data-testid=\"holder\"><span></span> <!> <!> <!> <!></button>");
-function Zr(e, t) {
+var Kr = /* @__PURE__ */ X("<span class=\"svelte-bwb1ob\"> </span>"), qr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-pool\"> </span>"), Jr = /* @__PURE__ */ X("<span class=\"name svelte-bwb1ob\" data-testid=\"holder-name\"> </span>"), Yr = /* @__PURE__ */ X("<span class=\"faint model svelte-bwb1ob\"> </span>"), Xr = /* @__PURE__ */ X("<span class=\"tool muted svelte-bwb1ob\" data-testid=\"holder-tool\"> </span>"), Zr = /* @__PURE__ */ X("<button type=\"button\" class=\"holder svelte-bwb1ob\" data-testid=\"holder\"><span></span> <!> <!> <!> <!></button>");
+function Qr(e, t) {
 	Be(t, !0);
-	let n = Fr(t, "label", 3, ""), r = /* @__PURE__ */ A(() => t.h.display_name || t.h.id), i = /* @__PURE__ */ A(() => [
+	let n = Fr(t, "label", 3, ""), r = /* @__PURE__ */ A(() => t.h.display_name || t.h.id), i = /* @__PURE__ */ A(() => t.h.tool || t.h.tool_target ? Gr(t.h.agent, {
+		title: t.h.tool,
+		target: t.h.tool_target,
+		intent: t.h.tool_intent
+	}).label : "working"), a = /* @__PURE__ */ A(() => [
 		Y(r),
 		[t.h.pool, t.h.model].filter(Boolean).join(" · "),
-		t.h.busy ? t.h.tool || "working" : "",
+		t.h.busy ? Y(i) : "",
 		t.h.id
 	].filter(Boolean).join("\n") + "\nClick to open read-only");
-	var a = Xr(), o = F(a);
-	let s;
-	var c = L(o, 2), l = (e) => {
-		var t = Gr(), r = I(t, !0);
+	var o = Zr(), s = F(o);
+	let c;
+	var l = L(s, 2), u = (e) => {
+		var t = Kr(), r = I(t, !0);
 		z(() => Q(r, n())), Z(e, t);
 	};
-	$(c, (e) => {
-		n() && e(l);
+	$(l, (e) => {
+		n() && e(u);
 	});
-	var u = L(c, 2), d = (e) => {
-		var n = Kr(), r = I(n, !0);
+	var d = L(l, 2), f = (e) => {
+		var n = qr(), r = I(n, !0);
 		z(() => Q(r, t.h.pool)), Z(e, n);
-	}, f = (e) => {
-		var t = qr(), n = I(t, !0);
+	}, p = (e) => {
+		var t = Jr(), n = I(t, !0);
 		z(() => Q(n, Y(r))), Z(e, t);
 	};
-	$(u, (e) => {
-		t.h.pool ? e(d) : e(f, -1);
+	$(d, (e) => {
+		t.h.pool ? e(f) : e(p, -1);
 	});
-	var p = L(u, 2), m = (e) => {
-		var n = Jr(), r = I(n, !0);
+	var m = L(d, 2), h = (e) => {
+		var n = Yr(), r = I(n, !0);
 		z(() => Q(r, t.h.model)), Z(e, n);
 	};
-	$(p, (e) => {
-		t.h.model && e(m);
+	$(m, (e) => {
+		t.h.model && e(h);
 	});
-	var h = L(p, 2), g = (e) => {
-		var n = Yr(), r = I(n, !0);
-		z(() => Q(r, t.h.tool || "working")), Z(e, n);
+	var g = L(m, 2), _ = (e) => {
+		var t = Xr(), n = I(t, !0);
+		z(() => Q(n, Y(i))), Z(e, t);
 	};
-	$(h, (e) => {
-		t.h.busy && e(g);
-	}), D(a), z(() => {
-		kr(a, "title", Y(i)), kr(a, "data-session", t.h.id), kr(a, "data-name", Y(r)), s = Tr(o, 1, "dot svelte-bwb1ob", null, s, {
+	$(g, (e) => {
+		t.h.busy && e(_);
+	}), D(o), z(() => {
+		kr(o, "title", Y(a)), kr(o, "data-session", t.h.id), kr(o, "data-name", Y(r)), c = Tr(s, 1, "dot svelte-bwb1ob", null, c, {
 			busy: t.h.busy,
 			dead: t.h.alive === !1
 		});
-	}), Kn("click", a, (e) => {
+	}), Kn("click", o, (e) => {
 		e.stopPropagation(), t.onopen(t.h.id);
-	}), Z(e, a), Ve();
+	}), Z(e, o), Ve();
 }
 qn(["click"]);
 // kit/Trace.svelte
-var Qr = /* @__PURE__ */ X("<span class=\"faint\"> </span>"), $r = /* @__PURE__ */ X("<span data-testid=\"trace-session\"><!></span>"), ei = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\" class=\"faint svelte-vk0dlq\"> </a>"), ti = /* @__PURE__ */ X("<div class=\"kids svelte-vk0dlq\"></div>"), ni = /* @__PURE__ */ X("<div class=\"node svelte-vk0dlq\"><a class=\"mono svelte-vk0dlq\"> </a> <span> </span> <span class=\"t svelte-vk0dlq\"> </span> <!> <!> <!> <!></div>");
-function ri(e, t) {
+var $r = /* @__PURE__ */ X("<span class=\"faint\"> </span>"), ei = /* @__PURE__ */ X("<span data-testid=\"trace-session\"><!></span>"), ti = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\" class=\"faint svelte-vk0dlq\"> </a>"), ni = /* @__PURE__ */ X("<div class=\"kids svelte-vk0dlq\"></div>"), ri = /* @__PURE__ */ X("<div class=\"node svelte-vk0dlq\"><a class=\"mono svelte-vk0dlq\"> </a> <span> </span> <span class=\"t svelte-vk0dlq\"> </span> <!> <!> <!> <!></div>");
+function ii(e, t) {
 	Be(t, !0);
-	var n = ni(), r = F(n), i = I(r, !0), a = L(r, 2), o = I(a, !0), s = L(a, 2), c = I(s, !0), l = L(s, 2), u = (e) => {
-		var n = Qr(), r = I(n);
+	var n = ri(), r = F(n), i = I(r, !0), a = L(r, 2), o = I(a, !0), s = L(a, 2), c = I(s, !0), l = L(s, 2), u = (e) => {
+		var n = $r(), r = I(n);
 		z(() => Q(r, `via ${t.node.trigger ?? ""}`)), Z(e, n);
 	};
 	$(l, (e) => {
 		t.node.trigger && e(u);
 	});
 	var d = L(l, 2), f = (e) => {
-		var n = $r(), r = F(n);
+		var n = ei(), r = F(n);
 		{
 			let e = /* @__PURE__ */ A(() => t.node.session ?? { id: t.node.holder });
-			Zr(r, {
+			Qr(r, {
 				get h() {
 					return Y(e);
 				},
@@ -2153,7 +2170,7 @@ function ri(e, t) {
 	var p = L(d, 2);
 	_r(p, 16, () => t.node.links ?? [], (e) => e, (e, t) => {
 		var n = tr(), r = qt(n), i = (e) => {
-			var n = ei(), r = I(n, !0);
+			var n = ti(), r = I(n, !0);
 			z((e) => {
 				kr(n, "href", t), Q(r, e);
 			}, [() => t.replace(/^https:\/\/github\.com\//, "")]), Z(e, n);
@@ -2163,9 +2180,9 @@ function ri(e, t) {
 		}), Z(e, n);
 	});
 	var m = L(p, 2), h = (e) => {
-		var n = ti();
+		var n = ni();
 		_r(n, 21, () => t.node.children, (e) => e.id, (e, n) => {
-			ri(e, {
+			ii(e, {
 				get node() {
 					return Y(n);
 				},
@@ -2188,11 +2205,11 @@ function ri(e, t) {
 }
 qn(["click"]);
 // plugins/ticket/Details.svelte
-var ii = /* @__PURE__ */ X("<a class=\"mono sl svelte-jqeuhg\"> </a>"), ai = /* @__PURE__ */ X("<span class=\"pill\"> </span>"), oi = /* @__PURE__ */ X("<span class=\"pill accent\"> </span>"), si = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\"> </a>"), ci = /* @__PURE__ */ X("<span class=\"muted held svelte-jqeuhg\" data-testid=\"held-by\">held by <!> <button type=\"button\" class=\"ghost\" data-testid=\"message-session\">Message this session</button></span>"), li = /* @__PURE__ */ X("<span class=\"mono\"> </span>"), ui = /* @__PURE__ */ X("<span class=\"muted\">held by <!></span>"), di = /* @__PURE__ */ X("<div class=\"row svelte-jqeuhg\"><span class=\"muted\">parent</span> <a class=\"mono\"> </a></div>"), fi = /* @__PURE__ */ X("<span> </span>"), pi = /* @__PURE__ */ X("<div class=\"report svelte-jqeuhg\"><span class=\"pill accent\"> </span> <!> <span class=\"faint\"> </span></div>"), mi = /* @__PURE__ */ X("<span class=\"pill bad\"> </span>"), hi = /* @__PURE__ */ X("<div class=\"muted note svelte-jqeuhg\"> <span class=\"faint\"> </span></div>"), gi = /* @__PURE__ */ X("<li class=\"svelte-jqeuhg\"><div class=\"stepline svelte-jqeuhg\"><a class=\"svelte-jqeuhg\"> </a> <span> </span> <!> <!></div> <!></li>"), _i = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Steps</h3> <ol class=\"steps svelte-jqeuhg\"></ol>", 1), vi = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Body</h3> <pre class=\"body svelte-jqeuhg\"> </pre>", 1), yi = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Trace</h3> <!>", 1), bi = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\" class=\"svelte-jqeuhg\">open</a>"), xi = /* @__PURE__ */ X("<li class=\"svelte-jqeuhg\"><span class=\"mono\"> </span> <span class=\"faint\"> </span> <!></li>"), Si = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">External activity</h3> <ul class=\"ext svelte-jqeuhg\" data-testid=\"drawer-activity\"></ul>", 1), Ci = /* @__PURE__ */ X("<div class=\"comment svelte-jqeuhg\"><div class=\"faint\"><!> </div> <pre> </pre></div>"), wi = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Comments</h3> <!>", 1), Ti = /* @__PURE__ */ X("<div class=\"ticket\"><h2 class=\"svelte-jqeuhg\"> </h2> <div class=\"row svelte-jqeuhg\"><span class=\"pill\"> </span> <span> </span> <!> <!></div> <div class=\"row svelte-jqeuhg\"><!> <!> <span class=\"faint\"> </span></div> <!> <!> <!> <!> <!> <!> <!></div>");
-function Ei(e, t) {
+var ai = /* @__PURE__ */ X("<a class=\"mono sl svelte-jqeuhg\"> </a>"), oi = /* @__PURE__ */ X("<span class=\"pill\"> </span>"), si = /* @__PURE__ */ X("<span class=\"pill accent\"> </span>"), ci = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\"> </a>"), li = /* @__PURE__ */ X("<span class=\"muted held svelte-jqeuhg\" data-testid=\"held-by\">held by <!> <button type=\"button\" class=\"ghost\" data-testid=\"message-session\">Message this session</button></span>"), ui = /* @__PURE__ */ X("<span class=\"mono\"> </span>"), di = /* @__PURE__ */ X("<span class=\"muted\">held by <!></span>"), fi = /* @__PURE__ */ X("<div class=\"row svelte-jqeuhg\"><span class=\"muted\">parent</span> <a class=\"mono\"> </a></div>"), pi = /* @__PURE__ */ X("<span> </span>"), mi = /* @__PURE__ */ X("<div class=\"report svelte-jqeuhg\"><span class=\"pill accent\"> </span> <!> <span class=\"faint\"> </span></div>"), hi = /* @__PURE__ */ X("<span class=\"pill bad\"> </span>"), gi = /* @__PURE__ */ X("<div class=\"muted note svelte-jqeuhg\"> <span class=\"faint\"> </span></div>"), _i = /* @__PURE__ */ X("<li class=\"svelte-jqeuhg\"><div class=\"stepline svelte-jqeuhg\"><a class=\"svelte-jqeuhg\"> </a> <span> </span> <!> <!></div> <!></li>"), vi = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Steps</h3> <ol class=\"steps svelte-jqeuhg\"></ol>", 1), yi = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Body</h3> <pre class=\"body svelte-jqeuhg\"> </pre>", 1), bi = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Trace</h3> <!>", 1), xi = /* @__PURE__ */ X("<a target=\"_blank\" rel=\"noopener noreferrer\" class=\"svelte-jqeuhg\">open</a>"), Si = /* @__PURE__ */ X("<li class=\"svelte-jqeuhg\"><span class=\"mono\"> </span> <span class=\"faint\"> </span> <!></li>"), Ci = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">External activity</h3> <ul class=\"ext svelte-jqeuhg\" data-testid=\"drawer-activity\"></ul>", 1), wi = /* @__PURE__ */ X("<div class=\"comment svelte-jqeuhg\"><div class=\"faint\"><!> </div> <pre> </pre></div>"), Ti = /* @__PURE__ */ X("<h3 class=\"svelte-jqeuhg\">Comments</h3> <!>", 1), Ei = /* @__PURE__ */ X("<div class=\"ticket\"><h2 class=\"svelte-jqeuhg\"> </h2> <div class=\"row svelte-jqeuhg\"><span class=\"pill\"> </span> <span> </span> <!> <!></div> <div class=\"row svelte-jqeuhg\"><!> <!> <span class=\"faint\"> </span></div> <!> <!> <!> <!> <!> <!> <!></div>");
+function Di(e, t) {
 	Be(t, !0);
 	let n = (e, t = m) => {
-		var n = ii(), r = I(n, !0);
+		var n = ai(), r = I(n, !0);
 		z(() => {
 			kr(n, "href", "?session=" + t()), Q(r, t());
 		}), Kn("click", n, (e) => {
@@ -2204,29 +2221,29 @@ function Ei(e, t) {
 	}), c = (e) => t.api.openSession(e, { readonly: !0 }), l = (e) => r().sessions?.[e] ?? { id: e }, u = (e) => Br(e).report || null;
 	var d = tr(), f = qt(d), p = (e) => {
 		let t = /* @__PURE__ */ A(() => zr(Y(a))), d = /* @__PURE__ */ A(() => u(Y(a)));
-		var f = Ti(), p = F(f), m = I(p, !0), h = L(p, 2), g = F(h), _ = I(g, !0), v = L(g, 2), y = I(v), b = L(v, 2), x = (e) => {
-			var t = ai(), n = I(t, !0);
+		var f = Ei(), p = F(f), m = I(p, !0), h = L(p, 2), g = F(h), _ = I(g, !0), v = L(g, 2), y = I(v), b = L(v, 2), x = (e) => {
+			var t = oi(), n = I(t, !0);
 			z(() => Q(n, Y(a).pool)), Z(e, t);
 		};
 		$(b, (e) => {
 			Y(a).pool && e(x);
 		}), _r(L(b, 2), 16, () => Y(a).labels ?? [], (e) => e, (e, t) => {
-			var n = oi(), r = I(n, !0);
+			var n = si(), r = I(n, !0);
 			z(() => Q(r, t)), Z(e, n);
 		}), D(h);
 		var S = L(h, 2), ee = F(S);
 		_r(ee, 17, () => Hr(Y(a)), (e) => e.href, (e, t) => {
-			var n = si(), r = I(n, !0);
+			var n = ci(), r = I(n, !0);
 			z(() => {
 				kr(n, "href", Y(t).href), Q(r, Y(t).label);
 			}), Z(e, n);
 		});
 		var C = L(ee, 2), te = (e) => {
 			var t = tr(), r = qt(t), i = (e) => {
-				var t = ci(), n = L(F(t));
+				var t = li(), n = L(F(t));
 				{
 					let e = /* @__PURE__ */ A(() => l(Y(a).holder));
-					Zr(n, {
+					Qr(n, {
 						get h() {
 							return Y(e);
 						},
@@ -2237,10 +2254,10 @@ function Ei(e, t) {
 				var r = L(n, 2);
 				D(t), Kn("click", r, () => s(Y(a).holder)), Z(e, t);
 			}, o = /* @__PURE__ */ A(() => Wr(Y(a).holder) && Y(a).status === "in_progress"), u = (e) => {
-				var t = ui(), r = L(F(t)), i = (e) => {
+				var t = di(), r = L(F(t)), i = (e) => {
 					n(e, () => Y(a).holder);
 				}, o = /* @__PURE__ */ A(() => Wr(Y(a).holder)), s = (e) => {
-					var t = li(), n = I(t, !0);
+					var t = ui(), n = I(t, !0);
 					z(() => Q(n, Y(a).holder)), Z(e, t);
 				};
 				$(r, (e) => {
@@ -2257,7 +2274,7 @@ function Ei(e, t) {
 		var ne = I(L(C, 2));
 		D(S);
 		var re = L(S, 2), ie = (e) => {
-			var t = di(), n = L(F(t), 2), r = I(n, !0);
+			var t = fi(), n = L(F(t), 2), r = I(n, !0);
 			D(t), z(() => {
 				kr(n, "href", "?ticket=" + Y(a).parent_id), Q(r, Y(a).parent_id);
 			}), Kn("click", n, (e) => {
@@ -2268,8 +2285,8 @@ function Ei(e, t) {
 			Y(a).parent_id && e(ie);
 		});
 		var ae = L(re, 2), oe = (e) => {
-			var t = pi(), n = F(t), r = I(n, !0), i = L(n, 2), a = (e) => {
-				var t = fi(), n = I(t, !0);
+			var t = mi(), n = F(t), r = I(n, !0), i = L(n, 2), a = (e) => {
+				var t = pi(), n = I(t, !0);
 				z(() => Q(n, Y(d).note)), Z(e, t);
 			};
 			$(i, (e) => {
@@ -2284,11 +2301,11 @@ function Ei(e, t) {
 			Y(d) && e(oe);
 		});
 		var se = L(ae, 2), ce = (e) => {
-			var t = _i(), n = L(qt(t), 2);
+			var t = vi(), n = L(qt(t), 2);
 			_r(n, 21, () => r().run.steps, (e) => e.id, (e, t) => {
 				let n = /* @__PURE__ */ A(() => zr(Y(t))), r = /* @__PURE__ */ A(() => u(Y(t)));
-				var a = gi(), o = F(a), s = F(o), d = I(s, !0), f = L(s, 2), p = I(f), m = L(f, 2), h = (e) => {
-					var t = mi(), r = I(t);
+				var a = _i(), o = F(a), s = F(o), d = I(s, !0), f = L(s, 2), p = I(f), m = L(f, 2), h = (e) => {
+					var t = hi(), r = I(t);
 					z(() => Q(r, `${Y(n).failures ?? ""} failures`)), Z(e, t);
 				};
 				$(m, (e) => {
@@ -2297,7 +2314,7 @@ function Ei(e, t) {
 				var g = L(m, 2), _ = (e) => {
 					{
 						let n = /* @__PURE__ */ A(() => l(Y(t).holder));
-						Zr(e, {
+						Qr(e, {
 							get h() {
 								return Y(n);
 							},
@@ -2309,7 +2326,7 @@ function Ei(e, t) {
 					Y(t).status === "in_progress" && Y(t).holder && e(_);
 				}), D(o);
 				var v = L(o, 2), y = (e) => {
-					var t = hi(), n = F(t), i = I(L(n), !0);
+					var t = gi(), n = F(t), i = I(L(n), !0);
 					D(t), z((e) => {
 						Q(n, `${Y(r).state ?? ""}: ${Y(r).note ?? ""} `), Q(i, e);
 					}, [() => Rr(Y(r).at)]), Z(e, t);
@@ -2327,15 +2344,15 @@ function Ei(e, t) {
 			r().run && e(ce);
 		});
 		var le = L(se, 2), ue = (e) => {
-			var t = vi(), n = I(L(qt(t), 2), !0);
+			var t = yi(), n = I(L(qt(t), 2), !0);
 			z(() => Q(n, Y(a).body)), Z(e, t);
 		};
 		$(le, (e) => {
 			Y(a).body && e(ue);
 		});
 		var de = L(le, 2), fe = (e) => {
-			var t = yi();
-			ri(L(qt(t), 2), {
+			var t = bi();
+			ii(L(qt(t), 2), {
 				get node() {
 					return r().trace;
 				},
@@ -2347,10 +2364,10 @@ function Ei(e, t) {
 			r().trace && e(fe);
 		});
 		var pe = L(de, 2), me = (e) => {
-			var t = Si(), n = L(qt(t), 2);
+			var t = Ci(), n = L(qt(t), 2);
 			_r(n, 21, () => o.data.items, (e) => e.id, (e, t) => {
-				var n = xi(), r = F(n), i = I(r, !0), a = L(r), o = L(a), s = I(o), c = L(o, 2), l = (e) => {
-					var n = bi();
+				var n = Si(), r = F(n), i = I(r, !0), a = L(r), o = L(a), s = I(o), c = L(o, 2), l = (e) => {
+					var n = xi();
 					z(() => kr(n, "href", Y(t).url)), Z(e, n);
 				}, u = /* @__PURE__ */ A(() => Y(t).url && Ur(Y(t).url));
 				$(c, (e) => {
@@ -2364,12 +2381,12 @@ function Ei(e, t) {
 			o.data?.items?.length && e(me);
 		});
 		var he = L(pe, 2), ge = (e) => {
-			var t = wi();
+			var t = Ti();
 			_r(L(qt(t), 2), 17, () => r().comments, (e) => e.id, (e, t) => {
-				var r = Ci(), i = F(r), a = F(i), o = (e) => {
+				var r = wi(), i = F(r), a = F(i), o = (e) => {
 					n(e, () => Y(t).author);
 				}, s = /* @__PURE__ */ A(() => Wr(Y(t).author)), c = (e) => {
-					var n = li(), r = I(n, !0);
+					var n = ui(), r = I(n, !0);
 					z(() => Q(r, Y(t).author)), Z(e, n);
 				};
 				$(a, (e) => {
@@ -2394,4 +2411,4 @@ function Ei(e, t) {
 	}), Z(e, d), Ve();
 }
 // plugins/ticket/index.js
-qn(["click"]), Ir("desk-ticket-details", Ei);
+qn(["click"]), Ir("desk-ticket-details", Di);

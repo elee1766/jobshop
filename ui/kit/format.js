@@ -78,3 +78,19 @@ export function chatLabel(k) {
   if (k.startsWith('desk:')) return 'Desk chat';
   return k.split(':')[0] || 'Session';
 }
+
+/**
+ * A tool call's label and secondary text. Agents title tools their own
+ * way: jcode titles by tool type ("Running shell command") and sends a
+ * short intent with each call, so for jcode the intent leads; any other
+ * agent keeps its title, with the command, path or query as detail.
+ * @param {{ name?: string } | null | undefined} agent
+ * @param {{ title?: string, target?: string, intent?: string }} t
+ * @returns {{ label: string, detail: string }}
+ */
+export function toolLabel(agent, t) {
+  const title = t.title || '', target = t.target || '', intent = t.intent || '';
+  if (agent?.name === 'jcode' && intent) return { label: intent, detail: target || title };
+  if (title) return { label: title, detail: target || intent };
+  return { label: target || intent || 'tool', detail: target && intent ? intent : '' };
+}
