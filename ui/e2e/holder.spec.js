@@ -3,7 +3,8 @@ import { test, expect } from '@playwright/test';
 // In-progress cards and ticket traces name the session working a step and
 // open it read-only (JOB-54). The API is mocked.
 
-const builtins = ['attention', 'chat', 'ticket'];
+// desk is the built-in app, the frame around every view (JOB-85).
+const builtins = ['desk', 'attention', 'chat', 'ticket'];
 const pathOf = (/** @type {string} */ url) => new URL(url).pathname.replace(/^.*?(?=\/api\/)/, '');
 
 const worker = { id: 'js-s-w1abcd', display_name: 'dev worker', pool: 'dev', model: 'claude-x', alive: true, busy: true, tool: 'go test' };

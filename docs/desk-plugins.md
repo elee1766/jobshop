@@ -53,7 +53,8 @@ or plain classes as in the example.
 | `action` | a button row in the drawer | `{ticket, run?}` | as drawer |
 | `artifact` | an attachment renderer | `{artifact, file}` with `file.url` | `type` (MIME, `text/*` globs), `ext` |
 | `header` | a widget in the nav bar | `{}` | none |
-| `session` | the session panel body (#535); the shell owns the frame, the last one wins | `{session, item}`, `item` the attention `kind:id` it resolves, or empty | none |
+| `session` | the session panel body (#535); the app owns the frame, the last one wins | `{session, item, readonly}`, `item` the attention `kind:id` it resolves, or empty | none |
+| `app` | the whole page (JOB-85); the shell mounts one, the last by plugin name, below | `{}` | none |
 | `<plugin>:<name>` | a place a plugin's own page offers, below | per slot | any; checked against the `target` the host passes |
 
 `match` lists accepted values per key; every key listed must accept one
@@ -86,6 +87,33 @@ Slots the built-in views offer:
 A slot shows nothing when no plugin contributes, so a toolbar stays as
 it was. To offer slots in your own view, call `api.slot` (below) on an
 element and document the name and context.
+
+### Replacing the whole page
+
+The frame around the views (brand, nav, the main view, the session
+panel, the ticket drawer and the phone tab bar) is itself a plugin: the
+built-in `desk` contributes the `app` slot (JOB-85). The shell keeps
+only the runtime: the plugin loader, the `api`, the event stream, URL
+state, the RPC client with its CSRF header, toasts and confirm. It
+mounts exactly one `app` contribution, the last by plugin name, in
+`<body>`. Replace it in either way:
+
+- name your plugin `desk` (a root or pack plugin with a built-in's name
+  replaces it), or
+- set `desk: {plugins: {desk: {enabled: false}}}` and contribute `app`
+  from any plugin. Without that, an app plugin whose name sorts after
+  `desk` still wins, since the last one does.
+
+The app owns all layout, sizing and responsiveness. It builds its nav
+from `api.contributions('view')` and puts a view on the page with
+`api.mount(host, 'view', {id})`, the same elements the built-in frame
+mounts; `api.badges`, `api.live` and `api.theme` give it what the
+built-in frame shows. `--vvh` and `--vvtop` on `<html>` track the
+visible viewport for a full-height page above a phone keyboard. Declare
+`"api": ">=5"`. An app that fails to import, define or render shows an
+error card in place of the page; with no `app` at all the shell says
+so. [`examples/desk-plugins/mini-app`](../examples/desk-plugins/mini-app)
+is a top-bar app in plain JS that hosts the built-in views.
 
 ## The api
 
@@ -153,6 +181,23 @@ Added in api version 4 (JOB-87; declare `"api": ">=4"`):
   `mount` still mounts only the first match, for a single renderer such
   as `artifact`. Call `destroy` in `disconnectedCallback`. Built-ins use
   the `slots` Svelte action in `ui/kit/plugin.svelte.js`.
+
+Added in api version 5 (JOB-85; declare `"api": ">=5"`), for apps
+and any plugin:
+
+- `contributions(slot, target?)`: every enabled contribution to `slot`
+  that `target` selects, each with `plugin` and `source`, in plugin name
+  order.
+- `has`, `mount`, `slot` and `contributions` take `plugin`, `element`
+  and `id` in `target` as names: `mount(host, 'view', {id: 'work'})`
+  mounts the Work view whatever its `match`.
+- `badge(view, n)` sets the count on a view's nav entry (0 clears it);
+  `badges(fn)` follows them. Desk sets `attention` from `api/attention`.
+- `live(fn)` follows whether the event stream is connected.
+- `theme`: `'dark'` or `'light'`; setting it applies and remembers it.
+
+`badges` and `live` call `fn` at once and on each change, and return
+an unsubscribe function.
 
 Example: create a ticket with meta, then follow it.
 
@@ -242,7 +287,7 @@ scope; the `api` shape stays compatible with them.
   may use; a refused call rejects with `forbidden`.
 - `ui/e2e/plugins/e2e-test` is a fuller plain-JS plugin used by the
   Playwright tests; `ui/e2e/plugins/e2e-slots` adds to Work and Chat
-  through their slots.
+  through their slots; `e2e/app.spec.js` runs `mini-app` as the app.
 
 ## Try the example
 

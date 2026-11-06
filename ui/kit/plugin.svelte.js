@@ -15,6 +15,25 @@ import { mount, unmount } from 'svelte';
 export function defineElement(tag, Component) {
   if (customElements.get(tag)) return;
   const css = new URL(/* @vite-ignore */ './style.css', import.meta.url).href;
+  /** @type {Promise<void> | null} */
+  let cssReady = null;
+  let cssLoaded = false;
+  // Hidden until the stylesheet has loaded: the app frame is a plugin
+  // too (JOB-85), and unstyled it flashes a bare list of links.
+  const loadCss = () => {
+    cssReady ??= new Promise((/** @type {(v?: void) => void} */ resolve) => {
+      const l = /** @type {HTMLLinkElement | null} */ (document.querySelector(`link[href="${css}"]`)) ?? document.createElement('link');
+      if (l.sheet) { resolve(); return; }
+      l.addEventListener('load', () => resolve(), { once: true });
+      l.addEventListener('error', () => resolve(), { once: true });
+      if (!l.isConnected) {
+        l.rel = 'stylesheet';
+        l.href = css;
+        document.head.append(l);
+      }
+    }).then(() => { cssLoaded = true; });
+    return cssReady;
+  };
   customElements.define(tag, class extends HTMLElement {
     props = $state({ api: /** @type {any} */ (null), context: /** @type {any} */ ({}), config: /** @type {any} */ ({}) });
     /** @type {Record<string, any> | null} */
@@ -26,14 +45,13 @@ export function defineElement(tag, Component) {
     set config(v) { this.props.config = v ?? {}; }
     get config() { return this.props.config; }
     connectedCallback() {
-      if (!document.querySelector(`link[href="${css}"]`)) {
-        const l = document.createElement('link');
-        l.rel = 'stylesheet';
-        l.href = css;
-        document.head.append(l);
-      }
       this.style.display = 'contents';
+      const ready = loadCss();
       if (!this.app) this.app = mount(Component, { target: this, props: this.props });
+      if (!cssLoaded) {
+        this.style.visibility = 'hidden';
+        ready.then(() => { this.style.visibility = ''; });
+      }
     }
     disconnectedCallback() {
       if (this.app) unmount(this.app);
@@ -111,7 +129,9 @@ export function query(getApi, q) {
  * @param {() => any} getApi
  */
 export function params(getApi) {
-  const p = $state(/** @type {Record<string, string>} */ ({}));
+  // Filled at once when api is already set, so the first render already
+  // has the URL's view (the desk app would otherwise mount attention first).
+  const p = $state(/** @type {Record<string, string>} */ ({ ...(getApi()?.params?.() ?? {}) }));
   $effect(() => {
     const api = getApi();
     if (!api) return;

@@ -2,26 +2,26 @@
   // The drawer frame (#541): fetches the ticket and hosts action and
   // drawer plugins. The details are the built-in ticket plugin, ordered
   // first; every section gets the same context.
-  import { go } from '../lib/url.svelte.js';
-  import { resource } from '../lib/api.svelte.js';
   import { fields } from '../../kit/format.js';
+  import { resource, slot } from '../../kit/plugin.svelte.js';
   import X from '@lucide/svelte/icons/x';
-  import PluginSlot from './PluginSlot.svelte';
-  import { contributions, matches } from '../lib/plugins.svelte.js';
 
-  /** @type {{ id: string }} */
-  let { id } = $props();
-  const v = resource(() => 'api/ticket/' + encodeURIComponent(id));
-  const close = () => go({ ticket: '' });
+  /** @type {{ api: any, id: string }} */
+  let { api, id } = $props();
+  const v = resource(() => api, () => 'api/ticket/' + encodeURIComponent(id));
+  const close = () => api.go({ ticket: '' });
   /** Match target for drawer and action plugins (#517). @param {any} t @param {any} run */
   const target = (t, run) => ({ kind: t.kind, label: t.labels ?? [], pool: t.pool || '', workflow: fields(run?.ticket ?? t).workflow || '' });
-  /** Built-ins first so the details lead. @param {string} slot @param {any} t @param {any} run */
-  const slotted = (slot, t, run) =>
-    contributions(slot)
-      .filter((x) => matches(x.c.match, target(t, run)))
-      .sort((a, b) => Number(b.plugin.source === 'builtin') - Number(a.plugin.source === 'builtin'));
-  /** @param {any} data */
-  const ctx = (data) => ({ ticket: data.ticket, run: data.run, trace: data.trace, comments: data.comments, sessions: data.sessions });
+  /**
+   * Built-ins first so the details lead.
+   * @param {string} name @param {any} t @param {any} run
+   * @returns {{ plugin: string, element: string, title?: string, source: string }[]}
+   */
+  const slotted = (name, t, run) =>
+    api.contributions(name, target(t, run))
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => Number(b.source === 'builtin') - Number(a.source === 'builtin'));
+  /** A plain copy: elements of other plugins run their own Svelte. @param {any} data */
+  const ctx = (data) => $state.snapshot({ ticket: data.ticket, run: data.run, trace: data.trace, comments: data.comments, sessions: data.sessions });
 </script>
 
 <svelte:window onkeydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } }} />
@@ -38,16 +38,19 @@
     {:else if v.data}
       {@const t = v.data.ticket}
       {@const c = ctx(v.data)}
-      {#if slotted('action', t, v.data.run).length}
+      {@const actions = slotted('action', t, v.data.run)}
+      {#if actions.length}
         <div class="row actions" data-testid="drawer-actions">
-          {#each slotted('action', t, v.data.run) as a (a.plugin.name + a.c.element)}
-            <PluginSlot plugin={a.plugin} element={a.c.element} context={c} />
+          {#each actions as a (a.plugin + a.element)}
+            <div class="plugin-host" data-plugin={a.plugin} use:slot={{ api, slot: 'action', target: { plugin: a.plugin, element: a.element }, context: c }}></div>
           {/each}
         </div>
       {/if}
-      {#each slotted('drawer', t, v.data.run) as d (d.plugin.name + d.c.element)}
-        {#if d.c.title}<h3>{d.c.title}</h3>{/if}
-        <div data-testid="drawer-plugin" data-plugin={d.plugin.name}><PluginSlot plugin={d.plugin} element={d.c.element} context={c} /></div>
+      {#each slotted('drawer', t, v.data.run) as d (d.plugin + d.element)}
+        {#if d.title}<h3>{d.title}</h3>{/if}
+        <div data-testid="drawer-plugin" data-plugin={d.plugin}>
+          <div class="plugin-host" data-plugin={d.plugin} use:slot={{ api, slot: 'drawer', target: { plugin: d.plugin, element: d.element }, context: c }}></div>
+        </div>
       {:else}
         <p class="faint">No drawer plugins are enabled.</p>
       {/each}

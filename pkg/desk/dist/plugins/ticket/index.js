@@ -1922,7 +1922,12 @@ function Ir(e, t) {
 		/* @vite-ignore */
 		"./style.css",
 		import.meta.url
-	).href;
+	).href, r = null, i = !1, a = () => (r ??= new Promise((e) => {
+		let t = document.querySelector(`link[href="${n}"]`) ?? document.createElement("link");
+		t.sheet ? e() : (t.addEventListener("load", () => e(), { once: !0 }), t.addEventListener("error", () => e(), { once: !0 }), t.isConnected || (t.rel = "stylesheet", t.href = n, document.head.append(t)));
+	}).then(() => {
+		i = !0;
+	}), r);
 	customElements.define(e, class extends HTMLElement {
 		#e = /* @__PURE__ */ P(Rt({
 			api: null,
@@ -1955,14 +1960,14 @@ function Ir(e, t) {
 			return this.props.config;
 		}
 		connectedCallback() {
-			if (!document.querySelector(`link[href="${n}"]`)) {
-				let e = document.createElement("link");
-				e.rel = "stylesheet", e.href = n, document.head.append(e);
-			}
-			this.style.display = "contents", this.app ||= cr(t, {
+			this.style.display = "contents";
+			let e = a();
+			this.app ||= cr(t, {
 				target: this,
 				props: this.props
-			});
+			}), i || (this.style.visibility = "hidden", e.then(() => {
+				this.style.visibility = "";
+			}));
 		}
 		disconnectedCallback() {
 			this.app && fr(this.app), this.app = null;

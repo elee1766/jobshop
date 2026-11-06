@@ -60,11 +60,13 @@ type Plugin struct {
 }
 
 // PluginSlots are the built-in slot names. session (#535) is the session
-// panel's body: the shell owns the frame (side column on desktop, full
+// panel's body: the app owns the frame (side column on desktop, full
 // screen on a phone) and the last session contribution renders the chat
-// inside it. Any other slot is plugin-defined (JOB-87): <plugin>:<name>,
-// hosted by the plugin named before the colon through api.slot.
-var PluginSlots = []string{"view", "drawer", "artifact", "action", "header", "session"}
+// inside it. app (JOB-85) is the whole page: the shell mounts one, the
+// built-in desk plugin unless another plugin contributes app. Any other
+// slot is plugin-defined (JOB-87): <plugin>:<name>, hosted by the plugin
+// named before the colon through api.slot.
+var PluginSlots = []string{"view", "drawer", "artifact", "action", "header", "session", "app"}
 
 var (
 	pluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
