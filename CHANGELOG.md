@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.10](https://github.com/elee1766/jobshop/compare/v0.6.9...v0.6.10) (2026-11-06)
+
+
+### Features
+
+* **hooks:** url guardrail hooks and configurable retry for url hooks ([#887](https://github.com/elee1766/jobshop/issues/887)) ([30a711a](https://github.com/elee1766/jobshop/commit/30a711aac26f54c8fe400c4af6267a921abb2951))
+
 ## [0.6.9](https://github.com/elee1766/jobshop/compare/v0.6.8...v0.6.9) (2026-11-06)
 
 
