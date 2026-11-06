@@ -22,6 +22,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sys/unix"
 
@@ -99,6 +100,9 @@ type Options struct {
 	// process tracer from telemetry.Start, with Log from the same call.
 	// Default: spans with no exporter, so trace context still propagates.
 	Tracer trace.Tracer
+	// Resource is the process resource from telemetry.Start; /metrics
+	// serves it as target_info (JOB-106). Nil: service.name=jobshop only.
+	Resource *resource.Resource
 	// Reload, if set, triggers a config reload per receive. The serve
 	// command sends on SIGHUP; tests send directly.
 	Reload <-chan struct{}
@@ -340,7 +344,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		return err
 	}
 
-	m, err := telemetry.NewMetrics()
+	m, err := telemetry.NewMetricsFor(opt.Resource)
 	if err != nil {
 		return err
 	}

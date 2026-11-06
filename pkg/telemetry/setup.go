@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/elee1766/jobshop/pkg/logctx"
+	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -13,7 +14,10 @@ import (
 type Process struct {
 	Log    *slog.Logger
 	Tracer trace.Tracer
-	t      *Tracing
+	// Resource is the one on the traces and logs; the controller passes it
+	// to NewMetrics so target_info matches (JOB-106).
+	Resource *resource.Resource
+	t        *Tracing
 }
 
 // Start builds the logger and tracer for the process named name (serve,
@@ -27,7 +31,7 @@ func Start(ctx context.Context, name string, ex Export, base slog.Handler) (*Pro
 		return nil, err
 	}
 	log := slog.New(logctx.NewHandler(t.LogHandler(logctx.Unwrap(base)))).With("process", name)
-	return &Process{Log: log, Tracer: t.Tracer(), t: t}, nil
+	return &Process{Log: log, Tracer: t.Tracer(), Resource: orDefault(ex.Resource), t: t}, nil
 }
 
 // Tracing returns the providers, for a process that hands them on.

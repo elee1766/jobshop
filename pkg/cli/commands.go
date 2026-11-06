@@ -155,7 +155,7 @@ func (c serveCmd) Run(g *Globals) error {
 	}()
 	bi, _ := debug.ReadBuildInfo()
 	v, cm := versionInfo(version, commit, bi)
-	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Tracer: tel.Tracer, Reload: reload, Version: v, Commit: cm, ShellProbe: control.DefaultShellProbe})
+	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Tracer: tel.Tracer, Resource: tel.Resource, Reload: reload, Version: v, Commit: cm, ShellProbe: control.DefaultShellProbe})
 }
 
 type reloadCmd struct {

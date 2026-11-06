@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -33,11 +32,22 @@ type Export struct {
 	TracesURL string // full OTLP/HTTP URL, e.g. http://127.0.0.1:4318/v1/traces
 	LogsURL   string
 	Headers   map[string]string // sent on both signals
+	// Resource is on every span and log record. Nil: service.name=jobshop
+	// only (tests and processes without a config).
+	Resource *resource.Resource
+}
+
+// orDefault returns res, or the minimal jobshop resource when res is nil.
+func orDefault(res *resource.Resource) *resource.Resource {
+	if res != nil {
+		return res
+	}
+	return resource.NewSchemaless(attrServiceName.String("jobshop"))
 }
 
 // NewTracing builds the providers.
 func NewTracing(ctx context.Context, ex Export) (*Tracing, error) {
-	res := resource.NewSchemaless(attribute.String("service.name", "jobshop"))
+	res := orDefault(ex.Resource)
 	opts := []sdktrace.TracerProviderOption{sdktrace.WithResource(res)}
 	t := &Tracing{}
 	var te *otlptrace.Exporter
