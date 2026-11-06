@@ -35,11 +35,6 @@
   </div>
 {:else if block.kind === 'assistant'}
   <div class="assistant md" class:live={block.live} data-testid="block-assistant">{@html md(block.text)}</div>
-{:else if block.kind === 'reasoning'}
-  <details class="reasoning" open={block.live} data-testid="block-reasoning">
-    <summary>Thinking</summary>
-    <pre>{block.text}</pre>
-  </details>
 {:else if block.kind === 'tool'}
   <div class="tool" data-state={block.state} data-testid="block-tool" data-tool={block.id}>
     <button class="tool-head" onclick={() => (open = !open)} aria-expanded={open}>
@@ -66,7 +61,7 @@
   .user[data-source='controller'] { background: transparent; border: 1px dashed var(--desk-border-strong); }
   .tag { display: block; font-size: 11px; color: var(--desk-faint); margin-bottom: 2px; }
   .prompt summary { cursor: pointer; color: var(--desk-muted); font-size: 12px; overflow-wrap: anywhere; }
-  .prompt pre, .reasoning pre, .system pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--desk-font); font-size: 12px; margin: 4px 0 0; }
+  .prompt pre, .system pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--desk-font); font-size: 12px; margin: 4px 0 0; }
   .assistant { margin: 6px 0; min-width: 0; overflow-wrap: anywhere; }
   .md :global(p) { margin: 6px 0; }
   .md :global(pre) { background: var(--desk-raised); padding: 8px 10px; border-radius: 6px; overflow-x: auto; white-space: pre; max-width: 100%; }
@@ -77,9 +72,6 @@
   .md :global(ul), .md :global(ol) { padding-left: 20px; }
   .md :global(a) { color: var(--desk-accent); }
   .live > :global(:last-child)::after { content: '▍'; color: var(--desk-accent); }
-  .reasoning { margin: 4px 0; color: var(--desk-faint); }
-  .reasoning summary { cursor: pointer; font-size: 12px; }
-  .reasoning pre { padding-left: 12px; border-left: 2px solid var(--desk-border); }
   .tool { margin: 2px 0; font-size: 12px; min-width: 0; }
   .tool-head {
     display: flex; gap: 8px; width: 100%; text-align: left; padding: 2px 0; height: auto; min-height: 22px;

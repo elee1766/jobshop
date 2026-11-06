@@ -136,7 +136,8 @@ test('during a turn: Stop, Queue and Interrupt; a tool row updates in place; the
   const tool = page.locator('[data-tool=t1]');
   await expect(tool.getByTestId('tool-state')).toHaveText('running');
   await expect(tool).toContainText('Read the log');
-  await expect(page.getByTestId('block-reasoning')).toContainText('checking the journal');
+  // Thinking is not shown (2026-11-06).
+  await expect(page.getByText('checking the journal')).toHaveCount(0);
   await expect(page.getByTestId('chat-working')).toContainText('bash');
   await expect(page.getByTestId('chat-stop')).toBeVisible();
   await expect(page.getByTestId('chat-interrupt')).toBeVisible();

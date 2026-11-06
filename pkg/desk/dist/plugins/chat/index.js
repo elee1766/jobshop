@@ -2157,7 +2157,7 @@ var mi = class {
 		}
 	}
 	settle() {
-		for (let e of this.blocks) (e.kind === "assistant" || e.kind === "reasoning") && e.live && (e.live = !1);
+		for (let e of this.blocks) e.kind === "assistant" && e.live && (e.live = !1);
 	}
 	apply(e) {
 		let t = e.seq || 0;
@@ -2189,17 +2189,9 @@ var mi = class {
 				});
 				break;
 			}
-			case "reasoning": {
+			case "reasoning":
 				this.busy = !0;
-				let n = this.last("reasoning");
-				n?.live ? n.text += e.text : this.blocks.push({
-					kind: "reasoning",
-					text: e.text || "",
-					live: !0,
-					seq: t
-				});
 				break;
-			}
 			case "tool": {
 				let n = e.tool;
 				if (!n) break;
@@ -4837,8 +4829,8 @@ function Js(e, t) {
 	} catch {}
 }
 // plugins/chat/Block.svelte
-var Ys = /* @__PURE__ */ G("<details class=\"prompt svelte-5n3hzh\"><summary class=\"svelte-5n3hzh\"> </summary><pre class=\"svelte-5n3hzh\"> </pre></details>"), Xs = /* @__PURE__ */ G("<div class=\"md svelte-5n3hzh\"></div>"), Zs = /* @__PURE__ */ G("<div class=\"user svelte-5n3hzh\" data-testid=\"block-user\"><span class=\"tag svelte-5n3hzh\"> </span> <!></div>"), Qs = /* @__PURE__ */ G("<div data-testid=\"block-assistant\"></div>"), $s = /* @__PURE__ */ G("<details class=\"reasoning svelte-5n3hzh\" data-testid=\"block-reasoning\"><summary class=\"svelte-5n3hzh\">Thinking</summary> <pre class=\"svelte-5n3hzh\"> </pre></details>"), ec = /* @__PURE__ */ G("<pre class=\"io svelte-5n3hzh\"> </pre>"), tc = /* @__PURE__ */ G("<pre class=\"io out svelte-5n3hzh\"> </pre>"), nc = /* @__PURE__ */ G("<!> <!>", 1), rc = /* @__PURE__ */ G("<div class=\"tool svelte-5n3hzh\" data-testid=\"block-tool\"><button class=\"tool-head svelte-5n3hzh\"><span class=\"tname svelte-5n3hzh\"> </span> <span class=\"tintent svelte-5n3hzh\"> </span> <span class=\"tstate svelte-5n3hzh\" data-testid=\"tool-state\"> </span></button> <!></div>"), ic = /* @__PURE__ */ G("<p class=\"error svelte-5n3hzh\" data-testid=\"block-error\"> </p>"), ac = /* @__PURE__ */ G("<pre class=\"svelte-5n3hzh\"> </pre>"), oc = /* @__PURE__ */ G("<details class=\"system svelte-5n3hzh\" data-testid=\"block-system\"><summary class=\"svelte-5n3hzh\"> </summary> <!></details>");
-function sc(e, t) {
+var Ys = /* @__PURE__ */ G("<details class=\"prompt svelte-5n3hzh\"><summary class=\"svelte-5n3hzh\"> </summary><pre class=\"svelte-5n3hzh\"> </pre></details>"), Xs = /* @__PURE__ */ G("<div class=\"md svelte-5n3hzh\"></div>"), Zs = /* @__PURE__ */ G("<div class=\"user svelte-5n3hzh\" data-testid=\"block-user\"><span class=\"tag svelte-5n3hzh\"> </span> <!></div>"), Qs = /* @__PURE__ */ G("<div data-testid=\"block-assistant\"></div>"), $s = /* @__PURE__ */ G("<pre class=\"io svelte-5n3hzh\"> </pre>"), ec = /* @__PURE__ */ G("<pre class=\"io out svelte-5n3hzh\"> </pre>"), tc = /* @__PURE__ */ G("<!> <!>", 1), nc = /* @__PURE__ */ G("<div class=\"tool svelte-5n3hzh\" data-testid=\"block-tool\"><button class=\"tool-head svelte-5n3hzh\"><span class=\"tname svelte-5n3hzh\"> </span> <span class=\"tintent svelte-5n3hzh\"> </span> <span class=\"tstate svelte-5n3hzh\" data-testid=\"tool-state\"> </span></button> <!></div>"), rc = /* @__PURE__ */ G("<p class=\"error svelte-5n3hzh\" data-testid=\"block-error\"> </p>"), ic = /* @__PURE__ */ G("<pre class=\"svelte-5n3hzh\"> </pre>"), ac = /* @__PURE__ */ G("<details class=\"system svelte-5n3hzh\" data-testid=\"block-system\"><summary class=\"svelte-5n3hzh\"> </summary> <!></details>");
+function oc(e, t) {
 	Ue(t, !0);
 	let n = /* @__PURE__ */ I(!1);
 	function r(e, t = 140) {
@@ -4882,23 +4874,18 @@ function sc(e, t) {
 		let r;
 		Kr(n, () => Ws(t.block.text), !0), j(n), V(() => r = Yr(n, 1, "assistant md svelte-5n3hzh", null, r, { live: t.block.live })), K(e, n);
 	}, d = (e) => {
-		var n = $s(), r = z(B(R(n), 2), !0);
-		j(n), V(() => {
-			n.open = t.block.live, q(r, t.block.text);
-		}), K(e, n);
-	}, f = (e) => {
-		var o = rc(), s = R(o), c = R(s), l = z(c, !0), u = B(c, 2), d = z(u, !0), f = z(B(u, 2), !0);
+		var o = nc(), s = R(o), c = R(s), l = z(c, !0), u = B(c, 2), d = z(u, !0), f = z(B(u, 2), !0);
 		j(s);
 		var p = B(s, 2), m = (e) => {
-			var n = nc(), r = nn(n), a = (e) => {
-				var n = ec(), r = z(n, !0);
+			var n = tc(), r = nn(n), a = (e) => {
+				var n = $s(), r = z(n, !0);
 				V((e) => q(r, e), [() => i(t.block.input)]), K(e, n);
 			};
 			J(r, (e) => {
 				t.block.input && e(a);
 			});
 			var o = B(r, 2), s = (e) => {
-				var n = tc(), r = z(n, !0);
+				var n = ec(), r = z(n, !0);
 				V(() => q(r, t.block.output)), K(e, n);
 			};
 			J(o, (e) => {
@@ -4910,12 +4897,12 @@ function sc(e, t) {
 		}), j(o), V((e) => {
 			$r(o, "data-state", t.block.state), $r(o, "data-tool", t.block.id), $r(s, "aria-expanded", W(n)), q(l, t.block.name), q(d, e), q(f, t.block.state);
 		}, [() => a(t.block.input) || r(t.block.input, 80)]), pr("click", s, () => L(n, !W(n))), K(e, o);
-	}, p = (e) => {
-		var n = ic(), r = z(n, !0);
+	}, f = (e) => {
+		var n = rc(), r = z(n, !0);
 		V(() => q(r, t.block.text)), K(e, n);
-	}, m = (e) => {
-		var n = oc(), i = R(n), a = z(i, !0), o = B(i, 2), s = (e) => {
-			var n = ac(), r = z(n, !0);
+	}, p = (e) => {
+		var n = ac(), i = R(n), a = z(i, !0), o = B(i, 2), s = (e) => {
+			var n = ic(), r = z(n, !0);
 			V(() => q(r, t.block.text)), K(e, n);
 		}, c = /* @__PURE__ */ ft(() => t.block.text.length > 160 || t.block.text.includes("\n"));
 		J(o, (e) => {
@@ -4923,12 +4910,12 @@ function sc(e, t) {
 		}), j(n), V((e) => q(a, e), [() => r(t.block.text, 160)]), K(e, n);
 	};
 	J(c, (e) => {
-		t.block.kind === "user" ? e(l) : t.block.kind === "assistant" ? e(u, 1) : t.block.kind === "reasoning" ? e(d, 2) : t.block.kind === "tool" ? e(f, 3) : t.block.kind === "error" ? e(p, 4) : e(m, -1);
+		t.block.kind === "user" ? e(l) : t.block.kind === "assistant" ? e(u, 1) : t.block.kind === "tool" ? e(d, 2) : t.block.kind === "error" ? e(f, 3) : e(p, -1);
 	}), K(e, s), We();
 }
 mr(["click"]);
 // kit/attention.js
-function cc(e, t, n) {
+function sc(e, t, n) {
 	if (!t) return [];
 	let r = (t, n) => () => e.call(t, n), i = () => e.post("api/attention/ack", {
 		kind: t,
@@ -4993,7 +4980,7 @@ function cc(e, t, n) {
 		}];
 	}
 }
-async function lc(e, t) {
+async function cc(e, t) {
 	if (!await e.confirm(t.ask)) return !1;
 	try {
 		return await t.run(), e.toast(t.label + ": done"), !0;
@@ -5001,20 +4988,20 @@ async function lc(e, t) {
 		return e.toast(t.label + " failed: " + String(n.message || n)), !1;
 	}
 }
-var uc = Symbol.for("jobshop.desk.attention.pending"), dc = "jobshop-attention-pending";
-function fc() {
+var lc = Symbol.for("jobshop.desk.attention.pending"), uc = "jobshop-attention-pending";
+function dc() {
 	let e = globalThis;
-	return e[uc] ??= /* @__PURE__ */ new Map();
+	return e[lc] ??= /* @__PURE__ */ new Map();
 }
-function pc(e, t) {
-	fc().set(e, t), globalThis.dispatchEvent?.(new CustomEvent(dc, { detail: {
+function fc(e, t) {
+	dc().set(e, t), globalThis.dispatchEvent?.(new CustomEvent(uc, { detail: {
 		key: e,
 		label: t
 	} }));
 }
 // plugins/chat/Pane.svelte
-var mc = /* @__PURE__ */ G("<span> </span>"), hc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), gc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), _c = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), vc = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), yc = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), bc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), xc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), Sc = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"></div></div>"), Cc = /* @__PURE__ */ G("<a class=\"mono svelte-wy7o3a\" data-testid=\"chat-ro-ticket\"> </a>"), wc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\">Read-only: a worker's turn is not driven from here.<!></p>"), Tc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\"> </span>"), Ec = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), Dc = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), Oc = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>", 1), kc = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <span class=\"metadata svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!></span> <!> <span class=\"grow svelte-wy7o3a\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), Ac = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-closed\"> </p>"), jc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), Mc = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><button class=\"x close svelte-wy7o3a\" aria-label=\"Close chat\" title=\"Close\" data-testid=\"session-panel-close\">✕</button> <div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!></section>");
-function Nc(e, t) {
+var pc = /* @__PURE__ */ G("<span> </span>"), mc = /* @__PURE__ */ G("· <a class=\"mono svelte-wy7o3a\"> </a>", 1), hc = /* @__PURE__ */ G("<button class=\"older svelte-wy7o3a\" data-testid=\"load-older\"> </button>"), gc = /* @__PURE__ */ G("<p class=\"err svelte-wy7o3a\"> </p>"), _c = /* @__PURE__ */ G("<p class=\"none svelte-wy7o3a\">No messages yet.</p>"), vc = /* @__PURE__ */ G("<div class=\"pending svelte-wy7o3a\" data-testid=\"chat-pending\"><div class=\"ptext svelte-wy7o3a\"> </div><span class=\"pstate svelte-wy7o3a\"> </span></div>"), yc = /* @__PURE__ */ G("<p class=\"status svelte-wy7o3a\" data-testid=\"chat-working\"><span class=\"spin svelte-wy7o3a\"></span> </p>"), bc = /* @__PURE__ */ G("<button type=\"button\" data-testid=\"resolve\" class=\"svelte-wy7o3a\"> </button>"), xc = /* @__PURE__ */ G("<div class=\"item svelte-wy7o3a\" data-testid=\"chat-item\"><div class=\"itxt svelte-wy7o3a\"><span class=\"pill svelte-wy7o3a\"> </span> <span class=\"ititle\"> </span></div> <div class=\"iacts svelte-wy7o3a\"></div></div>"), Sc = /* @__PURE__ */ G("<a class=\"mono svelte-wy7o3a\" data-testid=\"chat-ro-ticket\"> </a>"), Cc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\">Read-only: a worker's turn is not driven from here.<!></p>"), wc = /* @__PURE__ */ G("<span class=\"model svelte-wy7o3a\"> </span>"), Tc = /* @__PURE__ */ G("<span class=\"usage svelte-wy7o3a\"> </span>"), Ec = /* @__PURE__ */ G("<span class=\"notice svelte-wy7o3a\" data-testid=\"chat-notice\"> </span>"), Dc = /* @__PURE__ */ G("<button type=\"button\" class=\"stop svelte-wy7o3a\" title=\"Cancel the turn (Esc)\" data-testid=\"chat-stop\">Stop</button> <button type=\"button\" class=\"interrupt svelte-wy7o3a\" title=\"Cancel the turn and send now (Ctrl+Enter)\" data-testid=\"chat-interrupt\">Interrupt</button>", 1), Oc = /* @__PURE__ */ G("<form class=\"composer svelte-wy7o3a\"><textarea rows=\"2\" aria-label=\"Message\" enterkeyhint=\"send\" data-testid=\"chat-input\" class=\"svelte-wy7o3a\"></textarea> <div class=\"actions svelte-wy7o3a\"><button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Previous sent message\" title=\"Previous sent message (Up arrow)\">↑</button> <button type=\"button\" class=\"history svelte-wy7o3a\" aria-label=\"Next sent message\" title=\"Next sent message (Down arrow)\">↓</button> <span class=\"metadata svelte-wy7o3a\" data-testid=\"chat-usage\"><!> <!></span> <!> <span class=\"grow svelte-wy7o3a\"></span> <!> <button type=\"submit\" class=\"send svelte-wy7o3a\" data-testid=\"chat-send\"> </button></div></form>"), kc = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-closed\"> </p>"), Ac = /* @__PURE__ */ G("<p class=\"ro svelte-wy7o3a\" data-testid=\"chat-readonly\"> </p>"), jc = /* @__PURE__ */ G("<section class=\"pane svelte-wy7o3a\" data-testid=\"chat-pane\"><header class=\"head svelte-wy7o3a\"><button class=\"x close svelte-wy7o3a\" aria-label=\"Close chat\" title=\"Close\" data-testid=\"session-panel-close\">✕</button> <div class=\"who svelte-wy7o3a\"><div class=\"name svelte-wy7o3a\"> </div> <div class=\"meta svelte-wy7o3a\"><span class=\"mono svelte-wy7o3a\"> </span> <!> <!></div></div> <span class=\"state svelte-wy7o3a\" data-testid=\"chat-status\"> </span></header> <div class=\"scroll svelte-wy7o3a\" data-testid=\"journal\"><!> <!> <!> <!> <!></div> <!> <!></section>");
+function Mc(e, t) {
 	Ue(t, !0);
 	let n = ui(t, "context", 19, () => ({})), r = /* @__PURE__ */ ft(() => String(n().session || "")), i = /* @__PURE__ */ ft(() => String(n().item || "")), a = /* @__PURE__ */ ft(() => W(i).split(":")[0] || ""), o = /* @__PURE__ */ ft(() => W(i).slice(W(a).length + 1)), s = /* @__PURE__ */ ft(() => !!n().readonly), c = /* @__PURE__ */ I(null);
 	hn(() => {
@@ -5142,24 +5129,24 @@ function Nc(e, t) {
 		let t = e.currentTarget;
 		e.key === "ArrowUp" && !e.shiftKey && t.selectionStart === t.selectionEnd && (W(ee) >= 0 || !W(v).slice(0, t.selectionStart).includes("\n")) ? (e.preventDefault(), ne(!0)) : e.key === "ArrowDown" && !e.shiftKey && W(ee) >= 0 ? (e.preventDefault(), ne(!1)) : e.key === "Enter" && !e.shiftKey ? (e.preventDefault(), oe(e.ctrlKey || e.metaKey)) : e.key === "Escape" && W(m) && (e.preventDefault(), e.stopPropagation(), se());
 	}
-	let le = /* @__PURE__ */ ft(() => cc(t.api, W(a), W(o))), ue = /* @__PURE__ */ I(!1);
+	let le = /* @__PURE__ */ ft(() => sc(t.api, W(a), W(o))), ue = /* @__PURE__ */ I(!1);
 	async function de(e) {
 		L(ue, !0);
 		try {
-			await lc(t.api, e) && (pc(W(a) + ":" + W(o), e.label), t.api.closeSession());
+			await cc(t.api, e) && (fc(W(a) + ":" + W(o), e.label), t.api.closeSession());
 		} finally {
 			L(ue, !1);
 		}
 	}
-	var fe = Mc(), pe = R(fe), me = R(pe), D = B(me, 2), he = R(D), ge = z(he, !0), _e = B(he, 2), ve = R(_e), ye = z(ve, !0), O = B(ve, 2), be = (e) => {
-		var t = mc(), n = z(t);
+	var fe = jc(), pe = R(fe), me = R(pe), D = B(me, 2), he = R(D), ge = z(he, !0), _e = B(he, 2), ve = R(_e), ye = z(ve, !0), O = B(ve, 2), be = (e) => {
+		var t = pc(), n = z(t);
 		V(() => q(n, `· ${W(l).ticket.pool ?? ""}`)), K(e, t);
 	};
 	J(O, (e) => {
 		W(l)?.ticket?.pool && e(be);
 	});
 	var k = B(O, 2), xe = (e) => {
-		var n = hc(), r = B(nn(n)), i = z(r, !0);
+		var n = mc(), r = B(nn(n)), i = z(r, !0);
 		V(() => {
 			$r(r, "href", "?ticket=" + W(l).current), q(i, W(l).current);
 		}), pr("click", r, (e) => {
@@ -5172,7 +5159,7 @@ function Nc(e, t) {
 	var A = z(B(D, 2), !0);
 	j(pe);
 	var M = B(pe, 2), Se = R(M), Ce = (e) => {
-		var t = gc(), n = z(t, !0);
+		var t = hc(), n = z(t, !0);
 		V(() => {
 			t.disabled = W(c).loadingOlder, q(n, W(c).loadingOlder ? "Loading history…" : `Load older messages (${W(c).earlier} earlier)`);
 		}), pr("click", t, re), K(e, t);
@@ -5181,7 +5168,7 @@ function Nc(e, t) {
 		W(c) && W(c).earlier > 0 && e(Ce);
 	});
 	var we = B(Se, 2), Te = (e) => {
-		var t = _c(), n = z(t, !0);
+		var t = gc(), n = z(t, !0);
 		V(() => q(n, W(c).error)), K(e, t);
 	};
 	J(we, (e) => {
@@ -5189,32 +5176,32 @@ function Nc(e, t) {
 	});
 	var Ee = B(we, 2);
 	Br(Ee, 17, () => W(c)?.blocks ?? [], Ir, (e, t) => {
-		sc(e, { get block() {
+		oc(e, { get block() {
 			return W(t);
 		} });
 	}, (e) => {
-		K(e, vc());
+		K(e, _c());
 	});
 	var De = B(Ee, 2);
 	Br(De, 17, () => W(x), Ir, (e, t) => {
-		var n = yc(), r = R(n), i = z(r, !0), a = z(B(r), !0);
+		var n = vc(), r = R(n), i = z(r, !0), a = z(B(r), !0);
 		j(n), V(() => {
 			q(i, W(t).text), q(a, W(t).state);
 		}), K(e, n);
 	});
 	var Oe = B(De, 2), ke = (e) => {
-		var t = bc(), n = B(R(t), 1, !0);
+		var t = yc(), n = B(R(t), 1, !0);
 		j(t), V(() => q(n, W(h) || "Working")), K(e, t);
 	};
 	J(Oe, (e) => {
 		W(m) && e(ke);
 	}), j(M), si(M, (e) => L(S, e), () => W(S));
 	var Ae = B(M, 2), je = (e) => {
-		var t = Sc(), n = R(t), r = R(n), i = z(r, !0), s = z(B(r, 2), !0);
+		var t = xc(), n = R(t), r = R(n), i = z(r, !0), s = z(B(r, 2), !0);
 		j(n);
 		var c = B(n, 2);
 		Br(c, 21, () => W(le), (e) => e.label, (e, t) => {
-			var n = xc(), r = z(n, !0);
+			var n = bc(), r = z(n, !0);
 			V(() => {
 				n.disabled = W(ue), q(r, W(t).label);
 			}), pr("click", n, () => de(W(t))), K(e, n);
@@ -5226,8 +5213,8 @@ function Nc(e, t) {
 		W(i) && e(je);
 	});
 	var Me = B(Ae, 2), Ne = (e) => {
-		var n = wc(), r = B(R(n)), i = (e) => {
-			var n = Cc(), r = z(n, !0);
+		var n = Cc(), r = B(R(n)), i = (e) => {
+			var n = Sc(), r = z(n, !0);
 			V(() => {
 				$r(n, "href", "?ticket=" + W(l).current), q(r, W(l).current);
 			}), pr("click", n, (e) => {
@@ -5238,31 +5225,31 @@ function Nc(e, t) {
 			W(l)?.current && e(i);
 		}), j(n), K(e, n);
 	}, Pe = (e) => {
-		var t = kc(), n = R(t);
+		var t = Oc(), n = R(t);
 		et(n), si(n, (e) => L(w, e), () => W(w));
 		var r = B(n, 2), i = R(r), a = B(i, 2), o = B(a, 2), s = R(o), u = (e) => {
-			var t = Tc(), n = z(t, !0);
+			var t = wc(), n = z(t, !0);
 			V(() => q(n, W(l).model)), K(e, t);
 		};
 		J(s, (e) => {
 			W(l)?.model && e(u);
 		});
 		var d = B(s, 2), f = (e) => {
-			var t = Ec(), n = z(t);
+			var t = Tc(), n = z(t);
 			V((e, t) => q(n, `${e ?? ""} / ${t ?? ""} tokens`), [() => Gs(W(c).usage.used), () => Gs(W(c).usage.size)]), K(e, t);
 		};
 		J(d, (e) => {
 			W(c)?.usage && e(f);
 		}), j(o);
 		var p = B(o, 2), h = (e) => {
-			var t = Dc(), n = z(t, !0);
+			var t = Ec(), n = z(t, !0);
 			V(() => q(n, W(b))), K(e, t);
 		};
 		J(p, (e) => {
 			W(b) && e(h);
 		});
 		var g = B(p, 4), _ = (e) => {
-			var t = Oc(), n = nn(t), r = B(n, 2);
+			var t = Dc(), n = nn(t), r = B(n, 2);
 			V((e) => r.disabled = e, [() => !W(v).trim() || W(y)]), pr("click", n, se), pr("click", r, () => oe(!0)), K(e, t);
 		};
 		J(g, (e) => {
@@ -5277,10 +5264,10 @@ function Nc(e, t) {
 			L(ee, -1), ae();
 		}), pr("keydown", n, ce), ri(n, () => W(v), (e) => L(v, e)), pr("click", i, () => ne(!0)), pr("click", a, () => ne(!1)), K(e, t);
 	}, Fe = (e) => {
-		var t = Ac(), n = z(t);
+		var t = kc(), n = z(t);
 		V(() => q(n, `Session closed${W(c)?.ended && W(c).ended !== "closed" ? " · " + W(c).ended : ""}`)), K(e, t);
 	}, Ie = (e) => {
-		var t = jc(), n = z(t);
+		var t = Ac(), n = z(t);
 		V(() => q(n, `Read-only: ${(W(d).reason || "this session does not accept input") ?? ""}`)), K(e, t);
 	};
 	J(Me, (e) => {
@@ -5295,8 +5282,8 @@ mr([
 	"keydown"
 ]);
 // plugins/chat/ChatList.svelte
-var Pc = /* @__PURE__ */ G("<div class=\"err svelte-162crgi\"> </div>"), Fc = /* @__PURE__ */ G("<a><span></span> <span class=\"name svelte-162crgi\"> </span> <span class=\"mono faint id svelte-162crgi\"> </span></a>"), Ic = /* @__PURE__ */ G("<div class=\"faint pad0 svelte-162crgi\">No open operator sessions.</div>"), Lc = /* @__PURE__ */ G("<div class=\"card empty\" data-testid=\"escalations-empty\"><div class=\"muted\">No escalation sessions.</div></div>"), Rc = /* @__PURE__ */ G("<tr data-testid=\"escalation-row\"><td class=\"c-title\"> <div class=\"faint mono\"> <!></div></td><td class=\"c-st\"><span> </span></td><td class=\"muted full\"> </td><td class=\"c-st\"><span> </span></td><td class=\"muted c-time\"> </td></tr>"), zc = /* @__PURE__ */ G("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"escalations\"><thead><tr><th>Ticket</th><th>Cause</th><th>Why</th><th>State</th><th>Age</th></tr></thead><tbody></tbody></table></div>"), Bc = /* @__PURE__ */ G("<header class=\"vh svelte-162crgi\"><h1>Chat</h1> <span class=\"sub svelte-162crgi\">pool <span class=\"mono\"> </span></span></header> <div class=\"list svelte-162crgi\"><form class=\"new svelte-162crgi\"><textarea rows=\"3\" placeholder=\"What should the operator look at?\" data-testid=\"chat-new-input\" class=\"svelte-162crgi\"></textarea> <div class=\"row svelte-162crgi\"><button type=\"submit\" class=\"primary\" data-testid=\"chat-new\">New session</button></div></form> <!> <div data-testid=\"chat-list\"></div> <h2 class=\"st\">Escalations</h2> <!></div>", 1);
-function Vc(e, t) {
+var Nc = /* @__PURE__ */ G("<div class=\"err svelte-162crgi\"> </div>"), Pc = /* @__PURE__ */ G("<a><span></span> <span class=\"name svelte-162crgi\"> </span> <span class=\"mono faint id svelte-162crgi\"> </span></a>"), Fc = /* @__PURE__ */ G("<div class=\"faint pad0 svelte-162crgi\">No open operator sessions.</div>"), Ic = /* @__PURE__ */ G("<div class=\"card empty\" data-testid=\"escalations-empty\"><div class=\"muted\">No escalation sessions.</div></div>"), Lc = /* @__PURE__ */ G("<tr data-testid=\"escalation-row\"><td class=\"c-title\"> <div class=\"faint mono\"> <!></div></td><td class=\"c-st\"><span> </span></td><td class=\"muted full\"> </td><td class=\"c-st\"><span> </span></td><td class=\"muted c-time\"> </td></tr>"), Rc = /* @__PURE__ */ G("<div class=\"card scroll\"><table class=\"stack\" data-testid=\"escalations\"><thead><tr><th>Ticket</th><th>Cause</th><th>Why</th><th>State</th><th>Age</th></tr></thead><tbody></tbody></table></div>"), zc = /* @__PURE__ */ G("<header class=\"vh svelte-162crgi\"><h1>Chat</h1> <span class=\"sub svelte-162crgi\">pool <span class=\"mono\"> </span></span></header> <div class=\"list svelte-162crgi\"><form class=\"new svelte-162crgi\"><textarea rows=\"3\" placeholder=\"What should the operator look at?\" data-testid=\"chat-new-input\" class=\"svelte-162crgi\"></textarea> <div class=\"row svelte-162crgi\"><button type=\"submit\" class=\"primary\" data-testid=\"chat-new\">New session</button></div></form> <!> <div data-testid=\"chat-list\"></div> <h2 class=\"st\">Escalations</h2> <!></div>", 1);
+function Bc(e, t) {
 	Ue(t, !0);
 	let n = /* @__PURE__ */ I(null), r = /* @__PURE__ */ I(null), i = /* @__PURE__ */ I(""), a = /* @__PURE__ */ I(""), o = /* @__PURE__ */ I(!1), s = /* @__PURE__ */ I("");
 	async function c() {
@@ -5352,14 +5339,14 @@ function Vc(e, t) {
 			}
 		}
 	}
-	var _ = Bc(), v = nn(_), b = B(R(v), 2), x = z(B(R(b)), !0);
+	var _ = zc(), v = nn(_), b = B(R(v), 2), x = z(B(R(b)), !0);
 	j(b), j(v);
 	var S = B(v, 2), C = R(S), w = R(C);
 	et(w);
 	var ee = z(B(w, 2));
 	j(C);
 	var te = B(C, 2), T = (e) => {
-		var t = Pc(), n = z(t, !0);
+		var t = Nc(), n = z(t, !0);
 		V(() => q(n, W(i))), K(e, t);
 	};
 	J(te, (e) => {
@@ -5367,7 +5354,7 @@ function Vc(e, t) {
 	});
 	var E = B(te, 2);
 	Br(E, 21, () => W(l), (e) => e.id, (e, t) => {
-		var n = Fc();
+		var n = Pc();
 		let r;
 		var i = R(n);
 		let a;
@@ -5378,14 +5365,14 @@ function Vc(e, t) {
 			e.preventDefault(), h(W(t).id, W(t).key.startsWith("attention:") ? W(t).key.slice(10) : "");
 		}), K(e, n);
 	}, (e) => {
-		K(e, Ic());
+		K(e, Fc());
 	}), j(E);
 	var ne = B(E, 4), re = (e) => {
-		K(e, Lc());
+		K(e, Ic());
 	}, ie = (e) => {
-		var t = zc(), n = R(t), r = B(R(n));
+		var t = Rc(), n = R(t), r = B(R(n));
 		Br(r, 21, () => [...W(u), ...W(d)], (e) => e.ticket, (e, t) => {
-			var n = Rc();
+			var n = Lc();
 			let r;
 			var i = R(n), a = R(i, !0), o = B(a), c = R(o, !0), l = B(c), u = (e) => {
 				var n = Sr();
@@ -5414,8 +5401,8 @@ function Vc(e, t) {
 }
 mr(["click"]);
 // plugins/chat/DrawerChat.svelte
-var Hc = /* @__PURE__ */ G("<div class=\"wrap svelte-1i9xi0d\" data-testid=\"escalation-chat\"><div class=\"bar svelte-1i9xi0d\"><a class=\"svelte-1i9xi0d\">open in side panel</a></div> <div class=\"frame svelte-1i9xi0d\"><!></div></div>");
-function Uc(e, t) {
+var Vc = /* @__PURE__ */ G("<div class=\"wrap svelte-1i9xi0d\" data-testid=\"escalation-chat\"><div class=\"bar svelte-1i9xi0d\"><a class=\"svelte-1i9xi0d\">open in side panel</a></div> <div class=\"frame svelte-1i9xi0d\"><!></div></div>");
+function Hc(e, t) {
 	Ue(t, !0);
 	let n = ui(t, "context", 19, () => ({})), r = /* @__PURE__ */ ft(() => n().ticket || {}), i = (e) => typeof e?.meta == "string" ? JSON.parse(e.meta) : e?.meta || {}, a = /* @__PURE__ */ ft(() => {
 		if (W(r).kind === "session") return W(r).id;
@@ -5423,10 +5410,10 @@ function Uc(e, t) {
 		return e?.session ? e.session : W(r).holder && /^[a-z][a-z0-9]*-[0-9a-z]{6,}$/i.test(W(r).holder) ? W(r).holder : "";
 	});
 	var o = Cr(), s = nn(o), c = (e) => {
-		var n = Hc(), r = R(n), i = z(r), o = B(r, 2), s = R(o);
+		var n = Vc(), r = R(n), i = z(r), o = B(r, 2), s = R(o);
 		{
 			let e = /* @__PURE__ */ ft(() => ({ session: W(a) }));
-			Nc(s, {
+			Mc(s, {
 				get api() {
 					return t.api;
 				},
@@ -5445,8 +5432,8 @@ function Uc(e, t) {
 }
 mr(["click"]);
 // plugins/chat/index.svelte.js
-var Wc = new URL("./style.css", import.meta.url).href;
-function Gc(e) {
+var Uc = new URL("./style.css", import.meta.url).href;
+function Wc(e) {
 	return class extends HTMLElement {
 		#e = /* @__PURE__ */ I(qt({
 			api: null,
@@ -5479,9 +5466,9 @@ function Gc(e) {
 			return this.props.config;
 		}
 		connectedCallback() {
-			if (!document.querySelector(`link[href="${Wc}"]`)) {
+			if (!document.querySelector(`link[href="${Uc}"]`)) {
 				let e = document.createElement("link");
-				e.rel = "stylesheet", e.href = Wc, document.head.append(e);
+				e.rel = "stylesheet", e.href = Uc, document.head.append(e);
 			}
 			this.style.display = "contents", this.app = Ar(e, {
 				target: this,
@@ -5494,7 +5481,7 @@ function Gc(e) {
 	};
 }
 for (let [e, t] of [
-	["desk-chat-pane", Nc],
-	["desk-chat-view", Vc],
-	["desk-chat-drawer", Uc]
-]) customElements.get(e) || customElements.define(e, Gc(t));
+	["desk-chat-pane", Mc],
+	["desk-chat-view", Bc],
+	["desk-chat-drawer", Hc]
+]) customElements.get(e) || customElements.define(e, Wc(t));

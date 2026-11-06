@@ -40,6 +40,10 @@ const MaxToolIO = 8 << 10
 type EventDecoder struct {
 	tools  map[string]string
 	Redact func(string) string
+	// loading is set from a controller session/load until the agent's
+	// reply: the agent replays the whole conversation as session/update
+	// frames, which are history already in the journal, not new output.
+	loading bool
 }
 
 type journalMsg struct {
@@ -64,6 +68,16 @@ func (e *EventDecoder) Decode(seq, t int64, from string, msg json.RawMessage) (S
 	}
 	var m journalMsg
 	if json.Unmarshal(msg, &m) != nil {
+		return out, false
+	}
+	if from == "controller" && m.Method == "session/load" {
+		e.loading = true
+		return out, false
+	}
+	if e.loading {
+		if from == "agent" && m.Method == "" && (len(m.Result) > 0 || m.Error != nil) {
+			e.loading = false
+		}
 		return out, false
 	}
 	switch {
