@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.5](https://github.com/elee1766/jobshop/compare/v0.6.4...v0.6.5) (2026-11-06)
+
+
+### Bug fixes
+
+* **linear:** renew a revoked app token on 401; me self-assigns instead of delegating ([#871](https://github.com/elee1766/jobshop/issues/871)) ([12b7c57](https://github.com/elee1766/jobshop/commit/12b7c579ae3c19159c8ac3063e4dacc106b65dce))
+
 ## [0.6.4](https://github.com/elee1766/jobshop/compare/v0.6.3...v0.6.4) (2026-11-06)
 
 
