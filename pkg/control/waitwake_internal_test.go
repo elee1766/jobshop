@@ -81,15 +81,23 @@ func TestWaitWebhookResume(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, w.Code)
 
 	start := clk.now()
-	require.Eventually(t, func() bool { return waitOf(mustGet(t, c, step.ID)) == nil }, 2*time.Second, 5*time.Millisecond,
+	// clearWait clears the wait, then comments: wait for both, or the
+	// read can land between the two writes.
+	lastComment := func() string {
+		th, err := c.store.Thread(ctx, step.ID, store.Parts{Comments: true})
+		if err != nil || len(th.Comments) == 0 {
+			return ""
+		}
+		return th.Comments[len(th.Comments)-1].Body
+	}
+	require.Eventually(t, func() bool {
+		return waitOf(mustGet(t, c, step.ID)) == nil && strings.Contains(lastComment(), "Wait (CI on PR #5) ended")
+	}, 2*time.Second, 5*time.Millisecond,
 		"the webhook resumes the step within about a second, without a timer")
 	assert.Equal(t, start, clk.now(), "fake time did not move")
 	got := mustGet(t, c, step.ID)
 	assert.Equal(t, sess.ID, got.Holder, "resume pre-assigns the parking session")
-	th, err := c.store.Thread(ctx, step.ID, store.Parts{Comments: true})
-	require.NoError(t, err)
-	cs := th.Comments
-	assert.Contains(t, cs[len(cs)-1].Body, "checks green on aaaa111")
+	assert.Contains(t, lastComment(), "checks green on aaaa111")
 }
 
 // TestWaitWakeTargeted (#679): a wake for one PR evaluates only the
