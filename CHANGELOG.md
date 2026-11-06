@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/elee1766/jobshop/compare/v0.6.1...v0.6.2) (2026-11-06)
+
+
+### Bug fixes
+
+* **packs/github:** release-merge waits on the ci workflow, dev tickets name the dev pool ([#861](https://github.com/elee1766/jobshop/issues/861)) ([#863](https://github.com/elee1766/jobshop/issues/863)) ([5a181b2](https://github.com/elee1766/jobshop/commit/5a181b2b0ff92581f2fa29a09c695c867f09868d))
+
 ## [0.6.1](https://github.com/elee1766/jobshop/compare/v0.6.0...v0.6.1) (2026-11-06)
 
 
