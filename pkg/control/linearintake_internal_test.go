@@ -253,7 +253,7 @@ func TestLinearPlannerIntakeKey(t *testing.T) {
 
 // TestLinearIntakeRunDuringScan (JOB-26): a Todo issue whose run the
 // planner starts while Linear is being read creates no stall-check run,
-// and an issue updated within the grace window is skipped until it passes.
+// and with grace set an issue updated within it is skipped until it passes.
 func TestLinearIntakeRunDuringScan(t *testing.T) {
 	t.Parallel()
 	var c *Controller
@@ -273,7 +273,7 @@ func TestLinearIntakeRunDuringScan(t *testing.T) {
 	}))
 	t.Cleanup(gql.Close)
 
-	c2, clk, dir := stallControllerYAML(t, linearIntakeYAML)
+	c2, clk, dir := stallControllerYAML(t, strings.Replace(linearIntakeYAML, "poll: 5m}", "poll: 5m, grace: 5m}", 1))
 	c = c2
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL

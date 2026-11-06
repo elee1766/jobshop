@@ -66,11 +66,8 @@ func (c *Controller) stallLinearIssues(ctx context.Context, sig config.StallSign
 	return out, nil
 }
 
-// linearGrace is sig.Grace or DefaultLinearGrace; an explicit 0 is off.
+// linearGrace is sig.Grace; empty is off.
 func linearGrace(sig config.StallSignal) time.Duration {
-	if sig.Grace == "" {
-		return config.DefaultLinearGrace
-	}
 	d, _ := time.ParseDuration(sig.Grace)
 	return d
 }
