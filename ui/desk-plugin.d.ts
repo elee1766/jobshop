@@ -138,7 +138,7 @@ export interface RpcMethods {
   "learn.update": { params: LearnUpdateParams; result: Learning[] };
   "memory.show": { params: MemoryShowParams; result: MemoryShowResult };
   "memory.write": { params: MemoryWriteParams; result: MemoryEdit };
-  "pool.list": { params: Record<string, never>; result: PoolStatusResult };
+  "pool.list": { params: PoolListParams; result: PoolStatusResult };
   "pool.scale": { params: PoolScaleParams; result: PoolStatusResult };
   "pool.unquarantine": { params: PoolParams; result: PoolStatusResult };
   "question.answer": { params: AnswerParams; result: AnswerResult };
@@ -871,6 +871,10 @@ export interface PackInstance {
   triggers: string[];
 }
 
+export interface PoolListParams {
+  label?: string[];
+}
+
 export interface PoolMetrics {
   from: string;
   to: string;
@@ -888,6 +892,8 @@ export interface PoolParams {
 
 export interface PoolScale {
   name: string;
+  project?: string;
+  labels?: string[];
   min: number;
   max: number;
   priority?: number;
@@ -1332,6 +1338,7 @@ export interface TriggerInfo {
   holds: boolean;
   why?: string;
   open?: string;
+  labels?: string[];
   last_fired?: string;
   next_cron?: string;
   stalls?: string[];

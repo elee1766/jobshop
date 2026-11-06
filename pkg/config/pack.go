@@ -264,6 +264,7 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	}
 	c.Packs = head.Packs
 	c.Instances = instances
+	c.addInstanceLabels()
 	// Text files set by a path outside every pack dir are watched alone.
 	for _, files := range sources {
 		for _, f := range files {
@@ -564,10 +565,43 @@ func mergeInto(dst, src map[string]any, file string, sources map[string][]string
 			dst[k] = dm
 		}
 		for name, entry := range sm {
-			dm[name] = mergeValue(dm[name], entry)
+			merged := mergeValue(dm[name], entry)
+			if k == "pools" {
+				unionLabels(merged, dm[name], entry)
+			}
+			dm[name] = merged
 			key := k + "." + name
 			sources[key] = append(sources[key], file)
 		}
+	}
+}
+
+// unionLabels sets out's labels to the union of old's and v's, so a host
+// adds to a pack pool's labels instead of replacing them (JOB-81). The
+// other fields merge per field in mergeValue.
+func unionLabels(out, old, v any) {
+	om, ok := out.(map[string]any)
+	if !ok {
+		return
+	}
+	var all []any
+	seen := map[string]bool{}
+	for _, e := range []any{old, v} {
+		em, _ := e.(map[string]any)
+		list, _ := em["labels"].([]any)
+		for _, l := range list {
+			// A non-string stays for parse to reject.
+			if s, ok := l.(string); ok {
+				if seen[s] {
+					continue
+				}
+				seen[s] = true
+			}
+			all = append(all, l)
+		}
+	}
+	if len(all) > 0 {
+		om["labels"] = all
 	}
 }
 

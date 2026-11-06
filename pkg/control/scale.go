@@ -524,7 +524,7 @@ func (c *Controller) poolStatusCtx(ctx context.Context) rpc.PoolStatusResult {
 			continue
 		}
 		row := rpc.PoolScale{
-			Name: name, Min: p.MinSessions, Max: p.MaxSessions, Priority: p.Priority,
+			Name: name, Project: p.Project, Labels: p.Labels, Min: p.MinSessions, Max: p.MaxSessions, Priority: p.Priority,
 			Desired: c.poolScale(name).desired, Drained: c.poolDrained(name),
 		}
 		c.mu.Lock()

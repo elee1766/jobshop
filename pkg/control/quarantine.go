@@ -10,6 +10,7 @@ import (
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -310,9 +311,36 @@ func (c *Controller) poolStatus() rpc.PoolStatusResult {
 	return res
 }
 
-func (c *Controller) poolList(ctx context.Context, sc scope, _ struct{}) (any, error) {
+func (c *Controller) poolList(ctx context.Context, sc scope, p rpc.PoolListParams) (any, error) {
 	if err := c.requireGrant(sc, "pool-list", "pool list"); err != nil {
 		return nil, err
 	}
-	return c.poolStatusCtx(ctx), nil
+	res := c.poolStatusCtx(ctx)
+	if len(p.Label) == 0 {
+		return res, nil
+	}
+	// Quarantined and paused pools not in the filter go too, so a
+	// filtered view shows only its own.
+	keep := map[string]bool{}
+	cfg := c.config()
+	for name, pool := range cfg.Pools {
+		if poolHasLabels(pool, p.Label) {
+			keep[name] = true
+		}
+	}
+	res.Pools = slices.DeleteFunc(res.Pools, func(s rpc.PoolScale) bool { return !keep[s.Name] })
+	maps.DeleteFunc(res.Quarantined, func(name, _ string) bool { return !keep[name] })
+	maps.DeleteFunc(res.Paused, func(name string, _ time.Time) bool { return !keep[name] })
+	return res, nil
+}
+
+// poolHasLabels reports whether the pool carries every wanted label. k=v
+// matches the label k:v.
+func poolHasLabels(p config.Pool, want []string) bool {
+	for _, w := range want {
+		if !slices.Contains(p.Labels, w) && !slices.Contains(p.Labels, strings.Replace(w, "=", ":", 1)) {
+			return false
+		}
+	}
+	return true
 }

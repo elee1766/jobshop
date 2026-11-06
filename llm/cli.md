@@ -246,9 +246,9 @@ Commands:
     Show each trigger: whether it holds now, last fired, open ticket, next cron
     time.
 
-  pool list
-    Show each pool's min, max, desired, open, working, idle and cordoned
-    sessions, plus quarantined and paused pools.
+  pool list [flags]
+    Show each pool's labels, min, max, desired, open, working, idle and cordoned
+    sessions, plus quarantined and paused pools. --label filters.
 
   pool scale <pool> <target>
     Set a pool's desired session count, or 'auto' to follow ready work again.
@@ -2493,9 +2493,9 @@ Flags:
                          else the root's admin socket ($JOBSHOP_SOCKET).
 
 Commands:
-  pool list
-    Show each pool's min, max, desired, open, working, idle and cordoned
-    sessions, plus quarantined and paused pools.
+  pool list [flags]
+    Show each pool's labels, min, max, desired, open, working, idle and cordoned
+    sessions, plus quarantined and paused pools. --label filters.
 
   pool scale <pool> <target>
     Set a pool's desired session count, or 'auto' to follow ready work again.
@@ -2508,19 +2508,23 @@ Commands:
 ## jobshop pool list
 
 ```
-Usage: jobshop pool list
+Usage: jobshop pool list [flags]
 
-Show each pool's min, max, desired, open, working, idle and cordoned sessions,
-plus quarantined and paused pools.
+Show each pool's labels, min, max, desired, open, working, idle and cordoned
+sessions, plus quarantined and paused pools. --label filters.
 
 Flags:
-  -h, --help             Show context-sensitive help.
-      --root=STRING      Jobshop root directory (holds jobshop.yaml,
-                         the database, sockets and sessions). Default:
-                         nearest ancestor of the cwd containing jobshop.yaml
-                         ($JOBSHOP_ROOT).
-      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
-                         else the root's admin socket ($JOBSHOP_SOCKET).
+  -h, --help               Show context-sensitive help.
+      --root=STRING        Jobshop root directory (holds jobshop.yaml,
+                           the database, sockets and sessions). Default:
+                           nearest ancestor of the cwd containing jobshop.yaml
+                           ($JOBSHOP_ROOT).
+      --socket=STRING      Socket to talk to. Defaults to the session
+                           CLI socket, else the root's admin socket
+                           ($JOBSHOP_SOCKET).
+
+  -l, --label=LABEL,...    Only pools with this label: a label, or k=v for k:v.
+                           Repeat to require several.
 ```
 
 ## jobshop pool scale

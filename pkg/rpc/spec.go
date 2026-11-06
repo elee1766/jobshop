@@ -69,7 +69,7 @@ var Specs = map[string]Spec{
 	MethodBatchStart:        {BatchStartParams{}, BatchResult{}},
 	MethodBatchShow:         {IDParams{}, BatchResult{}},
 	MethodBatchList:         {BatchListParams{}, []store.Ticket{}},
-	MethodPoolList:          {empty{}, PoolStatusResult{}},
+	MethodPoolList:          {PoolListParams{}, PoolStatusResult{}},
 	MethodPoolScale:         {PoolScaleParams{}, PoolStatusResult{}},
 	MethodPoolUnquarantine:  {PoolParams{}, PoolStatusResult{}},
 	MethodReportIncidents:   {IncidentsParams{}, IncidentsResult{}},

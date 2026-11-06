@@ -946,20 +946,30 @@ type PoolStatusResult struct {
 	Disabled []string `json:"disabled,omitempty"`
 }
 
+// PoolListParams filters pool.list. Every Label must match: a pool label
+// exactly, or k=v for the label k:v (JOB-81). Empty lists every pool.
+type PoolListParams struct {
+	Label []string `json:"label,omitempty"`
+}
+
 // PoolScale is one ticket pool's scaling state. Target is the manual
-// target from pool scale; nil means auto.
+// target from pool scale; nil means auto. Labels are the pool's labels
+// with the instance:<name> and pack:<pack> ones a packs entry adds
+// (JOB-81); Project is its project.
 type PoolScale struct {
-	Name     string `json:"name"`
-	Min      int    `json:"min"`
-	Max      int    `json:"max"`
-	Priority int    `json:"priority,omitempty"`
-	Target   *int   `json:"target,omitempty"`
-	Desired  int    `json:"desired"`
-	Open     int    `json:"open"`
-	Working  int    `json:"working"`
-	Idle     int    `json:"idle"`
-	Cordoned int    `json:"cordoned"`
-	Drained  bool   `json:"drained,omitempty"`
+	Name     string   `json:"name"`
+	Project  string   `json:"project,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
+	Min      int      `json:"min"`
+	Max      int      `json:"max"`
+	Priority int      `json:"priority,omitempty"`
+	Target   *int     `json:"target,omitempty"`
+	Desired  int      `json:"desired"`
+	Open     int      `json:"open"`
+	Working  int      `json:"working"`
+	Idle     int      `json:"idle"`
+	Cordoned int      `json:"cordoned"`
+	Drained  bool     `json:"drained,omitempty"`
 }
 
 // PoolScaleParams sets a pool's manual target, or with Auto returns it to
@@ -1053,10 +1063,13 @@ type HolderInfo struct {
 
 // TriggerInfo is one configured trigger's state now.
 type TriggerInfo struct {
-	Name      string     `json:"name"`
-	Holds     bool       `json:"holds"`          // would fire on the next tick
-	Why       string     `json:"why,omitempty"`  // first condition that does not hold
-	Open      string     `json:"open,omitempty"` // open ticket it created
+	Name  string `json:"name"`
+	Holds bool   `json:"holds"`          // would fire on the next tick
+	Why   string `json:"why,omitempty"`  // first condition that does not hold
+	Open  string `json:"open,omitempty"` // open ticket it created
+	// Labels are the instance:<name> and pack:<pack> of the packs entry
+	// that declares the trigger, for grouping (JOB-81).
+	Labels    []string   `json:"labels,omitempty"`
 	LastFired *time.Time `json:"last_fired,omitempty"`
 	NextCron  *time.Time `json:"next_cron,omitempty"`
 	// Stalls are the stall keys a stall trigger would start runs for.
