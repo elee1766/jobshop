@@ -37,8 +37,9 @@ func TestCheckMountsModes(t *testing.T) {
 	err := checkMounts(sb, cache, other, []int{gid})
 	var p *host.PermanentError
 	require.ErrorAs(t, err, &p)
-	// root, or a 0700 dir above it on this host, is named with its mode.
-	assert.Regexp(t, `cannot use /\S* \(mode 0700, owner \d+:\d+\)`, err.Error())
+	// root, or a dir above it closed to others on this host (0700, 0710,
+	// 0750 ...), is named with its mode.
+	assert.Regexp(t, `cannot use /\S* \(mode 0[0-7][0-7][0246], owner \d+:\d+\)`, err.Error())
 
 	skipNoACL(t, grantSearch(root, other))
 	if reachable(filepath.Dir(root), unix.X_OK, other, nil) != nil {
