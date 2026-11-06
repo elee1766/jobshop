@@ -884,6 +884,11 @@ func (a *agent) LoadSession(_ context.Context, p acp.LoadSessionRequest) (acp.Lo
 }
 
 func (a *agent) Prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResponse, error) {
+	// A "forget" file makes the agent lose its sessions once, like jcode
+	// after a restart it did not reload (JOB-65).
+	if os.Remove("forget") == nil {
+		clear(a.known)
+	}
 	// Like jcode: a new process knows only sessions it created or loaded.
 	if !a.known[p.SessionId] {
 		return acp.PromptResponse{}, &acp.RequestError{Code: -32602, Message: "Unknown ACP session id: " + string(p.SessionId)}
@@ -1550,6 +1555,71 @@ func TestLoadFallback(t *testing.T) {
 			assert.Equal(t, store.StatusOpen, show(id).Status)
 		})
 	}
+}
+
+// TestUnknownSessionFallback: the agent rejects the stored ACP session id
+// mid-session. The runner opens one new conversation on the same host,
+// seeded with the journal summary, without a restart and keeping the
+// held ticket (JOB-65).
+func TestUnknownSessionFallback(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	var first store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "first-ticket-title", Pool: "dev"}, &first))
+	passEventually(t, root.Dir, func() bool { return show(first.ID).Status == store.StatusClosed }, "first ticket not closed")
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1)
+	id := sessions[0].ID
+	sf := func() store.SessionFields {
+		f, err := store.DecodeFields[store.SessionFields](show(id))
+		require.NoError(t, err)
+		return f
+	}
+	oldACP := sf().ACPSession
+	require.NotEmpty(t, oldACP)
+
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "forget"), nil, 0o600))
+	var second store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "second-ticket-title", Pool: "dev"}, &second))
+	passEventually(t, root.Dir, func() bool { return show(second.ID).Status == store.StatusClosed }, "second ticket not closed")
+
+	got := show(second.ID)
+	assert.Equal(t, store.StatusClosed, got.Status)
+	assert.NotEqual(t, "failed", got.Resolution, "held ticket finished, not failed")
+	newACP := sf().ACPSession
+	assert.NotEqual(t, oldACP, newACP, "one new conversation")
+	assert.Equal(t, "s2", newACP, "exactly one session/new after the first")
+
+	b, err := os.ReadFile(filepath.Join(root.Dir, "prompts"))
+	require.NoError(t, err)
+	var prompts []string
+	for line := range strings.Lines(string(b)) {
+		var s string
+		require.NoError(t, json.Unmarshal([]byte(line), &s))
+		prompts = append(prompts, s)
+	}
+	idx := slices.IndexFunc(prompts, func(p string) bool { return strings.Contains(p, "second-ticket-title") })
+	require.GreaterOrEqual(t, idx, 0)
+	before, after, ok := strings.Cut(prompts[idx], host.SummaryEnd)
+	require.True(t, ok, "prompt seeded with a summary: %q", prompts[idx])
+	assert.Contains(t, before, "first-ticket-title", "summary covers the old turn")
+	assert.Contains(t, after, "You have claimed Jobshop ticket "+second.ID)
+
+	var infos []rpc.SessionInfo
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+	require.Len(t, infos, 1)
+	assert.Zero(t, infos[0].Crashes, "no restart counted")
+	assert.Equal(t, store.StatusOpen, show(id).Status)
 }
 
 // TestCancelDuringStartup cancels after the admin socket is up but before

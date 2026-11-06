@@ -62,7 +62,7 @@ func (r *runner) wantOptions(f store.SessionFields) map[string]string {
 // running: after session/new or load, and between turns in work. An id the
 // agent did not advertise is logged once per session and skipped. A set
 // that fails twice ends the session config_failed.
-func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection, acpSession string) error {
+func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection) error {
 	t, err := r.c.store.Get(ctx, r.id)
 	if err != nil {
 		return err
@@ -91,7 +91,7 @@ func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection
 			continue
 		}
 		req := acp.SetSessionConfigOptionRequest{ValueId: &acp.SetSessionConfigOptionValueId{
-			SessionId: acp.SessionId(acpSession), ConfigId: acp.SessionConfigId(id), Value: acp.SessionConfigValueId(v),
+			SessionId: r.acpID(), ConfigId: acp.SessionConfigId(id), Value: acp.SessionConfigValueId(v),
 		}}
 		var res acp.SetSessionConfigOptionResponse
 		for attempt := range 2 {

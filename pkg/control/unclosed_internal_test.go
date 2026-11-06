@@ -35,7 +35,7 @@ func TestUnclosedTurnFirstReleaseNoFailure(t *testing.T) {
 		_, _, err = c.store.Claim(ctx, step.ID, sess.ID, time.Hour)
 		require.NoError(t, err)
 		// ticketID "" skips the reminder turn (no agent connection here).
-		r.afterTurn(ctx, nil, "", "")
+		r.afterTurn(ctx, nil, "")
 		got, err := c.store.Get(ctx, step.ID)
 		require.NoError(t, err)
 		return got
