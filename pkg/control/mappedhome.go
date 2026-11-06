@@ -155,7 +155,7 @@ func (c *Controller) removeSlotHome(t store.Ticket) {
 	if err != nil || f.Slot == nil {
 		return
 	}
-	if host.Alive(c.root.SessionDir(t.ID)) {
+	if hostAlive(c.root.SessionDir(t.ID)) {
 		return
 	}
 	home := c.mappedHomeDir(t.Pool, f.Slot)

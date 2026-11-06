@@ -143,7 +143,7 @@ func TestPromptRules(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id, Now: true}, nil))
 	passEventually(t, root.Dir, func() bool {
 		p := hostPidOf(t, sdir)
-		return p != 0 && p != pid && host.Alive(sdir)
+		return p != 0 && p != pid && hostRunning(sdir)
 	}, "condition not met after supervisor passes")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	passEventually(t, root.Dir, func() bool { return show(next.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")

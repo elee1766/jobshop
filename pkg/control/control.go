@@ -69,7 +69,10 @@ type Options struct {
 	// Default the wall clock; tests pass a clock.Fake (#362).
 	Clock clock.Clock
 	Log   *slog.Logger
-	// HostExe is the binary started as session-host. Default /proc/self/exe.
+	// HostExe is the jobshop binary sessions and command steps see: first
+	// on their PATH, JOBSHOP_BIN, bound into sandboxes, and left out of
+	// background jobs. Default /proc/self/exe. Session hosts always run
+	// this binary (acphost.StartDetached re-execs it, #904).
 	HostExe string
 	// Hosts, if set, starts and stops session hosts instead of a detached
 	// process per session. Tests run hosts in-process with it so a test of

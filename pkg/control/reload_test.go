@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/hostspec"
@@ -232,7 +232,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	sess := openSessions(t, admin)
 	require.Len(t, sess, 1)
 	sdir := root.SessionDir(sess[0].ID)
-	pid1, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	pid1, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	hasEnv := func(kv string) bool {
 		s, err := hostspec.Read(sdir)
@@ -244,8 +244,8 @@ func TestEnvRefreshLive(t *testing.T) {
 	writeEnv("two")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
 	passEventually(t, root.Dir, func() bool {
-		pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
-		return err == nil && string(pid) != string(pid1) && host.Alive(sdir) && hasEnv("DEPLOY=two")
+		pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
+		return err == nil && string(pid) != string(pid1) && hostRunning(sdir) && hasEnv("DEPLOY=two")
 	}, "idle host respawned with the new env")
 	var b store.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
@@ -255,7 +255,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	assert.Equal(t, sess[0].ID, now[0].ID, "same session, not crashed")
 
 	// Busy session: the claim and turn survive; the refresh waits for it.
-	pid2, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	pid2, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	var c store.Ticket
@@ -267,7 +267,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	writeEnv("three")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, nil, nil))
 	pass(t, root.Dir, 3)
-	pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	assert.Equal(t, string(pid2), string(pid), "busy host not stopped mid-turn")
 	var held store.Ticket
@@ -277,7 +277,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	assert.Equal(t, sess[0].ID, held.Holder, "claim kept")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	waitClosed(t, root, admin, c.ID)
-	passEventually(t, root.Dir, func() bool { return hasEnv("DEPLOY=three") && host.Alive(sdir) }, "condition not met after supervisor passes")
+	passEventually(t, root.Dir, func() bool { return hasEnv("DEPLOY=three") && hostRunning(sdir) }, "condition not met after supervisor passes")
 	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID)
 }
 
