@@ -83,6 +83,18 @@ type SessionFields struct {
 	// Suspended: the host was stopped while idle and the session stays
 	// open; the next message resumes it with session/load (#606).
 	Suspended bool `json:"suspended,omitempty"`
+	// Ended is the host state read from the session directory when the
+	// session ended (JOB-32), so session list does not read the
+	// directory of every closed session.
+	Ended *SessionEnded `json:"ended,omitempty"`
+}
+
+// SessionEnded is what session list shows for a closed session's host.
+type SessionEnded struct {
+	HostPid int        `json:"host_pid,omitempty"`
+	Seq     int64      `json:"seq,omitempty"`
+	SeqTime *time.Time `json:"seq_time,omitempty"`
+	Exit    string     `json:"exit,omitempty"`
 }
 
 // Cordon reasons (#281).

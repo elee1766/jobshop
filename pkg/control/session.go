@@ -877,10 +877,10 @@ func (r *runner) saveFields(f store.SessionFields) error {
 	// Suspended belong to the controller's attention chats (#606).
 	return r.c.updateSessionFields(context.WithoutCancel(r.ctx), r.id, func(cur *store.SessionFields) {
 		shipped := cur.ShippedSeq
-		prestart, readOnly, suspended := cur.Prestart, cur.ReadOnly, cur.Suspended
+		prestart, readOnly, suspended, ended := cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended
 		*cur = f
 		cur.ShippedSeq = max(shipped, f.ShippedSeq)
-		cur.Prestart, cur.ReadOnly, cur.Suspended = prestart, readOnly, suspended
+		cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended = prestart, readOnly, suspended, ended
 	})
 }
 
