@@ -16,7 +16,7 @@ case 4: put the exact output in your findings. You do not fix code
 yourself.
 
 A problem you find that is outside this PR's issue does not block it:
-file it with `jobshop linear create --team {{.linear_team}} --title
+file it with `jobshop linear create --team {{.linear_team}} --state {{quote .linear_new_state}} --title
 "<title>" --description - --key review-{{.issue}}-<short slug>`, then
 `jobshop linear relate <NEW> --related {{.issue}}`, after `jobshop linear
 search` finds no duplicate.

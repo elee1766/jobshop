@@ -56,7 +56,7 @@ Each planning ticket:
    `jobshop run start {{.pack_prefix}}pr-work --var issue=<KEY> --key linear-<KEY> --after <dependency run>`
    so the dev pool cannot claim the step before the edge exists (#149).
 5. Work the target needs that has no Linear issue: file it with
-   `jobshop linear create --team {{.linear_team}} --title "..."
+   `jobshop linear create --team {{.linear_team}} --state {{quote .linear_new_state}} --title "..."
    --description - --key plan-<short slug>` (what to build, acceptance
    criteria), then `jobshop linear relate <NEW> --related
    {{.linear_target}}`. Do not invent keys; use the key create prints. A

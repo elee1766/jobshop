@@ -200,6 +200,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `linear_done_state` | With `linear`: state post-merge moves a shipped issue to. Default `Done` |
 | `linear_human` | With `linear`: the Linear user worker questions and run escalations mention when posted on the run's issue (#293). Replies under that comment answer the question |
 | `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` stall starts stall-check for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293, `target` and `proposed`, planner parents, JOB-4, and `tracking`; set one with `jobshop linear label <KEY> add <label>`), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
+| `linear_new_state` | State of Linear issues agents file (out-of-scope finds, review findings, planner work). Default `Todo`, an intake state, so they are worked; Backlog is left to humans |
 | `linear_intake_assignee` | Planner `linear list --assignee` filter: a name, `me`, or empty for any (#292) |
 
 ### Escalation chat prompts
