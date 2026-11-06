@@ -184,7 +184,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `dev_model`, `dev_effort` | dev pool `model` and `effort`. Default empty: the agent's |
 | `dev_sonnet_sessions`, `dev_sonnet_model`, `dev_sonnet_effort` | The `dev-sonnet` pool for easier implement steps (JOB-59). Defaults 1, `claude-sonnet-5-5`, `high` |
-| `dev_pool` | Default pool of pr-work's `implement` step, also a run var (`--var dev_pool=dev-sonnet`). A failed attempt or review resume moves the step to `dev` (`retry_pool`). Default `dev` |
+| `dev_pool` | Default pool of pr-work's `implement` step, also a run var (`--var dev_pool=dev-sonnet`). A failed attempt or review resume moves the step to `dev` (`retry_pool`). Default `{{.pack_prefix}}dev`, the instance's own dev pool |
 | `refinery_sessions` | `max_sessions` for the refinery. Default 1; more needs strict branch protection |
 | `refinery_model`, `refinery_effort` | Refinery pool `model` and `effort` (#304). Default empty: the agent's |
 | `stall_model`, `stall_effort` | `stall` pool `model` and `effort`. Default empty: the agent's |

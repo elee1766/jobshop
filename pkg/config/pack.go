@@ -146,6 +146,39 @@ func packInstance(path, prefix string, layers []packLayer) PackInstance {
 	return in
 }
 
+// CheckInstancePool rejects pool for a step of workflow when another
+// packs entry declares the pool and the workflow's own entry does not: a
+// prefixed instance's run routed to the unprefixed instance's dev pool
+// would work the wrong repo (#880). Host pools and workflows outside any
+// pack are not checked.
+func (c *Config) CheckInstancePool(workflow, pool string) error {
+	var own, other *PackInstance
+	for i := range c.Instances {
+		in := &c.Instances[i]
+		hasPool := slices.Contains(in.Pools, pool)
+		if slices.Contains(in.Workflows, workflow) {
+			if hasPool {
+				return nil
+			}
+			own = in
+		} else if hasPool && other == nil {
+			other = in
+		}
+	}
+	if own == nil || other == nil {
+		return nil
+	}
+	return fmt.Errorf("pool %q belongs to pack instance %s, not %s's %s", pool, instanceName(*other), workflow, instanceName(*own))
+}
+
+// instanceName names a packs entry in errors: its path, with the prefix.
+func instanceName(in PackInstance) string {
+	if in.Prefix == "" {
+		return in.Path
+	}
+	return fmt.Sprintf("%s (prefix %s)", in.Path, in.Prefix)
+}
+
 // maxPackDepth bounds extends chains so a cycle fails instead of looping.
 const maxPackDepth = 8
 
@@ -339,6 +372,9 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		vars[k] = v
 	}
 	vars[PackPrefixVar] = prefix
+	if err := renderDefaults(vars, head.Defaults, given); err != nil {
+		return nil, fmt.Errorf("%s: %w", file, err)
+	}
 	var layers []packLayer
 	for i, ref := range head.Extends {
 		if ref.Path == "" {
@@ -411,6 +447,27 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
 	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings, textSources: textSources}), nil
+}
+
+// renderDefaults fills the string defaults that hold a template, so a
+// default can name the instance's own pool: dev_pool:
+// "{{.pack_prefix}}dev" (#880). Templates see the given vars, the
+// defaults and pack_prefix; another templated default reads as its
+// template text. A var the includer set is left as given.
+func renderDefaults(vars, defaults, given map[string]any) error {
+	src := maps.Clone(vars)
+	for _, k := range slices.Sorted(maps.Keys(defaults)) {
+		s, ok := defaults[k].(string)
+		if _, set := given[k]; set || !ok || !strings.Contains(s, "{{") {
+			continue
+		}
+		r, err := tmpl.Value(s, src)
+		if err != nil {
+			return fmt.Errorf("defaults.%s: %w", k, err)
+		}
+		vars[k] = r
+	}
+	return nil
 }
 
 // renameVars returns given with old names from renamed moved to their new

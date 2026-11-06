@@ -82,9 +82,14 @@ func runRootLease(t *testing.T, lease string, clk clock.Clock) *rpc.Client {
       - {id: rollout, pool: dev, prompt: o, title: "Rollout #{{.issue}}", needs: [review, device], when: {step: review, outcome: approve}}
       - {id: accept, pool: dev, prompt: a, title: "Accept #{{.issue}}", when: {step: review, outcome: approve}}
 `), 0o600))
+	// A second pack instance's pool: a run var naming it fails the start (#880).
+	other := filepath.Join(dir, "ox")
+	require.NoError(t, os.MkdirAll(other, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(other, config.PackFileName), fmt.Appendf(nil, "pools:\n  ox-dev: {project: js, agent: fake, max_sessions: 0, dir: %q}\n", dir), 0o600))
 	cfg := fmt.Sprintf(`packs:
   - path: pk
     vars: {repo: /src, review_pool: refinery, dev_pool: refinery}
+  - path: ox
 lease: %q
 resources:
   pr: {keyed: true}
@@ -327,6 +332,7 @@ func TestRunStartErrors(t *testing.T) {
 		{"empty var", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": " "}, Key: "issue-"}, "var issue is empty"},
 		{"unknown var", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1", "x": "2"}}, `no var "x"`},
 		{"other project", rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "1"}, Project: "zz"}, "runs in project js"},
+		{"other instance pool", rpc.RunStartParams{Workflow: "tiered", Vars: map[string]string{"dev_pool": "ox-dev"}}, `pool "ox-dev" belongs to pack instance ox`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			err := admin.Call(t.Context(), rpc.MethodRunStart, tt.p, nil)
