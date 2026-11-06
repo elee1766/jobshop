@@ -12,7 +12,7 @@ if [ "${GITHUB_EVENT_NAME:-}" != pull_request ]; then
 fi
 
 # HEAD is the PR merged into its base, so this is the PR's diff.
-git fetch -q --depth=1 origin "$BASE_SHA"
+git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || git fetch -q --depth=1 origin "$BASE_SHA"
 changed=$(git diff --name-only "$BASE_SHA" HEAD)
 
 # Package directories (catches deleted files) plus every embedded file,
