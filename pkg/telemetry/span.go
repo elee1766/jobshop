@@ -14,16 +14,21 @@ import (
 
 // Attribute keys for the spans below.
 const (
-	AttrTickStep   = attribute.Key("jobshop.tick.step")
-	AttrOutKind    = attribute.Key("jobshop.outbound.kind")
-	AttrLock       = attribute.Key("jobshop.lock")
-	AttrLockHolder = attribute.Key("jobshop.lock.for")
-	AttrExecCmd    = attribute.Key("process.command")
-	AttrExecLabel  = attribute.Key("jobshop.exec.label")
-	AttrExecExit   = attribute.Key("process.exit.code")
-	AttrExecTimed  = attribute.Key("jobshop.exec.timed_out")
-	AttrStoreOp    = attribute.Key("jobshop.store.op")
-	AttrStoreColl  = attribute.Key("jobshop.store.collection")
+	AttrTickStep = attribute.Key("jobshop.tick.step")
+	AttrOutKind  = attribute.Key("jobshop.outbound.kind")
+	AttrLock     = attribute.Key("jobshop.lock")
+	// AttrLockHolder is who held the lock when a wait for it began (tick,
+	// webhook, event, check); AttrLockHolderTrigger names the trigger
+	// behind an event or check holder. AttrLockWaiter is who waited.
+	AttrLockHolder        = attribute.Key("jobshop.lock.for")
+	AttrLockHolderTrigger = attribute.Key("jobshop.lock.holder.trigger")
+	AttrLockWaiter        = attribute.Key("jobshop.lock.waiter")
+	AttrExecCmd           = attribute.Key("process.command")
+	AttrExecLabel         = attribute.Key("jobshop.exec.label")
+	AttrExecExit          = attribute.Key("process.exit.code")
+	AttrExecTimed         = attribute.Key("jobshop.exec.timed_out")
+	AttrStoreOp           = attribute.Key("jobshop.store.op")
+	AttrStoreColl         = attribute.Key("jobshop.store.collection")
 )
 
 type metricsKey struct{}
@@ -56,11 +61,17 @@ func StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (c
 // slow one still shows under the step that made it. A ctx with no
 // recording span records nothing.
 func RecordSlow(ctx context.Context, name string, start time.Time, threshold time.Duration, err error, attrs ...attribute.KeyValue) {
+	RecordSlowLinks(ctx, name, start, threshold, err, nil, attrs...)
+}
+
+// RecordSlowLinks is RecordSlow with span links, for work whose cause is
+// in another trace: a lock wait links the span of the holder.
+func RecordSlowLinks(ctx context.Context, name string, start time.Time, threshold time.Duration, err error, links []trace.Link, attrs ...attribute.KeyValue) {
 	parent := trace.SpanFromContext(ctx)
 	if !parent.IsRecording() || time.Since(start) < threshold {
 		return
 	}
-	_, span := parent.TracerProvider().Tracer(Scope).Start(ctx, name, trace.WithTimestamp(start), trace.WithAttributes(attrs...))
+	_, span := parent.TracerProvider().Tracer(Scope).Start(ctx, name, trace.WithTimestamp(start), trace.WithAttributes(attrs...), trace.WithLinks(links...))
 	End(span, err)
 }
 

@@ -33,8 +33,13 @@ slow step was invisible. As built:
   client that gave up does not cancel it half done.
 - **Locks.** `jobshop_lock_wait_seconds{lock,for}` for `tickMu`, waiters
   `tick`, `webhook`, `event`, `check` (reload stopped taking it, JOB-104;
-  `check` is a trigger check replay, JOB-109). A wait
-  over 10ms is also a span.
+  `check` is a trigger check replay, JOB-109). A wait over 10ms is also a
+  span `wait tickMu` under the waiter's span. It names the holder it
+  waited behind (`jobshop.lock.for` = tick, webhook, event or check, and
+  `jobshop.lock.holder.trigger` for an event or check job), the waiter
+  (`jobshop.lock.waiter`), and links the holder's span, so a slow pass
+  says what blocked it (JOB-109). With no holder at the time, only the
+  waiter is set.
 - **Metrics.** `jobshop_tick_step_duration_seconds{step}`,
   `jobshop_outbound_duration_seconds{kind,target}`,
   `jobshop_lock_wait_seconds{lock,for}`.

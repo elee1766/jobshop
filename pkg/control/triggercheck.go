@@ -8,7 +8,6 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Trigger checks run outside the tick (JOB-109). A check is a shell
@@ -112,11 +111,15 @@ func (c *Controller) runTriggerChecks(ctx context.Context, cfg *config.Config, n
 // evaluation under it, then does the job queued meanwhile, if any.
 func (c *Controller) checkLoop(name string, job checkJob) {
 	for {
-		results := c.runChecks(c.ctx, name, job.need)
-		unlock := c.lockTick(c.ctx, "check")
-		if c.ctx.Err() == nil && !c.draining() {
+		// A root span per round (the goroutine outlives the pass that
+		// started it): the commands, the wait for the tick lock and the
+		// replay nest under it, and a waiter behind the replay links it.
+		ctx, span := c.rootSpan(c.ctx, "trigger checks "+name, attribute.String("jobshop.trigger", name))
+		results := c.runChecks(ctx, job.need)
+		unlock := c.lockTickFor(ctx, "check", name)
+		if ctx.Err() == nil && !c.draining() {
 			// One config for the replay, like an event pass (JOB-104).
-			job.run(withCheckPass(c.ctx, &checkPass{results: results}), c.config())
+			job.run(withCheckPass(ctx, &checkPass{results: results}), c.config())
 		}
 		next, more := c.checkJobs.queued[name]
 		delete(c.checkJobs.queued, name)
@@ -124,6 +127,7 @@ func (c *Controller) checkLoop(name string, job checkJob) {
 			delete(c.checkJobs.running, name)
 		}
 		unlock()
+		span.End()
 		if !more {
 			return
 		}
@@ -134,9 +138,7 @@ func (c *Controller) checkLoop(name string, job checkJob) {
 // runChecks runs the checks of one trigger at the same time, within the
 // bound of maxTriggerChecks across all triggers. A check that did not get
 // to run (the controller is stopping) has no result.
-func (c *Controller) runChecks(ctx context.Context, name string, need []checkNeed) map[string]checkResult {
-	ctx, span := telemetry.StartSpan(ctx, "trigger checks "+name, attribute.String("jobshop.trigger", name))
-	defer telemetry.End(span, nil)
+func (c *Controller) runChecks(ctx context.Context, need []checkNeed) map[string]checkResult {
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	out := make(map[string]checkResult, len(need))

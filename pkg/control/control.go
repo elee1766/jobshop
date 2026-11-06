@@ -247,6 +247,15 @@ type Controller struct {
 	// pass reads the config once at its start (JOB-104), so reload does
 	// not take it.
 	tickMu sync.Mutex
+	// holder is who holds tickMu, for the lock wait spans (tracing.go).
+	// lockSpanMin is the shortest wait that gets a span; zero is
+	// lockSpanThreshold, tests lower it.
+	holderMu    sync.Mutex
+	holder      lockHolder
+	lockSpanMin time.Duration
+	// lockWaitHook, if set, runs after a lock waiter has read the holder
+	// and before it blocks; tests use it to know the waiter is committed.
+	lockWaitHook func()
 	// runMu serializes run start (key dedup) and run state changes.
 	runMu sync.Mutex
 	// autoMu guards auto, the command and http step attempts running in

@@ -34,7 +34,14 @@ As built (`pkg/control/triggercheck.go`):
 - Direct calls in tests (a `Controller` built without `Run`) keep the
   check inline, one synchronous evaluation. `trigger.list` still runs
   checks inline and in parallel (#522).
-- The replay's wait for the tick lock is recorded as
-  `jobshop_lock_wait_seconds` with `for="check"`. `trigger checks <name>`
-  is a root span (the goroutine outlives the pass), with the `exec` spans
-  of its commands below it.
+- Tracing (the issue's addendum). Both background paths run on a ctx
+  with no span, so they now start a root span: `trigger checks <name>`
+  per check round (its commands, its wait for `tickMu` and the replay
+  nest under it) and `trigger event <names>` per event job (attribute
+  `jobshop.triggers`). `lockTick` keeps who holds `tickMu` (kind,
+  trigger, span context) under a small mutex, and `wait tickMu` records
+  it: `jobshop.lock.for` is the holder, `jobshop.lock.holder.trigger` its
+  trigger, `jobshop.lock.waiter` the waiter, and a span link points at
+  the holder's span. Before this `lock.for` was the waiter. The holder
+  is the one at the moment the wait began; a wait behind several jobs in
+  a row names the first.
