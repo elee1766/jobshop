@@ -124,6 +124,16 @@ func (c *Controller) planRun(ctx context.Context, sc scope, p rpc.RunStartParams
 			return runPlan{}, fmt.Errorf("%w: workflow %s step %s: %w", store.ErrInvalid, p.Workflow, s.ID, err)
 		}
 		w.Steps[i].Pool = name
+		if s.RetryPool != "" {
+			rp, err := cfg.ResolvePool(&w, s.RetryPool, vars)
+			if err != nil {
+				return runPlan{}, fmt.Errorf("%w: workflow %s step %s retry_pool: %w", store.ErrInvalid, p.Workflow, s.ID, err)
+			}
+			if rp == name {
+				rp = ""
+			}
+			w.Steps[i].RetryPool = rp
+		}
 		// Resource keys too (#400): an unknown resource fails the start.
 		rs, err := cfg.ResolveResources(&w, s.NeedsResources, vars)
 		if err != nil {
@@ -211,7 +221,7 @@ func (c *Controller) buildRun(plan runPlan, p rpc.RunStartParams, extra map[stri
 			return g, err
 		}
 		needs := w.StepNeeds(i)
-		stepF := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs, Placement: plan.placements[i]}
+		stepF := store.StepFields{Run: runID, Step: s.ID, Index: i, Retries: s.RetryLimit(), Resources: s.NeedsResources, Needs: needs, Placement: plan.placements[i], RetryPool: s.RetryPool}
 		pool := s.Pool
 		if s.Auto() {
 			// No pool on the ticket: no session may claim it; the
@@ -543,6 +553,10 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if step.Status == store.StatusClosed && step.Resolution == "done" {
 		// Reopening a finished step is a review finding against it.
 		c.recordReviewFinding(ctx, sc, *step)
+	}
+	if step.Status == store.StatusClosed || (step.Status == store.StatusOpen && sf.Failures > 0) {
+		// A failed attempt or a rejected result goes to the retry pool.
+		c.escalatePool(ctx, step, "resumed by "+sc.actor)
 	}
 	if step.Status == store.StatusClosed {
 		if _, err := store.Reopen(ctx, c.store, sc.actor, step.ID); err != nil {

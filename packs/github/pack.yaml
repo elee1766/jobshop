@@ -13,6 +13,17 @@ defaults:
   # Refinery model and effort (#304 pool options). Empty: the agent's.
   refinery_model: ""
   refinery_effort: ""
+  # Implement routing by difficulty (JOB-59). pr-work's implement step
+  # runs in the pool named by its dev_pool run var (default dev_pool
+  # below); a failed attempt or a review resume moves it to dev. dev is
+  # the strong model, dev-sonnet the cheaper one. Empty model or effort:
+  # the agent's.
+  dev_pool: dev
+  dev_model: ""
+  dev_effort: ""
+  dev_sonnet_sessions: 1
+  dev_sonnet_model: claude-sonnet-5-5
+  dev_sonnet_effort: high
   # post-merge steps wait on CI and deploy in their own pool (#167).
   deploy_sessions: 3
   # Refinery merge policy (prompts/merge.md, ci-merge.md).
@@ -90,6 +101,19 @@ pools:
     repo: "{{.checkout}}"
     ref: origin/master
     max_sessions: "{{.dev_sessions}}"
+    model: "{{.dev_model}}"
+    effort: "{{.dev_effort}}"
+    idle_timeout: 10m
+    turn_timeout: 2h
+    prompt_file: prompts/{{.tracker}}/dev.md
+  # Easier implement steps (JOB-59): same prompt, cheaper model.
+  dev-sonnet:
+    agent: "{{.agent}}"
+    repo: "{{.checkout}}"
+    ref: origin/master
+    max_sessions: "{{.dev_sonnet_sessions}}"
+    model: "{{.dev_sonnet_model}}"
+    effort: "{{.dev_sonnet_effort}}"
     idle_timeout: 10m
     turn_timeout: 2h
     prompt_file: prompts/{{.tracker}}/dev.md
@@ -267,11 +291,17 @@ prompt_rules:
   - name: learn-nudge
     at: after
     file: prompts/rules/learn-nudge.md
+  # Implement routing rubric (JOB-59) where runs are started: the
+  # planner and stall-check (plan) and task intake (dev).
+  - name: dev-pool
+    at: system
+    match: {pools: [plan, dev, dev-sonnet]}
+    file: prompts/rules/dev-pool.md
 workflows:
   # One run per issue: implement (dev) -> review-merge (refinery) ->
   # post-merge (deploy-check). Started by the planner with --key issue-<n>.
   pr-work:
-    vars: [issue]
+    vars: [issue, dev_pool]
     issue: issue
     repo: "{{.repo}}"
     tracker: "{{.tracker}}"
@@ -286,7 +316,8 @@ workflows:
       hold_prompt_file: prompts/escalation-hold.md
     steps:
       - id: implement
-        pool: dev
+        pool: "{{.dev_pool}}"
+        retry_pool: dev
         retries: 3
         title: "Implement #{{.issue}}"
         prompt_file: prompts/{{.tracker}}/implement.md
@@ -309,7 +340,7 @@ workflows:
   # Same steps and pools; the Linear prompts. Unused while linear_team is
   # empty. On a tracker: linear instance pr-work is already this.
   pr-work-linear:
-    vars: [issue]
+    vars: [issue, dev_pool]
     issue: issue
     repo: "{{.repo}}"
     tracker: linear
@@ -322,7 +353,8 @@ workflows:
       hold_prompt_file: prompts/escalation-hold.md
     steps:
       - id: implement
-        pool: dev
+        pool: "{{.dev_pool}}"
+        retry_pool: dev
         retries: 3
         title: "Implement {{.issue}}"
         prompt_file: prompts/linear/implement.md
