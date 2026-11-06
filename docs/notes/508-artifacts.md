@@ -25,7 +25,10 @@ claimed and is not an orphan. Open means unread; `ack` closes it
 - Retention: the tick prunes hourly. An artifact acked more than
   `artifacts.retention` (default 90d) ago loses its attachment dir and
   its files are marked `pruned`; the ticket stays.
-- Desk: `?view=artifacts`, nav shows the unread count. `GET
+- Desk (2026-11-06, JOB-80: the built-in view and unread badge were
+  removed; the API and the `artifact` plugin slot stay, see
+  `docs/notes/JOB-80-remove-artifacts-view.md`): `?view=artifacts`, nav
+  shows the unread count. `GET
   /api/artifacts`, `/api/artifacts/{id}`, `/api/artifacts/{id}/files/{name}`
   and `POST /api/artifacts/{id}/ack` (CSRF header, as scale and cordon).
   Files are served only by a name listed in meta, opened with `os.Root`,

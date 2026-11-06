@@ -1,9 +1,0 @@
-{
-  "name": "artifacts",
-  "version": "1",
-  "entry": "index.js",
-  "api": ">=3",
-  "contributes": [
-    { "slot": "view", "element": "desk-artifacts-view", "id": "artifacts", "title": "Artifacts" }
-  ]
-}

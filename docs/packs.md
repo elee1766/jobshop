@@ -187,8 +187,8 @@ loads it. Keep the two in sync.
   `prefix:` and `vars`.
 - **A scheduled report (#508).** A cron trigger starts a one-step run
   whose prompt ends with `jobshop artifact deliver`. The artifact
-  carries the trigger name, so Desk's Artifacts view groups the
-  reports by it:
+  carries the trigger name, so `jobshop artifact list --trigger` and
+  `GET /api/artifacts?trigger=` group the reports by it:
 
   ```yaml
   workflows:

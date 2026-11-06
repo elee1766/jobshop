@@ -101,7 +101,7 @@ Added in api version 2 (#535; declare `"api": ">=2"`):
   `on`.
 
 Added in api version 3 (#541; declare `"api": ">=3"`). Every
-built-in view (Work, Activity, Sessions, Pools, Artifacts, the ticket
+built-in view (Work, Activity, Sessions, Pools, the ticket
 details in the drawer) is now a plugin using only these:
 
 - `params()` keeps every URL key, so a view stores its filters there;
@@ -214,4 +214,7 @@ printf 'a,b\n1,2\n' > /tmp/t.csv
 jobshop artifact deliver "CSV test" --attach /tmp/t.csv
 ```
 
-Open Desk, Artifacts, the new artifact: `t.csv` renders as a table.
+No built-in view hosts the `artifact` slot since JOB-80. A view plugin
+that lists `api/artifacts` and calls `api.mount(host, 'artifact',
+{type, ext}, {artifact, file})` for each attachment renders `t.csv` as a
+table.

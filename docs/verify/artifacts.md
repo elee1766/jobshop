@@ -10,12 +10,13 @@ After a deploy that includes #508, on gasserver:
 2. `jobshop artifact deliver x --attach /etc/hostname` from the same
    session is refused (outside the session dir), and nothing new is in
    `/var/lib/jobshop/artifacts/`.
-3. Desk `?view=artifacts`: the nav shows 1 unread; the pane renders the
-   markdown and shows `out.csv` inline. `curl -sI
+3. `curl -s localhost:<port>/api/artifacts?unread=1` lists it. `curl -sI
    localhost:<port>/api/artifacts/<id>/files/out.csv` shows
-   `X-Content-Type-Options: nosniff` and `Content-Disposition`.
-4. Press `a`: the artifact closes `acknowledged`, the unread count drops,
-   and `jobshop ticket show <id>` history has a `close` by admin.
+   `X-Content-Type-Options: nosniff` and `Content-Disposition`. (Desk has
+   no built-in Artifacts view since JOB-80.)
+4. `jobshop artifact ack <id>`: the artifact closes `acknowledged`, it
+   leaves the unread list, and `jobshop ticket show <id>` history has a
+   `close` by admin.
 5. Prune: with `artifacts.retention: 1m` in `jobshop.yaml` and a
    `jobshop reload`, within an hour the controller log has `artifacts
    pruned`, the dir is gone, and `jobshop artifact show <id>` lists the
