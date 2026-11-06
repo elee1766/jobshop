@@ -372,11 +372,7 @@ func (c *collection) List(ctx context.Context, f store.RecordFilter) ([]store.Re
 }
 
 func (c *collection) Count(ctx context.Context, f store.RecordFilter) (map[string]int, error) {
-	w, err := c.where(f, "")
-	if err != nil {
-		return nil, err
-	}
-	text, args, err := bqb.New("SELECT state, COUNT(*) FROM records WHERE ? GROUP BY state", w).ToSql()
+	text, args, err := c.countQuery(f)
 	if err != nil {
 		return nil, err
 	}
@@ -397,6 +393,16 @@ func (c *collection) Count(ctx context.Context, f store.RecordFilter) (map[strin
 		out[st] = n
 	}
 	return out, rows.Err()
+}
+
+// countQuery is Count's statement. records_state_created (JOB-61) serves
+// a state filter with a created_at range.
+func (c *collection) countQuery(f store.RecordFilter) (string, []any, error) {
+	w, err := c.where(f, "")
+	if err != nil {
+		return "", nil, err
+	}
+	return bqb.New("SELECT state, COUNT(*) FROM records WHERE ? GROUP BY state", w).ToSql()
 }
 
 func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder string, lease time.Duration) (rec store.Record, err error) {
