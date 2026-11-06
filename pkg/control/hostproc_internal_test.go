@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/proc"
 )
 
 // detachedHostDir writes a spec for a fake-agent host in a fresh session
@@ -111,16 +110,16 @@ func TestStopHostKills(t *testing.T) {
 	assert.False(t, stopDetachedHost(dir, time.Second), "nothing left to stop")
 }
 
-// TestLegacyHostLiveness (#904): a host from before supervisor.pid is
-// still found and its pid read through host.pid.
-func TestLegacyHostLiveness(t *testing.T) {
+// TestNoSupervisorPid (#918): a session dir with no supervisor.pid has no
+// host, even with the old host.pid file (acphost v0.20 dropped it).
+func TestNoSupervisorPid(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	assert.False(t, hostAlive(dir))
 	assert.Zero(t, hostPid(dir))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, host.PidFile), []byte("4242\n"), 0o600))
-	assert.Equal(t, 4242, hostPid(dir))
-	assert.False(t, hostAlive(dir), "no lock held")
-	_, err := proc.Open(dir)
-	require.ErrorIs(t, err, os.ErrNotExist)
+	assert.False(t, stopDetachedHost(dir, time.Second))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "host.pid"), []byte("4242\n"), 0o600))
+	assert.Zero(t, hostPid(dir))
+	assert.False(t, hostAlive(dir))
+	assert.False(t, stopDetachedHost(dir, time.Second))
 }

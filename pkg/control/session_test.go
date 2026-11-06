@@ -745,7 +745,7 @@ func TestWorktreeDeleted(t *testing.T) {
 	require.Len(t, sessions, 1)
 	sdir := root.SessionDir(sessions[0].ID)
 	work := filepath.Join(sdir, "work")
-	oldPid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+	oldPid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 
 	// #154: an outside `git worktree remove --force` (gh pr merge deleting
@@ -759,7 +759,7 @@ func TestWorktreeDeleted(t *testing.T) {
 	require.NoError(t, os.RemoveAll(work))
 
 	passEventually(t, root.Dir, func() bool {
-		pid, err := os.ReadFile(filepath.Join(sdir, host.PidFile))
+		pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 		_, werr := os.Stat(work)
 		return err == nil && string(pid) != string(oldPid) && werr == nil
 	}, "host respawned with a new worktree")
