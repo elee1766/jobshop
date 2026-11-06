@@ -23,6 +23,22 @@ jobs:
       - nscloud-cache-tag-jobshop-go
       - nscloud-cache-size-20gb
       - nscloud-cache-allow-commit-from-master
+    # Postgres and VictoriaLogs tests run here, not in their own jobs: their
+    # time is mostly the Go build, which this job already pays once.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      # The store conformance suite against Postgres (#493, JOB-35).
+      JOBSHOP_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      # Tests against a real VictoriaLogs (#530): a missing binary fails.
+      JOBSHOP_REQUIRE_VICTORIALOGS: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -34,17 +50,34 @@ jobs:
       - uses: namespacelabs/nscloud-cache-action@v1
         with:
           cache: go
+      - name: install victoria-logs
+        env:
+          VL_VERSION: v1.53.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/vl"
+          cd "$RUNNER_TEMP/vl"
+          f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
+          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
+          grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
+          tar xzf "$f"
+          bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
+          echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
       - run: go build ./...
-      - run: go vet ./...
+      - run: go vet -tags victorialogs ./...
       # checkptr is off for modernc's machine-translated C only: its pointer
       # arithmetic is ~a third of race-test CPU and is not our code. The
       # race detector still covers it (#433).
       - name: go test
         id: test
         run: |
-          go test -json -race -gcflags='modernc.org/...=-d=checkptr=0' ./... > test.json 2>&1 || rc=$?
+          go test -json -race -tags victorialogs -gcflags='modernc.org/...=-d=checkptr=0' ./... > test.json 2>&1 || rc=$?
           # Readable log from the JSON stream.
           go run ./pkg/flaky/cmd/ci-flaky -print -in test.json
+          # These packages skip without their service. Here a skip means the
+          # service was missing, so fail instead of passing silently.
+          skipped=$(jq -rR 'fromjson? | select(.Action == "skip" and .Test != null and (.Package | test("store/postgres|store/storemigrate|journalvl"))) | "\(.Package) \(.Test)"' test.json)
+          if [ -n "$skipped" ]; then echo "skipped:"; echo "$skipped"; exit 1; fi
           exit "${rc:-0}"
       # On failure, rerun each failed test 20 times: flaky or broken (#510).
       # The job still fails; failed-tests.json is for the planner.
@@ -124,85 +157,3 @@ jobs:
       - name: pkg/desk/dist is current
         run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"
 
-  # Tests against a real VictoriaLogs (#530), built with -tags victorialogs.
-  # The go job builds without the tag, so it does not see them. A missing
-  # binary or any skipped test fails the job.
-  victorialogs:
-    runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
-      - nscloud-cache-tag-jobshop-go
-      - nscloud-cache-size-20gb
-      - nscloud-cache-allow-commit-from-master
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false
-      # Namespace cache volume (runs-on labels): mounted, no restore or
-      # upload step. Only master commits to it, so PRs share one warm cache.
-      - uses: namespacelabs/nscloud-cache-action@v1
-        with:
-          cache: go
-      - name: install victoria-logs
-        env:
-          VL_VERSION: v1.53.0
-        run: |
-          mkdir -p "$RUNNER_TEMP/vl"
-          cd "$RUNNER_TEMP/vl"
-          f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
-          grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
-          tar xzf "$f"
-          bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
-          echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
-          echo "JOBSHOP_REQUIRE_VICTORIALOGS=1" >> "$GITHUB_ENV"
-      - run: go vet -tags victorialogs ./...
-      # Only the tagged package (JOB-47): it drives a controller through its
-      # RPC API, so the rest of pkg/control stays in the go job.
-      - name: go test
-        shell: bash # pipefail, so a test failure is not hidden by tee
-        run: |
-          go test -race -v -tags victorialogs ./pkg/control/journalvl/ | tee /tmp/vl-test.log
-          grep -q -- '--- PASS' /tmp/vl-test.log || { echo "no victorialogs tests ran"; exit 1; }
-          if grep -- '--- SKIP' /tmp/vl-test.log; then echo "tests skipped"; exit 1; fi
-
-  # The store conformance suite against Postgres (#493). The go job runs
-  # it against SQLite; pkg/store/postgres's tests skip without the DSN.
-  postgres:
-    runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
-      - nscloud-cache-tag-jobshop-go
-      - nscloud-cache-size-20gb
-      - nscloud-cache-allow-commit-from-master
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
-    env:
-      JOBSHOP_TEST_POSTGRES: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: false
-      # Namespace cache volume (runs-on labels): mounted, no restore or
-      # upload step. Only master commits to it, so PRs share one warm cache.
-      - uses: namespacelabs/nscloud-cache-action@v1
-        with:
-          cache: go
-      # JOB-35: every case must run on Postgres. A missing DSN or any
-      # skipped test fails the job instead of passing silently.
-      - name: storetest on postgres
-        shell: bash # explicit bash sets pipefail, so a test failure is not hidden by tee
-        run: |
-          test -n "$JOBSHOP_TEST_POSTGRES" || { echo "JOBSHOP_TEST_POSTGRES is not set"; exit 1; }
-          go test -race -v ./pkg/store/postgres/ ./pkg/store/storemigrate/ | tee /tmp/pg-test.log
-          if grep -- '--- SKIP' /tmp/pg-test.log; then echo "tests skipped on postgres"; exit 1; fi
