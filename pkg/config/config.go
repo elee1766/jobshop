@@ -1394,6 +1394,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
 	}
 	for _, name := range slices.Sorted(maps.Keys(c.Pools)) {
+		if err := checkMergedOverlay(c.SandboxFor(name)); err != nil {
+			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
+		}
 		// Without system mounts a sandboxed agent cannot exec (#625): the
 		// paths moved from code to config, so say so instead of a bare
 		// spawn failure.

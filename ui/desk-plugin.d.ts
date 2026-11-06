@@ -853,6 +853,14 @@ export interface Mount {
   skip_missing?: boolean;
 }
 
+export interface Overlay {
+  dst: string;
+  layers: string[];
+  mode?: string;
+  upper?: string;
+  work?: string;
+}
+
 export interface PackInstance {
   path: string;
   prefix?: string;
@@ -1014,6 +1022,7 @@ export interface Sandbox {
   ro?: Mount[];
   rw?: Mount[];
   tmpfs?: Mount[];
+  overlay?: Overlay[];
   hide?: string[];
   env_keep?: string[];
   network?: string;

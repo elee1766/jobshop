@@ -29,6 +29,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	host "github.com/elee1766/acphost"
+	"github.com/elee1766/acphost/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
@@ -41,6 +42,7 @@ import (
 // The test binary is also the session host and the agent, so the test runs
 // the real process tree: controller -> host -> agent.
 func TestMain(m *testing.M) {
+	proc.MaybeChild()
 	if len(os.Args) >= 3 && os.Args[1] == "session-host" {
 		if err := host.Main(os.Args[2]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
