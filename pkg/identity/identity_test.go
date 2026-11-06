@@ -229,6 +229,39 @@ func TestGitHubAppLogin(t *testing.T) {
 	assert.Equal(t, "my-app[bot]", l)
 }
 
+// TestGitHubTokenSlugLogin (JOB-108): a github-token that holds an
+// installation token cannot read GET /user (403), so it names itself with
+// slug, and without one the error says so instead of showing the 403.
+func TestGitHubTokenSlugLogin(t *testing.T) {
+	var calls atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		http.Error(w, `{"message":"Resource not accessible by integration"}`, http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+	pat := filepath.Join(t.TempDir(), "tok")
+	require.NoError(t, os.WriteFile(pat, []byte("ghs_x\n"), 0o600))
+	id := config.Identity{Kind: config.IdentityGitHubToken, TokenFile: config.SecretPath(pat), Repos: []string{"a/*"}, APIURL: srv.URL}
+	m := identity.NewMinter()
+
+	_, err := m.Login(t.Context(), "me", id)
+	require.ErrorContains(t, err, "set slug")
+	assert.Zero(t, calls.Load(), "no request for a token GET /user refuses")
+
+	id.Slug = "my-app"
+	for range 2 {
+		l, err := m.Login(t.Context(), "me", id)
+		require.NoError(t, err)
+		assert.Equal(t, "my-app[bot]", l)
+	}
+	id.Slug = "other[bot]"
+	m.Forget()
+	l, err := m.Login(t.Context(), "me", id)
+	require.NoError(t, err)
+	assert.Equal(t, "other[bot]", l)
+	assert.Zero(t, calls.Load())
+}
+
 // TestLinearAppRenew (#866): another mint for the same Linear app revokes
 // the cached token, so a token the API refused is replaced at once, and
 // callers that all hold the same refused token cause one mint.

@@ -223,6 +223,9 @@ type Controller struct {
 	slotMu sync.Mutex
 	// minter caches identity tokens (#200).
 	minter *identity.Minter
+	// selfLoginErr is the last self-login error logged per identity, so a
+	// refused lookup warns once, not on every poll (JOB-108).
+	selfLoginErr sync.Map
 	// ingest is the spool drain (#335).
 	ingest ingestDrain
 	// reconcileAt is the last GitHub App delivery reconcile (#335).

@@ -72,6 +72,7 @@ ingest:
 		"webhook secret":  "identities: {x: {kind: github-token, token_file: /p, repos: [a/b], webhook_secret_file: /s}}",
 		"app with secret": "identities: {x: {kind: github-app, app_id: 1, private_key_file: /k, installations: {a: 1}, repos: [a/b], webhook_secret_file: /s}}",
 		"linear repos":    "identities: {x: {kind: linear, token_file: /t, workspace: w, teams: [A], repos: [a/b]}}",
+		"linear slug":     "identities: {x: {kind: linear, token_file: /t, workspace: w, teams: [A], slug: app}}",
 	} {
 		_, err := config.Parse([]byte(bad))
 		assert.Error(t, err, name)
