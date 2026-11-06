@@ -165,6 +165,37 @@ func TestStepEscalation(t *testing.T) {
 	assert.Len(t, escalations(t, admin, r.Run.ID), 2)
 }
 
+// TestStepCloseFreeText refuses a step close with a resolution the run
+// engine does not act on, so the step stays held and the run moves on once
+// it is closed done (JOB-92). skipped is the controller's.
+func TestStepCloseFreeText(t *testing.T) {
+	admin := runRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "92"}})
+	step := r.Steps[0].ID
+	var sess rpc.SessionNewResult
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &sess))
+	s := dial(t, sess.Socket)
+	var cl rpc.ClaimResult
+	require.NoError(t, s.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{}, &cl))
+	require.Equal(t, step, cl.Ticket.ID)
+
+	for _, res := range []string{"looks good, approved", store.StepSkipped} {
+		err := s.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{Resolution: res, Outcome: "approved"}, nil)
+		require.ErrorIs(t, err, store.ErrInvalid, res)
+		require.ErrorContains(t, err, "comment")
+	}
+	err := admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: step, Resolution: "lgtm"}, nil)
+	require.ErrorIs(t, err, store.ErrInvalid, "admin free text is refused too")
+	got := getTicket(t, admin, step).Ticket
+	assert.Equal(t, store.StatusInProgress, got.Status, "a refused close leaves the step held")
+	f, err := store.DecodeFields[store.StepFields](got)
+	require.NoError(t, err)
+	assert.Empty(t, f.Outcome, "a refused close sets no outcome")
+
+	require.NoError(t, s.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{Resolution: "done"}, nil))
+	assert.Equal(t, store.StatusOpen, getTicket(t, admin, r.Steps[1].ID).Ticket.Status, "the next step opens")
+}
+
 // TestStepRebaseNoFailure closes review for a conflict with master more
 // times than its retry limit without escalating; a real finding still
 // counts (#424).

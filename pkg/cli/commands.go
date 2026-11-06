@@ -562,7 +562,7 @@ func (c ticketUpdateCmd) Run(g *Globals) error {
 
 type closeCmd struct {
 	ID         string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
-	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, rebase (reopen a step without counting a failure), cancelled, ..."`
+	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, rebase (reopen a step without counting a failure), cancelled. A workflow step takes only these; put text in a comment."`
 	Outcome    string `help:"Workflow step outcome word (approve, reject, ...); later steps' when: conditions read it."`
 }
 
