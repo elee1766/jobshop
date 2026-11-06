@@ -257,18 +257,43 @@ func (c *Config) checkTriggerRun(tr *Trigger) error {
 	for k, v := range r.Vars {
 		templates["vars."+k] = v
 	}
+	return checkTriggerTemplates(tr, templates)
+}
+
+// checkTriggerTemplates checks that templates reference only
+// {{.check_output}} (with a check) and {{.event.<field>}} (with on:).
+func checkTriggerTemplates(tr *Trigger, templates map[string]string) error {
 	for where, s := range templates {
 		vs, err := refs(s)
 		if err != nil {
-			return fmt.Errorf("run: %s: %w", where, err)
+			return fmt.Errorf("%s: %w", where, err)
 		}
 		for _, v := range vs {
-			if v != CheckOutputVar {
-				return fmt.Errorf("run: %s uses %s; only %s is available", where, placeholder(v), placeholder(CheckOutputVar))
+			switch {
+			case v == EventVar && len(tr.On) > 0:
+			case v == CheckOutputVar && tr.When.Check != "":
+			case v == CheckOutputVar:
+				return fmt.Errorf("%s uses %s, which needs when.check", where, placeholder(CheckOutputVar))
+			case v == EventVar:
+				return fmt.Errorf("%s uses %s, which needs an on: list", where, placeholder(EventVar+".<field>"))
+			default:
+				return fmt.Errorf("%s uses %s; only %s and %s are available", where, placeholder(v), placeholder(CheckOutputVar), placeholder(EventVar+".<field>"))
 			}
-			if tr.When.Check == "" {
-				return fmt.Errorf("run: %s uses %s, which needs when.check", where, placeholder(CheckOutputVar))
-			}
+		}
+	}
+	return nil
+}
+
+// checkTriggerOn validates on: and fallback:.
+func checkTriggerOn(tr *Trigger) error {
+	for i, e := range tr.On {
+		if (e.GitHub == nil) == (e.Linear == nil) {
+			return fmt.Errorf("on[%d]: set exactly one of github and linear", i)
+		}
+	}
+	if tr.Fallback != "" {
+		if d, err := time.ParseDuration(tr.Fallback); err != nil || d <= 0 {
+			return fmt.Errorf("fallback %q must be a positive duration", tr.Fallback)
 		}
 	}
 	return nil

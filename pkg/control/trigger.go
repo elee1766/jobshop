@@ -42,6 +42,9 @@ func (c *Controller) runTriggers() {
 			c.runStallTrigger(c.ctx, name, tr)
 			continue
 		}
+		if !c.triggerPollDue(name, tr) {
+			continue
+		}
 		st, err := c.evalTrigger(c.ctx, name, tr)
 		if err != nil {
 			c.log.Error("trigger", "trigger", name, "err", err)
@@ -305,6 +308,12 @@ func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, w
 }
 
 func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Trigger, key string) (store.Ticket, error) {
+	return c.fireTriggerEvent(ctx, name, tr, key, nil)
+}
+
+// fireTriggerEvent fires tr; ev is the event that fired it, nil for a
+// poll. Its fields are the event template var (empty on a poll).
+func (c *Controller) fireTriggerEvent(ctx context.Context, name string, tr config.Trigger, key string, ev triggerEvent) (store.Ticket, error) {
 	m := map[string]string{"name": name}
 	if key != "" {
 		// Prefixed with the trigger name so keys of different triggers
@@ -315,8 +324,13 @@ func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Tri
 	if err != nil {
 		return store.Ticket{}, err
 	}
+	out, _, _ := strings.Cut(key, "\n")
+	tv := map[string]any{config.CheckOutputVar: strings.TrimSpace(out), config.EventVar: ev.vars()}
 	if tr.Run != nil {
-		return c.fireRun(ctx, tr.Run, m, key)
+		return c.fireRun(ctx, tr.Run, m, tv)
+	}
+	if tr.Command != nil {
+		return c.fireCommand(ctx, name, tr, meta, tv)
 	}
 	tt := *tr.Ticket
 	if key != "" {
@@ -332,9 +346,7 @@ func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Tri
 // ticket, so the open run holds the trigger and its key dedups like a
 // ticket's. A run already open under the same run key is not an error;
 // the trigger stays held by that run only if it carries the trigger meta.
-func (c *Controller) fireRun(ctx context.Context, r *config.TriggerRun, m map[string]string, key string) (store.Ticket, error) {
-	out, _, _ := strings.Cut(key, "\n")
-	tv := map[string]any{config.CheckOutputVar: strings.TrimSpace(out)}
+func (c *Controller) fireRun(ctx context.Context, r *config.TriggerRun, m map[string]string, tv map[string]any) (store.Ticket, error) {
 	p := rpc.RunStartParams{Workflow: r.Workflow, Vars: map[string]string{}}
 	for k, v := range r.Vars {
 		s, err := r.Fill(v, tv)

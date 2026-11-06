@@ -174,12 +174,16 @@ func TestTriggerRun(t *testing.T) {
 	assert.Equal(t, "red-{{.check_output}}", r.Key, "template kept for fire time")
 
 	tests := []struct{ name, yaml, want string }{
-		{"both", "    when: {check: 'true'}\n    ticket: {title: x}\n    run: {workflow: fix, vars: {sha: a, why: b}}\n", "exactly one of ticket and run"},
-		{"neither", "    when: {check: 'true'}\n", "exactly one of ticket and run"},
+		{"both", "    when: {check: 'true'}\n    ticket: {title: x}\n    run: {workflow: fix, vars: {sha: a, why: b}}\n", "exactly one of ticket, run and command"},
+		{"neither", "    when: {check: 'true'}\n", "exactly one of ticket, run and command"},
 		{"unknown workflow", "    when: {check: 'true'}\n    run: {workflow: nope}\n", `unknown workflow "nope"`},
 		{"missing var", "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: a}}\n", "needs var why"},
 		{"extra var", "    when: {check: 'true'}\n    run: {workflow: fix, vars: {sha: a, why: b, x: c}}\n", `no var "x"`},
 		{"output without check", "    when: {ready_below: 1}\n    run: {workflow: fix, vars: {sha: a, why: b}, key: \"{{.check_output}}\"}\n", "needs when.check"},
+		{"event without on", "    when: {ready_below: 1}\n    run: {workflow: fix, vars: {sha: \"{{.event.head_sha}}\", why: b}}\n", "needs an on: list"},
+		{"on without source", "    on: [{}]\n    command: {run: x}\n", "exactly one of github and linear"},
+		{"bad fallback", "    on: [{github: {event: push}}]\n    fallback: soon\n    command: {run: x}\n", "fallback"},
+		{"empty command", "    on: [{github: {event: push}}]\n    command: {run: \" \"}\n", "command: run is required"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

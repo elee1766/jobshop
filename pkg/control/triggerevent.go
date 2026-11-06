@@ -1,0 +1,363 @@
+package control
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"maps"
+	"os/exec"
+	"path"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/store"
+)
+
+// Event triggers (JOB-62, docs/notes/JOB-62-event-triggers.md). A
+// trigger with on: fires when an admitted webhook delivery matches,
+// without waiting for the next tick; its when conditions and dedup are
+// the same as a poll's. fallback: spaces its polls, so a lost webhook only
+// costs latency.
+
+// triggerEvent is the fields of one delivery a trigger can match and
+// template on, keyed as config.EventFields.
+type triggerEvent map[string]string
+
+// eventOf reads the matchable fields of an inbox item. Labels are
+// joined with newlines in "label".
+func eventOf(it store.InboxItem) triggerEvent {
+	ev := triggerEvent{"source": it.Source, "event": it.Kind, "repo": it.RepoOrTeam, "delivery": it.DeliveryID}
+	if it.Number > 0 {
+		ev["pr"] = fmt.Sprint(it.Number)
+	}
+	payload := it.Admitted
+	if len(payload) == 0 || string(payload) == "null" {
+		payload = it.Payload
+	}
+	switch it.Source {
+	case ingest.SourceGitHub:
+		githubEvent(ev, payload)
+	case ingest.SourceLinear:
+		var le ingest.LinearEvent
+		if json.Unmarshal(payload, &le) == nil {
+			ev["event"], ev["action"] = le.Type, le.Action
+		}
+	}
+	return ev
+}
+
+type ghEventRun struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	HeadBranch string `json:"head_branch"`
+	HeadSHA    string `json:"head_sha"`
+	Conclusion string `json:"conclusion"`
+}
+
+type ghLabel struct {
+	Name string `json:"name"`
+}
+
+func githubEvent(ev triggerEvent, payload json.RawMessage) {
+	var p struct {
+		Action      string      `json:"action"`
+		Ref         string      `json:"ref"`
+		After       string      `json:"after"`
+		WorkflowRun *ghEventRun `json:"workflow_run"`
+		CheckSuite  *ghEventRun `json:"check_suite"`
+		CheckRun    *struct {
+			ghEventRun
+			CheckSuite *ghEventRun `json:"check_suite"`
+		} `json:"check_run"`
+		PullRequest *struct {
+			Head struct {
+				Ref string `json:"ref"`
+				SHA string `json:"sha"`
+			} `json:"head"`
+			Labels []ghLabel `json:"labels"`
+		} `json:"pull_request"`
+		Issue *struct {
+			Labels []ghLabel `json:"labels"`
+		} `json:"issue"`
+		Label *ghLabel `json:"label"`
+	}
+	if json.Unmarshal(payload, &p) != nil {
+		return
+	}
+	ev["action"] = p.Action
+	set := func(k, v string) {
+		if v != "" && ev[k] == "" {
+			ev[k] = v
+		}
+	}
+	if r := p.WorkflowRun; r != nil {
+		set("workflow", r.Name)
+		if r.Path != "" {
+			ev["workflow_file"] = strings.TrimSuffix(path.Base(r.Path), path.Ext(r.Path))
+		}
+		set("branch", r.HeadBranch)
+		set("head_sha", r.HeadSHA)
+		set("conclusion", r.Conclusion)
+	}
+	if r := p.CheckRun; r != nil {
+		set("workflow", r.Name)
+		set("head_sha", r.HeadSHA)
+		set("conclusion", r.Conclusion)
+		if r.CheckSuite != nil {
+			set("branch", r.CheckSuite.HeadBranch)
+		}
+	}
+	if r := p.CheckSuite; r != nil {
+		set("branch", r.HeadBranch)
+		set("head_sha", r.HeadSHA)
+		set("conclusion", r.Conclusion)
+	}
+	if pr := p.PullRequest; pr != nil {
+		set("branch", pr.Head.Ref)
+		set("head_sha", pr.Head.SHA)
+	}
+	if b, ok := strings.CutPrefix(p.Ref, "refs/heads/"); ok {
+		set("branch", b)
+	}
+	set("head_sha", p.After)
+	var labels []string
+	if p.Label != nil {
+		labels = append(labels, p.Label.Name)
+	}
+	if p.PullRequest != nil {
+		for _, l := range p.PullRequest.Labels {
+			labels = append(labels, l.Name)
+		}
+	}
+	if p.Issue != nil {
+		for _, l := range p.Issue.Labels {
+			labels = append(labels, l.Name)
+		}
+	}
+	ev["label"] = strings.Join(labels, "\n")
+}
+
+// matches reports whether ev has every field m sets.
+func (ev triggerEvent) matches(source string, m config.EventMatch) bool {
+	if ev["source"] != source {
+		return false
+	}
+	eq := func(want, got string) bool { return want == "" || strings.EqualFold(want, got) }
+	if !eq(m.Event, ev["event"]) || !eq(m.Action, ev["action"]) || !eq(m.Repo, ev["repo"]) ||
+		!eq(m.Branch, ev["branch"]) || !eq(m.Conclusion, ev["conclusion"]) {
+		return false
+	}
+	if m.Workflow != "" && !strings.EqualFold(m.Workflow, ev["workflow"]) && !strings.EqualFold(m.Workflow, ev["workflow_file"]) {
+		return false
+	}
+	if m.Label != "" && !slices.ContainsFunc(strings.Split(ev["label"], "\n"), func(l string) bool { return strings.EqualFold(l, m.Label) }) {
+		return false
+	}
+	return true
+}
+
+// triggerOn reports whether ev matches one of tr.On.
+func triggerOn(tr config.Trigger, ev triggerEvent) bool {
+	for _, o := range tr.On {
+		if o.GitHub != nil && ev.matches(ingest.SourceGitHub, *o.GitHub) {
+			return true
+		}
+		if o.Linear != nil && ev.matches(ingest.SourceLinear, *o.Linear) {
+			return true
+		}
+	}
+	return false
+}
+
+// vars is the event template var: every config.EventFields key, empty
+// when the delivery has none.
+func (ev triggerEvent) vars() map[string]any {
+	m := make(map[string]any, len(config.EventFields))
+	for _, f := range config.EventFields {
+		m[f] = ev[f]
+	}
+	return m
+}
+
+// key is the dedup key of an event fire with no check: the commit it is
+// about, else the delivery.
+func (ev triggerEvent) key() string {
+	if ev["head_sha"] != "" {
+		return ev["head_sha"]
+	}
+	return ev["delivery"]
+}
+
+// triggerEvents fires the triggers whose on: matches one of the
+// dispatched webhook rows. It runs in the background under the tick
+// lock: dispatch may run inside a pass.
+func (c *Controller) triggerEvents(items []store.InboxItem) {
+	type fire struct {
+		name string
+		ev   triggerEvent
+	}
+	var fires []fire
+	trs := c.config().Triggers
+	for _, it := range items {
+		ev := eventOf(it)
+		for _, name := range slices.Sorted(maps.Keys(trs)) {
+			if len(trs[name].On) > 0 && triggerOn(trs[name], ev) {
+				fires = append(fires, fire{name, ev})
+			}
+		}
+	}
+	if len(fires) == 0 {
+		return
+	}
+	c.wg.Go(func() {
+		c.tickMu.Lock()
+		defer c.tickMu.Unlock()
+		if c.draining() {
+			return
+		}
+		for _, f := range fires {
+			tr, ok := c.config().Triggers[f.name]
+			if !ok {
+				continue // reloaded away
+			}
+			c.fireOnEvent(c.ctx, f.name, tr, f.ev)
+		}
+	})
+}
+
+// fireOnEvent evaluates and fires one trigger for an event. Holds the
+// tick lock.
+func (c *Controller) fireOnEvent(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) {
+	st, err := c.evalTrigger(ctx, name, tr)
+	if err != nil {
+		c.log.ErrorContext(ctx, "trigger", "trigger", name, "err", err)
+		return
+	}
+	if !st.holds {
+		c.log.DebugContext(ctx, "trigger event: does not hold", "trigger", name, "why", st.why)
+		return
+	}
+	key := st.key
+	if tr.When.Check == "" {
+		key = ev.key()
+		seen, err := c.triggerKeySeen(ctx, name, key)
+		if err != nil || seen != "" {
+			return
+		}
+	}
+	t, err := c.fireTriggerEvent(ctx, name, tr, key, ev)
+	if err != nil {
+		c.log.ErrorContext(ctx, "trigger fire", "trigger", name, "err", err)
+		return
+	}
+	c.log.InfoContext(ctx, "trigger fired", "trigger", name, "ticket", t.ID, "event", ev["event"], "delivery", ev["delivery"])
+}
+
+// triggerKeySeen is the ticket a trigger filed under key, "" if none.
+func (c *Controller) triggerKeySeen(ctx context.Context, name, key string) (string, error) {
+	if key == "" {
+		return "", nil
+	}
+	seen, err := c.store.List(ctx, store.Filter{MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + key, Limit: 1})
+	if err != nil || len(seen) == 0 {
+		return "", err
+	}
+	return seen[0].ID, nil
+}
+
+// triggerPollDue reports whether a tick should poll tr, and records the
+// poll. A trigger with on: polls every fallback (default
+// config.DefaultTriggerFallback), and never without when conditions;
+// without on:, every tick unless fallback is set. Tick-only state.
+func (c *Controller) triggerPollDue(name string, tr config.Trigger) bool {
+	every := time.Duration(0)
+	if len(tr.On) > 0 {
+		if !tr.When.HasConditions() {
+			return false
+		}
+		every = config.Duration(tr.Fallback, config.DefaultTriggerFallback)
+	} else if tr.Fallback != "" {
+		every = config.Duration(tr.Fallback, 0)
+	}
+	if every == 0 {
+		return true
+	}
+	now := c.now()
+	if last, ok := c.triggerPolled[name]; ok && now.Before(last.Add(every)) {
+		return false
+	}
+	if c.triggerPolled == nil {
+		c.triggerPolled = map[string]time.Time{}
+	}
+	c.triggerPolled[name] = now
+	return true
+}
+
+// commandLabel marks the record of a trigger command run.
+const commandLabel = "trigger-command"
+
+// fireCommand runs tr.Command. The run is recorded as a message ticket
+// carrying the trigger meta, so it holds the trigger while the command
+// runs and dedups its key. Success closes it; failure keeps it open as
+// needs-human with the output, so a broken command is reported once
+// and the trigger waits for a human to close it.
+func (c *Controller) fireCommand(ctx context.Context, name string, tr config.Trigger, meta json.RawMessage, tv map[string]any) (store.Ticket, error) {
+	cm := tr.Command
+	script, err := config.Fill(cm.Run, tv)
+	if err != nil {
+		return store.Ticket{}, fmt.Errorf("command: %w", err)
+	}
+	fields, err := json.Marshal(store.MessageFields{To: questionTo, From: "controller"})
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	project := c.config().DefaultProject
+	t, err := store.Create(ctx, c.store, "controller", store.NewTicket{
+		Project: project, Kind: store.KindMessage, Title: "Trigger " + name + ": command",
+		Body: "```\n" + script + "\n```\n", Labels: []string{commandLabel}, Meta: meta, Fields: fields,
+	})
+	if err != nil {
+		return store.Ticket{}, err
+	}
+	out, runErr := c.runTriggerCommand(ctx, script, config.Duration(cm.Timeout, time.Minute))
+	if runErr == nil {
+		if out != "" {
+			_, _ = store.AddComment(ctx, c.store, "controller", t.ID, "Output:\n```\n"+out+"\n```")
+		}
+		c.log.InfoContext(ctx, "trigger command ran", "trigger", name, "ticket", t.ID)
+		return store.Close(ctx, c.store, "controller", t.ID, nil, "done")
+	}
+	c.log.ErrorContext(ctx, "trigger command failed", "trigger", name, "ticket", t.ID, "err", runErr)
+	body := fmt.Sprintf("Command failed: %v\n\nOutput:\n```\n%s\n```\nThe trigger fires again once this ticket is closed.", runErr, out)
+	_, _ = store.AddComment(ctx, c.store, "controller", t.ID, body)
+	return c.store.Update(ctx, "controller", t.ID, store.Update{AddLabels: []string{needsHumanLabel}})
+}
+
+// triggerOutputMax bounds the command output kept on the ticket.
+const triggerOutputMax = 8 << 10
+
+// runTriggerCommand runs script with sh in the root dir and returns its
+// combined output, trimmed to its tail.
+func (c *Controller) runTriggerCommand(ctx context.Context, script string, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", script)
+	cmd.Dir = c.root.Dir
+	b, err := cmd.CombinedOutput()
+	out := strings.TrimSpace(string(b))
+	if len(out) > triggerOutputMax {
+		out = "..." + out[len(out)-triggerOutputMax:]
+	}
+	if ctx.Err() != nil {
+		return out, fmt.Errorf("timed out after %s", timeout)
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return out, fmt.Errorf("exit %d", exit.ExitCode())
+	}
+	return out, err
+}

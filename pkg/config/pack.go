@@ -354,6 +354,11 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	restoreEsc := holdEscalationPrompts(m)
 	// {{.check_output}} is filled when a trigger fires, not at load.
 	subVars := map[string]any{CheckOutputVar: placeholder(CheckOutputVar)}
+	ev := map[string]any{}
+	for _, f := range EventFields { // filled when an event fires a trigger
+		ev[f] = placeholder(EventVar + "." + f)
+	}
+	subVars[EventVar] = ev
 	for _, k := range StallVars { // likewise, per stall
 		subVars[k] = placeholder(k)
 	}
