@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.4](https://github.com/elee1766/jobshop/compare/v0.7.3...v0.7.4) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** feed activity from per-resource endpoints for App tokens (JOB-108) ([#930](https://github.com/elee1766/jobshop/issues/930)) ([f7a6e9e](https://github.com/elee1766/jobshop/commit/f7a6e9e88e7a80e8cefb10e2e1761f6eb928d44e))
+
 ## [0.7.3](https://github.com/elee1766/jobshop/compare/v0.7.2...v0.7.3) (2026-11-06)
 
 
