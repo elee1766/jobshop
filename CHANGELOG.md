@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.19](https://github.com/elee1766/jobshop/compare/v0.6.18...v0.6.19) (2026-11-06)
+
+
+### Features
+
+* **control:** request_changes step outcome for reviewer to worker handoff (JOB-98) ([#912](https://github.com/elee1766/jobshop/issues/912)) ([38fe76e](https://github.com/elee1766/jobshop/commit/38fe76ef415094321854ec47ecdf425316e790e6))
+
 ## [0.6.18](https://github.com/elee1766/jobshop/compare/v0.6.17...v0.6.18) (2026-11-06)
 
 
