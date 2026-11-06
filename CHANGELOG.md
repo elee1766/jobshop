@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/elee1766/jobshop/compare/v0.3.4...v0.3.5) (2026-11-06)
+
+
+### Bug fixes
+
+* **rpc:** use acphost sandbox/userns/cgroup packages instead of root aliases ([#793](https://github.com/elee1766/jobshop/issues/793)) ([#794](https://github.com/elee1766/jobshop/issues/794)) ([83e34da](https://github.com/elee1766/jobshop/commit/83e34dadbf27c186247bf75a41001b13b2c21cb0))
+
 ## [0.3.4](https://github.com/elee1766/jobshop/compare/v0.3.3...v0.3.4) (2026-11-06)
 
 
