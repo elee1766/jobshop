@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/elee1766/jobshop/compare/v0.4.2...v0.4.3) (2026-11-06)
+
+
+### Features
+
+* **control:** workflow= for github.checks waits, cancelled PR checks are not red (JOB-75) ([#841](https://github.com/elee1766/jobshop/issues/841)) ([d606f9f](https://github.com/elee1766/jobshop/commit/d606f9f4790b52aa22046af98cd4ae2c5d474a11))
+
 ## [0.4.2](https://github.com/elee1766/jobshop/compare/v0.4.1...v0.4.2) (2026-11-06)
 
 
