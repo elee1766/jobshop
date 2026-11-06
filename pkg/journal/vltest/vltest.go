@@ -1,6 +1,10 @@
+//go:build victorialogs
+
 // Package vltest starts a real VictoriaLogs for tests (#530). The binary
 // is $VICTORIALOGS_BIN or victoria-logs on PATH. Without one the test is
-// skipped, unless JOBSHOP_REQUIRE_VICTORIALOGS is set (CI), where it fails.
+// skipped, unless JOBSHOP_REQUIRE_VICTORIALOGS is set, where it fails.
+// The package builds only with -tags victorialogs, so a test that uses it
+// must carry the tag too; CI's victorialogs job runs them.
 package vltest
 
 import (
