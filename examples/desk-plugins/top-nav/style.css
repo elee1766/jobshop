@@ -1,0 +1,21 @@
+/* The Desk app gives a top or bottom nav its own container named "nav",
+   so the bar adapts to the width it is given, not to the window. */
+top-nav-bar { display: block; width: 100%; }
+.top-nav {
+  display: flex; align-items: center; gap: 2px; padding: 4px 8px; overflow-x: auto;
+  background: var(--desk-side); border-bottom: 1px solid var(--desk-border);
+}
+.top-nav a {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; flex: none;
+  border-radius: var(--desk-radius); color: var(--desk-muted); text-decoration: none; font-size: 13px;
+}
+.top-nav a:hover { background: var(--desk-hover); color: var(--desk-text); }
+.top-nav a.on { background: var(--desk-raised); color: var(--desk-text); }
+.top-nav .n:not(:empty) {
+  min-width: 18px; height: 16px; padding: 0 5px; border-radius: 999px; font-size: 11px; line-height: 16px; text-align: center;
+  background: var(--desk-accent-soft); color: var(--desk-accent);
+}
+@container nav (max-width: 520px) {
+  .top-nav a { padding: 0 8px; }
+  .top-nav .lbl { max-width: 5ch; overflow: hidden; text-overflow: ellipsis; }
+}

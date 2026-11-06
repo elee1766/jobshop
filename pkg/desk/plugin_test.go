@@ -85,6 +85,7 @@ func TestPluginSlotNames(t *testing.T) {
 		"view":                  true,
 		"session":               true,
 		"app":                   true,
+		"nav":                   true,
 		"work:toolbar":          true,
 		"chat:composer-actions": true,
 		"my-plugin:a1":          true,
@@ -100,6 +101,44 @@ func TestPluginSlotNames(t *testing.T) {
 			assert.NoError(t, m.validate(), slot)
 		} else {
 			assert.ErrorContains(t, m.validate(), "<plugin>:<name>", slot)
+		}
+	}
+}
+
+func TestPluginNavFields(t *testing.T) {
+	view := func(c Contribution) Contribution {
+		c.Slot, c.Element, c.ID = "view", "p-x", "p"
+		return c
+	}
+	nav := func(c Contribution) Contribution {
+		c.Slot, c.Element = "nav", "p-nav"
+		return c
+	}
+	for name, tc := range map[string]struct {
+		c    Contribution
+		want string
+	}{
+		"view with icon key order": {view(Contribution{Icon: "list-checks", Key: "w", Order: 3}), ""},
+		"nav default placement":    {nav(Contribution{}), ""},
+		"nav placement":            {nav(Contribution{Placement: &Placement{Wide: "top", Narrow: "none"}}), ""},
+		"nav half placement":       {nav(Contribution{Placement: &Placement{Narrow: "bottom"}}), ""},
+		"bad wide":                 {nav(Contribution{Placement: &Placement{Wide: "middle"}}), "placement.wide"},
+		"bad narrow":               {nav(Contribution{Placement: &Placement{Narrow: "Top"}}), "placement.narrow"},
+		"placement on a view":      {view(Contribution{Placement: &Placement{Wide: "left"}}), "only for slot nav"},
+		"icon with spaces":         {view(Contribution{Icon: "list checks"}), "icon"},
+		"icon upper case":          {view(Contribution{Icon: "Inbox"}), "icon"},
+		"key two letters":          {view(Contribution{Key: "ab"}), "key"},
+		"key upper case":           {view(Contribution{Key: "A"}), "key"},
+		"negative order":           {view(Contribution{Order: -1}), "order"},
+		"huge order":               {view(Contribution{Order: maxOrder + 1}), "order"},
+		"icon on a drawer":         {Contribution{Slot: "drawer", Element: "p-x", Icon: "inbox"}, "only for slot view"},
+		"key on a nav":             {nav(Contribution{Key: "n"}), "only for slot view"},
+	} {
+		m := PluginManifest{Name: "p", Entry: "index.js", Contributes: []Contribution{tc.c}}
+		if tc.want == "" {
+			assert.NoError(t, m.validate(), name)
+		} else {
+			assert.ErrorContains(t, m.validate(), tc.want, name)
 		}
 	}
 }

@@ -5,7 +5,7 @@
   "api": ">=4",
   "contributes": [
     { "slot": "session", "element": "desk-chat-pane" },
-    { "slot": "view", "element": "desk-chat-view", "id": "chat", "title": "Chat" },
+    { "slot": "view", "element": "desk-chat-view", "id": "chat", "title": "Chat", "icon": "message-square", "key": "c", "order": 2 },
     { "slot": "drawer", "element": "desk-chat-drawer", "title": "Session chat", "match": { "kind": ["session", "step", "task"] } }
   ]
 }
