@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.15](https://github.com/elee1766/jobshop/compare/v0.6.14...v0.6.15) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** linear_issue_no_run grace defaults to off ([#901](https://github.com/elee1766/jobshop/issues/901)) ([6183309](https://github.com/elee1766/jobshop/commit/61833095f24900c3a366ffc96e0350b6bc70a3de))
+
 ## [0.6.14](https://github.com/elee1766/jobshop/compare/v0.6.13...v0.6.14) (2026-11-06)
 
 
