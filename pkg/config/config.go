@@ -134,6 +134,10 @@ type Trigger struct {
 	// after that the stall is left to the escalation of the last run.
 	// Default 3. Stall triggers only.
 	MaxRuns int `yaml:"max_runs"`
+	// MaxOpen caps the open runs of a stall trigger across all keys, so a
+	// backlog of stalls is worked a few at a time (JOB-93). Default 3.
+	// Stall triggers only.
+	MaxOpen int `yaml:"max_open"`
 	// On fires the trigger when an admitted ingest delivery matches one
 	// entry (JOB-62), between ticks. When conditions still apply, and
 	// dedup is the same as a poll's, so an event and a poll of the same
@@ -1673,6 +1677,9 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 	}
 	if tr.MaxRuns != 0 {
 		return errors.New("max_runs needs when.stall")
+	}
+	if tr.MaxOpen != 0 {
+		return errors.New("max_open needs when.stall")
 	}
 	if err := checkTriggerOn(tr); err != nil {
 		return err

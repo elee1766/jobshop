@@ -69,7 +69,8 @@ on a stall trigger an event re-runs its signals, and a check may use
 ([notes](notes/JOB-62-event-triggers.md),
 [stall](notes/JOB-72-stall-event-triggers.md)).
 
-`cooldown` and `max_runs` limit how often a trigger fires.
+`cooldown` and `max_runs` limit how often a trigger fires; `max_open`
+caps a stall trigger's open runs (default 3).
 
 **Workflows** are how work moves from one pool to the next. A run is
 one ticket per step, each blocked on the one before, so step 2 is

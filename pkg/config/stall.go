@@ -12,6 +12,9 @@ import (
 // DefaultStallMaxRuns is a stall trigger's max_runs when unset.
 const DefaultStallMaxRuns = 3
 
+// DefaultStallMaxOpen is a stall trigger's max_open when unset.
+const DefaultStallMaxOpen = 3
+
 // StallVars are the template vars a stall trigger's run vars may use.
 var StallVars = []string{StallSignalVar, StallSubjectVar, StallDetailVar}
 
@@ -84,6 +87,9 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 	}
 	if tr.MaxRuns < 0 {
 		return errors.New("max_runs must be >= 0")
+	}
+	if tr.MaxOpen < 0 {
+		return errors.New("max_open must be >= 0")
 	}
 	if tr.Ticket != nil || tr.Run == nil {
 		return errors.New("a stall trigger needs run and no ticket")
@@ -180,4 +186,12 @@ func (tr Trigger) StallMaxRuns() int {
 		return tr.MaxRuns
 	}
 	return DefaultStallMaxRuns
+}
+
+// StallMaxOpen is tr.MaxOpen or the default.
+func (tr Trigger) StallMaxOpen() int {
+	if tr.MaxOpen > 0 {
+		return tr.MaxOpen
+	}
+	return DefaultStallMaxOpen
 }
