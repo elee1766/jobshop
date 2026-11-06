@@ -1,7 +1,7 @@
-// Package postgres is the Postgres store backend (#493). It runs the
-// backend-neutral core in pkg/store/sqlstore on the same sqldb queries as
-// pkg/store/sqlite: sqldb's SQL runs on both engines (#694). Full-text
-// search, the one engine-specific query, is recallSQL.
+// Package postgres is the Postgres store backend (#493, JOB-41). It owns
+// its SQL (pgdb, list.go), transactions, retries and connection pools;
+// it shares only the pkg/store types and the pure rules in storerules
+// with the SQLite store.
 package postgres
 
 import (
@@ -12,27 +12,25 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/nullism/bqb"
 	"github.com/pressly/goose/v3"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// recallSQL is Driver.RecallSQL. Lower score is better, as with bm25.
+// recallSQL searches comments: $1 a to_tsquery expression, $2 project
+// and $3 ticket id ('' for any), $4 the limit. Lower score is better.
 // ts_rank's own length normalization counts lexemes, which drops
-// stopwords; bm25 counts every word, so the rank is divided by the log
-// of the body's word count instead: a short focused match beats a long
-// one.
+// stopwords; it is divided by the log of the body's word count
+// instead, so a short focused match beats a long one.
 const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS BIGINT) AS at_ms,
        ts_headline('english', body, q,
          'StartSel=[, StopSel=], MaxWords=16, MinWords=4, FragmentDelimiter=...') AS snippet,
@@ -47,13 +45,19 @@ ORDER BY score, id
 LIMIT CAST($4 AS BIGINT)`
 
 // Options configures Open.
-type Options = sqlstore.Options
+type Options struct {
+	// Now overrides the clock, for tests.
+	Now func() time.Time
+	// Prefix maps a project to its id prefix. Default: the project name.
+	Prefix func(project string) string
+	// OnCommit, if set, runs after every committed write transaction.
+	// The controller uses it to wake events.subscribe (#147).
+	OnCommit func()
+}
 
-// Store is the Postgres-backed store.
-type Store = sqlstore.Store
-
-// maxConns bounds the pool. Writers run serializable and retry on a
-// serialization failure, so more connections mostly add retries.
+// maxConns bounds each pool. Writers run serializable and retry on a
+// serialization failure, so more write connections mostly add retries;
+// reads have their own pool so they never wait on one.
 const maxConns = 8
 
 // Open connects to the database at dsn (a libpq URL or key=value
@@ -63,14 +67,8 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("postgres dsn: %w", err)
 	}
-	// Serializable: the claim and sweep guards (#406) read other rows in
-	// the same statement as the write; under read committed a concurrent
-	// claim could pass them on a stale snapshot. A serialization failure
-	// is reported as busy and the core reruns the transaction.
-	if cfg.RuntimeParams == nil {
-		cfg.RuntimeParams = map[string]string{}
-	}
-	cfg.RuntimeParams["default_transaction_isolation"] = "serializable"
+	// Isolation is set per write transaction (BeginTx); connections keep
+	// the server default, read committed (JOB-41).
 	db := stdlib.OpenDB(*cfg)
 	db.SetMaxOpenConns(maxConns)
 	db.SetMaxIdleConns(maxConns)
@@ -82,25 +80,19 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	// Reads outside a transaction (Get, List) run read committed: under
-	// serializable a plain read can fail with 40001 while writers run
-	// (JOB-38), and a read has no guard to protect.
+	// Reads outside a transaction (Get, List, Recall, collection reads)
+	// get their own pool, for capacity: Desk reads do not queue behind
+	// claims for a write connection. Read-only, so a stray write through
+	// it fails instead of running outside the retry loop.
 	rcfg := cfg.Copy()
-	rcfg.RuntimeParams["default_transaction_isolation"] = "read committed"
+	if rcfg.RuntimeParams == nil {
+		rcfg.RuntimeParams = map[string]string{}
+	}
+	rcfg.RuntimeParams["default_transaction_read_only"] = "on"
 	rdb := stdlib.OpenDB(*rcfg)
 	rdb.SetMaxOpenConns(maxConns)
 	rdb.SetMaxIdleConns(maxConns)
-	s, err := sqlstore.New(sqlstore.Driver{
-		DB:          db,
-		ReadDB:      rdb,
-		Bind:        func(d sqldb.DBTX) sqldb.Querier { return sqldb.New(d) },
-		Classify:    classify,
-		RecallMatch: recallMatch,
-		RecallSQL:   recallSQL,
-		IsBusy:      isBusy,
-		Collection:  (&registry{}).open,
-		Render:      (*bqb.Query).ToPgsql,
-	}, opt)
+	s, err := newStore(db, rdb, opt)
 	if err != nil {
 		_ = db.Close()
 		_ = rdb.Close()

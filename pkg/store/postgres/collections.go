@@ -15,7 +15,6 @@ import (
 	"github.com/nullism/bqb"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore"
 )
 
 // Collections on Postgres (#579, docs/notes/579-collections-store.md).
@@ -78,12 +77,12 @@ type registry struct {
 	done map[string]string // name -> spec fingerprint
 }
 
-func (g *registry) open(ctx context.Context, s *sqlstore.Store, spec store.CollectionSpec) (store.Collection, error) {
+func (g *registry) open(ctx context.Context, s *Store, spec store.CollectionSpec) (store.Collection, error) {
 	fp := fmt.Sprintf("%v", spec)
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.done[spec.Name] != fp {
-		err := s.WriteTx(ctx, func(tx *sql.Tx) error {
+		err := s.writeTx(ctx, func(tx *sql.Tx) error {
 			for _, ddl := range registerDDL(spec) {
 				if _, err := tx.ExecContext(ctx, ddl); err != nil {
 					return fmt.Errorf("register collection %s: %w", spec.Name, err)
@@ -123,7 +122,7 @@ func registerDDL(spec store.CollectionSpec) []string {
 }
 
 type collection struct {
-	s    *sqlstore.Store
+	s    *Store
 	spec store.CollectionSpec
 }
 
@@ -261,7 +260,7 @@ func (c *collection) Put(ctx context.Context, r store.Record) (rec store.Record,
 	if r.Value, err = c.spec.CheckValue(r.Value); err != nil {
 		return rec, false, err
 	}
-	err = c.s.WriteTx(ctx, func(tx *sql.Tx) error {
+	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		now := c.s.Now()
 		at := r.CreatedAt
 		if at.IsZero() {
@@ -271,7 +270,7 @@ func (c *collection) Put(ctx context.Context, r store.Record) (rec store.Record,
 			" VALUES (?, ?, ?, CAST(? AS jsonb), 1, '', 0, 0, ?, ?) ON CONFLICT DO NOTHING",
 			c.spec.Name, r.Key, r.State, string(r.Value), ms(at), ms(now)))
 		if err != nil {
-			return c.s.Classify(err, c.spec.Name+" "+r.Key)
+			return c.s.classify(err, c.spec.Name+" "+r.Key)
 		}
 		created = n == 1
 		rec, err = c.one(ctx, tx, c.get(r.Key))
@@ -305,7 +304,7 @@ func (c *collection) existingUnique(ctx context.Context, tx *sql.Tx, r store.Rec
 }
 
 func (c *collection) Get(ctx context.Context, key string) (store.Record, error) {
-	rec, err := c.one(ctx, c.s.DB(), c.get(key))
+	rec, err := c.one(ctx, c.s.readDB(), c.get(key))
 	return rec, c.notFound(err, key)
 }
 
@@ -316,7 +315,7 @@ func (c *collection) Update(ctx context.Context, r store.Record) (rec store.Reco
 	if r.Value, err = c.spec.CheckValue(r.Value); err != nil {
 		return rec, err
 	}
-	err = c.s.WriteTx(ctx, func(tx *sql.Tx) error {
+	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		now := c.s.Now()
 		q := bqb.New("UPDATE records SET state = ?, value = CAST(? AS jsonb), revision = revision + 1, updated_at = ?", r.State, string(r.Value), ms(now))
 		if r.LeaseUntil.IsZero() {
@@ -333,7 +332,7 @@ func (c *collection) Update(ctx context.Context, r store.Record) (rec store.Reco
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.whyNot(ctx, tx, r, now)
 		}
-		return c.s.Classify(err, c.spec.Name+" "+r.Key)
+		return c.s.classify(err, c.spec.Name+" "+r.Key)
 	})
 	return rec, err
 }
@@ -359,7 +358,7 @@ func (c *collection) List(ctx context.Context, f store.RecordFilter) ([]store.Re
 	if err != nil {
 		return nil, err
 	}
-	return c.many(ctx, c.s.DB(), q)
+	return c.many(ctx, c.s.readDB(), q)
 }
 
 func (c *collection) Count(ctx context.Context, f store.RecordFilter) (map[string]int, error) {
@@ -371,7 +370,7 @@ func (c *collection) Count(ctx context.Context, f store.RecordFilter) (map[strin
 	if err != nil {
 		return nil, err
 	}
-	rows, err := c.s.DB().QueryContext(ctx, text, args...)
+	rows, err := c.s.readDB().QueryContext(ctx, text, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -394,7 +393,7 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 	if f.Empty() || holder == "" || lease <= 0 {
 		return rec, fmt.Errorf("%w: %s: claim needs a filter, a holder and a lease", store.ErrInvalid, c.spec.Name)
 	}
-	err = c.s.WriteTx(ctx, func(tx *sql.Tx) error {
+	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		for range claimTries {
 			now := c.s.Now()
 			w, err := c.where(f)
@@ -426,7 +425,7 @@ func (c *collection) Renew(ctx context.Context, key, holder string, lease time.D
 	if holder == "" || lease <= 0 {
 		return rec, fmt.Errorf("%w: %s: renew needs a holder and a lease", store.ErrInvalid, c.spec.Name)
 	}
-	err = c.s.WriteTx(ctx, func(tx *sql.Tx) error {
+	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		now := c.s.Now()
 		rec, err = c.one(ctx, tx, bqb.New("UPDATE records SET lease_until = ? WHERE collection = ?"+
 			" AND key = ? AND holder = ? AND holder != '' AND lease_until > ? RETURNING "+columns,
@@ -451,7 +450,7 @@ func (c *collection) Delete(ctx context.Context, f store.RecordFilter) (n int, e
 		return 0, err
 	}
 	// The GIN expression index follows the row: nothing else to delete.
-	err = c.s.WriteTx(ctx, func(tx *sql.Tx) error {
+	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		m, err := exec(ctx, tx, bqb.New("DELETE FROM records WHERE ?", w))
 		n = int(m)
 		return err
@@ -482,7 +481,7 @@ func (c *collection) Search(ctx context.Context, query string, limit int) ([]sto
 		q := bqb.New("SELECT "+columns+" FROM records, to_tsquery('english', ?) q WHERE collection = ? AND "+v+
 			" @@ q ORDER BY ts_rank("+v+", q) / ln(2 + "+nwords+") DESC, created_at, key LIMIT ?", m, c.spec.Name, limit)
 		var err error
-		if out, err = c.many(ctx, c.s.DB(), q); err != nil {
+		if out, err = c.many(ctx, c.s.readDB(), q); err != nil {
 			return nil, err
 		}
 		if len(out) > 0 {
