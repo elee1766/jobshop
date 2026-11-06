@@ -600,6 +600,10 @@ let
               exit 1
             fi
             after=$(git rev-parse HEAD)
+            # Compare with the last good commit, not HEAD before the merge:
+            # an operator's `git pull` moves the checkout outside this unit,
+            # and that commit still needs its check and a reload (JOB-90).
+            before=$(cat "$last_good")
             [ "$before" != "$after" ] || exit 0
             # Through the root's link, so include: finds jobshop.module.yaml
             # beside it while packs resolve in the checkout.
