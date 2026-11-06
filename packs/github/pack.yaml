@@ -201,9 +201,29 @@ triggers:
           labels: "{{.linear_intake_labels}}"
           skip_labels: "{{.linear_skip_labels}}"
           poll: "{{.linear_poll}}"
-        # Non-draft PRs with all checks green, untouched for 2h. PRs by
-        # {{.human}} or stall_pr_skip_authors, or with a
-        # stall_pr_skip_labels label, are held on purpose (#509).
+        # No commit on {{.ci_branch}} for 6h while PRs are open. The subject
+        # is the last commit, so each dry spell is one stall.
+        - signal: no_merge
+          check: >-
+            test "$(gh pr list --repo {{.repo}} --state open --json number --jq length)" -gt 0 &&
+            gh api repos/{{.repo}}/commits/{{.ci_branch}} --jq
+            'select((now - (.commit.committer.date | fromdateiso8601)) > 21600)
+            | "\(.sha[0:12]) last commit \(.commit.committer.date)"'
+    run:
+      workflow: stall-check
+      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+    cooldown: 30m
+    max_runs: 2
+  # Non-draft PRs with all checks green, untouched for 2h, get a
+  # pr-review run keyed pr-<n> (JOB-33): hand-opened PRs, orphans, and
+  # PRs another instance's run opened in this repo. A pr-review started
+  # by hand or by that run under the same key is returned, not doubled.
+  # PRs by {{.human}} or stall_pr_skip_authors, or with a
+  # stall_pr_skip_labels label, are held on purpose (#509).
+  pr-unmerged:
+    when:
+      check_timeout: 1m
+      stall:
         - signal: pr_unmerged
           check: >-
             gh pr list --repo {{.repo}} --state open
@@ -220,17 +240,10 @@ triggers:
             .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL"))
             | select((now - (.updatedAt | fromdateiso8601)) > 7200)
             | "\(.number) green, unmerged since \(.updatedAt)"'
-        # No commit on {{.ci_branch}} for 6h while PRs are open. The subject
-        # is the last commit, so each dry spell is one stall.
-        - signal: no_merge
-          check: >-
-            test "$(gh pr list --repo {{.repo}} --state open --json number --jq length)" -gt 0 &&
-            gh api repos/{{.repo}}/commits/{{.ci_branch}} --jq
-            'select((now - (.commit.committer.date | fromdateiso8601)) > 21600)
-            | "\(.sha[0:12]) last commit \(.commit.committer.date)"'
     run:
-      workflow: stall-check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      workflow: pr-review
+      vars: {pr: "{{.stall_subject}}"}
+      key: "pr-{{.stall_subject}}"
     cooldown: 30m
     max_runs: 2
 # Workers check what earlier sessions learned before retrying blind or
@@ -322,6 +335,33 @@ workflows:
         when: {step: implement, outcome: pr}
         title: "Check master CI and deploy for {{.issue}}"
         prompt_file: prompts/linear/post-merge.md
+  # One run per PR that no pr-work run of this instance owns (JOB-33):
+  # a PR another instance's implement step opened in this repo, or one
+  # pr-unmerged found. Key pr-<n>. Same review and post-merge as
+  # pr-work, reading the PR and its linked issue.
+  pr-review:
+    vars: [pr]
+    pr: pr
+    repo: "{{.repo}}"
+    escalate_pool: plan
+    escalate:
+      chat_pool: "{{.escalation_chat_pool}}"
+      prompt_file: prompts/escalation.md
+      pool_prompt_file: prompts/escalation-pool.md
+      hold_prompt_file: prompts/escalation-hold.md
+    steps:
+      - id: review-merge
+        pool: refinery
+        retries: 2
+        title: "Review and merge PR #{{.pr}}"
+        prompt_file: prompts/pr-review/merge.md
+      - id: post-merge
+        pool: deploy-check
+        retries: 2
+        # Only after a merge; held or closed PRs end the run here.
+        when: {step: review-merge, outcome: merged}
+        title: "Check master CI and deploy for PR #{{.pr}}"
+        prompt_file: prompts/pr-review/post-merge.md
   # One run per stall, started by the stall trigger with key
   # stall:<signal>:<subject>. One attempt: a stall it cannot fix
   # escalates at once.

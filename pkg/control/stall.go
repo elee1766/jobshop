@@ -54,9 +54,15 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 				continue
 			}
 		}
-		t, err := c.fireStall(ctx, name, tr, s)
+		t, existing, err := c.fireStall(ctx, name, tr, s)
 		if err != nil {
 			c.log.Error("stall fire", "trigger", name, "key", s.key(), "err", err)
+			continue
+		}
+		if existing {
+			// Already handled by an open run with the same key: not a
+			// new stall to learn from.
+			c.log.Debug("stall already has an open run", "trigger", name, "key", s.key(), "run", t.ID)
 			continue
 		}
 		c.log.Info("stall trigger fired", "trigger", name, "key", s.key(), "run", t.ID)
@@ -177,23 +183,31 @@ func isStallRun(r store.Ticket) bool {
 }
 
 // fireStall starts the trigger's workflow for one stall with key
-// stall:<signal>:<subject>.
-func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigger, s stall) (store.Ticket, error) {
+// stall:<signal>:<subject>, or the trigger's run key filled with the
+// stall vars. existing is true when an open run already had that key
+// (one started by hand or by another run, JOB-33).
+func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigger, s stall) (run store.Ticket, existing bool, err error) {
 	tv := map[string]any{config.StallSignalVar: s.signal, config.StallSubjectVar: s.subject, config.StallDetailVar: s.detail}
 	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: s.key()}
+	if tr.Run.Key != "" {
+		if p.Key, err = tr.Run.Fill(tr.Run.Key, tv); err != nil {
+			return store.Ticket{}, false, fmt.Errorf("run key: %w", err)
+		}
+	}
 	for k, v := range tr.Run.Vars {
 		out, err := tr.Run.Fill(v, tv)
 		if err != nil {
-			return store.Ticket{}, fmt.Errorf("run var %s: %w", k, err)
+			return store.Ticket{}, false, fmt.Errorf("run var %s: %w", k, err)
 		}
 		p.Vars[k] = out
 	}
 	m := map[string]string{"name": name, "key": name + "/" + s.key()}
 	res, err := c.startRun(ctx, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
-		return store.Ticket{}, err
+		return store.Ticket{}, false, err
 	}
-	return res.(rpc.RunResult).Run, nil
+	rr := res.(rpc.RunResult)
+	return rr.Run, rr.Existing, nil
 }
 
 // detectStalls evaluates every signal of the trigger, skipping subjects

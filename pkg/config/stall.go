@@ -16,8 +16,9 @@ const DefaultStallMaxRuns = 3
 var StallVars = []string{StallSignalVar, StallSubjectVar, StallDetailVar}
 
 // checkStallTrigger validates a when.stall trigger (#143). It has no other
-// condition, starts a run, sets the run key itself, and its run vars may
-// only use the stall vars.
+// condition, starts a run, and its run vars and key may only use the
+// stall vars. An empty key is stall:<signal>:<subject>; a set one (JOB-33,
+// pr-<n>) lets the run dedup with runs started by hand for the subject.
 func (c *Config) checkStallTrigger(tr *Trigger) error {
 	w := tr.When
 	if w.Cron != "" || w.HasCounts() || w.Check != "" || w.Pool != "" || w.Kind != "" || w.Label != "" {
@@ -95,17 +96,18 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 			return fmt.Errorf("run: workflow %s needs var %s", r.Workflow, k)
 		}
 	}
-	if r.Key != "" {
-		return errors.New("run: a stall trigger sets the key itself (stall:<signal>:<subject>)")
-	}
+	fields := map[string]string{"key": r.Key}
 	for k, v := range r.Vars {
+		fields["vars."+k] = v
+	}
+	for k, v := range fields {
 		vs, err := refs(v)
 		if err != nil {
-			return fmt.Errorf("run: vars.%s: %w", k, err)
+			return fmt.Errorf("run: %s: %w", k, err)
 		}
 		for _, ref := range vs {
 			if !slices.Contains(StallVars, ref) {
-				return fmt.Errorf("run: vars.%s uses %s; only %v are available", k, placeholder(ref), StallVars)
+				return fmt.Errorf("run: %s uses %s; only %v are available", k, placeholder(ref), StallVars)
 			}
 		}
 	}

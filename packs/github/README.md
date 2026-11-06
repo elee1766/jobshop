@@ -70,6 +70,12 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `release-pr` trigger: a green release PR (label `release_pr_label`)
   starts a `release-merge` run keyed `release-pr-<n>`: one `merge` step in
   `refinery`, `prompts/release-merge.md` (#698).
+- `pr-unmerged` trigger: a green non-draft PR untouched for 2h (minus the
+  `pr_unmerged` skips) starts a `pr-review` run keyed `pr-<n>`:
+  `review-merge` then `post-merge`, prompts in `prompts/pr-review/`. A
+  `pr-work` run that opens a PR in another instance's repo starts that
+  instance's `<prefix>pr-review` with the same key and its review-merge
+  waits on that run (JOB-33).
 
 Prompt rules `recall` and `learn-nudge` are in `prompts/rules/`. Trigger
 tickets take `body_file` like pools take `prompt_file`, with pack vars
