@@ -33,9 +33,11 @@ the ticket's `parent_id`): do not start a new branch. `gh pr checkout <n>`,
 address each finding, reply to each review comment you resolve, push and
 wait for green CI.
 
-Otherwise: move the issue to In Progress
-(`jobshop linear state {{.issue}} "In Progress"`; if that name is not one
-of the team's states, the error lists them, pick the started one),
+Otherwise: take the issue: assign it to yourself and move it to In
+Progress in one call
+(`jobshop linear update {{.issue}} --assignee me --state "In Progress"`;
+if that state name is not one of the team's states, the error lists
+them, pick the started one),
 `git switch -c issue-{{.issue}}`, make the change, run
 `{{.check_cmd}}`, commit with
 `({{.issue}})` in the subject, `git push -u origin HEAD`, then
