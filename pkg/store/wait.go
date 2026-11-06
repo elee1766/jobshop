@@ -81,6 +81,10 @@ type WaitCond struct {
 	// merged|closed|head_changed.
 	State    string `json:"state,omitempty"`
 	Required bool   `json:"required,omitempty"`
+	// Workflow is for github.checks: the name or file of a GitHub Actions
+	// workflow. Set, the wait follows that workflow's newest run on the
+	// commit instead of every check (JOB-75).
+	Workflow string `json:"workflow,omitempty"`
 	// Thread is owner/name#n or a Linear key, for thread.reply.
 	Thread string    `json:"thread,omitempty"`
 	From   string    `json:"from,omitempty"`
@@ -120,6 +124,9 @@ func (w *Wait) Validate() error {
 }
 
 func (c WaitCond) validate() error {
+	if c.Workflow != "" && c.Type != WaitChecks {
+		return fmt.Errorf("%s: workflow applies only to %s", c.Type, WaitChecks)
+	}
 	needPR := func() error {
 		if !repoRe.MatchString(c.Repo) || c.PR <= 0 {
 			return fmt.Errorf("%s needs repo owner/name and pr", c.Type)
@@ -135,6 +142,9 @@ func (c WaitCond) validate() error {
 	case WaitChecks:
 		if c.State != "success" && c.State != "failure" {
 			return fmt.Errorf("%s state must be success or failure", c.Type)
+		}
+		if c.Workflow != "" && c.Required {
+			return fmt.Errorf("%s required does not apply with workflow", c.Type)
 		}
 		if c.PR == 0 && c.SHA != "" && repoRe.MatchString(c.Repo) {
 			if c.Required {

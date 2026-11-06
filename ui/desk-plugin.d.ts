@@ -1424,6 +1424,7 @@ export interface WaitCond {
   login?: string;
   state?: string;
   required?: boolean;
+  workflow?: string;
   thread?: string;
   from?: string;
   at?: string;

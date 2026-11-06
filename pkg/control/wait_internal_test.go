@@ -3,6 +3,8 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,7 +25,7 @@ const (
 	recChecks    = `[{"name":"build","bucket":"pass"},{"name":"lint","bucket":"pending"}]`
 	recCheckRuns = `{"total_count":2,"check_runs":[{"name":"build","status":"completed","conclusion":"success"},{"name":"nix","status":"completed","conclusion":"failure"}]}`
 	// GET .../actions/runs?head_sha= on a master commit, ci queued.
-	recWorkflowRuns = `{"total_count":2,"workflow_runs":[{"id":42172458357,"name":"ci","status":"queued","conclusion":null,"event":"push"},{"id":42172458351,"name":"release","status":"completed","conclusion":"success","event":"push"}]}`
+	recWorkflowRuns = `{"total_count":2,"workflow_runs":[{"id":42172458357,"name":"ci","path":".github/workflows/ci.yml","status":"queued","conclusion":null,"event":"push"},{"id":42172458351,"name":"release","path":".github/workflows/release.yml","status":"completed","conclusion":"success","event":"push"}]}`
 )
 
 func TestWaitParseRecorded(t *testing.T) {
@@ -41,9 +43,138 @@ func TestWaitParseRecorded(t *testing.T) {
 	cs, err = parseCheckRuns([]byte(recCheckRuns))
 	require.NoError(t, err)
 	assert.Equal(t, []prCheck{{"build", "pass"}, {"nix", "fail"}}, cs)
-	cs, err = parseRunChecks([]byte(recWorkflowRuns))
+	runs, err := parseRunList([]byte(recWorkflowRuns))
 	require.NoError(t, err)
-	assert.Equal(t, []prCheck{{"ci (workflow)", "pending"}, {"release (workflow)", "pass"}}, cs)
+	assert.Equal(t, []actionsRun{
+		{ID: 42172458357, Name: "ci", Path: ".github/workflows/ci.yml", Status: "queued"},
+		{ID: 42172458351, Name: "release", Path: ".github/workflows/release.yml", Status: "completed", Conclusion: "success"},
+	}, runs)
+}
+
+// TestWaitChecksCancelledPR: a check cancelled on a PR head is not a
+// failure either (JOB-75): the wait is invalidated so the agent decides
+// again, instead of resuming as red.
+func TestWaitChecksCancelledPR(t *testing.T) {
+	t.Parallel()
+	c, _, prs, threads := waitController(t)
+	ctx := t.Context()
+	admin := scope{admin: true, actor: "admin"}
+	park := func() store.Ticket {
+		tk := mkTicket(t, c, store.NewTicket{Title: "ci", Pool: "dev"})
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{
+			ID: tk.ID, Reason: "CI", Any: true,
+			Conds: []store.WaitCond{
+				{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"},
+				{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "failure"},
+			},
+		})
+		require.NoError(t, err)
+		return tk
+	}
+	last := func(id string) string {
+		cs, err := store.Comments(ctx, c.store, id)
+		require.NoError(t, err)
+		require.NotEmpty(t, cs)
+		return cs[len(cs)-1].Body
+	}
+
+	a := park()
+	prs.set(recPR, `[[]]`, `[{"name":"go","bucket":"cancel"},{"name":"nix","bucket":"pending"}]`)
+	c.pollWaits(ctx, prs, threads)
+	require.NotNil(t, waitOf(mustGet(t, c, a.ID)), "cancelled with another check pending: keep waiting")
+
+	prs.set(recPR, `[[]]`, `[{"name":"go","bucket":"cancel"},{"name":"nix","bucket":"pass"},{"name":"ui","bucket":"skipping"}]`)
+	c.pollWaits(ctx, prs, threads)
+	assert.Nil(t, waitOf(mustGet(t, c, a.ID)))
+	assert.Contains(t, last(a.ID), "invalidated: checks cancelled on aaaa111: go")
+
+	b := park()
+	prs.set(recPR, `[[]]`, `[{"name":"go","bucket":"fail"},{"name":"nix","bucket":"cancel"}]`)
+	c.pollWaits(ctx, prs, threads)
+	assert.Nil(t, waitOf(mustGet(t, c, b.ID)))
+	assert.Contains(t, last(b.ID), "condition met: checks failed on aaaa111: go")
+}
+
+// TestWaitChecksWorkflow: github.checks with workflow= follows that
+// workflow's newest run on the commit (JOB-75), not the commit's checks,
+// for a sha and for a PR head.
+func TestWaitChecksWorkflow(t *testing.T) {
+	t.Parallel()
+	run := func(id int, name, file, status, conclusion string) string {
+		conc := "null"
+		if conclusion != "" {
+			conc = `"` + conclusion + `"`
+		}
+		return fmt.Sprintf(`{"id":%d,"name":%q,"path":".github/workflows/%s","status":%q,"conclusion":%s}`, id, name, file, status, conc)
+	}
+	list := func(rs ...string) string {
+		return `{"workflow_runs":[` + strings.Join(rs, ",") + `]}`
+	}
+	release := run(9, "release", "release.yml", "completed", "success")
+
+	for _, tc := range []struct {
+		name     string
+		workflow string
+		state    string
+		runs     string
+		met      bool
+		invalid  bool
+		note     string // in the wait's note or invalidation comment
+	}{
+		{"none yet", "ci", "success", list(release), false, false, "ci not started on aaaa111"},
+		{"queued", "ci", "success", list(release, run(10, "ci", "ci.yml", "queued", "")), false, false, "ci in progress on aaaa111"},
+		{"in progress", "ci", "failure", list(release, run(10, "ci", "ci.yml", "in_progress", "")), false, false, "ci in progress on aaaa111"},
+		{"success", "ci", "success", list(release, run(10, "ci", "ci.yml", "completed", "success")), true, false, "ci green on aaaa111"},
+		{"success, failure wait", "ci", "failure", list(run(10, "ci", "ci.yml", "completed", "success")), false, false, "ci green on aaaa111"},
+		{"failure", "ci", "failure", list(release, run(10, "ci", "ci.yml", "completed", "failure")), true, false, "ci failed on aaaa111"},
+		{"failure, success wait", "ci", "success", list(run(10, "ci", "ci.yml", "completed", "failure")), false, false, "ci failed on aaaa111"},
+		{"cancelled", "ci", "success", list(release, run(10, "ci", "ci.yml", "completed", "cancelled")), false, true, "ci cancelled on aaaa111"},
+		{"cancelled, failure wait", "ci", "failure", list(run(10, "ci", "ci.yml", "completed", "cancelled")), false, true, "ci cancelled on aaaa111"},
+		{"newest run wins", "ci", "success", list(run(10, "ci", "ci.yml", "completed", "cancelled"), run(11, "ci", "ci.yml", "completed", "success")), true, false, "ci green on aaaa111"},
+		{"rerun of a failed run", "ci", "success", list(run(12, "ci", "ci.yml", "in_progress", ""), run(11, "ci", "ci.yml", "completed", "failure")), false, false, "ci in progress on aaaa111"},
+		{"matched by file", "ci.yml", "success", list(run(10, "ci", "ci.yml", "completed", "success")), true, false, "ci.yml green on aaaa111"},
+		{"matched by path", ".github/workflows/ci.yml", "success", list(run(10, "ci", "ci.yml", "completed", "success")), true, false, ".github/workflows/ci.yml green on aaaa111"},
+	} {
+		for _, form := range []string{"sha", "pr"} {
+			t.Run(tc.name+"/"+form, func(t *testing.T) {
+				t.Parallel()
+				c, _, prs, threads := waitController(t)
+				ctx := t.Context()
+				cond := store.WaitCond{Type: store.WaitChecks, Repo: "acme/widget", State: tc.state, Workflow: tc.workflow}
+				head := "aaaa1111"
+				if form == "pr" {
+					head = "aaaa1111bbbb"
+					cond.PR = 5
+					prs.set(recPR, `[[]]`, `[{"name":"go","bucket":"pass"}]`)
+				} else {
+					cond.SHA = head
+				}
+				prs.runs[head] = tc.runs
+				tk := mkTicket(t, c, store.NewTicket{Title: "ci", Pool: "dev"})
+				_, err := c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "CI", Conds: []store.WaitCond{cond}})
+				require.NoError(t, err)
+				c.pollWaits(ctx, prs, threads)
+				w := waitOf(mustGet(t, c, tk.ID))
+				if tc.met || tc.invalid {
+					assert.Nil(t, w, "wait ended")
+					cs, err := store.Comments(ctx, c.store, tk.ID)
+					require.NoError(t, err)
+					require.NotEmpty(t, cs)
+					body := cs[len(cs)-1].Body
+					assert.Contains(t, body, tc.note)
+					if tc.invalid {
+						assert.Contains(t, body, "invalidated:")
+					} else {
+						assert.Contains(t, body, "condition met:")
+					}
+					return
+				}
+				require.NotNil(t, w, "wait keeps waiting")
+				assert.False(t, w.Conds[0].Met)
+				assert.Contains(t, w.Conds[0].Note, tc.note)
+			})
+		}
+	}
 }
 
 // TestWaitChecksCommit: a checks wait on a commit (#831). A cancelled
@@ -121,7 +252,9 @@ type fakePRs struct {
 	reviews map[string]string
 	checks  map[string]string
 	issues  map[string]string
-	calls   int
+	// runs holds the workflow runs per commit, as the actions/runs JSON.
+	runs  map[string]string
+	calls int
 }
 
 func (f *fakePRs) set(pr, reviews, checks string) {
@@ -170,10 +303,19 @@ func (f *fakePRs) Contains(_ context.Context, _ string, sha, head string) (bool,
 	return compareContains(f.issues["compare:"+sha+"..."+head]), nil
 }
 
+func (f *fakePRs) WorkflowRuns(_ context.Context, _, sha string) ([]actionsRun, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.runs[sha] == "" {
+		return nil, nil
+	}
+	return parseRunList([]byte(f.runs[sha]))
+}
+
 func waitController(t *testing.T) (*Controller, *stallClock, *fakePRs, *fakeThreads) {
 	t.Helper()
 	c, clk, threads := subController(t)
-	return c, clk, &fakePRs{pr: map[string]string{}, reviews: map[string]string{}, checks: map[string]string{}, issues: map[string]string{}}, threads
+	return c, clk, &fakePRs{pr: map[string]string{}, reviews: map[string]string{}, checks: map[string]string{}, issues: map[string]string{}, runs: map[string]string{}}, threads
 }
 
 func sessScope(s store.Ticket) scope {
@@ -388,6 +530,8 @@ func TestWaitValidate(t *testing.T) {
 		{{Type: "nope"}},
 		{{Type: store.WaitReview, Repo: "acme/widget", PR: 5}},
 		{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "green"}},
+		{{Type: store.WaitReview, Repo: "acme/widget", PR: 5, Login: "bob", Workflow: "ci"}},
+		{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success", Workflow: "ci", Required: true}},
 		{{Type: store.WaitReply, Thread: "bad"}},
 	} {
 		_, err := c.waitAdd(t.Context(), admin, rpc.WaitAddParams{ID: a.ID, Reason: "x", Conds: conds})

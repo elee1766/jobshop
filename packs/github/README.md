@@ -179,7 +179,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `release_pr_label` | Label of release-please PRs. Default `autorelease: pending`. A green, non-draft open PR with it gets one `release-merge` run (refinery merges it without review), and `pr_unmerged` does not flag it. Empty turns the `release-pr` trigger off (#698) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
-| `ci_workflow` | GitHub Actions workflow name `master-red` watches. Default `ci` |
+| `ci_workflow` | GitHub Actions workflow name `master-red` watches, and the workflow the implement and post-merge `github.checks` waits follow (`workflow=`). Default `ci` |
 | `ci_branch` | Branch `master-red` watches. Default `master` |
 | `dev_sessions` | `max_sessions` for the dev pool. Default 2 |
 | `dev_model`, `dev_effort` | dev pool `model` and `effort`. Default empty: the agent's |
