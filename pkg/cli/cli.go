@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 
 	host "github.com/elee1766/acphost"
+	"github.com/elee1766/acphost/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -93,6 +94,8 @@ type root struct {
 
 // Main parses args, runs the selected command and returns a process exit code.
 func Main(args []string) int {
+	// acphost's isolation helpers re-exec this binary (acphost#157).
+	proc.MaybeChild()
 	if len(args) > 0 && args[0] == "gh" {
 		// Before kong: gh's own flags must reach gh unparsed (#349).
 		g := &Globals{Root: os.Getenv("JOBSHOP_ROOT"), Socket: os.Getenv("JOBSHOP_SOCKET")}

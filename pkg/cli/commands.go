@@ -829,6 +829,9 @@ func (c sessionSandboxCmd) Run(g *Globals) error {
 	for _, m := range s.RW {
 		fmt.Println("rw  ", m.Src)
 	}
+	for _, o := range s.Overlay {
+		fmt.Printf("overlay %s (%s): %s\n", o.Dst, cmp.Or(o.Mode, "ro"), strings.Join(o.Layers, " "))
+	}
 	for _, h := range s.Hide {
 		fmt.Println("hide", h)
 	}

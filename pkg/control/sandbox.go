@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	host "github.com/elee1766/acphost"
+	"github.com/elee1766/acphost/sandbox"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -119,6 +121,11 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbo
 	for _, p := range sb.Hide {
 		s.Hide = append(s.Hide, expandHome(p))
 	}
+	ov, err := overlayMounts(sb.Overlay, own)
+	if err != nil {
+		return nil, err
+	}
+	s.Overlay = ov
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		if keepEnv(sb.EnvKeep, k) {
@@ -128,6 +135,38 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbo
 	slices.Sort(s.EnvKeep)
 	s.EnvKeep = slices.Compact(s.EnvKeep)
 	return s, nil
+}
+
+// overlayMounts turns the merged overlay config into acphost overlays,
+// sorted by target (JOB-55). A "~/" target is the same path inside the
+// sandbox as an rw bind's. A persist overlay keeps its upper dir under
+// own/overlay; its work dir must be empty, so it is recreated each spawn.
+// A layer gone since load is a permanent error: the pool is quarantined.
+func overlayMounts(ov map[string]config.SandboxOverlay, own string) ([]sandbox.Overlay, error) {
+	var out []sandbox.Overlay
+	for _, dst := range slices.Sorted(maps.Keys(ov)) {
+		o := ov[dst]
+		m := sandbox.Overlay{Dst: filepath.Clean(expandHome(dst)), Layers: o.Layers, Mode: o.Mode}
+		for _, l := range o.Layers {
+			if st, err := os.Stat(l); err != nil || !st.IsDir() {
+				return nil, host.Permanentf("sandbox overlay %s: layer %s is missing or not a directory", dst, l)
+			}
+		}
+		if o.Mode == config.OverlayPersist {
+			base := filepath.Join(own, "overlay", strings.ReplaceAll(strings.TrimPrefix(m.Dst, "/"), "/", "_"))
+			m.Upper, m.Work = filepath.Join(base, "upper"), filepath.Join(base, "work")
+			if err := os.RemoveAll(m.Work); err != nil {
+				return nil, host.Permanentf("sandbox overlay %s: %w", dst, err)
+			}
+			for _, d := range []string{m.Upper, m.Work} {
+				if err := os.MkdirAll(d, 0o700); err != nil {
+					return nil, host.Permanentf("sandbox overlay %s: %w", dst, err)
+				}
+			}
+		}
+		out = append(out, m)
+	}
+	return out, nil
 }
 
 // keepEnv reports whether name matches keep: an exact name, or a prefix
@@ -153,8 +192,18 @@ func (c *Controller) sandboxKey(pool string) []string {
 	key := []string{"JOBSHOP_SANDBOX=" + sb.Backend + " net=" + sb.Network +
 		" ro=" + strings.Join(append(slices.Clone(sb.RO), cfg.SharedTools...), ",") +
 		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",") + " guidance=" + strings.Join(sb.Guidance, ",") + " deny=" + strings.Join(sb.Deny, ",") +
-		" env=" + strings.Join(sb.EnvKeep, ",") + " " + dnsKey(sb)}
+		" env=" + strings.Join(sb.EnvKeep, ",") + " " + dnsKey(sb) + overlayKey(sb)}
 	return key
+}
+
+// overlayKey lists each overlay target's mode and layers.
+func overlayKey(sb config.Sandbox) string {
+	var k string
+	for _, dst := range slices.Sorted(maps.Keys(sb.Overlay)) {
+		o := sb.Overlay[dst]
+		k += " overlay=" + dst + ":" + o.Mode + ":" + strings.Join(o.Layers, ",")
+	}
+	return k
 }
 
 // dnsKey is the part of sb the pasta DNS check depends on.

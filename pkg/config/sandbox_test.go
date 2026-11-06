@@ -1,8 +1,10 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -88,4 +90,42 @@ packs:
 	require.NoError(t, err)
 	assert.Contains(t, c.SandboxProfiles, "x-sys")
 	assert.Equal(t, []string{"/usr/lib"}, c.SandboxFor("x-dev").RO)
+}
+
+// TestSandboxOverlayMerge: layers for one target append profile, agent,
+// pool; mode takes the most specific level (JOB-55).
+func TestSandboxOverlayMerge(t *testing.T) {
+	d := t.TempDir()
+	for _, n := range []string{"base", "agent", "pool"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(d, n), 0o700))
+	}
+	c, err := config.Parse(fmt.Appendf(nil, `
+projects: {js: {}}
+sandbox_profiles:
+  skills: {overlay: {"~/.agents": {layers: [%[1]s/base], mode: tmp}}}
+agents:
+  fake: {command: /bin/true, sandbox: {backend: bubblewrap, profiles: [skills], overlay: {"~/.agents": {layers: [%[1]s/agent]}}}}
+pools:
+  p: {agent: fake, dir: /tmp, sandbox: {ro: [/usr], overlay: {"~/.agents": {layers: [%[1]s/pool], mode: ro}, /opt/x: {layers: [%[1]s/base]}}}}
+`, d))
+	require.NoError(t, err)
+	ov := c.SandboxFor("p").Overlay
+	assert.Equal(t, config.SandboxOverlay{Layers: []string{d + "/base", d + "/agent", d + "/pool"}, Mode: "ro"}, ov["~/.agents"])
+	assert.Equal(t, []string{d + "/base"}, ov["/opt/x"].Layers)
+}
+
+func TestSandboxOverlayErrors(t *testing.T) {
+	d := t.TempDir()
+	for _, bad := range []string{
+		"pools:\n  p: {agent: fake, dir: /tmp, sandbox: {overlay: {/x: {layers: [" + d + "]}}}}\n",
+		"pools:\n  p: {agent: fake, dir: /tmp, sandbox: {backend: bubblewrap, overlay: {/x: {layers: [" + d + "/missing]}}}}\n",
+		"pools:\n  p: {agent: fake, dir: /tmp, sandbox: {backend: bubblewrap, overlay: {/x: {layers: [rel]}}}}\n",
+		"pools:\n  p: {agent: fake, dir: /tmp, sandbox: {backend: bubblewrap, overlay: {x: {layers: [" + d + "]}}}}\n",
+		"pools:\n  p: {agent: fake, dir: /tmp, sandbox: {backend: bubblewrap, overlay: {/x: {layers: [" + d + "], mode: rw}}}}\n",
+		"pools:\n  p: {agent: fake, dir: /tmp, sandbox: {backend: bubblewrap, overlay: {/x: {mode: tmp}}}}\n",
+		"pools:\n  p: {agent: fake, dir: /tmp, sandbox: {backend: bubblewrap, overlay: {/x: {layers: [" + strings.Repeat(d+", ", 500) + d + "]}}}}\n",
+	} {
+		_, err := config.Parse([]byte("projects: {js: {}}\nagents: {fake: {command: /bin/true}}\n" + bad))
+		assert.Error(t, err, bad)
+	}
 }
