@@ -26,6 +26,7 @@ type deskCmd struct {
 	TrustedProxy []string `help:"Peer address or CIDR (repeatable) whose --user-header and X-Forwarded-Prefix Desk trusts. Required with --user-header. --base-path wins over X-Forwarded-Prefix."`
 	Push         bool     `help:"Send Web Push notifications for new attention items. Browsers allow push only over HTTPS (or localhost)."`
 	PushSubject  string   `name:"push-subject" help:"VAPID contact push services see (mailto: or https: URL)." default:"mailto:jobshop@localhost"`
+	Favicon      string   `help:"Image file (SVG, PNG or ICO) used as the browser tab icon instead of the built-in one." type:"existingfile"`
 }
 
 // Run serves Jobshop Desk over the admin socket (#202).
@@ -60,6 +61,11 @@ func (c deskCmd) Run(g *Globals) error {
 	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
 	log := tel.Log.With("component", "desk")
 	cfg := desk.Config{Hosts: c.Host, ChatPool: c.ChatPool, UserHeader: c.UserHeader, BasePath: base, TrustedProxies: proxies, Root: r.Dir}
+	if c.Favicon != "" {
+		if cfg.Favicon, err = os.ReadFile(c.Favicon); err != nil {
+			return fmt.Errorf("desk: --favicon: %w", err)
+		}
+	}
 	if c.Push {
 		// Under the root, with the key and subscriptions: only Desk reads it.
 		cfg.Push = &desk.Push{File: filepath.Join(r.Dir, "desk", "push.json"), Subject: c.PushSubject}

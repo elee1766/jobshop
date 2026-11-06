@@ -4,6 +4,7 @@
 package desk
 
 import (
+	"bytes"
 	"context"
 	"embed"
 	"encoding/json"
@@ -63,6 +64,8 @@ type Config struct {
 	// Root is the Jobshop root: <root>/desk/plugins and relative pack
 	// paths resolve against it (#517). Empty: built-in plugins only.
 	Root string
+	// Favicon replaces the built-in icon.svg as the page icon. Nil: built-in.
+	Favicon []byte
 }
 
 type userKey struct{}
@@ -247,6 +250,10 @@ func (s *Server) serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	tag := `<base href="` + html.EscapeString(base) + `">`
 	page := strings.Replace(string(s.index), "<head>", "<head>\n    "+tag, 1)
+	if s.cfg.Favicon != nil {
+		page = strings.Replace(page, `<link rel="icon" href="icon.svg" type="image/svg+xml" />`,
+			`<link rel="icon" href="favicon" type="`+html.EscapeString(faviconType(s.cfg.Favicon))+`" />`, 1)
+	}
 	h := w.Header()
 	h.Set("Content-Type", "text/html; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
@@ -377,6 +384,12 @@ func (s *Server) static() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Views live in the query string, so every unknown path is the app.
 		name := strings.TrimPrefix(r.URL.Path, "/")
+		if name == "favicon" && s.cfg.Favicon != nil {
+			w.Header().Set("Content-Type", faviconType(s.cfg.Favicon))
+			w.Header().Set("Cache-Control", "no-cache")
+			_, _ = w.Write(s.cfg.Favicon)
+			return
+		}
 		if _, err := fs.Stat(s.ui, name); err != nil || name == "" || name == "index.html" {
 			s.serveIndex(w, r)
 			return
@@ -774,4 +787,15 @@ func (s *Server) sessionStream(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 		e.send("end", 0, res)
 	}
+}
+
+// faviconType is the favicon's media type. Sniffing does not know SVG.
+func faviconType(b []byte) string {
+	if t := http.DetectContentType(b); !strings.HasPrefix(t, "text/") {
+		return t
+	}
+	if bytes.Contains(b[:min(len(b), 512)], []byte("<svg")) {
+		return "image/svg+xml"
+	}
+	return "image/x-icon"
 }

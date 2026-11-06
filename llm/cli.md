@@ -647,6 +647,8 @@ Flags:
       --push-subject="mailto:jobshop@localhost"
                                    VAPID contact push services see (mailto:
                                    or https: URL).
+      --favicon=STRING             Image file (SVG, PNG or ICO) used as the
+                                   browser tab icon instead of the built-in one.
 ```
 
 ## jobshop ingest

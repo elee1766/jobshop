@@ -1099,6 +1099,11 @@ in
         example = [ "127.0.0.1" ];
         description = "Peer addresses or CIDRs whose userHeader and X-Forwarded-Prefix Desk trusts (--trusted-proxy). Required with userHeader.";
       };
+      favicon = lib.mkOption {
+        type = lib.types.nullOr lib.types.path;
+        default = null;
+        description = "Image (SVG, PNG or ICO) for the browser tab icon (--favicon). Null: the built-in icon.";
+      };
       extraArgs = lib.mkOption {
         type = lib.types.listOf lib.types.str;
         default = [ ];
@@ -1375,6 +1380,10 @@ in
                 "--trusted-proxy"
                 p
               ]) cfg.desk.trustedProxies
+              ++ lib.optionals (cfg.desk.favicon != null) [
+                "--favicon"
+                "${cfg.desk.favicon}"
+              ]
               ++ cfg.desk.extraArgs
             );
             Restart = "always";

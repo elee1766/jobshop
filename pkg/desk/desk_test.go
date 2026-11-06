@@ -414,3 +414,20 @@ func TestCleanBasePath(t *testing.T) {
 		assert.Equal(t, want, CleanBasePath(in), in)
 	}
 }
+
+// --favicon replaces the built-in icon link and is served at /favicon.
+func TestFavicon(t *testing.T) {
+	ctl := &fakeCtl{results: map[string]any{}}
+	w := get(t, New(Config{}, ctl, nil).Handler(), "/", nil)
+	assert.Contains(t, w.Body.String(), `href="icon.svg"`)
+
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>`)
+	h := New(Config{Favicon: svg}, ctl, nil).Handler()
+	w = get(t, h, "/", nil)
+	assert.Contains(t, w.Body.String(), `<link rel="icon" href="favicon" type="image/svg+xml" />`)
+	assert.NotContains(t, w.Body.String(), `href="icon.svg"`)
+	w = get(t, h, "/favicon", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "image/svg+xml", w.Header().Get("Content-Type"))
+	assert.Equal(t, svg, w.Body.Bytes())
+}
