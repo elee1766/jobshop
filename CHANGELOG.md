@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.5](https://github.com/elee1766/jobshop/compare/v0.7.4...v0.7.5) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** run trigger checks outside the tick (JOB-109) ([#932](https://github.com/elee1766/jobshop/issues/932)) ([e3b5f82](https://github.com/elee1766/jobshop/commit/e3b5f8289b79d206900c87e9ac71b17546994f43))
+
 ## [0.7.4](https://github.com/elee1766/jobshop/compare/v0.7.3...v0.7.4) (2026-11-06)
 
 
