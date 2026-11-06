@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.18](https://github.com/elee1766/jobshop/compare/v0.6.17...v0.6.18) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** share and parallelize reload preflight, longer reload deadline (JOB-102) ([#910](https://github.com/elee1766/jobshop/issues/910)) ([bab2a8b](https://github.com/elee1766/jobshop/commit/bab2a8b266522b0a6cdb0d899d7c04f7dd8786fe))
+
 ## [0.6.17](https://github.com/elee1766/jobshop/compare/v0.6.16...v0.6.17) (2026-11-06)
 
 
