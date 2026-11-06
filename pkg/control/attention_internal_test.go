@@ -47,8 +47,10 @@ func TestAttention(t *testing.T) {
 		Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7},"run":{"id":"` + run.ID + `","workflow":"work","escalation":"x"}}`),
 	})
 	clk.advance(time.Minute)
-	q := mkTicket(t, c, store.NewTicket{Title: "which db?", Labels: []string{questionLabel},
-		Meta: json.RawMessage(`{"linear":{"workspace":"acme","issue":"ENG-5"},"github":{"repo":"acme/widget"}}`)})
+	q := mkTicket(t, c, store.NewTicket{
+		Title: "which db?", Labels: []string{questionLabel},
+		Meta: json.RawMessage(`{"linear":{"workspace":"acme","issue":"ENG-5"},"github":{"repo":"acme/widget"}}`),
+	})
 	clk.advance(time.Minute)
 	prop := mkTicket(t, c, store.NewTicket{Title: "Proposed target: x (#9)", Labels: []string{proposedLabel}})
 	clk.advance(time.Minute)
