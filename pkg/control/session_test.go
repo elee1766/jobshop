@@ -942,6 +942,15 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 			return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "API Error: 429 rate_limit_error"}
 		}
 	}
+	// A "netfail" file holding N fails the next N prompts the way an
+	// agent that cannot reach its provider does (JOB-66).
+	if b, err := os.ReadFile("netfail"); err == nil {
+		var n int
+		if _, err := fmt.Sscan(string(b), &n); err == nil && n > 0 {
+			_ = os.WriteFile("netfail", fmt.Appendf(nil, "%d", n-1), 0o600)
+			return acp.PromptResponse{}, &acp.RequestError{Code: -32000, Message: "Failed to send request: error sending request for url (https://api.example/v1/messages): Connect"}
+		}
+	}
 	// With a "block" file present, hold the turn open until "go" appears.
 	if _, err := os.Stat("block"); err == nil {
 		_ = os.WriteFile("started", nil, 0o600)
@@ -1081,7 +1090,7 @@ type backoffLog struct {
 }
 
 func (h backoffLog) Handle(ctx context.Context, r slog.Record) error {
-	if r.Message == "provider rate limited, backing off" {
+	if r.Message == "provider rate limited, backing off" || r.Message == "provider unreachable, backing off" {
 		h.n.Add(1)
 	}
 	return h.Handler.Handle(ctx, r)
@@ -1149,6 +1158,36 @@ func TestRateLimitBackoff(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join(root.Dir, "ratelimit"))
 	require.NoError(t, err)
 	assert.Equal(t, "0", string(b))
+}
+
+// TestProviderUnreachableBackoff (JOB-66): provider transport errors back
+// off on the same host like a 429, with no restart or quarantine, and the
+// ticket stays claimed until the retried turn closes it.
+func TestProviderUnreachableBackoff(t *testing.T) {
+	backoffs := new(atomic.Int32)
+	root, start := poolRootOpt(t, "1m", control.Options{Hosts: realHosts{}, Log: slog.New(backoffLog{testLog(t).Handler(), backoffs})})
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "netfail"), []byte("4"), 0o600))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
+	show := func(id string) store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+	assert.Equal(t, int32(4), backoffs.Load(), "one backoff per transport error")
+	assert.Equal(t, "done", show(task.ID).Resolution)
+
+	var sessions []store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	require.Len(t, sessions, 1, "no restart")
+	assert.Equal(t, store.StatusOpen, sessions[0].Status, "not crashed or quarantined")
 }
 
 // TestMetrics serves /metrics from the controller and checks that a pool

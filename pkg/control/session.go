@@ -285,6 +285,23 @@ func rateLimited(err error) bool {
 	return false
 }
 
+// providerNetRetries bounds prompt retries after provider transport
+// errors. With the doubling backoff capped at 15x Options.Backoff this is
+// a few minutes in production before the turn fails as before.
+const providerNetRetries = 6
+
+// providerUnreachable reports whether a prompt error is the agent failing
+// to reach its provider (seen 2026-11-05 on acphost-dev: -32000 "Failed
+// to send request ... Connect").
+func providerUnreachable(err error) bool {
+	var re *acp.RequestError
+	if !errors.As(err, &re) {
+		return false
+	}
+	s := strings.ToLower(fmt.Sprint(re.Message, " ", re.Data))
+	return strings.Contains(s, "failed to send request") || strings.Contains(s, "error sending request")
+}
+
 // agentBusy reports whether the agent refused a prompt because it still
 // considers an earlier one in flight. jcode does this after a prompt fails
 // mid-stream (seen 2026-11-01); a session/cancel clears it, a host restart
@@ -1131,7 +1148,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 	if c := r.takeContext(); c != "" {
 		text = strings.TrimSpace(rpc.ContextOpen + "\n" + c + "\n" + rpc.ContextClose + "\n\n" + text)
 	}
-	busyRetries := 0
+	busyRetries, netRetries := 0, 0
 	for {
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
 			SessionId: acp.SessionId(acpSession),
@@ -1158,10 +1175,22 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, acpSe
 			r.c.stopHost(r.dir)
 			return errRefresh
 		}
-		if err == nil || ctx.Err() != nil || !rateLimited(err) {
+		if err == nil || ctx.Err() != nil {
 			break
 		}
-		r.log.WarnContext(ctx, "provider rate limited, backing off", "wait", wait, "err", err)
+		// A transport failure to the provider is the network, not the
+		// agent (JOB-66): retry on the same host, bounded, so a short
+		// outage does not burn the crash budget into quarantine.
+		net := providerUnreachable(err) && netRetries < providerNetRetries
+		if !net && (providerUnreachable(err) || !rateLimited(err)) {
+			break
+		}
+		if net {
+			netRetries++
+			r.log.WarnContext(ctx, "provider unreachable, backing off", "attempt", netRetries, "wait", wait, "err", err)
+		} else {
+			r.log.WarnContext(ctx, "provider rate limited, backing off", "wait", wait, "err", err)
+		}
 		r.setBackoff(r.c.now().Add(wait))
 		select {
 		case <-ctx.Done():
