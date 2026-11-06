@@ -20,8 +20,9 @@ var StallVars = []string{StallSignalVar, StallSubjectVar, StallDetailVar}
 
 // checkStallTrigger validates a when.stall trigger (#143). It has no other
 // condition, starts a run, and its run vars and key may only use the
-// stall vars. An empty key is stall:<signal>:<subject>; a set one (JOB-33,
-// pr-<n>) lets the run dedup with runs started by hand for the subject.
+// stall vars. An empty key is <key_prefix>:<signal>:<subject>, key_prefix
+// defaulting to stall (JOB-95); a set one (JOB-33, pr-<n>) lets the run
+// dedup with runs started by hand for the subject.
 // With on:, a check may use {{.event.<field>}} (JOB-72).
 func (c *Config) checkStallTrigger(tr *Trigger) error {
 	w := tr.When
@@ -95,6 +96,14 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 		return errors.New("a stall trigger needs run and no ticket")
 	}
 	r := tr.Run
+	if r.KeyPrefix != "" {
+		if !namePattern.MatchString(r.KeyPrefix) {
+			return fmt.Errorf("run: key_prefix must match %s", namePattern)
+		}
+		if r.Key != "" {
+			return errors.New("run: set key or key_prefix, not both")
+		}
+	}
 	wf, ok := c.Workflows[r.Workflow]
 	if !ok {
 		return fmt.Errorf("run: unknown workflow %q", r.Workflow)
@@ -178,6 +187,18 @@ func SplitList(s string) []string {
 		}
 	}
 	return out
+}
+
+// DefaultStallKeyPrefix starts a stall run's key when run.key_prefix is
+// unset.
+const DefaultStallKeyPrefix = "stall"
+
+// StallKeyPrefix is tr.Run.KeyPrefix or the default.
+func (tr Trigger) StallKeyPrefix() string {
+	if tr.Run != nil && tr.Run.KeyPrefix != "" {
+		return tr.Run.KeyPrefix
+	}
+	return DefaultStallKeyPrefix
 }
 
 // StallMaxRuns is tr.MaxRuns or the default.

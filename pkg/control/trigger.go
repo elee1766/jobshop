@@ -407,7 +407,7 @@ func (c *Controller) triggerInfo(ctx context.Context, name string, tr config.Tri
 		}
 		info := rpc.TriggerInfo{Name: name, Holds: len(fire) > 0, Why: why}
 		for _, s := range fire {
-			info.Stalls = append(info.Stalls, s.key())
+			info.Stalls = append(info.Stalls, s.keyWith(tr.StallKeyPrefix()))
 		}
 		return info, nil
 	}

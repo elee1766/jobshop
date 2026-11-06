@@ -236,6 +236,9 @@ var templateKeys = []string{"title", "prompt", "pool", "retry_pool", "needs_reso
 // and key may only reference ${check_output}, and only with a check.
 func (c *Config) checkTriggerRun(tr *Trigger) error {
 	r := tr.Run
+	if r.KeyPrefix != "" {
+		return errors.New("run: key_prefix needs when.stall")
+	}
 	w, ok := c.Workflows[r.Workflow]
 	if !ok {
 		return fmt.Errorf("run: unknown workflow %q", r.Workflow)
