@@ -1,4 +1,4 @@
-package sqlstore
+package sqlite
 
 import (
 	"bytes"
@@ -8,18 +8,18 @@ import (
 	"sort"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
+	"github.com/elee1766/jobshop/pkg/store/sqlite/sqldb"
 	"github.com/elee1766/jobshop/pkg/store/storerules"
 )
 
-// columns are storerules.Columns as the SQL parameter types.
-type columns struct {
+// fieldCols are storerules.Columns as the SQL parameter types.
+type fieldCols struct {
 	key, to, state, workflow sql.NullString
 	index                    sql.NullInt64
 	waiting                  int64
 }
 
-func fieldColumns(fields json.RawMessage) columns {
+func fieldColumns(fields json.RawMessage) fieldCols {
 	r := storerules.FieldColumns(fields)
 	str := func(p *string) sql.NullString {
 		if p == nil {
@@ -27,7 +27,7 @@ func fieldColumns(fields json.RawMessage) columns {
 		}
 		return sql.NullString{String: *p, Valid: true}
 	}
-	c := columns{key: str(r.Key), to: str(r.To), state: str(r.State), workflow: str(r.Workflow)}
+	c := fieldCols{key: str(r.Key), to: str(r.To), state: str(r.State), workflow: str(r.Workflow)}
 	if r.Index != nil {
 		c.index = sql.NullInt64{Int64: *r.Index, Valid: true}
 	}

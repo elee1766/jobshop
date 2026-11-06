@@ -8,7 +8,7 @@ elee1766/jobshop turn, alongside AGENTS.md.
 - Parallel PRs take the same migration number: before pushing a new
   migration, fetch master, renumber past its highest file in
   `pkg/store/sqlite/migrations` (and `pkg/store/postgres/migrations`).
-- In `pkg/store/sqlstore/sqldb` a bare `?` after an expanded list takes
+- In `pkg/store/sqlite/sqldb` a bare `?` after an expanded list takes
   the next number: check the `?N` binds the argument you mean.
 - Deferred SQLite transactions get SQLITE_BUSY on the read-to-write
   upgrade (busy_timeout does not wait on it): retry the whole

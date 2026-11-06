@@ -1,9 +1,7 @@
-// Package sqldb holds the ticket store's hand-written SQL. Every query
-// runs as is on SQLite and Postgres (#694): $N placeholders, BIGINT
-// casts, booleans cast to INT before BIGINT. Engine-specific SQL (full-
-// text search, DDL) lives in the backend packages. Each query text
-// keeps a leading "-- name: X" line, which TestEveryQueryPrepares
-// reports failures by.
+// Package sqldb holds the SQLite store's hand-written SQL (JOB-42).
+// Postgres has its own copy in postgres/pgdb, so each can diverge. Each
+// query text keeps a leading "-- name: X" line, which
+// TestEveryQueryPrepares reports failures by.
 package sqldb
 
 import (

@@ -15,7 +15,6 @@ import (
 	"github.com/nullism/bqb"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore"
 )
 
 // Collections on SQLite (#579, docs/notes/579-collections-store.md).
@@ -63,7 +62,7 @@ type registry struct {
 	done map[string]string // name -> spec fingerprint
 }
 
-func (g *registry) open(ctx context.Context, s *sqlstore.Store, spec store.CollectionSpec) (store.Collection, error) {
+func (g *registry) open(ctx context.Context, s *Store, spec store.CollectionSpec) (store.Collection, error) {
 	fp := fmt.Sprintf("%v", spec)
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -107,7 +106,7 @@ func registerDDL(spec store.CollectionSpec) []string {
 }
 
 type collection struct {
-	s    *sqlstore.Store
+	s    *Store
 	spec store.CollectionSpec
 }
 

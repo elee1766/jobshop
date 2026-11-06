@@ -13,14 +13,12 @@ import (
 	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore"
-	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 //go:embed migrations/*.sql
 var migrations embed.FS
 
-// recallSQL is Driver.RecallSQL, on the FTS5 recall table.
+// recallSQL searches comments on the FTS5 recall table.
 const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS INTEGER) AS at_ms,
        snippet(recall, 0, '[', ']', '...', 16) AS snippet,
        CAST(bm25(recall) AS REAL) AS score
@@ -31,14 +29,6 @@ WHERE body MATCH ?1
   AND (?3 = '' OR ticket_id = ?3)
 ORDER BY score
 LIMIT CAST(?4 AS INTEGER)`
-
-// Options configures Open.
-type Options = sqlstore.Options
-
-// Store is the SQLite-backed store. In production all access goes
-// through one connection, but claims and sweeps do not rely on that
-// (#406).
-type Store = sqlstore.Store
 
 // Open opens (creating if needed) the database at path and migrates it.
 // Use ":memory:" for a private in-memory database.
@@ -69,9 +59,6 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
-	// Statements are prepared once per text and closed with db (#433).
-	cache := newStmtCache(db)
-	bind, conn := cache.bind, cache.conn
 	// Reads get their own connections so a slow writer pass does not
 	// stall every API read. WAL readers see the last committed
 	// transaction, the same as reading after it on the writer.
@@ -81,31 +68,8 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 			_ = db.Close()
 			return nil, err
 		}
-		rcache := newStmtCache(rdb)
-		bind = func(d sqldb.DBTX) sqldb.Querier {
-			if d == rdb {
-				return rcache.bind(d)
-			}
-			return cache.bind(d)
-		}
-		conn = func(d sqldb.DBTX) sqldb.DBTX {
-			if d == rdb {
-				return rcache.conn(d)
-			}
-			return cache.conn(d)
-		}
 	}
-	s, err := sqlstore.New(sqlstore.Driver{
-		DB:          db,
-		ReadDB:      rdb,
-		Bind:        bind,
-		Classify:    classify,
-		RecallMatch: recallMatch,
-		RecallSQL:   recallSQL,
-		IsBusy:      isBusy,
-		Collection:  (&registry{}).open,
-		Conn:        conn,
-	}, opt)
+	s, err := newStore(db, rdb, opt)
 	if err != nil {
 		if rdb != nil {
 			_ = rdb.Close()
@@ -158,8 +122,8 @@ func isBusy(err error) bool {
 	return errors.As(err, &se) && se.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
-// classify maps SQLite constraint failures to store errors.
-func classify(err error) error {
+// classifyErr maps SQLite constraint failures to store errors.
+func classifyErr(err error) error {
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "UNIQUE constraint failed"), strings.Contains(msg, "PRIMARY KEY"):

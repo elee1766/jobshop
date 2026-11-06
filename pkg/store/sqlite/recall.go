@@ -1,4 +1,4 @@
-package sqlstore
+package sqlite
 
 import (
 	"context"
@@ -11,10 +11,8 @@ import (
 // defaultRecallLimit bounds Recall when no limit is given.
 const defaultRecallLimit = 10
 
-// Recall searches ticket comments. It runs the driver's match
-// expressions in order and returns the first that has hits (SQLite: all
-// words, then any word). The query text is the driver's (RecallSQL):
-// full-text search is the one engine-specific query (#694).
+// Recall searches ticket comments with FTS5: all words, then any word
+// (recallMatch), returning the first that has hits.
 func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.RecallHit, error) {
 	words := strings.Fields(rq.Text)
 	if len(words) == 0 {
@@ -24,7 +22,7 @@ func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.Recal
 	if lim <= 0 {
 		lim = defaultRecallLimit
 	}
-	for _, match := range s.drv.RecallMatch(words) {
+	for _, match := range recallMatch(words) {
 		out, err := s.recall(ctx, match, rq.Project, rq.TicketID, lim)
 		if err != nil || len(out) > 0 {
 			return out, err
@@ -34,7 +32,7 @@ func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.Recal
 }
 
 func (s *Store) recall(ctx context.Context, match, project, ticket string, lim int) ([]store.RecallHit, error) {
-	rows, err := s.conn(s.rdb).QueryContext(ctx, s.drv.RecallSQL, match, project, ticket, int64(lim))
+	rows, err := s.conn(s.rdb).QueryContext(ctx, recallSQL, match, project, ticket, int64(lim))
 	if err != nil {
 		return nil, err
 	}
