@@ -27,7 +27,8 @@ First decide what kind of work it is. Every exit closes with an outcome:
   Backlog, then `jobshop close --outcome done`. Never open a PR for it.
 Say in your last Linear comment which of these it was.
 
-If the ticket already has a PR (comments on this step or on the run's
+If the ticket already has a PR (a "Changes requested" section in this
+prompt, or comments on this step or on the run's
 `review-merge` step list refinery findings; `jobshop run show <run>` from
 the ticket's `parent_id`): do not start a new branch. `gh pr checkout <n>`,
 address each finding, reply to each review comment you resolve, push and

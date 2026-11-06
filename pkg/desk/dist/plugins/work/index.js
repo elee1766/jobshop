@@ -2083,7 +2083,8 @@ function Wr(e) {
 		case "running":
 		case "closed": return "ok";
 		case "needs_human":
-		case "in_progress": return "warn";
+		case "in_progress":
+		case "request_changes": return "warn";
 		case "failed":
 		case "cancelled":
 		case "crashed":

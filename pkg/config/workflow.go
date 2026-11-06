@@ -122,6 +122,15 @@ type Step struct {
 	// one. A template like pool. Empty, or equal to the step's pool, keeps
 	// the step where it is. The move is one way.
 	RetryPool string `yaml:"retry_pool,omitempty"`
+	// OnRequestChanges is the step a `close -r request_changes` of this
+	// step reopens with the findings (JOB-98). It must be one of the
+	// step's needs, so the reviewer reopens blocked behind it. Empty: the
+	// previous step, when the step needs it.
+	OnRequestChanges string `yaml:"on_request_changes,omitempty"`
+	// MaxReviewRounds caps the request_changes closes of this step in one
+	// run; the next one sends the run to a human. Nil means
+	// store.DefaultReviewRounds.
+	MaxReviewRounds *int `yaml:"max_review_rounds,omitempty"`
 	// NeedsResources are resource keys the step holds while in progress
 	// (#400): a resource name, or "name:<key>" for a keyed resource.
 	// Run vars fill them at run start.
@@ -162,6 +171,22 @@ func (w Workflow) StepNeeds(i int) []string {
 
 // Auto reports whether the controller runs the step (command or http).
 func (s Step) Auto() bool { return s.Type == StepCommand || s.Type == StepHTTP }
+
+// RequestChangesTarget is the step id a request_changes close of step i
+// reopens (JOB-98): on_request_changes, else the previous step when step
+// i needs it, else "" (step i cannot request changes).
+func (w Workflow) RequestChangesTarget(i int) string {
+	if t := w.Steps[i].OnRequestChanges; t != "" {
+		return t
+	}
+	if i == 0 || w.Steps[i].Auto() {
+		return ""
+	}
+	if prev := w.Steps[i-1].ID; slices.Contains(w.StepNeeds(i), prev) {
+		return prev
+	}
+	return ""
+}
 
 // Argv is a command step's run as argv; a string runs with sh -c.
 func (s Step) Argv() ([]string, error) {
@@ -515,6 +540,17 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		}
 		if s.Retries != nil && *s.Retries < 0 {
 			return fmt.Errorf("%s: retries must be >= 0", where)
+		}
+		if s.MaxReviewRounds != nil && *s.MaxReviewRounds < 0 {
+			return fmt.Errorf("%s: max_review_rounds must be >= 0", where)
+		}
+		if t := s.OnRequestChanges; t != "" {
+			// A direct need: the reviewer reopens blocked behind it. A
+			// step further back would leave the reviewer unblocked by the
+			// done steps in between.
+			if s.Auto() || !slices.Contains(w.StepNeeds(i), t) {
+				return fmt.Errorf("%s: on_request_changes %q must be a step this agent step needs directly", where, t)
+			}
 		}
 		// Needs name earlier steps only, so the steps form a DAG in
 		// declaration order.

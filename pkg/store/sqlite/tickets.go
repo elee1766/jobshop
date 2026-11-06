@@ -700,7 +700,7 @@ func (s *Store) Release(ctx context.Context, actor, id string, c *store.Claim, o
 	case o.Close != "" && o.Pool != "":
 		return store.Ticket{}, fmt.Errorf("%w: release: close and pool are exclusive", store.ErrInvalid)
 	case o.Close != "":
-		return s.closeTicket(ctx, actor, id, c, o.Close)
+		return s.closeTicket(ctx, actor, id, c, o)
 	case o.Pool != "":
 		return s.handoff(ctx, actor, id, c, o.Pool, o.Note)
 	case c == nil:
@@ -764,19 +764,39 @@ func (s *Store) note(ctx context.Context, q sqldb.Querier, id, body string) erro
 	return err
 }
 
-// closeTicket closes a ticket, fenced by c when non-nil.
-func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Claim, resolution string) (t store.Ticket, err error) {
+// closeTicket closes a ticket with o.Close, fenced by c when non-nil. A
+// request_changes close of a step within its round cap reopens o.Reopen
+// in the same transaction (JOB-98).
+func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Claim, o store.Outcome) (t store.Ticket, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
-			d, n, err := storerules.Close(t, c, resolution, s.now())
+			d, n, err := storerules.Close(t, c, o.Close, s.now())
 			note = n
 			return d, err
 		})
 		if err != nil {
 			return err
 		}
-		return s.note(ctx, q, t.ID, note)
+		if err := s.note(ctx, q, t.ID, note); err != nil {
+			return err
+		}
+		if o.Close != store.ResolutionRequestChanges || t.Kind != store.KindStep || t.Status == store.StatusClosed {
+			return nil
+		}
+		if o.Reopen == "" {
+			return fmt.Errorf("%w: request_changes on %s names no step to reopen", store.ErrInvalid, id)
+		}
+		var tnote string
+		target, err := s.mutate(ctx, q, o.Reopen, actor, "reopen", func(tt *store.Ticket) (any, error) {
+			d, n, err := storerules.RequestChanges(tt, t, o.Note)
+			tnote = n
+			return d, err
+		})
+		if err != nil {
+			return err
+		}
+		return s.note(ctx, q, target.ID, tnote)
 	})
 	return t, err
 }

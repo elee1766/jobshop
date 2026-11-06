@@ -567,12 +567,20 @@ func (c ticketUpdateCmd) Run(g *Globals) error {
 
 type closeCmd struct {
 	ID         string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
-	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, rebase (reopen a step without counting a failure), cancelled. A workflow step takes only these; put text in a comment."`
-	Outcome    string `help:"Workflow step outcome word (approve, reject, ...); later steps' when: conditions read it."`
+	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, rebase (reopen a step without counting a failure), request_changes (a review step: reopen the step it reviews with --comment as findings), cancelled. A workflow step takes only these; put text in a comment."`
+	Outcome    string `help:"Workflow step outcome word (approve, reject, ...); later steps' when: conditions read it. request_changes is the request_changes resolution."`
+	Comment    string `help:"Comment added before closing; with request_changes, the findings for the reopened step (required). Use - to read stdin."`
 }
 
 func (c closeCmd) Run(g *Globals) error {
-	return g.call(rpc.MethodTicketClose, rpc.CloseParams{ID: c.ID, Resolution: c.Resolution, Outcome: c.Outcome}, nil)
+	comment := c.Comment
+	if comment != "" {
+		var err error
+		if comment, err = readBody(comment); err != nil {
+			return err
+		}
+	}
+	return g.call(rpc.MethodTicketClose, rpc.CloseParams{ID: c.ID, Resolution: c.Resolution, Outcome: c.Outcome, Comment: comment}, nil)
 }
 
 type ticketReopenCmd struct {

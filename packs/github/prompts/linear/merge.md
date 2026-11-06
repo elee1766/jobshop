@@ -64,13 +64,13 @@ resumes here within a minute of CI finishing. If it resumes with
 3. Waiting (CI pending): wait for it.
 4. Needs code changes (required checks failing after a rerun of a flaky job, 
    unresolved review comments, acceptance criteria not met):
-   comment concrete findings on the PR and on the `implement` step, then
-   `jobshop run resume <run> --step implement` (reopens implement for a
-   dev session) and `jobshop close -r failed` on this step (no reason
-   text: the findings are already in the comments). The failed close
-   reopens this step blocked
-   behind implement and counts one attempt; at the retry limit the run
-   escalates to a human instead.
+   comment concrete findings on the PR, then
+   `jobshop close -r request_changes --comment "<findings>"` on this step
+   (`--comment -` reads stdin). In one step that reopens `implement` for a
+   dev session with the findings in its prompt and reopens this step
+   blocked behind it. It is not a failed attempt; past the review round
+   limit (3 by default) the run escalates to a human instead. Do not
+   `run resume` implement or close this step failed for findings.
 5. Waiting for approval (step 6 needs an approval that is missing or is
    for an older head): comment on this step which approval is missing,
    then `jobshop close -r failed`. The step reopens and the next attempt

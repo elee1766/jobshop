@@ -30,7 +30,7 @@ export function meta(t) {
 export function tone(s) {
   switch (s) {
     case 'done': case 'running': case 'closed': return 'ok';
-    case 'needs_human': case 'in_progress': return 'warn';
+    case 'needs_human': case 'in_progress': case 'request_changes': return 'warn';
     case 'failed': case 'cancelled': case 'crashed': case 'stuck': return 'bad';
     default: return '';
   }

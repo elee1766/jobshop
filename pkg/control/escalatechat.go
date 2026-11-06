@@ -110,6 +110,9 @@ func (c *Controller) causeOf(ctx context.Context, t store.Ticket) escCause {
 				if sf, err := store.DecodeFields[store.StepFields](st); err == nil {
 					x.step = sf.Step
 					x.reason = fmt.Sprintf("step %s failed %d/%d times", sf.Step, sf.Failures, sf.Retries)
+					if reviewCapped(st) {
+						x.reason = fmt.Sprintf("step %s requested changes in review round %d, over its limit of %d", sf.Step, sf.ReviewRounds, sf.ReviewRoundLimit())
+					}
 				}
 				if r := failedReason(st); r != "" {
 					x.reason += ": " + clip(r, maxReason)

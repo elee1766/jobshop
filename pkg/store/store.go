@@ -154,12 +154,18 @@ type Claim struct {
 // a comment; otherwise it returns to open, deferred to Until when set
 // (not a step failure) and counted as a failed attempt with Reason when
 // not. Close and Pool are exclusive.
+//
+// Reopen goes with Close ResolutionRequestChanges on a step (JOB-98): the
+// step of the same run that the request reopens in the same transaction,
+// with Note as the findings. Past the closing step's review round cap
+// nothing is reopened.
 type Outcome struct {
 	Close  string
 	Pool   string
 	Note   string
 	Until  time.Time
 	Reason string
+	Reopen string
 }
 
 // NewTicket is the input to Create. ID, if empty, is generated.

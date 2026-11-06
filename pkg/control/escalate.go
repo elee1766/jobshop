@@ -54,13 +54,27 @@ func (c *Controller) checkRun(ctx context.Context, runID string) {
 	c.runBatchEvent(ctx, runID)
 }
 
-// exhaustedStep is a step closed failed at its retry limit.
+// exhaustedStep is a step closed failed at its retry limit, or closed
+// request_changes past its review round cap (JOB-98).
 func exhaustedStep(s store.Ticket) bool {
+	if reviewCapped(s) {
+		return true
+	}
 	if s.Status != store.StatusClosed || s.Resolution != "failed" {
 		return false
 	}
 	f, err := store.DecodeFields[store.StepFields](s)
 	return err == nil && f.Failures >= f.Retries
+}
+
+// escalationReason says why the run's steps need a human.
+func escalationReason(steps []store.Ticket) string {
+	for _, s := range steps {
+		if reviewCapped(s) {
+			return "a review step requested changes past its review round limit"
+		}
+	}
+	return "a step failed at its retry limit"
 }
 
 // escalateRun sets needs_human and files the escalation ticket when a step
@@ -159,7 +173,7 @@ func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f sto
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: a step failed at its retry limit.\n", run.ID, f.Workflow)
+	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: %s.\n", run.ID, f.Workflow, escalationReason(steps))
 	if len(f.Vars) > 0 {
 		fmt.Fprintf(&b, "Vars: %v\n", f.Vars)
 	}
@@ -179,7 +193,11 @@ func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f sto
 		if s.Pool == "" && sf.Type != "" {
 			where = sf.Type + " step, run by the controller"
 		}
-		fmt.Fprintf(&b, "\n## Step %d %s (%s, %s): %s, failures %d/%d\n", sf.Index, sf.Step, s.ID, where, res, sf.Failures, sf.Retries)
+		fmt.Fprintf(&b, "\n## Step %d %s (%s, %s): %s, failures %d/%d", sf.Index, sf.Step, s.ID, where, res, sf.Failures, sf.Retries)
+		if sf.ReviewRounds > 0 {
+			fmt.Fprintf(&b, ", review rounds %d/%d", sf.ReviewRounds, sf.ReviewRoundLimit())
+		}
+		b.WriteString("\n")
 		comments, err := store.Comments(ctx, c.store, s.ID)
 		if err != nil {
 			return "", err

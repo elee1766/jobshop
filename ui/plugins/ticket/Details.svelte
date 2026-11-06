@@ -67,6 +67,8 @@
               <a href={'?ticket=' + s.id} onclick={(e) => { e.preventDefault(); go({ ticket: s.id }); }}>{sf.step || s.title}</a>
               <span class="pill {tone(s.status)}">{s.status}{s.resolution ? ' · ' + s.resolution : ''}</span>
               {#if sf.failures}<span class="pill bad">{sf.failures} failures</span>{/if}
+              {#if sf.review_rounds}<span class="pill warn" title="request_changes closes of this step">review round {sf.review_rounds}/{sf.max_review_rounds ?? 3}</span>{/if}
+              {#if sf.changes}<span class="pill warn" title={sf.changes.findings}>changes requested by {sf.changes.step}</span>{/if}
               {#if s.status === 'in_progress' && s.holder}<Holder h={holderInfo(s.holder)} onopen={watch} />{/if}
             </div>
             {#if sr?.note}<div class="muted note">{sr.state}: {sr.note} <span class="faint">{ago(sr.at)}</span></div>{/if}

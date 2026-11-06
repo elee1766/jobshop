@@ -155,6 +155,12 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 		if sf.Outcome != "" {
 			line += "  outcome " + sf.Outcome
 		}
+		if sf.ReviewRounds > 0 {
+			line += fmt.Sprintf("  review rounds %d/%d", sf.ReviewRounds, sf.ReviewRoundLimit())
+		}
+		if sf.Changes != nil {
+			line += fmt.Sprintf("  changes requested by %s (round %d)", sf.Changes.Step, sf.Changes.Round)
+		}
 		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
 		}

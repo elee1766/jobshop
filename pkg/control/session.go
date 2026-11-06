@@ -1484,6 +1484,9 @@ func ticketPromptText(poolPrompt string, t store.Ticket, comments []store.Commen
 		b.WriteString(t.Body)
 		b.WriteString("\n\n")
 	}
+	// A reviewer's findings (JOB-98) go in the prompt itself, not only in
+	// a comment on the reviewer's ticket.
+	b.WriteString(changesPrompt(t))
 	if len(comments) > 0 {
 		b.WriteString("# Recent comments\n\n")
 		for _, c := range comments[max(0, len(comments)-promptComments):] {
