@@ -4496,10 +4496,10 @@ function bs(e) {
 		label: "PR #" + r.pr,
 		href: `https://github.com/${i}/pull/${r.pr}`
 	});
-	let a = t.linear || {};
-	return a.url && xs(a.url) && n.push({
-		label: a.identifier || "Linear",
-		href: a.url
+	let a = t.linear || {}, o = a.issue || a.identifier, s = a.url || (a.workspace && o ? `https://linear.app/${encodeURIComponent(a.workspace)}/issue/${encodeURIComponent(o)}` : "");
+	return s && xs(s) && n.push({
+		label: o || "Linear",
+		href: s
 	}), n;
 }
 function xs(e) {

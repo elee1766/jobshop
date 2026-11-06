@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -201,7 +202,8 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 			PR    any    `json:"pr"`
 		} `json:"github"`
 		Linear struct {
-			Issue string `json:"issue"`
+			Issue     string `json:"issue"`
+			Workspace string `json:"workspace"`
 		} `json:"linear"`
 	}
 	if len(t.Meta) > 0 && json.Unmarshal(t.Meta, &m) == nil {
@@ -209,10 +211,19 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 		switch {
 		case m.Linear.Issue != "":
 			it.Ref = m.Linear.Issue
+			if m.Linear.Workspace != "" {
+				it.URL = "https://linear.app/" + url.PathEscape(m.Linear.Workspace) + "/issue/" + url.PathEscape(m.Linear.Issue)
+			}
 		case m.GitHub.Issue != nil:
 			it.Ref = fmt.Sprintf("#%v", m.GitHub.Issue)
+			if m.GitHub.Repo != "" {
+				it.URL = fmt.Sprintf("https://github.com/%s/issues/%v", m.GitHub.Repo, m.GitHub.Issue)
+			}
 		case m.GitHub.PR != nil:
 			it.Ref = fmt.Sprintf("PR #%v", m.GitHub.PR)
+			if m.GitHub.Repo != "" {
+				it.URL = fmt.Sprintf("https://github.com/%s/pull/%v", m.GitHub.Repo, m.GitHub.PR)
+			}
 		}
 	}
 	return it

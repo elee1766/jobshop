@@ -5,6 +5,7 @@
   // chat that resolves the item (POST api/attention/chat). Uses api only
   // (#517).
   import { resolveActions, runAction } from '../../kit/attention.js';
+  import { safe } from '../../kit/format.js';
   import Holder from '../../kit/Holder.svelte';
 
   /** @type {{ api: any, context?: any, config?: any }} */
@@ -164,7 +165,7 @@
             <tr class="click" class:busy={opening === it.kind + ':' + it.id} onclick={() => open(it)} data-testid="attention-row" data-item={it.kind + ':' + it.id}>
               <td class="c-id"><span class="pill warn">{it.kind}</span></td>
               <td class="c-title">
-                {it.title || it.id}<div class="faint mono">{it.id}{#if it.ref} · {it.ref}{/if}</div>
+                {it.title || it.id}<div class="faint mono">{it.id}{#if it.ref} · {#if it.url && safe(it.url)}<a href={it.url} target="_blank" rel="noopener noreferrer" onclick={(e) => e.stopPropagation()} data-testid="attention-ref">{it.ref}</a>{:else}{it.ref}{/if}{/if}</div>
                 {#if it.summary}<div class="summary muted" data-testid="attention-summary">{it.summary}</div>{/if}
                 <!-- Buttons do not open the chat: the row's click is for that. -->
                 <div class="acts" role="presentation" onclick={(e) => e.stopPropagation()}>

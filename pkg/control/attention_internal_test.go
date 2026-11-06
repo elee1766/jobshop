@@ -47,7 +47,10 @@ func TestAttention(t *testing.T) {
 		Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7},"run":{"id":"` + run.ID + `","workflow":"work","escalation":"x"}}`),
 	})
 	clk.advance(time.Minute)
-	q := mkTicket(t, c, store.NewTicket{Title: "which db?", Labels: []string{questionLabel}})
+	q := mkTicket(t, c, store.NewTicket{
+		Title: "which db?", Labels: []string{questionLabel},
+		Meta: json.RawMessage(`{"linear":{"workspace":"acme","issue":"ENG-5"},"github":{"repo":"acme/widget"}}`),
+	})
 	clk.advance(time.Minute)
 	prop := mkTicket(t, c, store.NewTicket{Title: "Proposed target: x (#9)", Labels: []string{proposedLabel}})
 	clk.advance(time.Minute)
@@ -67,6 +70,9 @@ func TestAttention(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "acme/widget", items[2].Repo)
 	assert.Equal(t, "#7", items[2].Ref)
+	assert.Equal(t, "https://github.com/acme/widget/issues/7", items[2].URL)
+	assert.Equal(t, "ENG-5", items[3].Ref)
+	assert.Equal(t, "https://linear.app/acme/issue/ENG-5", items[3].URL)
 }
 
 // TestAttentionSummary: a row's summary is meta.desk.attention_summary
