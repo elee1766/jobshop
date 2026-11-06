@@ -70,7 +70,7 @@ and end the turn. Do not poll with `sleep` or defer with a fixed
 4. Needs code changes: comment concrete findings on the PR. If a run
    opened it, comment them on that run's implement step too. File one
    dev ticket for the fix: `jobshop ticket create "Address review of PR
-   #{{.pr}}" --pool dev -b "<PR url, findings, linked issue>"`. Then
+   #{{.pr}}" --pool {{.pack_prefix}}dev -b "<PR url, findings, linked issue>"`. Then
    park on a new head:
    `jobshop wait add 'github.pr:pr={{.repo}}#{{.pr}},state=head_changed' 'github.pr:pr={{.repo}}#{{.pr}},state=closed' --any --resume --timeout 24h --reason "fixes on PR #{{.pr}}"`
    and end the turn; on resume start over from the top.

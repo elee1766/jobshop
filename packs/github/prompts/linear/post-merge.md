@@ -18,7 +18,8 @@ failed attempt; a plain release is one).
    newest master commit instead.
    Red: unless a `ci-repair` run for
    that SHA is open (`jobshop run list`), file a priority-0 dev ticket
-   for it, comment it here, and `jobshop close -r failed`.
+   for it (`--pool {{.pack_prefix}}dev -p 0`), comment it here, and
+   `jobshop close -r failed`.
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh on every loop. Do not reuse an earlier result or
    version, the deploy may have moved since. Not yet: comment what you
