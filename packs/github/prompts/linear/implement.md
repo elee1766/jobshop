@@ -35,7 +35,7 @@ wait for green CI.
 
 Otherwise: take the issue: assign it to yourself and move it to In
 Progress in one call
-(`jobshop linear update {{.issue}} --assignee me --state "In Progress"`;
+(`jobshop linear assign {{.issue}} me --state "In Progress"`;
 if that state name is not one of the team's states, the error lists
 them, pick the started one),
 `git switch -c issue-{{.issue}}`, make the change, run

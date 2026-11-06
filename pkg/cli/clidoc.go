@@ -81,6 +81,9 @@ func helpText(path []string) (string, error) {
 	}
 	// --help prints, then calls Exit, a no-op here, so Parse may go on
 	// to fail on a missing argument; the help is already written.
-	_, _ = hp.Parse(append(append([]string(nil), path...), "--help"))
+	_, perr := hp.Parse(append(append([]string(nil), path...), "--help"))
+	if buf.Len() == 0 && perr != nil {
+		return "", perr
+	}
 	return buf.String(), nil
 }

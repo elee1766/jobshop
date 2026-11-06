@@ -66,7 +66,7 @@ type linearCreateCmd struct {
 	Description string   `help:"Issue description (markdown). Use - to read stdin."`
 	State       string   `help:"State name."`
 	Label       []string `help:"Label name (repeatable)."`
-	Assignee    string   `help:"Assignee name, display name or email; me is the API key's user."`
+	Assignee    string   `help:"Assignee name, display name or email; me is the token's user (an app becomes the delegate)."`
 	Parent      string   `help:"Parent issue key."`
 	linearWriteFlags
 }
@@ -101,7 +101,7 @@ type linearUpdateCmd struct {
 	IssueKey    string    `arg:"" name:"issue" help:"Issue key."`
 	Title       string    `help:"New title."`
 	State       string    `help:"State name."`
-	Assignee    string    `help:"Assignee name, display name or email; me is the API key's user."`
+	Assignee    string    `help:"Assignee name, display name or email; me is the token's user (an app becomes the delegate)."`
 	AddLabel    []string  `name:"add-label" help:"Label to add (repeatable)."`
 	RemoveLabel []string  `name:"remove-label" help:"Label to remove (repeatable)."`
 	IfUpdatedAt time.Time `name:"if-updated-at" help:"Fail unless the issue's updated_at is this (RFC3339), so a concurrent change is not overwritten."`
@@ -172,6 +172,18 @@ func (c linearLabelCmd) Run(g *Globals, l *linearCmd) error {
 		u.RemoveLabel = c.Labels
 	}
 	return u.Run(g, l)
+}
+
+// linearAssignCmd is update --assignee under the name agents look for.
+type linearAssignCmd struct {
+	IssueKey string `arg:"" name:"issue" help:"Issue key."`
+	User     string `arg:"" name:"user" help:"me, or a team member's name, display name or email."`
+	State    string `help:"Also move the issue to this state (e.g. In Progress)."`
+	linearWriteFlags
+}
+
+func (c linearAssignCmd) Run(g *Globals, l *linearCmd) error {
+	return linearUpdateCmd{IssueKey: c.IssueKey, Assignee: c.User, State: c.State, linearWriteFlags: c.linearWriteFlags}.Run(g, l)
 }
 
 type linearRelateCmd struct {

@@ -143,6 +143,9 @@ const commentAuthorFields = `user { id name displayName email isMe } botActor { 
 type Viewer struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// App is set for an OAuth app actor (an actor=app token). Linear does
+	// not take an app as assignee, only as delegate.
+	App bool `json:"app"`
 }
 
 // Viewer reads the token's own user, so a bad token fails here.
@@ -150,7 +153,7 @@ func (c *Client) Viewer(ctx context.Context) (Viewer, error) {
 	var r struct {
 		Viewer Viewer `json:"viewer"`
 	}
-	if err := c.do(ctx, `query { viewer { id name } }`, nil, &r); err != nil {
+	if err := c.do(ctx, `query { viewer { id name app } }`, nil, &r); err != nil {
 		return Viewer{}, err
 	}
 	if r.Viewer.ID == "" {

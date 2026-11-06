@@ -30,6 +30,8 @@ type writeServer struct {
 	// dropReply makes the next mutation succeed but fail on the wire, as
 	// a timeout after the write landed would.
 	dropReply bool
+	// viewerApp makes the token's user an OAuth app.
+	viewerApp bool
 }
 
 const writeTeamResp = `{"data":{"team":{"id":"team-1","key":"ENG",
@@ -117,6 +119,9 @@ func (ws *writeServer) answer(c call) string {
 		ws.record(c)
 		return `{"data":{"issueUpdate":{"success":true,"issue":{"id":"iss-1","identifier":"ENG-123","url":"u"}}}}`
 	case strings.Contains(q, "viewer"):
+		if ws.viewerApp {
+			return `{"data":{"viewer":{"id":"usr-app","name":"Jobshop","app":true}}}`
+		}
 		return `{"data":{"viewer":{"id":"usr-bot","name":"Jobshop Bot"}}}`
 	case strings.Contains(q, "team(id"):
 		return writeTeamResp
@@ -312,6 +317,14 @@ func TestWriteUpdate(t *testing.T) {
 	m, err = c.PlanUpdate(ctx, "ENG-123", linear.UpdateParams{Assignee: "me"})
 	require.NoError(t, err)
 	assert.Equal(t, "usr-bot", m.Variables["input"].(map[string]any)["assigneeId"])
+
+	// An app cannot be assignee ("App user not valid"): "me" delegates.
+	ws.viewerApp = true
+	m, err = c.PlanUpdate(ctx, "ENG-123", linear.UpdateParams{Assignee: "me"})
+	require.NoError(t, err)
+	in = m.Variables["input"].(map[string]any)
+	assert.Equal(t, "usr-app", in["delegateId"])
+	assert.NotContains(t, in, "assigneeId")
 }
 
 func TestWriteAskMention(t *testing.T) {

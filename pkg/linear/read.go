@@ -35,8 +35,10 @@ type Relation struct {
 // Context is an issue with what an agent needs to decide on it.
 type Context struct {
 	Issue
-	Labels     []string   `json:"labels"`
-	Assignee   string     `json:"assignee,omitempty"`
+	Labels   []string `json:"labels"`
+	Assignee string   `json:"assignee,omitempty"`
+	// Delegate is the agent (app) working the issue for the assignee.
+	Delegate   string     `json:"delegate,omitempty"`
 	Parent     *Ref       `json:"parent,omitempty"`
 	Children   []Ref      `json:"children"`
 	Relations  []Relation `json:"relations"`
@@ -115,6 +117,7 @@ const contextQuery = `query($id: String!, $comments: Int!) { issue(id: $id) {
   state { id name type }
   team { id key }
   assignee { name }
+  delegate { name }
   labels(first: 50) { nodes { name } }
   parent { ` + refFields + ` }
   children(first: 100) { nodes { ` + refFields + ` } }
@@ -144,6 +147,7 @@ func (c *Client) GetContext(ctx context.Context, key string, all bool) (Context,
 			Issue
 			ArchivedAt *time.Time `json:"archivedAt"`
 			Assignee   *named     `json:"assignee"`
+			Delegate   *named     `json:"delegate"`
 			Labels     struct {
 				Nodes []named `json:"nodes"`
 			} `json:"labels"`
@@ -169,6 +173,9 @@ func (c *Client) GetContext(ctx context.Context, key string, all bool) (Context,
 	is := r.Issue
 	out := Context{Issue: is.Issue, ArchivedAt: is.ArchivedAt, Parent: is.Parent, Labels: []string{}, Children: []Ref{}, Relations: []Relation{}, Blockers: []Ref{}}
 	out.Comments = is.Comments.list()
+	if is.Delegate != nil {
+		out.Delegate = is.Delegate.Name
+	}
 	if is.Assignee != nil {
 		out.Assignee = is.Assignee.Name
 	}

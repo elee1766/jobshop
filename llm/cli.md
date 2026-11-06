@@ -404,6 +404,10 @@ Commands:
   linear update <issue> [flags]
     Change title, state, assignee or labels; reads the issue back to verify.
 
+  linear assign <issue> <user> [flags]
+    Take an issue: assign it to a user, or to yourself with me (an app token
+    becomes the issue's delegate). linear assign <KEY> me.
+
   linear label <issue> <op> <label> ... [flags]
     Add or remove labels: linear label <KEY> add|remove <label>... (same as
     update --add-label/--remove-label).
@@ -434,6 +438,10 @@ Commands:
 
   version [flags]
     Print version information.
+
+  help [<command> ...] [flags]
+    Show help for a command, from the same text as --help: jobshop help linear
+    assign.
 
   docs [<topic>] [flags]
     Print links to the docs for this binary (packs, readme, llm). Needs no root.
@@ -3675,6 +3683,10 @@ Commands:
   linear update <issue> [flags]
     Change title, state, assignee or labels; reads the issue back to verify.
 
+  linear assign <issue> <user> [flags]
+    Take an issue: assign it to a user, or to yourself with me (an app token
+    becomes the issue's delegate). linear assign <KEY> me.
+
   linear label <issue> <op> <label> ... [flags]
     Add or remove labels: linear label <KEY> add|remove <label>... (same as
     update --add-label/--remove-label).
@@ -3933,7 +3945,7 @@ Flags:
       --state=STRING             State name.
       --label=LABEL,...          Label name (repeatable).
       --assignee=STRING          Assignee name, display name or email; me is the
-                                 API key's user.
+                                 token's user (an app becomes the delegate).
       --parent=STRING            Parent issue key.
       --key=STRING               Idempotency key: a repeat with the same key
                                  returns the first result instead of writing
@@ -3967,7 +3979,8 @@ Flags:
       --title=STRING               New title.
       --state=STRING               State name.
       --assignee=STRING            Assignee name, display name or email;
-                                   me is the API key's user.
+                                   me is the token's user (an app becomes the
+                                   delegate).
       --add-label=ADD-LABEL,...    Label to add (repeatable).
       --remove-label=REMOVE-LABEL,...
                                    Label to remove (repeatable).
@@ -3978,6 +3991,39 @@ Flags:
                                    returns the first result instead of writing
                                    again.
       --dry-run                    Print the mutation and send nothing.
+```
+
+## jobshop linear assign
+
+```
+Usage: jobshop linear assign <issue> <user> [flags]
+
+Take an issue: assign it to a user, or to yourself with me (an app token becomes
+the issue's delegate). linear assign <KEY> me.
+
+Arguments:
+  <issue>    Issue key.
+  <user>     me, or a team member's name, display name or email.
+
+Flags:
+  -h, --help                     Show context-sensitive help.
+      --root=STRING              Jobshop root directory (holds jobshop.yaml,
+                                 the database, sockets and sessions). Default:
+                                 nearest ancestor of the cwd containing
+                                 jobshop.yaml ($JOBSHOP_ROOT).
+      --socket=STRING            Socket to talk to. Defaults to the session
+                                 CLI socket, else the root's admin socket
+                                 ($JOBSHOP_SOCKET).
+
+      --allow-secret-findings    Send writes that hold a secret finding (admin
+                                 callers only).
+
+      --state=STRING             Also move the issue to this state (e.g.
+                                 In Progress).
+      --key=STRING               Idempotency key: a repeat with the same key
+                                 returns the first result instead of writing
+                                 again.
+      --dry-run                  Print the mutation and send nothing.
 ```
 
 ## jobshop linear label
@@ -4245,6 +4291,28 @@ Flags:
       --server           Print the running controller's version instead of
                          this binary's. A session's own binary is fixed when it
                          starts, so deploy checks use this (#180).
+```
+
+## jobshop help
+
+```
+Usage: jobshop help [<command> ...] [flags]
+
+Show help for a command, from the same text as --help: jobshop help linear
+assign.
+
+Arguments:
+  [<command> ...]    Command path, e.g. linear assign. Empty prints the command
+                     list.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
 ```
 
 ## jobshop docs

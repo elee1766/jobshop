@@ -391,11 +391,11 @@ func (c *Client) PlanCreate(ctx context.Context, p CreateParams, id string) (Mut
 		in["labelIds"] = ids
 	}
 	if p.Assignee != "" {
-		id, _, err := c.assignee(ctx, t, p.Assignee)
+		field, id, _, err := c.assignee(ctx, t, p.Assignee)
 		if err != nil {
 			return Mutation{}, err
 		}
-		in["assigneeId"] = id
+		in[field] = id
 	}
 	if p.Parent != "" {
 		par, err := c.GetIssue(ctx, p.Parent)
@@ -461,12 +461,16 @@ func (c *Client) PlanUpdate(ctx context.Context, key string, p UpdateParams) (Mu
 		checks = append(checks, func(g Context) error { return expect("state", g.State.Name, s.Name) })
 	}
 	if p.Assignee != "" {
-		id, name, err := c.assignee(ctx, t, p.Assignee)
+		field, id, name, err := c.assignee(ctx, t, p.Assignee)
 		if err != nil {
 			return Mutation{}, err
 		}
-		in["assigneeId"] = id
-		checks = append(checks, func(g Context) error { return expect("assignee", g.Assignee, name) })
+		in[field] = id
+		if field == "delegateId" {
+			checks = append(checks, func(g Context) error { return expect("delegate", g.Delegate, name) })
+		} else {
+			checks = append(checks, func(g Context) error { return expect("assignee", g.Assignee, name) })
+		}
 	}
 	if len(p.AddLabels) > 0 {
 		ids, err := t.labelIDs(p.AddLabels)
@@ -599,17 +603,23 @@ func (c *Client) PlanRelate(ctx context.Context, key, typ, other, id string) (Mu
 
 // assignee resolves an assignee: "me" is the API key's own user (an agent
 // assigning itself as it takes an issue), anything else a team member.
-func (c *Client) assignee(ctx context.Context, t teamInfo, name string) (id, display string, err error) {
+// field is the input field to set: assigneeId, or delegateId when "me"
+// is an app (Linear rejects an app as assignee with "App user not valid";
+// an app works an issue as its delegate).
+func (c *Client) assignee(ctx context.Context, t teamInfo, name string) (field, id, display string, err error) {
 	if strings.EqualFold(name, "me") {
 		v, err := c.Viewer(ctx)
 		if err != nil {
-			return "", "", err
+			return "", "", "", err
 		}
-		return v.ID, v.Name, nil
+		if v.App {
+			return "delegateId", v.ID, v.Name, nil
+		}
+		return "assigneeId", v.ID, v.Name, nil
 	}
 	u, err := t.user(name)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return u.ID, u.Name, nil
+	return "assigneeId", u.ID, u.Name, nil
 }
