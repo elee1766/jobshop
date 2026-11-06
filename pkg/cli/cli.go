@@ -7,8 +7,8 @@ import (
 	"os"
 	"runtime/debug"
 
-	host "github.com/elee1766/acphost"
-	"github.com/elee1766/acphost/proc"
+	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"

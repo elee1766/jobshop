@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"time"
 
-	host "github.com/elee1766/acphost"
+	host "github.com/elee1766/acphost/pkg/acphost"
 
 	"github.com/elee1766/jobshop/pkg/store"
 )

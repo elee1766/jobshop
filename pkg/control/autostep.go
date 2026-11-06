@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	host "github.com/elee1766/acphost"
+	host "github.com/elee1766/acphost/pkg/acphost"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"

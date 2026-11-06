@@ -20,7 +20,7 @@ import (
 	"unicode/utf8"
 
 	acp "github.com/coder/acp-go-sdk"
-	"github.com/elee1766/acphost"
+	"github.com/elee1766/acphost/pkg/acphost"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
