@@ -16,7 +16,15 @@ import (
 func (c *Controller) preflightSpec(cfg *config.Config, pool string) (host.Spec, bool) {
 	var s host.Spec
 	if sb := cfg.SandboxFor(pool); sb.Backend == config.SandboxBubblewrap {
-		s.Sandbox = &host.Sandbox{Network: sb.Network}
+		// Deny makes Preflight check nft; DNS and ResolvConf are what
+		// its sandbox.dns check sets up (acphost v0.9.0).
+		s.Sandbox = &host.Sandbox{Network: sb.Network, Deny: sb.Deny}
+		if sb.DNS != nil {
+			s.Sandbox.DNS = &host.DNS{Forward: sb.DNS.Forward, Host: sb.DNS.Host}
+		}
+		if sb.ResolvConf != "" {
+			s.Sandbox.ResolvConf = expandHome(sb.ResolvConf)
+		}
 	}
 	iso := cfg.IsolationFor(pool)
 	if u := iso.User; u != nil {
@@ -55,7 +63,12 @@ func (c *Controller) preflightPools(ctx context.Context) {
 		if !ok {
 			continue
 		}
-		rep, err := check(spec)
+		var opts []host.PreflightOption
+		if name := cfg.SandboxFor(pool).DNSCheck; name != "" {
+			// Spawns pasta, so only here, once per start or reload.
+			opts = append(opts, host.WithDNSCheck(name))
+		}
+		rep, err := check(spec, opts...)
 		if err != nil {
 			c.log.Warn("isolation preflight", "pool", pool, "err", err)
 			continue

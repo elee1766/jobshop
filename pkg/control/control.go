@@ -76,7 +76,7 @@ type Options struct {
 	Hosts HostRunner
 	// Preflight checks an isolated pool's host prerequisites at start and
 	// reload (#728). Default acphost.Preflight; tests set a fake.
-	Preflight func(host.Spec) (host.PreflightReport, error)
+	Preflight func(host.Spec, ...host.PreflightOption) (host.PreflightReport, error)
 	// Backoff is the first wait after a provider rate limit, doubling to
 	// 15x. Default 1m; tests shorten it.
 	Backoff time.Duration
