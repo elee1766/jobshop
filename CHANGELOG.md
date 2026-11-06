@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.7](https://github.com/elee1766/jobshop/compare/v0.6.6...v0.6.7) (2026-11-06)
+
+
+### Features
+
+* **desk:** plugin-defined slots to extend existing pages (JOB-87) ([#875](https://github.com/elee1766/jobshop/issues/875)) ([9eb3ac3](https://github.com/elee1766/jobshop/commit/9eb3ac3eb7b43efb68061b3a466d450c200498c1))
+
+
+### Bug fixes
+
+* **identity:** sessions renew a Linear token Linear refused ([#866](https://github.com/elee1766/jobshop/issues/866)) ([#876](https://github.com/elee1766/jobshop/issues/876)) ([d3aa5fd](https://github.com/elee1766/jobshop/commit/d3aa5fd69912f17de801e87d1b442287688b7e33))
+
 ## [0.6.6](https://github.com/elee1766/jobshop/compare/v0.6.5...v0.6.6) (2026-11-06)
 
 
