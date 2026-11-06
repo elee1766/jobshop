@@ -34,6 +34,8 @@ type Result struct {
 	ID         string `json:"id"`
 	Identifier string `json:"identifier,omitempty"`
 	URL        string `json:"url,omitempty"`
+	// State is the state a created issue landed in (JOB-121).
+	State string `json:"state,omitempty"`
 	// Replayed is set when the result came from the key store or a read
 	// back of an earlier attempt, not from this call's mutation.
 	Replayed bool `json:"replayed,omitempty"`
@@ -137,6 +139,7 @@ func (c *Client) apply(ctx context.Context, m Mutation) (Result, error) {
 			ID         string `json:"id"`
 			Identifier string `json:"identifier"`
 			URL        string `json:"url"`
+			State      *State `json:"state"`
 		} `json:"issue"`
 		Comment *struct {
 			ID  string `json:"id"`
@@ -157,6 +160,9 @@ func (c *Client) apply(ctx context.Context, m Mutation) (Result, error) {
 		switch {
 		case p.Issue != nil:
 			res.ID, res.Identifier, res.URL = p.Issue.ID, p.Issue.Identifier, p.Issue.URL
+			if p.Issue.State != nil {
+				res.State = p.Issue.State.Name
+			}
 		case p.Comment != nil:
 			res.ID, res.URL = p.Comment.ID, p.Comment.URL
 		case p.IssueRelation != nil:
@@ -182,7 +188,7 @@ func (c *Client) lookup(ctx context.Context, op, id string) (Result, bool, error
 	var q string
 	switch op {
 	case OpCreate:
-		q = `query($id: String!) { issue(id: $id) { id identifier url } }`
+		q = `query($id: String!) { issue(id: $id) { id identifier url state { name } } }`
 	case OpAsk:
 		q = `query($id: String!) { comment(id: $id) { id url } }`
 	case OpRelate:
@@ -194,6 +200,7 @@ func (c *Client) lookup(ctx context.Context, op, id string) (Result, bool, error
 		ID         string `json:"id"`
 		Identifier string `json:"identifier"`
 		URL        string `json:"url"`
+		State      *State `json:"state"`
 	}
 	if err := c.do(ctx, q, map[string]any{"id": id}, &r); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
@@ -203,7 +210,11 @@ func (c *Client) lookup(ctx context.Context, op, id string) (Result, bool, error
 	}
 	for _, e := range r {
 		if e != nil && e.ID != "" {
-			return Result{Op: op, ID: e.ID, Identifier: e.Identifier, URL: e.URL}, true, nil
+			res := Result{Op: op, ID: e.ID, Identifier: e.Identifier, URL: e.URL}
+			if e.State != nil {
+				res.State = e.State.Name
+			}
+			return res, true, nil
 		}
 	}
 	return Result{}, false, nil
@@ -358,7 +369,7 @@ type CreateParams struct {
 	Parent      string // issue key
 }
 
-const createMutation = `mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url } } }`
+const createMutation = `mutation($input: IssueCreateInput!) { issueCreate(input: $input) { success issue { id identifier url state { name } } } }`
 
 // PlanCreate resolves names and builds the issueCreate mutation with id.
 func (c *Client) PlanCreate(ctx context.Context, p CreateParams, id string) (Mutation, error) {

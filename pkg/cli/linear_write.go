@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,15 +32,20 @@ func (f linearWriteFlags) id() string {
 }
 
 func (f linearWriteFlags) run(ctx context.Context, g *Globals, cl *linear.Client, m linear.Mutation) error {
-	var ks linear.KeyStore
-	if f.Key != "" {
-		ks = rpcKeys{g}
-	}
-	out, err := cl.Do(ctx, ks, f.Key, f.DryRun, m)
+	out, err := f.do(ctx, g, cl, m)
 	if err != nil {
 		return err
 	}
 	return printOut(out)
+}
+
+// do sends m under the key; out is a linear.Result, or m on --dry-run.
+func (f linearWriteFlags) do(ctx context.Context, g *Globals, cl *linear.Client, m linear.Mutation) (any, error) {
+	var ks linear.KeyStore
+	if f.Key != "" {
+		ks = rpcKeys{g}
+	}
+	return cl.Do(ctx, ks, f.Key, f.DryRun, m)
 }
 
 // rpcKeys stores idempotency keys on the controller.
@@ -64,7 +71,7 @@ type linearCreateCmd struct {
 	Team        string   `required:"" help:"Team key, e.g. ENG."`
 	Title       string   `required:"" help:"Issue title."`
 	Description string   `help:"Issue description (markdown). Use - to read stdin."`
-	State       string   `help:"State name."`
+	State       string   `help:"State name. Without it the issue lands in the team's default state (often Backlog), and Linear intake (linear_issue_no_run) only starts runs for issues in linear_intake_states (default Todo); a note on stderr says when it lands outside them."`
 	Label       []string `help:"Label name (repeatable)."`
 	Assignee    string   `help:"Assignee name, display name or email; me is the token's user."`
 	Parent      string   `help:"Parent issue key."`
@@ -94,7 +101,42 @@ func (c linearCreateCmd) Run(g *Globals, l *linearCmd) error {
 	if err != nil {
 		return err
 	}
-	return c.run(ctx, g, cl, m)
+	out, err := c.do(ctx, g, cl, m)
+	if err != nil {
+		return err
+	}
+	if err := printOut(out); err != nil {
+		return err
+	}
+	if res, ok := out.(linear.Result); ok && c.State == "" && !res.Replayed {
+		intakeNote(g, c.Team, res)
+	}
+	return nil
+}
+
+// intakeNote warns on stderr when an issue created without --state landed
+// outside the states Linear intake takes for its team (JOB-121): it sits
+// there with no run until someone moves it. Quiet when no signal watches
+// the team, when one takes any state, when the result is a replay (the
+// first call noted it), or when the controller cannot say.
+func intakeNote(g *Globals, team string, res linear.Result) {
+	var in rpc.LinearIntakeResult
+	if err := g.call(rpc.MethodLinearIntake, rpc.LinearIntakeParams{Team: team}, &in); err != nil || !in.Watched || len(in.States) == 0 {
+		return
+	}
+	if res.State != "" && slices.ContainsFunc(in.States, func(s string) bool { return strings.EqualFold(s, res.State) }) {
+		return
+	}
+	state := "the team's default state"
+	if res.State != "" {
+		state = res.State
+	}
+	key := res.Identifier
+	if key == "" {
+		key = "the issue"
+	}
+	warn(stderr, fmt.Sprintf("note: %s is in %s; Linear intake only takes %s (linear_intake_states), so no run starts until it moves there (jobshop linear state %s %q)",
+		key, state, strings.Join(in.States, ", "), key, in.States[0]))
 }
 
 type linearUpdateCmd struct {

@@ -84,6 +84,7 @@ const (
 	MethodSecretScan       = "secret.scan"
 	MethodVersion          = "version"
 	MethodRecall           = "recall"
+	MethodLinearIntake     = "linear.intake"
 	MethodAttention        = "attention"
 	MethodIdentityList     = "identity.list"
 	MethodIdentityCheck    = "identity.check"
@@ -1072,6 +1073,19 @@ type SessionRenameParams struct {
 // DrainResult lists drained pools after the call; "*" means all.
 type DrainResult struct {
 	Drained []string `json:"drained"`
+}
+
+// LinearIntakeParams names a Linear team key (JOB-121).
+type LinearIntakeParams struct {
+	Team string `json:"team"`
+}
+
+// LinearIntakeResult is what Linear intake (linear_issue_no_run) takes
+// from the team. Watched is false when no signal watches the team; States
+// is empty when a watching signal takes any state.
+type LinearIntakeResult struct {
+	Watched bool     `json:"watched"`
+	States  []string `json:"states,omitempty"`
 }
 
 // RecallParams is a recall search (#265). Sessions always search their own

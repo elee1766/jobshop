@@ -15,6 +15,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -278,4 +279,39 @@ func (c *Controller) linearIssuesWithOpenRun(ctx context.Context) (map[string]bo
 		}
 	}
 	return out, nil
+}
+
+// linearIntakeRPC is linear.intake (JOB-121): the states the
+// linear_issue_no_run signals for p.Team take, so `linear create` can say
+// when a new issue lands outside them. Open to every caller: it reads
+// config only, and sessions are the ones creating issues.
+func (c *Controller) linearIntakeRPC(_ context.Context, _ scope, p rpc.LinearIntakeParams) (any, error) {
+	team := strings.TrimSpace(p.Team)
+	if team == "" {
+		return nil, fmt.Errorf("%w: linear.intake needs a team", store.ErrInvalid)
+	}
+	cfg := c.config()
+	var res rpc.LinearIntakeResult
+	anyState := false
+	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
+		for _, sig := range cfg.Triggers[name].When.Stall {
+			if sig.Signal != config.StallLinearIssueNoRun || !strings.EqualFold(sig.Team, team) {
+				continue
+			}
+			res.Watched = true
+			states := config.SplitList(sig.States)
+			if len(states) == 0 {
+				anyState = true
+			}
+			for _, s := range states {
+				if !slices.ContainsFunc(res.States, func(x string) bool { return strings.EqualFold(x, s) }) {
+					res.States = append(res.States, s)
+				}
+			}
+		}
+	}
+	if anyState {
+		res.States = nil
+	}
+	return res, nil
 }

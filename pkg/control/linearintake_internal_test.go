@@ -311,3 +311,27 @@ func TestLinearIssueRecheck(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, busy)
 }
+
+// TestLinearIntakeRPC (JOB-121): linear.intake reports the states the
+// team's linear_issue_no_run signals take, any state when one has none,
+// and not watched for another team.
+func TestLinearIntakeRPC(t *testing.T) {
+	t.Parallel()
+	sess := scope{session: "s1", actor: "s1"}
+	c, _, _ := stallControllerYAML(t, linearIntakeYAML)
+	res, err := c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{Team: "eng"})
+	require.NoError(t, err)
+	assert.Equal(t, rpc.LinearIntakeResult{Watched: true, States: []string{"Todo", "Backlog"}}, res)
+
+	res, err = c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{Team: "OPS"})
+	require.NoError(t, err)
+	assert.Equal(t, rpc.LinearIntakeResult{}, res)
+
+	_, err = c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{})
+	require.ErrorIs(t, err, store.ErrInvalid)
+
+	c, _, _ = stallControllerYAML(t, strings.Replace(linearIntakeYAML, `states: "Todo, Backlog", `, "", 1))
+	res, err = c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{Team: "ENG"})
+	require.NoError(t, err)
+	assert.Equal(t, rpc.LinearIntakeResult{Watched: true}, res)
+}

@@ -409,7 +409,9 @@ Commands:
     when not eligible.
 
   linear create --team=STRING --title=STRING [flags]
-    Create an issue. --key makes a retry return the first result.
+    Create an issue. --key makes a retry return the first result. Without
+    --state it lands in the team's default state (often Backlog), which Linear
+    intake skips unless it is in linear_intake_states (default Todo).
 
   linear update <issue> [flags]
     Change title, state, assignee or labels; reads the issue back to verify.
@@ -3868,7 +3870,9 @@ Commands:
     when not eligible.
 
   linear create --team=STRING --title=STRING [flags]
-    Create an issue. --key makes a retry return the first result.
+    Create an issue. --key makes a retry return the first result. Without
+    --state it lands in the team's default state (often Backlog), which Linear
+    intake skips unless it is in linear_intake_states (default Todo).
 
   linear update <issue> [flags]
     Change title, state, assignee or labels; reads the issue back to verify.
@@ -4113,7 +4117,9 @@ Flags:
 ```
 Usage: jobshop linear create --team=STRING --title=STRING [flags]
 
-Create an issue. --key makes a retry return the first result.
+Create an issue. --key makes a retry return the first result. Without --state
+it lands in the team's default state (often Backlog), which Linear intake skips
+unless it is in linear_intake_states (default Todo).
 
 Flags:
   -h, --help                     Show context-sensitive help.
@@ -4132,7 +4138,12 @@ Flags:
       --title=STRING             Issue title.
       --description=STRING       Issue description (markdown). Use - to read
                                  stdin.
-      --state=STRING             State name.
+      --state=STRING             State name. Without it the issue lands in
+                                 the team's default state (often Backlog),
+                                 and Linear intake (linear_issue_no_run) only
+                                 starts runs for issues in linear_intake_states
+                                 (default Todo); a note on stderr says when it
+                                 lands outside them.
       --label=LABEL,...          Label name (repeatable).
       --assignee=STRING          Assignee name, display name or email; me is the
                                  token's user.

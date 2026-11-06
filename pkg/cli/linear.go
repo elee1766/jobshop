@@ -28,7 +28,7 @@ type linearCmd struct {
 	Search              linearSearchCmd   `cmd:"" help:"Search a team's issues as JSON, one page at a time."`
 	Catalog             linearCatalogCmd  `cmd:"" help:"List a team's projects, labels, states or users as JSON."`
 	Eligible            linearEligibleCmd `cmd:"" help:"Intake gate: print whether an issue may start a run and why not. Exits 1 when not eligible."`
-	Create              linearCreateCmd   `cmd:"" help:"Create an issue. --key makes a retry return the first result."`
+	Create              linearCreateCmd   `cmd:"" help:"Create an issue. --key makes a retry return the first result. Without --state it lands in the team's default state (often Backlog), which Linear intake skips unless it is in linear_intake_states (default Todo)."`
 	Update              linearUpdateCmd   `cmd:"" help:"Change title, state, assignee or labels; reads the issue back to verify."`
 	Assign              linearAssignCmd   `cmd:"" help:"Take an issue: assign it to a user, or to yourself with me. linear assign <KEY> me."`
 	Label               linearLabelCmd    `cmd:"" help:"Add or remove labels: linear label <KEY> add|remove <label>... (same as update --add-label/--remove-label)."`
