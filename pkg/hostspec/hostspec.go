@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/elee1766/acphost"
+	"github.com/elee1766/acphost/pkg/acphost"
 )
 
 // Spec is acphost.Spec, stored flat in spec.json.

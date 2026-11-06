@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	host "github.com/elee1766/acphost"
+	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 

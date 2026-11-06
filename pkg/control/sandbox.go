@@ -10,8 +10,8 @@ import (
 	"slices"
 	"strings"
 
-	host "github.com/elee1766/acphost"
-	"github.com/elee1766/acphost/sandbox"
+	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/sandbox"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"

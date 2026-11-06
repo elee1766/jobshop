@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	host "github.com/elee1766/acphost"
+	host "github.com/elee1766/acphost/pkg/acphost"
 	"golang.org/x/sys/unix"
 
 	"github.com/elee1766/jobshop/pkg/config"
