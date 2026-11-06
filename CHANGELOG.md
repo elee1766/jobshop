@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/elee1766/jobshop/compare/v0.2.4...v0.2.5) (2026-11-06)
+
+
+### Bug fixes
+
+* **packs/github:** release-merge waits for a running release workflow ([#764](https://github.com/elee1766/jobshop/issues/764)) ([3ee42ce](https://github.com/elee1766/jobshop/commit/3ee42ce1b6b8e6a5ff260659b9b13270e51d911e))
+
 ## [0.2.4](https://github.com/elee1766/jobshop/compare/v0.2.3...v0.2.4) (2026-11-06)
 
 
