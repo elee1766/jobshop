@@ -6,6 +6,8 @@ import (
 	"slices"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/sandbox"
+	"github.com/elee1766/acphost/pkg/userns"
 
 	"github.com/elee1766/jobshop/pkg/config"
 )
@@ -18,9 +20,9 @@ func (c *Controller) preflightSpec(cfg *config.Config, pool string) (host.Spec, 
 	if sb := cfg.SandboxFor(pool); sb.Backend == config.SandboxBubblewrap {
 		// Deny makes Preflight check nft; DNS and ResolvConf are what
 		// its sandbox.dns check sets up (acphost v0.9.0).
-		s.Sandbox = &host.Sandbox{Network: sb.Network, Deny: sb.Deny}
+		s.Sandbox = &sandbox.Sandbox{Network: sb.Network, Deny: sb.Deny}
 		if sb.DNS != nil {
-			s.Sandbox.DNS = &host.DNS{Forward: sb.DNS.Forward, Host: sb.DNS.Host}
+			s.Sandbox.DNS = &sandbox.DNS{Forward: sb.DNS.Forward, Host: sb.DNS.Host}
 		}
 		if sb.ResolvConf != "" {
 			s.Sandbox.ResolvConf = expandHome(sb.ResolvConf)
@@ -28,7 +30,7 @@ func (c *Controller) preflightSpec(cfg *config.Config, pool string) (host.Spec, 
 	}
 	iso := cfg.IsolationFor(pool)
 	if u := iso.User; u != nil {
-		hu := &host.User{UID: u.UID, GID: u.GIDOrUID(), MapUID: u.MapUID, MapGID: u.MapGID, MapCount: u.Slots()}
+		hu := &userns.User{UID: u.UID, GID: u.GIDOrUID(), MapUID: u.MapUID, MapGID: u.MapGID, MapCount: u.Slots()}
 		for _, g := range u.Groups {
 			if gid, err := config.LookupGroup(g); err == nil {
 				hu.Groups = append(hu.Groups, gid)

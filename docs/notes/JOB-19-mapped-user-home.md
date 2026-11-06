@@ -14,7 +14,8 @@ crash-looped with `Can't find source path ... Permission denied`.
   sessions get `HOME=<root>/homes/<pool>`.
 - The root, `sessions` and `homes` dirs get an ACL entry giving the
   mapped uid search (x) only, so it can reach its own dirs but not list
-  them.
+  them. Since JOB-53 only for unsandboxed sessions: sandboxed, bwrap
+  binds as the controller (acphost#162).
 - New agent field `credentials: ["~/..."]`: login files copied into the
   mapped home before every spawn (atomic rename), then shown at the same
   path inside. A missing file is a warning. Per agent:
@@ -25,7 +26,9 @@ crash-looped with `Can't find source path ... Permission denied`.
 - Before spawn the controller checks every mount source and the cwd
   against the mapped uid's mode bits and ACLs. A miss is one permanent
   error naming the path, mode and owner (pool quarantined once), not a
-  bwrap crash loop.
+  bwrap crash loop. Since JOB-53, sandboxed sessions check only each
+  source and the cwd themselves, not their host-side parents, so a 0700
+  home needs no mode or ACL change.
 - NixOS: `isolation.enable` adds nftables to the service PATH (pasta's
   `deny` runs nft).
 

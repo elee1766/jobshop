@@ -68,7 +68,8 @@ homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
   (`subUidRanges`/`subGidRanges`, matching `isolation.subIdStart` and
   `subIdCount`), and the setuid `newuidmap`/`newgidmap` in
   `/run/wrappers` (NixOS has them by default). `bwrap`, `pasta` and
-  `nft` come from the module's PATH.
+  `nft` come from the module's PATH. The home may stay 0700 with no ACL:
+  sandboxed mounts are made as the jobshop user (acphost#162, JOB-53).
 - cgroup delegation: systemd delegates cpu, memory and pids to
   `user@.service` by default. The controller unit sets `Delegate=` with
   isolation on.

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/cgroup"
+	"github.com/elee1766/acphost/pkg/userns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -19,7 +21,7 @@ import (
 func TestSetupCgroupAt(t *testing.T) {
 	own := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(own, "cgroup.procs"), []byte("42\n"), 0o600))
-	info := host.DelegatedInfo{Path: own, Writable: true, Controllers: []string{"cpu", "io", "memory", "pids"}}
+	info := cgroup.DelegatedInfo{Path: own, Writable: true, Controllers: []string{"cpu", "io", "memory", "pids"}}
 	cg := setupCgroupAt(info, 7)
 	require.NoError(t, cg.err)
 	assert.Equal(t, filepath.Join(own, "sessions"), cg.sessions)
@@ -33,7 +35,7 @@ func TestSetupCgroupAt(t *testing.T) {
 	}
 
 	// Restarted inside the leaf: the delegated root is its parent.
-	again := setupCgroupAt(host.DelegatedInfo{Path: filepath.Join(own, "controller"), Writable: true, Controllers: info.Controllers}, 8)
+	again := setupCgroupAt(cgroup.DelegatedInfo{Path: filepath.Join(own, "controller"), Writable: true, Controllers: info.Controllers}, 8)
 	require.NoError(t, again.err)
 	assert.Equal(t, cg.sessions, again.sessions)
 
@@ -43,18 +45,18 @@ func TestSetupCgroupAt(t *testing.T) {
 	fresh := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(fresh, "cgroup.controllers"), []byte("cpu io memory pids\n"), 0o600))
 	require.NoError(t, os.Mkdir(filepath.Join(fresh, "controller"), 0o755))
-	sub := setupCgroupAt(host.DelegatedInfo{Path: filepath.Join(fresh, "controller"), Writable: true}, 9)
+	sub := setupCgroupAt(cgroup.DelegatedInfo{Path: filepath.Join(fresh, "controller"), Writable: true}, 9)
 	require.NoError(t, sub.err)
 	assert.Equal(t, filepath.Join(fresh, "sessions"), sub.sessions)
 
-	assert.ErrorContains(t, setupCgroupAt(host.DelegatedInfo{Path: own}, 7).err, "not delegated")
-	assert.ErrorContains(t, setupCgroupAt(host.DelegatedInfo{Path: own, Writable: true, Controllers: []string{"cpu"}}, 7).err, "memory")
+	assert.ErrorContains(t, setupCgroupAt(cgroup.DelegatedInfo{Path: own}, 7).err, "not delegated")
+	assert.ErrorContains(t, setupCgroupAt(cgroup.DelegatedInfo{Path: own, Writable: true, Controllers: []string{"cpu"}}, 7).err, "memory")
 }
 
 func TestCgroupFor(t *testing.T) {
 	hc, err := cgroupFor(config.CgroupLimits{CPU: "4", Memory: "8G", MemoryHigh: "6G", Pids: 4096}, "/sys/fs/cgroup/x/sessions")
 	require.NoError(t, err)
-	assert.Equal(t, host.Cgroup{
+	assert.Equal(t, cgroup.Cgroup{
 		Parent: "/sys/fs/cgroup/x/sessions", CPUMax: "400000 100000",
 		MemoryMax: "8589934592", MemoryHigh: "6442450944", SwapMax: "0", PidsMax: 4096,
 	}, *hc)
@@ -96,7 +98,7 @@ pools:
 	s = host.Spec{}
 	require.NoError(t, c.applyIsolation(&s, "mapped"))
 	require.NotNil(t, s.User)
-	assert.Equal(t, host.User{UID: 1000, GID: 1000, MapUID: 100000, MapGID: 100000, Groups: []int{0}}, *s.User)
+	assert.Equal(t, userns.User{UID: 1000, GID: 1000, MapUID: 100000, MapGID: 100000, Groups: []int{0}}, *s.User)
 	assert.NotEmpty(t, c.isolationKey("mapped"))
 }
 

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/sandbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,7 +48,7 @@ pools:
 	}
 	t.Chdir(t.TempDir())
 	target := filepath.Join(h, ".agents")
-	argv, err := host.SandboxArgs(*s, "/bin/sh", []string{"-c", "read a < " + target + "/f; read b < " + target + "/only-base; echo $a$b; echo x > " + target + "/new"}, "/tmp")
+	argv, err := sandbox.Args(*s, "/bin/sh", []string{"-c", "read a < " + target + "/f; read b < " + target + "/only-base; echo $a$b; echo x > " + target + "/new"}, "/tmp")
 	require.NoError(t, err)
 	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
 	require.NoError(t, err, "%s\n%s", out, strings.Join(argv, " "))
