@@ -54,11 +54,13 @@ Comment the PR link on the issue:
 `jobshop linear comment {{.issue}} "PR <url>"`.
 Wait for CI with a wait, not a fixed deferral or polling: after each push
 run
-`jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success' 'github.checks:pr={{.repo}}#<n>,state=failure' --any --resume --timeout 1h --reason "CI on PR #<n>"`
+`jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success,workflow={{.ci_workflow}}' 'github.checks:pr={{.repo}}#<n>,state=failure,workflow={{.ci_workflow}}' --any --resume --timeout 1h --reason "CI on PR #<n>"`
 and end the turn. The controller hands the step back to this session
 within about a minute of CI finishing. On resume, read `gh pr checks <n>`:
 green, comment and close as below; red, fix, push and set the wait again
 (a new head clears the old wait). Do not use `release --until` for CI.
+A wait that ends `invalidated: ... cancelled` is not red: the run was
+superseded or cancelled, so rerun it (`gh run rerun <id>`) and wait again.
 If the wait was cleared because the PR conflicts with its base, rebase on
 `origin/master`, resolve, `push --force-with-lease`, and set the wait again.
 

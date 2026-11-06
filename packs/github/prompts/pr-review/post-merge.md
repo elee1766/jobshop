@@ -11,7 +11,7 @@ failed attempt; a plain release is one).
 
 1. Master CI on the merge commit:
    `gh run list --repo {{.repo}} --branch master --commit <sha> --json status,conclusion,databaseId`.
-   Pending: `jobshop wait add 'github.checks:repo={{.repo}},sha=<sha>,state=success' 'github.checks:repo={{.repo}},sha=<sha>,state=failure' --any --resume --timeout 1h --reason "master CI on <sha>"`
+   Pending: `jobshop wait add 'github.checks:repo={{.repo}},sha=<sha>,state=success,workflow={{.ci_workflow}}' 'github.checks:repo={{.repo}},sha=<sha>,state=failure,workflow={{.ci_workflow}}' --any --resume --timeout 1h --reason "master CI on <sha>"`
    and end the turn. Red: file a priority-0 fix issue
    (`gh issue list --search` first) and a dev ticket for it, comment
    both here, and `jobshop close -r failed`. Cancelled (the wait ends

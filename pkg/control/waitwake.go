@@ -213,7 +213,7 @@ func waitNames(w *store.Wait, subjects map[string]bool) bool {
 }
 
 func (c *Controller) newWaitPass(src waitSource, threads threadSource) *waitPass {
-	return &waitPass{src: src, threads: threads, linear: c.linearWaitSrc(), prs: map[string]prInfo{}, reviews: map[string][]prReview{}, checks: map[string][]prCheck{}, issues: map[string]linear.Context{}}
+	return &waitPass{src: src, threads: threads, linear: c.linearWaitSrc(), prs: map[string]prInfo{}, reviews: map[string][]prReview{}, checks: map[string][]prCheck{}, runs: map[string][]actionsRun{}, issues: map[string]linear.Context{}}
 }
 
 // untilNextTime is how long until the earliest unmet time condition or

@@ -1287,14 +1287,17 @@ attempt). End the turn after.
 Arguments:
   <cond> ...    TYPE:key=val,... Types: github.review (pr, login, head,
                 state), github.checks (pr or repo+sha, state=success|failure,
-                required), github.pr (pr, state=merged|closed|head_changed),
-                github.label (issue, label; met when the issue has the label
-                or is closed), github.tag (repo, tag), deploy (repo, sha;
-                met when the controller's build commit contains sha), run (id,
-                state=done|closed), linear.state (issue=KEY, state name or
-                type), linear.label (issue=KEY, label, present=false waits
-                for removal), thread.reply (thread, from), time (at). pr is
-                owner/name#n or a PR URL; at is a duration or RFC3339.
+                required, workflow=<name or file>: follow that workflow's
+                newest run on the commit instead of every check;
+                a cancelled run ends the wait as invalidated), github.pr (pr,
+                state=merged|closed|head_changed), github.label (issue, label;
+                met when the issue has the label or is closed), github.tag
+                (repo, tag), deploy (repo, sha; met when the controller's build
+                commit contains sha), run (id, state=done|closed), linear.state
+                (issue=KEY, state name or type), linear.label (issue=KEY, label,
+                present=false waits for removal), thread.reply (thread, from),
+                time (at). pr is owner/name#n or a PR URL; at is a duration or
+                RFC3339.
 
 Flags:
   -h, --help              Show context-sensitive help.
