@@ -94,9 +94,12 @@ jobs:
       # Binary cache in the GitHub Actions cache: uploads each path this job
       # builds (the vendored-modules derivation, jobshop) and substitutes them
       # next run. Paths cache.nixos.org already serves are not stored.
+      # PRs only read it, like the Go cache: master pushes populate it, so
+      # each PR does not store its own slightly different paths.
       - uses: Mic92/hestia@v3
         with:
           upstream-cache-filter: true
+          read-only: ${{ github.event_name == 'pull_request' }}
       # Nix files stay formatted with the flake's formatter (#583).
       - name: nix fmt check
         run: nix fmt -- --check $(git ls-files '*.nix')
