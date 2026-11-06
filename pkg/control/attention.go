@@ -195,6 +195,9 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 	if it.Summary == "" {
 		it.Summary = summaryOf(t.Body)
 	}
+	if qm, ok := questionOf(t); ok {
+		it.Context, it.Options = qm.Context, qm.Options
+	}
 	var m struct {
 		GitHub struct {
 			Repo  string `json:"repo"`

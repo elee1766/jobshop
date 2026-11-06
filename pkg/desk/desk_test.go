@@ -94,6 +94,7 @@ func TestAttention(t *testing.T) {
 		rpc.MethodAttention: rpc.AttentionResult{Items: []rpc.AttentionItem{
 			{Kind: rpc.AttentionTicket, ID: "t1", Title: "deploy:rollback", Since: old, Repo: "acme/w", Ref: "#7"},
 			{Kind: rpc.AttentionWait, ID: "w1", Title: "wait", Owner: "bob"},
+			{Kind: rpc.AttentionQuestion, ID: "q1", Title: "Question: which base?", Context: "ran tests\nboth pass", Options: []rpc.QuestionOption{{ID: 1, Title: "main"}}},
 		}},
 	}}
 	h := New(Config{}, ctl, nil).Handler()
@@ -103,6 +104,7 @@ func TestAttention(t *testing.T) {
 	assert.Equal(t, []AttentionItem{
 		{Kind: "ticket", ID: "t1", Title: "deploy:rollback", Why: "acme/w #7", Since: items[0].Since, Ref: "#7"},
 		{Kind: "wait", ID: "w1", Title: "wait", Why: "owner bob"},
+		{Kind: "question", ID: "q1", Title: "Question: which base?", Context: "ran tests\nboth pass", Options: []rpc.QuestionOption{{ID: 1, Title: "main"}}},
 	}, items)
 	assert.Equal(t, []string{rpc.MethodAttention + " {}"}, ctl.calls)
 }

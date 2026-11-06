@@ -51,7 +51,12 @@ func TestReportQuestionAnswer(t *testing.T) {
 	assert.Contains(t, q.Labels, needsHumanLabel)
 	qm, ok := questionOf(*q)
 	require.True(t, ok)
-	assert.Equal(t, questionMeta{Ticket: step.ID, Session: sess.ID}, qm)
+	assert.Equal(t, step.ID, qm.Ticket)
+	assert.Equal(t, sess.ID, qm.Session)
+	// With no context from the asker (an older CLI) the controller's links
+	// still make one (JOB-101).
+	assert.Contains(t, qm.Context, "- Ticket: "+step.ID)
+	assert.Contains(t, qm.Context, "report blocked: needs #12")
 	got, _ = c.store.Get(ctx, step.ID)
 	assert.NotContains(t, got.Labels, blockedLabel)
 	assert.Empty(t, runnerInbox(t, c, sess.ID), "the question is not delivered to any session")
@@ -99,6 +104,22 @@ func TestReportQuestionAnswer(t *testing.T) {
 	_, err = c.answerQuestion(ctx, admin, rpc.AnswerParams{ID: q.ID, Text: "again"})
 	require.ErrorIs(t, err, store.ErrInvalid)
 
+	// Context and options need a question; at most five options, each
+	// with a one-line title (JOB-101).
+	six := make([]rpc.QuestionOption, 6)
+	for i := range six {
+		six[i].Title = "o"
+	}
+	for _, bad := range []rpc.ReportParams{
+		{State: rpc.ReportWaiting, Context: "a\nb"},
+		{State: rpc.ReportWaiting, Options: []rpc.QuestionOption{{Title: "a"}}},
+		{State: rpc.ReportWaiting, Question: "q", Options: six},
+		{State: rpc.ReportWaiting, Question: "q", Options: []rpc.QuestionOption{{Title: " "}}},
+		{State: rpc.ReportWaiting, Question: "q", Options: []rpc.QuestionOption{{Title: "two\nlines"}}},
+	} {
+		_, err = c.report(ctx, sc, bad)
+		require.ErrorIs(t, err, store.ErrInvalid, "%+v", bad)
+	}
 	// waiting --until hands the ticket back deferred.
 	until := clk.now().Add(2 * time.Hour)
 	_, err = c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportReady, Until: &until})

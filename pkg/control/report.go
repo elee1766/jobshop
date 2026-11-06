@@ -43,6 +43,10 @@ type reportMeta struct {
 type questionMeta struct {
 	Ticket  string `json:"ticket"`            // the ticket the question is about
 	Session string `json:"session,omitempty"` // who asked; the answer goes there
+	// Context is the asker's context with the controller's links and
+	// recent comments (JOB-101); Options the suggested answers.
+	Context string               `json:"context,omitempty"`
+	Options []rpc.QuestionOption `json:"options,omitempty"`
 }
 
 func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (any, error) {
@@ -68,14 +72,30 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	if err != nil {
 		return nil, err
 	}
-	c.redactWrite(sc, "report on", id, &p.Note, &p.Question)
+	q := strings.TrimSpace(p.Question)
+	if q == "" && (strings.TrimSpace(p.Context) != "" || len(p.Options) > 0) {
+		return nil, fmt.Errorf("%w: context and options go with a question", store.ErrInvalid)
+	}
+	if len(p.Context) > maxQuestionContext {
+		return nil, fmt.Errorf("%w: context is over %d bytes", store.ErrInvalid, maxQuestionContext)
+	}
+	opts, err := questionOptions(p.Options)
+	if err != nil {
+		return nil, err
+	}
+	texts := []*string{&p.Note, &p.Question, &p.Context}
+	for i := range opts {
+		texts = append(texts, &opts[i].Title, &opts[i].Description)
+	}
+	c.redactWrite(sc, "report on", id, texts...)
+	q = strings.TrimSpace(p.Question)
 	var res rpc.ReportResult
 	rm := reportMeta{State: p.State, Note: strings.TrimSpace(p.Note), By: sc.actor, At: c.now().UTC()}
 	if p.Until != nil {
 		rm.Until = p.Until.UTC().Format(time.RFC3339)
 	}
-	if q := strings.TrimSpace(p.Question); q != "" {
-		qt, err := c.fileQuestion(ctx, sc, t, q)
+	if q != "" {
+		qt, err := c.fileQuestion(ctx, sc, t, q, c.questionContext(ctx, sc, t, p.Context), opts)
 		if err != nil {
 			return nil, err
 		}
@@ -175,7 +195,7 @@ const questionTo = "human"
 // A message is not claimable and has no pool, so no agent picks it up and
 // it is not an orphan; a human answers through the gateway or
 // `jobshop answer`.
-func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket, q string) (store.Ticket, error) {
+func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket, q, qctx string, opts []rpc.QuestionOption) (store.Ticket, error) {
 	meta := map[string]json.RawMessage{}
 	if len(t.Meta) > 0 {
 		_ = json.Unmarshal(t.Meta, &meta)
@@ -183,7 +203,7 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 	delete(meta, reportMetaPack)
 	delete(meta, "gateway")
 	delete(meta, runMetaPack) // a step's run link would make it look like a run escalation
-	meta[questionMetaPack], _ = json.Marshal(questionMeta{Ticket: t.ID, Session: sc.session})
+	meta[questionMetaPack], _ = json.Marshal(questionMeta{Ticket: t.ID, Session: sc.session, Context: qctx, Options: opts})
 	mb, err := json.Marshal(meta)
 	if err != nil {
 		return store.Ticket{}, err
@@ -193,7 +213,13 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 		title = title[:120] + "..."
 	}
 	b := fmt.Sprintf("Question from %s on %s (%s):\n\n%s\n", sc.actor, t.ID, t.Title, q)
-	b += fmt.Sprintf("\nAnswer with `jobshop answer <this ticket> \"<text>\"` or in its gateway thread; the answer is delivered to the asking session and commented on %s.\n", t.ID)
+	if len(opts) > 0 {
+		b += "\nOptions:\n\n" + optionsText(opts)
+	}
+	if qctx != "" {
+		b += "\n## Context\n\n" + qctx + "\n"
+	}
+	b += fmt.Sprintf("\nAnswer with `jobshop answer <this ticket> \"<text>\"` (or `--option N [note]`) or in its gateway thread; the answer is delivered to the asking session and commented on %s.\n", t.ID)
 	fields, err := json.Marshal(store.MessageFields{To: questionTo, From: sc.actor})
 	if err != nil {
 		return store.Ticket{}, err
@@ -227,7 +253,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 		return nil, err
 	}
 	text := strings.TrimSpace(p.Text)
-	if text == "" {
+	if text == "" && p.Option == 0 {
 		return nil, fmt.Errorf("%w: answer text is required", store.ErrInvalid)
 	}
 	qt, err := c.store.Get(ctx, p.ID)
@@ -240,6 +266,15 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 	}
 	if qt.Status == store.StatusClosed {
 		return nil, fmt.Errorf("%w: question %s is already closed (%s)", store.ErrInvalid, qt.ID, qt.Resolution)
+	}
+	// Options are suggestions (JOB-101): a pick sends the option with an
+	// optional note, free text is still an answer.
+	if p.Option != 0 {
+		i := slices.IndexFunc(qm.Options, func(o rpc.QuestionOption) bool { return o.ID == p.Option })
+		if i < 0 {
+			return nil, fmt.Errorf("%w: question %s has no option %d (it has %d)", store.ErrInvalid, qt.ID, p.Option, len(qm.Options))
+		}
+		text = chosenText(qm.Options[i], text)
 	}
 	from := sc.actor
 	switch {

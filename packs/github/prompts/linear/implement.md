@@ -20,7 +20,8 @@ First decide what kind of work it is. Every exit closes with an outcome:
   --outcome done`. Review and post-merge are skipped.
 - **Needs a person** (a decision, credentials, access this session
   lacks): `jobshop linear ask {{.issue}}` with the options and what you do
-  by default, and `jobshop report waiting "<what>" --question "<...>"`.
+  by default, and `jobshop report waiting "<what>" --question "<...>"
+  --context "<...>" --option "<Title>|<what it does>"`.
   The question labels the issue Blocked.
 - **Not work** (a tracking, parent or target issue, a duplicate): comment
   why on the issue, add the label `{{.linear_skip_labels}}` or move it to
@@ -76,7 +77,8 @@ repeated start returns the open run), comment
 `PR <url> head <sha> review run <run id>` on this step, then
 `jobshop close --outcome pr`. No such workflow on this controller:
 `jobshop report waiting "no pr-review for <repo>" --question "Which
-instance reviews <url>?"`.
+instance reviews <url>?" --context "<the PR, its head, the run list you
+checked>"`.
 
 Docs: {{.docs_rule}}
 

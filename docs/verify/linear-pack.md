@@ -21,7 +21,7 @@ throwaway team (key `<KEY>`) and a throwaway GitHub repo.
    planner pass files it with `linear create` and it shows a related
    link to `<KEY>-1`; a second pass does not file it again (#292).
 7. Set `linear_human` to your Linear name. Make a `<KEY>-2` worker ask
-   (`jobshop report waiting "q" --question "..."` from its session, or
+   (`jobshop report waiting "q" --question "..." --context "..."` from its session, or
    wait for one): the issue gets a comment mentioning you and the
    `Blocked` label (#293). Reply under that comment: the question
    closes `answered` and `Blocked` is removed. Covered offline by

@@ -281,7 +281,8 @@ export interface AgentInfo {
 
 export interface AnswerParams {
   id: string;
-  text: string;
+  text?: string;
+  option?: number;
   from?: string;
 }
 
@@ -367,6 +368,8 @@ export interface AttentionItem {
   url?: string;
   owner?: string;
   summary?: string;
+  context?: string;
+  options?: QuestionOption[];
 }
 
 export interface AttentionResult {
@@ -981,6 +984,13 @@ export interface PromptPart {
   status?: string;
 }
 
+export interface QuestionOption {
+  id: number;
+  title: string;
+  description?: string;
+  recommended?: boolean;
+}
+
 export interface ReadyParams {
   project?: string;
   pool?: string;
@@ -1024,6 +1034,8 @@ export interface ReportParams {
   state: string;
   note?: string;
   question?: string;
+  context?: string;
+  options?: QuestionOption[];
   until?: string;
 }
 

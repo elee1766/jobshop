@@ -13,8 +13,9 @@ First decide what kind of work it is. Every exit closes with an outcome:
   --comment "<result>"`), then `jobshop close --outcome done`. Review
   and post-merge are skipped.
 - **Needs a person** (a decision, credentials, access this session
-  lacks): `jobshop report waiting "<what>" --question "<the decision,
-  the options, what you do if nobody answers>"`.
+  lacks): `jobshop report waiting "<what>" --question "<the decision>"
+  --context "<what you did, found, why you cannot decide, what each
+  answer leads to>" --option "<Title>|<what it does>" --recommend N`.
 - **Not work** (a tracking, parent or target issue, a duplicate): comment
   why on the issue (close a duplicate), then `jobshop close --outcome
   done`. Never open a PR for it.
@@ -67,7 +68,8 @@ repeated start returns the open run), comment
 `PR <url> head <sha> review run <run id>` on this step, then
 `jobshop close --outcome pr`. No such workflow on this controller:
 `jobshop report waiting "no pr-review for <repo>" --question "Which
-instance reviews <url>?"`.
+instance reviews <url>?" --context "<the PR, its head, the run list you
+checked>"`.
 
 Docs: {{.docs_rule}}
 
@@ -93,6 +95,8 @@ of your comments: `jobshop report progress "<what is done>"`, `jobshop
 report blocked "<on what>"`, `jobshop report failed "<why>"` before
 `close -r failed`. When only a person can decide (a decision, a
 credential or access, a host config problem you cannot fix), ask once with
-`jobshop report waiting "<what>" --question "<the decision needed, the
-options, what you do if nobody answers>"`; the answer arrives as a
+`jobshop report waiting "<what>" --question "<the decision needed>"
+--context "<what you did and found, why you cannot decide, what you do
+if nobody answers>"`, with `--option "<Title>|<what it does>"` for each
+concrete alternative and `--recommend N`; the answer arrives as a
 message in this session. Never ask a person for status or to say done.
