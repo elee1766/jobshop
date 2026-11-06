@@ -18,7 +18,7 @@ const (
 
 // Sandbox configures how a session's agent is confined (#262). It is set
 // under defaults, on agents and on pools. Backend and Network: the pool's
-// wins over the agent's over the default. RO, RW, Hide, Deny and EnvKeep
+// wins over the agent's over the default. RO, RW, Hide, Guidance, Deny and EnvKeep
 // are appended: the default's, then the agent's, then the pool's. Paths
 // may start with "~/" for the controller's HOME.
 //
@@ -37,6 +37,12 @@ type Sandbox struct {
 	RW []string `yaml:"rw"`
 	// Hide lists paths covered by an empty tmpfs.
 	Hide []string `yaml:"hide"`
+	// Guidance lists the operator's guidance files and dirs (~/.agents,
+	// ~/.jcode/prompt-overlay.md) bound read-only at the same path, over
+	// any rw bind such as a mapped user's ~/.jcode (JOB-51). Missing ones
+	// are skipped. A path holding an agent credentials file is refused:
+	// credentials are copied, never bound (JOB-19). Appended like RO.
+	Guidance []string `yaml:"guidance"`
 	// Network is "host", "none" or "pasta". Empty inherits; default host.
 	Network string `yaml:"network"`
 	// Deny lists CIDRs the agent cannot reach; needs network pasta.
@@ -102,7 +108,7 @@ func (s *Sandbox) check(profiles map[string]Sandbox) error {
 	if err := checkDNS(s); err != nil {
 		return err
 	}
-	for _, l := range [][]string{s.RO, s.RW, s.Hide} {
+	for _, l := range [][]string{s.RO, s.RW, s.Hide, s.Guidance} {
 		for _, p := range l {
 			if !strings.HasPrefix(p, "~/") && !filepath.IsAbs(p) {
 				return fmt.Errorf("sandbox path %q must be absolute or start with ~/", p)
@@ -164,6 +170,7 @@ func (c *Config) SandboxFor(pool string) Sandbox {
 		out.RO = append(out.RO, s.RO...)
 		out.RW = append(out.RW, s.RW...)
 		out.Hide = append(out.Hide, s.Hide...)
+		out.Guidance = append(out.Guidance, s.Guidance...)
 		out.Deny = append(out.Deny, s.Deny...)
 		out.EnvKeep = append(out.EnvKeep, s.EnvKeep...)
 		if s.DNS != nil {

@@ -104,6 +104,18 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbo
 			s.RO = append(s.RO, host.Mount{Src: filepath.Join(home, rel), Dst: expandHome(p), SkipMissing: true})
 		}
 	}
+	// acphost binds parents first, so a guidance file under an rw dir
+	// (~/.jcode/prompt-overlay.md under the mapped ~/.jcode) is bound over
+	// it. At equal depth rw binds come last and would win: refuse that.
+	for _, p := range sb.Guidance {
+		if slices.Contains(sb.RW, p) {
+			return nil, host.Permanentf("sandbox guidance %s is also an rw path", p)
+		}
+		if c := slices.IndexFunc(agent.Credentials, func(cr string) bool { return within(expandHome(cr), expandHome(p)) }); c >= 0 {
+			return nil, host.Permanentf("sandbox guidance %s holds credentials file %s; credentials are copied, not bound", p, agent.Credentials[c])
+		}
+		ro(expandHome(p))
+	}
 	for _, p := range sb.Hide {
 		s.Hide = append(s.Hide, expandHome(p))
 	}
@@ -140,7 +152,7 @@ func (c *Controller) sandboxKey(pool string) []string {
 	}
 	key := []string{"JOBSHOP_SANDBOX=" + sb.Backend + " net=" + sb.Network +
 		" ro=" + strings.Join(append(slices.Clone(sb.RO), cfg.SharedTools...), ",") +
-		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",") + " deny=" + strings.Join(sb.Deny, ",") +
+		" rw=" + strings.Join(sb.RW, ",") + " hide=" + strings.Join(sb.Hide, ",") + " guidance=" + strings.Join(sb.Guidance, ",") + " deny=" + strings.Join(sb.Deny, ",") +
 		" env=" + strings.Join(sb.EnvKeep, ",") + " " + dnsKey(sb)}
 	return key
 }
