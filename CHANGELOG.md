@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.6](https://github.com/elee1766/jobshop/compare/v0.7.5...v0.7.6) (2026-11-06)
+
+
+### Features
+
+* **control:** session close ends a session now and frees its slot (JOB-111) ([#934](https://github.com/elee1766/jobshop/issues/934)) ([9244864](https://github.com/elee1766/jobshop/commit/924486430c96422f654aef70469652f36c6fd88b))
+
 ## [0.7.5](https://github.com/elee1766/jobshop/compare/v0.7.4...v0.7.5) (2026-11-06)
 
 
