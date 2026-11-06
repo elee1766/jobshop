@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/userns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -131,7 +132,7 @@ func TestSlotRestart(t *testing.T) {
 func TestApplySlotMapCount(t *testing.T) {
 	u := config.IsolationUser{MapUID: 100000, MapGID: 200000, Groups: []string{"100"}, PerSession: &config.PerSession{Range: 4}}
 	for slot, want := range []int{4, 3, 2, 1} {
-		spec := host.Spec{User: &host.User{MapUID: 100000, MapGID: 200000}}
+		spec := host.Spec{User: &userns.User{MapUID: 100000, MapGID: 200000}}
 		require.NoError(t, applySlot(&spec, u, &slot))
 		assert.Equal(t, want, spec.User.MapCount, "slot %d", slot)
 		assert.Equal(t, 100000+spec.User.MapCount+slot, 100004, "block end")

@@ -37,26 +37,26 @@ func expandHome(p string) string {
 // not for env staleness checks (sandboxKey covers those).
 // home, when set, is the mapped user's home (JOB-19): "~/" rw paths bind
 // from under it instead of from the controller's HOME.
-func (c *Controller) sandboxFor(t store.Ticket, exe, cwd, home string) (*host.Sandbox, error) {
+func (c *Controller) sandboxFor(t store.Ticket, exe, cwd, home string) (*sandbox.Sandbox, error) {
 	return c.poolSandbox(t.Pool, c.root.SessionDir(t.ID), exe, cwd, home)
 }
 
 // poolSandbox is pool's sandbox for a process whose own writable dir is
 // own (a session dir, or a command step's dir) and which runs in cwd.
-func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbox, error) {
+func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*sandbox.Sandbox, error) {
 	cfg := c.config()
 	sb := cfg.SandboxFor(pool)
 	if sb.Backend == "" {
 		return nil, nil
 	}
-	s := &host.Sandbox{Backend: config.SandboxBubblewrap, Network: sb.Network, Deny: sb.Deny}
+	s := &sandbox.Sandbox{Backend: config.SandboxBubblewrap, Network: sb.Network, Deny: sb.Deny}
 	if sb.DNS != nil {
-		s.DNS = &host.DNS{Forward: sb.DNS.Forward, Host: sb.DNS.Host}
+		s.DNS = &sandbox.DNS{Forward: sb.DNS.Forward, Host: sb.DNS.Host}
 	}
 	if sb.ResolvConf != "" {
 		s.ResolvConf = expandHome(sb.ResolvConf)
 	}
-	ro := func(p string) { s.RO = append(s.RO, host.Mount{Src: p, SkipMissing: true}) }
+	ro := func(p string) { s.RO = append(s.RO, sandbox.Mount{Src: p, SkipMissing: true}) }
 	// jobshop itself and the agent command, which may live outside the store.
 	ro(filepath.Dir(exe))
 	agent := cfg.Agents[cfg.Pools[pool].Agent]
@@ -69,7 +69,7 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbo
 	for _, p := range sb.RO {
 		ro(expandHome(p))
 	}
-	rw := func(p string) { s.RW = append(s.RW, host.Mount{Src: p}) }
+	rw := func(p string) { s.RW = append(s.RW, sandbox.Mount{Src: p}) }
 	// The session dir holds cli.sock, the only controller socket bound in.
 	// cwd is the worktree under it, or the pool dir.
 	rw(own)
@@ -83,12 +83,12 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbo
 		}
 	}
 	for _, p := range sb.RW {
-		m := host.Mount{Src: expandHome(p)}
+		m := sandbox.Mount{Src: expandHome(p)}
 		mode := os.FileMode(0o700)
 		if rel, ok := strings.CutPrefix(p, "~/"); ok && home != "" {
 			// Same path inside, the mapped user's copy outside. 0770: the
 			// home's default ACL takes its mask from the group bits.
-			m = host.Mount{Src: filepath.Join(home, rel), Dst: m.Src}
+			m = sandbox.Mount{Src: filepath.Join(home, rel), Dst: m.Src}
 			mode = 0o770
 		}
 		if err := os.MkdirAll(m.Src, mode); err != nil {
@@ -103,7 +103,7 @@ func (c *Controller) poolSandbox(pool, own, exe, cwd, home string) (*host.Sandbo
 			if !ok || slices.ContainsFunc(sb.RW, func(r string) bool { return within(p, r) }) {
 				continue
 			}
-			s.RO = append(s.RO, host.Mount{Src: filepath.Join(home, rel), Dst: expandHome(p), SkipMissing: true})
+			s.RO = append(s.RO, sandbox.Mount{Src: filepath.Join(home, rel), Dst: expandHome(p), SkipMissing: true})
 		}
 	}
 	// acphost binds parents first, so a guidance file under an rw dir
@@ -220,7 +220,7 @@ func dnsKey(sb config.Sandbox) string {
 // setting: it spawns pasta, so it is not run per session. A failure is
 // permanent and quarantines the pool with an error naming sandbox.dns,
 // instead of every turn of the agent failing on name resolution.
-func (c *Controller) checkSandboxDNS(pool string, s *host.Sandbox) error {
+func (c *Controller) checkSandboxDNS(pool string, s *sandbox.Sandbox) error {
 	sb := c.config().SandboxFor(pool)
 	if s == nil || sb.Network != config.NetworkPasta || sb.DNSCheck == "" {
 		return nil
@@ -232,7 +232,7 @@ func (c *Controller) checkSandboxDNS(pool string, s *host.Sandbox) error {
 	if ok {
 		return nil
 	}
-	if err := host.CheckSandboxDNS(*s, sb.DNSCheck); err != nil {
+	if err := sandbox.CheckDNS(*s, sb.DNSCheck); err != nil {
 		return host.Permanentf("no DNS in sandbox: %w", err)
 	}
 	c.mu.Lock()
@@ -302,7 +302,7 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 		res.CgroupPath = filepath.Join(res.Cgroup.Parent, t.ID)
 	}
 	if spec.Sandbox != nil {
-		argv, err := host.SandboxArgs(*spec.Sandbox, spec.Command, spec.Args, spec.Dir)
+		argv, err := sandbox.Args(*spec.Sandbox, spec.Command, spec.Args, spec.Dir)
 		if err != nil && res.Error == "" {
 			res.Error = err.Error()
 		}

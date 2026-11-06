@@ -29,6 +29,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/cgroup"
 	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
@@ -79,8 +80,8 @@ func TestMain(m *testing.M) {
 	// Like the unit's DelegateSubgroup=controller (JOB-21): move into a
 	// leaf before any test spawns hosts, or a later controller cannot
 	// enable cpu/memory/pids (a cgroup with processes in it is busy).
-	if info, err := host.DelegatedCgroup(); err == nil && info.Writable && filepath.Base(info.Path) != "controller" {
-		_, _ = host.SetupDelegation(info.Path, []string{"cpu", "memory", "pids"})
+	if info, err := cgroup.Delegated(); err == nil && info.Writable && filepath.Base(info.Path) != "controller" {
+		_, _ = cgroup.SetupDelegation(info.Path, []string{"cpu", "memory", "pids"})
 	}
 	os.Exit(m.Run())
 }

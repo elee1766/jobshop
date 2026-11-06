@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/sandbox"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -43,9 +43,9 @@ pools:
 	s, err := c.poolSandbox("g", dir, "/bin/true", "/tmp", home)
 	require.NoError(t, err)
 	for _, p := range []string{".agents", ".jcode/prompt-overlay.md", ".missing"} {
-		assert.Contains(t, s.RO, host.Mount{Src: filepath.Join(h, p), SkipMissing: true})
+		assert.Contains(t, s.RO, sandbox.Mount{Src: filepath.Join(h, p), SkipMissing: true})
 	}
-	assert.Contains(t, s.RW, host.Mount{Src: filepath.Join(home, ".jcode"), Dst: filepath.Join(h, ".jcode")})
+	assert.Contains(t, s.RW, sandbox.Mount{Src: filepath.Join(home, ".jcode"), Dst: filepath.Join(h, ".jcode")})
 	assert.NotEqual(t, c.sandboxKey("g"), c.sandboxKey("plain"))
 
 	_, err = c.poolSandbox("creds", dir, "/bin/true", "/tmp", home)
@@ -60,7 +60,7 @@ pools:
 
 	// bwrap gets the file bind after the rw dir it sits in, and never
 	// the controller's auth.json.
-	argv, err := host.SandboxArgs(*s, "/bin/true", nil, "/tmp")
+	argv, err := sandbox.Args(*s, "/bin/true", nil, "/tmp")
 	require.NoError(t, err)
 	joined := strings.Join(argv, " ")
 	rw := strings.Index(joined, "--bind "+filepath.Join(home, ".jcode")+" ")

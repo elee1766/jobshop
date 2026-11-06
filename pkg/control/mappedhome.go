@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/sandbox"
 	"golang.org/x/sys/unix"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -164,10 +165,13 @@ func (c *Controller) removeSlotHome(t store.Ticket) {
 }
 
 // checkMounts fails with the first sandbox mount source (or the cwd) the
-// mapped uid cannot reach, naming the path and its mode. Without it bwrap
-// fails at spawn ("Can't find source path ... Permission denied") and the
-// pool crash-loops into quarantine.
-func checkMounts(s *host.Sandbox, cwd string, uid int, gids []int) error {
+// mapped uid cannot use, naming the path and its mode. Without it the
+// agent fails at its first open and the pool crash-loops into
+// quarantine. With a sandbox bwrap binds as the controller (acphost#162,
+// JOB-53) and the agent sees only the mount itself, so only the source's
+// own mode and ACL count; its host-side parents (a 0700 home) do not.
+// Without a sandbox the agent opens host paths, so every parent counts.
+func checkMounts(s *sandbox.Sandbox, cwd string, uid int, gids []int) error {
 	type need struct {
 		path string
 		mode uint32
@@ -185,8 +189,12 @@ func checkMounts(s *host.Sandbox, cwd string, uid int, gids []int) error {
 		}
 	}
 	ns = append(ns, need{cwd, unix.R_OK | unix.W_OK})
+	check := reachable
+	if s != nil {
+		check = usable
+	}
 	for _, n := range ns {
-		if err := reachable(n.path, n.mode, uid, gids); err != nil {
+		if err := check(n.path, n.mode, uid, gids); err != nil {
 			return host.Permanentf("isolation: mapped uid %d cannot use %w", uid, err)
 		}
 	}
@@ -210,6 +218,11 @@ func reachable(p string, want uint32, uid int, gids []int) error {
 			return err
 		}
 	}
+	return usable(p, want, uid, gids)
+}
+
+// usable checks uid has want on p itself (and search, for a dir).
+func usable(p string, want uint32, uid int, gids []int) error {
 	st, err := os.Stat(p)
 	if err != nil {
 		return err
@@ -357,17 +370,22 @@ func grantSearch(dir string, uid int) error {
 	return nil
 }
 
-// checkMappedAccess lets the session's mapped uid pass through the root
-// to its session dir and home, then checks every mount source and the
-// cwd are usable by it, so a wrong mode is one clear permanent error.
+// checkMappedAccess checks every mount source and the cwd are usable by
+// the session's mapped uid, so a wrong mode is one clear permanent
+// error. Unsandboxed, the agent opens its session dir and home through
+// the 0700 root, so it is first let through the root, sessions and
+// homes dirs; sandboxed, bwrap binds them as the controller and no
+// grant is needed (JOB-53).
 func (c *Controller) checkMappedAccess(spec host.Spec, slot *int, pool string) error {
 	uid, gids, ok, err := c.mappedUser(pool, slot)
 	if err != nil || !ok {
 		return err
 	}
-	for _, d := range []string{c.root.Dir, filepath.Join(c.root.Dir, "sessions"), filepath.Join(c.root.Dir, "homes")} {
-		if err := grantSearch(d, uid); err != nil {
-			return host.Permanentf("isolation: let uid %d through %s: %w", uid, d, err)
+	if spec.Sandbox == nil {
+		for _, d := range []string{c.root.Dir, filepath.Join(c.root.Dir, "sessions"), filepath.Join(c.root.Dir, "homes")} {
+			if err := grantSearch(d, uid); err != nil {
+				return host.Permanentf("isolation: let uid %d through %s: %w", uid, d, err)
+			}
 		}
 	}
 	return checkMounts(spec.Sandbox, spec.Dir, uid, gids)

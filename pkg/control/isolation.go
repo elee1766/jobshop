@@ -14,6 +14,8 @@ import (
 	"syscall"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/cgroup"
+	"github.com/elee1766/acphost/pkg/userns"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -43,7 +45,7 @@ type cgroupSetup struct {
 // cpu, memory and pids for sessions. Only called when some pool sets
 // limits, so a host without delegation is never touched otherwise.
 func setupCgroup() cgroupSetup {
-	info, err := host.DelegatedCgroup()
+	info, err := cgroup.Delegated()
 	if err != nil {
 		return cgroupSetup{err: err}
 	}
@@ -53,7 +55,7 @@ func setupCgroup() cgroupSetup {
 // cgroupControllers are what session limits need.
 var cgroupControllers = []string{"cpu", "memory", "pids"}
 
-func setupCgroupAt(info host.DelegatedInfo, pid int) cgroupSetup {
+func setupCgroupAt(info cgroup.DelegatedInfo, pid int) cgroupSetup {
 	if !info.Writable {
 		return cgroupSetup{err: fmt.Errorf("cgroup %s is not delegated to this user (set Delegate= on the service)", info.Path)}
 	}
@@ -131,7 +133,7 @@ func (c *Controller) ensureCgroup() cgroupSetup {
 func (c *Controller) applyIsolation(spec *host.Spec, pool string) error {
 	iso := c.config().IsolationFor(pool)
 	if u := iso.User; u != nil {
-		hu := &host.User{UID: u.UID, GID: u.GIDOrUID(), MapUID: u.MapUID, MapGID: u.MapGID}
+		hu := &userns.User{UID: u.UID, GID: u.GIDOrUID(), MapUID: u.MapUID, MapGID: u.MapGID}
 		for _, g := range u.Groups {
 			gid, err := config.LookupGroup(g)
 			if err != nil {
@@ -156,12 +158,12 @@ func (c *Controller) applyIsolation(spec *host.Spec, pool string) error {
 }
 
 // cgroupFor turns pool limits into an acphost cgroup under parent.
-func cgroupFor(l config.CgroupLimits, parent string) (*host.Cgroup, error) {
+func cgroupFor(l config.CgroupLimits, parent string) (*cgroup.Cgroup, error) {
 	cpu, err := l.CPUMax()
 	if err != nil {
 		return nil, err
 	}
-	hc := &host.Cgroup{Parent: parent, CPUMax: cpu, PidsMax: l.Pids}
+	hc := &cgroup.Cgroup{Parent: parent, CPUMax: cpu, PidsMax: l.Pids}
 	if hc.MemoryMax, err = config.ParseBytes(l.Memory); err != nil {
 		return nil, err
 	}

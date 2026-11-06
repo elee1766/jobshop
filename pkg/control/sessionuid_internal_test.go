@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/userns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -17,7 +18,7 @@ import (
 
 func TestApplySlot(t *testing.T) {
 	u := config.IsolationUser{UID: 1000, MapUID: 100000, MapGID: 200000, Groups: []string{"100"}, PerSession: &config.PerSession{Range: 4}}
-	spec := host.Spec{User: &host.User{UID: 1000, GID: 1000, MapUID: 100000, MapGID: 200000, Groups: []int{100}}}
+	spec := host.Spec{User: &userns.User{UID: 1000, GID: 1000, MapUID: 100000, MapGID: 200000, Groups: []int{100}}}
 	slot := 3
 	require.NoError(t, applySlot(&spec, u, &slot))
 	assert.Equal(t, 100003, spec.User.MapUID)

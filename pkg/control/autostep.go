@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/elee1766/acphost/pkg/sandbox"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -488,7 +488,7 @@ func (c *Controller) sandboxArgv(pl stepPlace, argv, env []string) ([]string, er
 			sb.ExtraArgs = append(sb.ExtraArgs, "--setenv", k, v)
 		}
 	}
-	return host.SandboxArgs(*sb, argv[0], argv[1:], pl.dir)
+	return sandbox.Args(*sb, argv[0], argv[1:], pl.dir)
 }
 
 func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemplates, attemptKey string) autoResult {

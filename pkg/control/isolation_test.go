@@ -13,6 +13,9 @@ import (
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/cgroup"
+	"github.com/elee1766/acphost/pkg/sandbox"
+	"github.com/elee1766/acphost/pkg/userns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -46,8 +49,8 @@ func isolationEnv(t *testing.T) (int, int) {
 	// left out: Preflight wants the controllers already enabled in
 	// subtree_control, which the controller does at startup.
 	rep, err := host.Preflight(host.Spec{
-		User:    &host.User{UID: 1000, GID: 1000, MapUID: os.Geteuid(), MapGID: os.Getegid()},
-		Sandbox: &host.Sandbox{Network: "pasta"},
+		User:    &userns.User{UID: 1000, GID: 1000, MapUID: os.Geteuid(), MapGID: os.Getegid()},
+		Sandbox: &sandbox.Sandbox{Network: "pasta"},
 	})
 	require.NoError(t, err)
 	if !rep.OK() {
@@ -59,14 +62,14 @@ func isolationEnv(t *testing.T) (int, int) {
 			t.Skipf("%s: %v", path, err)
 		}
 		defer func() { _ = f.Close() }()
-		rs, err := host.ParseSubIDs(f, os.Getenv("USER"), os.Geteuid())
+		rs, err := userns.ParseSubIDs(f, os.Getenv("USER"), os.Geteuid())
 		if err != nil || len(rs) == 0 {
 			t.Skipf("no %s range for this user", path)
 		}
 		return rs[0].Start
 	}
 	uid, gid := first("/etc/subuid"), first("/etc/subgid")
-	info, err := host.DelegatedCgroup()
+	info, err := cgroup.Delegated()
 	if err != nil || !info.Writable {
 		t.Skip("no delegated cgroup")
 	}
@@ -394,6 +397,10 @@ func TestMappedUserHome(t *testing.T) {
 	home := filepath.Join(h, sub)
 	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	require.NoError(t, os.MkdirAll(filepath.Join(home, ".agent"), 0o700))
+	// The credentials' parent is 0700, as a home-manager home is: the
+	// sandbox binds as the controller (JOB-53), so the mapped uid needs
+	// no way through it.
+	require.NoError(t, os.Chmod(home, 0o700))
 	require.NoError(t, os.WriteFile(filepath.Join(home, ".agent", "auth.json"), []byte("login"), 0o600))
 	work := filepath.Join(root.Dir, "work")
 	require.NoError(t, os.MkdirAll(work, 0o770))
