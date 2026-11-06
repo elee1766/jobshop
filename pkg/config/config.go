@@ -70,6 +70,10 @@ type Config struct {
 	// network) that sandbox profiles: lists apply (#625). Packs
 	// contribute entries like pools.
 	SandboxProfiles map[string]Sandbox `yaml:"sandbox_profiles,omitempty"`
+	// IsolationProfiles are named isolation fragments (user mapping,
+	// groups, limits) that isolation profiles: lists apply (JOB-83).
+	// Packs contribute entries like pools.
+	IsolationProfiles map[string]Isolation `yaml:"isolation_profiles,omitempty"`
 	// Attention configures `jobshop attention` (#185).
 	Attention Attention `yaml:"attention"`
 	// Hooks are guardrail commands (#188). Default none.
@@ -1287,7 +1291,14 @@ func Load(r Root) (*Config, error) {
 // Parse decodes and validates config bytes with no packs or prompt files
 // (they need a file location; see LoadFile). Unknown keys are rejected.
 func Parse(b []byte) (*Config, error) {
-	return parse(b, nil)
+	c, err := parse(b, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.checkSandboxes(); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // parse validates merged config bytes. sources maps "section.name" to the
@@ -1378,6 +1389,17 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			return nil, fmt.Errorf("%s: sandbox_profiles.%s: %w", src("sandbox_profiles", name), name, err)
 		}
 	}
+	for name, s := range c.IsolationProfiles {
+		if !namePattern.MatchString(name) {
+			return nil, fmt.Errorf("%s: isolation_profiles: name %q must match %s", src("isolation_profiles", name), name, namePattern)
+		}
+		if len(s.Profiles) > 0 {
+			return nil, fmt.Errorf("%s: isolation_profiles.%s: a profile cannot name profiles", src("isolation_profiles", name), name)
+		}
+		if err := s.check(nil); err != nil {
+			return nil, fmt.Errorf("%s: isolation_profiles.%s: %w", src("isolation_profiles", name), name, err)
+		}
+	}
 	for name, a := range c.Agents {
 		if !namePattern.MatchString(name) {
 			return nil, fmt.Errorf("%s: agent name %q must match %s", src("agents", name), name, namePattern)
@@ -1388,7 +1410,7 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if err := a.Sandbox.check(c.SandboxProfiles); err != nil {
 			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
 		}
-		if err := a.Isolation.check(); err != nil {
+		if err := a.Isolation.check(c.IsolationProfiles); err != nil {
 			return nil, fmt.Errorf("%s: agent %s: %w", src("agents", name), name, err)
 		}
 		for _, p := range a.Credentials {
@@ -1419,7 +1441,7 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		if err := p.Sandbox.check(c.SandboxProfiles); err != nil {
 			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
-		if err := p.Isolation.check(); err != nil {
+		if err := p.Isolation.check(c.IsolationProfiles); err != nil {
 			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
 		}
 		if p.Type != "" && p.Type != PoolChat {
@@ -1476,19 +1498,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	if err := c.Defaults.Sandbox.check(c.SandboxProfiles); err != nil {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
 	}
-	if err := c.Defaults.Isolation.check(); err != nil {
+	if err := c.Defaults.Isolation.check(c.IsolationProfiles); err != nil {
 		return nil, fmt.Errorf("%s: defaults: %w", FileName, err)
 	}
-	for _, name := range slices.Sorted(maps.Keys(c.Pools)) {
-		if err := checkMergedOverlay(c.SandboxFor(name)); err != nil {
-			return nil, fmt.Errorf("%s: pool %s: %w", src("pools", name), name, err)
-		}
-		// Without system mounts a sandboxed agent cannot exec (#625): the
-		// paths moved from code to config, so say so instead of a bare
-		// spawn failure.
-		if sb := c.SandboxFor(name); sb.Backend != "" && len(sb.RO) == 0 && len(c.SharedTools) == 0 {
-			c.Warnings = append(c.Warnings, fmt.Sprintf("%s: pool %s: sandboxed with no ro mounts; set sandbox ro or a sandbox profile with the host's system paths (#625)", src("pools", name), name))
-		}
+	if err := c.Defaults.checkLabelRules(&c); err != nil {
+		return nil, err
 	}
 	for _, d := range c.SharedTools {
 		if !filepath.IsAbs(d) {

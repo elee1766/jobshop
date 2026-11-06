@@ -25,7 +25,7 @@ func TestPoolHasLabels(t *testing.T) {
 		{[]string{"review", "sonnet"}, false},
 		{[]string{"inst"}, false},
 	} {
-		assert.Equal(t, tc.ok, poolHasLabels(p, tc.want), "%v", tc.want)
+		assert.Equal(t, tc.ok, p.HasLabels(tc.want), "%v", tc.want)
 	}
-	assert.False(t, poolHasLabels(config.Pool{}, []string{"review"}))
+	assert.False(t, config.Pool{}.HasLabels([]string{"review"}))
 }

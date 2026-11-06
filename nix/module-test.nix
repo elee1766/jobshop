@@ -562,6 +562,24 @@ let
       lib.any (lib.hasInfix "pool dev per_session") (failed (eval (iso 101)))
       && !lib.any (lib.hasInfix "per_session") (failed (eval (iso 100)))
     ))
+    (expect "per_session ids set by an isolation profile are checked too" (
+      let
+        iso = range: {
+          isolation.enable = true;
+          isolation.subIdCount = 100;
+          settings.isolation_profiles.mapped.user = {
+            uid = 1000;
+            map_uid = 231072;
+            map_gid = 231072;
+            groups = [ "jobshop" ];
+            per_session.range = range;
+          };
+          settings.pools.dev.isolation.profiles = [ "mapped" ];
+        };
+      in
+      lib.any (lib.hasInfix "pool dev per_session") (failed (eval (iso 101)))
+      && !lib.any (lib.hasInfix "per_session") (failed (eval (iso 100)))
+    ))
     # A restart with live sessions must not need a process in the unit
     # cgroup (JOB-21): systemd starts the controller in <unit>/controller.
     (expect "isolation starts the controller in the controller subgroup" (

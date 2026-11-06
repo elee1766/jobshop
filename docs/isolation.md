@@ -13,7 +13,9 @@ Moved from the README (2026-11-05, #551).
   `jobshop session sandbox <id>` shows the mounts and argv. On NixOS
   `services.jobshop.sandbox.enable` puts bwrap on PATH and nothing else;
   the sandbox config, agent tools and caches are set by the host ([nixos.md](nixos.md#agent-tools)). See [notes/262-sandbox.md](notes/262-sandbox.md) and
-  [notes/625-sandbox-config.md](notes/625-sandbox-config.md). `overlay:`
+  [notes/625-sandbox-config.md](notes/625-sandbox-config.md). Profiles attach
+  by name or by pool label, for sandbox and isolation alike:
+  [notes/JOB-83-profiles.md](notes/JOB-83-profiles.md). `overlay:`
   merges layer dirs onto one target (ro, tmp or persist), appending
   layers across levels: [notes/JOB-55-sandbox-overlay.md](notes/JOB-55-sandbox-overlay.md).
 - **Socket scoping.** A session talks only to its own `cli.sock`, which

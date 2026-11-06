@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -100,6 +101,24 @@ type SandboxDNS struct {
 type Defaults struct {
 	Sandbox   *Sandbox   `yaml:"sandbox"`
 	Isolation *Isolation `yaml:"isolation"`
+	// SandboxByLabel and IsolationByLabel apply to every pool that carries
+	// all of a rule's labels (JOB-83), after the defaults above and before
+	// the agent's and the pool's own settings. Rules apply in list order.
+	SandboxByLabel   []SandboxRule   `yaml:"sandbox_by_label,omitempty"`
+	IsolationByLabel []IsolationRule `yaml:"isolation_by_label,omitempty"`
+}
+
+// SandboxRule is a sandbox scoped by pool labels: the fields of Sandbox
+// (profiles included) apply to each pool carrying every label in Labels.
+type SandboxRule struct {
+	Labels  []string `yaml:"labels"`
+	Sandbox `yaml:",inline"`
+}
+
+// IsolationRule is SandboxRule for isolation.
+type IsolationRule struct {
+	Labels    []string `yaml:"labels"`
+	Isolation `yaml:",inline"`
 }
 
 func (s *Sandbox) check(profiles map[string]Sandbox) error {
@@ -220,30 +239,73 @@ func checkDNS(s *Sandbox) error {
 	return nil
 }
 
-// SandboxFor merges the default, agent and pool sandbox settings of pool.
-// An empty Backend means the session is not sandboxed.
-func (c *Config) SandboxFor(pool string) Sandbox {
+// sandboxLevel is one sandbox fragment that applies to a pool, and where
+// it came from.
+type sandboxLevel struct {
+	source string
+	sb     *Sandbox
+}
+
+// sandboxLevels lists the fragments that make up pool's sandbox, lowest
+// precedence first: defaults, the label rules that match, the agent, the
+// pool. Each level's profiles come right before its own fields.
+func (c *Config) sandboxLevels(pool string) []sandboxLevel {
 	p := c.Pools[pool]
 	a := c.Agents[p.Agent]
-	var levels []*Sandbox
-	for _, s := range []*Sandbox{c.Defaults.Sandbox, a.Sandbox, p.Sandbox} {
+	var out []sandboxLevel
+	add := func(source string, s *Sandbox) {
 		if s == nil {
-			continue
+			return
 		}
 		for _, name := range s.Profiles {
 			if pr, ok := c.SandboxProfiles[name]; ok {
-				levels = append(levels, &pr)
+				out = append(out, sandboxLevel{"profile " + name + " (" + source + ")", &pr})
 			}
 		}
-		levels = append(levels, s)
+		out = append(out, sandboxLevel{source, s})
 	}
+	add("defaults", c.Defaults.Sandbox)
+	for i, r := range c.Defaults.SandboxByLabel {
+		if p.HasLabels(r.Labels) {
+			add(ruleSource(i, r.Labels), &r.Sandbox)
+		}
+	}
+	add("agent "+p.Agent, a.Sandbox)
+	add("pool", p.Sandbox)
+	return out
+}
+
+// ruleSource names label rule i (0-based) in explain output.
+func ruleSource(i int, labels []string) string {
+	return fmt.Sprintf("label rule %d [%s]", i+1, strings.Join(labels, " "))
+}
+
+// SandboxFor merges the default, label rule, agent and pool sandbox
+// settings of pool. An empty Backend means the session is not sandboxed.
+func (c *Config) SandboxFor(pool string) Sandbox {
+	out, _ := c.mergeSandbox(pool)
+	return out
+}
+
+// ExplainSandbox is SandboxFor with where each value came from: one entry
+// per list item, and for a scalar the level that won (JOB-83).
+func (c *Config) ExplainSandbox(pool string) []MergedEntry {
+	_, e := c.mergeSandbox(pool)
+	return e
+}
+
+func (c *Config) mergeSandbox(pool string) (Sandbox, []MergedEntry) {
 	var out Sandbox
-	for _, s := range levels {
+	var ex entries
+	for _, l := range c.sandboxLevels(pool) {
+		s := l.sb
 		if s.Backend != "" {
 			out.Backend = s.Backend
+			ex.set("backend", s.Backend, l.source)
 		}
 		if s.Network != "" {
 			out.Network = s.Network
+			ex.set("network", s.Network, l.source)
 		}
 		out.RO = append(out.RO, s.RO...)
 		out.RW = append(out.RW, s.RW...)
@@ -251,16 +313,26 @@ func (c *Config) SandboxFor(pool string) Sandbox {
 		out.Guidance = append(out.Guidance, s.Guidance...)
 		out.Deny = append(out.Deny, s.Deny...)
 		out.EnvKeep = append(out.EnvKeep, s.EnvKeep...)
+		ex.list("ro", s.RO, l.source)
+		ex.list("rw", s.RW, l.source)
+		ex.list("hide", s.Hide, l.source)
+		ex.list("guidance", s.Guidance, l.source)
+		ex.list("deny", s.Deny, l.source)
+		ex.list("env_keep", s.EnvKeep, l.source)
 		if s.DNS != nil {
 			out.DNS = s.DNS
+			ex.set("dns", "forward "+s.DNS.Forward+" host "+s.DNS.Host, l.source)
 		}
 		if s.ResolvConf != "" {
 			out.ResolvConf = s.ResolvConf
+			ex.set("resolv_conf", s.ResolvConf, l.source)
 		}
 		if s.DNSCheck != "" {
 			out.DNSCheck = s.DNSCheck
+			ex.set("dns_check", s.DNSCheck, l.source)
 		}
-		for dst, o := range s.Overlay {
+		for _, dst := range slices.Sorted(maps.Keys(s.Overlay)) {
+			o := s.Overlay[dst]
 			if out.Overlay == nil {
 				out.Overlay = map[string]SandboxOverlay{}
 			}
@@ -268,8 +340,10 @@ func (c *Config) SandboxFor(pool string) Sandbox {
 			m.Layers = append(slices.Clone(m.Layers), o.Layers...)
 			if o.Mode != "" {
 				m.Mode = o.Mode
+				ex.set("overlay "+dst+" mode", o.Mode, l.source)
 			}
 			out.Overlay[dst] = m
+			ex.list("overlay "+dst+" layer", o.Layers, l.source)
 		}
 	}
 	if out.Backend == SandboxNone {
@@ -281,6 +355,40 @@ func (c *Config) SandboxFor(pool string) Sandbox {
 		out.Deny = nil
 		out.DNS = nil
 		out.DNSCheck = ""
+		ex.drop("deny", "dns", "dns_check")
 	}
-	return out
+	return out, ex.all
+}
+
+// MergedEntry is one merged config value and the level that set it: "defaults",
+// "label rule 2 [instance:sap]", "agent jcode", "pool", or
+// "profile <name> (<level>)" (JOB-83).
+type MergedEntry struct {
+	Field  string `json:"field"`
+	Value  string `json:"value"`
+	Source string `json:"source"`
+}
+
+// entries collects MergedEntry values while a merge runs. A scalar set again
+// takes the later level's source in place.
+type entries struct{ all []MergedEntry }
+
+func (e *entries) set(field, value, source string) {
+	for i := range e.all {
+		if e.all[i].Field == field {
+			e.all[i].Value, e.all[i].Source = value, source
+			return
+		}
+	}
+	e.all = append(e.all, MergedEntry{field, value, source})
+}
+
+func (e *entries) list(field string, values []string, source string) {
+	for _, v := range values {
+		e.all = append(e.all, MergedEntry{field, v, source})
+	}
+}
+
+func (e *entries) drop(fields ...string) {
+	e.all = slices.DeleteFunc(e.all, func(x MergedEntry) bool { return slices.Contains(fields, x.Field) })
 }
