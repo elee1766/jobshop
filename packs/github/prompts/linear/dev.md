@@ -37,7 +37,7 @@ it (`jobshop artifact list`).
 Stay in scope. When you find a bug, gap or cleanup outside the current
 issue, do not fix it in this PR: search for a duplicate (`jobshop linear
 search "<words>" --team {{.linear_team}}`), then file it in the team with
-`jobshop linear create --team {{.linear_team}} --title "<title>"
+`jobshop linear create --team {{.linear_team}} --state {{quote .linear_new_state}} --title "<title>"
 --description - --key found-<current KEY>-<short slug>` (what you saw,
 where, why it matters, a suggested fix) and link it with `jobshop
 linear relate <NEW> --related <current KEY>`.

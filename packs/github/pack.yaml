@@ -82,6 +82,10 @@ defaults:
   # stall-check. Comma-separated; empty labels match any.
   linear_intake_states: Todo
   linear_intake_labels: ""
+  # State of issues agents file (found bugs, review findings, planner
+  # work). An intake state, so they are picked up; nothing moves issues
+  # out of Backlog except a human or an approved proposal.
+  linear_new_state: Todo
   # Planner list filter by assignee (#292): a name, `me`, or empty for any.
   linear_intake_assignee: ""
   linear_poll: 5m

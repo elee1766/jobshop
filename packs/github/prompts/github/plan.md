@@ -81,7 +81,7 @@ Each planning ticket:
    intake gate skips `target` and `proposed`, so a parent never starts a
    run; its Todo sub-issues start through intake like any issue.
    - Missing work for a target: file a sub-issue, `jobshop linear create
-     --team {{.linear_team}} --parent <TARGET> --state Todo{{if .linear_intake_labels}} --label <one of {{.linear_intake_labels}}>{{end}}
+     --team {{.linear_team}} --parent <TARGET> --state {{quote .linear_new_state}}{{if .linear_intake_labels}} --label <one of {{.linear_intake_labels}}>{{end}}
      --title "..." --description -` with the same spec format as a
      GitHub issue. Never edit the target's description or a checklist.
    - Scope changes: a sub-issue labeled `needs-decision`.
