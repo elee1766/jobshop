@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.12](https://github.com/elee1766/jobshop/compare/v0.6.11...v0.6.12) (2026-11-06)
+
+
+### Features
+
+* **desk:** replaceable nav slot with placements and api.views() (JOB-86) ([#888](https://github.com/elee1766/jobshop/issues/888)) ([60ccf3d](https://github.com/elee1766/jobshop/commit/60ccf3d388348384c71a78c198477383b229ba79))
+
 ## [0.6.11](https://github.com/elee1766/jobshop/compare/v0.6.10...v0.6.11) (2026-11-06)
 
 
