@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/elee1766/jobshop/compare/v0.2.5...v0.3.0) (2026-11-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **gateway:** remove Matrix and Discord gateways, keep A2A and Desk ([#766](https://github.com/elee1766/jobshop/issues/766))
+
+### Features
+
+* **gateway:** remove Matrix and Discord gateways, keep A2A and Desk ([#766](https://github.com/elee1766/jobshop/issues/766)) ([6146655](https://github.com/elee1766/jobshop/commit/6146655dc9d4310434b04cac9f3b14afc70786e4))
+
 ## [0.2.5](https://github.com/elee1766/jobshop/compare/v0.2.4...v0.2.5) (2026-11-06)
 
 
