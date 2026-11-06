@@ -73,18 +73,6 @@ let
       reload = (base.reload or { }) // {
         watch = true;
       };
-    }
-    // lib.optionalAttrs cfg.sandbox.enable {
-      defaults = (base.defaults or { }) // {
-        sandbox = {
-          backend = "bubblewrap";
-          inherit (cfg.sandbox) rw;
-          ro = cfg.sandbox.systemRO;
-          env_keep = cfg.sandbox.envKeep;
-        }
-        // ((base.defaults or { }).sandbox or { });
-      };
-      shared_tools = (base.shared_tools or [ ]) ++ cfg.sandbox.sharedTools;
     };
   # Managed mode (configFile = null): jobshop.yaml is generated from
   # settings plus the module's keys. User mode (#531): the user owns
@@ -660,22 +648,39 @@ in
   # Self-deploy moved to the host config (JOB-74): a host deploys jobshop with
   # its own unit and sets workspaces.<name>.followInstalled.
   imports =
+    # The module no longer writes sandbox config (2026-11-06): ro, rw,
+    # env_keep and shared_tools go in settings, so sandbox.enable only puts
+    # bubblewrap on PATH.
     map
       (
         o:
-        lib.mkRemovedOptionModule [ "services" "jobshop" "selfDeploy" o ]
-          "Self-deploy is no longer part of the jobshop module (JOB-74): deploy jobshop from the host config and set services.jobshop.workspaces.<name>.followInstalled = true."
+        lib.mkRemovedOptionModule [ "services" "jobshop" "sandbox" o ]
+          "The jobshop module no longer writes sandbox defaults: set them in services.jobshop.settings (defaults.sandbox.ro/rw/env_keep, shared_tools or a sandbox_profiles entry). sandbox.enable only puts bubblewrap on PATH."
       )
       [
-        "enable"
-        "hostFlake"
-        "inputName"
-        "inputUrl"
-        "branch"
-        "interval"
-        "startCommand"
-        "stateDir"
-      ];
+        "systemRO"
+        "envKeep"
+        "rw"
+        "sharedTools"
+        "mise"
+      ]
+    ++
+      map
+        (
+          o:
+          lib.mkRemovedOptionModule [ "services" "jobshop" "selfDeploy" o ]
+            "Self-deploy is no longer part of the jobshop module (JOB-74): deploy jobshop from the host config and set services.jobshop.workspaces.<name>.followInstalled = true."
+        )
+        [
+          "enable"
+          "hostFlake"
+          "inputName"
+          "inputUrl"
+          "branch"
+          "interval"
+          "startCommand"
+          "stateDir"
+        ];
 
   options.services.jobshop = {
     enable = lib.mkEnableOption "the Jobshop controller";
@@ -926,78 +931,7 @@ in
       };
     };
 
-    sandbox = {
-      enable = lib.mkEnableOption "bubblewrap sandboxes for agents (#262): bubblewrap on PATH and defaults.sandbox.backend = bubblewrap";
-      sharedTools = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        description = "Dirs mounted read-only into every sandboxed session (settings.shared_tools).";
-      };
-      # Host paths and env, kept out of jobshop's code (#625).
-      systemRO = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [
-          "/nix/store"
-          "/etc"
-          "/run/current-system"
-          "/bin"
-          "/usr/bin"
-          "/lib64"
-          "/lib"
-          "/usr/lib"
-          "/usr/lib64"
-          "/run/systemd/resolve"
-          "/run/nscd"
-        ];
-        description = "System paths mounted read-only into every sandboxed session (defaults.sandbox.ro); missing ones are skipped.";
-      };
-      envKeep = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [
-          "HOME"
-          "USER"
-          "LOGNAME"
-          "LANG"
-          "LC_ALL"
-          "TZ"
-          "TERM"
-          "SSL_CERT_FILE"
-          "NIX_SSL_CERT_FILE"
-          # The module sets the git identity through GIT_* env.
-          "GIT_*"
-        ];
-        description = "Controller env names passed into sandboxed sessions (defaults.sandbox.env_keep); a trailing * keeps a prefix.";
-      };
-      rw = lib.mkOption {
-        type = lib.types.listOf lib.types.str;
-        default = [ ];
-        example = [
-          "~/go"
-          "~/.cache/go-build"
-        ];
-        description = "Read-write dirs for every sandboxed session (defaults.sandbox.rw): build caches, agent state.";
-      };
-      # Removed (JOB-23): kept one release as ignored options with a
-      # warning, so a host that sets them still evaluates. See the
-      # example in docs/nixos.md.
-      mise = {
-        tools = lib.mkOption {
-          type = lib.types.listOf lib.types.str;
-          default = [ ];
-          description = "Ignored (JOB-23). Run mise from your own unit and add its dir to sandbox.sharedTools; see docs/nixos.md.";
-        };
-        dir = lib.mkOption {
-          type = lib.types.str;
-          default = "/var/lib/jobshop-mise";
-          description = "Ignored (JOB-23).";
-        };
-        interval = lib.mkOption {
-          type = lib.types.str;
-          default = "daily";
-          description = "Ignored (JOB-23).";
-        };
-      };
-    };
+    sandbox.enable = lib.mkEnableOption "bubblewrap on PATH for sandboxed pools (#262). It sets no sandbox config: pools opt in with sandbox: in settings, which also holds every ro, rw and env_keep entry";
 
     defaultPath = lib.mkOption {
       type = lib.types.bool;
@@ -1238,10 +1172,7 @@ in
         # per-user/), see docs/home-manager.md.
         ++ lib.optional isNixos "d /nix/var/nix/gcroots/per-user/${cfg.user} 0755 ${own} -";
 
-        warnings =
-          lib.optional (cfg.sandbox.mise.tools != [ ])
-            "services.jobshop.sandbox.mise is ignored (JOB-23): run mise from your own unit and add its dir to sandbox.sharedTools, see docs/nixos.md."
-          ++ lib.optional cfg.defaultPath "services.jobshop.defaultPath is deprecated (JOB-23): list your agents' tools in services.jobshop.path.";
+        warnings = lib.optional cfg.defaultPath "services.jobshop.defaultPath is deprecated (JOB-23): list your agents' tools in services.jobshop.path.";
 
         services.jobshop.units.slices.jobshop = {
           description = "Jobshop controller, session hosts and agents";

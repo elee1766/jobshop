@@ -97,14 +97,15 @@ let
     };
   };
 
-  # JOB-23: the removed mise options still evaluate, with a warning.
-  miseShared = eval {
+  # sandbox.enable only puts bubblewrap on PATH: no sandbox config.
+  sandboxOn = eval { sandbox.enable = true; };
+  # The removed sandbox defaults options fail evaluation with a message.
+  sandboxRW = eval {
     sandbox.enable = true;
-    sandbox.mise.tools = [ "node@24" ];
+    sandbox.rw = [ "~/go" ];
   };
   vlLocal = eval { journal.victorialogs.enable = true; };
   vlExternal = eval { journal.victorialogs.url = "http://logs.internal:9428"; };
-  miseOff = eval { sandbox.enable = true; };
 
   # User-managed jobshop.yaml (#531): the module writes only
   # jobshop.module.yaml and watches the user's file.
@@ -245,7 +246,7 @@ let
     cp ${linkTarget userCfg "jobshop.module.yaml"} $T/root/jobshop.module.yaml
     ufail() { echo "user config test: $*"; cat $T/log $T/out 2>/dev/null; exit 1; }
     grep -q 'token_file: /run/secrets/gh' $T/root/jobshop.module.yaml || ufail "identity not in module file"
-    grep -q 'backend: bubblewrap' $T/root/jobshop.module.yaml || ufail "sandbox not in module file"
+    ! grep -q 'sandbox' $T/root/jobshop.module.yaml || ufail "module wrote sandbox config"
     printf 'include: [jobshop.module.yaml]\nprojects:\n  js: {identities: [elee-agent]}\n' > $T/root/jobshop.yaml
     cp $T/root/jobshop.yaml $T/want
     : > $T/log
@@ -341,19 +342,13 @@ let
         !r.success || r.value
       )
     ))
-    (expect "removed mise options warn and add nothing" (
-      let
-        svc = miseShared.config.systemd.services;
-      in
-      !(svc ? jobshop-mise)
-      && !(svc.jobshop.environment ? MISE_SHARED_INSTALL_DIRS)
-      && lib.any (lib.hasInfix "sandbox.mise is ignored") miseShared.config.warnings
-      && !(lib.any (lib.hasInfix "sandbox.mise") miseOff.config.warnings)
+    (expect "removed sandbox options fail with a message" (
+      lib.any (lib.hasInfix "no longer writes sandbox defaults") (failed sandboxRW)
     ))
     # JOB-23: the default controller PATH has only what jobshop execs.
     (expect "default PATH has no consumer tools" (
       let
-        names = map (p: p.pname or p.name or "") miseOff.config.systemd.services.jobshop.path;
+        names = map (p: p.pname or p.name or "") sandboxOn.config.systemd.services.jobshop.path;
         bad = lib.filter (
           n:
           lib.any (t: lib.hasPrefix t n) [
@@ -367,14 +362,11 @@ let
       in
       bad == [ ] && lib.elem "git" names && lib.elem "bubblewrap" names
     ))
-    (expect "sandbox defaults are generic" (
+    (expect "sandbox.enable writes no sandbox config" (
       let
-        env = miseOff.config.systemd.services.jobshop.environment;
+        env = sandboxOn.config.systemd.services.jobshop.environment;
       in
-      !(env ? NIX_LD)
-      && !(env ? MISE_ALL_COMPILE)
-      && miseOff.config.services.jobshop.sandbox.rw == [ ]
-      && !(lib.elem "MISE_*" miseOff.config.services.jobshop.sandbox.envKeep)
+      !(env ? NIX_LD) && !(env ? MISE_ALL_COMPILE)
     ))
     (expect "defaultPath true warns and adds go" (
       let
@@ -593,7 +585,7 @@ pkgs.runCommand "jobshop-module-test" { } ''
   grep -q 'repo: elee1766/other' ${yamlPacks two}
   grep -q 'prefix: ot-' ${yamlPacks two}
   [ "$(grep -c 'prefix:' ${yamlPacks two})" = 1 ] || { echo 'selfdev got a prefix'; exit 1; }
-  ! grep -q -- '- /var/lib/jobshop-mise' ${yamlPacks miseShared}
+  ! grep -q -e 'sandbox:' -e 'shared_tools' ${yamlPacks sandboxOn}
   grep -q 'url: http://127.0.0.1:9428' ${yamlPacks vlLocal}
   grep -q 'url: http://logs.internal:9428' ${yamlPacks vlExternal}
   touch $out
