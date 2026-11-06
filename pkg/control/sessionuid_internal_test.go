@@ -53,6 +53,12 @@ func TestRestrictDir(t *testing.T) {
 	if p := new(host.PermanentError); errors.As(err, &p) {
 		t.Skip(err)
 	}
+	// JOB-18: inside a user namespace that maps only the caller (agent
+	// sandboxes), the kernel rejects an ACL naming an unmapped uid with
+	// EINVAL. The controller runs unnamespaced, so only the test skips.
+	if errors.Is(err, unix.EINVAL) {
+		t.Skipf("uid %d is not mapped in this user namespace: %v", os.Getuid()+1, err)
+	}
 	require.NoError(t, err)
 	buf := make([]byte, 256)
 	n, err := unix.Lgetxattr(filepath.Join(dir, "a", "f"), aclAccessKey, buf)
