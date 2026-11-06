@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -492,6 +493,10 @@ func holdLock(dir string) {
 	}
 	fmt.Println("ready")
 	awaitSignal()
+	// Without this f is unreachable after Flock: under load the GC runs
+	// its finalizer, closing the fd and dropping the lock, so the host
+	// no longer looks alive (JOB-46).
+	runtime.KeepAlive(f)
 }
 
 // awaitSignal blocks a helper process until it is signalled. The minute
