@@ -399,6 +399,7 @@ export interface BatchStartParams {
 }
 
 export interface Cgroup {
+  driver?: string;
   parent: string;
   cpu_max?: string;
   memory_max?: string;
