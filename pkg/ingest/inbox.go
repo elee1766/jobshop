@@ -391,15 +391,39 @@ func InboxList(ctx context.Context, st InboxStore, f store.InboxFilter) ([]store
 	return out, nil
 }
 
-// InboxPrune deletes terminal items received before before and returns how
-// many.
+// inboxPruneBatch bounds one prune delete, so a large backlog (JOB-63:
+// 7k CI records a day) is removed in short write transactions instead
+// of one that holds the lock.
+const inboxPruneBatch = 200
+
+// InboxPrune deletes terminal items last updated before before and
+// returns how many. Pending, admitted and held items are never pruned.
+// Dedup by delivery id and natural key covers only items still stored,
+// so a redelivery older than the retention is taken as new (JOB-63).
 func InboxPrune(ctx context.Context, st InboxStore, before time.Time) (int64, error) {
 	col, err := inboxCol(ctx, st)
 	if err != nil {
 		return 0, err
 	}
-	n, err := col.Delete(ctx, store.RecordFilter{States: terminal, Until: before})
-	return int64(n), err
+	f := store.RecordFilter{States: terminal, UpdatedBefore: before, Order: store.OrderUpdated, Limit: inboxPruneBatch}
+	var total int64
+	for {
+		recs, err := col.List(ctx, f)
+		if err != nil || len(recs) == 0 {
+			return total, err
+		}
+		keys := make([]string, len(recs))
+		for i, r := range recs {
+			keys[i] = r.Key
+		}
+		// The state and age filters stay on the delete: a record that
+		// changed since the list is kept.
+		n, err := col.Delete(ctx, store.RecordFilter{Keys: keys, States: terminal, UpdatedBefore: before})
+		total += int64(n)
+		if err != nil || len(recs) < inboxPruneBatch || n == 0 {
+			return total, err
+		}
+	}
 }
 
 // InboxCounts counts items by state, every state present (#443).
