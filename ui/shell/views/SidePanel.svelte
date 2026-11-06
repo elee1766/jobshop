@@ -62,8 +62,8 @@
     ></div>
   {/if}
   {#if body}
-    {#key id + url.item}
-      <PluginSlot plugin={body.plugin} element={body.c.element} context={{ session: id, item: url.item }} />
+    {#key id + url.item + (url.ro || '')}
+      <PluginSlot plugin={body.plugin} element={body.c.element} context={{ session: id, item: url.item, readonly: url.ro === '1' }} />
     {/key}
   {:else}
     <p class="faint none">No plugin shows sessions (slot <span class="mono">session</span>).</p>

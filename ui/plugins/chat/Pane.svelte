@@ -17,6 +17,8 @@
   const item = $derived(String(context.item || ''));
   const itemKind = $derived(item.split(':')[0] || '');
   const itemId = $derived(item.slice(itemKind.length + 1));
+  // A worker opened from a run card or trace (JOB-54): watch only.
+  const readonly = $derived(!!context.readonly);
 
   /** @type {Transcript | null} */
   let t = $state(/** @type {Transcript | null} */ (null));
@@ -265,7 +267,9 @@
     </div>
   {/if}
 
-  {#if canSend || answering}
+  {#if readonly}
+    <p class="ro" data-testid="chat-readonly">Read-only: a worker's turn is not driven from here.{#if info?.current} <a href={'?ticket=' + info.current} class="mono" onclick={(e) => { e.preventDefault(); api.openTicket(info.current); }} data-testid="chat-ro-ticket">{info.current}</a>{/if}</p>
+  {:else if canSend || answering}
     <form class="composer" onsubmit={(e) => { e.preventDefault(); submit(false); }}>
       <textarea
         rows="2"

@@ -496,11 +496,25 @@ func (s *Server) attention(r *http.Request) (any, error) {
 	return s.dropAcked(out), nil
 }
 
-// Work is runs and batches.
+// Work is runs and batches. With ?detail=1 (Attention's In progress,
+// JOB-54) Detail holds each run's steps and last comment, and Sessions
+// the holder of every in-progress step, so a card needs no request of
+// its own.
 type Work struct {
-	Runs    []store.Ticket `json:"runs"`
-	Batches []store.Ticket `json:"batches"`
+	Runs     []store.Ticket            `json:"runs"`
+	Batches  []store.Ticket            `json:"batches"`
+	Detail   map[string]RunDetail      `json:"detail,omitempty"`
+	Sessions map[string]rpc.HolderInfo `json:"sessions,omitempty"`
 }
+
+// RunDetail is a run's steps and its last comment.
+type RunDetail struct {
+	Steps   []store.Ticket `json:"steps"`
+	Comment *store.Comment `json:"comment,omitempty"`
+}
+
+// maxDetailRuns bounds the per-run calls one detail request makes.
+const maxDetailRuns = 20
 
 func (s *Server) work(r *http.Request) (any, error) {
 	ctx := r.Context()
@@ -516,7 +530,60 @@ func (s *Server) work(r *http.Request) (any, error) {
 	if err := s.ctl.Call(ctx, rpc.MethodBatchList, rpc.BatchListParams{Limit: limit}, &w.Batches); err != nil {
 		return nil, err
 	}
+	if r.URL.Query().Get("detail") == "" {
+		return w, nil
+	}
+	w.Detail = map[string]RunDetail{}
+	var holders []string
+	for i, run := range w.Runs {
+		if i >= maxDetailRuns {
+			break
+		}
+		var d RunDetail
+		var rr rpc.RunResult
+		if err := s.ctl.Call(ctx, rpc.MethodRunShow, rpc.IDParams{ID: run.ID}, &rr); err == nil {
+			d.Steps = rr.Steps
+		}
+		var sh rpc.ShowResult
+		if err := s.ctl.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: run.ID}, &sh); err == nil && len(sh.Comments) > 0 {
+			d.Comment = &sh.Comments[len(sh.Comments)-1]
+		}
+		for _, st := range d.Steps {
+			if st.Status == store.StatusInProgress && st.Holder != "" {
+				holders = append(holders, st.Holder)
+			}
+		}
+		w.Detail[run.ID] = d
+	}
+	w.Sessions = s.holders(ctx, holders)
 	return w, nil
+}
+
+// holders looks up the given session ids with one session list call.
+// An id that is not a live session gets only its id.
+func (s *Server) holders(ctx context.Context, ids []string) map[string]rpc.HolderInfo {
+	out := map[string]rpc.HolderInfo{}
+	if len(ids) == 0 {
+		return out
+	}
+	for _, id := range ids {
+		out[id] = rpc.HolderInfo{ID: id}
+	}
+	var list []rpc.SessionInfo
+	if err := s.ctl.Call(ctx, rpc.MethodSessionList, rpc.SessionListParams{}, &list); err != nil {
+		return out
+	}
+	for _, si := range list {
+		if _, ok := out[si.ID]; !ok {
+			continue
+		}
+		h := rpc.HolderInfo{ID: si.ID, DisplayName: si.DisplayName, Model: si.Model, Alive: si.Alive, Busy: si.Busy, Tool: si.Tool}
+		if si.Ticket != nil {
+			h.Pool = si.Ticket.Pool
+		}
+		out[si.ID] = h
+	}
+	return out
 }
 
 func (s *Server) sessions(r *http.Request) (any, error) {
@@ -552,11 +619,14 @@ func (s *Server) pools(r *http.Request) (any, error) {
 	return p, nil
 }
 
-// TicketView is the drawer: the ticket, its run when it is one, and its trace.
+// TicketView is the drawer: the ticket, its run when it is one, and its
+// trace. Sessions describes every in-progress holder in it (JOB-54); trace
+// nodes carry theirs in Session.
 type TicketView struct {
 	rpc.ShowResult
-	Run   *rpc.RunResult `json:"run,omitempty"`
-	Trace *rpc.TraceNode `json:"trace,omitempty"`
+	Run      *rpc.RunResult            `json:"run,omitempty"`
+	Trace    *rpc.TraceNode            `json:"trace,omitempty"`
+	Sessions map[string]rpc.HolderInfo `json:"sessions,omitempty"`
 }
 
 func (s *Server) ticket(r *http.Request) (any, error) {
@@ -576,7 +646,46 @@ func (s *Server) ticket(r *http.Request) (any, error) {
 	if err := s.ctl.Call(ctx, rpc.MethodTicketTrace, rpc.TraceParams{ID: id, Depth: 3}, &tr); err == nil {
 		v.Trace = &tr
 	}
+	var ids []string
+	if v.Ticket.Status == store.StatusInProgress && v.Ticket.Holder != "" {
+		ids = append(ids, v.Ticket.Holder)
+	}
+	if v.Run != nil {
+		for _, st := range v.Run.Steps {
+			if st.Status == store.StatusInProgress && st.Holder != "" {
+				ids = append(ids, st.Holder)
+			}
+		}
+	}
+	if v.Trace != nil {
+		ids = traceHolders(*v.Trace, ids)
+	}
+	if len(ids) > 0 {
+		v.Sessions = s.holders(ctx, ids)
+		if v.Trace != nil {
+			fillTrace(v.Trace, v.Sessions)
+		}
+	}
 	return v, nil
+}
+
+func traceHolders(n rpc.TraceNode, ids []string) []string {
+	if n.Holder != "" {
+		ids = append(ids, n.Holder)
+	}
+	for _, c := range n.Children {
+		ids = traceHolders(c, ids)
+	}
+	return ids
+}
+
+func fillTrace(n *rpc.TraceNode, ss map[string]rpc.HolderInfo) {
+	if h, ok := ss[n.Holder]; ok && n.Holder != "" {
+		n.Session = &h
+	}
+	for i := range n.Children {
+		fillTrace(&n.Children[i], ss)
+	}
 }
 
 // sse writes server-sent events; the browser's EventSource reconnects.
