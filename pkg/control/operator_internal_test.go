@@ -52,7 +52,7 @@ packs:
 		"session-list": func(ctx context.Context, sc scope) (any, error) {
 			return c.sessionList(ctx, sc, rpc.SessionListParams{})
 		},
-		"pool-list":    func(ctx context.Context, sc scope) (any, error) { return c.poolList(ctx, sc, struct{}{}) },
+		"pool-list":    func(ctx context.Context, sc scope) (any, error) { return c.poolList(ctx, sc, rpc.PoolListParams{}) },
 		"trigger-list": func(ctx context.Context, sc scope) (any, error) { return c.triggerList(ctx, sc, struct{}{}) },
 		"attention":    func(ctx context.Context, sc scope) (any, error) { return c.attention(ctx, sc, struct{}{}) },
 	}

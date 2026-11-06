@@ -1253,6 +1253,11 @@ type Pool struct {
 	Sandbox *Sandbox `yaml:"sandbox"`
 	// Isolation overrides the agent's user and limits (#388).
 	Isolation *Isolation `yaml:"isolation"`
+	// Labels group pools in lists and filters (JOB-81). Cosmetic: they do
+	// not affect scheduling. A pool a packs entry declares also gets
+	// instance:<name> and pack:<pack> (see addInstanceLabels). A host's
+	// labels add to the pack's.
+	Labels []string `yaml:"labels"`
 }
 
 // Project is one repo / work area.
@@ -1296,6 +1301,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	var c Config
 	if len(bytes.TrimSpace(b)) > 0 {
+		// The typed decode below turns a number into a string, so pool
+		// labels are checked as written.
+		if err := checkRawPoolLabels(b, src); err != nil {
+			return nil, err
+		}
 		if err := yaml.UnmarshalWithOptions(b, &c, yaml.Strict()); err != nil {
 			return nil, fmt.Errorf("%s: %w", FileName, err)
 		}
@@ -1436,6 +1446,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 			if _, ok := c.Identities[id]; !ok {
 				return nil, fmt.Errorf("%s: pool %s: unknown identity %q", src("pools", name), name, id)
 			}
+		}
+		if err := checkLabels(p.Labels); err != nil {
+			return nil, fmt.Errorf("%s: pool %s: labels: %w", src("pools", name), name, err)
 		}
 		if p.MaxSessions < 0 {
 			return nil, fmt.Errorf("%s: pool %s: max_sessions must be >= 0", src("pools", name), name)

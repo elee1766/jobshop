@@ -311,7 +311,7 @@ func pathRewrite(pairs []string) (func(string) string, error) {
 }
 
 type poolCmd struct {
-	List         poolListCmd         `cmd:"" help:"Show each pool's min, max, desired, open, working, idle and cordoned sessions, plus quarantined and paused pools."`
+	List         poolListCmd         `cmd:"" help:"Show each pool's labels, min, max, desired, open, working, idle and cordoned sessions, plus quarantined and paused pools. --label filters."`
 	Scale        poolScaleCmd        `cmd:"" help:"Set a pool's desired session count, or 'auto' to follow ready work again. Persisted (admin or pool-scale grant)."`
 	Unquarantine poolUnquarantineCmd `cmd:"" help:"Let a quarantined or paused pool start sessions again."`
 }
@@ -335,9 +335,13 @@ func (c poolScaleCmd) Run(g *Globals) error {
 	return g.call(rpc.MethodPoolScale, p, nil)
 }
 
-type poolListCmd struct{}
+type poolListCmd struct {
+	Label []string `short:"l" help:"Only pools with this label: a label, or k=v for k:v. Repeat to require several."`
+}
 
-func (poolListCmd) Run(g *Globals) error { return g.call(rpc.MethodPoolList, nil, nil) }
+func (c poolListCmd) Run(g *Globals) error {
+	return g.call(rpc.MethodPoolList, rpc.PoolListParams{Label: c.Label}, nil)
+}
 
 type poolUnquarantineCmd struct {
 	Pool string `arg:"" help:"Pool name."`

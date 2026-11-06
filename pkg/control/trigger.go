@@ -386,6 +386,15 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
+	labels := map[string][]string{}
+	for _, in := range c.config().Instances {
+		for _, name := range in.Triggers {
+			labels[name] = config.InstanceLabels(in)
+		}
+	}
+	for i := range out {
+		out[i].Labels = labels[out[i].Name]
+	}
 	return out, nil
 }
 
