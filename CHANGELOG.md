@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.9](https://github.com/elee1766/jobshop/compare/v0.6.8...v0.6.9) (2026-11-06)
+
+
+### Bug fixes
+
+* **nix:** config repo sync reloads when HEAD differs from last-good (JOB-90) ([#886](https://github.com/elee1766/jobshop/issues/886)) ([d15d266](https://github.com/elee1766/jobshop/commit/d15d2663fdf7e812967c17177a97f8c5acfd215b))
+
 ## [0.6.8](https://github.com/elee1766/jobshop/compare/v0.6.7...v0.6.8) (2026-11-06)
 
 
