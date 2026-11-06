@@ -11,6 +11,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -46,7 +47,7 @@ func (c *Controller) attentionChat(ctx context.Context, sc scope, p rpc.Attentio
 	if p.Kind == "" || p.ID == "" || strings.ContainsAny(p.Kind+p.ID, " \n:") {
 		return nil, fmt.Errorf("%w: kind and id are required", store.ErrInvalid)
 	}
-	res, err := c.ensureAttentionChat(ctx, rpc.AttentionItem{Kind: p.Kind, ID: p.ID, Title: p.Title}, p.Why, false)
+	res, err := c.ensureAttentionChat(ctx, c.config(), rpc.AttentionItem{Kind: p.Kind, ID: p.ID, Title: p.Title}, p.Why, false)
 	if err != nil {
 		return nil, err
 	}
@@ -61,8 +62,7 @@ func (c *Controller) attentionChat(ctx context.Context, sc scope, p rpc.Attentio
 // ensureAttentionChat finds or starts the item's chat. prestart marks a
 // chat the controller starts on its own: it is suspended when idle and
 // closed when the item leaves attention.
-func (c *Controller) ensureAttentionChat(ctx context.Context, it rpc.AttentionItem, why string, prestart bool) (rpc.AttentionChatResult, error) {
-	cfg := c.config()
+func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config, it rpc.AttentionItem, why string, prestart bool) (rpc.AttentionChatResult, error) {
 	res := rpc.AttentionChatResult{Kind: it.Kind, ID: it.ID, Key: attentionKey(it.Kind, it.ID), Pool: cfg.AttentionChatPool()}
 	var t store.Ticket
 	isTicket := slices.Contains(attentionTicketKinds, it.Kind)
@@ -95,7 +95,7 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, it rpc.AttentionIt
 		return res, nil
 	}
 	sc := scope{admin: true, actor: "controller"}
-	sess, started, err := c.keyedSession(ctx, sc, res.Pool, res.Key)
+	sess, started, err := c.keyedSession(ctx, cfg, sc, res.Pool, res.Key)
 	if err != nil {
 		return res, err
 	}
@@ -245,17 +245,16 @@ func (c *Controller) attentionPrompt(ctx context.Context, it rpc.AttentionItem, 
 // sweepAttentionChats starts chats for items that entered attention, up
 // to attention.prestart_max open at once, oldest item first, and closes
 // attention chats whose item left (#606).
-func (c *Controller) sweepAttentionChats(ctx context.Context) {
+func (c *Controller) sweepAttentionChats(ctx context.Context, cfg *config.Config) {
 	if c.draining() {
 		return
 	}
 	c.sweepQuestionFollows(ctx)
-	cfg := c.config()
 	pool := cfg.AttentionChatPool()
 	if pool == "" {
 		return
 	}
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, cfg)
 	if err != nil {
 		return
 	}
@@ -285,7 +284,7 @@ func (c *Controller) sweepAttentionChats(ctx context.Context) {
 			inList = true
 		}
 		if !inList {
-			c.closeAttentionChat(ctx, s, kind+":"+id)
+			c.closeAttentionChat(ctx, cfg, s, kind+":"+id)
 			continue
 		}
 		if f.Prestart {
@@ -308,10 +307,10 @@ func (c *Controller) sweepAttentionChats(ctx context.Context) {
 				return
 			}
 		}
-		if !c.prestartable(ctx, it) {
+		if !c.prestartable(ctx, cfg, it) {
 			continue
 		}
-		res, err := c.ensureAttentionChat(ctx, it, "", true)
+		res, err := c.ensureAttentionChat(ctx, cfg, it, "", true)
 		if err != nil {
 			c.log.WarnContext(ctx, "prestart attention chat", "item", it.Kind+":"+it.ID, "err", err)
 			continue
@@ -324,7 +323,7 @@ func (c *Controller) sweepAttentionChats(ctx context.Context) {
 
 // prestartable: the item gets a pre-started chat. Escalation tickets
 // get the escalation chat from sweepEscalationChats instead.
-func (c *Controller) prestartable(ctx context.Context, it rpc.AttentionItem) bool {
+func (c *Controller) prestartable(ctx context.Context, cfg *config.Config, it rpc.AttentionItem) bool {
 	if !slices.Contains(attentionTicketKinds, it.Kind) {
 		return true
 	}
@@ -339,7 +338,7 @@ func (c *Controller) prestartable(ctx context.Context, it rpc.AttentionItem) boo
 		return false
 	}
 	if holdTicket(t) {
-		if _, _, _, ok := c.escalationChat(ctx, t); ok {
+		if _, _, _, ok := c.escalationChat(ctx, cfg, t); ok {
 			return false
 		}
 	}
@@ -347,9 +346,9 @@ func (c *Controller) prestartable(ctx context.Context, it rpc.AttentionItem) boo
 }
 
 // closeAttentionChat ends the chat of an item that left attention.
-func (c *Controller) closeAttentionChat(ctx context.Context, s store.Ticket, item string) {
+func (c *Controller) closeAttentionChat(ctx context.Context, cfg *config.Config, s store.Ticket, item string) {
 	c.log.InfoContext(ctx, "attention item left, closing its chat", "item", item, "session", s.ID)
-	_, err := c.closeTicket(ctx, scope{admin: true, actor: "controller"}, rpc.CloseParams{ID: s.ID, Resolution: "resolved"})
+	_, err := c.closeTicketIn(ctx, cfg, scope{admin: true, actor: "controller"}, rpc.CloseParams{ID: s.ID, Resolution: "resolved"})
 	if err != nil && !errors.Is(err, store.ErrClosed) {
 		c.log.WarnContext(ctx, "close attention chat", "session", s.ID, "err", err)
 	}

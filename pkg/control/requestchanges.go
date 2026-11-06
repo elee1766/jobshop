@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -38,7 +39,7 @@ func closeOutcome(p *rpc.CloseParams) error {
 
 // requestChangesTarget is the closed step of t's run that a
 // request_changes close of t reopens.
-func (c *Controller) requestChangesTarget(ctx context.Context, t store.Ticket, findings string) (store.Ticket, error) {
+func (c *Controller) requestChangesTarget(ctx context.Context, cfg *config.Config, t store.Ticket, findings string) (store.Ticket, error) {
 	if t.Kind != store.KindStep || t.ParentID == "" {
 		return store.Ticket{}, fmt.Errorf("%w: request_changes is for workflow steps; %s is a %s", store.ErrInvalid, t.ID, t.Kind)
 	}
@@ -54,7 +55,7 @@ func (c *Controller) requestChangesTarget(ctx context.Context, t store.Ticket, f
 	}
 	name := sf.OnRequestChanges
 	if name == "" {
-		name = c.configTarget(ctx, t.ParentID, sf)
+		name = c.configTarget(ctx, cfg, t.ParentID, sf)
 	}
 	if name == "" {
 		return store.Ticket{}, fmt.Errorf("%w: step %s has no step to send changes to (set on_request_changes in the workflow)", store.ErrInvalid, sf.Step)
@@ -76,9 +77,9 @@ func (c *Controller) requestChangesTarget(ctx context.Context, t store.Ticket, f
 	return store.Ticket{}, fmt.Errorf("%w: run %s has no step %q", store.ErrInvalid, t.ParentID, name)
 }
 
-// configTarget reads the target from the current config for a run
+// configTarget reads the target from cfg for a run
 // started before steps recorded on_request_changes.
-func (c *Controller) configTarget(ctx context.Context, runID string, sf store.StepFields) string {
+func (c *Controller) configTarget(ctx context.Context, cfg *config.Config, runID string, sf store.StepFields) string {
 	run, err := c.store.Get(ctx, runID)
 	if err != nil {
 		return ""
@@ -87,7 +88,7 @@ func (c *Controller) configTarget(ctx context.Context, runID string, sf store.St
 	if err != nil {
 		return ""
 	}
-	w, ok := c.config().Workflows[rf.Workflow]
+	w, ok := cfg.Workflows[rf.Workflow]
 	if !ok || sf.Index >= len(w.Steps) || w.Steps[sf.Index].ID != sf.Step {
 		return ""
 	}
@@ -97,12 +98,12 @@ func (c *Controller) configTarget(ctx context.Context, runID string, sf store.St
 // closeRequestChanges is close for resolution request_changes: the close
 // and the reopen of the reviewed step in one store write, then the
 // retry-pool move and the review-finding learning.
-func (c *Controller) closeRequestChanges(ctx context.Context, sc scope, id string, cl *store.Claim, findings string) (store.Ticket, error) {
+func (c *Controller) closeRequestChanges(ctx context.Context, cfg *config.Config, sc scope, id string, cl *store.Claim, findings string) (store.Ticket, error) {
 	cur, err := c.store.Get(ctx, id)
 	if err != nil {
 		return store.Ticket{}, err
 	}
-	target, err := c.requestChangesTarget(ctx, cur, findings)
+	target, err := c.requestChangesTarget(ctx, cfg, cur, findings)
 	if err != nil {
 		return store.Ticket{}, err
 	}
@@ -124,7 +125,7 @@ func (c *Controller) closeRequestChanges(ctx context.Context, sc scope, id strin
 		return t, nil
 	}
 	if target, err = c.store.Get(ctx, target.ID); err == nil {
-		c.escalatePool(ctx, &target, "changes requested by "+id)
+		c.escalatePool(ctx, cfg, &target, "changes requested by "+id)
 		c.record(ctx, store.LearningCorrection, target, reviewFindingPrefix+c.stepName(ctx, target)+": "+findings, "")
 	}
 	c.log.InfoContext(ctx, "changes requested", "step", id, "reopened", target.ID, "run", t.ParentID)

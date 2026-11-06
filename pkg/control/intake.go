@@ -35,14 +35,14 @@ type intakeExtra struct {
 	Text   string `json:"text"`
 }
 
-func (c *Controller) hasIntakeHooks() bool {
-	return slices.ContainsFunc(c.config().Hooks, func(h config.Hook) bool { return h.On == config.HookIntake })
+func hasIntakeHooks(cfg *config.Config) bool {
+	return slices.ContainsFunc(cfg.Hooks, func(h config.Hook) bool { return h.On == config.HookIntake })
 }
 
 // intake runs the intake hooks on x and handles a refusal. key names the
 // decision so a human's answer on the filed ticket is found again. It
 // returns the answer; allow means the text may reach a prompt.
-func (c *Controller) intake(ctx context.Context, project, key string, x intakeExtra) hookAnswer {
+func (c *Controller) intake(ctx context.Context, cfg *config.Config, project, key string, x intakeExtra) hookAnswer {
 	if r, ok := c.askedHuman(ctx, key); ok {
 		return hookAnswer{Decision: r.Decision, Reason: r.Reason}
 	}
@@ -50,21 +50,21 @@ func (c *Controller) intake(ctx context.Context, project, key string, x intakeEx
 	if err != nil {
 		return hookAnswer{rpc.GuardDeny, "intake event: " + err.Error()}
 	}
-	a := c.runHooks(ctx, hookEvent{On: config.HookIntake, Target: x.Issue, Project: project, Extra: raw})
+	a := c.runHooks(ctx, cfg, hookEvent{On: config.HookIntake, Target: x.Issue, Project: project, Extra: raw})
 	if a.Decision != rpc.GuardAllow {
-		c.refuseIntake(ctx, project, key, x, a)
+		c.refuseIntake(ctx, cfg, project, key, x, a)
 	}
 	return a
 }
 
 // intakeIssue checks a Linear issue's title, description and comments
 // before a run starts for it. A read failure is deny (fail closed).
-func (c *Controller) intakeIssue(ctx context.Context, project, key string) hookAnswer {
+func (c *Controller) intakeIssue(ctx context.Context, cfg *config.Config, project, key string) hookAnswer {
 	x := intakeExtra{Source: intakeRunStart, Issue: key}
-	is, err := c.linearIssue(ctx, key)
+	is, err := c.linearIssue(ctx, cfg, key)
 	if err != nil {
 		a := hookAnswer{rpc.GuardDeny, "intake: read " + key + ": " + err.Error()}
-		c.refuseIntake(ctx, project, "intake/"+key, x, a)
+		c.refuseIntake(ctx, cfg, project, "intake/"+key, x, a)
 		return a
 	}
 	var b strings.Builder
@@ -76,16 +76,16 @@ func (c *Controller) intakeIssue(ctx context.Context, project, key string) hookA
 		fmt.Fprintf(&b, "\n[%s] %s:\n%s\n", cm.CreatedAt.UTC().Format(time.RFC3339), cm.Author, cm.Body)
 	}
 	x.Text = b.String()
-	return c.intake(ctx, project, "intake/"+key, x)
+	return c.intake(ctx, cfg, project, "intake/"+key, x)
 }
 
 // intakeRun gates a run start for a Linear workflow.
-func (c *Controller) intakeRun(ctx context.Context, plan runPlan) error {
-	if plan.w.Tracker != config.TrackerLinear || !c.hasIntakeHooks() {
+func (c *Controller) intakeRun(ctx context.Context, cfg *config.Config, plan runPlan) error {
+	if plan.w.Tracker != config.TrackerLinear || !hasIntakeHooks(cfg) {
 		return nil
 	}
 	key := metaString(plan.meta, "linear", "issue")
-	a := c.intakeIssue(ctx, plan.proj, key)
+	a := c.intakeIssue(ctx, cfg, plan.proj, key)
 	if a.Decision == rpc.GuardAllow {
 		return nil
 	}
@@ -94,11 +94,15 @@ func (c *Controller) intakeRun(ctx context.Context, plan runPlan) error {
 
 // linearClient returns a client for the identity covering key's team.
 func (c *Controller) linearClient(ctx context.Context, key string) (*linear.Client, error) {
+	return c.linearClientIn(ctx, c.config(), key)
+}
+
+// linearClientIn is linearClient under cfg.
+func (c *Controller) linearClientIn(ctx context.Context, cfg *config.Config, key string) (*linear.Client, error) {
 	team, ok := linear.Team(key)
 	if !ok {
 		return nil, fmt.Errorf("bad Linear issue key %q", key)
 	}
-	cfg := c.config()
 	name, ok := cfg.IdentityFor(cfg.IdentityNames(), team)
 	if !ok {
 		return nil, fmt.Errorf("no identity covers team %s", team)
@@ -124,8 +128,8 @@ func (c *Controller) newLinear(url, name string, id config.Identity, team, token
 	return cl
 }
 
-func (c *Controller) linearIssue(ctx context.Context, key string) (linear.Issue, error) {
-	cl, err := c.linearClient(ctx, key)
+func (c *Controller) linearIssue(ctx context.Context, cfg *config.Config, key string) (linear.Issue, error) {
+	cl, err := c.linearClientIn(ctx, cfg, key)
 	if err != nil {
 		return linear.Issue{}, err
 	}
@@ -136,9 +140,9 @@ func (c *Controller) linearIssue(ctx context.Context, key string) (linear.Issue,
 
 // refuseIntake labels the Linear issue needs-human and files one
 // needs-human ticket per key; ask_human also labels it a question.
-func (c *Controller) refuseIntake(ctx context.Context, project, key string, x intakeExtra, a hookAnswer) {
+func (c *Controller) refuseIntake(ctx context.Context, cfg *config.Config, project, key string, x intakeExtra, a hookAnswer) {
 	c.log.InfoContext(ctx, "intake refused", "issue", x.Issue, "source", x.Source, "decision", a.Decision, "reason", a.Reason)
-	if cl, err := c.linearClient(ctx, x.Issue); err != nil {
+	if cl, err := c.linearClientIn(ctx, cfg, x.Issue); err != nil {
 		c.log.WarnContext(ctx, "intake: label", "issue", x.Issue, "err", err)
 	} else {
 		lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -168,7 +172,7 @@ func (c *Controller) refuseIntake(ctx context.Context, project, key string, x in
 	}
 	b.WriteString("\nClose done to allow it, close with any other resolution to keep it out.")
 	if project == "" {
-		project = c.config().DefaultProject
+		project = cfg.DefaultProject
 	}
 	prio := 1
 	if _, err := store.Create(ctx, c.store, "controller", store.NewTicket{

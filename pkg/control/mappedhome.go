@@ -57,8 +57,13 @@ func (c *Controller) mappedUser(pool string, slot *int) (uid int, gids []int, ok
 // mappedHomeDir is the home for pool's mapped user: one per pool, or one
 // per slot with per_session ids so sessions do not share files.
 func (c *Controller) mappedHomeDir(pool string, slot *int) string {
+	return c.mappedHomeDirIn(c.config(), pool, slot)
+}
+
+// mappedHomeDirIn is mappedHomeDir under cfg.
+func (c *Controller) mappedHomeDirIn(cfg *config.Config, pool string, slot *int) string {
 	name := pool
-	if u := c.config().IsolationFor(pool).User; u != nil && u.Slots() > 0 && slot != nil {
+	if u := cfg.IsolationFor(pool).User; u != nil && u.Slots() > 0 && slot != nil {
 		name += "-" + strconv.Itoa(*slot)
 	}
 	return filepath.Join(c.root.Dir, "homes", name)
@@ -146,8 +151,8 @@ func (c *Controller) sessionMappedHome(t store.Ticket, f store.SessionFields) (s
 // controller can delete agent files through the pool group's default
 // ACL entry; a failure is logged, and the next spawn in the slot still
 // re-grants the dir.
-func (c *Controller) removeSlotHome(t store.Ticket) {
-	u := c.config().IsolationFor(t.Pool).User
+func (c *Controller) removeSlotHome(cfg *config.Config, t store.Ticket) {
+	u := cfg.IsolationFor(t.Pool).User
 	if t.Kind != store.KindSession || t.Status != store.StatusClosed || u == nil || u.Slots() == 0 {
 		return
 	}
@@ -158,7 +163,7 @@ func (c *Controller) removeSlotHome(t store.Ticket) {
 	if hostAlive(c.root.SessionDir(t.ID)) {
 		return
 	}
-	home := c.mappedHomeDir(t.Pool, f.Slot)
+	home := c.mappedHomeDirIn(cfg, t.Pool, f.Slot)
 	if err := os.RemoveAll(home); err != nil {
 		c.log.Warn("remove per-session home", "session", t.ID, "home", home, "err", err)
 	}

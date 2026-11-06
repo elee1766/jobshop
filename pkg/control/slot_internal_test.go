@@ -34,7 +34,7 @@ func createSlotSession(t *testing.T, c *Controller, pool string) (store.Ticket, 
 	t.Helper()
 	c.slotMu.Lock()
 	defer c.slotMu.Unlock()
-	slot, err := c.sessionSlot(t.Context(), pool)
+	slot, err := c.sessionSlot(t.Context(), c.config(), pool)
 	if err != nil {
 		return store.Ticket{}, err
 	}
@@ -58,9 +58,9 @@ func TestSlotAllocation(t *testing.T) {
 	c, _, _ := stallControllerYAML(t, slotYAML)
 	ctx := t.Context()
 
-	assert.Equal(t, 2, c.slotCapacity(ctx, "dev"))
-	assert.Equal(t, -1, c.slotCapacity(ctx, "plain"), "no per_session: no limit")
-	s, err := c.sessionSlot(ctx, "plain")
+	assert.Equal(t, 2, c.slotCapacity(ctx, c.config(), "dev"))
+	assert.Equal(t, -1, c.slotCapacity(ctx, c.config(), "plain"), "no per_session: no limit")
+	s, err := c.sessionSlot(ctx, c.config(), "plain")
 	require.NoError(t, err)
 	assert.Nil(t, s)
 
@@ -70,7 +70,7 @@ func TestSlotAllocation(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 0, slotOf(t, a))
 	assert.Equal(t, 1, slotOf(t, b))
-	assert.Equal(t, 0, c.slotCapacity(ctx, "dev"), "full range: scale up gets no starts")
+	assert.Equal(t, 0, c.slotCapacity(ctx, c.config(), "dev"), "full range: scale up gets no starts")
 
 	_, err = createSlotSession(t, c, "dev")
 	require.ErrorIs(t, err, errSlotsFull)
@@ -78,7 +78,7 @@ func TestSlotAllocation(t *testing.T) {
 	// Ending the slot-0 session frees slot 0, the lowest free.
 	_, err = store.Close(ctx, c.store, "test", a.ID, nil, "done")
 	require.NoError(t, err)
-	assert.Equal(t, 1, c.slotCapacity(ctx, "dev"))
+	assert.Equal(t, 1, c.slotCapacity(ctx, c.config(), "dev"))
 	d, err := createSlotSession(t, c, "dev")
 	require.NoError(t, err)
 	assert.Equal(t, 0, slotOf(t, d))
@@ -99,12 +99,12 @@ func TestRemoveSlotHome(t *testing.T) {
 		require.NoError(t, os.WriteFile(filepath.Join(h, ".cache", "f"), []byte("x"), 0o600))
 	}
 
-	c.removeSlotHome(a)
+	c.removeSlotHome(c.config(), a)
 	assert.DirExists(t, ha, "open session keeps its home")
 
 	closed, err := store.Close(ctx, c.store, "test", a.ID, nil, "done")
 	require.NoError(t, err)
-	c.removeSlotHome(closed)
+	c.removeSlotHome(c.config(), closed)
 	assert.NoDirExists(t, ha)
 	assert.DirExists(t, hb)
 }

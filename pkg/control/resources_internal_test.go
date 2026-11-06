@@ -37,7 +37,7 @@ func TestResourceWaitStallAndAttention(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, found, "not waited long enough")
 	c.config().Attention.ResourceWait = "30m"
-	items, err := c.attentionItems(ctx)
+	items, err := c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	assert.Empty(t, items)
 
@@ -46,7 +46,7 @@ func TestResourceWaitStallAndAttention(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Equal(t, stall{config.StallResourceWait, b.ID, "waiting on emu, 0 ahead (1/1 held) for 1h0m0s"}, found[0])
-	items, err = c.attentionItems(ctx)
+	items, err = c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, rpc.AttentionResource, items[0].Kind)

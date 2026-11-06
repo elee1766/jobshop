@@ -237,12 +237,14 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 		if c.draining() {
 			return
 		}
+		// One config for the whole event pass, like a tick (JOB-104).
+		cfg := c.config()
 		for _, f := range fires {
-			tr, ok := c.config().Triggers[f.name]
+			tr, ok := cfg.Triggers[f.name]
 			if !ok {
 				continue // reloaded away
 			}
-			c.onEvent(c.ctx, f.name, tr, f.ev)
+			c.onEvent(c.ctx, cfg, f.name, tr, f.ev)
 		}
 	})
 }
@@ -250,18 +252,18 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 // onEvent runs one matched trigger for an event: a stall trigger
 // evaluates its signals (JOB-72), any other evaluates and fires. Holds
 // the tick lock.
-func (c *Controller) onEvent(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) {
+func (c *Controller) onEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
 	if len(tr.When.Stall) > 0 {
-		c.runStallTrigger(ctx, name, tr, ev)
+		c.runStallTrigger(ctx, cfg, name, tr, ev)
 		return
 	}
-	c.fireOnEvent(ctx, name, tr, ev)
+	c.fireOnEvent(ctx, cfg, name, tr, ev)
 }
 
 // fireOnEvent evaluates and fires one trigger for an event. Holds the
 // tick lock.
-func (c *Controller) fireOnEvent(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) {
-	st, err := c.evalTrigger(ctx, name, tr)
+func (c *Controller) fireOnEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
+	st, err := c.evalTrigger(ctx, cfg, name, tr)
 	if err != nil {
 		c.log.ErrorContext(ctx, "trigger", "trigger", name, "err", err)
 		return
@@ -278,7 +280,7 @@ func (c *Controller) fireOnEvent(ctx context.Context, name string, tr config.Tri
 			return
 		}
 	}
-	t, err := c.fireTriggerEvent(ctx, name, tr, key, ev)
+	t, err := c.fireTriggerEvent(ctx, cfg, name, tr, key, ev)
 	if err != nil {
 		c.log.ErrorContext(ctx, "trigger fire", "trigger", name, "err", err)
 		return
@@ -335,7 +337,7 @@ const commandLabel = "trigger-command"
 // runs and dedups its key. Success closes it; failure keeps it open as
 // needs-human with the output, so a broken command is reported once
 // and the trigger waits for a human to close it.
-func (c *Controller) fireCommand(ctx context.Context, name string, tr config.Trigger, meta json.RawMessage, tv map[string]any) (store.Ticket, error) {
+func (c *Controller) fireCommand(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, meta json.RawMessage, tv map[string]any) (store.Ticket, error) {
 	cm := tr.Command
 	script, err := config.Fill(cm.Run, tv)
 	if err != nil {
@@ -347,8 +349,8 @@ func (c *Controller) fireCommand(ctx context.Context, name string, tr config.Tri
 	}
 	// A root with several projects has no default; the record only needs
 	// one to live in.
-	project := c.config().DefaultProject
-	if projects := slices.Sorted(maps.Keys(c.config().Projects)); project == "" && len(projects) > 0 {
+	project := cfg.DefaultProject
+	if projects := slices.Sorted(maps.Keys(cfg.Projects)); project == "" && len(projects) > 0 {
 		project = projects[0]
 	}
 	if project == "" {

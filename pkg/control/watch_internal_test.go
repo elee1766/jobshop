@@ -102,7 +102,7 @@ func TestConfigWatchBadPackRaisesAttention(t *testing.T) {
 	require.NoError(t, os.WriteFile(pack, []byte("pools: [broken\n"), 0o600))
 	require.Error(t, fireDebounce(t, clk, res).err)
 	assert.Equal(t, "one", prompt(c), "the running config stays")
-	items, err := c.attentionItems(t.Context())
+	items, err := c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, rpc.AttentionConfigInvalid, items[0].Kind)
@@ -110,7 +110,7 @@ func TestConfigWatchBadPackRaisesAttention(t *testing.T) {
 	require.NoError(t, os.WriteFile(pack, []byte("pools:\n  dev: {agent: a, dir: /w, max_sessions: 0, prompt: fixed}\n"), 0o600))
 	require.NoError(t, fireDebounce(t, clk, res).err)
 	assert.Equal(t, "fixed", prompt(c))
-	items, err = c.attentionItems(t.Context())
+	items, err = c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	assert.Empty(t, items, "a good change clears it")
 }

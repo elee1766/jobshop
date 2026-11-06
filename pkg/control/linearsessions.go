@@ -23,8 +23,7 @@ type linearSessions struct {
 // of each linear-app identity. Delegating an issue to the app (which is
 // also what self-assigning does with app:assignable) opens one; jobshop
 // works through runs and comments, so it replies once and closes it.
-func (c *Controller) sweepLinearAgentSessions(ctx context.Context, force bool) {
-	cfg := c.config()
+func (c *Controller) sweepLinearAgentSessions(ctx context.Context, cfg *config.Config, force bool) {
 	for _, name := range cfg.IdentityNames() {
 		id := cfg.Identities[name]
 		if id.Kind != config.IdentityLinearApp || len(id.Teams) == 0 || c.minter == nil {

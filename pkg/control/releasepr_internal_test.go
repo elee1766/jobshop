@@ -59,7 +59,7 @@ func TestReleasePRTrigger(t *testing.T) {
 ]`
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "prs.json"), []byte(prs), 0o600))
 
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["pr-unmerged"], nil)
+	found, err := c.detectStalls(t.Context(), c.config(), c.config().Triggers["pr-unmerged"], nil)
 	require.NoError(t, err)
 	var keys []string
 	for _, s := range found {
@@ -74,7 +74,7 @@ func TestReleasePRTrigger(t *testing.T) {
 		return runs
 	}
 	for range 3 {
-		c.runTriggers(t.Context())
+		c.runTriggers(t.Context(), c.config())
 	}
 	runs := releaseRuns()
 	require.Len(t, runs, 1, "one run over repeated ticks")
@@ -96,6 +96,6 @@ func TestReleasePRTrigger(t *testing.T) {
 		_, err = store.Close(t.Context(), c.store, "admin", s.ID, nil, "done")
 		require.NoError(t, err)
 	}
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, releaseRuns(), 1, "same key after close")
 }

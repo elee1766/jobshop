@@ -94,7 +94,7 @@ func TestTwoTrackersLinearIntake(t *testing.T) {
 	c.minter, c.linearURL = identity.NewMinter(), srv.URL
 
 	assert.Equal(t, []string{"stall:linear_issue_no_run:JOB-1"}, stallKeys(t, c))
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
 	require.NoError(t, err)
 	require.Len(t, runs, 1, "one stall-check run")

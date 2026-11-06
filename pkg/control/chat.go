@@ -53,7 +53,7 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	case p.Attach:
 		return nil, fmt.Errorf("%w: rw attach needs a session id", store.ErrInvalid)
 	case p.Pool != "" && p.Key != "":
-		if sess, started, err = c.keyedSession(ctx, sc, p.Pool, p.Key); err != nil {
+		if sess, started, err = c.keyedSession(ctx, c.config(), sc, p.Pool, p.Key); err != nil {
 			return nil, err
 		}
 	default:
@@ -98,7 +98,7 @@ func (c *Controller) openSessionTicket(ctx context.Context, id string) (store.Ti
 
 // keyedSession finds the open session for key in pool, or starts one when
 // pool is a chat pool. Ticket pools get sessions from the supervisor only.
-func (c *Controller) keyedSession(ctx context.Context, sc scope, pool, key string) (store.Ticket, bool, error) {
+func (c *Controller) keyedSession(ctx context.Context, cfg *config.Config, sc scope, pool, key string) (store.Ticket, bool, error) {
 	find := func() (store.Ticket, bool, error) {
 		open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
 		if err != nil {
@@ -119,17 +119,17 @@ func (c *Controller) keyedSession(ctx context.Context, sc scope, pool, key strin
 	if t, ok, err := find(); err != nil || ok {
 		return t, false, err
 	}
-	p, ok := c.config().Pools[pool]
+	p, ok := cfg.Pools[pool]
 	if !ok {
 		return store.Ticket{}, false, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, pool)
 	}
 	if !p.Chat() {
 		return store.Ticket{}, false, fmt.Errorf("%w: pool %s is not a chat pool; send to a session id", store.ErrInvalid, pool)
 	}
-	if err := c.humanSlot(ctx, pool); err != nil {
+	if err := c.humanSlot(ctx, cfg, pool); err != nil {
 		return store.Ticket{}, false, err
 	}
-	t, err := c.newSession(ctx, sc.actor, p.Project, pool, p.Agent, key, pool+" "+key, "")
+	t, err := c.newSession(ctx, cfg, sc.actor, p.Project, pool, p.Agent, key, pool+" "+key, "")
 	if errors.Is(err, store.ErrAlreadyExist) {
 		// A concurrent send created it; the key index allows one open.
 		if t, ok, ferr := find(); ferr == nil && ok {
@@ -252,8 +252,8 @@ func redactEvent(red *redact.Redactor, ev *rpc.SessionEvent) {
 // pool up to max_sessions; humans get one slot over that, so queued work
 // never blocks a human from reaching a session (#190). Pools with
 // max_sessions 0 are manual-only and stay uncapped.
-func (c *Controller) humanSlot(ctx context.Context, pool string) error {
-	p, ok := c.config().Pools[pool]
+func (c *Controller) humanSlot(ctx context.Context, cfg *config.Config, pool string) error {
+	p, ok := cfg.Pools[pool]
 	if !ok || p.MaxSessions == 0 {
 		return nil
 	}

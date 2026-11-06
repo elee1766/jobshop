@@ -96,13 +96,13 @@ func TestLinearIntake(t *testing.T) {
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
 
 	// ENG-4 already has an open run.
-	_, err := c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "eng-4"}, Key: "linear-ENG-4"}, nil)
+	_, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "eng-4"}, Key: "linear-ENG-4"}, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-1"}, stallKeys(t, c))
 	assert.Equal(t, int32(1), reads.Load())
 
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	stallRuns := func() []store.Ticket {
 		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
@@ -122,13 +122,13 @@ func TestLinearIntake(t *testing.T) {
 	assert.Equal(t, "ENG-1", f.Vars["subject"])
 	assert.Equal(t, int32(1), reads.Load(), "within the poll interval the cached read is used")
 
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, stallRuns(), 1, "fires once: the open run holds the key")
 
 	// stall-check starts pr-work with key linear-ENG-1; the issue then
 	// has an open run and is no longer a stall, and the start repeats safely.
 	for range 2 {
-		_, err = c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
+		_, err = c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
 		require.NoError(t, err)
 	}
 	clk.advance(6 * time.Minute)
@@ -196,10 +196,10 @@ func TestLinearIntakeOff(t *testing.T) {
 	t.Parallel()
 	c, _, _ := stallControllerYAML(t, linearIntakeYAML)
 	c.minter, c.linearURL = identity.NewMinter(), "http://127.0.0.1:1"
-	found, err := c.stallLinearIssues(t.Context(), config.StallSignal{Signal: config.StallLinearIssueNoRun})
+	found, err := c.stallLinearIssues(t.Context(), c.config(), config.StallSignal{Signal: config.StallLinearIssueNoRun})
 	require.NoError(t, err)
 	assert.Empty(t, found)
-	found, err = c.stallLinearIssues(t.Context(), config.StallSignal{Signal: config.StallLinearIssueNoRun, Team: "ENG"})
+	found, err = c.stallLinearIssues(t.Context(), c.config(), config.StallSignal{Signal: config.StallLinearIssueNoRun, Team: "ENG"})
 	require.NoError(t, err, "token file missing: logged, no stall")
 	assert.Empty(t, found)
 }
@@ -241,7 +241,7 @@ func TestLinearPlannerIntakeKey(t *testing.T) {
 
 	admin := scope{admin: true, actor: "admin"}
 	start := func() store.Ticket {
-		res, err := c.startRun(t.Context(), admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
+		res, err := c.startRun(t.Context(), c.config(), admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
 		require.NoError(t, err)
 		return res.(rpc.RunResult).Run
 	}
@@ -260,7 +260,7 @@ func TestLinearIntakeRunDuringScan(t *testing.T) {
 	var started atomic.Bool
 	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if started.CompareAndSwap(false, true) {
-			_, err := c.startRun(r.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
+			_, err := c.startRun(r.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
 			assert.NoError(t, err)
 		}
 		issue := func(id, updated string) string {
@@ -289,11 +289,11 @@ func TestLinearIntakeRunDuringScan(t *testing.T) {
 		}
 		return out
 	}
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	assert.Empty(t, stallRuns(), "ENG-1 got a run during the scan, ENG-2 is inside the grace window")
 
 	clk.advance(6 * time.Minute)
-	c.runTriggers(t.Context())
+	c.runTriggers(t.Context(), c.config())
 	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-2"}, stallRuns(), "past the grace window")
 }
 
@@ -305,7 +305,7 @@ func TestLinearIssueRecheck(t *testing.T) {
 	busy, err := c.linearIssueHasOpenRun(t.Context(), "eng-7")
 	require.NoError(t, err)
 	assert.False(t, busy)
-	_, err = c.startRun(t.Context(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-7"}, Key: "linear-ENG-7"}, nil)
+	_, err = c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-7"}, Key: "linear-ENG-7"}, nil)
 	require.NoError(t, err)
 	busy, err = c.linearIssueHasOpenRun(t.Context(), "eng-7")
 	require.NoError(t, err)

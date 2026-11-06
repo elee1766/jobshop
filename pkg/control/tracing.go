@@ -6,10 +6,11 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
-// lockTick takes tickMu for who ("tick", "reload", "webhook", "event"),
+// lockTick takes tickMu for who ("tick", "webhook", "event"),
 // records how long it waited as a histogram and, when the wait was long
 // enough to matter, as a span under ctx. It returns the unlock func.
 func (c *Controller) lockTick(ctx context.Context, who string) func() {
@@ -36,4 +37,10 @@ func (c *Controller) step(ctx context.Context, name string, fn func(ctx context.
 		span.End()
 	}()
 	fn(ctx)
+}
+
+// passStep is step for a pass function that takes the config the pass
+// loaded once (JOB-104).
+func (c *Controller) passStep(ctx context.Context, cfg *config.Config, name string, fn func(ctx context.Context, cfg *config.Config)) {
+	c.step(ctx, name, func(ctx context.Context) { fn(ctx, cfg) })
 }

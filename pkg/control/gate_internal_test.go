@@ -148,7 +148,7 @@ func TestCuratorGate(t *testing.T) {
 
 	// Two dev runs since the merge, and the same failure recurs.
 	for i := range 2 {
-		res, err := c.startRun(ctx, admin, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": fmt.Sprint(i)}, Key: fmt.Sprint("g", i)}, nil)
+		res, err := c.startRun(ctx, c.config(), admin, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": fmt.Sprint(i)}, Key: fmt.Sprint("g", i)}, nil)
 		require.NoError(t, err)
 		if i == 0 {
 			s := res.(rpc.RunResult).Steps[0]

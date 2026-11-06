@@ -6,7 +6,8 @@ OTLP) endpoint.
 1. `jobshop reload`, then find the `rpc config.reload` trace. It has a
    `config reload` child with `config load`, `set resources`, one
    `preflight` per distinct isolation check (attribute `jobshop.pools`)
-   and, when the controller was busy, `wait tickMu`.
+   and, when another reload was running, `wait reloadMu`. It never
+   waits on `tickMu` (JOB-104).
 2. Find a `supervisor tick` trace. Its children are `tick sweep`,
    `tick run_triggers`, ... `tick compress_journals`. Under
    `tick run_triggers`, a `trigger <name>` span per due trigger with

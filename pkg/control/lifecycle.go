@@ -44,6 +44,7 @@ func (c *Controller) stopAll() {
 	c.drain = true
 	c.mu.Unlock()
 	ctx := context.WithoutCancel(c.ctx)
+	cfg := c.config()
 	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
 	if err != nil {
 		c.log.Error("shutdown: list sessions", "err", err)
@@ -57,7 +58,7 @@ func (c *Controller) stopAll() {
 			} else {
 				c.countClose(ctx, t2)
 			}
-			c.endSession(ctx, t.ID, "controller shutdown")
+			c.endSession(ctx, cfg, t.ID, "controller shutdown")
 		})
 	}
 	wg.Wait()

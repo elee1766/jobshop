@@ -145,7 +145,7 @@ func TestIntakeDeny(t *testing.T) {
 			require.ErrorIs(t, err, rpc.ErrForbidden)
 			assert.Zero(t, runCount(t, c), "no run started")
 			assert.Equal(t, []string{"iss-5"}, f.labels(), "needs-human label set on the Linear issue")
-			items, err := c.attentionItems(t.Context())
+			items, err := c.attentionItems(t.Context(), c.config())
 			require.NoError(t, err)
 			require.Len(t, items, 1)
 			assert.Equal(t, "ENG-5", items[0].Ref)
@@ -158,7 +158,7 @@ func TestIntakeDeny(t *testing.T) {
 			// A repeat start does not file a second ticket; closing the
 			// ticket done lets the run start.
 			require.Error(t, startLinearRun(t, c))
-			items, err = c.attentionItems(t.Context())
+			items, err = c.attentionItems(t.Context(), c.config())
 			require.NoError(t, err)
 			require.Len(t, items, 1)
 			_, err = store.Close(t.Context(), c.store, "admin", items[0].ID, nil, "done")

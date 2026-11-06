@@ -27,12 +27,13 @@ slow step was invisible. As built:
   more (`store <op>`, or `store <collection>.<op>`), under the span in its
   ctx. Faster calls cost two clock reads and no span.
 - **Reload.** `config reload` (child of `rpc config.reload`) has
-  `wait reloadMu`, `wait tickMu`, `config load`, `set resources`, one
+  `wait reloadMu`, `config load`, `set resources`, one
   `preflight` per distinct check (attribute `jobshop.pools`) and the
   `report_orphans` step. Reload runs under `context.WithoutCancel`, so a
   client that gave up does not cancel it half done.
 - **Locks.** `jobshop_lock_wait_seconds{lock,for}` for `tickMu`, waiters
-  `tick`, `reload`, `webhook`, `event`. A wait over 10ms is also a span.
+  `tick`, `webhook`, `event` (reload stopped taking it, JOB-104). A wait
+  over 10ms is also a span.
 - **Metrics.** `jobshop_tick_step_duration_seconds{step}`,
   `jobshop_outbound_duration_seconds{kind,target}`,
   `jobshop_lock_wait_seconds{lock,for}`.

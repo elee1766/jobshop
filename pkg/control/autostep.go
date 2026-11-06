@@ -62,8 +62,7 @@ type autoSteps struct {
 
 // runAutoSteps starts ready command and http steps, and picks up ones it
 // held when it stopped. Called every tick.
-func (c *Controller) runAutoSteps(ctx context.Context) {
-	cfg := c.config()
+func (c *Controller) runAutoSteps(ctx context.Context, cfg *config.Config) {
 	// Held by the controller but not running here: a restart cut the
 	// attempt short.
 	held, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Holder: autoHolder, Status: store.StatusInProgress})
@@ -105,7 +104,7 @@ func (c *Controller) resumeAutoStep(ctx context.Context, cfg *config.Config, t s
 		cl := store.Claim{TicketID: t.ID, Holder: autoHolder, Fence: t.Fence}
 		if t2, err := c.store.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "controller restarted during the attempt (on_restart: fail)"}); err == nil {
 			c.log.WarnContext(ctx, "step attempt lost on restart", "ticket", t.ID, "step", s.ID)
-			c.stepEvent(ctx, t2)
+			c.stepEvent(ctx, cfg, t2)
 		}
 		return
 	}
@@ -184,15 +183,16 @@ func (c *Controller) startAutoStep(ctx context.Context, cfg *config.Config, t st
 	attemptKey := fmt.Sprintf("%s/%d", key, cl.Fence)
 	c.wg.Go(func() {
 		defer done()
-		c.runAutoAttempt(t, cl, s, sf, attemptKey)
+		// The attempt keeps the config of the pass that started it.
+		c.runAutoAttempt(cfg, t, cl, s, sf, attemptKey)
 	})
 }
 
 // runAutoAttempt runs one attempt and records it.
-func (c *Controller) runAutoAttempt(t store.Ticket, cl store.Claim, s config.Step, sf store.StepFields, attemptKey string) {
+func (c *Controller) runAutoAttempt(cfg *config.Config, t store.Ticket, cl store.Claim, s config.Step, sf store.StepFields, attemptKey string) {
 	ctx := c.ctx
 	start := c.now()
-	st, err := c.autoStepVars(ctx, sf)
+	st, err := c.autoStepVars(ctx, cfg, sf)
 	var res autoResult
 	if err != nil {
 		res = autoResult{result: resultFailed, err: err.Error()}
@@ -200,9 +200,9 @@ func (c *Controller) runAutoAttempt(t store.Ticket, cl store.Claim, s config.Ste
 		actx, cancel := context.WithTimeout(ctx, s.TimeoutDur())
 		switch s.Type {
 		case config.StepCommand:
-			res = c.runCommandStep(actx, t, s, sf, st, attemptKey)
+			res = c.runCommandStep(actx, cfg, t, s, sf, st, attemptKey)
 		case config.StepHTTP:
-			res = c.runHTTPStep(actx, s, st, attemptKey)
+			res = c.runHTTPStep(actx, cfg, s, st, attemptKey)
 		}
 		cancel()
 	}
@@ -217,12 +217,12 @@ func (c *Controller) runAutoAttempt(t store.Ticket, cl store.Claim, s config.Ste
 		telemetry.AttrResult.String(res.result))
 	c.metrics.StepDuration.Record(ctx, c.now().Sub(start).Seconds(), attrs)
 	c.metrics.StepResults.Add(ctx, 1, attrs)
-	c.finishAutoStep(ctx, t, cl, sf, res)
+	c.finishAutoStep(ctx, cfg, t, cl, sf, res)
 }
 
 // finishAutoStep writes the attempt's record on the step and closes,
 // defers or fails it.
-func (c *Controller) finishAutoStep(ctx context.Context, t store.Ticket, cl store.Claim, sf store.StepFields, res autoResult) {
+func (c *Controller) finishAutoStep(ctx context.Context, cfg *config.Config, t store.Ticket, cl store.Claim, sf store.StepFields, res autoResult) {
 	sf.Command, sf.Output, sf.Outcome, sf.Result = res.command, res.output, res.outcome, res.result
 	b, err := json.Marshal(sf)
 	if err == nil {
@@ -249,7 +249,7 @@ func (c *Controller) finishAutoStep(ctx context.Context, t store.Ticket, cl stor
 		return
 	}
 	c.log.InfoContext(ctx, "step attempt", "ticket", t.ID, "step", sf.Step, "type", sf.Type, "result", res.result)
-	c.stepEvent(ctx, t)
+	c.stepEvent(ctx, cfg, t)
 }
 
 // stepTemplates is what a command or http step's templates are filled
@@ -267,7 +267,7 @@ func (st stepTemplates) fill(s string) (string, error) {
 }
 
 // autoStepVars loads the run's vars and earlier steps' outputs.
-func (c *Controller) autoStepVars(ctx context.Context, sf store.StepFields) (stepTemplates, error) {
+func (c *Controller) autoStepVars(ctx context.Context, cfg *config.Config, sf store.StepFields) (stepTemplates, error) {
 	var st stepTemplates
 	run, err := c.store.Get(ctx, sf.Run)
 	if err != nil {
@@ -278,7 +278,7 @@ func (c *Controller) autoStepVars(ctx context.Context, sf store.StepFields) (ste
 		return st, err
 	}
 	st.vars = map[string]any{}
-	if w, ok := c.config().Workflows[rf.Workflow]; ok {
+	if w, ok := cfg.Workflows[rf.Workflow]; ok {
 		st.w = w
 		for k, v := range w.PackVars {
 			st.vars[k] = v
@@ -336,8 +336,7 @@ type stepPlace struct {
 // stepPlace resolves a command step's pool and working dir: the run
 // worktree when the step asks for one, else the pool's dir, else its
 // repo, else the root. It makes the worktree.
-func (c *Controller) stepPlace(s config.Step, sf store.StepFields, st stepTemplates) (stepPlace, error) {
-	cfg := c.config()
+func (c *Controller) stepPlace(cfg *config.Config, s config.Step, sf store.StepFields, st stepTemplates) (stepPlace, error) {
 	pl := stepPlace{dir: c.root.Dir}
 	if s.Pool == "" {
 		return pl, nil
@@ -407,7 +406,7 @@ func (c *Controller) sweepRunDirs() {
 	}
 }
 
-func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s config.Step, sf store.StepFields, st stepTemplates, attemptKey string) autoResult {
+func (c *Controller) runCommandStep(ctx context.Context, cfg *config.Config, t store.Ticket, s config.Step, sf store.StepFields, st stepTemplates, attemptKey string) autoResult {
 	argv, err := s.Argv()
 	if err != nil {
 		return autoResult{result: resultFailed, err: err.Error()}
@@ -425,21 +424,22 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 			"PATH="+filepath.Dir(exe)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 	env := append(withoutEnv(os.Environ(), "PATH"), extra...)
-	res := autoResult{command: c.redactor(env).Text(strings.Join(argv, " "))}
-	pl, err := c.stepPlace(s, sf, st)
+	red := cfg.Redact.Scanner().Redactor(env)
+	res := autoResult{command: red.Text(strings.Join(argv, " "))}
+	pl, err := c.stepPlace(cfg, s, sf, st)
 	if err != nil {
 		res.result, res.err = resultFailed, err.Error()
 		return res
 	}
-	ic := isolatedCmd{argv: argv, dir: pl.dir, own: pl.own, env: extra, name: "step"}
-	if c.isolates(pl.pool) {
+	ic := isolatedCmd{argv: argv, dir: pl.dir, own: pl.own, env: extra, name: "step", cfg: cfg}
+	if c.isolates(cfg, pl.pool) {
 		// The pool's sandbox, user and cgroup, as its sessions get (#810).
 		ic.pool = pl.pool
 	}
 	var out, errOut limitedBuffer
 	ic.stdout, ic.stderr = &out, &errOut
 	ex, runErr := c.runIsolated(ctx, ic)
-	res.output = c.redactor(env).Text(out.String())
+	res.output = red.Text(out.String())
 	res.outcome = outcomeOf(res.output)
 	switch {
 	case ctx.Err() != nil:
@@ -455,14 +455,14 @@ func (c *Controller) runCommandStep(ctx context.Context, t store.Ticket, s confi
 		} else {
 			res.err = "exit " + exitText(ex)
 		}
-		if tail := strings.TrimSpace(c.redactor(env).Text(errOut.String())); tail != "" {
+		if tail := strings.TrimSpace(red.Text(errOut.String())); tail != "" {
 			res.err += ": " + lastLines(tail, 5)
 		}
 	}
 	return res
 }
 
-func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemplates, attemptKey string) autoResult {
+func (c *Controller) runHTTPStep(ctx context.Context, cfg *config.Config, s config.Step, st stepTemplates, attemptKey string) autoResult {
 	fill := st.fill
 	url, err := fill(s.URL)
 	if err != nil {
@@ -512,7 +512,7 @@ func (c *Controller) runHTTPStep(ctx context.Context, s config.Step, st stepTemp
 	defer func() { _ = resp.Body.Close() }()
 	var out limitedBuffer
 	_, _ = io.Copy(&out, resp.Body)
-	res.output = c.redactor(secrets).Text(out.String())
+	res.output = cfg.Redact.Scanner().Redactor(secrets).Text(out.String())
 	res.outcome = outcomeOf(res.output)
 	switch code := resp.StatusCode; {
 	case code >= 200 && code < 300:

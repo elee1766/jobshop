@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -12,7 +13,7 @@ import (
 // so a run never routes down after a failure. A held step is left alone
 // (its holder may still be working); the next event after it reopens
 // moves it.
-func (c *Controller) escalatePool(ctx context.Context, step *store.Ticket, why string) {
+func (c *Controller) escalatePool(ctx context.Context, cfg *config.Config, step *store.Ticket, why string) {
 	if step.Kind != store.KindStep || step.Status == store.StatusInProgress {
 		return
 	}
@@ -20,7 +21,7 @@ func (c *Controller) escalatePool(ctx context.Context, step *store.Ticket, why s
 	if err != nil || sf.RetryPool == "" || step.Pool == sf.RetryPool {
 		return
 	}
-	if _, ok := c.config().Pools[sf.RetryPool]; !ok {
+	if _, ok := cfg.Pools[sf.RetryPool]; !ok {
 		c.log.WarnContext(ctx, "retry pool not configured", "step", step.ID, "pool", sf.RetryPool)
 		return
 	}
@@ -41,7 +42,7 @@ func (c *Controller) escalatePool(ctx context.Context, step *store.Ticket, why s
 // escalateFailedSteps moves each open step of a run that has failed an
 // attempt to its retry pool. Called on every run event, so a failed
 // close, a release and an expired lease all land here.
-func (c *Controller) escalateFailedSteps(ctx context.Context, runID string) {
+func (c *Controller) escalateFailedSteps(ctx context.Context, cfg *config.Config, runID string) {
 	steps, err := store.Children(ctx, c.store, runID)
 	if err != nil {
 		return
@@ -55,6 +56,6 @@ func (c *Controller) escalateFailedSteps(ctx context.Context, runID string) {
 		if err != nil || sf.Failures == 0 || sf.RetryPool == "" || s.Pool == sf.RetryPool {
 			continue
 		}
-		c.escalatePool(ctx, s, fmt.Sprintf("attempt %d failed", sf.Failures))
+		c.escalatePool(ctx, cfg, s, fmt.Sprintf("attempt %d failed", sf.Failures))
 	}
 }

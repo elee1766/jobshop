@@ -39,11 +39,11 @@ type linearIntakeRead struct {
 // sig.SkipLabels, minus those an open run carries in meta.linear.issue.
 // The subject is the issue key. A Linear read error is logged and the
 // signal finds nothing, so an outage does not stop the other signals.
-func (c *Controller) stallLinearIssues(ctx context.Context, sig config.StallSignal) ([]stall, error) {
+func (c *Controller) stallLinearIssues(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]stall, error) {
 	if sig.Team == "" {
 		return nil, nil
 	}
-	issues, err := c.linearIntakeIssues(ctx, sig)
+	issues, err := c.linearIntakeIssues(ctx, cfg, sig)
 	if err != nil {
 		c.log.WarnContext(ctx, "linear_issue_no_run", "team", sig.Team, "err", err)
 		return nil, nil
@@ -85,7 +85,7 @@ func (c *Controller) linearIssueHasOpenRun(ctx context.Context, key string) (boo
 
 // linearIntakeIssues returns the matching issues, read from Linear at most
 // once per poll interval.
-func (c *Controller) linearIntakeIssues(ctx context.Context, sig config.StallSignal) ([]linear.Summary, error) {
+func (c *Controller) linearIntakeIssues(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]linear.Summary, error) {
 	key := strings.Join([]string{sig.Team, sig.States, sig.Labels, sig.SkipLabels}, "|")
 	poll := config.Duration(sig.Poll, config.DefaultLinearPoll)
 	now := c.now()
@@ -94,7 +94,7 @@ func (c *Controller) linearIntakeIssues(ctx context.Context, sig config.StallSig
 	if r, ok := c.linIntake.cache[key]; ok && now.Before(r.at.Add(poll)) {
 		return r.issues, nil
 	}
-	issues, err := c.readLinearIntake(ctx, sig)
+	issues, err := c.readLinearIntake(ctx, cfg, sig)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +108,7 @@ func (c *Controller) linearIntakeIssues(ctx context.Context, sig config.StallSig
 // readLinearIntake lists the team's issues as the identity covering the
 // team and keeps the open ones that match. Filtering is done here: the
 // list filter takes one state and one label, the vars take several.
-func (c *Controller) readLinearIntake(ctx context.Context, sig config.StallSignal) ([]linear.Summary, error) {
-	cfg := c.config()
+func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]linear.Summary, error) {
 	name, ok := cfg.IdentityFor(cfg.IdentityNames(), sig.Team)
 	if !ok {
 		return nil, fmt.Errorf("no identity covers team %s", sig.Team)
@@ -160,7 +159,8 @@ func (c *Controller) linearIntakeBlocked(ctx context.Context, cl *linear.Client,
 	if len(is.OpenBlockers()) > 0 {
 		return true
 	}
-	if err := is.CheckDeps(ctx, linearRepoOwner(cfg), c.githubIssueOpen); err != nil {
+	issueOpen := func(ctx context.Context, d linear.GitHubDep) (bool, error) { return c.githubIssueOpen(ctx, cfg, d) }
+	if err := is.CheckDeps(ctx, linearRepoOwner(cfg), issueOpen); err != nil {
 		c.log.WarnContext(ctx, "linear_issue_no_run: dependency", "issue", key, "err", err)
 		return false
 	}
@@ -184,11 +184,11 @@ func linearRepoOwner(cfg *config.Config) string {
 
 // githubIssueOpen reads a GitHub issue's state as the identity covering
 // its repo. Tests replace it with c.ghIssueOpen.
-func (c *Controller) githubIssueOpen(ctx context.Context, d linear.GitHubDep) (bool, error) {
+func (c *Controller) githubIssueOpen(ctx context.Context, cfg *config.Config, d linear.GitHubDep) (bool, error) {
 	if c.ghIssueOpen != nil {
 		return c.ghIssueOpen(ctx, d)
 	}
-	base, tok, err := c.pollerAuth(ctx, c.config(), "", d.Repo)
+	base, tok, err := c.pollerAuth(ctx, cfg, "", d.Repo)
 	if err != nil {
 		return false, err
 	}

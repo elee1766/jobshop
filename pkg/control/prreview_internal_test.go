@@ -60,7 +60,7 @@ func TestPRReview(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "prs.json"), []byte("["+pr(8)+","+pr(9)+"]"), 0o600))
 
 	start := func(wf, n string) rpc.RunResult {
-		res, err := c.startRun(t.Context(), scope{admin: true, actor: "admin"},
+		res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"},
 			rpc.RunStartParams{Workflow: wf, Vars: map[string]string{"pr": n}, Key: "pr-" + n}, nil)
 		require.NoError(t, err)
 		return res.(rpc.RunResult)
@@ -82,7 +82,7 @@ func TestPRReview(t *testing.T) {
 		return out
 	}
 	for range 3 {
-		c.runTriggers(t.Context())
+		c.runTriggers(t.Context(), c.config())
 	}
 	got := runs("pr-review")
 	assert.Len(t, got, 2, "one run per PR over repeated ticks")

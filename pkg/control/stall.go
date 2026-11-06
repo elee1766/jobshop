@@ -44,8 +44,8 @@ const stallMetaKey = "stall"
 
 // runStallTrigger starts one run per fireable stall of a when.stall
 // trigger (#143). ev is the delivery that woke it (JOB-72), nil on a poll.
-func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) {
-	fire, _, err := c.evalStall(ctx, name, tr, ev)
+func (c *Controller) runStallTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
+	fire, _, err := c.evalStall(ctx, cfg, name, tr, ev)
 	if err != nil {
 		c.log.ErrorContext(ctx, "stall trigger", "trigger", name, "err", err)
 		return
@@ -64,7 +64,7 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 				continue
 			}
 		}
-		t, existing, err := c.fireStall(ctx, name, tr, s)
+		t, existing, err := c.fireStall(ctx, cfg, name, tr, s)
 		if err != nil {
 			c.log.ErrorContext(ctx, "stall fire", "trigger", name, "key", key, "err", err)
 			continue
@@ -85,7 +85,7 @@ func (c *Controller) runStallTrigger(ctx context.Context, name string, tr config
 // max_open open runs in total (JOB-93), so a backlog of old stalls (a
 // fresh deploy, a long outage) is worked a few at a time. why explains
 // an empty result. ev is passed to the checks, nil on a poll.
-func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigger, ev triggerEvent) (fire []stall, why string, err error) {
+func (c *Controller) evalStall(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) (fire []stall, why string, err error) {
 	mine, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: name, Order: store.OrderNewest})
 	if err != nil {
 		return nil, "", err
@@ -100,7 +100,7 @@ func (c *Controller) evalStall(ctx context.Context, name string, tr config.Trigg
 	if open >= maxOpen {
 		return nil, fmt.Sprintf("%d stall runs open (max_open %d)", open, maxOpen), nil
 	}
-	found, err := c.detectStalls(ctx, tr, ev)
+	found, err := c.detectStalls(ctx, cfg, tr, ev)
 	if err != nil {
 		return nil, "", err
 	}
@@ -214,7 +214,7 @@ func isStallRun(r store.Ticket) bool {
 // <key_prefix>:<signal>:<subject>, or the trigger's run key filled with
 // the stall vars. existing is true when an open run already had that key
 // (one started by hand or by another run, JOB-33).
-func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigger, s stall) (run store.Ticket, existing bool, err error) {
+func (c *Controller) fireStall(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s stall) (run store.Ticket, existing bool, err error) {
 	tv := map[string]any{config.StallSignalVar: s.signal, config.StallSubjectVar: s.subject, config.StallDetailVar: s.detail}
 	key := s.keyWith(tr.StallKeyPrefix())
 	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: key}
@@ -236,7 +236,7 @@ func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigg
 		// own key (pr-<n>, JOB-33) never took part: leave it out.
 		m[stallMetaKey] = s.id()
 	}
-	res, err := c.startRun(ctx, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
+	res, err := c.startRun(ctx, cfg, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
 		return store.Ticket{}, false, err
 	}
@@ -247,7 +247,7 @@ func (c *Controller) fireStall(ctx context.Context, name string, tr config.Trigg
 // detectStalls evaluates every signal of the trigger, skipping subjects
 // that belong to the trigger's own workflow. An event re-evaluates all
 // of them; only a check uses its fields.
-func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger, ev triggerEvent) ([]stall, error) {
+func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr config.Trigger, ev triggerEvent) ([]stall, error) {
 	own, err := c.workflowTickets(ctx, tr.Run.Workflow)
 	if err != nil {
 		return nil, err
@@ -260,23 +260,23 @@ func (c *Controller) detectStalls(ctx context.Context, tr config.Trigger, ev tri
 		var err error
 		switch sig.Signal {
 		case config.StallReadyUnclaimed:
-			found, err = c.stallReadyUnclaimed(ctx, now, after)
+			found, err = c.stallReadyUnclaimed(ctx, cfg, now, after)
 		case config.StallPoolQuarantined:
-			found = c.stallPoolQuarantined()
+			found = c.stallPoolQuarantined(cfg)
 		case config.StallStepStalled:
 			found, err = c.stallSteps(ctx, now, after)
 		case config.StallSessionSilent:
 			found, err = c.stallSessions(ctx, now, after)
 		case config.StallNeedsHuman:
-			found, err = c.stallNeedsHuman(ctx, now, after, tr.Run.Workflow)
+			found, err = c.stallNeedsHuman(ctx, cfg, now, after, tr.Run.Workflow)
 		case config.StallBlocked:
 			found, err = c.stallBlocked(ctx, now, after)
 		case config.StallResourceWait:
 			found, err = c.stallResourceWait(ctx, now, after)
 		case config.StallIngestWorker, config.StallIngestBacklog:
-			found, err = c.stallIngest(ctx, sig.Signal)
+			found, err = c.stallIngest(ctx, cfg, sig.Signal)
 		case config.StallLinearIssueNoRun:
-			found, err = c.stallLinearIssues(ctx, sig)
+			found, err = c.stallLinearIssues(ctx, cfg, sig)
 		default:
 			found, err = c.stallCheck(ctx, tr, sig, ev)
 		}
@@ -415,8 +415,7 @@ func (c *Controller) lastUnblocked(ctx context.Context, t store.Ticket, last tim
 
 // stallReadyUnclaimed: ready tickets in a configured pool nobody claimed
 // for after. Chat pools are left out: their tickets wait for a person.
-func (c *Controller) stallReadyUnclaimed(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
-	cfg := c.config()
+func (c *Controller) stallReadyUnclaimed(ctx context.Context, cfg *config.Config, now time.Time, after time.Duration) ([]stall, error) {
 	var out []stall
 	for _, proj := range slices.Sorted(maps.Keys(cfg.Projects)) {
 		ts, err := c.store.List(ctx, store.Filter{Project: proj, Ready: true, Limit: store.DefaultLimit})
@@ -449,9 +448,9 @@ func (c *Controller) stallReadyUnclaimed(ctx context.Context, now time.Time, aft
 // stallPoolQuarantined: pools paused for crash-looping sessions. The
 // subject carries the pause end, so each quarantine is its own stall and
 // max_runs does not carry over from the last one.
-func (c *Controller) stallPoolQuarantined() []stall {
+func (c *Controller) stallPoolQuarantined(cfg *config.Config) []stall {
 	var out []stall
-	for _, p := range slices.Sorted(maps.Keys(c.config().Pools)) {
+	for _, p := range slices.Sorted(maps.Keys(cfg.Pools)) {
 		if c.poolPaused(p) {
 			c.mu.Lock()
 			until := c.poolPausedUntil[p]
@@ -543,7 +542,7 @@ func (c *Controller) stallSessions(ctx context.Context, now time.Time, after tim
 // stallNeedsHuman: needs_human runs, and open needs-human tickets that are
 // not a run's escalation (the run covers those), older than after. A run
 // of another pack instance is left to that instance's trigger (JOB-17).
-func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after time.Duration, workflow string) ([]stall, error) {
+func (c *Controller) stallNeedsHuman(ctx context.Context, cfg *config.Config, now time.Time, after time.Duration, workflow string) ([]stall, error) {
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
@@ -555,7 +554,7 @@ func (c *Controller) stallNeedsHuman(ctx context.Context, now time.Time, after t
 			// on it would only add another escalation (#704).
 			continue
 		}
-		if f, err := store.DecodeFields[store.RunFields](r); err == nil && !sameInstance(c.config(), f.Workflow, workflow) {
+		if f, err := store.DecodeFields[store.RunFields](r); err == nil && !sameInstance(cfg, f.Workflow, workflow) {
 			continue
 		}
 		last, err := c.lastActivity(ctx, r)

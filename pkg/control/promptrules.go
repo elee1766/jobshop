@@ -174,8 +174,9 @@ func (c *Controller) runRuleCommand(ctx context.Context, r config.PromptRule, ev
 		return ""
 	}
 	// The session's pool isolates the command like its agent (#810).
-	ic := isolatedCmd{argv: shArgv(r.Command), pool: ev.Pool, stdin: bytes.NewReader(in), name: "rule"}
-	if !c.isolates(ev.Pool) {
+	cfg := c.config()
+	ic := isolatedCmd{argv: shArgv(r.Command), pool: ev.Pool, stdin: bytes.NewReader(in), name: "rule", cfg: cfg}
+	if !c.isolates(cfg, ev.Pool) {
 		ic.pool, ic.dir = "", c.root.Dir
 	}
 	out := &capped{max: config.MaxRuleOutput}

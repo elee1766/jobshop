@@ -40,7 +40,7 @@ func (c *Controller) crashRelease(ctx context.Context, sessionID string) {
 			continue
 		}
 		c.maybeQuarantine(ctx, t.ID)
-		c.stepEvent(ctx, t)
+		c.stepEvent(ctx, c.config(), t)
 	}
 }
 
@@ -197,14 +197,20 @@ func (c *Controller) quarantinePool(ctx context.Context, pool, reason string) {
 	if pool == "" {
 		return
 	}
-	c.mu.Lock()
-	_, already := c.poolQuarantined[pool]
-	c.poolQuarantined[pool] = reason
-	c.mu.Unlock()
-	if !already {
+	if !c.setQuarantine(pool, reason) {
 		c.log.WarnContext(ctx, "pool quarantined: permanent spawn error", "pool", pool, "err", reason)
 	}
 	c.ensurePoolEscalation(ctx, pool, reason)
+}
+
+// setQuarantine records pool's permanent quarantine and reports whether
+// it was quarantined already.
+func (c *Controller) setQuarantine(pool, reason string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	_, already := c.poolQuarantined[pool]
+	c.poolQuarantined[pool] = reason
+	return already
 }
 
 // ensurePoolEscalation files "Pool <name> quarantined: <error>" unless an
@@ -249,7 +255,7 @@ func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason stri
 		return
 	}
 	c.log.InfoContext(ctx, "pool escalation filed", "pool", pool, "ticket", t.ID)
-	c.ensureEscalationChat(ctx, t)
+	c.ensureEscalationChat(ctx, cfg, t)
 }
 
 // clipTitle keeps the first line of s, at most 200 bytes.
@@ -261,14 +267,21 @@ func clipTitle(s string) string {
 	return s
 }
 
-// unquarantinePools clears permanent quarantines: all of them on reload
-// (the config may be fixed), or one by name.
+// unquarantinePools clears permanent quarantines: all of them, or one by
+// name.
 func (c *Controller) unquarantinePools(pool string) []string {
+	return c.unquarantineExcept(pool, nil)
+}
+
+// unquarantineExcept is unquarantinePools keeping the pools in keep: a
+// reload clears every quarantine (the config may be fixed) but the ones
+// its preflight just set.
+func (c *Controller) unquarantineExcept(pool string, keep map[string]string) []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var out []string
 	for p := range c.poolQuarantined {
-		if pool == "" || p == pool {
+		if _, kept := keep[p]; !kept && (pool == "" || p == pool) {
 			delete(c.poolQuarantined, p)
 			delete(c.poolPausedUntil, p)
 			delete(c.poolPauseReason, p)

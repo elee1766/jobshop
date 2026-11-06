@@ -106,6 +106,6 @@ func TestHookURLRetry(t *testing.T) {
 	require.NoError(t, err)
 	c.live.Store(lc)
 	c.root.Dir = dir
-	got := c.runHooks(t.Context(), hookEvent{On: config.HookAction, Action: "push"})
+	got := c.runHooks(t.Context(), c.config(), hookEvent{On: config.HookAction, Action: "push"})
 	assert.Equal(t, hookAnswer{rpc.GuardDeny, "remote says no"}, got)
 }

@@ -15,7 +15,7 @@ import (
 
 func attentionKinds(t *testing.T, c *Controller) []string {
 	t.Helper()
-	items, err := c.attentionItems(t.Context())
+	items, err := c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	out := []string{}
 	for _, it := range items {
@@ -66,7 +66,7 @@ func TestAttention(t *testing.T) {
 	// as a pool, since the controller started (clock start).
 	assert.Equal(t, []string{"pool plan", "run " + bare.ID, "ticket " + esc.ID, "question " + q.ID, "decision " + prop.ID, "ticket " + poolEsc.ID}, got)
 
-	items, err := c.attentionItems(t.Context())
+	items, err := c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	assert.Equal(t, "acme/widget", items[2].Repo)
 	assert.Equal(t, "#7", items[2].Ref)
@@ -88,7 +88,7 @@ func TestAttentionSummary(t *testing.T) {
 	})
 	clk.advance(time.Minute)
 	long := mkTicket(t, c, store.NewTicket{Title: "long", Body: strings.Repeat("é", 300), Labels: []string{needsHumanLabel}})
-	items, err := c.attentionItems(t.Context())
+	items, err := c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
 	got := map[string]string{}
 	for _, it := range items {

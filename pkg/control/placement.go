@@ -30,7 +30,7 @@ func resolvePlacement(cfg *config.Config, w *config.Workflow, p *config.Placemen
 }
 
 // placeSteps re-places open steps with placement options.
-func (c *Controller) placeSteps(ctx context.Context) {
+func (c *Controller) placeSteps(ctx context.Context, cfg *config.Config) {
 	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Status: store.StatusOpen, Limit: store.DefaultLimit})
 	if err != nil {
 		return
@@ -45,7 +45,7 @@ func (c *Controller) placeSteps(ctx context.Context) {
 			continue
 		}
 		if free == nil {
-			if free, err = c.slotsFree(ctx); err != nil {
+			if free, err = c.slotsFree(ctx, cfg); err != nil {
 				return
 			}
 		}
@@ -56,13 +56,13 @@ func (c *Controller) placeSteps(ctx context.Context) {
 }
 
 // slotsFree returns whether a resource key has a free slot now.
-func (c *Controller) slotsFree(ctx context.Context) (func(string) bool, error) {
+func (c *Controller) slotsFree(ctx context.Context, cfg *config.Config) (func(string) bool, error) {
 	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
 	caps := map[string]int{}
-	for name, n := range c.config().ResourceCaps() {
+	for name, n := range cfg.ResourceCaps() {
 		caps[name] = n
 	}
 	held := map[string]int{}

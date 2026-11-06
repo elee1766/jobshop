@@ -41,12 +41,12 @@ type hookAnswer struct {
 
 // runHooks runs every hook for the event in config order and returns the
 // first answer that is not allow. No hooks means allow.
-func (c *Controller) runHooks(ctx context.Context, ev hookEvent) hookAnswer {
-	for _, h := range c.config().Hooks {
+func (c *Controller) runHooks(ctx context.Context, cfg *config.Config, ev hookEvent) hookAnswer {
+	for _, h := range cfg.Hooks {
 		if !h.Applies(ev.On, ev.Action, ev.Pool) {
 			continue
 		}
-		a := c.runHook(ctx, h, ev)
+		a := c.runHook(ctx, cfg, h, ev)
 		if a.Decision != rpc.GuardAllow {
 			c.log.InfoContext(ctx, "hook decision", "on", ev.On, "action", ev.Action, "session", ev.Session,
 				"decision", a.Decision, "reason", a.Reason)
@@ -57,7 +57,7 @@ func (c *Controller) runHooks(ctx context.Context, ev hookEvent) hookAnswer {
 }
 
 // runHook fails closed: a crash, timeout or unreadable answer is deny.
-func (c *Controller) runHook(ctx context.Context, h config.Hook, ev hookEvent) hookAnswer {
+func (c *Controller) runHook(ctx context.Context, cfg *config.Config, h config.Hook, ev hookEvent) hookAnswer {
 	in, err := json.Marshal(ev)
 	if err != nil {
 		return hookAnswer{rpc.GuardDeny, "hook event: " + err.Error()}
@@ -75,8 +75,8 @@ func (c *Controller) runHook(ctx context.Context, h config.Hook, ev hookEvent) h
 	defer cancel()
 	// The session's pool sandboxes the hook like the session's agent
 	// (#810); an event with no pool runs it in the root dir unisolated.
-	ic := isolatedCmd{argv: shArgv(h.Command), pool: ev.Pool, stdin: bytes.NewReader(in), name: "hook"}
-	if !c.isolates(ev.Pool) {
+	ic := isolatedCmd{argv: shArgv(h.Command), pool: ev.Pool, stdin: bytes.NewReader(in), name: "hook", cfg: cfg}
+	if !c.isolates(cfg, ev.Pool) {
 		ic.pool, ic.dir = "", c.root.Dir
 	}
 	var stdout bytes.Buffer
@@ -140,7 +140,7 @@ func (c *Controller) guard(ctx context.Context, sc scope, p rpc.GuardParams) (an
 	if r, ok := c.askedHuman(ctx, key); ok {
 		return r, nil
 	}
-	a := c.runHooks(ctx, ev)
+	a := c.runHooks(ctx, c.config(), ev)
 	r := rpc.GuardResult{Decision: a.Decision, Reason: a.Reason}
 	if a.Decision == rpc.GuardAskHuman {
 		t, err := c.fileAskHuman(ctx, ev, key, a.Reason)
@@ -217,10 +217,11 @@ const maxReasonMeta = 500
 // refuses the claim. ask_human on claim is a deny: there is no ticket to
 // wait on before the claim exists.
 func (c *Controller) claimHook(ctx context.Context, sc scope, t store.Ticket) error {
-	if sc.admin || len(c.config().Hooks) == 0 {
+	cfg := c.config()
+	if sc.admin || len(cfg.Hooks) == 0 {
 		return nil
 	}
-	a := c.runHooks(ctx, hookEvent{On: config.HookClaim, Session: sc.session, Pool: sc.pool, Project: sc.project, Ticket: &t})
+	a := c.runHooks(ctx, cfg, hookEvent{On: config.HookClaim, Session: sc.session, Pool: sc.pool, Project: sc.project, Ticket: &t})
 	if a.Decision == rpc.GuardAllow {
 		return nil
 	}

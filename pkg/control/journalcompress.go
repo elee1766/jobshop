@@ -10,6 +10,7 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -24,8 +25,8 @@ const journalCompressEvery = time.Hour
 // maybeCompressJournals starts a sweep in the background when one is due
 // and none is running: a large journal takes seconds and the tick must
 // not wait on it.
-func (c *Controller) maybeCompressJournals(_ context.Context) {
-	cfg := c.config().Journal.Compress
+func (c *Controller) maybeCompressJournals(_ context.Context, passCfg *config.Config) {
+	cfg := passCfg.Journal.Compress
 	if cfg.AfterDuration() <= 0 {
 		return
 	}

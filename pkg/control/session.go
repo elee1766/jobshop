@@ -520,7 +520,7 @@ func (r *runner) finish(resolution, reason string) {
 	if resolution == resolutionCrashed {
 		r.c.crashRelease(ctx, r.id)
 	}
-	r.c.endSession(ctx, r.id, "session "+resolution)
+	r.c.endSession(ctx, r.c.config(), r.id, "session "+resolution)
 }
 
 // stopSessionProcs stops processes that still carry the session's env
@@ -1335,7 +1335,7 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 			_, _ = r.c.store.Update(ctx, "controller", t.ID, store.Update{DeferUntil: &until})
 		}
 		r.log.WarnContext(ctx, "released unclosed ticket", "ticket", t.ID, "failure", repeat)
-		r.c.stepEvent(ctx, t)
+		r.c.stepEvent(ctx, r.c.config(), t)
 	}
 }
 
@@ -1677,8 +1677,11 @@ func (c *client) WaitForTerminalExit(context.Context, acp.WaitForTerminalExitReq
 }
 
 // sessionCwd is where the agent works: the session worktree or pool dir.
-func (c *Controller) sessionCwd(t store.Ticket) string {
-	p, ok := c.config().Pools[t.Pool]
+func (c *Controller) sessionCwd(t store.Ticket) string { return c.sessionCwdIn(c.config(), t) }
+
+// sessionCwdIn is sessionCwd under cfg.
+func (c *Controller) sessionCwdIn(cfg *config.Config, t store.Ticket) string {
+	p, ok := cfg.Pools[t.Pool]
 	if ok && p.Repo != "" {
 		return filepath.Join(c.root.SessionDir(t.ID), "work")
 	}
@@ -1956,12 +1959,12 @@ func worktreeAddPermanent(out string) bool {
 // removeWorktree deletes a session's worktree. caller names the code path
 // for the WARN (#154). It refuses while the ticket is open or the host is
 // alive: a live session's worktree must never go.
-func (c *Controller) removeWorktree(t store.Ticket, caller string) {
-	p, ok := c.config().Pools[t.Pool]
+func (c *Controller) removeWorktree(cfg *config.Config, t store.Ticket, caller string) {
+	p, ok := cfg.Pools[t.Pool]
 	if !ok || p.Repo == "" {
 		return
 	}
-	cwd := c.sessionCwd(t)
+	cwd := c.sessionCwdIn(cfg, t)
 	if _, err := os.Stat(cwd); err != nil {
 		return
 	}
@@ -1983,7 +1986,7 @@ func (c *Controller) removeWorktree(t store.Ticket, caller string) {
 
 // supervise runs once per tick: heartbeats claims held by live sessions and
 // starts sessions for pools with waiting work.
-func (c *Controller) supervise(ctx context.Context) {
+func (c *Controller) supervise(ctx context.Context, cfg *config.Config, lease time.Duration) {
 	live := c.liveRunners()
 	for _, id := range live {
 		held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
@@ -1992,21 +1995,21 @@ func (c *Controller) supervise(ctx context.Context) {
 		}
 		for _, t := range held {
 			cl := store.Claim{TicketID: t.ID, Holder: id, Fence: t.Fence}
-			if _, err := c.store.Heartbeat(ctx, cl, c.leaseDur()); err != nil && !errors.Is(err, store.ErrNotHolder) {
+			if _, err := c.store.Heartbeat(ctx, cl, lease); err != nil && !errors.Is(err, store.ErrNotHolder) {
 				c.log.WarnContext(ctx, "heartbeat", "ticket", t.ID, "err", err)
 			}
 		}
 	}
-	c.recordGauges(ctx)
+	c.recordGauges(ctx, cfg)
 	if c.draining() {
 		return
 	}
-	c.reconcile(ctx)
+	c.reconcile(ctx, cfg)
 }
 
 // recordGauges sets the session and ready-ticket gauges for each pool.
 // Session state is backoff, working (holds a ticket) or idle.
-func (c *Controller) recordGauges(ctx context.Context) {
+func (c *Controller) recordGauges(ctx context.Context, cfg *config.Config) {
 	backoff := map[string]bool{}
 	c.mu.Lock()
 	for id, r := range c.runners {
@@ -2020,7 +2023,7 @@ func (c *Controller) recordGauges(ctx context.Context) {
 		return
 	}
 	counts := map[[2]string]int64{}
-	for name := range c.config().Pools {
+	for name := range cfg.Pools {
 		for _, st := range []string{"idle", "working", "backoff"} {
 			counts[[2]string{name, st}] = 0
 		}
@@ -2041,9 +2044,9 @@ func (c *Controller) recordGauges(ctx context.Context) {
 	for _, s := range open {
 		byPool[s.Pool] = append(byPool[s.Pool], s.ID)
 	}
-	c.recordCgroupMetrics(ctx, byPool)
-	c.recordInboxGauges(ctx)
-	for name, p := range c.config().Pools {
+	c.recordCgroupMetrics(ctx, cfg, byPool)
+	c.recordInboxGauges(ctx, cfg)
+	for name, p := range cfg.Pools {
 		// Ready is capped by the store's default limit; enough for a gauge.
 		if ready, err := c.store.List(ctx, store.Filter{Project: p.Project, Pool: name, Ready: true}); err == nil {
 			c.metrics.Ready.Record(ctx, int64(len(ready)), metric.WithAttributes(
@@ -2103,20 +2106,20 @@ func (r *runner) lifecycle(event string, attrs ...attribute.KeyValue) {
 // agent is configured, starts its driver. Sessions whose agent is not in
 // the config are external: something else (a human running an agent with
 // JOBSHOP_SOCKET) drives them.
-func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent, key, title, displayName string) (store.Ticket, error) {
+func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, project, pool, agent, key, title, displayName string) (store.Ticket, error) {
 	if agent == "" {
 		return store.Ticket{}, fmt.Errorf("%w: agent is required", store.ErrInvalid)
 	}
 	// The slot pick and the create are one step, so two creates in the
 	// same pool never take the same per-session id (#540).
 	c.slotMu.Lock()
-	slot, err := c.sessionSlot(ctx, pool)
+	slot, err := c.sessionSlot(ctx, cfg, pool)
 	if err != nil {
 		c.slotMu.Unlock()
 		return store.Ticket{}, err
 	}
 	if displayName == "" {
-		displayName = c.config().Pools[pool].DisplayName
+		displayName = cfg.Pools[pool].DisplayName
 	}
 	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key, DisplayName: displayName, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
 	if err != nil {
@@ -2140,17 +2143,17 @@ func (c *Controller) newSession(ctx context.Context, actor, project, pool, agent
 	if err := c.openSession(t); err != nil {
 		return t, err
 	}
-	c.drive(t)
+	c.drive(cfg, t)
 	return t, nil
 }
 
 // drive starts the driver for a session whose agent is configured.
-func (c *Controller) drive(t store.Ticket) {
+func (c *Controller) drive(cfg *config.Config, t store.Ticket) {
 	f, err := store.DecodeFields[store.SessionFields](t)
 	if err != nil {
 		return
 	}
-	if _, ok := c.config().Agents[f.Agent]; ok {
+	if _, ok := cfg.Agents[f.Agent]; ok {
 		c.startRunner(t)
 	}
 }

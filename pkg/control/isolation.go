@@ -104,11 +104,11 @@ func moveHosts(cg cgroupSetup, pid int) {
 	}
 }
 
-// tuneCgroup applies limits.cgroup to the controller's cgroup, at start and
-// after each reload. At start it also moves live hosts out of the
+// tuneCgroup applies cfg's limits.cgroup to the controller's cgroup, at
+// start and on each reload. At start it also moves live hosts out of the
 // controller's cgroup.
-func (c *Controller) tuneCgroup() {
-	hc := c.config().Limits.Cgroup
+func (c *Controller) tuneCgroup(cfg *config.Config) {
+	hc := cfg.Limits.Cgroup
 	if hc == nil {
 		return
 	}
@@ -380,12 +380,12 @@ func keyedValue(path, key string) int64 {
 
 // recordCgroupMetrics sums the live session cgroups per pool. Called each
 // tick; a no-op without a sessions cgroup.
-func (c *Controller) recordCgroupMetrics(ctx context.Context, pools map[string][]string) {
+func (c *Controller) recordCgroupMetrics(ctx context.Context, cfg *config.Config, pools map[string][]string) {
 	if c.metrics == nil || c.cgroup.sessions == "" {
 		return
 	}
 	for pool, ids := range pools {
-		if c.config().IsolationFor(pool).Limits == nil {
+		if cfg.IsolationFor(pool).Limits == nil {
 			continue
 		}
 		var sum cgroupStats

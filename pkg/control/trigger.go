@@ -38,20 +38,20 @@ type triggerState struct {
 }
 
 // runTriggers fires every trigger whose conditions hold. Called each tick.
-func (c *Controller) runTriggers(ctx context.Context) {
-	for _, name := range slices.Sorted(maps.Keys(c.config().Triggers)) {
-		tr := c.config().Triggers[name]
+func (c *Controller) runTriggers(ctx context.Context, cfg *config.Config) {
+	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
+		tr := cfg.Triggers[name]
 		if !c.triggerPollDue(name, tr) {
 			continue
 		}
-		c.runTrigger(ctx, name, tr)
+		c.runTrigger(ctx, cfg, name, tr)
 	}
 }
 
 // runTrigger evaluates one trigger that is due, under a span naming it and
 // the result: fired, held (conditions do not hold), stall or error
 // (JOB-105).
-func (c *Controller) runTrigger(ctx context.Context, name string, tr config.Trigger) {
+func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger) {
 	ctx, span := telemetry.StartSpan(ctx, "trigger "+name, attribute.String("jobshop.trigger", name))
 	result := "held"
 	var runErr error
@@ -60,11 +60,11 @@ func (c *Controller) runTrigger(ctx context.Context, name string, tr config.Trig
 		telemetry.End(span, runErr)
 	}()
 	if len(tr.When.Stall) > 0 {
-		c.runStallTrigger(ctx, name, tr, nil)
+		c.runStallTrigger(ctx, cfg, name, tr, nil)
 		result = "stall"
 		return
 	}
-	st, err := c.evalTrigger(ctx, name, tr)
+	st, err := c.evalTrigger(ctx, cfg, name, tr)
 	if err != nil {
 		result, runErr = "error", err
 		c.log.ErrorContext(ctx, "trigger", "trigger", name, "err", err)
@@ -73,7 +73,7 @@ func (c *Controller) runTrigger(ctx context.Context, name string, tr config.Trig
 	if !st.holds {
 		return
 	}
-	t, err := c.fireTrigger(ctx, name, tr, st.key)
+	t, err := c.fireTrigger(ctx, cfg, name, tr, st.key)
 	if err != nil {
 		result, runErr = "error", err
 		c.log.ErrorContext(ctx, "trigger fire", "trigger", name, "err", err)
@@ -84,7 +84,7 @@ func (c *Controller) runTrigger(ctx context.Context, name string, tr config.Trig
 }
 
 // evalTrigger checks dedup, cooldown, cron and counts, in that order.
-func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Trigger) (triggerState, error) {
+func (c *Controller) evalTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger) (triggerState, error) {
 	var st triggerState
 	now := c.now()
 	mine := store.Filter{MetaPack: triggerPack, MetaKey: "name", MetaValue: name}
@@ -150,7 +150,7 @@ func (c *Controller) evalTrigger(ctx context.Context, name string, tr config.Tri
 		st.nextCron = cronNext(tr.When, now)
 	}
 
-	if why, err := c.countsHold(ctx, tr.When); err != nil || why != "" {
+	if why, err := c.countsHold(ctx, cfg, tr.When); err != nil || why != "" {
 		st.why = why
 		return st, err
 	}
@@ -240,7 +240,7 @@ func (c *Controller) learningsHold(ctx context.Context, l config.LearningsWhen, 
 
 // countsHold returns "" when every count threshold in w holds, else the
 // first that does not. Counts are capped at store.DefaultLimit (500).
-func (c *Controller) countsHold(ctx context.Context, w config.TriggerWhen) (string, error) {
+func (c *Controller) countsHold(ctx context.Context, cfg *config.Config, w config.TriggerWhen) (string, error) {
 	if !w.HasCounts() {
 		return "", nil
 	}
@@ -257,7 +257,7 @@ func (c *Controller) countsHold(ctx context.Context, w config.TriggerWhen) (stri
 		below, above *int
 		n            func() (int, error)
 	}{
-		{"ready", w.ReadyBelow, w.ReadyAbove, func() (int, error) { return c.readyCount(ctx, w, kind) }},
+		{"ready", w.ReadyBelow, w.ReadyAbove, func() (int, error) { return c.readyCount(ctx, cfg, w, kind) }},
 		{"open", w.OpenBelow, w.OpenAbove, func() (int, error) { return count(store.StatusOpen) }},
 		{"in_progress", w.InProgressBelow, w.InProgressAbove, func() (int, error) { return count(store.StatusInProgress) }},
 	}
@@ -281,12 +281,12 @@ func (c *Controller) countsHold(ctx context.Context, w config.TriggerWhen) (stri
 
 // readyCount counts claimable tickets: open, unblocked and not deferred.
 // Only claimable kinds (tasks) can be ready, so other kinds count zero.
-func (c *Controller) readyCount(ctx context.Context, w config.TriggerWhen, kind store.Kind) (int, error) {
+func (c *Controller) readyCount(ctx context.Context, cfg *config.Config, w config.TriggerWhen, kind store.Kind) (int, error) {
 	if !slices.Contains(store.ClaimableKinds, kind) {
 		return 0, nil
 	}
-	projects := slices.Sorted(maps.Keys(c.config().Projects))
-	if p, ok := c.config().Pools[w.Pool]; ok {
+	projects := slices.Sorted(maps.Keys(cfg.Projects))
+	if p, ok := cfg.Pools[w.Pool]; ok {
 		projects = []string{p.Project}
 	}
 	n := 0
@@ -327,13 +327,13 @@ func (c *Controller) runCheck(ctx context.Context, w config.TriggerWhen) (key, w
 	return strings.TrimSpace(stdout.String()), "", nil
 }
 
-func (c *Controller) fireTrigger(ctx context.Context, name string, tr config.Trigger, key string) (store.Ticket, error) {
-	return c.fireTriggerEvent(ctx, name, tr, key, nil)
+func (c *Controller) fireTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string) (store.Ticket, error) {
+	return c.fireTriggerEvent(ctx, cfg, name, tr, key, nil)
 }
 
 // fireTriggerEvent fires tr; ev is the event that fired it, nil for a
 // poll. Its fields are the event template var (empty on a poll).
-func (c *Controller) fireTriggerEvent(ctx context.Context, name string, tr config.Trigger, key string, ev triggerEvent) (store.Ticket, error) {
+func (c *Controller) fireTriggerEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string, ev triggerEvent) (store.Ticket, error) {
 	m := map[string]string{"name": name}
 	if key != "" {
 		// Prefixed with the trigger name so keys of different triggers
@@ -347,10 +347,10 @@ func (c *Controller) fireTriggerEvent(ctx context.Context, name string, tr confi
 	out, _, _ := strings.Cut(key, "\n")
 	tv := map[string]any{config.CheckOutputVar: strings.TrimSpace(out), config.EventVar: ev.vars()}
 	if tr.Run != nil {
-		return c.fireRun(ctx, tr.Run, m, tv)
+		return c.fireRun(ctx, cfg, tr.Run, m, tv)
 	}
 	if tr.Command != nil {
-		return c.fireCommand(ctx, name, tr, meta, tv)
+		return c.fireCommand(ctx, cfg, name, tr, meta, tv)
 	}
 	tt := *tr.Ticket
 	if key != "" {
@@ -366,7 +366,7 @@ func (c *Controller) fireTriggerEvent(ctx context.Context, name string, tr confi
 // ticket, so the open run holds the trigger and its key dedups like a
 // ticket's. A run already open under the same run key is not an error;
 // the trigger stays held by that run only if it carries the trigger meta.
-func (c *Controller) fireRun(ctx context.Context, r *config.TriggerRun, m map[string]string, tv map[string]any) (store.Ticket, error) {
+func (c *Controller) fireRun(ctx context.Context, cfg *config.Config, r *config.TriggerRun, m map[string]string, tv map[string]any) (store.Ticket, error) {
 	p := rpc.RunStartParams{Workflow: r.Workflow, Vars: map[string]string{}}
 	for k, v := range r.Vars {
 		s, err := r.Fill(v, tv)
@@ -380,7 +380,7 @@ func (c *Controller) fireRun(ctx context.Context, r *config.TriggerRun, m map[st
 		return store.Ticket{}, fmt.Errorf("run key: %w", err)
 	}
 	p.Key = k
-	res, err := c.startRun(ctx, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
+	res, err := c.startRun(ctx, cfg, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
 		return store.Ticket{}, err
 	}
@@ -395,20 +395,21 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 	// commands (often gh), and one after another they made the Desk
 	// pools view take ~5s (#522). Evaluation only reads, so order does
 	// not matter.
-	trs := c.config().Triggers
+	cfg := c.config()
+	trs := cfg.Triggers
 	names := slices.Sorted(maps.Keys(trs))
 	out := make([]rpc.TriggerInfo, len(names))
 	errs := make([]error, len(names))
 	var wg sync.WaitGroup
 	for i, name := range names {
-		wg.Go(func() { out[i], errs[i] = c.triggerInfo(ctx, name, trs[name]) })
+		wg.Go(func() { out[i], errs[i] = c.triggerInfo(ctx, cfg, name, trs[name]) })
 	}
 	wg.Wait()
 	if err := errors.Join(errs...); err != nil {
 		return nil, err
 	}
 	labels := map[string][]string{}
-	for _, in := range c.config().Instances {
+	for _, in := range cfg.Instances {
 		for _, name := range in.Triggers {
 			labels[name] = config.InstanceLabels(in)
 		}
@@ -420,9 +421,9 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 }
 
 // triggerInfo evaluates one trigger for trigger.list.
-func (c *Controller) triggerInfo(ctx context.Context, name string, tr config.Trigger) (rpc.TriggerInfo, error) {
+func (c *Controller) triggerInfo(ctx context.Context, cfg *config.Config, name string, tr config.Trigger) (rpc.TriggerInfo, error) {
 	if len(tr.When.Stall) > 0 {
-		fire, why, err := c.evalStall(ctx, name, tr, nil)
+		fire, why, err := c.evalStall(ctx, cfg, name, tr, nil)
 		if err != nil {
 			return rpc.TriggerInfo{}, err
 		}
@@ -432,7 +433,7 @@ func (c *Controller) triggerInfo(ctx context.Context, name string, tr config.Tri
 		}
 		return info, nil
 	}
-	st, err := c.evalTrigger(ctx, name, tr)
+	st, err := c.evalTrigger(ctx, cfg, name, tr)
 	if err != nil {
 		return rpc.TriggerInfo{}, err
 	}

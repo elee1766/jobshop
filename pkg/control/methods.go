@@ -209,7 +209,7 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 		p.Project = sc.project
 	}
 	if p.Orphaned {
-		return c.orphaned(ctx, p.Project, p.Limit)
+		return c.orphaned(ctx, c.config(), p.Project, p.Limit)
 	}
 	f := store.Filter{
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
@@ -277,6 +277,12 @@ func (c *Controller) update(ctx context.Context, sc scope, p rpc.UpdateParams) (
 }
 
 func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParams) (any, error) {
+	return c.closeTicketIn(ctx, c.config(), sc, p)
+}
+
+// closeTicketIn is closeTicket under cfg: the pass's when the supervisor
+// closes a chat (JOB-104).
+func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc scope, p rpc.CloseParams) (any, error) {
 	id, err := c.current(ctx, sc, p.ID)
 	if err != nil {
 		return nil, err
@@ -299,7 +305,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		return nil, err
 	}
 	if p.Resolution == store.ResolutionRequestChanges {
-		t, err := c.closeRequestChanges(ctx, sc, id, cl, p.Comment)
+		t, err := c.closeRequestChanges(ctx, cfg, sc, id, cl, p.Comment)
 		if err != nil {
 			return nil, err
 		}
@@ -307,7 +313,7 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		counted := t
 		counted.Resolution = store.ResolutionRequestChanges
 		c.countClose(ctx, counted)
-		c.checkRun(ctx, t.ParentID)
+		c.checkRun(ctx, cfg, t.ParentID)
 		return t, nil
 	}
 	if strings.TrimSpace(p.Comment) != "" {
@@ -340,11 +346,11 @@ func (c *Controller) closeTicket(ctx context.Context, sc scope, p rpc.CloseParam
 		c.recordStepFailure(ctx, t, "closed failed", failedReason(t))
 	}
 	if t.Kind == store.KindStep && t.ParentID != "" {
-		c.checkRun(ctx, t.ParentID)
+		c.checkRun(ctx, cfg, t.ParentID)
 	}
 	if t.Kind == store.KindSession {
 		c.stopRunner(t.ID)
-		c.endSession(ctx, t.ID, "session closed")
+		c.endSession(ctx, cfg, t.ID, "session closed")
 	}
 	c.escalationClosed(ctx, t)
 	return t, nil
@@ -376,21 +382,21 @@ func (c *Controller) checkStepResolution(ctx context.Context, sc scope, id, res 
 
 // endSession stops a session's socket, frees everything it held and removes
 // its worktree.
-func (c *Controller) endSession(ctx context.Context, id, reason string) {
+func (c *Controller) endSession(ctx context.Context, cfg *config.Config, id, reason string) {
 	c.closeSession(id)
 	c.setReadOnly(id, false)
 	// Every caller stopped the host first, so exit.json is written.
 	c.saveEnded(ctx, id)
 	if t, err := c.store.Get(ctx, id); err == nil {
-		c.removeWorktree(t, "endSession: "+reason)
-		c.removeSlotHome(t)
+		c.removeWorktree(cfg, t, "endSession: "+reason)
+		c.removeSlotHome(cfg, t)
 	}
 	released, err := c.store.Expire(ctx, "controller", id, reason)
 	if err != nil {
 		c.log.ErrorContext(ctx, "release session claims", "session", id, "err", err)
 		return
 	}
-	c.stepEvents(ctx, released)
+	c.stepEvents(ctx, cfg, released)
 	if len(released) > 0 {
 		c.log.InfoContext(ctx, "released session claims", "session", id, "tickets", released)
 	}
@@ -548,7 +554,7 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 		// A plain release of a step counts as a failed attempt.
 		c.recordStepFailure(ctx, t, "released", p.Reason)
 	}
-	c.stepEvent(ctx, t)
+	c.stepEvent(ctx, c.config(), t)
 	return t, nil
 }
 
@@ -578,7 +584,7 @@ func (c *Controller) handoff(ctx context.Context, sc scope, p rpc.HandoffParams)
 	if err != nil {
 		return nil, err
 	}
-	c.stepEvent(ctx, t)
+	c.stepEvent(ctx, c.config(), t)
 	return t, nil
 }
 
@@ -590,15 +596,16 @@ func (c *Controller) sessionNew(ctx context.Context, sc scope, p rpc.SessionNewP
 	if err != nil {
 		return nil, err
 	}
+	cfg := c.config()
 	if p.Pool != "" {
-		if pool, ok := c.config().Pools[p.Pool]; ok && p.Agent == "" {
+		if pool, ok := cfg.Pools[p.Pool]; ok && p.Agent == "" {
 			p.Agent = pool.Agent
 		}
-		if err := c.humanSlot(ctx, p.Pool); err != nil {
+		if err := c.humanSlot(ctx, cfg, p.Pool); err != nil {
 			return nil, err
 		}
 	}
-	t, err := c.newSession(ctx, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title, p.DisplayName)
+	t, err := c.newSession(ctx, cfg, sc.actor, proj, p.Pool, p.Agent, p.Key, p.Title, p.DisplayName)
 	if err != nil {
 		return nil, err
 	}
@@ -903,7 +910,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 			continue
 		}
 		if !p.DryRun {
-			c.removeWorktree(t, "session reap")
+			c.removeWorktree(c.config(), t, "session reap")
 			c.log.WarnContext(ctx, "reap: removing session dir", "session", t.ID, "dir", dir)
 			if err := os.RemoveAll(dir); err != nil {
 				return res, fmt.Errorf("remove %s: %w", dir, err)

@@ -118,7 +118,7 @@ func escalateRunNow(t *testing.T, c *Controller, workflow string) store.Ticket {
 	t.Helper()
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	res, err := c.startRun(ctx, admin, rpc.RunStartParams{Workflow: workflow, Vars: map[string]string{"n": "7"}}, nil)
+	res, err := c.startRun(ctx, c.config(), admin, rpc.RunStartParams{Workflow: workflow, Vars: map[string]string{"n": "7"}}, nil)
 	require.NoError(t, err)
 	run := res.(rpc.RunResult)
 	_, err = c.closeTicket(ctx, admin, rpc.CloseParams{ID: run.Steps[0].ID, Resolution: "failed"})
@@ -177,17 +177,17 @@ func TestEscalationChatRun(t *testing.T) {
 
 	// Sweeps and a restart over the same database open no second chat
 	// and resend nothing.
-	c.sweepEscalationChats(t.Context())
+	c.sweepEscalationChats(t.Context(), c.config())
 	c2 := escController(t, dir)
-	c2.sweepEscalationChats(t.Context())
-	c2.sweepEscalationChats(t.Context())
+	c2.sweepEscalationChats(t.Context(), c2.config())
+	c2.sweepEscalationChats(t.Context(), c2.config())
 	assert.Len(t, chatSessions(t, c2, esc.ID), 1)
 	assert.Len(t, messagesTo(t, c2, e.Session), 1)
 
 	// Closing the ticket sends one final message, once.
 	_, err = c2.closeTicket(t.Context(), scope{admin: true, actor: "admin"}, rpc.CloseParams{ID: esc.ID})
 	require.NoError(t, err)
-	c2.sweepEscalationChats(t.Context())
+	c2.sweepEscalationChats(t.Context(), c2.config())
 	msgs = messagesTo(t, c2, e.Session)
 	require.Len(t, msgs, 2)
 	assert.Contains(t, msgs[1].Title, "escalation "+esc.ID+" closed (done)")
@@ -219,8 +219,8 @@ func TestEscalationChatRepair(t *testing.T) {
 	require.NoError(t, err)
 
 	c2 := escController(t, dir)
-	c2.sweepEscalationChats(t.Context())
-	c2.sweepEscalationChats(t.Context())
+	c2.sweepEscalationChats(t.Context(), c2.config())
+	c2.sweepEscalationChats(t.Context(), c2.config())
 	got, err = c2.store.Get(t.Context(), esc.ID)
 	require.NoError(t, err)
 	e2, _ := escalationMeta(got)
@@ -235,7 +235,7 @@ func TestEscalationChatNoConfig(t *testing.T) {
 	t.Parallel()
 	c := escController(t, escDir(t))
 	esc := escalateRunNow(t, c, "plain")
-	c.sweepEscalationChats(t.Context())
+	c.sweepEscalationChats(t.Context(), c.config())
 	got, err := c.store.Get(t.Context(), esc.ID)
 	require.NoError(t, err)
 	_, ok := escalationMeta(got)
@@ -260,7 +260,7 @@ func TestEscalationChatPool(t *testing.T) {
 	require.Len(t, msgs, 1)
 	assert.Equal(t, fmt.Sprintf("Pool dev is quarantined in %s: spawn: repo /x: no such file", esc[0].ID), messageContext(t, msgs[0]))
 	c.quarantinePool(t.Context(), "dev", "again")
-	c.sweepEscalationChats(t.Context())
+	c.sweepEscalationChats(t.Context(), c.config())
 	assert.Len(t, chatSessions(t, c, esc[0].ID), 1)
 }
 

@@ -203,8 +203,7 @@ type poolScaleView struct {
 
 // reconcile is the desired-state loop: per ticket pool, compute desired,
 // cordon or uncordon, then start sessions within the brakes and host cap.
-func (c *Controller) reconcile(ctx context.Context) {
-	cfg := c.config()
+func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 	now := c.now()
 	backingOff := c.backingOffPools()
 	var reqs []capRequest
@@ -257,7 +256,7 @@ func (c *Controller) reconcile(ctx context.Context) {
 		// block scale up only: they never cordon.
 		if plan.Start > 0 && !backingOff[name] && !c.poolPaused(name) {
 			start := plan.Start
-			if free := c.slotCapacity(ctx, name); free >= 0 {
+			if free := c.slotCapacity(ctx, cfg, name); free >= 0 {
 				// A full per-session id range is a capacity limit (#540).
 				start = min(start, free)
 			}
@@ -270,7 +269,7 @@ func (c *Controller) reconcile(ctx context.Context) {
 	for _, name := range slices.Sorted(maps.Keys(grants)) {
 		p := cfg.Pools[name]
 		for range grants[name] {
-			if _, err := c.newSession(ctx, "controller", p.Project, name, p.Agent, "", "", ""); err != nil {
+			if _, err := c.newSession(ctx, cfg, "controller", p.Project, name, p.Agent, "", "", ""); err != nil {
 				c.log.ErrorContext(ctx, "start session", "pool", name, "err", err)
 				break
 			}

@@ -104,7 +104,7 @@ func TestMemoryWriteRestore(t *testing.T) {
 	require.NoError(t, err)
 	clk.advance(time.Hour)
 	for i := range 2 {
-		res, err := c.startRun(ctx, admin, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": fmt.Sprint(i)}, Key: fmt.Sprint("m", i)}, nil)
+		res, err := c.startRun(ctx, c.config(), admin, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": fmt.Sprint(i)}, Key: fmt.Sprint("m", i)}, nil)
 		require.NoError(t, err)
 		if i == 0 {
 			s := res.(rpc.RunResult).Steps[0]

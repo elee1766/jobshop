@@ -119,7 +119,7 @@ func (c *Controller) linearWebhookEvent(ctx context.Context, name string, ev ing
 	}
 	if ev.Type == ingest.AgentSessionEvent {
 		// Linear shows the app unresponsive after 10s without a reply.
-		c.sweepLinearAgentSessions(ctx, true)
+		c.sweepLinearAgentSessions(ctx, c.config(), true)
 		return nil
 	}
 	key := ev.IssueKey()
@@ -158,7 +158,7 @@ func (c *Controller) linearWebhookEvent(ctx context.Context, name string, ev ing
 		// Same pass the tick runs, so the stall fires now.
 		unlock := c.lockTick(ctx, "webhook")
 		if !c.draining() {
-			c.step(ctx, "run_triggers", c.runTriggers)
+			c.passStep(ctx, c.config(), "run_triggers", c.runTriggers)
 		}
 		unlock()
 	case "Comment":

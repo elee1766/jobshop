@@ -167,8 +167,7 @@ func (c *Controller) causeOf(ctx context.Context, t store.Ticket) escCause {
 // escalationChat returns the chat pool and the rendered prompt for hold
 // ticket t, or ok false when t gets no chat: no policy for its cause, or
 // a pool quarantine of the chat pool itself.
-func (c *Controller) escalationChat(ctx context.Context, t store.Ticket) (pool, prompt string, x escCause, ok bool) {
-	cfg := c.config()
+func (c *Controller) escalationChat(ctx context.Context, cfg *config.Config, t store.Ticket) (pool, prompt string, x escCause, ok bool) {
 	x = c.causeOf(ctx, t)
 	var e *config.EscalationChat
 	var tmpl string
@@ -298,14 +297,14 @@ var errSkipEscalation = errors.New("skip")
 // has one. The key is recorded before the first send, so a crash between
 // the two resends to the same keyed session, and the prompt goes only to
 // a session this call started.
-func (c *Controller) ensureEscalationChat(ctx context.Context, t store.Ticket) {
+func (c *Controller) ensureEscalationChat(ctx context.Context, cfg *config.Config, t store.Ticket) {
 	if t.Status == store.StatusClosed || !holdTicket(t) {
 		return
 	}
 	if e, ok := escalationMeta(t); ok && e.Session != "" {
 		return
 	}
-	pool, prompt, cause, ok := c.escalationChat(ctx, t)
+	pool, prompt, cause, ok := c.escalationChat(ctx, cfg, t)
 	if !ok {
 		return
 	}
@@ -330,7 +329,7 @@ func (c *Controller) ensureEscalationChat(ctx context.Context, t store.Ticket) {
 		return
 	}
 	sc := scope{admin: true, actor: "controller"}
-	sess, started, err := c.keyedSession(ctx, sc, e.Pool, e.Key)
+	sess, started, err := c.keyedSession(ctx, cfg, sc, e.Pool, e.Key)
 	if err != nil {
 		c.log.WarnContext(ctx, "escalation chat session", "ticket", t.ID, "pool", e.Pool, "err", err)
 		return
@@ -415,16 +414,15 @@ func (c *Controller) holdChat(ctx context.Context, id string) {
 	if err != nil {
 		return
 	}
-	c.ensureEscalationChat(ctx, t)
+	c.ensureEscalationChat(ctx, c.config(), t)
 }
 
 // sweepEscalationChats repairs chats on every tick: open hold tickets
 // without a session get one, and closed ones get their final message.
-func (c *Controller) sweepEscalationChats(ctx context.Context) {
+func (c *Controller) sweepEscalationChats(ctx context.Context, cfg *config.Config) {
 	if c.draining() {
 		return
 	}
-	cfg := c.config()
 	if cfg.Escalation == nil && !slices.ContainsFunc(slices.Sorted(maps.Keys(cfg.Workflows)), func(n string) bool { return cfg.Workflows[n].Escalate != nil }) {
 		return
 	}
@@ -434,7 +432,7 @@ func (c *Controller) sweepEscalationChats(ctx context.Context) {
 			return
 		}
 		for _, t := range ts {
-			c.ensureEscalationChat(ctx, t)
+			c.ensureEscalationChat(ctx, cfg, t)
 		}
 	}
 	// Recently closed escalations that still owe a final message.
