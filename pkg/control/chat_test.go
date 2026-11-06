@@ -76,8 +76,8 @@ func TestSessionSendSubscribe(t *testing.T) {
 		res, _ := sub.Subscribe(subCtx, rpc.SessionSubscribeParams{ID: sent.Session}, ev.add)
 		done <- res
 	}()
-	require.Eventually(t, func() bool { return ev.has(rpc.EventText, "echo: again") && ev.has(rpc.EventTurnEnd, "end_turn") },
-		20*time.Second, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return ev.has(rpc.EventText, "echo: again") && ev.has(rpc.EventTurnEnd, "end_turn") },
+		"messages delivered")
 	got := ev.get()
 	// The pool prompt leads the first message turn only.
 	prompted := 0
@@ -108,14 +108,14 @@ func TestSessionSendSubscribe(t *testing.T) {
 		r, _ := sub.Subscribe(tailCtx, rpc.SessionSubscribeParams{ID: sent.Session, Tail: 3}, evTail.add)
 		done <- r
 	}()
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		for _, e := range evTail.get() {
 			if e.Seq == res.Seq {
 				return true
 			}
 		}
 		return false
-	}, 20*time.Second, 50*time.Millisecond)
+	}, "tail reached the last frame")
 	tailCancel()
 	<-done
 	for _, e := range evTail.get() {
@@ -132,14 +132,14 @@ func TestSessionSendSubscribe(t *testing.T) {
 		done <- res
 	}()
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{ID: sent.Session, Text: "hold on"}, nil))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "held"))
 		return err == nil
-	}, dialWait, 20*time.Millisecond)
+	}, "turn held")
 	// Interrupt the held turn; the message is delivered right after.
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{ID: sent.Session, Text: "stop", Interrupt: true}, nil))
-	require.Eventually(t, func() bool { return ev2.has(rpc.EventTurnEnd, "cancelled") && ev2.has(rpc.EventText, "echo: stop") },
-		20*time.Second, 50*time.Millisecond)
+	passEventually(t, root.Dir, func() bool { return ev2.has(rpc.EventTurnEnd, "cancelled") && ev2.has(rpc.EventText, "echo: stop") },
+		"interrupt delivered")
 	for _, e := range ev2.get() {
 		if e.Seq > 0 {
 			assert.Greater(t, e.Seq, res.Seq)
@@ -162,26 +162,31 @@ func TestSessionSendSubscribe(t *testing.T) {
 	}
 	before := cancels()
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{ID: sent.Session, Text: "hold on"}, nil))
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "held"))
 		return err == nil
-	}, dialWait, 20*time.Millisecond)
+	}, "turn held")
 	var stopped rpc.SessionCancelResult
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
 		return admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: sent.Session}, &stopped) == nil && stopped.Cancelled
-	}, dialWait, 20*time.Millisecond)
-	require.Eventually(t, func() bool { return cancels() == before+1 }, 20*time.Second, 50*time.Millisecond)
+	}, "session cancelled")
+	passEventually(t, root.Dir, func() bool { return cancels() == before+1 }, "cancel turn ended")
 	require.ErrorIs(t, admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: "js-nope"}, nil), store.ErrInvalid)
 
 	// Closing the session ends the stream with a state event.
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: sent.Session}, nil))
-	select {
-	case r := <-done:
-		assert.True(t, r.Closed)
-		assert.Equal(t, "done", r.Resolution)
-	case <-time.After(20 * time.Second):
-		t.Fatal("subscribe did not end on close")
-	}
+	// The stream polls on the controller's fake clock.
+	var r rpc.SessionSubscribeResult
+	passEventually(t, root.Dir, func() bool {
+		select {
+		case r = <-done:
+			return true
+		default:
+			return false
+		}
+	}, "subscribe did not end on close")
+	assert.True(t, r.Closed)
+	assert.Equal(t, "done", r.Resolution)
 	last := ev2.get()[len(ev2.get())-1]
 	assert.Equal(t, rpc.EventState, last.Type)
 	assert.Equal(t, store.StatusClosed, last.Status)
@@ -237,11 +242,14 @@ func TestChatPoolKeys(t *testing.T) {
 	assert.Equal(t, a.Session, again.Session, "same key, same session after restart")
 	assert.False(t, again.Started)
 
-	// With no more messages the idle TTL closes it as idle.
+	// With no more messages the idle TTL closes it as idle: move the
+	// controller's fake clock past it (JOB-73). The restarted session may
+	// not have armed its idle poll yet, so each attempt moves it again.
 	var s rpc.ShowResult
-	require.Eventually(t, func() bool {
+	passEventually(t, root.Dir, func() bool {
+		advance(t, root.Dir, 4*time.Second)
 		return admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: b.Session}, &s) == nil && s.Ticket.Status == store.StatusClosed
-	}, dialWait, 100*time.Millisecond)
+	}, "idle chat session closed")
 	assert.Equal(t, "idle", s.Ticket.Resolution)
 }
 
