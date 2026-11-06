@@ -41,18 +41,18 @@ func columns(p string) string {
 		p + "lease_until, " + p + "attempts, " + p + "created_at, " + p + "updated_at"
 }
 
-func ms(t time.Time) int64 {
+func ns(t time.Time) int64 {
 	if t.IsZero() {
 		return 0
 	}
-	return t.UnixMilli()
+	return t.UnixNano()
 }
 
-func fromMS(v int64) time.Time {
+func fromNS(v int64) time.Time {
 	if v == 0 {
 		return time.Time{}
 	}
-	return time.UnixMilli(v).UTC()
+	return time.Unix(0, v).UTC()
 }
 
 // registry remembers registered specs, so a repeated Collection call
@@ -133,7 +133,7 @@ func (c *collection) scan(r scanner) (store.Record, error) {
 	}
 	rec.Collection = c.spec.Name
 	rec.Value = json.RawMessage(value)
-	rec.LeaseUntil, rec.CreatedAt, rec.UpdatedAt = fromMS(lease), fromMS(created), fromMS(updated)
+	rec.LeaseUntil, rec.CreatedAt, rec.UpdatedAt = fromNS(lease), fromNS(created), fromNS(updated)
 	return rec, nil
 }
 
@@ -207,13 +207,13 @@ func (c *collection) where(f store.RecordFilter, p string) (*bqb.Query, error) {
 		}
 	}
 	if !f.Since.IsZero() {
-		w.And(p+"created_at >= ?", ms(f.Since))
+		w.And(p+"created_at >= ?", ns(f.Since))
 	}
 	if !f.Until.IsZero() {
-		w.And(p+"created_at < ?", ms(f.Until))
+		w.And(p+"created_at < ?", ns(f.Until))
 	}
 	if !f.UpdatedBefore.IsZero() {
-		w.And(p+"updated_at < ?", ms(f.UpdatedBefore))
+		w.And(p+"updated_at < ?", ns(f.UpdatedBefore))
 	}
 	return w, nil
 }
@@ -271,7 +271,7 @@ func (c *collection) Put(ctx context.Context, r store.Record) (rec store.Record,
 			at = now
 		}
 		n, err := exec(ctx, tx, bqb.New("INSERT INTO records (collection, key, state, value, revision, holder, lease_until, attempts, created_at, updated_at) VALUES ("+
-			c.lit()+", ?, ?, ?, 1, '', 0, 0, ?, ?) ON CONFLICT DO NOTHING", r.Key, r.State, string(r.Value), ms(at), ms(now)))
+			c.lit()+", ?, ?, ?, 1, '', 0, 0, ?, ?) ON CONFLICT DO NOTHING", r.Key, r.State, string(r.Value), ns(at), ns(now)))
 		if err != nil {
 			return c.s.Classify(err, c.spec.Name+" "+r.Key)
 		}
@@ -324,15 +324,15 @@ func (c *collection) Update(ctx context.Context, r store.Record) (rec store.Reco
 	}
 	err = c.s.WriteTx(ctx, func(tx *sql.Tx) error {
 		now := c.s.Now()
-		q := bqb.New("UPDATE records SET state = ?, value = ?, revision = revision + 1, updated_at = ?", r.State, string(r.Value), ms(now))
+		q := bqb.New("UPDATE records SET state = ?, value = ?, revision = revision + 1, updated_at = ?", r.State, string(r.Value), ns(now))
 		if r.LeaseUntil.IsZero() {
 			q.Space(", holder = '', lease_until = 0")
 		}
 		q.Space("WHERE collection = "+c.lit()+" AND key = ? AND revision = ?", r.Key, r.Revision)
 		if r.Holder == "" {
-			q.Space("AND (holder = '' OR lease_until <= ?)", ms(now))
+			q.Space("AND (holder = '' OR lease_until <= ?)", ns(now))
 		} else {
-			q.Space("AND holder = ? AND lease_until > ?", r.Holder, ms(now))
+			q.Space("AND holder = ? AND lease_until > ?", r.Holder, ns(now))
 		}
 		q.Space("RETURNING " + columns(""))
 		rec, err = c.one(ctx, tx, q)
@@ -416,7 +416,7 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 			if err != nil {
 				return err
 			}
-			text, args, err := bqb.New("SELECT key FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ms(now)).ToSql()
+			text, args, err := bqb.New("SELECT key FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ns(now)).ToSql()
 			if err != nil {
 				return err
 			}
@@ -426,7 +426,7 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 			}
 			rec, err = c.one(ctx, tx, bqb.New("UPDATE records SET holder = ?, lease_until = ?, attempts = attempts + 1, revision = revision + 1, updated_at = ?"+
 				" WHERE collection = "+c.lit()+" AND key = ? AND (holder = '' OR lease_until <= ?) RETURNING "+columns(""),
-				holder, ms(now.Add(lease)), ms(now), key, ms(now)))
+				holder, ns(now.Add(lease)), ns(now), key, ns(now)))
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
@@ -445,7 +445,7 @@ func (c *collection) Renew(ctx context.Context, key, holder string, lease time.D
 		now := c.s.Now()
 		rec, err = c.one(ctx, tx, bqb.New("UPDATE records SET lease_until = ? WHERE collection = "+c.lit()+
 			" AND key = ? AND holder = ? AND holder != '' AND lease_until > ? RETURNING "+columns(""),
-			ms(now.Add(lease)), key, holder, ms(now)))
+			ns(now.Add(lease)), key, holder, ns(now)))
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}

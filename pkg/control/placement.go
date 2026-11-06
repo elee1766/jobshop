@@ -90,7 +90,7 @@ func (c *Controller) placeStep(ctx context.Context, t store.Ticket, sf store.Ste
 		if err != nil || blocked {
 			return err
 		}
-		p.Since = now.UTC().Truncate(time.Millisecond)
+		p.Since = now.UTC().Round(0)
 	}
 	target := 0
 	if now.Sub(p.Since) >= time.Duration(p.PreferMS)*time.Millisecond {

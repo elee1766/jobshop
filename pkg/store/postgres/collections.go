@@ -44,18 +44,18 @@ func fieldIndex(path string) string { return "rf_" + strings.ReplaceAll(path, ".
 
 const columns = "key, state, CAST(value AS TEXT), revision, holder, lease_until, attempts, created_at, updated_at"
 
-func ms(t time.Time) int64 {
+func ns(t time.Time) int64 {
 	if t.IsZero() {
 		return 0
 	}
-	return t.UnixMilli()
+	return t.UnixNano()
 }
 
-func fromMS(v int64) time.Time {
+func fromNS(v int64) time.Time {
 	if v == 0 {
 		return time.Time{}
 	}
-	return time.UnixMilli(v).UTC()
+	return time.Unix(0, v).UTC()
 }
 
 // searchText joins the search fields into one text, for the GIN index
@@ -147,7 +147,7 @@ func (c *collection) scan(r scanner) (store.Record, error) {
 	}
 	rec.Collection = c.spec.Name
 	rec.Value = json.RawMessage(value)
-	rec.LeaseUntil, rec.CreatedAt, rec.UpdatedAt = fromMS(lease), fromMS(created), fromMS(updated)
+	rec.LeaseUntil, rec.CreatedAt, rec.UpdatedAt = fromNS(lease), fromNS(created), fromNS(updated)
 	return rec, nil
 }
 
@@ -221,13 +221,13 @@ func (c *collection) where(f store.RecordFilter) (*bqb.Query, error) {
 		}
 	}
 	if !f.Since.IsZero() {
-		w.And("created_at >= ?", ms(f.Since))
+		w.And("created_at >= ?", ns(f.Since))
 	}
 	if !f.Until.IsZero() {
-		w.And("created_at < ?", ms(f.Until))
+		w.And("created_at < ?", ns(f.Until))
 	}
 	if !f.UpdatedBefore.IsZero() {
-		w.And("updated_at < ?", ms(f.UpdatedBefore))
+		w.And("updated_at < ?", ns(f.UpdatedBefore))
 	}
 	return w, nil
 }
@@ -268,7 +268,7 @@ func (c *collection) Put(ctx context.Context, r store.Record) (rec store.Record,
 		}
 		n, err := exec(ctx, tx, bqb.New("INSERT INTO records (collection, key, state, value, revision, holder, lease_until, attempts, created_at, updated_at)"+
 			" VALUES (?, ?, ?, CAST(? AS jsonb), 1, '', 0, 0, ?, ?) ON CONFLICT DO NOTHING",
-			c.spec.Name, r.Key, r.State, string(r.Value), ms(at), ms(now)))
+			c.spec.Name, r.Key, r.State, string(r.Value), ns(at), ns(now)))
 		if err != nil {
 			return c.s.classify(err, c.spec.Name+" "+r.Key)
 		}
@@ -317,15 +317,15 @@ func (c *collection) Update(ctx context.Context, r store.Record) (rec store.Reco
 	}
 	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		now := c.s.Now()
-		q := bqb.New("UPDATE records SET state = ?, value = CAST(? AS jsonb), revision = revision + 1, updated_at = ?", r.State, string(r.Value), ms(now))
+		q := bqb.New("UPDATE records SET state = ?, value = CAST(? AS jsonb), revision = revision + 1, updated_at = ?", r.State, string(r.Value), ns(now))
 		if r.LeaseUntil.IsZero() {
 			q.Space(", holder = '', lease_until = 0")
 		}
 		q.Space("WHERE collection = ? AND key = ? AND revision = ?", c.spec.Name, r.Key, r.Revision)
 		if r.Holder == "" {
-			q.Space("AND (holder = '' OR lease_until <= ?)", ms(now))
+			q.Space("AND (holder = '' OR lease_until <= ?)", ns(now))
 		} else {
-			q.Space("AND holder = ? AND lease_until > ?", r.Holder, ms(now))
+			q.Space("AND holder = ? AND lease_until > ?", r.Holder, ns(now))
 		}
 		q.Space("RETURNING " + columns)
 		rec, err = c.one(ctx, tx, q)
@@ -400,7 +400,7 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 			if err != nil {
 				return err
 			}
-			text, args, err := bqb.New("SELECT key FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ms(now)).ToPgsql()
+			text, args, err := bqb.New("SELECT key FROM records WHERE ? AND (holder = '' OR lease_until <= ?) ORDER BY created_at, key LIMIT 1", w, ns(now)).ToPgsql()
 			if err != nil {
 				return err
 			}
@@ -410,7 +410,7 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 			}
 			rec, err = c.one(ctx, tx, bqb.New("UPDATE records SET holder = ?, lease_until = ?, attempts = attempts + 1, revision = revision + 1, updated_at = ?"+
 				" WHERE collection = ? AND key = ? AND (holder = '' OR lease_until <= ?) RETURNING "+columns,
-				holder, ms(now.Add(lease)), ms(now), c.spec.Name, key, ms(now)))
+				holder, ns(now.Add(lease)), ns(now), c.spec.Name, key, ns(now)))
 			if errors.Is(err, sql.ErrNoRows) {
 				continue
 			}
@@ -429,7 +429,7 @@ func (c *collection) Renew(ctx context.Context, key, holder string, lease time.D
 		now := c.s.Now()
 		rec, err = c.one(ctx, tx, bqb.New("UPDATE records SET lease_until = ? WHERE collection = ?"+
 			" AND key = ? AND holder = ? AND holder != '' AND lease_until > ? RETURNING "+columns,
-			ms(now.Add(lease)), c.spec.Name, key, holder, ms(now)))
+			ns(now.Add(lease)), c.spec.Name, key, holder, ns(now)))
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}

@@ -26,7 +26,7 @@ func (s *Store) Thread(ctx context.Context, id string, p store.Parts) (store.Thr
 				if err := r.Scan(&e.From, &e.To, &e.Kind, &at); err != nil {
 					return err
 				}
-				e.CreatedAt = fromMS(at)
+				e.CreatedAt = fromNS(at)
 				th.Edges = append(th.Edges, e)
 				return nil
 			})
@@ -44,7 +44,7 @@ func (s *Store) Thread(ctx context.Context, id string, p store.Parts) (store.Thr
 				if err := r.Scan(&c.ID, &c.TicketID, &c.Author, &c.Body, &at); err != nil {
 					return err
 				}
-				c.CreatedAt = fromMS(at)
+				c.CreatedAt = fromNS(at)
 				th.Comments = append(th.Comments, c)
 				return nil
 			})
@@ -88,7 +88,7 @@ func (s *Store) historyRows(ctx context.Context, where *bqb.Query) ([]store.Hist
 			if err := r.Scan(&h.Seq, &h.TicketID, &at, &h.Actor, &h.Op, &h.Revision, &diff); err != nil {
 				return err
 			}
-			h.At, h.Diff = fromMS(at), json.RawMessage(diff)
+			h.At, h.Diff = fromNS(at), json.RawMessage(diff)
 			out = append(out, h)
 			return nil
 		})

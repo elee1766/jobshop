@@ -19,7 +19,7 @@ import (
 var migrations embed.FS
 
 // recallSQL searches comments on the FTS5 recall table.
-const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS INTEGER) AS at_ms,
+const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS INTEGER) AS at_ns,
        snippet(recall, 0, '[', ']', '...', 16) AS snippet,
        CAST(bm25(recall) AS REAL) AS score
 FROM recall

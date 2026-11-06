@@ -256,8 +256,9 @@ func stepProject(cfg *config.Config, s config.Step) string {
 }
 
 // gateHold is the defer_until of a step with a when condition until its
-// needs finish (#385): far enough out that nothing claims it.
-var gateHold = time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+// needs finish (#385): far enough out that nothing claims it, and inside
+// int64 nanoseconds (JOB-58).
+var gateHold = time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // setStepOutcome records `close --outcome` on an open step ticket.
 func (c *Controller) setStepOutcome(ctx context.Context, sc scope, id, outcome string) error {

@@ -10,14 +10,36 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Stamp is the time stored for now: UTC, millisecond precision, as the
-// stores keep timestamps.
-func Stamp(now time.Time) time.Time { return now.UTC().Truncate(time.Millisecond) }
+// Stamp is the time stored for now: UTC, nanosecond precision, as the
+// stores keep timestamps (JOB-58). Round(0) drops the monotonic reading.
+func Stamp(now time.Time) time.Time { return now.UTC().Round(0) }
+
+// Clock hands out strictly increasing creation times (JOB-58): a batch
+// insert in one transaction gets distinct, ordered created_at values,
+// so ticket order reaches the id tiebreak only across controllers.
+type Clock struct {
+	mu   sync.Mutex
+	last int64
+}
+
+// Next returns now, or 1ns after the last value when the clock returned
+// the same or an earlier time.
+func (c *Clock) Next(now time.Time) time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := now.UnixNano()
+	if n <= c.last {
+		n = c.last + 1
+	}
+	c.last = n
+	return time.Unix(0, n).UTC()
+}
 
 // Bump moves t to its next revision at now and returns the revision the
 // guarded write must still find.

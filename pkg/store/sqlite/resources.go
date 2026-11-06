@@ -114,7 +114,7 @@ func (s *Store) resourceWaits(ctx context.Context, use []store.ResourceUse) ([]s
 	if len(full) == 0 {
 		return nil, nil
 	}
-	rows, err := s.rq.ResourceWaiters(ctx, ms(s.now()))
+	rows, err := s.rq.ResourceWaiters(ctx, ns(s.now()))
 	if err != nil {
 		return nil, err
 	}

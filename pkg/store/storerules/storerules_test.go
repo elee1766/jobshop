@@ -19,7 +19,7 @@ func TestClaimFence(t *testing.T) {
 	c, d, fresh := storerules.Claim(&tk, "h", time.Minute, now)
 	assert.True(t, fresh)
 	assert.Equal(t, int64(4), c.Fence)
-	assert.Equal(t, now.Add(time.Minute).Truncate(time.Millisecond), c.LeaseUntil)
+	assert.Equal(t, now.Add(time.Minute).Round(0), c.LeaseUntil)
 	assert.Equal(t, false, d["resumed"])
 
 	// A resume by the same holder keeps the fence.
@@ -103,7 +103,7 @@ func TestApplyUpdateDiff(t *testing.T) {
 	prev := storerules.Bump(&tk, now)
 	assert.Equal(t, int64(4), prev)
 	assert.Equal(t, int64(5), tk.Revision)
-	assert.Equal(t, now.Truncate(time.Millisecond), tk.UpdatedAt)
+	assert.Equal(t, now.Round(0), tk.UpdatedAt)
 }
 
 func TestFieldColumns(t *testing.T) {
