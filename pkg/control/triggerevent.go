@@ -240,11 +240,13 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 		// One config for the whole event pass, like a tick (JOB-104).
 		cfg := c.config()
 		for _, f := range fires {
-			tr, ok := cfg.Triggers[f.name]
-			if !ok {
-				continue // reloaded away
-			}
-			c.onEvent(c.ctx, cfg, f.name, tr, f.ev)
+			c.runTriggerChecks(c.ctx, cfg, f.name, true, func(ctx context.Context, cfg *config.Config) {
+				tr, ok := cfg.Triggers[f.name]
+				if !ok {
+					return // reloaded away
+				}
+				c.onEvent(ctx, cfg, f.name, tr, f.ev)
+			})
 		}
 	})
 }
@@ -264,6 +266,9 @@ func (c *Controller) onEvent(ctx context.Context, cfg *config.Config, name strin
 // tick lock.
 func (c *Controller) fireOnEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
 	st, err := c.evalTrigger(ctx, cfg, name, tr)
+	if errors.Is(err, errCheckPending) {
+		return // its check runs outside the tick (JOB-109)
+	}
 	if err != nil {
 		c.log.ErrorContext(ctx, "trigger", "trigger", name, "err", err)
 		return

@@ -285,6 +285,12 @@ type Controller struct {
 	// ship is journal shipping to VictoriaLogs (#530).
 	ship shipper
 	wg   sync.WaitGroup
+	// Trigger checks run outside the tick when backgroundChecks is set, by
+	// Run (JOB-109, triggercheck.go). checkJobs is under tickMu.
+	backgroundChecks bool
+	checkJobs        checkJobs
+	checkSlots       chan struct{}
+	checkSlotsOnce   sync.Once
 }
 
 // Run opens the root, serves until ctx ends or a shutdown request, and
@@ -389,6 +395,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	}
 	// Metrics ride on the ctx so outbound HTTP below any path records its
 	// timing without a parameter (JOB-105).
+	c.backgroundChecks = true
 	c.ctx, c.cancel = context.WithCancel(telemetry.WithMetrics(ctx, m))
 	c.started = c.now()
 	if loadErr != nil {

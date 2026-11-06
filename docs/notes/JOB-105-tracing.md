@@ -32,7 +32,8 @@ slow step was invisible. As built:
   `report_orphans` step. Reload runs under `context.WithoutCancel`, so a
   client that gave up does not cancel it half done.
 - **Locks.** `jobshop_lock_wait_seconds{lock,for}` for `tickMu`, waiters
-  `tick`, `webhook`, `event` (reload stopped taking it, JOB-104). A wait
+  `tick`, `webhook`, `event`, `check` (reload stopped taking it, JOB-104;
+  `check` is a trigger check replay, JOB-109). A wait
   over 10ms is also a span.
 - **Metrics.** `jobshop_tick_step_duration_seconds{step}`,
   `jobshop_outbound_duration_seconds{kind,target}`,

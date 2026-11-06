@@ -10,7 +10,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
-// lockTick takes tickMu for who ("tick", "webhook", "event"),
+// lockTick takes tickMu for who ("tick", "webhook", "event", "check"),
 // records how long it waited as a histogram and, when the wait was long
 // enough to matter, as a span under ctx. It returns the unlock func.
 func (c *Controller) lockTick(ctx context.Context, who string) func() {
