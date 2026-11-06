@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.7](https://github.com/elee1766/jobshop/compare/v0.3.6...v0.3.7) (2026-11-06)
+
+
+### Features
+
+* **desk:** link Linear issues on runs, tickets and attention rows ([#784](https://github.com/elee1766/jobshop/issues/784)) ([b3f263c](https://github.com/elee1766/jobshop/commit/b3f263c4de05a7cef97179ddc2338e1938194c2d))
+
+
+### Bug fixes
+
+* **ingest:** prune finished inbox records in batches, default 7d (JOB-63) ([#806](https://github.com/elee1766/jobshop/issues/806)) ([9c97c50](https://github.com/elee1766/jobshop/commit/9c97c50573541b4f6152f08a08c35efc3d984a74))
+
+
+### Performance
+
+* **store:** index records by state and created_at for the inbox backlog count (JOB-61) ([#804](https://github.com/elee1766/jobshop/issues/804)) ([7841352](https://github.com/elee1766/jobshop/commit/7841352eea8ab6f0efc3c90be6e7e55b51027660))
+
 ## [0.3.6](https://github.com/elee1766/jobshop/compare/v0.3.5...v0.3.6) (2026-11-06)
 
 
