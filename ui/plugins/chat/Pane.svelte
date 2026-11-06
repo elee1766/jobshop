@@ -8,7 +8,7 @@
   import { Transcript } from './transcript.svelte.js';
   import { promptHistory, rememberPrompt, tokens } from './format.js';
   import Block from './Block.svelte';
-  import { resolveActions, runAction } from '../../kit/attention.js';
+  import { resolveActions, runAction, markPending } from '../../kit/attention.js';
 
   /** @type {{ api: any, context?: any, config?: any }} */
   let { api, context = {} } = $props();
@@ -200,13 +200,17 @@
   // Resolve actions per item kind, shared with the Attention rows (#607).
   const actions = $derived(resolveActions(api, itemKind, itemId));
   let acting = $state(false);
-  /** A success closes the panel and returns to the list (#607); a
-   * failure keeps it open with the error toast.
+  /** A success marks the item pending in the Attention list (JOB-60),
+   * closes the panel and returns to the list (#607); a failure keeps it
+   * open with the error toast.
    * @param {import('../../kit/attention.js').Action} a */
   async function act(a) {
     acting = true;
     try {
-      if (await runAction(api, a)) api.closeSession();
+      if (await runAction(api, a)) {
+        markPending(itemKind + ':' + itemId, a.label);
+        api.closeSession();
+      }
     } finally {
       acting = false;
     }

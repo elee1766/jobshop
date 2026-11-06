@@ -357,6 +357,42 @@ test('a row shows its summary and canned buttons; a button resolves it without o
   await expect(page.getByTestId('session-panel')).toHaveCount(0);
 });
 
+test('a row stays pending after its action until a refresh drops it (JOB-60)', async ({ page }) => {
+  // The first load after the close still lists the item; the next drops it.
+  let after = -1;
+  let gate = () => {};
+  const held = new Promise((r) => { gate = () => r(undefined); });
+  await mock(page, {
+    attention: () => {
+      if (after >= 0) after++;
+      return after >= 2 ? [] : [{ kind: 'ticket', id: 'js-t2', title: 'slow close', why: '', since: iso(600e3) }];
+    },
+    rpc: (m) => { if (m === 'ticket.close') after = 0; return null; },
+  });
+  await page.route('**/api/attention', async (route) => {
+    if (after === 1) await held;
+    return route.fallback();
+  });
+  await page.goto('./');
+  const row = page.getByTestId('attention-row').first();
+  await row.getByTestId('row-resolve').click();
+  await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
+  await expect(row.getByTestId('row-pending')).toHaveText('Close ticket…');
+  await expect(row.getByTestId('row-resolve')).toHaveCount(0);
+  gate();
+  await expect(page.getByTestId('attention-empty')).toBeVisible();
+});
+
+test('a row a refresh still lists after its action shows it with the actions back (JOB-60)', async ({ page }) => {
+  await mock(page, { attention: () => [{ kind: 'ticket', id: 'js-t3', title: 'no-op close', why: '', since: iso(600e3) }] });
+  await page.goto('./');
+  const row = page.getByTestId('attention-row').first();
+  await row.getByTestId('row-resolve').click();
+  await page.getByTestId('confirm').getByRole('button', { name: 'OK' }).click();
+  await expect(row.getByTestId('row-stuck')).toHaveText('still listed after Close ticket');
+  await expect(row.getByTestId('row-resolve')).toHaveText(['Close ticket']);
+});
+
 test('Open chat on a row opens the session', async ({ page }) => {
   const calls = await mock(page, {
     attention: () => [{ kind: 'run', id: 'js-r2', title: 'run stuck', why: '', since: iso(600e3) }],
