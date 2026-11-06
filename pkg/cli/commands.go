@@ -615,9 +615,13 @@ type releaseCmd struct {
 	// TimeWait: a reason naming CI, a PR, deploy, tag or merge is refused
 	// without it; those have wait kinds (JOB-11).
 	TimeWait bool `name:"time-wait" help:"The deferral is a real timer (a window, a backoff). Without it, --until with a reason about CI, checks, a PR, deploy, tag or merge is refused: use jobshop wait add."`
+	Force    bool `help:"Release even though the current git branch has commits no remote has."`
 }
 
 func (c releaseCmd) Run(g *Globals) error {
+	if err := checkPushed(".", "release", c.Force); err != nil {
+		return err
+	}
 	p := rpc.ReleaseParams{ID: c.ID, Reason: c.Reason, TimeWait: c.TimeWait}
 	if c.Until != "" {
 		t, err := parseUntil(c.Until, time.Now())
@@ -632,10 +636,14 @@ func (c releaseCmd) Run(g *Globals) error {
 type handoffCmd struct {
 	ID   string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
 	To   string `required:"" help:"Pool to move the ticket to."`
-	Note string `help:"Comment to add for the next holder."`
+	Note  string `help:"Comment to add for the next holder."`
+	Force bool   `help:"Hand off even though the current git branch has commits no remote has."`
 }
 
 func (c handoffCmd) Run(g *Globals) error {
+	if err := checkPushed(".", "handoff", c.Force); err != nil {
+		return err
+	}
 	return g.call(rpc.MethodHandoff, rpc.HandoffParams{ID: c.ID, Pool: c.To, Note: c.Note}, nil)
 }
 

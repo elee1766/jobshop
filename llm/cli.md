@@ -1502,6 +1502,8 @@ Flags:
                          Without it, --until with a reason about CI, checks,
                          a PR, deploy, tag or merge is refused: use jobshop wait
                          add.
+      --force            Release even though the current git branch has commits
+                         no remote has.
 ```
 
 ## jobshop handoff
@@ -1525,6 +1527,8 @@ Flags:
 
       --to=STRING        Pool to move the ticket to.
       --note=STRING      Comment to add for the next holder.
+      --force            Hand off even though the current git branch has commits
+                         no remote has.
 ```
 
 ## jobshop ready

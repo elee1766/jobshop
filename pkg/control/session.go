@@ -90,6 +90,9 @@ type runner struct {
 	crashes  []time.Time
 	stopping bool
 	agentPid int // from the host's welcome; 0 until connected
+	// jobsSince is when an idle check first saw background jobs
+	// (holdForJobs); zero when there are none. Runner goroutine only.
+	jobsSince time.Time
 
 	// lastStop and lastSaid are the stop reason and agent text of the
 	// last turn, recorded when a session ends stuck (#301).
@@ -787,6 +790,34 @@ func (r *runner) idle() bool {
 	return err == nil && len(held) == 0
 }
 
+// holdForJobs reports whether an idle session should stay open because
+// its agent still runs background jobs it started (JOB-70). The hold
+// lasts at most one lease from when jobs were first seen; past that the
+// session may end, and the commands it kills are logged and commented
+// on the session ticket.
+func (r *runner) holdForJobs(ctx context.Context) bool {
+	r.mu.Lock()
+	pid := r.agentPid
+	r.mu.Unlock()
+	exe, _ := r.c.hostExe()
+	jobs := backgroundJobs(pid, exe)
+	if len(jobs) == 0 {
+		r.jobsSince = time.Time{}
+		return false
+	}
+	if r.jobsSince.IsZero() {
+		r.jobsSince = r.c.now()
+		r.log.InfoContext(ctx, "idle session kept open for background jobs", "jobs", jobs)
+	}
+	if r.c.since(r.jobsSince) < r.c.leaseDur() {
+		return true
+	}
+	r.log.WarnContext(ctx, "ending idle session with background jobs still running", "jobs", jobs)
+	note := "Session ended with background jobs still running; they are killed with it:\n- " + strings.Join(jobs, "\n- ")
+	_, _ = store.AddComment(ctx, r.c.store, "controller", r.id, note)
+	return false
+}
+
 // requestRestart asks for a host restart. Without now it waits for the
 // running turn, if any, to end.
 func (r *runner) requestRestart(now bool) {
@@ -978,7 +1009,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		if cordon != nil {
 			cordonWork = r.c.cordonedWork(ctx, r.id)
 		}
-		if cordon != nil && cordonWork == "" {
+		if cordon != nil && cordonWork == "" && !r.holdForJobs(ctx) {
 			switch cordon.Reason {
 			case store.CordonScale:
 				return errSessionEnd{resolution: resolutionScaledDown}
@@ -1012,7 +1043,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 				// it; a warm pool keeps min_sessions (or the manual
 				// target) open with no work.
 				switch {
-				case cordon != nil || r.c.keepWarm(ctx, r.pool):
+				case cordon != nil || r.c.keepWarm(ctx, r.pool) || r.holdForJobs(ctx):
 					idleSince = r.c.now()
 				case r.prestarted():
 					return r.suspend(nc)
@@ -1397,7 +1428,12 @@ you hold it releases it, and a repeat counts as a failed attempt. To wait
 on CI, use ` + "`jobshop wait add 'github.checks:...'`" + ` and end the turn: it
 resumes here when CI finishes (#555). For a short wait with no condition
 (a rebase), stay in the turn: a background task's wake does not start a
-new turn here. For a timed wait, ` + "`jobshop release --until <duration>`" + `.`)
+new turn here. For a timed wait, ` + "`jobshop release --until <duration>`" + `.
+Never release, hand off or end the turn while your own background
+commands (tests, lint, builds) still run: a released session may be
+ended and its process tree and worktree removed. Wait for them in the
+turn, and push work-in-progress commits before any release (release
+refuses with unpushed commits unless --force).`)
 	return b.String()
 }
 

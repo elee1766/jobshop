@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -952,6 +953,16 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 			}
 		}
 	}
+	// A "bgjob" file starts a background command and leaves it running
+	// after the turn, as an agent running checks in the background does
+	// (JOB-70). Its pid goes to "bgjob.pid".
+	if _, err := os.Stat("bgjob"); err == nil {
+		cmd := exec.Command("/bin/sh", "-c", "exec sleep 600")
+		if cmd.Start() == nil {
+			_ = os.WriteFile("bgjob.pid", []byte(strconv.Itoa(cmd.Process.Pid)), 0o600)
+			go func() { _ = cmd.Wait() }()
+		}
+	}
 	// A "noclose" file makes every turn end without touching the ticket,
 	// like an agent whose tools all fail.
 	if _, err := os.Stat("noclose"); err == nil {
@@ -1594,6 +1605,60 @@ func TestRoutedBackPrompt(t *testing.T) {
 	assert.Contains(t, p, "# Recent comments")
 	assert.Contains(t, p, "admin:\n"+finding)
 	assert.Contains(t, p, "hand the ticket back to refinery")
+}
+
+// TestScaleDownWaitsForBackgroundJobs (JOB-70): an idle session whose
+// agent left a background command running is not scaled down until the
+// command exits, so the command is not killed with the session.
+func TestScaleDownWaitsForBackgroundJobs(t *testing.T) {
+	root, start := poolRoot(t, "1m")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "bgjob"), nil, 0o600))
+	stop := start()
+	defer stop()
+	admin := dial(t, root.AdminSocket())
+	var task store.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &task))
+	var pid int
+	var sessID string
+	passEventually(t, root.Dir, func() bool {
+		b, err := os.ReadFile(filepath.Join(root.Dir, "bgjob.pid"))
+		if err != nil {
+			return false
+		}
+		pid, _ = strconv.Atoi(string(b))
+		var infos []rpc.SessionInfo
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		if len(infos) == 1 {
+			sessID = infos[0].ID
+		}
+		return pid > 0 && sessID != "" && got.Status == store.StatusClosed
+	}, "job started and ticket closed")
+
+	zero := 0
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodPoolScale, rpc.PoolScaleParams{Pool: "dev", Target: &zero}, nil))
+	state := func() store.Ticket {
+		var got store.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: sessID}, &struct {
+			Ticket *store.Ticket `json:"ticket"`
+		}{&got}))
+		return got
+	}
+	passEventually(t, root.Dir, func() bool {
+		var infos []rpc.SessionInfo
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+		return len(infos) == 1 && infos[0].Cordon == store.CordonScale
+	}, "session cordoned")
+	pass(t, root.Dir, 3)
+	assert.Equal(t, store.StatusOpen, state().Status, "kept open while its job runs")
+	require.NoError(t, syscall.Kill(pid, 0), "job still alive")
+
+	require.NoError(t, syscall.Kill(pid, syscall.SIGTERM))
+	passEventually(t, root.Dir, func() bool { return state().Status == store.StatusClosed }, "session ends once the job exits")
+	assert.Equal(t, "scaled_down", state().Resolution)
 }
 
 // TestScaleDownCordon scales dev to 0 during a blocked turn: the session is
