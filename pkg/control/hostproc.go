@@ -1,7 +1,6 @@
 package control
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -67,15 +66,36 @@ func stopDetachedHost(dir string, wait time.Duration) bool {
 		return false
 	}
 	_ = d.Stop()
-	ctx, cancel := context.WithTimeout(context.Background(), wait)
-	// The exit record may be missing (a host killed before writing it):
-	// only whether it still runs matters here.
-	_, _ = d.Wait(ctx)
-	cancel()
+	waitHostExit(dir, wait)
 	if d.Running() {
 		_ = syscall.Kill(d.Pid, syscall.SIGKILL)
 	}
 	return true
+}
+
+// waitHostExit blocks until the supervisor in dir releases supervisor.lock
+// or wait passes. It is proc.Detached.Wait without the exit record, which
+// stopHost does not need, and without its race when the timeout wins: Wait
+// closes the lock file while its flock goroutine still reads the fd
+// (acphost#227). Here the goroutine owns the file and closes it when the
+// lock is granted, which the supervisor's exit (or SIGKILL) always brings.
+func waitHostExit(dir string, wait time.Duration) {
+	f, err := os.Open(filepath.Join(dir, proc.LockFile))
+	if err != nil {
+		return
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer func() { _ = f.Close() }()
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_SH)
+	}()
+	t := time.NewTimer(wait)
+	defer t.Stop()
+	select {
+	case <-done:
+	case <-t.C:
+	}
 }
 
 // Hosts started by a jobshop built with acphost before v0.17 have no

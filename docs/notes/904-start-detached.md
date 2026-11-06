@@ -19,8 +19,10 @@
   background job filtering).
 - Liveness and the host pid come from `proc.Open(dir)`: `supervisor.pid`,
   and `supervisor.lock` held while the host runs. `stopHost` sends
-  SIGTERM through `Detached.Stop`, waits on the lock up to 10s
-  (`Detached.Wait`), then SIGKILLs the pid if it still runs.
+  SIGTERM through `Detached.Stop`, waits on the lock up to 10s, then
+  SIGKILLs the pid if it still runs. The wait is jobshop's own flock on
+  `supervisor.lock` (`waitHostExit`), not `Detached.Wait`, which races
+  when its timeout wins (acphost#227).
 - Legacy hosts: a host started before acphost v0.17 has no
   `supervisor.pid`. One such host was still running on gasserver when
   this changed, so when `proc.Open` finds no `supervisor.pid` the
