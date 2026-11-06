@@ -706,13 +706,19 @@ func evalWorkflow(ctx context.Context, pass *waitPass, cd *store.WaitCond, head 
 	return false, "", errInvalidated{fmt.Sprintf("%s skipped on %s", cd.Workflow, at)}
 }
 
-// newestRun is the highest run id among the runs of workflow, matched by
-// name or by workflow file (ci.yml or .github/workflows/ci.yml).
+// newestRun is the highest run id among the runs of workflow, matched
+// case-insensitively by name or by workflow file (ci, ci.yml or
+// .github/workflows/ci.yml), as trigger matching does: workflow=ci must
+// find a workflow named CI in ci.yml (JOB-88).
 func newestRun(rs []actionsRun, workflow string) (actionsRun, bool) {
 	var best actionsRun
 	found := false
 	for _, r := range rs {
-		if r.Name != workflow && r.Path != workflow && path.Base(r.Path) != workflow {
+		base := path.Base(r.Path)
+		stem := strings.TrimSuffix(base, path.Ext(base))
+		if !slices.ContainsFunc([]string{r.Name, r.Path, base, stem}, func(s string) bool {
+			return s != "" && strings.EqualFold(s, workflow)
+		}) {
 			continue
 		}
 		if !found || r.ID > best.ID {
