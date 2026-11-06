@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.13](https://github.com/elee1766/jobshop/compare/v0.6.12...v0.6.13) (2026-11-06)
+
+
+### Features
+
+* **control:** reserve cpu for the controller with a sessions cgroup (JOB-91) ([#894](https://github.com/elee1766/jobshop/issues/894)) ([deb0b18](https://github.com/elee1766/jobshop/commit/deb0b180d675372331da2eb64509763b96d707ca))
+
 ## [0.6.12](https://github.com/elee1766/jobshop/compare/v0.6.11...v0.6.12) (2026-11-06)
 
 
