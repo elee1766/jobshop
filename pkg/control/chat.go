@@ -64,6 +64,7 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	}
 	// A human writing lifts the read-only first turn (#606).
 	c.humanWrote(ctx, sess.ID)
+	c.noteOperator(ctx, sess, sc.actor)
 	c.resumeSession(ctx, sess.ID)
 	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt, Context: strings.TrimSpace(p.Context)})
 	if err != nil {
@@ -162,6 +163,7 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 	if sc.peer == nil || sc.peer.conn == nil {
 		return nil, fmt.Errorf("%w: subscribe needs a socket connection", store.ErrInvalid)
 	}
+	defer c.watch(p.ID)()
 	// Events reach Desk, chat gateways and A2A peers (#574): redact with
 	// the session's env and the configured rules, built once per subscription.
 	red := c.redactor(journalEnv(c.root.SessionDir(p.ID)))

@@ -60,7 +60,9 @@
     return () => { stale = true; };
   });
 
-  const working = $derived(!!t?.busy);
+  // A closed session never shows as working (JOB-52): its end state shows.
+  const closed = $derived(!!t?.ended);
+  const working = $derived(!!t?.busy && !closed);
   /** The running tool's name for the working line. */
   const runningTool = $derived.by(() => {
     const bs = t?.blocks ?? [];
@@ -72,10 +74,6 @@
   });
   const canSend = $derived(access.write || !!chatKey);
   const title = $derived(chatKey.startsWith('escalation:') ? 'Escalation ' + chatKey.slice(11) : chatKey.startsWith('attention:') ? 'Resolve ' + item : chatKey.startsWith('desk:') ? 'Desk chat' : info?.ticket?.title || 'Session');
-
-  // Question items answer through question.answer by default (#535).
-  let answer = $state(true);
-  const answering = $derived(itemKind === 'question' && answer);
 
   let draft = $state('');
   let sending = $state(false);
@@ -153,17 +151,11 @@
     sending = true;
     notice = '';
     try {
-      if (answering) {
-        // A bare number reads as picking a chat option, but it reaches
-        // the asking session verbatim (JOB-23 got "1").
-        if (/^\s*\d+[.)]?\s*$/.test(text) && !(await api.confirm('Send "' + text + '" to the asking session as the whole answer? It gets this text verbatim; write out the answer (for example "yes") if this picks an option from the chat.'))) return;
-        await api.call('question.answer', { id: itemId, text });
-        notice = 'Answer sent to the asking session';
-      } else {
-        await api.session.send(chatKey ? { key: chatKey, text, interrupt } : { session: id, text, interrupt });
-        pending = [...pending, { text, state: working && !interrupt ? 'queued for after this turn' : 'sent, waiting for the session' }];
-        if (working && !interrupt) notice = 'Queued for after this turn';
-      }
+      // A question chat talks to the chat agent too, which relays the
+      // answer with question.answer and follows the worker (JOB-52).
+      await api.session.send(chatKey ? { key: chatKey, text, interrupt } : { session: id, text, interrupt });
+      pending = [...pending, { text, state: working && !interrupt ? 'queued for after this turn' : 'sent, waiting for the session' }];
+      if (working && !interrupt) notice = 'Queued for after this turn';
       rememberPrompt(id, text);
       historyIndex = -1;
       draft = '';
@@ -257,9 +249,6 @@
     <div class="item" data-testid="chat-item">
       <div class="itxt"><span class="pill">{itemKind}</span> <span class="ititle">{ticket?.title || itemId}</span></div>
       <div class="iacts">
-        {#if itemKind === 'question'}
-          <label class="toggle" data-testid="answer-toggle"><input type="checkbox" bind:checked={answer} /> answer the question</label>
-        {/if}
         {#each actions as a (a.label)}
           <button type="button" disabled={acting} onclick={() => act(a)} data-testid="resolve">{a.label}</button>
         {/each}
@@ -269,7 +258,7 @@
 
   {#if readonly}
     <p class="ro" data-testid="chat-readonly">Read-only: a worker's turn is not driven from here.{#if info?.current} <a href={'?ticket=' + info.current} class="mono" onclick={(e) => { e.preventDefault(); api.openTicket(info.current); }} data-testid="chat-ro-ticket">{info.current}</a>{/if}</p>
-  {:else if canSend || answering}
+  {:else if canSend && !closed}
     <form class="composer" onsubmit={(e) => { e.preventDefault(); submit(false); }}>
       <textarea
         rows="2"
@@ -278,7 +267,7 @@
         aria-label="Message"
         oninput={() => { historyIndex = -1; grow(); }}
         onkeydown={onKey}
-        placeholder={answering ? 'Answer the question' : working ? 'Queued for after this turn' : 'Message'}
+        placeholder={working ? 'Queued for after this turn' : 'Message'}
         enterkeyhint="send"
         data-testid="chat-input"
       ></textarea>
@@ -293,11 +282,13 @@
         <span class="grow"></span>
         {#if working}
           <button type="button" class="stop" onclick={stop} title="Cancel the turn (Esc)" data-testid="chat-stop">Stop</button>
-          {#if !answering}<button type="button" class="interrupt" disabled={!draft.trim() || sending} onclick={() => submit(true)} title="Cancel the turn and send now (Ctrl+Enter)" data-testid="chat-interrupt">Interrupt</button>{/if}
+          <button type="button" class="interrupt" disabled={!draft.trim() || sending} onclick={() => submit(true)} title="Cancel the turn and send now (Ctrl+Enter)" data-testid="chat-interrupt">Interrupt</button>
         {/if}
-        <button type="submit" class="send" disabled={!draft.trim() || sending} data-testid="chat-send">{answering ? 'Answer' : working ? 'Queue' : 'Send'}</button>
+        <button type="submit" class="send" disabled={!draft.trim() || sending} data-testid="chat-send">{working ? 'Queue' : 'Send'}</button>
       </div>
     </form>
+  {:else if closed}
+    <p class="ro" data-testid="chat-closed">Session closed{t?.ended && t.ended !== 'closed' ? ' · ' + t.ended : ''}</p>
   {:else}
     <p class="ro" data-testid="chat-readonly">Read-only: {access.reason || 'this session does not accept input'}</p>
   {/if}
@@ -331,7 +322,6 @@
   .iacts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .iacts button, .actions button { height: 28px; padding: 0 10px; font-size: 12px; border-radius: var(--desk-radius); border: 1px solid var(--desk-border); background: var(--desk-raised); color: var(--desk-text); cursor: pointer; white-space: nowrap; }
   .iacts button:disabled, .actions button:disabled { opacity: 0.45; cursor: default; }
-  .toggle { font-size: 12px; color: var(--desk-muted); display: inline-flex; gap: 4px; align-items: center; }
   .composer { flex: none; border-top: 1px solid var(--desk-border); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: var(--desk-panel); }
   textarea { display: block; width: 100%; resize: none; padding: 8px 10px; border: 1px solid var(--desk-border); border-radius: 6px; background: var(--desk-bg); color: var(--desk-text); font: inherit; max-height: 40vh; box-sizing: border-box; }
   textarea:focus { outline: none; border-color: var(--desk-accent); }

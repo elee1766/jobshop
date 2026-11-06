@@ -130,6 +130,9 @@ type Controller struct {
 	// readOnly are sessions limited to read methods until a human
 	// writes (#606); mirrors SessionFields.ReadOnly.
 	readOnly map[string]bool
+	// watchers counts Desk streams per session: a watched question chat
+	// stays open (JOB-52).
+	watchers map[string]int
 	drain    bool            // full shutdown in progress: start nothing new
 	drained  map[string]bool // drained pools (drainAll for every pool); persisted in scale.json
 	// Pool scaling (#281): manual targets (persisted with drains), the

@@ -137,6 +137,8 @@ export class Builder {
 /** One session's transcript: live stream plus older pages. */
 export class Transcript {
   status = $state('connecting');
+  /** The session's resolution once a state event said it closed, else ''. */
+  ended = $state('');
   /** Lowest journal seq loaded; older entries are 1..first-1. */
   first = $state(0);
   loadingOlder = $state(false);
@@ -165,7 +167,11 @@ export class Transcript {
       if (m.type === 'open') this.status = 'live';
       else if (m.type === 'end') { this.status = 'closed'; this.busy = false; }
       else if (m.type === 'error') { if (this.status !== 'closed') this.status = 'reconnecting'; }
-      else if (m.type === 'event') this.#apply(m.event);
+      else if (m.type === 'event') {
+        this.#apply(m.event);
+        // The session's state said closed: it shows its end, never working.
+        if (m.event?.type === 'state' && m.event.status === 'closed') this.ended = m.event.resolution || 'closed';
+      }
     });
   }
 

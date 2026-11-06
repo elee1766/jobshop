@@ -233,37 +233,73 @@ test('an escalation item opens its existing chat', async ({ page }) => {
   await expect(page.getByTestId('block-system')).toContainText('escalation chat for js-e1');
 });
 
-test('a question item: the answer goes through question.answer and the item clears', async ({ page }) => {
-  let answered = false;
+test('a question item: the operator talks to the chat agent, which answers, follows the worker and takes a re-ask (JOB-52)', async ({ page }) => {
+  /** @type {(v?: any) => void} */
+  let sent = () => {};
+  const operatorSent = new Promise((r) => { sent = r; });
+  const tool = (/** @type {number} */ seq, /** @type {string} */ title) => ({ seq, type: 'tool', tool: { id: 't' + seq, title, status: 'completed' }, time: iso(850) });
+  const ctxTurn = (/** @type {number} */ seq, /** @type {string} */ context) => ({ seq, type: 'turn_start', text: '', context, time: iso(700) });
   const calls = await mock(page, {
-    attention: () => (answered ? [] : [{ kind: 'question', id: 'js-q1', title: 'Which branch?', why: 'question', since: iso(600e3) }]),
+    attention: () => [{ kind: 'question', id: 'js-q1', title: 'Which branch?', why: 'question', since: iso(600e3) }],
     chat: () => ({ kind: 'question', id: 'js-q1', key: 'attention:question:js-q1', session: 'js-s3', started: true }),
-    streams: { 'js-s3': [sse([prompt(2, 'Desk attention item: question js-q1'), end(3)], { end: true })] },
+    streams: {
+      'js-s3': [
+        sse([prompt(2, 'Desk attention item: question js-q1'), say(3, 'It asks which branch to deploy.'), end(4)]),
+        async () => {
+          await operatorSent;
+          return sse([
+            prompt(5, 'use main'),
+            tool(6, 'jobshop answer js-q1 "use main"'),
+            say(7, 'Sent "use main" to the worker.'),
+            end(8),
+            ctxTurn(9, 'Reaction of the asking session js-w1 on js-t1 to the answer to js-q1: parked: js-t1 waits on CI on PR 7.'),
+            say(10, 'Parked: the worker waits on CI on PR 7.'),
+            end(11),
+            ctxTurn(12, 'The asking session js-w1 asked again on js-t1. New question js-q2: main or release?'),
+            say(13, 'It asks again: main or release?'),
+            end(14),
+            prompt(15, 'release'),
+            tool(16, 'jobshop answer js-q2 "release"'),
+            say(17, 'Resolved: js-t1 is in progress.'),
+            end(18),
+          ]);
+        },
+      ],
+    },
   });
   await page.goto('./');
   await page.getByTestId('open-chat').first().click();
-  await expect(page.getByTestId('answer-toggle')).toBeVisible();
-  await expect(page.getByTestId('answer-toggle').locator('input')).toBeChecked();
-  await expect(page.getByTestId('chat-send')).toHaveText('Answer');
-  // A bare number asks first: cancelled, nothing is sent.
-  await page.getByTestId('chat-input').fill('1');
-  await page.getByTestId('chat-input').press('Enter');
-  await expect(page.getByTestId('confirm')).toBeVisible();
-  await page.getByTestId('confirm').getByRole('button', { name: 'Cancel' }).click();
-  expect(calls.filter((c) => c.path === '/api/rpc/question.answer')).toHaveLength(0);
-  answered = true;
+  // No answer toggle: the composer always talks to the chat agent.
+  await expect(page.getByTestId('answer-toggle')).toHaveCount(0);
+  await expect(page.getByTestId('chat-send')).toHaveText('Send');
+  await expect(page.getByTestId('block-assistant')).toContainText('It asks which branch to deploy.');
   await page.getByTestId('chat-input').fill('use main');
   await page.getByTestId('chat-input').press('Enter');
-  await expect(page.getByTestId('chat-notice')).toHaveText('Answer sent to the asking session');
-  const a = calls.find((c) => c.path === '/api/rpc/question.answer');
-  expect(a?.body).toEqual({ id: 'js-q1', text: 'use main' });
-  expect(calls.filter((c) => c.path === '/api/chat/send')).toHaveLength(0);
-  // Toggled off, the composer talks to the operator agent instead.
-  await page.getByTestId('answer-toggle').locator('input').uncheck();
-  await expect(page.getByTestId('chat-send')).toHaveText('Send');
-  await page.getByTestId('session-panel-close').click();
+  await expect.poll(() => calls.find((c) => c.path === '/api/chat/send')?.body).toMatchObject({ key: 'attention:question:js-q1', text: 'use main' });
+  expect(calls.filter((c) => c.path === '/api/rpc/question.answer')).toHaveLength(0);
+  sent();
+  // The operator's message shows in the transcript, then the agent's
+  // answer, the worker's reaction and the re-ask, all in this one chat.
+  await expect(page.getByTestId('block-user').first()).toContainText('use main');
+  await expect(page.getByTestId('journal')).toContainText('jobshop answer js-q1');
+  await expect(page.getByTestId('journal')).toContainText('Parked: the worker waits on CI on PR 7.');
+  await expect(page.getByTestId('journal')).toContainText('It asks again: main or release?');
+  await expect(page.getByTestId('journal')).toContainText('jobshop answer js-q2');
+  await expect(page.getByTestId('journal')).toContainText('Resolved: js-t1 is in progress.');
+});
+
+test('a closed session shows its end state, never working (JOB-52)', async ({ page }) => {
+  await mock(page, {
+    attention: () => [{ kind: 'question', id: 'js-q1', title: 'Which branch?', why: 'question', since: iso(600e3) }],
+    chat: () => ({ kind: 'question', id: 'js-q1', key: 'attention:question:js-q1', session: 'js-s3' }),
+    // A turn that started but never ended, then the session closed.
+    streams: { 'js-s3': [sse([prompt(2, 'Desk attention item: question js-q1'), say(3, 'Reading'), { type: 'state', status: 'closed', resolution: 'resolved' }])] },
+  });
   await page.goto('./');
-  await expect(page.getByTestId('attention-empty')).toBeVisible();
+  await page.getByTestId('open-chat').first().click();
+  await expect(page.getByTestId('chat-closed')).toContainText('Session closed · resolved');
+  await expect(page.getByTestId('chat-working')).toHaveCount(0);
+  await expect(page.getByTestId('chat-input')).toHaveCount(0);
 });
 
 test('a decision item: approve, reject and dismiss call decision.resolve; an error shows a toast', async ({ page }) => {
