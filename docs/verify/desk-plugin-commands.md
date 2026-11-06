@@ -13,8 +13,8 @@ On the host running Desk (default `127.0.0.1:7480`):
    prints a `$ref` and a non-zero count.
 5. Install the example: `cp -r examples/desk-plugins/csv-table <root>/desk/plugins/`,
    `printf 'a,b\n1,2\n' > /tmp/t.csv; jobshop artifact deliver "CSV" --attach /tmp/t.csv`.
-   Desk, Artifacts, the new artifact: `t.csv` renders as a two-column
-   table with "1 rows".
+   `curl -s 127.0.0.1:7480/api/plugins | jq -r '.[].name'` lists
+   `csv-table` (no built-in view hosts the `artifact` slot since JOB-80).
 6. Playwright with the fixtures (`docs/verify/desk-plugins.md` step 6)
    and `desk_commands: {e2e-echo: {command: cat}}` in `jobshop.yaml`:
    `plugins.spec.js`'s `e2e-flow` test covers ticket create with meta,

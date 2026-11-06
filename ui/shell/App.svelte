@@ -5,7 +5,6 @@
   import { panel } from './lib/panel.svelte.js';
   import { initPush } from './lib/push.svelte.js';
   import Inbox from '@lucide/svelte/icons/inbox';
-  import Package from '@lucide/svelte/icons/package';
   import MessageSquare from '@lucide/svelte/icons/message-square';
   import ListChecks from '@lucide/svelte/icons/list-checks';
   import ActivityIcon from '@lucide/svelte/icons/activity';
@@ -45,15 +44,12 @@
   const attention = resource(() => 'api/attention');
   const count = $derived(attention.data?.length ?? 0);
   onMount(() => { get('api/whoami').then((w) => (who.user = w.user || '')).catch(() => {}); });
-  const unread = resource(() => 'api/artifacts?unread=1');
-  const unreadCount = $derived(unread.data?.length ?? 0);
 
   // Every view is a plugin (#541). Known ids keep their icon, key and
   // nav order; other plugin views follow in plugin order.
   /** @type {Record<string, { icon: any, key: string }>} */
   const known = {
     attention: { icon: Inbox, key: 'a' },
-    artifacts: { icon: Package, key: 'r' },
     chat: { icon: MessageSquare, key: 'c' },
     work: { icon: ListChecks, key: 'w' },
     activity: { icon: ActivityIcon, key: 'y' },
@@ -112,12 +108,11 @@
         class:active={url.view === v.id}
         data-view={v.id}
         title={'Go to ' + v.title + (v.key ? ' (g ' + v.key + ')' : '')}
-        onclick={(e) => { e.preventDefault(); go({ view: v.id, ticket: '', artifact: '' }); }}
+        onclick={(e) => { e.preventDefault(); go({ view: v.id, ticket: '' }); }}
       >
         <span class="ico"><Icon size={14} />{#if v.id === 'attention' && count > 0}<span class="tabdot"></span>{/if}</span>
         <span class="lbl">{v.title}</span>
         {#if v.id === 'attention' && count > 0}<span class="badge">{count}</span>{/if}
-        {#if v.id === 'artifacts' && unreadCount > 0}<span class="badge" data-testid="artifacts-unread">{unreadCount}</span>{/if}
       </a>
     {/each}
     {#if plugins.error}<div class="faint perr" data-testid="plugins-error">plugins: {plugins.error}</div>{/if}
