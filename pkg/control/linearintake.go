@@ -125,7 +125,7 @@ func (c *Controller) readLinearIntake(ctx context.Context, sig config.StallSigna
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	cl := linear.New(c.linearURL, tok.Token)
+	cl := c.newLinear(c.linearURL, name, cfg.Identities[name], sig.Team, tok.Token)
 	states, labels, skip := config.SplitList(sig.States), config.SplitList(sig.Labels), config.SplitList(sig.SkipLabels)
 	f := linear.Filter{Team: sig.Team, Limit: 250}
 	var out []linear.Summary

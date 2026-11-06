@@ -66,7 +66,7 @@ type linearCreateCmd struct {
 	Description string   `help:"Issue description (markdown). Use - to read stdin."`
 	State       string   `help:"State name."`
 	Label       []string `help:"Label name (repeatable)."`
-	Assignee    string   `help:"Assignee name, display name or email; me is the token's user (an app becomes the delegate)."`
+	Assignee    string   `help:"Assignee name, display name or email; me is the token's user."`
 	Parent      string   `help:"Parent issue key."`
 	linearWriteFlags
 }
@@ -101,7 +101,7 @@ type linearUpdateCmd struct {
 	IssueKey    string    `arg:"" name:"issue" help:"Issue key."`
 	Title       string    `help:"New title."`
 	State       string    `help:"State name."`
-	Assignee    string    `help:"Assignee name, display name or email; me is the token's user (an app becomes the delegate)."`
+	Assignee    string    `help:"Assignee name, display name or email; me is the token's user."`
 	AddLabel    []string  `name:"add-label" help:"Label to add (repeatable)."`
 	RemoveLabel []string  `name:"remove-label" help:"Label to remove (repeatable)."`
 	IfUpdatedAt time.Time `name:"if-updated-at" help:"Fail unless the issue's updated_at is this (RFC3339), so a concurrent change is not overwritten."`

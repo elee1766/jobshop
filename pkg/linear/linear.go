@@ -37,6 +37,9 @@ type Client struct {
 	URL   string
 	Token string
 	HTTP  *http.Client
+	// Renew, if set, returns a replacement token after a 401. Linear
+	// revokes an app's tokens when another mint asks for different scopes.
+	Renew func(ctx context.Context) (string, error)
 }
 
 // New returns a client for token. url "" is DefaultAPIURL.
@@ -215,6 +218,19 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 
 // post sends one GraphQL request body and reads the response.
 func (c *Client) post(ctx context.Context, b []byte) (*http.Response, []byte, error) {
+	resp, body, err := c.send(ctx, b)
+	if err != nil || resp.StatusCode != http.StatusUnauthorized || c.Renew == nil {
+		return resp, body, err
+	}
+	tok, err := c.Renew(ctx)
+	if err != nil {
+		return resp, body, nil
+	}
+	c.Token = tok
+	return c.send(ctx, b)
+}
+
+func (c *Client) send(ctx context.Context, b []byte) (*http.Response, []byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(b))
 	if err != nil {
 		return nil, nil, err

@@ -466,11 +466,7 @@ func (c *Client) PlanUpdate(ctx context.Context, key string, p UpdateParams) (Mu
 			return Mutation{}, err
 		}
 		in[field] = id
-		if field == "delegateId" {
-			checks = append(checks, func(g Context) error { return expect("delegate", g.Delegate, name) })
-		} else {
-			checks = append(checks, func(g Context) error { return expect("assignee", g.Assignee, name) })
-		}
+		checks = append(checks, func(g Context) error { return expect("assignee", g.Assignee, name) })
 	}
 	if len(p.AddLabels) > 0 {
 		ids, err := t.labelIDs(p.AddLabels)
@@ -602,18 +598,13 @@ func (c *Client) PlanRelate(ctx context.Context, key, typ, other, id string) (Mu
 }
 
 // assignee resolves an assignee: "me" is the API key's own user (an agent
-// assigning itself as it takes an issue), anything else a team member.
-// field is the input field to set: assigneeId, or delegateId when "me"
-// is an app (Linear rejects an app as assignee with "App user not valid";
-// an app works an issue as its delegate).
+// assigning itself as it takes an issue; an app needs app:assignable),
+// anything else a team member.
 func (c *Client) assignee(ctx context.Context, t teamInfo, name string) (field, id, display string, err error) {
 	if strings.EqualFold(name, "me") {
 		v, err := c.Viewer(ctx)
 		if err != nil {
 			return "", "", "", err
-		}
-		if v.App {
-			return "delegateId", v.ID, v.Name, nil
 		}
 		return "assigneeId", v.ID, v.Name, nil
 	}

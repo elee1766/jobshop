@@ -30,7 +30,7 @@ type linearCmd struct {
 	Eligible            linearEligibleCmd `cmd:"" help:"Intake gate: print whether an issue may start a run and why not. Exits 1 when not eligible."`
 	Create              linearCreateCmd   `cmd:"" help:"Create an issue. --key makes a retry return the first result."`
 	Update              linearUpdateCmd   `cmd:"" help:"Change title, state, assignee or labels; reads the issue back to verify."`
-	Assign              linearAssignCmd   `cmd:"" help:"Take an issue: assign it to a user, or to yourself with me (an app token becomes the issue's delegate). linear assign <KEY> me."`
+	Assign              linearAssignCmd   `cmd:"" help:"Take an issue: assign it to a user, or to yourself with me. linear assign <KEY> me."`
 	Label               linearLabelCmd    `cmd:"" help:"Add or remove labels: linear label <KEY> add|remove <label>... (same as update --add-label/--remove-label)."`
 	Ask                 linearAskCmd      `cmd:"" help:"Comment a question, mentioning users so they are notified."`
 	Relate              linearRelateCmd   `cmd:"" help:"Mark an issue as blocking or related to another."`

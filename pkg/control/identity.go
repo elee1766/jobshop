@@ -7,7 +7,6 @@ import (
 	"sort"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -98,7 +97,7 @@ func (c *Controller) identityCheck(ctx context.Context, sc scope, p rpc.Identity
 	if config.IsLinear(id.Kind) {
 		// A minted token can still be refused by the API; reading viewer
 		// proves it works (#278).
-		v, err := linear.New(c.linearURL, t.Token).Viewer(ctx)
+		v, err := c.newLinear(c.linearURL, name, id, p.Target, t.Token).Viewer(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("identity %s: %w", name, err)
 		}
