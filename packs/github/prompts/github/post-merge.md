@@ -17,7 +17,8 @@ failed attempt; a plain release is one).
    push superseded that run, it is not red. Wait the same way on the
    newest master commit instead.
    Red: file a priority-0 fix issue
-   (`gh issue list --search` first) and a dev ticket for it, comment
+   (`gh issue list --search` first) and a dev ticket for it
+   (`--pool {{.pack_prefix}}dev -p 0`), comment
    both here, and `jobshop close -r failed`.
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh on every loop. Do not reuse an earlier result or

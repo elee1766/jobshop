@@ -20,9 +20,12 @@ Read `gh pr view {{.pr}} --repo {{.repo}} --json state,headRefOid,mergeable,merg
    step and `jobshop close -r failed`.
 4. Behind master or checks not green on the current head (release-please
    rewrites the PR on every merge): set
-   `jobshop wait add 'github.checks:pr={{.repo}}#{{.pr}},state=success' 'github.checks:pr={{.repo}}#{{.pr}},state=failure' --any --resume --timeout 1h --reason "CI on release PR #{{.pr}}"`
-   and end the turn. Red checks: comment the failing check on this step
-   and `jobshop close -r failed`; at the retry limit the run escalates.
+   `jobshop wait add 'github.checks:pr={{.repo}}#{{.pr}},state=success,workflow={{.ci_workflow}}' 'github.checks:pr={{.repo}}#{{.pr}},state=failure,workflow={{.ci_workflow}}' --any --resume --timeout 1h --reason "CI on release PR #{{.pr}}"`
+   and end the turn. Without `workflow=` the wait can end green on
+   `pr-title` alone while `{{.ci_workflow}}` is still queued. On resume,
+   read `statusCheckRollup` and `mergeStateStatus` again before merging.
+   Red checks: comment the failing check on this step and
+   `jobshop close -r failed`; at the retry limit the run escalates.
 5. Green: `gh pr merge {{.pr}} --repo {{.repo}} --{{.merge_method}} --match-head-commit <headRefOid>`
    (never `--delete-branch`). Comment the merge sha on this step, then
    `jobshop close`. The release workflow tags the release from master.

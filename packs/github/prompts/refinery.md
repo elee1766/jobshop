@@ -15,7 +15,9 @@ shows every step, its holder and its failures.
 Never pass `--delete-branch` to `gh pr merge`: gh then deletes the local
 branch and removes the dev session's worktree that has it checked out
 (GitHub deletes the remote branch on merge). If master CI goes red after
-a merge, file a priority-0 issue and a dev ticket for it immediately.
+a merge, file a priority-0 issue and a dev ticket for it immediately
+(`jobshop ticket create ... -p 0 --pool {{.pack_prefix}}dev`: without
+`--pool` the ticket stays in this pool).
 
 A ticket that is not a step (an older hand-off: kind `task` with a
 "PR <url> head <sha>" comment) is reviewed the same way as
