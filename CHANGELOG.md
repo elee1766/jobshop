@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.3](https://github.com/elee1766/jobshop/compare/v0.7.2...v0.7.3) (2026-11-06)
+
+
+### Bug fixes
+
+* **packs/github:** linear implement carries on after an assign read-back failure ([#926](https://github.com/elee1766/jobshop/issues/926)) ([#927](https://github.com/elee1766/jobshop/issues/927)) ([6ae8658](https://github.com/elee1766/jobshop/commit/6ae86584283c2795080dce2969d84d33fd66ba4f))
+
 ## [0.7.2](https://github.com/elee1766/jobshop/compare/v0.7.1...v0.7.2) (2026-11-06)
 
 
