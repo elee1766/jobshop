@@ -150,7 +150,8 @@ How one issue flows:
    the issue `needs-human` and files a ticket on `jobshop attention`,
    and closing that ticket `done` lets the next start through.
 3. implement moves the issue to In Progress, opens a PR on `repo`, and
-   comments its link. A worker question is posted on the issue mentioning
+   comments its link. With `linear.ask_on_issue: true` (off by default,
+   JOB-114) a worker question is posted on the issue mentioning
    `linear_human`, with label `Blocked`; a reply under it answers (#293).
 4. The refinery merges; post-merge comments the sha and moves the issue
    to `linear_done_state`.

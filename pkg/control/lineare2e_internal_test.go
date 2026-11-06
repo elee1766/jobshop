@@ -31,6 +31,8 @@ identities:
     token_file: %[1]s/token
     workspace: acme
     teams: [ENG]
+linear:
+  ask_on_issue: true
 pools:
   dev: {agent: fake, dir: %[1]q}
   plan: {agent: fake, dir: %[1]q}

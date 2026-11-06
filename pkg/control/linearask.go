@@ -21,8 +21,9 @@ import (
 // (the same commentCreate as `jobshop linear ask`), mentioning
 // meta.linear.human. A human reply under the ask comment answers the
 // question. Questions also set the Blocked label until answered. Routine
-// progress stays on GitHub. linear.ask_on_issue: false turns all of this
-// off (JOB-114): questions and escalations stay on Desk.
+// progress stays on GitHub. All of this is opt-in with
+// linear.ask_on_issue: true (JOB-114); by default questions and
+// escalations stay on Desk.
 
 const (
 	// linearAskPack is meta.linear_ask on a question or escalation

@@ -44,6 +44,7 @@ identities:
     teams: [ENG]
 linear:
   webhook_listen: 127.0.0.1:0
+  ask_on_issue: true
 pools:
   dev: {agent: fake, dir: %[1]q}
   plan: {agent: fake, dir: %[1]q}

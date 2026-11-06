@@ -378,12 +378,12 @@ func TestIngestEndpointErrors(t *testing.T) {
 	}
 }
 
-// TestLinearAskOnIssue: unset means on; false turns it off (JOB-114).
+// TestLinearAskOnIssue: unset means off; true opts in (JOB-114).
 func TestLinearAskOnIssue(t *testing.T) {
 	c, err := Parse(nil)
 	require.NoError(t, err)
-	assert.True(t, c.Linear.AsksOnIssue())
-	c, err = Parse([]byte("linear:\n  ask_on_issue: false\n"))
-	require.NoError(t, err)
 	assert.False(t, c.Linear.AsksOnIssue())
+	c, err = Parse([]byte("linear:\n  ask_on_issue: true\n"))
+	require.NoError(t, err)
+	assert.True(t, c.Linear.AsksOnIssue())
 }

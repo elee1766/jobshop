@@ -105,6 +105,7 @@ func askController(t *testing.T) (*Controller, *stallClock, *askLinear) {
 	require.NoError(t, os.WriteFile(tokFile, []byte("lin_api_x\n"), 0o600))
 	cfg := *c.config()
 	cfg.Identities = map[string]config.Identity{"lin": {Kind: config.IdentityLinear, TokenFile: config.SecretPath(tokFile), Workspace: "acme", Teams: []string{"ENG"}}}
+	cfg.Linear.AskOnIssue = true // opt-in since JOB-114
 	lc, err := newLiveConfig(&cfg)
 	require.NoError(t, err)
 	c.live.Store(lc)
@@ -230,7 +231,7 @@ func TestLinearAskRetry(t *testing.T) {
 	assert.True(t, ok, "meta.linear_ask restored from the stored result")
 }
 
-// TestLinearAskOff: with linear.ask_on_issue false nothing new is posted
+// TestLinearAskOff: with linear.ask_on_issue off nothing new is posted
 // or labelled, and a reply under an earlier ask comment is delivered as
 // an ordinary comment instead of answering the question (JOB-114).
 func TestLinearAskOff(t *testing.T) {
@@ -252,7 +253,7 @@ func TestLinearAskOff(t *testing.T) {
 	f.mu.Unlock()
 
 	cfg := *c.config()
-	cfg.Linear.AskOnIssue = new(false)
+	cfg.Linear.AskOnIssue = false // the default
 	lc, err := newLiveConfig(&cfg)
 	require.NoError(t, err)
 	c.live.Store(lc)

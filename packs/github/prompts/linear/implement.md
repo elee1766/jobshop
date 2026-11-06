@@ -6,7 +6,8 @@ context {{.issue}}` adds labels, blockers, parent and children. Post progress,
 questions and design notes as Linear comments
 (`jobshop linear comment {{.issue}} "<text>"`), not on the ticket. A
 question only a person can answer, asked on the issue some other way
-than `jobshop report waiting --question` (which labels it for you):
+than `jobshop report waiting --question` (which labels it for you when
+the host sets `linear.ask_on_issue: true`):
 `jobshop linear label {{.issue}} add Blocked`, so intake leaves the issue
 alone until it is answered.
 
@@ -22,7 +23,7 @@ First decide what kind of work it is. Every exit closes with an outcome:
   lacks): `jobshop linear ask {{.issue}}` with the options and what you do
   by default, and `jobshop report waiting "<what>" --question "<...>"
   --context "<...>" --option "<Title>|<what it does>"`.
-  The question labels the issue Blocked.
+  With `linear.ask_on_issue: true` the question labels the issue Blocked.
 - **Not work** (a tracking, parent or target issue, a duplicate): comment
   why on the issue, add the label `{{.linear_skip_labels}}` or move it to
   Backlog, then `jobshop close --outcome done`. Never open a PR for it.

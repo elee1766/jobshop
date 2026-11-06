@@ -1154,14 +1154,14 @@ type Linear struct {
 	WebhookListen string `yaml:"webhook_listen"`
 	// AskOnIssue posts worker questions and run escalations on a run's
 	// Linear issue as a comment, adds Blocked for a question, and takes a
-	// reply as the answer (#293). False: they stay on Desk and Linear
-	// replies are ordinary comments (JOB-114). Default true.
-	AskOnIssue *bool `yaml:"ask_on_issue"`
+	// reply as the answer (#293). Default false (JOB-114): they stay on
+	// Desk and Linear replies are ordinary comments.
+	AskOnIssue bool `yaml:"ask_on_issue"`
 }
 
 // AsksOnIssue reports whether questions and escalations go to the Linear
-// issue.
-func (l Linear) AsksOnIssue() bool { return l.AskOnIssue == nil || *l.AskOnIssue }
+// issue. Opt-in.
+func (l Linear) AsksOnIssue() bool { return l.AskOnIssue }
 
 // Telemetry configures observability.
 type Telemetry struct {
