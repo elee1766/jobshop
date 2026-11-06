@@ -94,7 +94,7 @@ jobs:
       # Binary cache in the GitHub Actions cache: uploads each path this job
       # builds (the vendored-modules derivation, jobshop) and substitutes them
       # next run. Paths cache.nixos.org already serves are not stored.
-      - uses: Mic92/hestia/action@v3
+      - uses: Mic92/hestia@v3
         with:
           upstream-cache-filter: true
       # Nix files stay formatted with the flake's formatter (#583).
