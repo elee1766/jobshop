@@ -29,6 +29,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/logctx"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -210,6 +211,9 @@ type Controller struct {
 	// linearURL is the Linear GraphQL endpoint for identity check; "" is
 	// linear.DefaultAPIURL (tests set a fake).
 	linearURL string
+	// ghIssueOpen, when set, replaces the GitHub issue state read of the
+	// intake dependency check (JOB-68; tests).
+	ghIssueOpen func(context.Context, linear.GitHubDep) (bool, error)
 	// linIntake caches linear_issue_no_run reads between polls (#287).
 	linIntake linearIntake
 	// reloadMu serializes reloads so the last file read wins.

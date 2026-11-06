@@ -3,6 +3,7 @@ package linear
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -41,6 +42,59 @@ type Context struct {
 	Relations  []Relation `json:"relations"`
 	Blockers   []Ref      `json:"blockers"`
 	ArchivedAt *time.Time `json:"archived_at,omitempty"`
+	// OpenDeps are the open GitHub issues the description says it
+	// depends on (JOB-68), as owner/repo#n. The caller fills it after
+	// reading GitHub: the Linear read does not.
+	OpenDeps []string `json:"open_deps,omitempty"`
+}
+
+// GitHubDep is one "Depends on owner/repo#n" line of a description.
+type GitHubDep struct {
+	Repo   string // owner/name
+	Number int
+}
+
+func (d GitHubDep) String() string { return fmt.Sprintf("%s#%d", d.Repo, d.Number) }
+
+var dependsOn = regexp.MustCompile(`(?im)^\W*depends on:?\s+(?:https://github\.com/)?([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)?)(?:#|/issues/)([1-9][0-9]*)`)
+
+// Dependencies parses "Depends on <owner/repo>#<n>" lines (also
+// "repo#n", which takes owner, and GitHub issue URLs) from a description.
+// A bare repo with no owner is skipped.
+func Dependencies(desc, owner string) []GitHubDep {
+	var out []GitHubDep
+	for _, m := range dependsOn.FindAllStringSubmatch(desc, -1) {
+		repo := m[1]
+		if !strings.Contains(repo, "/") {
+			if owner == "" {
+				continue
+			}
+			repo = owner + "/" + repo
+		}
+		var n int
+		_, _ = fmt.Sscan(m[2], &n)
+		d := GitHubDep{Repo: repo, Number: n}
+		if !slices.Contains(out, d) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// CheckDeps sets c.OpenDeps to the description's dependencies that open
+// reports open. owner is the GitHub owner for a bare "repo#n".
+func (c *Context) CheckDeps(ctx context.Context, owner string, open func(context.Context, GitHubDep) (bool, error)) error {
+	c.OpenDeps = nil
+	for _, d := range Dependencies(c.Description, owner) {
+		ok, err := open(ctx, d)
+		if err != nil {
+			return fmt.Errorf("dependency %s: %w", d, err)
+		}
+		if ok {
+			c.OpenDeps = append(c.OpenDeps, d.String())
+		}
+	}
+	return nil
 }
 
 // OpenBlockers are the blockers not done or canceled.
@@ -412,6 +466,9 @@ func Eligible(c Context, skip []string, openRun string) Eligibility {
 			}
 			e.Reason = "blocked by " + strings.Join(ids, ", ")
 		}
+	}
+	if e.Reason == "" && len(c.OpenDeps) > 0 {
+		e.Reason = "depends on open " + strings.Join(c.OpenDeps, ", ")
 	}
 	if e.Reason == "" && openRun != "" {
 		e.Reason = "open run " + openRun
