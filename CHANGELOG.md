@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/elee1766/jobshop/compare/v0.4.0...v0.4.1) (2026-11-06)
+
+
+### Features
+
+* **deploy:** start self-deploy on ci success event ([#826](https://github.com/elee1766/jobshop/issues/826)) ([#834](https://github.com/elee1766/jobshop/issues/834)) ([ceec294](https://github.com/elee1766/jobshop/commit/ceec2945cd565c7e506d839c6df56f2de2bce7e2))
+
 ## [0.4.0](https://github.com/elee1766/jobshop/compare/v0.3.7...v0.4.0) (2026-11-06)
 
 
