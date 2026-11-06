@@ -343,7 +343,7 @@ func (c *Config) LearningKinds() []string {
 
 // HasConditions reports whether w has any condition a poll evaluates.
 func (w TriggerWhen) HasConditions() bool {
-	return w.Cron != "" || w.HasCounts() || w.Check != "" || w.Learnings != nil || w.Edits != nil
+	return w.Cron != "" || w.HasCounts() || w.Check != "" || w.Learnings != nil || w.Edits != nil || len(w.Stall) > 0
 }
 
 // HasCounts reports whether any count threshold is set.

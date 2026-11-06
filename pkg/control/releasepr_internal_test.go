@@ -59,7 +59,7 @@ func TestReleasePRTrigger(t *testing.T) {
 ]`
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "prs.json"), []byte(prs), 0o600))
 
-	found, err := c.detectStalls(t.Context(), c.config().Triggers["pr-unmerged"])
+	found, err := c.detectStalls(t.Context(), c.config().Triggers["pr-unmerged"], nil)
 	require.NoError(t, err)
 	var keys []string
 	for _, s := range found {

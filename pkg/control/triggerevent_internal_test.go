@@ -67,7 +67,7 @@ func fireEvents(c *Controller, items ...store.InboxItem) {
 		ev := eventOf(it)
 		for name, tr := range trs {
 			if len(tr.On) > 0 && triggerOn(tr, ev) {
-				c.fireOnEvent(c.ctx, name, tr, ev)
+				c.onEvent(c.ctx, name, tr, ev)
 			}
 		}
 	}
