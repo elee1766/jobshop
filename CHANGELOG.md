@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/elee1766/jobshop/compare/v0.3.5...v0.3.6) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** check only mount sources under a sandbox, bump acphost to v0.15.0 (JOB-53) ([#801](https://github.com/elee1766/jobshop/issues/801)) ([7ecb4f6](https://github.com/elee1766/jobshop/commit/7ecb4f6f312f7252a0bba4e09e188c4176406972))
+
 ## [0.3.5](https://github.com/elee1766/jobshop/compare/v0.3.4...v0.3.5) (2026-11-06)
 
 
