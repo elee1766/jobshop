@@ -676,8 +676,15 @@ func (s *Store) Heartbeat(ctx context.Context, c store.Claim, lease time.Duratio
 	}
 	now := s.now()
 	c.LeaseUntil = now.Add(lease).UTC().Truncate(time.Millisecond)
-	n, err := s.q.Heartbeat(ctx, sqldb.HeartbeatParams{
-		LeaseUntil: ms(c.LeaseUntil), Now: ms(now), ID: c.TicketID, Holder: c.Holder, Fence: c.Fence,
+	// Through tx so a lost race (Postgres 40001) is rerun and, at the
+	// limit, reported as ErrConflict, not a raw driver error (JOB-38).
+	var n int64
+	err := s.tx(ctx, func(q sqldb.Querier) error {
+		var err error
+		n, err = q.Heartbeat(ctx, sqldb.HeartbeatParams{
+			LeaseUntil: ms(c.LeaseUntil), Now: ms(now), ID: c.TicketID, Holder: c.Holder, Fence: c.Fence,
+		})
+		return err
 	})
 	if err != nil {
 		return c, err
@@ -892,6 +899,9 @@ func (s *Store) reopen(ctx context.Context, q sqldb.Querier, actor, id string, i
 
 func (s *Store) reopenAll(ctx context.Context, actor, op string, ids func(q sqldb.Querier) ([]string, error), diff any, w writeFn) (out []string, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
+		// tx reruns this after a lost write race: ids a rolled-back
+		// attempt reopened must not be reported (JOB-38).
+		out = nil
 		list, err := ids(q)
 		if err != nil {
 			return err

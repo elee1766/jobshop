@@ -82,8 +82,17 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	// Reads outside a transaction (Get, List) run read committed: under
+	// serializable a plain read can fail with 40001 while writers run
+	// (JOB-38), and a read has no guard to protect.
+	rcfg := cfg.Copy()
+	rcfg.RuntimeParams["default_transaction_isolation"] = "read committed"
+	rdb := stdlib.OpenDB(*rcfg)
+	rdb.SetMaxOpenConns(maxConns)
+	rdb.SetMaxIdleConns(maxConns)
 	s, err := sqlstore.New(sqlstore.Driver{
 		DB:          db,
+		ReadDB:      rdb,
 		Bind:        func(d sqldb.DBTX) sqldb.Querier { return sqldb.New(d) },
 		Classify:    classify,
 		RecallMatch: recallMatch,
@@ -94,6 +103,7 @@ func Open(ctx context.Context, dsn string, opt Options) (*Store, error) {
 	}, opt)
 	if err != nil {
 		_ = db.Close()
+		_ = rdb.Close()
 		return nil, err
 	}
 	return s, nil
