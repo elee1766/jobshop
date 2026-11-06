@@ -102,8 +102,9 @@ jobs:
         run: shellcheck -s sh deploy/*.sh
 
   nix:
+    # 2x4 OOMs evaluating the module check; 4x8 costs the same units as 2x8.
     runs-on:
-      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
+      - nscloud-ubuntu-24.04-amd64-4x8-with-cache
       - nscloud-cache-tag-jobshop-nix
       - nscloud-cache-size-40gb
       - nscloud-cache-allow-commit-from-master
