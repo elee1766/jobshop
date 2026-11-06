@@ -143,7 +143,15 @@ jobs:
       - uses: namespacelabs/nscloud-cache-action@v1
         with:
           cache: go
+      # PRs that change none of the tested packages' files skip the tests
+      # (not a required check). Pushes to master always run them.
+      - name: changed
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: .github/scripts/changed.sh -tags victorialogs ./pkg/control/journalvl/
       - name: install victoria-logs
+        if: steps.changed.outputs.run == 'true'
         env:
           VL_VERSION: v1.53.0
         run: |
@@ -158,9 +166,11 @@ jobs:
           echo "VICTORIALOGS_BIN=$bin" >> "$GITHUB_ENV"
           echo "JOBSHOP_REQUIRE_VICTORIALOGS=1" >> "$GITHUB_ENV"
       - run: go vet -tags victorialogs ./...
+        if: steps.changed.outputs.run == 'true'
       # Only the tagged package (JOB-47): it drives a controller through its
       # RPC API, so the rest of pkg/control stays in the go job.
       - name: go test
+        if: steps.changed.outputs.run == 'true'
         shell: bash # pipefail, so a test failure is not hidden by tee
         run: |
           go test -race -v -tags victorialogs ./pkg/control/journalvl/ | tee /tmp/vl-test.log
@@ -197,9 +207,17 @@ jobs:
       - uses: namespacelabs/nscloud-cache-action@v1
         with:
           cache: go
+      # PRs that change none of the tested packages' files skip the tests
+      # (not a required check). Pushes to master always run them.
+      - name: changed
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: .github/scripts/changed.sh ./pkg/store/postgres/ ./pkg/store/storemigrate/
       # JOB-35: every case must run on Postgres. A missing DSN or any
       # skipped test fails the job instead of passing silently.
       - name: storetest on postgres
+        if: steps.changed.outputs.run == 'true'
         shell: bash # explicit bash sets pipefail, so a test failure is not hidden by tee
         run: |
           test -n "$JOBSHOP_TEST_POSTGRES" || { echo "JOBSHOP_TEST_POSTGRES is not set"; exit 1; }
