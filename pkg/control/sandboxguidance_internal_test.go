@@ -2,6 +2,7 @@ package control
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,6 +48,16 @@ pools:
 	assert.Contains(t, s.RW, host.Mount{Src: filepath.Join(home, ".jcode"), Dst: filepath.Join(h, ".jcode")})
 	assert.NotEqual(t, c.sandboxKey("g"), c.sandboxKey("plain"))
 
+	_, err = c.poolSandbox("creds", dir, "/bin/true", "/tmp", home)
+	require.ErrorContains(t, err, "credentials")
+	_, err = c.poolSandbox("same", dir, "/bin/true", "/tmp", home)
+	require.ErrorContains(t, err, "also an rw path")
+
+	// SandboxArgs resolves bwrap on PATH; CI runners have none.
+	if _, err := exec.LookPath("bwrap"); err != nil {
+		t.Skip("bwrap not on PATH: argv order not checked")
+	}
+
 	// bwrap gets the file bind after the rw dir it sits in, and never
 	// the controller's auth.json.
 	argv, err := host.SandboxArgs(*s, "/bin/true", nil, "/tmp")
@@ -58,9 +69,4 @@ pools:
 	require.Greater(t, ro, rw, joined)
 	assert.NotContains(t, joined, filepath.Join(h, ".jcode", "auth.json"))
 	assert.NotContains(t, joined, "--ro-bind "+filepath.Join(h, ".missing"))
-
-	_, err = c.poolSandbox("creds", dir, "/bin/true", "/tmp", home)
-	require.ErrorContains(t, err, "credentials")
-	_, err = c.poolSandbox("same", dir, "/bin/true", "/tmp", home)
-	require.ErrorContains(t, err, "also an rw path")
 }
