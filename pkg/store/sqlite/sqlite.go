@@ -14,6 +14,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlstore"
+	"github.com/elee1766/jobshop/pkg/store/sqlstore/sqldb"
 )
 
 //go:embed migrations/*.sql
@@ -70,21 +71,73 @@ func Open(ctx context.Context, path string, opt Options) (*Store, error) {
 	}
 	// Statements are prepared once per text and closed with db (#433).
 	cache := newStmtCache(db)
+	bind, conn := cache.bind, cache.conn
+	// Reads get their own connections so a slow writer pass does not
+	// stall every API read. WAL readers see the last committed
+	// transaction, the same as reading after it on the writer.
+	var rdb *sql.DB
+	if !opt.Concurrent && fileBacked(path) {
+		if rdb, err = openReader(path); err != nil {
+			_ = db.Close()
+			return nil, err
+		}
+		rcache := newStmtCache(rdb)
+		bind = func(d sqldb.DBTX) sqldb.Querier {
+			if d == rdb {
+				return rcache.bind(d)
+			}
+			return cache.bind(d)
+		}
+		conn = func(d sqldb.DBTX) sqldb.DBTX {
+			if d == rdb {
+				return rcache.conn(d)
+			}
+			return cache.conn(d)
+		}
+	}
 	s, err := sqlstore.New(sqlstore.Driver{
 		DB:          db,
-		Bind:        cache.bind,
+		ReadDB:      rdb,
+		Bind:        bind,
 		Classify:    classify,
 		RecallMatch: recallMatch,
 		RecallSQL:   recallSQL,
 		IsBusy:      isBusy,
 		Collection:  (&registry{}).open,
-		Conn:        cache.conn,
+		Conn:        conn,
 	}, opt)
 	if err != nil {
+		if rdb != nil {
+			_ = rdb.Close()
+		}
 		_ = db.Close()
 		return nil, err
 	}
 	return s, nil
+}
+
+// readConns is the reader pool size. Desk and CLI reads run beside the
+// supervisor; a few connections cover them without many open files.
+const readConns = 4
+
+// fileBacked reports whether path is a plain file other connections can
+// open. Each connection to an in-memory database is its own database.
+func fileBacked(path string) bool {
+	return path != "" && path != ":memory:" && !strings.HasPrefix(path, "file:")
+}
+
+// openReader opens query-only connections to the database at path.
+func openReader(path string) (*sql.DB, error) {
+	dsn := "file:" + path + "?_pragma=busy_timeout(5000)&_pragma=query_only(1)"
+	rdb, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return nil, err
+	}
+	rdb.SetMaxOpenConns(readConns)
+	rdb.SetMaxIdleConns(readConns)
+	rdb.SetConnMaxIdleTime(0)
+	rdb.SetConnMaxLifetime(0)
+	return rdb, nil
 }
 
 func migrate(ctx context.Context, db *sql.DB) error {

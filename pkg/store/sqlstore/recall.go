@@ -34,7 +34,7 @@ func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.Recal
 }
 
 func (s *Store) recall(ctx context.Context, match, project, ticket string, lim int) ([]store.RecallHit, error) {
-	rows, err := s.conn(s.db).QueryContext(ctx, s.drv.RecallSQL, match, project, ticket, int64(lim))
+	rows, err := s.conn(s.rdb).QueryContext(ctx, s.drv.RecallSQL, match, project, ticket, int64(lim))
 	if err != nil {
 		return nil, err
 	}

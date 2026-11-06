@@ -183,7 +183,7 @@ func (s *Store) slotUnhealthy(ctx context.Context, actor, pool, id, reason strin
 
 // slots lists every slot, or pool's when set.
 func (s *Store) slots(ctx context.Context, pool string) ([]store.Slot, error) {
-	rs, err := s.q.ListSlots(ctx)
+	rs, err := s.rq.ListSlots(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -251,7 +251,7 @@ func (s *Store) slotReset(ctx context.Context, pool, id string, ok bool) (out st
 // slotDemand reports a provider resource's demand from its slots.
 func (s *Store) slotDemand(ctx context.Context, pool string, slots []store.Slot) (store.SlotDemand, error) {
 	var d store.SlotDemand
-	w, err := s.q.ProviderDemand(ctx, pool)
+	w, err := s.rq.ProviderDemand(ctx, pool)
 	if err != nil {
 		return d, err
 	}

@@ -101,7 +101,7 @@ func (s *Store) each(ctx context.Context, q *bqb.Query, fn func(*sql.Rows) error
 	if err != nil {
 		return err
 	}
-	rows, err := s.conn(s.db).QueryContext(ctx, text, args...)
+	rows, err := s.conn(s.rdb).QueryContext(ctx, text, args...)
 	if err != nil {
 		return err
 	}

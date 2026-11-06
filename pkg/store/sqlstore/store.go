@@ -41,6 +41,9 @@ type Driver struct {
 	// DB is the migrated database. Write transactions start with
 	// DB.BeginTx, so the driver sets any locking mode in its DSN.
 	DB *sql.DB
+	// ReadDB, if set, serves reads outside a transaction, so they do not
+	// queue behind writes on DB's connection. Nil means DB.
+	ReadDB *sql.DB
 	// Bind returns the store's queries over a database or transaction.
 	// sqldb's SQL runs on both engines ($N placeholders), so the core
 	// never converts rows.
@@ -74,8 +77,11 @@ type Driver struct {
 // sweeps do not rely on a single-writer database: their writes re-check
 // their conditions in the same statement (#406).
 type Store struct {
-	db     *sql.DB
-	q      sqldb.Querier
+	db *sql.DB
+	q  sqldb.Querier
+	// rdb and rq serve reads outside a transaction (Driver.ReadDB).
+	rdb    *sql.DB
+	rq     sqldb.Querier
 	drv    Driver
 	ids    *ids.Generator
 	now    func() time.Time
@@ -92,6 +98,10 @@ func New(d Driver, opt Options) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: d.DB, q: d.Bind(d.DB), drv: d, ids: gen, now: opt.Now, prefix: opt.Prefix, commit: opt.OnCommit}
+	s.rdb, s.rq = s.db, s.q
+	if d.ReadDB != nil {
+		s.rdb, s.rq = d.ReadDB, d.Bind(d.ReadDB)
+	}
 	if s.now == nil {
 		s.now = time.Now
 	}
@@ -102,7 +112,12 @@ func New(d Driver, opt Options) (*Store, error) {
 }
 
 // Close closes the database.
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	if s.rdb != s.db {
+		_ = s.rdb.Close()
+	}
+	return s.db.Close()
+}
 
 // busyTries bounds how often tx reruns a transaction that lost a write
 // race (Driver.IsBusy). Only concurrent databases hit it.
@@ -254,7 +269,7 @@ func (s *Store) get(ctx context.Context, q sqldb.Querier, id string) (store.Tick
 
 // Get returns one ticket with its labels.
 func (s *Store) Get(ctx context.Context, id string) (store.Ticket, error) {
-	return s.get(ctx, s.q, id)
+	return s.get(ctx, s.rq, id)
 }
 
 func history(ctx context.Context, q sqldb.Querier, t store.Ticket, at time.Time, actor, op string, diff any) error {

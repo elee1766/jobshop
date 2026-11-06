@@ -260,11 +260,11 @@ func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.queryTickets(ctx, s.db, q)
+	rows, err := s.queryTickets(ctx, s.rdb, q)
 	if err != nil {
 		return nil, err
 	}
-	return s.withLabels(ctx, s.q, toTickets(rows))
+	return s.withLabels(ctx, s.rq, toTickets(rows))
 }
 
 // claimCandidate reads ClaimNext's candidate in tx; sql.ErrNoRows means
