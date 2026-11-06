@@ -116,6 +116,8 @@ func (ws *writeServer) answer(c call) string {
 	case strings.Contains(q, "issueUpdate"):
 		ws.record(c)
 		return `{"data":{"issueUpdate":{"success":true,"issue":{"id":"iss-1","identifier":"ENG-123","url":"u"}}}}`
+	case strings.Contains(q, "viewer"):
+		return `{"data":{"viewer":{"id":"usr-bot","name":"Jobshop Bot"}}}`
 	case strings.Contains(q, "team(id"):
 		return writeTeamResp
 	case strings.Contains(q, "comment(id"):
@@ -305,6 +307,11 @@ func TestWriteUpdate(t *testing.T) {
 	assert.Equal(t, "ENG-123", res.(linear.Result).Identifier)
 	_, err = c.PlanUpdate(ctx, "ENG-123", linear.UpdateParams{})
 	require.Error(t, err)
+
+	// "me" is the API key's user, not a team member lookup.
+	m, err = c.PlanUpdate(ctx, "ENG-123", linear.UpdateParams{Assignee: "me"})
+	require.NoError(t, err)
+	assert.Equal(t, "usr-bot", m.Variables["input"].(map[string]any)["assigneeId"])
 }
 
 func TestWriteAskMention(t *testing.T) {

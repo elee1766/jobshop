@@ -323,7 +323,7 @@ func pick(kind string, es []Entry, name string) (Entry, error) {
 }
 
 // user finds a team member by name, display name or email
-// (case-insensitive). "me" is not resolved here.
+// (case-insensitive). "me" is resolved by Client.assignee.
 func (t teamInfo) user(name string) (member, error) {
 	var names []string
 	for _, m := range t.Members {
@@ -365,7 +365,7 @@ func (c *Client) PlanCreate(ctx context.Context, p CreateParams, id string) (Mut
 	if strings.TrimSpace(p.Title) == "" {
 		return Mutation{}, errors.New("linear: create needs a title")
 	}
-	t, err := c.team(ctx, strings.ToUpper(p.Team), teamNeed{states: p.State != "", labels: len(p.Labels) > 0, members: p.Assignee != ""})
+	t, err := c.team(ctx, strings.ToUpper(p.Team), teamNeed{states: p.State != "", labels: len(p.Labels) > 0, members: p.Assignee != "" && !strings.EqualFold(p.Assignee, "me")})
 	if err != nil {
 		return Mutation{}, err
 	}
@@ -391,11 +391,11 @@ func (c *Client) PlanCreate(ctx context.Context, p CreateParams, id string) (Mut
 		in["labelIds"] = ids
 	}
 	if p.Assignee != "" {
-		u, err := t.user(p.Assignee)
+		id, _, err := c.assignee(ctx, t, p.Assignee)
 		if err != nil {
 			return Mutation{}, err
 		}
-		in["assigneeId"] = u.ID
+		in["assigneeId"] = id
 	}
 	if p.Parent != "" {
 		par, err := c.GetIssue(ctx, p.Parent)
@@ -442,7 +442,7 @@ func (c *Client) PlanUpdate(ctx context.Context, key string, p UpdateParams) (Mu
 		return Mutation{}, fmt.Errorf("%w: %s updated at %s, not %s", ErrConflict, key,
 			r.Issue.UpdatedAt.UTC().Format(time.RFC3339Nano), p.IfUpdatedAt.UTC().Format(time.RFC3339Nano))
 	}
-	t, err := c.team(ctx, r.Issue.Team.Key, teamNeed{states: p.State != "", labels: len(p.AddLabels)+len(p.RemoveLabels) > 0, members: p.Assignee != ""})
+	t, err := c.team(ctx, r.Issue.Team.Key, teamNeed{states: p.State != "", labels: len(p.AddLabels)+len(p.RemoveLabels) > 0, members: p.Assignee != "" && !strings.EqualFold(p.Assignee, "me")})
 	if err != nil {
 		return Mutation{}, err
 	}
@@ -461,12 +461,12 @@ func (c *Client) PlanUpdate(ctx context.Context, key string, p UpdateParams) (Mu
 		checks = append(checks, func(g Context) error { return expect("state", g.State.Name, s.Name) })
 	}
 	if p.Assignee != "" {
-		u, err := t.user(p.Assignee)
+		id, name, err := c.assignee(ctx, t, p.Assignee)
 		if err != nil {
 			return Mutation{}, err
 		}
-		in["assigneeId"] = u.ID
-		checks = append(checks, func(g Context) error { return expect("assignee", g.Assignee, u.Name) })
+		in["assigneeId"] = id
+		checks = append(checks, func(g Context) error { return expect("assignee", g.Assignee, name) })
 	}
 	if len(p.AddLabels) > 0 {
 		ids, err := t.labelIDs(p.AddLabels)
@@ -595,4 +595,21 @@ func (c *Client) PlanRelate(ctx context.Context, key, typ, other, id string) (Mu
 		in["id"] = id
 	}
 	return Mutation{Op: OpRelate, Query: relateMutation, Variables: map[string]any{"input": in}, ID: id}, nil
+}
+
+// assignee resolves an assignee: "me" is the API key's own user (an agent
+// assigning itself as it takes an issue), anything else a team member.
+func (c *Client) assignee(ctx context.Context, t teamInfo, name string) (id, display string, err error) {
+	if strings.EqualFold(name, "me") {
+		v, err := c.Viewer(ctx)
+		if err != nil {
+			return "", "", err
+		}
+		return v.ID, v.Name, nil
+	}
+	u, err := t.user(name)
+	if err != nil {
+		return "", "", err
+	}
+	return u.ID, u.Name, nil
 }

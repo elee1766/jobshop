@@ -3925,7 +3925,8 @@ Flags:
                                  stdin.
       --state=STRING             State name.
       --label=LABEL,...          Label name (repeatable).
-      --assignee=STRING          Assignee name, display name or email.
+      --assignee=STRING          Assignee name, display name or email; me is the
+                                 API key's user.
       --parent=STRING            Parent issue key.
       --key=STRING               Idempotency key: a repeat with the same key
                                  returns the first result instead of writing
@@ -3958,7 +3959,8 @@ Flags:
 
       --title=STRING               New title.
       --state=STRING               State name.
-      --assignee=STRING            Assignee name, display name or email.
+      --assignee=STRING            Assignee name, display name or email;
+                                   me is the API key's user.
       --add-label=ADD-LABEL,...    Label to add (repeatable).
       --remove-label=REMOVE-LABEL,...
                                    Label to remove (repeatable).
