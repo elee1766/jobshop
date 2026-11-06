@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.2](https://github.com/elee1766/jobshop/compare/v0.2.1...v0.2.2) (2026-11-06)
+
+
+### Bug fixes
+
+* **control:** stop connect retries on SpawnError, drop journaltail wrapper (acphost[#125](https://github.com/elee1766/jobshop/issues/125)) ([#721](https://github.com/elee1766/jobshop/issues/721)) ([2f40952](https://github.com/elee1766/jobshop/commit/2f40952fd716e418a9fa44ff660389af7068db26))
+* **control:** wait for the wait-ended comment in TestWaitWebhookResume ([#745](https://github.com/elee1766/jobshop/issues/745)) ([#746](https://github.com/elee1766/jobshop/issues/746)) ([0f384ab](https://github.com/elee1766/jobshop/commit/0f384ab064e61e9e5270f55648d08df7947fc980))
+
+
+### Performance
+
+* **control:** load held tickets once in session.list ([#741](https://github.com/elee1766/jobshop/issues/741)) ([39ca616](https://github.com/elee1766/jobshop/commit/39ca616beb8543de08c15e33a1fc732c2a08bbe8))
+
 ## [0.2.1](https://github.com/elee1766/jobshop/compare/v0.2.0...v0.2.1) (2026-11-06)
 
 
