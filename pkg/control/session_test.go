@@ -830,6 +830,9 @@ type agent struct {
 	cur    map[string]string // config option values (#304)
 	busy   atomic.Bool       // a prompt is running
 	mu     sync.Mutex        // guards cur
+	// shellDenied: this process's shell is broken ("shelldenied");
+	// shellChecked: the file was read. Prompt goroutine only.
+	shellDenied, shellChecked bool
 }
 
 func (a *agent) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
@@ -999,6 +1002,35 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	if _, err := os.Stat("noclose"); err == nil {
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("Waiting on the CI wake.")})
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	}
+	// A "shelldenied" file holding N breaks the shell of the next N agent
+	// processes the way jcode's broke after a reload (JOB-94): every shell
+	// call fails with EACCES before the command starts, until the turn is
+	// cancelled. Each process checks once, at its first prompt.
+	if !a.shellChecked {
+		a.shellChecked = true
+		if b, err := os.ReadFile("shelldenied"); err == nil {
+			var n int
+			if _, err := fmt.Sscan(string(b), &n); err == nil && n > 0 {
+				_ = os.WriteFile("shelldenied", fmt.Appendf(nil, "%d", n-1), 0o600)
+				a.shellDenied = true
+			}
+		}
+	}
+	if a.shellDenied {
+		for i := 0; ; i++ {
+			id := acp.ToolCallId(fmt.Sprintf("sh%d", i))
+			_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall(id, "Running shell command",
+				acp.WithStartKind(acp.ToolKindExecute), acp.WithStartStatus(acp.ToolCallStatusPending))})
+			_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall(id,
+				acp.WithUpdateStatus(acp.ToolCallStatusFailed),
+				acp.WithUpdateRawOutput(map[string]any{"error": "Error: Permission denied (os error 13)"}))})
+			select {
+			case <-a.cancel:
+				return acp.PromptResponse{StopReason: acp.StopReasonCancelled}, nil
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
 	}
 	c, err := rpc.Dial(ctx, os.Getenv("JOBSHOP_SOCKET"))
 	if err != nil {
@@ -1643,6 +1675,83 @@ func TestUnknownSessionFallback(t *testing.T) {
 	require.Len(t, infos, 1)
 	assert.Zero(t, infos[0].Crashes, "no restart counted")
 	assert.Equal(t, store.StatusOpen, show(id).Status)
+}
+
+// TestShellDeniedRespawn: the agent's shell fails every call with EACCES,
+// as jcode's did after a reloaded conversation (JOB-94). The runner
+// cancels the turn, respawns the host with a new conversation seeded from
+// the journal (no session/load) and the held ticket is finished by the
+// new host, with no crash counted. A shell that breaks again before any
+// call works counts one crash, so one that never works ends crashed.
+func TestShellDeniedRespawn(t *testing.T) {
+	for name, broken := range map[string]int{"recovers": 1, "again": 2} {
+		t.Run(name, func(t *testing.T) {
+			root, start := poolRootReal(t, "1m")
+			stop := start()
+			defer stop()
+			admin := dial(t, root.AdminSocket())
+			show := func(id string) store.Ticket {
+				var got store.Ticket
+				require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
+					Ticket *store.Ticket `json:"ticket"`
+				}{&got}))
+				return got
+			}
+			var first store.Ticket
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "first-ticket-title", Pool: "dev"}, &first))
+			passEventually(t, root.Dir, func() bool { return show(first.ID).Status == store.StatusClosed }, "first ticket not closed")
+			var sessions []store.Ticket
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+			require.Len(t, sessions, 1)
+			id := sessions[0].ID
+			sdir := root.SessionDir(id)
+			pid := hostPidOf(t, sdir)
+
+			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "shelldenied"), []byte(strconv.Itoa(broken)), 0o600))
+			// The running agent already read the file at its first prompt;
+			// break the shell of the next one by restarting onto it.
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
+			passEventually(t, root.Dir, func() bool {
+				p := hostPidOf(t, sdir)
+				return p != 0 && p != pid && host.Alive(sdir)
+			}, "host not restarted")
+			pid = hostPidOf(t, sdir)
+
+			var second store.Ticket
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "second-ticket-title", Pool: "dev"}, &second))
+
+			passEventually(t, root.Dir, func() bool { return show(second.ID).Status == store.StatusClosed }, "second ticket not closed")
+			got := show(second.ID)
+			assert.Equal(t, "done", got.Resolution, "held ticket finished by the new host")
+			assert.NotEqual(t, pid, hostPidOf(t, sdir), "host respawned")
+
+			b, err := os.ReadFile(filepath.Join(root.Dir, "prompts"))
+			require.NoError(t, err)
+			var prompts []string
+			for line := range strings.Lines(string(b)) {
+				var s string
+				require.NoError(t, json.Unmarshal([]byte(line), &s))
+				prompts = append(prompts, s)
+			}
+			var seen []string
+			for _, p := range prompts {
+				if strings.Contains(p, "second-ticket-title") {
+					seen = append(seen, p)
+				}
+			}
+			require.Len(t, seen, broken+1, "prompted on each broken host, then on a working one")
+			before, after, ok := strings.Cut(seen[broken], host.SummaryEnd)
+			require.True(t, ok, "new conversation seeded with a summary: %q", seen[broken])
+			assert.Contains(t, before, "first-ticket-title", "summary covers the old turn")
+			assert.Contains(t, after, "You have claimed Jobshop ticket "+second.ID)
+
+			var infos []rpc.SessionInfo
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &infos))
+			require.Len(t, infos, 1)
+			assert.Equal(t, broken-1, infos[0].Crashes, "a repeat without a working call counts a crash")
+			assert.Equal(t, store.StatusOpen, show(id).Status)
+		})
+	}
 }
 
 // TestCancelDuringStartup cancels after the admin socket is up but before

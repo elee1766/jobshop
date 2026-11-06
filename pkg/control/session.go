@@ -111,6 +111,10 @@ type runner struct {
 	// running turn and sends nothing. inTurn is set while one runs.
 	cancelNow chan struct{}
 	inTurn    atomic.Bool
+	// shell tracks shell calls the agent could not start (JOB-94);
+	// shellDead is signalled when it breaks, to cancel the turn.
+	shell     shellState
+	shellDead chan struct{}
 	// tools maps the running turn's open tool calls to their labels,
 	// for session list (JOB-54). Cleared when a turn starts. Under mu.
 	tools     map[acp.ToolCallId]openTool
@@ -387,7 +391,7 @@ func (c *Controller) startRunner(t store.Ticket) {
 		log: c.log, ctx: ctx, cancel: cancel,
 		done: make(chan struct{}), turnEnd: make(chan struct{}, 1),
 		restartWake: make(chan struct{}, 1), restartNow: make(chan struct{}, 1),
-		cancelNow: make(chan struct{}, 1),
+		cancelNow: make(chan struct{}, 1), shellDead: make(chan struct{}, 1),
 	}
 	if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
 		r.traceParent = f.TraceParent
@@ -754,6 +758,9 @@ func (r *runner) session() error {
 	}
 	cwd := r.c.sessionCwd(t)
 	r.setACPID(fields.ACPSession)
+	// A host respawned for a broken shell does not reload the
+	// conversation that had it (JOB-94).
+	noReload := r.takeNewConversation()
 	switch {
 	case fields.ACPSession == "":
 		r.resetInjected()
@@ -772,7 +779,9 @@ func (r *runner) session() error {
 		r.resumed = true
 		r.mu.Unlock()
 		loaded := false
-		if init.AgentCapabilities.LoadSession {
+		if noReload {
+			r.log.WarnContext(r.ctx, "not reloading the conversation after a shell respawn", "acp_session", fields.ACPSession)
+		} else if init.AgentCapabilities.LoadSession {
 			ls, err := conn.LoadSession(ctx, acp.LoadSessionRequest{
 				SessionId: acp.SessionId(fields.ACPSession), Cwd: cwd, McpServers: []acp.McpServer{},
 			})
@@ -798,6 +807,7 @@ func (r *runner) session() error {
 		}
 	}
 
+	r.resetShellCalls()
 	if welcome.Busy {
 		// A turn started by a previous controller is still running.
 		select {
@@ -806,9 +816,14 @@ func (r *runner) session() error {
 			return r.dropped(conn)
 		case <-r.restartNow:
 			return r.restart(nc)
+		case <-r.shellDead:
+			return r.respawnShell(nc)
 		}
 		if r.wantsRestart() {
 			return r.restart(nc)
+		}
+		if r.shellBroken() {
+			return r.respawnShell(nc)
 		}
 		r.afterTurn(ctx, conn, "")
 		if stale && r.idle() {
@@ -1044,6 +1059,9 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		if r.wantsRestart() {
 			return r.restart(nc)
 		}
+		if r.shellBroken() {
+			return r.respawnShell(nc)
+		}
 		if r.worktreeMissing() {
 			// Every tool call fails in a deleted cwd, so turns would only
 			// claim and drop tickets. Respawning recreates the worktree
@@ -1064,6 +1082,10 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		// Queued messages go before the next claim, so also after each turn.
 		if err := r.deliver(ctx, conn); err != nil {
 			return err
+		}
+		if r.shellBroken() {
+			// A message turn broke it: respawn before claiming.
+			return r.respawnShell(nc)
 		}
 		// The env a new host would get can change while this one is live
 		// (a deploy restarts the controller with a new binary, a reload
@@ -1157,6 +1179,10 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			// Keep the claim: the restarted host gets the ticket again.
 			return r.restart(nc)
 		}
+		if r.shellBroken() {
+			// The same: the new host gets the ticket again (JOB-94).
+			return r.respawnShell(nc)
+		}
 		if interrupted {
 			if err := r.deliver(ctx, conn); err != nil {
 				return err
@@ -1225,6 +1251,23 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 	r.lastSaid.Reset()
 	r.tools, r.toolOrder = nil, nil
 	r.mu.Unlock()
+	// A shell that breaks mid-turn ends the turn: further calls would
+	// only fail the same way (JOB-94). A signal from before this turn is
+	// stale; the runner checks shellBroken between turns.
+	select {
+	case <-r.shellDead:
+	default:
+	}
+	watched := make(chan struct{})
+	defer close(watched)
+	go func() {
+		select {
+		case <-r.shellDead:
+			r.log.WarnContext(ctx, "agent shell cannot start commands, cancelling turn")
+			_ = conn.Cancel(context.WithoutCancel(ctx), acp.CancelNotification{SessionId: r.acpID()})
+		case <-watched:
+		}
+	}()
 	defer func() {
 		r.mu.Lock()
 		r.lastStop = string(res.StopReason)
@@ -1625,9 +1668,15 @@ func (r *runner) runningTool() openTool {
 }
 
 func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
+	broke := false
 	if tc := n.Update.ToolCall; tc != nil {
 		in := toolInput(tc.RawInput)
 		c.r.trackTool(tc.ToolCallId, openTool{tc.Title, rpc.ToolTarget(in, toolPaths(tc.Locations)), rpc.ToolIntent(in)}, tc.Status)
+		var kind *acp.ToolKind
+		if tc.Kind != "" {
+			kind = &tc.Kind
+		}
+		broke = c.r.noteShellCall(tc.ToolCallId, kind, tc.Status, tc.RawOutput, tc.Content)
 	}
 	if tu := n.Update.ToolCallUpdate; tu != nil {
 		title := ""
@@ -1640,6 +1689,13 @@ func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) err
 		}
 		in := toolInput(tu.RawInput)
 		c.r.trackTool(tu.ToolCallId, openTool{title, rpc.ToolTarget(in, toolPaths(tu.Locations)), rpc.ToolIntent(in)}, st)
+		broke = c.r.noteShellCall(tu.ToolCallId, tu.Kind, st, tu.RawOutput, tu.Content) || broke
+	}
+	if broke {
+		select {
+		case c.r.shellDead <- struct{}{}:
+		default:
+		}
 	}
 	if m := n.Update.AgentMessageChunk; m != nil && m.Content.Text != nil {
 		c.r.mu.Lock()

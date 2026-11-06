@@ -49,6 +49,10 @@ func (r *runner) inbox(ctx context.Context, interruptOnly bool) []store.Ticket {
 // delivered before the prompt, so the agent never sees a message as its
 // current ticket. Delivery is at most once: a crash mid-prompt loses it.
 func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) error {
+	if r.shellBroken() {
+		// The runner respawns the host first; messages wait for it (JOB-94).
+		return nil
+	}
 	var claimed []store.Ticket
 	for _, m := range r.inbox(ctx, false) {
 		t, cl, err := r.c.store.Claim(ctx, m.ID, r.id, r.c.leaseDur())
