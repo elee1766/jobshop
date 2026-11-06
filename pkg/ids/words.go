@@ -30,10 +30,10 @@ type wordsGen struct {
 }
 
 func (g wordsGen) Next(prefix, tag string) (string, error) {
-	max := big.NewInt(int64(len(wordList)))
+	bound := big.NewInt(int64(len(wordList)))
 	parts := make([]string, g.n)
 	for i := range parts {
-		k, err := rand.Int(rand.Reader, max)
+		k, err := rand.Int(rand.Reader, bound)
 		if err != nil {
 			return "", err
 		}

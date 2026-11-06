@@ -27,8 +27,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
-	idgen "github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/identity"
+	idgen "github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/logctx"
