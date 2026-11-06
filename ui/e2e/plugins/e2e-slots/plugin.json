@@ -1,0 +1,11 @@
+{
+  "name": "e2e-slots",
+  "entry": "index.js",
+  "api": ">=4",
+  "contributes": [
+    { "slot": "work:toolbar", "element": "e2e-slots-button" },
+    { "slot": "work:aside", "element": "e2e-slots-aside" },
+    { "slot": "chat:panel", "element": "e2e-slots-panel" },
+    { "slot": "chat:composer-actions", "element": "e2e-slots-action" }
+  ]
+}

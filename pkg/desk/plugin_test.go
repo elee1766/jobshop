@@ -80,6 +80,29 @@ func TestPluginsResolve(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, get(t, h, "/plugins/shared/nope.js", nil).Code)
 }
 
+func TestPluginSlotNames(t *testing.T) {
+	for slot, ok := range map[string]bool{
+		"view":                  true,
+		"session":               true,
+		"work:toolbar":          true,
+		"chat:composer-actions": true,
+		"my-plugin:a1":          true,
+		"toolbar":               false,
+		"Work:toolbar":          false,
+		"work:":                 false,
+		":toolbar":              false,
+		"work:tool:bar":         false,
+		"work:tool bar":         false,
+	} {
+		m := PluginManifest{Name: "p", Entry: "index.js", Contributes: []Contribution{{Slot: slot, Element: "p-x", ID: "p"}}}
+		if ok {
+			assert.NoError(t, m.validate(), slot)
+		} else {
+			assert.ErrorContains(t, m.validate(), "<plugin>:<name>", slot)
+		}
+	}
+}
+
 func TestPluginFileNoSymlinkEscape(t *testing.T) {
 	root := t.TempDir()
 	writePlugin(t, filepath.Join(root, "desk", "plugins"), "p", "p-view")

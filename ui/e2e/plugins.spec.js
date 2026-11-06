@@ -36,10 +36,35 @@ test('the drawer shows a plugin section', async ({ page }) => {
   await expect(page.getByTestId('e2e-drawer')).toHaveText(/^drawer for /);
 });
 
+// JOB-87: e2e-slots adds to Work and Chat through their plugin-defined
+// slots; e2e-slot-throws fails in work:toolbar beside it.
+test('a plugin adds a toolbar button to Work; a failing one shows an error card in its box only', async ({ page }) => {
+  await page.goto('./?view=work');
+  await expect(page.getByTestId('runs')).toBeVisible();
+  const toolbar = page.getByTestId('work-toolbar');
+  const err = toolbar.locator('[data-plugin=e2e-slot-throws] [data-testid=plugin-error]');
+  await expect(err).toContainText('e2e slot import failure');
+  await expect(page.getByTestId('plugin-error')).toHaveCount(1);
+  await page.getByTestId('e2e-slot-button').click();
+  await expect(page.getByTestId('toasts')).toContainText('e2e toolbar all');
+  await expect(page.getByTestId('e2e-slot-aside')).toHaveText(/^aside runs \d+$/);
+  // The view around the slot still works: a filter chip changes the context.
+  await page.getByRole('group', { name: 'state filter' }).getByRole('button', { name: 'done' }).click();
+  await page.getByTestId('e2e-slot-button').click();
+  await expect(page.getByTestId('toasts')).toContainText('e2e toolbar done');
+});
+
+test('a plugin adds a panel to Chat', async ({ page }) => {
+  await page.goto('./?view=chat');
+  await expect(page.getByTestId('chat-list')).toBeVisible();
+  await expect(page.getByTestId('chat-panels').getByTestId('e2e-slot-panel')).toHaveText('E2E chat panel');
+  await expect(page.getByTestId('chat-new-input')).toBeVisible();
+});
+
 test('plugin listing and RPC policy over HTTP', async ({ request }) => {
   const list = await (await request.get('api/plugins')).json();
   const names = list.map((/** @type {any} */ p) => p.name);
-  expect(names).toEqual(expect.arrayContaining(['deploys', 'e2e-test', 'e2e-throws']));
+  expect(names).toEqual(expect.arrayContaining(['deploys', 'e2e-test', 'e2e-throws', 'e2e-slots', 'e2e-slot-throws']));
   expect(list.find((/** @type {any} */ p) => p.name === 'deploys').source).toBe('root');
   const res = await request.post('api/rpc/claim', { data: {}, headers: { 'X-Jobshop-Desk': '1' } });
   expect(res.status()).toBe(403);

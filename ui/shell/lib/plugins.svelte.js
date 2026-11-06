@@ -11,8 +11,9 @@ import { push, pushStatus, enablePush, disablePush, testPush } from './push.svel
  * Bumped when api gains a member a plugin may need; plugin.json "api": ">=N".
  * 2 (#535): session, push, openSession, closeSession, openTicket, params.
  * 3 (#541): go, onParams, query, has, mount; params keeps every URL key.
+ * 4 (JOB-87): slot, plugin-defined slots named <plugin>:<name>.
  */
-export const API_VERSION = 3;
+export const API_VERSION = 4;
 
 /**
  * @typedef {{ slot: string, element: string, id?: string, title?: string, match?: Record<string, string[]> }} Contribution
@@ -119,6 +120,15 @@ export const deskApi = Object.freeze({
    */
   mount(host, slot, target, context) { return mountSlot(host, slot, target, context); },
   /**
+   * Mounts every contribution to a plugin-defined slot (JOB-87), e.g.
+   * 'work:toolbar', each in its own box inside host, in plugin order. A
+   * contribution that fails shows an error card in its box only. target
+   * is what match is checked against ({} when omitted). Returns null
+   * when nothing matches, else { context(c), destroy() }.
+   * @param {HTMLElement} host @param {string} slot @param {any} [context] @param {Record<string, any>} [target]
+   */
+  slot(host, slot, context, target) { return mountAll(host, slot, context, target); },
+  /**
    * Opens a session in the side panel (full screen on a phone). item is
    * the attention item it resolves, "kind:id" (#535). readonly hides the
    * composer whatever access allows (JOB-54): a view mode for watching a
@@ -176,32 +186,74 @@ function firstFor(slot, target) {
 function mountSlot(host, slot, target, context) {
   const hit = firstFor(slot, target);
   if (!hit) return null;
+  return mountOne(host, hit.plugin, hit.c, context);
+}
+
+/** @param {HTMLElement} host @param {string} slot @param {any} context @param {Record<string, any>} [target] */
+function mountAll(host, slot, context, target) {
+  const hits = contributions(slot).filter((x) => matches(x.c.match, target ?? {}));
+  if (!hits.length) return null;
+  const boxes = hits.map((hit) => {
+    const box = document.createElement('div');
+    box.className = 'plugin-host';
+    box.dataset.plugin = hit.plugin.name;
+    box.dataset.slot = slot;
+    return box;
+  });
+  host.replaceChildren(...boxes);
+  const handles = hits.map((hit, i) => mountOne(boxes[i], hit.plugin, hit.c, context));
+  return {
+    /** @param {any} c */
+    context(c) { for (const h of handles) h.context(c); },
+    destroy() { for (const h of handles) h.destroy(); host.replaceChildren(); },
+  };
+}
+
+/**
+ * Creates one contribution's element in host. An import, define or
+ * module error, or an error thrown from the plugin's own files while it
+ * is mounted, replaces the element with an error card in host only.
+ * @param {HTMLElement} host @param {PluginInfo} plugin @param {Contribution} c @param {any} context
+ */
+function mountOne(host, plugin, c, context) {
   /** @type {any} */
   let el = null;
   let gone = false;
   let ctx = context ?? {};
-  loadPlugin(hit.plugin)
-    .then(() => whenDefined(hit.c.element))
+  /** @param {unknown} e */
+  const fail = (e) => {
+    if (gone) return;
+    const d = document.createElement('div');
+    d.className = 'card plugin-error';
+    d.dataset.testid = 'plugin-error';
+    d.dataset.plugin = plugin.name;
+    d.textContent = `Plugin ${plugin.name} failed: ${/** @type {any} */ (e)?.message || e}`;
+    host.replaceChildren(d);
+    el = null;
+  };
+  /** @param {ErrorEvent} e */
+  const onErr = (e) => {
+    if (e.filename && e.filename.includes('/' + plugin.url)) fail(e.message || e.error);
+  };
+  window.addEventListener('error', onErr);
+  loadPlugin(plugin)
+    .then(() => whenDefined(c.element))
     .then(() => {
       if (gone) return;
-      el = document.createElement(hit.c.element);
+      el = document.createElement(c.element);
       el.api = deskApi;
-      el.config = hit.plugin.config ?? {};
+      el.config = plugin.config ?? {};
       el.context = ctx;
       host.replaceChildren(el);
     })
-    .catch((e) => {
-      if (gone) return;
-      const d = document.createElement('div');
-      d.className = 'card plugin-error';
-      d.dataset.testid = 'plugin-error';
-      d.textContent = `Plugin ${hit.plugin.name} failed: ${e?.message || e}`;
-      host.replaceChildren(d);
-    });
+    .catch(fail);
   return {
-    /** @param {any} c */
-    context(c) { ctx = c ?? {}; if (el) el.context = ctx; },
-    destroy() { gone = true; host.replaceChildren(); el = null; },
+    /** @param {any} next */
+    context(next) {
+      ctx = next ?? {};
+      try { if (el) el.context = ctx; } catch (e) { fail(e); }
+    },
+    destroy() { gone = true; window.removeEventListener('error', onErr); host.replaceChildren(); el = null; },
   };
 }
 

@@ -145,3 +145,23 @@ export function slot(node, p) {
     destroy() { h?.destroy(); },
   };
 }
+
+/**
+ * Svelte action hosting every contribution to a plugin-defined slot
+ * (api.slot, JOB-87): <div use:slots={{ api, slot: 'work:toolbar', context }}>.
+ * A new context is set on the live elements; a new slot or target
+ * remounts them. The node stays empty when nothing contributes.
+ * @param {HTMLElement} node @param {{ api: any, slot: string, context?: any, target?: Record<string, any> }} p
+ */
+export function slots(node, p) {
+  let h = p.api.slot(node, p.slot, p.context, p.target);
+  return {
+    /** @param {{ api: any, slot: string, context?: any, target?: Record<string, any> }} n */
+    update(n) {
+      if (h && n.slot === p.slot && JSON.stringify(n.target) === JSON.stringify(p.target)) h.context(n.context);
+      else { h?.destroy(); h = n.api.slot(node, n.slot, n.context, n.target); }
+      p = n;
+    },
+    destroy() { h?.destroy(); },
+  };
+}

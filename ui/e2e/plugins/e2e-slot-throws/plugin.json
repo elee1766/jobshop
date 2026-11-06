@@ -1,0 +1,6 @@
+{
+  "name": "e2e-slot-throws",
+  "entry": "index.js",
+  "api": ">=4",
+  "contributes": [{ "slot": "work:toolbar", "element": "e2e-slot-throws-button" }]
+}

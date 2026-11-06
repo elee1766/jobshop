@@ -59,14 +59,17 @@ type Plugin struct {
 	fsys      fs.FS
 }
 
-// PluginSlots are the slot names a contribution may use. session (#535)
-// is the session panel's body: the shell owns the frame (side column on
-// desktop, full screen on a phone) and the last session contribution
-// renders the chat inside it.
+// PluginSlots are the built-in slot names. session (#535) is the session
+// panel's body: the shell owns the frame (side column on desktop, full
+// screen on a phone) and the last session contribution renders the chat
+// inside it. Any other slot is plugin-defined (JOB-87): <plugin>:<name>,
+// hosted by the plugin named before the colon through api.slot.
 var PluginSlots = []string{"view", "drawer", "artifact", "action", "header", "session"}
 
 var (
 	pluginNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	// A plugin-defined slot: the host plugin's name, a colon, a name.
+	pluginSlotRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}:[a-z0-9][a-z0-9-]{0,62}$`)
 	// Custom element names need a hyphen.
 	elementRe = regexp.MustCompile(`^[a-z][a-z0-9]*-[a-z0-9-]*$`)
 	viewIDRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
@@ -80,8 +83,8 @@ func (m PluginManifest) validate() error {
 		return fmt.Errorf("entry %q: want a relative .js path inside the plugin", m.Entry)
 	}
 	for i, c := range m.Contributes {
-		if !slices.Contains(PluginSlots, c.Slot) {
-			return fmt.Errorf("contributes[%d]: slot %q: want one of %s", i, c.Slot, strings.Join(PluginSlots, ", "))
+		if !slices.Contains(PluginSlots, c.Slot) && !pluginSlotRe.MatchString(c.Slot) {
+			return fmt.Errorf("contributes[%d]: slot %q: want one of %s, or <plugin>:<name>", i, c.Slot, strings.Join(PluginSlots, ", "))
 		}
 		if !elementRe.MatchString(c.Element) {
 			return fmt.Errorf("contributes[%d]: element %q is not a custom element name", i, c.Element)

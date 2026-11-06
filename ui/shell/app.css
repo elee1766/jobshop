@@ -130,6 +130,8 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-family: va
 .empty { padding: 36px 20px; text-align: center; }
 .empty .big { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
 .err { padding: 10px 12px; color: var(--bad); }
+/* api.mount and api.slot build the error card in JS, outside any scoped style. */
+.plugin-error { padding: 12px; color: var(--bad); margin: 6px 0; }
 .scroll { overflow-x: auto; }
 
 /* Filter chips: one row that scrolls inside itself. */

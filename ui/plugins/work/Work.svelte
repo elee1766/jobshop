@@ -1,5 +1,5 @@
 <script>
-  import { resource, params } from '../../kit/plugin.svelte.js';
+  import { resource, params, slots } from '../../kit/plugin.svelte.js';
   import { ago, fields, tone, links } from '../../kit/format.js';
 
   /** @type {{ api: any, context?: any, config?: any }} */
@@ -9,17 +9,23 @@
 
   const states = ['', 'running', 'needs_human', 'done', 'cancelled'];
   const work = resource(() => api, () => 'api/work' + (url.state ? '?state=' + encodeURIComponent(url.state) : ''));
+  // Plugin-defined slots (JOB-87): other plugins add to this view with
+  // "slot": "work:toolbar" or "work:aside" in their plugin.json.
+  const toolbarCtx = $derived({ state: url.state || '' });
+  const asideCtx = $derived({ state: url.state || '', work: $state.snapshot(work.data) });
 </script>
 
-<header class="vh">
+<header class="vh head">
   <h1>Work</h1>
   <div class="chips actions" role="group" aria-label="state filter">
     {#each states as s (s)}
       <button class:on={url.state === s} onclick={() => go({ state: s })}>{s ? s.replace('_', ' ') : 'all'}</button>
     {/each}
   </div>
+  <div class="toolbar" data-testid="work-toolbar" use:slots={{ api, slot: 'work:toolbar', context: toolbarCtx }}></div>
 </header>
-<div class="pad">
+<div class="body">
+<div class="pad main">
   {#if work.error}
     <div class="card err">{work.error}</div>
   {:else if work.data}
@@ -61,11 +67,23 @@
     </div>
   {/if}
 </div>
+<aside class="pad aside" data-testid="work-aside" use:slots={{ api, slot: 'work:aside', context: asideCtx }}></aside>
+</div>
 
 <style>
   .vh .chips { min-width: 0; }
+  .toolbar { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; }
+  .toolbar :global(.plugin-error) { margin: 0; padding: 4px 8px; font-size: 12px; max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toolbar:empty, .aside:empty { display: none; }
+  .body { display: flex; align-items: flex-start; min-width: 0; }
+  .main { flex: 1; min-width: 0; }
+  .aside { flex: none; width: 320px; padding-left: 0; display: flex; flex-direction: column; gap: 12px; }
   .links a { display: inline-block; padding: 2px 0; margin-right: 8px; }
   @media (max-width: 768px) {
     .links a { padding: 8px 0; }
+    .head { flex-wrap: wrap; padding-top: 6px; padding-bottom: 6px; }
+    .toolbar { flex-basis: 100%; margin-left: 0; overflow-x: auto; }
+    .body { flex-direction: column; align-items: stretch; }
+    .aside { width: auto; padding-left: 12px; padding-top: 0; }
   }
 </style>

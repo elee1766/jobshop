@@ -38,6 +38,11 @@ export interface DeskApi {
   has(slot: string, target?: Record<string, unknown>): boolean;
   /** Mount the first contribution to slot matching target in host (api 3). Null when none matches. */
   mount(host: HTMLElement, slot: string, target: Record<string, unknown>, context?: unknown): { context(c: unknown): void; destroy(): void } | null;
+  /**
+   * Mount every contribution to a plugin-defined slot ("work:toolbar") in host, each in its own box (api 4).
+   * A failing one shows an error card in its box only. Null when none matches target.
+   */
+  slot(host: HTMLElement, slot: `${string}:${string}`, context?: unknown, target?: Record<string, unknown>): { context(c: unknown): void; destroy(): void } | null;
 }
 
 /** State of an api.query. */
@@ -69,9 +74,9 @@ export interface ArtifactContext {
   file: ArtifactFile & { url: string };
 }
 
-/** One plugin.json contributes entry. */
+/** One plugin.json contributes entry. A slot named "<plugin>:<name>" is one a plugin hosts with api.slot. */
 export interface Contribution {
-  slot: "view" | "drawer" | "action" | "artifact" | "header";
+  slot: "view" | "drawer" | "action" | "artifact" | "header" | "session" | `${string}:${string}`;
   element: string;
   id?: string;
   title?: string;
