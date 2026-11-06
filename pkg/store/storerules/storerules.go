@@ -41,6 +41,25 @@ func (c *Clock) Next(now time.Time) time.Time {
 	return time.Unix(0, n).UTC()
 }
 
+// Floor returns now, or the last value Next handed out when now is
+// earlier, so a write after a ticket creation is never stamped before it.
+func (c *Clock) Floor(now time.Time) time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if now.UnixNano() < c.last {
+		return time.Unix(0, c.last).UTC()
+	}
+	return now
+}
+
+// Seed starts the clock at last (unix ns), the newest stored creation
+// time, so a restarted store does not hand out times below it.
+func (c *Clock) Seed(last int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.last = max(c.last, last)
+}
+
 // Bump moves t to its next revision at now and returns the revision the
 // guarded write must still find.
 func Bump(t *store.Ticket, now time.Time) (prev int64) {

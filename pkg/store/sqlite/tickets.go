@@ -54,6 +54,7 @@ type Store struct {
 	ids       *ids.Generator
 	now       func() time.Time
 	created   storerules.Clock
+	base      func() time.Time // the clock before Floor
 	prefix    func(string) string
 	commit    func()
 }
@@ -80,13 +81,19 @@ func newStore(db, rdb *sql.DB, opt Options) (*Store, error) {
 	if s.now == nil {
 		s.now = time.Now
 	}
-	// Stored times are strictly increasing per store (JOB-58), so tickets
-	// created in one batch get distinct created_at in creation order.
+	// Creation times are strictly increasing (JOB-58); other writes never
+	// go below the last one.
 	clock := s.now
-	s.now = func() time.Time { return s.created.Next(clock()) }
+	s.now = func() time.Time { return s.created.Floor(clock()) }
+	s.base = clock
 	if s.prefix == nil {
 		s.prefix = func(p string) string { return p }
 	}
+	var last int64
+	if err := db.QueryRow("SELECT COALESCE(MAX(created_at), 0) FROM tickets").Scan(&last); err != nil {
+		return nil, fmt.Errorf("seed creation clock: %w", err)
+	}
+	s.created.Seed(last)
 	return s, nil
 }
 
@@ -344,7 +351,9 @@ func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt st
 	if nt.Priority != nil {
 		prio = *nt.Priority
 	}
-	now := s.now()
+	// Strictly increasing per store (JOB-58), so tickets created in one
+	// batch get distinct created_at in creation order.
+	now := s.created.Next(s.base())
 	var parent sql.NullString
 	if nt.ParentID != "" {
 		parent = sql.NullString{String: nt.ParentID, Valid: true}
