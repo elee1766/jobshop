@@ -122,14 +122,14 @@ func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
 		w.And("(t.pool = '' OR t.pool NOT IN (?))", f.PoolNotIn)
 	}
 	if !f.Since.IsZero() {
-		w.And("t.updated_at >= ?", ms(f.Since))
+		w.And("t.updated_at >= ?", ns(f.Since))
 	}
 	if f.Created != nil {
 		if !f.Created.Since.IsZero() {
-			w.And("t.created_at >= ?", ms(f.Created.Since))
+			w.And("t.created_at >= ?", ns(f.Created.Since))
 		}
 		if !f.Created.Until.IsZero() {
-			w.And("t.created_at < ?", ms(f.Created.Until))
+			w.And("t.created_at < ?", ns(f.Created.Until))
 		}
 	}
 	if f.Label != "" {
@@ -251,7 +251,7 @@ func (s *Store) queryTickets(ctx context.Context, d sqldb.DBTX, q *bqb.Query) ([
 
 // List returns tickets matching f in f.Order.
 func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
-	q, err := listQuery(f, ms(s.now()))
+	q, err := listQuery(f, ns(s.now()))
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (s *Store) List(ctx context.Context, f store.Filter) ([]store.Ticket, error
 // claimCandidate reads ClaimNext's candidate in tx; sql.ErrNoRows means
 // none.
 func (s *Store) claimCandidate(ctx context.Context, tx *sql.Tx, req store.ClaimNext) (string, error) {
-	rows, err := s.queryTickets(ctx, tx, candidateQuery(req, ms(s.now())))
+	rows, err := s.queryTickets(ctx, tx, candidateQuery(req, ns(s.now())))
 	if err != nil {
 		return "", err
 	}

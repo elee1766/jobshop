@@ -31,7 +31,7 @@ var migrations embed.FS
 // ts_rank's own length normalization counts lexemes, which drops
 // stopwords; it is divided by the log of the body's word count
 // instead, so a short focused match beats a long one.
-const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS BIGINT) AS at_ms,
+const recallSQL = `SELECT kind, ref, ticket_id, project, CAST(at AS BIGINT) AS at_ns,
        ts_headline('english', body, q,
          'StartSel=[, StopSel=], MaxWords=16, MinWords=4, FragmentDelimiter=...') AS snippet,
        CAST(-ts_rank(tsv, q) / ln(2 + cardinality(regexp_split_to_array(trim(body), '\s+')))

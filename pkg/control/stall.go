@@ -341,7 +341,7 @@ func (c *Controller) lastActivity(ctx context.Context, t store.Ticket) (time.Tim
 	return last, nil
 }
 
-func ago(now, t time.Time) string { return now.Sub(t).Truncate(time.Second).String() }
+func ago(now, t time.Time) string { return now.Sub(t).Round(time.Second).String() }
 
 // waitsOnQuestion: the ticket's last report is waiting on a question that
 // is still open. The question itself is a needs-human ticket, so the

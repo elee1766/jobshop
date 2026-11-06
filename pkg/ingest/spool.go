@@ -41,7 +41,7 @@ var ErrBadDelivery = errors.New("ingest: bad delivery")
 // schemaVersion is PRAGMA user_version once schema is applied. One
 // table needs no migration tool; a later change bumps this and adds a
 // step in OpenSpool.
-const schemaVersion = 3
+const schemaVersion = 4
 
 const schema = `
 CREATE TABLE IF NOT EXISTS spool (
@@ -96,6 +96,14 @@ ALTER TABLE spool_new RENAME TO spool;
 PRAGMA user_version = 3;
 `
 
+// schemaV4 stores received_at and moved_at in unix ns (JOB-58), as the
+// main store does.
+const schemaV4 = `
+UPDATE spool SET received_at = received_at * 1000000;
+UPDATE spool_bad SET received_at = received_at * 1000000, moved_at = moved_at * 1000000;
+PRAGMA user_version = 4;
+`
+
 // Spool is the receiver's own SQLite database (#339). Only the receiver
 // writes rows and only the drain deletes them, so the main jobshop.db
 // keeps one writer and the receiver works while the controller is down.
@@ -136,7 +144,13 @@ func OpenSpool(ctx context.Context, path string) (*Spool, error) {
 		}
 	}
 	if v < 3 {
-		if err := migrateV3(ctx, db); err != nil {
+		if err := migrateTx(ctx, db, schemaV3); err != nil {
+			_ = db.Close()
+			return nil, fmt.Errorf("ingest spool %s: %w", path, err)
+		}
+	}
+	if v < 4 {
+		if err := migrateTx(ctx, db, schemaV4); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("ingest spool %s: %w", path, err)
 		}
@@ -144,15 +158,15 @@ func OpenSpool(ctx context.Context, path string) (*Spool, error) {
 	return &Spool{db: db}, nil
 }
 
-// migrateV3 runs schemaV3 in one transaction, so a crash mid-rebuild
+// migrateTx runs a schema step in one transaction, so a crash midway
 // leaves the old table.
-func migrateV3(ctx context.Context, db *sql.DB) error {
+func migrateTx(ctx context.Context, db *sql.DB, schemaV string) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, schemaV3); err != nil {
+	if _, err := tx.ExecContext(ctx, schemaV); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -180,7 +194,7 @@ func (s *Spool) Write(ctx context.Context, d Delivery) (bool, error) {
 	}
 	res, err := s.db.ExecContext(ctx, `INSERT INTO spool (endpoint, source, delivery_id, kind, received_at, headers, payload)
 VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (source, delivery_id) DO NOTHING`,
-		d.Endpoint, d.Source, d.DeliveryID, d.Kind, d.ReceivedAt.UnixMilli(), string(hdr), payload)
+		d.Endpoint, d.Source, d.DeliveryID, d.Kind, d.ReceivedAt.UnixNano(), string(hdr), payload)
 	if err != nil {
 		return false, err
 	}
@@ -223,7 +237,7 @@ type Row struct {
 func (r Row) Delivery() (Delivery, error) {
 	d := Delivery{
 		ID: r.ID, Endpoint: r.Endpoint, Source: r.Source, DeliveryID: r.DeliveryID, Kind: r.Kind,
-		ReceivedAt: time.UnixMilli(r.ReceivedAt).UTC(),
+		ReceivedAt: time.Unix(0, r.ReceivedAt).UTC(),
 	}
 	if err := json.Unmarshal([]byte(r.Headers), &d.Headers); err != nil {
 		return d, fmt.Errorf("headers: %w", err)
@@ -243,7 +257,7 @@ func (s *Spool) MarkBad(ctx context.Context, id int64, reason string, now time.T
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `INSERT OR REPLACE INTO spool_bad (id, endpoint, source, delivery_id, kind, received_at, headers, payload, error, moved_at)
-SELECT id, endpoint, source, delivery_id, kind, received_at, headers, payload, ?, ? FROM spool WHERE id = ?`, reason, now.UnixMilli(), id); err != nil {
+SELECT id, endpoint, source, delivery_id, kind, received_at, headers, payload, ?, ? FROM spool WHERE id = ?`, reason, now.UnixNano(), id); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM spool WHERE id = ?`, id); err != nil {
@@ -278,7 +292,7 @@ FROM spool ORDER BY id LIMIT ?`, limit)
 		if err := rows.Scan(&d.ID, &d.Endpoint, &d.Source, &d.DeliveryID, &d.Kind, &recv, &hdr, &payload); err != nil {
 			return nil, err
 		}
-		d.ReceivedAt = time.UnixMilli(recv).UTC()
+		d.ReceivedAt = time.Unix(0, recv).UTC()
 		if err := json.Unmarshal([]byte(hdr), &d.Headers); err != nil {
 			return nil, fmt.Errorf("ingest spool row %d headers: %w", d.ID, err)
 		}

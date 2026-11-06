@@ -48,7 +48,7 @@ func (s *Store) Slot(ctx context.Context, actor string, e store.SlotEvent) (stor
 func slotOf(r sqldb.ResourceSlot) store.Slot {
 	sl := store.Slot{
 		Pool: r.Pool, ID: r.ID, State: r.State, Ticket: r.Ticket, Fence: r.Fence,
-		Removing: r.Removing != 0, UpdatedAt: fromMS(r.UpdatedAt),
+		Removing: r.Removing != 0, UpdatedAt: fromNS(r.UpdatedAt),
 	}
 	_ = json.Unmarshal([]byte(r.Env), &sl.Env)
 	return sl
@@ -72,7 +72,7 @@ func (s *Store) getSlot(ctx context.Context, q sqldb.Querier, pool, id string) (
 func (s *Store) writeSlot(ctx context.Context, q sqldb.Querier, r sqldb.ResourceSlot) error {
 	return q.UpdateSlot(ctx, sqldb.UpdateSlotParams{
 		State: r.State, Env: r.Env, Ticket: r.Ticket, Fence: r.Fence, Removing: r.Removing,
-		UpdatedAt: ms(s.now()), Pool: r.Pool, ID: r.ID,
+		UpdatedAt: ns(s.now()), Pool: r.Pool, ID: r.ID,
 	})
 }
 
@@ -93,7 +93,7 @@ func (s *Store) addSlot(ctx context.Context, pool, id string, env map[string]str
 		r, err := s.getSlot(ctx, q, pool, id)
 		switch {
 		case errors.Is(err, store.ErrNotFound):
-			if err := q.InsertSlot(ctx, sqldb.InsertSlotParams{Pool: pool, ID: id, Env: string(b), UpdatedAt: ms(s.now())}); err != nil {
+			if err := q.InsertSlot(ctx, sqldb.InsertSlotParams{Pool: pool, ID: id, Env: string(b), UpdatedAt: ns(s.now())}); err != nil {
 				return err
 			}
 		case err != nil:
@@ -203,7 +203,7 @@ func (s *Store) slots(ctx context.Context, pool string) ([]store.Slot, error) {
 func (s *Store) ReleaseSlots(ctx context.Context) (out []store.Slot, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		out = nil // tx may rerun this after a lost write race
-		if err := q.MarkSlotsReleasing(ctx, ms(s.now())); err != nil {
+		if err := q.MarkSlotsReleasing(ctx, ns(s.now())); err != nil {
 			return err
 		}
 		rs, err := q.ListSlots(ctx)
@@ -257,7 +257,7 @@ func (s *Store) slotDemand(ctx context.Context, pool string, slots []store.Slot)
 		return d, err
 	}
 	d.Waiting = int(w.Waiting)
-	d.OldestWait = fromMS(w.Oldest)
+	d.OldestWait = fromNS(w.Oldest)
 	for _, r := range slots {
 		switch r.State {
 		case store.SlotReady:
@@ -278,7 +278,7 @@ func (s *Store) takeSlots(ctx context.Context, q sqldb.Querier, t store.Ticket) 
 		return err
 	}
 	for _, n := range names {
-		_, err := q.TakeSlot(ctx, sqldb.TakeSlotParams{Ticket: t.ID, Fence: t.Fence, UpdatedAt: ms(s.now()), Pool: n})
+		_, err := q.TakeSlot(ctx, sqldb.TakeSlotParams{Ticket: t.ID, Fence: t.Fence, UpdatedAt: ns(s.now()), Pool: n})
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("%w: %s: no ready %s slot", store.ErrConflict, t.ID, n)
 		}

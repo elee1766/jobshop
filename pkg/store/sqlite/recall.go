@@ -44,7 +44,7 @@ func (s *Store) recall(ctx context.Context, match, project, ticket string, lim i
 		if err := rows.Scan(&h.Kind, &h.Ref, &h.TicketID, &h.Project, &at, &h.Snippet, &h.Score); err != nil {
 			return nil, err
 		}
-		h.At = fromMS(at)
+		h.At = fromNS(at)
 		out = append(out, h)
 	}
 	return out, rows.Err()

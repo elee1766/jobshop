@@ -53,6 +53,8 @@ type Store struct {
 	busyRetry bool
 	ids       *ids.Generator
 	now       func() time.Time
+	created   storerules.Clock
+	base      func() time.Time // the clock before Floor
 	prefix    func(string) string
 	commit    func()
 }
@@ -79,9 +81,19 @@ func newStore(db, rdb *sql.DB, opt Options) (*Store, error) {
 	if s.now == nil {
 		s.now = time.Now
 	}
+	// Creation times are strictly increasing (JOB-58); other writes never
+	// go below the last one.
+	clock := s.now
+	s.now = func() time.Time { return s.created.Floor(clock()) }
+	s.base = clock
 	if s.prefix == nil {
 		s.prefix = func(p string) string { return p }
 	}
+	var last int64
+	if err := db.QueryRow("SELECT COALESCE(MAX(created_at), 0) FROM tickets").Scan(&last); err != nil {
+		return nil, fmt.Errorf("seed creation clock: %w", err)
+	}
+	s.created.Seed(last)
 	return s, nil
 }
 
@@ -172,18 +184,18 @@ func toTicket(r sqldb.Ticket) store.Ticket {
 		Priority:   int(r.Priority),
 		Pool:       r.Pool,
 		Holder:     r.Holder,
-		LeaseUntil: fromMS(r.LeaseUntil),
+		LeaseUntil: fromNS(r.LeaseUntil),
 		Fence:      r.Fence,
 		ParentID:   r.ParentID.String,
-		DeferUntil: fromMS(r.DeferUntil),
+		DeferUntil: fromNS(r.DeferUntil),
 		Ephemeral:  r.Ephemeral != 0,
 		Fields:     json.RawMessage(r.Fields),
 		Meta:       json.RawMessage(r.Meta),
 		Revision:   r.Revision,
 		CreatedBy:  r.CreatedBy,
-		CreatedAt:  fromMS(r.CreatedAt),
-		UpdatedAt:  fromMS(r.UpdatedAt),
-		ClosedAt:   fromMS(r.ClosedAt),
+		CreatedAt:  fromNS(r.CreatedAt),
+		UpdatedAt:  fromNS(r.UpdatedAt),
+		ClosedAt:   fromNS(r.ClosedAt),
 	}
 }
 
@@ -241,7 +253,7 @@ func history(ctx context.Context, q sqldb.Querier, t store.Ticket, at time.Time,
 		}
 	}
 	return q.InsertHistory(ctx, sqldb.InsertHistoryParams{
-		TicketID: t.ID, At: ms(at), Actor: actor, Op: op, Revision: t.Revision, Diff: string(d),
+		TicketID: t.ID, At: ns(at), Actor: actor, Op: op, Revision: t.Revision, Diff: string(d),
 	})
 }
 
@@ -293,11 +305,11 @@ func (s *Store) mutateWith(ctx context.Context, q sqldb.Querier, id, actor, op s
 	n, err := q.WriteTicket(ctx, sqldb.WriteTicketParams{
 		Title: t.Title, Body: t.Body, Status: string(t.Status), Resolution: t.Resolution,
 		Priority: int64(t.Priority), Pool: t.Pool, Holder: t.Holder,
-		LeaseUntil: ms(t.LeaseUntil), Fence: t.Fence, DeferUntil: ms(t.DeferUntil),
+		LeaseUntil: ns(t.LeaseUntil), Fence: t.Fence, DeferUntil: ns(t.DeferUntil),
 		Fields: string(t.Fields), Meta: string(t.Meta), Revision: t.Revision,
 		FKey: cols.key, FTo: cols.to, FState: cols.state, FWorkflow: cols.workflow,
 		FIndex: cols.index, FWaiting: cols.waiting,
-		UpdatedAt: ms(now), ClosedAt: ms(t.ClosedAt), ID: id, ExpectedRevision: prev,
+		UpdatedAt: ns(now), ClosedAt: ns(t.ClosedAt), ID: id, ExpectedRevision: prev,
 	})
 	if err != nil {
 		return store.Ticket{}, err
@@ -339,7 +351,9 @@ func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt st
 	if nt.Priority != nil {
 		prio = *nt.Priority
 	}
-	now := s.now()
+	// Strictly increasing per store (JOB-58), so tickets created in one
+	// batch get distinct created_at in creation order.
+	now := s.created.Next(s.base())
 	var parent sql.NullString
 	if nt.ParentID != "" {
 		parent = sql.NullString{String: nt.ParentID, Valid: true}
@@ -348,9 +362,9 @@ func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt st
 	err = q.InsertTicket(ctx, sqldb.InsertTicketParams{
 		ID: id, Project: nt.Project, Kind: string(nt.Kind), Title: nt.Title, Body: nt.Body,
 		Status: string(store.StatusOpen), Priority: int64(prio), Pool: nt.Pool, Holder: nt.Holder,
-		ParentID: parent, DeferUntil: ms(nt.DeferUntil), Ephemeral: boolInt(nt.Ephemeral),
+		ParentID: parent, DeferUntil: ns(nt.DeferUntil), Ephemeral: boolInt(nt.Ephemeral),
 		Fields: string(fields), Meta: string(meta), Revision: 1, CreatedBy: actor,
-		CreatedAt: ms(now), UpdatedAt: ms(now),
+		CreatedAt: ns(now), UpdatedAt: ns(now),
 		FKey: cols.key, FTo: cols.to, FState: cols.state, FWorkflow: cols.workflow,
 		FIndex: cols.index, FWaiting: cols.waiting,
 	})
@@ -489,8 +503,8 @@ func checkLease(holder string, lease time.Duration) error {
 // ticket is still unblocked when written (#406).
 func claimWrite(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, now time.Time) (int64, error) {
 	return q.ClaimWriteTicket(ctx, sqldb.ClaimWriteTicketParams{
-		Status: string(t.Status), Holder: t.Holder, LeaseUntil: ms(t.LeaseUntil), Fence: t.Fence,
-		Revision: t.Revision, UpdatedAt: ms(now), ID: t.ID, ExpectedRevision: prev,
+		Status: string(t.Status), Holder: t.Holder, LeaseUntil: ns(t.LeaseUntil), Fence: t.Fence,
+		Revision: t.Revision, UpdatedAt: ns(now), ID: t.ID, ExpectedRevision: prev,
 	})
 }
 
@@ -619,7 +633,7 @@ func (s *Store) Heartbeat(ctx context.Context, c store.Claim, lease time.Duratio
 	err := s.tx(ctx, func(q sqldb.Querier) error {
 		var err error
 		n, err = q.Heartbeat(ctx, sqldb.HeartbeatParams{
-			LeaseUntil: ms(c.LeaseUntil), Now: ms(now), ID: c.TicketID, Holder: c.Holder, Fence: c.Fence,
+			LeaseUntil: ns(c.LeaseUntil), Now: ns(now), ID: c.TicketID, Holder: c.Holder, Fence: c.Fence,
 		})
 		return err
 	})
@@ -699,7 +713,7 @@ func (s *Store) handoff(ctx context.Context, actor, id string, c *store.Claim, p
 		if err != nil || strings.TrimSpace(note) == "" {
 			return err
 		}
-		_, err = q.InsertComment(ctx, sqldb.InsertCommentParams{TicketID: id, Author: actor, Body: note, CreatedAt: ms(s.now())})
+		_, err = q.InsertComment(ctx, sqldb.InsertCommentParams{TicketID: id, Author: actor, Body: note, CreatedAt: ns(s.now())})
 		return err
 	})
 	return t, err
@@ -710,7 +724,7 @@ func (s *Store) note(ctx context.Context, q sqldb.Querier, id, body string) erro
 	if body == "" {
 		return nil
 	}
-	_, err := q.InsertComment(ctx, sqldb.InsertCommentParams{TicketID: id, Author: "controller", Body: body, CreatedAt: ms(s.now())})
+	_, err := q.InsertComment(ctx, sqldb.InsertCommentParams{TicketID: id, Author: "controller", Body: body, CreatedAt: ns(s.now())})
 	return err
 }
 
@@ -788,12 +802,12 @@ func (s *Store) releaseHolder(ctx context.Context, actor, holder, reason string)
 func (s *Store) sweepLeases(ctx context.Context, actor string) ([]string, error) {
 	now := s.now()
 	return s.reopenAll(ctx, actor, "lease_expired",
-		func(q sqldb.Querier) ([]string, error) { return q.ExpiredLeases(ctx, ms(now)) }, nil,
+		func(q sqldb.Querier) ([]string, error) { return q.ExpiredLeases(ctx, ns(now)) }, nil,
 		func(ctx context.Context, q sqldb.Querier, t store.Ticket, prev int64, at time.Time) (int64, error) {
 			return q.ExpireWriteTicket(ctx, sqldb.ExpireWriteTicketParams{
 				Status: string(t.Status), Resolution: t.Resolution, Holder: t.Holder,
-				LeaseUntil: ms(t.LeaseUntil), Fields: string(t.Fields), Revision: t.Revision,
-				UpdatedAt: ms(at), ClosedAt: ms(t.ClosedAt), ID: t.ID, ExpectedRevision: prev, Now: ms(now),
+				LeaseUntil: ns(t.LeaseUntil), Fields: string(t.Fields), Revision: t.Revision,
+				UpdatedAt: ns(at), ClosedAt: ns(t.ClosedAt), ID: t.ID, ExpectedRevision: prev, Now: ns(now),
 			})
 		})
 }
@@ -856,7 +870,7 @@ func (s *Store) Update(ctx context.Context, actor, id string, u store.Update) (t
 		}
 		if u.Comment != "" {
 			r, err := q.InsertComment(ctx, sqldb.InsertCommentParams{
-				TicketID: id, Author: actor, Body: u.Comment, CreatedAt: ms(now),
+				TicketID: id, Author: actor, Body: u.Comment, CreatedAt: ns(now),
 			})
 			if err != nil {
 				return s.classify(err, id)
@@ -898,7 +912,7 @@ func (s *Store) addEdge(ctx context.Context, q sqldb.Querier, actor string, e st
 	}
 	now := s.now()
 	if err := q.InsertEdge(ctx, sqldb.InsertEdgeParams{
-		FromID: e.From, ToID: e.To, Kind: string(e.Kind), CreatedAt: ms(now),
+		FromID: e.From, ToID: e.To, Kind: string(e.Kind), CreatedAt: ns(now),
 	}); err != nil {
 		return s.classify(err, e.From)
 	}
