@@ -31,6 +31,8 @@ those actions. There is no CEL layer and no embedded expression pipeline.
 6. [Verification runbook](../verify/cue-starlark.md): local checks and
    separately identified operator checks.
 
+For Go implementation ownership, see [package boundaries](../notes/112-package-boundaries.md).
+
 The executable example is
 [`pkg/config/testdata/cue-starlark-example`](../../pkg/config/testdata/cue-starlark-example).
 It is a local CUE module, needs no CUE registry or external credentials,

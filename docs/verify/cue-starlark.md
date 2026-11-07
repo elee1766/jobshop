@@ -27,7 +27,7 @@ These commands build and write tool caches, so they are not unattended
 read-only host blocks. Run in the source checkout:
 
 ```sh
-go test ./pkg/config ./pkg/automation ./pkg/cli
+go test ./pkg/config ./pkg/packcue ./pkg/automation/... ./pkg/hooks/... ./pkg/cli
 go test ./pkg/control -run 'TestCUE|TestAutomation|TestHook|TestConfigWatch'
 go run ./cmd/jobshop config check --file pkg/config/testdata/cue-starlark-example/jobshop.yaml
 go run ./cmd/jobshop config resolve --file pkg/config/testdata/cue-starlark-example/jobshop.yaml | jq -e '.pools["demo-dev"].max_sessions == 0'
