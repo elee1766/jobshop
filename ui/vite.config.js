@@ -15,6 +15,7 @@ export default defineConfig({
     modulePreload: { polyfill: false },
   },
   server: {
-    proxy: { '/api': 'http://127.0.0.1:7480' },
+    // Desk compares Origin with Host for writes, so preserve the browser host.
+    proxy: { '/api': { target: 'http://127.0.0.1:7480', changeOrigin: false } },
   },
 });
