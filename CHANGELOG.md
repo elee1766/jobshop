@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/elee1766/jobshop/compare/v0.8.0...v0.8.1) (2026-11-07)
+
+
+### Features
+
+* **cli:** note when linear create lands outside intake states (JOB-121) ([#945](https://github.com/elee1766/jobshop/issues/945)) ([9e7c209](https://github.com/elee1766/jobshop/commit/9e7c209499e2a83d6091ddd236204dc480ebfbca))
+
 ## [0.8.0](https://github.com/elee1766/jobshop/compare/v0.7.7...v0.8.0) (2026-11-06)
 
 
