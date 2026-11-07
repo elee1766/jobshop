@@ -40,7 +40,7 @@ func testHookAuditCredentialRotation(t *testing.T, recoveredState string) {
 	root := hookTestRoot(t, `def begin(run):
     response = http.get(run.inputs["url"])
     print("diagnostic " + run.inputs["host"])
-    return [start_step(id="work",pool="dev",prompt="work " + run.inputs["host"],inputs={"normal":run.inputs["host"],"nested":{"api_key":run.inputs["password"]},"body":response.json()})]
+    return result(actions=[start_step(id="work",pool="dev",prompt="work " + run.inputs["host"],inputs={"normal":run.inputs["host"],"nested":{"api_key":run.inputs["password"]},"body":response.json()})], output={"normal":run.inputs["host"],"body":response.json()})
 def completed(run, step):
     return []
 def handle(event, args):
@@ -69,6 +69,8 @@ def handle(event, args):
 		c.Call(rpc.MethodAutomationShow, rpc.IDParams{ID: records[0].Key}, &audit)
 		encoded, err := json.Marshal(audit)
 		require.NoError(t, err)
+		assert.Contains(t, string(encoded), `"result_metadata"`)
+		assert.Contains(t, string(encoded), `"result_output"`)
 		for _, private := range []string{hostSecret, callerPassword, responsePassword, `"plan"`, `"read_set"`, `"run_input"`, `"step_input"`, `"input_digest"`, `"input"`} {
 			assert.NotContains(t, string(encoded), private)
 		}

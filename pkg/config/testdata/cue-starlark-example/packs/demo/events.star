@@ -20,4 +20,4 @@ def handle(event, args):
             inputs = {"task": text, "pool": args["pool"]},
             title = "Implement: " + text,
         ))
-    return actions
+    return result(actions=actions, output={"selected": len(actions)})

@@ -161,46 +161,63 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 }
 
 func (e *Engine) result(value starlark.Value) (Result, error) {
-	var actions []Action
-	switch v := value.(type) {
-	case *actionValue:
-		actions = []Action{cloneAction(v.action)}
-	case *starlark.List:
-		for i := 0; i < v.Len(); i++ {
-			if a, ok := v.Index(i).(*actionValue); ok {
-				actions = append(actions, cloneAction(a.action))
-			}
+	var result Result
+	if v, ok := value.(*resultValue); ok {
+		result.Output = cloneData(v.output).(map[string]any)
+		value = v.actions
+	}
+	actions, batch, err := actionBatch(value)
+	if err != nil {
+		return Result{}, err
+	}
+	if !batch {
+		data, err := api.FromValue(value, e.options.Limits.DataBytes)
+		if err != nil {
+			return Result{}, err
 		}
-		if len(actions) > 0 && len(actions) != v.Len() {
-			return Result{}, errors.New("action batch may contain only action constructors")
-		}
-	case starlark.Tuple:
-		for _, item := range v {
-			if a, ok := item.(*actionValue); ok {
-				actions = append(actions, cloneAction(a.action))
-			}
-		}
-		if len(actions) > 0 && len(actions) != len(v) {
-			return Result{}, errors.New("action batch may contain only action constructors")
+		var ok bool
+		result.Output, ok = data.(map[string]any)
+		if !ok {
+			return Result{}, errors.New("callback output must be an object, an action, or an action list")
 		}
 	}
 	if len(actions) > e.options.Limits.Actions {
 		return Result{}, errors.New("action count limit exceeded")
 	}
-	if actions != nil {
-		data, err := json.Marshal(actions)
-		if err != nil {
-			return Result{}, err
-		}
-		if len(data) > e.options.Limits.DataBytes {
-			return Result{}, errors.New("action batch data byte limit exceeded")
-		}
-		generic, err := api.DecodeJSON(data)
-		if err != nil {
-			return Result{}, err
-		}
-		return Result{Value: generic, Actions: actions}, nil
+	result.Actions = actions
+	data, err := json.Marshal(result)
+	if err != nil {
+		return Result{}, err
 	}
-	data, err := api.FromValue(value, e.options.Limits.DataBytes)
-	return Result{Value: data}, err
+	if len(data) > e.options.Limits.DataBytes {
+		return Result{}, errors.New("callback result data byte limit exceeded")
+	}
+	return result, nil
+}
+
+func actionBatch(value starlark.Value) ([]Action, bool, error) {
+	actions := []Action{}
+	switch v := value.(type) {
+	case *actionValue:
+		actions = []Action{cloneAction(v.action)}
+	case *starlark.List:
+		for i := 0; i < v.Len(); i++ {
+			a, ok := v.Index(i).(*actionValue)
+			if !ok {
+				return nil, false, errors.New("action batch may contain only action constructors")
+			}
+			actions = append(actions, cloneAction(a.action))
+		}
+	case starlark.Tuple:
+		for _, item := range v {
+			a, ok := item.(*actionValue)
+			if !ok {
+				return nil, false, errors.New("action batch may contain only action constructors")
+			}
+			actions = append(actions, cloneAction(a.action))
+		}
+	default:
+		return nil, false, nil
+	}
+	return actions, true, nil
 }

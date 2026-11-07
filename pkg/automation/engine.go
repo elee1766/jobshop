@@ -45,12 +45,21 @@ type Options = api.Options
 // Decision is local audit evidence, not authorization for privileged work.
 type Decision = api.Decision
 
-// Result contains JSON-like callback data, constructor actions and captured print output.
+// Result separates host-owned metadata and effects from arbitrary callback output.
 type Result struct {
-	Value     any
-	Actions   []Action
-	Output    string
-	Decisions []Decision
+	Metadata  ResultMetadata `json:"metadata"`
+	Output    map[string]any `json:"output"`
+	Actions   []Action       `json:"actions"`
+	Logs      string         `json:"logs"`
+	Decisions []Decision     `json:"decisions"`
+}
+
+// ResultMetadata identifies the loaded code and observed capability count.
+// Scripts cannot supply or override these fields.
+type ResultMetadata struct {
+	Entry  string `json:"entry"`
+	Digest string `json:"digest"`
+	Calls  int    `json:"calls"`
 }
 
 // Engine is immutable after Load and safe for concurrent invocations.
@@ -312,14 +321,30 @@ func (e *Engine) CheckArity(entry string, positional int) error {
 
 // Invoke calls a previously validated hook with maps as dictionaries and Go
 // structs as attribute-accessible values. Every call has its own thread locals.
-func (e *Engine) Invoke(ctx context.Context, entry string, args ...any) (Result, error) {
+func (e *Engine) Invoke(ctx context.Context, entry string, args ...any) (result Result, err error) {
+	var inv *invocation
+	defer func() {
+		result.Metadata = ResultMetadata{Entry: entry, Digest: e.digest}
+		if inv != nil {
+			result.Metadata.Calls = inv.calls
+		}
+		if result.Output == nil {
+			result.Output = map[string]any{}
+		}
+		if result.Actions == nil {
+			result.Actions = []Action{}
+		}
+		if result.Decisions == nil {
+			result.Decisions = []Decision{}
+		}
+	}()
 	fn, ok := e.functions[entry]
 	if !ok {
 		return Result{}, fmt.Errorf("hook %s is not loaded", entry)
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.options.Limits.Duration)
 	defer cancel()
-	inv := &invocation{ctx: ctx, engine: e}
+	inv = &invocation{ctx: ctx, engine: e}
 	thread := e.thread(ctx, inv)
 	stop := context.AfterFunc(ctx, func() { thread.Cancel("hook invocation cancelled") })
 	defer stop()
@@ -336,13 +361,13 @@ func (e *Engine) Invoke(ctx context.Context, entry string, args ...any) (Result,
 		return Result{Decisions: inv.decisions}, fmt.Errorf("hook %s: redacted output byte limit exceeded", entry)
 	}
 	if err != nil {
-		return Result{Output: output, Decisions: inv.decisions}, fmt.Errorf("hook %s: %w", entry, inv.safeError(err))
+		return Result{Logs: output, Decisions: inv.decisions}, fmt.Errorf("hook %s: %w", entry, inv.safeError(err))
 	}
-	result, err := e.result(value)
-	result.Output = output
+	result, err = e.result(value)
+	result.Logs = output
 	result.Decisions = inv.decisions
 	if err != nil {
-		return Result{Output: output, Decisions: inv.decisions}, fmt.Errorf("hook %s result: %w", entry, inv.safeError(err))
+		return Result{Logs: output, Decisions: inv.decisions}, fmt.Errorf("hook %s result: %w", entry, inv.safeError(err))
 	}
 	return result, nil
 }
@@ -410,6 +435,7 @@ func active(t *starlark.Thread) (*invocation, error) {
 
 func predeclared() starlark.StringDict {
 	return starlark.StringDict{
+		"result":     starlark.NewBuiltin("result", constructResult),
 		"start_run":  starlark.NewBuiltin("start_run", constructAction),
 		"start_step": starlark.NewBuiltin("start_step", constructAction),
 		"finish_run": starlark.NewBuiltin("finish_run", constructAction),

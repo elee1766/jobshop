@@ -102,26 +102,28 @@ type Run struct {
 
 // Invocation records accepted inputs and the selected graph before application.
 type Invocation struct {
-	Public           json.RawMessage       `json:"public,omitempty"`
-	AcceptedAt       time.Time             `json:"accepted_at"`
-	ParentInvocation string                `json:"parent_invocation,omitempty"`
-	Targets          []string              `json:"targets,omitempty"`
-	Trigger          string                `json:"trigger,omitempty"`
-	Run              string                `json:"run,omitempty"`
-	Step             string                `json:"step,omitempty"`
-	StepRevision     int64                 `json:"step_revision,omitempty"`
-	Entry            string                `json:"entry"`
-	Digest           string                `json:"digest"`
-	ReadSet          map[string]int64      `json:"read_set,omitempty"`
-	Event            *Event                `json:"event,omitempty"`
-	Args             map[string]any        `json:"args,omitempty"`
-	RunInput         *Run                  `json:"run_input,omitempty"`
-	StepInput        *Step                 `json:"step_input,omitempty"`
-	Actions          []automation.Action   `json:"actions,omitempty"`
-	Plan             *store.Graph          `json:"plan,omitempty"`
-	Error            string                `json:"error,omitempty"`
-	Output           string                `json:"output,omitempty"`
-	Decisions        []automation.Decision `json:"decisions,omitempty"`
+	ResultMetadata   *automation.ResultMetadata `json:"result_metadata,omitempty"`
+	ResultOutput     map[string]any             `json:"result_output,omitempty"`
+	Public           json.RawMessage            `json:"public,omitempty"`
+	AcceptedAt       time.Time                  `json:"accepted_at"`
+	ParentInvocation string                     `json:"parent_invocation,omitempty"`
+	Targets          []string                   `json:"targets,omitempty"`
+	Trigger          string                     `json:"trigger,omitempty"`
+	Run              string                     `json:"run,omitempty"`
+	Step             string                     `json:"step,omitempty"`
+	StepRevision     int64                      `json:"step_revision,omitempty"`
+	Entry            string                     `json:"entry"`
+	Digest           string                     `json:"digest"`
+	ReadSet          map[string]int64           `json:"read_set,omitempty"`
+	Event            *Event                     `json:"event,omitempty"`
+	Args             map[string]any             `json:"args,omitempty"`
+	RunInput         *Run                       `json:"run_input,omitempty"`
+	StepInput        *Step                      `json:"step_input,omitempty"`
+	Actions          []automation.Action        `json:"actions,omitempty"`
+	Plan             *store.Graph               `json:"plan,omitempty"`
+	Error            string                     `json:"error,omitempty"`
+	Output           string                     `json:"output,omitempty"`
+	Decisions        []automation.Decision      `json:"decisions,omitempty"`
 }
 
 func hookKey(value string) string {

@@ -42,7 +42,7 @@ func writeHook(t *testing.T, root, name, source string) {
 func TestHookActionsAndCustomData(t *testing.T) {
 	engine := hook(t, `def handle(event, args):
     if event.payload["enabled"]:
-        return [start_run(workflow=args["workflow"], key=event.repository, inputs=event.payload, reason="enabled event policy")]
+        return result(actions=[start_run(workflow=args["workflow"], key=event.repository, inputs=event.payload, reason="enabled event policy")], output={"custom": event.payload, "metadata": "user data"})
     return {"custom": event.payload, "nested": [None, True, 1.25]}
 `, automation.Options{})
 	type event struct {
@@ -54,32 +54,37 @@ func TestHookActionsAndCustomData(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if result.Metadata.Entry != "main.star:handle" || result.Metadata.Digest != engine.Digest() || result.Metadata.Calls != 0 {
+			t.Fatalf("incorrect host result metadata: %#v", result.Metadata)
+		}
+		if result.Output["custom"].(map[string]any)["count"] != int64(9007199254740993) {
+			t.Fatalf("custom payload lost integer precision: %#v", result.Output)
+		}
 		if enabled {
 			if len(result.Actions) != 1 || result.Actions[0].Reason != "enabled event policy" || result.Actions[0].Workflow != "review" || result.Actions[0].Inputs["count"] != int64(9007199254740993) || result.Actions[0].Inputs["unsigned"] != uint64(18446744073709551615) {
 				t.Fatalf("wrong action: %#v", result)
-			}
-		} else {
-			data := result.Value.(map[string]any)
-			if data["custom"].(map[string]any)["count"] != int64(9007199254740993) {
-				t.Fatalf("custom payload lost integer precision: %#v", data)
 			}
 		}
 	}
 }
 
 func TestCachedActionsAreIsolated(t *testing.T) {
-	engine := hook(t, `action = start_run(workflow="review", key="cached", inputs={"nested": {"original": True}})
+	engine := hook(t, `action = result(actions=[start_run(workflow="review", key="cached", inputs={"nested": {"original": True}})], output={"nested": {"original": True}})
 def handle():
-    return [action]
+    return action
 `, automation.Options{})
 	first, err := engine.Invoke(t.Context(), "main.star:handle")
 	if err != nil {
 		t.Fatal(err)
 	}
 	first.Actions[0].Inputs["nested"].(map[string]any)["original"] = false
+	first.Output["nested"].(map[string]any)["original"] = false
 	second, err := engine.Invoke(t.Context(), "main.star:handle")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if second.Output["nested"].(map[string]any)["original"] != true {
+		t.Fatal("caller mutation corrupted frozen module output")
 	}
 	if second.Actions[0].Inputs["nested"].(map[string]any)["original"] != true {
 		t.Fatal("caller mutation corrupted frozen module action")
@@ -152,7 +157,7 @@ func TestCapabilityObservationDurabilityBoundary(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			var observations []automation.Observation
-			engine := hook(t, "def handle(url):\n    return http.post(url, auth=\"service\", body=\"mutation\").status_code\n", automation.Options{
+			engine := hook(t, "def handle(url):\n    return {\"status\": http.post(url, auth=\"service\", body=\"mutation\").status_code}\n", automation.Options{
 				AllowHTTP: true, Auth: map[string]automation.Credential{"service": {Origins: []string{server.URL}, Headers: map[string]string{"Authorization": "Bearer private-token"}}},
 				Observe: func(_ context.Context, o automation.Observation) error {
 					if o.Phase == "started" && effects.Load() != 0 {
@@ -245,7 +250,7 @@ func TestLoaderCapabilityAndFilesystemBoundaries(t *testing.T) {
 		t.Fatal("compiled source identity followed mutable files")
 	}
 	previous, err := engine.Invoke(t.Context(), "main.star:handle")
-	if err != nil || previous.Value.(map[string]any)["ok"] != true {
+	if err != nil || previous.Output["ok"] != true {
 		t.Fatalf("loaded globals changed after disk write: %#v %v", previous, err)
 	}
 	reloaded, err := automation.Load(t.Context(), root, []string{"main.star:handle"}, automation.Options{})
@@ -265,6 +270,10 @@ func TestHookLimitsAndDiagnostics(t *testing.T) {
 		name, source, want string
 		limits             automation.Limits
 	}{
+		{"scalar", "def handle():\n    return 1\n", "output must be an object", automation.Limits{}},
+		{"result_output", "def handle():\n    return result(output=[])\n", "dict", automation.Limits{}},
+		{"result_metadata", "def handle():\n    return result(metadata={\"entry\":\"forged\"})\n", "unexpected keyword", automation.Limits{}},
+		{"result_actions", "def handle():\n    return result(actions=[{}])\n", "only action constructors", automation.Limits{}},
 		{"steps", "def handle():\n    total = 0\n    for n in range(10000):\n        total += n\n    return total\n", "too many steps", automation.Limits{Steps: 100}},
 		{"print", "def handle():\n    print(\"123456789\")\n    return None\n", "output byte limit", automation.Limits{OutputBytes: 4}},
 		{"result", "def handle():\n    return {\"payload\": \"123456789\"}\n", "data byte/depth limit", automation.Limits{DataBytes: 4}},
@@ -275,7 +284,10 @@ func TestHookLimitsAndDiagnostics(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			engine := hook(t, test.source, automation.Options{Limits: test.limits})
-			_, err := engine.Invoke(t.Context(), "main.star:handle")
+			result, err := engine.Invoke(t.Context(), "main.star:handle")
+			if result.Metadata.Entry != "main.star:handle" || result.Metadata.Digest != engine.Digest() {
+				t.Fatalf("error lost invocation metadata: %#v", result)
+			}
 			if err == nil || !strings.Contains(err.Error(), test.want) || !strings.Contains(err.Error(), "main.star") {
 				t.Fatalf("missing contextual budget error: %v", err)
 			}

@@ -29,6 +29,8 @@ type hookPublicEvent struct {
 }
 
 type hookPublicInvocation struct {
+	ResultMetadata   any              `json:"result_metadata,omitempty"`
+	ResultOutput     any              `json:"result_output,omitempty"`
 	AcceptedAt       time.Time        `json:"accepted_at"`
 	ParentInvocation string           `json:"parent_invocation,omitempty"`
 	Targets          any              `json:"targets,omitempty"`
@@ -52,16 +54,18 @@ type hookCallReuse struct {
 }
 
 type hookPublicAttempt struct {
-	Invocation  string    `json:"invocation"`
-	Attempt     int64     `json:"attempt"`
-	StartedAt   time.Time `json:"started_at"`
-	FinishedAt  time.Time `json:"finished_at,omitzero"`
-	Error       string    `json:"error,omitempty"`
-	Output      any       `json:"output,omitempty"`
-	Decisions   any       `json:"decisions,omitempty"`
-	Actions     any       `json:"actions,omitempty"`
-	Targets     any       `json:"targets,omitempty"`
-	ReusedCalls any       `json:"reused_calls,omitempty"`
+	ResultMetadata any       `json:"result_metadata,omitempty"`
+	ResultOutput   any       `json:"result_output,omitempty"`
+	Invocation     string    `json:"invocation"`
+	Attempt        int64     `json:"attempt"`
+	StartedAt      time.Time `json:"started_at"`
+	FinishedAt     time.Time `json:"finished_at,omitzero"`
+	Error          string    `json:"error,omitempty"`
+	Output         any       `json:"output,omitempty"`
+	Decisions      any       `json:"decisions,omitempty"`
+	Actions        any       `json:"actions,omitempty"`
+	Targets        any       `json:"targets,omitempty"`
+	ReusedCalls    any       `json:"reused_calls,omitempty"`
 }
 
 type hookPublicObservation struct {
@@ -93,6 +97,7 @@ func (c *Engine) hookInvocationPublic(in Invocation) json.RawMessage {
 		out.Event = &hookPublicEvent{Source: in.Event.Source, Event: in.Event.Event, Delivery: in.Event.Delivery, Repository: in.Event.Repository}
 	}
 	out.Targets, out.Output, out.Decisions, out.Actions = c.hookAuditField(in.Targets), c.hookAuditField(in.Output), c.hookAuditField(in.Decisions), c.hookAuditField(in.Actions)
+	out.ResultMetadata, out.ResultOutput = c.hookAuditField(in.ResultMetadata), c.hookAuditField(in.ResultOutput)
 	return c.hookAuditJSON(out)
 }
 
@@ -101,6 +106,7 @@ func (c *Engine) hookAttemptPublic(in hookAttempt, evidence json.RawMessage) jso
 	var accepted hookPublicInvocation
 	if DecodeJSON(evidence, &accepted) == nil {
 		out.Error, out.Targets, out.Output, out.Decisions, out.Actions = accepted.Error, accepted.Targets, accepted.Output, accepted.Decisions, accepted.Actions
+		out.ResultMetadata, out.ResultOutput = accepted.ResultMetadata, accepted.ResultOutput
 	}
 	out.ReusedCalls = c.hookAuditField(in.ReusedCalls)
 	return c.hookAuditJSON(out)
@@ -285,6 +291,7 @@ func (c *Engine) publicHookInvocation(rec store.Record, summary bool) (store.Rec
 	}
 	if summary {
 		out.Actions, out.Decisions, out.Output, out.Targets = nil, nil, nil, nil
+		out.ResultMetadata, out.ResultOutput = nil, nil
 	}
 	texts := []*string{&out.ParentInvocation, &out.Trigger, &out.Run, &out.Step, &out.Entry, &out.Digest, &out.Error}
 	if out.Event != nil {

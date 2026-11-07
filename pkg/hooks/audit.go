@@ -15,18 +15,20 @@ import (
 )
 
 type hookAttempt struct {
-	Public      json.RawMessage       `json:"public,omitempty"`
-	ReusedCalls []hookCallReuse       `json:"reused_calls,omitempty"`
-	Output      string                `json:"output,omitempty"`
-	Decisions   []automation.Decision `json:"decisions,omitempty"`
-	Actions     []automation.Action   `json:"actions,omitempty"`
-	Targets     []string              `json:"targets,omitempty"`
-	Input       json.RawMessage       `json:"input"`
-	Invocation  string                `json:"invocation"`
-	Attempt     int64                 `json:"attempt"`
-	StartedAt   time.Time             `json:"started_at"`
-	FinishedAt  time.Time             `json:"finished_at,omitzero"`
-	Error       string                `json:"error,omitempty"`
+	ResultMetadata *automation.ResultMetadata `json:"result_metadata,omitempty"`
+	ResultOutput   map[string]any             `json:"result_output,omitempty"`
+	Public         json.RawMessage            `json:"public,omitempty"`
+	ReusedCalls    []hookCallReuse            `json:"reused_calls,omitempty"`
+	Output         string                     `json:"output,omitempty"`
+	Decisions      []automation.Decision      `json:"decisions,omitempty"`
+	Actions        []automation.Action        `json:"actions,omitempty"`
+	Targets        []string                   `json:"targets,omitempty"`
+	Input          json.RawMessage            `json:"input"`
+	Invocation     string                     `json:"invocation"`
+	Attempt        int64                      `json:"attempt"`
+	StartedAt      time.Time                  `json:"started_at"`
+	FinishedAt     time.Time                  `json:"finished_at,omitzero"`
+	Error          string                     `json:"error,omitempty"`
 }
 
 func (c *Engine) executeHookAttempt(ctx context.Context, col store.Collection, rec store.Record) {
@@ -63,6 +65,7 @@ func (c *Engine) executeHookAttempt(ctx context.Context, col store.Collection, r
 	}
 	value.FinishedAt, value.Error = time.Now().UTC(), in.Error
 	value.Output, value.Decisions, value.Actions, value.Targets = in.Output, in.Decisions, in.Actions, in.Targets
+	value.ResultMetadata, value.ResultOutput = in.ResultMetadata, in.ResultOutput
 	value.Public = c.hookAttemptPublic(value, in.Public)
 	data, err = json.Marshal(value)
 	if err != nil {

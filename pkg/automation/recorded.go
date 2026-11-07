@@ -30,6 +30,9 @@ func (inv *invocation) restore(name string, cached any, args starlark.Tuple, kwa
 	if err != nil || len(encoded) > limit {
 		return nil, errors.New("recorded capability result byte limit exceeded")
 	}
+	if name == "jev" {
+		return jev.Restore(inv, encoded, args, kwargs)
+	}
 	value, err := api.DecodeJSON(encoded)
 	if err != nil {
 		return nil, errors.New("invalid recorded capability result JSON")
@@ -43,8 +46,6 @@ func (inv *invocation) restore(name string, cached any, args starlark.Tuple, kwa
 		return automationhttp.Restore(fields, options)
 	case "shell":
 		return command.Restore(fields, options)
-	case "jev":
-		return jev.Restore(inv, fields, args, kwargs)
 	default:
 		return nil, errors.New("unknown recorded capability")
 	}

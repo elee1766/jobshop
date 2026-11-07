@@ -85,7 +85,7 @@ func TestShellArgvEnvironmentLimitsAndCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data := result.Value.(map[string]any)
+	data := result.Output
 	if data["code"] != int64(7) {
 		t.Fatalf("wrong exit status %#v", data)
 	}

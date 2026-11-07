@@ -216,18 +216,12 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 		args = []any{in.Event, in.Args}
 	}
 	result, err := program.engine.Invoke(invokeCtx, program.entry, args...)
-	in.Actions, in.Output, in.Decisions = result.Actions, result.Output, result.Decisions
+	in.Actions, in.Output, in.Decisions = result.Actions, result.Logs, result.Decisions
+	in.ResultMetadata, in.ResultOutput = &result.Metadata, result.Output
 	in.Public = c.hookInvocationPublic(in)
 	if err != nil {
 		c.hookFailure(ctx, col, rec, in, err)
 		return
-	}
-	if len(result.Actions) == 0 {
-		values, ok := result.Value.([]any)
-		if !ok || len(values) != 0 {
-			c.hookFailure(ctx, col, rec, in, errors.New("hook must return an action or a list of actions"))
-			return
-		}
 	}
 	evidence := in.Public
 	in, err = c.host.CommitHook(ctx, runtime, rec.Key, in, func(planned Invocation) error {

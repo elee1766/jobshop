@@ -156,7 +156,7 @@ func TestObservedLargeHTTPBodyCompletesAndRestores(t *testing.T) {
 	if !reflect.DeepEqual(first, second) || requests.Load() != 1 {
 		t.Fatalf("large response restore changed behavior or repeated HTTP: %#v %#v, requests=%d", first, second, requests.Load())
 	}
-	value := first.Value.(map[string]any)
+	value := first.Output
 	if value["bytes"] != int64(len(body)) || value["aliases"] != true || value["payload"] != int64(len(payload)) {
 		t.Fatalf("restored response aliases/JSON differ: %#v", value)
 	}
@@ -242,14 +242,14 @@ func TestKnownSecretsAreAbsentFromHookDiagnostics(t *testing.T) {
     fail(response.text)
 `, options)
 	result, err := engine.Invoke(t.Context(), "main.star:handle", server.URL)
-	if err == nil || strings.Contains(err.Error(), "raw-host-key") || strings.Contains(result.Output, "raw-host-key") {
+	if err == nil || strings.Contains(err.Error(), "raw-host-key") || strings.Contains(result.Logs, "raw-host-key") {
 		t.Fatalf("known secret escaped diagnostic boundary: %#v %v", result, err)
 	}
 	var evaluation *starlark.EvalError
 	if !errors.As(err, &evaluation) || strings.Contains(evaluation.Backtrace(), "raw-host-key") {
 		t.Fatal("safe EvalError traceback was not preserved")
 	}
-	if !strings.Contains(result.Output, "[redacted]") || !recorded.Redacted {
+	if !strings.Contains(result.Logs, "[redacted]") || !recorded.Redacted {
 		t.Fatalf("secret echo was not marked as changed: %#v %#v", result, recorded)
 	}
 	data, marshalErr := json.Marshal(recorded)

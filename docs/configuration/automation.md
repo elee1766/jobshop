@@ -75,11 +75,32 @@ string-keyed dictionaries. An explicit `retries` is an integer from 0
 through 100. Omitting it uses the controller's default failure threshold
 of 2. Explicit zero does not select that default. See the
 [retry and output contract](callbacks.md#structured-step-output-and-retries).
-Constructors return immutable action values. A registered workflow/trigger
-callback returns one action, a list or tuple containing only actions, or
-`[]` for no action. Arbitrary dictionaries are not controller action batches.
-The controller still validates outcome words, step IDs, references and
-invocation scope.
+Constructors return immutable action values. Return `result(actions=[...],
+output={...})` to combine selected actions with arbitrary object data:
+
+```python
+return result(
+    actions=[start_run(workflow="review", key="pr-42")],
+    output={"summary": "review requested", "pr": 42},
+)
+```
+
+Both arguments are optional. `actions` accepts an action or a list/tuple of
+only action constructors; `output` must be a string-keyed dictionary.
+One action, an action list/tuple, and `[]` remain shorthand returns. A bare
+dictionary is output data with no actions. Scalars and non-action lists
+are rejected. No-action results do not finish a workflow automatically.
+The controller still validates outcome words, step IDs, references and scope.
+
+The Go return type is `automation.Result`: typed `metadata` (entry, loaded
+source digest, capability call count), typed `actions` and `decisions`, captured
+`logs`, and an `output` object (`map[string]any`). Metadata is host-owned and
+is present even on errors. Scripts cannot override it with constructor
+arguments or output dictionary keys. Output retains exact integers and is
+independent of `finish_run(output=...)`, which publishes workflow output.
+Durable invocation and attempt evidence stores `result_metadata` and
+`result_output`. Public evidence applies credential redaction and bounded
+artifact handling to both, including after interrupted-plan recovery.
 
 Use `reason` for a short policy rationale when selecting a branch, such as
 `reason="small change needs one review"`. It is recorded with the returned

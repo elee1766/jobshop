@@ -61,8 +61,10 @@ listener or bypass ingest authentication/admission.
 The function name is user-chosen. Its positional argument contract is not.
 `config check` rejects an export that cannot accept its callback's
 positional arguments, before the controller accepts the configuration.
-Return action constructors, normally as a list. `[]` is a no-op, not
-implicit success or a command to finish a run. Unknown/malformed action
+Return `result(actions=[...], output={...})` for selected actions and arbitrary
+object output, or return an action/list as shorthand. A dictionary alone
+records output without actions. `[]` and `result()` are no-ops, not
+implicit success or commands to finish a run. Unknown/malformed action
 references fail before the batch is accepted. A missing payload key or
 wrong argument type produces a contextual Starlark traceback.
 
@@ -206,7 +208,7 @@ def handle(event, args):
             inputs = {"task": text, "pool": args["pool"]},
             title = "Implement: " + text,
         ))
-    return actions
+    return result(actions=actions, output={"selected": len(actions)})
 ```
 
 The engine tests load these exact files and invoke their functions. To

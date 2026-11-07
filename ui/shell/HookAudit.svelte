@@ -105,7 +105,7 @@
         <h3>attempts</h3>
         <ol class="audit-attempts">
           {#each audit.attempts as attempt (attempt.key)}
-            <li><b>attempt {attempt.value.attempt}</b> · <span class:warn={attempt.state.toUpperCase() === 'UNKNOWN'}>{attempt.state}</span> · {duration(attempt.value)}<p class="muted"><time datetime={started(attempt)}>{stamp(started(attempt))}</time>{#if attempt.value.finished_at} → <time datetime={attempt.value.finished_at}>{stamp(attempt.value.finished_at)}</time>{/if}</p>{#if attempt.value.error}<p class="error">{attempt.value.error}</p>{/if}<details><summary>attempt evidence</summary><pre>{payload({ output: attempt.value.output, decisions: attempt.value.decisions, actions: attempt.value.actions, targets: attempt.value.targets, reused_calls: attempt.value.reused_calls })}</pre></details></li>
+            <li><b>attempt {attempt.value.attempt}</b> · <span class:warn={attempt.state.toUpperCase() === 'UNKNOWN'}>{attempt.state}</span> · {duration(attempt.value)}<p class="muted"><time datetime={started(attempt)}>{stamp(started(attempt))}</time>{#if attempt.value.finished_at} → <time datetime={attempt.value.finished_at}>{stamp(attempt.value.finished_at)}</time>{/if}</p>{#if attempt.value.error}<p class="error">{attempt.value.error}</p>{/if}<details><summary>attempt evidence</summary><pre>{payload({ result_metadata: attempt.value.result_metadata, result_output: attempt.value.result_output, output: attempt.value.output, decisions: attempt.value.decisions, actions: attempt.value.actions, targets: attempt.value.targets, reused_calls: attempt.value.reused_calls })}</pre></details></li>
           {:else}<li class="muted">No attempts recorded.</li>{/each}
         </ol>
         <h3>ordered capability calls</h3>
@@ -128,6 +128,7 @@
         <ul>{#each tickets as ticket}<li><a href={'?view=trace&ref=' + encodeURIComponent(ticket.id)}>{ticket.id}</a> · {ticket.label}</li>{:else}<li class="muted">No resulting tickets recorded.</li>{/each}</ul>
         {#if invocation.targets && !Array.isArray(invocation.targets)}<pre>{payload(invocation.targets)}</pre>{/if}
         {#if invocation.actions}<details><summary>planned actions</summary><pre>{payload(invocation.actions)}</pre></details>{/if}
+        {#if invocation.result_metadata || invocation.result_output}<details><summary>callback result</summary><pre>{payload({ metadata: invocation.result_metadata, output: invocation.result_output })}</pre></details>{/if}
         {#if invocation.output}<details><summary>hook output</summary><pre>{payload(invocation.output)}</pre></details>{/if}
       {/if}
     </section>

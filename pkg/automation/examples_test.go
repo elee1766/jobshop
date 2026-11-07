@@ -49,7 +49,7 @@ func TestDocumentedHookExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(trigger.Actions) != 1 || trigger.Actions[0].Kind != "start_run" || trigger.Actions[0].Key != "demo:TASK-1" || trigger.Actions[0].Workflow != "demo-implement" || trigger.Actions[0].Inputs["pool"] != "demo-dev" {
+	if trigger.Output["selected"] != int64(1) || len(trigger.Actions) != 1 || trigger.Actions[0].Kind != "start_run" || trigger.Actions[0].Key != "demo:TASK-1" || trigger.Actions[0].Workflow != "demo-implement" || trigger.Actions[0].Inputs["pool"] != "demo-dev" {
 		t.Fatalf("wrong documented trigger action: %#v", trigger)
 	}
 }
@@ -90,7 +90,7 @@ func TestDocumentedCapabilityExamples(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := engine.Invoke(t.Context(), entries[0], server.URL)
-	if err != nil || result.Value.(map[string]any)["custom"].(map[string]any)["ok"] != true {
+	if err != nil || result.Output["custom"].(map[string]any)["ok"] != true {
 		t.Fatalf("HTTP fixture result: %#v %v", result, err)
 	}
 	t.Run("shell", func(t *testing.T) {
@@ -98,12 +98,12 @@ func TestDocumentedCapabilityExamples(t *testing.T) {
 			t.Skip("documented Unix /bin/printf executable is unavailable")
 		}
 		result, err := engine.Invoke(t.Context(), entries[1])
-		if err != nil || result.Value.(map[string]any)["stdout"] != "ok" {
+		if err != nil || result.Output["stdout"] != "ok" {
 			t.Fatalf("shell fixture result: %#v %v", result, err)
 		}
 	})
 	result, err = engine.Invoke(t.Context(), entries[2], map[string]any{"issue": "example"})
-	if err != nil || result.Value.(map[string]any)["choice"] != "scoped" || len(result.Decisions) != 1 {
+	if err != nil || result.Output["choice"] != "scoped" || len(result.Decisions) != 1 {
 		t.Fatalf("Jev fixture result: %#v %v", result, err)
 	}
 }

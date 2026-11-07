@@ -71,8 +71,8 @@ func TestHTTPAuthJSONAndRedirects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Value.(map[string]any)["value"] != int64(9007199254740993) {
-		t.Fatalf("JSON conversion lost data: %#v", result.Value)
+	if result.Output["value"] != int64(9007199254740993) {
+		t.Fatalf("JSON conversion lost data: %#v", result.Output)
 	}
 	for _, url := range []string{foreign.URL, server.URL + "/redirect"} {
 		if _, err := engine.Invoke(t.Context(), "main.star:handle", url); err == nil {
@@ -82,7 +82,7 @@ func TestHTTPAuthJSONAndRedirects(t *testing.T) {
 	if foreignRequests.Load() != 0 {
 		t.Fatal("authenticated redirect reached another origin")
 	}
-	public := hook(t, "def handle(url):\n    return http.get(url, headers={\"Authorization\": \"caller-secret\", \"X-Credential\": \"custom-secret\"}).status_code\n", automation.Options{AllowHTTP: true})
+	public := hook(t, "def handle(url):\n    return {\"status\": http.get(url, headers={\"Authorization\": \"caller-secret\", \"X-Credential\": \"custom-secret\"}).status_code}\n", automation.Options{AllowHTTP: true})
 	if _, err := public.Invoke(t.Context(), "main.star:handle", server.URL+"/public-redirect"); err != nil {
 		t.Fatal(err)
 	}

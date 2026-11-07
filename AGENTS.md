@@ -6,6 +6,8 @@ up to 2026-11-05), `docs/layout.md`, `docs/data-model.md`. Decisions:
 the pinned decision log issue (#569). Progress: open `target` issues.
 
 - Packages live in `pkg/`; `cmd/jobshop` only calls `cli.Main`.
+- Fixed JSON envelopes use Go structs with JSON tags. Maps are for dynamic keys
+  and arbitrary payload data.
 - Every write goes through the controller; the CLI never opens the database.
 - Check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`,
   plus `nix fmt -- --check $(git ls-files '*.nix')` (CI runs it; `nix fmt` fixes it).
