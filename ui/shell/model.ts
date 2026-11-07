@@ -1,11 +1,8 @@
 import type { Ticket, RunResult } from "../../packages/jobshop-client/rpc.js";
 
-export function ago(value?: string) {
+export function ago(value?: string, now = Date.now()) {
   if (!value || value.startsWith("0001")) return "unknown";
-  const minutes = Math.max(
-    0,
-    Math.floor((Date.now() - Date.parse(value)) / 60000),
-  );
+  const minutes = Math.max(0, Math.floor((now - Date.parse(value)) / 60000));
   return minutes < 60
     ? minutes + "m"
     : minutes < 1440
@@ -30,7 +27,11 @@ export interface Flight {
   run: RunResult;
 }
 
-export function flights(runs: RunResult[], threshold = 3 * 3600000): Flight[] {
+export function flights(
+  runs: RunResult[],
+  threshold = 3 * 3600000,
+  now = Date.now(),
+): Flight[] {
   const rows: Flight[] = [];
   for (const run of runs) {
     const f = (run.run.fields as Record<string, any>) || {};
@@ -61,7 +62,7 @@ export function flights(runs: RunResult[], threshold = 3 * 3600000): Flight[] {
       .map((c: any) => c.note || c.type)
       .join(", ");
     const repeated = (sf.failures || 0) > 1 || (sf.review_rounds || 0) > 1;
-    const old = Date.now() - Date.parse(since) > threshold;
+    const old = now - Date.parse(since) > threshold;
     const hold =
       /external|other.team/i.test(wait?.owner || wait?.reason || "") ||
       run.run.labels?.some((label) =>

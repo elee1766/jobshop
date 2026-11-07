@@ -134,7 +134,7 @@ func (c *Controller) deskCommand(ctx context.Context, sc scope, p rpc.DeskComman
 		return nil, fmt.Errorf("%w: desk commands require a named chat", store.ErrInvalid)
 	}
 	allowed := map[string][]string{
-		"navigate": {"view", "ref"}, "filter": {"window", "repo", "step", "team", "waiting_on", "age"},
+		"navigate": {"view", "ref"}, "filter": {"window", "repo", "step", "waiting_on"},
 		"select": {"refs"}, "attach": {"refs"}, "expand": {"window"}, "collapse": {"window"},
 	}
 	keys, ok := allowed[p.Action]
@@ -151,6 +151,9 @@ func (c *Controller) deskCommand(ctx context.Context, sc scope, p rpc.DeskComman
 	}
 	if slices.Contains([]string{"filter", "expand", "collapse"}, p.Action) && !slices.Contains([]string{"waiting", "not-moving", "inflight"}, strings.TrimPrefix(p.Args["window"], "/")) {
 		return nil, fmt.Errorf("%w: unknown window", store.ErrInvalid)
+	}
+	if p.Action == "filter" && strings.TrimPrefix(p.Args["window"], "/") != "inflight" {
+		return nil, fmt.Errorf("%w: filters currently apply to inflight only", store.ErrInvalid)
 	}
 	if slices.Contains([]string{"select", "attach"}, p.Action) && strings.TrimSpace(p.Args["refs"]) == "" {
 		return nil, fmt.Errorf("%w: refs are required", store.ErrInvalid)

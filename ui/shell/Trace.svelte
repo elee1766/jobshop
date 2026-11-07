@@ -34,7 +34,7 @@
 <div class="trace-node">
   <button class="mono" onclick={() => onselect(node.id)}>{node.id}</button>
   {node.title}<span class="muted">
-    {node.status} {node.resolution || ""} · {ago(node.created_at)}</span
+    {node.status} {node.resolution || ""} · {ago(node.created_at, end)}</span
   >
   <div class="waterfall" aria-label="Ticket duration">
     <span

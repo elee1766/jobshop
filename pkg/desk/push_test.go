@@ -20,10 +20,13 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/control/controltest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -33,6 +36,42 @@ func unb64(t *testing.T, s string) []byte {
 	b, err := b64.DecodeString(strings.Join(strings.Fields(s), ""))
 	require.NoError(t, err)
 	return b
+}
+
+// Controller commits wake notification delivery without a periodic state read.
+func TestPushControllerEvents(t *testing.T) {
+	root := controltest.NewRoot(t, "default_project: js\nprojects:\n  js: {}\n")
+	c := controltest.Start(t, root, control.Options{})
+	p := &Push{File: filepath.Join(root.Dir, "desk", "push.json"), Interval: time.Hour}
+	s := New(Config{Root: root.Dir, Push: p}, c.Admin, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	require.NoError(t, s.Start(ctx))
+	c.PassUntil(func() bool {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return p.state.Primed
+	}, "initial event subscription did not prime notifications")
+	br := newBrowser(t, p.publicKey())
+	require.NoError(t, p.subscribe(br.sub()))
+	var ticket store.Ticket
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Title: "operator decision", Labels: []string{NeedsHuman}}, &ticket)
+	c.PassUntil(func() bool {
+		br.mu.Lock()
+		defer br.mu.Unlock()
+		return len(br.got) > 0
+	}, "controller commit did not deliver a notification")
+	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: ticket.ID}, nil)
+	c.PassUntil(func() bool {
+		br.mu.Lock()
+		defer br.mu.Unlock()
+		return len(br.got) > 1
+	}, "resolving the item did not clear its notification")
+	br.mu.Lock()
+	defer br.mu.Unlock()
+	require.Len(t, br.got, 2)
+	assert.Equal(t, "item:ticket:"+ticket.ID, br.got[0].Tag)
+	assert.Equal(t, PushMessage{Clear: true, Tag: br.got[0].Tag}, br.got[1])
 }
 
 // RFC 8291 Section 5 and Appendix A.

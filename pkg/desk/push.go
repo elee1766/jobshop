@@ -29,7 +29,7 @@ type Push struct {
 	// Subject is the VAPID contact (mailto: or https: URL) push services
 	// see; some reject a missing one.
 	Subject string
-	// Interval is how often attention is read. Events also wake it.
+	// Interval is the retry delay after a failed attention read.
 	Interval time.Duration
 
 	mu    sync.Mutex
@@ -203,30 +203,25 @@ func (p *Push) send(ctx context.Context, m PushMessage, log func(string, ...any)
 	}
 }
 
-// runPush reads attention every Interval or on wake and pushes new items.
+// runPush reads attention after controller events, retrying failed reads.
 func (s *Server) runPush(ctx context.Context) {
 	p := s.cfg.Push
-	t := time.NewTicker(p.Interval)
-	defer t.Stop()
+	var retry <-chan time.Time
 	for {
-		items, err := s.attention((&http.Request{}).WithContext(ctx))
-		if err != nil {
-			s.log.WarnContext(ctx, "desk: push: attention", "err", err)
-		} else {
-			for _, msg := range p.diff(items.([]AttentionItem)) {
-				p.send(ctx, msg, s.log.Warn)
-			}
-		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-retry:
 		case <-p.wake:
-			// Coalesce an event burst into one read.
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(2 * time.Second):
+		}
+		retry = nil
+		items, err := s.attention((&http.Request{}).WithContext(ctx))
+		if err != nil {
+			s.log.WarnContext(ctx, "desk: push: attention", "err", err)
+			retry = time.After(p.Interval)
+		} else {
+			for _, msg := range p.diff(items.([]AttentionItem)) {
+				p.send(ctx, msg, s.log.Warn)
 			}
 		}
 	}
@@ -236,8 +231,12 @@ func (s *Server) runPush(ctx context.Context) {
 // when the admin socket drops.
 func (s *Server) watchEvents(ctx context.Context) {
 	for ctx.Err() == nil {
-		kinds := []string{rpc.EventKindTicket, rpc.EventKindRun, rpc.EventKindPool}
-		_, _ = s.ctl.Events(ctx, rpc.EventsSubscribeParams{Kinds: kinds}, func(rpc.Event) { s.cfg.Push.poke() })
+		kinds := []string{rpc.EventKindTicket, rpc.EventKindRun, rpc.EventKindPool, rpc.EventKindState}
+		_, _ = s.ctl.Events(ctx, rpc.EventsSubscribeParams{Kinds: kinds}, func(ev rpc.Event) {
+			if slices.Contains(kinds, ev.Kind) || ev.Kind == rpc.EventKindReady || ev.Kind == rpc.EventKindLagged {
+				s.cfg.Push.poke()
+			}
+		})
 		select {
 		case <-ctx.Done():
 		case <-time.After(5 * time.Second):

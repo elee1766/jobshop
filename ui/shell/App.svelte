@@ -23,6 +23,7 @@
   let phoneTab = $state("waiting");
   let attention: AttentionItem[] = $state([]);
   let runs: RunResult[] = $state([]);
+  let now = $state(Date.now());
   let system: any = $state(null);
   let improvements: any = $state(null);
   let trace: any = $state(null);
@@ -50,7 +51,7 @@
   let keyboard = $state(false);
   let updateStream = () => {};
   let restoreChat = "";
-  const rows = $derived(flights(runs));
+  const rows = $derived(flights(runs, undefined, now));
   const stalled = $derived(
     rows.filter((r) => r.stalled && (!hideHolds || !r.hold)),
   );
@@ -132,8 +133,10 @@
         break;
       case "system":
         system = event.data;
+        now = Date.now();
         break;
       case "scheduler":
+        now = Date.now();
         if (system && event.data.system)
           system = { ...system, status: event.data.system };
         break;
@@ -472,7 +475,7 @@
                   <button class="item-title" onclick={() => (focused = item.id)}
                     ><b>{item.ref || item.id}</b>
                     {item.title}
-                    <span class="muted">{ago(item.since)}</span></button
+                    <span class="muted">{ago(item.since, now)}</span></button
                   >
                   {#if current?.id === item.id}<div
                       class="attention-context markdown"
@@ -527,7 +530,7 @@
                   <button class="mono" onclick={() => openTrace(row.id)}
                     >{row.ref}</button
                   >
-                  {ago(row.since)}
+                  {ago(row.since, now)}
                   {row.diagnosis}{row.hold ? " (external hold?)" : ""}
                 </p>{:else}<p class="muted">
                   No stalled work. Threshold: 3h since last push or run
@@ -595,7 +598,7 @@
                             ? row.repo.split("/").at(-1) + "#" + row.pr
                             : "–"}</td
                         ><td>{row.step}</td><td>{row.waiting}</td><td
-                          title={row.source}>{ago(row.since)}</td
+                          title={row.source}>{ago(row.since, now)}</td
                         ><td class="wide"
                           ><button
                             disabled={!row.holder}
@@ -630,6 +633,7 @@
               {#if trace.trace}<Trace
                   node={trace.trace}
                   onselect={inspect}
+                  end={now}
                 />{/if}
             </div>
             <div class="inspector">
@@ -662,7 +666,7 @@
           <h2>Memory changes</h2>
           {#each improvements?.edits || [] as edit}<article>
               <b>{edit.pr || edit.path || "Edit " + edit.id}</b> · {edit.state}
-              <span class="muted">{ago(edit.created_at)}</span>
+              <span class="muted">{ago(edit.created_at, now)}</span>
               <p>{edit.reason || "Gate has not evaluated this change yet."}</p>
               <details>
                 <summary>Before / after measurements</summary>
@@ -779,7 +783,7 @@
               ><tbody
                 >{#each system?.ingest?.workers || [] as worker}<tr
                     ><td>{worker.id}</td><td>{worker.host}</td><td
-                      >{ago(worker.seen)}</td
+                      >{ago(worker.seen, now)}</td
                     ><td>{worker.admitted}</td></tr
                   >{/each}</tbody
               >
