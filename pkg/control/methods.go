@@ -212,6 +212,7 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 		return c.orphaned(ctx, c.config(), p.Project, p.Limit)
 	}
 	f := store.Filter{
+		Query:   p.Query,
 		Project: p.Project, Kind: p.Kind, Status: p.Status, Pool: p.Pool,
 		Holder: p.Holder, ParentID: p.ParentID, Label: p.Label, Limit: p.Limit,
 		Workflow: p.Workflow, State: p.State, Since: p.Since, After: p.After,

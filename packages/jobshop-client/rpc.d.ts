@@ -818,6 +818,7 @@ export interface LinearIntakeResult {
 }
 
 export interface ListParams {
+  query?: string;
   project?: string;
   kind?: string;
   status?: string;

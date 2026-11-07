@@ -2,6 +2,7 @@ package storetest
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +11,49 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/store"
 )
+
+func testListQuery(t *testing.T, s store.Store, c *Clock) {
+	ctx := t.Context()
+	a := task(t, s, "Review wallet", "dev", func(n *store.NewTicket) {
+		n.Body = "receipt-repair"
+		n.Meta = json.RawMessage(`{"github":{"repo":"acme/widget","pr":42}}`)
+	})
+	c.Advance(time.Second)
+	b := task(t, s, "WALLET 100%_!", "dev")
+	fields, err := json.Marshal(store.RunFields{Workflow: "trade-review", State: store.RunRunning, Vars: map[string]string{"subject": "4520@abc"}})
+	require.NoError(t, err)
+	run, err := store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: store.KindRun, Title: "Review", Fields: fields})
+	require.NoError(t, err)
+	_, err = store.Close(ctx, s, "test", a.ID, nil, "done")
+	require.NoError(t, err)
+	for query, want := range map[string][]string{
+		"wallet review": {a.ID}, "receipt-repair": {a.ID}, a.ID: {a.ID},
+		"ACME/widget#42": {a.ID}, "4520 trade-review": {run.ID},
+		"100%_!": {b.ID}, "%": {b.ID}, "does-not-exist": {}, "%' OR 1=1": {},
+	} {
+		t.Run(query, func(t *testing.T) {
+			got, err := s.List(ctx, store.Filter{Query: query})
+			require.NoError(t, err)
+			assert.Equal(t, want, ids(got))
+		})
+	}
+	first, err := s.List(ctx, store.Filter{Query: "wallet", Order: store.OrderNewest, Limit: 1})
+	require.NoError(t, err)
+	require.Equal(t, []string{b.ID}, ids(first))
+	next, err := s.List(ctx, store.Filter{Query: "wallet", Order: store.OrderNewest, Limit: 1, After: first[0].ID})
+	require.NoError(t, err)
+	assert.Equal(t, []string{a.ID}, ids(next), "closed matches remain searchable across pages")
+	filtered, err := s.List(ctx, store.Filter{Query: "wallet", Status: store.StatusOpen})
+	require.NoError(t, err)
+	assert.Equal(t, []string{b.ID}, ids(filtered))
+	filtered, err = s.List(ctx, store.Filter{Query: "wallet", Project: "another"})
+	require.NoError(t, err)
+	assert.Empty(t, filtered)
+	for _, query := range []string{strings.Repeat("x", 513), strings.Repeat("x ", 17)} {
+		_, err := s.List(ctx, store.Filter{Query: query})
+		require.ErrorIs(t, err, store.ErrInvalid)
+	}
+}
 
 // testListShapes covers the Filter fields that replaced the per-shape
 // reads (#579): Kinds, Statuses, Unheld, Key, Created, the orders and

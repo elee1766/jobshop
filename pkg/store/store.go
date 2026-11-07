@@ -232,6 +232,8 @@ type Update struct {
 
 // Filter selects tickets for List. Zero values match everything.
 type Filter struct {
+	// Query matches literal case-insensitive terms in id, title, body, fields and metadata.
+	Query   string
 	Project string
 	// Kind and Kinds match any of the kinds named.
 	Kind  Kind
