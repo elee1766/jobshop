@@ -702,7 +702,7 @@ let
           fi
         '';
       };
-      timers."${unit}-sync" = lib.mkIf (w.livePacks != [ ] || w.config != null) {
+      timers."${unit}-sync" = lib.mkIf (w.livePacks != [ ] || w.config != null || w.followInstalled) {
         wantedBy = [ "timers.target" ];
         timerConfig = {
           OnBootSec = "2min";
