@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.11](https://github.com/elee1766/jobshop/compare/v0.8.10...v0.8.11) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** simplify chat recipient and composer ([#970](https://github.com/elee1766/jobshop/issues/970)) ([72f5e3a](https://github.com/elee1766/jobshop/commit/72f5e3a63ef9caf0bf30c76735bab3b481bd979c))
+
 ## [0.8.10](https://github.com/elee1766/jobshop/compare/v0.8.9...v0.8.10) (2026-11-07)
 
 
