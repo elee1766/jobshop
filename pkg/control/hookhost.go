@@ -28,7 +28,16 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 		return "superseded", nil
 	}
 	if in.Trigger == "" {
-		return "", nil
+		run, err := c.store.Get(ctx, in.Run)
+		if err != nil {
+			return "", err
+		}
+		fields, err := store.DecodeFields[store.RunFields](run)
+		if err != nil {
+			return "", err
+		}
+		// Before evaluation, so a run2 run without its scope runs no code.
+		return "", runScopeRecorded(fields.Automation)
 	}
 	tr, ok := runtime.Config.Triggers[in.Trigger]
 	if !ok {
@@ -140,6 +149,9 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 			return err
 		}
 		automation = f.Automation
+		if err := runScopeRecorded(f.Automation); err != nil {
+			return err
+		}
 		if f.Automation != nil {
 			for _, applied := range f.Automation.Applied {
 				if applied == key {
@@ -170,11 +182,28 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 	if !pinned {
 		return errors.New("planned hook manifest changed: restore the accepted configuration before applying actions")
 	}
-	// A run pin survives unrelated reloads, so recheck what the plan names.
+	// A run pin survives unrelated reloads, so recheck every pool the plan
+	// can route a ticket to: its pool, a step's retry pool and placements.
 	for _, ticket := range in.Plan.Tickets {
-		if ticket.Pool != "" {
-			if pool, ok := lc.cfg.Pools[ticket.Pool]; !ok || pool.Project != ticket.Project {
-				return fmt.Errorf("planned pool %s changed: restore it before applying actions", ticket.Pool)
+		pools := []string{ticket.Pool}
+		if ticket.Kind == store.KindStep {
+			var f store.StepFields
+			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
+				return err
+			}
+			pools = append(pools, f.RetryPool)
+			if f.Placement != nil {
+				for _, option := range f.Placement.Options {
+					pools = append(pools, option.Pool)
+				}
+			}
+		}
+		for _, name := range pools {
+			if name == "" {
+				continue
+			}
+			if pool, ok := lc.cfg.Pools[name]; !ok || pool.Project != ticket.Project {
+				return fmt.Errorf("planned pool %s changed: restore it before applying actions", name)
 			}
 		}
 	}

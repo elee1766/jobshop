@@ -22,18 +22,30 @@ type hookRunPlan struct {
 
 // hookReference resolves a callback's pool or workflow name in the live
 // configuration and, for a workflow callback, within the scope its run
-// accepted at start. A run2 pin without that scope fails closed.
+// accepted at start.
 func hookReference(cfg *config.Config, in hooks.Invocation, a *store.RunAutomation, kind, name string) (string, error) {
 	if in.Trigger != "" {
 		return cfg.ResolveHookReference("triggers."+in.Trigger, kind, name)
 	}
-	if a == nil || in.RunInput == nil {
+	if in.RunInput == nil {
 		return "", fmt.Errorf("%w: run has no automation", store.ErrConflict)
 	}
-	if hooks.ScopedRunPin(a.Digest) && a.Scope == nil {
-		return "", errors.New("run has no accepted reference scope")
+	if err := runScopeRecorded(a); err != nil {
+		return "", err
 	}
 	return cfg.ResolvePinnedHookReference("workflows."+in.RunInput.Workflow, kind, name, a.Scope)
+}
+
+// runScopeRecorded fails closed for a run2 pin whose run lost the scope it
+// accepted at start; every callback path checks it, even with no references.
+func runScopeRecorded(a *store.RunAutomation) error {
+	if a == nil {
+		return fmt.Errorf("%w: run has no automation", store.ErrConflict)
+	}
+	if hooks.ScopedRunPin(a.Digest) && a.Scope == nil {
+		return errors.New("run has no accepted reference scope")
+	}
+	return nil
 }
 
 // checkPlannedTargets re-resolves each planned ticket's action before a
@@ -167,6 +179,9 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 		if run.Status == store.StatusClosed || fields.State != store.RunRunning || fields.Automation == nil {
 			return g, fmt.Errorf("%w: run no longer running", store.ErrConflict)
+		}
+		if err := runScopeRecorded(fields.Automation); err != nil {
+			return g, err
 		}
 		children, err := store.Children(ctx, c.store, in.Run)
 		if err != nil {

@@ -196,14 +196,24 @@ const runPinPrefix = "run2:"
 // the reference scope it accepted at start.
 func ScopedRunPin(pinned string) bool { return strings.HasPrefix(pinned, runPinPrefix) }
 
-// RunPin pins a callback workflow run to its owner, selectors, code, roots
-// and host grants. Its reference scope is pinned separately in the run.
-func RunPin(programs map[string]*Program, name string, w config.Workflow) string {
+// RunPin pins a callback workflow run to its owner and the owner's pack
+// instance, selectors, code, roots and host grants. Its reference scope is
+// pinned separately in the run.
+func RunPin(programs map[string]*Program, cfg *config.Config, name string) string {
+	w := cfg.Workflows[name]
 	a, b := programs[w.OnStart], programs[w.OnStepCompleted]
 	if a == nil || b == nil {
 		return ""
 	}
-	data, err := json.Marshal([]string{name, w.Project, w.OnStart, w.OnStepCompleted, a.authority, b.authority})
+	// Host-level workflows belong to no instance: both stay empty.
+	var path, prefix string
+	for _, in := range cfg.Instances {
+		if slices.Contains(in.Workflows, name) {
+			path, prefix = in.Path, in.Prefix
+			break
+		}
+	}
+	data, err := json.Marshal([]string{name, w.Project, path, prefix, w.OnStart, w.OnStepCompleted, a.authority, b.authority})
 	if err != nil {
 		return ""
 	}
@@ -218,7 +228,7 @@ func RunPinned(programs map[string]*Program, cfg *config.Config, name, pinned st
 		return false
 	}
 	if ScopedRunPin(pinned) {
-		return RunPin(programs, name, w) == pinned
+		return RunPin(programs, cfg, name) == pinned
 	}
 	return WorkflowDigest(programs, w) == pinned
 }

@@ -55,7 +55,7 @@ func newLiveConfig(cfg *config.Config, roots ...config.Root) (*liveConfig, error
 	snapshot.HookRunPins = map[string]string{}
 	for name, w := range cfg.Workflows {
 		if w.OnStart != "" {
-			snapshot.HookRunPins[name] = hooks.RunPin(programs, name, w)
+			snapshot.HookRunPins[name] = hooks.RunPin(programs, cfg, name)
 		}
 	}
 	return &liveConfig{cfg: &snapshot, lease: lease, hooks: programs, runtime: &hooks.Runtime{Config: &snapshot, Programs: programs}}, nil
