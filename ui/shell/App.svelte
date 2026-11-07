@@ -615,11 +615,11 @@
                     >{#each filtered as row (row.id)}<tr
                         class:stalled={row.stalled}
                         ><td class="ticket-status" title={ticketState(row.run.run)} aria-label={ticketState(row.run.run)}>{statusLetter(row.run.run)}</td><td
-                          ><button class="ticket-label"
+                          ><button class="ticket-label" title={row.ref === row.id ? row.id : `${row.id} · ${row.ref}`}
                             onclick={(e) =>
                               e.shiftKey
                                 ? attach([row.ref])
-                                : openTrace(row.id)}><span>{row.title || row.ref}</span>{#if row.title}<small class="muted">{row.ref}</small>{/if}</button
+                                : openTrace(row.id)}><span>{row.title || row.ref}</span></button
                           ></td
                         ><td class="wide"
                           >{row.pr
