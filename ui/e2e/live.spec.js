@@ -122,7 +122,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     related.push(dependency.id);
     const child = await call('ticket.create', { title: 'Implementation child', parent_id: ticket.id });
     related.push(child.id);
-    await call('ticket.update', { id: child.id, fields: { wait: { reason: 'Investigating https://github.com/acme/widget/issues/9. ENG-2 [Unsafe](javascript:alert%281%29)', conds: [{ type: 'run', run: ticket.id, state: 'closed' }] } } });
+    await call('ticket.update', { id: child.id, fields: { wait: { reason: 'Investigating https://github.com/acme/widget/issues/9. acme/widget#42 ENG-2 [Unsafe](javascript:alert%281%29)', conds: [{ type: 'run', run: ticket.id, state: 'closed' }] } } });
     await call('edge.add', { from: child.id, to: dependency.id, kind: 'waits_for' });
     const graph = page.getByRole('region', { name: 'Ticket dependency graph', exact: true });
     await expect(graph.locator('.graph-card')).toHaveCount(3);
@@ -182,7 +182,8 @@ test("live state changes and reconnect snapshots need no browser refresh request
     const linkBackground = await statusLink.evaluate(node => getComputedStyle(node).backgroundColor);
     await statusLink.hover();
     await expect(statusLink).not.toHaveCSS('background-color', linkBackground);
-    await expect(graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link')).toHaveCount(1);
+    await expect(graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link', { name: 'acme/widget#42', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/42');
+    await expect(graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link')).toHaveCount(2);
     const relationships = page.getByRole('table', { name: 'Ticket relationships', exact: true });
     await expect(relationships.getByRole('columnheader').first()).toHaveText('s');
     const dependencyRow = relationships.getByRole('row').filter({ hasText: 'Required evidence' });
@@ -207,12 +208,16 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await relationships.getByRole('button', { name: new RegExp(dependency.id) }).click();
     await expect(page.locator('.inspector h2')).toContainText(dependency.id);
     await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).not.toHaveAttribute('open');
-    await call('comment.add', { id: dependency.id, body: `Plain ENG-2 and ${child.id}. [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).` });
+    await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).` });
     const comment = page.locator('.ticket-comment .markdown');
     await expect(comment.getByRole('link', { name: 'Linear issue', exact: true })).toHaveAttribute('href', 'https://linear.app/acme/issue/ENG-2');
     await expect(comment.getByRole('link', { name: 'GitHub evidence', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
     await expect(comment.getByRole('link', { name: 'Implementation', exact: true })).toHaveAttribute('href', '?view=trace&ref=' + child.id);
-    await expect(comment.getByRole('link')).toHaveCount(3);
+    await expect(comment.getByRole('link', { name: 'acme/widget#42', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/42');
+    await expect(comment.getByRole('link', { name: 'acme/widget#42', exact: true })).toHaveAttribute('rel', 'noopener noreferrer');
+    await expect(comment.getByRole('link', { name: 'acme/widget#46', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/46');
+    await expect(comment.locator('code a')).toHaveCount(0);
+    await expect(comment.getByRole('link')).toHaveCount(5);
     await comment.getByRole('link', { name: 'Implementation', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(child.id);
     await expect(page.locator('.inspector h2')).toContainText(child.id);
