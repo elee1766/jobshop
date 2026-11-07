@@ -197,18 +197,18 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		redactEvent(red, &ev)
 		return sc.peer.conn.SendNotification(ctx, rpc.NotifySessionEvent, ev)
 	}
-	state := func(t store.Ticket) error {
-		return send(rpc.SessionEvent{Type: rpc.EventState, Status: t.Status, Resolution: t.Resolution})
-	}
-	if err := state(t); err != nil {
-		return nil, err
-	}
 	if p.SinceSeq == 0 && p.Tail > 0 {
 		// Seq is 1-based and gapless, so the last Tail frames follow
 		// last-Tail (#614).
 		if last, _ := host.JournalTail(c.root.SessionDir(p.ID)); last > 0 {
 			p.SinceSeq = max(last-p.Tail, 0)
 		}
+	}
+	state := func(t store.Ticket) error {
+		return send(rpc.SessionEvent{Type: rpc.EventState, Status: t.Status, Resolution: t.Resolution, First: p.SinceSeq + 1})
+	}
+	if err := state(t); err != nil {
+		return nil, err
 	}
 	path := filepath.Join(c.root.SessionDir(p.ID), host.JournalFile)
 	var watcher *fsnotify.Watcher

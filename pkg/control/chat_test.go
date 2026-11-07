@@ -92,6 +92,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 	assert.Equal(t, 1, prompted, "pool prompt on the first chat turn")
 	assert.Equal(t, rpc.EventState, got[0].Type)
 	assert.Equal(t, store.StatusOpen, got[0].Status)
+	assert.EqualValues(t, 1, got[0].First, "full replay starts at the journal beginning")
 	var tool *rpc.ToolSummary
 	for _, e := range got {
 		if e.Type == rpc.EventTool && e.Tool.Status == "completed" {
@@ -121,6 +122,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 	}, "tail reached the last frame")
 	tailCancel()
 	<-done
+	require.Greater(t, evTail.get()[0].First, int64(1), "tail advertises the raw history cursor")
 	for _, e := range evTail.get() {
 		if e.Seq > 0 {
 			assert.Greater(t, e.Seq, res.Seq-3, "only the last 3 frames")

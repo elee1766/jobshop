@@ -24,7 +24,8 @@ const maxChatText = 32 << 10
 
 // ChatSend is the body of POST /api/chat/send. Name the session by ID
 // (rw attach, refused unless its pool has attach: rw), or by Key in the
-// chat pool (an escalation thread or a desk:<id> session).
+// chat pool (an escalation thread or a desk:<id> session). Giving both
+// identifies an existing managed chat without scanning all sessions.
 type ChatSend struct {
 	Attachments []rpc.AttachmentContent `json:"attachments,omitempty"`
 	Session     string                  `json:"session,omitempty"`
@@ -76,6 +77,17 @@ func (s *Server) chatSend(r *http.Request) (any, error) {
 	}
 	p.Context = context
 	switch {
+	case b.Session != "" && b.Key != "":
+		var shown rpc.ShowResult
+		if err := s.ctl.Call(r.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: b.Session}, &shown); err != nil {
+			return nil, err
+		}
+		fields, err := store.DecodeFields[store.SessionFields](shown.Ticket)
+		managed := strings.HasPrefix(b.Key, "desk:") || strings.HasPrefix(b.Key, escalationKeyPrefix) || strings.HasPrefix(b.Key, "attention:")
+		if err != nil || shown.Ticket.Kind != store.KindSession || fields.Key != b.Key || !managed {
+			return nil, fmt.Errorf("%w: session is not the selected managed chat", errBadRequest)
+		}
+		p.ID = b.Session
 	case b.Session != "" && b.Key == "":
 		// Attach to an arbitrary session: the controller enforces attach: rw.
 		p.ID, p.Attach = b.Session, true

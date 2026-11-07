@@ -437,6 +437,11 @@ td pre {
   padding: 0 2px;
   white-space: pre-wrap;
 }
+.chat-state.working { color: var(--ink); background: var(--hi); }
+.virtual-transcript { position: relative; width: 100%; overflow-anchor: none; }
+.transcript-row { position: absolute; top: 0; left: 0; width: 100%; display: flow-root; }
+.history-loader { height: 28px; display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; font-size: 12px; }
+.message-delivery, .operator small { display: block; font-size: 12px; }
 .markdown {
   overflow-wrap: anywhere;
 }

@@ -1204,6 +1204,7 @@ export interface SessionCordonParams {
 export interface SessionEvent {
   session: string;
   seq?: number;
+  first?: number;
   time?: string;
   type: string;
   text?: string;
