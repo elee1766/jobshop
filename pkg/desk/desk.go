@@ -647,10 +647,12 @@ func (s *Server) pools(r *http.Request) (any, error) {
 // nodes carry theirs in Session.
 type TicketView struct {
 	rpc.ShowResult
-	Inspected *store.Ticket             `json:"inspected,omitempty"`
-	Run       *rpc.RunResult            `json:"run,omitempty"`
-	Trace     *rpc.TraceNode            `json:"trace,omitempty"`
-	Sessions  map[string]rpc.HolderInfo `json:"sessions,omitempty"`
+	Inspected  *store.Ticket             `json:"inspected,omitempty"`
+	Inspection *rpc.ShowResult           `json:"inspection,omitempty"`
+	Graph      *rpc.GraphResult          `json:"graph,omitempty"`
+	Run        *rpc.RunResult            `json:"run,omitempty"`
+	Trace      *rpc.TraceNode            `json:"trace,omitempty"`
+	Sessions   map[string]rpc.HolderInfo `json:"sessions,omitempty"`
 }
 
 func (s *Server) ticket(r *http.Request) (any, error) {
@@ -666,6 +668,7 @@ func (s *Server) ticket(r *http.Request) (any, error) {
 			return nil, err
 		}
 		v.Inspected = &shown.Ticket
+		v.Inspection = &shown
 	}
 	if v.Ticket.Kind == store.KindRun {
 		var run rpc.RunResult

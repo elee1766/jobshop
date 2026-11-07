@@ -59,12 +59,18 @@ func (s *Server) overview(r *http.Request) (any, error) {
 }
 
 func (s *Server) traceView(r *http.Request) (any, error) {
-	var trace rpc.TraceNode
-	if err := s.ctl.Call(r.Context(), rpc.MethodTicketTrace, rpc.TraceParams{ID: r.PathValue("ref"), Depth: 1}, &trace); err != nil {
+	var graph rpc.GraphResult
+	if err := s.ctl.Call(r.Context(), rpc.MethodTicketGraph, rpc.GraphParams{ID: r.PathValue("ref"), Limit: 2000}, &graph); err != nil {
 		return nil, err
 	}
-	r.SetPathValue("id", trace.ID)
-	return s.ticket(r)
+	r.SetPathValue("id", graph.Root)
+	value, err := s.ticket(r)
+	if err != nil {
+		return nil, err
+	}
+	view := value.(TicketView)
+	view.Graph = &graph
+	return view, nil
 }
 
 func (s *Server) systemView(r *http.Request) (any, error) {

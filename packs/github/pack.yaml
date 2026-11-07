@@ -306,6 +306,9 @@ triggers:
 # Workers check what earlier sessions learned before retrying blind or
 # reaching a human (#265).
 prompt_rules:
+  - name: desk-links
+    at: turn
+    file: prompts/rules/desk-links.md
   - name: recall
     at: system
     file: prompts/rules/recall.md

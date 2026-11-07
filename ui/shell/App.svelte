@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Chat, { type Chat as ChatInfo } from "./Chat.svelte";
   import Trace from "./Trace.svelte";
+  import TicketDetails from "./TicketDetails.svelte";
   import { client } from "./lib/api.svelte.js";
   import {
     initPush,
@@ -492,10 +493,11 @@
                 </p>{/if}
               {#each attention as item (item.kind + ":" + item.id)}
                 <article class:focused={current?.id === item.id}>
-                  {#if item.kind === "pool"}<b>{item.ref || item.id}</b>{:else}<a
+                  {#if item.url && /^https?:\/\//i.test(item.url)}<a href={item.url} target="_blank" rel="noopener noreferrer"><b>{item.ref || item.id}</b></a>{:else}<b>{item.ref || item.id}</b>{/if}
+                  {#if item.kind !== "pool"}<a
                       href={"?view=trace&ref=" + encodeURIComponent(item.id)}
                       aria-label={"Trace " + (item.ref || item.id)}
-                      ><b>{item.ref || item.id}</b></a
+                      >Trace</a
                     >{/if}
                   <button class="item-title" onclick={() => (focused = item.id)}
                     >
@@ -505,7 +507,7 @@
                   {#if current?.id === item.id}<div
                       class="attention-context markdown"
                     >
-                      {@html md(item.context || item.summary || "", item.kind === "pool" ? {} : { [item.id]: item.id, ...(item.ref ? { [item.ref]: item.id } : {}) })}
+                      {@html md(item.context || item.summary || "")}
                     </div>
                     <div class="options">
                       {#each item.options || [] as option}<button
@@ -653,35 +655,16 @@
             /><button type="submit">Open</button>
           </form>
         </div>
-        {#if trace}<div class="trace-layout">
-            <div class="trace-tree">
-              {#if trace.trace}<Trace
-                  node={trace.trace}
-                  onselect={inspect}
-                  end={now}
-                />{/if}
-            </div>
-            <div class="inspector">
-              {#if selected}<h2 class="mono">{selected.id} {selected.title}</h2>
-                <p>{selected.status} {selected.resolution || ""}</p>
-                <p class="muted">
-                  Created {new Date(selected.created_at).toLocaleString()}
-                </p>
-                <div class="markdown">{@html md(selected.body || "")}</div>
-                {#if selected.kind === "session"}<button
-                    onclick={() => loadJournal(selected.id)}
-                    >Load journal</button
-                  >{/if}
-                <details open>
-                  <summary>Fields and observed conditions</summary>
-                  <pre>{JSON.stringify(selected.fields, null, 2)}</pre>
-                </details>
-                {#each journal as frame}<pre>{JSON.stringify(
-                      frame,
-                      null,
-                      2,
-                    )}</pre>{/each}{/if}
-            </div>
+        {#if trace?.graph}<div class="trace-layout">
+            <Trace graph={trace.graph} selected={selected?.id || trace.graph.root} onselect={inspect} />
+            {#if selected}<TicketDetails
+              detail={trace.inspection || trace}
+              graph={trace.graph}
+              onselect={inspect}
+              ontrace={openTrace}
+              onjournal={loadJournal}
+            />{/if}
+            {#each journal as frame}<pre>{JSON.stringify(frame, null, 2)}</pre>{/each}
           </div>{/if}
       {:else if view === "improvements"}
         <div class="tag">

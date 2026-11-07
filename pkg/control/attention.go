@@ -207,6 +207,11 @@ func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
 	if qm, ok := questionOf(t); ok {
 		it.Context, it.Options = qm.Context, qm.Options
 	}
+	if full := metaString(t.Meta, deskMetaPack, "attention_context"); full != "" {
+		it.Context = full
+	} else if it.Context == "" {
+		it.Context = t.Body
+	}
 	var m struct {
 		GitHub struct {
 			Repo  string `json:"repo"`
