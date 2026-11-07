@@ -3,6 +3,8 @@
 Agents that work one GitHub repo through issues and PRs: a planner, dev
 sessions and a refinery that merges. `packs/selfdev` is this pack with
 Jobshop's values (`extends:`, `docs/notes/107-github-pack-extends.md`).
+The additive [native candidate](NATIVE.md) documents CUE composition,
+Starlark workflows, offline checks and the remaining parity boundaries.
 
 ## Flow: one `pr-work` run per issue
 
