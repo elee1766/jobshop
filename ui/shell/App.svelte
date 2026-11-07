@@ -109,8 +109,19 @@
       if (value) u.searchParams.set(key, value);
       else u.searchParams.delete(key);
     }
-    history.replaceState(null, "", u);
+    if (u.href !== location.href) history.pushState(null, "", u);
     updateStream();
+  }
+  function traceClick(event: MouseEvent) {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target instanceof Element ? event.target.closest("a") : null;
+    if (!anchor || anchor.target || anchor.hasAttribute("download")) return;
+    const url = new URL(anchor.href);
+    if (url.origin !== location.origin || url.pathname !== location.pathname || url.searchParams.get("view") !== "trace") return;
+    const ref = url.searchParams.get("ref");
+    if (!ref) return;
+    event.preventDefault();
+    openTrace(ref);
   }
   function receive(event: LiveEvent) {
     switch (event.kind) {
@@ -172,6 +183,7 @@
     }
     traceRef = ref;
     inspectRef = "";
+    chatOpen = false;
     navigate("trace");
   }
   function inspect(id: string) {
@@ -321,26 +333,34 @@
         ]?.id || "";
     }
   }
+  function restoreRoute() {
+    const previousTrace = traceRef + ":" + inspectRef;
+    const params = new URLSearchParams(location.search);
+    const item = params.get("item");
+    if (item) focused = item.slice(item.indexOf(":") + 1);
+    view = ["home", "trace", "improvements", "system"].includes(params.get("view") || "")
+      ? params.get("view")! : "home";
+    traceRef = params.get("ref") || "";
+    inspectRef = params.get("inspect") || "";
+    filter = params.get("filter") || "";
+    sinceAway = params.get("since") === "1";
+    restoreChat = params.get("chat") || "";
+    phoneTab = view === "home" ? "waiting" : "more";
+    chatOpen = false;
+    if (previousTrace !== traceRef + ":" + inspectRef) {
+      trace = null;
+      selected = null;
+      journal = [];
+    }
+    updateStream();
+  }
   onMount(() => {
     try {
       hidden = localStorage.getItem("desk.chat.hidden") === "true";
     } catch {
       /* Storage may be disabled. */
     }
-    const params = new URLSearchParams(location.search);
-    const item = params.get("item");
-    if (item) focused = item.slice(item.indexOf(":") + 1);
-    if (
-      ["home", "trace", "improvements", "system"].includes(
-        params.get("view") || "",
-      )
-    )
-      view = params.get("view")!;
-    traceRef = params.get("ref") || "";
-    inspectRef = params.get("inspect") || "";
-    filter = params.get("filter") || "";
-    sinceAway = params.get("since") === "1";
-    restoreChat = params.get("chat") || "";
+    restoreRoute();
     void client
       .get("api/focus")
       .then((d) => (lastFocus = d.last_focus))
@@ -410,7 +430,7 @@
   });
 </script>
 
-<svelte:window onkeydown={keydown} />
+<svelte:window onkeydown={keydown} onclick={traceClick} onpopstate={restoreRoute} />
 <div
   class="desk"
   class:keyboard
@@ -472,15 +492,20 @@
                 </p>{/if}
               {#each attention as item (item.kind + ":" + item.id)}
                 <article class:focused={current?.id === item.id}>
+                  {#if item.kind === "pool"}<b>{item.ref || item.id}</b>{:else}<a
+                      href={"?view=trace&ref=" + encodeURIComponent(item.id)}
+                      aria-label={"Trace " + (item.ref || item.id)}
+                      ><b>{item.ref || item.id}</b></a
+                    >{/if}
                   <button class="item-title" onclick={() => (focused = item.id)}
-                    ><b>{item.ref || item.id}</b>
+                    >
                     {item.title}
                     <span class="muted">{ago(item.since, now)}</span></button
                   >
                   {#if current?.id === item.id}<div
                       class="attention-context markdown"
                     >
-                      {@html md(item.context || item.summary || "")}
+                      {@html md(item.context || item.summary || "", item.kind === "pool" ? {} : { [item.id]: item.id, ...(item.ref ? { [item.ref]: item.id } : {}) })}
                     </div>
                     <div class="options">
                       {#each item.options || [] as option}<button

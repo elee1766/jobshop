@@ -1,11 +1,9 @@
-// Markdown to sanitized HTML, after jcode-web's format.ts (#535). In
-// ui/kit so the chat and attention plugins each bundle their own copy
-// (#541): a plugin may not import the shell (#517).
+// Shared sanitized Markdown for chat, waiting items and ticket bodies.
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-/** Agent markdown to sanitized HTML; links open in a new tab. @param {string} text */
-export function md(text) {
+/** @param {string} text @param {Record<string, string>} refs Known references and their ticket IDs. */
+export function md(text, refs = {}) {
   const html = /** @type {string} */ (marked.parse(text || '', { async: false, gfm: true, breaks: false }));
   const clean = DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
@@ -19,6 +17,31 @@ export function md(text) {
     if (!ok) a.removeAttribute('href');
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
+  }
+  const names = Object.keys(refs).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (names.length) {
+    const pattern = new RegExp('(?<![\\w-])(?:' + names.map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')(?![\\w-])', 'g');
+    const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) {
+      if (node.parentElement?.closest('a, pre, code')) continue;
+      const text = node.textContent || '';
+      const matches = [...text.matchAll(pattern)];
+      if (!matches.length) continue;
+      const fragment = doc.createDocumentFragment();
+      let offset = 0;
+      for (const match of matches) {
+        fragment.append(text.slice(offset, match.index));
+        const link = doc.createElement('a');
+        link.textContent = match[0];
+        link.href = '?view=trace&ref=' + encodeURIComponent(refs[match[0]]);
+        fragment.append(link);
+        offset = match.index + match[0].length;
+      }
+      fragment.append(text.slice(offset));
+      node.parentNode?.replaceChild(fragment, node);
+    }
   }
   return doc.body.innerHTML;
 }
