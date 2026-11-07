@@ -54,6 +54,11 @@
   let searchInput: HTMLInputElement;
   let previousDraft: { text: string; refs: string[]; attachments: Attachment[] } | null = null;
   const archivedChats = $derived(chats.filter((chat) => chat.state === "archived"));
+  function chatType(chat: Chat) {
+    if (chat.key.startsWith("escalation:")) return "escalation";
+    if (chat.key.startsWith("attention:")) return "attention";
+    return "chat";
+  }
   const recentChats = $derived.by(() => {
     const all = active && !chats.some(chat => chat.id === active?.id) ? [...chats, active] : chats;
     const query = search.toLocaleLowerCase().replace(/\s+/g, "");
@@ -112,7 +117,7 @@
     if (ev.op === "attach")
       attach((ev.args?.refs || "").split(/[ ,]+/).filter(Boolean));
   }
-  async function select(chat: Chat) {
+  async function select(chat: Chat | null) {
     attachmentEpoch++;
     const selectedGeneration = ++generation;
     closeStream();
@@ -130,7 +135,7 @@
     picker?.hidePopover();
     onactive(chat);
     lastSeq = 0;
-    connect(chat.id, selectedGeneration);
+    if (chat) connect(chat.id, selectedGeneration);
   }
   function connect(id: string, selectedGeneration: number) {
     closeStream();
@@ -304,19 +309,27 @@
     }
   }
   async function manage(action: string) {
-    if (!active) return;
+    if (!active || sending) return;
+    if (action === "resolve" && !window.confirm("Resolve escalation " + active.key.slice("escalation:".length) + " and close this chat? This closes the linked ticket. It does not resume runs or unquarantine pools.")) return;
     const newName =
       action === "rename" ? window.prompt("Chat name", active.title) : "";
     if (action === "rename" && !newName) return;
+    const selectedGeneration = generation;
+    sending = true;
+    error = "";
     try {
       const result = await client.post<SessionInfo>("api/chat/manage", {
         action,
         id: active.id,
         name: newName,
       });
-      await select(managedChat(result));
+      if (generation === selectedGeneration) {
+        await select(action === "archive" || action === "resolve" ? null : managedChat(result));
+      }
     } catch (e) {
-      error = String(e);
+      if (generation === selectedGeneration) error = String(e);
+    } finally {
+      sending = false;
     }
   }
   async function send() {
@@ -474,10 +487,11 @@
   </div>
   <div class="chat-archive">
     <table aria-label={archived ? "Archived chats" : "Recent chats"}>
-      <thead><tr><th scope="col">chat</th><th scope="col">updated</th></tr></thead>
+      <thead><tr><th scope="col">chat</th><th scope="col">type</th><th scope="col">updated</th></tr></thead>
       <tbody>{#each recentChats as chat (chat.id)}
         <tr class:chosen={!creating && active?.id === chat.id}>
           <td><button aria-pressed={!creating && active?.id === chat.id} onclick={() => select(chat)}>{chat.title}{chat.state === "working" ? " ●" : ""}</button></td>
+          <td class="muted">{chatType(chat)}</td>
           <td>{#if chat.updated}<time datetime={chat.updated}>{new Date(chat.updated).toLocaleDateString()}</time>{:else}–{/if}</td>
         </tr>
       {/each}</tbody>
@@ -510,7 +524,7 @@
 </dialog>
 {#if active && !creating}
   <div class="tag chat-toolbar" role="toolbar" aria-label="Chat actions">
-    <div class="chat-actions"><button disabled={sending} onclick={() => manage("rename")}>rename</button><button disabled={sending || active.state === "archived"} onclick={() => manage("archive")}>archive</button><button onclick={stop}
+    <div class="chat-actions"><button disabled={sending} onclick={() => manage("rename")}>rename</button><button title="Close this chat without resolving its ticket" disabled={sending || active.state === "archived"} onclick={() => manage("archive")}>{chatType(active) === "chat" ? "archive" : "close"}</button>{#if chatType(active) === "escalation"}<button title="Resolve the escalation and close its chat" disabled={sending || active.state === "archived"} onclick={() => manage("resolve")}>resolve</button>{/if}<button onclick={stop}
       >stop</button
     ><button
       onclick={() => {
