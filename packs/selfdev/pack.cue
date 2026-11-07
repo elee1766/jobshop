@@ -33,6 +33,7 @@ import (
 	linear_intake_labels: *"" | string
 	linear_human:         *"" | string
 	starlark_workflows:   *true | bool
+	starlark_triggers:    *false | bool
 }
 
 #Pack: {
@@ -166,23 +167,23 @@ import (
 		for name, trigger in _github.triggers {"\(name)": trigger}
 		evaluate: {
 			when: edits: {runs: V.evaluate_runs, age: V.evaluate_age}
-			if V.starlark_workflows {
+			if V.starlark_triggers {
 				handler: "triggers.star:handle"
 				args: {workflow: "evaluate", key: "evaluate"}
 				max_open: 1
 			}
-			if !V.starlark_workflows {
+			if !V.starlark_triggers {
 				run: {workflow: "evaluate", key: "evaluate"}
 			}
 		}
 		curate: {
 			when: learnings: {min: V.curate_min_learnings, every: V.curate_every, scope: V.curate_scope}
-			if V.starlark_workflows {
+			if V.starlark_triggers {
 				handler: "triggers.star:handle"
 				args: {workflow: "curate", key: "curate"}
 				max_open: 1
 			}
-			if !V.starlark_workflows {
+			if !V.starlark_triggers {
 				run: {workflow: "curate", key: "curate"}
 			}
 		}

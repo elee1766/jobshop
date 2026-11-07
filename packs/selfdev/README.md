@@ -66,6 +66,7 @@ packs: selfdev: selfdevpack.#Pack & {
 		agent: "jcode"
 		dev_sessions: 2
 		starlark_workflows: true
+		starlark_triggers: false
 	}
 }
 ```
@@ -89,18 +90,24 @@ stay external.
 
 The native pack imports GitHub policy and its original assets. Its curator
 and evaluator use Starlark agent-step callbacks with the same titles,
-prompts and retry limits. Their trigger handlers only request the admitted
-run. The controller still checks learning counts, scopes, elapsed time and
-edit eligibility through `when.learnings` and `when.edits`. `max_open: 1`
-retains one open run per trigger, and the run keys remain `curate` and
-`evaluate`. Prompt files and their runtime templates are not copied or
-rewritten.
+prompts and retry limits. Their original maintenance run triggers remain
+the default. The controller still checks learning counts, scopes, elapsed
+time and edit eligibility through `when.learnings` and `when.edits`. The
+run keys remain `curate` and `evaluate`. Prompt files and their runtime
+templates are not copied or rewritten.
 
 `#Config.starlark_workflows` defaults to `true`. Set it to `false` to keep
-the CUE composition but use the original static agent steps and run
-triggers in both selfdev and GitHub. This provides a static parity check
-before selecting scripted workflows. Learning and edit eligibility,
-names, prompts and retry limits stay the same in either mode.
+the CUE composition but use the original static agent steps in both
+selfdev and GitHub. This provides a static parity check before selecting
+scripted workflows. Names, prompts and retry limits stay the same in
+either mode.
+
+`#Config.starlark_triggers` defaults to `false`, independently of workflow
+mode. This preserves the original maintenance trigger behavior even with
+scripted workflows. Set it to `true` to opt into timer handlers that only
+request the admitted run, with `max_open: 1` retaining one open run per
+trigger. Learning and edit eligibility remain controller-owned in either
+mode. Leave both settings false for the complete CUE-static comparison.
 
 `live-check` remains a static CUE command workflow with its original command,
 `dev` worktree, 20-minute timeout and zero retries. The current Starlark
