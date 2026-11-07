@@ -1350,7 +1350,8 @@ Flags:
       --owner=STRING      Who must act (a login, team or person).
       --any               Clear when any condition holds (default: all).
       --resume            Give the ticket back to this session when the wait
-                          clears.
+                          clears, if it is idle then; a busy session leaves it
+                          to its pool.
       --timeout=STRING    Duration or RFC3339 time; past it the wait is labeled
                           needs-human and listed in attention.
   -t, --ticket=STRING     Ticket id (default: the session's current ticket).

@@ -67,7 +67,8 @@ Wait for CI with a wait, not a fixed deferral or polling: after each push
 run
 `jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success,workflow={{.ci_workflow}}' 'github.checks:pr={{.repo}}#<n>,state=failure,workflow={{.ci_workflow}}' --any --resume --timeout 1h --reason "CI on PR #<n>"`
 and end the turn. The controller hands the step back to this session
-within about a minute of CI finishing. On resume, read `gh pr checks <n>`:
+(or, if it is busy by then, to any idle session of the pool) within
+about a minute of CI finishing. On resume, read `gh pr checks <n>`:
 green, comment and close as below; red, fix, push and set the wait again
 (a new head clears the old wait). Do not use `release --until` for CI.
 A wait that ends `invalidated: ... cancelled` is not red: the run was

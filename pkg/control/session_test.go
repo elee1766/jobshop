@@ -1015,6 +1015,18 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 	if requestChanges(ctx, c, text) {
 		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
 	}
+	// A "park" file holds wait.add params: the turn parks its ticket with
+	// them, as `jobshop wait add` does, once (JOB-120).
+	if b, err := os.ReadFile("park"); err == nil && os.Remove("park") == nil {
+		var wp rpc.WaitAddParams
+		if err := json.Unmarshal(b, &wp); err != nil {
+			return acp.PromptResponse{}, err
+		}
+		if err := c.Call(ctx, rpc.MethodWaitAdd, wp, nil); err != nil {
+			return acp.PromptResponse{}, err
+		}
+		return acp.PromptResponse{StopReason: acp.StopReasonEndTurn}, nil
+	}
 	// An "outcome" file holds the outcome word to close with (#385).
 	var outcome string
 	if b, err := os.ReadFile("outcome"); err == nil {

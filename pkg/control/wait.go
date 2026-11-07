@@ -287,7 +287,8 @@ func (c *Controller) waiting(ctx context.Context, project string) ([]store.Ticke
 }
 
 // clearWait removes the wait, notes why on the ticket and, with resume,
-// pre-assigns it to the session that parked it while that is open.
+// pre-assigns it to the session that parked it while that is open and
+// idle. A busy one leaves the ticket in its pool (JOB-120).
 func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wait, why string) (store.Ticket, error) {
 	fields, err := withWait(t, nil)
 	if err != nil {
@@ -304,8 +305,11 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 		u.RemoveLabels = []string{needsHumanLabel}
 	}
 	if w.Resume && w.Session != "" && t.Holder == "" {
-		if s, err := c.store.Get(ctx, w.Session); err == nil && s.Kind == store.KindSession && s.Status != store.StatusClosed {
-			u.Holder = &w.Session
+		switch holder, busy := c.resumeHolder(ctx, w.Session); {
+		case holder != "":
+			u.Holder = &holder
+		case busy != "":
+			u.Comment += fmt.Sprintf("\n\nSession %s is busy on %s, so this goes back to pool %s for any idle session.", w.Session, busy, t.Pool)
 		}
 	}
 	if t, err = c.store.Update(ctx, "controller", t.ID, u); err != nil {
@@ -313,6 +317,28 @@ func (c *Controller) clearWait(ctx context.Context, t store.Ticket, w *store.Wai
 	}
 	c.log.InfoContext(ctx, "wait cleared", "ticket", t.ID, "why", why)
 	return t, nil
+}
+
+// resumeHolder is the session a resumed ticket is pre-assigned to: the
+// parking session, while it is open and holds no claimed ticket. A session
+// claims its in-progress work before anything pre-assigned, so a busy one
+// would leave the resumed ticket behind unrelated work for as long as that
+// takes (JOB-120). Then holder is empty and busy names the work; the
+// ticket stays in its pool, and the PR and the ticket's comments carry
+// the context to whichever session claims it.
+func (c *Controller) resumeHolder(ctx context.Context, id string) (holder, busy string) {
+	s, err := c.store.Get(ctx, id)
+	if err != nil || s.Kind != store.KindSession || s.Status == store.StatusClosed {
+		return "", ""
+	}
+	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress, Limit: 1})
+	if err != nil {
+		return "", "" // unknown: the pool is never wrong, only slower
+	}
+	if len(held) > 0 {
+		return "", held[0].ID
+	}
+	return id, ""
 }
 
 // waitPass caches GitHub reads within one pass, so waits on one PR
