@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 
@@ -49,11 +50,28 @@ type Options struct {
 	ShellDir    string
 	ShellEnv    []string
 	Jev         JevOptions
-	Observe     Observer
+	// Exec, when set, runs shell's argv instead of a direct child process: a
+	// step function's shell runs in its pool's sandbox and worktree.
+	Exec    Exec
+	Observe Observer
 	// Replay may reuse a completed, unredacted result. The host must bind source,
 	// invocation, capability, index and InputDigest, and reject unknown outcomes.
 	Replay func(context.Context, Observation) (any, bool, error)
 }
+
+// ExecRequest is one shell call after argument validation. Dir is empty when
+// the script set no cwd, so the host picks its own default.
+type ExecRequest struct {
+	Argv   []string
+	Dir    string
+	Env    map[string]string
+	Stdout io.Writer
+	Stderr io.Writer
+}
+
+// Exec runs one command and returns its exit code. A nonzero exit is not an
+// error; an error means the command did not run or did not finish.
+type Exec func(context.Context, ExecRequest) (int, error)
 
 // Decision is local audit evidence. Reason describes validation or fallback, not
 // an invented upstream model explanation. Jev never authorizes privileged work.

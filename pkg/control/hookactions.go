@@ -87,6 +87,9 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAu
 				return err
 			}
 			want["pool:"+action.Pool] = ticket.Pool
+			if f.Type == store.StepScript {
+				want["pool:"+action.Pool] = f.ScriptPool
+			}
 			if action.RetryPool != "" || f.RetryPool != "" {
 				want["pool:"+action.RetryPool] = f.RetryPool
 			}
@@ -268,9 +271,12 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 					return g, errors.New("retry_pool is outside the run project")
 				}
 			}
-			prompt, err := program.Prompt(action)
-			if err != nil {
-				return g, err
+			prompt := ""
+			if action.Script == "" {
+				prompt, err = program.Prompt(action)
+				if err != nil {
+					return g, err
+				}
 			}
 			if action.PromptFile != "" {
 				vars := maps.Clone(fields.Inputs)
@@ -300,6 +306,15 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				title = action.ID
 			}
 			f := store.StepFields{Run: run.ID, Step: action.ID, Index: len(steps) + newSteps, Retries: retries, RetryPool: retryPool, Needs: action.Needs, Inputs: action.Inputs, OutputSchema: action.OutputSchema}
+			ticketPool := pool
+			if action.Script != "" {
+				if action.Worktree && lc.cfg.Pools[pool].Repo == "" {
+					return g, fmt.Errorf("step %s: worktree needs a pool with a repo, %s has none", action.ID, pool)
+				}
+				// No ticket pool: the controller runs it, no session claims it.
+				f.Type, f.Script, f.ScriptHook, f.ScriptPool = store.StepScript, action.Script, in.Entry, pool
+				f.Worktree, f.Timeout, ticketPool = action.Worktree, action.Timeout, ""
+			}
 			if slices.Contains(action.Needs, previous) {
 				f.OnRequestChanges = previous
 			}
@@ -318,7 +333,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			if err != nil {
 				return g, err
 			}
-			g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: run.Project, Kind: store.KindStep, Title: title, Body: prompt, Pool: pool, ParentID: run.ID, Meta: provenance, Fields: data})
+			g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: run.Project, Kind: store.KindStep, Title: title, Body: prompt, Pool: ticketPool, ParentID: run.ID, Meta: provenance, Fields: data})
 			for _, need := range action.Needs {
 				target := ids[need]
 				if target == "" {

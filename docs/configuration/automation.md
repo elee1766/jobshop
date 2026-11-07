@@ -67,7 +67,7 @@ Constructors accept named arguments only:
 | Constructor | Required | Optional |
 | --- | --- | --- |
 | `start_run(...)` | `workflow`, `key` | `inputs={}`, `title=""`, `reason=""` |
-| `start_step(...)` | `id`, `pool`, exactly one of `prompt` or `prompt_file` | `inputs={}`, `title=""`, `retries`, `retry_pool=""`, `needs=[]`, `output_schema={...}`, `reason=""` |
+| `start_step(...)` | `id`, `pool`, exactly one of `script`, `prompt` or `prompt_file` | `inputs={}`, `title=""`, `retries`, `retry_pool=""`, `needs=[]`, `output_schema={...}`, `reason=""`; with `script`: `worktree=False`, `timeout="10m"` |
 | `finish_run(...)` | `outcome` | `output={}`, `reason=""` |
 
 Names and keys must be nonempty strings. `inputs` and `output` are

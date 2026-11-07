@@ -3,6 +3,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -78,10 +79,12 @@ func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	if strings.TrimSpace(command[0]) == "" {
 		return nil, errors.New("shell: executable must be nonempty")
 	}
-	if cwd == "" {
-		cwd = options.ShellDir
-	} else if !filepath.IsAbs(cwd) && options.ShellDir != "" {
-		cwd = filepath.Join(options.ShellDir, cwd)
+	if options.Exec == nil {
+		if cwd == "" {
+			cwd = options.ShellDir
+		} else if !filepath.IsAbs(cwd) && options.ShellDir != "" {
+			cwd = filepath.Join(options.ShellDir, cwd)
+		}
 	}
 	environment := make(map[string]string)
 	for _, item := range options.ShellEnv {
@@ -108,6 +111,14 @@ func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []sta
 		return nil, err
 	}
 	defer cancel()
+	output := &processOutput{remaining: options.Limits.OutputBytes, cancel: cancel}
+	if options.Exec != nil {
+		req := api.ExecRequest{
+			Argv: command, Dir: cwd, Env: environment,
+			Stdout: processWriter{output: output}, Stderr: processWriter{output: output, stderr: true},
+		}
+		return hostExec(ctx, host, options.Exec, req, output)
+	}
 	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
 	cmd.Dir = cwd
 	cmd.Env = make([]string, 0, len(environment))
@@ -117,7 +128,6 @@ func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	sort.Strings(cmd.Env)
 	cmd.WaitDelay = time.Second
 	configureProcess(cmd)
-	output := &processOutput{remaining: options.Limits.OutputBytes, cancel: cancel}
 	cmd.Stdout = processWriter{output: output}
 	cmd.Stderr = processWriter{output: output, stderr: true}
 	if err := cmd.Start(); err != nil {
@@ -140,7 +150,31 @@ func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []sta
 		}
 		code = exit.ExitCode()
 	}
+	return shellResult(output, code), nil
+}
+
+// hostExec runs a shell call through the host. The host owns process start, so
+// a start failure and a lost process look the same here: the outcome is unknown.
+func hostExec(ctx context.Context, host api.Host, run api.Exec, req api.ExecRequest, output *processOutput) (starlark.Value, error) {
+	host.MarkStarted()
+	code, err := run(ctx, req)
+	if output.exceeded {
+		return nil, errors.New("shell output byte limit exceeded")
+	}
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("shell cancelled: %w", ctx.Err())
+	}
+	if err != nil {
+		return nil, fmt.Errorf("shell could not execute command: %w", err)
+	}
+	host.MarkCompleted()
+	return shellResult(output, code), nil
+}
+
+func shellResult(output *processOutput, code int) starlark.Value {
+	output.mu.Lock()
+	defer output.mu.Unlock()
 	return starlarkstruct.FromStringDict(starlark.String("shell_result"), starlark.StringDict{
 		"stdout": starlark.String(output.stdout.String()), "stderr": starlark.String(output.stderr.String()), "exit_code": starlark.MakeInt(code),
-	}), nil
+	})
 }

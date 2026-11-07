@@ -302,9 +302,21 @@ type StepFields struct {
 	// Resources are the resource keys the step holds while in progress
 	// (#400). It is ready only when each has a free slot.
 	Resources []string `json:"resources,omitempty"`
-	// Type is command or http for steps the controller runs (#396);
-	// empty is an agent step.
+	// Type is command, http or script for steps the controller runs
+	// (#396, JOB-124); empty is an agent step.
 	Type string `json:"type,omitempty"`
+	// Script is a script step's function (file.star:function under the
+	// run's pinned callback root, JOB-124), run in-process by the
+	// controller. ScriptPool is where its shell calls run: the pool's
+	// sandbox, or its dir when unsandboxed. The ticket has no pool so no
+	// session claims it. Worktree gives shell a worktree of the pool's
+	// repo; Timeout bounds one attempt.
+	Script     string `json:"script,omitempty"`
+	ScriptPool string `json:"script_pool,omitempty"`
+	// ScriptHook is the callback entry whose loaded modules hold Script.
+	ScriptHook string `json:"script_hook,omitempty"`
+	Worktree   bool   `json:"worktree,omitempty"`
+	Timeout    string `json:"timeout,omitempty"`
 	// Command is the last attempt's filled command line or "METHOD url",
 	// Output its bounded, redacted stdout or response body, Outcome the
 	// outcome word it set, and Result ok, not_yet or failed.
@@ -395,7 +407,12 @@ func StepFinished(t Ticket) bool {
 }
 
 // Auto reports whether the controller runs the step itself.
-func (f StepFields) Auto() bool { return f.Type == "command" || f.Type == "http" }
+func (f StepFields) Auto() bool {
+	return f.Type == "command" || f.Type == "http" || f.Type == StepScript
+}
+
+// StepScript is the type of a Starlark step function (JOB-124).
+const StepScript = "script"
 
 // StepFailure counts one failed attempt on a step ticket: a close
 // "failed", a release while unclosed, or an expired lease. It bumps
