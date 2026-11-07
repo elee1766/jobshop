@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.22](https://github.com/elee1766/jobshop/compare/v0.8.21...v0.8.22) (2026-11-07)
+
+
+### Features
+
+* **control:** start session hosts in a systemd scope with the systemd driver ([#992](https://github.com/elee1766/jobshop/issues/992)) ([#993](https://github.com/elee1766/jobshop/issues/993)) ([e8e5c5d](https://github.com/elee1766/jobshop/commit/e8e5c5dcc170d1b5af66c1ce4de6c426642eb44f))
+
 ## [0.8.21](https://github.com/elee1766/jobshop/compare/v0.8.20...v0.8.21) (2026-11-07)
 
 
