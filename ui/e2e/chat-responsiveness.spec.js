@@ -67,11 +67,12 @@ test('chat and read-only inspector reach the beginning of journal history', asyn
     await openChat(page, isMobile, name);
     await expect(page.locator('.transcript .markdown').last()).toContainText('echo: ' + first);
     for (let index = 0; index < 85; index++) {
-      const text = 'history turn ' + index;
+      const text = 'history turn ' + index + (index === 84 ? ' hidden journal tail' : '');
       await post(request, 'api/chat/send', { key: session.ticket.fields.key, text });
       await expect(page.locator('.transcript .markdown').last()).toContainText('echo: ' + text);
       await expect(page.locator('.transcript .markdown').last()).toBeInViewport();
     }
+    await expect(page.locator('.chat-state')).toHaveText('idle');
     async function loadBeginning(region) {
       await expect(region.locator('.markdown').last()).toContainText('echo: history turn 84');
       await expect(region.locator('.markdown').last()).toBeInViewport();

@@ -936,6 +936,11 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("t1", "Reading", acp.WithStartStatus(acp.ToolCallStatusInProgress))})
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall("t1", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("echo: " + text[strings.LastIndex(text, "\n")+1:])})
+		if strings.Contains(text, "hidden journal tail") {
+			for range 250 {
+				_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentThoughtText("thinking")})
+			}
+		}
 		if strings.Contains(text, "hold") {
 			_ = os.WriteFile("held", nil, 0o600)
 			<-a.cancel
