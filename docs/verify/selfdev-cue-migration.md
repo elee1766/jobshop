@@ -17,7 +17,9 @@ jobcity. The prefixed acphost and operator packs remain YAML consumers.
    selected branches, request-changes retries and terminal outcomes. Do not send
    synthetic events to the live instance.
 4. Install a binary containing the native packs before changing pack selection.
-   Check the running executable, not a session's older `jobshop` binary.
+   Check the running executable, not a session's older `jobshop` binary. Wait for
+   installed-source synchronization and verify the checkout contains `cue.mod`,
+   `packs/selfdev/pack.cue` and the selected scripts before activating the host root.
 
 ## Cutover
 
@@ -25,7 +27,10 @@ Use the declarative host configuration in `elee1766/gasserver.nix`.
 The generated host CUE root imports the local Jobshop module and supplies the
 same self-dev vars. Select it through `jobshop.yaml`'s `pack` field and remove the
 self-dev entry from `livePacks` in the same activation. Do not activate both
-versions of its triggers.
+versions of its triggers. Set `#Config.starlark_workflows: false` for the first
+activation and verify CUE-static parity before selecting callback workflows.
+Keep `#Config.starlark_triggers: false` to preserve the existing maintenance
+trigger checkpoints, cooldowns and caps. Handler triggers are a separate opt-in.
 
 Drain existing self-dev workflow runs before switching static workflows to
 callbacks. Keep their logical workflow and step names unchanged. A static run
@@ -58,3 +63,13 @@ source path, while the unchanged candidate passes.
 Rollback changes the host pack selection back to YAML while that file is still
 present. Drain callback runs before reverting to static workflow definitions.
 Do not reset or replace the ticket database as part of either direction.
+
+## Isolated acceptance evidence
+
+The generated host configuration was checked with native static workflows and
+declarative maintenance triggers. All resolved sections match the legacy host
+configuration except workflow `pack_vars`; executable workflow fields match.
+Eight disposable-controller starts without supplied inputs verify the actual
+default-input path preserves self-dev prompt bytes, pools and retry counts.
+The differing `repo` metadata is unused by those self-dev prompts and commands.
+This does not replace live cutover verification.
