@@ -647,9 +647,10 @@ func (s *Server) pools(r *http.Request) (any, error) {
 // nodes carry theirs in Session.
 type TicketView struct {
 	rpc.ShowResult
-	Run      *rpc.RunResult            `json:"run,omitempty"`
-	Trace    *rpc.TraceNode            `json:"trace,omitempty"`
-	Sessions map[string]rpc.HolderInfo `json:"sessions,omitempty"`
+	Inspected *store.Ticket             `json:"inspected,omitempty"`
+	Run       *rpc.RunResult            `json:"run,omitempty"`
+	Trace     *rpc.TraceNode            `json:"trace,omitempty"`
+	Sessions  map[string]rpc.HolderInfo `json:"sessions,omitempty"`
 }
 
 func (s *Server) ticket(r *http.Request) (any, error) {
@@ -658,6 +659,13 @@ func (s *Server) ticket(r *http.Request) (any, error) {
 	var v TicketView
 	if err := s.ctl.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: id}, &v.ShowResult); err != nil {
 		return nil, err
+	}
+	if inspect := r.URL.Query().Get("inspect"); inspect != "" && inspect != id {
+		var shown rpc.ShowResult
+		if err := s.ctl.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: inspect}, &shown); err != nil {
+			return nil, err
+		}
+		v.Inspected = &shown.Ticket
 	}
 	if v.Ticket.Kind == store.KindRun {
 		var run rpc.RunResult
@@ -754,8 +762,8 @@ func lastID(r *http.Request) int64 {
 	return max(n, 0)
 }
 
-// events proxies events.subscribe. Live only by default: the UI refetches
-// views on change, so a replay of old history is not needed.
+// events proxies events.subscribe. Ordered history resumes from Last-Event-ID
+// or since. Dashboard state uses live snapshots instead of invalidations.
 func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	e, ok := newSSE(w)
 	if !ok {

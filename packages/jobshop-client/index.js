@@ -75,8 +75,11 @@ export function createClient({
       signal?.removeEventListener("abort", close);
       onState("closed");
     };
-    source.addEventListener("open", () => onState("connected"));
+    source.addEventListener("open", () => {
+      if (!closed) onState("connected");
+    });
     source.addEventListener("error", (event) => {
+      if (closed) return;
       if (event.data) {
         try {
           onState("error", JSON.parse(event.data));
@@ -87,6 +90,7 @@ export function createClient({
     });
     for (const kind of kinds)
       source.addEventListener(kind, (event) => {
+        if (closed) return;
         let data;
         try {
           data = JSON.parse(event.data);
@@ -130,7 +134,13 @@ export function createClient({
     live: (fn, opts = {}) =>
       stream(
         "api/live" +
-          (opts.trace ? "?" + new URLSearchParams({ trace: opts.trace }) : ""),
+          (opts.trace
+            ? "?" +
+              new URLSearchParams({
+                trace: opts.trace,
+                ...(opts.inspect ? { inspect: opts.inspect } : {}),
+              })
+            : ""),
         [
           "attention",
           "overview",

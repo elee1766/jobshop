@@ -322,6 +322,7 @@ export interface ChatManageParams {
   pool?: string;
   name?: string;
   text?: string;
+  context?: string;
 }
 
 export interface Claim {

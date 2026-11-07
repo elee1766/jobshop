@@ -14,6 +14,8 @@ import type {
   ShowResult,
   TraceNode,
   HolderInfo,
+  Ticket,
+  IngestWorkersResult,
 } from "./rpc.js";
 export type * from "./rpc.js";
 export interface RequestOptions {
@@ -42,8 +44,10 @@ export interface ChatSession {
 }
 export interface LiveOptions extends StreamOptions {
   trace?: string;
+  inspect?: string;
 }
 export interface TraceView extends ShowResult {
+  inspected?: Ticket;
   run?: RunResult;
   trace?: TraceNode;
   sessions?: Record<string, HolderInfo>;
@@ -56,6 +60,7 @@ export interface LiveState {
     pools: PoolStatusResult;
     resources: ResourceListResult;
     sessions: SessionInfo[];
+    ingest: IngestWorkersResult;
   };
   chats: { pool: string; sessions: ChatSession[] };
   improvements: { learnings: Learning[]; edits: MemoryEdit[] };

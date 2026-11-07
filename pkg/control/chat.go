@@ -251,11 +251,17 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 				return res, nil
 			case <-fallback:
 				break awaitChange
-			case ev := <-writes:
+			case ev, ok := <-writes:
+				if !ok || (ev.Name == filepath.Dir(path) && ev.Has(fsnotify.Remove|fsnotify.Rename)) {
+					return nil, fmt.Errorf("session journal watch ended; reconnect to resume")
+				}
 				if ev.Name == path {
 					break awaitChange
 				}
-			case err := <-watchErrors:
+			case err, ok := <-watchErrors:
+				if !ok {
+					return nil, fmt.Errorf("session journal watch closed; reconnect to resume")
+				}
 				return nil, fmt.Errorf("watch session journal: %w", err)
 			case ev := <-changes:
 				if ev.ID == p.ID {

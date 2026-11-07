@@ -106,10 +106,10 @@ func (c *Controller) step(ctx context.Context, name string, fn func(ctx context.
 	defer func() {
 		c.metrics.SinceStep(ctx, name, start)
 		c.statusMu.Lock()
-		if c.status.Steps == nil {
-			c.status.Steps = map[string]float64{}
+		if c.tickSteps == nil {
+			c.tickSteps = map[string]float64{}
 		}
-		c.status.Steps[name] = time.Since(start).Seconds()
+		c.tickSteps[name] = time.Since(start).Seconds()
 		c.statusMu.Unlock()
 		span.End()
 	}()

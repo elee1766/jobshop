@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { client } from "./lib/api.svelte.js";
   import { md } from "../kit/markdown.js";
   import type {
@@ -42,6 +42,8 @@
   let transcript: HTMLDivElement;
   let composer: HTMLTextAreaElement;
   let generation = 0;
+  let lastSeq = 0;
+  let loadingOlder = $state(false);
   let closeStream = () => {};
 
   function managedChat(info: SessionInfo): Chat {
@@ -63,11 +65,14 @@
     };
   }
   $effect(() => {
-    const updated = chats.find((entry) => entry.id === active?.id);
-    if (updated) {
-      active = updated;
-      onactive(updated);
-    }
+    const list = chats;
+    untrack(() => {
+      const updated = list.find((entry) => entry.id === active?.id);
+      if (updated) {
+        active = updated;
+        onactive(updated);
+      }
+    });
   });
   export function receiveCommand(ev: Event) {
     if (ev.session !== active?.id) return;
@@ -86,11 +91,17 @@
     creating = false;
     error = "";
     onactive(chat);
+    lastSeq = 0;
+    connect(chat.id, selectedGeneration);
+  }
+  function connect(id: string, selectedGeneration: number) {
+    closeStream();
     closeStream = client.session(
-      chat.id,
+      id,
       (event, kind) => {
         if (kind !== "session" || generation !== selectedGeneration) return;
         const ev = event as SessionEvent;
+        if (ev.seq) lastSeq = Math.max(lastSeq, ev.seq);
         if (ev.seq && frames.some((f) => f.seq === ev.seq)) return;
         const atBottom =
           !transcript ||
@@ -101,34 +112,68 @@
         frames = [...frames, ev];
         if (atBottom)
           void tick().then(() => {
-            if (transcript) transcript.scrollTop = transcript.scrollHeight;
+            if (transcript && generation === selectedGeneration)
+              transcript.scrollTop = transcript.scrollHeight;
           });
       },
       {
+        since: lastSeq,
         onState: (state) => {
-          connected = state;
+          if (generation === selectedGeneration) connected = state;
         },
       },
     );
   }
   $effect(() => {
-    if (requested && requested.id !== active?.id) void select(requested);
+    const target = requested;
+    untrack(() => {
+      if (target && target.id !== active?.id) void select(target);
+    });
   });
+  export function start(draft = "", contextRefs: string[] = [], chatName = "") {
+    generation++;
+    closeStream();
+    active = null;
+    frames = [];
+    commands = [];
+    refs = [...new Set(contextRefs)];
+    text = draft;
+    name = chatName;
+    creating = true;
+    onactive(null);
+    void tick().then(() => composer?.focus());
+  }
 
   export function attach(values: string[]) {
     refs = [...new Set([...refs, ...values])];
   }
   async function older() {
-    if (!active) return;
+    if (!active || loadingOlder) return;
+    const selectedGeneration = generation;
+    const height = transcript?.scrollHeight || 0;
+    const top = transcript?.scrollTop || 0;
     const before = frames.find((f) => (f.seq || 0) > 0)?.seq;
     if (!before) return;
+    loadingOlder = true;
     try {
       const data = await client.get(
         `api/session/${encodeURIComponent(active.id)}/events?before=${before}&limit=200`,
       );
-      frames = [...(data.events || []), ...frames];
+      if (generation !== selectedGeneration) return;
+      frames = [
+        ...(data.events || []).filter(
+          (event: SessionEvent) =>
+            !event.seq || !frames.some((frame) => frame.seq === event.seq),
+        ),
+        ...frames,
+      ];
+      await tick();
+      if (generation === selectedGeneration && transcript)
+        transcript.scrollTop = top + transcript.scrollHeight - height;
     } catch (e) {
-      error = String(e);
+      if (generation === selectedGeneration) error = String(e);
+    } finally {
+      loadingOlder = false;
     }
   }
   async function manage(action: string) {
@@ -156,13 +201,18 @@
     sending = true;
     error = "";
     const message = text;
+    const sentGeneration = generation;
     try {
       if (creating || !active) {
         const result = await client.post<SessionInfo>("api/chat/manage", {
           action: "new",
           name,
           text: message,
+          refs,
         });
+        if (generation !== sentGeneration) return;
+        text = "";
+        refs = [];
         await select(managedChat(result));
       } else {
         await client.post("api/chat/send", {
@@ -171,10 +221,12 @@
           refs,
         });
       }
-      text = "";
-      refs = [];
+      if (generation === sentGeneration) {
+        text = "";
+        refs = [];
+      }
     } catch (e) {
-      error = String(e);
+      if (generation === sentGeneration) error = String(e);
     } finally {
       sending = false;
       composer?.focus();
@@ -199,9 +251,20 @@
     }
   }
   onMount(() => {
+    const offline = () => {
+      closeStream();
+      connected = "reconnecting";
+    };
+    const online = () => {
+      if (active) connect(active.id, generation);
+    };
+    window.addEventListener("offline", offline);
+    window.addEventListener("online", online);
     return () => {
       generation++;
       closeStream();
+      window.removeEventListener("offline", offline);
+      window.removeEventListener("online", online);
     };
   });
   const messages = $derived.by(() => {
@@ -237,12 +300,7 @@
 </script>
 
 <div class="tag chat-tag">
-  <span class="mono">/chats</span><button
-    onclick={() => {
-      creating = true;
-      text = "";
-      name = "";
-    }}>New</button
+  <span class="mono">/chats</span><button onclick={() => start()}>New</button
   ><button disabled={!active} onclick={() => manage("rename")}>Rename</button
   ><button
     disabled={!active || active.state === "archived"}
@@ -300,8 +358,9 @@
   aria-live="polite"
   aria-label="Chat transcript"
 >
-  {#if frames.some((f) => (f.seq || 0) > 1)}<button onclick={older}
-      >Load older</button
+  {#if frames.some((f) => (f.seq || 0) > 1)}<button
+      disabled={loadingOlder}
+      onclick={older}>Load older</button
     >{/if}
   {#if active?.state === "archived"}<p>
       This chat is archived. <button onclick={() => manage("restore")}

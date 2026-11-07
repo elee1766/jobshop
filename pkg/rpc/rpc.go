@@ -1585,11 +1585,12 @@ type AttentionAnswerParams struct {
 
 // ChatManageParams changes a named chat's persistent lifecycle.
 type ChatManageParams struct {
-	Action string `json:"action"`
-	ID     string `json:"id,omitempty"`
-	Pool   string `json:"pool,omitempty"`
-	Name   string `json:"name,omitempty"`
-	Text   string `json:"text,omitempty"`
+	Action  string `json:"action"`
+	ID      string `json:"id,omitempty"`
+	Pool    string `json:"pool,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Context string `json:"context,omitempty"`
 }
 
 // DeskCommandParams is a view-only command for one named chat.

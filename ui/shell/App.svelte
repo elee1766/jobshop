@@ -27,6 +27,7 @@
   let improvements: any = $state(null);
   let trace: any = $state(null);
   let traceRef = $state("");
+  let inspectRef = $state("");
   let selected: any = $state(null);
   let journal: any[] = $state([]);
   let focused = $state("");
@@ -48,6 +49,7 @@
   let lastFocus = $state("");
   let keyboard = $state(false);
   let updateStream = () => {};
+  let restoreChat = "";
   const rows = $derived(flights(runs));
   const stalled = $derived(
     rows.filter((r) => r.stalled && (!hideHolds || !r.hold)),
@@ -97,6 +99,15 @@
     if (next !== "home") phoneTab = "more";
     const u = new URL(location.href);
     u.searchParams.set("view", next);
+    for (const [key, value] of Object.entries({
+      ref: traceRef,
+      inspect: inspectRef,
+      filter,
+      since: sinceAway ? "1" : "",
+    })) {
+      if (value) u.searchParams.set(key, value);
+      else u.searchParams.delete(key);
+    }
     history.replaceState(null, "", u);
     updateStream();
   }
@@ -128,6 +139,10 @@
         break;
       case "chats":
         chats = event.data.sessions || [];
+        if (restoreChat) {
+          requested = chats.find((entry) => entry.id === restoreChat) || null;
+          if (requested) restoreChat = "";
+        }
         break;
       case "improvements":
         improvements = event.data;
@@ -139,8 +154,7 @@
           break;
         }
         trace = event.data;
-        if (!selected || selected.id === event.data.ticket.id)
-          selected = event.data.ticket;
+        selected = event.data.inspected || event.data.ticket;
         break;
       case "desk":
         chat?.receiveCommand(event.data);
@@ -148,20 +162,21 @@
     }
   }
   function openTrace(ref: string) {
+    if (ref !== traceRef || inspectRef) {
+      selected = null;
+      trace = null;
+      journal = [];
+    }
     traceRef = ref;
-    selected = null;
-    trace = null;
-    journal = [];
+    inspectRef = "";
     navigate("trace");
   }
-  async function inspect(id: string) {
+  function inspect(id: string) {
+    if (inspectRef === id) return;
     journal = [];
-    try {
-      const result = await client.call("ticket.show", { id });
-      selected = result.ticket;
-    } catch (e) {
-      error = String(e);
-    }
+    inspectRef = id;
+    selected = null;
+    navigate("trace");
   }
   async function loadJournal(id: string) {
     try {
@@ -191,13 +206,14 @@
   }
   async function answer(option: number) {
     if (!current || busy) return;
+    const item = current;
     busy = true;
     try {
       const result = await client.post("api/attention/answer", {
-        kind: current.kind,
-        id: current.id,
+        kind: item.kind,
+        id: item.id,
         option,
-        expected_title: current.options?.find((choice) => choice.id === option)
+        expected_title: item.options?.find((choice) => choice.id === option)
           ?.title,
         note,
       });
@@ -206,14 +222,30 @@
         requested = {
           id: result.session,
           key: result.key,
-          title: current.ref || current.id,
+          title: item.ref || item.id,
           state: "idle",
         };
+      if (result.session) showChat();
     } catch (e) {
       error = String(e);
     } finally {
       busy = false;
     }
+  }
+  function triage() {
+    showChat();
+    chat?.start(
+      "Summarize these waiting items, recommend an order, and identify decisions I need to make. Do not change work until I choose an action.",
+      attention.map((item) => item.id),
+      "triage " + new Date().toISOString().slice(0, 19),
+    );
+  }
+  function activeChanged(value: ChatInfo | null) {
+    activeChat = value;
+    const url = new URL(location.href);
+    if (value) url.searchParams.set("chat", value.id);
+    else url.searchParams.delete("chat");
+    history.replaceState(null, "", url);
   }
   function attach(refs: string[]) {
     if (!activeChat?.key.startsWith("desk:")) {
@@ -301,17 +333,28 @@
       )
     )
       view = params.get("view")!;
+    traceRef = params.get("ref") || "";
+    inspectRef = params.get("inspect") || "";
+    filter = params.get("filter") || "";
+    sinceAway = params.get("since") === "1";
+    restoreChat = params.get("chat") || "";
     void client
       .get("api/focus")
       .then((d) => (lastFocus = d.last_focus))
       .catch(() => {});
     void initPush();
     let close = () => {};
+    let streamKey: string | null = null;
     const connect = () => {
+      const key = view === "trace" ? traceRef + ":" + inspectRef : "";
+      if (streamKey === key && navigator.onLine) return;
       close();
+      streamKey = null;
       if (!navigator.onLine) return;
+      streamKey = key;
       close = client.live(receive, {
         trace: view === "trace" ? traceRef : undefined,
+        inspect: view === "trace" ? inspectRef : undefined,
         onState: (state, detail) => {
           connected = state === "connected";
           if (state === "error")
@@ -321,6 +364,7 @@
       });
     };
     const offline = () => {
+      streamKey = null;
       close();
       connected = false;
     };
@@ -416,8 +460,7 @@
               >Answer</button
             ><button onclick={() => discuss()}>Discuss</button><button
               class="wide"
-              onclick={() => attach(attention.map((a) => a.ref || a.id))}
-              >Triage-in-chat</button
+              onclick={triage}>Triage-in-chat</button
             ><span class="push-right muted">{attention.length}</span>
           </div>
           {#if !collapsed.waiting}<div class="section-body">
@@ -660,20 +703,88 @@
           <div class="table-scroll">
             <table class="mono">
               <thead
-                ><tr><th>pool</th><th>status</th><th>details</th></tr></thead
+                ><tr
+                  ><th>pool</th><th>status</th><th>open / max</th><th
+                    >working</th
+                  ><th>idle</th><th>desired</th></tr
+                ></thead
               ><tbody
                 >{#each system?.pools?.pools || [] as pool}<tr
                     ><td>{pool.name || pool.pool}</td><td
                       >{system.pools.quarantined?.[pool.name]
                         ? "quarantined"
                         : "ok"}</td
-                    ><td><pre>{JSON.stringify(pool)}</pre></td></tr
+                    ><td>{pool.open} / {pool.max || "uncapped"}</td><td
+                      >{pool.working}</td
+                    ><td>{pool.idle}</td><td>{pool.desired}</td></tr
                   >{/each}</tbody
               >
             </table>
           </div>
           <h2>Resources</h2>
-          <pre>{JSON.stringify(system?.resources, null, 2)}</pre>
+          <div class="table-scroll">
+            <table class="mono">
+              <thead
+                ><tr
+                  ><th>resource</th><th>held / capacity</th><th>waiting</th></tr
+                ></thead
+              >
+              <tbody
+                >{#each system?.resources?.use || [] as resource}<tr
+                    ><td>{resource.key}</td><td
+                      >{resource.held} / {resource.capacity || "uncapped"}</td
+                    ><td>{resource.waiting}</td></tr
+                  >{:else}<tr
+                    ><td colspan="3" class="muted">No resource use.</td></tr
+                  >{/each}</tbody
+              >
+            </table>
+            <table class="mono">
+              <thead
+                ><tr
+                  ><th>slot</th><th>resource</th><th>state</th><th>ticket</th
+                  ></tr
+                ></thead
+              >
+              <tbody
+                >{#each system?.resources?.slots || [] as slot}<tr
+                    ><td>{slot.id}</td><td>{slot.pool}</td><td>{slot.state}</td
+                    ><td
+                      ><button
+                        disabled={!slot.ticket}
+                        onclick={() => openTrace(slot.ticket)}
+                        >{slot.ticket || "–"}</button
+                      ></td
+                    ></tr
+                  >{/each}</tbody
+              >
+            </table>
+          </div>
+          <h2>Ingest</h2>
+          <p>
+            {system?.ingest?.mode || "controller"} · {Object.entries(
+              system?.ingest?.counts || {},
+            )
+              .map(([state, count]) => `${state}: ${count}`)
+              .join(" · ") || "Inbox empty"}
+          </p>
+          <div class="table-scroll">
+            <table class="mono">
+              <thead
+                ><tr
+                  ><th>worker</th><th>host</th><th>last seen</th><th
+                    >admitted</th
+                  ></tr
+                ></thead
+              ><tbody
+                >{#each system?.ingest?.workers || [] as worker}<tr
+                    ><td>{worker.id}</td><td>{worker.host}</td><td
+                      >{ago(worker.seen)}</td
+                    ><td>{worker.admitted}</td></tr
+                  >{/each}</tbody
+              >
+            </table>
+          </div>
           <h2>Scheduler</h2>
           <p>
             Last {system?.status?.tick_seconds?.toFixed(3) || "0"}s · p95 {system?.status?.p95_seconds?.toFixed(
@@ -709,7 +820,7 @@
           bind:this={chat}
           {requested}
           {chats}
-          onactive={(c) => (activeChat = c)}
+          onactive={activeChanged}
           oncommand={command}
           onhide={() => {
             hidden = true;

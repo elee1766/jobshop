@@ -20,13 +20,21 @@ func (s *Server) attentionAnswer(r *http.Request) (any, error) {
 }
 
 func (s *Server) chatManage(r *http.Request) (any, error) {
-	var p rpc.ChatManageParams
+	var p struct {
+		rpc.ChatManageParams
+		Refs []string `json:"refs,omitempty"`
+	}
 	if err := s.decode(r, &p); err != nil {
 		return nil, err
 	}
+	context, err := s.referenceContext(r, p.Refs)
+	if err != nil {
+		return nil, err
+	}
+	p.Context += context
 	p.Pool = s.cfg.ChatPool
 	var out rpc.SessionInfo
-	err := s.ctl.Call(r.Context(), rpc.MethodChatManage, p, &out)
+	err = s.ctl.Call(r.Context(), rpc.MethodChatManage, p.ChatManageParams, &out)
 	return out, err
 }
 
@@ -61,10 +69,11 @@ func (s *Server) traceView(r *http.Request) (any, error) {
 
 func (s *Server) systemView(r *http.Request) (any, error) {
 	var out struct {
-		Status    rpc.SystemStatus       `json:"status"`
-		Pools     rpc.PoolStatusResult   `json:"pools"`
-		Resources rpc.ResourceListResult `json:"resources"`
-		Sessions  []rpc.SessionInfo      `json:"sessions"`
+		Status    rpc.SystemStatus        `json:"status"`
+		Pools     rpc.PoolStatusResult    `json:"pools"`
+		Resources rpc.ResourceListResult  `json:"resources"`
+		Sessions  []rpc.SessionInfo       `json:"sessions"`
+		Ingest    rpc.IngestWorkersResult `json:"ingest"`
 	}
 	calls := []struct {
 		method         string
@@ -74,6 +83,7 @@ func (s *Server) systemView(r *http.Request) (any, error) {
 		{rpc.MethodPoolList, struct{}{}, &out.Pools},
 		{rpc.MethodResourceList, struct{}{}, &out.Resources},
 		{rpc.MethodSessionList, rpc.SessionListParams{}, &out.Sessions},
+		{rpc.MethodIngestWorkers, struct{}{}, &out.Ingest},
 	}
 	for _, call := range calls {
 		if err := s.ctl.Call(r.Context(), call.method, call.params, call.result); err != nil {

@@ -3,6 +3,7 @@ package control_test
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,6 +52,11 @@ pools:
 	c.Call(rpc.MethodDeskCommand, rpc.DeskCommandParams{Session: chat.ID, Action: "navigate", Args: map[string]string{"view": "trace", "ref": chat.ID}}, &command)
 	assert.Equal(t, chat.ID, command.Session)
 	require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodDeskCommand, rpc.DeskCommandParams{Session: chat.ID, Action: "cancel"}, nil), store.ErrInvalid)
+	var original rpc.ShowResult
+	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &original)
+	before, err := store.DecodeFields[store.SessionFields](original.Ticket)
+	require.NoError(t, err)
+	require.NotEmpty(t, before.ACPSession)
 	c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "archive", ID: chat.ID}, nil)
 	c.Stop()
 	c = controltest.Start(t, root, control.Options{})
@@ -67,4 +73,19 @@ pools:
 	assert.Nil(t, fields.Archived)
 	assert.True(t, fields.Suspended)
 	assert.Equal(t, store.StatusOpen, shown.Ticket.Status)
+	assert.Equal(t, before.ACPSession, fields.ACPSession)
+	c.Call(rpc.MethodSessionSend, rpc.SessionSendParams{ID: chat.ID, Text: "continue restored desk chat"}, nil)
+	c.PassUntil(func() bool {
+		c.Call(rpc.MethodSessionJournal, rpc.SessionJournalParams{ID: chat.ID}, &restored)
+		for _, frame := range restored.Frames {
+			if frame.Seq > journal.Frames[len(journal.Frames)-1].Seq && strings.Contains(string(frame.Msg), "continue restored desk chat") {
+				return true
+			}
+		}
+		return false
+	}, "restored conversation did not accept a message")
+	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &shown)
+	fields, err = store.DecodeFields[store.SessionFields](shown.Ticket)
+	require.NoError(t, err)
+	assert.Equal(t, before.ACPSession, fields.ACPSession, "restore loads the same ACP conversation")
 }

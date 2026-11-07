@@ -3,6 +3,7 @@ package control
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"math"
 	"slices"
@@ -37,6 +38,9 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		}
 	}
 	if p.Action == "new" {
+		if len(p.Context) > 32<<10 {
+			return nil, fmt.Errorf("%w: context is too long", store.ErrInvalid)
+		}
 		if strings.TrimSpace(p.Text) == "" || len(p.Text) > 32<<10 {
 			return nil, fmt.Errorf("%w: first message must be 1 to 32768 bytes", store.ErrInvalid)
 		}
@@ -47,7 +51,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		if err := c.updateSessionFields(ctx, sess.ID, func(f *store.SessionFields) { f.Named = true; f.DisplayName = name }); err != nil {
 			return nil, err
 		}
-		if _, err := c.sessionSend(ctx, sc, rpc.SessionSendParams{ID: sess.ID, Text: p.Text}); err != nil {
+		if _, err := c.sessionSend(ctx, sc, rpc.SessionSendParams{ID: sess.ID, Text: p.Text, Context: p.Context}); err != nil {
 			return nil, err
 		}
 		return c.sessionInfo(ctx, sess.ID)
@@ -79,6 +83,9 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		if t.Status != store.StatusClosed {
 			return c.sessionInfo(ctx, t.ID)
 		}
+		if pool, ok := c.config().Pools[t.Pool]; !ok || !pool.Chat() {
+			return nil, fmt.Errorf("%w: chat pool %q is no longer configured", store.ErrInvalid, t.Pool)
+		}
 		if _, ok, err := c.openKeyed(ctx, f.Key); err != nil {
 			return nil, err
 		} else if ok {
@@ -88,12 +95,19 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 			return nil, err
 		}
 		// Keep the ACP conversation id and journal, then load on the next send.
-		if err := c.updateSessionFields(ctx, t.ID, func(f *store.SessionFields) { f.Named = true; f.Archived = nil; f.Ended = nil; f.Suspended = true }); err != nil {
+		f.Named, f.Archived, f.Ended, f.Suspended = true, nil, nil, true
+		fields, err := json.Marshal(f)
+		if err != nil {
 			return nil, err
 		}
-		if _, err := store.Reopen(ctx, c.store, sc.actor, t.ID); err != nil {
+		reopened, err := c.store.Update(ctx, sc.actor, t.ID, store.Update{Reopen: true, Fields: fields, IfRevision: t.Revision})
+		if err != nil {
 			return nil, err
 		}
+		if err := c.openSession(reopened); err != nil {
+			return nil, err
+		}
+		c.drive(c.config(), reopened)
 	default:
 		return nil, fmt.Errorf("%w: unknown chat action %q", store.ErrInvalid, p.Action)
 	}

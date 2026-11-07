@@ -44,7 +44,10 @@ export function flights(runs: RunResult[], threshold = 3 * 3600000): Flight[] {
     const wait = sf.wait;
     const meta = (run.run.meta as Record<string, any>) || {};
     const since =
-      meta.github?.head_at || step?.updated_at || run.run.updated_at;
+      meta.github?.head_at ||
+      wait?.since ||
+      step?.updated_at ||
+      run.run.updated_at;
     const source = meta.github?.head_at ? "last push" : "last run activity";
     const rw = run.waits?.find((w) => w.ticket === step?.id);
     let waiting =
@@ -59,11 +62,28 @@ export function flights(runs: RunResult[], threshold = 3 * 3600000): Flight[] {
       .join(", ");
     const repeated = (sf.failures || 0) > 1 || (sf.review_rounds || 0) > 1;
     const old = Date.now() - Date.parse(since) > threshold;
-    const hold = /external|other.team/i.test(wait?.owner || wait?.reason || "");
+    const hold =
+      /external|other.team/i.test(wait?.owner || wait?.reason || "") ||
+      run.run.labels?.some((label) =>
+        /^(external-hold|hold:external)$/.test(label),
+      ) ||
+      false;
+    const mismatch = wait?.conds?.some(
+      (c: any) =>
+        !c.met &&
+        c.type === "github.review" &&
+        /observed (CHANGES_REQUESTED|DISMISSED)/.test(c.note || ""),
+    );
+    const repo = vars.repo || meta.github?.repo || "";
+    const issue = vars.issue || meta.linear?.issue;
     rows.push({
       id: run.run.id,
-      ref: vars.issue || meta.linear?.issue || run.run.id,
-      repo: vars.repo || meta.github?.repo || "",
+      ref: issue
+        ? /^\d+$/.test(String(issue)) && repo
+          ? `${repo.split("/").at(-1)}#${issue}`
+          : String(issue)
+        : run.run.id,
+      repo,
       pr: vars.pr || meta.github?.pr || "",
       step: sf.step || "queued",
       waiting,
@@ -71,7 +91,7 @@ export function flights(runs: RunResult[], threshold = 3 * 3600000): Flight[] {
       source,
       holder: step?.holder || "",
       state: step?.holder ? "active" : f.state || "queued",
-      stalled: old || repeated,
+      stalled: f.state !== "needs_human" && (old || repeated || mismatch),
       diagnosis: rw
         ? `${rw.key} ${rw.held}/${rw.capacity}, queued behind ${rw.ahead}`
         : observed ||

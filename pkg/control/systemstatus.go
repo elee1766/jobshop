@@ -13,6 +13,7 @@ func (c *Controller) finishTick(start time.Time) {
 	c.statusMu.Lock()
 	c.status.LastTick = c.now()
 	c.status.TickSeconds = time.Since(start).Seconds()
+	c.status.Steps = maps.Clone(c.tickSteps)
 	c.tickSamples = append(c.tickSamples, c.status.TickSeconds)
 	if len(c.tickSamples) > 60 {
 		c.tickSamples = slices.Clone(c.tickSamples[len(c.tickSamples)-60:])
