@@ -115,6 +115,12 @@ test('chat and read-only inspector reach the beginning of journal history', asyn
       await region.evaluate(element => { element.scrollTop = 0; });
       await expect(expanded).toHaveAttribute('open', '');
     }
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: viewport.width, height: 30000 });
+    await openChat(page, isMobile, name);
+    await expect(page.locator('.transcript').getByText('start of conversation', { exact: true })).toHaveCount(1);
+    await expect(page.locator('.operator').filter({ hasText: first })).toHaveCount(1);
+    await page.setViewportSize(viewport);
     await openChat(page, isMobile, name);
     await loadBeginning(page.locator('.transcript'));
     await page.goto('./?view=trace&ref=' + session.id);

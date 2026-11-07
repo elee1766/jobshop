@@ -24,6 +24,8 @@ DESK_URL=http://127.0.0.1:7492 DESK_MUTATE=1 \
 - Scrolling near the top requests older raw journal pages automatically.
   Prepending retains the same message and screen position. Both transcript
   surfaces reach the first human message and stop requesting earlier pages.
+  When the visible tail fits without scrolling, older pages load until the
+  viewport fills or the journal begins, without needing a scroll event.
 - The virtualizer measures variable-height rows and renders only the nearby
   window. Expanded prompt/tool state survives leaving that window. Images and
   expanded content are remeasured. Following live output applies only near the
