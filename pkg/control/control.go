@@ -28,6 +28,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
 	idgen "github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/ingest"
@@ -167,7 +168,6 @@ type Controller struct {
 	triggerPolled map[string]time.Time
 	hookRunning   atomic.Bool
 	hookPending   atomic.Bool
-	hookRecovered atomic.Bool
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
 	// journalsCompressedAt is the last journal compression sweep start
@@ -300,10 +300,10 @@ type Controller struct {
 	activityMu  sync.Mutex
 	activity    *activityState
 	// ship is journal shipping to VictoriaLogs (#530).
-	ship             shipper
-	wg               sync.WaitGroup
-	hookAuditMu      sync.Mutex
-	hookAuditSecrets []string
+	ship       shipper
+	wg         sync.WaitGroup
+	hooksOnce  sync.Once
+	hookEngine *hooks.Engine
 	// Trigger checks run outside the tick when backgroundChecks is set, by
 	// Run (JOB-109, triggercheck.go). checkJobs is under tickMu.
 	backgroundChecks bool
@@ -411,7 +411,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		events:          ev,
 		configSwapped:   make(chan struct{}, 1),
 	}
-	c.rememberHookSecrets(lc)
+	c.hooks().Remember(lc.runtime)
 	// The stream starts at the current end of history; older rows are
 	// only sent as replay.
 	if ev.last, err = store.LastSeq(ctx, st); err != nil {

@@ -18,7 +18,6 @@ const outboundCeiling = 24 * time.Hour
 // telemetry.WithRoute.
 var (
 	githubHTTP   = telemetry.HTTPClient("github", outboundCeiling)
-	hookHTTP     = telemetry.HTTPClient("hook", outboundCeiling)
 	stepHTTP     = telemetry.HTTPClient("step", outboundCeiling)
 	providerHTTP = telemetry.HTTPClient("provider", outboundCeiling)
 )

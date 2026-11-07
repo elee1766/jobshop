@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -21,9 +22,10 @@ import (
 // liveConfig is the config and the lease parsed from it, swapped as one
 // value so readers never see a lease from one file and pools from another.
 type liveConfig struct {
-	cfg   *config.Config
-	lease time.Duration
-	hooks map[string]*hookProgram
+	cfg     *config.Config
+	lease   time.Duration
+	hooks   map[string]*hooks.Program
+	runtime *hooks.Runtime
 }
 
 func newLiveConfig(cfg *config.Config, roots ...config.Root) (*liveConfig, error) {
@@ -38,19 +40,19 @@ func newLiveConfig(cfg *config.Config, roots ...config.Root) (*liveConfig, error
 	if len(roots) > 0 {
 		root = roots[0]
 	}
-	hooks, err := loadHookPrograms(context.Background(), cfg, root)
+	programs, err := hooks.LoadPrograms(context.Background(), cfg, root)
 	if err != nil {
 		return nil, err
 	}
 	snapshot := *cfg
 	snapshot.HookDigests = map[string]string{}
-	for entry, program := range hooks {
-		snapshot.HookDigests[entry] = program.digest
+	for entry, program := range programs {
+		snapshot.HookDigests[entry] = program.Digest()
 	}
 	if cfg.HookDigests != nil && !maps.Equal(cfg.HookDigests, snapshot.HookDigests) {
 		return nil, fmt.Errorf("accepted hook manifest changed: restore the accepted callback selectors, source, roots, instance scope and grants before using last-good configuration")
 	}
-	return &liveConfig{cfg: &snapshot, lease: lease, hooks: hooks}, nil
+	return &liveConfig{cfg: &snapshot, lease: lease, hooks: programs, runtime: &hooks.Runtime{Config: &snapshot, Programs: programs}}, nil
 }
 
 // config is the active config. A reload between two reads only means the
@@ -131,7 +133,7 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 			for pool, reason := range failed {
 				already[pool] = c.setQuarantine(pool, reason)
 			}
-			c.rememberHookSecrets(lc)
+			c.hooks().Remember(lc.runtime)
 			old := c.live.Swap(lc).cfg
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.WarnContext(ctx, "config reload: telemetry changes need a controller restart")

@@ -5,14 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
-	"os"
 	"slices"
-	"strings"
 
-	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -22,7 +19,7 @@ type hookRunPlan struct {
 	plan   runPlan
 }
 
-func (c *Controller) prepareHookRuns(ctx context.Context, lc *liveConfig, in hookInvocation) (map[int]hookRunPlan, error) {
+func (c *Controller) prepareHookRuns(ctx context.Context, lc *liveConfig, in hooks.Invocation) (map[int]hookRunPlan, error) {
 	plans := map[int]hookRunPlan{}
 	owner := "triggers." + in.Trigger
 	if in.Trigger == "" {
@@ -64,7 +61,7 @@ func (c *Controller) prepareHookRuns(ctx context.Context, lc *liveConfig, in hoo
 
 // planHookActions validates the complete batch before the first graph write.
 // The caller holds runMu only for local reads and the graph commit.
-func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key string, in hookInvocation, program *hookProgram, plans map[int]hookRunPlan) (store.Graph, error) {
+func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key string, in hooks.Invocation, program *hooks.Program, plans map[int]hookRunPlan) (store.Graph, error) {
 	g := store.Graph{Revisions: in.ReadSet, Children: map[string]int64{}, Fields: map[string]json.RawMessage{}, Close: map[string]string{}}
 	if c.live.Load() != lc {
 		return g, fmt.Errorf("%w: hook configuration changed", store.ErrConflict)
@@ -172,7 +169,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 					return g, errors.New("retry_pool is outside the run project")
 				}
 			}
-			prompt, err := hookPrompt(program, action)
+			prompt, err := program.Prompt(action)
 			if err != nil {
 				return g, err
 			}
@@ -296,38 +293,4 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 	}
 	return g, nil
-}
-
-func hookPrompt(program *hookProgram, action automation.Action) (string, error) {
-	if action.PromptFile == "" {
-		if strings.TrimSpace(action.Prompt) == "" {
-			return "", errors.New("step prompt must not be blank")
-		}
-		return action.Prompt, nil
-	}
-	root, err := os.OpenRoot(program.root)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = root.Close() }()
-	file, err := root.Open(action.PromptFile)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil {
-		return "", err
-	}
-	if !info.Mode().IsRegular() {
-		return "", errors.New("prompt_file must be a regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, (1<<20)+1))
-	if err != nil {
-		return "", err
-	}
-	if len(data) > 1<<20 {
-		return "", errors.New("prompt_file exceeds 1 MiB")
-	}
-	return string(data), nil
 }

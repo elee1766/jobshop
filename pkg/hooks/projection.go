@@ -1,4 +1,4 @@
-package control
+package hooks
 
 import (
 	"encoding/json"
@@ -87,7 +87,7 @@ type hookPublicCall struct {
 }
 
 // Public evidence is saved before credentials can rotate or be removed.
-func (c *Controller) hookInvocationPublic(in hookInvocation) json.RawMessage {
+func (c *Engine) hookInvocationPublic(in Invocation) json.RawMessage {
 	out := hookPublicInvocation{AcceptedAt: in.AcceptedAt, ParentInvocation: in.ParentInvocation, Trigger: in.Trigger, Run: in.Run, Step: in.Step, StepRevision: in.StepRevision, Entry: in.Entry, Digest: in.Digest, Error: c.hookAuditText(in.Error)}
 	if in.Event != nil {
 		out.Event = &hookPublicEvent{Source: in.Event.Source, Event: in.Event.Event, Delivery: in.Event.Delivery, Repository: in.Event.Repository}
@@ -96,26 +96,26 @@ func (c *Controller) hookInvocationPublic(in hookInvocation) json.RawMessage {
 	return c.hookAuditJSON(out)
 }
 
-func (c *Controller) hookAttemptPublic(in hookAttempt, evidence json.RawMessage) json.RawMessage {
+func (c *Engine) hookAttemptPublic(in hookAttempt, evidence json.RawMessage) json.RawMessage {
 	out := hookPublicAttempt{Invocation: in.Invocation, Attempt: in.Attempt, StartedAt: in.StartedAt, FinishedAt: in.FinishedAt}
 	var accepted hookPublicInvocation
-	if decodeHookJSON(evidence, &accepted) == nil {
+	if DecodeJSON(evidence, &accepted) == nil {
 		out.Error, out.Targets, out.Output, out.Decisions, out.Actions = accepted.Error, accepted.Targets, accepted.Output, accepted.Decisions, accepted.Actions
 	}
 	out.ReusedCalls = c.hookAuditField(in.ReusedCalls)
 	return c.hookAuditJSON(out)
 }
 
-func (c *Controller) hookPublicError(evidence json.RawMessage, message string) json.RawMessage {
+func (c *Engine) hookPublicError(evidence json.RawMessage, message string) json.RawMessage {
 	var out hookPublicInvocation
-	if evidence != nil && decodeHookJSON(evidence, &out) != nil {
+	if evidence != nil && DecodeJSON(evidence, &out) != nil {
 		out = hookPublicInvocation{}
 	}
 	out.Error = c.hookAuditText(message)
 	return c.hookAuditJSON(out)
 }
 
-func (c *Controller) hookCallPublic(in hookCallRecord) json.RawMessage {
+func (c *Engine) hookCallPublic(in hookCallRecord) json.RawMessage {
 	o := in.Observation
 	out := hookPublicCall{
 		Invocation: in.Invocation, Attempt: in.Attempt, StartedAt: in.StartedAt, FinishedAt: in.FinishedAt, ElapsedNS: in.ElapsedNS,
@@ -124,7 +124,7 @@ func (c *Controller) hookCallPublic(in hookCallRecord) json.RawMessage {
 	return c.hookAuditJSON(out)
 }
 
-func (c *Controller) hookAuditText(text string) string {
+func (c *Engine) hookAuditText(text string) string {
 	text = c.hookAuditSanitize(text).(string)
 	if len(text) > 1024 {
 		return strings.ToValidUTF8(text[:1024], "") + "…"
@@ -132,7 +132,7 @@ func (c *Controller) hookAuditText(text string) string {
 	return text
 }
 
-func (c *Controller) hookAuditJSON(value any) json.RawMessage {
+func (c *Engine) hookAuditJSON(value any) json.RawMessage {
 	data, err := json.Marshal(c.hookAuditSanitize(value))
 	if err != nil {
 		return json.RawMessage(`{"omitted":true}`)
@@ -140,7 +140,7 @@ func (c *Controller) hookAuditJSON(value any) json.RawMessage {
 	return data
 }
 
-func (c *Controller) hookAuditField(value any) any {
+func (c *Engine) hookAuditField(value any) any {
 	if value == nil {
 		return nil
 	}
@@ -159,7 +159,7 @@ func (c *Controller) hookAuditField(value any) any {
 	}
 	digest := hookKey(string(data))
 	relative := filepath.Join("automation", "audit", digest+".json")
-	path := filepath.Join(c.root.Dir, relative)
+	path := filepath.Join(c.root, relative)
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return map[string]any{"omitted": true, "bytes": originalBytes}
 	}
@@ -184,12 +184,12 @@ func sensitiveAuditKey(key string) bool {
 	return key == "token" || strings.HasSuffix(key, "token")
 }
 
-func (c *Controller) hookAuditSanitize(value any) any {
+func (c *Engine) hookAuditSanitize(value any) any {
 	data, err := json.Marshal(value)
 	if err != nil {
 		return "[OMITTED]"
 	}
-	if err := decodeHookJSON(data, &value); err != nil {
+	if err := DecodeJSON(data, &value); err != nil {
 		return "[OMITTED]"
 	}
 	c.hookAuditMu.Lock()
@@ -238,7 +238,7 @@ func (c *Controller) hookAuditSanitize(value any) any {
 			trimmed := strings.TrimSpace(v)
 			if depth < 32 && len(trimmed) > 1 && (trimmed[0] == '{' || trimmed[0] == '[') {
 				var nested any
-				if decodeHookJSON([]byte(trimmed), &nested) == nil {
+				if DecodeJSON([]byte(trimmed), &nested) == nil {
 					encoded, err := json.Marshal(clean(nested, depth+1))
 					if err == nil {
 						return string(encoded)
@@ -253,10 +253,11 @@ func (c *Controller) hookAuditSanitize(value any) any {
 	return clean(value, 0)
 }
 
-func (c *Controller) rememberHookSecrets(lc *liveConfig) {
+// Remember retains accepted secrets so credential rotation cannot expose old evidence.
+func (c *Engine) Remember(runtime *Runtime) {
 	c.hookAuditMu.Lock()
 	defer c.hookAuditMu.Unlock()
-	for _, program := range lc.hooks {
+	for _, program := range runtime.Programs {
 		for _, secret := range program.secrets {
 			if !slices.Contains(c.hookAuditSecrets, secret) {
 				c.hookAuditSecrets = append(c.hookAuditSecrets, secret)
@@ -270,13 +271,13 @@ func publicHookRecord(rec store.Record, data json.RawMessage) store.Record {
 	return store.Record{Collection: rec.Collection, Key: rec.Key, State: rec.State, Value: data, Revision: rec.Revision, Attempts: rec.Attempts, CreatedAt: rec.CreatedAt, UpdatedAt: rec.UpdatedAt}
 }
 
-func (c *Controller) publicHookInvocation(rec store.Record, summary bool) (store.Record, error) {
-	var in hookInvocation
-	if decodeHookJSON(rec.Value, &in) != nil {
+func (c *Engine) publicHookInvocation(rec store.Record, summary bool) (store.Record, error) {
+	var in Invocation
+	if DecodeJSON(rec.Value, &in) != nil {
 		return store.Record{}, errors.New("invalid automation invocation evidence")
 	}
 	out := hookPublicInvocation{AcceptedAt: in.AcceptedAt, ParentInvocation: in.ParentInvocation, Trigger: in.Trigger, Run: in.Run, Step: in.Step, StepRevision: in.StepRevision, Entry: in.Entry, Digest: in.Digest}
-	if in.Public != nil && decodeHookJSON(in.Public, &out) != nil {
+	if in.Public != nil && DecodeJSON(in.Public, &out) != nil {
 		return store.Record{}, errors.New("invalid public automation invocation evidence")
 	}
 	if in.Public == nil && in.Event != nil {
@@ -295,29 +296,29 @@ func (c *Controller) publicHookInvocation(rec store.Record, summary bool) (store
 	return publicHookRecord(rec, c.hookAuditJSON(out)), nil
 }
 
-func (c *Controller) publicHookAttempt(rec store.Record) (store.Record, error) {
+func (c *Engine) publicHookAttempt(rec store.Record) (store.Record, error) {
 	var in hookAttempt
-	if decodeHookJSON(rec.Value, &in) != nil {
+	if DecodeJSON(rec.Value, &in) != nil {
 		return store.Record{}, errors.New("invalid automation attempt evidence")
 	}
 	out := hookPublicAttempt{Invocation: in.Invocation, Attempt: in.Attempt, StartedAt: in.StartedAt, FinishedAt: in.FinishedAt}
-	if in.Public != nil && decodeHookJSON(in.Public, &out) != nil {
+	if in.Public != nil && DecodeJSON(in.Public, &out) != nil {
 		return store.Record{}, errors.New("invalid public automation attempt evidence")
 	}
 	out.Invocation, out.Error = c.hookAuditText(out.Invocation), c.hookAuditText(out.Error)
 	return publicHookRecord(rec, c.hookAuditJSON(out)), nil
 }
 
-func (c *Controller) publicHookCall(rec store.Record) (store.Record, error) {
+func (c *Engine) publicHookCall(rec store.Record) (store.Record, error) {
 	var in hookCallRecord
-	if decodeHookJSON(rec.Value, &in) != nil {
+	if DecodeJSON(rec.Value, &in) != nil {
 		return store.Record{}, errors.New("invalid automation call evidence")
 	}
 	out := hookPublicCall{
 		Invocation: in.Invocation, Attempt: in.Attempt, StartedAt: in.StartedAt, FinishedAt: in.FinishedAt, ElapsedNS: in.ElapsedNS,
 		Observation: hookPublicObservation{Index: in.Observation.Index, Phase: in.Observation.Phase, Capability: in.Observation.Capability},
 	}
-	if in.Public != nil && decodeHookJSON(in.Public, &out) != nil {
+	if in.Public != nil && DecodeJSON(in.Public, &out) != nil {
 		return store.Record{}, errors.New("invalid public automation call evidence")
 	}
 	out.Invocation = c.hookAuditText(out.Invocation)

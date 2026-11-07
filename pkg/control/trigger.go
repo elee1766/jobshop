@@ -16,6 +16,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -95,8 +96,8 @@ func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name st
 		if key == "" {
 			key = c.now().UTC().Truncate(time.Minute).Format(time.RFC3339)
 		}
-		event := &automationEvent{Source: "timer", Event: "timer", Delivery: key, Payload: map[string]any{}, Fields: map[string]any{}}
-		if err := c.putHook(ctx, "timer/"+name+"/"+key, hookInvocation{Trigger: name, Entry: tr.Handler, Digest: digest, Event: event, Args: tr.Args}); err != nil {
+		event := &hooks.Event{Source: "timer", Event: "timer", Delivery: key, Payload: map[string]any{}, Fields: map[string]any{}}
+		if err := c.hooks().Put(ctx, "timer/"+name+"/"+key, hooks.Invocation{Trigger: name, Entry: tr.Handler, Digest: digest, Event: event, Args: tr.Args}); err != nil {
 			c.log.ErrorContext(ctx, "enqueue timer hook", "trigger", name, "err", err)
 		}
 		c.kickHooks()
@@ -134,7 +135,7 @@ func (c *Controller) evalTrigger(ctx context.Context, cfg *config.Config, name s
 		st.last = lastT.CreatedAt
 	}
 	if tr.Handler != "" {
-		lastHook, err := c.lastHookFire(ctx, name)
+		lastHook, err := c.hooks().LastFire(ctx, name)
 		if err != nil {
 			return st, err
 		}

@@ -1,4 +1,4 @@
-package control
+package hooks
 
 import (
 	"context"
@@ -16,7 +16,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 )
 
-type hookProgram struct {
+// Program pins loaded source, credentials, authority, and the prompt asset root.
+type Program struct {
 	engine  *automation.Engine
 	entry   string
 	root    string
@@ -24,7 +25,8 @@ type hookProgram struct {
 	secrets []string
 }
 
-func loadHookPrograms(ctx context.Context, cfg *config.Config, root config.Root) (map[string]*hookProgram, error) {
+// LoadPrograms loads callbacks and binds source identity to configured host authority.
+func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (map[string]*Program, error) {
 	options := automation.Options{AllowHTTP: cfg.Automation.HTTP, AllowShell: cfg.Automation.Shell, ShellDir: root.Dir, Auth: map[string]automation.Credential{}, Observe: observeHookCall, Replay: replayHookCall}
 	secrets := []string{}
 	options.Limits.Steps = cfg.Automation.MaxSteps
@@ -63,7 +65,7 @@ func loadHookPrograms(ctx context.Context, cfg *config.Config, root config.Root)
 	for _, tr := range cfg.Triggers {
 		entries = append(entries, tr.Handler)
 	}
-	programs := map[string]*hookProgram{}
+	programs := map[string]*Program{}
 	for _, entry := range slices.Sorted(slices.Values(entries)) {
 		if entry == "" || programs[entry] != nil {
 			continue
@@ -84,7 +86,7 @@ func loadHookPrograms(ctx context.Context, cfg *config.Config, root config.Root)
 		if err != nil {
 			return nil, err
 		}
-		programs[entry] = &hookProgram{engine: engine, entry: local, root: dir, digest: digest, secrets: secrets}
+		programs[entry] = &Program{engine: engine, entry: local, root: dir, digest: digest, secrets: secrets}
 	}
 	return programs, nil
 }
@@ -166,7 +168,8 @@ func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, module
 	return hookKey(string(data)), nil
 }
 
-func workflowHookDigest(programs map[string]*hookProgram, w config.Workflow) string {
+// WorkflowDigest pins both callback manifests for the lifetime of a workflow run.
+func WorkflowDigest(programs map[string]*Program, w config.Workflow) string {
 	a, b := programs[w.OnStart], programs[w.OnStepCompleted]
 	if a == nil || b == nil {
 		return ""
