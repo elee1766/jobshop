@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.19](https://github.com/elee1766/jobshop/compare/v0.8.18...v0.8.19) (2026-11-07)
+
+
+### Features
+
+* **config:** add CUE packs and Starlark automation ([#986](https://github.com/elee1766/jobshop/issues/986)) ([96726a7](https://github.com/elee1766/jobshop/commit/96726a7501e1609f242ca45689c666382bd7ed7e))
+
 ## [0.8.18](https://github.com/elee1766/jobshop/compare/v0.8.17...v0.8.18) (2026-11-07)
 
 
