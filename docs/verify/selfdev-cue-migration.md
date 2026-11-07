@@ -40,7 +40,9 @@ Preflight a candidate source without changing the live checkout. Copy the small
 host CUE root into a disposable directory, set its dedicated `source.cue` and
 local module replacement to the candidate checkout, and replace both the host
 root and checkout paths for `config check`. Rewriting only legacy pack paths does
-not redirect native CUE imports.
+not redirect native CUE imports. Verify this with a disposable candidate containing
+an invalid imported CUE package: preflight must reject that candidate and name its
+source path, while the unchanged candidate passes.
 
 ## After selection
 
