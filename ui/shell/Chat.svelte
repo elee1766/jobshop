@@ -35,6 +35,10 @@
   let text = $state("");
   let name = $state("");
   let creating = $state(false);
+  let draftName = $state("");
+  let newButton: HTMLButtonElement;
+  let newPopover: HTMLDialogElement;
+  let nameInput: HTMLInputElement;
   let archived = $state(false);
   const archivedChats = $derived(
     chats
@@ -147,6 +151,13 @@
     creating = true;
     onactive(null);
     void tick().then(() => composer?.focus());
+  }
+
+  function positionNewChat() {
+    if (!newButton || !newPopover) return;
+    const rect = newButton.getBoundingClientRect();
+    newPopover.style.top = rect.bottom + 4 + "px";
+    newPopover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 348)) + "px";
   }
 
   export function attach(values: string[]) {
@@ -304,8 +315,15 @@
   });
 </script>
 
+<svelte:window onresize={positionNewChat} />
 <div class="tag chat-tag">
-  <span class="mono">/chats</span><button onclick={() => start()}>New</button
+  <span class="mono">/chats</span><button
+    bind:this={newButton}
+    popovertarget="new-chat"
+    onclick={() => {
+      if (!newPopover.matches(":popover-open")) draftName = "";
+      positionNewChat();
+    }}>New</button
   ><button disabled={!active} onclick={() => manage("rename")}>Rename</button
   ><button
     disabled={!active || active.state === "archived"}
@@ -317,6 +335,29 @@
     >Archived({archivedChats.length})</button
   ><button class="push-right" onclick={onhide}>Hide</button>
 </div>
+<dialog
+  id="new-chat"
+  class="new-chat-popover"
+  bind:this={newPopover}
+  popover="auto"
+  aria-label="New chat"
+  ontoggle={() => {
+    if (newPopover.matches(":popover-open")) nameInput?.focus();
+  }}
+>
+<form onsubmit={(event) => {
+    event.preventDefault();
+    if (!draftName.trim()) return;
+    newPopover.hidePopover();
+    start("", [], draftName.trim());
+  }}
+>
+  <label for="new-chat-name">Name</label>
+  <input id="new-chat-name" bind:this={nameInput} bind:value={draftName} maxlength="120" placeholder="ops" required />
+  <button type="submit">Start</button>
+  <button type="button" popovertarget="new-chat" popovertargetaction="hide">Cancel</button>
+</form>
+</dialog>
 {#if archived}
   <div class="chat-archive">
     <table aria-label="Archived chats">
@@ -359,13 +400,7 @@
     {/if}
   </div>
 {/if}
-{#if creating}
-  <div class="tag">
-    <label
-      >Name <input bind:value={name} maxlength="120" placeholder="ops" /></label
-    ><button onclick={() => (creating = false)}>Cancel</button>
-  </div>
-{:else if active}
+{#if active && !creating}
   <div class="tag">
     <span class="mono">/chats/{active.title}</span><button onclick={stop}
       >Stop</button

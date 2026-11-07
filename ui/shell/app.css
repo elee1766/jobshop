@@ -336,6 +336,25 @@ td pre {
   font-size: 13px;
   gap: 2px;
 }
+.new-chat-popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(340px, calc(100vw - 16px));
+  padding: 8px;
+  border: 1px solid var(--column);
+  background: var(--paper);
+  color: inherit;
+}
+.new-chat-popover form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.new-chat-popover input {
+  min-width: 0;
+  flex: 1;
+}
 .transcript {
   flex: 1;
   overflow: auto;
