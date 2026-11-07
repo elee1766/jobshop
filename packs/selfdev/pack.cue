@@ -133,28 +133,33 @@ import (
 				}]
 			}
 		}
-		// start_step cannot represent durable command steps yet.
 		"live-check": {
 			vars: ["runbook", "issue"]
 			issue:         "issue"
 			repo:          "elee1766/jobshop"
 			escalate_pool: "plan"
-			steps: [{
-				id:       "check"
-				type:     "command"
-				pool:     "dev"
-				worktree: true
-				timeout:  "20m"
-				retries:  0
-				run: #"""
-					set +e
-					out=$("${JOBSHOP_BIN:-jobshop}" runbook run "$JOBSHOP_VAR_RUNBOOK" 2>&1)
-					rc=$?
-					printf '%s\n' "$out"
-					printf '%s\n' "$out" | gh issue comment "$JOBSHOP_VAR_ISSUE" --repo elee1766/jobshop --body-file - >&2
-					[ "$rc" = 0 ] || exit 1
-					"""# + "\n"
-			}]
+			if V.starlark_workflows {
+				on_start:          "workflow.star:live_check"
+				on_step_completed: "workflow.star:completed"
+			}
+			if !V.starlark_workflows {
+				steps: [{
+					id:       "check"
+					type:     "command"
+					pool:     "dev"
+					worktree: true
+					timeout:  "20m"
+					retries:  0
+					run: #"""
+						set +e
+						out=$("${JOBSHOP_BIN:-jobshop}" runbook run "$JOBSHOP_VAR_RUNBOOK" 2>&1)
+						rc=$?
+						printf '%s\n' "$out"
+						printf '%s\n' "$out" | gh issue comment "$JOBSHOP_VAR_ISSUE" --repo elee1766/jobshop --body-file - >&2
+						[ "$rc" = 0 ] || exit 1
+						"""# + "\n"
+				}]
+			}
 		}
 	}
 	_escalate: {

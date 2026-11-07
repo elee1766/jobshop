@@ -109,12 +109,13 @@ request the admitted run, with `max_open: 1` retaining one open run per
 trigger. Learning and edit eligibility remain controller-owned in either
 mode. Leave both settings false for the complete CUE-static comparison.
 
-`live-check` remains a static CUE command workflow with its original command,
-`dev` worktree, 20-minute timeout and zero retries. The current Starlark
-`start_step` action supports agent steps only, not command type, command
-text, worktree or timeout fields. Running the command through a callback's
-shell capability would lose the durable command-step lifecycle and is not
-an equivalent migration.
+`live-check` follows `starlark_workflows` too. Scripted, its callback
+starts a script step (JOB-124, `start_step(script=...)`) on the `dev`
+pool with a worktree, a 20-minute timeout and zero retries. The step
+function runs `jobshop runbook run` and `gh issue comment` through
+`shell()`, which runs in the `dev` sandbox and worktree, and fails the
+step when a readonly block failed. The host must grant
+`automation: {shell: true}`. Static, it keeps the original command step.
 
 Check a candidate with `jobshop config check --file <host.yaml>`. That loads
 the actual CUE and original prompt files without starting a controller.
