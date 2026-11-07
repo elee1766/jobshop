@@ -108,3 +108,11 @@ Callback acceptance must also load and invoke the actual `.star` files with
 the runtime's run, step and timer envelopes and no HTTP or shell grants.
 Drain legacy runs before selecting scripted workflows, so existing static
 runs are not resumed against a different workflow shape.
+
+Scripted runs also pin their accepted callback and configuration manifest.
+Changes to a workflow's vars, instance metadata or pool/workflow project
+maps can change that manifest while a run is open. The controller then
+requires the pinned configuration to be restored before resuming, rather
+than continuing under changed policy. Drain native runs before reloads
+that alter their accepted manifest. This differs from legacy static runs
+and must be included in cutover acceptance.
