@@ -71,8 +71,6 @@ Shipped in [`packs/`](packs/):
   `curate`/`evaluate`): agents record corrections and failures, and a
   curator turns them into learnings later sessions recall.
 
-Planned: **escalation to a human or another agent** (#547).
-
 ## Quick start
 Linux binaries are on [Releases](https://github.com/elee1766/jobshop/releases), or `nix run github:elee1766/jobshop/v<version>` ([notes](docs/notes/644-release.md)).
 ```
@@ -124,6 +122,10 @@ The rest is in [docs/running.md](docs/running.md).
 Contributor rules for people and agents (plain SQL store queries, Desk `dist`, Nix
 `vendorHash`) are in [AGENTS.md](AGENTS.md); PR titles are conventional
 commits ([CONTRIBUTING.md](CONTRIBUTING.md)).
+
+## Musings
+
+i wonder if there is a way to compile a provable graph of agent handoff interaction to prompt files.
 
 ## License
 
