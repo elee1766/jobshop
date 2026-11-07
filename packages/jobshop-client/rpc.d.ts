@@ -243,6 +243,12 @@ export interface ArtifactShowResult {
   dir?: string;
 }
 
+export interface AttachmentContent {
+  name: string;
+  mime_type: string;
+  data: string;
+}
+
 export interface AttentionAnswerParams {
   expected_title?: string;
   kind: string;
@@ -318,6 +324,7 @@ export interface Cgroup {
 }
 
 export interface ChatManageParams {
+  attachments?: AttachmentContent[];
   action: string;
   id?: string;
   pool?: string;
@@ -1161,6 +1168,7 @@ export interface SessionEvent {
   time?: string;
   type: string;
   text?: string;
+  images?: SessionImage[];
   context?: string;
   tool?: ToolSummary;
   stop_reason?: string;
@@ -1168,6 +1176,11 @@ export interface SessionEvent {
   status?: string;
   resolution?: string;
   usage?: Usage;
+}
+
+export interface SessionImage {
+  mime_type: string;
+  data: string;
 }
 
 export interface SessionIncident {
@@ -1296,6 +1309,7 @@ export interface SessionSandboxResult {
 }
 
 export interface SessionSendParams {
+  attachments?: AttachmentContent[];
   id?: string;
   pool?: string;
   key?: string;

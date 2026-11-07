@@ -9,6 +9,7 @@ import (
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -49,8 +50,18 @@ func (r *runner) inbox(ctx context.Context, interruptOnly bool) []store.Ticket {
 // delivered before the prompt, so the agent never sees a message as its
 // current ticket. Delivery is at most once: a crash mid-prompt loses it.
 func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) error {
+	defer func() { r.promptAttachments = nil }()
 	var claimed []store.Ticket
+	attachmentBytes := 0
 	for _, m := range r.inbox(ctx, false) {
+		f, _ := store.DecodeFields[store.MessageFields](m)
+		size := 0
+		for _, a := range f.Attachments {
+			size += a.Size
+		}
+		if len(claimed) > 0 && attachmentBytes+size > rpc.MaxAttachmentBytes {
+			break
+		}
 		t, cl, err := r.c.store.Claim(ctx, m.ID, r.id, r.c.leaseDur())
 		if err != nil {
 			continue // another session took it
@@ -60,6 +71,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 			continue
 		}
 		claimed = append(claimed, t)
+		attachmentBytes += size
 	}
 	if len(claimed) == 0 {
 		return nil
@@ -68,10 +80,15 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	var msgCtx []string
 	for _, m := range claimed {
 		f, _ := store.DecodeFields[store.MessageFields](m)
+		attached, content, err := r.messageAttachments(m, f)
+		if err != nil {
+			return err
+		}
+		r.promptAttachments = append(r.promptAttachments, content...)
 		if f.Context != "" {
 			msgCtx = append(msgCtx, f.Context)
 		}
-		if m.Title == "" && m.Body == "" {
+		if m.Title == "" && m.Body == "" && attached == "" {
 			continue // context only
 		}
 		if b.Len() == 0 {
@@ -81,6 +98,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 		if m.Body != "" {
 			b.WriteString("\n" + m.Body)
 		}
+		b.WriteString(attached)
 	}
 	// Chat sessions claim no tickets, so the pool prompt would never reach
 	// them; it leads their first message turn (again after a respawn).

@@ -1,5 +1,31 @@
 import { test, expect } from '@playwright/test';
 
+test('chat attachments stay local until sending and can be removed or dismissed', async ({ page, isMobile }) => {
+  const writes = [];
+  page.on('request', request => {
+    if (request.method() === 'POST' && request.url().includes('/api/chat/')) writes.push(request.url());
+  });
+  await page.goto('./');
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
+  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('attachment draft');
+  await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+  await page.locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\nNot sent yet.') });
+  await expect(page.getByRole('list', { name: 'Message attachments' })).toContainText('notes.md');
+  await page.getByRole('button', { name: 'Remove attachment notes.md', exact: true }).click();
+  await expect(page.getByRole('list', { name: 'Message attachments' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Paste document', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Paste document', exact: true });
+  await dialog.getByRole('textbox', { name: 'Paste text to attach as a document', exact: true }).fill('A short block explicitly attached as a document.');
+  await dialog.getByRole('button', { name: 'Attach document', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('list', { name: 'Message attachments' })).toContainText('pasted-text-1.txt');
+  await expect(page.getByRole('textbox', { name: /^First message to new chat:/ })).toHaveValue('');
+  await page.getByRole('button', { name: 'Dismiss new chat', exact: true }).click();
+  await expect(page.getByRole('list', { name: 'Message attachments' })).toHaveCount(0);
+  expect(writes).toEqual([]);
+});
+
 // These checks use a live controller, including under the prefix proxy.
 for (const width of [1000, 790, 700, 412, 360]) {
   test(`Desk layout and chat rail at ${width}px`, async ({ page }) => {

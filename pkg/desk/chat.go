@@ -26,11 +26,12 @@ const maxChatText = 32 << 10
 // (rw attach, refused unless its pool has attach: rw), or by Key in the
 // chat pool (an escalation thread or a desk:<id> session).
 type ChatSend struct {
-	Session   string   `json:"session,omitempty"`
-	Key       string   `json:"key,omitempty"`
-	Text      string   `json:"text"`
-	Interrupt bool     `json:"interrupt,omitempty"`
-	Refs      []string `json:"refs,omitempty"`
+	Attachments []rpc.AttachmentContent `json:"attachments,omitempty"`
+	Session     string                  `json:"session,omitempty"`
+	Key         string                  `json:"key,omitempty"`
+	Text        string                  `json:"text"`
+	Interrupt   bool                    `json:"interrupt,omitempty"`
+	Refs        []string                `json:"refs,omitempty"`
 }
 
 // ChatAccess is GET /api/session/<id>/access: whether Desk can send to it.
@@ -49,7 +50,11 @@ type ChatNew struct {
 var errBadRequest = errors.New("bad request")
 
 func (s *Server) decode(r *http.Request, v any) error {
-	r.Body = http.MaxBytesReader(nil, r.Body, maxChatText+4096)
+	return decodeLimit(r, v, maxChatText+4096)
+}
+
+func decodeLimit(r *http.Request, v any, limit int64) error {
+	r.Body = http.MaxBytesReader(nil, r.Body, limit)
 	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
 		return fmt.Errorf("%w: %w", errBadRequest, err)
 	}
@@ -58,13 +63,13 @@ func (s *Server) decode(r *http.Request, v any) error {
 
 func (s *Server) chatSend(r *http.Request) (any, error) {
 	var b ChatSend
-	if err := s.decode(r, &b); err != nil {
+	if err := decodeLimit(r, &b, rpc.MaxAttachmentBytes*4/3+maxChatText+16384); err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(b.Text) == "" || len(b.Text) > maxChatText {
+	if (strings.TrimSpace(b.Text) == "" && len(b.Attachments) == 0) || len(b.Text) > maxChatText {
 		return nil, fmt.Errorf("%w: text must be 1 to %d bytes", errBadRequest, maxChatText)
 	}
-	p := rpc.SessionSendParams{Text: b.Text, Interrupt: b.Interrupt}
+	p := rpc.SessionSendParams{Text: b.Text, Interrupt: b.Interrupt, Attachments: b.Attachments}
 	context, err := s.referenceContext(r, b.Refs)
 	if err != nil {
 		return nil, err

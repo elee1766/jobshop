@@ -33,6 +33,14 @@
   let commands: Event[] = $state([]);
   let refs: string[] = $state([]);
   let text = $state("");
+  type Attachment = { file: File; preview?: string };
+  let attachments: Attachment[] = $state([]);
+  let fileInput: HTMLInputElement;
+  let documentPopover: HTMLDialogElement;
+  let documentText = $state("");
+  let pasteNumber = 0;
+  let attachmentEpoch = 0;
+  let adding = $state(0);
   let name = $state("");
   let creating = $state(false);
   let draftName = $state("");
@@ -44,7 +52,7 @@
   let pickerButton: HTMLButtonElement;
   let picker: HTMLDialogElement;
   let searchInput: HTMLInputElement;
-  let previousDraft: { text: string; refs: string[] } | null = null;
+  let previousDraft: { text: string; refs: string[]; attachments: Attachment[] } | null = null;
   const archivedChats = $derived(chats.filter((chat) => chat.state === "archived"));
   const recentChats = $derived.by(() => {
     const all = active && !chats.some(chat => chat.id === active?.id) ? [...chats, active] : chats;
@@ -105,12 +113,16 @@
       attach((ev.args?.refs || "").split(/[ ,]+/).filter(Boolean));
   }
   async function select(chat: Chat) {
+    attachmentEpoch++;
     const selectedGeneration = ++generation;
     closeStream();
     active = chat;
     frames = [];
     commands = [];
     refs = [];
+    clearAttachments(attachments);
+    clearAttachments(previousDraft?.attachments || []);
+    attachments = [];
     creating = false;
     previousDraft = null;
     text = "";
@@ -157,7 +169,10 @@
     });
   });
   export function start(draft = "", contextRefs: string[] = [], chatName = "") {
-    if (!creating) previousDraft = { text, refs: [...refs] };
+    attachmentEpoch++;
+    if (!creating) previousDraft = { text, refs: [...refs], attachments: [...attachments] };
+    else clearAttachments(attachments);
+    attachments = [];
     refs = [...new Set(contextRefs)];
     text = draft;
     name = chatName;
@@ -168,13 +183,74 @@
 
   function dismissDraft() {
     if (sending) return;
+    attachmentEpoch++;
     creating = false;
     name = "";
+    clearAttachments(attachments);
+    attachments = previousDraft?.attachments || [];
     text = previousDraft?.text || "";
     refs = previousDraft?.refs || [];
     previousDraft = null;
     error = "";
     void tick().then(() => composer?.focus());
+  }
+
+  function clearAttachments(files: Attachment[]) {
+    for (const item of files) if (item.preview) URL.revokeObjectURL(item.preview);
+  }
+  function removeAttachment(item: Attachment) {
+    clearAttachments([item]);
+    attachments = attachments.filter(file => file !== item);
+  }
+  async function addFiles(files: File[]) {
+    if (sending) return false;
+    const epoch = attachmentEpoch;
+    adding++;
+    try {
+      if (attachments.length + files.length > 8 || [...attachments.map(item => item.file), ...files].reduce((n, file) => n + file.size, 0) > 8 * 1024 * 1024)
+        throw new Error("Use at most 8 attachments totaling 8 MiB.");
+      for (const file of files) {
+        if (!file.size) throw new Error("Empty files cannot be attached.");
+        if (file.type.startsWith("image/")) {
+          if (!["image/png", "image/jpeg", "image/gif"].includes(file.type)) throw new Error("Use PNG, JPEG or GIF images.");
+        } else {
+          if (file.size > 2 * 1024 * 1024) throw new Error("Text documents must be at most 2 MiB.");
+          const content = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer());
+          if (content.includes("\0")) throw new Error("Use UTF-8 text documents, not binary files.");
+        }
+      }
+      if (epoch !== attachmentEpoch) return false;
+      if (attachments.length + files.length > 8 || [...attachments.map(item => item.file), ...files].reduce((n, file) => n + file.size, 0) > 8 * 1024 * 1024)
+        throw new Error("Use at most 8 attachments totaling 8 MiB.");
+      attachments = [...attachments, ...files.map(file => ({file, preview: file.type.startsWith("image/") ? URL.createObjectURL(file) : undefined}))];
+      error = "";
+      return true;
+    } catch (e) { if (epoch === attachmentEpoch) error = String(e); return false; }
+    finally { adding--; }
+  }
+  function paste(e: ClipboardEvent) {
+    if (sending) return;
+    const clipboard = e.clipboardData;
+    if (!clipboard) return;
+    const files = Array.from(clipboard.files);
+    if (files.length) {
+      e.preventDefault();
+      void addFiles(files);
+      return;
+    }
+    const pasted = clipboard.getData("text/plain");
+    if (pasted.length > 4000 || pasted.split("\n").length >= 40) {
+      e.preventDefault();
+      void addFiles([new File([pasted], `pasted-text-${++pasteNumber}.txt`, {type:"text/plain"})]);
+    }
+  }
+  async function attachmentPayload() {
+    return Promise.all(attachments.map(async ({file}) => {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      return {name: file.name, mime_type: file.type.startsWith("image/") ? file.type : "text/plain", data: btoa(binary)};
+    }));
   }
 
   function positionPicker() {
@@ -243,7 +319,7 @@
     }
   }
   async function send() {
-    if (!text.trim() || sending) return;
+    if ((!text.trim() && !attachments.length) || sending || adding) return;
     if (creating && !name.trim()) {
       error = "Give this chat a name.";
       return;
@@ -253,12 +329,14 @@
     const message = text;
     const sentGeneration = generation;
     try {
+      const files = await attachmentPayload();
       if (creating || !active) {
         const result = await client.post<SessionInfo>("api/chat/manage", {
           action: "new",
           name,
           text: message,
           refs,
+          attachments: files,
         });
         if (generation !== sentGeneration) return;
         text = "";
@@ -269,11 +347,14 @@
           key: active.key,
           text: message,
           refs,
+          attachments: files,
         });
       }
       if (generation === sentGeneration) {
         text = "";
         refs = [];
+        clearAttachments(attachments);
+        attachments = [];
       }
     } catch (e) {
       if (generation === sentGeneration) error = String(e);
@@ -312,6 +393,9 @@
     window.addEventListener("online", online);
     return () => {
       generation++;
+      attachmentEpoch++;
+      clearAttachments(attachments);
+      clearAttachments(previousDraft?.attachments || []);
       closeStream();
       window.removeEventListener("offline", offline);
       window.removeEventListener("online", online);
@@ -323,19 +407,21 @@
       kind: string;
       text: string;
       tool?: SessionEvent["tool"];
+      images?: SessionEvent["images"];
     }[] = [];
     for (const frame of frames) {
       if (frame.type === "tool" && frame.tool) {
         const previous = out.find((m) => m.tool?.id === frame.tool?.id);
         if (previous) {
           previous.tool = { ...previous.tool, ...frame.tool };
+          if (frame.images?.length) previous.images = frame.images;
           continue;
         }
       }
       if (frame.type === "text" && out.at(-1)?.kind === "text")
         out[out.length - 1].text += frame.text || "";
       else if (
-        ["turn_start", "text", "tool"].includes(frame.type) ||
+        ["turn_start", "text", "tool", "image"].includes(frame.type) ||
         frame.error
       )
         out.push({
@@ -343,6 +429,7 @@
           kind: frame.type,
           text: frame.text || frame.error || "",
           tool: frame.tool,
+          images: frame.images,
         });
     }
     return out;
@@ -475,11 +562,13 @@
         >
         <pre>{message.tool.target || ""}\n{message.tool.input || ""}\n{message
             .tool.output || ""}</pre>
+        {#each message.images || [] as image}<img class="transcript-image" src={"data:" + image.mime_type + ";base64," + image.data} alt="Tool output" loading="lazy" />{/each}
       </details>
     {:else if message.kind === "turn_start"}<div class="operator">
         {message.text}
+        {#each message.images || [] as image}<img class="transcript-image" src={"data:" + image.mime_type + ";base64," + image.data} alt="User attachment" loading="lazy" />{/each}
       </div>
-    {:else}<div class="markdown">{@html md(message.text)}</div>{/if}
+    {:else}<div class="markdown">{@html md(message.text)}{#each message.images || [] as image}<img class="transcript-image" src={"data:" + image.mime_type + ";base64," + image.data} alt="Agent output" loading="lazy" />{/each}</div>{/if}
   {/each}
   {#each commands as command}<p class="tool mono">
       desk ▸ {command.op}
@@ -497,6 +586,24 @@
     void send();
   }}
 >
+  <input type="file" hidden multiple bind:this={fileInput} aria-label="Attach files" accept="image/png,image/jpeg,image/gif,text/*,.txt,.md,.json,.yaml,.yml,.log,.csv,.xml" onchange={() => {
+    const files = Array.from(fileInput.files || []);
+    fileInput.value = "";
+    void addFiles(files);
+  }} />
+  <div class="attachment-actions">
+    <button type="button" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} onclick={() => fileInput.click()}>Attach file</button>
+    <button type="button" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} popovertarget="paste-document">Paste document</button>
+    <span class="muted" title="Pastes over 4,000 characters or at least 40 lines become text attachments. Up to 8 files, 8 MiB total. Text documents up to 2 MiB.">Images and large pastes attach here</span>
+  </div>
+  {#if attachments.length}<ul class="chat-attachments" aria-label="Message attachments">
+    {#each attachments as item}<li>
+      {#if item.preview}<img src={item.preview} alt={item.file.name} />{/if}
+      <span>{item.file.name}<small>{Math.max(1, Math.ceil(item.file.size / 1024))} KiB · {item.preview ? "image" : "read on demand"}</small></span>
+      <button type="button" disabled={sending} aria-label={"Remove attachment " + item.file.name} onclick={() => removeAttachment(item)}>×</button>
+    </li>{/each}
+  </ul>{/if}
+  {#if adding}<span role="status">Preparing attachments…</span>{/if}
   {#if refs.length}<div class="context">
       Attached work: {#each refs as ref}<button
           title="Remove attached reference"
@@ -513,16 +620,28 @@
       bind:this={composer}
       bind:value={text}
       onkeydown={keydown}
+      onpaste={paste}
       placeholder={active || creating
         ? "Message"
         : "Choose New to start a named chat"}
-      disabled={(!active && !creating) ||
+      disabled={sending || (!active && !creating) ||
         (active?.state === "archived" && !creating)}
       rows="3"
     ></textarea><button
       class="send"
       type="submit"
-      disabled={sending || !text.trim()}>{creating ? "Create & send" : "Send"}</button
+      disabled={sending || adding > 0 || (!text.trim() && !attachments.length)}>{creating ? "Create & send" : "Send"}</button
     >
   </div>
 </form>
+<dialog id="paste-document" popover="auto" class="paste-document" bind:this={documentPopover} aria-label="Paste document">
+  <label for="document-text">Paste text to attach as a document</label>
+  <textarea id="document-text" bind:value={documentText} rows="10"></textarea>
+  <div><button disabled={!documentText || sending || adding > 0} onclick={async () => {
+    if (await addFiles([new File([documentText], `pasted-text-${++pasteNumber}.txt`, {type:"text/plain"})])) {
+      documentText = "";
+      documentPopover.hidePopover();
+      composer?.focus();
+    }
+  }}>Attach document</button><button onclick={() => documentPopover.hidePopover()}>Cancel</button></div>
+</dialog>
