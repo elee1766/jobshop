@@ -106,10 +106,13 @@ type packLayer struct {
 	file     string
 	m        map[string]any
 	vars     map[string]any // the layer's vars after defaults
-	warnings []string       // deprecated var names the includer set
+	warnings []string       // compatibility diagnostics for the includer
 	// textSources maps "<entry>.<field>" to the file a *_file field read.
-	textSources map[string][]string
-	packs       []PackRef
+	textSources  map[string][]string
+	entrySources map[string][]string
+	watch        WatchPaths
+	instances    []PackInstance
+	packs        []PackRef
 }
 
 // PackInstance is one entry of the root pack's packs list as loaded: what
@@ -306,10 +309,7 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 			watch.addDir(filepath.Dir(l.file))
 		}
 		for _, l := range layers {
-			mergeInto(merged, l.m, l.file, sources)
-			for k, v := range l.textSources {
-				sources[k] = v
-			}
+			mergePackLayer(merged, l, sources)
 			warnings = append(warnings, l.warnings...)
 		}
 	}
@@ -319,9 +319,13 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 		if target, err := filepath.EvalSymlinks(l.file); err == nil {
 			watch.addFile(target)
 		}
-		mergeInto(merged, l.m, l.file, sources)
-		for k, v := range l.textSources {
-			sources[k] = v
+		mergePackLayer(merged, l, sources)
+		instances = append(instances, l.instances...)
+		for _, file := range l.watch.Files {
+			watch.addFile(file)
+		}
+		for _, d := range l.watch.CUEDirs {
+			watch.addCUEDir(d)
 		}
 		warnings = append(warnings, l.warnings...)
 	}
@@ -331,6 +335,9 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 		return nil, err
 	}
 	if err := resolveTextFiles(top, textFiles{dir: dir, file: name, sources: sources}); err != nil {
+		return nil, err
+	}
+	if err := resolveScriptEntries(top, dir, name, sources); err != nil {
 		return nil, err
 	}
 	mergeInto(merged, top, path, sources)
@@ -352,6 +359,9 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	// sandboxes can only be checked now.
 	if err := c.checkSandboxes(); err != nil {
 		return nil, packValidationError(err, head.Packs, rootLayers)
+	}
+	if err := c.checkHookPrograms(watch); err != nil {
+		return nil, err
 	}
 	// Text files set by a path outside every pack dir are watched alone.
 	for _, files := range sources {
@@ -408,6 +418,7 @@ func loadPackFile(file string, given map[string]any, prefix string, depth int, r
 		return nil, err
 	}
 	given, warnings := renameVars(given, head.RenamedVars, file)
+	warnings = append(warnings, fmt.Sprintf("%s: YAML packs are deprecated; migrate this pack to CUE (see docs/configuration/migration.md)", file))
 	// Given vars win over defaults.
 	vars := map[string]any{}
 	for k, v := range head.Defaults {
@@ -486,6 +497,9 @@ func loadPackFile(file string, given map[string]any, prefix string, depth int, r
 	}
 	textSources := map[string][]string{}
 	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: subVars, sources: textSources}); err != nil {
+		return nil, err
+	}
+	if err := resolveScriptEntries(m, dir, file, textSources); err != nil {
 		return nil, err
 	}
 	raw, err = yaml.Marshal(m)
@@ -626,6 +640,25 @@ func joinKey(a, b string) string {
 		return b
 	}
 	return a + "." + b
+}
+
+func mergePackLayer(dst map[string]any, layer packLayer, sources map[string][]string) {
+	declared := sources
+	if len(layer.entrySources) > 0 {
+		declared = map[string][]string{}
+	}
+	mergeInto(dst, layer.m, layer.file, declared)
+	if len(layer.entrySources) > 0 {
+		for key, files := range declared {
+			if cueFiles := layer.entrySources[key]; len(cueFiles) > 0 {
+				files = cueFiles
+			}
+			sources[key] = append(sources[key], files...)
+		}
+	}
+	for key, files := range layer.textSources {
+		sources[key] = files
+	}
 }
 
 // mergeInto applies src over dst. In the merged sections each entry merges

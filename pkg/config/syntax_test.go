@@ -45,7 +45,10 @@ pools:
 	assert.Equal(t, "- a\n- b\nrun go test ./...\nGitHub: ${{ github.sha }}\n", c.Pools["dev"].Prompt)
 	assert.Equal(t, 3, c.Pools["old"].MaxSessions)
 	assert.Equal(t, "old 3 $x", c.Pools["old"].Prompt, "template: go is a no-op")
-	assert.Empty(t, c.Warnings)
+	require.Len(t, c.Warnings, 2)
+	for _, warning := range c.Warnings {
+		assert.Contains(t, warning, "YAML packs are deprecated")
+	}
 
 	w := c.Workflows["w"]
 	vars := map[string]any{"sha": "abc"}
@@ -134,5 +137,6 @@ func TestSessionDirArg(t *testing.T) {
 	c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 	require.NoError(t, err)
 	assert.Equal(t, []string{"acp", "--socket", "${SESSION_DIR}/jcode.sock"}, c.Agents["j"].Args)
-	assert.Empty(t, c.Warnings)
+	require.Len(t, c.Warnings, 1)
+	assert.Contains(t, c.Warnings[0], "YAML packs are deprecated")
 }

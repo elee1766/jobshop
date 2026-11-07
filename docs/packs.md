@@ -1,5 +1,9 @@
 # Writing a pack
 
+For native CUE composition and Starlark callbacks, use the
+[configuration guide](configuration/README.md) and
+[migration guide](configuration/migration.md). This page covers legacy YAML packs.
+
 A pack is a directory with a `pack.yaml` and the prompts it names. It
 declares the pools, triggers and workflows for one way of working. Most
 roots have a pack written for their own flow; the packs in this repo's

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 )
@@ -19,12 +20,35 @@ const LastGoodName = "config.last-good.yaml"
 // LastGood returns the saved last good config path.
 func (r Root) LastGood() string { return filepath.Join(r.Dir, LastGoodName) }
 
+type lastGoodSnapshot struct {
+	Config   map[string]any    `yaml:"config"`
+	Metadata *lastGoodMetadata `yaml:"metadata"`
+}
+
+type lastGoodMetadata struct {
+	Version     int               `yaml:"version"`
+	Instances   []PackInstance    `yaml:"instances"`
+	HookDigests map[string]string `yaml:"hook_digests"`
+}
+
 // SaveLastGood writes c (merged, no packs list) to path atomically.
 func SaveLastGood(path string, c *Config) error {
+	metadata := &lastGoodMetadata{Version: 1, Instances: append([]PackInstance{}, c.Instances...), HookDigests: c.HookDigests}
+	if err := validateLastGoodMetadata(c, metadata); err != nil {
+		return fmt.Errorf("%s: %w", LastGoodName, err)
+	}
 	cc := *c
 	cc.Pack = ""
 	cc.Packs = nil
-	b, err := yaml.Marshal(&cc)
+	merged, err := yaml.Marshal(&cc)
+	if err != nil {
+		return err
+	}
+	var definitions map[string]any
+	if err := yaml.Unmarshal(merged, &definitions); err != nil {
+		return err
+	}
+	b, err := yaml.Marshal(lastGoodSnapshot{Config: definitions, Metadata: metadata})
 	if err != nil {
 		return err
 	}
@@ -35,18 +59,83 @@ func SaveLastGood(path string, c *Config) error {
 	return os.Rename(tmp, path)
 }
 
-// LoadLastGood reads a config saved by SaveLastGood. Sources are not
-// kept; packs are already merged in.
+// LoadLastGood restores merged definitions and their accepted hook authority.
 func LoadLastGood(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	c, err := Parse(b)
+	c, err := parseLastGood(b)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", LastGoodName, err)
 	}
 	return c, nil
+}
+
+func parseLastGood(b []byte) (*Config, error) {
+	var keys map[string]yaml.RawMessage
+	if err := yaml.Unmarshal(b, &keys); err != nil {
+		return nil, err
+	}
+	var metadata *lastGoodMetadata
+	if keys["config"] != nil || keys["metadata"] != nil {
+		var snapshot lastGoodSnapshot
+		if err := yaml.UnmarshalWithOptions(b, &snapshot, yaml.Strict()); err != nil {
+			return nil, err
+		}
+		if len(snapshot.Config) == 0 || snapshot.Metadata == nil {
+			return nil, errors.New("last-good snapshot requires config and metadata")
+		}
+		var err error
+		b, err = yaml.Marshal(snapshot.Config)
+		if err != nil {
+			return nil, err
+		}
+		metadata = snapshot.Metadata
+	}
+	c, err := Parse(b)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateLastGoodMetadata(c, metadata); err != nil {
+		return nil, err
+	}
+	if metadata != nil {
+		c.Instances, c.HookDigests = metadata.Instances, metadata.HookDigests
+	}
+	return c, nil
+}
+
+func validateLastGoodMetadata(c *Config, metadata *lastGoodMetadata) error {
+	entries := []string{}
+	for _, workflow := range c.Workflows {
+		entries = append(entries, workflow.OnStart, workflow.OnStepCompleted)
+	}
+	for _, trigger := range c.Triggers {
+		entries = append(entries, trigger.Handler)
+	}
+	if metadata != nil {
+		if metadata.Version != 1 {
+			return fmt.Errorf("unsupported last-good metadata version %d", metadata.Version)
+		}
+		if metadata.Instances == nil {
+			return errors.New("last-good metadata requires authoritative instances")
+		}
+		for _, instance := range metadata.Instances {
+			if strings.TrimSpace(instance.Path) == "" || instance.Prefix != "" && !prefixPattern.MatchString(instance.Prefix) {
+				return errors.New("last-good metadata contains an invalid pack instance")
+			}
+		}
+	}
+	for _, entry := range entries {
+		if entry == "" {
+			continue
+		}
+		if metadata == nil || strings.TrimSpace(metadata.HookDigests[entry]) == "" {
+			return fmt.Errorf("hook %q requires accepted last-good metadata and digest", entry)
+		}
+	}
+	return nil
 }
 
 // LoadOrLastGood loads the root's config. If only a pack fails and a

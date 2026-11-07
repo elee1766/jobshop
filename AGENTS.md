@@ -42,6 +42,8 @@ one derivation per Go package; without it, one `buildGo127Module` derivation.
   hash. Update `vendorHash` in `nix/package.nix` in the same commit, or the
   nix CI job fails with `hash mismatch in fixed-output derivation`. go2nix
   needs nothing: it reads `go.sum`.
+- Track new Go source files before calculating the hash: vendoring follows
+  source imports, and Nix's Git source omits untracked files.
 - Get the new hash locally, without the plugin: set `vendorHash =
   lib.fakeHash;`, run `nix build .#jobshop.goModules 2>&1 | grep got:`, paste the `got:` value back. Then
   `nix build .#jobshop && ./result/bin/jobshop version` must pass.

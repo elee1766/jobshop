@@ -46,6 +46,8 @@ func (r ReloadConfig) check() error {
 type WatchPaths struct {
 	Files []string
 	Dirs  []string
+	// CUEDirs watch direct CUE siblings, without walking entire checkouts.
+	CUEDirs []string
 }
 
 func (w *WatchPaths) addFile(p string) {
@@ -57,6 +59,12 @@ func (w *WatchPaths) addFile(p string) {
 func (w *WatchPaths) addDir(p string) {
 	if p = filepath.Clean(p); !slices.Contains(w.Dirs, p) {
 		w.Dirs = append(w.Dirs, p)
+	}
+}
+
+func (w *WatchPaths) addCUEDir(p string) {
+	if p = filepath.Clean(p); !slices.Contains(w.CUEDirs, p) {
+		w.CUEDirs = append(w.CUEDirs, p)
 	}
 }
 

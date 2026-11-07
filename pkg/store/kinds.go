@@ -204,14 +204,28 @@ const DefaultReviewRounds = 3
 // RunFields is the engine state of a workflow run. Its steps are its
 // children (parent_id).
 type RunFields struct {
-	Workflow string            `json:"workflow"`
-	Pack     string            `json:"pack,omitempty"` // file that declared the workflow
-	Vars     map[string]string `json:"vars,omitempty"`
-	Key      string            `json:"key,omitempty"` // dedup: one open run per workflow and key
-	State    string            `json:"state"`
+	Inputs     map[string]any    `json:"inputs,omitempty"`
+	Automation *RunAutomation    `json:"automation,omitempty"`
+	Workflow   string            `json:"workflow"`
+	Pack       string            `json:"pack,omitempty"` // file that declared the workflow
+	Vars       map[string]string `json:"vars,omitempty"`
+	Key        string            `json:"key,omitempty"` // dedup: one open run per workflow and key
+	State      string            `json:"state"`
 	// Escalations counts needs_human transitions; each files one
 	// escalation ticket keyed on it.
 	Escalations int `json:"escalations,omitempty"`
+}
+
+// RunAutomation pins hook identity and acknowledges atomic action batches.
+type RunAutomation struct {
+	OnStart         string           `json:"on_start"`
+	OnStepCompleted string           `json:"on_step_completed"`
+	Digest          string           `json:"digest"`
+	Version         int64            `json:"version"`
+	Applied         []string         `json:"applied,omitempty"`
+	Completed       map[string]int64 `json:"completed,omitempty"`
+	After           []string         `json:"after,omitempty"`
+	Output          map[string]any   `json:"output,omitempty"`
 }
 
 // Validate implements Fields.
@@ -259,11 +273,14 @@ func (f BatchFields) Validate() error {
 
 // StepFields places a step ticket in its run.
 type StepFields struct {
-	Run      string `json:"run"`
-	Step     string `json:"step"`
-	Index    int    `json:"index"`
-	Retries  int    `json:"retries"`
-	Failures int    `json:"failures"`
+	Inputs           map[string]any `json:"inputs,omitempty"`
+	StructuredOutput map[string]any `json:"structured_output,omitempty"`
+	OutputSchema     map[string]any `json:"output_schema,omitempty"`
+	Run              string         `json:"run"`
+	Step             string         `json:"step"`
+	Index            int            `json:"index"`
+	Retries          int            `json:"retries"`
+	Failures         int            `json:"failures"`
 	// Wait parks the step until outside state holds (#381).
 	Wait *Wait `json:"wait,omitempty"`
 	// Resources are the resource keys the step holds while in progress
@@ -377,6 +394,7 @@ func StepFailure(t *Ticket) (f StepFields, exhausted, isStep bool, err error) {
 		return f, false, true, err
 	}
 	f.Failures++
+	f.StructuredOutput = nil
 	b, err := json.Marshal(f)
 	if err != nil {
 		return f, false, true, err
@@ -444,6 +462,7 @@ func NormalizeFields(k Kind, raw json.RawMessage) (json.RawMessage, error) {
 	}
 	if len(bytes.TrimSpace(raw)) > 0 {
 		dec := json.NewDecoder(bytes.NewReader(raw))
+		dec.UseNumber()
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(f); err != nil {
 			return nil, fmt.Errorf("%w: %s fields: %w", ErrInvalid, k, err)
@@ -461,7 +480,9 @@ func DecodeFields[T Fields](t Ticket) (T, error) {
 	if len(t.Fields) == 0 {
 		return f, nil
 	}
-	err := json.Unmarshal(t.Fields, &f)
+	dec := json.NewDecoder(bytes.NewReader(t.Fields))
+	dec.UseNumber()
+	err := dec.Decode(&f)
 	return f, err
 }
 

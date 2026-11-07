@@ -64,6 +64,13 @@ func (m batchMember) firstStep() string {
 	return m.newRun.Tickets[1].ID
 }
 
+func (m batchMember) runID() string {
+	if m.adopted {
+		return m.run.ID
+	}
+	return m.newRun.Tickets[0].ID
+}
+
 func (m batchMember) lastStep() string {
 	if m.adopted {
 		return m.steps[len(m.steps)-1].ID
@@ -110,6 +117,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 		}
 	}
 	proj := plans[0].proj
+	dynamic := plans[0].w.OnStart != ""
 
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
@@ -133,6 +141,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 		return nil, err
 	}
 	g := store.Graph{
+		Fields: map[string]json.RawMessage{}, Revisions: map[string]int64{}, Children: map[string]int64{},
 		Tickets:  []store.NewTicket{{ID: batchID, Project: proj, Kind: store.KindBatch, Title: "Batch " + p.Key, Fields: bf}},
 		Reparent: map[string]string{},
 	}
@@ -153,7 +162,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 			if err != nil {
 				return nil, err
 			}
-			if len(steps) == 0 {
+			if len(steps) == 0 && !dynamic {
 				return nil, fmt.Errorf("%w: issue %s: run %s has no steps", store.ErrInvalid, n, run.ID)
 			}
 			m.run, m.steps, m.adopted = run, steps, true
@@ -171,6 +180,58 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	}
 	for _, pr := range pairs {
 		a, b := members[pr[0]], members[pr[1]]
+		if dynamic {
+			g.Edges = append(g.Edges, store.Edge{From: b.runID(), To: a.runID(), Kind: store.EdgeBlocks})
+			var fields store.RunFields
+			var raw json.RawMessage
+			if b.adopted {
+				raw = b.run.Fields
+			} else {
+				raw = b.newRun.Tickets[0].Fields
+			}
+			if err := json.Unmarshal(raw, &fields); err != nil {
+				return nil, err
+			}
+			if fields.Automation == nil {
+				return nil, fmt.Errorf("%w: cannot order an adopted static run as a hook workflow", store.ErrInvalid)
+			}
+			if !slices.Contains(fields.Automation.After, a.runID()) {
+				fields.Automation.After = append(fields.Automation.After, a.runID())
+			}
+			data, err := json.Marshal(fields)
+			if err != nil {
+				return nil, err
+			}
+			if b.adopted {
+				g.Fields[b.run.ID] = data
+				g.Revisions[b.run.ID] = b.run.Revision
+				g.Children[b.run.ID] = int64(len(b.steps))
+				for _, step := range b.steps {
+					f, err := store.DecodeFields[store.StepFields](step)
+					if err != nil {
+						return nil, err
+					}
+					if len(f.Needs) > 0 {
+						continue
+					}
+					if step.Status != store.StatusOpen || step.Holder != "" {
+						return nil, fmt.Errorf("%w: run %s has already started", store.ErrNotHolder, b.run.ID)
+					}
+					g.Unclaimed = append(g.Unclaimed, step.ID)
+					g.Edges = append(g.Edges, store.Edge{From: step.ID, To: a.runID(), Kind: store.EdgeBlocks})
+				}
+				b.run.Fields = data
+			} else {
+				b.newRun.Tickets[0].Fields = data
+				for i := range g.Tickets {
+					if g.Tickets[i].ID == b.runID() {
+						g.Tickets[i].Fields = data
+						break
+					}
+				}
+			}
+			continue
+		}
 		first := b.firstStep()
 		if b.adopted {
 			// An edge on a claimed step does not stop the session working
@@ -196,6 +257,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 		return nil, err
 	}
 	res.Adopted = adopted
+	c.kickHooks()
 	return res, nil
 }
 

@@ -1,0 +1,10 @@
+# This fixture has no capability grants and starts no sessions automatically.
+pack: pack.cue
+reload:
+  watch: true
+automation:
+  timeout: 10s
+  max_steps: 100000
+  output_bytes: 65536
+jev:
+  enabled: false

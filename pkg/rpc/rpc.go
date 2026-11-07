@@ -65,6 +65,8 @@ const (
 	MethodTriggerList      = "trigger.list"
 	MethodConfigShow       = "config.show"
 	MethodRunStart         = "run.start"
+	MethodAutomationList   = "automation.list"
+	MethodAutomationShow   = "automation.show"
 	MethodRunShow          = "run.show"
 	MethodRunList          = "run.list"
 	MethodRunCancel        = "run.cancel"
@@ -380,8 +382,9 @@ type UpsertResult struct {
 
 // CloseParams closes a ticket. In a session scope the session must hold it.
 type CloseParams struct {
-	ID         string `json:"id,omitempty"`
-	Resolution string `json:"resolution,omitempty"` // default "done"
+	Output     map[string]any `json:"output,omitempty"`
+	ID         string         `json:"id,omitempty"`
+	Resolution string         `json:"resolution,omitempty"` // default "done"
 	// Outcome is a step's result word (approve, reject, ...), stored in
 	// its fields for later steps' when conditions (#385). Steps only.
 	Outcome string `json:"outcome,omitempty"`
@@ -1218,6 +1221,7 @@ type ConfigWatch struct {
 // RunStartParams starts a workflow run. Key, when set, dedups: an open run
 // of the same workflow and key is returned instead of a new one.
 type RunStartParams struct {
+	Inputs   map[string]any    `json:"inputs,omitempty"`
 	Workflow string            `json:"workflow"`
 	Vars     map[string]string `json:"vars,omitempty"`
 	Key      string            `json:"key,omitempty"`

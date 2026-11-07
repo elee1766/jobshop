@@ -352,6 +352,10 @@ Commands:
     Load and validate a config file with its packs, without a controller.
     Exit 1 on error.
 
+  config resolve [flags]
+    Print normalized resolved configuration for migration comparison, without a
+    controller.
+
   memory write <scope> [flags]
     Write a local memory file under <root>/memory and record the edit (#592).
 
@@ -457,6 +461,12 @@ Commands:
 
   docs [<topic>] [flags]
     Print links to the docs for this binary (packs, readme, llm). Needs no root.
+
+  automation list [flags]
+    List durable hook invocations, newest first (admin).
+
+  automation show <id>
+    Show a hook invocation, attempts and ordered external-call evidence (admin).
 
 Run "jobshop <command> --help" for more information on a command.
 ```
@@ -1094,26 +1104,28 @@ Arguments:
   [<id>]    Ticket id (default: the session's current ticket).
 
 Flags:
-  -h, --help                 Show context-sensitive help.
-      --root=STRING          Jobshop root directory (holds jobshop.yaml,
-                             the database, sockets and sessions). Default:
-                             nearest ancestor of the cwd containing jobshop.yaml
-                             ($JOBSHOP_ROOT).
-      --socket=STRING        Socket to talk to. Defaults to the session
-                             CLI socket, else the root's admin socket
-                             ($JOBSHOP_SOCKET).
+  -h, --help                  Show context-sensitive help.
+      --root=STRING           Jobshop root directory (holds jobshop.yaml, the
+                              database, sockets and sessions). Default: nearest
+                              ancestor of the cwd containing jobshop.yaml
+                              ($JOBSHOP_ROOT).
+      --socket=STRING         Socket to talk to. Defaults to the session
+                              CLI socket, else the root's admin socket
+                              ($JOBSHOP_SOCKET).
 
-  -r, --resolution="done"    Resolution: done, failed, rebase (reopen a step
-                             without counting a failure), request_changes
-                             (a review step: reopen the step it reviews with
-                             --comment as findings), cancelled. A workflow step
-                             takes only these; put text in a comment.
-      --outcome=STRING       Workflow step outcome word (approve, reject,
-                             ...); later steps' when: conditions read it.
-                             request_changes is the request_changes resolution.
-      --comment=STRING       Comment added before closing; with request_changes,
-                             the findings for the reopened step (required).
-                             Use - to read stdin.
+  -r, --resolution="done"     Resolution: done, failed, rebase (reopen a step
+                              without counting a failure), request_changes
+                              (a review step: reopen the step it reviews with
+                              --comment as findings), cancelled. A workflow step
+                              takes only these; put text in a comment.
+      --outcome=STRING        Workflow step outcome word (approve, reject,
+                              ...); later steps' when: conditions read it.
+                              request_changes is the request_changes resolution.
+      --output-file=STRING    Structured workflow step output as a JSON object,
+                              validated before closing. Use - to read stdin.
+      --comment=STRING        Comment added before closing; with
+                              request_changes, the findings for the reopened
+                              step (required). Use - to read stdin.
 ```
 
 ## jobshop ticket reopen
@@ -1200,26 +1212,28 @@ Arguments:
   [<id>]    Ticket id (default: the session's current ticket).
 
 Flags:
-  -h, --help                 Show context-sensitive help.
-      --root=STRING          Jobshop root directory (holds jobshop.yaml,
-                             the database, sockets and sessions). Default:
-                             nearest ancestor of the cwd containing jobshop.yaml
-                             ($JOBSHOP_ROOT).
-      --socket=STRING        Socket to talk to. Defaults to the session
-                             CLI socket, else the root's admin socket
-                             ($JOBSHOP_SOCKET).
+  -h, --help                  Show context-sensitive help.
+      --root=STRING           Jobshop root directory (holds jobshop.yaml, the
+                              database, sockets and sessions). Default: nearest
+                              ancestor of the cwd containing jobshop.yaml
+                              ($JOBSHOP_ROOT).
+      --socket=STRING         Socket to talk to. Defaults to the session
+                              CLI socket, else the root's admin socket
+                              ($JOBSHOP_SOCKET).
 
-  -r, --resolution="done"    Resolution: done, failed, rebase (reopen a step
-                             without counting a failure), request_changes
-                             (a review step: reopen the step it reviews with
-                             --comment as findings), cancelled. A workflow step
-                             takes only these; put text in a comment.
-      --outcome=STRING       Workflow step outcome word (approve, reject,
-                             ...); later steps' when: conditions read it.
-                             request_changes is the request_changes resolution.
-      --comment=STRING       Comment added before closing; with request_changes,
-                             the findings for the reopened step (required).
-                             Use - to read stdin.
+  -r, --resolution="done"     Resolution: done, failed, rebase (reopen a step
+                              without counting a failure), request_changes
+                              (a review step: reopen the step it reviews with
+                              --comment as findings), cancelled. A workflow step
+                              takes only these; put text in a comment.
+      --outcome=STRING        Workflow step outcome word (approve, reject,
+                              ...); later steps' when: conditions read it.
+                              request_changes is the request_changes resolution.
+      --output-file=STRING    Structured workflow step output as a JSON object,
+                              validated before closing. Use - to read stdin.
+      --comment=STRING        Comment added before closing; with
+                              request_changes, the findings for the reopened
+                              step (required). Use - to read stdin.
 ```
 
 ## jobshop comment
@@ -3529,6 +3543,10 @@ Commands:
   config check [flags]
     Load and validate a config file with its packs, without a controller.
     Exit 1 on error.
+
+  config resolve [flags]
+    Print normalized resolved configuration for migration comparison, without a
+    controller.
 ```
 
 ## jobshop config show
@@ -3570,6 +3588,29 @@ Flags:
       --file=STRING            Config file. Default: the root's jobshop.yaml.
       --replace=OLD=NEW,...    OLD=NEW: read packs whose path starts with OLD
                                from NEW instead, e.g. the new commit's checkout.
+```
+
+## jobshop config resolve
+
+```
+Usage: jobshop config resolve [flags]
+
+Print normalized resolved configuration for migration comparison, without a
+controller.
+
+Flags:
+  -h, --help                   Show context-sensitive help.
+      --root=STRING            Jobshop root directory (holds jobshop.yaml, the
+                               database, sockets and sessions). Default: nearest
+                               ancestor of the cwd containing jobshop.yaml
+                               ($JOBSHOP_ROOT).
+      --socket=STRING          Socket to talk to. Defaults to the session
+                               CLI socket, else the root's admin socket
+                               ($JOBSHOP_SOCKET).
+
+      --file=STRING            Config file. Default: the root's jobshop.yaml.
+      --format="json"          Output format.
+      --replace=OLD=NEW,...    OLD=NEW: read packs from a different checkout.
 ```
 
 ## jobshop memory
@@ -4533,6 +4574,72 @@ Print links to the docs for this binary (packs, readme, llm). Needs no root.
 
 Arguments:
   [<topic>]    Topic (packs, desk-plugins, readme, llm). Empty lists topics.
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+```
+
+## jobshop automation
+
+```
+Usage: jobshop automation <command> [flags]
+
+Inspect durable automation invocations and external-call traces (admin).
+
+Flags:
+  -h, --help             Show context-sensitive help.
+      --root=STRING      Jobshop root directory (holds jobshop.yaml,
+                         the database, sockets and sessions). Default:
+                         nearest ancestor of the cwd containing jobshop.yaml
+                         ($JOBSHOP_ROOT).
+      --socket=STRING    Socket to talk to. Defaults to the session CLI socket,
+                         else the root's admin socket ($JOBSHOP_SOCKET).
+
+Commands:
+  automation list [flags]
+    List durable hook invocations, newest first (admin).
+
+  automation show <id>
+    Show a hook invocation, attempts and ordered external-call evidence (admin).
+```
+
+## jobshop automation list
+
+```
+Usage: jobshop automation list [flags]
+
+List durable hook invocations, newest first (admin).
+
+Flags:
+  -h, --help              Show context-sensitive help.
+      --root=STRING       Jobshop root directory (holds jobshop.yaml,
+                          the database, sockets and sessions). Default:
+                          nearest ancestor of the cwd containing jobshop.yaml
+                          ($JOBSHOP_ROOT).
+      --socket=STRING     Socket to talk to. Defaults to the session CLI socket,
+                          else the root's admin socket ($JOBSHOP_SOCKET).
+
+      --run=STRING        Filter by workflow run ticket ID.
+      --trigger=STRING    Filter by trigger name.
+      --state=STRING      Filter by invocation state.
+      --limit=50          Maximum invocations to return.
+```
+
+## jobshop automation show
+
+```
+Usage: jobshop automation show <id>
+
+Show a hook invocation, attempts and ordered external-call evidence (admin).
+
+Arguments:
+  <id>    Durable hook invocation ID.
 
 Flags:
   -h, --help             Show context-sensitive help.

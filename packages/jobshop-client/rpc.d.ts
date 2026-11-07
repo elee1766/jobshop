@@ -14,6 +14,8 @@ export interface RpcMethods {
   "attention": { params: Record<string, never>; result: AttentionResult };
   "attention.answer": { params: AttentionAnswerParams; result: AttentionChatResult };
   "attention.chat": { params: AttentionChatParams; result: AttentionChatResult };
+  "automation.list": { params: AutomationListParams; result: Record[] };
+  "automation.show": { params: IDParams; result: AutomationResult };
   "batch.list": { params: BatchListParams; result: Ticket[] };
   "batch.show": { params: IDParams; result: BatchResult };
   "batch.start": { params: BatchStartParams; result: BatchResult };
@@ -292,6 +294,20 @@ export interface AttentionResult {
   items: AttentionItem[];
 }
 
+export interface AutomationListParams {
+  run?: string;
+  trigger?: string;
+  state?: string;
+  limit?: number;
+}
+
+export interface AutomationResult {
+  invocation: Record;
+  attempts: Record[];
+  calls: Record[];
+  truncated?: boolean;
+}
+
 export interface BatchListParams {
   project?: string;
   limit?: number;
@@ -353,6 +369,7 @@ export interface ClaimResult {
 }
 
 export interface CloseParams {
+  output?: Record<string, unknown>;
   id?: string;
   resolution?: string;
   outcome?: string;
@@ -1014,6 +1031,19 @@ export interface RecallParams {
   ticket_id?: string;
 }
 
+export interface Record {
+  Collection: string;
+  Key: string;
+  State: string;
+  Value: unknown;
+  Revision: number;
+  Holder: string;
+  LeaseUntil: string;
+  Attempts: number;
+  CreatedAt: string;
+  UpdatedAt: string;
+}
+
 export interface ReleaseParams {
   id?: string;
   reason?: string;
@@ -1082,6 +1112,7 @@ export interface RunResumeParams {
 }
 
 export interface RunStartParams {
+  inputs?: Record<string, unknown>;
   workflow: string;
   vars?: Record<string, string>;
   key?: string;

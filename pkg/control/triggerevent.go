@@ -167,6 +167,9 @@ func (ev triggerEvent) matches(source string, m config.EventMatch) bool {
 // triggerOn reports whether ev matches one of tr.On.
 func triggerOn(tr config.Trigger, ev triggerEvent) bool {
 	for _, o := range tr.On {
+		if o.Source != "" && strings.EqualFold(o.Source, ev["source"]) && (o.Event == "" || strings.EqualFold(o.Event, ev["event"])) {
+			return true
+		}
 		if o.GitHub != nil && ev.matches(ingest.SourceGitHub, *o.GitHub) {
 			return true
 		}
@@ -226,7 +229,7 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 	for _, it := range items {
 		ev := eventOf(it)
 		for _, name := range slices.Sorted(maps.Keys(trs)) {
-			if len(trs[name].On) > 0 && triggerOn(trs[name], ev) {
+			if trs[name].Handler == "" && len(trs[name].On) > 0 && triggerOn(trs[name], ev) {
 				fires = append(fires, fire{name, ev})
 			}
 		}

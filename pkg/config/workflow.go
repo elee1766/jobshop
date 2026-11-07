@@ -26,6 +26,9 @@ const (
 // section 6, "Runs and workflows"). Step titles and prompts are templates
 // filled at run start from PackVars plus the run's vars.
 type Workflow struct {
+	Project         string `yaml:"project,omitempty"`
+	OnStart         string `yaml:"on_start,omitempty"`
+	OnStepCompleted string `yaml:"on_step_completed,omitempty"`
 	// Enabled false keeps the workflow validated but not loaded (JOB-24).
 	Enabled *bool `yaml:"enabled,omitempty"`
 	// Vars are the var names a run must supply. Pack vars give defaults.
@@ -315,8 +318,17 @@ func checkTriggerTemplates(tr *Trigger, templates map[string]string) error {
 // checkTriggerOn validates on: and fallback:.
 func checkTriggerOn(tr *Trigger) error {
 	for i, e := range tr.On {
-		if (e.GitHub == nil) == (e.Linear == nil) {
-			return fmt.Errorf("on[%d]: set exactly one of github and linear", i)
+		n := 0
+		for _, set := range []bool{e.GitHub != nil, e.Linear != nil, e.Source != ""} {
+			if set {
+				n++
+			}
+		}
+		if n != 1 {
+			return fmt.Errorf("on[%d]: set exactly one of github, linear and source", i)
+		}
+		if e.Event != "" && e.Source == "" {
+			return fmt.Errorf("on[%d]: event needs source", i)
 		}
 	}
 	if tr.Fallback != "" {
@@ -473,6 +485,18 @@ func (c *Config) checkWorkflow(name string, w *Workflow) error {
 		if err := c.checkEscalation(w.Escalate); err != nil {
 			return fmt.Errorf("escalate: %w", err)
 		}
+	}
+	if w.OnStart != "" || w.OnStepCompleted != "" {
+		if w.OnStart == "" || w.OnStepCompleted == "" || len(w.Steps) != 0 {
+			return errors.New("hook workflows require on_start and on_step_completed, without steps")
+		}
+		if w.Project == "" {
+			w.Project = c.DefaultProject
+		}
+		if _, ok := c.Projects[w.Project]; !ok {
+			return fmt.Errorf("unknown project %q", w.Project)
+		}
+		return nil
 	}
 	if len(w.Steps) == 0 {
 		return errors.New("steps: at least one step is required")

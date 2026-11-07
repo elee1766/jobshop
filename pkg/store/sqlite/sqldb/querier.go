@@ -6,6 +6,7 @@ import (
 
 // Querier is the query set the store core runs; backends wrap it (Driver.Bind).
 type Querier interface {
+	CountChildren(ctx context.Context, parent string) (int64, error)
 	AddTicketMeta(ctx context.Context, arg AddTicketMetaParams) error
 	AddTicketResource(ctx context.Context, arg AddTicketResourceParams) error
 	// BlockingPathExists reports whether start reaches target through blocking

@@ -24,8 +24,14 @@ import (
 
 // Config is the resolved service and work configuration.
 type Config struct {
+	// HookDigests are populated by the controller when it compiles a live snapshot.
+	HookDigests map[string]string `yaml:"-" json:"-"`
 	// Pack names the root work-definition file, relative to jobshop.yaml.
 	Pack string `yaml:"pack,omitempty"`
+	// Automation grants host capabilities to trusted Starlark hooks.
+	Automation Automation `yaml:"automation,omitempty"`
+	// Jev configures the optional model-decision hook capability.
+	Jev Jev `yaml:"jev,omitempty"`
 	// DefaultProject is used when a request names no project.
 	DefaultProject string             `yaml:"default_project"`
 	Projects       map[string]Project `yaml:"projects"`
@@ -124,6 +130,8 @@ type Config struct {
 // Trigger creates a ticket from Ticket, or starts a workflow run from Run,
 // while every condition in When holds and nothing it created is open.
 type Trigger struct {
+	Handler string         `yaml:"handler,omitempty"`
+	Args    map[string]any `yaml:"args,omitempty"`
 	// Enabled false keeps the trigger validated but not loaded (JOB-24).
 	Enabled *bool          `yaml:"enabled,omitempty"`
 	When    TriggerWhen    `yaml:"when"`
@@ -160,6 +168,8 @@ const DefaultTriggerFallback = 10 * time.Minute
 // TriggerEvent matches ingest deliveries from one source. Set exactly
 // one of GitHub and Linear.
 type TriggerEvent struct {
+	Source string      `yaml:"source,omitempty"`
+	Event  string      `yaml:"event,omitempty"`
 	GitHub *EventMatch `yaml:"github"`
 	Linear *EventMatch `yaml:"linear"`
 }
@@ -1477,6 +1487,9 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 	}
 	c.Sources = sources
+	if err := c.checkAutomation(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
+	}
 	if c.Pack != "" || len(c.Packs) > 0 {
 		return nil, fmt.Errorf("%s: pack and packs need a config file location", FileName)
 	}
@@ -1831,13 +1844,19 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 		return fmt.Errorf("name must match %s", namePattern)
 	}
 	w := tr.When
+	if len(w.Stall) > 0 && tr.Handler != "" {
+		return errors.New("handler cannot be combined with when.stall")
+	}
 	if len(w.Stall) > 0 {
 		return c.checkStallTrigger(tr)
 	}
 	if tr.MaxRuns != 0 {
 		return errors.New("max_runs needs when.stall")
 	}
-	if tr.MaxOpen != 0 {
+	if tr.MaxOpen < 0 {
+		return errors.New("max_open must not be negative")
+	}
+	if tr.MaxOpen != 0 && tr.Handler == "" {
 		return errors.New("max_open needs when.stall")
 	}
 	if err := checkTriggerOn(tr); err != nil {
@@ -1919,13 +1938,16 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 		}
 	}
 	actions := 0
-	for _, set := range []bool{tr.Ticket != nil, tr.Run != nil, tr.Command != nil} {
+	for _, set := range []bool{tr.Ticket != nil, tr.Run != nil, tr.Command != nil, tr.Handler != ""} {
 		if set {
 			actions++
 		}
 	}
 	if actions != 1 {
-		return errors.New("set exactly one of ticket, run and command")
+		return errors.New("set exactly one of ticket, run, command and handler")
+	}
+	if tr.Handler != "" {
+		return nil
 	}
 	if tr.Run != nil {
 		return c.checkTriggerRun(tr)

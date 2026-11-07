@@ -160,12 +160,21 @@ type Claim struct {
 // with Note as the findings. Past the closing step's review round cap
 // nothing is reopened.
 type Outcome struct {
-	Close  string
-	Pool   string
-	Note   string
-	Until  time.Time
-	Reason string
-	Reopen string
+	// StepResult is applied only after the closing claim has been fenced.
+	StepResult *StepResult
+	Close      string
+	Pool       string
+	Note       string
+	Until      time.Time
+	Reason     string
+	Reopen     string
+}
+
+// StepResult is an attempt's structured result, committed with its close.
+type StepResult struct {
+	Revision int64
+	Outcome  string
+	Output   map[string]any
 }
 
 // NewTicket is the input to Create. ID, if empty, is generated.
@@ -193,6 +202,12 @@ const DefaultPriority = 2
 // insert Tickets (a parent before its children), re-parent, remove
 // RemoveEdges (a missing edge is ErrNotFound), add Edges.
 type Graph struct {
+	// Revisions checks the entire read set before any graph mutation.
+	Revisions map[string]int64
+	Children  map[string]int64
+	// Fields and Close are applied atomically with newly created tickets.
+	Fields      map[string]json.RawMessage
+	Close       map[string]string
 	Tickets     []NewTicket
 	Reparent    map[string]string // existing ticket id -> new parent id
 	Edges       []Edge

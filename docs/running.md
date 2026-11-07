@@ -3,6 +3,8 @@
 Moved from the README (2026-11-05, #551). Pack authoring is in
 [packs.md](packs.md), isolation in [isolation.md](isolation.md),
 webhooks in [ingest.md](ingest.md), NixOS in [nixos.md](nixos.md).
+For service YAML, CUE packs, Starlark callbacks and migration, start at
+[configuration](configuration/README.md).
 
 ## Concepts
 

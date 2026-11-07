@@ -214,12 +214,29 @@ func Handoff(t *store.Ticket, c *store.Claim, pool, note string) (map[string]any
 // close counts a step failure (and below the limit reopens it); a
 // rebase close of a step reopens it without counting. It returns the
 // history diff and the controller note.
-func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time) (map[string]any, string, error) {
+func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time, results ...*store.StepResult) (map[string]any, string, error) {
 	if t.Status == store.StatusClosed {
 		return nil, "", fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
 	}
 	if c != nil {
 		if err := Holds(*t, *c); err != nil {
+			return nil, "", err
+		}
+	}
+	if len(results) > 0 && results[0] != nil {
+		if results[0].Revision != 0 && results[0].Revision != t.Revision {
+			return nil, "", fmt.Errorf("%w: step changed before close", store.ErrConflict)
+		}
+		if t.Kind != store.KindStep {
+			return nil, "", fmt.Errorf("%w: structured results require a step", store.ErrInvalid)
+		}
+		f, err := store.DecodeFields[store.StepFields](*t)
+		if err != nil {
+			return nil, "", err
+		}
+		f.Outcome, f.StructuredOutput = results[0].Outcome, results[0].Output
+		t.Fields, err = json.Marshal(f)
+		if err != nil {
 			return nil, "", err
 		}
 	}
@@ -261,6 +278,7 @@ func requestChangesRound(t *store.Ticket, d map[string]any) (map[string]any, str
 		return nil, "", err
 	}
 	f.ReviewRounds++
+	f.StructuredOutput = nil
 	if t.Fields, err = json.Marshal(f); err != nil {
 		return nil, "", err
 	}
@@ -294,6 +312,7 @@ func RequestChanges(target *store.Ticket, reviewer store.Ticket, findings string
 	tf.Changes = &store.StepChanges{
 		Step: rf.Step, Ticket: reviewer.ID, Round: rf.ReviewRounds, Max: rf.ReviewRoundLimit(), Findings: findings,
 	}
+	tf.StructuredOutput = nil
 	if target.Fields, err = json.Marshal(tf); err != nil {
 		return nil, "", err
 	}
@@ -311,6 +330,16 @@ func ReopenClosed(t *store.Ticket, ifRev int64) error {
 	}
 	if t.Status != store.StatusClosed {
 		return fmt.Errorf("%w: %s is not closed", store.ErrInvalid, t.ID)
+	}
+	if t.Kind == store.KindStep {
+		fields, err := store.DecodeFields[store.StepFields](*t)
+		if err != nil {
+			return err
+		}
+		fields.StructuredOutput = nil
+		if t.Fields, err = json.Marshal(fields); err != nil {
+			return err
+		}
 	}
 	reopenClosed(t)
 	return nil

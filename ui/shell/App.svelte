@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Chat, { type Chat as ChatInfo } from "./Chat.svelte";
   import Trace from "./Trace.svelte";
+  import HookAudit from "./HookAudit.svelte";
   import TraceSearch from "./TraceSearch.svelte";
   import TicketDetails from "./TicketDetails.svelte";
   import { client } from "./lib/api.svelte.js";
@@ -20,14 +21,16 @@
     Event,
   } from "../../packages/jobshop-client/rpc.js";
 
-  import type { LiveEvent } from "../../packages/jobshop-client/index.js";
+  import type { LiveEvent, AutomationAudit, SystemView } from "../../packages/jobshop-client/index.js";
   let chats: ChatInfo[] = $state([]);
   let view = $state("home");
   let phoneTab = $state("waiting");
   let attention: AttentionItem[] = $state([]);
   let runs: RunResult[] = $state([]);
   let now = $state(Date.now());
-  let system: any = $state(null);
+  let system: SystemView | null = $state(null);
+  let auditRef = $state("");
+  let audit: AutomationAudit | { id: string; error: string } | null = $state(null);
   let improvements: any = $state(null);
   let trace: any = $state(null);
   let traceRef = $state("");
@@ -106,6 +109,7 @@
     for (const [key, value] of Object.entries({
       ref: traceRef,
       inspect: inspectRef,
+      audit: auditRef,
       filter,
       since: sinceAway ? "1" : "",
     })) {
@@ -149,6 +153,9 @@
         system = event.data;
         now = Date.now();
         break;
+      case "automation":
+        if (event.data.id === auditRef) audit = event.data;
+        break;
       case "scheduler":
         now = Date.now();
         if (system && event.data.system)
@@ -177,6 +184,11 @@
         chat?.receiveCommand(event.data);
         break;
     }
+  }
+  function openAudit(id: string) {
+    if (auditRef !== id) audit = null;
+    auditRef = id;
+    navigate("system");
   }
   function openTrace(ref: string) {
     if (ref !== traceRef || inspectRef) {
@@ -345,6 +357,9 @@
       ? params.get("view")! : "home";
     traceRef = params.get("ref") || "";
     inspectRef = params.get("inspect") || "";
+    const nextAudit = params.get("audit") || "";
+    if (auditRef !== nextAudit) audit = null;
+    auditRef = nextAudit;
     filter = params.get("filter") || "";
     sinceAway = params.get("since") === "1";
     restoreChat = params.get("chat") || "";
@@ -372,7 +387,7 @@
     let close = () => {};
     let streamKey: string | null = null;
     const connect = () => {
-      const key = view === "trace" ? traceRef + ":" + inspectRef : "";
+      const key = view === "trace" ? "trace:" + traceRef + ":" + inspectRef : view === "system" && auditRef ? "audit:" + auditRef : "";
       if (streamKey === key && navigator.onLine) return;
       close();
       streamKey = null;
@@ -381,6 +396,7 @@
       close = client.live(receive, {
         trace: view === "trace" ? traceRef : undefined,
         inspect: view === "trace" ? inspectRef : undefined,
+        audit: view === "system" ? auditRef : undefined,
         onState: (state, detail) => {
           connected = state === "connected";
           if (state === "error")
@@ -654,6 +670,9 @@
             />{/if}
             {#each journal as frame}<pre>{JSON.stringify(frame, null, 2)}</pre>{/each}
           </div>{/if}
+        {#if selected?.meta?.automation?.invocation}
+          <p class="section-body">automation invocation <button class="mono" onclick={() => openAudit(selected.meta.automation.invocation)}>{selected.meta.automation.invocation}</button></p>
+        {/if}
       {:else if view === "improvements"}
         <div class="tag">
           <span class="mono">/improvements</span>
@@ -699,6 +718,7 @@
           >
         </div>
         <div class="section-body">
+          <HookAudit summaries={system?.automation} selected={auditRef} detail={audit} onselect={openAudit} />
           <h2>pools</h2>
           <div class="table-scroll">
             <table class="mono">
@@ -710,8 +730,8 @@
                 ></thead
               ><tbody
                 >{#each system?.pools?.pools || [] as pool}<tr
-                    ><td>{pool.name || pool.pool}</td><td
-                      >{system.pools.quarantined?.[pool.name]
+                    ><td>{pool.name}</td><td
+                      >{system?.pools.quarantined?.[pool.name]
                         ? "quarantined"
                         : "ok"}</td
                     ><td>{pool.open} / {pool.max || "uncapped"}</td><td
@@ -752,7 +772,7 @@
                     ><td
                       ><button
                         disabled={!slot.ticket}
-                        onclick={() => openTrace(slot.ticket)}
+                        onclick={() => slot.ticket && openTrace(slot.ticket)}
                         >{slot.ticket || "–"}</button
                       ></td
                     ></tr

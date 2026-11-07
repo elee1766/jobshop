@@ -93,7 +93,8 @@ The rest is in [docs/running.md](docs/running.md).
 
 | Doc | What |
 | --- | --- |
-| [docs/packs.md](docs/packs.md) | Writing a pack, and the example packs |
+| [docs/configuration/](docs/configuration/README.md) | Service YAML, CUE packs, Starlark hooks and migration |
+| [docs/packs.md](docs/packs.md) | Legacy YAML pack authoring and existing example packs |
 | [docs/running.md](docs/running.md) | Concepts, running a root, config and secrets |
 | [docs/isolation.md](docs/isolation.md) | Sandbox, sockets, credentials, hooks, limits |
 | [docs/ingest.md](docs/ingest.md) | Webhooks and generic ingest |

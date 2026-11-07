@@ -46,6 +46,7 @@ export interface ChatSession {
 export interface LiveOptions extends StreamOptions {
   trace?: string;
   inspect?: string;
+  audit?: string;
 }
 export interface TraceView extends ShowResult {
   inspected?: Ticket;
@@ -55,16 +56,53 @@ export interface TraceView extends ShowResult {
   trace?: TraceNode;
   sessions?: Record<string, HolderInfo>;
 }
+export interface AutomationSummary {
+  key: string;
+  state: string;
+  revision: number;
+  attempts: number;
+  created_at: string;
+  updated_at: string;
+  trigger?: string;
+  run?: string;
+  step?: string;
+  entry: string;
+  event?: { source: string; event: string; delivery: string };
+  error?: string;
+}
+export interface AutomationRecord {
+  key: string;
+  state: string;
+  revision: number;
+  attempts: number;
+  created_at: string;
+  updated_at: string;
+  value: Record<string, any>;
+}
+export interface AutomationList {
+  items: AutomationSummary[];
+  truncated: boolean;
+}
+export interface AutomationAudit {
+  id: string;
+  invocation: AutomationRecord;
+  attempts: AutomationRecord[];
+  calls: AutomationRecord[];
+  truncated: boolean;
+}
+export interface SystemView {
+  status: SystemStatus;
+  pools: PoolStatusResult;
+  resources: ResourceListResult;
+  sessions: SessionInfo[];
+  ingest: IngestWorkersResult;
+  automation: AutomationList;
+}
 export interface LiveState {
   attention: AttentionResult;
   overview: { runs: RunResult[]; truncated: boolean };
-  system: {
-    status: SystemStatus;
-    pools: PoolStatusResult;
-    resources: ResourceListResult;
-    sessions: SessionInfo[];
-    ingest: IngestWorkersResult;
-  };
+  system: SystemView;
+  automation: AutomationAudit | { id: string; error: string };
   chats: { pool: string; sessions: ChatSession[] };
   improvements: { learnings: Learning[]; edits: MemoryEdit[] };
   trace: TraceView | { error: string };

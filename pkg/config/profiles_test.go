@@ -106,7 +106,8 @@ packs:
 	assert.Equal(t, []string{"/nix/store"}, c.SandboxFor("sap-dev").RO)
 	assert.Equal(t, "bubblewrap", c.SandboxFor("sap-dev").Backend)
 	assert.Empty(t, c.SandboxFor("own").RO)
-	assert.Empty(t, c.Warnings)
+	require.Len(t, c.Warnings, 1)
+	assert.Contains(t, c.Warnings[0], "YAML packs are deprecated")
 }
 
 // TestHostAttachesProfilesToPackPool: a host pool entry adds profiles to
