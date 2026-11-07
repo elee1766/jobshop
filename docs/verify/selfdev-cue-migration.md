@@ -16,6 +16,11 @@ jobcity. The prefixed acphost and operator packs remain YAML consumers.
 3. Exercise the actual callback workflows with a disposable controller. Check
    selected branches, request-changes retries and terminal outcomes. Do not send
    synthetic events to the live instance.
+   Add an unrelated pool and workflow while a callback run is active, reload,
+   and verify it can finish. The same run must not gain references introduced
+   by that reload. Changed code, grants or credential identities must still
+   stop execution. Verify prepared child-step retry routes against live policy,
+   not just the parent callback's direct actions.
 4. Install a binary containing the native packs before changing pack selection.
    Check the running executable, not a session's older `jobshop` binary. Wait for
    installed-source synchronization and verify the checkout contains `cue.mod`,
