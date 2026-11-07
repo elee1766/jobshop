@@ -18,11 +18,14 @@ import (
 
 // Program pins loaded source, credentials, authority, and the prompt asset root.
 type Program struct {
-	engine  *automation.Engine
-	entry   string
-	root    string
-	digest  string
-	secrets []string
+	engine *automation.Engine
+	entry  string
+	root   string
+	digest string
+	// authority is digest without the configuration around the callback:
+	// a run pins it so unrelated reloads do not strand the run.
+	authority string
+	secrets   []string
 }
 
 // LoadPrograms loads callbacks and binds source identity to configured host authority.
@@ -82,17 +85,23 @@ func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (ma
 		if err != nil {
 			return nil, fmt.Errorf("hook %s: %w", entry, err)
 		}
-		digest, err := hookManifestDigest(cfg, root, entry, dir, engine.Digest(), options)
+		digest, err := hookManifestDigest(cfg, root, entry, dir, engine.Digest(), options, true)
 		if err != nil {
 			return nil, err
 		}
-		programs[entry] = &Program{engine: engine, entry: local, root: dir, digest: digest, secrets: secrets}
+		authority, err := hookManifestDigest(cfg, root, entry, dir, engine.Digest(), options, false)
+		if err != nil {
+			return nil, err
+		}
+		programs[entry] = &Program{engine: engine, entry: local, root: dir, digest: digest, authority: authority, secrets: secrets}
 	}
 	return programs, nil
 }
 
 // Source bytes alone do not identify a callback's scope or host authority.
-func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, modules string, options automation.Options) (string, error) {
+// Without surroundings, owners, instances and the pool and workflow maps
+// are left out; a run pins its reference scope separately (RunScope).
+func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, modules string, options automation.Options, surroundings bool) (string, error) {
 	rootDir, err := filepath.Abs(root.Dir)
 	if err != nil {
 		return "", err
@@ -152,6 +161,9 @@ func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, module
 		Credentials       map[string]string
 		JevKey            string
 	}{1, rootDir, assetDir, resolvedRoot, resolvedAsset, entry, modules, owners, append([]config.PackInstance{}, cfg.Instances...), pools, workflows, cfg.Automation, cfg.Jev, credentials, hookKey(options.Jev.APIKey)}
+	if !surroundings {
+		manifest.Version, manifest.Owners, manifest.Instances, manifest.Pools, manifest.Workflows = 2, nil, nil, nil, nil
+	}
 	// Match the last-good serializer's empty collection normalization.
 	encoded, err := yaml.Marshal(manifest)
 	if err != nil {
@@ -168,11 +180,45 @@ func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, module
 	return hookKey(string(data)), nil
 }
 
-// WorkflowDigest pins both callback manifests for the lifetime of a workflow run.
+// WorkflowDigest is the full manifest pin of runs started before RunPin.
 func WorkflowDigest(programs map[string]*Program, w config.Workflow) string {
 	a, b := programs[w.OnStart], programs[w.OnStepCompleted]
 	if a == nil || b == nil {
 		return ""
 	}
 	return a.digest + ":" + b.digest
+}
+
+// runPinPrefix marks a RunPin, so a pinned run cannot match the legacy form.
+const runPinPrefix = "run2:"
+
+// ScopedRunPin reports whether pinned is a RunPin, whose run must carry
+// the reference scope it accepted at start.
+func ScopedRunPin(pinned string) bool { return strings.HasPrefix(pinned, runPinPrefix) }
+
+// RunPin pins a callback workflow run to its owner, selectors, code, roots
+// and host grants. Its reference scope is pinned separately in the run.
+func RunPin(programs map[string]*Program, name string, w config.Workflow) string {
+	a, b := programs[w.OnStart], programs[w.OnStepCompleted]
+	if a == nil || b == nil {
+		return ""
+	}
+	data, err := json.Marshal([]string{name, w.Project, w.OnStart, w.OnStepCompleted, a.authority, b.authority})
+	if err != nil {
+		return ""
+	}
+	return runPinPrefix + hookKey(string(data))
+}
+
+// RunPinned reports whether the active configuration still runs pinned for
+// workflow name: the RunPin, or the full manifest of an older run.
+func RunPinned(programs map[string]*Program, cfg *config.Config, name, pinned string) bool {
+	w, ok := cfg.Workflows[name]
+	if !ok || pinned == "" {
+		return false
+	}
+	if ScopedRunPin(pinned) {
+		return RunPin(programs, name, w) == pinned
+	}
+	return WorkflowDigest(programs, w) == pinned
 }

@@ -190,11 +190,11 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 		c.hookFailure(ctx, col, rec, in, errors.New("hook removed from active configuration"))
 		return
 	}
-	expected := program.digest
+	pinned := program.digest == in.Digest
 	if in.Run != "" {
-		expected = WorkflowDigest(runtime.Programs, runtime.Config.Workflows[in.RunInput.Workflow])
+		pinned = in.RunInput != nil && RunPinned(runtime.Programs, runtime.Config, in.RunInput.Workflow, in.Digest)
 	}
-	if expected != in.Digest {
+	if !pinned {
 		c.hookFailure(ctx, col, rec, in, errors.New("hook manifest changed: restore the pinned configuration before resuming"))
 		return
 	}

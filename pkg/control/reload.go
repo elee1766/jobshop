@@ -52,6 +52,12 @@ func newLiveConfig(cfg *config.Config, roots ...config.Root) (*liveConfig, error
 	if cfg.HookDigests != nil && !maps.Equal(cfg.HookDigests, snapshot.HookDigests) {
 		return nil, fmt.Errorf("accepted hook manifest changed: restore the accepted callback selectors, source, roots, instance scope and grants before using last-good configuration")
 	}
+	snapshot.HookRunPins = map[string]string{}
+	for name, w := range cfg.Workflows {
+		if w.OnStart != "" {
+			snapshot.HookRunPins[name] = hooks.RunPin(programs, name, w)
+		}
+	}
 	return &liveConfig{cfg: &snapshot, lease: lease, hooks: programs, runtime: &hooks.Runtime{Config: &snapshot, Programs: programs}}, nil
 }
 

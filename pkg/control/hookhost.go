@@ -129,6 +129,7 @@ func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]
 }
 
 func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.Invocation) error {
+	var automation *store.RunAutomation
 	if in.Run != "" {
 		run, err := c.store.Get(ctx, in.Run)
 		if err != nil {
@@ -138,6 +139,7 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		if err != nil {
 			return err
 		}
+		automation = f.Automation
 		if f.Automation != nil {
 			for _, applied := range f.Automation.Applied {
 				if applied == key {
@@ -158,15 +160,26 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 	if program == nil {
 		return errors.New("planned hook removed from active configuration")
 	}
-	expected := program.Digest()
+	pinned := program.Digest() == in.Digest
 	if in.Run != "" {
 		if in.RunInput == nil {
 			return errors.New("planned workflow hook has no accepted run input")
 		}
-		expected = hooks.WorkflowDigest(lc.hooks, lc.cfg.Workflows[in.RunInput.Workflow])
+		pinned = hooks.RunPinned(lc.hooks, lc.cfg, in.RunInput.Workflow, in.Digest)
 	}
-	if expected != in.Digest {
+	if !pinned {
 		return errors.New("planned hook manifest changed: restore the accepted configuration before applying actions")
+	}
+	// A run pin survives unrelated reloads, so recheck what the plan names.
+	for _, ticket := range in.Plan.Tickets {
+		if ticket.Pool != "" {
+			if pool, ok := lc.cfg.Pools[ticket.Pool]; !ok || pool.Project != ticket.Project {
+				return fmt.Errorf("planned pool %s changed: restore it before applying actions", ticket.Pool)
+			}
+		}
+	}
+	if err := checkPlannedTargets(lc.cfg, in, automation); err != nil {
+		return fmt.Errorf("%w: restore the accepted configuration before applying actions", err)
 	}
 	for _, ticket := range in.Plan.Tickets {
 		if ticket.Kind != store.KindRun {

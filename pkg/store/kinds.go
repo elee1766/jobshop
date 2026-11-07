@@ -218,14 +218,30 @@ type RunFields struct {
 
 // RunAutomation pins hook identity and acknowledges atomic action batches.
 type RunAutomation struct {
-	OnStart         string           `json:"on_start"`
-	OnStepCompleted string           `json:"on_step_completed"`
-	Digest          string           `json:"digest"`
-	Version         int64            `json:"version"`
-	Applied         []string         `json:"applied,omitempty"`
-	Completed       map[string]int64 `json:"completed,omitempty"`
-	After           []string         `json:"after,omitempty"`
-	Output          map[string]any   `json:"output,omitempty"`
+	OnStart         string `json:"on_start"`
+	OnStepCompleted string `json:"on_step_completed"`
+	Digest          string `json:"digest"`
+	// Scope is the reference authority accepted at start. A reload can
+	// narrow it, never widen it. Nil on runs pinned to the full manifest.
+	Scope     *RunScope        `json:"scope,omitempty"`
+	Version   int64            `json:"version"`
+	Applied   []string         `json:"applied,omitempty"`
+	Completed map[string]int64 `json:"completed,omitempty"`
+	After     []string         `json:"after,omitempty"`
+	Output    map[string]any   `json:"output,omitempty"`
+}
+
+// RunScope maps each pool and workflow name a callback could pass to what
+// it resolved to when the run started.
+type RunScope struct {
+	Pools     map[string]ScopeRef `json:"pools"`
+	Workflows map[string]ScopeRef `json:"workflows"`
+}
+
+// ScopeRef is a resolved reference and its project.
+type ScopeRef struct {
+	Name    string `json:"name"`
+	Project string `json:"project"`
 }
 
 // Validate implements Fields.

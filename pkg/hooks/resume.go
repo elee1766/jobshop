@@ -23,7 +23,7 @@ func (c *Engine) Resume(ctx context.Context, run, workflow, digest string) (stri
 		return "", err
 	}
 	runtime := c.host.CurrentHooks()
-	if runtime.Programs[in.Entry] == nil || WorkflowDigest(runtime.Programs, runtime.Config.Workflows[workflow]) != digest {
+	if runtime.Programs[in.Entry] == nil || !RunPinned(runtime.Programs, runtime.Config, workflow, digest) {
 		return "", errors.New("restore the pinned hook configuration before resuming")
 	}
 	calls, err := c.store.Collection(ctx, hookCalls)
