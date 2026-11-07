@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.4](https://github.com/elee1766/jobshop/compare/v0.8.3...v0.8.4) (2026-11-07)
+
+
+### Features
+
+* **desk:** replace plugins with first-party live UI and JS client ([40ca969](https://github.com/elee1766/jobshop/commit/40ca9698312215767e4fff0f401a3309b1dbd18b))
+
 ## [0.8.3](https://github.com/elee1766/jobshop/compare/v0.8.2...v0.8.3) (2026-11-07)
 
 
