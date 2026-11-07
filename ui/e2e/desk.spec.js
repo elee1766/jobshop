@@ -43,6 +43,24 @@ test('blocked browser storage does not prevent rendering', async ({ page }) => {
   await expect(page.locator('.status')).toContainText('sys ok');
 });
 
+test('waiting references open their ticket trace and support Back and direct links', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.locator('.status')).toContainText('sys ok');
+  const items = await (await page.request.get('api/attention')).json();
+  const item = items.find(item => ['decision', 'ticket', 'run', 'question', 'wait', 'guard'].includes(item.kind));
+  test.skip(!item, 'The live controller has no waiting ticket.');
+  const waiting = page.getByRole('region', { name: 'Waiting', exact: true });
+  const link = waiting.getByRole('link', { name: `Trace ${item.ref || item.id}`, exact: true });
+  const href = await link.getAttribute('href');
+  await link.click();
+  await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(item.id);
+  await expect(page.locator('.inspector h2')).toContainText(item.id);
+  await page.goBack();
+  await expect(waiting).toBeVisible();
+  await page.goto(href);
+  await expect(page.locator('.inspector h2')).toContainText(item.id);
+});
+
 test('archived chats form a vertical table with scrolling but no scrollbar chrome', async ({ page, isMobile }) => {
   await page.setViewportSize({ width: isMobile ? 412 : 1000, height: 400 });
   await page.goto('./');
