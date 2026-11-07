@@ -90,6 +90,7 @@ func (e *EventDecoder) Decode(seq, t int64, from string, msg json.RawMessage) (S
 	switch {
 	case m.Method == "session/prompt":
 		var p struct {
+			Meta   map[string]json.RawMessage `json:"_meta"`
 			Prompt []struct {
 				Text     string `json:"text"`
 				Type     string `json:"type"`
@@ -108,7 +109,17 @@ func (e *EventDecoder) Decode(seq, t int64, from string, msg json.RawMessage) (S
 			}
 		}
 		out.Type = EventTurnStart
-		out.Text, out.Context = SplitContext(strings.Join(parts, "\n"))
+		raw := strings.Join(parts, "\n")
+		out.Text, out.Context = SplitContext(raw)
+		var presentation PromptPresentation
+		if from == "controller" && json.Unmarshal(p.Meta[MetaPresentation], &presentation) == nil && presentation.Version == 1 {
+			out.Messages, out.Context, out.RawPrompt = presentation.Messages, presentation.Context, raw
+			var visible []string
+			for _, message := range presentation.Messages {
+				visible = append(visible, message.Text)
+			}
+			out.Text = strings.Join(visible, "\n\n")
+		}
 		return out, true
 	case m.Method == "session/update":
 		return e.update(out, m.Params)

@@ -511,7 +511,11 @@ func (c *Controller) runShow(ctx context.Context, sc scope, p rpc.IDParams) (any
 	if err != nil {
 		return nil, err
 	}
-	return c.runResult(ctx, t)
+	result, err := c.runResult(ctx, t)
+	if err == nil {
+		result.Links = graphLinks(c.config(), t, nil)
+	}
+	return result, err
 }
 
 func (c *Controller) runList(ctx context.Context, sc scope, p rpc.RunListParams) (any, error) {

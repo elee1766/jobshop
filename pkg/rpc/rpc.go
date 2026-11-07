@@ -1239,6 +1239,7 @@ type RunStartParams struct {
 type RunResult struct {
 	Run   store.Ticket   `json:"run"`
 	Steps []store.Ticket `json:"steps"`
+	Links []string       `json:"links,omitempty"`
 	// Existing is true when start returned an open run for the key.
 	Existing bool `json:"existing,omitempty"`
 	// Waits are steps held back by a full resource (#408).
@@ -1361,14 +1362,33 @@ type SessionEvent struct {
 	Images  []SessionImage `json:"images,omitempty"`
 	// Context is the part of a turn_start prompt that was addressed to
 	// the model only (session.send context), kept out of Text.
-	Context    string       `json:"context,omitempty"`
-	Tool       *ToolSummary `json:"tool,omitempty"`
-	StopReason string       `json:"stop_reason,omitempty"`
-	Error      string       `json:"error,omitempty"`
-	Status     store.Status `json:"status,omitempty"`
-	Resolution string       `json:"resolution,omitempty"`
-	Usage      *Usage       `json:"usage,omitempty"`
+	Context    string          `json:"context,omitempty"`
+	Messages   []PromptMessage `json:"messages,omitempty"`
+	RawPrompt  string          `json:"raw_prompt,omitempty"`
+	Tool       *ToolSummary    `json:"tool,omitempty"`
+	StopReason string          `json:"stop_reason,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	Status     store.Status    `json:"status,omitempty"`
+	Resolution string          `json:"resolution,omitempty"`
+	Usage      *Usage          `json:"usage,omitempty"`
 }
+
+// PromptMessage is original message content, before controller prompt assembly.
+type PromptMessage struct {
+	ID   string `json:"id"`
+	From string `json:"from"`
+	Text string `json:"text"`
+}
+
+// PromptPresentation describes a prompt without changing its model input.
+type PromptPresentation struct {
+	Version  int             `json:"version"`
+	Messages []PromptMessage `json:"messages,omitempty"`
+	Context  string          `json:"context,omitempty"`
+}
+
+// MetaPresentation is controller-owned ACP metadata retained in the host journal.
+const MetaPresentation = "jobshop/presentation"
 
 // SessionImage is a validated native ACP raster image, with base64 data.
 type SessionImage struct {

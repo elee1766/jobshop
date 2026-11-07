@@ -2,10 +2,11 @@
   import type { GraphResult } from '../../packages/jobshop-client/rpc.js';
   import { md } from '../kit/markdown.js';
   import { graphLayout, linkLabel, relationLabel, safeLinks, state as ticketState, stepName } from './trace.js';
-  let { graph, selected, onselect }: {
+  let { graph, selected, onselect, onwatch }: {
     graph: GraphResult;
     selected: string;
     onselect: (id: string) => void;
+    onwatch: (id: string) => void;
   } = $props();
   const layout = $derived(graphLayout(graph));
   let viewport: HTMLDivElement;
@@ -142,7 +143,7 @@
             <time class="muted" datetime={node.created_at}>created {new Date(node.created_at).toLocaleString()}</time>
             {#if node.closed_at}<time class="muted" datetime={node.closed_at}>closed {new Date(node.closed_at).toLocaleString()}</time>{/if}
           </button>
-          <div class="graph-links">{#each safeLinks(node) as href}<a {href} target="_blank" rel="noopener noreferrer">{linkLabel(href)}</a>{/each}</div>
+          <div class="graph-links">{#if node.holder || node.kind === 'session'}<button title={node.holder || node.id} onclick={() => onwatch(node.holder || node.id)}>view session ↗</button>{/if}{#each safeLinks(node) as href}<a {href} target="_blank" rel="noopener noreferrer">{linkLabel(href)}</a>{/each}</div>
         </article>
       {/each}
     </div>

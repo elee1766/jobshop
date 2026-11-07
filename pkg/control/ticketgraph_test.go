@@ -80,7 +80,7 @@ func TestTicketGraphWorkflowReference(t *testing.T) {
   js: {}
 workflows:
   review:
-    vars: [subject]
+    vars: [subject, repo, pr, issue]
     repo: oku-trade/trade
     steps:
       - id: route
@@ -92,15 +92,21 @@ workflows:
 	ctx := t.Context()
 	var run rpc.RunResult
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodRunStart, rpc.RunStartParams{
-		Workflow: "review", Vars: map[string]string{"subject": "4520@252b4e7f"}, Key: "first",
+		Workflow: "review", Vars: map[string]string{"subject": "4520@252b4e7f", "repo": "oku-trade/trade", "pr": "4520", "issue": "OKU-219"}, Key: "first",
 	}, &run))
+	require.NoError(t, c.Admin.Call(ctx, rpc.MethodRunShow, rpc.IDParams{ID: run.Run.ID}, &run))
+	assert.Contains(t, run.Links, "https://github.com/oku-trade/trade/pull/4520")
+	assert.Len(t, run.Links, 1, "an issue key cannot determine a Linear workspace")
+	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketUpdate, rpc.UpdateParams{ID: run.Run.ID, Meta: json.RawMessage(`{"linear":{"workspace":"acme"}}`)}, nil))
+	require.NoError(t, c.Admin.Call(ctx, rpc.MethodRunShow, rpc.IDParams{ID: run.Run.ID}, &run))
+	assert.Contains(t, run.Links, "https://linear.app/acme/issue/OKU-219")
 	var wrong store.Ticket
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "Other oku-trade/trade#45200@abc"}, &wrong))
 	var graph rpc.GraphResult
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketGraph, rpc.GraphParams{ID: "oku-trade/trade#4520"}, &graph))
 	assert.Equal(t, run.Run.ID, graph.Root)
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodRunStart, rpc.RunStartParams{
-		Workflow: "review", Vars: map[string]string{"subject": "4520@newhead"}, Key: "second",
+		Workflow: "review", Vars: map[string]string{"subject": "4520@newhead", "repo": "oku-trade/trade", "pr": "4520", "issue": "OKU-219"}, Key: "second",
 	}, &run))
 	err := c.Admin.Call(ctx, rpc.MethodTicketGraph, rpc.GraphParams{ID: "oku-trade/trade#4520"}, &graph)
 	require.ErrorContains(t, err, "multiple roots")

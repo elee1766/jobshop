@@ -23,7 +23,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 	c.chatMu.Lock()
 	defer c.chatMu.Unlock()
 	name := strings.Join(strings.Fields(p.Name), " ")
-	if p.Action == "new" || p.Action == "rename" {
+	if p.Action == "new" || p.Action == "rename" || p.Action == "convert" {
 		if name == "" || utf8.RuneCountInString(name) > maxDisplayName {
 			return nil, fmt.Errorf("%w: give a chat name of 1 to %d characters", store.ErrInvalid, maxDisplayName)
 		}
@@ -69,6 +69,16 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		return nil, fmt.Errorf("%w: not a managed chat", store.ErrInvalid)
 	}
 	switch p.Action {
+	case "convert":
+		if !strings.HasPrefix(f.Key, escalationKeyPrefix) || t.Status == store.StatusClosed {
+			return nil, fmt.Errorf("%w: convert requires an escalation chat", store.ErrInvalid)
+		}
+		// The stable routing key keeps pending messages and source references valid.
+		if err := c.updateSessionFields(ctx, t.ID, func(f *store.SessionFields) {
+			f.Named, f.DisplayName, f.Prestart, f.ReadOnly = true, name, false, false
+		}); err != nil {
+			return nil, err
+		}
 	case "rename":
 		if err := c.setDisplayName(ctx, sc.actor, t.ID, name); err != nil {
 			return nil, err
@@ -76,7 +86,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 	case "archive", "resolve":
 		if p.Action == "resolve" {
 			id, ok := strings.CutPrefix(f.Key, escalationKeyPrefix)
-			if !ok {
+			if !ok || f.Named {
 				return nil, fmt.Errorf("%w: resolve requires an escalation chat", store.ErrInvalid)
 			}
 			target, err := c.store.Get(ctx, id)
@@ -152,7 +162,7 @@ func (c *Controller) deskCommand(ctx context.Context, sc scope, p rpc.DeskComman
 		return nil, err
 	}
 	f, err := store.DecodeFields[store.SessionFields](t)
-	if err != nil || !strings.HasPrefix(f.Key, "desk:") {
+	if err != nil || (!strings.HasPrefix(f.Key, "desk:") && !f.Named) {
 		return nil, fmt.Errorf("%w: desk commands require a named chat", store.ErrInvalid)
 	}
 	allowed := map[string][]string{

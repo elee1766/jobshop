@@ -5,6 +5,7 @@
   import HookAudit from "./HookAudit.svelte";
   import TraceSearch from "./TraceSearch.svelte";
   import TicketDetails from "./TicketDetails.svelte";
+  import SessionViewer from "./SessionViewer.svelte";
   import { client } from "./lib/api.svelte.js";
   import {
     initPush,
@@ -36,7 +37,7 @@
   let traceRef = $state("");
   let inspectRef = $state("");
   let selected: any = $state(null);
-  let journal: any[] = $state([]);
+  let watchedSession = $state("");
   let focused = $state("");
   let note = $state("");
   let busy = $state(false);
@@ -194,7 +195,7 @@
     if (ref !== traceRef || inspectRef) {
       selected = null;
       trace = null;
-      journal = [];
+      watchedSession = "";
     }
     traceRef = ref;
     inspectRef = "";
@@ -202,19 +203,12 @@
     navigate("trace");
   }
   function inspect(id: string) {
+    const node = trace?.graph?.nodes.find((node: any) => node.id === id);
+    watchedSession = node?.holder || (node?.kind === 'session' ? id : '');
     if (inspectRef === id) return;
-    journal = [];
     inspectRef = id;
     selected = null;
     navigate("trace");
-  }
-  async function loadJournal(id: string) {
-    try {
-      const result = await client.call("session.journal", { id, limit: 100 });
-      journal = result.frames || [];
-    } catch (e) {
-      error = String(e);
-    }
   }
   async function discuss(item = current) {
     if (!item) return;
@@ -368,7 +362,7 @@
     if (previousTrace !== traceRef + ":" + inspectRef) {
       trace = null;
       selected = null;
-      journal = [];
+      watchedSession = "";
     }
     updateStream();
   }
@@ -637,17 +631,15 @@
                               e.shiftKey
                                 ? attach([row.ref])
                                 : openTrace(row.id)}><span>{row.title || row.ref}</span></button
-                          ></td
+                          >{#if row.issueURL}<a class="ticket-issue" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}</td
                         ><td class="wide"
-                          >{row.pr
-                            ? row.repo.split("/").at(-1) + "#" + row.pr
-                            : "–"}</td
+                          >{#if row.prURL}<a href={row.prURL} target="_blank" rel="noopener noreferrer">{row.repo.split("/").at(-1)}#{row.pr || row.prURL.split('/').at(-1)}</a>{:else}{row.pr ? row.repo.split("/").at(-1) + "#" + row.pr : "–"}{/if}</td
                         ><td>{row.step}</td><td>{@html md(row.waiting, true)}</td><td
                           title={row.source}>{ago(row.since, now)}</td
                         ><td class="wide"
                           ><button
                             disabled={!row.holder}
-                            onclick={() => openTrace(row.holder)}
+                            onclick={() => { openTrace(row.id); watchedSession = row.holder; }}
                             >{row.state}</button
                           ></td
                         ></tr
@@ -659,16 +651,18 @@
         </section>
       {:else if view === "trace"}
         <TraceSearch reference={traceRef} onopen={openTrace} />
-        {#if trace?.graph}<div class="trace-layout">
-            <Trace graph={trace.graph} selected={selected?.id || trace.graph.root} onselect={inspect} />
+        {#if trace?.graph}<div class="trace-layout" class:watching={!!watchedSession}>
+            <Trace graph={trace.graph} selected={selected?.id || trace.graph.root} onselect={inspect} onwatch={(id) => watchedSession = id} />
+            <div class="trace-bottom" class:watching={!!watchedSession}>
             {#if selected}<TicketDetails
               detail={trace.inspection || trace}
               graph={trace.graph}
               onselect={inspect}
               ontrace={openTrace}
-              onjournal={loadJournal}
+              onwatch={(id) => watchedSession = id}
             />{/if}
-            {#each journal as frame}<pre>{JSON.stringify(frame, null, 2)}</pre>{/each}
+            {#if watchedSession}{#key watchedSession}<SessionViewer id={watchedSession} onclose={() => watchedSession = ''} />{/key}{/if}
+            </div>
           </div>{/if}
         {#if selected?.meta?.automation?.invocation}
           <p class="section-body">automation invocation <button class="mono" onclick={() => openAudit(selected.meta.automation.invocation)}>{selected.meta.automation.invocation}</button></p>

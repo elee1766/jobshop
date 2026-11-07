@@ -791,6 +791,7 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 	var sessTicket store.Ticket
 	if sess != nil {
 		sessTicket = *sess
+		info.Ticket = sess
 		if f, err := store.DecodeFields[store.SessionFields](sessTicket); err == nil {
 			info.DisplayName = f.DisplayName
 			if f.Cordoned != nil {

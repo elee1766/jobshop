@@ -78,6 +78,8 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	}
 	var b strings.Builder
 	var msgCtx []string
+	var generated []string
+	presentation := &rpc.PromptPresentation{Version: 1}
 	for _, m := range claimed {
 		f, _ := store.DecodeFields[store.MessageFields](m)
 		attached, content, err := r.messageAttachments(m, f)
@@ -99,12 +101,26 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 			b.WriteString("\n" + m.Body)
 		}
 		b.WriteString(attached)
+		original := strings.TrimSpace(strings.Join([]string{m.Title, m.Body}, "\n") + attached)
+		if f.From == "controller" {
+			generated = append(generated, original)
+		} else {
+			presentation.Messages = append(presentation.Messages, rpc.PromptMessage{ID: m.ID, From: f.From, Text: original})
+		}
 	}
 	// Chat sessions claim no tickets, so the pool prompt would never reach
 	// them; it leads their first message turn (again after a respawn).
 	poolPrompt := r.c.config().Pools[r.pool].Chat() && r.delivered.IsZero()
 	parts := r.useSend(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: b.String()}))
 	text := joinParts(parts)
+	var background []PromptPart
+	for _, part := range parts {
+		if part.Source != "messages" {
+			background = append(background, part)
+		}
+	}
+	presentation.Context = strings.TrimSpace(joinParts(background) + "\n\n" + strings.Join(msgCtx, "\n\n") + "\n\n" + strings.Join(generated, "\n\n"))
+	r.promptPresentation = presentation
 	if len(msgCtx) > 0 {
 		// A message with context is background for the model: the pool
 		// prompt, rules and the context go in one block the conversation

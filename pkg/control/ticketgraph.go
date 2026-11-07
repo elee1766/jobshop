@@ -122,7 +122,18 @@ func graphLinks(cfg *config.Config, t store.Ticket, comments []store.Comment) []
 			URL        string `json:"url"`
 		} `json:"linear"`
 	}
-	if json.Unmarshal(t.Meta, &meta) == nil {
+	if len(t.Meta) == 0 || json.Unmarshal(t.Meta, &meta) == nil {
+		if f, err := store.DecodeFields[store.RunFields](t); err == nil && t.Kind == store.KindRun {
+			if meta.GitHub.Repo == "" {
+				meta.GitHub.Repo = f.Vars["repo"]
+			}
+			if meta.GitHub.PR == "" {
+				meta.GitHub.PR = json.Number(f.Vars["pr"])
+			}
+			if meta.Linear.Issue == "" {
+				meta.Linear.Issue = f.Vars["issue"]
+			}
+		}
 		gh, ln := meta.GitHub, meta.Linear
 		if gh.Repo != "" {
 			if _, err := gh.Issue.Int64(); err == nil {

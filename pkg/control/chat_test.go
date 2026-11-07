@@ -82,8 +82,11 @@ func TestSessionSendSubscribe(t *testing.T) {
 	// The pool prompt leads the first message turn only.
 	prompted := 0
 	for _, e := range got {
-		if e.Type == rpc.EventTurnStart && strings.Contains(e.Text, "CHAT-POOL-PROMPT") {
+		if e.Type == rpc.EventTurnStart && strings.Contains(e.Context, "CHAT-POOL-PROMPT") {
 			prompted++
+			assert.NotContains(t, e.Text, "Messages for you:")
+			assert.Contains(t, e.RawPrompt, "Messages for you:")
+			assert.NotEmpty(t, e.Messages)
 		}
 	}
 	assert.Equal(t, 1, prompted, "pool prompt on the first chat turn")

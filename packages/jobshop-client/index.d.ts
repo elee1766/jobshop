@@ -36,6 +36,7 @@ export interface SessionOptions extends StreamOptions {
   since?: number;
 }
 export interface ChatSession {
+  named?: boolean;
   id: string;
   key: string;
   title: string;
