@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.20](https://github.com/elee1766/jobshop/compare/v0.8.19...v0.8.20) (2026-11-07)
+
+
+### Features
+
+* **desk:** add structured transcripts and live trace workspace ([#988](https://github.com/elee1766/jobshop/issues/988)) ([4897f41](https://github.com/elee1766/jobshop/commit/4897f41fc03a9b7df83bf6dd928ec4d0274d66c2))
+
 ## [0.8.19](https://github.com/elee1766/jobshop/compare/v0.8.18...v0.8.19) (2026-11-07)
 
 
