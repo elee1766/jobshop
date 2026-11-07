@@ -41,6 +41,16 @@ func TestChatSend(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, rpc.MethodSessionSend+` {"id":"s9","text":"stop","interrupt":true,"attach":true}`, ctl.calls[len(ctl.calls)-1])
 
+	// Selecting a managed chat needs no all-session lookup or rw-attach grant.
+	fields, err := json.Marshal(store.SessionFields{Key: "desk:chosen"})
+	require.NoError(t, err)
+	ctl.results[rpc.MethodTicketShow] = rpc.ShowResult{Ticket: store.Ticket{ID: "s1", Kind: store.KindSession, Fields: fields}}
+	ctl.calls = nil
+	w = postJSON(h, "/api/chat/send", `{"session":"s1","key":"desk:chosen","text":"selected"}`, nil)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, []string{rpc.MethodTicketShow + ` {"id":"s1"}`, rpc.MethodSessionSend + ` {"id":"s1","text":"selected"}`}, ctl.calls)
+	assert.Equal(t, http.StatusBadRequest, postJSON(h, "/api/chat/send", `{"session":"s1","key":"desk:other","text":"x"}`, nil).Code)
+
 	for name, body := range map[string]string{
 		"empty":   `{"key":"k","text":"  "}`,
 		"both":    `{"key":"k","session":"s","text":"x"}`,

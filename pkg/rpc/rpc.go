@@ -1354,12 +1354,15 @@ const (
 
 // SessionEvent is one item of a session's output, read from its journal.
 type SessionEvent struct {
-	Session string         `json:"session"`
-	Seq     int64          `json:"seq,omitempty"`
-	Time    *time.Time     `json:"time,omitempty"`
-	Type    string         `json:"type"`
-	Text    string         `json:"text,omitempty"`
-	Images  []SessionImage `json:"images,omitempty"`
+	Session string `json:"session"`
+	Seq     int64  `json:"seq,omitempty"`
+	// First is the initial journal window's lower bound, including frames
+	// that produce no visible output. State events do not advance Seq.
+	First  int64          `json:"first,omitempty"`
+	Time   *time.Time     `json:"time,omitempty"`
+	Type   string         `json:"type"`
+	Text   string         `json:"text,omitempty"`
+	Images []SessionImage `json:"images,omitempty"`
 	// Context is the part of a turn_start prompt that was addressed to
 	// the model only (session.send context), kept out of Text.
 	Context    string          `json:"context,omitempty"`

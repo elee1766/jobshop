@@ -2,10 +2,12 @@
   import { onMount, tick, untrack } from "svelte";
   import { client } from "./lib/api.svelte.js";
   import SessionTranscript from "./SessionTranscript.svelte";
+  import { sessionActivity, type PendingMessage } from "./lib/session.js";
   import type {
     SessionEvent,
     Event,
     SessionInfo,
+    SessionSendResult,
   } from "../../packages/jobshop-client/rpc.js";
 
   export interface Chat {
@@ -76,11 +78,12 @@
   let error = $state("");
   let sending = $state(false);
   let connected = $state("closed");
-  let transcript: HTMLDivElement;
+  let pending: PendingMessage[] = $state([]);
+  const activity = $derived.by(() => sessionActivity(frames, active?.state));
+  let transcript = $state<HTMLDivElement>();
   let composer: HTMLTextAreaElement;
-  let generation = 0;
+  let generation = $state(0);
   let lastSeq = 0;
-  let loadingOlder = $state(false);
   let closeStream = () => {};
 
   function managedChat(info: SessionInfo): Chat {
@@ -126,6 +129,7 @@
     closeStream();
     active = chat;
     frames = [];
+    pending = [];
     commands = [];
     refs = [];
     clearAttachments(attachments);
@@ -149,18 +153,11 @@
         const ev = event as SessionEvent;
         if (ev.seq) lastSeq = Math.max(lastSeq, ev.seq);
         if (ev.seq && frames.some((f) => f.seq === ev.seq)) return;
-        const atBottom =
-          !transcript ||
-          transcript.scrollHeight -
-            transcript.scrollTop -
-            transcript.clientHeight <
-            80;
         frames = [...frames, ev];
-        if (atBottom)
-          void tick().then(() => {
-            if (transcript && generation === selectedGeneration)
-              transcript.scrollTop = transcript.scrollHeight;
-          });
+        if (ev.messages?.length) {
+          const delivered = new Set(ev.messages.map(message => message.id));
+          pending = pending.filter(message => !delivered.has(message.id));
+        }
       },
       {
         since: lastSeq,
@@ -282,35 +279,6 @@
   export function attach(values: string[]) {
     refs = [...new Set([...refs, ...values])];
   }
-  async function older() {
-    if (!active || loadingOlder) return;
-    const selectedGeneration = generation;
-    const height = transcript?.scrollHeight || 0;
-    const top = transcript?.scrollTop || 0;
-    const before = frames.find((f) => (f.seq || 0) > 0)?.seq;
-    if (!before) return;
-    loadingOlder = true;
-    try {
-      const data = await client.get(
-        `api/session/${encodeURIComponent(active.id)}/events?before=${before}&limit=200`,
-      );
-      if (generation !== selectedGeneration) return;
-      frames = [
-        ...(data.events || []).filter(
-          (event: SessionEvent) =>
-            !event.seq || !frames.some((frame) => frame.seq === event.seq),
-        ),
-        ...frames,
-      ];
-      await tick();
-      if (generation === selectedGeneration && transcript)
-        transcript.scrollTop = top + transcript.scrollHeight - height;
-    } catch (e) {
-      if (generation === selectedGeneration) error = String(e);
-    } finally {
-      loadingOlder = false;
-    }
-  }
   async function manage(action: string) {
     if (!active || sending) return;
     if (action === "resolve" && !window.confirm("Resolve escalation " + active.key.slice("escalation:".length) + " and close this chat? This closes the linked ticket. It does not resume runs or unquarantine pools.")) return;
@@ -345,6 +313,8 @@
     error = "";
     const message = text;
     const sentGeneration = generation;
+    const draft = active && !creating ? { id: crypto.randomUUID(), text: message, attachments: attachments.map(item => item.file.name), state: 'sending' as const } : null;
+    if (draft) pending = [...pending, draft];
     try {
       const files = await attachmentPayload();
       if (creating || !active) {
@@ -360,12 +330,16 @@
         refs = [];
         await select(managedChat(result));
       } else {
-        await client.post("api/chat/send", {
+        const accepted = await client.post<SessionSendResult>("api/chat/send", {
+          session: active.id,
           key: active.key,
           text: message,
           refs,
           attachments: files,
         });
+        if (generation !== sentGeneration) return;
+        const delivered = new Set(frames.flatMap(frame => (frame.messages || []).map(item => item.id)));
+        pending = pending.map(item => item.id === draft?.id ? { ...item, id: accepted.message.id, state: 'queued' as const } : item).filter(item => !delivered.has(item.id));
       }
       if (generation === sentGeneration) {
         text = "";
@@ -374,7 +348,10 @@
         attachments = [];
       }
     } catch (e) {
-      if (generation === sentGeneration) error = String(e);
+      if (generation === sentGeneration) {
+        pending = pending.filter(item => item.id !== draft?.id);
+        error = String(e);
+      }
     } finally {
       sending = false;
       composer?.focus();
@@ -511,12 +488,12 @@
           "_blank",
           "noopener",
         )}>journal</button></div
-    ><span class="chat-state muted"
+    ><span class="chat-state" class:working={activity === 'working'} role="status"
       >{active.state === "archived"
         ? "archived"
         : connected === "reconnecting"
           ? "reconnecting"
-          : active.state || "idle"}</span
+          : activity}</span
     >
   </div>
 {/if}
@@ -532,16 +509,12 @@
       <p>Your first message will create this chat. Nothing has been sent yet.</p>
     </section>
   {:else}
-  {#if frames.some((f) => (f.seq || 0) > 1)}<button
-      disabled={loadingOlder}
-      onclick={older}>load older</button
-    >{/if}
   {#if active?.state === "archived"}<p>
       This chat is archived. <button onclick={() => manage("restore")}
         >restore</button
       > to continue the same conversation.
     </p>{/if}
-  <SessionTranscript {frames} />
+  {#key generation}<SessionTranscript bind:frames viewport={transcript} {pending} />{/key}
   {#each commands as command}<p class="tool mono">
       desk ▸ {command.op}
       {Object.entries(command.args || {})
@@ -599,7 +572,7 @@
     ></textarea><button
       class="send"
       type="submit"
-      disabled={sending || adding > 0 || (!text.trim() && !attachments.length)}>{creating ? "create & send" : "send"}</button
+      disabled={sending || adding > 0 || (!text.trim() && !attachments.length)}>{sending ? 'sending…' : creating ? "create & send" : "send"}</button
     >
   </div>
 </form>
