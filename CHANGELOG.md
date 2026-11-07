@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.15](https://github.com/elee1766/jobshop/compare/v0.8.14...v0.8.15) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** keep home ticket identifiers in hover text ([#978](https://github.com/elee1766/jobshop/issues/978)) ([ddd41a7](https://github.com/elee1766/jobshop/commit/ddd41a79ff10e995e7e897104db74269a82f3e55))
+
 ## [0.8.14](https://github.com/elee1766/jobshop/compare/v0.8.13...v0.8.14) (2026-11-07)
 
 
