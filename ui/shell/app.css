@@ -526,6 +526,8 @@ span.ticket-status { display: inline-block; }
 .ticket-status[data-status="closed"] { color: var(--status-closed); }
 .ticket-status[data-status="in_progress"] { color: var(--status-running); }
 .ticket-issue { display: block; width: fit-content; margin-left: var(--control-inset); font-size: var(--font-size-small); }
+.compact-pr { display: none; }
+@media (max-width: 899px) { .compact-pr { display: block; } }
 .trace-bottom { min-width: 0; min-height: 0; }
 .trace-bottom.watching { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .trace-bottom.watching > .inspector { overflow: auto; }

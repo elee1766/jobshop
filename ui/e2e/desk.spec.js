@@ -118,11 +118,11 @@ test('waiting references open their ticket trace and support Back and direct lin
   const href = await link.getAttribute('href');
   await link.click();
   await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(item.id);
-  await expect(page.locator('.inspector h2')).toContainText(item.id);
+  await expect(page.locator('.ticket-overview > h2')).toContainText(item.id);
   await page.goBack();
   await expect(waiting).toBeVisible();
   await page.goto(href);
-  await expect(page.locator('.inspector h2')).toContainText(item.id);
+  await expect(page.locator('.ticket-overview > h2')).toContainText(item.id);
 });
 
 test('named draft clearly creates on first send and can be dismissed without writes', async ({ page, isMobile }) => {

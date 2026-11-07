@@ -36,7 +36,7 @@ test('trace search finds completed tickets beyond the first page and opens their
     const targetLink = results.getByRole('link', { name: target.title, exact: true });
     await expect(targetLink).toHaveAttribute('title', target.id);
     await targetLink.click();
-    await expect(page.locator('.inspector h2')).toContainText(target.id);
+    await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
     await expect(input).toHaveValue(target.id);
     await input.fill(repo + '#4520');
     await form.getByRole('combobox', { name: 'Ticket status' }).selectOption('closed');
@@ -52,10 +52,10 @@ test('trace search finds completed tickets beyond the first page and opens their
     await expect(targetLink).toBeVisible();
     await results.getByRole('button', { name: 'dismiss', exact: true }).click();
     await expect(results).toHaveCount(0);
-    await expect(page.locator('.inspector h2')).toContainText(target.id);
+    await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
     await input.fill(repo + '#4520');
     await form.getByRole('button', { name: 'open', exact: true }).click();
-    await expect(page.locator('.inspector h2')).toContainText(target.id);
+    await expect(page.locator('.ticket-overview > h2')).toContainText(target.id);
     await expect(page).toHaveURL(new RegExp('ref=' + encodeURIComponent(repo + '#4520')));
     const bounds = await form.evaluate(node => ({ right: node.getBoundingClientRect().right, width: innerWidth }));
     expect(bounds.right).toBeLessThanOrEqual(bounds.width);

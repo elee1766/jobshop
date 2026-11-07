@@ -631,7 +631,7 @@
                               e.shiftKey
                                 ? attach([row.ref])
                                 : openTrace(row.id)}><span>{row.title || row.ref}</span></button
-                          >{#if row.issueURL}<a class="ticket-issue" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}</td
+                          >{#if row.issueURL}<a class="ticket-issue" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}{#if row.prURL}<a class="ticket-issue compact-pr" href={row.prURL} target="_blank" rel="noopener noreferrer">{row.repo.split("/").at(-1)}#{row.pr || row.prURL.split('/').at(-1)}</a>{/if}</td
                         ><td class="wide"
                           >{#if row.prURL}<a href={row.prURL} target="_blank" rel="noopener noreferrer">{row.repo.split("/").at(-1)}#{row.pr || row.prURL.split('/').at(-1)}</a>{:else}{row.pr ? row.repo.split("/").at(-1) + "#" + row.pr : "–"}{/if}</td
                         ><td>{row.step}</td><td>{@html md(row.waiting, true)}</td><td
