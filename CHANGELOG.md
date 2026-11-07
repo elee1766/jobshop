@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.24](https://github.com/elee1766/jobshop/compare/v0.8.23...v0.8.24) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** load history when the visible tail cannot scroll ([#997](https://github.com/elee1766/jobshop/issues/997)) ([6d02baa](https://github.com/elee1766/jobshop/commit/6d02baa094977c4cbb2e369ff89b1e07dbc1ccd9))
+
 ## [0.8.23](https://github.com/elee1766/jobshop/compare/v0.8.22...v0.8.23) (2026-11-07)
 
 
