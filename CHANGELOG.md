@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.3](https://github.com/elee1766/jobshop/compare/v0.8.2...v0.8.3) (2026-11-07)
+
+
+### Bug fixes
+
+* **control:** send a resumed step to its pool when the parking session is busy (JOB-120) ([#952](https://github.com/elee1766/jobshop/issues/952)) ([e72eb7e](https://github.com/elee1766/jobshop/commit/e72eb7e2a823601d4ae907c27880b910a6fa4a65))
+* **packs/github:** ci-fix searches for an existing fix by failing test name ([#951](https://github.com/elee1766/jobshop/issues/951)) ([#953](https://github.com/elee1766/jobshop/issues/953)) ([a86ad92](https://github.com/elee1766/jobshop/commit/a86ad92f25365866974f2a6f45d7a8f31a96db09))
+* **packs/github:** linear implement re-reads the issue before the first push ([#949](https://github.com/elee1766/jobshop/issues/949)) ([#950](https://github.com/elee1766/jobshop/issues/950)) ([dab2da3](https://github.com/elee1766/jobshop/commit/dab2da36d95445d99446a2ff4aa2b11729d317f5))
+
 ## [0.8.2](https://github.com/elee1766/jobshop/compare/v0.8.1...v0.8.2) (2026-11-07)
 
 
