@@ -1879,12 +1879,26 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 // once the agent started; a setup failure is a *host.SpawnError, and
 // host.Permanent sees through it.
 func (c *Controller) startDetachedHost(id, dir string) (*proc.Detached, error) {
-	// In the sessions cgroup, so its load counts against the sessions cap
-	// and not the controller's share (JOB-91).
-	if hd := c.hostsCgroup(); hd != "" {
-		d, err := host.StartDetached(dir, hostInheritedEnv(), host.InCgroup(hd))
+	// In the sessions slice or cgroup, so its load counts against the
+	// sessions cap and not the controller's share (JOB-91), and with
+	// systemd outside the controller's unit (#992).
+	switch p := c.hostPlacement(); {
+	case p.systemd:
+		d, err := host.StartDetached(dir, hostInheritedEnv(), host.InScope(p.slice))
+		var se *host.SpawnError
+		if err == nil || errors.As(err, &se) {
+			// A SpawnError is the agent's setup, not the scope: a start
+			// without the scope would fail the same way.
+			return d, err
+		}
+		// The scope could not be started (no manager, or this process is
+		// outside its manager's tree): the host stays in the
+		// controller's unit, as before.
+		c.log.Warn("session host stays in the controller cgroup", "session", id, "slice", p.slice, "err", err)
+	case p.cgroup != "":
+		d, err := host.StartDetached(dir, hostInheritedEnv(), host.InCgroup(p.cgroup))
 		var pe *fs.PathError
-		if err == nil || !errors.As(err, &pe) || pe.Path != hd {
+		if err == nil || !errors.As(err, &pe) || pe.Path != p.cgroup {
 			return d, err
 		}
 		// InCgroup fails the start when the cgroup cannot be opened; the

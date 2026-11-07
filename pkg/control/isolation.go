@@ -54,11 +54,29 @@ func wantsCgroup(cfg *config.Config) bool {
 	return !cfg.Limits.Systemd() && (cfg.Limits.Cgroup != nil || anyLimits(cfg))
 }
 
+// hostPlacement is where a new session host starts. With the systemd
+// driver (#992) that is a transient scope in the sessions slice
+// (acphost.InScope): the manager owns it, so the host and an agent
+// without a pool scope are outside the controller's unit and a restart
+// finds the unit empty. With cgroupfs it is the hosts cgroup
+// (acphost.InCgroup), or nothing: the host stays in the controller's.
+type hostPlacement struct {
+	systemd bool   // start in a scope in slice
+	slice   string // the sessions slice, with systemd
+	cgroup  string // the hosts cgroup dir, with cgroupfs
+}
+
+func (c *Controller) hostPlacement() hostPlacement {
+	if l := c.config().Limits; l.Systemd() {
+		return hostPlacement{systemd: true, slice: l.Slice()}
+	}
+	return hostPlacement{cgroup: c.hostsCgroup()}
+}
+
 // hostsCgroup is the cgroup directory a new session host starts in, ""
 // when the split is not wanted or the cgroup is unavailable (the host then
-// stays in the controller's, as before). With the systemd driver hosts
-// stay in the controller's unit (KillMode=process keeps them across a
-// restart); their agents get scopes in the sessions slice (poolCgroup).
+// stays in the controller's, as before). With the systemd driver it is
+// "": hosts start in a scope instead (hostPlacement).
 func (c *Controller) hostsCgroup() string {
 	if l := c.config().Limits; l.Cgroup == nil || l.Systemd() {
 		return ""
