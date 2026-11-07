@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.8](https://github.com/elee1766/jobshop/compare/v0.8.7...v0.8.8) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** anchor New chat naming below its button ([#964](https://github.com/elee1766/jobshop/issues/964)) ([47ea185](https://github.com/elee1766/jobshop/commit/47ea185c333ef67cfafb6cdbb88a119320cebae3))
+
 ## [0.8.7](https://github.com/elee1766/jobshop/compare/v0.8.6...v0.8.7) (2026-11-07)
 
 
