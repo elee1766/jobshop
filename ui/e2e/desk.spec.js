@@ -43,6 +43,32 @@ test('blocked browser storage does not prevent rendering', async ({ page }) => {
   await expect(page.locator('.status')).toContainText('sys ok');
 });
 
+test('New chat floats below New without moving the chat list', async ({ page, isMobile }) => {
+  await page.goto('./');
+  await expect(page.locator('.status')).toContainText('sys ok');
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
+  const button = page.getByRole('button', { name: 'New', exact: true });
+  const tabs = page.getByRole('tablist', { name: 'Named chats', exact: true });
+  const before = await tabs.boundingBox();
+  await button.click();
+  const popover = page.getByRole('dialog', { name: 'New chat', exact: true });
+  await expect(popover).toBeVisible();
+  await expect(popover.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
+  const anchor = await button.boundingBox();
+  const box = await popover.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(anchor.y + anchor.height);
+  expect(box.y - anchor.y - anchor.height).toBeLessThanOrEqual(8);
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth));
+  expect(await tabs.boundingBox()).toEqual(before);
+  await page.keyboard.press('Escape');
+  await expect(popover).toBeHidden();
+  await expect(button).toBeFocused();
+  await button.click();
+  await page.getByText('desk', { exact: true }).click();
+  await expect(popover).toBeHidden();
+});
+
 test('waiting references open their ticket trace and support Back and direct links', async ({ page }) => {
   await page.goto('./');
   await expect(page.locator('.status')).toContainText('sys ok');
