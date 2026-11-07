@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/control/controltest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -128,6 +129,28 @@ func TestSessionListEnded(t *testing.T) {
 
 	err = admin.Call(ctx, rpc.MethodSessionList, rpc.SessionListParams{Since: -time.Hour}, nil)
 	assert.ErrorIs(t, err, store.ErrInvalid)
+}
+
+// Session lists have no cursor, so old history must not hide newer chats.
+func TestSessionListBeyondDefaultPage(t *testing.T) {
+	t.Parallel()
+	root := controltest.NewRoot(t, "projects:\n  js: {}\n")
+	c := controltest.Start(t, root, control.Options{})
+	for range store.DefaultLimit {
+		var session rpc.SessionNewResult
+		c.Call(rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &session)
+		c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: session.Ticket.ID}, nil)
+	}
+	var newest rpc.SessionNewResult
+	c.Call(rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &newest)
+	var sessions []rpc.SessionInfo
+	c.Call(rpc.MethodSessionList, rpc.SessionListParams{All: true}, &sessions)
+	require.Len(t, sessions, store.DefaultLimit+1)
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		ids = append(ids, session.ID)
+	}
+	assert.Contains(t, ids, newest.Ticket.ID)
 }
 
 // TestMetaPacks checks that meta keys must be built-in or listed packs.

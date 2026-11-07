@@ -635,7 +635,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 	}
 	var tickets []store.Ticket
 	for _, s := range statuses {
-		ts, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: s})
+		ts, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: s, Limit: store.NoLimit})
 		if err != nil {
 			return nil, err
 		}
