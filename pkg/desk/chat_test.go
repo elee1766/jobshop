@@ -129,8 +129,9 @@ func TestChatList(t *testing.T) {
 	}
 	get(t, h, "/api/chat", &out)
 	assert.Equal(t, "operator", out.Pool)
-	require.Len(t, out.Sessions, 1)
-	assert.Equal(t, "desk:abc", out.Sessions[0].Key, "named list excludes gateway and escalation chats")
+	require.Len(t, out.Sessions, 2)
+	assert.Equal(t, "desk:abc", out.Sessions[0].Key)
+	assert.Equal(t, "escalation:js-e", out.Sessions[1].Key, "managed chats include escalations but exclude gateway sessions")
 }
 
 // TestChatSendEscalation: an escalation:<ticket> key goes to the chat

@@ -256,7 +256,7 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 			continue
 		}
 		f, _ := store.DecodeFields[store.SessionFields](*si.Ticket)
-		if !strings.HasPrefix(f.Key, "desk:") {
+		if !strings.HasPrefix(f.Key, "desk:") && !strings.HasPrefix(f.Key, escalationKeyPrefix) && !strings.HasPrefix(f.Key, "attention:") {
 			continue
 		}
 		state := "idle"

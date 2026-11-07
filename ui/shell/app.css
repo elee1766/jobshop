@@ -375,8 +375,11 @@ td pre {
   border-bottom: 1px solid var(--rule);
   overflow-wrap: anywhere;
 }
+.chat-archive th:nth-child(2) {
+  width: 92px;
+}
 .chat-archive th:last-child {
-  width: 100px;
+  width: 90px;
 }
 .chat-archive td:first-child {
   padding: 0;

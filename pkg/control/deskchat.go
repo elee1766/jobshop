@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -64,22 +65,40 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		return nil, err
 	}
 	f, err := store.DecodeFields[store.SessionFields](t)
-	if err != nil || t.Kind != store.KindSession || !strings.HasPrefix(f.Key, "desk:") {
-		return nil, fmt.Errorf("%w: not a named Desk chat", store.ErrInvalid)
+	if err != nil || t.Kind != store.KindSession || (!strings.HasPrefix(f.Key, "desk:") && !strings.HasPrefix(f.Key, escalationKeyPrefix) && !strings.HasPrefix(f.Key, attentionKeyPrefix)) {
+		return nil, fmt.Errorf("%w: not a managed chat", store.ErrInvalid)
 	}
 	switch p.Action {
 	case "rename":
 		if err := c.setDisplayName(ctx, sc.actor, t.ID, name); err != nil {
 			return nil, err
 		}
-	case "archive":
+	case "archive", "resolve":
+		if p.Action == "resolve" {
+			id, ok := strings.CutPrefix(f.Key, escalationKeyPrefix)
+			if !ok {
+				return nil, fmt.Errorf("%w: resolve requires an escalation chat", store.ErrInvalid)
+			}
+			target, err := c.store.Get(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			if e, ok := escalationMeta(target); !ok || e.Session != t.ID {
+				return nil, fmt.Errorf("%w: this chat is no longer the escalation's current session", store.ErrConflict)
+			}
+			if target.Status != store.StatusClosed {
+				if _, err := c.closeTicketIn(ctx, c.config(), sc, rpc.CloseParams{ID: id, Resolution: "done", Comment: "Resolved by the operator from the escalation chat."}); err != nil && !errors.Is(err, store.ErrClosed) {
+					return nil, err
+				}
+			}
+		}
 		if t.Status != store.StatusClosed {
 			if _, err := c.sessionCloseRPC(ctx, sc, rpc.SessionCloseParams{ID: t.ID, Reason: "chat archived"}); err != nil {
 				return nil, err
 			}
 		}
 		at := c.now()
-		if err := c.updateSessionFields(ctx, t.ID, func(f *store.SessionFields) { f.Named = true; f.Archived = &at }); err != nil {
+		if err := c.updateSessionFields(ctx, t.ID, func(f *store.SessionFields) { f.Archived = &at }); err != nil {
 			return nil, err
 		}
 	case "restore":
@@ -98,7 +117,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 			return nil, err
 		}
 		// Keep the ACP conversation id and journal, then load on the next send.
-		f.Named, f.Archived, f.Ended, f.Suspended = true, nil, nil, true
+		f.Archived, f.Ended, f.Suspended = nil, nil, true
 		fields, err := json.Marshal(f)
 		if err != nil {
 			return nil, err
