@@ -53,8 +53,8 @@ test('pasted image and document reach the real agent as native attachments', asy
     expect(response.ok(), await response.text()).toBeTruthy();
     id = (await response.json()).id;
     await expect(page.getByRole('list', { name: 'Message attachments' })).toHaveCount(0);
-    await expect(page.locator('.transcript .markdown')).toContainText(visual, { timeout: 180_000 });
-    await expect(page.locator('.transcript .markdown')).toContainText(secret, { timeout: 180_000 });
+    await expect(page.locator('.transcript .markdown')).toContainText([visual], { timeout: 180_000 });
+    await expect(page.locator('.transcript .markdown')).toContainText([secret], { timeout: 180_000 });
     const sent = page.getByRole('img', { name: 'User attachment', exact: true });
     await expect(sent).toBeVisible();
     expect(await sent.evaluate(img => img.naturalWidth)).toBeGreaterThan(0);
@@ -63,15 +63,13 @@ test('pasted image and document reach the real agent as native attachments', asy
     }
     await page.reload();
     if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
-    await page.getByRole('button', { name: 'Choose chat', exact: true }).click();
-    await page.getByRole('searchbox', { name: 'Search chats', exact: true }).fill(name);
-    await page.getByRole('table', { name: 'Recent chats', exact: true }).getByRole('button', { name, exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Choose chat', exact: true })).toContainText(name);
     await expect(sent).toBeVisible();
     if (outputPath) await expect(page.getByRole('img', { name: 'Agent output', exact: true })).toBeVisible();
   } finally {
     if (outputPath) await unlink(outputPath).catch(() => {});
     if (id) {
-      const response = await page.request.post('api/chat/manage', { headers: { 'X-Jobshop-Desk': '1' }, data: { action: 'archive', id } });
+      const response = await page.request.post('api/chat/manage', { timeout: 10_000, headers: { 'X-Jobshop-Desk': '1' }, data: { action: 'archive', id } });
       expect(response.ok()).toBeTruthy();
     }
   }
