@@ -3,8 +3,8 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
 /** @param {string} text */
-export function md(text) {
-  const html = /** @type {string} */ (marked.parse(text || '', { async: false, gfm: true, breaks: false }));
+export function md(text, inline = false) {
+  const html = /** @type {string} */ ((inline ? marked.parseInline : marked.parse)(text || '', { async: false, gfm: true, breaks: false }));
   const clean = DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'object', 'embed', 'svg', 'math', 'img'],

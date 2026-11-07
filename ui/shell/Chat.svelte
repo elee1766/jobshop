@@ -266,8 +266,9 @@
   function positionNewChat() {
     if (!newButton || !newPopover) return;
     const rect = newButton.getBoundingClientRect();
+    const width = parseFloat(getComputedStyle(newPopover).width);
     newPopover.style.top = rect.bottom + 4 + "px";
-    newPopover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 348)) + "px";
+    newPopover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
   }
 
   export function attach(values: string[]) {
@@ -438,7 +439,7 @@
 
 <svelte:window onresize={() => { positionNewChat(); positionPicker(); }} />
 <div class="tag chat-tag">
-  <span class="muted">To:</span>
+  <span class="muted">to:</span>
   <button
     class="chat-picker-button"
     bind:this={pickerButton}
@@ -449,8 +450,8 @@
       if (!picker.matches(":popover-open")) { search = ""; archived = active?.state === "archived"; }
       positionPicker();
     }}
-    title={creating ? "New chat: " + name : active?.title || "Choose chat"}
-    >{creating ? "New chat: " + name : active?.title || "Choose chat"} ▾</button
+    title={creating ? "new chat: " + name : active?.title || "choose chat"}
+    >{creating ? "new chat: " + name : active?.title || "choose chat"} ▾</button
   ><button
     bind:this={newButton}
     popovertarget="new-chat"
@@ -458,22 +459,22 @@
     onclick={() => {
       if (!newPopover.matches(":popover-open")) draftName = "";
       positionNewChat();
-    }}>New</button
-  ><button class="push-right" onclick={onhide}>Hide</button>
+    }}>new</button
+  ><button class="push-right" onclick={onhide}>hide</button>
 </div>
 <dialog id="chat-picker" class="chat-picker" bind:this={picker} popover="auto" aria-label="Choose chat" ontoggle={() => { if (picker.matches(":popover-open")) searchInput?.focus(); }}>
-  <div class="chat-picker-search"><input bind:this={searchInput} type="search" bind:value={search} aria-label="Search chats" placeholder="Search chats" onkeydown={(event) => {
+  <div class="chat-picker-search"><input bind:this={searchInput} type="search" bind:value={search} aria-label="Search chats" placeholder="search chats" onkeydown={(event) => {
     if (event.key === "Enter" && recentChats[0]) { event.preventDefault(); void select(recentChats[0]); }
     if (event.key === "ArrowDown") { event.preventDefault(); picker.querySelector<HTMLButtonElement>("tbody button")?.focus(); }
   }} /></div>
   <div class="chat-picker-filter">
-    <button class:chosen={!archived} aria-pressed={!archived} onclick={() => archived = false}>Recent</button>
-    <button class:chosen={archived} aria-pressed={archived} onclick={() => archived = true}>Archived ({archivedChats.length})</button>
-    <span class="muted">Newest first</span>
+    <button class:chosen={!archived} aria-pressed={!archived} onclick={() => archived = false}>recent</button>
+    <button class:chosen={archived} aria-pressed={archived} onclick={() => archived = true}>archived ({archivedChats.length})</button>
+    <span class="muted">newest first</span>
   </div>
   <div class="chat-archive">
     <table aria-label={archived ? "Archived chats" : "Recent chats"}>
-      <thead><tr><th scope="col">Chat</th><th scope="col">Updated</th></tr></thead>
+      <thead><tr><th scope="col">chat</th><th scope="col">updated</th></tr></thead>
       <tbody>{#each recentChats as chat (chat.id)}
         <tr class:chosen={!creating && active?.id === chat.id}>
           <td><button aria-pressed={!creating && active?.id === chat.id} onclick={() => select(chat)}>{chat.title}{chat.state === "working" ? " ●" : ""}</button></td>
@@ -501,21 +502,21 @@
     start("", [], draftName.trim());
   }}
 >
-  <label for="new-chat-name">Name</label>
+  <label for="new-chat-name">name</label>
   <input id="new-chat-name" bind:this={nameInput} bind:value={draftName} maxlength="120" placeholder="ops" required />
-  <button type="submit">Start</button>
-  <button type="button" popovertarget="new-chat" popovertargetaction="hide">Cancel</button>
+  <button type="submit">start</button>
+  <button type="button" popovertarget="new-chat" popovertargetaction="hide">cancel</button>
 </form>
 </dialog>
 {#if active && !creating}
   <div class="tag chat-toolbar" role="toolbar" aria-label="Chat actions">
-    <div class="chat-actions"><button disabled={sending} onclick={() => manage("rename")}>Rename</button><button disabled={sending || active.state === "archived"} onclick={() => manage("archive")}>Archive</button><button onclick={stop}
-      >Stop</button
+    <div class="chat-actions"><button disabled={sending} onclick={() => manage("rename")}>rename</button><button disabled={sending || active.state === "archived"} onclick={() => manage("archive")}>archive</button><button onclick={stop}
+      >stop</button
     ><button
       onclick={() => {
         const ref = window.prompt("Attach ticket, PR or session reference");
         if (ref) attach([ref]);
-      }}>Attach</button
+      }}>attach</button
     ><button
       onclick={() =>
         window.open(
@@ -524,7 +525,7 @@
           ),
           "_blank",
           "noopener",
-        )}>Journal</button></div
+        )}>journal</button></div
     ><span class="chat-state muted"
       >{active.state === "archived"
         ? "archived"
@@ -542,17 +543,17 @@
 >
   {#if creating}
     <section class="new-chat-draft" aria-label="New chat draft">
-      <div><strong>New chat: {name}</strong><button disabled={sending} onclick={dismissDraft} aria-label="Dismiss new chat">Dismiss ×</button></div>
+      <div><strong>new chat: {name}</strong><button disabled={sending} onclick={dismissDraft} aria-label="Dismiss new chat">dismiss ×</button></div>
       <p>Your first message will create this chat. Nothing has been sent yet.</p>
     </section>
   {:else}
   {#if frames.some((f) => (f.seq || 0) > 1)}<button
       disabled={loadingOlder}
-      onclick={older}>Load older</button
+      onclick={older}>load older</button
     >{/if}
   {#if active?.state === "archived"}<p>
       This chat is archived. <button onclick={() => manage("restore")}
-        >Restore</button
+        >restore</button
       > to continue the same conversation.
     </p>{/if}
   {#each messages as message (message.key)}
@@ -593,8 +594,8 @@
     void addFiles(files);
   }} />
   <div class="attachment-actions">
-    <button type="button" title="Attach images or text files" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} onclick={() => fileInput.click()}>Attach</button>
-    <button type="button" title="Paste text as a document" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} popovertarget="paste-document">Paste</button>
+    <button type="button" title="Attach images or text files" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} onclick={() => fileInput.click()}>attach</button>
+    <button type="button" title="Paste text as a document" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} popovertarget="paste-document">paste</button>
   </div>
   {#if attachments.length}<ul class="chat-attachments" aria-label="Message attachments">
     {#each attachments as item}<li>
@@ -620,20 +621,20 @@
       onkeydown={keydown}
       onpaste={paste}
       placeholder={active || creating
-        ? "Message"
-        : "Choose New to start a named chat"}
+        ? "message"
+        : "choose new to start a named chat"}
       disabled={sending || (!active && !creating) ||
         (active?.state === "archived" && !creating)}
       rows="3"
     ></textarea><button
       class="send"
       type="submit"
-      disabled={sending || adding > 0 || (!text.trim() && !attachments.length)}>{creating ? "Create & send" : "Send"}</button
+      disabled={sending || adding > 0 || (!text.trim() && !attachments.length)}>{creating ? "create & send" : "send"}</button
     >
   </div>
 </form>
 <dialog id="paste-document" popover="auto" class="paste-document" bind:this={documentPopover} aria-label="Paste document">
-  <label for="document-text">Paste text to attach as a document</label>
+  <label for="document-text">paste text to attach as a document</label>
   <textarea id="document-text" bind:value={documentText} rows="10"></textarea>
   <div><button disabled={!documentText || sending || adding > 0} onclick={async () => {
     if (await addFiles([new File([documentText], `pasted-text-${++pasteNumber}.txt`, {type:"text/plain"})])) {
@@ -641,5 +642,5 @@
       documentPopover.hidePopover();
       composer?.focus();
     }
-  }}>Attach document</button><button onclick={() => documentPopover.hidePopover()}>Cancel</button></div>
+  }}>attach document</button><button onclick={() => documentPopover.hidePopover()}>cancel</button></div>
 </dialog>

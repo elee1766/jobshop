@@ -115,29 +115,98 @@ test("live state changes and reconnect snapshots need no browser refresh request
       title + " watched trace",
     );
     await expect(page.locator('.ticket-graph')).toContainText(title + ' watched trace');
-    const child = await call('ticket.create', { title: 'Implementation child', parent_id: ticket.id });
-    related.push(child.id);
     const dependency = await call('ticket.create', {
       title: 'Required evidence',
       meta: { github: { repo: 'acme/widget', pr: 42 }, linear: { workspace: 'acme', issue: 'ENG-2' } },
     });
     related.push(dependency.id);
+    const child = await call('ticket.create', { title: 'Implementation child', parent_id: ticket.id });
+    related.push(child.id);
+    await call('ticket.update', { id: child.id, fields: { wait: { reason: 'Investigating https://github.com/acme/widget/issues/9. ENG-2 [Unsafe](javascript:alert%281%29)', conds: [{ type: 'run', run: ticket.id, state: 'closed' }] } } });
     await call('edge.add', { from: child.id, to: dependency.id, kind: 'waits_for' });
     const graph = page.getByRole('region', { name: 'Ticket dependency graph', exact: true });
     await expect(graph.locator('.graph-card')).toHaveCount(3);
     await expect(graph.locator('svg > path')).toHaveCount(2);
+    const temporalNodes = await graph.locator('.graph-card').evaluateAll(nodes => nodes.map(node => ({ id: node.dataset.ticket, x: parseFloat(node.style.left), created: Date.parse(node.querySelector('time').dateTime) })).sort((a, b) => a.created - b.created));
+    expect(temporalNodes.map(node => node.id)).toEqual([ticket.id, dependency.id, child.id]);
+    expect(temporalNodes.every((node, i) => !i || temporalNodes[i - 1].x <= node.x)).toBeTruthy();
+    await expect(graph.locator('.graph-time-axis time')).toHaveCount(5);
+    const viewport = graph.getByRole('application', { name: 'Ticket graph navigation', exact: true });
+    const canvas = graph.locator('.graph-canvas');
+    const camera = () => canvas.evaluate(node => node.style.transform);
+    const initialCamera = await camera();
+    const zoom = graph.getByLabel('Graph zoom level', { exact: true });
+    const initialZoom = await zoom.textContent();
+    await graph.getByRole('button', { name: 'Zoom in', exact: true }).click();
+    await expect(zoom).not.toHaveText(initialZoom);
+    await graph.getByRole('button', { name: 'reset', exact: true }).click();
+    await expect.poll(camera).toBe(initialCamera);
+    await viewport.focus();
+    await viewport.press('ArrowRight');
+    await expect.poll(camera).not.toBe(initialCamera);
+    await viewport.press('0');
+    await expect.poll(camera).toBe(initialCamera);
+    const box = await viewport.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 12);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 30, box.y + box.height - 32, { steps: 4 });
+    await expect(viewport).toHaveCSS('cursor', 'grabbing');
+    await page.mouse.up();
+    await expect.poll(camera).not.toBe(initialCamera);
+    await expect(viewport).toHaveCSS('cursor', 'grab');
+    await page.mouse.wheel(0, -150);
+    await expect(zoom).not.toHaveText(initialZoom);
+    await graph.getByRole('button', { name: 'reset', exact: true }).click();
+    await expect.poll(camera).toBe(initialCamera);
+    if (isMobile) {
+      const touch = await context.newCDPSession(page);
+      const left = box.x + box.width / 3;
+      const right = box.x + box.width * 2 / 3;
+      const y = box.y + box.height - 12;
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: left, y, id: 1 }, { x: right, y, id: 2 }] });
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: left - 20, y, id: 1 }, { x: right + 20, y, id: 2 }] });
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await touch.detach();
+      await expect(zoom).not.toHaveText(initialZoom);
+      await graph.getByRole('button', { name: 'reset', exact: true }).click();
+      await expect.poll(camera).toBe(initialCamera);
+    }
     const dependencyCard = graph.locator(`[data-ticket="${dependency.id}"]`);
     await expect(dependencyCard.getByRole('link', { name: 'ENG-2', exact: true })).toHaveAttribute('href', 'https://linear.app/acme/issue/ENG-2');
     await expect(dependencyCard.getByRole('link', { name: 'acme/widget PR #42', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/42');
     await graph.getByRole('button', { name: 'Inspect ' + child.id, exact: true }).click();
     await expect(page.locator('.inspector h2')).toContainText(child.id);
+    const statusLink = graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link', { name: 'https://github.com/acme/widget/issues/9', exact: true });
+    await expect(statusLink).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
+    await expect(statusLink).toHaveCSS('text-decoration-line', 'underline');
+    const linkBackground = await statusLink.evaluate(node => getComputedStyle(node).backgroundColor);
+    await statusLink.hover();
+    await expect(statusLink).not.toHaveCSS('background-color', linkBackground);
+    await expect(graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link')).toHaveCount(1);
     const relationships = page.getByRole('table', { name: 'Ticket relationships', exact: true });
+    await expect(relationships.getByRole('columnheader').first()).toHaveText('s');
+    const dependencyRow = relationships.getByRole('row').filter({ hasText: 'Required evidence' });
+    await expect(dependencyRow.getByRole('cell').first()).toHaveText('O');
+    await expect(dependencyRow.getByRole('cell').first()).toHaveAttribute('title', 'open');
+    await expect(dependencyRow.locator('.ticket-label > span')).toHaveText('Required evidence');
+    await expect(dependencyRow.locator('.ticket-label > small')).toHaveText(dependency.id);
     await expect(relationships).toContainText('child of');
     await expect(relationships).toContainText('waits for');
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(ticket.id);
+    const history = page.locator('.ticket-history');
+    await expect(history.locator('summary')).toHaveCSS('cursor', 'pointer');
+    await expect(page.locator('.inspector summary').filter({ hasText: 'raw ticket data' })).toHaveCSS('cursor', 'pointer');
+    await history.locator('summary').click();
+    await expect(history).toContainText('waits_for');
+    await expect(history.getByRole('link', { name: 'https://github.com/acme/widget/issues/9', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
+    const historyLink = history.getByRole('link', { name: new RegExp(dependency.id) });
+    await expect(historyLink).toHaveCSS('cursor', 'pointer');
+    await historyLink.click();
+    await expect(page.locator('.inspector h2')).toContainText(dependency.id);
+    await graph.getByRole('button', { name: 'Inspect ' + child.id, exact: true }).click();
     await relationships.getByRole('button', { name: new RegExp(dependency.id) }).click();
     await expect(page.locator('.inspector h2')).toContainText(dependency.id);
-    await expect(page.locator('.inspector details').filter({ hasText: 'Raw ticket data' })).not.toHaveAttribute('open');
+    await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).not.toHaveAttribute('open');
     await call('comment.add', { id: dependency.id, body: `Plain ENG-2 and ${child.id}. [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).` });
     const comment = page.locator('.ticket-comment .markdown');
     await expect(comment.getByRole('link', { name: 'Linear issue', exact: true })).toHaveAttribute('href', 'https://linear.app/acme/issue/ENG-2');
@@ -154,9 +223,9 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(page.locator('.inspector')).toContainText('closed');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     if (isMobile) {
-      await page.getByRole('navigation', { name: 'Mobile', exact: true }).getByRole('button', { name: /^Waiting/ }).click();
+      await page.getByRole('navigation', { name: 'Mobile', exact: true }).getByRole('button', { name: /^waiting/ }).click();
     } else {
-      await page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('button', { name: 'Home', exact: true }).click();
+      await page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('button', { name: 'home', exact: true }).click();
     }
     await call("ticket.close", { id: ticket.id });
     ticket = null;

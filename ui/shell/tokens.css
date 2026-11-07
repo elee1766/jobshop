@@ -1,0 +1,38 @@
+:root {
+  --font-body: "Noto Sans", sans-serif;
+  --font-mono: "Noto Sans Mono", monospace;
+  --font-size-body: 14px;
+  --font-size-compact: 13px;
+  --font-size-small: 12px;
+  --line-height: 1.5;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --control-inset: 5px;
+  --control-height: 26px;
+  --page-inset: 10px;
+  --rail-inset: var(--space-3);
+  --ink: #000;
+  --paper: #ffffea;
+  --tag: #eaffff;
+  --tag-border: #8888cc;
+  --column: #99994c;
+  --rule: #e8e8c0;
+  --hi: #eeee9e;
+  --muted: #555;
+  --warn: #9a4a00;
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --ink: #f0f0e0;
+  --paper: #1c1c14;
+  --tag: #1f2a33;
+  --hi: #4a4a1e;
+  --muted: #b4b4a6;
+  --rule: #38382b;
+  --column: #77774a;
+  color-scheme: dark;
+}
