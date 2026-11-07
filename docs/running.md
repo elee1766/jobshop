@@ -31,8 +31,8 @@ webhooks in [ingest.md](ingest.md), NixOS in [nixos.md](nixos.md).
 - **Packs.** A pack is a directory of pools, prompts, triggers and
   workflows filled from vars. It can extend another pack, and several
   instances can sit side by side with a `prefix:`. Templates are Go
-  `text/template` (`{{.repo}}`, `{{if}}`, `default`) with `template: go`;
-  packs without it still use `${repo}` for now. See [packs.md](packs.md).
+  `text/template` (`{{.repo}}`, `{{if}}`, `default`). The service file
+  selects a root pack, which loads these instances. See [packs.md](packs.md).
 - **Trackers.** GitHub issues and PRs, or Linear issues. Tickets subscribe
   to issue threads, so new human comments come back to them. Identities
   map GitHub App installations and Linear tokens to repos and teams.
@@ -54,11 +54,17 @@ webhooks in [ingest.md](ingest.md), NixOS in [nixos.md](nixos.md).
 
 ```
 nix build .#jobshop
-jobshop init ./root          # writes root/jobshop.yaml
+jobshop init ./root          # writes root/jobshop.yaml and root/pack.yaml
 cd root && jobshop serve     # controller
 ```
 
-A small `jobshop.yaml` using a pack in the root:
+A small `jobshop.yaml` selects its work definitions:
+
+```yaml
+pack: pack.yaml
+```
+
+The root `pack.yaml` loads a reusable pack:
 
 ```yaml
 default_project: js

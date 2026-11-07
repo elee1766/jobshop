@@ -34,16 +34,16 @@ type packError struct{ err error }
 func (e packError) Error() string   { return e.err.Error() }
 func (e packError) Unwrap() []error { return []error{e.err, ErrPack} }
 
-// PackRef includes a pack directory from jobshop.yaml.
+// PackRef includes a reusable pack directory.
 type PackRef struct {
 	// Path is the pack directory. Relative paths resolve against the
-	// directory holding jobshop.yaml (the Jobshop root).
+	// directory holding the file that lists the pack.
 	Path string `yaml:"path"`
-	// Vars fill ${name} references in the pack's string values.
+	// Vars fill Go template references in the pack's string values.
 	Vars map[string]any `yaml:"vars"`
 	// Prefix renames everything the pack and its bases declare (see
 	// prefixLayers), so one pack can be included once per repo. Only
-	// in jobshop.yaml's packs list; bases inherit it.
+	// in the root pack's packs list; bases inherit it.
 	Prefix string `yaml:"prefix,omitempty"`
 }
 
@@ -67,8 +67,19 @@ type packFile struct {
 	IsolationProfiles map[string]Isolation `yaml:"isolation_profiles"`
 }
 
+// rootPackFile adds shared work definitions to the reusable pack schema.
+type rootPackFile struct {
+	Work           packFile            `yaml:",inline"`
+	DefaultProject string              `yaml:"default_project"`
+	Projects       map[string]Project  `yaml:"projects"`
+	Resources      map[string]Resource `yaml:"resources"`
+	MetaPacks      []string            `yaml:"meta_packs"`
+}
+
 // packHead is the part of pack.yaml read before substitution.
 type packHead struct {
+	// Packs are independently prefixed instances loaded by the root pack.
+	Packs []PackRef `yaml:"packs"`
 	// Defaults are var values used when the including file does not set
 	// them.
 	Defaults map[string]any `yaml:"defaults"`
@@ -98,9 +109,10 @@ type packLayer struct {
 	warnings []string       // deprecated var names the includer set
 	// textSources maps "<entry>.<field>" to the file a *_file field read.
 	textSources map[string][]string
+	packs       []PackRef
 }
 
-// PackInstance is one entry of jobshop.yaml's packs list as loaded: what
+// PackInstance is one entry of the root pack's packs list as loaded: what
 // an operator session reads to handle each repo or team the host serves
 // (#248).
 type PackInstance struct {
@@ -184,16 +196,16 @@ const maxPackDepth = 8
 
 // mergedSections are the top-level keys packs contribute to. Their
 // entries merge per key, and inside an entry per field.
-var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands", "sandbox_profiles", "isolation_profiles"}
+var mergedSections = []string{"agents", "pools", "triggers", "workflows", "desk_commands", "sandbox_profiles", "isolation_profiles", "projects", "resources"}
 
-// LoadFile reads a config file, merges the packs it lists, and validates
-// the result. Packs merge in list order, then the file itself.
+// LoadFile resolves the service file's root pack and its reusable packs.
+// Children merge in list order, then the root pack, then service overrides.
 func LoadFile(path string) (*Config, error) {
 	return LoadFileWith(path, nil)
 }
 
-// LoadFileWith is LoadFile with packs[].path entries passed through
-// rewrite first (nil keeps them). `jobshop config check` uses it to load
+// LoadFileWith is LoadFile with pack and packs[].path passed through
+// rewrite (nil keeps them). `jobshop config check` uses it to load
 // the host's config against another checkout's packs before a deploy
 // switches to it (#261).
 func LoadFileWith(path string, rewrite func(string) string) (*Config, error) {
@@ -232,19 +244,39 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	dir = fileDir(path)
 	// Validate the packs list on its own so its errors are precise.
 	var head struct {
+		Pack  string    `yaml:"pack"`
 		Packs []PackRef `yaml:"packs"`
 	}
-	raw, err := yaml.Marshal(map[string]any{"packs": top["packs"]})
+	raw, err := yaml.Marshal(map[string]any{"pack": top["pack"], "packs": top["packs"]})
 	if err != nil {
 		return nil, fmt.Errorf("%s: packs: %w", name, err)
 	}
 	if err := yaml.UnmarshalWithOptions(raw, &head, yaml.Strict()); err != nil {
 		return nil, fmt.Errorf("%s: packs: %w", name, err)
 	}
+	if _, ok := top["pack"]; ok && head.Pack == "" {
+		return nil, fmt.Errorf("%s: pack: file path is required", name)
+	}
 	merged := map[string]any{}
 	sources := map[string][]string{}
 	var instances []PackInstance
 	var warnings []string
+	if head.Pack != "" {
+		var legacy []string
+		for _, key := range []string{"default_project", "projects", "agents", "resources", "pools", "triggers", "workflows", "prompt_rules", "hooks", "escalation", "learnings", "desk_commands", "sandbox_profiles", "isolation_profiles", "meta_packs", "packs"} {
+			if _, ok := top[key]; ok {
+				legacy = append(legacy, key)
+			}
+		}
+		if len(legacy) > 0 {
+			warnings = append(warnings, fmt.Sprintf("%s: move work definitions (%s) to %s; service work definitions are deprecated", name, strings.Join(legacy, ", "), head.Pack))
+		}
+	}
+	rootLayers, rootRefs, err := loadRootPack(head.Pack, dir, rewrite)
+	if err != nil {
+		return nil, err
+	}
+	head.Packs = append(rootRefs, head.Packs...)
 	for i, ref := range head.Packs {
 		if ref.Path == "" {
 			return nil, fmt.Errorf("%s: packs[%d]: path is required", name, i)
@@ -281,6 +313,19 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 			warnings = append(warnings, l.warnings...)
 		}
 	}
+	for _, l := range rootLayers {
+		// Watch only the root file and its text files, not the entire checkout.
+		watch.addFile(l.file)
+		if target, err := filepath.EvalSymlinks(l.file); err == nil {
+			watch.addFile(target)
+		}
+		mergeInto(merged, l.m, l.file, sources)
+		for k, v := range l.textSources {
+			sources[k] = v
+		}
+		warnings = append(warnings, l.warnings...)
+	}
+	delete(top, "pack")
 	delete(top, "packs")
 	if err := setPackVars(top, nil, name); err != nil {
 		return nil, err
@@ -297,21 +342,16 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 	if err != nil {
 		// Validation errors name the files that set the entry; one naming
 		// a pack file is the pack's.
-		if len(head.Packs) > 0 && strings.Contains(err.Error(), PackFileName) {
-			return nil, packErr(err)
-		}
-		return nil, err
+		return nil, packValidationError(err, head.Packs, rootLayers)
 	}
+	c.Pack = head.Pack
 	c.Packs = head.Packs
 	c.Instances = instances
 	c.addInstanceLabels()
 	// Label rules match the instance labels just added, so the merged
 	// sandboxes can only be checked now.
 	if err := c.checkSandboxes(); err != nil {
-		if len(head.Packs) > 0 && strings.Contains(err.Error(), PackFileName) {
-			return nil, packErr(err)
-		}
-		return nil, err
+		return nil, packValidationError(err, head.Packs, rootLayers)
 	}
 	// Text files set by a path outside every pack dir are watched alone.
 	for _, files := range sources {
@@ -332,6 +372,11 @@ func parseFile(path string, b []byte, rewrite func(string) string) (*Config, err
 // own. Errors name the pack file.
 func loadPack(dir string, given map[string]any, prefix string, depth int) ([]packLayer, error) {
 	file := filepath.Join(dir, PackFileName)
+	return loadPackFile(file, given, prefix, depth, false)
+}
+
+func loadPackFile(file string, given map[string]any, prefix string, depth int, root bool) ([]packLayer, error) {
+	dir := fileDir(file)
 	if depth > maxPackDepth {
 		return nil, fmt.Errorf("%s: extends nested more than %d deep (a cycle?)", file, maxPackDepth)
 	}
@@ -375,13 +420,18 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err := renderDefaults(vars, head.Defaults, given); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
+	if root {
+		if err := rootPackRefs(m, vars, &head); err != nil {
+			return nil, fmt.Errorf("%s: %w", file, err)
+		}
+	}
 	var layers []packLayer
 	for i, ref := range head.Extends {
 		if ref.Path == "" {
 			return nil, fmt.Errorf("%s: extends[%d]: path is required", file, i)
 		}
 		if ref.Prefix != "" {
-			return nil, fmt.Errorf("%s: extends[%d]: prefix is only allowed in jobshop.yaml packs", file, i)
+			return nil, fmt.Errorf("%s: extends[%d]: prefix is only allowed in packs entries", file, i)
 		}
 		p := ref.Path
 		if !filepath.IsAbs(p) {
@@ -442,11 +492,14 @@ func loadPack(dir string, given map[string]any, prefix string, depth int) ([]pac
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	var pf packFile
-	if err := yaml.UnmarshalWithOptions(raw, &pf, yaml.Strict()); err != nil {
+	var schema any = &packFile{}
+	if root {
+		schema = &rootPackFile{}
+	}
+	if err := yaml.UnmarshalWithOptions(raw, schema, yaml.Strict()); err != nil {
 		return nil, fmt.Errorf("%s: %w", file, err)
 	}
-	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings, textSources: textSources}), nil
+	return append(layers, packLayer{file: file, m: m, vars: vars, warnings: warnings, textSources: textSources, packs: head.Packs}), nil
 }
 
 // renderDefaults fills the string defaults that hold a template, so a
@@ -628,6 +681,9 @@ func mergeInto(dst, src map[string]any, file string, sources map[string][]string
 		}
 		if !isMergedSection(k) {
 			dst[k] = v
+			if k == "default_project" {
+				sources[k+"."] = append(sources[k+"."], file)
+			}
 			continue
 		}
 		sm, ok := v.(map[string]any)

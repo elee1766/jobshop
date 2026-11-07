@@ -1,0 +1,10 @@
+default_project: js
+projects:
+  js: {}
+agents:
+  jcode: {command: jcode, args: [acp]}
+packs:
+  - path: packs/main
+    vars:
+      agent: jcode
+      checkout: /srv/widget
