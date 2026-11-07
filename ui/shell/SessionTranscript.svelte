@@ -85,7 +85,7 @@
   onMount(() => virtualizer._didMount());
   const view = $derived.by(() => {
     revision;
-    return { items: virtualizer.getVirtualItems(), height: virtualizer.getTotalSize(), offset: virtualizer.scrollOffset || 0, direction: virtualizer.scrollDirection };
+    return { items: virtualizer.getVirtualItems(), height: virtualizer.getTotalSize(), offset: virtualizer.scrollOffset || 0 };
   });
   $effect(() => {
     const rows = messages;
@@ -115,7 +115,8 @@
     });
   });
   $effect(() => {
-    if (started && view.direction === 'backward' && before !== null && before > 1 && !loading && !historyError && view.offset < 160) {
+    const nearStart = view.offset < 160 || (viewport && view.height <= viewport.clientHeight);
+    if (started && nearStart && before !== null && before > 1 && !loading && !historyError) {
       void untrack(older);
     }
   });
