@@ -297,6 +297,8 @@ type ShowResult struct {
 
 // ListParams filters tickets.
 type ListParams struct {
+	// Query matches literal case-insensitive terms in id, title, body, fields and metadata.
+	Query    string       `json:"query,omitempty"`
 	Project  string       `json:"project,omitempty"`
 	Kind     store.Kind   `json:"kind,omitempty"`
 	Status   store.Status `json:"status,omitempty"`
@@ -1620,7 +1622,7 @@ type AttentionAnswerParams struct {
 	Note          string `json:"note,omitempty"`
 }
 
-// ChatManageParams changes a named chat's persistent lifecycle.
+// ChatManageParams changes a Desk, escalation or attention chat's lifecycle.
 type ChatManageParams struct {
 	Attachments []AttachmentContent `json:"attachments,omitempty"`
 	Action      string              `json:"action"`

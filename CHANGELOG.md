@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.8.18](https://github.com/elee1766/jobshop/compare/v0.8.17...v0.8.18) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** close and resolve managed chats ([#984](https://github.com/elee1766/jobshop/issues/984)) ([8bb1c9f](https://github.com/elee1766/jobshop/commit/8bb1c9fea562669c21de3369ab08d6f51799aa6b))
+
+## [0.8.17](https://github.com/elee1766/jobshop/compare/v0.8.16...v0.8.17) (2026-11-07)
+
+
+### Features
+
+* **desk:** search trace tickets and resolve workflow PR references ([#982](https://github.com/elee1766/jobshop/issues/982)) ([b8b12e4](https://github.com/elee1766/jobshop/commit/b8b12e4146bd7d8e4293b9242e7a8ba56231ea4d))
+
+## [0.8.16](https://github.com/elee1766/jobshop/compare/v0.8.15...v0.8.16) (2026-11-07)
+
+
+### Features
+
+* **config:** separate service settings from a root work pack ([#980](https://github.com/elee1766/jobshop/issues/980)) ([9c93277](https://github.com/elee1766/jobshop/commit/9c93277d5eb38342bafe5edc5b0571c6ed37c0a1))
+
+## [0.8.15](https://github.com/elee1766/jobshop/compare/v0.8.14...v0.8.15) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** keep home ticket identifiers in hover text ([#978](https://github.com/elee1766/jobshop/issues/978)) ([ddd41a7](https://github.com/elee1766/jobshop/commit/ddd41a79ff10e995e7e897104db74269a82f3e55))
+
+## [0.8.14](https://github.com/elee1766/jobshop/compare/v0.8.13...v0.8.14) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** link qualified GitHub PR references ([#976](https://github.com/elee1766/jobshop/issues/976)) ([0ea4841](https://github.com/elee1766/jobshop/commit/0ea48415a79945f20a19c7c3e299c6df681620f3))
+
+## [0.8.13](https://github.com/elee1766/jobshop/compare/v0.8.12...v0.8.13) (2026-11-07)
+
+
+### Features
+
+* **desk:** improve trace exploration and unify compact controls ([#974](https://github.com/elee1766/jobshop/issues/974)) ([a8ac0cc](https://github.com/elee1766/jobshop/commit/a8ac0cc683c9015b8956478a96e20952e56b8b33))
+
+## [0.8.12](https://github.com/elee1766/jobshop/compare/v0.8.11...v0.8.12) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** align compact attachment actions ([#972](https://github.com/elee1766/jobshop/issues/972)) ([fddc743](https://github.com/elee1766/jobshop/commit/fddc743f859b85f273622984e31a9e08ffb81764))
+
 ## [0.8.11](https://github.com/elee1766/jobshop/compare/v0.8.10...v0.8.11) (2026-11-07)
 
 

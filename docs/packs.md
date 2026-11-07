@@ -7,8 +7,15 @@ roots have a pack written for their own flow; the packs in this repo's
 
 ## Loading
 
-`jobshop.yaml` lists packs. A relative `path` resolves against the root,
-so `<root>/packs/<name>/` is the normal place:
+`jobshop.yaml` selects the root work-definition file:
+
+```yaml
+pack: pack.yaml
+```
+
+That root `pack.yaml` owns agents, projects, resources, prompts and
+automation, and lists reusable packs. Relative paths resolve against the
+file that lists them, so `<root>/packs/<name>/` is the normal place:
 
 ```yaml
 packs:
@@ -143,6 +150,12 @@ Use `jobshop comment` for progress and `jobshop close` when the step is done.
 ```
 
 `jobshop.yaml`:
+
+```yaml
+pack: pack.yaml
+```
+
+`pack.yaml`:
 
 ```yaml
 default_project: js

@@ -65,7 +65,8 @@ func TestLinkedConfigPacks(t *testing.T) {
 	write(filepath.Join(root, "jobshop.module.yaml"), "agents:\n  a:\n    command: x\n")
 	write(filepath.Join(repo, "packs/p/pack.yaml"), "pools:\n  dev:\n    agent: a\n    dir: /w\n    prompt_file: dev.md\n")
 	write(filepath.Join(repo, "packs/p/dev.md"), "do work")
-	write(filepath.Join(repo, "jobshop.yaml"), "include: [jobshop.module.yaml]\nprojects:\n  js: {}\npacks:\n  - path: packs/p\n")
+	write(filepath.Join(repo, "jobshop.yaml"), "include: [jobshop.module.yaml]\npack: pack.yaml\n")
+	write(filepath.Join(repo, "pack.yaml"), "projects:\n  js: {}\npacks:\n  - path: packs/p\n")
 	require.NoError(t, os.Symlink(filepath.Join(repo, "jobshop.yaml"), filepath.Join(root, "jobshop.yaml")))
 	// The include is beside the link, so the checkout copy cannot load it.
 	write(filepath.Join(root, "jobshop.module.yaml"), "agents:\n  a:\n    command: x\n")

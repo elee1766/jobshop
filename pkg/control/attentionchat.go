@@ -95,6 +95,19 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config
 		res.Session, res.Pool = sess.ID, sess.Pool
 		return res, nil
 	}
+	if prestart {
+		// Explicitly archived chats stay closed until the operator discusses the item again.
+		closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Key: res.Key, Order: store.OrderNewest, Limit: 1})
+		if err != nil {
+			return res, err
+		}
+		if len(closed) > 0 {
+			f, _ := store.DecodeFields[store.SessionFields](closed[0])
+			if f.Archived != nil {
+				return res, nil
+			}
+		}
+	}
 	sc := scope{admin: true, actor: "controller"}
 	sess, started, err := c.keyedSession(ctx, cfg, sc, res.Pool, res.Key)
 	if err != nil {

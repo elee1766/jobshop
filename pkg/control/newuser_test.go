@@ -17,8 +17,8 @@ import (
 )
 
 // guideBlocks returns the fenced blocks of the "A minimal pack" section of
-// docs/packs.md, in order: pack.yaml, prompts/work.md, jobshop.yaml, and
-// the shell lines to try it.
+// docs/packs.md, in order: child pack, prompts/work.md, jobshop.yaml,
+// root pack.yaml, and the shell lines to try it.
 func guideBlocks(t *testing.T) []string {
 	t.Helper()
 	b, err := os.ReadFile("../../docs/packs.md")
@@ -40,12 +40,12 @@ func guideBlocks(t *testing.T) []string {
 			cur = append(cur, line)
 		}
 	}
-	require.Len(t, blocks, 4, "pack.yaml, work.md, jobshop.yaml, try-it")
+	require.Len(t, blocks, 5, "child pack, work.md, jobshop.yaml, root pack, try-it")
 	return blocks
 }
 
 // TestNewUserPath follows docs/packs.md for a new user (#494): init a
-// root, write the guide's minimal pack and jobshop.yaml, serve, start the
+// root, write the guide's packs and jobshop.yaml, serve, start the
 // guide's run, and wait for it to finish done. The pack and config come
 // from the doc, so a guide that drifts from the code fails here. Only the
 // agent command (the fake agent) and the checkout (a temp repo) differ.
@@ -74,17 +74,18 @@ func TestNewUserPath(t *testing.T) {
 		require.NoError(t, err, string(out))
 	}
 
-	// The guide's jobshop.yaml, with the agent and checkout swapped.
+	require.NoError(t, os.WriteFile(root.Config(), []byte(blocks[2]), 0o600))
+	// The guide's root pack, with the agent and checkout swapped.
 	var cfg map[string]any
-	require.NoError(t, yaml.Unmarshal([]byte(blocks[2]), &cfg))
+	require.NoError(t, yaml.Unmarshal([]byte(blocks[3]), &cfg))
 	agents, ok := cfg["agents"].(map[string]any)
-	require.True(t, ok, "guide jobshop.yaml has agents")
+	require.True(t, ok, "guide root pack has agents")
 	require.Len(t, agents, 1)
 	for name := range agents {
 		agents[name] = map[string]any{"command": os.Args[0], "args": []string{"fake-agent"}}
 	}
 	packs, ok := cfg["packs"].([]any)
-	require.True(t, ok, "guide jobshop.yaml has packs")
+	require.True(t, ok, "guide root pack has packs")
 	require.Len(t, packs, 1)
 	entry, ok := packs[0].(map[string]any)
 	require.True(t, ok)
@@ -95,7 +96,7 @@ func TestNewUserPath(t *testing.T) {
 	vars["checkout"] = repo
 	out, err := yaml.Marshal(cfg)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(root.Config(), out, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.PackFileName), out, 0o600))
 	_, err = config.LoadFile(root.Config())
 	require.NoError(t, err, "the guide's config loads")
 
@@ -108,7 +109,7 @@ func TestNewUserPath(t *testing.T) {
 
 	// 4. The guide's `jobshop run start` line, through the CLI.
 	var line string
-	for l := range strings.SplitSeq(blocks[3], "\n") {
+	for l := range strings.SplitSeq(blocks[4], "\n") {
 		if strings.HasPrefix(l, "jobshop run start ") {
 			line = l
 		}

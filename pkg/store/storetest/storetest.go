@@ -58,6 +58,7 @@ func Run(t *testing.T, newStore Factory) {
 		{"ListCreatedBy", testListCreatedBy},
 		{"ListFilters", testListFilters},
 		{"ListShapes", testListShapes},
+		{"ListQuery", testListQuery},
 		{"Orphaned", testOrphaned},
 		{"Runs", testRuns},
 		{"StepFailures", testStepFailures},

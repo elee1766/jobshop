@@ -15,10 +15,10 @@ test('pasted image and document reach the real agent as native attachments', asy
   const outputPath = process.env.DESK_IMAGE_OUTPUT_DIR ? join(process.env.DESK_IMAGE_OUTPUT_DIR, name + '.png') : null;
   try {
     await page.goto('./');
-    if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
-    await page.getByRole('button', { name: 'New', exact: true }).click();
-    await page.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
-    await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+    if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
+    await page.getByRole('button', { name: 'new', exact: true }).click();
+    await page.getByRole('textbox', { name: 'name', exact: true }).fill(name);
+    await page.getByRole('textbox', { name: 'name', exact: true }).press('Enter');
     const composer = page.getByRole('textbox', { name: /^First message to new chat:/ });
     await composer.fill('Read the token printed in the attached image and the document token from the attached file. Use your file-reading tool for the resource link, decoding its file URL if necessary. Reply with both exact tokens.');
     const png = await composer.evaluate((element, { visual, document }) => {
@@ -62,7 +62,7 @@ test('pasted image and document reach the real agent as native attachments', asy
       await expect(page.getByRole('img', { name: 'Agent output', exact: true })).toBeVisible({ timeout: 30_000 });
     }
     await page.reload();
-    if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
+    if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Choose chat', exact: true })).toContainText(name);
     await expect(sent).toBeVisible();
     if (outputPath) await expect(page.getByRole('img', { name: 'Agent output', exact: true })).toBeVisible();

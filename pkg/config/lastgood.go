@@ -22,6 +22,7 @@ func (r Root) LastGood() string { return filepath.Join(r.Dir, LastGoodName) }
 // SaveLastGood writes c (merged, no packs list) to path atomically.
 func SaveLastGood(path string, c *Config) error {
 	cc := *c
+	cc.Pack = ""
 	cc.Packs = nil
 	b, err := yaml.Marshal(&cc)
 	if err != nil {

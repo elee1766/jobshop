@@ -6,11 +6,11 @@ test('chat attachments stay local until sending and can be removed or dismissed'
     if (request.method() === 'POST' && request.url().includes('/api/chat/')) writes.push(request.url());
   });
   await page.goto('./');
-  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
-  await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('attachment draft');
-  await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
-  const attach = page.locator('.composer').getByRole('button', { name: 'Attach', exact: true });
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
+  await page.getByRole('button', { name: 'new', exact: true }).click();
+  await page.getByRole('textbox', { name: 'name', exact: true }).fill('attachment draft');
+  await page.getByRole('textbox', { name: 'name', exact: true }).press('Enter');
+  const attach = page.locator('.composer').getByRole('button', { name: 'attach', exact: true });
   const message = page.locator('#chat-message');
   const attachLeft = await attach.evaluate(button => {
     const text = document.createRange();
@@ -23,10 +23,10 @@ test('chat attachments stay local until sending and can be removed or dismissed'
   await expect(page.getByRole('list', { name: 'Message attachments' })).toContainText('notes.md');
   await page.getByRole('button', { name: 'Remove attachment notes.md', exact: true }).click();
   await expect(page.getByRole('list', { name: 'Message attachments' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Paste', exact: true }).click();
+  await page.getByRole('button', { name: 'paste', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Paste document', exact: true });
-  await dialog.getByRole('textbox', { name: 'Paste text to attach as a document', exact: true }).fill('A short block explicitly attached as a document.');
-  await dialog.getByRole('button', { name: 'Attach document', exact: true }).click();
+  await dialog.getByRole('textbox', { name: 'paste text to attach as a document', exact: true }).fill('A short block explicitly attached as a document.');
+  await dialog.getByRole('button', { name: 'attach document', exact: true }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole('list', { name: 'Message attachments' })).toContainText('pasted-text-1.txt');
   await expect(page.getByRole('textbox', { name: /^First message to new chat:/ })).toHaveValue('');
@@ -47,15 +47,15 @@ for (const width of [1000, 790, 700, 412, 360]) {
     await expect(page.locator('.status')).toContainText('sys ok');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     if (width < 600) {
-      await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
+      await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
     } else if (width < 760) {
-      await page.getByRole('button', { name: 'Chats ▸', exact: true }).click();
+      await page.getByRole('button', { name: 'chats ▸', exact: true }).click();
     }
-    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Hide', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Chats ▸', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Chats ▸', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'New', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'new', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'hide', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'chats ▸', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'chats ▸', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'new', exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });
 }
@@ -66,6 +66,7 @@ for (const view of ['trace', 'improvements', 'system']) {
     page.on('pageerror', (error) => errors.push(String(error)));
     await page.goto('./?view=' + view);
     await expect(page.locator('main .tag').first()).toContainText('/' + view);
+    await expect(page.locator('.top nav .chosen')).toHaveText({ trace: 'trace', improvements: 'learn', system: 'sys' }[view]);
     await expect(page.locator('.status')).toContainText('sys ok');
     expect(errors).toEqual([]);
   });
@@ -81,16 +82,18 @@ test('blocked browser storage does not prevent rendering', async ({ page }) => {
 test('New chat floats below New without moving the chat list', async ({ page, isMobile }) => {
   await page.goto('./');
   await expect(page.locator('.status')).toContainText('sys ok');
-  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
-  const button = page.getByRole('button', { name: 'New', exact: true });
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
+  const button = page.getByRole('button', { name: 'new', exact: true });
   const selector = page.getByRole('button', { name: 'Choose chat', exact: true });
   const before = await selector.boundingBox();
   await button.click();
   const popover = page.getByRole('dialog', { name: 'New chat', exact: true });
   await expect(popover).toBeVisible();
-  await expect(popover.getByRole('textbox', { name: 'Name', exact: true })).toBeFocused();
+  await expect(popover.getByRole('textbox', { name: 'name', exact: true })).toBeFocused();
   const anchor = await button.boundingBox();
   const box = await popover.boundingBox();
+  expect(box.height).toBeLessThanOrEqual(38);
+  await expect(popover).toHaveCSS('font-size', await page.locator('.chat-tag').evaluate(node => getComputedStyle(node).fontSize));
   expect(box.y).toBeGreaterThanOrEqual(anchor.y + anchor.height);
   expect(box.y - anchor.y - anchor.height).toBeLessThanOrEqual(8);
   expect(box.x).toBeGreaterThanOrEqual(0);
@@ -129,14 +132,14 @@ test('named draft clearly creates on first send and can be dismissed without wri
   });
   await page.goto('./');
   await expect(page.locator('.status')).toContainText('sys ok');
-  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
   const selector = page.getByRole('button', { name: 'Choose chat', exact: true });
   const previous = await selector.textContent();
-  await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Draft only');
-  await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+  await page.getByRole('button', { name: 'new', exact: true }).click();
+  await page.getByRole('textbox', { name: 'name', exact: true }).fill('Draft only');
+  await page.getByRole('textbox', { name: 'name', exact: true }).press('Enter');
   await expect(page.getByRole('region', { name: 'New chat draft', exact: true })).toContainText('Your first message will create this chat. Nothing has been sent yet.');
-  await expect(selector).toContainText('New chat: Draft only');
+  await expect(selector).toContainText('new chat: Draft only');
   await expect(page.getByRole('textbox', { name: 'First message to new chat: Draft only', exact: true })).toBeFocused();
   await page.getByRole('textbox', { name: 'First message to new chat: Draft only', exact: true }).fill('Unsent message');
   await expect(page.getByRole('textbox', { name: 'First message to new chat: Draft only', exact: true })).toHaveValue('Unsent message');
@@ -150,9 +153,9 @@ test('archived chats form a vertical table with scrolling but no scrollbar chrom
   await page.setViewportSize({ width: isMobile ? 412 : 1000, height: 400 });
   await page.goto('./');
   await expect(page.locator('.status')).toContainText('sys ok');
-  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
   await page.getByRole('button', { name: 'Choose chat', exact: true }).click();
-  await page.getByRole('button', { name: /^Archived/ }).click();
+  await page.getByRole('button', { name: /^archived/ }).click();
   const table = page.getByRole('table', { name: 'Archived chats', exact: true });
   await expect(table).toBeVisible();
   const chats = await (await page.request.get('api/chat')).json();
@@ -188,7 +191,7 @@ test('archived chats form a vertical table with scrolling but no scrollbar chrom
   const first = table.getByRole('button').first();
   if (await first.count()) {
     await first.click();
-    await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'restore', exact: true })).toBeVisible();
   } else {
     await expect(page.getByText('No archived chats.', { exact: true })).toBeVisible();
   }

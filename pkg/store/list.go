@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // Helpers over List for common shapes (#579: helpers wrap the interface
@@ -10,6 +11,20 @@ import (
 
 // OpenStatuses are the statuses of work not yet closed.
 var OpenStatuses = []Status{StatusOpen, StatusInProgress}
+
+// QueryTerms bounds text search and escapes literal terms for SQL LIKE with ESCAPE '!'.
+// A qualified reference's # separates its repository and number, also matching metadata.
+func QueryTerms(query string) ([]string, error) {
+	terms := strings.Fields(strings.ReplaceAll(query, "#", " "))
+	if len(query) > 512 || len(terms) > 16 {
+		return nil, fmt.Errorf("%w: query exceeds 512 bytes or 16 terms", ErrInvalid)
+	}
+	escape := strings.NewReplacer("!", "!!", "%", "!%", "_", "!_")
+	for i, term := range terms {
+		terms[i] = "%" + escape.Replace(strings.ToLower(term)) + "%"
+	}
+	return terms, nil
+}
 
 // Children returns id's children in fields.index order (a run's steps).
 func Children(ctx context.Context, s Store, id string) ([]Ticket, error) {

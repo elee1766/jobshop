@@ -192,9 +192,17 @@ func TestLoadFileWithRewrite(t *testing.T) {
 		"old/op/pack.yaml": "pools:\n  op:\n    agent: a\n    repo: /src\n    idle_timeout: 1m\n",
 		"new/op/pack.yaml": "pools:\n  op:\n    agent: a\n    repo: \"{{.jobshop_repo}}\"\n    idle_timeout: 1m\n",
 		"jobshop.yaml":     hostBase + "packs:\n  - path: old/op\n",
+		"service.yaml":     "pack: old/pack.yaml\n",
+		"old/pack.yaml":    hostBase + "packs:\n  - path: op\n",
+		"new/pack.yaml":    hostBase + "packs:\n  - path: op\n",
 	})
 	f := filepath.Join(dir, "jobshop.yaml")
 	_, err := LoadFile(f)
+	require.NoError(t, err)
+	_, err = LoadFileWith(f, func(p string) string { return strings.Replace(p, "old", "new", 1) })
+	require.ErrorContains(t, err, `var "jobshop_repo" is not set`)
+	f = filepath.Join(dir, "service.yaml")
+	_, err = LoadFile(f)
 	require.NoError(t, err)
 	_, err = LoadFileWith(f, func(p string) string { return strings.Replace(p, "old", "new", 1) })
 	require.ErrorContains(t, err, `var "jobshop_repo" is not set`)

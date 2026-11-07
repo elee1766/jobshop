@@ -12,6 +12,7 @@ export function ago(value?: string, now = Date.now()) {
 
 export interface Flight {
   id: string;
+  title: string;
   ref: string;
   repo: string;
   pr: string;
@@ -79,6 +80,7 @@ export function flights(
     const issue = vars.issue || meta.linear?.issue;
     rows.push({
       id: run.run.id,
+      title: run.run.title || "",
       ref: issue
         ? /^\d+$/.test(String(issue)) && repo
           ? `${repo.split("/").at(-1)}#${issue}`
