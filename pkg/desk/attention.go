@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -36,6 +37,7 @@ type AttentionChat struct {
 
 // attentionState is <root>/desk/attention.json.
 type attentionState struct {
+	Focus map[string]time.Time `json:"focus,omitempty"`
 	// Chats mapped kind:id to a chat key before #606 moved attention
 	// chats to the controller. Kept so an old file round-trips.
 	Chats map[string]string `json:"chats,omitempty"`

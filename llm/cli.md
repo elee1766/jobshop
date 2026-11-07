@@ -40,7 +40,7 @@ Commands:
   gateway <name> [flags]
     Run an A2A gateway from jobshop.yaml (admin socket client).
 
-  desk [flags]
+  desk [<action> [<args> ...]] [flags]
     Serve Jobshop Desk, the read-only dashboard (admin socket client).
 
   ingest serve [flags]
@@ -611,9 +611,15 @@ Flags:
 ## jobshop desk
 
 ```
-Usage: jobshop desk [flags]
+Usage: jobshop desk [<action> [<args> ...]] [flags]
 
 Serve Jobshop Desk, the read-only dashboard (admin socket client).
+
+Arguments:
+  [<action>]      View command: navigate, filter, select, attach, expand or
+                  collapse. Empty serves Desk.
+  [<args> ...]    View arguments as key=value, for example view=trace
+                  ref=js-123.
 
 Flags:
   -h, --help                       Show context-sensitive help.
@@ -629,6 +635,8 @@ Flags:
                                    ($JOBSHOP_LOG_LEVEL).
       --log-format="text"          Log format: text or json
                                    ($JOBSHOP_LOG_FORMAT).
+      --session=STRING             Named chat session to target. Defaults to the
+                                   calling agent's session.
       --listen="127.0.0.1:7480"    Address to serve on. Non-loopback needs
                                    --allow-remote.
       --host=HOST,...              Extra Host header values to accept (e.g.

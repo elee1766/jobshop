@@ -1,9 +1,0 @@
-{
-  "name": "sessions",
-  "version": "1",
-  "entry": "index.js",
-  "api": ">=3",
-  "contributes": [
-    { "slot": "view", "element": "desk-sessions-view", "id": "sessions", "title": "Sessions", "icon": "terminal", "key": "s", "order": 5 }
-  ]
-}

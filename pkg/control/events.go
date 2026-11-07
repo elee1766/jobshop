@@ -104,6 +104,8 @@ func (c *Controller) pumpEvents() {
 				break
 			}
 			if len(evs) == 0 {
+				// Learning and inbox writes can commit without ticket history.
+				c.events.publish([]rpc.Event{{Kind: rpc.EventKindState}})
 				break
 			}
 			c.events.publish(evs)
@@ -207,7 +209,7 @@ func (c *Controller) eventsSubscribe(ctx context.Context, sc scope, p rpc.Events
 	send := func(ev rpc.Event) error {
 		// Ready, lagged, activity and pool events are not history rows (seq 0
 		// or a resume mark) and always pass.
-		ctl := ev.Kind == rpc.EventKindReady || ev.Kind == rpc.EventKindLagged || ev.Kind == rpc.EventKindActivity || ev.Kind == rpc.EventKindPool
+		ctl := ev.Kind == rpc.EventKindReady || ev.Kind == rpc.EventKindLagged || ev.Kind == rpc.EventKindActivity || ev.Kind == rpc.EventKindPool || ev.Kind == rpc.EventKindDesk || ev.Kind == rpc.EventKindSystem || ev.Kind == rpc.EventKindState
 		if ev.Seq <= res.Seq && !ctl {
 			return nil
 		}
@@ -217,7 +219,7 @@ func (c *Controller) eventsSubscribe(ctx context.Context, sc scope, p rpc.Events
 		if !ctl && !eventMatches(p, ev) {
 			return nil
 		}
-		if (ev.Kind == rpc.EventKindActivity || ev.Kind == rpc.EventKindPool) && len(p.Kinds) > 0 && !slices.Contains(p.Kinds, ev.Kind) {
+		if (ev.Kind == rpc.EventKindActivity || ev.Kind == rpc.EventKindPool || ev.Kind == rpc.EventKindDesk || ev.Kind == rpc.EventKindSystem || ev.Kind == rpc.EventKindState) && len(p.Kinds) > 0 && !slices.Contains(p.Kinds, ev.Kind) {
 			return nil
 		}
 		return sc.peer.conn.SendNotification(ctx, rpc.NotifyEvent, ev)

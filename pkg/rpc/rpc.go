@@ -1107,6 +1107,10 @@ type TraceParams struct {
 // TraceNode is one ticket in a trace: how it came to be, what it links to
 // and the tickets it led to.
 type TraceNode struct {
+	Kind       store.Kind   `json:"kind"`
+	CreatedAt  time.Time    `json:"created_at"`
+	UpdatedAt  time.Time    `json:"updated_at"`
+	ClosedAt   time.Time    `json:"closed_at,omitzero"`
 	ID         string       `json:"id"`
 	Title      string       `json:"title,omitempty"`
 	Pool       string       `json:"pool,omitempty"`
@@ -1400,6 +1404,12 @@ const (
 	// EventKindActivity: new external activity items (#255); refetch
 	// activity.list. Seq is 0: it is not a history row.
 	EventKindActivity = "activity"
+	// EventKindState signals a committed non-ticket state change; Seq is 0.
+	EventKindState = "state"
+	// EventKindSystem carries a completed scheduler pass; Seq is 0.
+	EventKindSystem = "system"
+	// EventKindDesk carries a view-only command for a named chat; Seq is 0.
+	EventKindDesk = "desk"
 )
 
 // Session event ops; other session history ops (claim, update) keep their
@@ -1434,24 +1444,27 @@ type EventsSubscribeResult struct {
 // history seq. Ticket fields (Status, Labels, State) are read when the
 // event is sent, so they can be newer than the row.
 type Event struct {
-	Seq        int64        `json:"seq"`
-	Time       time.Time    `json:"time,omitzero"`
-	Kind       string       `json:"kind"`
-	Op         string       `json:"op,omitempty"`
-	ID         string       `json:"id,omitempty"`
-	Revision   int64        `json:"revision,omitempty"`
-	Actor      string       `json:"actor,omitempty"`
-	TicketKind store.Kind   `json:"ticket_kind,omitempty"`
-	Label      string       `json:"label,omitempty"` // label_add, label_remove
-	Status     store.Status `json:"status,omitempty"`
-	Resolution string       `json:"resolution,omitempty"`
-	State      string       `json:"state,omitempty"` // run state
-	Labels     []string     `json:"labels,omitempty"`
-	Pool       string       `json:"pool,omitempty"`    // pool events
-	Desired    int          `json:"desired,omitempty"` // pool events
-	Option     string       `json:"option,omitempty"`  // session config events
-	Old        string       `json:"old,omitempty"`
-	New        string       `json:"new,omitempty"`
+	System     *SystemStatus     `json:"system,omitempty"`
+	Session    string            `json:"session,omitempty"`
+	Args       map[string]string `json:"args,omitempty"`
+	Seq        int64             `json:"seq"`
+	Time       time.Time         `json:"time,omitzero"`
+	Kind       string            `json:"kind"`
+	Op         string            `json:"op,omitempty"`
+	ID         string            `json:"id,omitempty"`
+	Revision   int64             `json:"revision,omitempty"`
+	Actor      string            `json:"actor,omitempty"`
+	TicketKind store.Kind        `json:"ticket_kind,omitempty"`
+	Label      string            `json:"label,omitempty"` // label_add, label_remove
+	Status     store.Status      `json:"status,omitempty"`
+	Resolution string            `json:"resolution,omitempty"`
+	State      string            `json:"state,omitempty"` // run state
+	Labels     []string          `json:"labels,omitempty"`
+	Pool       string            `json:"pool,omitempty"`    // pool events
+	Desired    int               `json:"desired,omitempty"` // pool events
+	Option     string            `json:"option,omitempty"`  // session config events
+	Old        string            `json:"old,omitempty"`
+	New        string            `json:"new,omitempty"`
 }
 
 // Events calls events.subscribe and passes each event to fn until the
@@ -1542,6 +1555,48 @@ type AttentionItem struct {
 	// (markdown) and suggested answers (JOB-101).
 	Context string           `json:"context,omitempty"`
 	Options []QuestionOption `json:"options,omitempty"`
+}
+
+// Desk controller methods keep mutations independent of the browser.
+const (
+	MethodAttentionAnswer = "attention.answer"
+	MethodChatManage      = "chat.manage"
+	MethodDeskCommand     = "desk.command"
+	MethodSystemStatus    = "system.status"
+)
+
+// SystemStatus reports completed supervisor pass timings.
+type SystemStatus struct {
+	LastTick    time.Time          `json:"last_tick,omitzero"`
+	TickSeconds float64            `json:"tick_seconds"`
+	Steps       map[string]float64 `json:"steps"`
+	P95Seconds  float64            `json:"p95_seconds"`
+	Samples     int                `json:"samples"`
+}
+
+// AttentionAnswerParams chooses one current human action with an optional note.
+type AttentionAnswerParams struct {
+	ExpectedTitle string `json:"expected_title,omitempty"`
+	Kind          string `json:"kind"`
+	ID            string `json:"id"`
+	Option        int    `json:"option"`
+	Note          string `json:"note,omitempty"`
+}
+
+// ChatManageParams changes a named chat's persistent lifecycle.
+type ChatManageParams struct {
+	Action string `json:"action"`
+	ID     string `json:"id,omitempty"`
+	Pool   string `json:"pool,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Text   string `json:"text,omitempty"`
+}
+
+// DeskCommandParams is a view-only command for one named chat.
+type DeskCommandParams struct {
+	Session string            `json:"session,omitempty"`
+	Action  string            `json:"action"`
+	Args    map[string]string `json:"args,omitempty"`
 }
 
 // AttentionResult lists what waits on a human, oldest first. Empty when

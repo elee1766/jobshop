@@ -9,14 +9,19 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/desk"
+	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
 type deskCmd struct {
 	LogFlags
+	Action       string   `arg:"" optional:"" help:"View command: navigate, filter, select, attach, expand or collapse. Empty serves Desk."`
+	Args         []string `arg:"" optional:"" help:"View arguments as key=value, for example view=trace ref=js-123."`
+	Session      string   `help:"Named chat session to target. Defaults to the calling agent's session."`
 	Listen       string   `help:"Address to serve on. Non-loopback needs --allow-remote." default:"127.0.0.1:7480"`
 	Host         []string `help:"Extra Host header values to accept (e.g. a tailnet name); loopback is always accepted."`
 	AllowRemote  bool     `help:"Allow a non-loopback listen address. Desk has no login; expose it only on a trusted network."`
@@ -31,6 +36,17 @@ type deskCmd struct {
 
 // Run serves Jobshop Desk over the admin socket (#202).
 func (c deskCmd) Run(g *Globals) error {
+	if c.Action != "" {
+		args := map[string]string{}
+		for _, arg := range c.Args {
+			key, value, ok := strings.Cut(arg, "=")
+			if !ok || key == "" {
+				return fmt.Errorf("desk: want key=value, got %q", arg)
+			}
+			args[key] = value
+		}
+		return g.call(rpc.MethodDeskCommand, rpc.DeskCommandParams{Session: c.Session, Action: c.Action, Args: args}, nil)
+	}
 	r, err := g.root()
 	if err != nil {
 		return err

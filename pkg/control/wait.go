@@ -569,7 +569,11 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 			last = r
 		}
 	}
-	return last != nil && last.State == want, fmt.Sprintf("%s %s by %s on %s", ref, strings.ToLower(want), cd.Login, short(cd.Head)), nil
+	observed := "no review"
+	if last != nil {
+		observed = last.State
+	}
+	return last != nil && last.State == want, fmt.Sprintf("%s wants %s by %s on %s, observed %s", ref, want, cd.Login, short(cd.Head), observed), nil
 }
 
 // evalRun: the run is done (state done) or ended any way (closed). A

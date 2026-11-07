@@ -13,13 +13,13 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc/rpcschema"
 )
 
-// The committed ui/desk-plugin.d.ts must match the rpc types. Regenerate
+// The committed client declarations must match the rpc types. Regenerate
 // with: go run ./pkg/rpc/rpcschema/cmd/deskgen
 func TestDTSCurrent(t *testing.T) {
 	b, err := os.ReadFile(filepath.Join("..", "..", "..", rpcschema.DTSPath))
 	require.NoError(t, err)
 	assert.Equal(t, rpcschema.TypeScript(rpcschema.Head), string(b),
-		"ui/desk-plugin.d.ts is stale: go run ./pkg/rpc/rpcschema/cmd/deskgen")
+		"packages/jobshop-client/rpc.d.ts is stale: go run ./pkg/rpc/rpcschema/cmd/deskgen")
 }
 
 func TestSchemaTicketCreate(t *testing.T) {

@@ -395,7 +395,7 @@ func TestWaitApprovalAndChecks(t *testing.T) {
 	assert.Equal(t, []string{step.ID}, readyIDs(t, c))
 	cs, err := store.Comments(ctx, c.store, step.ID)
 	require.NoError(t, err)
-	assert.Contains(t, cs[len(cs)-1].Body, "approved by bob on aaaa111")
+	assert.Contains(t, cs[len(cs)-1].Body, "wants APPROVED by bob on aaaa111, observed APPROVED")
 }
 
 func mustGet(t *testing.T, c *Controller, id string) store.Ticket {

@@ -101,8 +101,13 @@ func TestEventsSubscribe(t *testing.T) {
 	require.Eventually(t, func() bool { return all.has(rpc.EventKindSession, rpc.OpSessionStop, sess.Ticket.ID) }, dialWait, 10*time.Millisecond)
 	assert.True(t, all.has(rpc.EventKindSession, rpc.OpSessionStart, sess.Ticket.ID))
 	evs := all.get()
-	for i := 1; i < len(evs); i++ {
-		assert.Greater(t, evs[i].Seq, evs[i-1].Seq, "in seq order")
+	var lastSeq int64
+	for _, ev := range evs {
+		if ev.Seq == 0 {
+			continue // Transient state notifications have no replay cursor.
+		}
+		assert.Greater(t, ev.Seq, lastSeq, "in seq order")
+		lastSeq = ev.Seq
 	}
 
 	// Label filter: label_add and label_remove name the label; other

@@ -8,4 +8,4 @@ import _ "embed"
 var Head string
 
 // DTSPath is desk-plugin.d.ts relative to the repo root.
-const DTSPath = "ui/desk-plugin.d.ts"
+const DTSPath = "packages/jobshop-client/rpc.d.ts"

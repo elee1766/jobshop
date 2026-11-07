@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strconv"
 	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -164,6 +165,15 @@ func (c *Controller) recordAttentionSummary(ctx context.Context, session, said s
 	if !slices.Contains(attentionTicketKinds, kind) {
 		return
 	}
+	for _, line := range strings.Split(said, "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "Recommended option: "); ok {
+			if option, err := strconv.Atoi(value); err == nil && option >= 1 && option <= 5 {
+				if err := c.updateDeskMeta(ctx, id, "attention_recommend", value); err != nil {
+					c.log.WarnContext(ctx, "record attention recommendation", "ticket", id, "err", err)
+				}
+			}
+		}
+	}
 	if err := c.updateDeskMeta(ctx, id, "attention_summary", summaryOf(said)); err != nil {
 		c.log.WarnContext(ctx, "record attention summary", "ticket", id, "err", err)
 	}
@@ -235,6 +245,10 @@ func (c *Controller) attentionPrompt(ctx context.Context, it rpc.AttentionItem, 
 		}
 	}
 	b.WriteString("\nThe operator opens this chat from Desk. Read the item with the jobshop CLI (read-only commands only: this session cannot write until the operator sends a message), then reply in a few lines: what blocks it, and the concrete actions available, as Desk's resolve buttons (approve, reject or dismiss for a decision; close, resume, unquarantine, clear wait) and the exact CLI commands. Do not act until the operator agrees.")
+	for _, action := range c.attentionActions(ctx, it) {
+		fmt.Fprintf(&b, "\nOption %d: %s. %s", action.option.ID, action.option.Title, action.option.Description)
+	}
+	b.WriteString("\nIf one option is supported by the evidence, end with a line exactly 'Recommended option: N', replacing N with its number. Otherwise do not recommend one.")
 	if it.Kind == rpc.AttentionQuestion {
 		qm, _ := questionOf(t)
 		b.WriteString(questionChatPrompt(it.ID, qm))

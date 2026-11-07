@@ -17,14 +17,12 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -61,8 +59,7 @@ type Config struct {
 	// TrustedProxies are the TCP peers whose UserHeader and
 	// X-Forwarded-Prefix are believed. Required when UserHeader is set.
 	TrustedProxies []netip.Prefix
-	// Root is the Jobshop root: <root>/desk/plugins and relative pack
-	// paths resolve against it (#517). Empty: built-in plugins only.
+	// Root holds Desk's notification, acknowledgement and focus state.
 	Root string
 	// Favicon replaces the built-in icon.svg as the page icon. Nil: built-in.
 	Favicon []byte
@@ -104,10 +101,6 @@ type Server struct {
 	ui  fs.FS
 	// index is dist/index.html; serveIndex adds the <base> tag.
 	index []byte
-	// builtin is dist/plugins, the embedded plugin set (#517).
-	builtin fs.FS
-	rootsMu sync.Mutex
-	roots   map[string]*os.Root
 	// attn is <root>/desk/attention.json (#535).
 	attn attentionFile
 }
@@ -136,11 +129,7 @@ func New(cfg Config, ctl Controller, log *slog.Logger) *Server {
 	if cfg.BasePath = CleanBasePath(cfg.BasePath); cfg.BasePath == "" {
 		cfg.BasePath = "/"
 	}
-	var builtin fs.FS = emptyFS{}
-	if _, err := fs.Stat(ui, "plugins"); err == nil {
-		builtin, _ = fs.Sub(ui, "plugins")
-	}
-	s := &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index, builtin: builtin}
+	s := &Server{cfg: cfg, ctl: ctl, log: log, ui: ui, index: index}
 	if cfg.Root != "" {
 		s.attn.path = filepath.Join(cfg.Root, "desk", "attention.json")
 	}
@@ -318,8 +307,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/session/{id}/events", s.json(s.sessionEvents))
 	mux.HandleFunc("POST /api/pool/scale", s.json(s.poolScale))
 	mux.HandleFunc("POST /api/session/cordon", s.json(s.sessionCordon))
+	mux.HandleFunc("GET /api/push/key", s.json(s.pushKey))
 	if s.cfg.Push != nil {
-		mux.HandleFunc("GET /api/push/key", s.json(s.pushKey))
 		mux.HandleFunc("POST /api/push/subscribe", s.json(s.pushSubscribe))
 		mux.HandleFunc("POST /api/push/unsubscribe", s.json(s.pushUnsubscribe))
 		mux.HandleFunc("POST /api/push/test", s.json(s.pushTest))
@@ -328,8 +317,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/artifacts/{id}", s.json(s.artifactShow))
 	mux.HandleFunc("GET /api/artifacts/{id}/files/{name}", s.artifactFile)
 	mux.HandleFunc("POST /api/artifacts/{id}/ack", s.json(s.artifactAck))
-	mux.HandleFunc("GET /api/plugins", s.json(s.pluginList))
-	mux.HandleFunc("GET /plugins/{name}/{file...}", s.pluginFile)
+	mux.HandleFunc("GET /api/overview", s.json(s.overview))
+	mux.HandleFunc("GET /api/live", s.live)
+	mux.HandleFunc("GET /api/trace/{ref}", s.json(s.traceView))
+	mux.HandleFunc("GET /api/system", s.json(s.systemView))
+	mux.HandleFunc("GET /api/improvements", s.json(s.improvements))
+	mux.HandleFunc("POST /api/attention/answer", s.json(s.attentionAnswer))
+	mux.HandleFunc("POST /api/chat/manage", s.json(s.chatManage))
+	mux.HandleFunc("GET /api/focus", s.json(s.focusGet))
+	mux.HandleFunc("POST /api/focus", s.json(s.focusSet))
+	mux.HandleFunc("GET /api/", http.NotFound)
+	mux.HandleFunc("GET /plugins/", http.NotFound)
 	mux.HandleFunc("GET /api/rpc", s.json(s.rpcList))
 	mux.HandleFunc("POST /api/rpc/{method}", s.json(s.rpcCall))
 	mux.Handle("GET /", s.static())
@@ -728,6 +726,7 @@ func newSSE(w http.ResponseWriter) (*sse, bool) {
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-store")
+	h.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	f.Flush()
 	return &sse{w: w, f: f}, true

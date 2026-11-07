@@ -30,7 +30,7 @@ pools:
     # reload. Run list/show and tickets need no grant. Desk's attention
     # chats run here: they resolve decisions and clear the deferrals of
     # tickets that waited on one (#603).
-    admin: [config-reload, config-show, session-list, pool-list, pool-scale, session-cordon, session-config, trigger-list, attention, activity, ticket-release, ticket-undefer, decision-resolve, question-answer]
+    admin: [config-reload, config-show, session-list, pool-list, pool-scale, session-cordon, session-config, trigger-list, attention, attention-answer, desk-command, activity, ticket-release, ticket-undefer, decision-resolve, question-answer]
 # Improvement sessions (#249): a session keyed improve:<slug> gets
 # prompts/improve.md after the pool prompt.
 prompt_rules:

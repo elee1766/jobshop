@@ -148,6 +148,14 @@ func (c *Controller) attentionItems(ctx context.Context, cfg *config.Config) ([]
 		})
 	}
 	c.mu.Unlock()
+	for i := range items {
+		if items[i].Kind == rpc.AttentionQuestion && len(items[i].Options) > 0 {
+			continue
+		}
+		for _, a := range c.attentionActions(ctx, items[i]) {
+			items[i].Options = append(items[i].Options, a.option)
+		}
+	}
 	slices.SortStableFunc(items, func(a, b rpc.AttentionItem) int {
 		if n := a.Since.Compare(b.Since); n != 0 {
 			return n

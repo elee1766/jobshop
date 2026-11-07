@@ -17,7 +17,7 @@ var docTopics = []struct {
 	paths      []string
 }{
 	{"packs", "writing a pack, and the example packs", []string{"docs/packs.md", "packs/"}},
-	{"desk-plugins", "writing a Desk plugin, and the example", []string{"docs/desk-plugins.md", "examples/desk-plugins/"}},
+	{"desk-plugins", "Desk API client and migration from plugins", []string{"docs/desk-plugins.md", "packages/jobshop-client/"}},
 	{"readme", "overview, goals and example flows", []string{"README.md"}},
 	{"llm", "entry point for agents: what to read, the full CLI", []string{"llm/README.md"}},
 }

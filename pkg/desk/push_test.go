@@ -150,8 +150,8 @@ func TestPushAttention(t *testing.T) {
 	fresh := AttentionItem{Kind: "run", ID: "js-2", Title: "deploy blocked", Why: "run needs a human"}
 	got := p.diff([]AttentionItem{old, fresh})
 	require.Len(t, got, 1)
-	p.send(ctx, message(got[0]), t.Logf)
-	assert.Equal(t, []PushMessage{{Title: "deploy blocked", Body: "run needs a human", Tag: "run:js-2", URL: "./?item=run%3Ajs-2"}}, br.got)
+	p.send(ctx, got[0], t.Logf)
+	assert.Equal(t, []PushMessage{{Title: "deploy blocked", Body: "run needs a human", Tag: "item:run:js-2", URL: "./?item=run%3Ajs-2"}}, br.got)
 	assert.Empty(t, p.diff([]AttentionItem{old, fresh}))
 
 	// Restart keeps the key, subscription and sent list.
@@ -159,6 +159,11 @@ func TestPushAttention(t *testing.T) {
 	require.NoError(t, p2.open())
 	assert.Equal(t, p.publicKey(), p2.publicKey())
 	assert.Empty(t, p2.diff([]AttentionItem{old, fresh}))
+	assert.Empty(t, p2.diff([]AttentionItem{old, fresh, {Kind: rpc.AttentionResource, ID: "reviewer", Title: "full"}}))
+	cleared := p2.diff([]AttentionItem{old})
+	require.Len(t, cleared, 1)
+	p2.send(ctx, cleared[0], t.Logf)
+	assert.Equal(t, PushMessage{Clear: true, Tag: "item:run:js-2"}, br.got[len(br.got)-1])
 
 	br.gone = true
 	p2.send(ctx, PushMessage{Title: "x"}, t.Logf)
@@ -168,7 +173,7 @@ func TestPushAttention(t *testing.T) {
 // TestPushRoutes: routes exist only with push on, and need the CSRF header.
 func TestPushRoutes(t *testing.T) {
 	off := New(Config{}, &fakeCtl{}, nil).Handler()
-	assert.Equal(t, http.StatusOK, get(t, off, "/api/push/key", nil).Code) // falls through to the app
+	assert.Equal(t, http.StatusOK, get(t, off, "/api/push/key", nil).Code)
 	p := &Push{File: filepath.Join(t.TempDir(), "push.json")}
 	s := New(Config{Push: p}, &fakeCtl{results: map[string]any{rpc.MethodRunList + ":" + store.RunNeedsHuman: []store.Ticket{}}}, nil)
 	require.NoError(t, p.open())

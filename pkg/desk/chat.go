@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -25,10 +26,11 @@ const maxChatText = 32 << 10
 // (rw attach, refused unless its pool has attach: rw), or by Key in the
 // chat pool (an escalation thread or a desk:<id> session).
 type ChatSend struct {
-	Session   string `json:"session,omitempty"`
-	Key       string `json:"key,omitempty"`
-	Text      string `json:"text"`
-	Interrupt bool   `json:"interrupt,omitempty"`
+	Session   string   `json:"session,omitempty"`
+	Key       string   `json:"key,omitempty"`
+	Text      string   `json:"text"`
+	Interrupt bool     `json:"interrupt,omitempty"`
+	Refs      []string `json:"refs,omitempty"`
 }
 
 // ChatAccess is GET /api/session/<id>/access: whether Desk can send to it.
@@ -63,6 +65,15 @@ func (s *Server) chatSend(r *http.Request) (any, error) {
 		return nil, fmt.Errorf("%w: text must be 1 to %d bytes", errBadRequest, maxChatText)
 	}
 	p := rpc.SessionSendParams{Text: b.Text, Interrupt: b.Interrupt}
+	if len(b.Refs) > 50 {
+		return nil, fmt.Errorf("%w: at most 50 context references", errBadRequest)
+	}
+	for _, ref := range b.Refs {
+		if len(ref) > 256 || strings.ContainsAny(ref, "\r\n") {
+			return nil, fmt.Errorf("%w: invalid context reference", errBadRequest)
+		}
+		p.Context += "\nDesk context reference: " + ref
+	}
 	switch {
 	case b.Session != "" && b.Key == "":
 		// Attach to an arbitrary session: the controller enforces attach: rw.
@@ -172,15 +183,17 @@ func (s *Server) chatAccess(r *http.Request) (any, error) {
 
 // ChatSession is one open session of the chat pool, for GET /api/chat.
 type ChatSession struct {
-	ID    string `json:"id"`
-	Key   string `json:"key"`
-	Title string `json:"title,omitempty"`
-	Alive bool   `json:"alive"`
+	ID      string    `json:"id"`
+	Key     string    `json:"key"`
+	Title   string    `json:"title,omitempty"`
+	Alive   bool      `json:"alive"`
+	State   string    `json:"state"`
+	Updated time.Time `json:"updated"`
 }
 
 func (s *Server) chatList(r *http.Request) (any, error) {
 	var list []rpc.SessionInfo
-	if err := s.ctl.Call(r.Context(), rpc.MethodSessionList, rpc.SessionListParams{}, &list); err != nil {
+	if err := s.ctl.Call(r.Context(), rpc.MethodSessionList, rpc.SessionListParams{All: true}, &list); err != nil {
 		return nil, err
 	}
 	out := []ChatSession{}
@@ -189,12 +202,24 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 			continue
 		}
 		f, _ := store.DecodeFields[store.SessionFields](*si.Ticket)
-		// Escalation chats live in the pack's chat pool, which may not be
-		// Desk's (#379).
-		if si.Ticket.Pool != s.cfg.ChatPool && !strings.HasPrefix(f.Key, escalationKeyPrefix) {
+		if !strings.HasPrefix(f.Key, "desk:") {
 			continue
 		}
-		out = append(out, ChatSession{ID: si.ID, Key: f.Key, Title: si.Ticket.Title, Alive: si.Alive})
+		state := "idle"
+		if f.Suspended {
+			state = "suspended"
+		}
+		if si.Busy {
+			state = "working"
+		}
+		if si.Ticket.Status == store.StatusClosed {
+			state = "archived"
+		}
+		title := f.DisplayName
+		if title == "" {
+			title = si.Ticket.Title
+		}
+		out = append(out, ChatSession{ID: si.ID, Key: f.Key, Title: title, Alive: si.Alive, State: state, Updated: si.Ticket.UpdatedAt})
 	}
 	return map[string]any{"pool": s.cfg.ChatPool, "sessions": out}, nil
 }

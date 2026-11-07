@@ -45,10 +45,12 @@ type SessionFields struct {
 	Key string `json:"key,omitempty"` // e.g. matrix:<room>; unique while open
 	// DisplayName is a human label for lists (#626). Not unique, never
 	// used for lookup or dedup. Empty means a default is shown.
-	DisplayName string `json:"display_name,omitempty"`
-	Agent       string `json:"agent"`
-	ACPSession  string `json:"acp_session,omitempty"`
-	Current     string `json:"current,omitempty"` // ticket id being worked
+	DisplayName string     `json:"display_name,omitempty"`
+	Named       bool       `json:"named,omitempty"`
+	Archived    *time.Time `json:"archived,omitempty"`
+	Agent       string     `json:"agent"`
+	ACPSession  string     `json:"acp_session,omitempty"`
+	Current     string     `json:"current,omitempty"` // ticket id being worked
 	// TraceParent is the session trace's W3C traceparent, kept so lifecycle
 	// spans after a controller restart join the same trace.
 	TraceParent string `json:"traceparent,omitempty"`

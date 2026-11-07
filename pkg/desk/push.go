@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -50,6 +51,7 @@ type pushState struct {
 
 // PushMessage is the payload the service worker shows.
 type PushMessage struct {
+	Clear bool   `json:"clear,omitempty"`
 	Title string `json:"title"`
 	Body  string `json:"body"`
 	Tag   string `json:"tag"`
@@ -135,16 +137,24 @@ func attentionKey(it AttentionItem) string { return it.Kind + ":" + it.ID }
 
 // diff returns items not sent yet and records the current list as sent.
 // The first call only records.
-func (p *Push) diff(items []AttentionItem) []AttentionItem {
+func (p *Push) diff(items []AttentionItem) []PushMessage {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	keys := make([]string, 0, len(items))
-	var fresh []AttentionItem
+	var fresh []PushMessage
 	for _, it := range items {
+		if !slices.Contains([]string{rpc.AttentionTicket, rpc.AttentionQuestion, rpc.AttentionDecision, rpc.AttentionRun, rpc.AttentionWait}, it.Kind) {
+			continue
+		}
 		k := attentionKey(it)
 		keys = append(keys, k)
 		if p.state.Primed && !slices.Contains(p.state.Sent, k) {
-			fresh = append(fresh, it)
+			fresh = append(fresh, message(it))
+		}
+	}
+	for _, key := range p.state.Sent {
+		if !slices.Contains(keys, key) {
+			fresh = append(fresh, PushMessage{Clear: true, Tag: "item:" + key})
 		}
 	}
 	changed := !p.state.Primed || !slices.Equal(keys, p.state.Sent)
@@ -157,8 +167,16 @@ func (p *Push) diff(items []AttentionItem) []AttentionItem {
 
 func message(it AttentionItem) PushMessage {
 	// Relative to the service worker's scope, so it works under --base-path.
-	// The Attention plugin opens the item's resolving chat from ?item= (#535).
-	m := PushMessage{Title: it.Title, Body: it.Why, Tag: attentionKey(it), URL: "./?item=" + url.QueryEscape(attentionKey(it))}
+	m := PushMessage{Title: strings.TrimSpace(it.Ref + " " + it.Title), Body: it.Summary, Tag: "item:" + attentionKey(it), URL: "./?item=" + url.QueryEscape(attentionKey(it))}
+	if m.Body == "" {
+		m.Body = it.Why
+	}
+	for _, option := range it.Options {
+		if option.Recommended {
+			m.Body += " · Recommended: " + option.Title
+			break
+		}
+	}
 	return m
 }
 
@@ -195,8 +213,8 @@ func (s *Server) runPush(ctx context.Context) {
 		if err != nil {
 			s.log.WarnContext(ctx, "desk: push: attention", "err", err)
 		} else {
-			for _, it := range p.diff(items.([]AttentionItem)) {
-				p.send(ctx, message(it), s.log.Warn)
+			for _, msg := range p.diff(items.([]AttentionItem)) {
+				p.send(ctx, msg, s.log.Warn)
 			}
 		}
 		select {
@@ -228,6 +246,9 @@ func (s *Server) watchEvents(ctx context.Context) {
 }
 
 func (s *Server) pushKey(*http.Request) (any, error) {
+	if s.cfg.Push == nil {
+		return map[string]string{"key": ""}, nil
+	}
 	return map[string]string{"key": s.cfg.Push.publicKey()}, nil
 }
 

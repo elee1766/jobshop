@@ -27,7 +27,8 @@ export function initPush() {
   ready ??= (async () => {
     if (!supported) { push.state = 'unsupported'; return; }
     try {
-      await get('api/push/key');
+      const available = await get('api/push/key');
+      if (!available.key) { push.state = 'unavailable'; return; }
     } catch {
       push.state = 'unavailable';
       return;

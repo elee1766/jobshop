@@ -1,5 +1,0 @@
-{
-  "name": "deploys",
-  "entry": "index.js",
-  "contributes": [{ "slot": "view", "element": "e2e-deploys-view", "id": "deploys", "title": "Deploys (user)" }]
-}
