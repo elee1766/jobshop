@@ -16,6 +16,6 @@ export default defineConfig({
   },
   server: {
     // Desk compares Origin with Host for writes, so preserve the browser host.
-    proxy: { '/api': { target: 'http://127.0.0.1:7480', changeOrigin: false } },
+    proxy: { '/api': { target: process.env.JOBSHOP_DESK_TARGET || 'http://127.0.0.1:7480', changeOrigin: false } },
   },
 });
