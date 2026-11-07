@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.5](https://github.com/elee1766/jobshop/compare/v0.8.4...v0.8.5) (2026-11-07)
+
+
+### Bug fixes
+
+* **control:** include sessions beyond the default store page ([#957](https://github.com/elee1766/jobshop/issues/957)) ([4200aef](https://github.com/elee1766/jobshop/commit/4200aef7686820768c1610c6aeaf93fb72fc111c))
+
 ## [0.8.4](https://github.com/elee1766/jobshop/compare/v0.8.3...v0.8.4) (2026-11-07)
 
 
