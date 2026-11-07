@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.13](https://github.com/elee1766/jobshop/compare/v0.8.12...v0.8.13) (2026-11-07)
+
+
+### Features
+
+* **desk:** improve trace exploration and unify compact controls ([#974](https://github.com/elee1766/jobshop/issues/974)) ([a8ac0cc](https://github.com/elee1766/jobshop/commit/a8ac0cc683c9015b8956478a96e20952e56b8b33))
+
 ## [0.8.12](https://github.com/elee1766/jobshop/compare/v0.8.11...v0.8.12) (2026-11-07)
 
 
