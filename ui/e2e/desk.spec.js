@@ -42,3 +42,40 @@ test('blocked browser storage does not prevent rendering', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Waiting', exact: true })).toBeVisible();
   await expect(page.locator('.status')).toContainText('sys ok');
 });
+
+test('archived chats form a vertical table with scrolling but no scrollbar chrome', async ({ page, isMobile }) => {
+  await page.setViewportSize({ width: isMobile ? 412 : 1000, height: 400 });
+  await page.goto('./');
+  await expect(page.locator('.status')).toContainText('sys ok');
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
+  await page.getByRole('button', { name: /^Archived/ }).click();
+  const table = page.getByRole('table', { name: 'Archived chats', exact: true });
+  await expect(table).toBeVisible();
+  const chats = await (await page.request.get('api/chat')).json();
+  await expect(table.getByRole('button')).toHaveCount(chats.sessions.filter(chat => chat.state === 'archived').length);
+  await expect(page.getByRole('tablist', { name: 'Named chats' })).toHaveCount(0);
+  const rows = table.locator('tbody tr');
+  const boxes = await rows.evaluateAll(elements => elements.map(element => {
+    const rect = element.getBoundingClientRect();
+    return { x: rect.x, y: rect.y, bottom: rect.bottom };
+  }));
+  for (let i = 1; i < boxes.length; i++) {
+    expect(boxes[i].x).toBe(boxes[0].x);
+    expect(boxes[i].y).toBeGreaterThanOrEqual(boxes[i - 1].bottom);
+  }
+  const archive = page.locator('.chat-archive');
+  expect(await archive.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+  expect(await archive.evaluate(element => getComputedStyle(element).scrollbarWidth)).toBe('none');
+  if (await archive.evaluate(element => element.scrollHeight > element.clientHeight)) {
+    await archive.hover();
+    await page.mouse.wheel(0, 300);
+    await expect.poll(() => archive.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  }
+  const first = table.getByRole('button').first();
+  if (await first.count()) {
+    await first.click();
+    await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByText('No archived chats.', { exact: true })).toBeVisible();
+  }
+});

@@ -31,7 +31,7 @@ test('named chat streams, survives reload, archives and restores', async ({ page
     await page.reload();
     if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'Chats', exact: true }).click();
     await page.getByRole('button', { name: /^Archived/ }).click();
-    await page.getByRole('tab', { name, exact: true }).click();
+    await page.getByRole('table', { name: 'Archived chats', exact: true }).getByRole('button', { name, exact: true }).click();
     await expect(page.locator('.transcript .markdown')).toContainText('PONG');
     const restoring = page.waitForResponse((response) => response.url().endsWith('/api/chat/manage') && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
