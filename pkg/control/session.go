@@ -125,6 +125,8 @@ type runner struct {
 	// context is a prompt block for the model only, set by deliver for
 	// the next turn (session.send context).
 	context string
+	// promptAttachments belongs to the runner goroutine and is consumed by the next turn.
+	promptAttachments []acp.ContentBlock
 	// resumed is set when a new host takes over an existing conversation
 	// (restart, crash, respawn, self-deploy); the next prompt starts with
 	// recoveryNote. Memory only.
@@ -1214,11 +1216,13 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 		text = strings.TrimSpace(rpc.ContextOpen + "\n" + c + "\n" + rpc.ContextClose + "\n\n" + text)
 	}
 	busyRetries, netRetries := 0, 0
+	attachments := r.promptAttachments
+	r.promptAttachments = nil
 	replaced := false
 	for {
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
 			SessionId: r.acpID(),
-			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
+			Prompt:    append([]acp.ContentBlock{acp.TextBlock(text)}, attachments...),
 			Meta:      r.promptMeta(),
 		})
 		if err != nil && ctx.Err() == nil && unknownSession(err) && !replaced {

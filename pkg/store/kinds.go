@@ -153,7 +153,15 @@ type MessageFields struct {
 	Interrupt bool   `json:"interrupt,omitempty"`
 	// Context is delivered with the message as a prompt block for the
 	// model only (session.send context).
-	Context string `json:"context,omitempty"`
+	Context     string              `json:"context,omitempty"`
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+}
+
+// MessageAttachment describes a controller-owned file delivered with a message.
+type MessageAttachment struct {
+	Name     string `json:"name"`
+	MimeType string `json:"mime_type"`
+	Size     int    `json:"size"`
 }
 
 // Validate implements Fields.

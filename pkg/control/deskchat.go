@@ -38,10 +38,13 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		}
 	}
 	if p.Action == "new" {
+		if err := validateAttachments(p.Attachments); err != nil {
+			return nil, err
+		}
 		if len(p.Context) > 32<<10 {
 			return nil, fmt.Errorf("%w: context is too long", store.ErrInvalid)
 		}
-		if strings.TrimSpace(p.Text) == "" || len(p.Text) > 32<<10 {
+		if (strings.TrimSpace(p.Text) == "" && len(p.Attachments) == 0) || len(p.Text) > 32<<10 {
 			return nil, fmt.Errorf("%w: first message must be 1 to 32768 bytes", store.ErrInvalid)
 		}
 		sess, _, err := c.keyedSession(ctx, c.config(), sc, p.Pool, "desk:"+strings.ToLower(rand.Text()[:12]))
@@ -51,7 +54,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		if err := c.updateSessionFields(ctx, sess.ID, func(f *store.SessionFields) { f.Named = true; f.DisplayName = name }); err != nil {
 			return nil, err
 		}
-		if _, err := c.sessionSend(ctx, sc, rpc.SessionSendParams{ID: sess.ID, Text: p.Text, Context: p.Context}); err != nil {
+		if _, err := c.sessionSend(ctx, sc, rpc.SessionSendParams{ID: sess.ID, Text: p.Text, Context: p.Context, Attachments: p.Attachments}); err != nil {
 			return nil, err
 		}
 		return c.sessionInfo(ctx, sess.ID)

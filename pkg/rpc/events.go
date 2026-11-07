@@ -1,7 +1,14 @@
 package rpc
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	_ "image/gif" // Only raster formats are accepted in transcripts.
+	_ "image/jpeg"
+	_ "image/png"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -84,7 +91,10 @@ func (e *EventDecoder) Decode(seq, t int64, from string, msg json.RawMessage) (S
 	case m.Method == "session/prompt":
 		var p struct {
 			Prompt []struct {
-				Text string `json:"text"`
+				Text     string `json:"text"`
+				Type     string `json:"type"`
+				Data     string `json:"data"`
+				MimeType string `json:"mimeType"`
 			} `json:"prompt"`
 		}
 		_ = json.Unmarshal(m.Params, &p)
@@ -92,6 +102,9 @@ func (e *EventDecoder) Decode(seq, t int64, from string, msg json.RawMessage) (S
 		for _, b := range p.Prompt {
 			if b.Text != "" {
 				parts = append(parts, b.Text)
+			}
+			if b.Type == "image" {
+				out.Images = appendImage(out.Images, b.MimeType, b.Data)
 			}
 		}
 		out.Type = EventTurnStart
@@ -139,10 +152,17 @@ func (e *EventDecoder) update(out SessionEvent, params json.RawMessage) (Session
 	switch up.Kind {
 	case "agent_message_chunk", "agent_thought_chunk":
 		var c struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			Data     string `json:"data"`
+			MimeType string `json:"mimeType"`
 		}
 		_ = json.Unmarshal(up.Content, &c)
+		if c.Type == "image" && up.Kind == "agent_message_chunk" {
+			out.Images = appendImage(nil, c.MimeType, c.Data)
+			out.Type = EventImage
+			return out, len(out.Images) > 0
+		}
 		if (c.Type == "text" || c.Type == "") && c.Text != "" {
 			out.Type, out.Text = EventText, c.Text
 			if up.Kind == "agent_thought_chunk" {
@@ -169,15 +189,28 @@ func (e *EventDecoder) update(out SessionEvent, params json.RawMessage) (Session
 			l.intent = e.redact(i)
 		}
 		e.tools[up.ToolCallID] = l
-		// Updates without a status are output deltas.
-		if up.Status == "" && up.Kind == "tool_call_update" {
-			return out, false
-		}
 		status := up.Status
 		if status == "" {
 			status = "pending"
 		}
 		out.Type = EventTool
+		var blocks []struct {
+			Content struct {
+				Type     string `json:"type"`
+				MimeType string `json:"mimeType"`
+				Data     string `json:"data"`
+			} `json:"content"`
+		}
+		_ = json.Unmarshal(up.Content, &blocks)
+		for _, b := range blocks {
+			if b.Content.Type == "image" {
+				out.Images = appendImage(out.Images, b.Content.MimeType, b.Content.Data)
+			}
+		}
+		// Text deltas stay bounded in tool summaries, but image deltas are content.
+		if up.Status == "" && up.Kind == "tool_call_update" && len(out.Images) == 0 {
+			return out, false
+		}
 		out.Tool = &ToolSummary{ID: up.ToolCallID, Title: l.title, Status: status, Input: e.io(up.RawInput), Output: e.io(up.RawOutput), Target: l.target, Intent: l.intent}
 		if out.Tool.Output == "" {
 			out.Tool.Output = e.io(toolText(up.Content))
@@ -185,6 +218,31 @@ func (e *EventDecoder) update(out SessionEvent, params json.RawMessage) (Session
 		return out, true
 	}
 	return out, false
+}
+
+func appendImage(images []SessionImage, mime, data string) []SessionImage {
+	// Bound each event as well as each image before allocating decoded bytes.
+	total := len(data)
+	for _, img := range images {
+		total += len(img.Data)
+	}
+	if total > base64.StdEncoding.EncodedLen(MaxAttachmentBytes) {
+		return images
+	}
+	b, err := base64.StdEncoding.DecodeString(data)
+	if err == nil && ValidImage(b, mime) {
+		return append(images, SessionImage{MimeType: mime, Data: data})
+	}
+	return images
+}
+
+// ValidImage bounds raster image size and verifies the declared MIME type.
+func ValidImage(data []byte, mime string) bool {
+	if len(data) == 0 || len(data) > MaxAttachmentBytes || (mime != "image/png" && mime != "image/jpeg" && mime != "image/gif") {
+		return false
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	return err == nil && http.DetectContentType(data) == mime && cfg.Width > 0 && cfg.Height > 0 && int64(cfg.Width)*int64(cfg.Height) <= 64_000_000
 }
 
 // toolText is the text of a tool call's content blocks, as JSON string.

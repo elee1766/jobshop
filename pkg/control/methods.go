@@ -912,6 +912,9 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 		if !p.DryRun {
 			c.removeWorktree(c.config(), t, "session reap")
 			c.log.WarnContext(ctx, "reap: removing session dir", "session", t.ID, "dir", dir)
+			if err := os.RemoveAll(c.attachmentDir(t.ID)); err != nil {
+				return res, err
+			}
 			if err := os.RemoveAll(dir); err != nil {
 				return res, fmt.Errorf("remove %s: %w", dir, err)
 			}

@@ -1288,11 +1288,12 @@ type RunResumeParams struct {
 // for the key, a chat pool starts one. A busy session gets the message
 // after its turn; Interrupt cancels the turn first.
 type SessionSendParams struct {
-	ID        string `json:"id,omitempty"`
-	Pool      string `json:"pool,omitempty"`
-	Key       string `json:"key,omitempty"`
-	Text      string `json:"text"`
-	Interrupt bool   `json:"interrupt,omitempty"`
+	Attachments []AttachmentContent `json:"attachments,omitempty"`
+	ID          string              `json:"id,omitempty"`
+	Pool        string              `json:"pool,omitempty"`
+	Key         string              `json:"key,omitempty"`
+	Text        string              `json:"text"`
+	Interrupt   bool                `json:"interrupt,omitempty"`
 	// Context is background for the session's model, delivered with the
 	// message in its own delimited block of the prompt. Clients that
 	// show the conversation get it apart from the visible text
@@ -1334,6 +1335,7 @@ const NotifySessionEvent = "session.event"
 const (
 	EventTurnStart = "turn_start" // Text is the prompt
 	EventText      = "text"       // Text is an agent message chunk
+	EventImage     = "image"      // Images is set
 	EventTool      = "tool"       // Tool is set
 	EventTurnEnd   = "turn_end"   // StopReason, or Error
 	EventState     = "state"      // Status and Resolution; Seq is 0
@@ -1345,11 +1347,12 @@ const (
 
 // SessionEvent is one item of a session's output, read from its journal.
 type SessionEvent struct {
-	Session string     `json:"session"`
-	Seq     int64      `json:"seq,omitempty"`
-	Time    *time.Time `json:"time,omitempty"`
-	Type    string     `json:"type"`
-	Text    string     `json:"text,omitempty"`
+	Session string         `json:"session"`
+	Seq     int64          `json:"seq,omitempty"`
+	Time    *time.Time     `json:"time,omitempty"`
+	Type    string         `json:"type"`
+	Text    string         `json:"text,omitempty"`
+	Images  []SessionImage `json:"images,omitempty"`
 	// Context is the part of a turn_start prompt that was addressed to
 	// the model only (session.send context), kept out of Text.
 	Context    string       `json:"context,omitempty"`
@@ -1359,6 +1362,12 @@ type SessionEvent struct {
 	Status     store.Status `json:"status,omitempty"`
 	Resolution string       `json:"resolution,omitempty"`
 	Usage      *Usage       `json:"usage,omitempty"`
+}
+
+// SessionImage is a validated native ACP raster image, with base64 data.
+type SessionImage struct {
+	MimeType string `json:"mime_type"`
+	Data     string `json:"data"`
 }
 
 // ToolSummary is one tool call state change. Input and Output are the
@@ -1613,13 +1622,24 @@ type AttentionAnswerParams struct {
 
 // ChatManageParams changes a named chat's persistent lifecycle.
 type ChatManageParams struct {
-	Action  string `json:"action"`
-	ID      string `json:"id,omitempty"`
-	Pool    string `json:"pool,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Text    string `json:"text,omitempty"`
-	Context string `json:"context,omitempty"`
+	Attachments []AttachmentContent `json:"attachments,omitempty"`
+	Action      string              `json:"action"`
+	ID          string              `json:"id,omitempty"`
+	Pool        string              `json:"pool,omitempty"`
+	Name        string              `json:"name,omitempty"`
+	Text        string              `json:"text,omitempty"`
+	Context     string              `json:"context,omitempty"`
 }
+
+// AttachmentContent carries a file on send; Data is base64 in JSON.
+type AttachmentContent struct {
+	Name     string `json:"name"`
+	MimeType string `json:"mime_type"`
+	Data     []byte `json:"data"`
+}
+
+// MaxAttachmentBytes bounds the total decoded files in one message.
+const MaxAttachmentBytes = 8 << 20
 
 // DeskCommandParams is a view-only command for one named chat.
 type DeskCommandParams struct {

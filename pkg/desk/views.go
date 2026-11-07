@@ -24,7 +24,7 @@ func (s *Server) chatManage(r *http.Request) (any, error) {
 		rpc.ChatManageParams
 		Refs []string `json:"refs,omitempty"`
 	}
-	if err := s.decode(r, &p); err != nil {
+	if err := decodeLimit(r, &p, rpc.MaxAttachmentBytes*4/3+maxChatText+16384); err != nil {
 		return nil, err
 	}
 	context, err := s.referenceContext(r, p.Refs)

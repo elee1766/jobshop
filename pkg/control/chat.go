@@ -28,9 +28,12 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	if err := requireAdmin(sc, "session send"); err != nil {
 		return nil, err
 	}
+	if err := validateAttachments(p.Attachments); err != nil {
+		return nil, err
+	}
 	// An attach send with no text only checks that rw attach is allowed.
-	probe := p.Attach && p.Text == "" && p.Context == ""
-	if !probe && strings.TrimSpace(p.Text) == "" && strings.TrimSpace(p.Context) == "" {
+	probe := p.Attach && p.Text == "" && p.Context == "" && len(p.Attachments) == 0
+	if !probe && strings.TrimSpace(p.Text) == "" && strings.TrimSpace(p.Context) == "" && len(p.Attachments) == 0 {
 		return nil, fmt.Errorf("%w: text is required", store.ErrInvalid)
 	}
 	var (
@@ -66,17 +69,32 @@ func (c *Controller) sessionSend(ctx context.Context, sc scope, p rpc.SessionSen
 	c.humanWrote(ctx, sess.ID)
 	c.noteOperator(ctx, sess, sc.actor)
 	c.resumeSession(ctx, sess.ID)
-	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt, Context: strings.TrimSpace(p.Context)})
+	id, err := c.store.NewID(sess.Project)
+	if err != nil {
+		return nil, err
+	}
+	attachments, err := c.saveAttachments(sc, sess.ID, id, p.Attachments)
+	if err != nil {
+		return nil, err
+	}
+	stored := false
+	defer func() {
+		if !stored && len(attachments) > 0 {
+			_ = os.RemoveAll(filepath.Join(c.attachmentDir(sess.ID), id))
+		}
+	}()
+	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: sc.actor, Interrupt: p.Interrupt, Context: strings.TrimSpace(p.Context), Attachments: attachments})
 	if err != nil {
 		return nil, err
 	}
 	title, body, _ := strings.Cut(p.Text, "\n")
 	m, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
-		Project: sess.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
+		ID: id, Project: sess.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
 	})
 	if err != nil {
 		return nil, err
 	}
+	stored = true
 	// Wake an idle runner now rather than at its next poll (#603).
 	c.wakeRunner(sess.ID)
 	return rpc.SessionSendResult{Session: sess.ID, Message: m, Started: started}, nil
