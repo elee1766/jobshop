@@ -1,3 +1,5 @@
+@import './tokens.css';
+
 @font-face {
   font-family: Noto Sans;
   src: url("/fonts/NotoSans-Regular.ttf") format("truetype");
@@ -25,30 +27,11 @@
   font-display: swap;
 }
 :root {
-  font-family: "Noto Sans", sans-serif;
-  font-size: 14px;
-  line-height: 1.5;
-  color: #000;
-  background: #ffffea;
-  --paper: #ffffea;
-  --tag: #eaffff;
-  --tag-border: #8888cc;
-  --column: #99994c;
-  --rule: #e8e8c0;
-  --hi: #eeee9e;
-  --muted: #555;
-  --warn: #9a4a00;
-  color-scheme: light;
-}
-:root[data-theme="dark"] {
-  color: #f0f0e0;
-  --paper: #1c1c14;
-  --tag: #1f2a33;
-  --hi: #4a4a1e;
-  --muted: #b4b4a6;
-  --rule: #38382b;
-  --column: #77774a;
-  color-scheme: dark;
+  font-family: var(--font-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height);
+  color: var(--ink);
+  background: var(--paper);
 }
 * {
   box-sizing: border-box;
@@ -72,7 +55,7 @@ select {
 button {
   border: 0;
   background: transparent;
-  padding: 2px 5px;
+  padding: var(--space-1) var(--control-inset);
   cursor: pointer;
   text-align: left;
 }
@@ -83,7 +66,15 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
+a[href],
+summary,
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled) {
+  cursor: pointer;
+}
 button:focus-visible,
+a[href]:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
@@ -93,12 +84,21 @@ summary:focus-visible {
 a {
   color: inherit;
   text-decoration: underline;
+  text-underline-offset: 2px;
+}
+a[href] {
+  background: color-mix(in srgb, var(--hi) 30%, transparent);
+  padding-inline: 2px;
+  box-decoration-break: clone;
+}
+a[href]:hover {
+  background: var(--hi);
 }
 input,
 textarea {
   background: var(--paper);
   border: 1px solid var(--column);
-  padding: 4px;
+  padding: var(--space-2);
   min-width: 0;
 }
 textarea {
@@ -124,7 +124,7 @@ pre {
 }
 .mono,
 table {
-  font-family: "Noto Sans Mono", monospace;
+  font-family: var(--font-mono);
 }
 .muted,
 .tool {
@@ -158,11 +158,11 @@ table {
 .tag {
   display: flex;
   align-items: center;
-  gap: 5px;
-  min-height: 26px;
+  gap: var(--control-inset);
+  min-height: var(--control-height);
   background: var(--tag);
   border-bottom: 1px solid var(--tag-border);
-  padding: 1px 5px;
+  padding: 1px var(--control-inset);
   flex-shrink: 0;
   flex-wrap: wrap;
 }
@@ -209,7 +209,7 @@ table {
   width: 26px;
 }
 .section-body {
-  padding: 6px 10px;
+  padding: 6px var(--page-inset);
 }
 .section-body article {
   padding: 3px 0 5px;
@@ -310,7 +310,7 @@ td pre {
   flex-direction: column;
 }
 .chat-picker-search {
-  padding: 8px;
+  padding: var(--rail-inset);
 }
 .chat-picker-search input {
   width: 100%;
@@ -328,13 +328,13 @@ td pre {
 }
 .chat-toolbar {
   gap: 6px;
-  font-size: 13px;
-  padding-inline: 8px;
+  font-size: var(--font-size-compact);
+  padding-inline: var(--rail-inset);
 }
 .chat-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-4);
 }
 .chat-state {
   margin-left: auto;
@@ -391,16 +391,17 @@ td pre {
   padding: 0 10px;
 }
 .chat-tag {
-  font-size: 13px;
-  gap: 5px;
-  padding-inline: 8px;
+  font-size: var(--font-size-compact);
+  gap: var(--control-inset);
+  padding-inline: var(--rail-inset);
 }
 .new-chat-popover {
   position: fixed;
   inset: auto;
   margin: 0;
-  width: min(340px, calc(100vw - 16px));
-  padding: 8px;
+  width: min(320px, calc(100vw - 2 * var(--space-3)));
+  padding: var(--space-2);
+  font-size: var(--font-size-compact);
   border: 1px solid var(--column);
   background: var(--paper);
   color: inherit;
@@ -408,11 +409,17 @@ td pre {
 .new-chat-popover form {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .new-chat-popover input {
   min-width: 0;
   flex: 1;
+  width: 0;
+  padding: var(--space-1) var(--space-2);
+}
+.new-chat-popover input,
+.new-chat-popover button {
+  min-height: var(--control-height);
 }
 .transcript {
   flex: 1;
@@ -444,11 +451,14 @@ td pre {
   margin: 8px 0;
   font-size: 12px;
 }
-.tool summary {
-  cursor: pointer;
-}
+.ticket-history ol { padding-left: 20px; }
+.ticket-history li { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.history-heading { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.history-changes { display: grid; grid-template-columns: minmax(70px, auto) minmax(0, 1fr); gap: 4px 10px; margin: 8px 0 0; }
+.history-changes dt { color: var(--muted); overflow-wrap: anywhere; }
+.history-changes dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .composer {
-  padding: 6px 8px;
+  padding: 6px var(--rail-inset);
   border-top: 1px solid var(--column);
   flex-shrink: 0;
 }
@@ -480,18 +490,26 @@ td pre {
   margin-right: 4px;
 }
 .trace-layout { min-width: 0; }
-.ticket-graph, .inspector { padding: 10px; min-width: 0; }
+.ticket-graph, .inspector { padding: var(--page-inset); min-width: 0; }
 .inspector { border-top: 1px solid var(--column); }
 .graph-heading, .ticket-links { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
 .graph-heading h2 { margin: 0; }
 .graph-help { margin: 6px 0; }
-.graph-scroll { overflow: auto; max-height: 520px; border: 1px solid var(--rule); overscroll-behavior: contain; }
-.graph-canvas { position: relative; }
+.graph-controls { display: flex; align-items: center; gap: 6px; }
+.graph-controls output { min-width: 4ch; text-align: center; }
+.graph-scroll { position: relative; overflow: hidden; height: min(520px, 55dvh); min-height: 260px; border: 1px solid var(--rule); overscroll-behavior: contain; touch-action: none; cursor: grab; }
+.graph-scroll.dragging, .graph-scroll.dragging * { cursor: grabbing; }
+.graph-canvas { position: absolute; transform-origin: 0 0; user-select: none; }
+.graph-time-axis { position: absolute; top: 0; height: 48px; width: 100%; border-bottom: 1px solid var(--column); pointer-events: none; }
+.graph-time-axis time { position: absolute; top: 4px; width: 150px; font-size: 11px; }
+.graph-time-axis time::after { content: ''; display: block; height: 12px; border-left: 1px solid var(--column); }
 .graph-canvas svg { position: absolute; inset: 0; pointer-events: none; }
 .graph-canvas svg > path { fill: none; stroke: var(--column); stroke-width: 1.5; }
 .graph-canvas svg > path.graph-gate { stroke: currentColor; stroke-dasharray: 5 3; }
 .graph-canvas marker path { fill: currentColor; }
-.graph-card { position: absolute; width: 248px; height: 144px; border: 1px solid var(--column); background: var(--paper); overflow: auto; }
+.graph-card { position: absolute; width: 248px; height: 184px; border: 1px solid var(--column); background: var(--paper); overflow: auto; }
+.graph-card time { font-size: 11px; }
+.graph-card > .graph-state { padding: 4px 8px 0; overflow-wrap: anywhere; }
 .graph-card.graph-selected { outline: 2px solid currentColor; outline-offset: 1px; }
 .graph-select { display: flex; flex-direction: column; align-items: stretch; gap: 3px; padding: 8px; width: 100%; text-align: left; }
 .graph-select strong { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
@@ -706,3 +724,5 @@ td pre {
 .paste-document textarea { width: 100%; min-height: 160px; max-height: 60dvh; resize: vertical; }
 .paste-document > div { display: flex; gap: 12px; }
 .transcript-image { display: block; max-width: 100%; max-height: 480px; object-fit: contain; margin: 8px 0; }
+.ticket-label { display: flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; white-space: normal; overflow-wrap: anywhere; }
+.ticket-status { width: 1ch; white-space: nowrap; vertical-align: top; }

@@ -1,8 +1,18 @@
 import type { GraphNode, GraphRelation, GraphResult, Ticket } from '../../packages/jobshop-client/rpc.js';
 
+export function stepName(fields: unknown): string {
+  if (!fields || typeof fields !== 'object') return '';
+  const step = (fields as { step?: unknown }).step;
+  return typeof step === 'string' ? step : '';
+}
+
 export function state(ticket: Ticket) {
   const fields = ticket.fields as { state?: string } | undefined;
   return [fields?.state || ticket.status, ticket.resolution].filter(Boolean).join(' · ');
+}
+
+export function statusLetter(ticket: Ticket): string {
+  return ({ open: 'O', in_progress: 'R', closed: 'C' } as Record<string, string>)[ticket.status] || '?';
 }
 
 export function relationLabel(kind: string) {
@@ -25,31 +35,26 @@ export function safeLinks(node?: GraphNode) {
   });
 }
 
-// Breadth-first columns keep every relationship visible, including cycles and shared dependencies.
+// Creation time controls x; lanes prevent simultaneous tickets from overlapping.
 export function graphLayout(graph: GraphResult) {
-  const depth = new Map([[graph.root, 0]]);
-  const queue = [graph.root];
-  for (let i = 0; i < queue.length; i++) {
-    for (const edge of graph.relations) {
-      const next = edge.from === queue[i] ? edge.to : edge.to === queue[i] ? edge.from : '';
-      if (next && !depth.has(next)) {
-        depth.set(next, depth.get(queue[i])! + 1);
-        queue.push(next);
-      }
-    }
-  }
-  const rows = new Map<number, number>();
+  const ordered = [...graph.nodes].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id));
+  const start = ordered.length ? Date.parse(ordered[0].created_at) : 0;
+  const end = ordered.length ? Date.parse(ordered[ordered.length - 1].created_at) : start;
+  const span = Math.max(600, Math.min(3600, graph.nodes.length * 160));
+  const lanes: number[] = [];
   const positions = new Map<string, { x: number; y: number }>();
-  for (const node of graph.nodes) {
-    const column = depth.get(node.id) || 0;
-    const row = rows.get(column) || 0;
-    positions.set(node.id, { x: 16 + column * 300, y: 16 + row * 180 });
-    rows.set(column, row + 1);
+  for (const node of ordered) {
+    const x = 16 + (end > start ? (Date.parse(node.created_at) - start) / (end - start) * span : 0);
+    let lane = lanes.findIndex(right => right + 36 <= x);
+    if (lane < 0) lane = lanes.length;
+    lanes[lane] = x + 248;
+    positions.set(node.id, { x, y: 64 + lane * 200 });
   }
   return {
     positions,
-    width: Math.max(280, ...[...positions.values()].map(p => p.x + 264)),
-    height: Math.max(176, ...[...positions.values()].map(p => p.y + 160)),
+    ticks: Array.from({ length: end > start ? 5 : 1 }, (_, i) => ({ x: 16 + i / 4 * span, at: new Date(start + i / 4 * (end - start)).toISOString() })),
+    width: span + 280,
+    height: Math.max(264, 64 + lanes.length * 200),
   };
 }
 

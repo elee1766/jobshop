@@ -11,6 +11,7 @@
     push,
   } from "./lib/push.svelte.js";
   import { ago, flights } from "./model.js";
+  import { state as ticketState, statusLetter } from "./trace.js";
   import { md } from "../kit/markdown.js";
   import type {
     AttentionItem,
@@ -65,7 +66,7 @@
             .split(/\s+/)
             .filter(Boolean)
             .every((term) =>
-              `${r.step} ${r.repo} ${r.ref} ${r.waiting}`
+              `${r.title} ${r.id} ${r.step} ${r.repo} ${r.ref} ${r.waiting}`
                 .toLowerCase()
                 .includes(term),
             ) &&
@@ -445,13 +446,13 @@
       {#each ["home", "trace", "improvements", "system"] as page}<button
           class:chosen={view === page}
           onclick={() => navigate(page)}
-          >{page[0].toUpperCase() + page.slice(1)}</button
+          >{{ home: 'home', trace: 'trace', improvements: 'learn', system: 'sys' }[page]}</button
         >{/each}<span class="divider">|</span><button
         class:chosen={sinceAway}
         onclick={() => {
           sinceAway = !sinceAway;
           navigate("home");
-        }}>Since-away</button
+        }}>catch-up</button
       >
     </nav>
     <span class="push-right status mono"
@@ -460,7 +461,7 @@
     >
   </header>
   {#if error}<div class="error banner" role="alert">
-      {error}<button onclick={() => (error = "")}>Dismiss</button>
+      {error}<button onclick={() => (error = "")}>dismiss</button>
     </div>{/if}
   <div class="columns">
     <main class="work">
@@ -469,7 +470,7 @@
             Since {lastFocus && !lastFocus.startsWith("0001")
               ? new Date(lastFocus).toLocaleString()
               : "first visit"}<button onclick={() => (sinceAway = false)}
-              >Clear</button
+              >clear</button
             >
           </div>{/if}
         <section class="waiting" aria-label="Waiting">
@@ -481,10 +482,10 @@
               >{collapsed.waiting ? "▸" : "▾"}</button
             ><span class="mono">/waiting</span><button
               onclick={() => document.getElementById("answer-note")?.focus()}
-              >Answer</button
-            ><button onclick={() => discuss()}>Discuss</button><button
+              >answer</button
+            ><button onclick={() => discuss()}>discuss</button><button
               class="wide"
-              onclick={triage}>Triage-in-chat</button
+              onclick={triage}>triage-in-chat</button
             ><span class="push-right muted">{attention.length}</span>
           </div>
           {#if !collapsed.waiting}<div class="section-body">
@@ -497,7 +498,7 @@
                   {#if item.kind !== "pool"}<a
                       href={"?view=trace&ref=" + encodeURIComponent(item.id)}
                       aria-label={"Trace " + (item.ref || item.id)}
-                      >Trace</a
+                      >trace</a
                     >{/if}
                   <button class="item-title" onclick={() => (focused = item.id)}
                     >
@@ -523,8 +524,8 @@
                         >{/each}
                     </div>
                     <details class="answer-note">
-                      <summary>Add answer note</summary><label for="answer-note"
-                        >Note sent with your choice</label
+                      <summary>add answer note</summary><label for="answer-note"
+                        >note sent with your choice</label
                       ><textarea id="answer-note" bind:value={note} rows="2"
                       ></textarea>
                     </details>
@@ -547,9 +548,9 @@
                   "not-moving": !collapsed["not-moving"],
                 })}>{collapsed["not-moving"] ? "▸" : "▾"}</button
             ><span class="mono">/not-moving</span><button
-              onclick={() => attach(stalled.map((r) => r.ref))}>Diagnose</button
+              onclick={() => attach(stalled.map((r) => r.ref))}>diagnose</button
             ><button onclick={() => (hideHolds = !hideHolds)}
-              >{hideHolds ? "Show-holds" : "Hide-holds"}</button
+              >{hideHolds ? "show-holds" : "hide-holds"}</button
             ><span class="push-right muted">{stalled.length}</span>
           </div>
           {#if !collapsed["not-moving"]}<div class="section-body">
@@ -558,7 +559,7 @@
                     >{row.ref}</button
                   >
                   {ago(row.since, now)}
-                  {row.diagnosis}{row.hold ? " (external hold?)" : ""}
+                  {@html md(row.diagnosis, true)}{row.hold ? " (external hold?)" : ""}
                 </p>{:else}<p class="muted">
                   No stalled work. Threshold: 3h since last push or run
                   activity.
@@ -573,16 +574,16 @@
                 (collapsed = { ...collapsed, inflight: !collapsed.inflight })}
               >{collapsed.inflight ? "▸" : "▾"}</button
             ><span class="mono">/inflight</span><button
-              onclick={() => (sortOldest = !sortOldest)}>Sort</button
+              onclick={() => (sortOldest = !sortOldest)}>sort</button
             ><button
               onclick={() => {
                 if (filtered[0]) void openTrace(filtered[0].id);
-              }}>Trace</button
+              }}>trace</button
             ><input
               aria-label="Filter inflight"
               bind:value={filter}
               placeholder="step, repo or ref"
-            /><button onclick={() => (filter = "")}>Clear</button><span
+            /><button onclick={() => (filter = "")}>clear</button><span
               class="push-right muted">{filtered.length}</span
             >
           </div>
@@ -602,7 +603,7 @@
                 <table class="mono">
                   <thead
                     ><tr
-                      ><th>ticket</th><th class="wide">pr</th><th>step</th><th
+                      ><th title="Status: O open, R running, C closed">s</th><th>ticket</th><th class="wide">pr</th><th>step</th><th
                         >waiting</th
                       ><th
                         ><button onclick={() => (sortOldest = !sortOldest)}
@@ -613,18 +614,18 @@
                   ><tbody
                     >{#each filtered as row (row.id)}<tr
                         class:stalled={row.stalled}
-                        ><td
-                          ><button
+                        ><td class="ticket-status" title={ticketState(row.run.run)} aria-label={ticketState(row.run.run)}>{statusLetter(row.run.run)}</td><td
+                          ><button class="ticket-label"
                             onclick={(e) =>
                               e.shiftKey
                                 ? attach([row.ref])
-                                : openTrace(row.id)}>{row.ref}</button
+                                : openTrace(row.id)}><span>{row.title || row.ref}</span>{#if row.title}<small class="muted">{row.ref}</small>{/if}</button
                           ></td
                         ><td class="wide"
                           >{row.pr
                             ? row.repo.split("/").at(-1) + "#" + row.pr
                             : "–"}</td
-                        ><td>{row.step}</td><td>{row.waiting}</td><td
+                        ><td>{row.step}</td><td>{@html md(row.waiting, true)}</td><td
                           title={row.source}>{ago(row.since, now)}</td
                         ><td class="wide"
                           ><button
@@ -652,7 +653,7 @@
               aria-label="Trace reference"
               bind:value={traceRef}
               placeholder="ticket, session, repo#PR"
-            /><button type="submit">Open</button>
+            /><button type="submit">open</button>
           </form>
         </div>
         {#if trace?.graph}<div class="trace-layout">
@@ -671,13 +672,13 @@
           <span class="mono">/improvements</span>
         </div>
         <div class="section-body">
-          <h2>Memory changes</h2>
+          <h2>memory changes</h2>
           {#each improvements?.edits || [] as edit}<article>
               <b>{edit.pr || edit.path || "Edit " + edit.id}</b> · {edit.state}
               <span class="muted">{ago(edit.created_at, now)}</span>
-              <p>{edit.reason || "Gate has not evaluated this change yet."}</p>
+              <p>{@html md(edit.reason || "Gate has not evaluated this change yet.", true)}</p>
               <details>
-                <summary>Before / after measurements</summary>
+                <summary>before / after measurements</summary>
                 <pre>{JSON.stringify(
                     { before: edit.baseline, after: edit.after },
                     null,
@@ -687,7 +688,7 @@
             </article>{:else}<p class="muted">
               No memory changes recorded.
             </p>{/each}
-          <h2>Proposals</h2>
+          <h2>proposals</h2>
           {#each improvements?.learnings || [] as learning}<article>
               <b>{learning.summary}</b> · {learning.status}
               <p>{learning.fix || ""}</p>
@@ -701,17 +702,17 @@
         <div class="tag">
           <span class="mono">/system</span><button
             onclick={() => (push.state === "on" ? disablePush() : enablePush())}
-            >Push: {push.state}</button
+            >push: {push.state}</button
           ><button
             onclick={() =>
               (document.documentElement.dataset.theme =
                 document.documentElement.dataset.theme === "dark"
                   ? "light"
-                  : "dark")}>Theme</button
+                  : "dark")}>theme</button
           >
         </div>
         <div class="section-body">
-          <h2>Pools</h2>
+          <h2>pools</h2>
           <div class="table-scroll">
             <table class="mono">
               <thead
@@ -733,7 +734,7 @@
               >
             </table>
           </div>
-          <h2>Resources</h2>
+          <h2>resources</h2>
           <div class="table-scroll">
             <table class="mono">
               <thead
@@ -772,7 +773,7 @@
               >
             </table>
           </div>
-          <h2>Ingest</h2>
+          <h2>ingest</h2>
           <p>
             {system?.ingest?.mode || "controller"} · {Object.entries(
               system?.ingest?.counts || {},
@@ -797,7 +798,7 @@
               >
             </table>
           </div>
-          <h2>Scheduler</h2>
+          <h2>scheduler</h2>
           <p>
             Last {system?.status?.tick_seconds?.toFixed(3) || "0"}s · p95 {system?.status?.p95_seconds?.toFixed(
               3,
@@ -810,13 +811,13 @@
                 >{/each}</tbody
             >
           </table>
-          <h2>Sessions</h2>
+          <h2>sessions</h2>
           {#each system?.sessions || [] as session}<p>
               <button class="mono" onclick={() => openTrace(session.id)}
                 >{session.display_name || session.id}</button
               >
               {session.busy ? "working" : "idle"}
-              <button onclick={() => closeSession(session.id)}>Close</button>
+              <button onclick={() => closeSession(session.id)}>close</button>
             </p>{/each}
           <p class="muted">
             Costs are not recorded by this controller. Context usage is
@@ -826,7 +827,7 @@
       {/if}
     </main>
     <aside class="chat-column" aria-label="Chats">
-      <button class="show-chats" onclick={showChat}>Chats ▸</button>
+      <button class="show-chats" onclick={showChat}>chats ▸</button>
       <div class="chat-content">
         <Chat
           bind:this={chat}
@@ -852,8 +853,8 @@
           else if (tab !== "more") view = "home";
         }}
         >{tab === "inflight"
-          ? "In flight"
-          : tab[0].toUpperCase() + tab.slice(1)}{tab === "waiting"
+          ? "in flight"
+          : tab}{tab === "waiting"
           ? " " + attention.length
           : ""}</button
       >{/each}
