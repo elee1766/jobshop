@@ -1,4 +1,4 @@
-package control
+package hooks
 
 import (
 	"bytes"
@@ -11,12 +11,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
+
+var hookHTTP = telemetry.HTTPClient("hook", 24*time.Hour)
 
 // hookPost is one url hook call (#348 admission, #188 guardrail): a
 // signed JSON POST, retried per its retry settings.
@@ -107,6 +110,20 @@ func (p hookPost) try(ctx context.Context, secret, body []byte) (out []byte, wai
 	err = fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(out[:min(len(out), 200)])))
 	retry = resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
 	return nil, retryAfter(resp.Header.Get("Retry-After"), time.Now()), retry, err
+}
+
+// retryAfter accepts seconds or an HTTP date.
+func retryAfter(h string, now time.Time) time.Duration {
+	if h == "" {
+		return 0
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(h)); err == nil && n > 0 {
+		return time.Duration(n) * time.Second
+	}
+	if t, err := http.ParseTime(h); err == nil && t.After(now) {
+		return t.Sub(now)
+	}
+	return 0
 }
 
 // hookSignature is the X-Jobshop-Signature-256 value for body.

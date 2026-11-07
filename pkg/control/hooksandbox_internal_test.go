@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 )
 
 // TestHookSandboxed (#810): a hook for an event of a sandboxed pool runs
@@ -50,8 +51,8 @@ hooks:
 	c := &Controller{root: root, live: live, opt: Options{HostExe: exe}, log: slog.New(slog.DiscardHandler)}
 	c.ctx = t.Context()
 
-	run := func(pool string) hookAnswer {
-		return c.runHooks(context.Background(), c.config(), hookEvent{On: config.HookAction, Action: "push", Pool: pool})
+	run := func(pool string) hooks.Answer {
+		return c.runHooks(context.Background(), c.config(), hooks.GuardEvent{On: config.HookAction, Action: "push", Pool: pool})
 	}
 	a := run("dev")
 	assert.Equal(t, "hidden", a.Reason, "sandboxed hook cannot read the secret")

@@ -24,6 +24,13 @@ func loadRootPack(path, dir string, rewrite func(string) string) ([]packLayer, [
 	if rewrite != nil {
 		path = rewrite(path)
 	}
+	if filepath.Ext(path) == ".cue" {
+		layers, err := loadCUEPack(path)
+		if err != nil {
+			return nil, nil, packErr(err)
+		}
+		return layers, nil, nil
+	}
 	layers, err := loadPackFile(path, nil, "", 0, true)
 	if err != nil {
 		return nil, nil, packErr(err)
@@ -51,6 +58,13 @@ func packValidationError(err error, refs []PackRef, layers []packLayer) error {
 	for _, layer := range layers {
 		if strings.Contains(err.Error(), layer.file) {
 			return packErr(err)
+		}
+		for _, files := range layer.entrySources {
+			for _, file := range files {
+				if strings.Contains(err.Error(), file) {
+					return packErr(err)
+				}
+			}
 		}
 	}
 	return err

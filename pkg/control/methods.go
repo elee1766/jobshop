@@ -306,6 +306,9 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 		return nil, err
 	}
 	if p.Resolution == store.ResolutionRequestChanges {
+		if p.Output != nil || p.Outcome != "" {
+			return nil, fmt.Errorf("%w: request_changes accepts findings, not a successful result", store.ErrInvalid)
+		}
 		t, err := c.closeRequestChanges(ctx, cfg, sc, id, cl, p.Comment)
 		if err != nil {
 			return nil, err
@@ -322,10 +325,31 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 			return nil, err
 		}
 	}
-	if p.Outcome != "" {
-		if err := c.setStepOutcome(ctx, sc, id, p.Outcome); err != nil {
+	var result *store.StepResult
+	cur, err := c.store.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if p.Outcome != "" || p.Output != nil || cur.Kind == store.KindStep {
+		if cur.Kind != store.KindStep {
+			return nil, fmt.Errorf("%w: outcome and output require a workflow step", store.ErrInvalid)
+		}
+		if p.Outcome != "" && !config.OutcomePattern.MatchString(p.Outcome) {
+			return nil, fmt.Errorf("%w: invalid outcome %q", store.ErrInvalid, p.Outcome)
+		}
+		f, err := store.DecodeFields[store.StepFields](cur)
+		if err != nil {
 			return nil, err
 		}
+		if p.Resolution == "done" {
+			if err := checkStepOutput(cfg, f.OutputSchema, p.Output); err != nil {
+				p.Resolution, p.Outcome, p.Output = "failed", "", nil
+				if _, err := store.AddComment(ctx, c.store, "controller", id, "Invalid structured output: "+err.Error()); err != nil {
+					return nil, err
+				}
+			}
+		}
+		result = &store.StepResult{Revision: cur.Revision, Outcome: p.Outcome, Output: p.Output}
 	}
 	if p.Resolution == store.ResolutionRebase {
 		if cur, err := c.store.Get(ctx, id); err == nil {
@@ -338,7 +362,7 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 			p.Resolution = res
 		}
 	}
-	t, err := store.Close(ctx, c.store, sc.actor, id, cl, p.Resolution)
+	t, err := c.store.Release(ctx, sc.actor, id, cl, store.Outcome{Close: p.Resolution, StepResult: result})
 	if err != nil {
 		return nil, err
 	}

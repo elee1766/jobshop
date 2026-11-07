@@ -1,7 +1,6 @@
 package control
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -351,7 +350,7 @@ func (ar admissionRunner) validate(ctx context.Context, h config.AdmissionHook, 
 	start := time.Now()
 	out, err := ar.callAdmission(ctx, h, ev)
 	r.DurationMS = time.Since(start).Milliseconds()
-	var a hookAnswer
+	var a hooks.Answer
 	if err == nil && len(out) > 0 {
 		if jerr := json.Unmarshal(out, &a); jerr != nil {
 			err = fmt.Errorf("answer is not JSON: %w", jerr)
@@ -381,43 +380,7 @@ func (ar admissionRunner) callAdmission(ctx context.Context, h config.AdmissionH
 	if err != nil {
 		return nil, err
 	}
-	timeout := config.Duration(h.Timeout, 30*time.Second)
-	if h.URL != "" {
-		p := hookPost{
-			url: h.URL, secret: h.SecretFile.In(ar.dir), timeout: timeout, retry: h.Retry, after: ar.after,
-			headers: map[string]string{"X-Jobshop-Delivery": ev.DeliveryID},
-		}
-		out, err := p.do(ctx, body)
-		return bytes.TrimSpace(out), err
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	out, err := ar.execAdmission(ctx, h, body)
-	if ctx.Err() != nil {
-		return nil, fmt.Errorf("timed out after %s", timeout)
-	}
-	return bytes.TrimSpace(out), err
-}
-
-func (ar admissionRunner) execAdmission(ctx context.Context, h config.AdmissionHook, body []byte) ([]byte, error) {
-	// proc.Start runs it in its own process group and kills the group on
-	// timeout, so a child of sh (sleep, curl) cannot hold stdout open.
-	// Admission has no pool: no sandbox (#810).
-	spec := proc.Spec{Command: "sh", Args: []string{"-c", h.Command}, Dir: ar.dir}
-	var stdout bytes.Buffer
-	var stderr strings.Builder
-	p, err := proc.Start(ctx, spec, proc.Stdin(bytes.NewReader(body)), proc.Stdout(&stdout), proc.Stderr(&stderr))
-	if err != nil {
-		return nil, err
-	}
-	ex, err := p.Wait()
-	if err != nil {
-		return nil, err
-	}
-	if ex.ExitCode != 0 || ex.Signal != "" {
-		return nil, fmt.Errorf("exited %s: %s", exitText(ex), strings.TrimSpace(stderr.String()))
-	}
-	return stdout.Bytes(), nil
+	return (hooks.Runner{Dir: ar.dir, After: ar.after, Executor: hookCommands{dir: ar.dir}}).Admission(ctx, h, body, ev.DeliveryID)
 }
 
 // holdForHuman files one needs-human ticket per held delivery, like a

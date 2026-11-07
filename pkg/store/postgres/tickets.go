@@ -398,6 +398,24 @@ func (s *Store) classify(err error, id string) error {
 // edges in one transaction.
 func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []store.Ticket, err error) {
 	err = s.tx(ctx, func(q sqldb.Querier) error {
+		for _, id := range slices.Sorted(maps.Keys(g.Revisions)) {
+			t, err := s.get(ctx, q, id)
+			if err != nil {
+				return err
+			}
+			if t.Revision != g.Revisions[id] {
+				return fmt.Errorf("%w: %s changed", store.ErrConflict, id)
+			}
+		}
+		for id, count := range g.Children {
+			n, err := q.CountChildren(ctx, id)
+			if err != nil {
+				return err
+			}
+			if n != count {
+				return fmt.Errorf("%w: %s children changed", store.ErrConflict, id)
+			}
+		}
 		for _, id := range g.Unclaimed {
 			t, err := s.get(ctx, q, id)
 			if err != nil {
@@ -435,6 +453,26 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 		}
 		for _, e := range g.Edges {
 			if err := s.addEdge(ctx, q, actor, e); err != nil {
+				return err
+			}
+		}
+		for _, id := range slices.Sorted(maps.Keys(g.Fields)) {
+			if _, err := s.mutate(ctx, q, id, actor, "update", func(t *store.Ticket) (any, error) {
+				fields, err := store.NormalizeFields(t.Kind, g.Fields[id])
+				if err != nil {
+					return nil, err
+				}
+				t.Fields = fields
+				return map[string]any{"fields": fields}, nil
+			}); err != nil {
+				return err
+			}
+		}
+		for _, id := range slices.Sorted(maps.Keys(g.Close)) {
+			if _, err := s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
+				d, _, err := storerules.Close(t, nil, g.Close[id], s.now())
+				return d, err
+			}); err != nil {
 				return err
 			}
 		}
@@ -755,7 +793,7 @@ func (s *Store) closeTicket(ctx context.Context, actor, id string, c *store.Clai
 	err = s.tx(ctx, func(q sqldb.Querier) error {
 		var note string
 		t, err = s.mutate(ctx, q, id, actor, "close", func(t *store.Ticket) (any, error) {
-			d, n, err := storerules.Close(t, c, o.Close, s.now())
+			d, n, err := storerules.Close(t, c, o.Close, s.now(), o.StepResult)
 			note = n
 			return d, err
 		})

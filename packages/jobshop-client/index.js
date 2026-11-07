@@ -134,11 +134,12 @@ export function createClient({
     live: (fn, opts = {}) =>
       stream(
         "api/live" +
-          (opts.trace
+          (opts.trace || opts.audit
             ? "?" +
               new URLSearchParams({
-                trace: opts.trace,
+                ...(opts.trace ? { trace: opts.trace } : {}),
                 ...(opts.inspect ? { inspect: opts.inspect } : {}),
+                ...(opts.audit ? { audit: opts.audit } : {}),
               })
             : ""),
         [
@@ -150,6 +151,7 @@ export function createClient({
           "desk",
           "scheduler",
           "trace",
+          "automation",
         ],
         (data, kind) => fn({ kind, data }),
         opts,

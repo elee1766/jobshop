@@ -141,7 +141,7 @@ func prefixSources(src map[string][]string, prefix string) map[string][]string {
 	out := make(map[string][]string, len(src))
 	for k, v := range src {
 		section, rest, ok := strings.Cut(k, ".")
-		if ok && (section == "prompt_rules" || section == "pools" || section == "workflows" || section == "triggers") {
+		if ok && (section == "prompt_rules" || isMergedSection(section)) {
 			k = section + "." + prefix + rest
 		}
 		out[k] = v

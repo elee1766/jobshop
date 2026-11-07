@@ -64,6 +64,8 @@ var Specs = map[string]Spec{
 	MethodTriggerList:       {empty{}, []TriggerInfo{}},
 	MethodConfigShow:        {empty{}, ConfigShowResult{}},
 	MethodRunStart:          {RunStartParams{}, RunResult{}},
+	MethodAutomationList:    {AutomationListParams{}, []store.Record{}},
+	MethodAutomationShow:    {IDParams{}, AutomationResult{}},
 	MethodRunShow:           {IDParams{}, RunResult{}},
 	MethodRunList:           {RunListParams{}, []store.Ticket{}},
 	MethodRunCancel:         {IDParams{}, RunResult{}},

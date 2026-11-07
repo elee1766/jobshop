@@ -62,6 +62,9 @@ func (cw *configWatcher) sync() {
 			return nil
 		})
 	}
+	for _, d := range cw.paths.CUEDirs {
+		want[d] = true
+	}
 	for d := range cw.watched {
 		if !want[d] {
 			_ = cw.w.Remove(d)
@@ -96,6 +99,9 @@ func (cw *configWatcher) relevant(p string) bool {
 	}
 	p = filepath.Clean(p)
 	if slices.Contains(cw.paths.Files, p) {
+		return true
+	}
+	if filepath.Ext(p) == ".cue" && slices.Contains(cw.paths.CUEDirs, filepath.Dir(p)) {
 		return true
 	}
 	return slices.ContainsFunc(cw.paths.Dirs, func(d string) bool {

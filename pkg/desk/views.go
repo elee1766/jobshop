@@ -75,11 +75,12 @@ func (s *Server) traceView(r *http.Request) (any, error) {
 
 func (s *Server) systemView(r *http.Request) (any, error) {
 	var out struct {
-		Status    rpc.SystemStatus        `json:"status"`
-		Pools     rpc.PoolStatusResult    `json:"pools"`
-		Resources rpc.ResourceListResult  `json:"resources"`
-		Sessions  []rpc.SessionInfo       `json:"sessions"`
-		Ingest    rpc.IngestWorkersResult `json:"ingest"`
+		Status     rpc.SystemStatus        `json:"status"`
+		Pools      rpc.PoolStatusResult    `json:"pools"`
+		Resources  rpc.ResourceListResult  `json:"resources"`
+		Sessions   []rpc.SessionInfo       `json:"sessions"`
+		Ingest     rpc.IngestWorkersResult `json:"ingest"`
+		Automation AutomationList          `json:"automation"`
 	}
 	calls := []struct {
 		method         string
@@ -96,7 +97,9 @@ func (s *Server) systemView(r *http.Request) (any, error) {
 			return nil, err
 		}
 	}
-	return out, nil
+	var err error
+	out.Automation, err = s.automationList(r)
+	return out, err
 }
 
 func (s *Server) improvements(r *http.Request) (any, error) {

@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -21,11 +22,13 @@ import (
 // liveConfig is the config and the lease parsed from it, swapped as one
 // value so readers never see a lease from one file and pools from another.
 type liveConfig struct {
-	cfg   *config.Config
-	lease time.Duration
+	cfg     *config.Config
+	lease   time.Duration
+	hooks   map[string]*hooks.Program
+	runtime *hooks.Runtime
 }
 
-func newLiveConfig(cfg *config.Config) (*liveConfig, error) {
+func newLiveConfig(cfg *config.Config, roots ...config.Root) (*liveConfig, error) {
 	lease := DefaultLease
 	if cfg.Lease != "" {
 		var err error
@@ -33,7 +36,23 @@ func newLiveConfig(cfg *config.Config) (*liveConfig, error) {
 			return nil, fmt.Errorf("%s: lease %q: must be a positive duration", config.FileName, cfg.Lease)
 		}
 	}
-	return &liveConfig{cfg: cfg, lease: lease}, nil
+	root := config.Root{Dir: "."}
+	if len(roots) > 0 {
+		root = roots[0]
+	}
+	programs, err := hooks.LoadPrograms(context.Background(), cfg, root)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := *cfg
+	snapshot.HookDigests = map[string]string{}
+	for entry, program := range programs {
+		snapshot.HookDigests[entry] = program.Digest()
+	}
+	if cfg.HookDigests != nil && !maps.Equal(cfg.HookDigests, snapshot.HookDigests) {
+		return nil, fmt.Errorf("accepted hook manifest changed: restore the accepted callback selectors, source, roots, instance scope and grants before using last-good configuration")
+	}
+	return &liveConfig{cfg: &snapshot, lease: lease, hooks: programs, runtime: &hooks.Runtime{Config: &snapshot, Programs: programs}}, nil
 }
 
 // config is the active config. A reload between two reads only means the
@@ -97,7 +116,7 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 	loaded := time.Now()
 	if err == nil {
 		var lc *liveConfig
-		if lc, err = newLiveConfig(cfg); err == nil {
+		if lc, err = newLiveConfig(cfg, c.root); err == nil {
 			// Caps first: a failed write keeps the old config and caps.
 			resCtx, resSpan := telemetry.StartSpan(ctx, "set resources")
 			err = c.store.SetResources(resCtx, store.ResourceConfig{Caps: cfg.ResourceCaps(), Providers: cfg.ResourceProviders()})
@@ -114,6 +133,7 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 			for pool, reason := range failed {
 				already[pool] = c.setQuarantine(pool, reason)
 			}
+			c.hooks().Remember(lc.runtime)
 			old := c.live.Swap(lc).cfg
 			if !reflect.DeepEqual(old.Telemetry, cfg.Telemetry) {
 				c.log.WarnContext(ctx, "config reload: telemetry changes need a controller restart")
@@ -140,7 +160,7 @@ func (c *Controller) reloadWith(ctx context.Context, by string, files []string) 
 			}
 			c.log.InfoContext(ctx, msg, "files", files, "pools", len(cfg.Pools), "agents", len(cfg.Agents), "triggers", len(cfg.Triggers), "workflows", len(cfg.Workflows),
 				"took", time.Since(start), "lock_wait", locked.Sub(start), "load", loaded.Sub(locked), "preflight", preflightTook)
-			c.saveLastGood(cfg)
+			c.saveLastGood(lc.cfg)
 			c.mu.Lock()
 			c.configErr, c.watchErr = "", ""
 			c.mu.Unlock()
@@ -194,7 +214,7 @@ func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, e
 	}
 	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources, Instances: cfg.Instances, Disabled: cfg.Disabled}
 	if cfg.Reload.Watch {
-		out.Watch = &rpc.ConfigWatch{On: true, Files: len(cfg.Watch.Files), Dirs: len(cfg.Watch.Dirs)}
+		out.Watch = &rpc.ConfigWatch{On: true, Files: len(cfg.Watch.Files), Dirs: len(cfg.Watch.Dirs) + len(cfg.Watch.CUEDirs)}
 	}
 	if err := yaml.Unmarshal(b, &out.Config); err != nil {
 		return nil, err

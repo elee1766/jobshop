@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"encoding/json"
@@ -65,13 +66,13 @@ func (g *Globals) callTimeout(timeout time.Duration, method string, params, out 
 }
 
 func printJSON(raw json.RawMessage) error {
-	var v any
-	if err := json.Unmarshal(raw, &v); err != nil {
+	var body bytes.Buffer
+	if err := json.Indent(&body, raw, "", "  "); err != nil {
 		return err
 	}
-	enc := json.NewEncoder(stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
+	body.WriteByte('\n')
+	_, err := body.WriteTo(stdout)
+	return err
 }
 
 // exitCode maps errors to stable exit codes so agents can branch on them.
@@ -265,8 +266,9 @@ type triggerCmd struct {
 }
 
 type configCmd struct {
-	Show  configShowCmd  `cmd:"" help:"Print the merged config the controller runs with, and which pack or file set each agent, pool and trigger."`
-	Check configCheckCmd `cmd:"" help:"Load and validate a config file with its packs, without a controller. Exit 1 on error."`
+	Show    configShowCmd    `cmd:"" help:"Print the merged config the controller runs with, and which pack or file set each agent, pool and trigger."`
+	Check   configCheckCmd   `cmd:"" help:"Load and validate a config file with its packs, without a controller. Exit 1 on error."`
+	Resolve configResolveCmd `cmd:"" help:"Print normalized resolved configuration for migration comparison, without a controller."`
 }
 
 type configShowCmd struct{}
@@ -584,10 +586,18 @@ type closeCmd struct {
 	ID         string `arg:"" optional:"" help:"Ticket id (default: the session's current ticket)."`
 	Resolution string `short:"r" default:"done" help:"Resolution: done, failed, rebase (reopen a step without counting a failure), request_changes (a review step: reopen the step it reviews with --comment as findings), cancelled. A workflow step takes only these; put text in a comment."`
 	Outcome    string `help:"Workflow step outcome word (approve, reject, ...); later steps' when: conditions read it. request_changes is the request_changes resolution."`
+	OutputFile string `help:"Structured workflow step output as a JSON object, validated before closing. Use - to read stdin." type:"path"`
 	Comment    string `help:"Comment added before closing; with request_changes, the findings for the reopened step (required). Use - to read stdin."`
 }
 
 func (c closeCmd) Run(g *Globals) error {
+	if c.OutputFile == "-" && c.Comment == "-" {
+		return errors.New("--output-file and --comment cannot both read stdin")
+	}
+	output, err := readStepOutput(c.OutputFile)
+	if err != nil {
+		return err
+	}
 	comment := c.Comment
 	if comment != "" {
 		var err error
@@ -595,7 +605,7 @@ func (c closeCmd) Run(g *Globals) error {
 			return err
 		}
 	}
-	return g.call(rpc.MethodTicketClose, rpc.CloseParams{ID: c.ID, Resolution: c.Resolution, Outcome: c.Outcome, Comment: comment}, nil)
+	return g.call(rpc.MethodTicketClose, rpc.CloseParams{ID: c.ID, Resolution: c.Resolution, Outcome: c.Outcome, Comment: comment, Output: output}, nil)
 }
 
 type ticketReopenCmd struct {

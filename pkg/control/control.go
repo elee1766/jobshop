@@ -28,6 +28,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
 	idgen "github.com/elee1766/jobshop/pkg/ids"
 	"github.com/elee1766/jobshop/pkg/ingest"
@@ -165,6 +166,8 @@ type Controller struct {
 	// triggerPolled is each trigger's last poll, for fallback: (JOB-62);
 	// tick-only state.
 	triggerPolled map[string]time.Time
+	hookRunning   atomic.Bool
+	hookPending   atomic.Bool
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
 	// journalsCompressedAt is the last journal compression sweep start
@@ -297,8 +300,10 @@ type Controller struct {
 	activityMu  sync.Mutex
 	activity    *activityState
 	// ship is journal shipping to VictoriaLogs (#530).
-	ship shipper
-	wg   sync.WaitGroup
+	ship       shipper
+	wg         sync.WaitGroup
+	hooksOnce  sync.Once
+	hookEngine *hooks.Engine
 	// Trigger checks run outside the tick when backgroundChecks is set, by
 	// Run (JOB-109, triggercheck.go). checkJobs is under tickMu.
 	backgroundChecks bool
@@ -320,7 +325,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 	if cfg == nil {
 		return loadErr
 	}
-	lc, err := newLiveConfig(cfg)
+	lc, err := newLiveConfig(cfg, root)
 	if err != nil {
 		return err
 	}
@@ -406,6 +411,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		events:          ev,
 		configSwapped:   make(chan struct{}, 1),
 	}
+	c.hooks().Remember(lc.runtime)
 	// The stream starts at the current end of history; older rows are
 	// only sent as replay.
 	if ev.last, err = store.LastSeq(ctx, st); err != nil {
@@ -421,7 +427,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		c.configErr, c.configErrAt = loadErr.Error(), c.started
 		c.log.ErrorContext(ctx, "config load failed in a pack, serving the last good config", "err", loadErr, "last_good", root.LastGood())
 	} else {
-		c.saveLastGood(cfg)
+		c.saveLastGood(lc.cfg)
 	}
 	c.loadScale()
 	if wantsCgroup(cfg) {
@@ -600,6 +606,7 @@ func (c *Controller) tick() {
 	c.passStep(ctx, cfg, "report_orphans", c.reportOrphans)
 	c.step(ctx, "scan_sessions", c.scanSessions)
 	c.passStep(ctx, cfg, "sweep_runs", c.sweepRuns)
+	c.kickHooks()
 	c.passStep(ctx, cfg, "sweep_escalation_chats", c.sweepEscalationChats)
 	c.passStep(ctx, cfg, "sweep_attention_chats", c.sweepAttentionChats)
 	c.step(ctx, "sweep_batches", c.sweepBatches)
@@ -858,6 +865,7 @@ func bind[P any](fn func(c *Controller, ctx context.Context, sc scope, p P) (any
 		var p P
 		if len(raw) > 0 && string(raw) != "null" {
 			dec := json.NewDecoder(bytesReader(raw))
+			dec.UseNumber()
 			dec.DisallowUnknownFields()
 			if err := dec.Decode(&p); err != nil {
 				return nil, acp.NewInvalidParams(err.Error())
@@ -923,6 +931,8 @@ func init() {
 		rpc.MethodReload:            bind((*Controller).reloadConfig),
 		rpc.MethodConfigShow:        bind((*Controller).configShow),
 		rpc.MethodRunStart:          bind((*Controller).runStart),
+		rpc.MethodAutomationList:    bind((*Controller).automationList),
+		rpc.MethodAutomationShow:    bind((*Controller).automationShow),
 		rpc.MethodRunShow:           bind((*Controller).runShow),
 		rpc.MethodRunList:           bind((*Controller).runList),
 		rpc.MethodRunCancel:         bind((*Controller).runCancel),

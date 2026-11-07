@@ -135,6 +135,7 @@ func (c *Controller) startRun(ctx context.Context, cfg *config.Config, sc scope,
 		return nil, err
 	}
 	c.log.InfoContext(ctx, "run started", "run", out[0].ID, "workflow", p.Workflow, "key", p.Key, "steps", len(out)-1)
+	c.kickHooks()
 	return rpc.RunResult{Run: out[0], Steps: out[1:]}, nil
 }
 
@@ -146,6 +147,7 @@ type runPlan struct {
 	meta json.RawMessage
 	// placements are the resolved placements by step index (#409).
 	placements map[int]*store.StepPlacement
+	hookDigest string
 }
 
 // planRun checks p against the config and the caller's scope.
@@ -156,6 +158,9 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 	}
 	vars := map[string]any{}
 	for k, v := range w.PackVars {
+		vars[k] = v
+	}
+	for k, v := range p.Inputs {
 		vars[k] = v
 	}
 	for k, v := range p.Vars {
@@ -222,7 +227,13 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 		w.Steps[i].NeedsResources = rs
 	}
 	// Steps live in their pools' projects; the run goes with the first.
-	proj := stepProject(cfg, w.Steps[0])
+	proj := w.Project
+	if len(w.Steps) > 0 {
+		proj = stepProject(cfg, w.Steps[0])
+	}
+	if proj == "" {
+		proj = cfg.DefaultProject
+	}
 	if p.Project != "" && p.Project != proj {
 		return runPlan{}, fmt.Errorf("%w: workflow %s runs in project %s", store.ErrInvalid, p.Workflow, proj)
 	}
@@ -243,6 +254,9 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 		}
 	}
 	plan := runPlan{w: w, proj: proj, vars: vars, meta: meta, placements: placements}
+	if w.OnStart != "" {
+		plan.hookDigest = cfg.HookDigests[w.OnStart] + ":" + cfg.HookDigests[w.OnStepCompleted]
+	}
 	if err := c.intakeRun(ctx, cfg, plan); err != nil {
 		return runPlan{}, err
 	}
@@ -262,7 +276,15 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 	if s := cfg.Sources["workflows."+p.Workflow]; len(s) > 0 {
 		pack = s[0]
 	}
-	rf, err := json.Marshal(store.RunFields{Workflow: p.Workflow, Pack: pack, Vars: p.Vars, Key: p.Key, State: store.RunRunning})
+	inputs := maps.Clone(p.Inputs)
+	if w.OnStart != "" {
+		inputs = maps.Clone(vars)
+	}
+	fields := store.RunFields{Workflow: p.Workflow, Pack: pack, Vars: p.Vars, Inputs: inputs, Key: p.Key, State: store.RunRunning}
+	if w.OnStart != "" {
+		fields.Automation = &store.RunAutomation{OnStart: w.OnStart, OnStepCompleted: w.OnStepCompleted, Digest: plan.hookDigest, After: p.After}
+	}
+	rf, err := json.Marshal(fields)
 	if err != nil {
 		return g, err
 	}
@@ -285,6 +307,11 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 	}
 	nts := []store.NewTicket{{ID: runID, Project: proj, Kind: store.KindRun, Title: title, ParentID: parent, Fields: rf, Meta: runMetaJSON}}
 	var edges []store.Edge
+	if w.OnStart != "" {
+		for _, after := range p.After {
+			edges = append(edges, store.Edge{From: runID, To: after, Kind: store.EdgeBlocks})
+		}
+	}
 	stepIDs := map[string]string{} // workflow step id -> ticket id
 	for i, s := range w.Steps {
 		title, err := w.Render(s.Title, vars)
@@ -351,31 +378,6 @@ func stepProject(cfg *config.Config, s config.Step) string {
 // needs finish (#385): far enough out that nothing claims it, and inside
 // int64 nanoseconds (JOB-58).
 var gateHold = time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
-
-// setStepOutcome records `close --outcome` on an open step ticket.
-func (c *Controller) setStepOutcome(ctx context.Context, sc scope, id, outcome string) error {
-	if !config.OutcomePattern.MatchString(outcome) {
-		return fmt.Errorf("%w: outcome %q must match %s", store.ErrInvalid, outcome, config.OutcomePattern)
-	}
-	t, err := c.store.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	if t.Kind != store.KindStep {
-		return fmt.Errorf("%w: --outcome is for workflow steps; %s is a %s", store.ErrInvalid, id, t.Kind)
-	}
-	f, err := store.DecodeFields[store.StepFields](t)
-	if err != nil {
-		return err
-	}
-	f.Outcome = outcome
-	b, err := json.Marshal(f)
-	if err != nil {
-		return err
-	}
-	_, err = c.store.Update(ctx, sc.actor, id, store.Update{Fields: b, IfRevision: t.Revision})
-	return err
-}
 
 // gateSteps opens or skips gated steps whose needs have all finished,
 // repeating while a skip unblocks more. It reports whether it changed
@@ -588,6 +590,7 @@ func (c *Controller) runResume(ctx context.Context, sc scope, p rpc.RunResumePar
 	res, err := c.resumeRun(ctx, sc, p)
 	if err == nil {
 		c.runBatchEvent(ctx, p.ID)
+		c.kickHooks()
 	}
 	return res, err
 }
@@ -601,6 +604,19 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	}
 	if t.Status == store.StatusClosed {
 		return nil, fmt.Errorf("%w: run %s", store.ErrClosed, t.ID)
+	}
+	if p.Step == "" && f.Automation != nil && f.State == store.RunNeedsHuman {
+		resumed, err := c.resumeHook(ctx, sc.actor, t, f)
+		if err != nil {
+			return nil, err
+		}
+		if resumed {
+			t, err = c.store.Get(ctx, t.ID)
+			if err != nil {
+				return nil, err
+			}
+			return c.runResult(ctx, t)
+		}
 	}
 	steps, err := store.Children(ctx, c.store, t.ID)
 	if err != nil {
@@ -629,6 +645,7 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 		return nil, err
 	}
 	sf.Failures = 0
+	sf.StructuredOutput = nil
 	// A human resume grants a capped reviewer a fresh set of rounds.
 	sf.ReviewRounds = 0
 	b, err := json.Marshal(sf)
@@ -677,7 +694,7 @@ func (c *Controller) completeRun(ctx context.Context, runID string) {
 		return
 	}
 	f, err := store.DecodeFields[store.RunFields](t)
-	if err != nil || f.State != store.RunRunning {
+	if err != nil || f.State != store.RunRunning || f.Automation != nil {
 		return
 	}
 	steps, err := store.Children(ctx, c.store, runID)

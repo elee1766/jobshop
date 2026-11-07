@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -28,7 +29,7 @@ const (
 	intakeComment  = "comment"
 )
 
-// intakeExtra is hookEvent.Extra for on: intake.
+// intakeExtra is hooks.GuardEvent.Extra for on: intake.
 type intakeExtra struct {
 	Source string `json:"source"`
 	Issue  string `json:"issue"`
@@ -43,15 +44,15 @@ func hasIntakeHooks(cfg *config.Config) bool {
 // intake runs the intake hooks on x and handles a refusal. key names the
 // decision so a human's answer on the filed ticket is found again. It
 // returns the answer; allow means the text may reach a prompt.
-func (c *Controller) intake(ctx context.Context, cfg *config.Config, project, key string, x intakeExtra) hookAnswer {
+func (c *Controller) intake(ctx context.Context, cfg *config.Config, project, key string, x intakeExtra) hooks.Answer {
 	if r, ok := c.askedHuman(ctx, key); ok {
-		return hookAnswer{Decision: r.Decision, Reason: r.Reason}
+		return hooks.Answer{Decision: r.Decision, Reason: r.Reason}
 	}
 	raw, err := json.Marshal(x)
 	if err != nil {
-		return hookAnswer{rpc.GuardDeny, "intake event: " + err.Error()}
+		return hooks.Answer{Decision: rpc.GuardDeny, Reason: "intake event: " + err.Error()}
 	}
-	a := c.runHooks(ctx, cfg, hookEvent{On: config.HookIntake, Target: x.Issue, Project: project, Extra: raw})
+	a := c.runHooks(ctx, cfg, hooks.GuardEvent{On: config.HookIntake, Target: x.Issue, Project: project, Extra: raw})
 	if a.Decision != rpc.GuardAllow {
 		c.refuseIntake(ctx, cfg, project, key, x, a)
 	}
@@ -60,11 +61,11 @@ func (c *Controller) intake(ctx context.Context, cfg *config.Config, project, ke
 
 // intakeIssue checks a Linear issue's title, description and comments
 // before a run starts for it. A read failure is deny (fail closed).
-func (c *Controller) intakeIssue(ctx context.Context, cfg *config.Config, project, key string) hookAnswer {
+func (c *Controller) intakeIssue(ctx context.Context, cfg *config.Config, project, key string) hooks.Answer {
 	x := intakeExtra{Source: intakeRunStart, Issue: key}
 	is, err := c.linearIssue(ctx, cfg, key)
 	if err != nil {
-		a := hookAnswer{rpc.GuardDeny, "intake: read " + key + ": " + err.Error()}
+		a := hooks.Answer{Decision: rpc.GuardDeny, Reason: "intake: read " + key + ": " + err.Error()}
 		c.refuseIntake(ctx, cfg, project, "intake/"+key, x, a)
 		return a
 	}
@@ -98,7 +99,7 @@ func (c *Controller) intakeRun(ctx context.Context, cfg *config.Config, plan run
 	if err != nil {
 		return err
 	}
-	a, _ := res.val.(hookAnswer)
+	a, _ := res.val.(hooks.Answer)
 	if a.Decision == rpc.GuardAllow {
 		return nil
 	}
@@ -168,7 +169,7 @@ func (c *Controller) linearIssue(ctx context.Context, cfg *config.Config, key st
 
 // refuseIntake labels the Linear issue needs-human and files one
 // needs-human ticket per key; ask_human also labels it a question.
-func (c *Controller) refuseIntake(ctx context.Context, cfg *config.Config, project, key string, x intakeExtra, a hookAnswer) {
+func (c *Controller) refuseIntake(ctx context.Context, cfg *config.Config, project, key string, x intakeExtra, a hooks.Answer) {
 	c.log.InfoContext(ctx, "intake refused", "issue", x.Issue, "source", x.Source, "decision", a.Decision, "reason", a.Reason)
 	if cl, err := c.linearClientIn(ctx, cfg, x.Issue); err != nil {
 		c.log.WarnContext(ctx, "intake: label", "issue", x.Issue, "err", err)

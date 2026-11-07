@@ -177,11 +177,12 @@ func TestPackRenamedVars(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, c.Pools["op"].IdleTimeout)
 			if tc.warn {
-				require.Len(t, c.Warnings, 1)
+				require.Len(t, c.Warnings, 2)
 				assert.Contains(t, c.Warnings[0], `var "repo" is renamed to "jobshop_repo"`)
 			} else {
-				assert.Empty(t, c.Warnings)
+				require.Len(t, c.Warnings, 1)
 			}
+			assert.Contains(t, c.Warnings[len(c.Warnings)-1], "YAML packs are deprecated")
 		})
 	}
 }

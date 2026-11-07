@@ -6,6 +6,8 @@ up to 2026-11-05), `docs/layout.md`, `docs/data-model.md`. Decisions:
 the pinned decision log issue (#569). Progress: open `target` issues.
 
 - Packages live in `pkg/`; `cmd/jobshop` only calls `cli.Main`.
+- Fixed JSON envelopes use Go structs with JSON tags. Maps are for dynamic keys
+  and arbitrary payload data.
 - Every write goes through the controller; the CLI never opens the database.
 - Check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`,
   plus `nix fmt -- --check $(git ls-files '*.nix')` (CI runs it; `nix fmt` fixes it).
@@ -42,6 +44,8 @@ one derivation per Go package; without it, one `buildGo127Module` derivation.
   hash. Update `vendorHash` in `nix/package.nix` in the same commit, or the
   nix CI job fails with `hash mismatch in fixed-output derivation`. go2nix
   needs nothing: it reads `go.sum`.
+- Track new Go source files before calculating the hash: vendoring follows
+  source imports, and Nix's Git source omits untracked files.
 - Get the new hash locally, without the plugin: set `vendorHash =
   lib.fakeHash;`, run `nix build .#jobshop.goModules 2>&1 | grep got:`, paste the `got:` value back. Then
   `nix build .#jobshop && ./result/bin/jobshop version` must pass.

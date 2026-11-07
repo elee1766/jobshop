@@ -89,6 +89,8 @@ type root struct {
 	Version   versionCmd   `cmd:"" help:"Print version information."`
 	Help      helpCmd      `cmd:"" help:"Show help for a command, from the same text as --help: jobshop help linear assign."`
 	Docs      docsCmd      `cmd:"" help:"Print links to the docs for this binary (packs, readme, llm). Needs no root."`
+
+	Automation automationCmd `cmd:"" help:"Inspect durable automation invocations and external-call traces (admin)."`
 }
 
 // Main parses args, runs the selected command and returns a process exit code.

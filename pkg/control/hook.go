@@ -1,7 +1,6 @@
 package control
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -21,96 +21,21 @@ const hookMetaPack = "hook"
 // the queue, so the session's next claim gets other work.
 const claimDenyDefer = 10 * time.Minute
 
-// hookEvent is the JSON a hook reads on stdin.
-type hookEvent struct {
-	On      string          `json:"on"`
-	Action  string          `json:"action,omitempty"`
-	Target  string          `json:"target,omitempty"`
-	Detail  string          `json:"detail,omitempty"`
-	Session string          `json:"session,omitempty"`
-	Pool    string          `json:"pool,omitempty"`
-	Project string          `json:"project,omitempty"`
-	Ticket  *store.Ticket   `json:"ticket,omitempty"`
-	Extra   json.RawMessage `json:"extra,omitempty"`
-}
-
-type hookAnswer struct {
-	Decision string `json:"decision"`
-	Reason   string `json:"reason"`
-}
-
 // runHooks runs every hook for the event in config order and returns the
 // first answer that is not allow. No hooks means allow.
-func (c *Controller) runHooks(ctx context.Context, cfg *config.Config, ev hookEvent) hookAnswer {
+func (c *Controller) runHooks(ctx context.Context, cfg *config.Config, ev hooks.GuardEvent) hooks.Answer {
 	for _, h := range cfg.Hooks {
 		if !h.Applies(ev.On, ev.Action, ev.Pool) {
 			continue
 		}
-		a := c.runHook(ctx, cfg, h, ev)
+		a := (hooks.Runner{Dir: c.root.Dir, After: c.after, Executor: hookCommands{c: c, cfg: cfg}}).Run(ctx, h, ev)
 		if a.Decision != rpc.GuardAllow {
 			c.log.InfoContext(ctx, "hook decision", "on", ev.On, "action", ev.Action, "session", ev.Session,
 				"decision", a.Decision, "reason", a.Reason)
 			return a
 		}
 	}
-	return hookAnswer{Decision: rpc.GuardAllow}
-}
-
-// runHook fails closed: a crash, timeout or unreadable answer is deny.
-func (c *Controller) runHook(ctx context.Context, cfg *config.Config, h config.Hook, ev hookEvent) hookAnswer {
-	in, err := json.Marshal(ev)
-	if err != nil {
-		return hookAnswer{rpc.GuardDeny, "hook event: " + err.Error()}
-	}
-	timeout := config.Duration(h.Timeout, 30*time.Second)
-	if h.URL != "" {
-		p := hookPost{url: h.URL, secret: h.SecretFile.In(c.root.Dir), timeout: timeout, retry: h.Retry, after: c.after}
-		out, err := p.do(ctx, in)
-		if err != nil {
-			return hookAnswer{rpc.GuardDeny, "hook " + h.URL + ": " + err.Error()}
-		}
-		return parseHookAnswer(out)
-	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-	// The session's pool sandboxes the hook like the session's agent
-	// (#810); an event with no pool runs it in the root dir unisolated.
-	ic := isolatedCmd{argv: shArgv(h.Command), pool: ev.Pool, stdin: bytes.NewReader(in), name: "hook", cfg: cfg}
-	if !c.isolates(cfg, ev.Pool) {
-		ic.pool, ic.dir = "", c.root.Dir
-	}
-	var stdout bytes.Buffer
-	var stderr strings.Builder
-	ic.stdout, ic.stderr = &stdout, &stderr
-	ex, err := c.runIsolated(ctx, ic)
-	if ctx.Err() != nil {
-		return hookAnswer{rpc.GuardDeny, "hook timed out: " + h.Command}
-	}
-	if err != nil {
-		return hookAnswer{rpc.GuardDeny, "hook: " + err.Error()}
-	}
-	if ex.ExitCode != 0 || ex.Signal != "" {
-		return hookAnswer{rpc.GuardDeny, fmt.Sprintf("hook exited %s: %s", exitText(ex), strings.TrimSpace(stderr.String()))}
-	}
-	return parseHookAnswer(stdout.Bytes())
-}
-
-// parseHookAnswer reads a hook's answer: empty is allow, anything that is
-// not one JSON decision is deny.
-func parseHookAnswer(out []byte) hookAnswer {
-	out = bytes.TrimSpace(out)
-	if len(out) == 0 {
-		return hookAnswer{Decision: rpc.GuardAllow}
-	}
-	var a hookAnswer
-	if err := json.Unmarshal(out, &a); err != nil {
-		return hookAnswer{rpc.GuardDeny, "hook answer is not JSON: " + err.Error()}
-	}
-	switch a.Decision {
-	case rpc.GuardAllow, rpc.GuardDeny, rpc.GuardAskHuman:
-		return a
-	}
-	return hookAnswer{rpc.GuardDeny, fmt.Sprintf("hook decision %q is not allow, deny or ask_human", a.Decision)}
+	return hooks.Answer{Decision: rpc.GuardAllow}
 }
 
 // guard is `jobshop guard`: a session asks before an outside action.
@@ -125,7 +50,7 @@ func (c *Controller) guard(ctx context.Context, sc scope, p rpc.GuardParams) (an
 	if p.Action == config.HookMerge {
 		on = config.HookMerge
 	}
-	ev := hookEvent{
+	ev := hooks.GuardEvent{
 		On: on, Action: p.Action, Target: p.Target, Detail: p.Detail,
 		Session: sc.session, Pool: sc.pool, Project: sc.project, Extra: p.Extra,
 	}
@@ -171,7 +96,7 @@ func (c *Controller) askedHuman(ctx context.Context, key string) (rpc.GuardResul
 	return r, true
 }
 
-func (c *Controller) fileAskHuman(ctx context.Context, ev hookEvent, key, reason string) (store.Ticket, error) {
+func (c *Controller) fileAskHuman(ctx context.Context, ev hooks.GuardEvent, key, reason string) (store.Ticket, error) {
 	// session, ticket and reason tell an escalation chat who asked and why.
 	hm := map[string]string{"key": key, "session": ev.Session, "reason": clip(reason, maxReasonMeta)}
 	if ev.Ticket != nil {
@@ -221,7 +146,7 @@ func (c *Controller) claimHook(ctx context.Context, sc scope, t store.Ticket) er
 	if sc.admin || len(cfg.Hooks) == 0 {
 		return nil
 	}
-	a := c.runHooks(ctx, cfg, hookEvent{On: config.HookClaim, Session: sc.session, Pool: sc.pool, Project: sc.project, Ticket: &t})
+	a := c.runHooks(ctx, cfg, hooks.GuardEvent{On: config.HookClaim, Session: sc.session, Pool: sc.pool, Project: sc.project, Ticket: &t})
 	if a.Decision == rpc.GuardAllow {
 		return nil
 	}

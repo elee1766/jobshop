@@ -66,14 +66,17 @@ workflows:
 	assert.Contains(t, c.Watch.Dirs, filepath.Join(dir, "work/child"))
 	assert.Contains(t, c.Watch.Dirs, filepath.Join(dir, "work/base"))
 	assert.NotContains(t, c.Watch.Dirs, filepath.Join(dir, "work"), "do not recursively watch the whole root checkout")
-	assert.Empty(t, c.Warnings)
+	require.Len(t, c.Warnings, 3)
+	for _, warning := range c.Warnings {
+		assert.Contains(t, warning, "YAML packs are deprecated")
+	}
 
 	writeFiles(t, dir, map[string]string{FileName: "pack: work/pack.yaml\npools: {app-dev: {max_sessions: 3}}\n"})
 	legacy, err := LoadFile(filepath.Join(dir, FileName))
 	require.NoError(t, err)
 	assert.Equal(t, 3, legacy.Pools["app-dev"].MaxSessions)
 	assert.Equal(t, "a", legacy.Pools["app-dev"].Agent)
-	require.Len(t, legacy.Warnings, 1)
+	require.Len(t, legacy.Warnings, 4)
 	assert.Contains(t, legacy.Warnings[0], "service work definitions are deprecated")
 
 	root := Root{Dir: dir}

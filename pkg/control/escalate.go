@@ -53,6 +53,7 @@ func (c *Controller) checkRun(ctx context.Context, cfg *config.Config, runID str
 		c.completeRun(ctx, runID)
 	}
 	c.runBatchEvent(ctx, runID)
+	c.kickHooks()
 }
 
 // exhaustedStep is a step closed failed at its retry limit, or closed

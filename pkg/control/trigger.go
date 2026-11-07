@@ -16,6 +16,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -86,6 +87,22 @@ func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name st
 	if !st.holds {
 		return
 	}
+	if tr.Handler != "" {
+		digest := cfg.HookDigests[tr.Handler]
+		if digest == "" {
+			return
+		}
+		key := st.key
+		if key == "" {
+			key = c.now().UTC().Truncate(time.Minute).Format(time.RFC3339)
+		}
+		event := &hooks.Event{Source: "timer", Event: "timer", Delivery: key, Payload: map[string]any{}, Fields: map[string]any{}}
+		if err := c.hooks().Put(ctx, "timer/"+name+"/"+key, hooks.Invocation{Trigger: name, Entry: tr.Handler, Digest: digest, Event: event, Args: tr.Args}); err != nil {
+			c.log.ErrorContext(ctx, "enqueue timer hook", "trigger", name, "err", err)
+		}
+		c.kickHooks()
+		return
+	}
 	t, err := c.fireTrigger(ctx, cfg, name, tr, st.key)
 	if errors.Is(err, errCheckPending) {
 		result = "check pending" // the run's intake check (JOB-103)
@@ -117,33 +134,60 @@ func (c *Controller) evalTrigger(ctx context.Context, cfg *config.Config, name s
 		lastT = &last[0]
 		st.last = lastT.CreatedAt
 	}
+	if tr.Handler != "" {
+		lastHook, err := c.hooks().LastFire(ctx, name)
+		if err != nil {
+			return st, err
+		}
+		if lastHook.After(st.last) {
+			st.last = lastHook
+		}
+	}
 
 	if tr.When.Cron != "" {
 		// The first slot after the last fire (or, for a trigger that never
 		// fired, after this controller started) is due once now reaches
 		// it. Slots missed while the controller was down collapse into one.
 		base := c.started
-		if lastT != nil {
-			base = lastT.CreatedAt
+		if !st.last.IsZero() {
+			base = st.last
 		}
 		st.nextCron = cronNext(tr.When, base)
 	}
 
+	openCount := 0
 	for _, s := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+		if tr.Handler != "" && tr.MaxOpen == 0 {
+			break
+		}
 		f := mine
 		f.Status, f.Limit = s, 1
+		if tr.Handler != "" {
+			f.Limit = store.NoLimit
+		}
 		open, err := c.store.List(ctx, f)
 		if err != nil {
 			return st, err
 		}
-		if len(open) > 0 {
+		openCount += len(open)
+		if len(open) > 0 && tr.Handler == "" {
 			st.open = open[0].ID
 			st.why = "ticket " + open[0].ID + " is still open"
 			return st, nil
 		}
 	}
+	if tr.Handler != "" && tr.MaxOpen > 0 && openCount >= tr.MaxOpen {
+		st.why = "max_open reached"
+		return st, nil
+	}
 
-	if lastT != nil && tr.Cooldown != "" {
+	if tr.Handler != "" && !st.last.IsZero() && tr.Cooldown != "" {
+		if until := st.last.Add(config.Duration(tr.Cooldown, 0)); now.Before(until) {
+			st.why = "cooldown until " + until.UTC().Format(time.RFC3339)
+			return st, nil
+		}
+	}
+	if tr.Handler == "" && lastT != nil && tr.Cooldown != "" {
 		// lastT was read before the open-status queries. If it was closed
 		// in between, its ClosedAt is still zero here and the cooldown
 		// would compute from year 1 (#47). Treat that as not yet cooled.
@@ -174,8 +218,8 @@ func (c *Controller) evalTrigger(ctx context.Context, cfg *config.Config, name s
 
 	if l := tr.When.Learnings; l != nil {
 		var since time.Time
-		if lastT != nil {
-			since = lastT.CreatedAt
+		if !st.last.IsZero() {
+			since = st.last
 		}
 		why, err := c.learningsHold(ctx, *l, since, now)
 		if err != nil || why != "" {

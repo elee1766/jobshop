@@ -91,6 +91,9 @@ func (c *Controller) dispatchNext(ctx context.Context, holder string) (int, erro
 			other = append(other, it)
 		}
 	}
+	if err := c.enqueueHookEvents(ctx, other); err != nil {
+		return 0, err
+	}
 	c.done(ctx, holder, other)
 	// Webhook rows may fire event triggers (JOB-62); in the background,
 	// under the tick lock.

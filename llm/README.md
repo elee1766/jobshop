@@ -16,7 +16,8 @@ at the [README](../README.md).
 
 ## Writing or editing a pack
 
-- [docs/packs.md](../docs/packs.md) is the guide.
+- [docs/configuration](../docs/configuration/README.md) covers CUE packs, Starlark hooks and migration.
+- [docs/packs.md](../docs/packs.md) covers legacy YAML packs.
 - [packs/github](../packs/github/README.md) is the worked example.
 - `jobshop config show` prints the resolved config with the source of
   each entry. `jobshop reload` applies edits and keeps the old config if

@@ -72,6 +72,9 @@ func (s *Server) live(w http.ResponseWriter, r *http.Request) {
 				return value, nil
 			}})
 		}
+		if r.URL.Query().Get("audit") != "" {
+			readers = append(readers, section{"automation", s.automationView})
+		}
 		for _, reader := range readers {
 			value, err := reader.read(request)
 			if err != nil {
