@@ -288,6 +288,7 @@ td pre {
 }
 .chat-picker-button {
   flex: 1;
+  padding-inline: 0;
   min-width: 0;
   text-overflow: ellipsis;
   overflow: hidden;
@@ -328,11 +329,12 @@ td pre {
 .chat-toolbar {
   gap: 6px;
   font-size: 13px;
+  padding-inline: 8px;
 }
 .chat-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px;
+  gap: 12px;
 }
 .chat-state {
   margin-left: auto;
@@ -390,7 +392,8 @@ td pre {
 }
 .chat-tag {
   font-size: 13px;
-  gap: 2px;
+  gap: 5px;
+  padding-inline: 8px;
 }
 .new-chat-popover {
   position: fixed;
@@ -691,8 +694,8 @@ td pre {
     width: 100px;
   }
 }
-.attachment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; }
-.attachment-actions .muted { font-size: 11px; }
+.attachment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; }
+.attachment-actions button, .chat-actions button { padding: 4px 0; }
 .chat-attachments { display: flex; flex-wrap: wrap; gap: 6px; max-height: 180px; overflow: auto; padding: 4px 0; margin: 0; list-style: none; }
 .chat-attachments li { display: flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px; border: 1px solid var(--column); }
 .chat-attachments li span { overflow-wrap: anywhere; min-width: 0; font-size: 12px; }

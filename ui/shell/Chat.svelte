@@ -593,8 +593,8 @@
     void addFiles(files);
   }} />
   <div class="attachment-actions">
-    <button type="button" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} onclick={() => fileInput.click()}>Attach file</button>
-    <button type="button" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} popovertarget="paste-document">Paste document</button>
+    <button type="button" title="Attach images or text files" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} onclick={() => fileInput.click()}>Attach</button>
+    <button type="button" title="Paste text as a document" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} popovertarget="paste-document">Paste</button>
   </div>
   {#if attachments.length}<ul class="chat-attachments" aria-label="Message attachments">
     {#each attachments as item}<li>

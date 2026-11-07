@@ -10,11 +10,20 @@ test('chat attachments stay local until sending and can be removed or dismissed'
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('attachment draft');
   await page.getByRole('textbox', { name: 'Name', exact: true }).press('Enter');
+  const attach = page.locator('.composer').getByRole('button', { name: 'Attach', exact: true });
+  const message = page.locator('#chat-message');
+  const attachLeft = await attach.evaluate(button => {
+    const text = document.createRange();
+    text.selectNodeContents(button);
+    return text.getBoundingClientRect().x;
+  });
+  const messageBox = await message.boundingBox();
+  expect(Math.abs(attachLeft - messageBox.x)).toBeLessThanOrEqual(1);
   await page.locator('input[type=file]').setInputFiles({ name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\nNot sent yet.') });
   await expect(page.getByRole('list', { name: 'Message attachments' })).toContainText('notes.md');
   await page.getByRole('button', { name: 'Remove attachment notes.md', exact: true }).click();
   await expect(page.getByRole('list', { name: 'Message attachments' })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Paste document', exact: true }).click();
+  await page.getByRole('button', { name: 'Paste', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Paste document', exact: true });
   await dialog.getByRole('textbox', { name: 'Paste text to attach as a document', exact: true }).fill('A short block explicitly attached as a document.');
   await dialog.getByRole('button', { name: 'Attach document', exact: true }).click();
