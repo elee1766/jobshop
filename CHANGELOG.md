@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.7](https://github.com/elee1766/jobshop/compare/v0.8.6...v0.8.7) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** restore clickable ticket traces ([#962](https://github.com/elee1766/jobshop/issues/962)) ([ebcd839](https://github.com/elee1766/jobshop/commit/ebcd8391cda68b086247e29e91ffe904f2a3ed5d))
+
 ## [0.8.6](https://github.com/elee1766/jobshop/compare/v0.8.5...v0.8.6) (2026-11-07)
 
 
