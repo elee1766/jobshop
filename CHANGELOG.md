@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.17](https://github.com/elee1766/jobshop/compare/v0.8.16...v0.8.17) (2026-11-07)
+
+
+### Features
+
+* **desk:** search trace tickets and resolve workflow PR references ([#982](https://github.com/elee1766/jobshop/issues/982)) ([b8b12e4](https://github.com/elee1766/jobshop/commit/b8b12e4146bd7d8e4293b9242e7a8ba56231ea4d))
+
 ## [0.8.16](https://github.com/elee1766/jobshop/compare/v0.8.15...v0.8.16) (2026-11-07)
 
 
