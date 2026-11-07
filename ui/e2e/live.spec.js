@@ -104,14 +104,14 @@ test("live state changes and reconnect snapshots need no browser refresh request
     ).toBeTruthy();
     expect(new Set(replay.map((event) => event.seq)).size).toBe(replay.length);
     await waiting.getByRole('link', { name: 'Trace ' + ticket.id, exact: true }).click();
-    await expect(page.locator(".inspector h2")).toContainText(
+    await expect(page.locator(".ticket-overview > h2")).toContainText(
       title + " during disconnect",
     );
     await call("ticket.update", {
       id: ticket.id,
       title: title + " watched trace",
     });
-    await expect(page.locator(".inspector h2")).toContainText(
+    await expect(page.locator(".ticket-overview > h2")).toContainText(
       title + " watched trace",
     );
     await expect(page.locator('.ticket-graph')).toContainText(title + ' watched trace');
@@ -175,7 +175,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(dependencyCard.getByRole('link', { name: 'ENG-2', exact: true })).toHaveAttribute('href', 'https://linear.app/acme/issue/ENG-2');
     await expect(dependencyCard.getByRole('link', { name: 'acme/widget PR #42', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/42');
     await graph.getByRole('button', { name: 'Inspect ' + child.id, exact: true }).click();
-    await expect(page.locator('.inspector h2')).toContainText(child.id);
+    await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
     const statusLink = graph.locator(`[data-ticket="${child.id}"] .graph-state`).getByRole('link', { name: 'https://github.com/acme/widget/issues/9', exact: true });
     await expect(statusLink).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
     await expect(statusLink).toHaveCSS('text-decoration-line', 'underline');
@@ -202,10 +202,10 @@ test("live state changes and reconnect snapshots need no browser refresh request
     const historyLink = history.getByRole('link', { name: new RegExp(dependency.id) });
     await expect(historyLink).toHaveCSS('cursor', 'pointer');
     await historyLink.click();
-    await expect(page.locator('.inspector h2')).toContainText(dependency.id);
+    await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await graph.getByRole('button', { name: 'Inspect ' + child.id, exact: true }).click();
     await relationships.getByRole('button', { name: new RegExp(dependency.id) }).click();
-    await expect(page.locator('.inspector h2')).toContainText(dependency.id);
+    await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).not.toHaveAttribute('open');
     await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).` });
     const comment = page.locator('.ticket-comment .markdown');
@@ -219,7 +219,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(comment.getByRole('link')).toHaveCount(5);
     await comment.getByRole('link', { name: 'Implementation', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(child.id);
-    await expect(page.locator('.inspector h2')).toContainText(child.id);
+    await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
     await page.getByLabel('Ticket relationships', { exact: true }).getByRole('button', { name: new RegExp(dependency.id) }).click();
     await call('ticket.close', { id: dependency.id });
     related.splice(related.indexOf(dependency.id), 1);
