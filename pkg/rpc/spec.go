@@ -78,6 +78,7 @@ var Specs = map[string]Spec{
 	MethodGuard:             {GuardParams{}, GuardResult{}},
 	MethodSecretScan:        {SecretScanParams{}, SecretScanResult{}},
 	MethodRecall:            {RecallParams{}, []store.RecallHit{}},
+	MethodLinearIntake:      {LinearIntakeParams{}, LinearIntakeResult{}},
 	MethodAttention:         {empty{}, AttentionResult{}},
 	MethodAttentionChat:     {AttentionChatParams{}, AttentionChatResult{}},
 	MethodIdentityList:      {empty{}, []IdentityInfo{}},

@@ -134,6 +134,8 @@ type fakeController struct {
 	records  []rpc.ActivityRecordParams
 	// keys is the write key table: key -> result ("" pending).
 	keys map[string]string
+	// intake answers linear.intake; nil is method not found.
+	intake *rpc.LinearIntakeResult
 }
 
 func (f *fakeController) serve(t *testing.T) string {
@@ -183,6 +185,10 @@ func (f *fakeController) serve(t *testing.T) string {
 						f.keys[p.Key] = p.Result
 					}
 					return store.WriteKey{Key: p.Key, Result: f.keys[p.Key], Done: true}, nil
+				case rpc.MethodLinearIntake:
+					if f.intake != nil {
+						return *f.intake, nil
+					}
 				case rpc.MethodSecretScan:
 					// As the controller, with the built-in rules.
 					var p rpc.SecretScanParams

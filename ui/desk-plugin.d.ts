@@ -154,6 +154,7 @@ export interface RpcMethods {
   "learn.evaluate": { params: LearnEvaluateParams; result: MemoryEdit[] };
   "learn.list": { params: LearnListParams; result: Learning[] };
   "learn.update": { params: LearnUpdateParams; result: Learning[] };
+  "linear.intake": { params: LinearIntakeParams; result: LinearIntakeResult };
   "memory.show": { params: MemoryShowParams; result: MemoryShowResult };
   "memory.write": { params: MemoryWriteParams; result: MemoryEdit };
   "pool.list": { params: PoolListParams; result: PoolStatusResult };
@@ -827,6 +828,15 @@ export interface Learning {
   pr?: string;
   gate?: string;
   created_at: string;
+}
+
+export interface LinearIntakeParams {
+  team: string;
+}
+
+export interface LinearIntakeResult {
+  watched: boolean;
+  states?: string[];
 }
 
 export interface ListParams {
