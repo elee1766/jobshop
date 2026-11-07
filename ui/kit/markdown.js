@@ -12,6 +12,28 @@ export function md(text, inline = false) {
     ALLOWED_URI_REGEXP: /^(?:https?:|jobshop:)/i,
   });
   const doc = new DOMParser().parseFromString(clean, 'text/html');
+  // Only link prose, never authored links or code examples.
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  for (const node of nodes) {
+    if (node.parentElement?.closest('a, code, pre')) continue;
+    const text = node.textContent || '';
+    const matches = [...text.matchAll(/(?<![\w./@-])([A-Za-z0-9][A-Za-z0-9-]*)\/([A-Za-z0-9_.-]+)#([1-9][0-9]*)(?![\w#])/g)];
+    if (!matches.length) continue;
+    const fragment = doc.createDocumentFragment();
+    let offset = 0;
+    for (const match of matches) {
+      fragment.append(text.slice(offset, match.index));
+      const link = doc.createElement('a');
+      link.textContent = match[0];
+      link.href = `https://github.com/${match[1]}/${match[2]}/pull/${match[3]}`;
+      fragment.append(link);
+      offset = match.index + match[0].length;
+    }
+    fragment.append(text.slice(offset));
+    node.parentNode?.replaceChild(fragment, node);
+  }
   for (const a of doc.querySelectorAll('a')) {
     const href = a.getAttribute('href') || '';
     const internal = /^jobshop:\/\/(ticket|session)\/([^/?#]+)$/i.exec(href);
