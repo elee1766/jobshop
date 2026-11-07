@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.6](https://github.com/elee1766/jobshop/compare/v0.8.5...v0.8.6) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** use a vertical archive table and hide scrollbar chrome ([#960](https://github.com/elee1766/jobshop/issues/960)) ([092dc13](https://github.com/elee1766/jobshop/commit/092dc13109c6e1b9801725b4347446c88f6d6d92))
+
 ## [0.8.5](https://github.com/elee1766/jobshop/compare/v0.8.4...v0.8.5) (2026-11-07)
 
 
