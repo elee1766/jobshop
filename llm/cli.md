@@ -20,7 +20,7 @@ Flags:
 
 Commands:
   init [<dir>] [flags]
-    Create a Jobshop root (jobshop.yaml) in a directory.
+    Create a Jobshop root (jobshop.yaml and pack.yaml) in a directory.
 
   serve [flags]
     Run the controller for the root.
@@ -466,7 +466,7 @@ Run "jobshop <command> --help" for more information on a command.
 ```
 Usage: jobshop init [<dir>] [flags]
 
-Create a Jobshop root (jobshop.yaml) in a directory.
+Create a Jobshop root (jobshop.yaml and pack.yaml) in a directory.
 
 Arguments:
   [<dir>]    Directory to make a Jobshop root.

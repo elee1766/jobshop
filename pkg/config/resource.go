@@ -51,29 +51,38 @@ func (c *Config) ResourceCaps() map[string]int {
 
 func (c *Config) checkResources() error {
 	for _, name := range slices.Sorted(maps.Keys(c.Resources)) {
-		r := c.Resources[name]
-		if !namePattern.MatchString(name) {
-			return fmt.Errorf("resource %q: name must match %s", name, namePattern)
-		}
-		if r.Provider != nil {
-			if r.Keyed || r.Max != 0 || r.CapacityPerKey != 0 {
-				return fmt.Errorf("resource %s: a provider's slots are its capacity: drop max and keyed", name)
+		if err := c.Resources[name].check(name); err != nil {
+			if files := c.Sources["resources."+name]; len(files) > 0 {
+				return fmt.Errorf("%s: %w", strings.Join(files, ", "), err)
 			}
-			if err := r.Provider.check(); err != nil {
-				return fmt.Errorf("resource %s: %w", name, err)
-			}
-			continue
+			return err
 		}
-		switch {
-		case r.Keyed && r.Max != 0:
-			return fmt.Errorf("resource %s: keyed takes capacity_per_key, not max", name)
-		case r.Keyed && r.CapacityPerKey < 0:
-			return fmt.Errorf("resource %s: capacity_per_key must be >= 1", name)
-		case !r.Keyed && r.CapacityPerKey != 0:
-			return fmt.Errorf("resource %s: capacity_per_key needs keyed: true", name)
-		case !r.Keyed && r.Max <= 0:
-			return fmt.Errorf("resource %s: max must be >= 1", name)
+	}
+	return nil
+}
+
+func (r Resource) check(name string) error {
+	if !namePattern.MatchString(name) {
+		return fmt.Errorf("resource %q: name must match %s", name, namePattern)
+	}
+	if r.Provider != nil {
+		if r.Keyed || r.Max != 0 || r.CapacityPerKey != 0 {
+			return fmt.Errorf("resource %s: a provider's slots are its capacity: drop max and keyed", name)
 		}
+		if err := r.Provider.check(); err != nil {
+			return fmt.Errorf("resource %s: %w", name, err)
+		}
+		return nil
+	}
+	switch {
+	case r.Keyed && r.Max != 0:
+		return fmt.Errorf("resource %s: keyed takes capacity_per_key, not max", name)
+	case r.Keyed && r.CapacityPerKey < 0:
+		return fmt.Errorf("resource %s: capacity_per_key must be >= 1", name)
+	case !r.Keyed && r.CapacityPerKey != 0:
+		return fmt.Errorf("resource %s: capacity_per_key needs keyed: true", name)
+	case !r.Keyed && r.Max <= 0:
+		return fmt.Errorf("resource %s: max must be >= 1", name)
 	}
 	return nil
 }

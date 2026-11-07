@@ -107,13 +107,28 @@ func (c initCmd) Run() error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
-	_, err = f.WriteString(body)
-	if err == nil {
-		fmt.Fprintln(os.Stderr, "created", r.Config())
-		fmt.Fprint(os.Stderr, initHint(c.Dir))
+	_, writeErr := f.WriteString("pack: pack.yaml\n")
+	closeErr := f.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		_ = os.Remove(r.Config())
+		return err
 	}
-	return err
+	pack := filepath.Join(c.Dir, config.PackFileName)
+	f, err = os.OpenFile(pack, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		_ = os.Remove(r.Config())
+		return err
+	}
+	_, writeErr = f.WriteString(body)
+	closeErr = f.Close()
+	if err := errors.Join(writeErr, closeErr); err != nil {
+		_ = os.Remove(pack)
+		_ = os.Remove(r.Config())
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "created", r.Config(), "and", pack)
+	fmt.Fprint(os.Stderr, initHint(c.Dir))
+	return nil
 }
 
 type serveCmd struct {

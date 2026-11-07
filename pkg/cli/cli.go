@@ -38,7 +38,7 @@ func (g *Globals) root() (config.Root, error) {
 type root struct {
 	Globals
 
-	Init     initCmd     `cmd:"" help:"Create a Jobshop root (jobshop.yaml) in a directory."`
+	Init     initCmd     `cmd:"" help:"Create a Jobshop root (jobshop.yaml and pack.yaml) in a directory."`
 	Serve    serveCmd    `cmd:"" help:"Run the controller for the root."`
 	Shutdown shutdownCmd `cmd:"" help:"Stop the controller. Sessions keep running unless --all."`
 	Drain    drainCmd    `cmd:"" help:"Start no new sessions or tickets; running turns finish (admin)."`

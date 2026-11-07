@@ -33,7 +33,8 @@ func watchController(t *testing.T) (*Controller, *stallClock, string, <-chan wat
 	write("q/pack.yaml", "pools:\n  qa: {agent: a, dir: /w, max_sessions: 0, prompt: q}\n")
 	c, clk, _ := stallControllerYAML(t, "projects:\n  js: {}\nagents:\n  a: {command: x}\n# %[1]s\n")
 	// Its config is a placeholder: point it at ours and load that.
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "jobshop.yaml"), []byte("projects:\n  js: {}\nagents:\n  a: {command: x}\nreload: {watch: true, debounce: 2s}\npacks:\n  - path: p\n"), 0o600))
+	write("jobshop.yaml", "pack: pack.yaml\nreload: {watch: true, debounce: 2s}\n")
+	write("pack.yaml", "projects:\n  js: {}\nagents:\n  a: {command: x}\npacks:\n  - path: p\n")
 	c.root.Dir = dir
 	m, err := telemetry.NewMetrics()
 	require.NoError(t, err)
@@ -117,8 +118,8 @@ func TestConfigWatchBadPackRaisesAttention(t *testing.T) {
 
 func TestConfigWatchFollowsNewPack(t *testing.T) {
 	c, clk, dir, res := watchController(t)
-	cfgFile := filepath.Join(dir, "jobshop.yaml")
-	require.NoError(t, os.WriteFile(cfgFile, []byte("projects:\n  js: {}\nagents:\n  a: {command: x}\nreload: {watch: true, debounce: 2s}\npacks:\n  - path: p\n  - path: q\n"), 0o600))
+	cfgFile := filepath.Join(dir, "pack.yaml")
+	require.NoError(t, os.WriteFile(cfgFile, []byte("projects:\n  js: {}\nagents:\n  a: {command: x}\npacks:\n  - path: p\n  - path: q\n"), 0o600))
 	require.NoError(t, fireDebounce(t, clk, res).err)
 	require.Contains(t, c.config().Pools, "qa")
 

@@ -22,8 +22,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Config is the parsed jobshop.yaml.
+// Config is the resolved service and work configuration.
 type Config struct {
+	// Pack names the root work-definition file, relative to jobshop.yaml.
+	Pack string `yaml:"pack,omitempty"`
 	// DefaultProject is used when a request names no project.
 	DefaultProject string             `yaml:"default_project"`
 	Projects       map[string]Project `yaml:"projects"`
@@ -1475,8 +1477,8 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 		}
 	}
 	c.Sources = sources
-	if len(c.Packs) > 0 {
-		return nil, fmt.Errorf("%s: packs need a config file location", FileName)
+	if c.Pack != "" || len(c.Packs) > 0 {
+		return nil, fmt.Errorf("%s: pack and packs need a config file location", FileName)
 	}
 	if c.Projects == nil {
 		c.Projects = map[string]Project{}
@@ -1484,22 +1486,22 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	seen := map[string]string{}
 	for name, p := range c.Projects {
 		if !namePattern.MatchString(name) {
-			return nil, fmt.Errorf("%s: project name %q must match %s", FileName, name, namePattern)
+			return nil, fmt.Errorf("%s: project name %q must match %s", src("projects", name), name, namePattern)
 		}
 		if p.Prefix == "" {
 			p.Prefix = name
 			c.Projects[name] = p
 		}
 		if !namePattern.MatchString(p.Prefix) {
-			return nil, fmt.Errorf("%s: project %s: prefix %q must match %s", FileName, name, p.Prefix, namePattern)
+			return nil, fmt.Errorf("%s: project %s: prefix %q must match %s", src("projects", name), name, p.Prefix, namePattern)
 		}
 		if other, dup := seen[p.Prefix]; dup {
-			return nil, fmt.Errorf("%s: projects %s and %s share prefix %q", FileName, other, name, p.Prefix)
+			return nil, fmt.Errorf("%s: projects %s and %s share prefix %q", src("projects", name), other, name, p.Prefix)
 		}
 		seen[p.Prefix] = name
 		if p.IDs != nil {
 			if err := p.IDs.Check(); err != nil {
-				return nil, fmt.Errorf("%s: project %s: %w", FileName, name, err)
+				return nil, fmt.Errorf("%s: project %s: %w", src("projects", name), name, err)
 			}
 		}
 	}
@@ -1517,7 +1519,7 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	for name, p := range c.Projects {
 		for _, id := range p.Identities {
 			if _, ok := c.Identities[id]; !ok {
-				return nil, fmt.Errorf("%s: project %s: unknown identity %q", FileName, name, id)
+				return nil, fmt.Errorf("%s: project %s: unknown identity %q", src("projects", name), name, id)
 			}
 		}
 	}
@@ -1528,7 +1530,7 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if c.DefaultProject != "" {
 		if _, ok := c.Projects[c.DefaultProject]; !ok {
-			return nil, fmt.Errorf("%s: default_project %q is not defined", FileName, c.DefaultProject)
+			return nil, fmt.Errorf("%s: default_project %q is not defined", src("default_project", ""), c.DefaultProject)
 		}
 	}
 	for name, s := range c.SandboxProfiles {

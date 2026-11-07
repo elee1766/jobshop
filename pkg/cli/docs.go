@@ -74,6 +74,6 @@ func docsText(topic, rev string) (string, error) {
 // initHint is printed after `jobshop init` creates a root.
 func initHint(dir string) string {
 	return "next: write a pack in " + filepath.Join(dir, "packs", "<name>") +
-		" and list it under packs: in jobshop.yaml\n" +
+		" and list it under packs: in pack.yaml\n" +
 		"      jobshop docs packs   # guide and example packs\n"
 }

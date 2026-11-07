@@ -65,10 +65,11 @@ Planned: **escalation to a human or another agent** (#547).
 Linux binaries are on [Releases](https://github.com/elee1766/jobshop/releases), or `nix run github:elee1766/jobshop/v<version>` ([notes](docs/notes/644-release.md)).
 ```
 go install github.com/elee1766/jobshop/cmd/jobshop@latest   # or: nix build github:elee1766/jobshop
-jobshop init ./root          # writes root/jobshop.yaml
+jobshop init ./root          # writes root/jobshop.yaml and root/pack.yaml
 ```
 
-Point `root/jobshop.yaml` at one pack ([`packs/agent`](packs/agent/pack.yaml)):
+`root/jobshop.yaml` selects the root pack with `pack: pack.yaml`.
+In `root/pack.yaml`, load one reusable pack ([`packs/agent`](packs/agent/pack.yaml)):
 
 ```yaml
 default_project: js
