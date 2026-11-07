@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.25](https://github.com/elee1766/jobshop/compare/v0.8.24...v0.8.25) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** bootstrap history from invisible journal tails ([#999](https://github.com/elee1766/jobshop/issues/999)) ([5f60129](https://github.com/elee1766/jobshop/commit/5f601291457e10f96fba6e13e11716331757e2b6))
+
 ## [0.8.24](https://github.com/elee1766/jobshop/compare/v0.8.23...v0.8.24) (2026-11-07)
 
 
