@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.9](https://github.com/elee1766/jobshop/compare/v0.8.8...v0.8.9) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** restore ticket graphs and clarify chat navigation ([#966](https://github.com/elee1766/jobshop/issues/966)) ([d625792](https://github.com/elee1766/jobshop/commit/d625792324c798e242d92aa4e85fc37daccdabb8))
+
 ## [0.8.8](https://github.com/elee1766/jobshop/compare/v0.8.7...v0.8.8) (2026-11-07)
 
 
