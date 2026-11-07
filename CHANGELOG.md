@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.23](https://github.com/elee1766/jobshop/compare/v0.8.22...v0.8.23) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** make chat delivery and history responsive ([#995](https://github.com/elee1766/jobshop/issues/995)) ([3783672](https://github.com/elee1766/jobshop/commit/3783672c6ae531de0b53bf441460a0a59ed4c83f))
+
 ## [0.8.22](https://github.com/elee1766/jobshop/compare/v0.8.21...v0.8.22) (2026-11-07)
 
 
