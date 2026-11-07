@@ -10,6 +10,10 @@ self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener('push', (e) => {
   let m = { title: 'Jobshop Desk', body: '', tag: '', url: './' };
   try { m = { ...m, ...e.data.json() }; } catch { /* keep defaults */ }
+  if (m.clear) {
+    e.waitUntil(self.registration.getNotifications({ tag: m.tag }).then((items) => items.forEach((item) => item.close())));
+    return;
+  }
   e.waitUntil(self.registration.showNotification(m.title, {
     body: m.body,
     tag: m.tag || undefined,

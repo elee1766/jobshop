@@ -1,4 +1,4 @@
-// Command deskgen writes ui/desk-plugin.d.ts from rpc.Specs (#542). Run it
+// Command deskgen writes packages/jobshop-client/rpc.d.ts from rpc.Specs. Run it
 // from the repo root after changing an rpc type; a test fails when the
 // committed file is stale.
 package main

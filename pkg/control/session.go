@@ -972,9 +972,11 @@ func (r *runner) saveFields(f store.SessionFields) error {
 	return r.c.updateSessionFields(context.WithoutCancel(r.ctx), r.id, func(cur *store.SessionFields) {
 		shipped := cur.ShippedSeq
 		prestart, readOnly, suspended, ended := cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended
+		named, archived, name := cur.Named, cur.Archived, cur.DisplayName
 		*cur = f
 		cur.ShippedSeq = max(shipped, f.ShippedSeq)
 		cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended = prestart, readOnly, suspended, ended
+		cur.Named, cur.Archived, cur.DisplayName = named, archived, name
 	})
 }
 

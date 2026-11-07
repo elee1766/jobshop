@@ -15,7 +15,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Generic RPC for plugins (#517): POST /api/rpc/{method} forwards to the
+// Generic RPC for clients (#517): POST /api/rpc/{method} forwards to the
 // admin socket with the proxy user as actor, GET /api/rpc lists what this
 // Desk allows.
 
@@ -72,7 +72,10 @@ type RPCSchema struct {
 }
 
 func (s *Server) rpcList(r *http.Request) (any, error) {
-	dc, _ := s.deskConfig(r)
+	dc, err := s.deskConfig(r)
+	if err != nil {
+		return nil, err
+	}
 	out := RPCList{Methods: []string{}, Schemas: map[string]RPCSchema{}, Defs: map[string]any{}}
 	for _, m := range rpc.Methods() {
 		if rpcAllowed(m, dc.RPC) {
@@ -91,12 +94,15 @@ func (s *Server) rpcList(r *http.Request) (any, error) {
 // errForbidden maps to 403.
 var errForbidden = errors.New("forbidden")
 
-// maxRPCBody bounds a plugin's request.
+// maxRPCBody bounds a client's request.
 const maxRPCBody = 1 << 20
 
 func (s *Server) rpcCall(r *http.Request) (any, error) {
 	m := r.PathValue("method")
-	dc, _ := s.deskConfig(r)
+	dc, err := s.deskConfig(r)
+	if err != nil {
+		return nil, err
+	}
 	if !rpcAllowed(m, dc.RPC) {
 		return nil, fmt.Errorf("%w: method %q is not allowed from Desk", errForbidden, m)
 	}
@@ -130,6 +136,24 @@ func (s *Server) rpcCall(r *http.Request) (any, error) {
 		out = json.RawMessage("null")
 	}
 	return out, nil
+}
+
+func (s *Server) deskConfig(r *http.Request) (config.Desk, error) {
+	var show rpc.ConfigShowResult
+	if err := s.ctl.Call(r.Context(), rpc.MethodConfigShow, struct{}{}, &show); err != nil {
+		return config.Desk{}, err
+	}
+	var d config.Desk
+	if raw, ok := show.Config["desk"]; ok {
+		b, err := json.Marshal(raw)
+		if err != nil {
+			return d, err
+		}
+		if err := json.Unmarshal(b, &d); err != nil {
+			return d, err
+		}
+	}
+	return d, nil
 }
 
 // rpcErrCode is the error code in an /api/rpc error body.

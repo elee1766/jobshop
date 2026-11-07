@@ -97,7 +97,7 @@ The rest is in [docs/running.md](docs/running.md).
 | [docs/isolation.md](docs/isolation.md) | Sandbox, sockets, credentials, hooks, limits |
 | [docs/ingest.md](docs/ingest.md) | Webhooks and generic ingest |
 | [docs/nixos.md](docs/nixos.md) | NixOS module |
-| [docs/desk-plugins.md](docs/desk-plugins.md) | Writing a Desk plugin, with `examples/desk-plugins/csv-table` |
+| [docs/desk-plugins.md](docs/desk-plugins.md) | Desk API client and migration from plugins |
 | [docs/plan.md](docs/plan.md) | Design archive up to 2026-11-05 (frozen); later decisions are on [#569](https://github.com/elee1766/jobshop/issues/569) |
 | [docs/layout.md](docs/layout.md) | Packages, dependencies, build and deployment |
 | [docs/data-model.md](docs/data-model.md) | Tables and queries |

@@ -3,8 +3,11 @@ package control
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -25,12 +28,78 @@ func (c *Controller) trace(ctx context.Context, sc scope, p rpc.TraceParams) (an
 	if err != nil {
 		return nil, err
 	}
+	id, err = c.traceReference(ctx, sc, id)
+	if err != nil {
+		return nil, err
+	}
 	depth := p.Depth
 	if depth <= 0 {
 		depth = defaultTraceDepth
 	}
 	seen := map[string]bool{}
 	return c.traceNode(ctx, id, depth, seen)
+}
+
+// traceReference resolves external references without guessing between roots.
+func (c *Controller) traceReference(ctx context.Context, sc scope, ref string) (string, error) {
+	if _, err := c.store.Get(ctx, ref); err == nil {
+		return ref, nil
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return "", err
+	}
+	filter := store.Filter{Limit: 10001}
+	if !sc.admin {
+		filter.Project = sc.project
+	}
+	if !strings.Contains(ref, "#") {
+		filter.MetaPack, filter.MetaKey, filter.MetaValue = "linear", "issue", strings.ToUpper(ref)
+	} else if repo, _, _ := strings.Cut(ref, "#"); strings.Contains(repo, "/") {
+		filter.MetaPack, filter.MetaKey, filter.MetaValue = "github", "repo", repo
+	}
+	tickets, err := c.store.List(ctx, filter)
+	if err != nil {
+		return "", err
+	}
+	if len(tickets) > 10000 {
+		return "", fmt.Errorf("%w: reference search is too broad, use a ticket id", store.ErrInvalid)
+	}
+	roots := map[string]bool{}
+	for _, t := range tickets {
+		if strings.Contains(ref, "#") {
+			var m struct {
+				GitHub map[string]any `json:"github"`
+			}
+			if json.Unmarshal(t.Meta, &m) != nil {
+				continue
+			}
+			repo, number, _ := strings.Cut(ref, "#")
+			actual := fmt.Sprint(m.GitHub["repo"])
+			if !strings.EqualFold(repo, actual) && !strings.EqualFold(repo, strings.TrimPrefix(actual, strings.Split(actual, "/")[0]+"/")) {
+				continue
+			}
+			if number != fmt.Sprint(m.GitHub["pr"]) && number != fmt.Sprint(m.GitHub["issue"]) {
+				continue
+			}
+		}
+		root := t.ID
+		if t.Kind == store.KindStep && t.ParentID != "" {
+			root = t.ParentID
+		}
+		if run := metaString(t.Meta, runMetaPack, "id"); run != "" {
+			root = run
+		}
+		roots[root] = true
+	}
+	if len(roots) == 0 {
+		return "", fmt.Errorf("%w: no ticket records reference %q", store.ErrNotFound, ref)
+	}
+	if len(roots) != 1 {
+		return "", fmt.Errorf("%w: multiple roots reference %q, use a ticket id", store.ErrConflict, ref)
+	}
+	for root := range roots {
+		return root, nil
+	}
+	return "", store.ErrNotFound
 }
 
 func (c *Controller) traceNode(ctx context.Context, id string, depth int, seen map[string]bool) (rpc.TraceNode, error) {
@@ -40,6 +109,7 @@ func (c *Controller) traceNode(ctx context.Context, id string, depth int, seen m
 		return rpc.TraceNode{}, err
 	}
 	n := rpc.TraceNode{
+		Kind: t.Kind, CreatedAt: t.CreatedAt, UpdatedAt: t.UpdatedAt, ClosedAt: t.ClosedAt,
 		ID: t.ID, Title: t.Title, Pool: t.Pool, Status: t.Status,
 		Resolution: t.Resolution, CreatedBy: t.CreatedBy, Trigger: triggerName(t.Meta),
 	}

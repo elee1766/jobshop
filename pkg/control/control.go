@@ -207,7 +207,12 @@ type Controller struct {
 	endedFilled bool
 	// gitMu serializes git commands on pool repos: concurrent fetches in
 	// one repo fail on the remote-ref lock.
-	gitMu sync.Mutex
+	gitMu       sync.Mutex
+	chatMu      sync.Mutex
+	statusMu    sync.Mutex
+	status      rpc.SystemStatus
+	tickSteps   map[string]float64
+	tickSamples []float64
 	// memMu serializes local memory writes and restores (#592), so a
 	// write's before text is the file it replaced.
 	memMu sync.Mutex
@@ -571,6 +576,11 @@ func (c *Controller) tick() {
 	ctx, span := c.tracer.Start(c.ctx, "supervisor tick")
 	defer span.End()
 	defer c.lockTick(ctx, "tick")()
+	start := time.Now()
+	c.statusMu.Lock()
+	c.tickSteps = map[string]float64{}
+	c.statusMu.Unlock()
+	defer c.finishTick(start)
 	// One config for the whole pass (JOB-104): a reload swaps the pointer
 	// without waiting, and applies from the next pass. Pass code takes
 	// cfg, never c.config() (TestPassReadsConfigOnce).
@@ -928,6 +938,10 @@ func init() {
 		rpc.MethodSessionClose:      bind((*Controller).sessionCloseRPC),
 		rpc.MethodAttention:         bind((*Controller).attention),
 		rpc.MethodAttentionChat:     bind((*Controller).attentionChat),
+		rpc.MethodAttentionAnswer:   bind((*Controller).attentionAnswer),
+		rpc.MethodChatManage:        bind((*Controller).chatManage),
+		rpc.MethodDeskCommand:       bind((*Controller).deskCommand),
+		rpc.MethodSystemStatus:      bind((*Controller).systemStatus),
 		rpc.MethodPoolUnquarantine:  bind((*Controller).poolUnquarantine),
 		rpc.MethodReportIncidents:   bind((*Controller).reportIncidents),
 		rpc.MethodGuard:             bind((*Controller).guard),

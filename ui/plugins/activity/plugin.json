@@ -1,9 +1,0 @@
-{
-  "name": "activity",
-  "version": "1",
-  "entry": "index.js",
-  "api": ">=3",
-  "contributes": [
-    { "slot": "view", "element": "desk-activity-view", "id": "activity", "title": "Activity", "icon": "activity", "key": "y", "order": 4 }
-  ]
-}

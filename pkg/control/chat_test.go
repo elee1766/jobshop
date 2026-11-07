@@ -148,9 +148,22 @@ func TestSessionSendSubscribe(t *testing.T) {
 	}
 
 	// Stop (#535): session.cancel ends the held turn and sends nothing.
+	passEventually(t, root.Dir, func() bool {
+		var sessions []rpc.SessionInfo
+		if err := admin.Call(ctx, rpc.MethodSessionList, rpc.SessionListParams{}, &sessions); err != nil {
+			return false
+		}
+		for _, session := range sessions {
+			if session.ID == sent.Session {
+				return !session.Busy
+			}
+		}
+		return false
+	}, "interrupt reply finished before idle cancel")
 	require.NoError(t, os.Remove(filepath.Join(root.Dir, "held")))
 	var idle rpc.SessionCancelResult
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionCancel, rpc.IDParams{ID: sent.Session}, &idle))
+	assert.False(t, idle.Cancelled)
 	cancels := func() int {
 		n := 0
 		for _, e := range ev2.get() {
@@ -175,7 +188,7 @@ func TestSessionSendSubscribe(t *testing.T) {
 
 	// Closing the session ends the stream with a state event.
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: sent.Session}, nil))
-	// The stream polls on the controller's fake clock.
+	// Closing wakes the stream through the controller's event subscription.
 	var r rpc.SessionSubscribeResult
 	passEventually(t, root.Dir, func() bool {
 		select {

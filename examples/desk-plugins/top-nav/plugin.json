@@ -1,9 +1,0 @@
-{
-  "name": "top-nav",
-  "version": "1.0.0",
-  "entry": "index.js",
-  "api": ">=6",
-  "contributes": [
-    { "slot": "nav", "element": "top-nav-bar", "placement": { "wide": "top", "narrow": "top" } }
-  ]
-}

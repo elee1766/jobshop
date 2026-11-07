@@ -92,7 +92,7 @@ type Config struct {
 	// Activity polls recent GitHub and Linear activity for Desk (#255).
 	// Absent: off.
 	Activity *Activity `yaml:"activity"`
-	// Desk configures Desk plugins and the generic RPC endpoint (#517).
+	// Desk configures the first-party Desk and its generic RPC endpoint.
 	Desk Desk `yaml:"desk,omitempty"`
 	// DeskCommands are commands Desk plugins run by name (#542). Packs
 	// contribute entries like pools.
@@ -446,17 +446,10 @@ type Gateway struct {
 // Desk is the desk section. Desk reads it through config.show, so a
 // reload applies without restarting Desk.
 type Desk struct {
-	// Plugins enables, disables and configures plugins by name. All
-	// plugins are enabled unless listed with enabled: false.
-	Plugins map[string]DeskPlugin `yaml:"plugins,omitempty" json:"plugins,omitempty"`
-	// RPC narrows (deny) or widens (allow) the methods plugins may call.
+	// Plugins is rejected with a migration message rather than silently ignored.
+	Plugins map[string]any `yaml:"plugins,omitempty" json:"plugins,omitempty"`
+	// RPC narrows (deny) or widens (allow) methods API clients may call.
 	RPC DeskRPC `yaml:"rpc,omitempty" json:"rpc"`
-}
-
-// DeskPlugin is one desk.plugins entry.
-type DeskPlugin struct {
-	Enabled *bool          `yaml:"enabled,omitempty" json:"enabled,omitempty"`
-	Config  map[string]any `yaml:"config,omitempty" json:"config,omitempty"`
 }
 
 // DeskRPC holds path.Match globs over admin method names.
@@ -466,6 +459,9 @@ type DeskRPC struct {
 }
 
 func (d Desk) validate() error {
+	if len(d.Plugins) > 0 {
+		return errors.New("desk.plugins is no longer supported: remove it and use the controller API with packages/jobshop-client for custom frontends")
+	}
 	for _, g := range slices.Concat(d.RPC.Allow, d.RPC.Deny) {
 		if _, err := path.Match(g, ""); err != nil {
 			return fmt.Errorf("desk.rpc: bad glob %q: %w", g, err)
@@ -1339,7 +1335,7 @@ const PoolChat = "chat"
 // granted with Pool.Admin. Ticket mutation and session lifecycle methods
 // that act on other work (reopen, session new/send/reap, shutdown) are not
 // grantable.
-var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "session-rename", "session-close", "report-incidents", "attention", "activity", "handoff", "ticket-release", "ticket-undefer", "decision-resolve", "question-answer", "session-journal", "journal-search", "memory-write"}
+var PoolAdminMethods = []string{"config-reload", "config-show", "session-list", "session-restart", "drain", "trigger-list", "pool-list", "pool-unquarantine", "pool-scale", "session-cordon", "session-config", "session-rename", "session-close", "report-incidents", "attention", "attention-answer", "desk-command", "activity", "handoff", "ticket-release", "ticket-undefer", "decision-resolve", "question-answer", "session-journal", "journal-search", "memory-write"}
 
 // Allows reports whether the pool's sessions may call admin method m.
 func (p Pool) Allows(m string) bool { return slices.Contains(p.Admin, m) }

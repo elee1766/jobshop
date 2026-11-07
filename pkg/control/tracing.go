@@ -105,6 +105,12 @@ func (c *Controller) step(ctx context.Context, name string, fn func(ctx context.
 	start := time.Now()
 	defer func() {
 		c.metrics.SinceStep(ctx, name, start)
+		c.statusMu.Lock()
+		if c.tickSteps == nil {
+			c.tickSteps = map[string]float64{}
+		}
+		c.tickSteps[name] = time.Since(start).Seconds()
+		c.statusMu.Unlock()
 		span.End()
 	}()
 	fn(ctx)

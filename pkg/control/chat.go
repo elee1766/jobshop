@@ -15,10 +15,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/fsnotify/fsnotify"
 )
 
-// subscribePoll is how often session.subscribe reads the journal and the
-// session's state. The journal is append-only, so polling is enough.
+// subscribePoll is the fallback when a journal directory cannot be watched yet.
 const subscribePoll = 200 * time.Millisecond
 
 // sessionSend delivers text to a session as a message ticket, so queueing
@@ -153,6 +153,13 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 	if p.ID == "" {
 		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
 	}
+	var changes <-chan rpc.Event
+	var lagged <-chan struct{}
+	if c.events != nil {
+		sub, _ := c.events.add()
+		defer c.events.remove(sub)
+		changes, lagged = sub.ch, sub.lagged
+	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {
 		return nil, err
@@ -186,12 +193,31 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 		}
 	}
 	path := filepath.Join(c.root.SessionDir(p.ID), host.JournalFile)
+	var watcher *fsnotify.Watcher
+	var writes <-chan fsnotify.Event
+	var watchErrors <-chan error
+	defer func() {
+		if watcher != nil {
+			_ = watcher.Close()
+		}
+	}()
 	env := c.redactor(journalEnv(c.root.SessionDir(p.ID)))
 	ev := rpc.EventDecoder{Redact: env.Text}
 	var off int64
 	res := rpc.SessionSubscribeResult{Seq: p.SinceSeq}
 	last := t
 	for {
+		if watcher == nil {
+			// Register before reading, so an append cannot fall in a watch gap.
+			w, err := fsnotify.NewWatcher()
+			if err == nil {
+				if err = w.Add(filepath.Dir(path)); err == nil {
+					watcher, writes, watchErrors = w, w.Events, w.Errors
+				} else {
+					_ = w.Close()
+				}
+			}
+		}
 		frames, next, err := host.ReadFrom(path, off)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, err
@@ -214,10 +240,36 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 			res.Closed, res.Resolution = true, last.Resolution
 			return res, nil
 		}
-		select {
-		case <-ctx.Done():
-			return res, nil
-		case <-c.after(subscribePoll):
+		var fallback <-chan time.Time
+		if watcher == nil || changes == nil {
+			fallback = c.after(subscribePoll)
+		}
+	awaitChange:
+		for {
+			select {
+			case <-ctx.Done():
+				return res, nil
+			case <-fallback:
+				break awaitChange
+			case ev, ok := <-writes:
+				if !ok || (ev.Name == filepath.Dir(path) && ev.Has(fsnotify.Remove|fsnotify.Rename)) {
+					return nil, fmt.Errorf("session journal watch ended; reconnect to resume")
+				}
+				if ev.Name == path {
+					break awaitChange
+				}
+			case err, ok := <-watchErrors:
+				if !ok {
+					return nil, fmt.Errorf("session journal watch closed; reconnect to resume")
+				}
+				return nil, fmt.Errorf("watch session journal: %w", err)
+			case ev := <-changes:
+				if ev.ID == p.ID {
+					break awaitChange
+				}
+			case <-lagged:
+				return nil, fmt.Errorf("session state subscription lagged; reconnect to resume")
+			}
 		}
 		t, err := c.store.Get(ctx, p.ID)
 		if err != nil {

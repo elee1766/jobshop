@@ -18,7 +18,7 @@ func TestRPCMethodsMatchHandlers(t *testing.T) {
 	assert.Equal(t, want, rpc.Methods())
 }
 
-// rpc.Specs feeds the plugin schemas and desk-plugin.d.ts (#542); each
+// rpc.Specs feeds the client schemas and rpc.d.ts (#542); each
 // entry's params must be the type the handler decodes.
 func TestRPCSpecsMatchHandlerParams(t *testing.T) {
 	for name, m := range methods {

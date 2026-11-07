@@ -68,9 +68,9 @@ func TestChatWritesGuarded(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code, "no CSRF header")
 	w = postJSON(h, "/api/chat/send", `{"key":"k","text":"x"}`, map[string]string{"Origin": "http://evil.example"})
 	assert.Equal(t, http.StatusForbidden, w.Code, "cross origin")
+	assert.Empty(t, ctl.calls, "refused writes reach no controller")
 	w = postJSON(h, "/api/chat/send", `{"key":"k","text":"x"}`, map[string]string{"Origin": "http://127.0.0.1:7480"})
 	assert.Equal(t, http.StatusOK, w.Code, "same origin")
-	assert.Len(t, ctl.calls, 1, "refused writes reach no controller")
 
 	// No chat pool: key sends and new sessions are refused.
 	h = New(Config{}, ctl, nil).Handler()
@@ -129,10 +129,8 @@ func TestChatList(t *testing.T) {
 	}
 	get(t, h, "/api/chat", &out)
 	assert.Equal(t, "operator", out.Pool)
-	require.Len(t, out.Sessions, 3)
-	assert.Equal(t, "matrix:!r:$e", out.Sessions[0].Key)
-	assert.Equal(t, "desk:abc", out.Sessions[1].Key)
-	assert.Equal(t, "escalation:js-e", out.Sessions[2].Key, "escalation chats in any pool")
+	require.Len(t, out.Sessions, 1)
+	assert.Equal(t, "desk:abc", out.Sessions[0].Key, "named list excludes gateway and escalation chats")
 }
 
 // TestChatSendEscalation: an escalation:<ticket> key goes to the chat

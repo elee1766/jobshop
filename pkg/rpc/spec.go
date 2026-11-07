@@ -9,7 +9,7 @@ import (
 
 // Spec is one admin method's parameter and result types, as zero values.
 // Desk's GET /api/rpc turns them into JSON schemas and cmd/deskgen into
-// desk-plugin.d.ts (#542). Nil Result means the method answers {}.
+// the JS client's rpc.d.ts (#542). Nil Result means the method answers {}.
 type Spec struct {
 	Params any
 	Result any
@@ -81,6 +81,10 @@ var Specs = map[string]Spec{
 	MethodLinearIntake:      {LinearIntakeParams{}, LinearIntakeResult{}},
 	MethodAttention:         {empty{}, AttentionResult{}},
 	MethodAttentionChat:     {AttentionChatParams{}, AttentionChatResult{}},
+	MethodAttentionAnswer:   {AttentionAnswerParams{}, AttentionChatResult{}},
+	MethodChatManage:        {ChatManageParams{}, SessionInfo{}},
+	MethodDeskCommand:       {DeskCommandParams{}, Event{}},
+	MethodSystemStatus:      {empty{}, SystemStatus{}},
 	MethodIdentityList:      {empty{}, []IdentityInfo{}},
 	MethodIdentityCheck:     {IdentityParams{}, IdentityCheckResult{}},
 	MethodIdentityToken:     {IdentityParams{}, IdentityTokenResult{}},

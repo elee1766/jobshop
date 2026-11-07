@@ -1,6 +1,6 @@
-// Package rpcschema describes the admin RPC types for Desk plugins
+// Package rpcschema describes the admin RPC types for Desk clients
 // (#542): a JSON schema per method for GET /api/rpc, and TypeScript
-// declarations for desk-plugin.d.ts. Both walk the Go types in rpc.Specs
+// declarations for rpc.d.ts. Both walk the Go types in rpc.Specs
 // by reflection, following encoding/json's field rules.
 package rpcschema
 
