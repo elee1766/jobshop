@@ -9,7 +9,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
-// TypeScript returns desk-plugin.d.ts: the plugin api with RPC method
+// TypeScript returns rpc.d.ts: the client API with RPC method
 // params and results typed from rpc.Specs. head is the hand-written part
 // (the api object, slots, contexts), placed before the generated types.
 func TypeScript(head string) string {

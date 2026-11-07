@@ -15,7 +15,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Generic RPC for plugins (#517): POST /api/rpc/{method} forwards to the
+// Generic RPC for clients (#517): POST /api/rpc/{method} forwards to the
 // admin socket with the proxy user as actor, GET /api/rpc lists what this
 // Desk allows.
 
@@ -94,7 +94,7 @@ func (s *Server) rpcList(r *http.Request) (any, error) {
 // errForbidden maps to 403.
 var errForbidden = errors.New("forbidden")
 
-// maxRPCBody bounds a plugin's request.
+// maxRPCBody bounds a client's request.
 const maxRPCBody = 1 << 20
 
 func (s *Server) rpcCall(r *http.Request) (any, error) {

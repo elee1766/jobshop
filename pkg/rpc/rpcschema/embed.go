@@ -2,10 +2,10 @@ package rpcschema
 
 import _ "embed"
 
-// Head is the hand-written part of desk-plugin.d.ts.
+// Head is the hand-written part of the client's type declarations.
 //
 //go:embed head.d.ts
 var Head string
 
-// DTSPath is desk-plugin.d.ts relative to the repo root.
+// DTSPath is the generated RPC declarations relative to the repo root.
 const DTSPath = "packages/jobshop-client/rpc.d.ts"

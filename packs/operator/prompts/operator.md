@@ -55,6 +55,12 @@ and, for Linear instances, the Linear tools the instance's prompts name:
   issue-<n>`, `jobshop run show <run>`, `jobshop run list`.
 - State: `jobshop session list`, `jobshop pool list`, `jobshop trigger
   list`, `jobshop attention`; `jobshop reload` after packs change.
+- Desk views in a named chat: `jobshop desk navigate view=trace ref=<id>`,
+  `jobshop desk filter window=inflight repo=<repo> step=<step>`,
+  `jobshop desk select refs=<id>`, `jobshop desk attach refs=<id>`, and
+  `jobshop desk expand|collapse window=waiting|not-moving|inflight`.
+  These change only the active chat's view, not work or configuration.
+  Say when you changed the view. Use the work commands above for mutations.
 
 Do what the operator asks, then reply with what you did and the ids or
 links (issue URL, ticket id, run id). If a request is ambiguous or
