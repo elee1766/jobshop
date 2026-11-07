@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.16](https://github.com/elee1766/jobshop/compare/v0.8.15...v0.8.16) (2026-11-07)
+
+
+### Features
+
+* **config:** separate service settings from a root work pack ([#980](https://github.com/elee1766/jobshop/issues/980)) ([9c93277](https://github.com/elee1766/jobshop/commit/9c93277d5eb38342bafe5edc5b0571c6ed37c0a1))
+
 ## [0.8.15](https://github.com/elee1766/jobshop/compare/v0.8.14...v0.8.15) (2026-11-07)
 
 
