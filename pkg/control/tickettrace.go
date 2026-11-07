@@ -48,13 +48,20 @@ func (c *Controller) traceReference(ctx context.Context, sc scope, ref string) (
 		return "", err
 	}
 	filter := store.Filter{Limit: 10001}
+	var prReference *regexp.Regexp
 	if !sc.admin {
 		filter.Project = sc.project
 	}
 	if !strings.Contains(ref, "#") {
 		filter.MetaPack, filter.MetaKey, filter.MetaValue = "linear", "issue", strings.ToUpper(ref)
-	} else if repo, _, _ := strings.Cut(ref, "#"); strings.Contains(repo, "/") {
-		filter.MetaPack, filter.MetaKey, filter.MetaValue = "github", "repo", repo
+	} else {
+		filter.Query = ref
+		repo, number, _ := strings.Cut(ref, "#")
+		pattern := regexp.QuoteMeta(repo)
+		if !strings.Contains(repo, "/") {
+			pattern = `[\w.-]+/` + pattern
+		}
+		prReference = regexp.MustCompile(`(?i)(?:^|[^\w./-])` + pattern + `(?:#|/pull/|/issues/)` + regexp.QuoteMeta(number) + `(?:$|[^0-9])`)
 	}
 	tickets, err := c.store.List(ctx, filter)
 	if err != nil {
@@ -69,15 +76,12 @@ func (c *Controller) traceReference(ctx context.Context, sc scope, ref string) (
 			var m struct {
 				GitHub map[string]any `json:"github"`
 			}
-			if json.Unmarshal(t.Meta, &m) != nil {
-				continue
-			}
+			_ = json.Unmarshal(t.Meta, &m)
 			repo, number, _ := strings.Cut(ref, "#")
 			actual := fmt.Sprint(m.GitHub["repo"])
-			if !strings.EqualFold(repo, actual) && !strings.EqualFold(repo, strings.TrimPrefix(actual, strings.Split(actual, "/")[0]+"/")) {
-				continue
-			}
-			if number != fmt.Sprint(m.GitHub["pr"]) && number != fmt.Sprint(m.GitHub["issue"]) {
+			matchesRepo := strings.EqualFold(repo, actual) || strings.EqualFold(repo, strings.TrimPrefix(actual, strings.Split(actual, "/")[0]+"/"))
+			matchesNumber := number == fmt.Sprint(m.GitHub["pr"]) || number == fmt.Sprint(m.GitHub["issue"])
+			if (!matchesRepo || !matchesNumber) && !prReference.MatchString(t.Title+"\n"+t.Body) {
 				continue
 			}
 		}

@@ -73,3 +73,35 @@ func TestTicketGraph(t *testing.T) {
 		})
 	}
 }
+
+func TestTicketGraphWorkflowReference(t *testing.T) {
+	t.Parallel()
+	root := controltest.NewRoot(t, `projects:
+  js: {}
+workflows:
+  review:
+    vars: [subject]
+    repo: oku-trade/trade
+    steps:
+      - id: route
+        type: command
+        run: 'true'
+        title: 'Route review of oku-trade/trade#{{.subject}}'
+`)
+	c := controltest.Start(t, root, control.Options{})
+	ctx := t.Context()
+	var run rpc.RunResult
+	require.NoError(t, c.Admin.Call(ctx, rpc.MethodRunStart, rpc.RunStartParams{
+		Workflow: "review", Vars: map[string]string{"subject": "4520@252b4e7f"}, Key: "first",
+	}, &run))
+	var wrong store.Ticket
+	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "Other oku-trade/trade#45200@abc"}, &wrong))
+	var graph rpc.GraphResult
+	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketGraph, rpc.GraphParams{ID: "oku-trade/trade#4520"}, &graph))
+	assert.Equal(t, run.Run.ID, graph.Root)
+	require.NoError(t, c.Admin.Call(ctx, rpc.MethodRunStart, rpc.RunStartParams{
+		Workflow: "review", Vars: map[string]string{"subject": "4520@newhead"}, Key: "second",
+	}, &run))
+	err := c.Admin.Call(ctx, rpc.MethodTicketGraph, rpc.GraphParams{ID: "oku-trade/trade#4520"}, &graph)
+	require.ErrorContains(t, err, "multiple roots")
+}

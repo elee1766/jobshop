@@ -81,6 +81,10 @@ func filterStatuses(f store.Filter) []string {
 
 // listQuery builds the List statement for f at now (ms).
 func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
+	terms, err := store.QueryTerms(f.Query)
+	if err != nil {
+		return nil, err
+	}
 	metas := f.Meta
 	if f.MetaPack != "" && f.MetaKey != "" {
 		metas = append([]store.MetaMatch{{Pack: f.MetaPack, Key: f.MetaKey, Value: f.MetaValue}}, metas...)
@@ -90,6 +94,11 @@ func listQuery(f store.Filter, now int64) (*bqb.Query, error) {
 	}
 	order := f.Order
 	w := bqb.Optional("WHERE")
+	for _, term := range terms {
+		w.And(`(LOWER(t.id) LIKE ? ESCAPE '!' OR LOWER(t.title) LIKE ? ESCAPE '!'
+ OR LOWER(t.body) LIKE ? ESCAPE '!' OR LOWER(CAST(t.fields AS TEXT)) LIKE ? ESCAPE '!'
+ OR LOWER(CAST(t.meta AS TEXT)) LIKE ? ESCAPE '!')`, term, term, term, term, term)
+	}
 	eq := func(col, v string) {
 		if v != "" {
 			w.And("t."+col+" = ?", v)

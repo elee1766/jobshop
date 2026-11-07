@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import Chat, { type Chat as ChatInfo } from "./Chat.svelte";
   import Trace from "./Trace.svelte";
+  import TraceSearch from "./TraceSearch.svelte";
   import TicketDetails from "./TicketDetails.svelte";
   import { client } from "./lib/api.svelte.js";
   import {
@@ -641,21 +642,7 @@
             </div>{/if}
         </section>
       {:else if view === "trace"}
-        <div class="tag">
-          <span class="mono">/trace</span>
-          <form
-            onsubmit={(e) => {
-              e.preventDefault();
-              void openTrace(traceRef);
-            }}
-          >
-            <input
-              aria-label="Trace reference"
-              bind:value={traceRef}
-              placeholder="ticket, session, repo#PR"
-            /><button type="submit">open</button>
-          </form>
-        </div>
+        <TraceSearch reference={traceRef} onopen={openTrace} />
         {#if trace?.graph}<div class="trace-layout">
             <Trace graph={trace.graph} selected={selected?.id || trace.graph.root} onselect={inspect} />
             {#if selected}<TicketDetails

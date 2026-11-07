@@ -490,6 +490,13 @@ td pre {
   margin-right: 4px;
 }
 .trace-layout { min-width: 0; }
+.trace-search-bar form { flex: 1; gap: var(--space-1); }
+.trace-search-bar input { flex: 1; width: 0; min-width: 60px; }
+.trace-search-results { border-bottom: 1px solid var(--column); }
+.trace-search-results .table-scroll { max-height: 40dvh; overflow: auto; }
+.trace-search-results p,
+.trace-search-hint { margin: var(--page-inset); }
+.trace-search-results .tag span { min-width: 0; overflow-wrap: anywhere; }
 .ticket-graph, .inspector { padding: var(--page-inset); min-width: 0; }
 .inspector { border-top: 1px solid var(--column); }
 .graph-heading, .ticket-links { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }

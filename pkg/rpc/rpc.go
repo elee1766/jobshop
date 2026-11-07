@@ -297,6 +297,8 @@ type ShowResult struct {
 
 // ListParams filters tickets.
 type ListParams struct {
+	// Query matches literal case-insensitive terms in id, title, body, fields and metadata.
+	Query    string       `json:"query,omitempty"`
 	Project  string       `json:"project,omitempty"`
 	Kind     store.Kind   `json:"kind,omitempty"`
 	Status   store.Status `json:"status,omitempty"`
