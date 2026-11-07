@@ -2,7 +2,7 @@
 
 jobshop is my take on ai orchestration, inspired by hermes, gascity, and workflow engines. it is inspired by concepts borrowed largely from gastown/gascity, hermes/openclaw, and jcode/opencode.
 
-this manifesto is completely human written. i have no issue with ai-generated content, but this readme is meant to be read by humans not agents, and so i believe that it should be written by a human.
+this manifesto is completely human written. i have no issue with ai-generated content, but this readme section is meant to be read by humans not agents, and so i believe that it should be written by a human.
 
 below are details and ramblings about what jobshop is and what problems it attempts to solve. if you want technical documentation, look at the `docs` folder, but probably just point your agent at llm/README.md.
 
