@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2](https://github.com/elee1766/jobshop/compare/v0.8.1...v0.8.2) (2026-11-07)
+
+
+### Features
+
+* **control:** session cgroups as systemd scopes ([#944](https://github.com/elee1766/jobshop/issues/944)) ([#946](https://github.com/elee1766/jobshop/issues/946)) ([5923536](https://github.com/elee1766/jobshop/commit/5923536f38f0dd1c4d9621f43a6a556ca267f6cb))
+
 ## [0.8.1](https://github.com/elee1766/jobshop/compare/v0.8.0...v0.8.1) (2026-11-07)
 
 
