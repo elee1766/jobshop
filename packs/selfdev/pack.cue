@@ -32,6 +32,7 @@ import (
 	linear_team:          *"" | string
 	linear_intake_labels: *"" | string
 	linear_human:         *"" | string
+	starlark_workflows:   *true | bool
 }
 
 #Pack: {
@@ -44,8 +45,10 @@ import (
 	_github: github.#Pack & {
 		prefix: P
 		vars: {
-			asset_prefix:         "../github/"
-			starlark_workflows:   true
+			asset_prefix: "../github/"
+			// GitHub defaults false, so select this pack's mode before unifying.
+			if V.starlark_workflows {starlark_workflows: true}
+			if !V.starlark_workflows {starlark_workflows: false}
 			repo:                 "elee1766/jobshop"
 			checkout:             V.repo
 			agent:                V.agent
@@ -96,16 +99,38 @@ import (
 	workflows: {
 		for name, workflow in _github.workflows {"\(name)": workflow}
 		curate: {
-			escalate_pool:     "plan"
-			escalate:          _escalate
-			on_start:          "workflow.star:curate"
-			on_step_completed: "workflow.star:completed"
+			escalate_pool: "plan"
+			escalate:      _escalate
+			if V.starlark_workflows {
+				on_start:          "workflow.star:curate"
+				on_step_completed: "workflow.star:completed"
+			}
+			if !V.starlark_workflows {
+				steps: [{
+					id:          "curate"
+					pool:        "learn"
+					retries:     1
+					title:       "Curate learnings"
+					prompt_file: "prompts/curate.md"
+				}]
+			}
 		}
 		evaluate: {
-			escalate_pool:     "plan"
-			escalate:          _escalate
-			on_start:          "workflow.star:evaluate"
-			on_step_completed: "workflow.star:completed"
+			escalate_pool: "plan"
+			escalate:      _escalate
+			if V.starlark_workflows {
+				on_start:          "workflow.star:evaluate"
+				on_step_completed: "workflow.star:completed"
+			}
+			if !V.starlark_workflows {
+				steps: [{
+					id:          "evaluate"
+					pool:        "learn"
+					retries:     1
+					title:       "Evaluate memory edits"
+					prompt_file: "prompts/evaluate.md"
+				}]
+			}
 		}
 		// start_step cannot represent durable command steps yet.
 		"live-check": {
@@ -141,15 +166,25 @@ import (
 		for name, trigger in _github.triggers {"\(name)": trigger}
 		evaluate: {
 			when: edits: {runs: V.evaluate_runs, age: V.evaluate_age}
-			handler: "triggers.star:handle"
-			args: {workflow: "evaluate", key: "evaluate"}
-			max_open: 1
+			if V.starlark_workflows {
+				handler: "triggers.star:handle"
+				args: {workflow: "evaluate", key: "evaluate"}
+				max_open: 1
+			}
+			if !V.starlark_workflows {
+				run: {workflow: "evaluate", key: "evaluate"}
+			}
 		}
 		curate: {
 			when: learnings: {min: V.curate_min_learnings, every: V.curate_every, scope: V.curate_scope}
-			handler: "triggers.star:handle"
-			args: {workflow: "curate", key: "curate"}
-			max_open: 1
+			if V.starlark_workflows {
+				handler: "triggers.star:handle"
+				args: {workflow: "curate", key: "curate"}
+				max_open: 1
+			}
+			if !V.starlark_workflows {
+				run: {workflow: "curate", key: "curate"}
+			}
 		}
 	}
 	prompt_rules: list.Concat([_github.prompt_rules, [{

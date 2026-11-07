@@ -65,6 +65,7 @@ packs: selfdev: selfdevpack.#Pack & {
 		repo: "/var/lib/jobshop/src/jobshop"
 		agent: "jcode"
 		dev_sessions: 2
+		starlark_workflows: true
 	}
 }
 ```
@@ -95,6 +96,12 @@ retains one open run per trigger, and the run keys remain `curate` and
 `evaluate`. Prompt files and their runtime templates are not copied or
 rewritten.
 
+`#Config.starlark_workflows` defaults to `true`. Set it to `false` to keep
+the CUE composition but use the original static agent steps and run
+triggers in both selfdev and GitHub. This provides a static parity check
+before selecting scripted workflows. Learning and edit eligibility,
+names, prompts and retry limits stay the same in either mode.
+
 `live-check` remains a static CUE command workflow with its original command,
 `dev` worktree, 20-minute timeout and zero retries. The current Starlark
 `start_step` action supports agent steps only, not command type, command
@@ -108,11 +115,3 @@ Callback acceptance must also load and invoke the actual `.star` files with
 the runtime's run, step and timer envelopes and no HTTP or shell grants.
 Drain legacy runs before selecting scripted workflows, so existing static
 runs are not resumed against a different workflow shape.
-
-Scripted runs also pin their accepted callback and configuration manifest.
-Changes to a workflow's vars, instance metadata or pool/workflow project
-maps can change that manifest while a run is open. The controller then
-requires the pinned configuration to be restored before resuming, rather
-than continuing under changed policy. Drain native runs before reloads
-that alter their accepted manifest. This differs from legacy static runs
-and must be included in cutover acceptance.
