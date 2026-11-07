@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.14](https://github.com/elee1766/jobshop/compare/v0.8.13...v0.8.14) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** link qualified GitHub PR references ([#976](https://github.com/elee1766/jobshop/issues/976)) ([0ea4841](https://github.com/elee1766/jobshop/commit/0ea48415a79945f20a19c7c3e299c6df681620f3))
+
 ## [0.8.13](https://github.com/elee1766/jobshop/compare/v0.8.12...v0.8.13) (2026-11-07)
 
 
