@@ -23,7 +23,7 @@ type waitAddCmd struct {
 	Reason  string   `short:"r" required:"" help:"Why the ticket waits."`
 	Owner   string   `help:"Who must act (a login, team or person)."`
 	Any     bool     `help:"Clear when any condition holds (default: all)."`
-	Resume  bool     `help:"Give the ticket back to this session when the wait clears."`
+	Resume  bool     `help:"Give the ticket back to this session when the wait clears, if it is idle then; a busy session leaves it to its pool."`
 	Timeout string   `help:"Duration or RFC3339 time; past it the wait is labeled needs-human and listed in attention."`
 	ID      string   `short:"t" name:"ticket" help:"Ticket id (default: the session's current ticket)."`
 }
