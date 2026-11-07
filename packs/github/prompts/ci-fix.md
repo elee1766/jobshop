@@ -8,8 +8,12 @@ SHA starts a new run.
    If master is already green on a newer commit
    (`gh run list --branch master --limit 1`), comment that and
    `jobshop close`; the merge step then has nothing to merge and closes.
-2. Find or file the fix issue: `gh issue list --search "{{.sha}}"` and
-   `gh issue list --search "master CI"`. If none is open, file one at
+2. Find or file the fix issue: `gh issue list --search "{{.sha}}"`,
+   `gh issue list --search "master CI"`, and by the failing test name
+   (`gh issue list --search <TestName>`, `gh pr list --state open
+   --search <TestName>`, `jobshop recall <TestName>`): a flaky test is
+   often already filed or being fixed under its own name; work that
+   issue or PR. If none is open, file one at
    priority 0 with the failing job, the log excerpt and the suspected
    commit. Comment `Issue #<n>` on this step.
 3. If a PR for it is already open, work that PR (`gh pr checkout <n>`);
