@@ -31,7 +31,10 @@ Moved from the README (2026-11-05, #551).
   merge, comments) with allow, deny or ask a human. A broken hook denies.
 - **Per-pool users, cgroup limits and network.** Optional: a mapped user,
   cgroup limits and pasta networking per pool. See
-  [notes/388-pool-isolation.md](notes/388-pool-isolation.md).
+  [notes/388-pool-isolation.md](notes/388-pool-isolation.md). Session
+  cgroups come from a delegated subtree (`cgroupfs`) or from systemd as
+  scopes in a slice (`limits.cgroup_driver: systemd`, survives a
+  controller restart): [notes/944-systemd-cgroup-driver.md](notes/944-systemd-cgroup-driver.md).
 - **Limits.** Without per-pool isolation, all processes run as one Unix
   user, and network is on by default (`sandbox.network: host`). The
   sandbox guards against mistakes and limits blast radius. It is not a

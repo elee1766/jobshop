@@ -103,6 +103,51 @@ pools:
 	assert.NotEmpty(t, c.isolationKey("mapped"))
 }
 
+// TestPoolCgroupSystemd (#944): with the systemd driver a limited pool
+// gets a scope in the sessions slice and nothing touches the controller's
+// cgroup; limits.cgroup alone also gives unlimited pools a scope, so
+// their agents count against the slice.
+func TestPoolCgroupSystemd(t *testing.T) {
+	c, _, _ := stallControllerYAML(t, `projects:
+  js: {}
+agents:
+  fake: {command: /bin/false}
+pools:
+  plain: {agent: fake, dir: %[1]q}
+  limited: {agent: fake, dir: %[1]q, isolation: {limits: {memory: 1G, cpu: "2"}}}
+limits:
+  cgroup_driver: systemd
+`)
+	c.cgroupOnce.Do(func() {})
+	c.cgroup = cgroupSetup{err: os.ErrPermission}
+	cfg := c.config()
+	assert.False(t, wantsCgroup(cfg), "no delegated cgroup set up")
+	assert.Empty(t, c.hostsCgroup())
+
+	var s host.Spec
+	require.NoError(t, c.applyIsolation(&s, "limited"), "no delegation needed")
+	require.NotNil(t, s.Cgroup)
+	assert.Equal(t, cgroup.Cgroup{
+		Driver: cgroup.DriverSystemd, Parent: config.DefaultSessionsSlice,
+		CPUMax: "200000 100000", MemoryMax: "1073741824", SwapMax: "0",
+	}, *s.Cgroup)
+	assert.Contains(t, c.isolationKey("limited"), "JOBSHOP_ISOLATION_SCOPE="+config.DefaultSessionsSlice)
+
+	s = host.Spec{}
+	require.NoError(t, c.applyIsolation(&s, "plain"))
+	assert.Nil(t, s.Cgroup, "no limits and no limits.cgroup: no scope")
+	assert.Empty(t, c.isolationKey("plain"))
+
+	cfg.Limits.Cgroup = &config.HostCgroup{}
+	hc, err := c.poolCgroup(cfg, "plain")
+	require.NoError(t, err)
+	assert.Equal(t, &cgroup.Cgroup{Driver: cgroup.DriverSystemd, Parent: config.DefaultSessionsSlice}, hc)
+
+	spec, ok := c.preflightSpec(cfg, "limited")
+	require.True(t, ok)
+	assert.Equal(t, cgroup.DriverSystemd, spec.Cgroup.Driver, "preflight runs the systemd checks")
+}
+
 func TestShareDir(t *testing.T) {
 	d := t.TempDir()
 	sub := filepath.Join(d, "a")

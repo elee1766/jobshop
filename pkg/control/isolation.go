@@ -48,16 +48,19 @@ type cgroupSetup struct {
 
 // wantsCgroup reports whether the controller should set up its delegated
 // cgroup: some pool has limits, or limits.cgroup asks for the split
-// (JOB-91). A host without delegation is never touched otherwise.
+// (JOB-91). A host without delegation is never touched otherwise. With
+// the systemd driver there is nothing to set up (#944).
 func wantsCgroup(cfg *config.Config) bool {
-	return cfg.Limits.Cgroup != nil || anyLimits(cfg)
+	return !cfg.Limits.Systemd() && (cfg.Limits.Cgroup != nil || anyLimits(cfg))
 }
 
 // hostsCgroup is the cgroup directory a new session host starts in, ""
 // when the split is not wanted or the cgroup is unavailable (the host then
-// stays in the controller's, as before).
+// stays in the controller's, as before). With the systemd driver hosts
+// stay in the controller's unit (KillMode=process keeps them across a
+// restart); their agents get scopes in the sessions slice (poolCgroup).
 func (c *Controller) hostsCgroup() string {
-	if c.config().Limits.Cgroup == nil {
+	if l := c.config().Limits; l.Cgroup == nil || l.Systemd() {
 		return ""
 	}
 	return c.ensureCgroup().hosts
@@ -109,7 +112,8 @@ func moveHosts(cg cgroupSetup, pid int) {
 // controller's cgroup.
 func (c *Controller) tuneCgroup(cfg *config.Config) {
 	hc := cfg.Limits.Cgroup
-	if hc == nil {
+	if hc == nil || cfg.Limits.Systemd() {
+		// systemd: the cap and weights are slice and unit properties.
 		return
 	}
 	cg := c.ensureCgroup()
@@ -228,18 +232,48 @@ func (c *Controller) applyIsolation(spec *host.Spec, pool string) error {
 		}
 		spec.User = hu
 	}
-	if l := iso.Limits; l != nil {
-		cg := c.ensureCgroup()
-		if cg.err != nil {
-			return host.Permanentf("isolation limits: no delegated cgroup: %w", cg.err)
-		}
-		hc, err := cgroupFor(*l, cg.sessions)
-		if err != nil {
-			return host.Permanentf("isolation limits: %w", err)
-		}
-		spec.Cgroup = hc
+	hc, err := c.poolCgroup(c.config(), pool)
+	if err != nil {
+		return host.Permanentf("%w", err)
 	}
+	spec.Cgroup = hc
 	return nil
+}
+
+// poolCgroup is the acphost cgroup for pool's agents, nil when they get
+// none. With cgroupfs that is a child of the controller's sessions
+// cgroup when the pool sets limits. With systemd (#944) it is a scope in
+// the sessions slice when the pool sets limits, and also without limits
+// when limits.cgroup asks for the split, so every agent counts against
+// the slice and not the controller's unit (JOB-91).
+func (c *Controller) poolCgroup(cfg *config.Config, pool string) (*cgroup.Cgroup, error) {
+	l := cfg.IsolationFor(pool).Limits
+	if cfg.Limits.Systemd() {
+		if l == nil && cfg.Limits.Cgroup == nil {
+			return nil, nil
+		}
+		hc := &cgroup.Cgroup{}
+		if l != nil {
+			var err error
+			if hc, err = cgroupFor(*l, ""); err != nil {
+				return nil, fmt.Errorf("isolation limits: %w", err)
+			}
+		}
+		hc.Driver, hc.Parent = cgroup.DriverSystemd, cfg.Limits.Slice()
+		return hc, nil
+	}
+	if l == nil {
+		return nil, nil
+	}
+	cg := c.ensureCgroup()
+	if cg.err != nil {
+		return nil, fmt.Errorf("isolation limits: no delegated cgroup: %w", cg.err)
+	}
+	hc, err := cgroupFor(*l, cg.sessions)
+	if err != nil {
+		return nil, fmt.Errorf("isolation limits: %w", err)
+	}
+	return hc, nil
 }
 
 // cgroupFor turns pool limits into an acphost cgroup under parent.
@@ -276,6 +310,11 @@ func (c *Controller) isolationKey(pool string) []string {
 	}
 	if l := iso.Limits; l != nil {
 		key = append(key, fmt.Sprintf("JOBSHOP_ISOLATION_LIMITS=cpu=%s mem=%s high=%s swap=%s pids=%d", l.CPU, l.Memory, l.MemoryHigh, l.Swap, l.Pids))
+	}
+	// A driver change moves idle agents to the new kind of cgroup. The
+	// cgroupfs default adds nothing, so existing hashes stay.
+	if cfg := c.config(); cfg.Limits.Systemd() && (iso.Limits != nil || cfg.Limits.Cgroup != nil) {
+		key = append(key, "JOBSHOP_ISOLATION_SCOPE="+cfg.Limits.Slice())
 	}
 	return key
 }
@@ -378,10 +417,28 @@ func keyedValue(path, key string) int64 {
 	return 0
 }
 
+// sessionCgroupDir is session id's agent cgroup: under the sessions
+// cgroup with cgroupfs, the scope the host recorded in isolation.json
+// with systemd (its name holds a pid, so it is not derived). "" when
+// unknown.
+func (c *Controller) sessionCgroupDir(cfg *config.Config, id string) string {
+	if !cfg.Limits.Systemd() {
+		if c.cgroup.sessions == "" {
+			return ""
+		}
+		return filepath.Join(c.cgroup.sessions, id)
+	}
+	iso, ok, err := host.ReadIsolation(c.root.SessionDir(id))
+	if !ok || err != nil || iso.Cgroup == nil {
+		return ""
+	}
+	return iso.Cgroup.Dir
+}
+
 // recordCgroupMetrics sums the live session cgroups per pool. Called each
 // tick; a no-op without a sessions cgroup.
 func (c *Controller) recordCgroupMetrics(ctx context.Context, cfg *config.Config, pools map[string][]string) {
-	if c.metrics == nil || c.cgroup.sessions == "" {
+	if c.metrics == nil || (c.cgroup.sessions == "" && !cfg.Limits.Systemd()) {
 		return
 	}
 	for pool, ids := range pools {
@@ -390,7 +447,11 @@ func (c *Controller) recordCgroupMetrics(ctx context.Context, cfg *config.Config
 		}
 		var sum cgroupStats
 		for _, id := range ids {
-			s := readCgroupStats(filepath.Join(c.cgroup.sessions, id))
+			dir := c.sessionCgroupDir(cfg, id)
+			if dir == "" {
+				continue
+			}
+			s := readCgroupStats(dir)
 			sum.memory += s.memory
 			sum.cpuUsec += s.cpuUsec
 			sum.oomKills += s.oomKills

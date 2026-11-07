@@ -152,14 +152,10 @@ func (c *Controller) isolateSpec(spec *proc.Spec, ic isolatedCmd) (func(), error
 		}
 		spec.User = hu
 	}
-	if l := iso.Limits; l != nil {
-		cg := c.ensureCgroup()
-		if cg.err != nil {
-			return cleanup, fmt.Errorf("isolation limits: no delegated cgroup: %w", cg.err)
-		}
-		hc, err := cgroupFor(*l, cg.sessions)
+	if iso.Limits != nil {
+		hc, err := c.poolCgroup(cfg, ic.pool)
 		if err != nil {
-			return cleanup, fmt.Errorf("isolation limits: %w", err)
+			return cleanup, err
 		}
 		b := make([]byte, 6)
 		_, _ = rand.Read(b)

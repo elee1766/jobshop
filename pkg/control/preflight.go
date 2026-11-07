@@ -43,14 +43,11 @@ func (c *Controller) preflightSpec(cfg *config.Config, pool string) (host.Spec, 
 		}
 		s.User = hu
 	}
-	if l := iso.Limits; l != nil {
-		// The parent is the sessions cgroup the controller set up; a
-		// setup failure is reported at spawn (applyIsolation).
-		if cg := c.ensureCgroup(); cg.err == nil {
-			if hc, err := cgroupFor(*l, cg.sessions); err == nil {
-				s.Cgroup = hc
-			}
-		}
+	// With cgroupfs the parent is the sessions cgroup the controller set
+	// up, and a setup failure is reported at spawn (applyIsolation). With
+	// systemd Preflight checks the slice name and the manager (#944).
+	if hc, err := c.poolCgroup(cfg, pool); err == nil {
+		s.Cgroup = hc
 	}
 	return s, s.Sandbox != nil || s.User != nil || s.Cgroup != nil
 }

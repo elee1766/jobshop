@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/acphost/pkg/cgroup"
 	"github.com/elee1766/acphost/pkg/sandbox"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -303,7 +304,12 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 	res.Slot = f.Slot
 	res.User, res.Cgroup = spec.User, spec.Cgroup
 	if res.Cgroup != nil {
-		res.CgroupPath = filepath.Join(res.Cgroup.Parent, t.ID)
+		if res.Cgroup.Driver == cgroup.DriverSystemd {
+			// The live scope, if any: its name holds the holder's pid.
+			res.CgroupPath = c.sessionCgroupDir(c.config(), t.ID)
+		} else {
+			res.CgroupPath = filepath.Join(res.Cgroup.Parent, t.ID)
+		}
 	}
 	if spec.Sandbox != nil {
 		argv, err := sandbox.Args(*spec.Sandbox, spec.Command, spec.Args, spec.Dir)
