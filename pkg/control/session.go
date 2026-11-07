@@ -126,7 +126,8 @@ type runner struct {
 	// the next turn (session.send context).
 	context string
 	// promptAttachments belongs to the runner goroutine and is consumed by the next turn.
-	promptAttachments []acp.ContentBlock
+	promptAttachments  []acp.ContentBlock
+	promptPresentation *rpc.PromptPresentation
 	// resumed is set when a new host takes over an existing conversation
 	// (restart, crash, respawn, self-deploy); the next prompt starts with
 	// recoveryNote. Memory only.
@@ -1165,6 +1166,13 @@ func (r *runner) project() string {
 
 // turn sends one prompt and waits for the agent to finish it.
 func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text string) error {
+	presentation := r.promptPresentation
+	r.promptPresentation = nil
+	addContext := func(s string) {
+		if presentation != nil {
+			presentation.Context = strings.TrimSpace(presentation.Context + "\n\n" + s)
+		}
+	}
 	timeout := config.Duration(r.c.config().Pools[r.pool].TurnTimeout, defaultTurn)
 	tctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -1176,10 +1184,12 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 	defer stop()
 	if r.takeResumed() {
 		text = recoveryNote + "\n\n" + text
+		addContext(recoveryNote)
 	}
 	if seed := r.takeSeed(); seed != "" {
 		// No extra turn: the summary rides on the next prompt.
 		text = seed + "\n\n" + host.SummaryEnd + "\n\n" + text
+		addContext(seed)
 	}
 	// A rate limit is not a crash: keep the session and its claims (the
 	// supervisor keeps heartbeating) and retry the same prompt later.
@@ -1218,12 +1228,20 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 	busyRetries, netRetries := 0, 0
 	attachments := r.promptAttachments
 	r.promptAttachments = nil
+	if presentation == nil {
+		presentation = &rpc.PromptPresentation{Version: 1, Context: text}
+	}
+	meta := r.promptMeta()
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta[rpc.MetaPresentation] = presentation
 	replaced := false
 	for {
 		res, err = conn.Prompt(context.WithoutCancel(ctx), acp.PromptRequest{
 			SessionId: r.acpID(),
 			Prompt:    append([]acp.ContentBlock{acp.TextBlock(text)}, attachments...),
-			Meta:      r.promptMeta(),
+			Meta:      meta,
 		})
 		if err != nil && ctx.Err() == nil && unknownSession(err) && !replaced {
 			// The agent lost the conversation (a restart it did not
@@ -1240,6 +1258,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			}
 			if seed := r.takeSeed(); seed != "" {
 				text = seed + "\n\n" + host.SummaryEnd + "\n\n" + text
+				addContext(seed)
 			}
 			continue
 		}

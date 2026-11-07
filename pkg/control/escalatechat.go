@@ -359,6 +359,11 @@ func (c *Controller) escalationClosed(ctx context.Context, t store.Ticket) {
 	if !ok || e.Final || e.Session == "" || t.Status != store.StatusClosed {
 		return
 	}
+	if session, err := c.store.Get(ctx, e.Session); err == nil {
+		if fields, err := store.DecodeFields[store.SessionFields](session); err == nil && fields.Named {
+			return // A converted chat has an independent lifecycle.
+		}
+	}
 	var sent EscalationMeta
 	cur, err := c.updateEscalationMeta(ctx, t.ID, func(t store.Ticket, e *EscalationMeta, ok bool) error {
 		if !ok || e.Final || t.Status != store.StatusClosed {

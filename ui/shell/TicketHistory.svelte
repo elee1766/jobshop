@@ -2,49 +2,37 @@
   import type { GraphResult, HistoryEntry, Ticket } from '../../packages/jobshop-client/rpc.js';
   import { stepName } from './trace.js';
   import { md } from '../kit/markdown.js';
-  let { entries, ticket, graph }: { entries: HistoryEntry[]; ticket: Ticket; graph: GraphResult } = $props();
-
-  function changes(value: unknown, path = ''): { path: string; value: string; target: string }[] {
-    if (value && typeof value === 'object' && Object.keys(value).length) {
-      return Object.entries(value).flatMap(([key, child]) => changes(child, path ? path + '.' + key : key));
-    }
-    const key = path.split('.').filter(part => !/^\d+$/.test(part)).at(-1);
-    const reference = ['parent_id', 'holder', 'run', 'ticket', 'ticket_id', 'session', 'session_id', 'to', 'needs'].includes(key || '');
-    return [{ path, value: value == null ? 'cleared' : typeof value === 'object' ? 'empty' : String(value), target: reference && typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value) ? value : '' }];
-  }
-
+  let { entries, ticket, graph, onwatch }: { entries: HistoryEntry[]; ticket: Ticket; graph: GraphResult; onwatch: (id: string) => void } = $props();
   function label(id: string) {
     const node = graph.nodes.find(node => node.id === id);
-    const step = stepName(node?.fields);
-    return [step, node?.title, id].filter(Boolean).join(' · ');
+    return node?.title || id;
   }
-
-  function actorIsTicket(actor: string) {
-    return graph.nodes.some(node => node.id === actor) || /^[a-zA-Z0-9][a-zA-Z0-9._-]*-s-[a-zA-Z0-9]+$/.test(actor);
+  function isSession(id: string) {
+    return graph.nodes.some(node => node.id === id && node.kind === 'session') || /^[a-zA-Z0-9][a-zA-Z0-9._-]*-s-[a-zA-Z0-9]+$/.test(id);
+  }
+  function describe(entry: HistoryEntry) {
+    const diff = (entry.diff || {}) as Record<string, any>;
+    const fields = diff.fields || {};
+    const title = ({ create: 'created', claim: diff.resumed ? 'resumed work' : 'claimed', release: 'released', close: 'closed', reopen: 'reopened', update: 'updated', edge_add: 'relationship added', edge_remove: 'relationship removed', label_add: 'label added', label_remove: 'label removed', comment: 'commented', expire: 'claim expired' } as Record<string, string>)[entry.op] || entry.op.replaceAll('_', ' ');
+    const step = stepName(fields) || stepName(ticket.fields);
+    const summary = [diff.reason, diff.note, diff.resolution, diff.title, fields.wait?.reason, fields.state, diff.kind, diff.label].filter(value => typeof value === 'string' && value).join(' · ');
+    const refs = [...new Set([diff.holder, diff.parent_id, diff.to, diff.from, diff.session, diff.session_id, diff.ticket_id, diff.request_changes].filter(value => typeof value === 'string' && value !== ticket.id))] as string[];
+    return { title, step, summary, refs };
   }
 </script>
 
-<details class="ticket-history">
+<details class="ticket-history" open>
   <summary>history ({entries.length})</summary>
   <ol>
-    {#each entries as entry (entry.seq)}
-      {@const diff = entry.diff as { fields?: unknown; step?: unknown } | undefined}
-      {@const step = stepName(diff?.fields) || (typeof diff?.step === 'string' ? diff.step : '') || stepName(ticket.fields)}
+    {#each [...entries].reverse() as entry (entry.seq)}
+      {@const event = describe(entry)}
       <li>
-        <div class="history-heading">
-          <b>{entry.op.replaceAll('_', ' ')}</b>
-          {#if step}<span>step: {step}</span>{/if}
-          {#if actorIsTicket(entry.actor)}<a href={'?view=trace&ref=' + encodeURIComponent(entry.actor)}>{label(entry.actor)}</a>{:else}<span>{entry.actor}</span>{/if}
-          <time class="muted" datetime={entry.at}>{new Date(entry.at).toLocaleString()}</time>
+        <div class="history-heading"><b>{event.title}</b>{#if event.step}<span class="history-step">step: {event.step}</span>{/if}<time class="muted" datetime={entry.at}>{new Date(entry.at).toLocaleString()}</time></div>
+        {#if event.summary}<div class="history-summary markdown">{@html md(event.summary, true)}</div>{/if}
+        {#if event.refs.length}<div class="history-references">{#each event.refs as id}{#if isSession(id)}<button title={id} onclick={() => onwatch(id)}>session: {label(id)} ↗</button>{:else}<a title={id} href={'?view=trace&ref=' + encodeURIComponent(id)}>{label(id)} <small class="mono">{id}</small></a>{/if}{/each}</div>{/if}
+        <div class="history-footer"><span class="muted">by {entry.actor}</span>{#if isSession(entry.actor)}<button title={entry.actor} onclick={() => onwatch(entry.actor)}>view session</button>{/if}
+          {#if entry.diff && Object.keys(entry.diff).length}<details class="history-raw"><summary>details</summary><pre>{JSON.stringify(entry.diff, null, 2)}</pre></details>{/if}
         </div>
-        {#if entry.diff && Object.keys(entry.diff).length}
-          <dl class="history-changes">
-            {#each changes(entry.diff) as change}
-              <dt>{change.path.replace(/^fields\./, '').replaceAll('_', ' ')}</dt>
-              <dd>{#if change.target}<a href={'?view=trace&ref=' + encodeURIComponent(change.target)}>{label(change.target)}</a>{:else}{@html md(change.value, true)}{/if}</dd>
-            {/each}
-          </dl>
-        {/if}
       </li>
     {/each}
   </ol>

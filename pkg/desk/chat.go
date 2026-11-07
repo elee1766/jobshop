@@ -242,6 +242,7 @@ type ChatSession struct {
 	Title   string    `json:"title,omitempty"`
 	Alive   bool      `json:"alive"`
 	State   string    `json:"state"`
+	Named   bool      `json:"named,omitempty"`
 	Updated time.Time `json:"updated"`
 }
 
@@ -273,7 +274,7 @@ func (s *Server) chatList(r *http.Request) (any, error) {
 		if title == "" {
 			title = si.Ticket.Title
 		}
-		out = append(out, ChatSession{ID: si.ID, Key: f.Key, Title: title, Alive: si.Alive, State: state, Updated: si.Ticket.UpdatedAt})
+		out = append(out, ChatSession{ID: si.ID, Key: f.Key, Title: title, Alive: si.Alive, State: state, Named: f.Named, Updated: si.Ticket.UpdatedAt})
 	}
 	return map[string]any{"pool": s.cfg.ChatPool, "sessions": out}, nil
 }

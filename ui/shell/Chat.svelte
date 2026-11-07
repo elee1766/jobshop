@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick, untrack } from "svelte";
   import { client } from "./lib/api.svelte.js";
-  import { md } from "../kit/markdown.js";
+  import SessionTranscript from "./SessionTranscript.svelte";
   import type {
     SessionEvent,
     Event,
@@ -14,6 +14,7 @@
     title: string;
     state?: string;
     updated?: string;
+    named?: boolean;
   }
   let {
     requested = null,
@@ -55,6 +56,7 @@
   let previousDraft: { text: string; refs: string[]; attachments: Attachment[] } | null = null;
   const archivedChats = $derived(chats.filter((chat) => chat.state === "archived"));
   function chatType(chat: Chat) {
+    if (chat.named) return "chat";
     if (chat.key.startsWith("escalation:")) return "escalation";
     if (chat.key.startsWith("attention:")) return "attention";
     return "chat";
@@ -83,11 +85,12 @@
 
   function managedChat(info: SessionInfo): Chat {
     const fields = info.ticket?.fields as
-      | { key?: string; suspended?: boolean }
+      | { key?: string; suspended?: boolean; named?: boolean }
       | undefined;
     return {
       id: info.id,
       key: fields?.key || active?.key || "",
+      named: fields?.named,
       title: info.display_name || info.ticket?.title || info.id,
       updated: info.ticket?.updated_at,
       state:
@@ -312,8 +315,8 @@
     if (!active || sending) return;
     if (action === "resolve" && !window.confirm("Resolve escalation " + active.key.slice("escalation:".length) + " and close this chat? This closes the linked ticket. It does not resume runs or unquarantine pools.")) return;
     const newName =
-      action === "rename" ? window.prompt("Chat name", active.title) : "";
-    if (action === "rename" && !newName) return;
+      action === "rename" || action === "convert" ? window.prompt("Chat name", active.title) : "";
+    if ((action === "rename" || action === "convert") && !newName) return;
     const selectedGeneration = generation;
     sending = true;
     error = "";
@@ -415,39 +418,7 @@
       window.removeEventListener("online", online);
     };
   });
-  const messages = $derived.by(() => {
-    const out: {
-      key: string;
-      kind: string;
-      text: string;
-      tool?: SessionEvent["tool"];
-      images?: SessionEvent["images"];
-    }[] = [];
-    for (const frame of frames) {
-      if (frame.type === "tool" && frame.tool) {
-        const previous = out.find((m) => m.tool?.id === frame.tool?.id);
-        if (previous) {
-          previous.tool = { ...previous.tool, ...frame.tool };
-          if (frame.images?.length) previous.images = frame.images;
-          continue;
-        }
-      }
-      if (frame.type === "text" && out.at(-1)?.kind === "text")
-        out[out.length - 1].text += frame.text || "";
-      else if (
-        ["turn_start", "text", "tool", "image"].includes(frame.type) ||
-        frame.error
-      )
-        out.push({
-          key: String(frame.seq),
-          kind: frame.type,
-          text: frame.text || frame.error || "",
-          tool: frame.tool,
-          images: frame.images,
-        });
-    }
-    return out;
-  });
+
 </script>
 
 <svelte:window onresize={() => { positionNewChat(); positionPicker(); }} />
@@ -524,7 +495,7 @@
 </dialog>
 {#if active && !creating}
   <div class="tag chat-toolbar" role="toolbar" aria-label="Chat actions">
-    <div class="chat-actions"><button disabled={sending} onclick={() => manage("rename")}>rename</button><button title="Close this chat without resolving its ticket" disabled={sending || active.state === "archived"} onclick={() => manage("archive")}>{chatType(active) === "chat" ? "archive" : "close"}</button>{#if chatType(active) === "escalation"}<button title="Resolve the escalation and close its chat" disabled={sending || active.state === "archived"} onclick={() => manage("resolve")}>resolve</button>{/if}<button onclick={stop}
+    <div class="chat-actions"><button disabled={sending} onclick={() => manage("rename")}>rename</button><button title="Close this chat without resolving its ticket" disabled={sending || active.state === "archived"} onclick={() => manage("archive")}>{chatType(active) === "chat" ? "archive" : "close"}</button>{#if chatType(active) === "escalation"}<button title="Resolve the escalation and close its chat" disabled={sending || active.state === "archived"} onclick={() => manage("resolve")}>resolve</button><button title="Keep this conversation as a named chat without resolving the escalation" disabled={sending || active.state === "archived"} onclick={() => manage("convert")}>convert</button>{/if}<button onclick={stop}
       >stop</button
     ><button
       onclick={() => {
@@ -570,22 +541,7 @@
         >restore</button
       > to continue the same conversation.
     </p>{/if}
-  {#each messages as message (message.key)}
-    {#if message.tool}<details class="tool mono">
-        <summary
-          >{message.tool.intent || message.tool.title || "Tool"} · {message.tool
-            .status}</summary
-        >
-        <pre>{message.tool.target || ""}\n{message.tool.input || ""}\n{message
-            .tool.output || ""}</pre>
-        {#each message.images || [] as image}<img class="transcript-image" src={"data:" + image.mime_type + ";base64," + image.data} alt="Tool output" loading="lazy" />{/each}
-      </details>
-    {:else if message.kind === "turn_start"}<div class="operator">
-        {message.text}
-        {#each message.images || [] as image}<img class="transcript-image" src={"data:" + image.mime_type + ";base64," + image.data} alt="User attachment" loading="lazy" />{/each}
-      </div>
-    {:else}<div class="markdown">{@html md(message.text)}{#each message.images || [] as image}<img class="transcript-image" src={"data:" + image.mime_type + ";base64," + image.data} alt="Agent output" loading="lazy" />{/each}</div>{/if}
-  {/each}
+  <SessionTranscript {frames} />
   {#each commands as command}<p class="tool mono">
       desk ▸ {command.op}
       {Object.entries(command.args || {})

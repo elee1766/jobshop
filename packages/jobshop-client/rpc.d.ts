@@ -994,6 +994,12 @@ export interface PoolStatusResult {
   disabled?: string[];
 }
 
+export interface PromptMessage {
+  id: string;
+  from: string;
+  text: string;
+}
+
 export interface PromptPart {
   source: string;
   text: string;
@@ -1102,6 +1108,7 @@ export interface RunListParams {
 export interface RunResult {
   run: Ticket;
   steps: Ticket[];
+  links?: string[];
   existing?: boolean;
   waits?: ResourceWait[];
 }
@@ -1202,6 +1209,8 @@ export interface SessionEvent {
   text?: string;
   images?: SessionImage[];
   context?: string;
+  messages?: PromptMessage[];
+  raw_prompt?: string;
   tool?: ToolSummary;
   stop_reason?: string;
   error?: string;

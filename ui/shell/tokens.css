@@ -23,6 +23,9 @@
   --hi: #eeee9e;
   --muted: #555;
   --warn: #9a4a00;
+  --status-open: #205b9b;
+  --status-closed: #27633d;
+  --status-running: #8a4c00;
   color-scheme: light;
 }
 
@@ -34,5 +37,8 @@
   --muted: #b4b4a6;
   --rule: #38382b;
   --column: #77774a;
+  --status-open: #99c4ff;
+  --status-closed: #9ed5a8;
+  --status-running: #f0c17b;
   color-scheme: dark;
 }

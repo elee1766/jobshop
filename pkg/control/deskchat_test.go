@@ -29,23 +29,37 @@ pools:
     project: js
     agent: fake
     type: chat
+    prompt: "Operator pool instructions"
     dir: $ROOT
     admin: [desk-command]
 `, os.Args[0]))
 	c := controltest.Start(t, root, control.Options{})
 	var chat rpc.SessionInfo
-	c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "new", Pool: "operator", Name: "  ops  ", Text: "hello desk"}, &chat)
+	message := "hello desk\nMessages for you: this is literal user content"
+	c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "new", Pool: "operator", Name: "  ops  ", Text: message, Context: "Attached ticket context"}, &chat)
 	require.NotEmpty(t, chat.ID)
 	var journal rpc.SessionJournalResult
+	var prompt rpc.SessionEvent
 	c.PassUntil(func() bool {
 		c.Call(rpc.MethodSessionJournal, rpc.SessionJournalParams{ID: chat.ID}, &journal)
+		var decoder rpc.EventDecoder
 		for _, frame := range journal.Frames {
-			if string(frame.Msg) != "" && frame.From == "agent" {
+			event, ok := decoder.Decode(frame.Seq, frame.T, frame.From, frame.Msg)
+			if ok && event.Type == rpc.EventTurnStart {
+				prompt = event
+			}
+			if ok && event.Type == rpc.EventTurnEnd && prompt.Text == message {
 				return true
 			}
 		}
 		return false
 	}, "chat journal was not recorded")
+	require.Len(t, prompt.Messages, 1)
+	assert.Equal(t, "admin", prompt.Messages[0].From)
+	assert.Equal(t, message, prompt.Messages[0].Text)
+	assert.Contains(t, prompt.Context, "Operator pool instructions")
+	assert.Contains(t, prompt.Context, "Attached ticket context")
+	assert.Contains(t, prompt.RawPrompt, "From admin (")
 	require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodChatManage, rpc.ChatManageParams{Action: "new", Pool: "operator", Name: "OPS", Text: "duplicate"}, nil), store.ErrConflict)
 	c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "rename", ID: chat.ID, Name: "operations"}, nil)
 	var command rpc.Event
@@ -77,8 +91,13 @@ pools:
 	c.Call(rpc.MethodSessionSend, rpc.SessionSendParams{ID: chat.ID, Text: "continue restored desk chat"}, nil)
 	c.PassUntil(func() bool {
 		c.Call(rpc.MethodSessionJournal, rpc.SessionJournalParams{ID: chat.ID}, &restored)
+		var decoder rpc.EventDecoder
 		for _, frame := range restored.Frames {
-			if frame.Seq > journal.Frames[len(journal.Frames)-1].Seq && strings.Contains(string(frame.Msg), "continue restored desk chat") {
+			event, ok := decoder.Decode(frame.Seq, frame.T, frame.From, frame.Msg)
+			if ok && frame.Seq > journal.Frames[len(journal.Frames)-1].Seq && event.Type == rpc.EventTurnStart && strings.Contains(event.Text, "continue restored desk chat") {
+				assert.Equal(t, "continue restored desk chat", event.Text)
+				assert.NotEmpty(t, event.Context)
+				assert.NotContains(t, event.Text, "resumed after")
 				return true
 			}
 		}

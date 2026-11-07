@@ -16,6 +16,8 @@ export interface Flight {
   ref: string;
   repo: string;
   pr: string;
+  prURL: string;
+  issueURL: string;
   step: string;
   waiting: string;
   since: string;
@@ -88,6 +90,8 @@ export function flights(
         : run.run.id,
       repo,
       pr: vars.pr || meta.github?.pr || "",
+      prURL: (run.links || []).find(link => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(link)) || '',
+      issueURL: (run.links || []).find(link => /^https:\/\/linear\.app\//.test(link)) || '',
       step: sf.step || "queued",
       waiting,
       since,
