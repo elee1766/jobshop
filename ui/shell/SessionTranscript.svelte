@@ -116,7 +116,7 @@
   });
   $effect(() => {
     const nearStart = view.offset < 160 || (viewport && view.height <= viewport.clientHeight);
-    if (started && nearStart && before !== null && before > 1 && !loading && !historyError) {
+    if ((started || !messages.length) && nearStart && before !== null && before > 1 && !loading && !historyError) {
       void untrack(older);
     }
   });

@@ -26,6 +26,8 @@ DESK_URL=http://127.0.0.1:7492 DESK_MUTATE=1 \
   surfaces reach the first human message and stop requesting earlier pages.
   When the visible tail fits without scrolling, older pages load until the
   viewport fills or the journal begins, without needing a scroll event.
+  An initial page containing only protocol or reasoning events must also load
+  older history, even though there are no visible rows to initialize scrolling.
 - The virtualizer measures variable-height rows and renders only the nearby
   window. Expanded prompt/tool state survives leaving that window. Images and
   expanded content are remeasured. Following live output applies only near the
