@@ -182,7 +182,7 @@ func holdWindows(hist []store.HistoryEntry, now time.Time) []holdWindow {
 
 func (c *Controller) childIDs(ctx context.Context, id string, windows []holdWindow) ([]string, error) {
 	var out []string
-	kids, err := c.store.List(ctx, store.Filter{ParentID: id})
+	kids, err := c.store.List(ctx, store.Filter{ParentID: id, Limit: store.NoLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +190,7 @@ func (c *Controller) childIDs(ctx context.Context, id string, windows []holdWind
 		out = append(out, k.ID)
 	}
 	for _, w := range windows {
-		made, err := c.store.List(ctx, store.Filter{CreatedBy: w.holder})
+		made, err := c.store.List(ctx, store.Filter{CreatedBy: w.holder, Limit: store.NoLimit})
 		if err != nil {
 			return nil, err
 		}

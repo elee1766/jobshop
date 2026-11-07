@@ -92,6 +92,7 @@ export interface RpcMethods {
   "system.status": { params: Record<string, never>; result: SystemStatus };
   "ticket.close": { params: CloseParams; result: Ticket };
   "ticket.create": { params: CreateParams; result: Ticket };
+  "ticket.graph": { params: GraphParams; result: GraphResult };
   "ticket.list": { params: ListParams; result: Ticket[] };
   "ticket.ready": { params: ReadyParams; result: Ticket[] };
   "ticket.reopen": { params: IDParams; result: Ticket };
@@ -487,6 +488,51 @@ export interface EventsSubscribeParams {
 export interface EventsSubscribeResult {
   seq: number;
   lagged?: boolean;
+}
+
+export interface GraphNode {
+  id: string;
+  project: string;
+  kind: string;
+  title?: string;
+  body?: string;
+  status: string;
+  resolution?: string;
+  priority: number;
+  pool?: string;
+  holder?: string;
+  lease_until?: string;
+  fence: number;
+  parent_id?: string;
+  defer_until?: string;
+  ephemeral?: boolean;
+  fields?: unknown;
+  meta?: unknown;
+  labels?: string[];
+  revision: number;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
+  closed_at?: string;
+  links?: string[];
+}
+
+export interface GraphParams {
+  id: string;
+  limit?: number;
+}
+
+export interface GraphRelation {
+  from: string;
+  to: string;
+  kind: string;
+}
+
+export interface GraphResult {
+  root: string;
+  nodes: GraphNode[];
+  relations: GraphRelation[];
+  truncated: boolean;
 }
 
 export interface GuardParams {

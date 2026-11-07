@@ -13,6 +13,7 @@ import type {
   MemoryEdit,
   ShowResult,
   TraceNode,
+  GraphResult,
   HolderInfo,
   Ticket,
   IngestWorkersResult,
@@ -48,6 +49,8 @@ export interface LiveOptions extends StreamOptions {
 }
 export interface TraceView extends ShowResult {
   inspected?: Ticket;
+  inspection?: ShowResult;
+  graph?: GraphResult;
   run?: RunResult;
   trace?: TraceNode;
   sessions?: Record<string, HolderInfo>;

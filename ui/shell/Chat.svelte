@@ -40,11 +40,24 @@
   let newPopover: HTMLDialogElement;
   let nameInput: HTMLInputElement;
   let archived = $state(false);
-  const archivedChats = $derived(
-    chats
-      .filter((chat) => chat.state === "archived")
-      .sort((a, b) => (b.updated || "").localeCompare(a.updated || "")),
-  );
+  let search = $state("");
+  let pickerButton: HTMLButtonElement;
+  let picker: HTMLDialogElement;
+  let searchInput: HTMLInputElement;
+  let previousDraft: { text: string; refs: string[] } | null = null;
+  const archivedChats = $derived(chats.filter((chat) => chat.state === "archived"));
+  const recentChats = $derived.by(() => {
+    const all = active && !chats.some(chat => chat.id === active?.id) ? [...chats, active] : chats;
+    const query = search.toLocaleLowerCase().replace(/\s+/g, "");
+    return all.filter(chat => {
+      if ((chat.state === "archived") !== archived) return false;
+      let index = 0;
+      for (const char of chat.title.toLocaleLowerCase()) {
+        if (char === query[index]) index++;
+      }
+      return index === query.length;
+    }).sort((a, b) => (b.updated || "").localeCompare(a.updated || "") || a.title.localeCompare(b.title));
+  });
   let error = $state("");
   let sending = $state(false);
   let connected = $state("closed");
@@ -63,6 +76,7 @@
       id: info.id,
       key: fields?.key || active?.key || "",
       title: info.display_name || info.ticket?.title || info.id,
+      updated: info.ticket?.updated_at,
       state:
         info.ticket?.status === "closed"
           ? "archived"
@@ -98,7 +112,10 @@
     commands = [];
     refs = [];
     creating = false;
+    previousDraft = null;
+    text = "";
     error = "";
+    picker?.hidePopover();
     onactive(chat);
     lastSeq = 0;
     connect(chat.id, selectedGeneration);
@@ -140,17 +157,34 @@
     });
   });
   export function start(draft = "", contextRefs: string[] = [], chatName = "") {
-    generation++;
-    closeStream();
-    active = null;
-    frames = [];
-    commands = [];
+    if (!creating) previousDraft = { text, refs: [...refs] };
     refs = [...new Set(contextRefs)];
     text = draft;
     name = chatName;
     creating = true;
-    onactive(null);
+    error = "";
     void tick().then(() => composer?.focus());
+  }
+
+  function dismissDraft() {
+    if (sending) return;
+    creating = false;
+    name = "";
+    text = previousDraft?.text || "";
+    refs = previousDraft?.refs || [];
+    previousDraft = null;
+    error = "";
+    void tick().then(() => composer?.focus());
+  }
+
+  function positionPicker() {
+    if (!pickerButton || !picker) return;
+    const rect = pickerButton.getBoundingClientRect();
+    const width = Math.min(380, window.innerWidth - 16);
+    picker.style.width = width + "px";
+    picker.style.top = rect.bottom + 4 + "px";
+    picker.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
+    picker.style.maxHeight = Math.max(120, window.innerHeight - rect.bottom - 16) + "px";
   }
 
   function positionNewChat() {
@@ -315,26 +349,53 @@
   });
 </script>
 
-<svelte:window onresize={positionNewChat} />
+<svelte:window onresize={() => { positionNewChat(); positionPicker(); }} />
 <div class="tag chat-tag">
-  <span class="mono">/chats</span><button
+  <button
+    class="chat-picker-button"
+    bind:this={pickerButton}
+    popovertarget="chat-picker"
+    aria-label="Choose chat"
+    disabled={sending}
+    onclick={() => {
+      if (!picker.matches(":popover-open")) { search = ""; archived = active?.state === "archived"; }
+      positionPicker();
+    }}
+    title={creating ? "New chat: " + name : active?.title || "Choose chat"}
+    >{creating ? "New chat: " + name : active?.title || "Choose chat"} ▾</button
+  ><button
     bind:this={newButton}
     popovertarget="new-chat"
+    disabled={sending}
     onclick={() => {
       if (!newPopover.matches(":popover-open")) draftName = "";
       positionNewChat();
     }}>New</button
-  ><button disabled={!active} onclick={() => manage("rename")}>Rename</button
-  ><button
-    disabled={!active || active.state === "archived"}
-    onclick={() => manage("archive")}>Archive</button
-  ><button
-    class:chosen={archived}
-    aria-expanded={archived}
-    onclick={() => (archived = !archived)}
-    >Archived({archivedChats.length})</button
   ><button class="push-right" onclick={onhide}>Hide</button>
 </div>
+<dialog id="chat-picker" class="chat-picker" bind:this={picker} popover="auto" aria-label="Choose chat" ontoggle={() => { if (picker.matches(":popover-open")) searchInput?.focus(); }}>
+  <div class="chat-picker-search"><input bind:this={searchInput} type="search" bind:value={search} aria-label="Search chats" placeholder="Search chats" onkeydown={(event) => {
+    if (event.key === "Enter" && recentChats[0]) { event.preventDefault(); void select(recentChats[0]); }
+    if (event.key === "ArrowDown") { event.preventDefault(); picker.querySelector<HTMLButtonElement>("tbody button")?.focus(); }
+  }} /></div>
+  <div class="chat-picker-filter">
+    <button class:chosen={!archived} aria-pressed={!archived} onclick={() => archived = false}>Recent</button>
+    <button class:chosen={archived} aria-pressed={archived} onclick={() => archived = true}>Archived ({archivedChats.length})</button>
+    <span class="muted">Newest first</span>
+  </div>
+  <div class="chat-archive">
+    <table aria-label={archived ? "Archived chats" : "Recent chats"}>
+      <thead><tr><th scope="col">Chat</th><th scope="col">Updated</th></tr></thead>
+      <tbody>{#each recentChats as chat (chat.id)}
+        <tr class:chosen={!creating && active?.id === chat.id}>
+          <td><button aria-pressed={!creating && active?.id === chat.id} onclick={() => select(chat)}>{chat.title}{chat.state === "working" ? " ●" : ""}</button></td>
+          <td>{#if chat.updated}<time datetime={chat.updated}>{new Date(chat.updated).toLocaleDateString()}</time>{:else}–{/if}</td>
+        </tr>
+      {/each}</tbody>
+    </table>
+    {#if !recentChats.length}<p class="muted">{search ? "No matching chats." : archived ? "No archived chats." : "No chats yet. Choose New."}</p>{/if}
+  </div>
+</dialog>
 <dialog
   id="new-chat"
   class="new-chat-popover"
@@ -358,51 +419,9 @@
   <button type="button" popovertarget="new-chat" popovertargetaction="hide">Cancel</button>
 </form>
 </dialog>
-{#if archived}
-  <div class="chat-archive">
-    <table aria-label="Archived chats">
-      <thead>
-        <tr><th scope="col">Chat</th><th scope="col">Updated</th></tr>
-      </thead>
-      <tbody>
-        {#each archivedChats as chat (chat.id)}
-          <tr class:chosen={active?.id === chat.id}>
-            <td>
-              <button
-                aria-pressed={active?.id === chat.id}
-                onclick={() => select(chat)}>{chat.title}</button
-              >
-            </td>
-            <td>
-              {#if chat.updated}
-                <time datetime={chat.updated}
-                  >{new Date(chat.updated).toLocaleDateString()}</time
-                >
-              {:else}–{/if}
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
-    {#if !archivedChats.length}<p class="muted">No archived chats.</p>{/if}
-  </div>
-{:else}
-  <div class="chat-tabs" role="tablist" aria-label="Named chats">
-    {#each chats.filter((c) => c.state !== "archived") as chat (chat.id)}<button
-        role="tab"
-        aria-selected={active?.id === chat.id}
-        class:chosen={active?.id === chat.id}
-        onclick={() => select(chat)}
-        >{chat.title}{chat.state === "working" ? " ●" : ""}</button
-      >{/each}
-    {#if !chats.some((chat) => chat.state !== "archived")}
-      <span class="muted">No chats yet. Choose New.</span>
-    {/if}
-  </div>
-{/if}
 {#if active && !creating}
-  <div class="tag">
-    <span class="mono">/chats/{active.title}</span><button onclick={stop}
+  <div class="tag chat-toolbar" role="toolbar" aria-label="Chat actions">
+    <div class="chat-actions"><button disabled={sending} onclick={() => manage("rename")}>Rename</button><button disabled={sending || active.state === "archived"} onclick={() => manage("archive")}>Archive</button><button onclick={stop}
       >Stop</button
     ><button
       onclick={() => {
@@ -417,8 +436,8 @@
           ),
           "_blank",
           "noopener",
-        )}>Journal</button
-    ><span class="push-right muted"
+        )}>Journal</button></div
+    ><span class="chat-state muted"
       >{active.state === "archived"
         ? "archived"
         : connected === "reconnecting"
@@ -433,6 +452,12 @@
   aria-live="polite"
   aria-label="Chat transcript"
 >
+  {#if creating}
+    <section class="new-chat-draft" aria-label="New chat draft">
+      <div><strong>New chat: {name}</strong><button disabled={sending} onclick={dismissDraft} aria-label="Dismiss new chat">Dismiss ×</button></div>
+      <p>Your first message will create this chat. Nothing has been sent yet.</p>
+    </section>
+  {:else}
   {#if frames.some((f) => (f.seq || 0) > 1)}<button
       disabled={loadingOlder}
       onclick={older}>Load older</button
@@ -462,6 +487,7 @@
         .map(([k, v]) => k + "=" + v)
         .join(" ")}
     </p>{/each}
+  {/if}
 </div>
 {#if error}<p class="error" role="alert">{error}</p>{/if}
 <form
@@ -472,13 +498,14 @@
   }}
 >
   {#if refs.length}<div class="context">
-      ctx: {#each refs as ref}<button
-          title="Remove context"
+      Attached work: {#each refs as ref}<button
+          title="Remove attached reference"
+          aria-label={"Remove attached reference " + ref}
           onclick={() => (refs = refs.filter((r) => r !== ref))}>{ref} ×</button
         >{/each}
     </div>{/if}
   <label for="chat-message" class="muted"
-    >to {creating ? name || "new chat" : active?.title || "new chat"}</label
+    >{creating ? "First message to new chat: " + name : "to " + (active?.title || "new chat")}</label
   >
   <div class="compose-line">
     <textarea
@@ -495,7 +522,7 @@
     ></textarea><button
       class="send"
       type="submit"
-      disabled={sending || !text.trim()}>Send</button
+      disabled={sending || !text.trim()}>{creating ? "Create & send" : "Send"}</button
     >
   </div>
 </form>

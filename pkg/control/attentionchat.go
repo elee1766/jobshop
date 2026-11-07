@@ -174,6 +174,10 @@ func (c *Controller) recordAttentionSummary(ctx context.Context, session, said s
 			}
 		}
 	}
+	// Keep authored Markdown intact. The row preview may clip a link destination.
+	if err := c.updateDeskMeta(ctx, id, "attention_context", said); err != nil {
+		c.log.WarnContext(ctx, "record attention context", "ticket", id, "err", err)
+	}
 	if err := c.updateDeskMeta(ctx, id, "attention_summary", summaryOf(said)); err != nil {
 		c.log.WarnContext(ctx, "record attention summary", "ticket", id, "err", err)
 	}
@@ -370,7 +374,7 @@ func (c *Controller) closeAttentionChat(ctx context.Context, cfg *config.Config,
 
 // readOnlyMethods are what a read-only session may call (#606).
 var readOnlyMethods = []string{
-	rpc.MethodWhoami, rpc.MethodVersion, rpc.MethodTicketShow, rpc.MethodTicketTrace, rpc.MethodTicketList,
+	rpc.MethodWhoami, rpc.MethodVersion, rpc.MethodTicketShow, rpc.MethodTicketTrace, rpc.MethodTicketGraph, rpc.MethodTicketList,
 	rpc.MethodReady, rpc.MethodRecall, rpc.MethodRunShow, rpc.MethodRunList, rpc.MethodBatchShow,
 	rpc.MethodBatchList, rpc.MethodAttention, rpc.MethodConfigShow, rpc.MethodPoolList, rpc.MethodSessionList,
 	rpc.MethodSessionJournal, rpc.MethodJournalSearch, rpc.MethodTriggerList, rpc.MethodActivityList,

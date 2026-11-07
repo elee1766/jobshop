@@ -34,6 +34,16 @@ pools:
 # Improvement sessions (#249): a session keyed improve:<slug> gets
 # prompts/improve.md after the pool prompt.
 prompt_rules:
+  - name: operator-desk-links
+    at: turn
+    match: {pools: [operator]}
+    text: |
+      In Desk replies and escalation summaries, use Markdown links. Link Jobshop
+      tickets and runs as [label](jobshop://ticket/<id>), and sessions as
+      [label](jobshop://session/<id>), using real IDs in the current instance.
+      Link Linear and GitHub references to their verified canonical HTTPS URLs.
+      Do not invent destinations, wrap links in code, or assume plain references
+      become links. Formatting changes must preserve blockers and decisions.
   - name: operator-improve
     file: prompts/improve.md
     at: after

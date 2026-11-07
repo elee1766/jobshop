@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -30,6 +31,15 @@ func TestAttentionSummaryFromChat(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, "It asks which branch. Run jobshop question answer.", items[0].Summary)
+
+	linked := strings.Repeat("Context before the link. ", 15) + "\n\n[Ticket](jobshop://ticket/" + q.ID + ") and [Issue](https://github.com/acme/widget/issues/9)."
+	c.recordAttentionSummary(ctx, sess.ID, linked)
+	items, err = c.attentionItems(ctx, c.config())
+	require.NoError(t, err)
+	assert.Equal(t, linked, items[0].Context)
+	assert.LessOrEqual(t, len(items[0].Summary), maxSummary+3)
+	got, err = c.store.Get(ctx, q.ID)
+	require.NoError(t, err)
 
 	// Not an attention chat: nothing is written.
 	other := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Title: "s2", Fields: json.RawMessage(`{"agent":"fake","key":"desk:abc"}`)})

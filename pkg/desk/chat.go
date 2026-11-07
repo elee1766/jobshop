@@ -113,7 +113,11 @@ func (s *Server) referenceContext(r *http.Request, refs []string) (string, error
 			}
 		}
 		t := shown.Ticket
-		records = append(records, map[string]string{"ref": ref, "id": t.ID, "title": t.Title, "state": string(t.Status), "resolution": t.Resolution, "link": "?view=trace&ref=" + url.QueryEscape(t.ID)})
+		resource := "ticket"
+		if t.Kind == store.KindSession {
+			resource = "session"
+		}
+		records = append(records, map[string]string{"ref": ref, "id": t.ID, "title": t.Title, "state": string(t.Status), "resolution": t.Resolution, "link": "jobshop://" + resource + "/" + url.PathEscape(t.ID)})
 	}
 	data, err := json.Marshal(records)
 	if err != nil {

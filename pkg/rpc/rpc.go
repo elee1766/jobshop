@@ -34,6 +34,7 @@ const (
 	MethodTicketCreate     = "ticket.create"
 	MethodTicketShow       = "ticket.show"
 	MethodTicketTrace      = "ticket.trace"
+	MethodTicketGraph      = "ticket.graph"
 	MethodTicketList       = "ticket.list"
 	MethodTicketUpdate     = "ticket.update"
 	MethodTicketClose      = "ticket.close"
@@ -1102,6 +1103,33 @@ type RecallParams struct {
 type TraceParams struct {
 	ID    string `json:"id,omitempty"`
 	Depth int    `json:"depth,omitempty"` // 0 means 5
+}
+
+// GraphParams selects a connected ticket graph, bounded by Limit (default 500, max 2000).
+type GraphParams struct {
+	ID    string `json:"id"`
+	Limit int    `json:"limit,omitempty"`
+}
+
+// GraphRelation points from a dependent to its prerequisite, or a parent to its child.
+type GraphRelation struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+	Kind string `json:"kind"` // blocks, waits_for, tracks, parent, or created
+}
+
+// GraphNode carries a ticket and links found in its body and comments.
+type GraphNode struct {
+	store.Ticket
+	Links []string `json:"links,omitempty"`
+}
+
+// GraphResult contains each connected ticket once, including closed prerequisites.
+type GraphResult struct {
+	Root      string          `json:"root"`
+	Nodes     []GraphNode     `json:"nodes"`
+	Relations []GraphRelation `json:"relations"`
+	Truncated bool            `json:"truncated"`
 }
 
 // TraceNode is one ticket in a trace: how it came to be, what it links to
