@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.18](https://github.com/elee1766/jobshop/compare/v0.8.17...v0.8.18) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** close and resolve managed chats ([#984](https://github.com/elee1766/jobshop/issues/984)) ([8bb1c9f](https://github.com/elee1766/jobshop/commit/8bb1c9fea562669c21de3369ab08d6f51799aa6b))
+
 ## [0.8.17](https://github.com/elee1766/jobshop/compare/v0.8.16...v0.8.17) (2026-11-07)
 
 
