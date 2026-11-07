@@ -33,7 +33,9 @@ test('named chat streams, survives reload, archives and restores', async ({ page
     await page.getByRole('button', { name: /^Archived/ }).click();
     await page.getByRole('tab', { name, exact: true }).click();
     await expect(page.locator('.transcript .markdown')).toContainText('PONG');
+    const restoring = page.waitForResponse((response) => response.url().endsWith('/api/chat/manage') && response.request().method() === 'POST');
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
+    expect((await restoring).ok()).toBeTruthy();
     const restored = await (await page.request.get('api/chat')).json();
     expect(restored.sessions.find((chat) => chat.id === id).state).not.toBe('archived');
   } finally {
