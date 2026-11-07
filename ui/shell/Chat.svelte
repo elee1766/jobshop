@@ -438,6 +438,7 @@
 
 <svelte:window onresize={() => { positionNewChat(); positionPicker(); }} />
 <div class="tag chat-tag">
+  <span class="muted">To:</span>
   <button
     class="chat-picker-button"
     bind:this={pickerButton}
@@ -594,7 +595,6 @@
   <div class="attachment-actions">
     <button type="button" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} onclick={() => fileInput.click()}>Attach file</button>
     <button type="button" disabled={sending || (!active && !creating) || (active?.state === "archived" && !creating)} popovertarget="paste-document">Paste document</button>
-    <span class="muted" title="Pastes over 4,000 characters or at least 40 lines become text attachments. Up to 8 files, 8 MiB total. Text documents up to 2 MiB.">Images and large pastes attach here</span>
   </div>
   {#if attachments.length}<ul class="chat-attachments" aria-label="Message attachments">
     {#each attachments as item}<li>
@@ -611,12 +611,10 @@
           onclick={() => (refs = refs.filter((r) => r !== ref))}>{ref} ×</button
         >{/each}
     </div>{/if}
-  <label for="chat-message" class="muted"
-    >{creating ? "First message to new chat: " + name : "to " + (active?.title || "new chat")}</label
-  >
   <div class="compose-line">
     <textarea
       id="chat-message"
+      aria-label={creating ? "First message to new chat: " + name : "to " + (active?.title || "new chat")}
       bind:this={composer}
       bind:value={text}
       onkeydown={keydown}
