@@ -81,6 +81,23 @@ func TestDetachedHostCgroupFallback(t *testing.T) {
 	assert.Contains(t, logs.b.String(), "session host stays in the controller cgroup")
 }
 
+// TestDetachedHostScopeFallback (#992): with the systemd driver and no
+// manager to start the scope, the host starts in the caller's cgroup.
+func TestDetachedHostScopeFallback(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root uses the system manager")
+	}
+	// No manager socket there: the scope start fails before the host.
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	c, logs := rulesController(t, rulesBase+"limits:\n  cgroup_driver: systemd\n")
+	dir := detachedHostDir(t)
+	d, err := c.startDetachedHost("js-s1", dir)
+	require.NoError(t, err)
+	t.Cleanup(func() { stopDetachedHost(dir, time.Second) })
+	assert.True(t, d.Running())
+	assert.Contains(t, logs.b.String(), "session host stays in the controller cgroup")
+}
+
 // TestStopHostKills (#904): a host that ignores SIGTERM is killed once
 // the wait runs out.
 func TestStopHostKills(t *testing.T) {

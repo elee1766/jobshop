@@ -148,6 +148,29 @@ limits:
 	assert.Equal(t, cgroup.DriverSystemd, spec.Cgroup.Driver, "preflight runs the systemd checks")
 }
 
+// TestHostPlacement (#992): with systemd a session host starts in a scope
+// in the sessions slice (InScope), with cgroupfs in the hosts cgroup
+// (InCgroup) or the controller's.
+func TestHostPlacement(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		limits string
+		setup  cgroupSetup
+		want   hostPlacement
+	}{
+		{"systemd default slice", "limits:\n  cgroup_driver: systemd\n", cgroupSetup{}, hostPlacement{systemd: true, slice: config.DefaultSessionsSlice}},
+		{"systemd slice", "limits:\n  cgroup_driver: systemd\n  sessions_slice: x.slice\n  cgroup: {}\n", cgroupSetup{hosts: "/h"}, hostPlacement{systemd: true, slice: "x.slice"}},
+		{"cgroupfs split", "limits:\n  cgroup: {}\n", cgroupSetup{hosts: "/h"}, hostPlacement{cgroup: "/h"}},
+		{"cgroupfs no split", "", cgroupSetup{hosts: "/h"}, hostPlacement{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _, _ := stallControllerYAML(t, "projects:\n  js: {}\nagents:\n  fake: {command: /bin/false}\npools:\n  plain: {agent: fake, dir: %[1]q}\n"+tc.limits)
+			c.cgroupOnce.Do(func() { c.cgroup = tc.setup })
+			assert.Equal(t, tc.want, c.hostPlacement())
+		})
+	}
+}
+
 func TestShareDir(t *testing.T) {
 	d := t.TempDir()
 	sub := filepath.Join(d, "a")

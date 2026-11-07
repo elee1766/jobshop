@@ -109,6 +109,14 @@ limits:
 	assert.NotEmpty(t, strings.TrimSpace(string(procs)), "the agent runs in the scope's leaf")
 	pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
+	// The host is in its own scope in the slice, outside the controller's
+	// unit (#992).
+	hcg, err := os.ReadFile(filepath.Join("/proc", strings.TrimSpace(string(pid)), "cgroup"))
+	require.NoError(t, err)
+	hostUnit, err := cgroup.HostScopeUnit(sessions[0].ID, 1)
+	require.NoError(t, err)
+	assert.Contains(t, string(hcg), "/"+slice+"/"+strings.TrimSuffix(hostUnit, "1.scope"), "host in an acphost-host scope in the slice")
+	assert.True(t, strings.HasSuffix(strings.TrimSpace(string(hcg)), ".scope"), string(hcg))
 
 	stop()
 	require.True(t, hostRunning(sdir), "host outlives the controller")
