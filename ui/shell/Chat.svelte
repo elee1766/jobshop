@@ -36,6 +36,11 @@
   let name = $state("");
   let creating = $state(false);
   let archived = $state(false);
+  const archivedChats = $derived(
+    chats
+      .filter((chat) => chat.state === "archived")
+      .sort((a, b) => (b.updated || "").localeCompare(a.updated || "")),
+  );
   let error = $state("");
   let sending = $state(false);
   let connected = $state("closed");
@@ -305,20 +310,55 @@
   ><button
     disabled={!active || active.state === "archived"}
     onclick={() => manage("archive")}>Archive</button
-  ><button class:chosen={archived} onclick={() => (archived = !archived)}
-    >Archived({chats.filter((c) => c.state === "archived").length})</button
+  ><button
+    class:chosen={archived}
+    aria-expanded={archived}
+    onclick={() => (archived = !archived)}
+    >Archived({archivedChats.length})</button
   ><button class="push-right" onclick={onhide}>Hide</button>
 </div>
-<div class="chat-tabs" role="tablist" aria-label="Named chats">
-  {#each chats.filter((c) => (c.state === "archived") === archived) as chat (chat.id)}<button
-      role="tab"
-      aria-selected={active?.id === chat.id}
-      class:chosen={active?.id === chat.id}
-      onclick={() => select(chat)}
-      >{chat.title}{chat.state === "working" ? " ●" : ""}</button
-    >{/each}
-  {#if !chats.length}<span class="muted">No chats yet. Choose New.</span>{/if}
-</div>
+{#if archived}
+  <div class="chat-archive">
+    <table aria-label="Archived chats">
+      <thead>
+        <tr><th scope="col">Chat</th><th scope="col">Updated</th></tr>
+      </thead>
+      <tbody>
+        {#each archivedChats as chat (chat.id)}
+          <tr class:chosen={active?.id === chat.id}>
+            <td>
+              <button
+                aria-pressed={active?.id === chat.id}
+                onclick={() => select(chat)}>{chat.title}</button
+              >
+            </td>
+            <td>
+              {#if chat.updated}
+                <time datetime={chat.updated}
+                  >{new Date(chat.updated).toLocaleDateString()}</time
+                >
+              {:else}–{/if}
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+    {#if !archivedChats.length}<p class="muted">No archived chats.</p>{/if}
+  </div>
+{:else}
+  <div class="chat-tabs" role="tablist" aria-label="Named chats">
+    {#each chats.filter((c) => c.state !== "archived") as chat (chat.id)}<button
+        role="tab"
+        aria-selected={active?.id === chat.id}
+        class:chosen={active?.id === chat.id}
+        onclick={() => select(chat)}
+        >{chat.title}{chat.state === "working" ? " ●" : ""}</button
+      >{/each}
+    {#if !chats.some((chat) => chat.state !== "archived")}
+      <span class="muted">No chats yet. Choose New.</span>
+    {/if}
+  </div>
+{/if}
 {#if creating}
   <div class="tag">
     <label
