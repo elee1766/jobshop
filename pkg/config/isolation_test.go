@@ -104,6 +104,36 @@ func TestLimitsValues(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// TestCgroupDriver: limits.cgroup_driver and sessions_slice (#944).
+func TestCgroupDriver(t *testing.T) {
+	c, err := config.Parse([]byte("projects: {js: {}}\nlimits: {cgroup_driver: systemd, cgroup: {}}\n"))
+	require.NoError(t, err)
+	assert.True(t, c.Limits.Systemd())
+	assert.NotNil(t, c.Limits.Cgroup, "the module's empty cgroup block asks for a scope per agent")
+	assert.Equal(t, config.DefaultSessionsSlice, c.Limits.Slice())
+	assert.Empty(t, c.Warnings)
+
+	c, err = config.Parse([]byte("projects: {js: {}}\nlimits: {cgroup_driver: systemd, sessions_slice: agents.slice, cgroup: {sessions_cpu: \"4\"}}\n"))
+	require.NoError(t, err)
+	assert.Equal(t, "agents.slice", c.Limits.Slice())
+	require.Len(t, c.Warnings, 1)
+	assert.Contains(t, c.Warnings[0], "ignored with cgroup_driver systemd")
+
+	c, err = config.Parse([]byte("projects: {js: {}}\n"))
+	require.NoError(t, err)
+	assert.False(t, c.Limits.Systemd(), "cgroupfs by default")
+
+	for _, bad := range []string{
+		"{cgroup_driver: docker}",
+		"{sessions_slice: a.slice}",
+		"{cgroup_driver: systemd, sessions_slice: agents}",
+		"{cgroup_driver: systemd, sessions_slice: a/b.slice}",
+	} {
+		_, err := config.Parse([]byte("projects: {js: {}}\nlimits: " + bad + "\n"))
+		assert.ErrorContains(t, err, "limits.", bad)
+	}
+}
+
 // TestHostCgroup: limits.cgroup values and defaults (JOB-91).
 func TestHostCgroup(t *testing.T) {
 	c, err := config.Parse([]byte("projects: {js: {}}\nlimits: {cgroup: {sessions_cpu: \"5\", controller_cpu_weight: 2000}}\n"))

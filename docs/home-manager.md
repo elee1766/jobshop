@@ -57,8 +57,11 @@ homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
   `nft` come from the module's PATH. The home may stay 0700 with no ACL:
   sandboxed mounts are made as the jobshop user (acphost#162, JOB-53).
 - cgroup delegation: systemd delegates cpu, memory and pids to
-  `user@.service` by default. The controller unit sets `Delegate=` with
-  isolation on.
+  `user@.service` by default. With isolation on, limited agents run in
+  transient scopes the user manager makes in `jobshop-sessions.slice`
+  (`isolation.cgroupDriver = "systemd"`, the default here, #944), so
+  the controller unit has no `Delegate=` and restarts with live limited
+  sessions. `cgroupfs` keeps the old `Delegate=` setup.
 - `/nix/var/nix/gcroots/per-user/<user>`, owned by the user, so a
   running session host's binary survives a switch (the NixOS module
   creates it; the user cannot).

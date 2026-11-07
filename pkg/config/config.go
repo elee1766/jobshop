@@ -1074,6 +1074,58 @@ type Limits struct {
 	// and its sessions, so session load cannot starve the controller
 	// (JOB-91). Nil: one cgroup, as before.
 	Cgroup *HostCgroup `yaml:"cgroup"`
+	// CgroupDriver is how session cgroups are made (#944): "cgroupfs"
+	// (the default) under the controller's delegated cgroup, or "systemd":
+	// a transient scope per session in SessionsSlice, from the manager the
+	// controller runs under. systemd needs no Delegate= on the unit, so a
+	// restart with live limited sessions works; the controller must be in
+	// that manager's tree (a user unit, or root).
+	CgroupDriver string `yaml:"cgroup_driver"`
+	// SessionsSlice is the slice session scopes go in with the systemd
+	// driver. Default DefaultSessionsSlice.
+	SessionsSlice string `yaml:"sessions_slice"`
+}
+
+// Cgroup drivers for limits.cgroup_driver.
+const (
+	CgroupDriverCgroupfs = "cgroupfs"
+	CgroupDriverSystemd  = "systemd"
+	DefaultSessionsSlice = "jobshop-sessions.slice"
+)
+
+// Systemd reports whether session cgroups are systemd scopes.
+func (l Limits) Systemd() bool { return l.CgroupDriver == CgroupDriverSystemd }
+
+// Slice is SessionsSlice or its default.
+func (l Limits) Slice() string {
+	if l.SessionsSlice == "" {
+		return DefaultSessionsSlice
+	}
+	return l.SessionsSlice
+}
+
+// checkDriver validates the driver and slice. It returns a warning when
+// limits.cgroup sets values the controller cannot apply with systemd:
+// those belong on the slice unit.
+func (l Limits) checkDriver() (string, error) {
+	switch l.CgroupDriver {
+	case "", CgroupDriverCgroupfs, CgroupDriverSystemd:
+	default:
+		return "", fmt.Errorf("limits.cgroup_driver %q: want %s or %s", l.CgroupDriver, CgroupDriverCgroupfs, CgroupDriverSystemd)
+	}
+	if l.SessionsSlice != "" {
+		if !l.Systemd() {
+			return "", fmt.Errorf("limits.sessions_slice needs limits.cgroup_driver: systemd")
+		}
+		name, ok := strings.CutSuffix(l.SessionsSlice, ".slice")
+		if !ok || name == "" || strings.ContainsAny(name, "/ ") {
+			return "", fmt.Errorf("limits.sessions_slice %q: want a slice unit name such as %s", l.SessionsSlice, DefaultSessionsSlice)
+		}
+	}
+	if hc := l.Cgroup; l.Systemd() && hc != nil && (hc.SessionsCPU != "" || hc.SessionsCPUWeight != 0 || hc.ControllerCPUWeight != 0) {
+		return "limits.cgroup sessions_cpu and the cpu weights are ignored with cgroup_driver systemd: set CPUQuota= and CPUWeight= on " + l.Slice() + " and the controller's unit", nil
+	}
+	return "", nil
 }
 
 // Cgroup weight bounds and defaults (cpu.weight, kernel range 1-10000).
@@ -1658,6 +1710,11 @@ func parse(b []byte, sources map[string][]string) (*Config, error) {
 	}
 	if err := c.Limits.Cgroup.check(); err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)
+	}
+	if w, err := c.Limits.checkDriver(); err != nil {
+		return nil, fmt.Errorf("%s: %w", FileName, err)
+	} else if w != "" {
+		c.Warnings = append(c.Warnings, FileName+": "+w)
 	}
 	if s := c.Subscriptions; s != nil {
 		for _, d := range []struct{ key, v string }{{"interval", s.Interval}, {"resume_window", s.ResumeWindow}} {

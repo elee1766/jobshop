@@ -130,15 +130,33 @@ let
     else
       "";
   cgroupAttrs = lib.optionalAttrs cfg.isolation.enable {
-    limits.cgroup =
-      lib.optionalAttrs (sessionsCpu != "") { sessions_cpu = sessionsCpu; }
-      // lib.optionalAttrs (cfg.sessionsCpuWeight != null) {
-        sessions_cpu_weight = cfg.sessionsCpuWeight;
-      }
-      // lib.optionalAttrs (cfg.controllerCpuWeight != null) {
-        controller_cpu_weight = cfg.controllerCpuWeight;
-      };
+    limits =
+      if cgSystemd then
+        {
+          # Session cgroups are transient scopes in jobshop-sessions.slice
+          # (#944); the cap and weights are unit properties below. An
+          # empty limits.cgroup still puts every agent in a scope there.
+          cgroup_driver = "systemd";
+          sessions_slice = "jobshop-sessions.slice";
+          cgroup = { };
+        }
+      else
+        {
+          cgroup =
+            lib.optionalAttrs (sessionsCpu != "") { sessions_cpu = sessionsCpu; }
+            // lib.optionalAttrs (cfg.sessionsCpuWeight != null) {
+              sessions_cpu_weight = cfg.sessionsCpuWeight;
+            }
+            // lib.optionalAttrs (cfg.controllerCpuWeight != null) {
+              controller_cpu_weight = cfg.controllerCpuWeight;
+            };
+        };
   };
+  # The systemd cgroup driver (#944): no Delegate= on jobshop.service, so a
+  # restart with live limited sessions never meets a busy unit cgroup.
+  cgSystemd = cfg.isolation.enable && cfg.isolation.cgroupDriver == "systemd";
+  # sessionsCpu (CPUs, "2.5") as a CPUQuota percentage.
+  sessionsQuota = "${toString (builtins.floor (builtins.fromJSON sessionsCpu * 100 + 0.5))}%";
   moduleAttrs = lib.recursiveUpdate compressAttrs (
     telemetryAttrs
     // storeAttrs
@@ -992,7 +1010,8 @@ in
 
     isolation = {
       enable = lib.mkEnableOption ''
-        per-pool isolation (#388): Delegate=cpu memory pids on jobshop.service,
+        per-pool isolation (#388): Delegate=cpu memory pids on jobshop.service
+        (cgroupDriver cgroupfs) or session scopes in jobshop-sessions.slice (systemd),
         a subuid/subgid range for the jobshop user, and newuidmap (shadow),
         pasta (passt) and nft (nftables) on PATH. Pools opt in with isolation: and sandbox.network: pasta.
         A pool's isolation.user.per_session.range in settings gives each session its own
@@ -1007,6 +1026,23 @@ in
         type = lib.types.int;
         default = 65536;
         description = "Size of the jobshop user's subuid and subgid range.";
+      };
+      cgroupDriver = lib.mkOption {
+        type = lib.types.enum [
+          "systemd"
+          "cgroupfs"
+        ];
+        default = if isNixos then "cgroupfs" else "systemd";
+        defaultText = lib.literalExpression ''"cgroupfs" (NixOS), "systemd" (home-manager)'';
+        description = ''
+          How session cgroups are made (limits.cgroup_driver, #944). systemd: each
+          limited agent gets a transient scope in jobshop-sessions.slice from the user
+          manager, and jobshop.service has no Delegate=, so `systemctl restart jobshop`
+          works with live limited sessions. sessionsCpu and the weights become
+          CPUQuota/CPUWeight of that slice and of jobshop.service. home-manager only:
+          a system unit running as the jobshop user cannot reach the system manager.
+          cgroupfs: Delegate= on jobshop.service and session cgroups under it (JOB-21).
+        '';
       };
     };
 
@@ -1234,7 +1270,23 @@ in
         ++ map (p: {
           assertion = isoRangeFits p;
           message = "services.jobshop.isolation: pool ${p} per_session ids run past subIdStart + subIdCount (${toString cfg.isolation.subIdStart} + ${toString cfg.isolation.subIdCount}); raise subIdCount or lower map_uid/map_gid or range (#540).";
-        }) isoPools;
+        }) isoPools
+        ++ [
+          {
+            assertion = !(isNixos && cfg.isolation.cgroupDriver == "systemd");
+            message = "services.jobshop.isolation.cgroupDriver = \"systemd\" needs the controller under a manager it may talk to: use the home-manager module, or cgroupfs on NixOS (#944).";
+          }
+        ];
+
+        # Limited agents' scopes (#944), nested in jobshop.slice by the name.
+        # It holds every agent, so its quota is the sessions cap (JOB-91).
+        services.jobshop.units.slices.jobshop-sessions = lib.mkIf cgSystemd {
+          description = "Jobshop session agents";
+          sliceConfig = {
+            CPUWeight = if cfg.sessionsCpuWeight != null then cfg.sessionsCpuWeight else 100;
+          }
+          // lib.optionalAttrs (sessionsCpu != "") { CPUQuota = sessionsQuota; };
+        };
 
         services.jobshop.units.tmpfiles = [
           "d ${cfg.dataDir} 0700 ${own} -"
@@ -1306,7 +1358,7 @@ in
             Restart = "on-failure";
             RestartSec = 2;
           }
-          // lib.optionalAttrs cfg.isolation.enable {
+          // lib.optionalAttrs (cfg.isolation.enable && !cgSystemd) {
             # The controller moves into <own>/controller and puts session
             # cgroups under <own>/sessions (#388).
             Delegate = "cpu memory pids";
@@ -1315,6 +1367,11 @@ in
             # place a process in the unit cgroup, which has subtree_control
             # set (no internal processes rule: EBUSY, JOB-21).
             DelegateSubgroup = "controller";
+          }
+          // lib.optionalAttrs cgSystemd {
+            # Session agents are in jobshop-sessions.slice; this outweighs
+            # them when jobshop.slice is full (JOB-91).
+            CPUWeight = if cfg.controllerCpuWeight != null then cfg.controllerCpuWeight else 1000;
           };
         }
         // lib.optionalAttrs cfg.isolation.enable {

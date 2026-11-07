@@ -334,6 +334,7 @@ let
   hmUnits = sharedHM.config.systemd.user.services;
   hmEnv = u: lib.concatStringsSep "\n" hmUnits.${u}.Service.Environment;
   hmDefault = evalHM { };
+  hmIso = evalHM { isolation.enable = true; };
   hmFailed = c: map (a: a.message) (lib.filter (a: !a.assertion) c.config.assertions);
   hmTmp = c: c.config.systemd.user.tmpfiles.rules;
   hmYaml =
@@ -644,6 +645,36 @@ let
       in
       sc.Delegate == "cpu memory pids" && sc.DelegateSubgroup == "controller"
     ))
+    # The systemd cgroup driver (#944), home-manager's default: no Delegate=,
+    # session scopes in jobshop-sessions.slice with the sessions cap.
+    (expect "home-manager isolation uses the systemd cgroup driver" (
+      let
+        c = (evalHM { isolation.enable = true; }).config.systemd.user;
+      in
+      !(c.services.jobshop.Service ? Delegate)
+      && c.services.jobshop.Service.CPUWeight == 1000
+      && c.slices.jobshop-sessions.Slice.CPUQuota == "500%"
+      && c.slices.jobshop-sessions.Slice.CPUWeight == 100
+      && c.slices.jobshop-sessions.Unit.X-SwitchMethod == "keep-old"
+    ))
+    (expect "home-manager cgroupfs keeps Delegate=" (
+      let
+        s =
+          (evalHM {
+            isolation.enable = true;
+            isolation.cgroupDriver = "cgroupfs";
+          }).config.systemd.user;
+      in
+      s.services.jobshop.Service.DelegateSubgroup == "controller" && !(s.slices ? jobshop-sessions)
+    ))
+    (expect "NixOS refuses the systemd cgroup driver" (
+      lib.any (lib.hasInfix "cgroupDriver") (
+        failed (eval {
+          isolation.enable = true;
+          isolation.cgroupDriver = "systemd";
+        })
+      )
+    ))
   ];
 in
 # Assertions run at evaluation, so `nix flake check --no-build` covers them;
@@ -670,5 +701,9 @@ pkgs.runCommand "jobshop-module-test" { } ''
   ! grep -q 'sessions_cpu' ${yamlPacks cgOff}
   grep -q 'instance: selfdev' ${yamlPacks telInstance}
   ! grep -q 'instance:' ${yamlPacks cgOff}
+  grep -q 'cgroup_driver: systemd' ${hmYaml hmIso}
+  grep -q 'sessions_slice: jobshop-sessions.slice' ${hmYaml hmIso}
+  ! grep -q 'sessions_cpu' ${hmYaml hmIso}
+  ! grep -q 'cgroup_driver' ${yamlPacks cgDefault}
   touch $out
 ''
