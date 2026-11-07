@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.21](https://github.com/elee1766/jobshop/compare/v0.8.20...v0.8.21) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** keep run reference links visible on mobile ([#990](https://github.com/elee1766/jobshop/issues/990)) ([861a031](https://github.com/elee1766/jobshop/commit/861a031b78daef9b2abf4b707cf0d1b224a2d73a))
+
 ## [0.8.20](https://github.com/elee1766/jobshop/compare/v0.8.19...v0.8.20) (2026-11-07)
 
 
