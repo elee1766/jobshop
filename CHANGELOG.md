@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.10](https://github.com/elee1766/jobshop/compare/v0.8.9...v0.8.10) (2026-11-07)
+
+
+### Features
+
+* **desk:** send native attachments and render received images ([#968](https://github.com/elee1766/jobshop/issues/968)) ([dd6ce6a](https://github.com/elee1766/jobshop/commit/dd6ce6a72f979f5fc810e5e6a60d04b83a792c52))
+
 ## [0.8.9](https://github.com/elee1766/jobshop/compare/v0.8.8...v0.8.9) (2026-11-07)
 
 
