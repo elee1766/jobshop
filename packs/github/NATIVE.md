@@ -9,7 +9,7 @@ Import the package from a checked-in CUE module:
 ```cue
 package city
 
-import githubpack "jobshop.dev/packs/packs/github"
+import githubpack "github.com/elee1766/jobshop/packs/github"
 
 packs: github: githubpack.#Pack & {
     path: "packs/github"

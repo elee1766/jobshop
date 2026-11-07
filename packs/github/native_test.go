@@ -26,9 +26,9 @@ func packRoot(t *testing.T, prefix, tracker string, callbacks bool) config.Root 
 	assets := filepath.Join(root.Dir, "packs", "github")
 	require.NoError(t, os.MkdirAll(assets, 0o700))
 	require.NoError(t, os.CopyFS(assets, os.DirFS(".")))
-	write(t, root.Dir, "cue.mod/module.cue", "module: \"jobshop.dev/packs@v0\"\nlanguage: version: \"v0.17.0\"\n")
+	write(t, root.Dir, "cue.mod/module.cue", "module: \"github.com/elee1766/jobshop@v0\"\nlanguage: version: \"v0.17.0\"\n")
 	write(t, root.Dir, "pack.cue", fmt.Sprintf(`package acceptance
-import githubpack "jobshop.dev/packs/packs/github"
+import githubpack "github.com/elee1766/jobshop/packs/github"
 default_project: "js"
 projects: js: {}
 agents: local: {command: "false"}
