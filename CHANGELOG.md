@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.12](https://github.com/elee1766/jobshop/compare/v0.8.11...v0.8.12) (2026-11-07)
+
+
+### Bug fixes
+
+* **desk:** align compact attachment actions ([#972](https://github.com/elee1766/jobshop/issues/972)) ([fddc743](https://github.com/elee1766/jobshop/commit/fddc743f859b85f273622984e31a9e08ffb81764))
+
 ## [0.8.11](https://github.com/elee1766/jobshop/compare/v0.8.10...v0.8.11) (2026-11-07)
 
 
