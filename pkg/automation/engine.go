@@ -16,60 +16,34 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/automation/api"
+	"github.com/elee1766/jobshop/pkg/automation/command"
+	automationhttp "github.com/elee1766/jobshop/pkg/automation/http"
+	"github.com/elee1766/jobshop/pkg/automation/jev"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 )
 
 // Limits are host ceilings. Zero values select bounded defaults.
-type Limits struct {
-	Duration    time.Duration
-	Steps       uint64
-	OutputBytes int
-	SourceBytes int
-	Modules     int
-	DataBytes   int
-	Actions     int
-	Calls       int
-}
+type Limits = api.Limits
 
 // Credential is host-owned and never made available as a script value.
-type Credential struct {
-	Origins []string
-	Headers map[string]string
-	Secrets []string
-}
+type Credential = api.Credential
 
 // JevOptions names a full Decisions endpoint, not a service base URL.
-type JevOptions struct {
-	Enabled  bool
-	Endpoint string
-	APIKey   string
-	Model    string
-}
+type JevOptions = api.JevOptions
 
 // Options grants host capabilities. Shell runs as the controller OS user and is
 // not an agent sandbox. HTTP permits private networks unless HTTPOrigins limits it.
-type Options struct {
-	Limits      Limits
-	HTTP        *http.Client
-	AllowHTTP   bool
-	HTTPOrigins []string
-	Auth        map[string]Credential
-	AllowShell  bool
-	ShellDir    string
-	ShellEnv    []string
-	Jev         JevOptions
-	Observe     Observer
-	// Replay may reuse a completed, unredacted result. The host must bind source,
-	// invocation, capability, index and InputDigest, and reject unknown outcomes.
-	Replay func(context.Context, Observation) (any, bool, error)
-}
+type Options = api.Options
+
+// Decision is local audit evidence, not authorization for privileged work.
+type Decision = api.Decision
 
 // Result contains JSON-like callback data, constructor actions and captured print output.
 type Result struct {
@@ -96,6 +70,14 @@ type invocation struct {
 	externalStarted   bool
 	externalCompleted bool
 	callSecrets       []string
+}
+
+func (inv *invocation) Context() context.Context { return inv.ctx }
+func (inv *invocation) Options() api.Options     { return inv.engine.options }
+func (inv *invocation) MarkStarted()             { inv.externalStarted = true }
+func (inv *invocation) MarkCompleted()           { inv.externalCompleted = true }
+func (inv *invocation) RecordDecision(decision api.Decision) {
+	inv.decisions = append(inv.decisions, decision)
 }
 
 func defaults(o Options) (Options, error) {
@@ -138,7 +120,7 @@ func defaults(o Options) (Options, error) {
 		cred.Secrets = slices.Clone(cred.Secrets)
 		cred.Headers, cred.Origins = headers, slices.Clone(cred.Origins)
 		for _, origin := range cred.Origins {
-			if _, err := parseOrigin(origin); err != nil {
+			if _, err := automationhttp.ParseOrigin(origin); err != nil {
 				return o, fmt.Errorf("credential %q: invalid origin", name)
 			}
 		}
@@ -146,7 +128,7 @@ func defaults(o Options) (Options, error) {
 	}
 	o.Auth = auth
 	for _, origin := range o.HTTPOrigins {
-		if _, err := parseOrigin(origin); err != nil {
+		if _, err := automationhttp.ParseOrigin(origin); err != nil {
 			return o, errors.New("invalid HTTP origin")
 		}
 	}
@@ -157,7 +139,7 @@ func defaults(o Options) (Options, error) {
 		o.HTTP = &client
 	}
 	if o.Jev.Enabled {
-		if _, err := requestURL(o.Jev.Endpoint); err != nil || strings.TrimSpace(o.Jev.APIKey) == "" {
+		if _, err := automationhttp.RequestURL(o.Jev.Endpoint); err != nil || strings.TrimSpace(o.Jev.APIKey) == "" {
 			return o, errors.New("enabled Jev requires a valid endpoint and API key")
 		}
 		if o.Jev.Model == "" {
@@ -341,14 +323,9 @@ func (e *Engine) Invoke(ctx context.Context, entry string, args ...any) (Result,
 	thread := e.thread(ctx, inv)
 	stop := context.AfterFunc(ctx, func() { thread.Cancel("hook invocation cancelled") })
 	defer stop()
-	values := make(starlark.Tuple, len(args))
-	budget := &dataBudget{remaining: e.options.Limits.DataBytes}
-	for i, arg := range args {
-		value, err := budget.encode(reflect.ValueOf(arg), 0)
-		if err != nil {
-			return Result{}, fmt.Errorf("hook %s argument %d: %w", entry, i, err)
-		}
-		values[i] = value
+	values, err := api.Arguments(args, e.options.Limits.DataBytes)
+	if err != nil {
+		return Result{}, fmt.Errorf("hook %s %w", entry, err)
 	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
@@ -437,10 +414,10 @@ func predeclared() starlark.StringDict {
 		"start_step": starlark.NewBuiltin("start_step", constructAction),
 		"finish_run": starlark.NewBuiltin("finish_run", constructAction),
 		"http": starlarkstruct.FromStringDict(starlark.String("http"), starlark.StringDict{
-			"get":  capability("http.get", httpCall),
-			"post": capability("http.post", httpCall),
+			"get":  capability("http.get", automationhttp.Call),
+			"post": capability("http.post", automationhttp.Call),
 		}),
-		"shell": capability("shell", shellCall),
-		"jev":   capability("jev", jevCall),
+		"shell": capability("shell", command.Call),
+		"jev":   capability("jev", jev.Call),
 	}
 }

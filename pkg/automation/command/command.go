@@ -1,4 +1,5 @@
-package automation
+// Package command implements bounded argv execution for automation hooks.
+package command
 
 import (
 	"bytes"
@@ -11,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
@@ -45,12 +47,9 @@ func (w processWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-func shellCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	inv, err := active(t)
-	if err != nil {
-		return nil, err
-	}
-	options := inv.engine.options
+// Call executes shell's explicit argv, environment and working directory.
+func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	options := host.Options()
 	if !options.AllowShell {
 		return nil, errors.New("shell capability is disabled by host")
 	}
@@ -60,7 +59,7 @@ func shellCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kw
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "argv", &argv, "cwd?", &cwd, "env?", &env, "timeout?", &timeout); err != nil {
 		return nil, err
 	}
-	value, err := fromValue(argv, options.Limits.DataBytes)
+	value, err := api.FromValue(argv, options.Limits.DataBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +91,7 @@ func shellCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kw
 		}
 	}
 	if env != nil {
-		data, convertErr := fromValue(env, options.Limits.DataBytes)
+		data, convertErr := api.FromValue(env, options.Limits.DataBytes)
 		if convertErr != nil {
 			return nil, convertErr
 		}
@@ -104,7 +103,7 @@ func shellCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kw
 			environment[key] = text
 		}
 	}
-	ctx, cancel, err := callContext(inv, timeout)
+	ctx, cancel, err := api.CallContext(host, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +123,7 @@ func shellCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kw
 	if err := cmd.Start(); err != nil {
 		return nil, errors.New("shell could not execute command")
 	}
-	inv.externalStarted = true
+	host.MarkStarted()
 	err = cmd.Wait()
 	if output.exceeded {
 		return nil, errors.New("shell output byte limit exceeded")
@@ -132,7 +131,7 @@ func shellCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kw
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("shell cancelled: %w", ctx.Err())
 	}
-	inv.externalCompleted = true
+	host.MarkCompleted()
 	code := 0
 	if err != nil {
 		var exit *exec.ExitError

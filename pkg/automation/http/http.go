@@ -1,22 +1,21 @@
-package automation
+// Package http implements bounded HTTP capabilities for automation hooks.
+package http
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
 
-func requestURL(raw string) (*url.URL, error) {
+// RequestURL validates destinations before any external request is started.
+func RequestURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u == nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || u.Fragment != "" {
 		return nil, errors.New("URL must be http(s) with a host and without credentials or fragment")
@@ -36,8 +35,9 @@ func origin(u *url.URL) string {
 	return strings.ToLower(u.Scheme+"://"+u.Hostname()) + ":" + port
 }
 
-func parseOrigin(raw string) (string, error) {
-	u, err := requestURL(raw)
+// ParseOrigin validates and normalizes a host origin grant.
+func ParseOrigin(raw string) (string, error) {
+	u, err := RequestURL(raw)
 	if err != nil {
 		return "", err
 	}
@@ -49,7 +49,7 @@ func parseOrigin(raw string) (string, error) {
 
 func allowedOrigin(u *url.URL, origins []string) bool {
 	for _, raw := range origins {
-		candidate, err := parseOrigin(raw)
+		candidate, err := ParseOrigin(raw)
 		if err == nil && candidate == origin(u) {
 			return true
 		}
@@ -57,25 +57,10 @@ func allowedOrigin(u *url.URL, origins []string) bool {
 	return false
 }
 
-func callContext(inv *invocation, timeout string) (context.Context, context.CancelFunc, error) {
-	duration := inv.engine.options.Limits.Duration
-	if timeout != "" {
-		parsed, err := time.ParseDuration(timeout)
-		if err != nil || parsed <= 0 {
-			return nil, nil, errors.New("timeout must be a positive duration string")
-		}
-		duration = min(duration, parsed)
-	}
-	ctx, cancel := context.WithTimeout(inv.ctx, duration)
-	return ctx, cancel, nil
-}
-
-func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	inv, err := active(t)
-	if err != nil {
-		return nil, err
-	}
-	if !inv.engine.options.AllowHTTP {
+// Call executes http.get or http.post under the host's grants and limits.
+func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	options := host.Options()
+	if !options.AllowHTTP {
 		return nil, errors.New("HTTP capability is disabled by host")
 	}
 	var raw, auth, timeout, body string
@@ -84,11 +69,10 @@ func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwa
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "url", &raw, "headers?", &headers, "auth?", &auth, "timeout?", &timeout, "body?", &body, "json?", &jsonBody); err != nil {
 		return nil, err
 	}
-	u, err := requestURL(raw)
+	u, err := RequestURL(raw)
 	if err != nil {
 		return nil, err
 	}
-	options := inv.engine.options
 	if len(options.HTTPOrigins) > 0 && !allowedOrigin(u, options.HTTPOrigins) {
 		return nil, errors.New("HTTP destination is not granted by host")
 	}
@@ -100,7 +84,7 @@ func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwa
 		return nil, errors.New("http: body and json are mutually exclusive")
 	}
 	if jsonBody != starlark.None {
-		data, convertErr := fromValue(jsonBody, options.Limits.DataBytes)
+		data, convertErr := api.FromValue(jsonBody, options.Limits.DataBytes)
 		if convertErr != nil {
 			return nil, convertErr
 		}
@@ -116,7 +100,7 @@ func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwa
 	if method == http.MethodGet && body != "" {
 		return nil, errors.New("http.get does not accept a body")
 	}
-	ctx, cancel, err := callContext(inv, timeout)
+	ctx, cancel, err := api.CallContext(host, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +110,7 @@ func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwa
 		return nil, errors.New("could not construct HTTP request")
 	}
 	if headers != nil {
-		rawHeaders, convertErr := fromValue(headers, options.Limits.DataBytes)
+		rawHeaders, convertErr := api.FromValue(headers, options.Limits.DataBytes)
 		if convertErr != nil {
 			return nil, convertErr
 		}
@@ -161,7 +145,7 @@ func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwa
 		if len(via) >= 10 {
 			return errors.New("HTTP redirect limit exceeded")
 		}
-		if _, err := requestURL(next.URL.String()); err != nil {
+		if _, err := RequestURL(next.URL.String()); err != nil {
 			return err
 		}
 		if len(options.HTTPOrigins) > 0 && !allowedOrigin(next.URL, options.HTTPOrigins) {
@@ -176,17 +160,17 @@ func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwa
 		}
 		return nil
 	}
-	inv.externalStarted = true
+	host.MarkStarted()
 	response, err := client.Do(req)
 	if err != nil {
 		return nil, errors.New("HTTP request failed or was cancelled")
 	}
 	defer func() { _ = response.Body.Close() }()
-	data, err := readBounded(response.Body, options.Limits.OutputBytes)
+	data, err := api.ReadBounded(response.Body, options.Limits.OutputBytes)
 	if err != nil {
 		return nil, fmt.Errorf("HTTP response: %w", err)
 	}
-	inv.externalCompleted = true
+	host.MarkCompleted()
 	responseHeaders := map[string]any{}
 	for key, values := range response.Header {
 		responseHeaders[strings.ToLower(key)] = strings.Join(values, ", ")
@@ -194,9 +178,9 @@ func httpCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwa
 	return responseValue(response.StatusCode, data, responseHeaders, options)
 }
 
-func responseValue(status int, data []byte, responseHeaders map[string]any, options Options) (starlark.Value, error) {
+func responseValue(status int, data []byte, responseHeaders map[string]any, options api.Options) (starlark.Value, error) {
 	attrs := starlark.StringDict{"status_code": starlark.MakeInt(status), "body": starlark.String(data), "text": starlark.String(data)}
-	headerValue, err := toValue(responseHeaders, options.Limits.DataBytes)
+	headerValue, err := api.ToValue(responseHeaders, options.Limits.DataBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -205,36 +189,11 @@ func responseValue(status int, data []byte, responseHeaders map[string]any, opti
 		if err := starlark.UnpackArgs("response.json", args, kwargs); err != nil {
 			return nil, err
 		}
-		value, err := decodeJSON(data)
+		value, err := api.DecodeJSON(data)
 		if err != nil {
 			return nil, errors.New("HTTP response is not valid JSON")
 		}
-		return toValue(value, options.Limits.DataBytes)
+		return api.ToValue(value, options.Limits.DataBytes)
 	})
 	return starlarkstruct.FromStringDict(starlark.String("response"), attrs), nil
-}
-
-func readBounded(reader io.Reader, limit int) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
-	if err != nil {
-		return nil, errors.New("could not read bounded output")
-	}
-	if len(data) > limit {
-		return nil, errors.New("output byte limit exceeded")
-	}
-	return data, nil
-}
-
-func decodeJSON(data []byte) (any, error) {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.UseNumber()
-	var value any
-	if err := decoder.Decode(&value); err != nil {
-		return nil, err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, errors.New("unexpected trailing JSON data")
-	}
-	return value, nil
 }

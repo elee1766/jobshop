@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
@@ -128,7 +129,7 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 		if pair.dict == nil {
 			continue
 		}
-		value, convertErr := fromValue(pair.dict, limit)
+		value, convertErr := api.FromValue(pair.dict, limit)
 		if convertErr != nil {
 			return nil, fmt.Errorf("%s: %w", a.Kind, convertErr)
 		}
@@ -150,7 +151,7 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 	if len(data) > limit {
 		return nil, errors.New("action data byte limit exceeded")
 	}
-	value, err := toValue(a, limit)
+	value, err := api.ToValue(a, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -194,12 +195,12 @@ func (e *Engine) result(value starlark.Value) (Result, error) {
 		if len(data) > e.options.Limits.DataBytes {
 			return Result{}, errors.New("action batch data byte limit exceeded")
 		}
-		generic, err := decodeJSON(data)
+		generic, err := api.DecodeJSON(data)
 		if err != nil {
 			return Result{}, err
 		}
 		return Result{Value: generic, Actions: actions}, nil
 	}
-	data, err := fromValue(value, e.options.Limits.DataBytes)
+	data, err := api.FromValue(value, e.options.Limits.DataBytes)
 	return Result{Value: data}, err
 }

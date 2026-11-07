@@ -1,7 +1,6 @@
 package automation
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
@@ -16,21 +16,9 @@ import (
 // Observation records an ordered capability attempt, not proof of an external
 // effect. Index is invocation-local. An unknown outcome must be reconciled before
 // retrying. Inputs are redacted, while InputDigest identifies their original data.
-type Observation struct {
-	Index       int            `json:"index"`
-	Phase       string         `json:"phase"`
-	Capability  string         `json:"capability"`
-	InputDigest string         `json:"input_digest"`
-	Inputs      map[string]any `json:"inputs"`
-	Result      any            `json:"result,omitempty"`
-	Error       string         `json:"error,omitempty"`
-	StartedAt   time.Time      `json:"started_at"`
-	FinishedAt  time.Time      `json:"finished_at,omitzero"`
-	Duration    time.Duration  `json:"duration_ns,omitempty"`
-	Redacted    bool           `json:"redacted,omitempty"`
-}
+type Observation = api.Observation
 
-func capability(name string, call func(*starlark.Thread, *starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error)) *starlark.Builtin {
+func capability(name string, call api.Call) *starlark.Builtin {
 	return starlark.NewBuiltin(name, func(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		inv, err := active(t)
 		if err != nil {
@@ -43,10 +31,17 @@ func capability(name string, call func(*starlark.Thread, *starlark.Builtin, star
 		inv.externalStarted, inv.externalCompleted = false, false
 		inv.captureHeaders(name, args, kwargs)
 		options := inv.engine.options
-		if options.Observe == nil && options.Replay == nil {
-			return call(t, fn, args, kwargs)
+		invoke := func() (starlark.Value, error) {
+			// An observer may cancel the invocation before external work starts.
+			if err := inv.ctx.Err(); err != nil {
+				return nil, err
+			}
+			return call(inv, fn, args, kwargs)
 		}
-		inputs, err := fromValue(args, options.Limits.DataBytes)
+		if options.Observe == nil && options.Replay == nil {
+			return invoke()
+		}
+		inputs, err := api.FromValue(args, options.Limits.DataBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -56,7 +51,7 @@ func capability(name string, call func(*starlark.Thread, *starlark.Builtin, star
 				return nil, err
 			}
 		}
-		keywords, err := fromValue(named, options.Limits.DataBytes)
+		keywords, err := api.FromValue(named, options.Limits.DataBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -82,7 +77,7 @@ func capability(name string, call func(*starlark.Thread, *starlark.Builtin, star
 				return nil, errors.New("capability observation failed before execution")
 			}
 		}
-		result, callErr := call(t, fn, args, kwargs)
+		result, callErr := invoke()
 		finished := time.Now()
 		observation.FinishedAt, observation.Duration = finished.UTC(), finished.Sub(started)
 		observation.Phase = "completed"
@@ -139,7 +134,7 @@ func observedResult(capability string, value starlark.Value, limits Limits) (any
 				return nil, err
 			}
 		}
-		data, err := fromValue(dict, limits.DataBytes)
+		data, err := api.FromValue(dict, limits.DataBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +144,7 @@ func observedResult(capability string, value starlark.Value, limits Limits) (any
 		}
 		return data, nil
 	}
-	return fromValue(value, limits.DataBytes)
+	return api.FromValue(value, limits.DataBytes)
 }
 
 func sensitiveHeader(name string) bool {
@@ -165,7 +160,7 @@ func (inv *invocation) captureHeaders(name string, args starlark.Tuple, kwargs [
 	if name != "http.get" && name != "http.post" {
 		return
 	}
-	headers, ok := callArgument(args, kwargs, "headers", 1).(*starlark.Dict)
+	headers, ok := api.Argument(args, kwargs, "headers", 1).(*starlark.Dict)
 	if !ok {
 		return
 	}
@@ -254,4 +249,4 @@ func (inv *invocation) safeError(err error) error {
 
 // Observer is called synchronously outside any controller lock. It may reject a
 // call before execution. Failure after execution does not undo external effects.
-type Observer func(context.Context, Observation) error
+type Observer = api.Observer

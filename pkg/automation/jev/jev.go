@@ -1,4 +1,5 @@
-package automation
+// Package jev implements the Decisions wire contract for automation hooks.
+package jev
 
 import (
 	"bytes"
@@ -10,24 +11,13 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"go.starlark.net/starlark"
 )
 
-// Decision is local audit evidence. Reason describes validation or fallback, not
-// an invented upstream model explanation. Jev never authorizes privileged work.
-type Decision struct {
-	Choice     string   `json:"choice"`
-	Reason     string   `json:"reason"`
-	Defaulted  bool     `json:"defaulted"`
-	Confidence *float64 `json:"confidence"`
-}
-
-func jevCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	inv, err := active(t)
-	if err != nil {
-		return nil, err
-	}
-	options := inv.engine.options
+// Call validates a choice request and records only validated or explicit default decisions.
+func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	options := host.Options()
 	if !options.Jev.Enabled {
 		return nil, errors.New("jev capability is disabled by host")
 	}
@@ -61,8 +51,9 @@ func jevCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwar
 		}
 	}
 	stateData := any(map[string]any{})
+	var err error
 	if state != nil {
-		stateData, err = fromValue(state, options.Limits.DataBytes)
+		stateData, err = api.FromValue(state, options.Limits.DataBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +78,7 @@ func jevCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwar
 	if timeout == "" {
 		timeout = "10s"
 	}
-	ctx, cancel, err := callContext(inv, timeout)
+	ctx, cancel, err := api.CallContext(host, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -101,34 +92,34 @@ func jevCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwar
 	client := *options.HTTP
 	client.Jar = nil
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
-	finish := func(decision Decision) (starlark.Value, error) {
-		inv.decisions = append(inv.decisions, decision)
-		return toValue(decision, options.Limits.DataBytes)
+	finish := func(decision api.Decision) (starlark.Value, error) {
+		host.RecordDecision(decision)
+		return api.ToValue(decision, options.Limits.DataBytes)
 	}
 	unavailable := func(reason string) (starlark.Value, error) {
-		if inv.ctx.Err() != nil {
-			return nil, fmt.Errorf("jev cancelled: %w", inv.ctx.Err())
+		if host.Context().Err() != nil {
+			return nil, fmt.Errorf("jev cancelled: %w", host.Context().Err())
 		}
 		if fallback == "" {
 			return nil, errors.New(reason)
 		}
-		return finish(Decision{Choice: fallback, Defaulted: true, Reason: reason})
+		return finish(api.Decision{Choice: fallback, Defaulted: true, Reason: reason})
 	}
-	inv.externalStarted = true
+	host.MarkStarted()
 	response, err := client.Do(req)
 	if err != nil {
 		return unavailable("jev: request failed or timed out")
 	}
 	defer func() { _ = response.Body.Close() }()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		inv.externalCompleted = true
+		host.MarkCompleted()
 		return unavailable(fmt.Sprintf("jev: service returned HTTP %d", response.StatusCode))
 	}
-	data, err := readBounded(response.Body, min(options.Limits.OutputBytes, 256*1024))
+	data, err := api.ReadBounded(response.Body, min(options.Limits.OutputBytes, 256*1024))
 	if err != nil {
 		return nil, errors.New("jev: bounded response read failed")
 	}
-	inv.externalCompleted = true
+	host.MarkCompleted()
 	var decoded struct {
 		Answers map[string]struct {
 			Type       string   `json:"type"`
@@ -153,5 +144,5 @@ func jevCall(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwar
 			return nil, errors.New("jev: confidence must be between 0 and 1")
 		}
 	}
-	return finish(Decision{Choice: answer.Choice, Confidence: answer.Confidence, Reason: "selected and validated a supplied option"})
+	return finish(api.Decision{Choice: answer.Choice, Confidence: answer.Confidence, Reason: "selected and validated a supplied option"})
 }

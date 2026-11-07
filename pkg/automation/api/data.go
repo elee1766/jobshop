@@ -1,4 +1,4 @@
-package automation
+package api
 
 import (
 	"encoding/json"
@@ -25,8 +25,23 @@ func (b *dataBudget) take(size, depth int) error {
 	return nil
 }
 
-func toValue(value any, limit int) (starlark.Value, error) {
+// ToValue encodes host data with a bounded structural budget.
+func ToValue(value any, limit int) (starlark.Value, error) {
 	return (&dataBudget{remaining: limit}).encode(reflect.ValueOf(value), 0)
+}
+
+// Arguments encodes invocation arguments against one shared structural budget.
+func Arguments(args []any, limit int) (starlark.Tuple, error) {
+	values := make(starlark.Tuple, len(args))
+	budget := &dataBudget{remaining: limit}
+	for i, arg := range args {
+		value, err := budget.encode(reflect.ValueOf(arg), 0)
+		if err != nil {
+			return nil, fmt.Errorf("argument %d: %w", i, err)
+		}
+		values[i] = value
+	}
+	return values, nil
 }
 
 func (b *dataBudget) encode(v reflect.Value, depth int) (starlark.Value, error) {
@@ -137,7 +152,8 @@ func (b *dataBudget) encode(v reflect.Value, depth int) (starlark.Value, error) 
 	}
 }
 
-func fromValue(value starlark.Value, limit int) (any, error) {
+// FromValue decodes script data with structural and JSON byte ceilings.
+func FromValue(value starlark.Value, limit int) (any, error) {
 	decoded, err := (&dataBudget{remaining: limit}).decode(value, 0)
 	if err != nil {
 		return nil, err

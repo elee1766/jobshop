@@ -1,6 +1,6 @@
 //go:build unix
 
-package automation
+package command
 
 import (
 	"os/exec"

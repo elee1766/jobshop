@@ -1,16 +1,31 @@
-package automation_test
+package jev_test
 
 import (
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/elee1766/jobshop/pkg/automation"
 )
+
+func hook(t *testing.T, source string, options automation.Options) *automation.Engine {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.star"), []byte(source), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	engine, err := automation.Load(t.Context(), root, []string{"main.star:handle"}, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return engine
+}
 
 func TestJevVerifiedWireContractAndFailures(t *testing.T) {
 	var requests atomic.Int32

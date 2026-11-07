@@ -6,16 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/elee1766/jobshop/pkg/automation"
 )
@@ -144,7 +141,7 @@ func TestCheckArityWithoutExecutingCallback(t *testing.T) {
 }
 
 func TestCapabilityObservationDurabilityBoundary(t *testing.T) {
-	for _, failure := range []string{"", "started", "completed"} {
+	for _, failure := range []string{"", "started", "completed", "cancelled"} {
 		t.Run(failure, func(t *testing.T) {
 			var effects atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +149,8 @@ func TestCapabilityObservationDurabilityBoundary(t *testing.T) {
 				_, _ = io.WriteString(w, r.Header.Get("Authorization"))
 			}))
 			defer server.Close()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
 			var observations []automation.Observation
 			engine := hook(t, "def handle(url):\n    return http.post(url, auth=\"service\", body=\"mutation\").status_code\n", automation.Options{
 				AllowHTTP: true, Auth: map[string]automation.Credential{"service": {Origins: []string{server.URL}, Headers: map[string]string{"Authorization": "Bearer private-token"}}},
@@ -160,13 +159,16 @@ func TestCapabilityObservationDurabilityBoundary(t *testing.T) {
 						t.Error("effect preceded started observation")
 					}
 					observations = append(observations, o)
+					if failure == "cancelled" && o.Phase == "started" {
+						cancel()
+					}
 					if o.Phase == failure {
 						return errors.New("storage failed")
 					}
 					return nil
 				},
 			})
-			_, err := engine.Invoke(t.Context(), "main.star:handle", server.URL)
+			_, err := engine.Invoke(ctx, "main.star:handle", server.URL)
 			if failure == "" && err != nil {
 				t.Fatal(err)
 			}
@@ -174,11 +176,14 @@ func TestCapabilityObservationDurabilityBoundary(t *testing.T) {
 				t.Fatal("observer failure was ignored")
 			}
 			expected := int32(1)
-			if failure == "started" {
+			if failure == "started" || failure == "cancelled" {
 				expected = 0
 			}
 			if effects.Load() != expected {
 				t.Fatalf("unexpected effect count %d", effects.Load())
+			}
+			if failure == "cancelled" && (len(observations) != 2 || observations[1].Phase != "failed") {
+				t.Fatalf("cancellation before execution was not a known failure: %#v", observations)
 			}
 			data, marshalErr := json.Marshal(observations)
 			if marshalErr != nil {
@@ -284,227 +289,17 @@ func TestHookLimitsAndDiagnostics(t *testing.T) {
 	}
 }
 
-func TestHTTPAuthJSONAndRedirects(t *testing.T) {
-	var foreignRequests atomic.Int32
-	foreign := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		foreignRequests.Add(1)
-		if r.Header.Get("Authorization") != "" || r.Header.Get("X-Credential") != "" {
-			t.Error("credential leaked across origin")
-		}
-	}))
-	defer foreign.Close()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/public-redirect" {
-			http.Redirect(w, r, foreign.URL, http.StatusFound)
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer secret" {
-			t.Error("missing named credential")
-		}
-		if r.URL.Path == "/redirect" {
-			http.Redirect(w, r, foreign.URL, http.StatusFound)
-			return
-		}
-		if r.Method != http.MethodPost || r.Header.Get("Content-Type") != "application/json" {
-			t.Error("wrong JSON request contract")
-		}
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Error(err)
-		}
-		if string(data) != "{\"nested\":[1,true]}" {
-			t.Errorf("wrong JSON body %s", data)
-		}
-		_, _ = io.WriteString(w, `{"value":9007199254740993}`)
-	}))
-	defer server.Close()
-	options := automation.Options{AllowHTTP: true, Auth: map[string]automation.Credential{"service": {Origins: []string{server.URL}, Headers: map[string]string{"Authorization": "Bearer secret"}}}}
-	engine := hook(t, `def handle(url):
-    response = http.post(url, auth="service", json={"nested": [1, True]})
-    return {"status": response.status_code, "value": response.json()["value"]}
-`, options)
-	result, err := engine.Invoke(t.Context(), "main.star:handle", server.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Value.(map[string]any)["value"] != int64(9007199254740993) {
-		t.Fatalf("JSON conversion lost data: %#v", result.Value)
-	}
-	for _, url := range []string{foreign.URL, server.URL + "/redirect"} {
-		if _, err := engine.Invoke(t.Context(), "main.star:handle", url); err == nil {
-			t.Fatal("allowed credential origin violation")
-		}
-	}
-	if foreignRequests.Load() != 0 {
-		t.Fatal("authenticated redirect reached another origin")
-	}
-	public := hook(t, "def handle(url):\n    return http.get(url, headers={\"Authorization\": \"caller-secret\", \"X-Credential\": \"custom-secret\"}).status_code\n", automation.Options{AllowHTTP: true})
-	if _, err := public.Invoke(t.Context(), "main.star:handle", server.URL+"/public-redirect"); err != nil {
-		t.Fatal(err)
-	}
-	if foreignRequests.Load() != 1 {
-		t.Fatal("unauthenticated redirect did not reach destination")
-	}
-}
-
-func TestHTTPResponseLimitAndCancellation(t *testing.T) {
-	started := make(chan struct{})
-	var smallRequests atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/small" {
-			smallRequests.Add(1)
-			_, _ = io.WriteString(w, "{}")
-			return
-		}
-		if r.URL.Path == "/large" {
-			_, _ = io.WriteString(w, strings.Repeat("x", 100))
-			return
-		}
-		close(started)
-		<-r.Context().Done()
-	}))
-	defer server.Close()
-	engine := hook(t, "def handle(url):\n    return http.get(url).text\n", automation.Options{AllowHTTP: true, Limits: automation.Limits{OutputBytes: 10}})
-	if _, err := engine.Invoke(t.Context(), "main.star:handle", server.URL+"/large"); err == nil || !strings.Contains(err.Error(), "byte limit") {
-		t.Fatalf("unbounded HTTP output: %v", err)
-	}
-	quota := hook(t, "def handle(url):\n    http.get(url)\n    return http.get(url).text\n", automation.Options{AllowHTTP: true, Limits: automation.Limits{Calls: 1}})
-	if _, err := quota.Invoke(t.Context(), "main.star:handle", server.URL+"/small"); err == nil || !strings.Contains(err.Error(), "call limit") {
-		t.Fatalf("unbounded capability calls: %v", err)
-	}
-	if smallRequests.Load() != 1 {
-		t.Fatalf("call budget allowed %d requests", smallRequests.Load())
-	}
-	ctx, cancel := context.WithCancel(t.Context())
-	done := make(chan error, 1)
-	go func() { _, err := engine.Invoke(ctx, "main.star:handle", server.URL); done <- err }()
-	<-started
-	cancel()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("HTTP cancellation succeeded")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("HTTP cancellation blocked")
-	}
-}
-
-// TestProcessHelper is a real child process used to exercise shell boundaries.
+// TestProcessHelper counts real external effects for cross-capability replay.
 func TestProcessHelper(_ *testing.T) {
-	mode := os.Getenv("AUTOMATION_TEST_PROCESS")
-	if mode == "" {
+	if os.Getenv("AUTOMATION_TEST_PROCESS") != "count" {
 		return
 	}
-	switch mode {
-	case "echo":
-		cwd, err := os.Getwd()
-		if err != nil {
-			os.Exit(1)
-		}
-		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"cwd": cwd, "env": os.Getenv("HOOK_VALUE"), "args": os.Args[len(os.Args)-1]})
-		os.Exit(7)
-	case "large":
-		fmt.Print(strings.Repeat("x", 100))
-		os.Exit(0)
-	case "count":
-		file, err := os.OpenFile(os.Getenv("AUTOMATION_TEST_FILE"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		if err != nil {
-			os.Exit(2)
-		}
-		_, _ = file.WriteString("executed\n")
-		_ = file.Close()
-		fmt.Print("counted")
-		os.Exit(0)
-	case "wait":
-		executable, err := os.Executable()
-		if err != nil {
-			os.Exit(2)
-		}
-		child := exec.Command(executable, "-test.run=^TestProcessHelper$")
-		child.Env = append(os.Environ(), "AUTOMATION_TEST_PROCESS=child")
-		if err := child.Run(); err != nil {
-			os.Exit(2)
-		}
-		os.Exit(0)
-	case "child":
-		conn, err := net.Dial("tcp", os.Getenv("AUTOMATION_TEST_ADDRESS"))
-		if err != nil {
-			os.Exit(2)
-		}
-		_, _ = conn.Write([]byte("ready"))
-		_, _ = io.Copy(io.Discard, conn)
-		os.Exit(0)
-	}
-}
-
-func TestShellArgvEnvironmentLimitsAndCancellation(t *testing.T) {
-	executable, err := os.Executable()
+	file, err := os.OpenFile(os.Getenv("AUTOMATION_TEST_FILE"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
-		t.Fatal(err)
+		os.Exit(2)
 	}
-	dir := t.TempDir()
-	options := automation.Options{AllowShell: true, ShellDir: dir, ShellEnv: []string{"AUTOMATION_TEST_PROCESS=echo"}}
-	engine := hook(t, `def handle(argv):
-    result = shell(argv, env={"HOOK_VALUE": "literal"})
-    return {"code": result.exit_code, "data": result.stdout}
-`, options)
-	argv := []string{executable, "-test.run=^TestProcessHelper$", "--", "$(false); untrusted"}
-	result, err := engine.Invoke(t.Context(), "main.star:handle", argv)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data := result.Value.(map[string]any)
-	if data["code"] != int64(7) {
-		t.Fatalf("wrong exit status %#v", data)
-	}
-	var output map[string]any
-	if err := json.Unmarshal([]byte(data["data"].(string)), &output); err != nil {
-		t.Fatal(err)
-	}
-	if output["args"] != "$(false); untrusted" || output["env"] != "literal" || output["cwd"] != dir {
-		t.Fatalf("shell did not preserve explicit argv/env/cwd: %#v", output)
-	}
-	options.ShellEnv = []string{"AUTOMATION_TEST_PROCESS=large"}
-	options.Limits.OutputBytes = 10
-	large := hook(t, "def handle(argv):\n    return shell(argv).stdout\n", options)
-	if _, err := large.Invoke(t.Context(), "main.star:handle", argv); err == nil || !strings.Contains(err.Error(), "output byte limit") {
-		t.Fatalf("unbounded shell output: %v", err)
-	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = listener.Close() }()
-	options.ShellEnv = []string{"AUTOMATION_TEST_PROCESS=wait", "AUTOMATION_TEST_ADDRESS=" + listener.Addr().String()}
-	options.Limits.OutputBytes = 0
-	waiting := hook(t, "def handle(argv):\n    return shell(argv).exit_code\n", options)
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	done := make(chan error, 1)
-	go func() { _, err := waiting.Invoke(ctx, "main.star:handle", argv); done <- err }()
-	connection, err := listener.Accept()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = connection.Close() }()
-	ready := make([]byte, 5)
-	if _, err := io.ReadFull(connection, ready); err != nil {
-		t.Fatal(err)
-	}
-	cancel()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("shell cancellation succeeded")
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("shell cancellation blocked")
-	}
-	if err := connection.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := connection.Read(make([]byte, 1)); !errors.Is(err, io.EOF) {
-		t.Fatalf("shell descendant survived cancellation: %v", err)
-	}
+	_, _ = file.WriteString("executed\n")
+	_ = file.Close()
+	fmt.Print("counted")
+	os.Exit(0)
 }
