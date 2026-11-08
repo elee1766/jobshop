@@ -55,6 +55,9 @@ resumes here within a minute of CI finishing. If it resumes with
    a numbered section, give this PR the next free number. Then
    `git push --force-with-lease`, comment on the PR what you resolved,
    and wait for CI on the new head.
+   `mergeStateStatus` can read CLEAN or UNKNOWN while stale: right before
+   merging, `git fetch origin` and `git merge-tree --write-tree
+   origin/master <head>`; on a conflict treat it as BEHIND.
    Non-docs conflicts with master and nothing else wrong (no review
    finding): comment the conflicted files on the PR and on the `implement`
    step, `jobshop run resume <run> --step implement`, then
