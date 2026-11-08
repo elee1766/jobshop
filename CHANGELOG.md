@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.9.0](https://github.com/elee1766/jobshop/compare/v0.8.26...v0.9.0) (2026-11-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* starlark-only self-dev packs, rename stall to scan ([#1005](https://github.com/elee1766/jobshop/issues/1005))
+
+### Features
+
+* starlark-only self-dev packs, rename stall to scan ([#1005](https://github.com/elee1766/jobshop/issues/1005)) ([91a954c](https://github.com/elee1766/jobshop/commit/91a954cd64e5c03b0d6af9a773b1c6f1af0d746f))
+
+
+### Bug fixes
+
+* packs test flake and nix vendorHash ([#1007](https://github.com/elee1766/jobshop/issues/1007)) ([c1b4eb3](https://github.com/elee1766/jobshop/commit/c1b4eb3ea3e7afa217bde97a678dbf5eec7671fa))
+
 ## [0.8.26](https://github.com/elee1766/jobshop/compare/v0.8.25...v0.8.26) (2026-11-08)
 
 
