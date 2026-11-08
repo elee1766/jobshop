@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import Chat, { type Chat as ChatInfo } from "./Chat.svelte";
   import Trace from "./Trace.svelte";
   import HookAudit from "./HookAudit.svelte";
@@ -26,6 +26,9 @@
   let chats: ChatInfo[] = $state([]);
   let view = $state("home");
   let phoneTab = $state("waiting");
+  // Home section the URL hash names. The phone tabs for waiting and in
+  // flight only scroll to it, so every width shows the same home page.
+  let section = $state("");
   let attention: AttentionItem[] = $state([]);
   let runs: RunResult[] = $state([]);
   let now = $state(Date.now());
@@ -107,6 +110,7 @@
     if (next !== "home") phoneTab = "more";
     const u = new URL(location.href);
     u.searchParams.set("view", next);
+    u.hash = next === "home" && section ? "#" + section : "";
     for (const [key, value] of Object.entries({
       ref: traceRef,
       inspect: inspectRef,
@@ -119,6 +123,22 @@
     }
     if (u.href !== location.href) history.pushState(null, "", u);
     updateStream();
+  }
+  // Scroll to a home section; with no id, to the top of home.
+  async function showSection(id: string) {
+    await tick();
+    const work = document.querySelector<HTMLElement>(".work");
+    const target = id ? document.getElementById(id) : null;
+    if (!work) return;
+    // Scroll .work itself: scrollIntoView could also move overflow:hidden ancestors.
+    work.scrollTop = target ? work.scrollTop + target.getBoundingClientRect().top - work.getBoundingClientRect().top : 0;
+  }
+  function goSection(id: string) {
+    section = id;
+    phoneTab = id || "waiting";
+    chatOpen = false;
+    navigate("home");
+    void showSection(id);
   }
   function traceClick(event: MouseEvent) {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -357,8 +377,11 @@
     filter = params.get("filter") || "";
     sinceAway = params.get("since") === "1";
     restoreChat = params.get("chat") || "";
-    phoneTab = view === "home" ? "waiting" : "more";
+    const hash = location.hash.slice(1);
+    section = view === "home" && ["waiting", "inflight"].includes(hash) ? hash : "";
+    phoneTab = view === "home" ? section || "waiting" : "more";
     chatOpen = false;
+    if (view === "home") void showSection(section);
     if (previousTrace !== traceRef + ":" + inspectRef) {
       trace = null;
       selected = null;
@@ -456,13 +479,13 @@
     <nav aria-label="Main">
       {#each ["home", "trace", "improvements", "system"] as page}<button
           class:chosen={view === page}
-          onclick={() => navigate(page)}
+          onclick={() => (page === "home" ? goSection("") : navigate(page))}
           >{{ home: 'home', trace: 'trace', improvements: 'learn', system: 'sys' }[page]}</button
         >{/each}<span class="divider">|</span><button
         class:chosen={sinceAway}
         onclick={() => {
           sinceAway = !sinceAway;
-          navigate("home");
+          goSection("");
         }}>catch-up</button
       >
     </nav>
@@ -484,7 +507,7 @@
               >clear</button
             >
           </div>{/if}
-        <section class="waiting" aria-label="Waiting">
+        <section class="waiting" id="waiting" aria-label="Waiting">
           <div class="tag">
             <button
               aria-label="Toggle waiting"
@@ -577,7 +600,7 @@
                 </p>{/each}
             </div>{/if}
         </section>
-        <section class="inflight" aria-label="In flight">
+        <section class="inflight" id="inflight" aria-label="In flight">
           <div class="tag">
             <button
               aria-label="Toggle inflight"
@@ -849,9 +872,11 @@
     {#each ["waiting", "chats", "inflight", "more"] as tab}<button
         class:chosen={phoneTab === tab}
         onclick={() => {
-          phoneTab = tab;
-          if (tab === "chats") showChat();
-          else if (tab !== "more") view = "home";
+          if (tab === "chats") {
+            phoneTab = tab;
+            showChat();
+          } else if (tab === "more") phoneTab = tab;
+          else goSection(tab);
         }}
         >{tab === "inflight"
           ? "in flight"

@@ -758,18 +758,8 @@ span.ticket-status { display: inline-block; }
   .desk[data-phone="chats"] .chat-column {
     display: flex;
   }
-  .desk[data-phone="waiting"] .inflight {
-    display: none;
-  }
-  .desk[data-phone="inflight"] .waiting,
-  .desk[data-phone="inflight"] .not-moving {
-    display: none;
-  }
-  .desk[data-phone="more"] .waiting,
-  .desk[data-phone="more"] .not-moving,
-  .desk[data-phone="more"] .inflight {
-    display: none;
-  }
+  /* Waiting and in flight are sections of home at every width: the phone
+     tabs scroll to them instead of hiding the others (JOB-130). */
   .desk[data-phone="more"] .top nav {
     display: flex;
     flex-wrap: wrap;
