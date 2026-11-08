@@ -24,14 +24,7 @@ import (
 // (sandbox ro and env_keep, or sandbox_profiles), not from code (#625).
 
 // expandHome turns a leading "~/" into the controller's HOME.
-func expandHome(p string) string {
-	if rest, ok := strings.CutPrefix(p, "~/"); ok {
-		if h, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(h, rest)
-		}
-	}
-	return p
-}
+func expandHome(p string) string { return sessionrt.ExpandHome(p) }
 
 // sandboxFor computes the session's sandbox from config, or nil when the
 // pool is not sandboxed. exe is the jobshop binary agents call. It may
