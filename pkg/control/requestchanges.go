@@ -132,16 +132,6 @@ func (c *Controller) closeRequestChanges(ctx context.Context, cfg *config.Config
 	return t, nil
 }
 
-// reviewCapped reports whether s is a step closed request_changes past
-// its review round cap.
-func reviewCapped(s store.Ticket) bool {
-	if s.Status != store.StatusClosed || s.Resolution != store.ResolutionRequestChanges {
-		return false
-	}
-	f, err := store.DecodeFields[store.StepFields](s)
-	return err == nil && f.ReviewRounds > f.ReviewRoundLimit()
-}
-
 // changesPrompt is the ticket prompt section for an open change request.
 func changesPrompt(t store.Ticket) string {
 	if t.Kind != store.KindStep {

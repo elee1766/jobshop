@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/control/question"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -22,11 +23,12 @@ import (
 
 const (
 	reportMetaPack   = "report"
-	questionMetaPack = "question"
-	// resolutionAnswered closes a question ticket that got its answer.
-	resolutionAnswered = "answered"
-	// answerTitlePrefix starts the message carrying an answer.
-	answerTitlePrefix = "Answer to your question "
+	questionMetaPack = store.MetaQuestion
+	// The question ticket's content lives in pkg/control/question (JOB-147).
+	resolutionAnswered = question.Resolution
+	answerTitlePrefix  = question.AnswerTitlePrefix
+	questionTo         = question.To
+	maxQuestionContext = question.MaxContext
 )
 
 // reportMeta is meta.report on a reported ticket.
@@ -40,14 +42,7 @@ type reportMeta struct {
 }
 
 // questionMeta is meta.question on a question ticket.
-type questionMeta struct {
-	Ticket  string `json:"ticket"`            // the ticket the question is about
-	Session string `json:"session,omitempty"` // who asked; the answer goes there
-	// Context is the asker's context with the controller's links and
-	// recent comments (JOB-101); Options the suggested answers.
-	Context string               `json:"context,omitempty"`
-	Options []rpc.QuestionOption `json:"options,omitempty"`
-}
+type questionMeta = question.Meta
 
 func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (any, error) {
 	if !slices.Contains(rpc.ReportStates, p.State) {
@@ -79,7 +74,7 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	if len(p.Context) > maxQuestionContext {
 		return nil, fmt.Errorf("%w: context is over %d bytes", store.ErrInvalid, maxQuestionContext)
 	}
-	opts, err := questionOptions(p.Options)
+	opts, err := question.Options(p.Options)
 	if err != nil {
 		return nil, err
 	}
@@ -187,10 +182,6 @@ func reportOf(t store.Ticket) (reportMeta, bool) {
 	return rm, true
 }
 
-// questionTo addresses a question. No session has it as id, key or pool,
-// so the message is never delivered to an agent.
-const questionTo = "human"
-
 // fileQuestion creates the question as a needs-human message to a human.
 // A message is not claimable and has no pool, so no agent picks it up and
 // it is not an orphan; a human answers through the gateway or
@@ -214,7 +205,7 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 	}
 	b := fmt.Sprintf("Question from %s on %s (%s):\n\n%s\n", sc.actor, t.ID, t.Title, q)
 	if len(opts) > 0 {
-		b += "\nOptions:\n\n" + optionsText(opts)
+		b += "\nOptions:\n\n" + question.OptionsText(opts)
 	}
 	if qctx != "" {
 		b += "\n## Context\n\n" + qctx + "\n"
@@ -232,14 +223,7 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 }
 
 // questionOf is meta.question of a question ticket.
-func questionOf(t store.Ticket) (questionMeta, bool) {
-	var m map[string]json.RawMessage
-	var q questionMeta
-	if json.Unmarshal(t.Meta, &m) != nil || json.Unmarshal(m[questionMetaPack], &q) != nil || q.Ticket == "" {
-		return q, false
-	}
-	return q, true
-}
+func questionOf(t store.Ticket) (questionMeta, bool) { return question.Of(t) }
 
 // answerQuestion delivers a human's answer: a message to the asking
 // session when it is still open, a comment on the asked ticket (so a new
@@ -274,7 +258,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 		if i < 0 {
 			return nil, fmt.Errorf("%w: question %s has no option %d (it has %d)", store.ErrInvalid, qt.ID, p.Option, len(qm.Options))
 		}
-		text = chosenText(qm.Options[i], text)
+		text = question.ChosenText(qm.Options[i], text)
 	}
 	from := sc.actor
 	switch {

@@ -536,3 +536,27 @@ func NormalizeMeta(raw json.RawMessage) (json.RawMessage, error) {
 	}
 	return json.Marshal(m)
 }
+
+// ReviewCapped reports whether s is a step closed request_changes past
+// its review round cap (JOB-98).
+func ReviewCapped(s Ticket) bool {
+	if s.Status != StatusClosed || s.Resolution != ResolutionRequestChanges {
+		return false
+	}
+	f, err := DecodeFields[StepFields](s)
+	return err == nil && f.ReviewRounds > f.ReviewRoundLimit()
+}
+
+// StepExhausted is a step closed failed at its retry limit, or closed
+// request_changes past its review round cap (JOB-98): the run needs a
+// human.
+func StepExhausted(s Ticket) bool {
+	if ReviewCapped(s) {
+		return true
+	}
+	if s.Status != StatusClosed || s.Resolution != "failed" {
+		return false
+	}
+	f, err := DecodeFields[StepFields](s)
+	return err == nil && f.Failures >= f.Retries
+}

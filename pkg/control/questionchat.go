@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/control/chatlife"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -18,7 +19,7 @@ import (
 
 const (
 	grantQuestionAnswer = "question-answer"
-	questionChatPrefix  = attentionKeyPrefix + rpc.AttentionQuestion + ":"
+	questionChatPrefix  = chatlife.QuestionChatPrefix
 )
 
 // noteOperator keeps the human who wrote to an attention chat, so the
@@ -251,21 +252,4 @@ func (c *Controller) watched(id string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.watchers[id] > 0
-}
-
-// questionChatPrompt is the question part of attentionPrompt, with the
-// asker's context and options (JOB-101) last.
-func questionChatPrompt(id string, qm questionMeta) string {
-	s := " The operator talks to you here, not to the asking session. When they give an answer, relay it with `jobshop answer " + id +
-		" \"<text>\"`: write it as clear text that stands on its own (`yes, merge PR 12`), never a bare option number or letter, and do not offer numbered choices of your own." +
-		" After answering, the controller tells you here how the asking session reacted: resolved (the ticket is in progress, closed or ready), parked (a wait or defer, with its reason) or re-asked (a new question from the same session, which you show the operator and answer in this chat the same way)." +
-		" Report each in a line or two. The chat ends on its own once the answer settled and the operator leaves."
-	if len(qm.Options) > 0 {
-		s += "\n\nThe asker suggested these options; the operator may pick one or answer freely. When they pick one, relay it with `jobshop answer " + id +
-			" --option N \"<their note, if any>\"`.\n\n" + optionsText(qm.Options)
-	}
-	if qm.Context != "" {
-		s += "\n\nThe asker's context:\n\n" + qm.Context + "\n"
-	}
-	return s
 }

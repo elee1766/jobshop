@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/chatlife"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -56,29 +57,6 @@ func (c *Controller) checkRun(ctx context.Context, cfg *config.Config, runID str
 	c.kickHooks()
 }
 
-// exhaustedStep is a step closed failed at its retry limit, or closed
-// request_changes past its review round cap (JOB-98).
-func exhaustedStep(s store.Ticket) bool {
-	if reviewCapped(s) {
-		return true
-	}
-	if s.Status != store.StatusClosed || s.Resolution != "failed" {
-		return false
-	}
-	f, err := store.DecodeFields[store.StepFields](s)
-	return err == nil && f.Failures >= f.Retries
-}
-
-// escalationReason says why the run's steps need a human.
-func escalationReason(steps []store.Ticket) string {
-	for _, s := range steps {
-		if reviewCapped(s) {
-			return "a review step requested changes past its review round limit"
-		}
-	}
-	return "a step failed at its retry limit"
-}
-
 // escalateRun sets needs_human and files the escalation ticket when a step
 // of a running run is exhausted. It reports whether the run needs a human.
 func (c *Controller) escalateRun(ctx context.Context, cfg *config.Config, runID string) bool {
@@ -106,7 +84,7 @@ func (c *Controller) escalateRun(ctx context.Context, cfg *config.Config, runID 
 	}
 	var failed *store.Ticket
 	for i := range steps {
-		if exhaustedStep(steps[i]) {
+		if store.StepExhausted(steps[i]) {
 			failed = &steps[i]
 			break
 		}
@@ -174,7 +152,7 @@ func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: %s.\n", run.ID, f.Workflow, escalationReason(steps))
+	fmt.Fprintf(&b, "Run %s (workflow %s) needs a human: %s.\n", run.ID, f.Workflow, chatlife.Reason(steps))
 	if len(f.Vars) > 0 {
 		fmt.Fprintf(&b, "Vars: %v\n", f.Vars)
 	}

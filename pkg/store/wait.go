@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"time"
@@ -216,4 +217,18 @@ func (w *Wait) Satisfied() bool {
 		return n > 0
 	}
 	return n == len(w.Conds)
+}
+
+// WaitOf returns fields.wait of a task or step, nil for none.
+func WaitOf(t Ticket) *Wait {
+	if t.Kind != KindTask && t.Kind != KindStep || len(t.Fields) == 0 {
+		return nil
+	}
+	var f struct {
+		Wait *Wait `json:"wait"`
+	}
+	if json.Unmarshal(t.Fields, &f) != nil {
+		return nil
+	}
+	return f.Wait
 }

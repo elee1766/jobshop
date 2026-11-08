@@ -29,6 +29,7 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/chatlife"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/journal"
@@ -1481,7 +1482,7 @@ type client struct{ r *runner }
 
 func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
 	kinds := []acp.PermissionOptionKind{acp.PermissionOptionKindAllowAlways, acp.PermissionOptionKindAllowOnce}
-	if c.r.c.isReadOnly(c.r.id) && !readOnlyTool(p.ToolCall.Kind) {
+	if c.r.c.isReadOnly(c.r.id) && !chatlife.ReadOnlyTool(p.ToolCall.Kind) {
 		// A read-only attention chat (#606) reads; it does not edit,
 		// run or delete until the operator writes. Once only: the same
 		// tool is allowed after that.

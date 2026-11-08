@@ -10,6 +10,7 @@ import (
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+	"github.com/elee1766/jobshop/pkg/control/attention"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -259,13 +260,7 @@ func (c *Controller) ensurePoolEscalation(ctx context.Context, pool, reason stri
 }
 
 // clipTitle keeps the first line of s, at most 200 bytes.
-func clipTitle(s string) string {
-	s, _, _ = strings.Cut(s, "\n")
-	if len(s) > 200 {
-		s = s[:200]
-	}
-	return s
-}
+func clipTitle(s string) string { return attention.ClipTitle(s) }
 
 // unquarantinePools clears permanent quarantines: all of them, or one by
 // name.
