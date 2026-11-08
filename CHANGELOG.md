@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.12](https://github.com/elee1766/jobshop/compare/v0.9.11...v0.9.12) (2026-11-08)
+
+
+### Bug fixes
+
+* **control:** do not count cited learnings after the merge as recurrence ([#1061](https://github.com/elee1766/jobshop/issues/1061)) ([#1062](https://github.com/elee1766/jobshop/issues/1062)) ([6b2802d](https://github.com/elee1766/jobshop/commit/6b2802dbaaa1d2fd9e5aca42c888c3241bc50145))
+
 ## [0.9.11](https://github.com/elee1766/jobshop/compare/v0.9.10...v0.9.11) (2026-11-08)
 
 
