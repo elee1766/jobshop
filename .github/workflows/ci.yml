@@ -55,12 +55,12 @@ jobs:
       - name: install victoria-logs
         env:
           VL_VERSION: v1.53.0
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/vl"
           cd "$RUNNER_TEMP/vl"
           f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
+          "$GITHUB_WORKSPACE/.github/scripts/fetch-release.sh" VictoriaMetrics/VictoriaLogs "$VL_VERSION" "$f" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
           grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
           tar xzf "$f"
           bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
@@ -92,14 +92,25 @@ jobs:
           name: failed-tests
           path: failed-tests.json
           if-no-files-found: ignore
-      - uses: golangci/golangci-lint-action@v8
-        with:
+      # Not golangci-lint-action: it downloads from the release host that
+      # returned 504 for hours on 2026-11-08 (#1040).
+      - name: golangci-lint
+        env:
           # Keep equal to the golangci-lint gasserver.nix puts on agents' PATH.
-          version: v2.15.0
+          GL_VERSION: v2.15.0
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/gl"
+          cd "$RUNNER_TEMP/gl"
+          n=golangci-lint-${GL_VERSION#v}
+          "$GITHUB_WORKSPACE/.github/scripts/fetch-release.sh" golangci/golangci-lint "$GL_VERSION" "$n-linux-amd64.tar.gz" "$n-checksums.txt"
+          grep " $n-linux-amd64.tar.gz\$" "$n-checksums.txt" | sha256sum -c -
+          tar xzf "$n-linux-amd64.tar.gz"
+          cd "$GITHUB_WORKSPACE"
           # Lint the tagged test files too, or they rot unseen.
-          args: --build-tags=victorialogs
+          "$RUNNER_TEMP/gl/$n-linux-amd64/golangci-lint" run --build-tags=victorialogs
       - name: shellcheck deploy scripts
-        run: shellcheck -s sh deploy/*.sh
+        run: shellcheck -s sh deploy/*.sh .github/scripts/*.sh
 
   nix:
     # 2x4 OOMs evaluating the module check; 4x8 costs the same units as 2x8.
