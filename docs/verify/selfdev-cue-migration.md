@@ -39,3 +39,13 @@ lands on its issue as an App comment.
 
 Rollback is a binary and checkout revert; do not reset the ticket
 database.
+
+## Result (2026-11-08)
+
+Deployed 0.9.0 (9c4f9bd) by hand: self-deploy's `config check` ran the old
+host config (`stall_model`, `starlark_workflows`) against the new packs and
+refused, as expected. All 13 triggers loaded once, `identity check` named the
+`elee-agent` App for both repos, scan scripts ended `sync_done`,
+`deploy-state` answered through the desk handler, and the next self-deploy
+run was a no-op. Two pr-work runs open across the switch failed with `hook
+manifest changed` and were cancelled (#1012).
