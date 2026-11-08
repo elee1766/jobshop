@@ -685,3 +685,22 @@ func (c *Client) RemoveLabel(ctx context.Context, key, name string) error {
 type TeamID struct {
 	ID string `json:"id"`
 }
+
+const issueTitleQuery = `query IssueTitle($id: String!) { issue(id: $id) { title } }`
+
+// IssueTitle reads only the issue's title (cosmetic uses, such as a run
+// title), not its comments.
+func (c *Client) IssueTitle(ctx context.Context, key string) (string, error) {
+	var r struct {
+		Issue *struct {
+			Title string `json:"title"`
+		} `json:"issue"`
+	}
+	if err := c.GraphQL(ctx, issueTitleQuery, map[string]any{"id": key}, &r); err != nil {
+		return "", err
+	}
+	if r.Issue == nil {
+		return "", fmt.Errorf("linear: issue %s not found", key)
+	}
+	return r.Issue.Title, nil
+}

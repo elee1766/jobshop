@@ -28,7 +28,7 @@ def master_red(event, args):
     if not runs or runs[0]["conclusion"] != "failure":
         return []
     sha = runs[0]["head_sha"]
-    return [start_run(workflow = "ci-repair", key = sha, inputs = {"sha": sha})]
+    return [start_run(workflow = "ci-repair", key = sha, inputs = {"sha": sha}, title = "Repair red " + args["ci_branch"] + " CI at " + sha[:7])]
 
 # release_pr starts release-merge for the lowest-numbered open release PR
 # whose checks all passed.

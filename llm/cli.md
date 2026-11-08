@@ -2218,6 +2218,8 @@ Flags:
   -k, --key=STRING           Dedup key: returns the open run with this workflow
                              and key instead of starting another.
       --project=STRING       Project (default: the first step's pool project).
+      --title=STRING         Run title (default: the title of the run's issue or
+                             PR, else the workflow and key).
       --after=AFTER,...      Ticket or run id the first step waits on
                              (repeatable); the edge is created with the run.
       --force                Skip the intake gate: start a Linear issue's run

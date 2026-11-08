@@ -24,13 +24,14 @@ type runStartCmd struct {
 	Var      map[string]string `short:"v" help:"Workflow var, k=v (repeatable)."`
 	Key      string            `short:"k" help:"Dedup key: returns the open run with this workflow and key instead of starting another."`
 	Project  string            `help:"Project (default: the first step's pool project)."`
+	Title    string            `help:"Run title (default: the title of the run's issue or PR, else the workflow and key)."`
 	After    []string          `help:"Ticket or run id the first step waits on (repeatable); the edge is created with the run."`
 	Force    bool              `help:"Skip the intake gate: start a Linear issue's run even when linear eligible refuses it."`
 	JSON     bool              `help:"Print JSON."`
 }
 
 func (c runStartCmd) params() rpc.RunStartParams {
-	return rpc.RunStartParams{Workflow: c.Workflow, Vars: c.Var, Key: c.Key, Project: c.Project, After: c.After, Force: c.Force}
+	return rpc.RunStartParams{Workflow: c.Workflow, Vars: c.Var, Key: c.Key, Project: c.Project, Title: c.Title, After: c.After, Force: c.Force}
 }
 
 func (c runStartCmd) Run(g *Globals) error {

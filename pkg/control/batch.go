@@ -115,6 +115,9 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 		if plans[i], err = c.planRun(ctx, cfg, sc, params[i]); err != nil {
 			return nil, fmt.Errorf("issue %s: %w", n, err)
 		}
+		if params[i].Title, err = c.planTitle(ctx, cfg, plans[i].w, plans[i].vars, params[i]); err != nil {
+			return nil, fmt.Errorf("issue %s: %w", n, err)
+		}
 	}
 	proj := plans[0].proj
 	dynamic := plans[0].w.OnStart != ""

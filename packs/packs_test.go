@@ -49,6 +49,12 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		]`
 	case r.URL.Path == "/repos/acme/widget/pulls":
 		body = `[]`
+	case r.URL.Path == "/repos/acme/widget/issues/7":
+		body = `{"number":7,"title":"Add a thing"}`
+	case r.URL.Path == "/repos/acme/widget/pulls/20":
+		body = `{"number":20,"title":"feat: add the thing"}`
+	case r.URL.Path == "/repos/acme/widget/pulls/21":
+		body = `{"number":21,"title":"chore: release 1.2.3"}`
 	case r.URL.Path == "/graphql":
 		pr := func(n int, draft bool, author, label, checks string) string {
 			labels := `[]`
@@ -126,18 +132,36 @@ func write(t *testing.T, root, name, data string) {
 
 func runKeys(t *testing.T, c *controltest.Controller, workflow string) []string {
 	t.Helper()
-	var runs []store.Ticket
+	keys := make([]string, 0)
+	for _, r := range workflowRuns(t, c, workflow) {
+		f, err := store.DecodeFields[store.RunFields](r)
+		require.NoError(t, err)
+		keys = append(keys, f.Key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// runTitle is the title of the one run of workflow.
+func runTitle(t *testing.T, c *controltest.Controller, workflow string) string {
+	t.Helper()
+	runs := workflowRuns(t, c, workflow)
+	require.Len(t, runs, 1, workflow)
+	return runs[0].Title
+}
+
+func workflowRuns(t *testing.T, c *controltest.Controller, workflow string) []store.Ticket {
+	t.Helper()
+	var runs, out []store.Ticket
 	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
-	var keys []string
 	for _, r := range runs {
 		f, err := store.DecodeFields[store.RunFields](r)
 		require.NoError(t, err)
 		if f.Workflow == workflow {
-			keys = append(keys, f.Key)
+			out = append(out, r)
 		}
 	}
-	slices.Sort(keys)
-	return keys
+	return out
 }
 
 // The in-repo packs load together (selfdev's workflows and triggers
@@ -154,10 +178,13 @@ func TestPacks(t *testing.T) {
 
 	c.PassUntil(func() bool { return len(runKeys(t, c, "github-pr-review")) > 0 }, "pr-unmerged did not start a review")
 	assert.Equal(t, []string{"pr-20"}, runKeys(t, c, "github-pr-review"), "release, held, red and draft PRs are skipped")
+	assert.Equal(t, "feat: add the thing", runTitle(t, c, "github-pr-review"), "a PR run is titled with the PR")
 	c.PassUntil(func() bool { return len(runKeys(t, c, "github-release-merge")) > 0 }, "release-pr did not start a merge")
 	assert.Equal(t, []string{"release-pr-21"}, runKeys(t, c, "github-release-merge"))
+	assert.Equal(t, "chore: release 1.2.3", runTitle(t, c, "github-release-merge"))
 	c.PassUntil(func() bool { return len(runKeys(t, c, "github-triage")) > 0 }, "issue_no_run did not start triage")
 	assert.Equal(t, []string{"scan:issue_no_run:7"}, runKeys(t, c, "github-triage"), "new, planning, outside and PR items are skipped")
+	assert.Equal(t, "Add a thing", runTitle(t, c, "github-triage"), "an issue's triage run is titled with the issue")
 
 	var planned []store.Ticket
 	c.PassUntil(func() bool {
@@ -173,6 +200,7 @@ func TestPacks(t *testing.T) {
 	c.Clock.Advance(6 * 60e9)
 	c.PassUntil(func() bool { return len(runKeys(t, c, "github-ci-repair")) > 0 }, "master-red did not start a repair")
 	assert.Equal(t, []string{"abc123"}, runKeys(t, c, "github-ci-repair"))
+	assert.Equal(t, "Repair red master CI at abc123", runTitle(t, c, "github-ci-repair"), "operational runs say what the job is")
 
 	guard := func(target string) rpc.GuardResult {
 		var r rpc.GuardResult

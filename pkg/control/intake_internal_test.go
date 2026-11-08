@@ -26,6 +26,7 @@ type fakeLinear struct {
 	mu      sync.Mutex
 	labeled []string // issue ids given a label
 	reads   int
+	titles  int // title-only reads (run titles, JOB-133)
 }
 
 func (f *fakeLinear) serve(t *testing.T) *httptest.Server {
@@ -39,6 +40,9 @@ func (f *fakeLinear) serve(t *testing.T) *httptest.Server {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		switch {
+		case strings.Contains(q.Query, "IssueTitle"):
+			f.titles++
+			_, _ = io.WriteString(w, `{"data":{"issue":{"title":"Fix login"}}}`)
 		case strings.Contains(q.Query, "issueLabels"):
 			_, _ = io.WriteString(w, `{"data":{"issueLabels":{"nodes":[]}}}`)
 		case strings.Contains(q.Query, "issueLabelCreate"):
@@ -109,6 +113,15 @@ func TestIntakeNoHookAllows(t *testing.T) {
 	require.NoError(t, startLinearRun(t, c))
 	assert.Equal(t, 1, runCount(t, c))
 	assert.Zero(t, f.reads, "no hook: the issue is not read")
+	assert.Equal(t, 1, f.titles, "the run title is read")
+	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
+	require.NoError(t, err)
+	require.Len(t, rs, 1)
+	assert.Equal(t, "Fix login", rs[0].Title, "the run is titled with the issue's title")
+	assert.Equal(t, "ENG-5", metaString(rs[0].Meta, "linear", "issue"), "the reference stays in meta")
+	// A repeated start returns the open run and reads nothing.
+	require.NoError(t, startLinearRun(t, c))
+	assert.Equal(t, 1, f.titles)
 }
 
 func TestIntakeAllow(t *testing.T) {

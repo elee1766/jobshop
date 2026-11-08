@@ -254,6 +254,10 @@ func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name s
 			return store.Ticket{}, false, fmt.Errorf("run key: %w", err)
 		}
 	}
+	// A finding about an issue titles its run with the issue's (JOB-133).
+	if p.Title, err = c.findingTitle(ctx, cfg, tr, s, p.Workflow, p.Key); err != nil {
+		return store.Ticket{}, false, err
+	}
 	for k, v := range tr.Run.Vars {
 		out, err := tr.Run.Fill(v, tv)
 		if err != nil {

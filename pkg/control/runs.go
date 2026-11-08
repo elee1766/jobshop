@@ -109,6 +109,11 @@ func (c *Controller) startRun(ctx context.Context, cfg *config.Config, sc scope,
 	if err != nil {
 		return nil, err
 	}
+	// The title read is off the tick in a pass and before runMu: a title is
+	// cosmetic, so a start that finds the key's open run reads nothing.
+	if p.Title, err = c.planTitle(ctx, cfg, plan.w, plan.vars, p); err != nil {
+		return nil, err
+	}
 	// Serialize starts so two starts with one key cannot both miss.
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
@@ -290,9 +295,12 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 	if err != nil {
 		return g, err
 	}
-	title := "Run " + p.Workflow
-	if p.Key != "" {
-		title += " " + p.Key
+	title := p.Title
+	if title == "" {
+		title = "Run " + p.Workflow
+		if p.Key != "" {
+			title += " " + p.Key
+		}
 	}
 	runMetaJSON := meta
 	if extra != nil {

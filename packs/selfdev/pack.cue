@@ -126,13 +126,13 @@ import (
 		evaluate: {
 			when: edits: {runs: V.evaluate_runs, age: V.evaluate_age}
 			handler: "triggers.star:start"
-			args: {workflow: "evaluate", key: "evaluate"}
+			args: {workflow: "evaluate", key: "evaluate", title: "Evaluate recent runs and edits"}
 			max_open: 1
 		}
 		curate: {
 			when: learnings: {min: V.curate_min_learnings, every: V.curate_every, scope: V.curate_scope}
 			handler: "triggers.star:start"
-			args: {workflow: "curate", key: "curate"}
+			args: {workflow: "curate", key: "curate", title: "Curate learnings"}
 			max_open: 1
 		}
 	}
