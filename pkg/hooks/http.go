@@ -109,11 +109,12 @@ func (p hookPost) try(ctx context.Context, secret, body []byte) (out []byte, wai
 	}
 	err = fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(out[:min(len(out), 200)])))
 	retry = resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
-	return nil, retryAfter(resp.Header.Get("Retry-After"), time.Now()), retry, err
+	return nil, RetryAfter(resp.Header.Get("Retry-After"), time.Now()), retry, err
 }
 
-// retryAfter accepts seconds or an HTTP date.
-func retryAfter(h string, now time.Time) time.Duration {
+// RetryAfter parses a Retry-After header: seconds or an HTTP date. Zero
+// when absent, malformed or already past.
+func RetryAfter(h string, now time.Time) time.Duration {
 	if h == "" {
 		return 0
 	}

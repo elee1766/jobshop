@@ -20,6 +20,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalread"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -343,7 +344,7 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 			return nil, err
 		}
 		if p.Resolution == "done" {
-			if err := checkStepOutput(cfg, f.OutputSchema, p.Output); err != nil {
+			if err := hooks.CheckStepOutput(cfg.Automation.OutputBytes, f.OutputSchema, p.Output); err != nil {
 				p.Resolution, p.Outcome, p.Output = "failed", "", nil
 				if _, err := store.AddComment(ctx, c.store, "controller", id, "Invalid structured output: "+err.Error()); err != nil {
 					return nil, err
