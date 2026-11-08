@@ -820,7 +820,10 @@ func TestScanScriptSignal(t *testing.T) {
 projects: {js: {}}
 agents: {fake: {command: "false"}}
 `)
-	pack := `pools:
+	// The scan trigger is loaded by a reload after issue 8's run exists: the
+	// controller's first pass runs at start, and a scan that saw 8 without
+	// its run would start a run for it.
+	packBase := `pools:
   plan: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}
 workflows:
   triage:
@@ -835,14 +838,18 @@ workflows:
     vars: [issue]
     steps:
       - {id: work, pool: plan, title: "Work {{.issue}}", prompt: x}
-triggers:
+`
+	scan := `triggers:
   scan:
     when:
       scan: [{signal: issue_no_run, repo: acme/widget, script: signals.star:issues, args: {label: watch}, poll: 10m}]
     run: {workflow: triage, vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}}
     max_runs: 1
 `
-	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
+	writePack := func(pack string) {
+		require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
+	}
+	writePack(packBase)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "signals.star"), []byte(`def issues(args):
     found = {"#7": "open, no run", "8": "open, no run"}
     for t in tickets(label=args["label"], status="open"):
@@ -853,6 +860,8 @@ triggers:
 	require.NoError(t, err)
 	c := controltest.Start(t, root, control.Options{})
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "issue", Vars: map[string]string{"issue": "8"}}, nil)
+	writePack(packBase + scan)
+	c.Call(rpc.MethodReload, struct{}{}, nil)
 	var runs []store.Ticket
 	scanRuns := func() []store.Ticket {
 		var all []store.Ticket

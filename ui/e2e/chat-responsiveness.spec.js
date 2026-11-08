@@ -131,3 +131,56 @@ test('chat and read-only inspector reach the beginning of journal history', asyn
     await post(request, 'api/chat/manage', { action: 'archive', id: session.id });
   }
 });
+
+test('consecutive tool calls sit tighter than separate messages', async ({ page, request, isMobile }) => {
+  test.setTimeout(45_000);
+  const name = 'tools-' + crypto.randomUUID();
+  // "tool run" makes the fake agent reply with four tool calls, then an echo.
+  const session = await post(request, 'api/chat/manage', { action: 'new', name, text: 'tool run one' });
+  try {
+    async function check(region) {
+      await expect(region.locator('.markdown').last()).toContainText('echo: tool run two');
+      const tools = region.locator('details.tool');
+      await expect(tools).toHaveCount(8);
+      const boxes = async () => Promise.all((await tools.all()).map(tool => tool.boundingBox()));
+      const gaps = list => list.slice(1).map((box, i) => box.y - (list[i].y + list[i].height));
+      const rows = await boxes();
+      // Inside a run (tools 1-4, 5-8) rows touch; between a run and a message there is a gap.
+      for (const [i, gap] of gaps(rows).entries()) {
+        if (i === 3) continue;
+        expect(Math.abs(gap), 'gap after tool ' + i).toBeLessThan(1);
+      }
+      const replyBox = await region.locator('.markdown').filter({ hasText: 'echo: tool run one' }).boundingBox();
+      expect(replyBox.y - (rows[3].y + rows[3].height)).toBeGreaterThanOrEqual(7);
+      expect(rows[0].y - (await region.locator('.operator').filter({ hasText: 'tool run one' }).boundingBox()).y).toBeGreaterThan(0);
+      // Hit targets stay usable: the summary is at least one text line tall, taller on touch.
+      const summary = tools.nth(5).locator('summary');
+      const summaryBox = await summary.boundingBox();
+      expect(summaryBox.height).toBeGreaterThanOrEqual(isMobile ? 26 : 20);
+      await tools.nth(4).locator('summary').focus();
+      await page.keyboard.press('Tab');
+      await expect(summary).toBeFocused();
+      await expect(summary).toHaveCSS('outline-style', 'solid');
+      // Expanding remeasures the row: the next tool moves below the output, not over it.
+      await summary.click();
+      await expect(tools.nth(5)).toHaveAttribute('open', '');
+      await expect(tools.nth(5).locator('pre')).toContainText('echo step 2');
+      await expect.poll(async () => {
+        const [output, next] = [await tools.nth(5).locator('pre').boundingBox(), await tools.nth(6).boundingBox()];
+        return Math.round(next.y - (output.y + output.height));
+      }).toBe(4);
+      await summary.click();
+      await expect(tools.nth(5)).not.toHaveAttribute('open', '');
+    }
+    await openChat(page, isMobile, name);
+    // A second turn only after the first ends, or both share one turn.
+    await expect(page.locator('.transcript .markdown').last()).toContainText('echo: tool run one');
+    await post(request, 'api/chat/send', { key: session.ticket.fields.key, text: 'tool run two' });
+    await check(page.locator('.transcript'));
+    await page.goto('./?view=trace&ref=' + session.id);
+    await page.getByRole('button', { name: 'Inspect ' + session.id, exact: true }).click();
+    await check(page.getByRole('region', { name: 'Read-only session' }).locator('.session-output'));
+  } finally {
+    await post(request, 'api/chat/manage', { action: 'archive', id: session.id });
+  }
+});
