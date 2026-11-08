@@ -40,6 +40,60 @@
 *::-webkit-scrollbar {
   display: none;
 }
+/* Chat transcripts keep a visible Acme-style scroll bar (JOB-132): native
+   scrolling, only the chrome is styled. Chromium and Safari draw the
+   ::-webkit-scrollbar parts, which Chromium ignores while scrollbar-width
+   or scrollbar-color is set, so both stay auto here. The stable gutter
+   keeps the width fixed when the transcript starts to overflow. */
+.transcript,
+.session-output {
+  scrollbar-width: auto;
+  scrollbar-gutter: stable;
+}
+.transcript::-webkit-scrollbar,
+.session-output::-webkit-scrollbar {
+  display: block;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+  background: var(--scrollbar-track);
+}
+.transcript::-webkit-scrollbar-thumb,
+.session-output::-webkit-scrollbar-thumb {
+  min-height: calc(var(--scrollbar-size) * 2);
+  background: var(--scrollbar-thumb);
+  border: 1px solid var(--scrollbar-thumb-border);
+  border-radius: 0;
+}
+.transcript::-webkit-scrollbar-thumb:hover,
+.session-output::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+.transcript::-webkit-scrollbar-thumb:active,
+.session-output::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-hover);
+  border-color: var(--scrollbar-thumb-active-border);
+}
+.transcript::-webkit-scrollbar-corner,
+.session-output::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
+}
+/* Firefox has only the standard properties: its native bar in the same
+   colors, at full width so the thumb stays easy to grab. */
+@supports not selector(::-webkit-scrollbar) {
+  .transcript,
+  .session-output {
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+}
+/* Forced colors repaints the ::-webkit-scrollbar parts in Canvas, which hides
+   the thumb. A non-auto scrollbar-width makes Chromium skip those parts and
+   draw its native bar, which follows the system colors. */
+@media (forced-colors: active) {
+  .transcript,
+  .session-output {
+    scrollbar-width: thin;
+  }
+}
 body {
   margin: 0;
   background: var(--paper);
