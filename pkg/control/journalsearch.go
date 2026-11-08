@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -29,7 +30,7 @@ func (c *Controller) journalSearch(ctx context.Context, sc scope, p rpc.JournalS
 	if err := c.requireGrant(sc, grantJournalSearch, "journal search"); err != nil {
 		return nil, err
 	}
-	cl := c.vlClient(c.config())
+	cl := journalship.Client(c.config())
 	if cl == nil {
 		return nil, errNoVictoriaLogs
 	}
@@ -74,68 +75,18 @@ var errStopSearch = errors.New("limit reached")
 
 // journalBackfill ships every tracked journal from its cursor now (#530),
 // adding sessions closed within Since (all closed sessions when zero), and
-// flushes VictoriaLogs so the rows are searchable when it returns.
+// flushes VictoriaLogs so the rows are searchable when it returns. The
+// shipper does the work; this is the admin check.
 func (c *Controller) journalBackfill(ctx context.Context, sc scope, p rpc.JournalBackfillParams) (any, error) {
 	if !sc.admin {
 		return nil, forbidden("journal backfill needs the admin socket")
 	}
-	cl := c.vlClient(c.config())
+	cl := journalship.Client(c.config())
 	if cl == nil {
 		return nil, errNoVictoriaLogs
 	}
-	closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Order: store.OrderNewest, Limit: 1 << 20})
+	res, err := c.shipper().Backfill(ctx, cl, p.Since)
 	if err != nil {
-		return nil, err
-	}
-	c.ship.mu.Lock()
-	defer c.ship.mu.Unlock()
-	if c.ship.sessions == nil {
-		c.ship.sessions = map[string]*shipSession{}
-	}
-	if err := c.trackSessions(ctx, !c.ship.started); err != nil {
-		return nil, err
-	}
-	c.ship.started = true
-	for _, t := range closed {
-		if p.Since > 0 && c.since(t.ClosedAt) > p.Since {
-			continue
-		}
-		c.trackSession(t)
-	}
-	before := map[*shipSession]int64{}
-	for _, s := range c.ship.sessions {
-		before[s] = s.shipped
-	}
-	res := rpc.JournalBackfillResult{}
-	for {
-		n, err := c.shipPass(ctx, cl, true)
-		res.Frames += n
-		if err != nil {
-			return nil, err
-		}
-		// A session reading in chunks has more after a pass that shipped.
-		more := false
-		for _, s := range c.ship.sessions {
-			if !s.caughtUp() {
-				more = true
-			}
-		}
-		if !more || n == 0 {
-			break
-		}
-	}
-	c.saveCursors(ctx, true)
-	for _, s := range c.ship.sessions {
-		if s.closed && s.caughtUp() && s.saved == s.shipped {
-			delete(c.ship.sessions, s.t.ID)
-		}
-	}
-	for s, seq := range before {
-		if s.shipped > seq {
-			res.Sessions++
-		}
-	}
-	if err := cl.Flush(ctx); err != nil {
 		return nil, err
 	}
 	return res, nil

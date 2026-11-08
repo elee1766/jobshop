@@ -110,7 +110,7 @@ func (c *Controller) attentionItems(ctx context.Context, cfg *config.Config) ([]
 		return nil, err
 	}
 	items = append(items, ing...)
-	items = append(items, c.journalLagAttention(cfg)...)
+	items = append(items, c.shipper().LagAttention(cfg)...)
 	stale, err := c.staleAttention(ctx, cfg)
 	if err != nil {
 		return nil, err
