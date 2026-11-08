@@ -288,14 +288,14 @@ The result has `stdout`, `stderr`, and integer `exit_code`. A nonzero
 command exit is data for the callback to handle. Spawn failure,
 cancellation or output overflow is an error. Stdout and stderr share one
 output budget. Linux cancellation terminates the command process group.
-The engine does not inherit the entire controller environment into the
-child. Only the host-provided base and explicit `env` values are supplied.
-Do not assume `GH_TOKEN`, cloud credentials or an interactive shell setup
-will be present.
+A callback's command inherits the controller's environment, plus
+explicit `env` values, so user-manager tools such as `systemctl --user`
+work. A step function's `shell()` runs in its pool's sandbox and gets the
+sandbox environment instead. Use the `github` built-in rather than `gh`.
 
-The controller supplies the Jobshop root as the default working directory
-and no ambient base environment. Set `cwd` and required environment values
-explicitly when a tool depends on a checkout or configuration directory.
+The controller supplies the Jobshop root as the default working directory.
+Set `cwd` explicitly when a tool depends on a checkout or configuration
+directory.
 
 Shell runs as the controller OS user, outside the agent sandbox. A timeout
 cannot undo filesystem writes or external actions the command completed.

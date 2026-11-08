@@ -370,6 +370,8 @@ func (e *Engine) Step(ctx context.Context, entry string, timeout time.Duration, 
 	step.options.Limits.Duration = timeout
 	step.options.Exec = exec
 	step.options.AllowShell = exec != nil
+	// The sandbox builds its own environment; the controller's stays out.
+	step.options.ShellEnv = nil
 	step.options.Replay = nil
 	return step.invoke(ctx, entry, fn, args)
 }

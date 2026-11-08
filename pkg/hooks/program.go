@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -31,6 +32,9 @@ type Program struct {
 // LoadPrograms loads callbacks and binds source identity to configured host authority.
 func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (map[string]*Program, error) {
 	options := automation.Options{AllowHTTP: cfg.Automation.HTTP, AllowShell: cfg.Automation.Shell, ShellDir: root.Dir, Auth: map[string]automation.Credential{}, Observe: observeHookCall, Replay: replayHookCall}
+	// Controller-side shell runs as the controller with its environment
+	// (systemctl --user needs XDG_RUNTIME_DIR). Step functions do not get it.
+	options.ShellEnv = os.Environ()
 	secrets := []string{}
 	options.Limits.Steps = cfg.Automation.MaxSteps
 	if cfg.Automation.GitHub {
