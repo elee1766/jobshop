@@ -156,6 +156,10 @@ func (c *Controller) prepareHookRuns(ctx context.Context, lc *liveConfig, in hoo
 		if err != nil {
 			return nil, err
 		}
+		p.Title = action.Title
+		if p.Title, err = c.planTitle(ctx, lc.cfg, plan.w, plan.vars, p); err != nil {
+			return nil, err
+		}
 		plans[i] = hookRunPlan{params: p, plan: plan}
 	}
 	return plans, nil

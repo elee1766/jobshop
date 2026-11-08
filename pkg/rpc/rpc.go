@@ -1226,6 +1226,9 @@ type RunStartParams struct {
 	Vars     map[string]string `json:"vars,omitempty"`
 	Key      string            `json:"key,omitempty"`
 	Project  string            `json:"project,omitempty"`
+	// Title is the run's title. Empty: the title of the run's issue or PR
+	// when the workflow has one, else "Run <workflow> <key>" (JOB-133).
+	Title string `json:"title,omitempty"`
 	// After lists tickets (often other runs) the first step waits on. The
 	// edges are created with the steps, so no step is claimable before
 	// them (#149). A repeated start with a key adds no edges.

@@ -254,6 +254,10 @@ func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name s
 			return store.Ticket{}, false, fmt.Errorf("run key: %w", err)
 		}
 	}
+	// A finding about an issue titles its run with the issue's (JOB-133).
+	if p.Title, err = c.findingTitle(ctx, cfg, tr, s, p.Workflow, p.Key); err != nil {
+		return store.Ticket{}, false, err
+	}
 	for k, v := range tr.Run.Vars {
 		out, err := tr.Run.Fill(v, tv)
 		if err != nil {
@@ -729,7 +733,7 @@ const signalScriptTimeout = 2 * time.Minute
 // once per poll (default DefaultLinearPoll); between calls the last
 // answer stands.
 func (c *Controller) signalScript(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]finding, error) {
-	key := "script\x00" + sig.Script + "\x00" + sig.Signal
+	key := scriptSignalKey(sig)
 	poll := config.Duration(sig.Poll, config.DefaultLinearPoll)
 	now := c.now()
 	c.signalScripts.mu.Lock()
@@ -767,6 +771,16 @@ func (c *Controller) signalScript(ctx context.Context, cfg *config.Config, sig c
 		c.signalScripts.mu.Unlock()
 	}
 	return c.findingsFrom(ctx, sig, r.found)
+}
+
+// scriptSignalKey names one script signal call: the script and signal with
+// the repo and args it runs on. Triggers that share a script (the self-dev
+// pack runs the github pack's issue_no_run for another repo) make separate
+// calls: keyed on the script alone, one trigger took the other's cached
+// answer and fired findings that named issues of the other repo.
+func scriptSignalKey(sig config.ScanSignal) string {
+	args, _ := json.Marshal(sig.Args) // map keys are sorted
+	return "script\x00" + sig.Script + "\x00" + sig.Signal + "\x00" + sig.Repo + "\x00" + string(args)
 }
 
 // signalScripts caches script signal answers between polls.

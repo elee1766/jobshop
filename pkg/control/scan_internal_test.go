@@ -544,3 +544,21 @@ func TestScanOwnInstance(t *testing.T) {
 	}
 	assert.Len(t, checks(), 1, "the check escalating starts no other check")
 }
+
+// Two triggers that share a script and signal but not a repo or args make
+// separate calls: the self-dev pack's issue_no_run read took the github
+// pack's cached answer, so TestPacks intermittently started a run for an
+// issue of another repo.
+func TestScriptSignalKey(t *testing.T) {
+	t.Parallel()
+	sig := config.ScanSignal{Signal: config.SignalIssueNoRun, Script: "triggers.star:issue_no_run", Repo: "acme/widget", Args: map[string]any{"b": "2", "a": "1"}}
+	same := sig
+	same.Args = map[string]any{"a": "1", "b": "2"}
+	assert.Equal(t, scriptSignalKey(sig), scriptSignalKey(same), "map order does not matter")
+	otherRepo := sig
+	otherRepo.Repo = "acme/other"
+	assert.NotEqual(t, scriptSignalKey(sig), scriptSignalKey(otherRepo))
+	otherArgs := sig
+	otherArgs.Args = map[string]any{"a": "1", "b": "3"}
+	assert.NotEqual(t, scriptSignalKey(sig), scriptSignalKey(otherArgs))
+}

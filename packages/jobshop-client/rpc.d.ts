@@ -1125,6 +1125,7 @@ export interface RunStartParams {
   vars?: Record<string, string>;
   key?: string;
   project?: string;
+  title?: string;
   after?: string[];
   force?: boolean;
 }

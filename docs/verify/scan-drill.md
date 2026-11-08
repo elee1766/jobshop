@@ -26,9 +26,9 @@ Check:
 
 ```sh
 JOBSHOP_SOCKET= jobshop trigger list | jq '.[] | select(.name == "scan")'
-JOBSHOP_SOCKET= jobshop run list | jq '.[] | select(.title | startswith("Run triage"))
-  | {id, title, status}'
-JOBSHOP_SOCKET= jobshop run list | jq -r --arg n "$n" '.[] | select(.title == "Run pr-work issue-"+$n) | .id'
+JOBSHOP_SOCKET= jobshop run list | jq '.[] | select(.fields.key | startswith("scan:"))
+  | {id, title, key: .fields.key, status}'
+JOBSHOP_SOCKET= jobshop run list | jq -r --arg n "$n" '.[] | select(.fields.key == "issue-"+$n) | .id'
 JOBSHOP_SOCKET= jobshop run show "$d"     # cancelled (stale drill) or resumed
 ```
 
