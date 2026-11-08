@@ -61,10 +61,11 @@ one derivation per Go package; without it, one `buildGo127Module` derivation.
 - The package source is a fileset of `go.mod`, `go.sum`, `cmd/` and `pkg/`.
   A new top-level directory the binary needs (embedded files, testdata used
   by the build) must be added to that fileset.
-- Desk assets are built by `nix/desk-ui.nix`, then copied into the Go source for
-  both builders. Changes to `ui/package-lock.json` require updating its
-  `npmDepsHash`: set `lib.fakeHash`, run `nix build .#desk-ui`, and use the reported
-  hash. Keep new frontend build inputs in that derivation's fileset.
+- Desk assets are built by `nix/desk-ui.nix`, then supplied through go2nix's
+  `srcOverlay` or the fallback's `postPatch`. Changes to `ui/package-lock.json`
+  require updating its `npmDepsHash`: set `lib.fakeHash`, run
+  `nix build .#desk-ui`, and use the reported hash. Keep new frontend build inputs
+  in that derivation's fileset.
 - The build has `CGO_ENABLED=0`; do not add cgo dependencies.
 - `nix/module.nix` is the NixOS module. If you add a config field the host
   sets through Nix, check the module still evaluates:

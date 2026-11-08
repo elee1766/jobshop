@@ -28,12 +28,7 @@ let
     pname = "jobshop";
     inherit version;
 
-    # go2nix discovers embedded files before build hooks run.
-    src = runCommand "jobshop-source" { } ''
-      cp -r ${goSource} "$out"
-      chmod -R u+w "$out"
-      cp -r ${deskUi} "$out/pkg/desk/dist"
-    '';
+    src = goSource;
 
     ldflags = [
       "-s"
@@ -62,6 +57,13 @@ if builtins ? resolveGoPackages then
     // {
       # Module hashes come from go.sum (no lockfile).
       subPackages = [ "./cmd/jobshop" ];
+      # Declare generated embeds without building the frontend during evaluation.
+      packageOverrides."github.com/elee1766/jobshop/pkg/desk".srcOverlay =
+        runCommand "jobshop-desk-source" { }
+          ''
+            mkdir -p "$out"
+            cp -r ${deskUi} "$out/dist"
+          '';
       # modernc.org/sqlite is pure Go.
       CGO_ENABLED = "0";
     }
@@ -71,6 +73,9 @@ else
     args
     // {
       subPackages = [ "cmd/jobshop" ];
+      postPatch = ''
+        cp -r ${deskUi} pkg/desk/dist
+      '';
       # Fallback builder only. Update with: nix build .#jobshop 2>&1 | grep got:
       # (without the plugin loaded).
       vendorHash = "sha256-gWAkvLcAZAr/k0vRsR6vWq7Dz4LyRQIaMrYfKNZaRkE=";

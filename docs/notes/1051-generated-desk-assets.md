@@ -9,10 +9,11 @@ Plain `go install ...@version` cannot generate these assets; use a release binar
 Nix, or build from a checkout and run `go install ./cmd/jobshop`.
 
 Nix builds `desk-ui` separately from UI and shared-client sources with a pinned
-npm dependency hash. Its output is copied into the Go source before package
-discovery, so both the go2nix plugin and fallback builder see the embedded files.
-Local generated output is excluded from this source. Go-only edits do not
-invalidate the frontend derivation.
+npm dependency hash. The go2nix plugin uses its native `srcOverlay` to declare
+generated embeds and copy them into the Desk package at build time, without
+building the frontend during evaluation. The fallback builder copies them in
+`postPatch`. Local generated output is excluded from the source. Go-only edits
+do not invalidate the frontend derivation.
 
 CI passes one frontend artifact to Go checks. Releases build the frontend from
 the release tag and pass it to both architecture builds. The release uploader
