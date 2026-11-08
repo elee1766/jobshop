@@ -7,7 +7,7 @@ require (
 	github.com/alecthomas/kong v1.16.1
 	github.com/betterleaks/betterleaks/v2 v2.0.0-rc.7
 	github.com/coder/acp-go-sdk v0.13.5
-	github.com/elee1766/acphost v0.22.0
+	github.com/elee1766/acphost v0.22.1
 	github.com/fsnotify/fsnotify v1.8.0
 	github.com/goccy/go-yaml v1.19.2
 	github.com/jackc/pgx/v5 v5.12.0
