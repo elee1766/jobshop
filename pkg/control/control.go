@@ -28,6 +28,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
 	idgen "github.com/elee1766/jobshop/pkg/ids"
@@ -303,8 +304,9 @@ type Controller struct {
 	activitySrc activitySource
 	activityMu  sync.Mutex
 	activity    *activityState
-	// ship is journal shipping to VictoriaLogs (#530).
-	ship       shipper
+	// ship is journal shipping to VictoriaLogs (#530); see shipper().
+	ship       *journalship.Shipper
+	shipOnce   sync.Once
 	wg         sync.WaitGroup
 	hooksOnce  sync.Once
 	hookEngine *hooks.Engine
