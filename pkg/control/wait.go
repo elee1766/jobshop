@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -39,7 +40,7 @@ type liveLinearWait struct{ c *Controller }
 
 func (l liveLinearWait) IssueContext(ctx context.Context, key string) (linear.Context, error) {
 	var is linear.Context
-	err := l.c.linearDoKey(ctx, key, func(ctx context.Context, cl *linear.Client) error {
+	err := l.c.linearSvc().DoKey(ctx, key, func(ctx context.Context, cl *linear.Client) error {
 		var err error
 		is, err = cl.GetContext(ctx, key, false)
 		return err
@@ -334,7 +335,7 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitengine.Pass, t stor
 	var errs []error
 	for _, err := range d.Errs {
 		// A Linear outage is logged once by linearCall, not per wait.
-		if !linearDown(err) {
+		if !linearsvc.Down(err) {
 			errs = append(errs, err)
 		}
 	}

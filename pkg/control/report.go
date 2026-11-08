@@ -334,7 +334,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 	if res.Question, err = store.Close(ctx, c.store, sc.actor, qt.ID, nil, resolutionAnswered); err != nil {
 		return nil, err
 	}
-	c.unblockLinear(ctx, qt)
+	c.linearSvc().Unblock(ctx, qt)
 	if !sc.admin {
 		c.followAnswer(ctx, sc.session, qt, qm, res.Message)
 	}

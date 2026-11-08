@@ -99,7 +99,7 @@ func (c *Controller) sourceTitle(ctx context.Context, cfg *config.Config, src ru
 	res, err := offTick(ctx, checkNeed{
 		key: "runtitle\x00" + src.key(), poller: "run_title", timeout: runTitleTimeout,
 		run: func(ctx context.Context) checkResult {
-			t, err := c.readSourceTitle(c.pollerCtx(ctx), cfg, src)
+			t, err := c.readSourceTitle(c.linearSvc().PollerCtx(ctx), cfg, src)
 			return checkResult{out: t, err: err}
 		},
 	})

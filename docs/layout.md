@@ -37,6 +37,7 @@ jobshop/
 │   │   ├── journalship/      journal shipping to VictoriaLogs (JOB-119)
 │   │   ├── journalcompress/  closed-session journal compression (JOB-89)
 │   │   ├── journalread/      journal paging, search and recall summaries (JOB-140)
+│   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
 │   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe (JOB-146)
 │   │   ├── ingestqueue/      spool drain, inbox notifier, worker heartbeats,
 │   │   │                     admission hook runner, ingest work loop (JOB-141)

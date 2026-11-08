@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -65,12 +66,12 @@ func (f *askLinear) handler(t *testing.T) http.HandlerFunc {
 		case strings.Contains(q.Query, "issueLabels("):
 			out(map[string]any{"issueLabels": map[string]any{"nodes": []any{map[string]any{"id": "lab-blocked", "team": nil}}}})
 		case strings.Contains(q.Query, "issueAddLabel"):
-			if !slices.Contains(f.labels, linearBlockedLabel) {
-				f.labels = append(f.labels, linearBlockedLabel)
+			if !slices.Contains(f.labels, linearsvc.BlockedLabel) {
+				f.labels = append(f.labels, linearsvc.BlockedLabel)
 			}
 			out(map[string]any{"issueAddLabel": map[string]any{"success": true}})
 		case strings.Contains(q.Query, "issueRemoveLabel"):
-			f.labels = slices.DeleteFunc(f.labels, func(s string) bool { return s == linearBlockedLabel })
+			f.labels = slices.DeleteFunc(f.labels, func(s string) bool { return s == linearsvc.BlockedLabel })
 			out(map[string]any{"issueRemoveLabel": map[string]any{"success": true}})
 		case strings.Contains(q.Query, "labels { nodes { id name } }"):
 			var ns []any
@@ -135,7 +136,7 @@ func TestLinearQuestion(t *testing.T) {
 	c.sweepLinearAsks(ctx, c.config())
 	n, labels := f.state()
 	assert.Equal(t, 1, n, "posted once")
-	assert.Equal(t, []string{linearBlockedLabel}, labels)
+	assert.Equal(t, []string{linearsvc.BlockedLabel}, labels)
 	f.mu.Lock()
 	body, _ := f.comments[0]["body"].(string)
 	askID, _ := f.comments[0]["id"].(string)
@@ -144,7 +145,7 @@ func TestLinearQuestion(t *testing.T) {
 	assert.Contains(t, body, "Keep the old login page?")
 	got, err := c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
-	a, ok := linearAskOf(got)
+	a, ok := linearsvc.AskOf(got)
 	require.True(t, ok)
 	assert.Equal(t, askID, a.Comment)
 
@@ -200,7 +201,7 @@ func TestLinearEscalation(t *testing.T) {
 	assert.Contains(t, body, esc.ID)
 	got, err := c.store.Get(ctx, gh.ID)
 	require.NoError(t, err)
-	_, ok := linearAskOf(got)
+	_, ok := linearsvc.AskOf(got)
 	assert.False(t, ok, "non-Linear runs unchanged")
 }
 
@@ -227,7 +228,7 @@ func TestLinearAskRetry(t *testing.T) {
 	assert.Equal(t, 1, n, "key done: stored result replayed")
 	got, err = c.store.Get(ctx, esc.ID)
 	require.NoError(t, err)
-	_, ok := linearAskOf(got)
+	_, ok := linearsvc.AskOf(got)
 	assert.True(t, ok, "meta.linear_ask restored from the stored result")
 }
 
@@ -267,7 +268,7 @@ func TestLinearAskOff(t *testing.T) {
 	assert.Equal(t, 1, n, "nothing new posted")
 	got, err := c.store.Get(ctx, esc.ID)
 	require.NoError(t, err)
-	_, ok := linearAskOf(got)
+	_, ok := linearsvc.AskOf(got)
 	assert.False(t, ok, "escalation stays on Desk")
 
 	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
