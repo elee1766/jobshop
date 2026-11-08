@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.4](https://github.com/elee1766/jobshop/compare/v0.9.3...v0.9.4) (2026-11-08)
+
+
+### Bug fixes
+
+* **control:** wait for journal index in TestLoadFallback/nojournal ([#1024](https://github.com/elee1766/jobshop/issues/1024)) ([#1025](https://github.com/elee1766/jobshop/issues/1025)) ([371528c](https://github.com/elee1766/jobshop/commit/371528c94cb6fcfee6e5ed2ca3a573df7783786e))
+
 ## [0.9.3](https://github.com/elee1766/jobshop/compare/v0.9.2...v0.9.3) (2026-11-08)
 
 
