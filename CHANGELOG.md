@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.14](https://github.com/elee1766/jobshop/compare/v0.9.13...v0.9.14) (2026-11-08)
+
+
+### Bug fixes
+
+* **store:** retry recall when the schema changes under it ([#1069](https://github.com/elee1766/jobshop/issues/1069)) ([#1078](https://github.com/elee1766/jobshop/issues/1078)) ([9843f45](https://github.com/elee1766/jobshop/commit/9843f459f06392d0231ec8c9d688540c4191e760))
+
 ## [0.9.13](https://github.com/elee1766/jobshop/compare/v0.9.12...v0.9.13) (2026-11-08)
 
 
