@@ -32,8 +32,29 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  binaries:
+  desk-ui:
     needs: release-please
+    if: needs.release-please.outputs.created == 'true'
+    runs-on: nscloud-ubuntu-24.04-amd64-2x4
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.release-please.outputs.tag }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm --prefix ui ci
+      - run: npm --prefix ui run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desk-ui
+          path: pkg/desk/dist
+          if-no-files-found: error
+
+  binaries:
+    needs: [release-please, desk-ui]
     if: needs.release-please.outputs.created == 'true'
     runs-on: nscloud-ubuntu-24.04-amd64-2x4
     strategy:
@@ -47,6 +68,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          name: desk-ui
+          path: pkg/desk/dist
       - name: build
         env:
           GOOS: ${{ matrix.goos }}
@@ -74,6 +99,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
+          pattern: jobshop-*
           path: dist
           merge-multiple: true
       - name: checksums and upload

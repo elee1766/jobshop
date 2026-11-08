@@ -2,6 +2,8 @@
   lib,
   goEnv,
   buildGo127Module,
+  runCommand,
+  deskUi,
   rev ? "unknown",
 }:
 
@@ -13,19 +15,20 @@ let
   # self-deploy builds master commits after a release, which would
   # otherwise report that release and look one version behind.
   binVersion = if rev == "unknown" then version else "${version}+${rev}";
+  goSource = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../go.mod
+      ../go.sum
+      ../cmd
+      (lib.fileset.difference ../pkg (lib.fileset.maybeMissing ../pkg/desk/dist))
+    ];
+  };
   args = {
     pname = "jobshop";
     inherit version;
 
-    src = lib.fileset.toSource {
-      root = ../.;
-      fileset = lib.fileset.unions [
-        ../go.mod
-        ../go.sum
-        ../cmd
-        ../pkg
-      ];
-    };
+    src = goSource;
 
     ldflags = [
       "-s"
@@ -54,6 +57,13 @@ if builtins ? resolveGoPackages then
     // {
       # Module hashes come from go.sum (no lockfile).
       subPackages = [ "./cmd/jobshop" ];
+      # Declare generated embeds without building the frontend during evaluation.
+      packageOverrides."github.com/elee1766/jobshop/pkg/desk".srcOverlay =
+        runCommand "jobshop-desk-source" { }
+          ''
+            mkdir -p "$out"
+            cp -r ${deskUi} "$out/dist"
+          '';
       # modernc.org/sqlite is pure Go.
       CGO_ENABLED = "0";
     }
@@ -63,6 +73,9 @@ else
     args
     // {
       subPackages = [ "cmd/jobshop" ];
+      postPatch = ''
+        cp -r ${deskUi} pkg/desk/dist
+      '';
       # Fallback builder only. Update with: nix build .#jobshop 2>&1 | grep got:
       # (without the plugin loaded).
       vendorHash = "sha256-gWAkvLcAZAr/k0vRsR6vWq7Dz4LyRQIaMrYfKNZaRkE=";

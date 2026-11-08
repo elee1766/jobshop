@@ -2,3 +2,4 @@
 /result-*
 /jobshop
 *.test
+/pkg/desk/dist/

@@ -5,13 +5,13 @@
 ## Build and checks
 
 ```sh
-go build ./... && go vet ./... && go test ./...
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
-node --test packages/jobshop-client/index.test.js
 npm --prefix ui ci
 npm --prefix ui run check
 npm --prefix ui run build
-git diff --exit-code -- packages/jobshop-client/rpc.d.ts pkg/desk/dist
+go build ./... && go vet ./... && go test ./...
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
+node --test packages/jobshop-client/index.test.js
+git diff --exit-code -- packages/jobshop-client/rpc.d.ts
 nix fmt -- --check $(git ls-files '*.nix')
 nix build .#jobshop
 ```

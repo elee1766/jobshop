@@ -9,7 +9,10 @@ the pinned decision log issue (#569). Progress: open `target` issues.
 - Fixed JSON envelopes use Go structs with JSON tags. Maps are for dynamic keys
   and arbitrary payload data.
 - Every write goes through the controller; the CLI never opens the database.
-- Check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`,
+- Generate Desk assets first: `npm --prefix ui ci && npm --prefix ui run build`.
+  `pkg/desk/dist` is ignored build output, not committed source. Rebuild it after
+  frontend changes, then check:
+  `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`,
   plus `nix fmt -- --check $(git ls-files '*.nix')` (CI runs it; `nix fmt` fixes it).
 - Tests must not depend on wall time: no `time.Sleep` (lint bans it),
   run a supervisor pass (`pass` / `Options.Pass`) or wait on an event.
@@ -58,6 +61,11 @@ one derivation per Go package; without it, one `buildGo127Module` derivation.
 - The package source is a fileset of `go.mod`, `go.sum`, `cmd/` and `pkg/`.
   A new top-level directory the binary needs (embedded files, testdata used
   by the build) must be added to that fileset.
+- Desk assets are built by `nix/desk-ui.nix`, then supplied through go2nix's
+  `srcOverlay` or the fallback's `postPatch`. Changes to `ui/package-lock.json`
+  require updating its `npmDepsHash`: set `lib.fakeHash`, run
+  `nix build .#desk-ui`, and use the reported hash. Keep new frontend build inputs
+  in that derivation's fileset.
 - The build has `CGO_ENABLED=0`; do not add cgo dependencies.
 - `nix/module.nix` is the NixOS module. If you add a config field the host
   sets through Nix, check the module still evaluates:
