@@ -175,10 +175,11 @@ func Call(host api.Host, fn *starlark.Builtin, args starlark.Tuple, kwargs []sta
 	for key, values := range response.Header {
 		responseHeaders[strings.ToLower(key)] = strings.Join(values, ", ")
 	}
-	return responseValue(response.StatusCode, data, responseHeaders, options)
+	return ResponseValue(response.StatusCode, data, responseHeaders, options)
 }
 
-func responseValue(status int, data []byte, responseHeaders map[string]any, options api.Options) (starlark.Value, error) {
+// ResponseValue is the response struct http and github calls return.
+func ResponseValue(status int, data []byte, responseHeaders map[string]any, options api.Options) (starlark.Value, error) {
 	attrs := starlark.StringDict{"status_code": starlark.MakeInt(status), "body": starlark.String(data), "text": starlark.String(data)}
 	headerValue, err := api.ToValue(responseHeaders, options.Limits.DataBytes)
 	if err != nil {

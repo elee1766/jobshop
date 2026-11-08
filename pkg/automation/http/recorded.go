@@ -14,6 +14,11 @@ func Restore(fields map[string]any, options api.Options) (starlark.Value, error)
 	if !options.AllowHTTP {
 		return nil, errors.New("HTTP capability is disabled by host")
 	}
+	return RestoreResponse(fields, options)
+}
+
+// RestoreResponse validates a recorded response without checking a grant.
+func RestoreResponse(fields map[string]any, options api.Options) (starlark.Value, error) {
 	invalid := errors.New("recorded capability result does not match its capability contract")
 	status, ok := api.RecordedInt(fields["status_code"])
 	if !ok || status < 100 || status > 999 {
@@ -45,5 +50,5 @@ func Restore(fields map[string]any, options api.Options) (starlark.Value, error)
 	if err != nil || len(encodedMetadata) > options.Limits.DataBytes {
 		return nil, invalid
 	}
-	return responseValue(status, []byte(body), headers, options)
+	return ResponseValue(status, []byte(body), headers, options)
 }

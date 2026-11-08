@@ -137,7 +137,7 @@ jev:
   enabled: false
 ```
 
-`http` and `shell` default to false. Jev defaults to disabled and is
+`http`, `shell` and `github` default to false. Jev defaults to disabled and is
 configured separately. A credential declaration does not enable HTTP.
 Secret values are resolved by Go, not exposed as script input or copied
 into the pack. Secret references use a path string,
@@ -226,6 +226,41 @@ Never rely on a redirect to select a permitted credential destination.
 
 Use endpoint idempotency keys for POST mutations and reconcile after an
 unknown outcome. A timed-out request may already have changed the server.
+
+## GitHub
+
+`automation.github: true` enables the `github` built-in. Each call takes a
+token from the GitHub identity (`identities:`, kind `github-app` or
+`github-token`) covering the call's repo, minted or read per call through
+the controller's identity cache, so an App's hourly tokens and a rotated
+token file need no reload. The token never becomes a script value and is
+redacted from logs, errors and the call journal. There is no fallback to
+the `gh` CLI or `GH_TOKEN`.
+
+```python
+pulls = github.get("/repos/acme/widget/pulls", params = {"state": "open"}, pages = 3).json()
+github.post("/repos/acme/widget/issues/7/comments", json = {"body": "done"})
+data = github.graphql("query($o: String!) { organization(login: $o) { login } }", variables = {"o": "acme"}, repo = "acme/widget")
+```
+
+```text
+github.get(path, repo="", params={}, headers={}, json=None, pages=1, timeout="")
+github.post / patch / put / delete(path, repo="", params={}, headers={}, json=None, timeout="")
+github.graphql(query, variables={}, repo="", timeout="")
+```
+
+- `path` is an API path without query; `params` become the query string.
+  `repo` (owner/repo) selects the identity and defaults to the repo in a
+  `/repos/<owner>/<repo>/` path. With neither, a `github-token` identity
+  answers; an App needs a repo for its installation.
+- REST calls return the same response value as `http` (`status_code`,
+  `body`, `headers`, `json()`). Non-2xx is returned, not raised.
+- `pages` (GET, up to 10) follows `rel="next"` links and returns one JSON
+  array of all pages. The combined body counts against `output_bytes`.
+- `graphql` returns the `data` object and raises on `errors` or a non-200
+  status, with GitHub's messages.
+- Redirects off the identity's API origin fail. The script cannot set
+  `Authorization`.
 
 ## Shell
 

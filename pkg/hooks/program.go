@@ -33,6 +33,9 @@ func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (ma
 	options := automation.Options{AllowHTTP: cfg.Automation.HTTP, AllowShell: cfg.Automation.Shell, ShellDir: root.Dir, Auth: map[string]automation.Credential{}, Observe: observeHookCall, Replay: replayHookCall}
 	secrets := []string{}
 	options.Limits.Steps = cfg.Automation.MaxSteps
+	if cfg.Automation.GitHub {
+		options.GitHub = hookGitHubToken
+	}
 	options.Limits.OutputBytes = cfg.Automation.OutputBytes
 	if cfg.Automation.Timeout != "" {
 		options.Limits.Duration, _ = time.ParseDuration(cfg.Automation.Timeout)

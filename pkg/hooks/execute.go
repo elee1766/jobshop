@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/automation"
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -260,4 +261,14 @@ func (c *Engine) applyHookPlan(ctx context.Context, col store.Collection, rec st
 	}
 	_, _ = c.saveHook(ctx, col, rec, in, "done")
 	c.host.HookApplied(ctx, in)
+}
+
+// hookGitHubToken asks the host for a GitHub token on behalf of the
+// invocation the call belongs to, so tokens are minted per call.
+func hookGitHubToken(ctx context.Context, repo string) (api.GitHubToken, error) {
+	trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext)
+	if !ok {
+		return api.GitHubToken{}, errors.New("capability call has no durable invocation")
+	}
+	return trace.engine.host.GitHubToken(ctx, repo)
 }

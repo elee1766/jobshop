@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/automation"
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -39,6 +40,9 @@ type Host interface {
 	ApplyHookPlan(context.Context, string, Invocation) error
 	HookFailed(context.Context, string, Invocation)
 	HookApplied(context.Context, Invocation)
+	// GitHubToken returns the API base and a current token of the GitHub
+	// identity covering repo, for the github built-in.
+	GitHubToken(ctx context.Context, repo string) (api.GitHubToken, error)
 }
 
 // Collections is the persistence surface needed by the hook journal.

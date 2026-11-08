@@ -558,3 +558,60 @@ def handle(event, args):
 		})
 	}
 }
+
+// TestHookGitHubUsesIdentity: the github built-in authenticates with the
+// identity covering the repo, read per call, and journals the call.
+func TestHookGitHubUsesIdentity(t *testing.T) {
+	var auth atomic.Value
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth.Store(r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"workflow_runs":[{"head_sha":"abc123","conclusion":"failure"}]}`))
+	}))
+	defer server.Close()
+	root := hookTestRoot(t, `def begin(run):
+    return []
+def completed(run, step):
+    return []
+def handle(event, args):
+    runs = github.get("/repos/acme/widget/actions/runs", params={"branch": "master", "per_page": 1}).json()["workflow_runs"]
+    return [start_run(workflow="dynamic", key="red-" + runs[0]["head_sha"])]
+`)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "gh-token"), []byte("ghp_first\n"), 0o600))
+	data, err := os.ReadFile(root.Config())
+	require.NoError(t, err)
+	extra := "automation: {github: true}\nidentities:\n  bot: {kind: github-token, token_file: " + filepath.Join(root.Dir, "gh-token") + ", api_url: " + server.URL + ", repos: [acme/widget]}\n"
+	require.NoError(t, os.WriteFile(root.Config(), append(data, []byte(extra)...), 0o600))
+	c := controltest.Start(t, root, control.Options{})
+	spoolPath := filepath.Join(root.Dir, "events.db")
+	spool, err := ingest.OpenSpool(t.Context(), spoolPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = spool.Close() })
+	endpoint := config.IngestEndpoint{Name: "tasks", Source: "generic", Map: config.IngestMap{Kind: "event"}}
+	put := func(id string) {
+		_, err := ingest.Put(t.Context(), spool, endpoint, id, "", []byte(`{"event":"tasks"}`), controltest.Epoch)
+		require.NoError(t, err)
+		c.Call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: spoolPath}, nil)
+	}
+	put("d1")
+	var runs []store.Ticket
+	c.PassUntil(func() bool {
+		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+		return len(runs) == 1
+	}, "handler did not start a run from the GitHub response")
+	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	require.NoError(t, err)
+	assert.Equal(t, "red-abc123", rf.Key)
+	assert.Equal(t, "Bearer ghp_first", auth.Load())
+	// A rotated token file is picked up by the next call.
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "gh-token"), []byte("ghp_second\n"), 0o600))
+	put("d2")
+	c.PassUntil(func() bool { return auth.Load() == "Bearer ghp_second" }, "token was not read per call")
+	var invocations []store.Record
+	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{Trigger: "custom"}, &invocations)
+	require.NotEmpty(t, invocations)
+	var trace rpc.AutomationResult
+	c.Call(rpc.MethodAutomationShow, rpc.IDParams{ID: invocations[len(invocations)-1].Key}, &trace)
+	require.Len(t, trace.Calls, 1)
+	assert.Contains(t, string(trace.Calls[0].Value), `"capability":"github.get"`)
+	assert.NotContains(t, string(trace.Calls[0].Value), "ghp_")
+}

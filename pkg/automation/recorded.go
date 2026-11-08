@@ -17,7 +17,7 @@ import (
 func (inv *invocation) restore(name string, cached any, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	options := inv.engine.options
 	limit := options.Limits.DataBytes
-	if name == "http.get" || name == "http.post" {
+	if responseCapability(name) {
 		// JSON can escape each raw body byte to six bytes. Metadata has its own bound.
 		maxInt := int(^uint(0) >> 1)
 		if options.Limits.OutputBytes > (maxInt-limit)/6 {
@@ -44,8 +44,18 @@ func (inv *invocation) restore(name string, cached any, args starlark.Tuple, kwa
 	switch name {
 	case "http.get", "http.post":
 		return automationhttp.Restore(fields, options)
+	case "github.get", "github.post", "github.patch", "github.put", "github.delete":
+		if options.GitHub == nil {
+			return nil, errors.New("github capability is disabled by host")
+		}
+		return automationhttp.RestoreResponse(fields, options)
 	case "shell":
 		return command.Restore(fields, options)
+	case "github.graphql":
+		if options.GitHub == nil {
+			return nil, errors.New("github capability is disabled by host")
+		}
+		return api.ToValue(fields, options.Limits.DataBytes)
 	default:
 		return nil, errors.New("unknown recorded capability")
 	}

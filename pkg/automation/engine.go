@@ -22,6 +22,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/automation/command"
+	"github.com/elee1766/jobshop/pkg/automation/github"
 	automationhttp "github.com/elee1766/jobshop/pkg/automation/http"
 	"github.com/elee1766/jobshop/pkg/automation/jev"
 	"go.starlark.net/starlark"
@@ -93,6 +94,12 @@ func (inv *invocation) MarkStarted()             { inv.externalStarted = true }
 func (inv *invocation) MarkCompleted()           { inv.externalCompleted = true }
 func (inv *invocation) RecordDecision(decision api.Decision) {
 	inv.decisions = append(inv.decisions, decision)
+}
+
+func (inv *invocation) AddSecret(secret string) {
+	if secret != "" {
+		inv.callSecrets = append(inv.callSecrets, secret)
+	}
 }
 
 func defaults(o Options) (Options, error) {
@@ -511,6 +518,14 @@ func predeclared() starlark.StringDict {
 		"http": starlarkstruct.FromStringDict(starlark.String("http"), starlark.StringDict{
 			"get":  capability("http.get", automationhttp.Call),
 			"post": capability("http.post", automationhttp.Call),
+		}),
+		"github": starlarkstruct.FromStringDict(starlark.String("github"), starlark.StringDict{
+			"get":     capability("github.get", github.Call),
+			"post":    capability("github.post", github.Call),
+			"patch":   capability("github.patch", github.Call),
+			"put":     capability("github.put", github.Call),
+			"delete":  capability("github.delete", github.Call),
+			"graphql": capability("github.graphql", github.GraphQL),
 		}),
 		"shell": capability("shell", command.Call),
 		"jev":   capability("jev", jev.Call),

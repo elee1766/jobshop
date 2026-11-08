@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/elee1766/jobshop/pkg/automation/api"
+	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -125,6 +127,42 @@ func (h hookHost) HookApplied(ctx context.Context, in hooks.Invocation) {
 		c.removeRunDir(run.ID)
 	}
 	c.runBatchEvent(ctx, in.Run)
+}
+
+// GitHubToken serves the github built-in: the GitHub identity covering repo.
+// An empty repo takes the first github-token identity, since an App token
+// needs an owner. There is no fallback to the gh CLI.
+func (h hookHost) GitHubToken(ctx context.Context, repo string) (api.GitHubToken, error) {
+	c := h.c
+	cfg := c.config()
+	name, ok := "", false
+	if repo != "" {
+		name, ok = cfg.IdentityFor(cfg.IdentityNames(), repo)
+		ok = ok && config.IsGitHub(cfg.Identities[name].Kind)
+	} else {
+		for _, n := range cfg.IdentityNames() {
+			if cfg.Identities[n].Kind == config.IdentityGitHubToken {
+				name, ok = n, true
+				break
+			}
+		}
+	}
+	if !ok {
+		if repo == "" {
+			return api.GitHubToken{}, errors.New("no github-token identity answers a call without repo; pass repo=")
+		}
+		return api.GitHubToken{}, fmt.Errorf("no GitHub identity covers %s", repo)
+	}
+	id := cfg.Identities[name]
+	tok, err := c.minter.Token(ctx, name, id, repo)
+	if err != nil {
+		return api.GitHubToken{}, err
+	}
+	base := id.APIURL
+	if base == "" {
+		base = githubAPI
+	}
+	return api.GitHubToken{APIURL: base, Token: tok.Token}, nil
 }
 
 func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]int64) bool {
