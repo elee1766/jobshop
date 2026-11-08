@@ -31,7 +31,26 @@ func (s *Store) Recall(ctx context.Context, rq store.RecallQuery) ([]store.Recal
 	return []store.RecallHit{}, nil
 }
 
+// schemaTries bounds how often a read repeats after SQLITE_SCHEMA. The
+// error lasts while the writer applies a registration's DDL, so each try
+// waits a little longer (busyWait) instead of spinning.
+const schemaTries = 16
+
 func (s *Store) recall(ctx context.Context, match, project, ticket string, lim int) ([]store.RecallHit, error) {
+	var out []store.RecallHit
+	var err error
+	for try := range schemaTries {
+		if out, err = s.recallOnce(ctx, match, project, ticket, lim); !isSchema(err) {
+			break
+		}
+		if try < schemaTries-1 && !busyWait(ctx, try) {
+			break
+		}
+	}
+	return out, err
+}
+
+func (s *Store) recallOnce(ctx context.Context, match, project, ticket string, lim int) ([]store.RecallHit, error) {
 	rows, err := s.conn(s.rdb).QueryContext(ctx, recallSQL, match, project, ticket, int64(lim))
 	if err != nil {
 		return nil, err

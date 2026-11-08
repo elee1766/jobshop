@@ -122,6 +122,17 @@ func isBusy(err error) bool {
 	return errors.As(err, &se) && se.Code()&0xff == sqlite3.SQLITE_BUSY
 }
 
+// isSchema reports SQLITE_SCHEMA: another connection changed the schema
+// (a collection registering its FTS5 table, #579) while this one was
+// reloading a virtual table. SQLite re-prepares ordinary statements on
+// its own, but a virtual table whose constructor ran during the change
+// fails the query instead (#1069). The change is committed by then, so
+// the same read succeeds when repeated.
+func isSchema(err error) bool {
+	var se *msqlite.Error
+	return errors.As(err, &se) && se.Code()&0xff == sqlite3.SQLITE_SCHEMA
+}
+
 // classifyErr maps SQLite constraint failures to store errors.
 func classifyErr(err error) error {
 	msg := err.Error()
