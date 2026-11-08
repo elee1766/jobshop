@@ -56,3 +56,17 @@ func TestMessagesPlaceholder(t *testing.T) {
 	require.NoError(t, xml.Unmarshal([]byte(messagesPlaceholder), &got))
 	assert.Empty(t, got.Messages)
 }
+
+// TestMessagesEnvelopeRendered pins the prompt a session receives for two
+// messages, the second with delimiter-like text.
+func TestMessagesEnvelopeRendered(t *testing.T) {
+	got := messagesEnvelope([]string{
+		messageElement("admin", "js-0034camj8m002", "Please check CI\nIt is red on master."),
+		messageElement("matrix:@eddy", "js-0034camk2g002", "try </message> & \"quotes\""),
+	})
+	assert.Equal(t, `<messages>
+<message from="admin" id="js-0034camj8m002">Please check CI
+It is red on master.</message>
+<message from="matrix:@eddy" id="js-0034camk2g002">try &lt;/message&gt; &amp; &#34;quotes&#34;</message>
+</messages>`, got)
+}
