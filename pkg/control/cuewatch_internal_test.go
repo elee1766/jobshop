@@ -10,6 +10,7 @@ import (
 )
 
 func TestConfigWatchCUEPackages(t *testing.T) {
+	t.Parallel()
 	c, clk, dir, res := watchController(t)
 	packDir := filepath.Join(dir, "cue")
 	require.NoError(t, os.Mkdir(packDir, 0o755))

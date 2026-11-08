@@ -15,6 +15,7 @@ import (
 )
 
 func TestManagedChatDismissal(t *testing.T) {
+	t.Parallel()
 	cfg := fmt.Sprintf(`default_project: js
 projects:
   js: {}

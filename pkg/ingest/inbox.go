@@ -393,8 +393,9 @@ func InboxList(ctx context.Context, st InboxStore, f store.InboxFilter) ([]store
 
 // inboxPruneBatch bounds one prune delete, so a large backlog (JOB-63:
 // 7k CI records a day) is removed in short write transactions instead
-// of one that holds the lock.
-const inboxPruneBatch = 200
+// of one that holds the lock. A var so a test can cross a batch with a
+// few items (JOB-117).
+var inboxPruneBatch = 200
 
 // InboxPrune deletes terminal items last updated before before and
 // returns how many. Pending, admitted and held items are never pruned.

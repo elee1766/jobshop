@@ -17,6 +17,7 @@ import (
 
 // Named chats keep their identity and transcript through archive and restart.
 func TestNamedDeskChatLifecycle(t *testing.T) {
+	t.Parallel()
 	root := controltest.NewRoot(t, fmt.Sprintf(`default_project: js
 projects:
   js: {}

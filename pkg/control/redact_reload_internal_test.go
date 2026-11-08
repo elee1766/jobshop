@@ -17,6 +17,7 @@ import (
 // config takes effect without a restart, in redaction and in the CLI's
 // secret.scan; a bad rule keeps the last good scanner.
 func TestConfigWatchRedactRules(t *testing.T) {
+	t.Parallel()
 	c, clk, dir, res := watchController(t)
 	tok := "acme" + "_" + strings.Repeat("Zq8", 10) + "x9"
 	scan := func() []rpc.SecretFinding {

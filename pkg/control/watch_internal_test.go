@@ -86,6 +86,7 @@ func fireDebounce(t *testing.T, clk *scanClock, res <-chan watchResult) watchRes
 func prompt(c *Controller) string { return c.config().Pools["dev"].Prompt }
 
 func TestConfigWatchReloadsPromptEdit(t *testing.T) {
+	t.Parallel()
 	c, clk, dir, res := watchController(t)
 	require.Equal(t, "one", prompt(c))
 	// A vim swap file does not arm the debounce; the edit after it does.
@@ -98,6 +99,7 @@ func TestConfigWatchReloadsPromptEdit(t *testing.T) {
 }
 
 func TestConfigWatchBadPackRaisesAttention(t *testing.T) {
+	t.Parallel()
 	c, clk, dir, res := watchController(t)
 	pack := filepath.Join(dir, "p", "pack.yaml")
 	require.NoError(t, os.WriteFile(pack, []byte("pools: [broken\n"), 0o600))
@@ -117,6 +119,7 @@ func TestConfigWatchBadPackRaisesAttention(t *testing.T) {
 }
 
 func TestConfigWatchFollowsNewPack(t *testing.T) {
+	t.Parallel()
 	c, clk, dir, res := watchController(t)
 	cfgFile := filepath.Join(dir, "pack.yaml")
 	require.NoError(t, os.WriteFile(cfgFile, []byte("projects:\n  js: {}\nagents:\n  a: {command: x}\npacks:\n  - path: p\n  - path: q\n"), 0o600))

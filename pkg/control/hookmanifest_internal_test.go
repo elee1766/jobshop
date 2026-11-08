@@ -12,6 +12,7 @@ import (
 )
 
 func TestHookAcceptedManifestBindsAuthority(t *testing.T) {
+	t.Parallel()
 	changes := map[string]func(*testing.T, config.Root, *config.Config){
 		"selector": func(_ *testing.T, _ config.Root, cfg *config.Config) {
 			w := cfg.Workflows["demo-dynamic"]

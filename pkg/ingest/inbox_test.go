@@ -175,12 +175,14 @@ func TestInboxPrune(t *testing.T) {
 }
 
 // TestInboxPruneBatches: a backlog larger than one delete batch goes in
-// one prune call.
+// one prune call. The batch is 2 here, not 200, so 5 items cross it
+// twice: 450 items took 4-7s under -race (JOB-117). Not parallel: it
+// sets the package's batch size.
 func TestInboxPruneBatches(t *testing.T) {
-	t.Parallel()
+	t.Cleanup(ingest.SetInboxPruneBatch(2))
 	ctx := t.Context()
 	s, clock := inboxStore(t)
-	const n = 450
+	const n = 5
 	for i := range n {
 		_, _, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: fmt.Sprint(i)})
 		require.NoError(t, err)

@@ -21,6 +21,7 @@ import (
 )
 
 func TestChatAttachments(t *testing.T) {
+	t.Parallel()
 	root := controltest.NewRoot(t, fmt.Sprintf(`default_project: js
 projects:
   js: {}

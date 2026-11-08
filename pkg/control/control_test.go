@@ -2,6 +2,7 @@ package control_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -135,12 +136,20 @@ func TestSessionListEnded(t *testing.T) {
 func TestSessionListBeyondDefaultPage(t *testing.T) {
 	t.Parallel()
 	root := controltest.NewRoot(t, "projects:\n  js: {}\n")
+	// A page of closed sessions, written in one transaction: one
+	// session.new and close per session took 11s under -race (JOB-117).
+	// Their ended state is saved, as for a session that closed normally,
+	// so startup has none to backfill.
+	seedStore(t, root, func(st store.Store) {
+		g := store.Graph{Close: map[string]string{}}
+		for i := range store.DefaultLimit {
+			g.Tickets = append(g.Tickets, store.NewTicket{ID: fmt.Sprintf("js-s-old%d", i), Project: "js", Kind: store.KindSession, Title: "dev jcode session", Pool: "dev", Fields: []byte(`{"agent":"jcode","ended":{}}`)})
+			g.Close[g.Tickets[i].ID] = "done"
+		}
+		_, err := st.Apply(t.Context(), "test", g)
+		require.NoError(t, err)
+	})
 	c := controltest.Start(t, root, control.Options{})
-	for range store.DefaultLimit {
-		var session rpc.SessionNewResult
-		c.Call(rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &session)
-		c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: session.Ticket.ID}, nil)
-	}
 	var newest rpc.SessionNewResult
 	c.Call(rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &newest)
 	var sessions []rpc.SessionInfo

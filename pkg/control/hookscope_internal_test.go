@@ -22,6 +22,7 @@ import (
 // resolve inside the scope its run accepted. Moving a pool to another pack
 // instance, same name and project, revokes it for an unapplied plan.
 func TestHookPreparedPlanRespectsRevokedInstanceScope(t *testing.T) {
+	t.Parallel()
 	root := config.Root{Dir: t.TempDir()}
 	write := func(name, body string) {
 		t.Helper()
@@ -83,6 +84,7 @@ func TestHookPreparedPlanRespectsRevokedInstanceScope(t *testing.T) {
 // A run2 run that lost its accepted scope runs no callback code and applies
 // nothing, even a finish with no references; its pin also names its instance.
 func TestHookRunWithoutAcceptedScopeFailsClosed(t *testing.T) {
+	t.Parallel()
 	root := config.Root{Dir: t.TempDir()}
 	write := func(name, body string) {
 		t.Helper()
@@ -154,6 +156,7 @@ func TestHookRunWithoutAcceptedScopeFailsClosed(t *testing.T) {
 // A callback-started static run is checked too: a retry pool that moved to
 // another project since planning keeps the prepared graph from applying.
 func TestHookPreparedStaticChildRejectsRetryProjectDrift(t *testing.T) {
+	t.Parallel()
 	root := config.Root{Dir: t.TempDir()}
 	write := func(name, body string) {
 		t.Helper()

@@ -17,6 +17,19 @@ import (
 func TestTicketGraph(t *testing.T) {
 	t.Parallel()
 	root := controltest.NewRoot(t, "projects:\n  js: {}\n")
+	// The parent has more children than List's default page, the last
+	// one closed. They are written in one transaction: one ticket.create
+	// each took 3-12s under -race (JOB-117).
+	const parentID = "js-plan"
+	last := store.Ticket{ID: fmt.Sprintf("js-sibling%d", store.DefaultLimit)}
+	seedStore(t, root, func(st store.Store) {
+		g := store.Graph{Tickets: []store.NewTicket{{ID: parentID, Project: "js", Kind: store.KindTask, Title: "Plan"}}, Close: map[string]string{last.ID: "done"}}
+		for i := 0; i <= store.DefaultLimit; i++ {
+			g.Tickets = append(g.Tickets, store.NewTicket{ID: fmt.Sprintf("js-sibling%d", i), Project: "js", Kind: store.KindTask, Title: fmt.Sprintf("Sibling %d", i), ParentID: parentID})
+		}
+		_, err := st.Apply(t.Context(), "test", g)
+		require.NoError(t, err)
+	})
 	c := controltest.Start(t, root, control.Options{})
 	ctx := t.Context()
 	create := func(p rpc.CreateParams) store.Ticket {
@@ -25,7 +38,7 @@ func TestTicketGraph(t *testing.T) {
 		require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketCreate, p, &ticket))
 		return ticket
 	}
-	parent := create(rpc.CreateParams{Title: "Plan"})
+	parent := store.Ticket{ID: parentID}
 	child := create(rpc.CreateParams{Title: "Implement", ParentID: parent.ID})
 	leaf := child
 	for i := range 6 {
@@ -42,12 +55,6 @@ func TestTicketGraph(t *testing.T) {
 		require.NoError(t, c.Admin.Call(ctx, rpc.MethodEdgeAdd, edge, nil))
 	}
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{ID: dependency.ID, Body: "See https://github.com/acme/widget/issues/9"}, nil))
-	// More children than List's default page, with the last one closed.
-	var last store.Ticket
-	for i := 0; i <= store.DefaultLimit; i++ {
-		last = create(rpc.CreateParams{Title: fmt.Sprintf("Sibling %d", i), ParentID: parent.ID})
-	}
-	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: last.ID}, nil))
 	var graph rpc.GraphResult
 	require.NoError(t, c.Admin.Call(ctx, rpc.MethodTicketGraph, rpc.GraphParams{ID: leaf.ID, Limit: 2000}, &graph))
 	assert.Equal(t, leaf.ID, graph.Root)
