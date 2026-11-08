@@ -1284,10 +1284,13 @@ type RunListParams struct {
 }
 
 // RunResumeParams reopens a run's step (default: its first unfinished
-// step) with failures reset.
+// step) with failures reset. Repin first moves a callback workflow run to
+// the live callback manifest, for a run whose pin a deploy changed. It
+// needs the admin socket.
 type RunResumeParams struct {
-	ID   string `json:"id"`
-	Step string `json:"step,omitempty"`
+	ID    string `json:"id"`
+	Step  string `json:"step,omitempty"`
+	Repin bool   `json:"repin,omitempty"`
 }
 
 // SessionSendParams delivers text to a session as a message. Name the

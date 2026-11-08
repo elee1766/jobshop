@@ -500,6 +500,13 @@ callback evaluation and from retrying an external effect. A code bug in a
 pinned callback is not fixed by silently swapping in a new script for the
 old invocation. Preserve the source or use the migration/drain procedure.
 
+When a deploy replaced the callbacks of runs already open (`hook manifest
+changed`, run `needs_human`), an operator on the admin socket can move one
+run to the live callbacks and resume it with `jobshop run resume <run-id>
+--repin`. The run records the repin as a comment. Review the new callbacks
+first: the run keeps its progress but runs the new code and grants. See
+`docs/notes/1012-hook-repin.md`.
+
 ## Event wakeups and reconciliation
 
 Scheduled/fallback callbacks use `event.source == "timer"` and

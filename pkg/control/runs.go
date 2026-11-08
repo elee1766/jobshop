@@ -611,6 +611,15 @@ func (c *Controller) resumeRun(ctx context.Context, sc scope, p rpc.RunResumePar
 	if t.Status == store.StatusClosed {
 		return nil, fmt.Errorf("%w: run %s", store.ErrClosed, t.ID)
 	}
+	if p.Repin {
+		// It swaps the code and authority the run executes under.
+		if err := requireAdmin(sc, "run resume --repin"); err != nil {
+			return nil, err
+		}
+		if t, f, err = c.repinRun(ctx, sc.actor, t, f); err != nil {
+			return nil, err
+		}
+	}
 	if p.Step == "" && f.Automation != nil && f.State == store.RunNeedsHuman {
 		resumed, err := c.resumeHook(ctx, sc.actor, t, f)
 		if err != nil {
