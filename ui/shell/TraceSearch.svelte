@@ -78,7 +78,7 @@
       <table class="mono">
         <thead><tr><th title="Status: O open, R running, C closed">s</th><th>ticket</th><th>kind</th><th class="wide">pool</th></tr></thead>
         <tbody>{#each results as ticket (ticket.id)}<tr>
-          <td class="ticket-status" title={ticketState(ticket)} aria-label={ticketState(ticket)}>{statusLetter(ticket)}</td>
+          <td class="ticket-status" data-status={ticket.status} title={ticketState(ticket)} aria-label={ticketState(ticket)}>{statusLetter(ticket)}</td>
           <td><a class="ticket-label" title={ticket.id} href={"?view=trace&ref=" + encodeURIComponent(ticket.id)}>{ticket.title || ticket.id}</a></td>
           <td>{ticket.kind}</td><td class="wide">{ticket.pool || '–'}</td>
         </tr>{/each}</tbody>
