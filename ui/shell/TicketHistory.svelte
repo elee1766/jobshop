@@ -23,7 +23,7 @@
 
 <details class="ticket-history" open>
   <summary>history ({entries.length})</summary>
-  <ol>
+  <ol class="rows">
     {#each [...entries].reverse() as entry (entry.seq)}
       {@const event = describe(entry)}
       <li>

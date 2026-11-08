@@ -109,6 +109,7 @@
           <span class="muted learn-hint">{g.hint}</span>
         </h2>
         {#if open}
+          <div class="rows">
           {#each g.items.slice(0, limit) as u (u.key)}
             <article class="learn-row">
               <p class="learn-problem">
@@ -153,7 +154,7 @@
                 {#if u.missing.length}<p class="muted">Also cites {u.missing.map((id) => "#" + id).join(", ")}, not in the loaded list.</p>{/if}
                 {#if u.edit}
                   <div class="table-scroll">
-                    <table class="mono">
+                    <table class="mono rows">
                       <thead><tr><th>measure</th><th>before</th><th>after</th></tr></thead>
                       <tbody>
                         {#each metricRows as row}<tr>
@@ -173,6 +174,7 @@
               </details>
             </article>
           {/each}
+          </div>
           {#if g.items.length > limit}<button class="learn-more" onclick={() => (shown = { ...shown, [g.stage]: limit + PAGE })}
               >more ({g.items.length - limit})</button
             >{/if}

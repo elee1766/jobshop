@@ -21,6 +21,9 @@
   --column: #99994c;
   --rule: #e8e8c0;
   --hi: #eeee9e;
+  /* Every other row of a repeated list or table: between paper and rule, so
+     --hi (hover, chosen) stays clearly stronger. */
+  --row-alt: #f6f6db;
   --muted: #555;
   --warn: #9a4a00;
   --status-open: #205b9b;
@@ -42,6 +45,7 @@
   --paper: #1c1c14;
   --tag: #1f2a33;
   --hi: #4a4a1e;
+  --row-alt: #25251b;
   --muted: #b4b4a6;
   --rule: #38382b;
   --column: #77774a;

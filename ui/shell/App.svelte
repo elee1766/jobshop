@@ -523,7 +523,7 @@
               onclick={triage}>triage-in-chat</button
             ><span class="push-right muted">{attention.length}</span>
           </div>
-          {#if !collapsed.waiting}<div class="section-body">
+          {#if !collapsed.waiting}<div class="section-body rows">
               {#if !attention.length}<p class="muted">
                   Nothing waiting on you.
                 </p>{/if}
@@ -588,7 +588,7 @@
               >{hideHolds ? "show-holds" : "hide-holds"}</button
             ><span class="push-right muted">{stalled.length}</span>
           </div>
-          {#if !collapsed["not-moving"]}<div class="section-body">
+          {#if !collapsed["not-moving"]}<div class="section-body rows">
               {#each stalled as row}<p class:muted={row.hold}>
                   <button class="mono" onclick={() => openTrace(row.id)}
                     >{row.ref}</button
@@ -635,7 +635,7 @@
                   more.
                 </p>{/if}
               <div class="table-scroll refs">
-                <table class="mono">
+                <table class="mono rows">
                   <thead
                     ><tr
                       ><th title="Status: O open, R running, C closed">s</th><th>ticket</th><th class="ref-col">issue</th><th class="ref-col">pr</th><th>step</th><th
@@ -712,7 +712,7 @@
           <HookAudit summaries={system?.automation} selected={auditRef} detail={audit} onselect={openAudit} />
           <h2>pools</h2>
           <div class="table-scroll">
-            <table class="mono">
+            <table class="mono rows">
               <thead
                 ><tr
                   ><th>pool</th><th>status</th><th>open / max</th><th
@@ -734,7 +734,7 @@
           </div>
           <h2>resources</h2>
           <div class="table-scroll">
-            <table class="mono">
+            <table class="mono rows">
               <thead
                 ><tr
                   ><th>resource</th><th>held / capacity</th><th>waiting</th></tr
@@ -750,7 +750,7 @@
                   >{/each}</tbody
               >
             </table>
-            <table class="mono">
+            <table class="mono rows">
               <thead
                 ><tr
                   ><th>slot</th><th>resource</th><th>state</th><th>ticket</th
@@ -780,7 +780,7 @@
               .join(" · ") || "Inbox empty"}
           </p>
           <div class="table-scroll">
-            <table class="mono">
+            <table class="mono rows">
               <thead
                 ><tr
                   ><th>worker</th><th>host</th><th>last seen</th><th
@@ -802,7 +802,7 @@
               3,
             ) || "0"}s ({system?.status?.samples || 0} passes)
           </p>
-          <table class="mono">
+          <table class="mono rows">
             <tbody
               >{#each Object.entries(system?.status?.steps || {}) as [name, seconds]}<tr
                   ><td>{name}</td><td>{Number(seconds).toFixed(3)}s</td></tr
@@ -810,6 +810,7 @@
             >
           </table>
           <h2>sessions</h2>
+          <div class="rows">
           {#each system?.sessions || [] as session}<p>
               <button class="mono" onclick={() => openTrace(session.id)}
                 >{session.display_name || session.id}</button
@@ -817,6 +818,7 @@
               {session.busy ? "working" : "idle"}
               <button onclick={() => closeSession(session.id)}>close</button>
             </p>{/each}
+          </div>
           <p class="muted">
             Costs are not recorded by this controller. Context usage is
             available in session journals.
