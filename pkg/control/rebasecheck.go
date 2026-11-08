@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -29,7 +30,7 @@ func (c *Controller) runPR(ctx context.Context, run store.Ticket) (string, int) 
 		if err != nil {
 			continue
 		}
-		for _, th := range implicitThreads(s, cs) {
+		for _, th := range threads.Implicit(s, cs) {
 			if th.PR {
 				repo, n = th.Repo, th.Number
 			}

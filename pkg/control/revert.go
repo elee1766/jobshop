@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -40,7 +41,7 @@ func (c *Controller) prWorkRun(ctx context.Context, repo string, n int) (store.T
 			if err != nil {
 				continue
 			}
-			for _, th := range implicitThreads(s, cs) {
+			for _, th := range threads.Implicit(s, cs) {
 				if th.PR && th.Number == n && strings.EqualFold(th.Repo, repo) {
 					return r, true
 				}

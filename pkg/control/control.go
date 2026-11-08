@@ -36,6 +36,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/scaleplan"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/control/slotprovider"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/hooks"
@@ -233,9 +234,6 @@ type Controller struct {
 	slotMu sync.Mutex
 	// minter caches identity tokens (#200).
 	minter *identity.Minter
-	// selfLoginErr is the last self-login error logged per identity, so a
-	// refused lookup warns once, not on every poll (JOB-108).
-	selfLoginErr sync.Map
 	// ingestQ is the ingest queue (JOB-141); see queue().
 	ingestQ   *ingestqueue.Service
 	queueOnce sync.Once
@@ -278,10 +276,11 @@ type Controller struct {
 	// events fans store changes out to events.subscribe.
 	events *hub
 	// subSource reads GitHub threads; nil means gh (tests set a fake).
-	subSource threadSource
-	// subPollMu serializes subscription passes: the pump and webhook
-	// passes for one thread (#300).
-	subPollMu sync.Mutex
+	subSource threads.Source
+	// threadsEng is the thread engine (JOB-156, pkg/control/threads); see
+	// threadEngine().
+	threadsEng  *threads.Engine
+	threadsOnce sync.Once
 	// dispatchMu serializes inbox dispatch passes (#442): the pump and
 	// poll-triggered passes, so a thread's news is never delivered out
 	// of order.

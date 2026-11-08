@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -68,7 +69,7 @@ func (c *Controller) pumpWaits() {
 }
 
 // pollWaitsOn evaluates the waits with a condition on one of subjects.
-func (c *Controller) pollWaitsOn(ctx context.Context, src waitengine.Source, threads threadSource, subjects map[string]bool) {
+func (c *Controller) pollWaitsOn(ctx context.Context, src waitengine.Source, ths threads.Source, subjects map[string]bool) {
 	if len(subjects) == 0 {
 		return
 	}
@@ -81,7 +82,7 @@ func (c *Controller) pollWaitsOn(ctx context.Context, src waitengine.Source, thr
 		}
 		return
 	}
-	pass := c.newWaitPass(src, threads)
+	pass := c.newWaitPass(src, ths)
 	for _, t := range ts {
 		if !waitengine.Names(waitOf(t), subjects) {
 			continue

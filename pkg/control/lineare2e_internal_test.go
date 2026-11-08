@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -186,7 +187,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	f.mu.Unlock()
 	assert.True(t, strings.HasPrefix(body, "https://linear.app/acme/profiles/wile "), body)
 
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
+	src := threads.Mux{GH: &fakeThreads{}, Linear: c.threadEngine().LinearSource()}
 	c.pollSubscriptions(ctx, src)
 	clk.advance(time.Minute)
 	f.reply(askID, "yes, keep it", "Wile", clk.now())

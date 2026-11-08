@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -51,9 +51,9 @@ func (l liveLinearWait) IssueContext(ctx context.Context, key string) (linear.Co
 // waitEvery is the poll interval: the subscriptions interval when set.
 func (c *Controller) waitEvery() time.Duration {
 	if s := c.config().Subscriptions; s != nil {
-		return config.Duration(s.Interval, defaultSubInterval)
+		return config.Duration(s.Interval, threads.DefaultInterval)
 	}
-	return defaultSubInterval
+	return threads.DefaultInterval
 }
 
 func (c *Controller) waitSrc() waitengine.Source {
@@ -68,13 +68,6 @@ func (c *Controller) linearWaitSrc() linearWaitSource {
 		return c.linearWait
 	}
 	return liveLinearWait{c: c}
-}
-
-func (c *Controller) threadSrc() threadSource {
-	if c.subSource != nil {
-		return c.subSource
-	}
-	return muxSource{gh: ghSource{}, linear: linearSource{c: c}}
 }
 
 // waitOf returns fields.wait of a task or step, nil for none.
@@ -285,7 +278,7 @@ func (c *Controller) resumeHolder(ctx context.Context, id string) (holder, busy 
 }
 
 // pollWaits runs one pass over every waiting ticket.
-func (c *Controller) pollWaits(ctx context.Context, src waitengine.Source, threads threadSource) {
+func (c *Controller) pollWaits(ctx context.Context, src waitengine.Source, ths threads.Source) {
 	c.waitMu.Lock()
 	defer c.waitMu.Unlock()
 	ts, err := c.waiting(ctx, "")
@@ -297,7 +290,7 @@ func (c *Controller) pollWaits(ctx context.Context, src waitengine.Source, threa
 	}
 	// The pass starts after the list: every observation it caches is newer
 	// than the snapshots it is applied to (JOB-144).
-	pass := c.newWaitPass(src, threads)
+	pass := c.newWaitPass(src, ths)
 	for _, t := range ts {
 		if err := c.evalWait(ctx, pass, t); err != nil && ctx.Err() == nil {
 			c.log.WarnContext(ctx, "waits: evaluate", "ticket", t.ID, "err", err)
@@ -356,18 +349,18 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitengine.Pass, t stor
 // waitSources is what a pass observes through: the gh and Linear
 // adapters, this controller's runs and subscription filters, and its
 // build commit.
-func (c *Controller) waitSources(src waitengine.Source, threads threadSource) waitengine.Sources {
+func (c *Controller) waitSources(src waitengine.Source, ths threads.Source) waitengine.Sources {
 	return waitengine.Sources{
 		GitHub:  src,
 		Linear:  c.linearWaitSrc(),
 		Runs:    runWaitSource{c: c},
-		Replies: replyWaitSource{c: c, threads: threads},
+		Replies: threads.Replies{E: c.threadEngine(), Src: ths},
 		Commit:  c.opt.Commit,
 	}
 }
 
-func (c *Controller) newWaitPass(src waitengine.Source, threads threadSource) *waitengine.Pass {
-	return waitengine.NewPass(c.waitSources(src, threads))
+func (c *Controller) newWaitPass(src waitengine.Source, ths threads.Source) *waitengine.Pass {
+	return waitengine.NewPass(c.waitSources(src, ths))
 }
 
 // runWaitSource reads run tickets for the run condition.
@@ -383,36 +376,4 @@ func (r runWaitSource) Run(ctx context.Context, id string) (waitengine.RunState,
 		return waitengine.RunState{}, err
 	}
 	return waitengine.RunState{Closed: t.Status == store.StatusClosed, State: f.State}, nil
-}
-
-// replyWaitSource answers thread.reply: a human comment on the thread
-// after the wait started, from From when set. It reads through the
-// subscription source, so the same filters (bots, ignore, authors) apply;
-// they live in the controller's config, which is why this is not engine
-// code.
-type replyWaitSource struct {
-	c       *Controller
-	threads threadSource
-}
-
-func (r replyWaitSource) Reply(ctx context.Context, cd store.WaitCond, since time.Time) (bool, string, error) {
-	th := thread{Linear: cd.Thread}
-	if repo, num, ok := strings.Cut(cd.Thread, "#"); ok {
-		n, _ := strconv.Atoi(num)
-		th = thread{Repo: repo, Number: n, PR: true}
-	}
-	cs, err := r.threads.Comments(ctx, th, since)
-	if err != nil {
-		return false, "", err
-	}
-	for _, cm := range cs {
-		if !cm.At.After(since) || r.c.ignored(cm) {
-			continue
-		}
-		if cd.From != "" && !strings.EqualFold(cd.From, cm.Author) && (!cm.Linear || !r.c.linearMatch(cd.From, cm)) {
-			continue
-		}
-		return true, fmt.Sprintf("%s replied on %s", cm.Author, cd.Thread), nil
-	}
-	return false, "", nil
 }

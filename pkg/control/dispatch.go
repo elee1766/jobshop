@@ -10,6 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -126,15 +127,15 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 		return
 	}
 	now := c.now()
-	window := config.Duration(cfg.Subscriptions.ResumeWindow, defaultSubResume)
-	_, byThread, _, err := c.followers(ctx, now)
+	window := config.Duration(cfg.Subscriptions.ResumeWindow, threads.DefaultResume)
+	_, byThread, _, err := c.threadEngine().Followers(ctx, window, now)
 	if err != nil {
 		c.log.WarnContext(ctx, "dispatch: followers", "err", err)
 		return // leases expire; retried
 	}
 	type group struct {
-		th   thread
-		cs   []ghComment
+		th   threads.Thread
+		cs   []threads.Comment
 		keys []string
 		rows []store.InboxItem
 	}
@@ -148,8 +149,8 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 			continue
 		}
 		cm := p.Comment.comment()
-		k := p.Thread.key()
-		if c.ignored(cm) || len(byThread[k]) == 0 {
+		k := p.Thread.Key()
+		if c.threadEngine().Ignored(cm) || len(byThread[k]) == 0 {
 			skip = append(skip, it)
 			continue
 		}
@@ -165,7 +166,7 @@ func (c *Controller) dispatchComments(ctx context.Context, holder string, rows [
 		}
 		g := groups[k]
 		if g == nil {
-			th, _ := threadOf(byThread[k], k)
+			th, _ := threads.Of(byThread[k], k)
 			g = &group{th: th}
 			groups[k] = g
 			order = append(order, k)

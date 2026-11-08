@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -266,7 +267,7 @@ func TestLinearWebhookComment(t *testing.T) {
 	askID, _ := f.ask.comments[0]["id"].(string)
 	f.ask.mu.Unlock()
 	// The pump registers the thread; then the reply arrives by webhook.
-	c.subSource = muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
+	c.subSource = threads.Mux{GH: &fakeThreads{}, Linear: c.threadEngine().LinearSource()}
 	c.pollSubscriptions(ctx, c.subSource)
 	clk.advance(time.Minute)
 	f.ask.reply(askID, "yes", "Wile", clk.now())

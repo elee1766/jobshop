@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -20,12 +21,12 @@ import (
 // and admits them, without dispatching.
 func admitComments(t *testing.T, c *Controller, clk *scanClock, src *fakeThreads, n int) []string {
 	t.Helper()
-	th := thread{Repo: "acme/widget", Number: 7}
+	th := threads.Thread{Repo: "acme/widget", Number: 7}
 	var bodies []string
 	for i := range n {
 		body := fmt.Sprintf("note-%03d", i)
 		cm := comment(clk, fmt.Sprintf("c%d", i), body)
-		src.add("acme/widget#7", cm)
+		src.add("acme/widget#7", cm.Comment)
 		require.NoError(t, c.inboxComment(t.Context(), th, cm))
 		bodies = append(bodies, body)
 	}
