@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.26](https://github.com/elee1766/jobshop/compare/v0.8.25...v0.8.26) (2026-11-08)
+
+
+### Features
+
+* native selfdev pack and Starlark script steps (JOB-124) ([#1001](https://github.com/elee1766/jobshop/issues/1001)) ([62dac68](https://github.com/elee1766/jobshop/commit/62dac68bb5aba37a5fd82b2bc5b0b1115b28d08b))
+
 ## [0.8.25](https://github.com/elee1766/jobshop/compare/v0.8.24...v0.8.25) (2026-11-07)
 
 
