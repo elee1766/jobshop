@@ -35,11 +35,11 @@ pools:
   dev: {agent: fake, dir: %[1]q}
   plan: {agent: fake, dir: %[1]q}
 workflows:
-  stall-check:
+  triage:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: x}
+      - {id: diagnose, pool: plan, retries: 1, title: "Finding {{.signal}} {{.subject}}", prompt: x}
   pr-work:
     vars: [issue]
     issue: issue
@@ -56,23 +56,23 @@ workflows:
     steps:
       - {id: implement, pool: dev, title: "Implement {{.issue}}", prompt: x}
 triggers:
-  stall:
+  scan:
     when:
-      stall:
+      scan:
         - {signal: linear_issue_no_run, team: JOB, states: Todo, poll: 1m}
     run:
-      workflow: stall-check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      workflow: triage
+      vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}
 `
 
 // TestTwoTrackersLinearIntake (#652): on a github-tracker instance, a
-// Linear intake issue fires linear_issue_no_run; the stall-check's start
+// Linear intake issue fires linear_issue_no_run; the triage's start
 // of pr-work-linear with key linear-JOB-1 makes a run carrying
 // meta.linear, which then hides the issue from intake. GitHub pr-work
 // still takes GitHub issue numbers.
 func TestTwoTrackersLinearIntake(t *testing.T) {
 	t.Parallel()
-	c, clk, dir := stallControllerYAML(t, twoTrackersYAML)
+	c, clk, dir := scanControllerYAML(t, twoTrackersYAML)
 	ctx := t.Context()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_x\n"), 0o600))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -93,11 +93,11 @@ func TestTwoTrackersLinearIntake(t *testing.T) {
 	t.Cleanup(srv.Close)
 	c.minter, c.linearURL = identity.NewMinter(), srv.URL
 
-	assert.Equal(t, []string{"stall:linear_issue_no_run:JOB-1"}, stallKeys(t, c))
+	assert.Equal(t, []string{"scan:linear_issue_no_run:JOB-1"}, findingKeys(t, c))
 	c.runTriggers(t.Context(), c.config())
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
 	require.NoError(t, err)
-	require.Len(t, runs, 1, "one stall-check run")
+	require.Len(t, runs, 1, "one triage run")
 
 	admin := scope{admin: true, actor: "admin"}
 	// Force: this fake serves no issue context for the intake gate (JOB-69).
@@ -116,7 +116,7 @@ func TestTwoTrackersLinearIntake(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, run.ID, again.(rpc.RunResult).Run.ID, "same key, same run")
 	clk.advance(2 * time.Minute)
-	assert.Empty(t, stallKeys(t, c), "the open run hides JOB-1 from intake")
+	assert.Empty(t, findingKeys(t, c), "the open run hides JOB-1 from intake")
 
 	gh, err := c.runStart(ctx, admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "12"}, Key: "issue-12"})
 	require.NoError(t, err)

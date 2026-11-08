@@ -22,7 +22,7 @@ func TestPoolSandboxGuidance(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(h, ".agents"), 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(h, ".jcode"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(h, ".jcode", "prompt-overlay.md"), []byte("x"), 0o644))
-	c, _, dir := stallControllerYAML(t, `projects:
+	c, _, dir := scanControllerYAML(t, `projects:
   js: {}
 agents:
   a: {command: /bin/true, credentials: ["~/.jcode/auth.json"]}

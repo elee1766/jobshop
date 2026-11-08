@@ -1048,7 +1048,7 @@ type reportCmd struct {
 	Progress reportProgressCmd `cmd:"" help:"Report progress on your ticket."`
 	Waiting  reportWaitingCmd  `cmd:"" help:"Report waiting (on a question, a time, another change)."`
 	Ready    reportReadyCmd    `cmd:"" help:"Report the work ready for the next step."`
-	Blocked  reportBlockedCmd  `cmd:"" help:"Report blocked; labels the ticket blocked for stall-check."`
+	Blocked  reportBlockedCmd  `cmd:"" help:"Report blocked; labels the ticket blocked for triage."`
 	Failed   reportFailedCmd   `cmd:"" help:"Report failure and why (then close -r failed)."`
 	Dropped  reportDroppedCmd  `cmd:"" help:"Report the work dropped and why (then close)."`
 }

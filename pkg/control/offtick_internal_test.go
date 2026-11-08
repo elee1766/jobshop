@@ -41,11 +41,11 @@ func (l *lockedBuf) String() string {
 	return l.b.String()
 }
 
-// offTickController is a stall controller that runs calls outside the
+// offTickController is a finding controller that runs calls outside the
 // tick as Run sets it up (JOB-103), logging to log, with metrics.
-func offTickController(t *testing.T, yaml string, log io.Writer) (*Controller, *stallClock, string) {
+func offTickController(t *testing.T, yaml string, log io.Writer) (*Controller, *scanClock, string) {
 	t.Helper()
-	c, clk, dir := stallControllerYAML(t, yaml)
+	c, clk, dir := scanControllerYAML(t, yaml)
 	c.root.Dir = dir
 	c.log = slog.New(slog.NewTextHandler(log, nil))
 	m, err := telemetry.NewMetrics()

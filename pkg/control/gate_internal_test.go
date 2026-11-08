@@ -95,7 +95,7 @@ func TestGateDecide(t *testing.T) {
 // evaluate writes the result on the edit and its learnings.
 func TestCuratorGate(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	w := config.EditsWhen{Runs: 2, Age: "72h"}
@@ -186,7 +186,7 @@ func TestCuratorGate(t *testing.T) {
 // steps since the merge it counts as helped.
 func TestCuratorGateAge(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	l, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: store.LearningWorkaround, Summary: "retry gh on 502", Scope: "pool:dev"})

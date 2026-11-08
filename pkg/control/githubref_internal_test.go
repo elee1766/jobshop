@@ -15,7 +15,7 @@ import (
 // and a run of an unknown workflow is left alone.
 func TestBackfillGitHubRepo(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	run := mkTicket(t, c, store.NewTicket{
 		Kind: store.KindRun, Title: "r",

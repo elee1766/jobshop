@@ -63,7 +63,7 @@ func (f *fakeActivity) Linear(context.Context, string, time.Time) ([]rpc.Activit
 	return nil, nil
 }
 
-func activityController(t *testing.T) (*Controller, *stallClock, *fakeActivity) {
+func activityController(t *testing.T) (*Controller, *scanClock, *fakeActivity) {
 	t.Helper()
 	c, clk, _ := subController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(c.root.Dir, config.FileName), fmt.Appendf(nil, activityYAML, c.root.Dir, c.root.Dir), 0o600))

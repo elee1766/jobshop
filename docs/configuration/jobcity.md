@@ -12,6 +12,13 @@ for built-ins. The tested demo is
 intentionally smaller than a production jobcity pack. Do not replace the
 production flows with a shortened example that omits guards or wakeups.
 
+The snapshot predates the scan rename (2026-11-08): `when.stall` is now
+`when.scan`, run keys `stall:<signal>:<subject>` are
+`scan:<signal>:<subject>`, `meta.trigger.stall` is `meta.trigger.finding`,
+and `step_stalled` is `step_idle`. Old runs keyed `stall:` do not hold a
+subject after the upgrade: drain or close them first. The names below are
+the snapshot's.
+
 ## Review-request reconciliation
 
 `packs/gfx/pack.yaml` defines one `review-requests` trigger per enabled

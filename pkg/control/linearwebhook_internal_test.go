@@ -51,11 +51,11 @@ pools:
 subscriptions:
   resume_window: 24h
 workflows:
-  stall-check:
+  triage:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: x}
+      - {id: diagnose, pool: plan, retries: 1, title: "Finding {{.signal}} {{.subject}}", prompt: x}
   pr-work:
     vars: [issue]
     issue: issue
@@ -65,13 +65,13 @@ workflows:
     steps:
       - {id: implement, pool: dev, title: "Implement {{.issue}}", prompt: x}
 triggers:
-  stall:
+  scan:
     when:
-      stall:
+      scan:
         - {signal: linear_issue_no_run, team: ENG, states: Todo, poll: 1h}
     run:
-      workflow: stall-check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      workflow: triage
+      vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}
 `
 
 // webhookLinear is a fake Linear for the webhook tests: an OAuth token
@@ -142,10 +142,10 @@ func (f *webhookLinear) serve(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func webhookController(t *testing.T) (*Controller, *stallClock, *webhookLinear) {
+func webhookController(t *testing.T) (*Controller, *scanClock, *webhookLinear) {
 	t.Helper()
 	f := &webhookLinear{}
-	c, clk, dir := stallControllerYAML(t, linearWebhookYAML)
+	c, clk, dir := scanControllerYAML(t, linearWebhookYAML)
 	f.ask = &askLinear{now: clk.now}
 	srv := f.serve(t)
 	for name, s := range map[string]string{"cid": "cid", "csecret": "cs", "whsecret": webhookSecret + "\n"} {
@@ -290,7 +290,7 @@ func TestLinearWebhookComment(t *testing.T) {
 // TestLinearWebhookOff: no listen address, no server.
 func TestLinearWebhookOff(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, strings.Replace(linearWebhookYAML, "webhook_listen: 127.0.0.1:0", `webhook_listen: ""`, 1))
+	c, _, _ := scanControllerYAML(t, strings.Replace(linearWebhookYAML, "webhook_listen: 127.0.0.1:0", `webhook_listen: ""`, 1))
 	require.NoError(t, c.serveLinearWebhook())
 	c.wg.Wait()
 	assert.Empty(t, fmt.Sprint(c.config().Linear.WebhookListen))

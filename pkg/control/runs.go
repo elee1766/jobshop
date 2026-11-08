@@ -93,8 +93,8 @@ func (c *Controller) linearSkipLabels(key string) []string {
 	cfg := c.config()
 	var out []string
 	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
-		for _, sig := range cfg.Triggers[name].When.Stall {
-			if sig.Signal == config.StallLinearIssueNoRun && strings.EqualFold(sig.Team, team) {
+		for _, sig := range cfg.Triggers[name].When.Scan {
+			if sig.Signal == config.SignalLinearIssueNoRun && strings.EqualFold(sig.Team, team) {
 				out = append(out, config.SplitList(sig.SkipLabels)...)
 			}
 		}
@@ -170,7 +170,7 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 		}
 		// An empty issue or PR var renders "Implement #" with no issue to
 		// work, and its key (issue-) joins every later empty start to one
-		// broken run (#496). Other vars may be empty (a stall's detail).
+		// broken run (#496). Other vars may be empty (a finding's detail).
 		if (k == w.Issue || k == w.PR) && strings.TrimSpace(v) == "" {
 			return runPlan{}, fmt.Errorf("%w: workflow %s var %s is empty", store.ErrInvalid, p.Workflow, k)
 		}

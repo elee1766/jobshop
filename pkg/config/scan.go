@@ -9,25 +9,25 @@ import (
 	"time"
 )
 
-// DefaultStallMaxRuns is a stall trigger's max_runs when unset.
-const DefaultStallMaxRuns = 3
+// DefaultScanMaxRuns is a scan trigger's max_runs when unset.
+const DefaultScanMaxRuns = 3
 
-// DefaultStallMaxOpen is a stall trigger's max_open when unset.
-const DefaultStallMaxOpen = 3
+// DefaultScanMaxOpen is a scan trigger's max_open when unset.
+const DefaultScanMaxOpen = 3
 
-// StallVars are the template vars a stall trigger's run vars may use.
-var StallVars = []string{StallSignalVar, StallSubjectVar, StallDetailVar}
+// ScanVars are the template vars a scan trigger's run vars may use.
+var ScanVars = []string{ScanSignalVar, ScanSubjectVar, ScanDetailVar}
 
-// checkStallTrigger validates a when.stall trigger (#143). It has no other
+// checkScanTrigger validates a when.scan trigger (#143). It has no other
 // condition, starts a run, and its run vars and key may only use the
-// stall vars. An empty key is <key_prefix>:<signal>:<subject>, key_prefix
-// defaulting to stall (JOB-95); a set one (JOB-33, pr-<n>) lets the run
+// scan vars. An empty key is <key_prefix>:<signal>:<subject>, key_prefix
+// defaulting to finding (JOB-95); a set one (JOB-33, pr-<n>) lets the run
 // dedup with runs started by hand for the subject.
 // With on:, a check may use {{.event.<field>}} (JOB-72).
-func (c *Config) checkStallTrigger(tr *Trigger) error {
+func (c *Config) checkScanTrigger(tr *Trigger) error {
 	w := tr.When
 	if w.Cron != "" || w.HasCounts() || w.Check != "" || w.Pool != "" || w.Kind != "" || w.Label != "" {
-		return errors.New("when: stall takes no other condition")
+		return errors.New("when: finding takes no other condition")
 	}
 	if err := checkTriggerOn(tr); err != nil {
 		return err
@@ -38,54 +38,54 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 		}
 	}
 	seen := map[string]bool{}
-	for i, s := range w.Stall {
+	for i, s := range w.Scan {
 		if !namePattern.MatchString(s.Signal) {
-			return fmt.Errorf("when.stall[%d]: signal must match %s", i, namePattern)
+			return fmt.Errorf("when.scan[%d]: signal must match %s", i, namePattern)
 		}
 		if seen[s.Signal] {
-			return fmt.Errorf("when.stall: signal %s listed twice", s.Signal)
+			return fmt.Errorf("when.scan: signal %s listed twice", s.Signal)
 		}
 		seen[s.Signal] = true
-		if s.Signal == StallLinearIssueNoRun {
-			if err := checkLinearStall(s); err != nil {
+		if s.Signal == SignalLinearIssueNoRun {
+			if err := checkLinearSignal(s); err != nil {
 				return err
 			}
 			continue
 		}
 		if s.Team != "" || s.States != "" || s.Labels != "" || s.SkipLabels != "" {
-			return fmt.Errorf("when.stall: team, states, labels and skip_labels are only for %s", StallLinearIssueNoRun)
+			return fmt.Errorf("when.scan: team, states, labels and skip_labels are only for %s", SignalLinearIssueNoRun)
 		}
-		builtin := slices.Contains(StoreStallSignals, s.Signal)
+		builtin := slices.Contains(StoreSignals, s.Signal)
 		switch {
 		case builtin && (s.Check != "" || s.Script != ""):
-			return fmt.Errorf("when.stall: %s is a store signal and takes no check or script", s.Signal)
+			return fmt.Errorf("when.scan: %s is a store signal and takes no check or script", s.Signal)
 		case !builtin && (s.Check == "") == (s.Script == ""):
-			return fmt.Errorf("when.stall: %s is not a store signal %v and needs a check or a script", s.Signal, StoreStallSignals)
+			return fmt.Errorf("when.scan: %s is not a store signal %v and needs a check or a script", s.Signal, StoreSignals)
 		case s.Script == "" && (s.Poll != "" || len(s.Args) > 0):
-			return fmt.Errorf("when.stall: %s: poll and args are for script signals and %s", s.Signal, StallLinearIssueNoRun)
+			return fmt.Errorf("when.scan: %s: poll and args are for script signals and %s", s.Signal, SignalLinearIssueNoRun)
 		}
 		if s.Poll != "" {
 			if d, err := time.ParseDuration(s.Poll); err != nil || d <= 0 {
-				return fmt.Errorf("when.stall: %s poll %q must be a positive duration", s.Signal, s.Poll)
+				return fmt.Errorf("when.scan: %s poll %q must be a positive duration", s.Signal, s.Poll)
 			}
 		}
 		if len(tr.On) > 0 && s.Check != "" {
-			if err := checkStallCheckTemplate(s); err != nil {
+			if err := checkSignalCheckTemplate(s); err != nil {
 				return err
 			}
 		}
 		switch {
-		case s.Signal == StallIssueNoRun && !RepoPattern.MatchString(s.Repo):
-			return fmt.Errorf("when.stall: %s needs repo (owner/name), got %q", s.Signal, s.Repo)
-		case s.Signal != StallIssueNoRun && s.Repo != "":
-			return fmt.Errorf("when.stall: repo is only for %s", StallIssueNoRun)
+		case s.Signal == SignalIssueNoRun && !RepoPattern.MatchString(s.Repo):
+			return fmt.Errorf("when.scan: %s needs repo (owner/name), got %q", s.Signal, s.Repo)
+		case s.Signal != SignalIssueNoRun && s.Repo != "":
+			return fmt.Errorf("when.scan: repo is only for %s", SignalIssueNoRun)
 		}
 		if s.After != "" {
 			if d, err := time.ParseDuration(s.After); err != nil || d < 0 {
-				return fmt.Errorf("when.stall: %s after %q must be a non-negative duration", s.Signal, s.After)
+				return fmt.Errorf("when.scan: %s after %q must be a non-negative duration", s.Signal, s.After)
 			}
-		} else if builtin && s.Signal != StallPoolQuarantined {
-			return fmt.Errorf("when.stall: %s needs after", s.Signal)
+		} else if builtin && s.Signal != SignalPoolQuarantined {
+			return fmt.Errorf("when.scan: %s needs after", s.Signal)
 		}
 	}
 	if tr.Cooldown != "" {
@@ -100,10 +100,10 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 		return errors.New("max_open must be >= 0")
 	}
 	if tr.Handler != "" {
-		// The handler gets each stall as an event and returns its own
+		// The handler gets each finding as an event and returns its own
 		// actions; args.workflow names the workflow whose tickets it skips.
 		if tr.Ticket != nil || tr.Run != nil || tr.Command != nil {
-			return errors.New("a stall trigger with handler takes no run, ticket or command")
+			return errors.New("a scan trigger with handler takes no run, ticket or command")
 		}
 		if w, ok := tr.Args["workflow"]; ok {
 			name, isString := w.(string)
@@ -114,7 +114,7 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 		return nil
 	}
 	if tr.Ticket != nil || tr.Run == nil {
-		return errors.New("a stall trigger needs run and no ticket")
+		return errors.New("a scan trigger needs run and no ticket")
 	}
 	r := tr.Run
 	if r.KeyPrefix != "" {
@@ -151,50 +151,50 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 			return fmt.Errorf("run: %s: %w", k, err)
 		}
 		for _, ref := range vs {
-			if !slices.Contains(StallVars, ref) {
-				return fmt.Errorf("run: %s uses %s; only %v are available", k, placeholder(ref), StallVars)
+			if !slices.Contains(ScanVars, ref) {
+				return fmt.Errorf("run: %s uses %s; only %v are available", k, placeholder(ref), ScanVars)
 			}
 		}
 	}
 	return nil
 }
 
-// checkStallCheckTemplate checks that the check of a stall signal on a
+// checkSignalCheckTemplate checks that the check of a scan signal on a
 // trigger with on: references only {{.event.<field>}}: it is rendered
 // when the signal runs. Without on: it is run as written.
-func checkStallCheckTemplate(s StallSignal) error {
+func checkSignalCheckTemplate(s ScanSignal) error {
 	vs, err := refs(s.Check)
 	if err != nil {
-		return fmt.Errorf("when.stall: %s check: %w", s.Signal, err)
+		return fmt.Errorf("when.scan: %s check: %w", s.Signal, err)
 	}
 	for _, v := range vs {
 		if v != EventVar {
-			return fmt.Errorf("when.stall: %s check uses %s; only %s is available", s.Signal, placeholder(v), placeholder(EventVar+".<field>"))
+			return fmt.Errorf("when.scan: %s check uses %s; only %s is available", s.Signal, placeholder(v), placeholder(EventVar+".<field>"))
 		}
 	}
 	return nil
 }
 
-// checkLinearStall validates a linear_issue_no_run entry: the controller
+// checkLinearSignal validates a linear_issue_no_run entry: the controller
 // reads Linear itself, so it takes no check, repo or after.
-func checkLinearStall(s StallSignal) error {
+func checkLinearSignal(s ScanSignal) error {
 	if s.Script != "" || len(s.Args) > 0 {
-		return fmt.Errorf("when.stall: %s takes no script or args", s.Signal)
+		return fmt.Errorf("when.scan: %s takes no script or args", s.Signal)
 	}
 	if s.Check != "" || s.Repo != "" || s.After != "" {
-		return fmt.Errorf("when.stall: %s takes team, states, labels, skip_labels, poll and grace, not check, repo or after", s.Signal)
+		return fmt.Errorf("when.scan: %s takes team, states, labels, skip_labels, poll and grace, not check, repo or after", s.Signal)
 	}
 	if s.Team != "" && !linearTeamPattern.MatchString(s.Team) {
-		return fmt.Errorf("when.stall: %s team %q is not a Linear team key like ENG", s.Signal, s.Team)
+		return fmt.Errorf("when.scan: %s team %q is not a Linear team key like ENG", s.Signal, s.Team)
 	}
 	if s.Poll != "" {
 		if d, err := time.ParseDuration(s.Poll); err != nil || d <= 0 {
-			return fmt.Errorf("when.stall: %s poll %q must be a positive duration", s.Signal, s.Poll)
+			return fmt.Errorf("when.scan: %s poll %q must be a positive duration", s.Signal, s.Poll)
 		}
 	}
 	if s.Grace != "" {
 		if d, err := time.ParseDuration(s.Grace); err != nil || d < 0 {
-			return fmt.Errorf("when.stall: %s grace %q must be a non-negative duration", s.Signal, s.Grace)
+			return fmt.Errorf("when.scan: %s grace %q must be a non-negative duration", s.Signal, s.Grace)
 		}
 	}
 	return nil
@@ -213,37 +213,37 @@ func SplitList(s string) []string {
 	return out
 }
 
-// DefaultStallKeyPrefix starts a stall run's key when run.key_prefix is
+// DefaultScanKeyPrefix starts a scan run's key when run.key_prefix is
 // unset.
-const DefaultStallKeyPrefix = "stall"
+const DefaultScanKeyPrefix = "scan"
 
-// StallKeyPrefix is tr.Run.KeyPrefix or the default.
-func (tr Trigger) StallKeyPrefix() string {
+// ScanKeyPrefix is tr.Run.KeyPrefix or the default.
+func (tr Trigger) ScanKeyPrefix() string {
 	if tr.Run != nil && tr.Run.KeyPrefix != "" {
 		return tr.Run.KeyPrefix
 	}
-	return DefaultStallKeyPrefix
+	return DefaultScanKeyPrefix
 }
 
-// StallMaxRuns is tr.MaxRuns or the default.
-func (tr Trigger) StallMaxRuns() int {
+// ScanMaxRuns is tr.MaxRuns or the default.
+func (tr Trigger) ScanMaxRuns() int {
 	if tr.MaxRuns > 0 {
 		return tr.MaxRuns
 	}
-	return DefaultStallMaxRuns
+	return DefaultScanMaxRuns
 }
 
-// StallMaxOpen is tr.MaxOpen or the default.
-func (tr Trigger) StallMaxOpen() int {
+// ScanMaxOpen is tr.MaxOpen or the default.
+func (tr Trigger) ScanMaxOpen() int {
 	if tr.MaxOpen > 0 {
 		return tr.MaxOpen
 	}
-	return DefaultStallMaxOpen
+	return DefaultScanMaxOpen
 }
 
-// StallWorkflow is the workflow a stall trigger starts, whose own runs and
+// ScanWorkflow is the workflow a scan trigger starts, whose own runs and
 // steps it does not watch: run.workflow, or a handler's args.workflow.
-func (tr Trigger) StallWorkflow() string {
+func (tr Trigger) ScanWorkflow() string {
 	if tr.Run != nil {
 		return tr.Run.Workflow
 	}

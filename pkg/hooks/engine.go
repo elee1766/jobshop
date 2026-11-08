@@ -70,10 +70,10 @@ func New(st Collections, host Host, root string, now func() time.Time, log *slog
 	return &Engine{store: st, host: host, root: root, now: now, log: log}
 }
 
-// StallSource is Event.Source of a stall a trigger handler is called for.
-// Delivery is the stall id, <signal>:<subject>; Payload holds signal,
+// ScanSource is Event.Source of a finding a trigger handler is called for.
+// Delivery is the finding id, <signal>:<subject>; Payload holds signal,
 // subject and detail.
-const StallSource = "stall"
+const ScanSource = "scan"
 
 // Event is an immutable event-time snapshot, not a mutable inbox read.
 type Event struct {

@@ -248,8 +248,8 @@ type Controller struct {
 	ghIssueOpen func(context.Context, linear.GitHubDep) (bool, error)
 	// linIntake caches linear_issue_no_run reads between polls (#287).
 	linIntake linearIntake
-	// stallScripts caches script stall signal answers between polls.
-	stallScripts stallScripts
+	// signalScripts caches script scan signal answers between polls.
+	signalScripts signalScripts
 	// linSessions throttles the Linear agent-session sweep.
 	linSessions linearSessions
 	// reloadMu serializes reloads so the last file read wins.

@@ -23,7 +23,7 @@ import (
 )
 
 // tracingYAML has a trigger with a check command and a Linear intake
-// stall trigger, so one pass runs an exec and an outbound HTTP call.
+// scan trigger, so one pass runs an exec and an outbound HTTP call.
 const tracingYAML = `projects:
   js: {}
 agents:
@@ -38,23 +38,23 @@ pools:
   dev: {agent: fake, dir: %[1]q}
   plan: {agent: fake, dir: %[1]q}
 workflows:
-  stall-check:
+  triage:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall", prompt: "x"}
+      - {id: diagnose, pool: plan, retries: 1, title: "Finding", prompt: "x"}
 triggers:
   probe:
     when:
       check: echo SECRET-SCRIPT-OUTPUT; exit 1
     ticket: {title: probe, pool: dev}
-  stall:
+  scan:
     when:
-      stall:
+      scan:
         - {signal: linear_issue_no_run, team: ENG, states: "Todo", labels: agent, poll: 5m}
     run:
-      workflow: stall-check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      workflow: triage
+      vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}
 `
 
 // TestTickTraces (JOB-105): one supervisor pass is a tick span with a
@@ -74,7 +74,7 @@ func TestTickTraces(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
 	t.Cleanup(func() { _ = tp.Shutdown(context.WithoutCancel(t.Context())) })
 
-	c, _, dir := stallControllerYAML(t, tracingYAML)
+	c, _, dir := scanControllerYAML(t, tracingYAML)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_SECRET\n"), 0o600))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
 	c.tracer = tp.Tracer("test")

@@ -38,7 +38,7 @@ func writeSessionFile(t *testing.T, c *Controller, sc scope, name string, size i
 
 func TestArtifactDeliverAck(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	sc, step := artifactSession(t, c)
 	admin := scope{admin: true, actor: "admin"}
@@ -129,7 +129,7 @@ func TestArtifactDeliverAck(t *testing.T) {
 
 func TestArtifactDeliverRefused(t *testing.T) {
 	t.Parallel()
-	c, _, dir := stallControllerYAML(t, stallYAML+"artifacts: {max_bytes: 100}\n")
+	c, _, dir := scanControllerYAML(t, scanYAML+"artifacts: {max_bytes: 100}\n")
 	ctx := t.Context()
 	sc, _ := artifactSession(t, c)
 
@@ -157,7 +157,7 @@ func TestArtifactDeliverRefused(t *testing.T) {
 
 func TestArtifactTrigger(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "controller"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "2"}}, map[string]any{triggerPack: map[string]string{"name": "nightly"}})
 	require.NoError(t, err)

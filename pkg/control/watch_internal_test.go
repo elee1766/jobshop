@@ -18,9 +18,9 @@ type watchResult struct {
 	err   error
 }
 
-// watchController is a stall controller whose config watches a pack, with
+// watchController is a finding controller whose config watches a pack, with
 // its watcher running on the fake clock.
-func watchController(t *testing.T) (*Controller, *stallClock, string, <-chan watchResult) {
+func watchController(t *testing.T) (*Controller, *scanClock, string, <-chan watchResult) {
 	t.Helper()
 	dir := t.TempDir()
 	write := func(name, s string) {
@@ -31,7 +31,7 @@ func watchController(t *testing.T) (*Controller, *stallClock, string, <-chan wat
 	write("p/pack.yaml", "pools:\n  dev: {agent: a, dir: /w, max_sessions: 0, prompt_file: prompt.md}\n")
 	write("p/prompt.md", "one")
 	write("q/pack.yaml", "pools:\n  qa: {agent: a, dir: /w, max_sessions: 0, prompt: q}\n")
-	c, clk, _ := stallControllerYAML(t, "projects:\n  js: {}\nagents:\n  a: {command: x}\n# %[1]s\n")
+	c, clk, _ := scanControllerYAML(t, "projects:\n  js: {}\nagents:\n  a: {command: x}\n# %[1]s\n")
 	// Its config is a placeholder: point it at ours and load that.
 	write("jobshop.yaml", "pack: pack.yaml\nreload: {watch: true, debounce: 2s}\n")
 	write("pack.yaml", "projects:\n  js: {}\nagents:\n  a: {command: x}\npacks:\n  - path: p\n")
@@ -59,7 +59,7 @@ func watchController(t *testing.T) (*Controller, *stallClock, string, <-chan wat
 // fireDebounce moves the fake clock past the debounce until the watcher
 // reloads. One write can send several events, each restarting the
 // debounce, so one advance may not be enough.
-func fireDebounce(t *testing.T, clk *stallClock, res <-chan watchResult) watchResult {
+func fireDebounce(t *testing.T, clk *scanClock, res <-chan watchResult) watchResult {
 	t.Helper()
 	for range 50 {
 		require.True(t, clk.WaitFor(1, t.Context().Done()))

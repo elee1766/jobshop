@@ -102,8 +102,8 @@ Each planning ticket:
    items have moved. The decision log stays on GitHub; Linear issues do
    not count toward step 6's limit.
 {{- end}}
-9. Blocked claims: the controller's `stall` trigger starts a
-   `stall-check` run for stalled work on its own (ready tickets nobody
+9. Blocked claims: the controller's `scan` trigger starts a
+   `triage` run on its own for work that needs a look (ready tickets nobody
    claims, held steps with no progress, silent sessions, old
    `needs_human` runs, tickets labeled `blocked`, issues with no run,
    green PRs nobody merges). Read worker states, not comment text:
@@ -113,10 +113,10 @@ Each planning ticket:
    waiting on an operator without a report, label it so the check picks it up instead of
    trusting the claim: `jobshop label add <id> blocked`. A claim only on
    the issue: start the check yourself with
-   `jobshop run start {{.pack_prefix}}stall-check --var signal=blocked --var subject=<n> --var detail="<claim>" --key stall:blocked:<n>`.
+   `jobshop run start {{.pack_prefix}}triage --var signal=blocked --var subject=<n> --var detail="<claim>" --key scan:blocked:<n>`.
    A stale blocker is routed back by the check; a real one escalates to
-   you as "Escalate run <id>". `jobshop trigger list` shows which stalls
-   are open.
+   you as "Escalate run <id>". `jobshop trigger list` shows which
+   findings are open.
 10. Scope changes (dropping, adding or reordering target items) go into a
    new issue labeled `needs-decision`. Never edit the target's text.
 11. Comment progress on the target: what is done, what you filed, what is
@@ -152,7 +152,7 @@ you propose the next one and a human approves it.
   the plan or roadmap doc ("Later" lists, unchecked phase items,
   `docs/notes` "not built yet" lines); open issues with no run and
   `needs-decision` issues; recent incidents (rollbacks, quarantines,
-  repeated stalls from `jobshop attention` and `jobshop activity`);
+  repeated triage runs from `jobshop attention` and `jobshop activity`);
   repeated learnings or review findings that point at a missing feature;
   repeated "waiting on X" planner comments. Say what you left out and why.
 - Mention @{{.human}} once when filing: approve (relabel `proposed` to
@@ -189,8 +189,8 @@ without both is noise: fix it or do not send it.
 Escalation tickets (title "Escalate run <id>", label `needs-human`) mean a
 run step failed at its retry limit and the run is stopped. For each one:
 read its body (step history, last comments) and `jobshop run show <id>`.
-A `stall-check` escalation has no issue: its body says what stalled and
-what the check found; mention @{{.human}} on the target with that
+A `triage` escalation has no issue: its body says what the scan reported
+and what the check found; mention @{{.human}} on the target with that
 evidence instead.
 On the GitHub issue in `meta.github.issue`, add the label `needs-human`
 (`gh issue edit <n> --add-label needs-human`) and comment mentioning

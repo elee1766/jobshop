@@ -62,7 +62,7 @@ func (s *subscribePeer) get() []int64 {
 // recall index.
 func TestJournalCompressSweep(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallControllerYAML(t, journalYAML)
+	c, clk, _ := scanControllerYAML(t, journalYAML)
 	ctx := t.Context()
 	cfg := *c.config()
 	cfg.Journal.Compress.After = "24h"
@@ -147,7 +147,7 @@ func TestJournalCompressSweep(t *testing.T) {
 // TestJournalCompressOff: with journal.compress.after empty nothing runs.
 func TestJournalCompressOff(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallControllerYAML(t, journalYAML)
+	c, clk, _ := scanControllerYAML(t, journalYAML)
 	s := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	writeJournal(t, c, s.ID, 3)
 	_, err := store.Close(t.Context(), c.store, "controller", s.ID, nil, "done")

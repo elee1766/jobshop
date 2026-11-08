@@ -15,7 +15,7 @@ import (
 // the item's row summary (#606, #607), keeping meta.desk.attention_chat.
 func TestAttentionSummaryFromChat(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	q := mkTicket(t, c, store.NewTicket{Title: "which branch?", Body: "the body", Labels: []string{questionLabel}})
 	key := attentionKey("question", q.ID)

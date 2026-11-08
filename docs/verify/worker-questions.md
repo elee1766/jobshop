@@ -13,7 +13,7 @@ On gasserver after deploying #186, with the Matrix gateway running:
    gets "question ... closed (answered)", the session gets the answer as
    a message, and the scratch ticket has an `answer to question` comment
    and `meta.report.state` `progress`.
-5. `jobshop trigger list` shows no `step_stalled` or `session_silent`
-   stall for the scratch ticket while the question was open.
+5. `jobshop trigger list` shows no `step_idle` or `session_silent`
+   finding for the scratch ticket while the question was open.
 
 Record the ticket ids and thread link on #186.

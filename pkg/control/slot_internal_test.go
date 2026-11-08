@@ -55,7 +55,7 @@ func slotOf(t *testing.T, tk store.Ticket) int {
 // ends, a full range blocks both create and scale up, and pools without
 // per_session get no slot and no limit.
 func TestSlotAllocation(t *testing.T) {
-	c, _, _ := stallControllerYAML(t, slotYAML)
+	c, _, _ := scanControllerYAML(t, slotYAML)
 	ctx := t.Context()
 
 	assert.Equal(t, 2, c.slotCapacity(ctx, c.config(), "dev"))
@@ -87,7 +87,7 @@ func TestSlotAllocation(t *testing.T) {
 // TestRemoveSlotHome (JOB-28): closing a per_session session deletes its
 // slot's home and leaves the other slot's; an open session keeps its own.
 func TestRemoveSlotHome(t *testing.T) {
-	c, _, _ := stallControllerYAML(t, slotYAML)
+	c, _, _ := scanControllerYAML(t, slotYAML)
 	ctx := t.Context()
 	a, err := createSlotSession(t, c, "dev")
 	require.NoError(t, err)
@@ -113,7 +113,7 @@ func TestRemoveSlotHome(t *testing.T) {
 // persisted slots, so it neither reuses a live session's slot nor moves
 // a session to another one.
 func TestSlotRestart(t *testing.T) {
-	c, _, _ := stallControllerYAML(t, slotYAML)
+	c, _, _ := scanControllerYAML(t, slotYAML)
 	a, err := createSlotSession(t, c, "dev")
 	require.NoError(t, err)
 

@@ -316,7 +316,7 @@ func (f *fakePRs) WorkflowRuns(_ context.Context, _, sha string) ([]actionsRun, 
 	return parseRunList([]byte(f.runs[sha]))
 }
 
-func waitController(t *testing.T) (*Controller, *stallClock, *fakePRs, *fakeThreads) {
+func waitController(t *testing.T) (*Controller, *scanClock, *fakePRs, *fakeThreads) {
 	t.Helper()
 	c, clk, threads := subController(t)
 	return c, clk, &fakePRs{pr: map[string]string{}, reviews: map[string]string{}, checks: map[string]string{}, issues: map[string]string{}, runs: map[string]string{}}, threads

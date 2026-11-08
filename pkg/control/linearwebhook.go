@@ -155,7 +155,7 @@ func (c *Controller) linearWebhookEvent(ctx context.Context, name string, ev ing
 	switch ev.Type {
 	case "Issue":
 		c.linearIntakeInvalidate(is.Team.Key)
-		// Same pass the tick runs, so the stall fires now.
+		// Same pass the tick runs, so the finding fires now.
 		unlock := c.lockTick(ctx, "webhook")
 		if !c.draining() {
 			c.passStep(ctx, c.config(), "run_triggers", c.runTriggers)

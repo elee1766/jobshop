@@ -52,8 +52,8 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 		// The timer slot was accepted before the durable invocation existed.
 		tr.When.Cron, tr.Cooldown = "", ""
 	}
-	if len(tr.When.Stall) > 0 {
-		// evalStall admitted the stall; max_open is checked again on commit.
+	if len(tr.When.Scan) > 0 {
+		// evalScan admitted the finding; max_open is checked again on commit.
 		return "", nil
 	}
 	st, err := c.evalTrigger(ctx, runtime.Config, in.Trigger, tr)

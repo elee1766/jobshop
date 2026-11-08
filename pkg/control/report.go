@@ -15,7 +15,7 @@ import (
 
 // Structured worker reports (#186). A session reports the state of the
 // ticket it works on; the controller records it in meta.report, so
-// stall-check and the planner read states instead of comment text. A
+// triage and the planner read states instead of comment text. A
 // report may carry a question for a human, filed as a needs-human task
 // with meta.question; the gateway opens a thread for it and a reply is
 // delivered to the asking session through question.answer.
@@ -111,7 +111,7 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	if _, err := store.AddComment(ctx, c.store, sc.actor, id, reportComment(rm, p.Question)); err != nil {
 		return nil, err
 	}
-	// The blocked label is what the stall signal and the planner see.
+	// The blocked label is what the scan signal and the planner see.
 	has := slices.Contains(t.Labels, blockedLabel)
 	switch {
 	case p.State == rpc.ReportBlocked && !has:

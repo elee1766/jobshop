@@ -2,7 +2,7 @@
 
 Jobshop agents that develop Jobshop itself. This pack is
 `packs/github` (flows, pools, triggers and prompts: see its README) with
-Jobshop's values, through `extends:` in `pack.yaml`:
+Jobshop's values, through `pack.cue`:
 
 | github var | selfdev value |
 | --- | --- |
@@ -39,19 +39,12 @@ agents:
   jcode: {command: jcode, args: [acp], env: {JCODE_MEMORY_ENABLED: "0"}}
 ```
 
-`jobshop config show` lists both `packs/github/pack.yaml` and
-`packs/selfdev/pack.yaml` as sources of each entry. selfdev no longer
-brings the `operator` pool; see `packs/operator/README.md`.
+selfdev no longer brings the `operator` pool; see
+`packs/operator/README.md`.
 
-## Native CUE and Starlark
+## Composition
 
-`pack.cue`, `workflow.star` and `triggers.star` are the native version beside
-the unchanged `pack.yaml`. Adding these files does not select them for an
-existing host. Validate the native configuration and callbacks first, switch
-the host separately, then remove the legacy YAML only after cutover checks.
-No host configuration is changed by this pack.
-
-Within this checkout's CUE module, a root CUE file can compose the pack:
+The pack is CUE. A root CUE file in the module tree composes it:
 
 ```cue
 package city
@@ -60,66 +53,29 @@ import selfdevpack "github.com/elee1766/jobshop/packs/selfdev"
 
 packs: selfdev: selfdevpack.#Pack & {
 	path: "packs/selfdev"
-	prefix: ""
-	#Config: {
-		repo: "/var/lib/jobshop/src/jobshop"
-		agent: "jcode"
-		dev_sessions: 2
-		starlark_workflows: true
-		starlark_triggers: false
-	}
+	#Config: {repo: "/var/lib/jobshop/src/jobshop", agent: "jcode", dev_sessions: 2}
 }
 ```
 
-The host YAML selects that root file with `pack: <file>.cue`. Host
-configuration still owns agents, projects, credentials and automation
-capability grants. CUE imports are local and offline, so keep the root file
-in the module tree containing
-`cue.mod`, `packs/selfdev` and `packs/github`. `path` is the asset directory
-relative to the including root CUE file, not the imported package. Use an
-absolute asset path when the root file lives elsewhere in the module.
+The host YAML selects that root file with `pack: <file>.cue`, and still
+owns agents, projects, identities and automation grants. The pack needs
+`automation: {github: true, shell: true}`. CUE imports are local and
+offline, so the root file lives in the module tree containing `cue.mod`,
+`packs/selfdev` and `packs/github`. `path` is the asset directory
+relative to the including root file.
 
-`#Config` accepts the legacy selfdev variable names and defaults, including
-the checkout path named `repo`. The exported runtime `vars.repo` is instead
-`elee1766/jobshop`, as GitHub workflow templates require, and `vars.checkout`
-is the checkout path. This separates the two meanings that YAML `extends`
-kept in different layers. Pool, workflow, trigger and prompt-rule names stay
-unchanged with `prefix: ""`. A nonempty prefix renames local references,
-including the default development pool. External agent and chat-pool names
-stay external.
+`#Config.repo` is the checkout path; the GitHub pack's `vars.repo` is
+`elee1766/jobshop` and `vars.checkout` the checkout. With `prefix: ""`
+names are unchanged; a nonempty prefix renames local references.
 
-The native pack imports GitHub policy and its original assets. Its curator
-and evaluator use Starlark agent-step callbacks with the same titles,
-prompts and retry limits. Their original maintenance run triggers remain
-the default. The controller still checks learning counts, scopes, elapsed
-time and edit eligibility through `when.learnings` and `when.edits`. The
-run keys remain `curate` and `evaluate`. Prompt files and their runtime
-templates are not copied or rewritten.
+`curate`, `evaluate` and `live-check` are Starlark workflows
+(`workflow.star`). The `curate` and `evaluate` triggers call
+`triggers.star:start` once the controller's `when.learnings` and
+`when.edits` checks hold, with `max_open: 1`; the run keys are `curate`
+and `evaluate`. `live-check` starts a script step on the `dev` pool with a
+worktree, a 20-minute timeout and no retries: it runs `jobshop runbook
+run` through `shell()` and posts the report on the issue through the
+`github` built-in, and fails when a readonly block failed.
 
-`#Config.starlark_workflows` defaults to `true`. Set it to `false` to keep
-the CUE composition but use the original static agent steps in both
-selfdev and GitHub. This provides a static parity check before selecting
-scripted workflows. Names, prompts and retry limits stay the same in
-either mode.
-
-`#Config.starlark_triggers` defaults to `false`, independently of workflow
-mode. This preserves the original maintenance trigger behavior even with
-scripted workflows. Set it to `true` to opt into timer handlers that only
-request the admitted run, with `max_open: 1` retaining one open run per
-trigger. Learning and edit eligibility remain controller-owned in either
-mode. Leave both settings false for the complete CUE-static comparison.
-
-`live-check` follows `starlark_workflows` too. Scripted, its callback
-starts a script step (JOB-124, `start_step(script=...)`) on the `dev`
-pool with a worktree, a 20-minute timeout and zero retries. The step
-function runs `jobshop runbook run` and `gh issue comment` through
-`shell()`, which runs in the `dev` sandbox and worktree, and fails the
-step when a readonly block failed. The host must grant
-`automation: {shell: true}`. Static, it keeps the original command step.
-
-Check a candidate with `jobshop config check --file <host.yaml>`. That loads
-the actual CUE and original prompt files without starting a controller.
-Callback acceptance must also load and invoke the actual `.star` files with
-the runtime's run, step and timer envelopes and no HTTP or shell grants.
-Drain legacy runs before selecting scripted workflows, so existing static
-runs are not resumed against a different workflow shape.
+Check a config with `jobshop config check --file <host.yaml>`, which loads
+the CUE, prompts and Starlark files without a controller.

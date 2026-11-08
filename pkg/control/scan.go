@@ -26,111 +26,108 @@ const needsHumanLabel = "needs-human"
 // blockedLabel marks tickets that claim a blocker.
 const blockedLabel = "blocked"
 
-// stall is one detected stall: a signal on a subject (ticket, run,
+// finding is one detected finding: a signal on a subject (ticket, run,
 // session or pool id, or a check's first word).
-type stall struct {
+type finding struct {
 	signal, subject, detail string
 }
 
-// id is the stall's identity, <signal>:<subject>, the same whatever key
-// prefix a trigger uses (JOB-95). Runs carry it in meta.trigger.stall.
-func (s stall) id() string { return s.signal + ":" + s.subject }
-
-// key is the run key with the default prefix, stall:<signal>:<subject>.
-func (s stall) key() string { return s.keyWith(config.DefaultStallKeyPrefix) }
+// id is the finding's identity, <signal>:<subject>, the same whatever key
+// prefix a trigger uses (JOB-95). Runs carry it in meta.trigger.finding.
+func (s finding) id() string { return s.signal + ":" + s.subject }
 
 // keyWith is the run key <prefix>:<signal>:<subject>.
-func (s stall) keyWith(prefix string) string { return prefix + ":" + s.id() }
+func (s finding) keyWith(prefix string) string { return prefix + ":" + s.id() }
 
-// stallMetaKey is meta.trigger.stall, <signal>:<subject>, set on the runs
-// a stall trigger starts with a stall key (no run.key).
-const stallMetaKey = "stall"
+// findingMetaKey is meta.trigger.finding, <signal>:<subject>, set on the runs
+// a scan trigger starts with a scan key (no run.key).
+const findingMetaKey = "finding"
 
-// runStallTrigger starts one run per fireable stall of a when.stall
+// runScanTrigger starts one run per fireable finding of a when.scan
 // trigger (#143). ev is the delivery that woke it (JOB-72), nil on a poll.
-func (c *Controller) runStallTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
-	fire, _, err := c.evalStall(ctx, cfg, name, tr, ev)
+func (c *Controller) runScanTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
+	fire, _, err := c.evalScan(ctx, cfg, name, tr, ev)
 	if errors.Is(err, errCheckPending) {
 		return // its checks run outside the tick (JOB-109)
 	}
 	if err != nil {
-		c.log.ErrorContext(ctx, "stall trigger", "trigger", name, "err", err)
+		c.log.ErrorContext(ctx, "scan trigger", "trigger", name, "err", err)
 		return
 	}
-	prefix := tr.StallKeyPrefix()
+	prefix := tr.ScanKeyPrefix()
 	for _, s := range fire {
 		key := s.keyWith(prefix)
-		if s.signal == config.StallLinearIssueNoRun {
+		if s.signal == config.SignalLinearIssueNoRun {
 			busy, err := c.linearIssueHasOpenRun(ctx, s.subject)
 			if err != nil {
-				c.log.ErrorContext(ctx, "stall recheck", "trigger", name, "key", key, "err", err)
+				c.log.ErrorContext(ctx, "finding recheck", "trigger", name, "key", key, "err", err)
 				continue
 			}
 			if busy {
-				c.log.InfoContext(ctx, "stall skipped: issue got a run during the scan", "trigger", name, "key", key)
+				c.log.InfoContext(ctx, "finding skipped: issue got a run during the scan", "trigger", name, "key", key)
 				continue
 			}
 		}
 		if tr.Handler != "" {
-			c.enqueueStall(ctx, cfg, name, tr, s)
+			c.enqueueFinding(ctx, cfg, name, tr, s)
 			continue
 		}
-		t, existing, err := c.fireStall(ctx, cfg, name, tr, s)
+		t, existing, err := c.fireFinding(ctx, cfg, name, tr, s)
 		if errors.Is(err, errCheckPending) {
 			continue // its intake check runs outside the tick (JOB-103)
 		}
 		if err != nil {
-			c.log.ErrorContext(ctx, "stall fire", "trigger", name, "key", key, "err", err)
+			c.log.ErrorContext(ctx, "finding fire", "trigger", name, "key", key, "err", err)
 			continue
 		}
 		if existing {
 			// Already handled by an open run with the same key: not a
-			// new stall to learn from.
-			c.log.DebugContext(ctx, "stall already has an open run", "trigger", name, "key", key, "run", t.ID)
+			// new finding to learn from.
+			c.log.DebugContext(ctx, "finding already has an open run", "trigger", name, "key", key, "run", t.ID)
 			continue
 		}
-		c.log.InfoContext(ctx, "stall trigger fired", "trigger", name, "key", key, "run", t.ID, "delivery", ev["delivery"])
-		c.recordStall(ctx, s, t.ID)
+		c.log.InfoContext(ctx, "scan trigger fired", "trigger", name, "key", key, "run", t.ID, "delivery", ev["delivery"])
+		c.recordFinding(ctx, s, t.ID)
 	}
 }
 
-// enqueueStall calls a stall trigger's handler for one fireable stall. The
-// invocation key is the stall, its run count and a cooldown slot, so one
-// stall is offered once per slot; max_runs, the cooldown and the #704 hold
-// were checked by evalStall. The handler's start_run gets
-// meta.trigger.stall, so the next evaluation sees its run.
-func (c *Controller) enqueueStall(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s stall) {
+// enqueueFinding calls a scan trigger's handler for one fireable finding. The
+// invocation key is the finding, its run count and a cooldown slot, so one
+// finding is offered once per slot; max_runs, the cooldown and the #704 hold
+// were checked by evalScan. The handler's start_run gets
+// meta.trigger.finding, so the next evaluation sees its run.
+func (c *Controller) enqueueFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s finding) {
 	digest := cfg.HookDigests[tr.Handler]
 	if digest == "" {
 		return
 	}
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: triggerPack, Key: "name", Value: name}, {Pack: triggerPack, Key: stallMetaKey, Value: s.id()}}, Limit: store.NoLimit})
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: triggerPack, Key: "name", Value: name}, {Pack: triggerPack, Key: findingMetaKey, Value: s.id()}}, Limit: store.NoLimit})
 	if err != nil {
-		c.log.ErrorContext(ctx, "stall handler", "trigger", name, "err", err)
+		c.log.ErrorContext(ctx, "scan handler", "trigger", name, "err", err)
 		return
 	}
 	event := &hooks.Event{
-		Source: hooks.StallSource, Event: s.signal, Delivery: s.id(), Trigger: name,
-		Payload: map[string]any{"signal": s.signal, "subject": s.subject, "detail": s.detail, "key": s.keyWith(tr.StallKeyPrefix()), "runs": len(runs)},
+		Source: hooks.ScanSource, Event: s.signal, Delivery: s.id(), Trigger: name,
+		Payload: map[string]any{"signal": s.signal, "subject": s.subject, "detail": s.detail, "key": s.keyWith(tr.ScanKeyPrefix()), "runs": len(runs)},
 		Fields:  map[string]any{},
 	}
-	// A handler that declines a stall is offered it again a cooldown later
+	// A handler that declines a finding is offered it again a cooldown later
 	// (30m without one), while the signal persists.
 	bucket := c.now().Truncate(config.Duration(tr.Cooldown, 30*time.Minute)).UTC().Format(time.RFC3339)
-	key := "stall/" + name + "/" + s.id() + "/" + strconv.Itoa(len(runs)) + "/" + bucket
+	key := "scan/" + name + "/" + s.id() + "/" + strconv.Itoa(len(runs)) + "/" + bucket
 	if err := c.hooks().Put(ctx, key, hooks.Invocation{Trigger: name, Entry: tr.Handler, Digest: digest, Event: event, Args: tr.Args}); err != nil {
-		c.log.ErrorContext(ctx, "enqueue stall hook", "trigger", name, "err", err)
+		c.log.ErrorContext(ctx, "enqueue scan hook", "trigger", name, "err", err)
 		return
 	}
 	c.kickHooks()
 }
 
-// evalStall detects stalls and returns those that may fire now: no open
+// evalScan detects findings and returns those that may fire now: no open
 // run for the key, under max_runs, past the cooldown, and under
-// max_open open runs in total (JOB-93), so a backlog of old stalls (a
+// max_open open runs in total (JOB-93), so a backlog of old findings (a
 // fresh deploy, a long outage) is worked a few at a time. why explains
 // an empty result. ev is passed to the checks, nil on a poll.
-func (c *Controller) evalStall(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) (fire []stall, why string, err error) {
+func (c *Controller) evalScan(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) (fire []finding, why string, err error) {
 	mine, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: name, Order: store.OrderNewest})
 	if err != nil {
 		return nil, "", err
@@ -141,34 +138,34 @@ func (c *Controller) evalStall(ctx context.Context, cfg *config.Config, name str
 			open++
 		}
 	}
-	maxOpen := tr.StallMaxOpen()
+	maxOpen := tr.ScanMaxOpen()
 	if open >= maxOpen {
-		return nil, fmt.Sprintf("%d stall runs open (max_open %d)", open, maxOpen), nil
+		return nil, fmt.Sprintf("%d scan runs open (max_open %d)", open, maxOpen), nil
 	}
-	found, err := c.detectStalls(ctx, cfg, tr, ev)
+	found, err := c.detectFindings(ctx, cfg, tr, ev)
 	if err != nil {
 		return nil, "", err
 	}
 	if len(found) == 0 {
-		return nil, "no stall", nil
+		return nil, "no finding", nil
 	}
 	now := c.now()
-	prefix := tr.StallKeyPrefix()
+	prefix := tr.ScanKeyPrefix()
 	var reasons []string
 	for _, s := range found {
 		key := s.keyWith(prefix)
 		f := store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + key, Order: store.OrderNewest}
 		if tr.Handler != "" {
-			// A handler picks its own run keys; its runs carry the stall id.
-			f = store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: triggerPack, Key: "name", Value: name}, {Pack: triggerPack, Key: stallMetaKey, Value: s.id()}}, Order: store.OrderNewest}
+			// A handler picks its own run keys; its runs carry the finding id.
+			f = store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: triggerPack, Key: "name", Value: name}, {Pack: triggerPack, Key: findingMetaKey, Value: s.id()}}, Order: store.OrderNewest}
 		}
 		runs, err := c.store.List(ctx, f)
 		if err != nil {
 			return nil, "", err
 		}
-		r := stallHeld(runs, tr, now)
+		r := findingHeld(runs, tr, now)
 		if r == "" {
-			if r, err = c.stallSubjectHeld(ctx, s); err != nil {
+			if r, err = c.subjectHeld(ctx, s); err != nil {
 				return nil, "", err
 			}
 		}
@@ -187,17 +184,17 @@ func (c *Controller) evalStall(ctx context.Context, cfg *config.Config, name str
 	return fire, why, nil
 }
 
-// stallHeld says why a stall with these earlier runs (newest first) may
+// findingHeld says why a finding with these earlier runs (newest first) may
 // not fire now, or "".
-func stallHeld(runs []store.Ticket, tr config.Trigger, now time.Time) string {
+func findingHeld(runs []store.Ticket, tr config.Trigger, now time.Time) string {
 	if len(runs) == 0 {
 		return ""
 	}
 	if runs[0].Status != store.StatusClosed {
 		return "run " + runs[0].ID + " is open"
 	}
-	if len(runs) >= tr.StallMaxRuns() {
-		return fmt.Sprintf("max_runs %d reached", tr.StallMaxRuns())
+	if len(runs) >= tr.ScanMaxRuns() {
+		return fmt.Sprintf("max_runs %d reached", tr.ScanMaxRuns())
 	}
 	if tr.Cooldown != "" {
 		if runs[0].ClosedAt.IsZero() {
@@ -211,27 +208,17 @@ func stallHeld(runs []store.Ticket, tr config.Trigger, now time.Time) string {
 	return ""
 }
 
-// stallSubjectHeld says why a stall may not fire from any trigger (#704):
-// another trigger's run for the same stall is open, or one of them ended
-// in an escalation that is still open. Keyed on the stall's signal and
-// subject (meta.trigger.stall), not the trigger or its key prefix
+// subjectHeld says why a finding may not fire from any trigger (#704):
+// another trigger's run for the same finding is open, or one of them ended
+// in an escalation that is still open. Keyed on the finding's signal and
+// subject (meta.trigger.finding), not the trigger or its key prefix
 // (JOB-95), so two packs watching one subject start one check.
-func (c *Controller) stallSubjectHeld(ctx context.Context, s stall) (string, error) {
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: stallMetaKey, MetaValue: s.id()})
+func (c *Controller) subjectHeld(ctx context.Context, s finding) (string, error) {
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: findingMetaKey, MetaValue: s.id()})
 	if err != nil {
 		return "", err
 	}
-	// Runs started before meta.trigger.stall have only the default key.
-	legacy, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Key: s.key()})
-	if err != nil {
-		return "", err
-	}
-	seen := map[string]bool{}
-	for _, r := range append(runs, legacy...) {
-		if seen[r.ID] || !isStallRun(r) {
-			continue
-		}
-		seen[r.ID] = true
+	for _, r := range runs {
 		if r.Status != store.StatusClosed {
 			return "run " + r.ID + " is open", nil
 		}
@@ -248,25 +235,19 @@ func (c *Controller) stallSubjectHeld(ctx context.Context, s stall) (string, err
 	return "", nil
 }
 
-// isStallRun: the run was started by a stall trigger. fireStall sets
-// meta.trigger.stall on a stall-keyed run (any key_prefix, JOB-95), and
-// meta.trigger.key is <trigger>/stall:<signal>:<subject> on runs with
-// the default prefix, old ones and those with their own run.key.
-func isStallRun(r store.Ticket) bool {
-	if metaString(r.Meta, triggerPack, stallMetaKey) != "" {
-		return true
-	}
-	_, k, ok := strings.Cut(metaString(r.Meta, triggerPack, "key"), "/")
-	return ok && strings.HasPrefix(k, config.DefaultStallKeyPrefix+":")
+// isScanRun: a scan trigger started the run for a finding, so it carries
+// meta.trigger.finding.
+func isScanRun(r store.Ticket) bool {
+	return metaString(r.Meta, triggerPack, findingMetaKey) != ""
 }
 
-// fireStall starts the trigger's workflow for one stall with key
+// fireFinding starts the trigger's workflow for one finding with key
 // <key_prefix>:<signal>:<subject>, or the trigger's run key filled with
-// the stall vars. existing is true when an open run already had that key
+// the scan vars. existing is true when an open run already had that key
 // (one started by hand or by another run, JOB-33).
-func (c *Controller) fireStall(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s stall) (run store.Ticket, existing bool, err error) {
-	tv := map[string]any{config.StallSignalVar: s.signal, config.StallSubjectVar: s.subject, config.StallDetailVar: s.detail}
-	key := s.keyWith(tr.StallKeyPrefix())
+func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s finding) (run store.Ticket, existing bool, err error) {
+	tv := map[string]any{config.ScanSignalVar: s.signal, config.ScanSubjectVar: s.subject, config.ScanDetailVar: s.detail}
+	key := s.keyWith(tr.ScanKeyPrefix())
 	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: key}
 	if tr.Run.Key != "" {
 		if p.Key, err = tr.Run.Fill(tr.Run.Key, tv); err != nil {
@@ -282,9 +263,9 @@ func (c *Controller) fireStall(ctx context.Context, cfg *config.Config, name str
 	}
 	m := map[string]string{"name": name, "key": name + "/" + key}
 	if tr.Run.Key == "" {
-		// The #704 hold covers runs keyed on the stall. A run with its
+		// The #704 hold covers runs keyed on the finding. A run with its
 		// own key (pr-<n>, JOB-33) never took part: leave it out.
-		m[stallMetaKey] = s.id()
+		m[findingMetaKey] = s.id()
 	}
 	res, err := c.startRun(ctx, cfg, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
@@ -294,45 +275,45 @@ func (c *Controller) fireStall(ctx context.Context, cfg *config.Config, name str
 	return rr.Run, rr.Existing, nil
 }
 
-// detectStalls evaluates every signal of the trigger, skipping subjects
+// detectFindings evaluates every signal of the trigger, skipping subjects
 // that belong to the trigger's own workflow. An event re-evaluates all
 // of them; only a check uses its fields.
-func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr config.Trigger, ev triggerEvent) ([]stall, error) {
-	own, err := c.workflowTickets(ctx, tr.StallWorkflow())
+func (c *Controller) detectFindings(ctx context.Context, cfg *config.Config, tr config.Trigger, ev triggerEvent) ([]finding, error) {
+	own, err := c.workflowTickets(ctx, tr.ScanWorkflow())
 	if err != nil {
 		return nil, err
 	}
 	now := c.now()
-	var out []stall
+	var out []finding
 	pending := false
-	for _, sig := range tr.When.Stall {
+	for _, sig := range tr.When.Scan {
 		after := config.Duration(sig.After, 0)
-		var found []stall
+		var found []finding
 		var err error
 		switch sig.Signal {
-		case config.StallReadyUnclaimed:
-			found, err = c.stallReadyUnclaimed(ctx, cfg, now, after)
-		case config.StallPoolQuarantined:
-			found = c.stallPoolQuarantined(cfg)
-		case config.StallStepStalled:
-			found, err = c.stallSteps(ctx, now, after)
-		case config.StallSessionSilent:
-			found, err = c.stallSessions(ctx, now, after)
-		case config.StallNeedsHuman:
-			found, err = c.stallNeedsHuman(ctx, cfg, now, after, tr.StallWorkflow())
-		case config.StallBlocked:
-			found, err = c.stallBlocked(ctx, now, after)
-		case config.StallResourceWait:
-			found, err = c.stallResourceWait(ctx, now, after)
-		case config.StallIngestWorker, config.StallIngestBacklog:
-			found, err = c.stallIngest(ctx, cfg, sig.Signal)
-		case config.StallLinearIssueNoRun:
-			found, err = c.stallLinearIssues(ctx, cfg, sig)
+		case config.SignalReadyUnclaimed:
+			found, err = c.signalReadyUnclaimed(ctx, cfg, now, after)
+		case config.SignalPoolQuarantined:
+			found = c.signalPoolQuarantined(cfg)
+		case config.SignalStepIdle:
+			found, err = c.signalSteps(ctx, now, after)
+		case config.SignalSessionSilent:
+			found, err = c.signalSessions(ctx, now, after)
+		case config.SignalNeedsHuman:
+			found, err = c.signalNeedsHuman(ctx, cfg, now, after, tr.ScanWorkflow())
+		case config.SignalBlocked:
+			found, err = c.signalBlocked(ctx, now, after)
+		case config.SignalResourceWait:
+			found, err = c.signalResourceWait(ctx, now, after)
+		case config.SignalIngestWorker, config.SignalIngestBacklog:
+			found, err = c.signalIngest(ctx, cfg, sig.Signal)
+		case config.SignalLinearIssueNoRun:
+			found, err = c.signalLinearIssues(ctx, cfg, sig)
 		default:
 			if sig.Script != "" {
-				found, err = c.stallScript(ctx, cfg, sig)
+				found, err = c.signalScript(ctx, cfg, sig)
 			} else {
-				found, err = c.stallCheck(ctx, tr, sig, ev)
+				found, err = c.signalCheck(ctx, tr, sig, ev)
 			}
 		}
 		if errors.Is(err, errCheckPending) {
@@ -444,7 +425,7 @@ func ago(now, t time.Time) string { return now.Sub(t).Round(time.Second).String(
 
 // waitsOnQuestion: the ticket's last report is waiting on a question that
 // is still open. The question itself is a needs-human ticket, so the
-// needs_human signal covers it and the step or session is not stalled.
+// needs_human signal covers it and the step or session is not idle.
 func (c *Controller) waitsOnQuestion(ctx context.Context, t store.Ticket) bool {
 	rm, ok := reportOf(t)
 	if !ok || rm.State != rpc.ReportWaiting || rm.Question == "" {
@@ -477,10 +458,10 @@ func (c *Controller) lastUnblocked(ctx context.Context, t store.Ticket, last tim
 	return last, nil
 }
 
-// stallReadyUnclaimed: ready tickets in a configured pool nobody claimed
+// signalReadyUnclaimed: ready tickets in a configured pool nobody claimed
 // for after. Chat pools are left out: their tickets wait for a person.
-func (c *Controller) stallReadyUnclaimed(ctx context.Context, cfg *config.Config, now time.Time, after time.Duration) ([]stall, error) {
-	var out []stall
+func (c *Controller) signalReadyUnclaimed(ctx context.Context, cfg *config.Config, now time.Time, after time.Duration) ([]finding, error) {
+	var out []finding
 	for _, proj := range slices.Sorted(maps.Keys(cfg.Projects)) {
 		ts, err := c.store.List(ctx, store.Filter{Project: proj, Ready: true, Limit: store.DefaultLimit})
 		if err != nil {
@@ -502,18 +483,18 @@ func (c *Controller) stallReadyUnclaimed(ctx context.Context, cfg *config.Config
 				return nil, err
 			}
 			if now.Sub(last) >= after {
-				out = append(out, stall{config.StallReadyUnclaimed, t.ID, fmt.Sprintf("ready in pool %s, unclaimed for %s", t.Pool, ago(now, last))})
+				out = append(out, finding{config.SignalReadyUnclaimed, t.ID, fmt.Sprintf("ready in pool %s, unclaimed for %s", t.Pool, ago(now, last))})
 			}
 		}
 	}
 	return out, nil
 }
 
-// stallPoolQuarantined: pools paused for crash-looping sessions. The
-// subject carries the pause end, so each quarantine is its own stall and
+// signalPoolQuarantined: pools paused for crash-looping sessions. The
+// subject carries the pause end, so each quarantine is its own finding and
 // max_runs does not carry over from the last one.
-func (c *Controller) stallPoolQuarantined(cfg *config.Config) []stall {
-	var out []stall
+func (c *Controller) signalPoolQuarantined(cfg *config.Config) []finding {
+	var out []finding
 	for _, p := range slices.Sorted(maps.Keys(cfg.Pools)) {
 		if c.poolPaused(p) {
 			c.mu.Lock()
@@ -524,21 +505,21 @@ func (c *Controller) stallPoolQuarantined(cfg *config.Config) []stall {
 			if permanent {
 				continue // already escalated as "Pool <p> quarantined" (#146)
 			}
-			out = append(out, stall{config.StallPoolQuarantined, p + "@" + until.UTC().Format("20060102T150405Z"), "pool " + p + ": sessions crash-looping, paused until " + until.UTC().Format(time.RFC3339) + ": " + why})
+			out = append(out, finding{config.SignalPoolQuarantined, p + "@" + until.UTC().Format("20060102T150405Z"), "pool " + p + ": sessions crash-looping, paused until " + until.UTC().Format(time.RFC3339) + ": " + why})
 		}
 	}
 	return out
 }
 
-// stallSteps: the current step of a running run is held but has had no
+// signalSteps: the current step of a running run is held but has had no
 // history or comment for after. Open steps are ready_unclaimed's (or
 // deferred or blocked on purpose).
-func (c *Controller) stallSteps(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
+func (c *Controller) signalSteps(ctx context.Context, now time.Time, after time.Duration) ([]finding, error) {
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunRunning, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
 	}
-	var out []stall
+	var out []finding
 	for _, r := range runs {
 		if r.Status == store.StatusClosed {
 			continue
@@ -557,7 +538,7 @@ func (c *Controller) stallSteps(ctx context.Context, now time.Time, after time.D
 					return nil, err
 				}
 				if now.Sub(last) >= after {
-					out = append(out, stall{config.StallStepStalled, s.ID, fmt.Sprintf("step of run %s held by %s, no progress for %s", r.ID, s.Holder, ago(now, last))})
+					out = append(out, finding{config.SignalStepIdle, s.ID, fmt.Sprintf("step of run %s held by %s, no progress for %s", r.ID, s.Holder, ago(now, last))})
 				}
 			}
 			break // only the first unfinished step
@@ -566,14 +547,14 @@ func (c *Controller) stallSteps(ctx context.Context, now time.Time, after time.D
 	return out, nil
 }
 
-// stallSessions: open sessions holding a ticket whose journal has been
+// signalSessions: open sessions holding a ticket whose journal has been
 // quiet for after (counted from the claim when the journal is older).
-func (c *Controller) stallSessions(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
+func (c *Controller) signalSessions(ctx context.Context, now time.Time, after time.Duration) ([]finding, error) {
 	sessions, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
 	if err != nil {
 		return nil, err
 	}
-	var out []stall
+	var out []finding
 	for _, s := range sessions {
 		held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: store.StatusInProgress, Limit: 1})
 		if err != nil {
@@ -597,24 +578,24 @@ func (c *Controller) stallSessions(ctx context.Context, now time.Time, after tim
 			last = hl
 		}
 		if now.Sub(last) >= after {
-			out = append(out, stall{config.StallSessionSilent, s.ID, fmt.Sprintf("holds %s, no journal output for %s", held[0].ID, ago(now, last))})
+			out = append(out, finding{config.SignalSessionSilent, s.ID, fmt.Sprintf("holds %s, no journal output for %s", held[0].ID, ago(now, last))})
 		}
 	}
 	return out, nil
 }
 
-// stallNeedsHuman: needs_human runs, and open needs-human tickets that are
+// signalNeedsHuman: needs_human runs, and open needs-human tickets that are
 // not a run's escalation (the run covers those), older than after. A run
 // of another pack instance is left to that instance's trigger (JOB-17).
-func (c *Controller) stallNeedsHuman(ctx context.Context, cfg *config.Config, now time.Time, after time.Duration, workflow string) ([]stall, error) {
+func (c *Controller) signalNeedsHuman(ctx context.Context, cfg *config.Config, now time.Time, after time.Duration, workflow string) ([]finding, error) {
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
 	if err != nil {
 		return nil, err
 	}
-	var out []stall
+	var out []finding
 	for _, r := range runs {
-		if r.Status == store.StatusClosed || isStallRun(r) {
-			// A stall check that needs a human already escalated: a check
+		if r.Status == store.StatusClosed || isScanRun(r) {
+			// A signal check that needs a human already escalated: a check
 			// on it would only add another escalation (#704).
 			continue
 		}
@@ -626,7 +607,7 @@ func (c *Controller) stallNeedsHuman(ctx context.Context, cfg *config.Config, no
 			return nil, err
 		}
 		if now.Sub(last) >= after {
-			out = append(out, stall{config.StallNeedsHuman, r.ID, fmt.Sprintf("run %s needs_human for %s", r.Title, ago(now, last))})
+			out = append(out, finding{config.SignalNeedsHuman, r.ID, fmt.Sprintf("run %s needs_human for %s", r.Title, ago(now, last))})
 		}
 	}
 	ts, err := c.labeledOpen(ctx, needsHumanLabel)
@@ -642,7 +623,7 @@ func (c *Controller) stallNeedsHuman(ctx context.Context, cfg *config.Config, no
 			return nil, err
 		}
 		if now.Sub(last) >= after {
-			out = append(out, stall{config.StallNeedsHuman, t.ID, fmt.Sprintf("ticket labeled needs-human, unchanged for %s", ago(now, last))})
+			out = append(out, finding{config.SignalNeedsHuman, t.ID, fmt.Sprintf("ticket labeled needs-human, unchanged for %s", ago(now, last))})
 		}
 	}
 	return out, nil
@@ -664,21 +645,21 @@ func sameInstance(cfg *config.Config, a, b string) bool {
 	return ia < 0 || ib < 0 || ia == ib
 }
 
-// stallBlocked: open tickets labeled blocked, unchanged for after. This is
+// signalBlocked: open tickets labeled blocked, unchanged for after. This is
 // the claimed blocker blocker-check used to re-check.
-func (c *Controller) stallBlocked(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
+func (c *Controller) signalBlocked(ctx context.Context, now time.Time, after time.Duration) ([]finding, error) {
 	ts, err := c.labeledOpen(ctx, blockedLabel)
 	if err != nil {
 		return nil, err
 	}
-	var out []stall
+	var out []finding
 	for _, t := range ts {
 		last, err := c.lastActivity(ctx, t)
 		if err != nil {
 			return nil, err
 		}
 		if now.Sub(last) >= after {
-			out = append(out, stall{config.StallBlocked, t.ID, fmt.Sprintf("claims a blocker, unchanged for %s", ago(now, last))})
+			out = append(out, finding{config.SignalBlocked, t.ID, fmt.Sprintf("claims a blocker, unchanged for %s", ago(now, last))})
 		}
 	}
 	return out, nil
@@ -696,10 +677,10 @@ func (c *Controller) labeledOpen(ctx context.Context, label string) ([]store.Tic
 	return out, nil
 }
 
-// stallCheck runs a check signal: each stdout line is "<subject>
-// [detail]". A non-zero exit means no stall. On a trigger with on:, the
+// signalCheck runs a check signal: each stdout line is "<subject>
+// [detail]". A non-zero exit means no finding. On a trigger with on:, the
 // check is a template over {{.event.<field>}}, empty on a poll (JOB-72).
-func (c *Controller) stallCheck(ctx context.Context, tr config.Trigger, sig config.StallSignal, ev triggerEvent) ([]stall, error) {
+func (c *Controller) signalCheck(ctx context.Context, tr config.Trigger, sig config.ScanSignal, ev triggerEvent) ([]finding, error) {
 	check := sig.Check
 	if len(tr.On) > 0 {
 		var err error
@@ -716,49 +697,49 @@ func (c *Controller) stallCheck(ctx context.Context, tr config.Trigger, sig conf
 		subject, detail, _ := strings.Cut(strings.TrimSpace(line), " ")
 		found[subject] = strings.TrimSpace(detail)
 	}
-	return c.stallSubjects(ctx, sig, found)
+	return c.findingsFrom(ctx, sig, found)
 }
 
-// stallSubjects turns subject -> detail into stalls in subject order. An
-// issue_no_run issue with an open run in sig.Repo is not a stall.
-func (c *Controller) stallSubjects(ctx context.Context, sig config.StallSignal, found map[string]string) ([]stall, error) {
+// findingsFrom turns subject -> detail into findings in subject order. An
+// issue_no_run issue with an open run in sig.Repo is not a finding.
+func (c *Controller) findingsFrom(ctx context.Context, sig config.ScanSignal, found map[string]string) ([]finding, error) {
 	var busy map[string]bool
-	if sig.Signal == config.StallIssueNoRun {
+	if sig.Signal == config.SignalIssueNoRun {
 		var err error
 		if busy, err = c.issuesWithOpenRun(ctx, sig.Repo); err != nil {
 			return nil, err
 		}
 	}
-	var out []stall
+	var out []finding
 	for _, raw := range slices.Sorted(maps.Keys(found)) {
 		subject := strings.TrimPrefix(raw, "#")
 		if subject == "" || strings.ContainsAny(subject, " \t\n") || busy[subject] {
 			continue
 		}
-		out = append(out, stall{sig.Signal, subject, found[raw]})
+		out = append(out, finding{sig.Signal, subject, found[raw]})
 	}
 	return out, nil
 }
 
-// stallScriptTimeout bounds one stall script call.
-const stallScriptTimeout = 2 * time.Minute
+// signalScriptTimeout bounds one signal script call.
+const signalScriptTimeout = 2 * time.Minute
 
-// stallScript runs a script signal: fn(args) returns a dict of subject to
+// signalScript runs a script signal: fn(args) returns a dict of subject to
 // detail. It is called outside the tick like a check (JOB-109), at most
 // once per poll (default DefaultLinearPoll); between calls the last
 // answer stands.
-func (c *Controller) stallScript(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]stall, error) {
+func (c *Controller) signalScript(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]finding, error) {
 	key := "script\x00" + sig.Script + "\x00" + sig.Signal
 	poll := config.Duration(sig.Poll, config.DefaultLinearPoll)
 	now := c.now()
-	c.stallScripts.mu.Lock()
-	r, ok := c.stallScripts.cache[key]
-	c.stallScripts.mu.Unlock()
+	c.signalScripts.mu.Lock()
+	r, ok := c.signalScripts.cache[key]
+	c.signalScripts.mu.Unlock()
 	if !ok || !now.Before(r.at.Add(poll)) {
 		res, err := offTick(ctx, checkNeed{
-			key: key, poller: "stall_script", timeout: stallScriptTimeout,
+			key: key, poller: "signal_script", timeout: signalScriptTimeout,
 			run: func(ctx context.Context) checkResult {
-				result, err := c.callSync(ctx, cfg, "stall."+sig.Signal, sig.Script, stallScriptTimeout, sig.Args)
+				result, err := c.callSync(ctx, cfg, "scan."+sig.Signal, sig.Script, signalScriptTimeout, sig.Args)
 				return checkResult{val: result.Output, err: err}
 			},
 		})
@@ -777,24 +758,24 @@ func (c *Controller) stallScript(ctx context.Context, cfg *config.Config, sig co
 				found[subject] = fmt.Sprint(detail)
 			}
 		}
-		r = stallScriptRead{at: now, found: found}
-		c.stallScripts.mu.Lock()
-		if c.stallScripts.cache == nil {
-			c.stallScripts.cache = map[string]stallScriptRead{}
+		r = signalScriptRead{at: now, found: found}
+		c.signalScripts.mu.Lock()
+		if c.signalScripts.cache == nil {
+			c.signalScripts.cache = map[string]signalScriptRead{}
 		}
-		c.stallScripts.cache[key] = r
-		c.stallScripts.mu.Unlock()
+		c.signalScripts.cache[key] = r
+		c.signalScripts.mu.Unlock()
 	}
-	return c.stallSubjects(ctx, sig, r.found)
+	return c.findingsFrom(ctx, sig, r.found)
 }
 
-// stallScripts caches script signal answers between polls.
-type stallScripts struct {
+// signalScripts caches script signal answers between polls.
+type signalScripts struct {
 	mu    sync.Mutex
-	cache map[string]stallScriptRead
+	cache map[string]signalScriptRead
 }
 
-type stallScriptRead struct {
+type signalScriptRead struct {
 	at    time.Time
 	found map[string]string
 }

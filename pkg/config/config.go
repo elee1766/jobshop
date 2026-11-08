@@ -143,13 +143,13 @@ type Trigger struct {
 	// Cooldown is the minimum time after its last ticket closed before the
 	// trigger fires again (Go duration).
 	Cooldown string `yaml:"cooldown"`
-	// MaxRuns caps the runs a stall trigger starts per key (one stall);
-	// after that the stall is left to the escalation of the last run.
-	// Default 3. Stall triggers only.
+	// MaxRuns caps the runs a scan trigger starts per key (one finding);
+	// after that the finding is left to the escalation of the last run.
+	// Default 3. Scan triggers only.
 	MaxRuns int `yaml:"max_runs"`
-	// MaxOpen caps the open runs of a stall trigger across all keys, so a
-	// backlog of stalls is worked a few at a time (JOB-93). Default 3.
-	// Stall triggers only.
+	// MaxOpen caps the open runs of a scan trigger across all keys, so a
+	// backlog of findings is worked a few at a time (JOB-93). Default 3.
+	// Scan triggers only.
 	MaxOpen int `yaml:"max_open"`
 	// On fires the trigger when an admitted ingest delivery matches one
 	// entry (JOB-62), between ticks. When conditions still apply, and
@@ -208,48 +208,48 @@ type TriggerCommand struct {
 	Timeout string `yaml:"timeout"` // Go duration, default 1m
 }
 
-// Store stall signals, computed by the controller from the store and its
+// Store scan signals, computed by the controller from the store and its
 // own state. Any other signal name needs a check command.
 const (
-	StallReadyUnclaimed  = "ready_unclaimed"  // ready ticket nobody claimed for After
-	StallPoolQuarantined = "pool_quarantined" // pool paused for crash-looping
-	StallStepStalled     = "step_stalled"     // first unfinished step of a running run with no history or comment for After
-	StallSessionSilent   = "session_silent"   // session holding a ticket with no journal output for After
-	StallNeedsHuman      = "needs_human"      // needs_human run, or needs-human ticket, older than After
-	StallBlocked         = "blocked"          // open ticket labeled blocked, unchanged for After
-	StallResourceWait    = "resource_wait"    // open, unblocked ticket waiting on a full resource for After (#408)
-	StallIngestWorker    = "ingest_worker"    // ingest.workers external and no worker heartbeat for ingest.worker_missing (#443)
-	StallIngestBacklog   = "ingest_backlog"   // over ingest.backlog_max pending inbox items older than ingest.backlog_after (#443)
-	// StallIssueNoRun is a check signal whose subjects are GitHub issue
+	SignalReadyUnclaimed  = "ready_unclaimed"  // ready ticket nobody claimed for After
+	SignalPoolQuarantined = "pool_quarantined" // pool paused for crash-looping
+	SignalStepIdle        = "step_idle"        // first unfinished step of a running run with no history or comment for After
+	SignalSessionSilent   = "session_silent"   // session holding a ticket with no journal output for After
+	SignalNeedsHuman      = "needs_human"      // needs_human run, or needs-human ticket, older than After
+	SignalBlocked         = "blocked"          // open ticket labeled blocked, unchanged for After
+	SignalResourceWait    = "resource_wait"    // open, unblocked ticket waiting on a full resource for After (#408)
+	SignalIngestWorker    = "ingest_worker"    // ingest.workers external and no worker heartbeat for ingest.worker_missing (#443)
+	SignalIngestBacklog   = "ingest_backlog"   // over ingest.backlog_max pending inbox items older than ingest.backlog_after (#443)
+	// SignalIssueNoRun is a check signal whose subjects are GitHub issue
 	// numbers; the controller drops issues that have an open run
 	// (meta.github.issue), so the check only lists open work issues.
-	StallIssueNoRun = "issue_no_run"
-	// StallLinearIssueNoRun is computed by the controller from Linear
+	SignalIssueNoRun = "issue_no_run"
+	// SignalLinearIssueNoRun is computed by the controller from Linear
 	// (#287): open issues of Team matching States and Labels, minus
 	// SkipLabels, that no open run carries in meta.linear.issue.
-	StallLinearIssueNoRun = "linear_issue_no_run"
+	SignalLinearIssueNoRun = "linear_issue_no_run"
 )
 
 // DefaultLinearPoll is how often linear_issue_no_run reads Linear.
 const DefaultLinearPoll = 5 * time.Minute
 
-// StoreStallSignals lists the signals the controller computes itself.
-var StoreStallSignals = []string{StallReadyUnclaimed, StallPoolQuarantined, StallStepStalled, StallSessionSilent, StallNeedsHuman, StallBlocked, StallResourceWait, StallIngestWorker, StallIngestBacklog}
+// StoreSignals lists the signals the controller computes itself.
+var StoreSignals = []string{SignalReadyUnclaimed, SignalPoolQuarantined, SignalStepIdle, SignalSessionSilent, SignalNeedsHuman, SignalBlocked, SignalResourceWait, SignalIngestWorker, SignalIngestBacklog}
 
-// Stall template vars, filled per stall when a stall trigger fires.
+// Finding template vars, filled per finding when a scan trigger fires.
 const (
-	StallSignalVar  = "stall_signal"
-	StallSubjectVar = "stall_subject"
-	StallDetailVar  = "stall_detail"
+	ScanSignalVar  = "signal"
+	ScanSubjectVar = "subject"
+	ScanDetailVar  = "detail"
 )
 
-// StallSignal is one stall condition. A store signal (StoreStallSignals)
+// ScanSignal is one finding condition. A store signal (StoreSignals)
 // uses After. Any other name runs Check (sh -c in the root dir): exit 0
-// with one stall per stdout line, "<subject> <detail>"; the subject is
+// with one finding per stdout line, "<subject> <detail>"; the subject is
 // the first word. Or it runs Script, a Starlark file.star:function called
 // as fn(args) at most once per Poll, which returns a dict of subject to
 // detail.
-type StallSignal struct {
+type ScanSignal struct {
 	Signal string         `yaml:"signal"`
 	After  string         `yaml:"after"` // Go duration threshold
 	Check  string         `yaml:"check"`
@@ -281,9 +281,9 @@ type TriggerRun struct {
 	Workflow string            `yaml:"workflow"`
 	Vars     map[string]string `yaml:"vars"`
 	Key      string            `yaml:"key"`
-	// KeyPrefix replaces "stall" in a stall trigger's run keys,
+	// KeyPrefix replaces "scan" in a scan trigger's run keys,
 	// <prefix>:<signal>:<subject>, for triggers that do intake rather
-	// than stuck-work checks (JOB-95). Stall triggers only, not with Key.
+	// than stuck-work checks (JOB-95). Scan triggers only, not with Key.
 	KeyPrefix string `yaml:"key_prefix"`
 }
 
@@ -317,11 +317,11 @@ type TriggerWhen struct {
 	// CheckTimeout bounds one check run (Go duration, default 1m).
 	CheckTimeout string `yaml:"check_timeout"`
 
-	// Stall lists stall signals. Each stall (signal and subject) starts
-	// its own run with key stall:<signal>:<subject> (run.key_prefix
-	// replaces stall, JOB-95). A stall trigger has
+	// Scan lists scan signals. Each finding (signal and subject) starts
+	// its own run with key scan:<signal>:<subject> (run.key_prefix
+	// replaces finding, JOB-95). A scan trigger has
 	// no other condition and needs run:. check_timeout bounds its checks.
-	Stall []StallSignal `yaml:"stall"`
+	Scan []ScanSignal `yaml:"scan"`
 
 	// Learnings holds on open learnings recorded since the trigger last
 	// fired (#273).
@@ -372,7 +372,7 @@ func (c *Config) LearningKinds() []string {
 
 // HasConditions reports whether w has any condition a poll evaluates.
 func (w TriggerWhen) HasConditions() bool {
-	return w.Cron != "" || w.HasCounts() || w.Check != "" || w.Learnings != nil || w.Edits != nil || len(w.Stall) > 0
+	return w.Cron != "" || w.HasCounts() || w.Check != "" || w.Learnings != nil || w.Edits != nil || len(w.Scan) > 0
 }
 
 // HasCounts reports whether any count threshold is set.
@@ -1851,17 +1851,17 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 		return fmt.Errorf("name must match %s", namePattern)
 	}
 	w := tr.When
-	if len(w.Stall) > 0 {
-		return c.checkStallTrigger(tr)
+	if len(w.Scan) > 0 {
+		return c.checkScanTrigger(tr)
 	}
 	if tr.MaxRuns != 0 {
-		return errors.New("max_runs needs when.stall")
+		return errors.New("max_runs needs when.scan")
 	}
 	if tr.MaxOpen < 0 {
 		return errors.New("max_open must not be negative")
 	}
 	if tr.MaxOpen != 0 && tr.Handler == "" {
-		return errors.New("max_open needs when.stall")
+		return errors.New("max_open needs when.scan")
 	}
 	if err := checkTriggerOn(tr); err != nil {
 		return err

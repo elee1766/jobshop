@@ -689,10 +689,10 @@ def handle(event, args):
 	assert.Equal(t, []string{"tickets", "runs"}, capabilities, "store reads are journaled")
 }
 
-// TestHookStallHandler: a when.stall trigger with a handler gets each
-// stall as an event; its run carries the stall id, so the stall is held
+// TestHookScanHandler: a when.scan trigger with a handler gets each
+// finding as an event; its run carries the finding id, so the finding is held
 // while the run is open and max_runs counts it.
-func TestHookStallHandler(t *testing.T) {
+func TestHookScanHandler(t *testing.T) {
 	root := controltest.NewRoot(t, `pack: pack.yaml
 projects: {js: {}}
 agents: {fake: {command: "false"}}
@@ -700,23 +700,23 @@ agents: {fake: {command: "false"}}
 	pack := `pools:
   plan: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}
 workflows:
-  stall-check:
+  triage:
     project: js
     vars: [signal, subject]
     steps:
-      - {id: diagnose, pool: plan, title: "Stall {{.signal}} {{.subject}}", prompt: x}
+      - {id: diagnose, pool: plan, title: "Finding {{.signal}} {{.subject}}", prompt: x}
 triggers:
-  stall:
+  scan:
     when:
-      stall: [{signal: blocked, after: 1h}]
-    handler: hooks.star:stall
-    args: {workflow: stall-check}
+      scan: [{signal: blocked, after: 1h}]
+    handler: hooks.star:finding
+    args: {workflow: triage}
     max_runs: 1
 `
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "hooks.star"), []byte(`def stall(event, args):
-    if event.source != "stall" or event.trigger != "stall":
-        fail("not a stall event")
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "hooks.star"), []byte(`def finding(event, args):
+    if event.source != "scan" or event.trigger != "scan":
+        fail("not a finding event")
     p = event.payload
     return [start_run(workflow=args["workflow"], key="sc-" + p["subject"], inputs={"signal": p["signal"], "subject": p["subject"]})]
 `), 0o600))
@@ -730,12 +730,12 @@ triggers:
 	c.PassUntil(func() bool {
 		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
 		return len(runs) == 1
-	}, "stall handler did not start a run")
+	}, "scan handler did not start a run")
 	rf, err := store.DecodeFields[store.RunFields](runs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "sc-"+blocked.ID, rf.Key)
 	assert.Equal(t, "blocked", rf.Vars["signal"])
-	assert.Contains(t, string(runs[0].Meta), `"stall":"blocked:`+blocked.ID+`"`)
+	assert.Contains(t, string(runs[0].Meta), `"finding":"blocked:`+blocked.ID+`"`)
 	// Held while the run is open, then max_runs 1 holds it for good.
 	c.Clock.Advance(time.Hour)
 	c.Pass(3)
@@ -813,9 +813,9 @@ desk_commands:
 	require.ErrorIs(t, err, store.ErrNotFound)
 }
 
-// A script stall signal returns subject -> detail; an issue with an open
+// A script scan signal returns subject -> detail; an issue with an open
 // run in its repo is skipped, and the answer stands until the next poll.
-func TestStallScriptSignal(t *testing.T) {
+func TestScanScriptSignal(t *testing.T) {
 	root := controltest.NewRoot(t, `pack: pack.yaml
 projects: {js: {}}
 agents: {fake: {command: "false"}}
@@ -823,11 +823,11 @@ agents: {fake: {command: "false"}}
 	pack := `pools:
   plan: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}
 workflows:
-  stall-check:
+  triage:
     project: js
     vars: [signal, subject, detail]
     steps:
-      - {id: diagnose, pool: plan, title: "Stall {{.signal}} {{.subject}}", prompt: x}
+      - {id: diagnose, pool: plan, title: "Finding {{.signal}} {{.subject}}", prompt: x}
   issue:
     project: js
     repo: acme/widget
@@ -836,10 +836,10 @@ workflows:
     steps:
       - {id: work, pool: plan, title: "Work {{.issue}}", prompt: x}
 triggers:
-  stall:
+  scan:
     when:
-      stall: [{signal: issue_no_run, repo: acme/widget, script: signals.star:issues, args: {label: watch}, poll: 10m}]
-    run: {workflow: stall-check, vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}}
+      scan: [{signal: issue_no_run, repo: acme/widget, script: signals.star:issues, args: {label: watch}, poll: 10m}]
+    run: {workflow: triage, vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}}
     max_runs: 1
 `
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
@@ -854,16 +854,16 @@ triggers:
 	c := controltest.Start(t, root, control.Options{})
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "issue", Vars: map[string]string{"issue": "8"}}, nil)
 	var runs []store.Ticket
-	stallRuns := func() []store.Ticket {
+	scanRuns := func() []store.Ticket {
 		var all []store.Ticket
 		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &all)
 		runs = slices.DeleteFunc(all, func(r store.Ticket) bool {
 			rf, err := store.DecodeFields[store.RunFields](r)
-			return err != nil || rf.Workflow != "stall-check"
+			return err != nil || rf.Workflow != "triage"
 		})
 		return runs
 	}
-	c.PassUntil(func() bool { return len(stallRuns()) == 1 }, "script signal did not start a run")
+	c.PassUntil(func() bool { return len(scanRuns()) == 1 }, "script signal did not start a run")
 	rf, err := store.DecodeFields[store.RunFields](runs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "7", rf.Vars["subject"], "issue 8 has an open run")
@@ -872,7 +872,7 @@ triggers:
 	// A new subject waits for the next poll.
 	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "9", Labels: []string{"watch"}}, nil)
 	c.Pass(3)
-	require.Len(t, stallRuns(), 1)
+	require.Len(t, scanRuns(), 1)
 	c.Clock.Advance(11 * time.Minute)
-	c.PassUntil(func() bool { return len(stallRuns()) == 2 }, "next poll did not see the new subject")
+	c.PassUntil(func() bool { return len(scanRuns()) == 2 }, "next poll did not see the new subject")
 }

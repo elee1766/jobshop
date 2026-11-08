@@ -29,7 +29,7 @@ func attentionKinds(t *testing.T, c *Controller) []string {
 // first, with each escalated run or pool once (#185).
 func TestAttention(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	// Healthy: a running run and an ordinary ticket are not listed.
 	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "ok", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`)})
 	mkTicket(t, c, store.NewTicket{Title: "task"})
@@ -79,7 +79,7 @@ func TestAttention(t *testing.T) {
 // when set, else the body's first lines, clipped (#607).
 func TestAttentionSummary(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	q := mkTicket(t, c, store.NewTicket{Title: "which db?", Body: "\nPostgres or SQLite?\n\nmore context\nand more", Labels: []string{questionLabel}})
 	clk.advance(time.Minute)
 	d := mkTicket(t, c, store.NewTicket{

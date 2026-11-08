@@ -91,7 +91,7 @@ or reaching a human. If you cannot deliver for any other reason,
 `jobshop close -r failed` with a
 comment saying why; the run retries and then escalates to a human.
 
-Report state as you go, so stall-check and the planner read it instead
+Report state as you go, so triage and the planner read it instead
 of your comments: `jobshop report progress "<what is done>"`, `jobshop
 report blocked "<on what>"`, `jobshop report failed "<why>"` before
 `close -r failed`. When only a person can decide (a decision, a

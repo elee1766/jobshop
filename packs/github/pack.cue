@@ -1,7 +1,7 @@
 package github
 
-// #Pack keeps the GitHub pack's names and policy. Select callbacks only after
-// draining legacy runs. Controller-owned stall discovery stays declarative.
+// #Pack works one GitHub repo through issues and PRs. Workflows and
+// triggers are Starlark; see README.md.
 #Pack: {
 	let V = vars
 	let P = prefix
@@ -25,20 +25,20 @@ package github
 		dev_sonnet_sessions:    *1 | int & >=0
 		dev_sonnet_model:       *"claude-sonnet-5-5" | string
 		dev_sonnet_effort:      *"high" | string
-		stall_model:            *"" | string
-		stall_effort:           *"" | string
+		triage_model:           *"" | string
+		triage_effort:          *"" | string
 		deploy_sessions:        *3 | int & >=0
 		merge_method:           *"squash" | string
 		check_cmd:              *"true" | string
 		required_approver:      *"" | string
 		required_checks:        *"" | string
 		guide:                  *"Read the repo's README and contributor docs (AGENTS.md, CONTRIBUTING.md) first." | string
-		stall_after:            *"1h" | string
-		stall_step_after:       *"3h" | string
-		stall_human_after:      *"4h" | string
+		scan_after:             *"1h" | string
+		scan_step_after:        *"3h" | string
+		scan_human_after:       *"4h" | string
 		authors:                *"" | string
-		stall_pr_skip_authors:  *"" | string
-		stall_pr_skip_labels:   *"hold" | string
+		pr_review_skip_authors: *"" | string
+		pr_review_skip_labels:  *"hold" | string
 		release_pr_label:       *"autorelease: pending" | string
 		deploy_check:           *"none (these agents do not deploy this repo); treat this check as passed." | string
 		tracker:                *"github" | "linear"
@@ -56,7 +56,6 @@ package github
 		docs_rule:              *"put a design note or runbook check in a new file of its own, named by the issue number. Never append a numbered section to a shared doc." | string
 		escalation_chat_pool:   *"" | string
 		propose_targets:        *true | bool
-		starlark_workflows:     *false | bool
 		asset_prefix:           *"" | string
 		...
 	}
@@ -88,10 +87,10 @@ package github
 			prompt_file:  "\(V.asset_prefix)prompts/\(V.tracker)/plan.md"
 			admin:        _admin
 		}
-		stall: _pool & {
+		triage: _pool & {
 			max_sessions: 1
-			model:        V.stall_model
-			effort:       V.stall_effort
+			model:        V.triage_model
+			effort:       V.triage_effort
 			admin:        _admin
 		}
 		refinery: _pool & {
@@ -107,73 +106,68 @@ package github
 		...
 	}
 
-	// The runtime owns stall subjects, durable history caps, and closed-ticket cooldowns.
+	// Handlers decide; the controller keeps per-subject history, cooldowns
+	// and caps for the scan signals.
+	_github: {repo: V.repo, ci_workflow: V.ci_workflow, ci_branch: V.ci_branch}
 	triggers: {
 		replan: {
 			when: {pool: "dev", ready_below: 1}
-			ticket: {pool: "plan", title: "Plan next step", priority: 1, labels: ["plan"]}
+			handler: "\(V.asset_prefix)triggers.star:replan"
+			args: {dev_pool: "dev", plan_pool: "plan"}
 			cooldown: "10m"
+			max_open: 1
 		}
 		"master-red": {
 			on: [{github: {event: "workflow_run", action: "completed", repo: V.repo, workflow: V.ci_workflow, branch: V.ci_branch, conclusion: "failure"}}]
 			fallback: "5m"
-			when: {
-				check:         "gh run list --repo \(V.repo) --branch \(V.ci_branch) --workflow \(V.ci_workflow) --status completed --limit 1 --json conclusion,headSha --jq '.[] | select(.conclusion == \"failure\") | .headSha' | grep ."
-				check_timeout: "30s"
-			}
-			run: {workflow: "ci-repair", vars: {sha: "{{.check_output}}"}, key: "{{.check_output}}"}
+			handler:  "\(V.asset_prefix)triggers.star:master_red"
+			args:     _github
 		}
 		"release-pr": {
 			on: [{github: {event: "check_suite", action: "completed", repo: V.repo}}]
 			fallback: "5m"
-			when: {
-				check:         "test -n \"\(V.release_pr_label)\" && gh pr list --repo \(V.repo) --state open --label \"\(V.release_pr_label)\" --json number,isDraft,statusCheckRollup --jq ' [.[] | select(.isDraft | not) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | .number] | sort | .[0] // empty' | grep ."
-				check_timeout: "30s"
-			}
-			run: {workflow: "release-merge", vars: {pr: "{{.check_output}}"}, key: "release-pr-{{.check_output}}"}
+			handler:  "\(V.asset_prefix)triggers.star:release_pr"
+			args: {repo: V.repo, release_pr_label: V.release_pr_label}
 		}
-		stall: {
-			when: {
-				check_timeout: "1m"
-				stall: [
-					{signal: "ready_unclaimed", after: V.stall_after},
-					{signal: "pool_quarantined"},
-					{signal: "step_stalled", after: V.stall_step_after},
-					{signal: "session_silent", after: V.stall_after},
-					{signal: "needs_human", after: V.stall_human_after},
-					{signal: "blocked", after: V.stall_after},
-					{
-						signal: "issue_no_run"
-						repo:   V.repo
-						check:  "gh issue list --repo \(V.repo) --state open --limit 200 --json number,labels,title,createdAt,author --jq ' (\"\(V.human),\(V.authors)\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $ok | .[] | select(.author.is_bot or ([.author.login | ascii_downcase] | inside($ok)) or ([.labels[].name] | any(. == \"accepted\"))) | select([.labels[].name] | any(. == \"target\" or . == \"needs-decision\" or . == \"needs-human\" or . == \"tracking\" or . == \"proposed\") | not) | select(.title | test(\"^drill\"; \"i\") | not) | select((now - (.createdAt | fromdateiso8601)) > 1800) | \"\\(.number) open, no run\"'"
-					},
-					{
-						signal:      "linear_issue_no_run"
-						team:        V.linear_team
-						states:      V.linear_intake_states
-						labels:      V.linear_intake_labels
-						skip_labels: V.linear_skip_labels
-						poll:        V.linear_poll
-					},
-					{
-						signal: "no_merge"
-						check:  "test \"$(gh pr list --repo \(V.repo) --state open --json number --jq length)\" -gt 0 && gh api repos/\(V.repo)/commits/\(V.ci_branch) --jq 'select((now - (.commit.committer.date | fromdateiso8601)) > 21600) | \"\\(.sha[0:12]) last commit \\(.commit.committer.date)\"'"
-					},
-				]
-			}
-			run: {workflow: "stall-check", vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}}
+		scan: {
+			when: scan: [
+				{signal: "ready_unclaimed", after: V.scan_after},
+				{signal: "pool_quarantined"},
+				{signal: "step_idle", after: V.scan_step_after},
+				{signal: "session_silent", after: V.scan_after},
+				{signal: "needs_human", after: V.scan_human_after},
+				{signal: "blocked", after: V.scan_after},
+				{
+					signal: "issue_no_run"
+					repo:   V.repo
+					script: "\(V.asset_prefix)triggers.star:issue_no_run"
+					args: {repo: V.repo, human: V.human, authors: V.authors}
+				},
+				{
+					signal:      "linear_issue_no_run"
+					team:        V.linear_team
+					states:      V.linear_intake_states
+					labels:      V.linear_intake_labels
+					skip_labels: V.linear_skip_labels
+					poll:        V.linear_poll
+				},
+				{
+					signal: "no_merge"
+					script: "\(V.asset_prefix)triggers.star:no_merge"
+					args:   _github
+				},
+			]
+			run: {workflow: "triage", vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}}
 			cooldown: "30m"
 			max_runs: 2
 		}
 		"pr-unmerged": {
-			when: {
-				check_timeout: "1m"
-				stall: [{
-					signal: "pr_unmerged"
-					check:  "gh pr list --repo \(V.repo) --state open --json number,isDraft,updatedAt,statusCheckRollup,author,labels --jq ' (\"\(V.human),\(V.stall_pr_skip_authors)\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipa | (\"\(V.stall_pr_skip_labels)\" | ascii_downcase | split(\",\") | map(select(. != \"\"))) as $skipl | .[] | select(.isDraft | not) | select(.author.login | ascii_downcase | IN($skipa[]) | not) | select(any(.labels[].name | ascii_downcase; IN($skipl[])) | not) | select((\"\(V.release_pr_label)\" | ascii_downcase) as $rl | $rl == \"\" or (any(.labels[].name | ascii_downcase; . == $rl) | not)) | select((.statusCheckRollup | length) > 0 and all(.statusCheckRollup[]; .conclusion == \"SUCCESS\" or .conclusion == \"SKIPPED\" or .conclusion == \"NEUTRAL\")) | select((now - (.updatedAt | fromdateiso8601)) > 7200) | \"\\(.number) green, unmerged since \\(.updatedAt)\"'"
-				}]
-			}
-			run: {workflow: "pr-review", vars: {pr: "{{.stall_subject}}"}, key: "pr-{{.stall_subject}}"}
+			when: scan: [{
+				signal: "pr_unmerged"
+				script: "\(V.asset_prefix)triggers.star:pr_unmerged"
+				args: {repo: V.repo, human: V.human, skip_authors: V.pr_review_skip_authors, skip_labels: V.pr_review_skip_labels, release_pr_label: V.release_pr_label}
+			}]
+			run: {workflow: "pr-review", vars: {pr: "{{.subject}}"}, key: "pr-{{.subject}}"}
 			cooldown: "30m"
 			max_runs: 2
 		}
@@ -199,6 +193,7 @@ package github
 		}
 		...
 	}
+	_star: "\(V.asset_prefix)workflows.star"
 	workflows: {
 		"pr-work": _workflow & {
 			vars: ["issue", "dev_pool"]
@@ -207,98 +202,49 @@ package github
 			tracker: V.tracker
 			if V.tracker == "github" {linear_workspace: ""}
 			if V.tracker == "linear" {linear_workspace: V.linear_workspace}
-			if V.starlark_workflows {
-				on_start:          "\(V.asset_prefix)workflows.star:pr_work_start"
-				on_step_completed: "\(V.asset_prefix)workflows.star:pr_work_completed"
-			}
-			if !V.starlark_workflows {
-				steps: [
-					{id: "implement", pool: "{{.dev_pool}}", retry_pool: "dev", retries: 3, title: "Implement #{{.issue}}", prompt_file: "\(V.asset_prefix)prompts/\(V.tracker)/implement.md"},
-					{id: "review-merge", pool: "refinery", retries: 2, when: {step: "implement", outcome: "pr"}, title: "Review and merge PR for #{{.issue}}", prompt_file: "\(V.asset_prefix)prompts/\(V.tracker)/merge.md"},
-					{id: "post-merge", pool: "deploy-check", retries: 2, when: {step: "implement", outcome: "pr"}, title: "Check master CI and deploy for #{{.issue}}", prompt_file: "\(V.asset_prefix)prompts/\(V.tracker)/post-merge.md"},
-				]
-			}
+			on_start:          "\(_star):pr_work_start"
+			on_step_completed: "\(_star):pr_work_completed"
 		}
 		"pr-work-linear": _workflow & {
 			vars: ["issue", "dev_pool"]
-			issue:            "issue"
-			repo:             V.repo
-			tracker:          "linear"
-			linear_workspace: V.linear_workspace
-			if V.starlark_workflows {
-				on_start:          "\(V.asset_prefix)workflows.star:pr_work_linear_start"
-				on_step_completed: "\(V.asset_prefix)workflows.star:pr_work_linear_completed"
-			}
-			if !V.starlark_workflows {
-				steps: [
-					{id: "implement", pool: "{{.dev_pool}}", retry_pool: "dev", retries: 3, title: "Implement {{.issue}}", prompt_file: "\(V.asset_prefix)prompts/linear/implement.md"},
-					{id: "review-merge", pool: "refinery", retries: 2, when: {step: "implement", outcome: "pr"}, title: "Review and merge PR for {{.issue}}", prompt_file: "\(V.asset_prefix)prompts/linear/merge.md"},
-					{id: "post-merge", pool: "deploy-check", retries: 2, when: {step: "implement", outcome: "pr"}, title: "Check master CI and deploy for {{.issue}}", prompt_file: "\(V.asset_prefix)prompts/linear/post-merge.md"},
-				]
-			}
+			issue:             "issue"
+			repo:              V.repo
+			tracker:           "linear"
+			linear_workspace:  V.linear_workspace
+			on_start:          "\(_star):pr_work_linear_start"
+			on_step_completed: "\(_star):pr_work_linear_completed"
 		}
 		"pr-review": _workflow & {
 			vars: ["pr"]
-			pr:   "pr"
-			repo: V.repo
-			if V.starlark_workflows {
-				on_start:          "\(V.asset_prefix)workflows.star:pr_review_start"
-				on_step_completed: "\(V.asset_prefix)workflows.star:pr_review_completed"
-			}
-			if !V.starlark_workflows {
-				steps: [
-					{id: "review-merge", pool: "refinery", retries: 2, title: "Review and merge PR #{{.pr}}", prompt_file: "\(V.asset_prefix)prompts/pr-review/merge.md"},
-					{id: "post-merge", pool: "deploy-check", retries: 2, when: {step: "review-merge", outcome: "merged"}, title: "Check master CI and deploy for PR #{{.pr}}", prompt_file: "\(V.asset_prefix)prompts/pr-review/post-merge.md"},
-				]
-			}
+			pr:                "pr"
+			repo:              V.repo
+			on_start:          "\(_star):pr_review_start"
+			on_step_completed: "\(_star):pr_review_completed"
 		}
-		"stall-check": _workflow & {
+		triage: _workflow & {
 			vars: ["signal", "subject", "detail"]
-			if V.starlark_workflows {
-				on_start:          "\(V.asset_prefix)workflows.star:stall_start"
-				on_step_completed: "\(V.asset_prefix)workflows.star:finish"
-			}
-			if !V.starlark_workflows {
-				steps: [{id: "diagnose", pool: "stall", retries: 1, title: "Stall {{.signal}}: {{.subject}}", prompt_file: "\(V.asset_prefix)prompts/stall.md"}]
-			}
+			on_start:          "\(_star):triage_start"
+			on_step_completed: "\(_star):finish"
 		}
 		"ci-repair": _workflow & {
 			vars: ["sha"]
-			repo: V.repo
-			if V.starlark_workflows {
-				on_start:          "\(V.asset_prefix)workflows.star:ci_start"
-				on_step_completed: "\(V.asset_prefix)workflows.star:ci_completed"
-			}
-			if !V.starlark_workflows {
-				steps: [
-					{id: "fix", pool: "dev", retries: 2, title: "Fix red master CI at {{.sha}}", prompt_file: "\(V.asset_prefix)prompts/ci-fix.md"},
-					{id: "merge", pool: "refinery", retries: 2, title: "Merge CI fix for {{.sha}}", prompt_file: "\(V.asset_prefix)prompts/ci-merge.md"},
-				]
-			}
+			repo:              V.repo
+			on_start:          "\(_star):ci_start"
+			on_step_completed: "\(_star):ci_completed"
 		}
 		"release-merge": _workflow & {
 			vars: ["pr"]
-			pr:   "pr"
-			repo: V.repo
-			if V.starlark_workflows {
-				on_start:          "\(V.asset_prefix)workflows.star:release_start"
-				on_step_completed: "\(V.asset_prefix)workflows.star:finish"
-			}
-			if !V.starlark_workflows {
-				steps: [{id: "merge", pool: "refinery", retries: 2, title: "Merge release PR #{{.pr}}", prompt_file: "\(V.asset_prefix)prompts/release-merge.md"}]
-			}
+			pr:                "pr"
+			repo:              V.repo
+			on_start:          "\(_star):release_start"
+			on_step_completed: "\(_star):finish"
 		}
 		drill: _workflow & {
 			vars: ["issue"]
-			issue: "issue"
-			repo:  V.repo
-			if V.starlark_workflows {
-				on_start:          "\(V.asset_prefix)workflows.star:drill_start"
-				on_step_completed: "\(V.asset_prefix)workflows.star:finish"
-			}
-			if !V.starlark_workflows {
-				steps: [{id: "fail", pool: "dev", retries: 1, title: "Escalation drill for #{{.issue}}", prompt_file: "\(V.asset_prefix)prompts/drill.md"}]
-			}
+			issue:             "issue"
+			repo:              V.repo
+			on_start:          "\(_star):drill_start"
+			on_step_completed: "\(_star):finish"
 		}
 		...
 	}

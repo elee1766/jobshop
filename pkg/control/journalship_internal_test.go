@@ -14,7 +14,7 @@ import (
 // and backfill give the clear error.
 func TestJournalSearchNotConfigured(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, journalYAML)
+	c, _, _ := scanControllerYAML(t, journalYAML)
 	_, err := c.journalSearch(t.Context(), scope{admin: true}, rpc.JournalSearchParams{Query: "*"})
 	require.ErrorIs(t, err, store.ErrInvalid)
 	assert.Contains(t, err.Error(), "journal search needs journal.victorialogs")

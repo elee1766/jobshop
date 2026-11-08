@@ -12,7 +12,7 @@ import (
 // the DNS check runs only for a pasta pool that names dns_check. The
 // pasta lookup itself is acphost's CheckSandboxDNS, tested there.
 func TestPoolSandboxDNS(t *testing.T) {
-	c, _, dir := stallControllerYAML(t, `projects:
+	c, _, dir := scanControllerYAML(t, `projects:
   js: {}
 agents:
   a: {command: /bin/true}

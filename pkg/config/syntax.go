@@ -23,7 +23,7 @@ func checkSyntax(s string) error {
 }
 
 // placeholder is the load-time value of a var filled later (check
-// output, stall vars): a reference to itself, left for the later render.
+// output, scan vars): a reference to itself, left for the later render.
 func placeholder(name string) string {
 	return "{{." + name + "}}"
 }

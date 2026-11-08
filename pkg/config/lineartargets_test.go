@@ -27,13 +27,13 @@ workflows:
 pools:
   plan: {agent: a, dir: /w}
 triggers:
-  stall:
+  scan:
     when:
-      stall:
+      scan:
         - {signal: linear_issue_no_run, team: "{{.linear_team}}", skip_labels: "{{.linear_skip_labels}}"}
     run:
       workflow: check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}
 `,
 		"jobshop.yaml": hostBase + "packs:\n  - path: pk\n    vars: {linear_team: ENG}\n",
 	})
@@ -41,7 +41,7 @@ triggers:
 		t.Helper()
 		c, err := LoadFile(filepath.Join(dir, "jobshop.yaml"))
 		require.NoError(t, err)
-		sigs := c.Triggers["stall"].When.Stall
+		sigs := c.Triggers["scan"].When.Scan
 		require.Len(t, sigs, 1)
 		assert.Equal(t, "ENG", sigs[0].Team)
 		return strings.Split(sigs[0].SkipLabels, ",")

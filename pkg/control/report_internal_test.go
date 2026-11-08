@@ -14,7 +14,7 @@ import (
 
 func TestReportQuestionAnswer(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
@@ -61,13 +61,13 @@ func TestReportQuestionAnswer(t *testing.T) {
 	assert.NotContains(t, got.Labels, blockedLabel)
 	assert.Empty(t, runnerInbox(t, c, sess.ID), "the question is not delivered to any session")
 
-	// Waiting on an open question is not a stalled step or silent session;
+	// Waiting on an open question is not an idle step or silent session;
 	// the question shows up as needs_human instead.
 	clk.advance(3 * time.Hour)
-	keys := stallKeys(t, c)
-	assert.Contains(t, keys, "stall:needs_human:"+q.ID)
-	assert.NotContains(t, keys, "stall:step_stalled:"+step.ID)
-	assert.NotContains(t, keys, "stall:session_silent:"+sess.ID)
+	keys := findingKeys(t, c)
+	assert.Contains(t, keys, "scan:needs_human:"+q.ID)
+	assert.NotContains(t, keys, "scan:step_idle:"+step.ID)
+	assert.NotContains(t, keys, "scan:session_silent:"+sess.ID)
 
 	// The open question is an attention item of kind question (#185).
 	items, err := c.attentionItems(ctx, c.config())

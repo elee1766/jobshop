@@ -13,7 +13,7 @@ import (
 
 // Learnings (#264). Agents record corrections, failures and workarounds
 // with `jobshop learn`; the controller records the ones it sees itself
-// (failed steps, review findings, escalations, answers, stalls). They live
+// (failed steps, review findings, escalations, answers, findings). They live
 // in their own store table, so no pool ever claims them; the curator reads
 // them with `jobshop learn list`.
 
@@ -265,11 +265,11 @@ func (c *Controller) recordAnswer(ctx context.Context, qt store.Ticket, about, f
 	c.record(ctx, store.LearningCorrection, t, fmt.Sprintf("question %s on %s: %s", qt.ID, about, q), "answer from "+from+": "+text)
 }
 
-// recordStall records a stall the stall trigger fired on.
-func (c *Controller) recordStall(ctx context.Context, s stall, run string) {
+// recordFinding records a finding the scan trigger fired on.
+func (c *Controller) recordFinding(ctx context.Context, s finding, run string) {
 	t := store.Ticket{ID: run}
 	if st, err := c.store.Get(ctx, s.subject); err == nil {
 		t = st
 	}
-	c.record(ctx, store.LearningFailure, t, fmt.Sprintf("stall %s on %s: %s (stall-check run %s)", s.signal, s.subject, s.detail, run), "")
+	c.record(ctx, store.LearningFailure, t, fmt.Sprintf("finding %s on %s: %s (triage run %s)", s.signal, s.subject, s.detail, run), "")
 }

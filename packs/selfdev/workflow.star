@@ -34,10 +34,10 @@ def live_check(run):
 def check_runbook(run, step):
     # JOBSHOP_BIN is the controller's binary; units have no jobshop on PATH (#669).
     report = shell(["sh", "-c", "exec \"${JOBSHOP_BIN:-jobshop}\" runbook run \"$0\" 2>&1", step.inputs["runbook"]])
-    posted = shell(["gh", "issue", "comment", step.inputs["issue"], "--repo", "elee1766/jobshop", "--body", report.stdout])
     print(report.stdout)
-    if posted.exit_code != 0:
-        fail("gh issue comment failed: " + posted.stderr)
+    posted = github.post("/repos/elee1766/jobshop/issues/" + step.inputs["issue"] + "/comments", json = {"body": report.stdout})
+    if posted.status_code != 201:
+        fail("issue comment failed: HTTP " + str(posted.status_code) + " " + posted.body)
     if report.exit_code != 0:
         fail("a readonly runbook block failed; report posted on #" + step.inputs["issue"])
     return result(outcome = "pass")

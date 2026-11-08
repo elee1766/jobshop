@@ -23,7 +23,7 @@ import (
 // refuses a file over the cap without touching it (#592).
 func TestMemoryWrite(t *testing.T) {
 	t.Parallel()
-	c, _, dir := stallController(t)
+	c, _, dir := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	l, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: store.LearningWorkaround, Summary: "retry gh on 502", Scope: "pool:dev"})
@@ -84,7 +84,7 @@ func TestMemoryWrite(t *testing.T) {
 // that did not help, and removes a file the write created (#592).
 func TestMemoryWriteRestore(t *testing.T) {
 	t.Parallel()
-	c, clk, dir := stallController(t)
+	c, clk, dir := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	repoFile := filepath.Join(dir, "memory", "memory", "repo", "o__r.md")

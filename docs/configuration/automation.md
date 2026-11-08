@@ -283,7 +283,7 @@ Each returns a list of ticket dictionaries as `jobshop ticket show --json`
 prints them, with `fields` and `meta` decoded and `body` dropped unless
 `body=True`. `status` is a string or list of `open`, `in_progress`,
 `closed`. `meta` maps up to three `"pack.key"` names to string values,
-for example `{"trigger.name": "stall"}`. `limit` is 1 to 500. Reads see the
+for example `{"trigger.name": "scan"}`. `limit` is 1 to 500. Reads see the
 whole store, are journaled and replayed like other calls, and count toward
 the call limit. They do not fence: a decision made on a read can race a
 write, and the controller still checks every returned action.

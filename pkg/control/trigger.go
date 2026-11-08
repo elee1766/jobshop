@@ -59,7 +59,7 @@ func (c *Controller) runTriggers(ctx context.Context, cfg *config.Config) {
 }
 
 // runTrigger evaluates one trigger that is due, under a span naming it and
-// the result: fired, held (conditions do not hold), stall or error
+// the result: fired, held (conditions do not hold), finding or error
 // (JOB-105).
 func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name string, tr config.Trigger) {
 	ctx, span := telemetry.StartSpan(ctx, "trigger "+name, attribute.String("jobshop.trigger", name))
@@ -69,9 +69,9 @@ func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name st
 		span.SetAttributes(attribute.String("jobshop.trigger.result", result))
 		telemetry.End(span, runErr)
 	}()
-	if len(tr.When.Stall) > 0 {
-		c.runStallTrigger(ctx, cfg, name, tr, nil)
-		result = "stall"
+	if len(tr.When.Scan) > 0 {
+		c.runScanTrigger(ctx, cfg, name, tr, nil)
+		result = "scan"
 		return
 	}
 	st, err := c.evalTrigger(ctx, cfg, name, tr)
@@ -507,14 +507,14 @@ func (c *Controller) triggerList(ctx context.Context, sc scope, _ struct{}) (any
 
 // triggerInfo evaluates one trigger for trigger.list.
 func (c *Controller) triggerInfo(ctx context.Context, cfg *config.Config, name string, tr config.Trigger) (rpc.TriggerInfo, error) {
-	if len(tr.When.Stall) > 0 {
-		fire, why, err := c.evalStall(ctx, cfg, name, tr, nil)
+	if len(tr.When.Scan) > 0 {
+		fire, why, err := c.evalScan(ctx, cfg, name, tr, nil)
 		if err != nil {
 			return rpc.TriggerInfo{}, err
 		}
 		info := rpc.TriggerInfo{Name: name, Holds: len(fire) > 0, Why: why}
 		for _, s := range fire {
-			info.Stalls = append(info.Stalls, s.keyWith(tr.StallKeyPrefix()))
+			info.Findings = append(info.Findings, s.keyWith(tr.ScanKeyPrefix()))
 		}
 		return info, nil
 	}

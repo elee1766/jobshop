@@ -22,7 +22,7 @@ const (
 )
 
 // callSync runs a handler loaded with cfg: a guard hook, a desk command
-// or a stall script. Its arguments go through JSON so the script sees
+// or a signal script. Its arguments go through JSON so the script sees
 // plain dicts and lists; a nil map is an empty dict.
 func (c *Controller) callSync(ctx context.Context, cfg *config.Config, name, entry string, timeout time.Duration, args ...any) (automation.Result, error) {
 	runtime := hookHost{c}.CurrentHooks()

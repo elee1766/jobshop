@@ -234,11 +234,11 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			extra := map[string]any{"automation": map[string]any{"invocation": key, "action": i}}
 			if in.Trigger != "" {
 				// trigger/<run key>, as a static run: action keys dedup
-				// across invocations and stall history reads them.
+				// across invocations and finding history reads them.
 				m := map[string]any{"name": in.Trigger, "key": in.Trigger + "/" + rp.params.Key}
-				if in.Event != nil && in.Event.Source == hooks.StallSource {
-					// The #704 hold and max_runs read the stall id on its runs.
-					m[stallMetaKey] = in.Event.Delivery
+				if in.Event != nil && in.Event.Source == hooks.ScanSource {
+					// The #704 hold and max_runs read the finding id on its runs.
+					m[findingMetaKey] = in.Event.Delivery
 				}
 				extra[triggerPack] = m
 			}
@@ -413,10 +413,10 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 		g.Fields[run.ID] = data
 	}
-	if tr := lc.cfg.Triggers[in.Trigger]; in.Trigger != "" && (tr.MaxOpen > 0 || len(tr.When.Stall) > 0) {
+	if tr := lc.cfg.Triggers[in.Trigger]; in.Trigger != "" && (tr.MaxOpen > 0 || len(tr.When.Scan) > 0) {
 		limit := tr.MaxOpen
-		if len(tr.When.Stall) > 0 {
-			limit = tr.StallMaxOpen()
+		if len(tr.When.Scan) > 0 {
+			limit = tr.ScanMaxOpen()
 		}
 		n := 0
 		for _, nt := range g.Tickets {

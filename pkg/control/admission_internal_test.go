@@ -30,7 +30,7 @@ func hookSignature(secret, body []byte) string {
 
 // admissionController is a subController with the given admission hooks
 // and on: intake hooks.
-func admissionController(t *testing.T, hooks []config.AdmissionHook, intake ...string) (*Controller, *stallClock) {
+func admissionController(t *testing.T, hooks []config.AdmissionHook, intake ...string) (*Controller, *scanClock) {
 	t.Helper()
 	c, clk, _ := subController(t)
 	cfg := *c.config()

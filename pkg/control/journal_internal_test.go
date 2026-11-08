@@ -15,7 +15,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-var journalYAML = strings.Replace(stallYAML, "pools:\n", "pools:\n  reader: {agent: fake, dir: %[1]q, admin: [session-journal]}\n", 1)
+var journalYAML = strings.Replace(scanYAML, "pools:\n", "pools:\n  reader: {agent: fake, dir: %[1]q, admin: [session-journal]}\n", 1)
 
 // writeJournal writes n frames: odd seqs are agent message chunks, even
 // seqs controller prompts. Frame 3 carries a secret-named key.
@@ -39,7 +39,7 @@ func writeJournal(t *testing.T, c *Controller, id string, n int) {
 
 func TestSessionJournal(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, journalYAML)
+	c, _, _ := scanControllerYAML(t, journalYAML)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})

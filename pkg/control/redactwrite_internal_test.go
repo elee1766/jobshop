@@ -22,7 +22,7 @@ const fakeGHToken = "ghp_" + "Zx9Qw3Er5Ty7Ui9Op1As3Df5Gh7Jk9Lz1Xc3V"
 // token are stored masked.
 func TestRedactOnWrite(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "r1")
 
@@ -54,7 +54,7 @@ func TestRedactOnWrite(t *testing.T) {
 // a binary attachment is copied as is.
 func TestRedactArtifact(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	sc, _ := artifactSession(t, c)
 	txt := filepath.Join(c.root.SessionDir(sc.session), "work", "log.txt")
 	require.NoError(t, os.WriteFile(txt, []byte("line\nkey "+fakeGHToken+"\n"), 0o600))

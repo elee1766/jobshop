@@ -37,11 +37,11 @@ pools:
   dev: {agent: fake, dir: %[1]q}
   plan: {agent: fake, dir: %[1]q}
 workflows:
-  stall-check:
+  triage:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: "x"}
+      - {id: diagnose, pool: plan, retries: 1, title: "Finding {{.signal}} {{.subject}}", prompt: "x"}
   pr-work:
     vars: [issue]
     issue: issue
@@ -51,17 +51,17 @@ workflows:
     steps:
       - {id: implement, pool: dev, title: "Implement {{.issue}}", prompt: x}
 triggers:
-  stall:
+  scan:
     when:
-      stall:
+      scan:
         - {signal: linear_issue_no_run, team: ENG, states: "Todo, Backlog", labels: agent, skip_labels: "needs-human", poll: 5m}
     run:
-      workflow: stall-check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      workflow: triage
+      vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}
 `
 
 // TestLinearIntake (#287): a matching Linear issue with no run fires one
-// stall-check run; skip-labeled, wrong-state, closed, unlabeled and
+// triage run; skip-labeled, wrong-state, closed, unlabeled and
 // already-running issues do not, and Linear is read once per poll.
 func TestLinearIntake(t *testing.T) {
 	t.Parallel()
@@ -91,7 +91,7 @@ func TestLinearIntake(t *testing.T) {
 	}))
 	t.Cleanup(gql.Close)
 
-	c, clk, dir := stallControllerYAML(t, linearIntakeYAML)
+	c, clk, dir := scanControllerYAML(t, linearIntakeYAML)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
 
@@ -99,40 +99,40 @@ func TestLinearIntake(t *testing.T) {
 	_, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "eng-4"}, Key: "linear-ENG-4"}, nil)
 	require.NoError(t, err)
 
-	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-1"}, stallKeys(t, c))
+	assert.Equal(t, []string{"scan:linear_issue_no_run:ENG-1"}, findingKeys(t, c))
 	assert.Equal(t, int32(1), reads.Load())
 
 	c.runTriggers(t.Context(), c.config())
-	stallRuns := func() []store.Ticket {
+	scanRuns := func() []store.Ticket {
 		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {
-			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "stall-check" {
+			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "triage" {
 				out = append(out, r)
 			}
 		}
 		return out
 	}
-	rs := stallRuns()
+	rs := scanRuns()
 	require.Len(t, rs, 1)
 	f, err := store.DecodeFields[store.RunFields](rs[0])
 	require.NoError(t, err)
-	assert.Equal(t, "stall:linear_issue_no_run:ENG-1", f.Key)
+	assert.Equal(t, "scan:linear_issue_no_run:ENG-1", f.Key)
 	assert.Equal(t, "ENG-1", f.Vars["subject"])
 	assert.Equal(t, int32(1), reads.Load(), "within the poll interval the cached read is used")
 
 	c.runTriggers(t.Context(), c.config())
-	assert.Len(t, stallRuns(), 1, "fires once: the open run holds the key")
+	assert.Len(t, scanRuns(), 1, "fires once: the open run holds the key")
 
-	// stall-check starts pr-work with key linear-ENG-1; the issue then
-	// has an open run and is no longer a stall, and the start repeats safely.
+	// triage starts pr-work with key linear-ENG-1; the issue then
+	// has an open run and is no longer a finding, and the start repeats safely.
 	for range 2 {
 		_, err = c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-1"}, Key: "linear-ENG-1"}, nil)
 		require.NoError(t, err)
 	}
 	clk.advance(6 * time.Minute)
-	assert.Empty(t, stallKeys(t, c))
+	assert.Empty(t, findingKeys(t, c))
 	assert.Equal(t, int32(2), reads.Load(), "re-read after the poll interval")
 }
 
@@ -161,7 +161,7 @@ func linearContextReply(body []byte) string {
 }
 
 // TestLinearIntakeBlocked (JOB-68): an issue with an open Linear blocker
-// or an open stated GitHub dependency is no stall; a closed dependency
+// or an open stated GitHub dependency is no finding; a closed dependency
 // does not block.
 func TestLinearIntakeBlocked(t *testing.T) {
 	t.Parallel()
@@ -178,7 +178,7 @@ func TestLinearIntakeBlocked(t *testing.T) {
 			`],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`))
 	}))
 	t.Cleanup(gql.Close)
-	c, _, dir := stallControllerYAML(t, linearIntakeYAML)
+	c, _, dir := scanControllerYAML(t, linearIntakeYAML)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
 	var asked []string
@@ -186,7 +186,7 @@ func TestLinearIntakeBlocked(t *testing.T) {
 		asked = append(asked, d.String())
 		return d.String() == "acme/lib#155", nil
 	}
-	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-9"}, stallKeys(t, c))
+	assert.Equal(t, []string{"scan:linear_issue_no_run:ENG-9"}, findingKeys(t, c))
 	assert.Equal(t, []string{"acme/lib#155", "acme/lib#154"}, asked, "bare repo takes the pr-work repo owner")
 }
 
@@ -194,13 +194,13 @@ func TestLinearIntakeBlocked(t *testing.T) {
 // finds nothing instead of failing the trigger.
 func TestLinearIntakeOff(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, linearIntakeYAML)
+	c, _, _ := scanControllerYAML(t, linearIntakeYAML)
 	c.minter, c.linearURL = identity.NewMinter(), "http://127.0.0.1:1"
-	found, err := c.stallLinearIssues(t.Context(), c.config(), config.StallSignal{Signal: config.StallLinearIssueNoRun})
+	found, err := c.signalLinearIssues(t.Context(), c.config(), config.ScanSignal{Signal: config.SignalLinearIssueNoRun})
 	require.NoError(t, err)
 	assert.Empty(t, found)
-	found, err = c.stallLinearIssues(t.Context(), c.config(), config.StallSignal{Signal: config.StallLinearIssueNoRun, Team: "ENG"})
-	require.NoError(t, err, "token file missing: logged, no stall")
+	found, err = c.signalLinearIssues(t.Context(), c.config(), config.ScanSignal{Signal: config.SignalLinearIssueNoRun, Team: "ENG"})
+	require.NoError(t, err, "token file missing: logged, no finding")
 	assert.Empty(t, found)
 }
 
@@ -226,18 +226,18 @@ func TestLinearIntakeMatch(t *testing.T) {
 }
 
 // TestLinearPlannerIntakeKey (#292): the planner and the intake
-// stall-check both start pr-work with key linear-<KEY>, so whichever is
-// second gets the first run, and the stall clears.
+// triage both start pr-work with key linear-<KEY>, so whichever is
+// second gets the first run, and the finding clears.
 func TestLinearPlannerIntakeKey(t *testing.T) {
 	t.Parallel()
 	gql := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"data":{"issues":{"nodes":[{"identifier":"ENG-1","title":"t","url":"u","updatedAt":"2026-11-01T00:00:00Z","state":{"id":"s","name":"Todo","type":"unstarted"},"assignee":null,"labels":{"nodes":[{"name":"agent"}]}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}`))
 	}))
 	t.Cleanup(gql.Close)
-	c, clk, dir := stallControllerYAML(t, linearIntakeYAML)
+	c, clk, dir := scanControllerYAML(t, linearIntakeYAML)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
-	require.Equal(t, []string{"stall:linear_issue_no_run:ENG-1"}, stallKeys(t, c))
+	require.Equal(t, []string{"scan:linear_issue_no_run:ENG-1"}, findingKeys(t, c))
 
 	admin := scope{admin: true, actor: "admin"}
 	start := func() store.Ticket {
@@ -248,11 +248,11 @@ func TestLinearPlannerIntakeKey(t *testing.T) {
 	planner, intake := start(), start()
 	assert.Equal(t, planner.ID, intake.ID, "one run for both starters")
 	clk.advance(6 * time.Minute)
-	assert.Empty(t, stallKeys(t, c), "the planner's run hides the issue from intake")
+	assert.Empty(t, findingKeys(t, c), "the planner's run hides the issue from intake")
 }
 
 // TestLinearIntakeRunDuringScan (JOB-26): a Todo issue whose run the
-// planner starts while Linear is being read creates no stall-check run,
+// planner starts while Linear is being read creates no triage run,
 // and with grace set an issue updated within it is skipped until it passes.
 func TestLinearIntakeRunDuringScan(t *testing.T) {
 	t.Parallel()
@@ -273,35 +273,35 @@ func TestLinearIntakeRunDuringScan(t *testing.T) {
 	}))
 	t.Cleanup(gql.Close)
 
-	c2, clk, dir := stallControllerYAML(t, strings.Replace(linearIntakeYAML, "poll: 5m}", "poll: 5m, grace: 5m}", 1))
+	c2, clk, dir := scanControllerYAML(t, strings.Replace(linearIntakeYAML, "poll: 5m}", "poll: 5m, grace: 5m}", 1))
 	c = c2
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "token"), []byte("lin_api_test\n"), 0o600))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
 
-	stallRuns := func() []string {
+	scanRuns := func() []string {
 		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
 		require.NoError(t, err)
 		var out []string
 		for _, r := range rs {
-			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "stall-check" {
+			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "triage" {
 				out = append(out, f.Key)
 			}
 		}
 		return out
 	}
 	c.runTriggers(t.Context(), c.config())
-	assert.Empty(t, stallRuns(), "ENG-1 got a run during the scan, ENG-2 is inside the grace window")
+	assert.Empty(t, scanRuns(), "ENG-1 got a run during the scan, ENG-2 is inside the grace window")
 
 	clk.advance(6 * time.Minute)
 	c.runTriggers(t.Context(), c.config())
-	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-2"}, stallRuns(), "past the grace window")
+	assert.Equal(t, []string{"scan:linear_issue_no_run:ENG-2"}, scanRuns(), "past the grace window")
 }
 
 // TestLinearIssueRecheck (JOB-26): the fire-time recheck sees a run
 // started after detection.
 func TestLinearIssueRecheck(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, linearIntakeYAML)
+	c, _, _ := scanControllerYAML(t, linearIntakeYAML)
 	busy, err := c.linearIssueHasOpenRun(t.Context(), "eng-7")
 	require.NoError(t, err)
 	assert.False(t, busy)
@@ -318,7 +318,7 @@ func TestLinearIssueRecheck(t *testing.T) {
 func TestLinearIntakeRPC(t *testing.T) {
 	t.Parallel()
 	sess := scope{session: "s1", actor: "s1"}
-	c, _, _ := stallControllerYAML(t, linearIntakeYAML)
+	c, _, _ := scanControllerYAML(t, linearIntakeYAML)
 	res, err := c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{Team: "eng"})
 	require.NoError(t, err)
 	assert.Equal(t, rpc.LinearIntakeResult{Watched: true, States: []string{"Todo", "Backlog"}}, res)
@@ -330,7 +330,7 @@ func TestLinearIntakeRPC(t *testing.T) {
 	_, err = c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{})
 	require.ErrorIs(t, err, store.ErrInvalid)
 
-	c, _, _ = stallControllerYAML(t, strings.Replace(linearIntakeYAML, `states: "Todo, Backlog", `, "", 1))
+	c, _, _ = scanControllerYAML(t, strings.Replace(linearIntakeYAML, `states: "Todo, Backlog", `, "", 1))
 	res, err = c.linearIntakeRPC(t.Context(), sess, rpc.LinearIntakeParams{Team: "ENG"})
 	require.NoError(t, err)
 	assert.Equal(t, rpc.LinearIntakeResult{Watched: true}, res)

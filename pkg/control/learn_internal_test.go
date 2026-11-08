@@ -43,7 +43,7 @@ func startWork(t *testing.T, c *Controller, key string) (store.Ticket, store.Tic
 
 func TestLearnRPC(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	step, sess, sc := startWork(t, c, "l1")
 
@@ -89,7 +89,7 @@ func TestLearnRPC(t *testing.T) {
 
 func TestLearnSince(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	_, err := c.learnAdd(ctx, admin, rpc.LearnParams{Kind: store.LearningFailure, Summary: "old"})
@@ -105,7 +105,7 @@ func TestLearnSince(t *testing.T) {
 
 func TestLearnStepFailure(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "f1")
 	_, err := c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportFailed, Note: "tests flake on CI"})
@@ -124,7 +124,7 @@ func TestLearnStepFailure(t *testing.T) {
 
 func TestLearnRelease(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "r1")
 	until := clk.now().Add(time.Hour) // release checks the controller clock
@@ -142,7 +142,7 @@ func TestLearnRelease(t *testing.T) {
 
 func TestLearnReviewFinding(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "v1")
 	_, err := c.closeTicket(ctx, sc, rpc.CloseParams{})
@@ -168,7 +168,7 @@ func TestLearnReviewFinding(t *testing.T) {
 
 func TestLearnEscalation(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "e1")
 	_, err := c.closeTicket(ctx, sc, rpc.CloseParams{Resolution: "failed"}) // retries: 1
@@ -182,7 +182,7 @@ func TestLearnEscalation(t *testing.T) {
 
 func TestLearnAnswer(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	step, _, sc := startWork(t, c, "q1")
 	out, err := c.report(ctx, sc, rpc.ReportParams{State: rpc.ReportWaiting, Question: "Which base branch?"})
@@ -197,21 +197,21 @@ func TestLearnAnswer(t *testing.T) {
 	assert.Equal(t, "answer from @op: use main", ls[0].Fix)
 }
 
-func TestLearnStall(t *testing.T) {
+func TestLearnFinding(t *testing.T) {
 	t.Parallel()
-	c, _, dir := stallController(t)
+	c, _, dir := scanController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
 	c.runTriggers(t.Context(), c.config())
 	ls := learnings(t, c, store.LearningFilter{Kind: store.LearningFailure})
 	require.Len(t, ls, 1)
-	assert.Contains(t, ls[0].Summary, "stall issue_no_run on issue-7: no run")
+	assert.Contains(t, ls[0].Summary, "finding issue_no_run on issue-7: no run")
 	assert.Equal(t, store.LearningSourceController, ls[0].Source)
 }
 
 // TestLearnUpdate: open -> pr pending -> applied or rejected (#273).
 func TestLearnUpdate(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	add := func() int64 {

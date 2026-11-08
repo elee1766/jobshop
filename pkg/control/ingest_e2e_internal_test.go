@@ -53,7 +53,7 @@ const e2eSecret = "whsec"
 // dir and clock is the controller after a restart.
 type e2eEnv struct {
 	c    *Controller
-	clk  *stallClock
+	clk  *scanClock
 	src  *fakeThreads
 	dir  string
 	sess store.Ticket
@@ -62,14 +62,14 @@ type e2eEnv struct {
 // e2eController opens a controller on dir (a fresh one when dir is "").
 // On a fresh dir it also makes a working session holding a ticket that
 // follows acme/widget#7, and registers the thread.
-func e2eController(t *testing.T, dir string, clk *stallClock, hooks ...config.AdmissionHook) *e2eEnv {
+func e2eController(t *testing.T, dir string, clk *scanClock, hooks ...config.AdmissionHook) *e2eEnv {
 	t.Helper()
 	fresh := dir == ""
 	if fresh {
 		dir = t.TempDir()
 		require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, e2eYAML, dir), 0o600))
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "ghsecret"), []byte(e2eSecret+"\n"), 0o600))
-		clk = newStallClock(time.Date(2026, 11, 4, 8, 0, 0, 0, time.UTC))
+		clk = newScanClock(time.Date(2026, 11, 4, 8, 0, 0, 0, time.UTC))
 	}
 	root := config.Root{Dir: dir}
 	cfg, err := config.Load(root)

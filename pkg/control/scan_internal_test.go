@@ -23,7 +23,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
 
-const stallYAML = `projects:
+const scanYAML = `projects:
   js: {}
 agents:
   fake: {command: /bin/false}
@@ -31,11 +31,11 @@ pools:
   dev: {agent: fake, dir: %[1]q}
   plan: {agent: fake, dir: %[1]q}
 workflows:
-  stall-check:
+  triage:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: "Check {{.subject}}: {{.detail}}"}
+      - {id: diagnose, pool: plan, retries: 1, title: "Finding {{.signal}} {{.subject}}", prompt: "Check {{.subject}}: {{.detail}}"}
   work:
     vars: [n]
     issue: n
@@ -44,42 +44,42 @@ workflows:
       - {id: a, pool: dev, retries: 1, title: "A {{.n}}", prompt: a}
       - {id: b, pool: dev, title: "B {{.n}}", prompt: b}
 triggers:
-  stall:
+  scan:
     when:
-      stall:
+      scan:
         - {signal: ready_unclaimed, after: 1h}
         - {signal: pool_quarantined}
-        - {signal: step_stalled, after: 1h}
+        - {signal: step_idle, after: 1h}
         - {signal: session_silent, after: 30m}
         - {signal: needs_human, after: 2h}
         - {signal: blocked, after: 1h}
         - {signal: issue_no_run, repo: acme/widget, check: "cat %[1]s/issues"}
     run:
-      workflow: stall-check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      workflow: triage
+      vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}
     cooldown: 10m
     max_runs: 2
 `
 
-// stallClock is a clock.Fake with the lower-case helpers these tests use.
-type stallClock struct{ *clock.Fake }
+// scanClock is a clock.Fake with the lower-case helpers these tests use.
+type scanClock struct{ *clock.Fake }
 
-func newStallClock(t time.Time) *stallClock { return &stallClock{clock.NewFake(t)} }
+func newScanClock(t time.Time) *scanClock { return &scanClock{clock.NewFake(t)} }
 
-func (c *stallClock) now() time.Time { return c.Now() }
+func (c *scanClock) now() time.Time { return c.Now() }
 
-func (c *stallClock) advance(d time.Duration) { c.Advance(d) }
+func (c *scanClock) advance(d time.Duration) { c.Advance(d) }
 
-// stallController builds a controller without serving: the test calls the
-// stall functions directly with a fake clock.
-func stallController(t *testing.T) (*Controller, *stallClock, string) {
+// scanController builds a controller without serving: the test calls the
+// finding functions directly with a fake clock.
+func scanController(t *testing.T) (*Controller, *scanClock, string) {
 	t.Helper()
-	return stallControllerYAML(t, stallYAML)
+	return scanControllerYAML(t, scanYAML)
 }
 
-// stallControllerYAML is stallController with a config whose %[1]s is
+// scanControllerYAML is scanController with a config whose %[1]s is
 // the temp dir.
-func stallControllerYAML(t *testing.T, yaml string) (*Controller, *stallClock, string) {
+func scanControllerYAML(t *testing.T, yaml string) (*Controller, *scanClock, string) {
 	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, yaml, dir), 0o600))
@@ -90,7 +90,7 @@ func stallControllerYAML(t *testing.T, yaml string) (*Controller, *stallClock, s
 	require.NoError(t, err)
 	live := new(atomic.Pointer[liveConfig])
 	live.Store(lc)
-	clk := newStallClock(time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC))
+	clk := newScanClock(time.Date(2026, 11, 2, 8, 0, 0, 0, time.UTC))
 	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "db"), sqlite.Options{Now: clk.now, Prefix: func(p string) string { return p }})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = st.Close() })
@@ -103,13 +103,13 @@ func stallControllerYAML(t *testing.T, yaml string) (*Controller, *stallClock, s
 	return c, clk, dir
 }
 
-func stallKeys(t *testing.T, c *Controller) []string {
+func findingKeys(t *testing.T, c *Controller) []string {
 	t.Helper()
-	found, err := c.detectStalls(t.Context(), c.config(), c.config().Triggers["stall"], nil)
+	found, err := c.detectFindings(t.Context(), c.config(), c.config().Triggers["scan"], nil)
 	require.NoError(t, err)
 	var out []string
 	for _, s := range found {
-		out = append(out, s.key())
+		out = append(out, s.keyWith(config.DefaultScanKeyPrefix))
 	}
 	return out
 }
@@ -127,24 +127,24 @@ func mkTicket(t *testing.T, c *Controller, nt store.NewTicket) store.Ticket {
 	return tk
 }
 
-func TestStallReadyUnclaimed(t *testing.T) {
+func TestScanReadyUnclaimed(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	tk := mkTicket(t, c, store.NewTicket{Title: "x", Pool: "dev"})
 	mkTicket(t, c, store.NewTicket{Title: "orphan", Pool: "gone"})
-	assert.Empty(t, stallKeys(t, c), "fresh ticket")
+	assert.Empty(t, findingKeys(t, c), "fresh ticket")
 	clk.advance(30 * time.Minute)
 	_, err := store.AddComment(t.Context(), c.store, "admin", tk.ID, "touch")
 	require.NoError(t, err)
 	clk.advance(50 * time.Minute)
-	assert.Empty(t, stallKeys(t, c), "a comment resets the clock")
+	assert.Empty(t, findingKeys(t, c), "a comment resets the clock")
 	clk.advance(11 * time.Minute)
-	assert.Equal(t, []string{"stall:ready_unclaimed:" + tk.ID}, stallKeys(t, c), "orphans are not ready_unclaimed")
+	assert.Equal(t, []string{"scan:ready_unclaimed:" + tk.ID}, findingKeys(t, c), "orphans are not ready_unclaimed")
 }
 
-func TestStallReadyUnclaimedSinceUnblock(t *testing.T) {
+func TestScanReadyUnclaimedSinceUnblock(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	blocked := func() (store.Ticket, store.Ticket) {
 		step := mkTicket(t, c, store.NewTicket{Title: "step", Pool: "dev"})
@@ -152,37 +152,37 @@ func TestStallReadyUnclaimedSinceUnblock(t *testing.T) {
 		require.NoError(t, store.AddEdge(ctx, c.store, "admin", store.Edge{From: step.ID, To: b.ID, Kind: store.EdgeBlocks}))
 		return step, b
 	}
-	// Blocker closed 2h ago: the step is stalled.
+	// Blocker closed 2h ago: the step is idle.
 	old, ob := blocked()
 	_, err := store.Close(ctx, c.store, "admin", ob.ID, nil, "done")
 	require.NoError(t, err)
-	// Created 2h ago, blocker closes 1m ago: not stalled.
+	// Created 2h ago, blocker closes 1m ago: not idle.
 	fresh, fb := blocked()
 	clk.advance(2*time.Hour - time.Minute)
 	_, err = store.Close(ctx, c.store, "admin", fb.ID, nil, "done")
 	require.NoError(t, err)
 	clk.advance(time.Minute)
-	keys := stallKeys(t, c)
-	assert.Contains(t, keys, "stall:ready_unclaimed:"+old.ID)
-	assert.NotContains(t, keys, "stall:ready_unclaimed:"+fresh.ID)
+	keys := findingKeys(t, c)
+	assert.Contains(t, keys, "scan:ready_unclaimed:"+old.ID)
+	assert.NotContains(t, keys, "scan:ready_unclaimed:"+fresh.ID)
 }
 
-func TestStallPoolQuarantined(t *testing.T) {
+func TestScanPoolQuarantined(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
-	assert.Empty(t, stallKeys(t, c))
+	c, _, _ := scanController(t)
+	assert.Empty(t, findingKeys(t, c))
 	for range poolCrashes {
 		c.poolCrashed("dev", "")
 	}
-	assert.Equal(t, []string{"stall:pool_quarantined:dev@20261102T081500Z"}, stallKeys(t, c))
+	assert.Equal(t, []string{"scan:pool_quarantined:dev@20261102T081500Z"}, findingKeys(t, c))
 }
 
 // TestPoolPauseNamesSpawnError (JOB-27): a crash-loop pause carries the
 // last session error and the failed preflight checks into attention and
-// the stall detail.
+// the finding detail.
 func TestPoolPauseNamesSpawnError(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, strings.Replace(stallYAML, "dev: {agent: fake, dir: %[1]q}",
+	c, _, _ := scanControllerYAML(t, strings.Replace(scanYAML, "dev: {agent: fake, dir: %[1]q}",
 		"dev: {agent: fake, dir: %[1]q, sandbox: {backend: bubblewrap, network: pasta}}", 1))
 	c.opt.Preflight = func(host.Spec, ...host.PreflightOption) (host.PreflightReport, error) {
 		return host.PreflightReport{Checks: []host.PreflightCheck{
@@ -194,7 +194,7 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	for range poolCrashes {
 		c.poolCrashed("dev", spawnErr)
 	}
-	found, err := c.detectStalls(t.Context(), c.config(), c.config().Triggers["stall"], nil)
+	found, err := c.detectFindings(t.Context(), c.config(), c.config().Triggers["scan"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
 	assert.Contains(t, found[0].detail, spawnErr)
@@ -223,9 +223,9 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	}
 }
 
-func TestStallStepAndSession(t *testing.T) {
+func TestScanStepAndSession(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
 	steps := res.(rpc.RunResult).Steps
@@ -234,7 +234,7 @@ func TestStallStepAndSession(t *testing.T) {
 	require.NoError(t, err)
 
 	clk.advance(31 * time.Minute)
-	assert.Equal(t, []string{"stall:session_silent:" + sess.ID}, stallKeys(t, c), "no journal yet")
+	assert.Equal(t, []string{"scan:session_silent:" + sess.ID}, findingKeys(t, c), "no journal yet")
 
 	// Journal output resets session_silent; the step still ages.
 	sd := c.root.SessionDir(sess.ID)
@@ -242,14 +242,14 @@ func TestStallStepAndSession(t *testing.T) {
 	line := fmt.Sprintf(`{"seq":1,"t":%d}`+"\n", clk.now().UnixMilli())
 	require.NoError(t, os.WriteFile(filepath.Join(sd, host.JournalFile), []byte(line), 0o600))
 	clk.advance(28 * time.Minute)
-	assert.Empty(t, stallKeys(t, c))
+	assert.Empty(t, findingKeys(t, c))
 	clk.advance(3 * time.Minute)
-	assert.ElementsMatch(t, []string{"stall:step_stalled:" + steps[0].ID, "stall:session_silent:" + sess.ID}, stallKeys(t, c))
+	assert.ElementsMatch(t, []string{"scan:step_idle:" + steps[0].ID, "scan:session_silent:" + sess.ID}, findingKeys(t, c))
 }
 
-func TestStallNeedsHumanAndBlocked(t *testing.T) {
+func TestScanNeedsHumanAndBlocked(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
 	run := res.(rpc.RunResult).Run
@@ -265,42 +265,42 @@ func TestStallNeedsHumanAndBlocked(t *testing.T) {
 	bl := mkTicket(t, c, store.NewTicket{Title: "blocked", Pool: "plan", Labels: []string{"blocked"}, DeferUntil: clk.now().Add(5 * time.Hour)})
 
 	clk.advance(2*time.Hour + time.Minute)
-	assert.Equal(t, []string{"stall:needs_human:" + run.ID}, stallKeys(t, c), "deferred tickets wait from their defer time")
+	assert.Equal(t, []string{"scan:needs_human:" + run.ID}, findingKeys(t, c), "deferred tickets wait from their defer time")
 	clk.advance(5 * time.Hour)
-	assert.ElementsMatch(t, []string{"stall:needs_human:" + run.ID, "stall:needs_human:" + nh.ID, "stall:blocked:" + bl.ID}, stallKeys(t, c))
+	assert.ElementsMatch(t, []string{"scan:needs_human:" + run.ID, "scan:needs_human:" + nh.ID, "scan:blocked:" + bl.ID}, findingKeys(t, c))
 }
 
-func TestStallCheckSignal(t *testing.T) {
+func TestScanCheckSignal(t *testing.T) {
 	t.Parallel()
-	c, _, dir := stallController(t)
-	assert.Empty(t, stallKeys(t, c), "check fails without the file: no stall")
+	c, _, dir := scanController(t)
+	assert.Empty(t, findingKeys(t, c), "check fails without the file: no finding")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 open, no run\n\nissue-9\n"), 0o600))
-	found, err := c.detectStalls(t.Context(), c.config(), c.config().Triggers["stall"], nil)
+	found, err := c.detectFindings(t.Context(), c.config(), c.config().Triggers["scan"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 2)
-	assert.Equal(t, stall{"issue_no_run", "issue-7", "open, no run"}, found[0])
+	assert.Equal(t, finding{"issue_no_run", "issue-7", "open, no run"}, found[0])
 	assert.Equal(t, "issue-9", found[1].subject)
 
 	// An issue with an open run in the same repo (meta.github) is not a
-	// stall; the same number in another repo still is (#183).
+	// finding; the same number in another repo still is (#183).
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("#12\n13\n"), 0o600))
 	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":12}}`)})
 	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r2", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"other/repo","issue":13}}`)})
-	assert.Equal(t, []string{"stall:issue_no_run:13"}, stallKeys(t, c))
+	assert.Equal(t, []string{"scan:issue_no_run:13"}, findingKeys(t, c))
 }
 
-// TestStallFire covers the run per key, its exclusion from detection,
+// TestScanFire covers the run per key, its exclusion from detection,
 // cooldown and max_runs.
-func TestStallFire(t *testing.T) {
+func TestScanFire(t *testing.T) {
 	t.Parallel()
-	c, clk, dir := stallController(t)
+	c, clk, dir := scanController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
 	runs := func() []store.Ticket {
 		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {
-			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "stall-check" {
+			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "triage" {
 				out = append(out, r)
 			}
 		}
@@ -311,15 +311,15 @@ func TestStallFire(t *testing.T) {
 	require.Len(t, rs, 1)
 	f, err := store.DecodeFields[store.RunFields](rs[0])
 	require.NoError(t, err)
-	assert.Equal(t, "stall:issue_no_run:issue-7", f.Key)
+	assert.Equal(t, "scan:issue_no_run:issue-7", f.Key)
 	assert.Equal(t, map[string]string{"signal": "issue_no_run", "subject": "issue-7", "detail": "no run"}, f.Vars)
 	steps, err := store.Children(t.Context(), c.store, rs[0].ID)
 	require.NoError(t, err)
-	assert.Equal(t, "Stall issue_no_run issue-7", steps[0].Title)
+	assert.Equal(t, "Finding issue_no_run issue-7", steps[0].Title)
 
-	// Its own step sits ready and unclaimed: not a stall of its own.
+	// Its own step sits ready and unclaimed: not a finding of its own.
 	clk.advance(2 * time.Hour)
-	assert.Equal(t, []string{"stall:issue_no_run:issue-7"}, stallKeys(t, c))
+	assert.Equal(t, []string{"scan:issue_no_run:issue-7"}, findingKeys(t, c))
 	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, runs(), 1, "open run holds the key")
 
@@ -334,7 +334,7 @@ func TestStallFire(t *testing.T) {
 	clk.advance(11 * time.Minute)
 	c.runTriggers(t.Context(), c.config())
 	rs = runs()
-	require.Len(t, rs, 2, "stall still there after cooldown: second run")
+	require.Len(t, rs, 2, "finding still there after cooldown: second run")
 	steps, err = store.Children(t.Context(), c.store, rs[0].ID)
 	require.NoError(t, err)
 	closeRun()
@@ -351,15 +351,15 @@ func TestStallFire(t *testing.T) {
 	assert.Contains(t, infos[0].Why, "max_runs 2 reached")
 }
 
-func TestStallMaxOpen(t *testing.T) {
+func TestScanMaxOpen(t *testing.T) {
 	t.Parallel()
-	c, _, dir := stallController(t)
+	c, _, dir := scanController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\n"), 0o600))
 	c.runTriggers(t.Context(), c.config())
 	c.runTriggers(t.Context(), c.config())
 	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
-	assert.Len(t, rs, config.DefaultStallMaxOpen)
+	assert.Len(t, rs, config.DefaultScanMaxOpen)
 	infos, err := c.triggerList(t.Context(), scope{admin: true}, struct{}{})
 	require.NoError(t, err)
 	assert.Contains(t, infos.([]rpc.TriggerInfo)[0].Why, "max_open 3")
@@ -367,10 +367,10 @@ func TestStallMaxOpen(t *testing.T) {
 
 // max_open raises the cap so a backlog is not held behind a few slow
 // runs (JOB-93).
-func TestStallMaxOpenConfigured(t *testing.T) {
+func TestScanMaxOpenConfigured(t *testing.T) {
 	t.Parallel()
-	c, _, dir := stallControllerYAML(t, strings.Replace(stallYAML, "    max_runs: 2\n", "    max_runs: 2\n    max_open: 5\n", 1))
-	require.Equal(t, 5, c.config().Triggers["stall"].StallMaxOpen())
+	c, _, dir := scanControllerYAML(t, strings.Replace(scanYAML, "    max_runs: 2\n", "    max_runs: 2\n    max_open: 5\n", 1))
+	require.Equal(t, 5, c.config().Triggers["scan"].ScanMaxOpen())
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\nf\ng\n"), 0o600))
 	c.runTriggers(t.Context(), c.config())
 	c.runTriggers(t.Context(), c.config())
@@ -379,7 +379,7 @@ func TestStallMaxOpenConfigured(t *testing.T) {
 	assert.Len(t, rs, 5)
 }
 
-func TestStallConfig(t *testing.T) {
+func TestScanConfig(t *testing.T) {
 	t.Parallel()
 	base := `projects: {js: {}}
 agents: {a: {command: x}}
@@ -392,28 +392,28 @@ triggers:
   st:
 `
 	for name, tc := range map[string]struct{ yaml, err string }{
-		"ok":              {"    when: {stall: [{signal: blocked, after: 1h}, {signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: '{{.stall_subject}}'}}\n", ""},
-		"no after":        {"    when: {stall: [{signal: blocked}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs after"},
-		"no check":        {"    when: {stall: [{signal: pr_unmerged, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs a check"},
-		"check":           {"    when: {stall: [{signal: blocked, after: 1h, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "takes no check"},
-		"ticket":          {"    when: {stall: [{signal: blocked, after: 1h}]}\n    ticket: {title: x}\n", "needs run"},
-		"key":             {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: 'pr-{{.stall_subject}}'}\n", ""},
-		"bad key":         {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: '{{.check_output}}'}\n", "key uses"},
-		"key_prefix":      {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key_prefix: review}\n", ""},
-		"bad key_prefix":  {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key_prefix: 'Review:'}\n", "key_prefix must match"},
-		"key and prefix":  {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: k, key_prefix: review}\n", "not both"},
-		"prefix no stall": {"    when: {cron: '0 6 * * *'}\n    run: {workflow: sc, vars: {s: x}, key_prefix: review}\n", "key_prefix needs when.stall"},
-		"bad var":         {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: '{{.check_output}}'}}\n", "only"},
-		"mixed":           {"    when: {ready_below: 1, stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "no other condition"},
-		"max_runs":        {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_runs: 2\n", "max_runs needs"},
-		"max_open":        {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_open: 2\n", "max_open needs"},
-		"max_open < 0":    {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n    max_open: -1\n", "max_open must be"},
-		"max_open ok":     {"    when: {stall: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n    max_open: 8\n", ""},
-		"duplicated":      {"    when: {stall: [{signal: blocked, after: 1h}, {signal: blocked, after: 2h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "twice"},
-		"on":              {"    on: [{github: {event: pull_request}}]\n    fallback: 15m\n    when: {stall: [{signal: x, check: 'gh pr view {{.event.pr}}'}]}\n    run: {workflow: sc, vars: {s: x}}\n", ""},
-		"on bad fallback": {"    on: [{github: {event: pull_request}}]\n    fallback: soon\n    when: {stall: [{signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "fallback"},
-		"on bad source":   {"    on: [{}]\n    when: {stall: [{signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "exactly one"},
-		"on check var":    {"    on: [{github: {event: pull_request}}]\n    when: {stall: [{signal: x, check: 'echo {{.stall_subject}}'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "only"},
+		"ok":                {"    when: {scan: [{signal: blocked, after: 1h}, {signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: '{{.subject}}'}}\n", ""},
+		"no after":          {"    when: {scan: [{signal: blocked}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs after"},
+		"no check":          {"    when: {scan: [{signal: pr_unmerged, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "needs a check"},
+		"check":             {"    when: {scan: [{signal: blocked, after: 1h, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "takes no check"},
+		"ticket":            {"    when: {scan: [{signal: blocked, after: 1h}]}\n    ticket: {title: x}\n", "needs run"},
+		"key":               {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: 'pr-{{.subject}}'}\n", ""},
+		"bad key":           {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: '{{.check_output}}'}\n", "key uses"},
+		"key_prefix":        {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key_prefix: review}\n", ""},
+		"bad key_prefix":    {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key_prefix: 'Review:'}\n", "key_prefix must match"},
+		"key and prefix":    {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}, key: k, key_prefix: review}\n", "not both"},
+		"prefix no finding": {"    when: {cron: '0 6 * * *'}\n    run: {workflow: sc, vars: {s: x}, key_prefix: review}\n", "key_prefix needs when.scan"},
+		"bad var":           {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: '{{.check_output}}'}}\n", "only"},
+		"mixed":             {"    when: {ready_below: 1, scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "no other condition"},
+		"max_runs":          {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_runs: 2\n", "max_runs needs"},
+		"max_open":          {"    when: {cron: '0 6 * * *'}\n    ticket: {title: x}\n    max_open: 2\n", "max_open needs"},
+		"max_open < 0":      {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n    max_open: -1\n", "max_open must be"},
+		"max_open ok":       {"    when: {scan: [{signal: blocked, after: 1h}]}\n    run: {workflow: sc, vars: {s: x}}\n    max_open: 8\n", ""},
+		"duplicated":        {"    when: {scan: [{signal: blocked, after: 1h}, {signal: blocked, after: 2h}]}\n    run: {workflow: sc, vars: {s: x}}\n", "twice"},
+		"on":                {"    on: [{github: {event: pull_request}}]\n    fallback: 15m\n    when: {scan: [{signal: x, check: 'gh pr view {{.event.pr}}'}]}\n    run: {workflow: sc, vars: {s: x}}\n", ""},
+		"on bad fallback":   {"    on: [{github: {event: pull_request}}]\n    fallback: soon\n    when: {scan: [{signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "fallback"},
+		"on bad source":     {"    on: [{}]\n    when: {scan: [{signal: x, check: 'true'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "exactly one"},
+		"on check var":      {"    on: [{github: {event: pull_request}}]\n    when: {scan: [{signal: x, check: 'echo {{.subject}}'}]}\n    run: {workflow: sc, vars: {s: x}}\n", "only"},
 	} {
 		_, err := config.Parse([]byte(base + tc.yaml))
 		if tc.err == "" {
@@ -424,8 +424,8 @@ triggers:
 	}
 }
 
-// Two packs' stall triggers watch needs_human with their own workflows.
-const stallCascadeYAML = `projects:
+// Two packs' scan triggers watch needs_human with their own workflows.
+const scanCascadeYAML = `projects:
   js: {}
 agents:
   fake: {command: /bin/false}
@@ -444,19 +444,19 @@ workflows:
     steps: [{id: a, pool: dev, retries: 0, title: "W {{.n}}", prompt: a}]
 triggers:
   a:
-    when: {stall: [{signal: needs_human, after: 2h}]}
-    run: {workflow: check-a, vars: {subject: "{{.stall_subject}}"}}
+    when: {scan: [{signal: needs_human, after: 2h}]}
+    run: {workflow: check-a, vars: {subject: "{{.subject}}"}}
   b:
-    when: {stall: [{signal: needs_human, after: 2h}]}
-    run: {workflow: check-b, vars: {subject: "{{.stall_subject}}"}}
+    when: {scan: [{signal: needs_human, after: 2h}]}
+    run: {workflow: check-b, vars: {subject: "{{.subject}}"}}
 `
 
-// TestStallNoCascade: a needs_human run gets one stall check across both
+// TestScanNoCascade: a needs_human run gets one signal check across both
 // triggers, and that check going needs_human starts no check of its own
 // (#704).
-func TestStallNoCascade(t *testing.T) {
+func TestScanNoCascade(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallControllerYAML(t, stallCascadeYAML)
+	c, clk, _ := scanControllerYAML(t, scanCascadeYAML)
 	ctx := t.Context()
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
@@ -472,7 +472,7 @@ func TestStallNoCascade(t *testing.T) {
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {
-			if isStallRun(r) {
+			if isScanRun(r) {
 				out = append(out, r)
 			}
 		}
@@ -493,15 +493,15 @@ func TestStallNoCascade(t *testing.T) {
 	assert.Len(t, checks(), 1, "a needs_human check starts no check, from either trigger")
 }
 
-// TestStallOwnInstance (JOB-17): with two pack instances, a needs_human
+// TestScanOwnInstance (JOB-17): with two pack instances, a needs_human
 // run is checked by its own instance's trigger only, and that check
 // escalating starts no further check.
-func TestStallOwnInstance(t *testing.T) {
+func TestScanOwnInstance(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallControllerYAML(t, stallCascadeYAML)
+	c, clk, _ := scanControllerYAML(t, scanCascadeYAML)
 	cfg := *c.config()
 	// work belongs to b's instance; trigger a sorts first and would win the
-	// shared stall key without the instance check.
+	// shared scan key without the instance check.
 	cfg.Instances = []config.PackInstance{{Path: "a", Workflows: []string{"check-a"}}, {Path: "b", Workflows: []string{"check-b", "work"}}}
 	lc, err := newLiveConfig(&cfg)
 	require.NoError(t, err)
@@ -521,7 +521,7 @@ func TestStallOwnInstance(t *testing.T) {
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {
-			if isStallRun(r) {
+			if isScanRun(r) {
 				out = append(out, r)
 			}
 		}

@@ -98,7 +98,7 @@ func (f *askLinear) state() (int, []string) {
 	return f.creates, slices.Clone(f.labels)
 }
 
-func askController(t *testing.T) (*Controller, *stallClock, *askLinear) {
+func askController(t *testing.T) (*Controller, *scanClock, *askLinear) {
 	t.Helper()
 	c, clk, _ := subController(t)
 	tokFile := filepath.Join(t.TempDir(), "tok")

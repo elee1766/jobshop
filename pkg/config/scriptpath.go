@@ -39,10 +39,10 @@ func resolveScriptEntries(m map[string]any, dir, file string, sources map[string
 	for _, name := range sortedKeys(triggers) {
 		trigger, _ := triggers[name].(map[string]any)
 		when, _ := trigger["when"].(map[string]any)
-		signals, _ := when["stall"].([]any)
+		signals, _ := when["scan"].([]any)
 		for i, s := range signals {
 			entry, _ := s.(map[string]any)
-			if err := resolveScriptEntry(entry, "script", dir, file, "triggers."+name+".when.stall."+strconv.Itoa(i)+".script", nil); err != nil {
+			if err := resolveScriptEntry(entry, "script", dir, file, "triggers."+name+".when.scan."+strconv.Itoa(i)+".script", nil); err != nil {
 				return err
 			}
 		}
@@ -99,7 +99,7 @@ func (c *Config) ScriptEntries() []ScriptEntry {
 	}
 	for _, tr := range c.Triggers {
 		out = append(out, ScriptEntry{tr.Handler, 2})
-		for _, s := range tr.When.Stall {
+		for _, s := range tr.When.Scan {
 			out = append(out, ScriptEntry{s.Script, 1})
 		}
 	}

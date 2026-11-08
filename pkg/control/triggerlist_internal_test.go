@@ -30,7 +30,7 @@ triggers:
 // time and keeps the result sorted by name (#522).
 func TestTriggerListParallel(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, parallelTriggerYAML)
+	c, _, _ := scanControllerYAML(t, parallelTriggerYAML)
 	res, err := c.triggerList(t.Context(), scope{admin: true}, struct{}{})
 	require.NoError(t, err)
 	infos := res.([]rpc.TriggerInfo)

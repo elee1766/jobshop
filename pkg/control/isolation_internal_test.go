@@ -73,7 +73,7 @@ func TestCgroupFor(t *testing.T) {
 // cgroup fails with a permanent error (pool quarantine); a pool without
 // isolation gets nothing (#388).
 func TestApplyIsolationNoDelegation(t *testing.T) {
-	c, _, _ := stallControllerYAML(t, `projects:
+	c, _, _ := scanControllerYAML(t, `projects:
   js: {}
 agents:
   fake: {command: /bin/false}
@@ -108,7 +108,7 @@ pools:
 // cgroup; limits.cgroup alone also gives unlimited pools a scope, so
 // their agents count against the slice.
 func TestPoolCgroupSystemd(t *testing.T) {
-	c, _, _ := stallControllerYAML(t, `projects:
+	c, _, _ := scanControllerYAML(t, `projects:
   js: {}
 agents:
   fake: {command: /bin/false}
@@ -164,7 +164,7 @@ func TestHostPlacement(t *testing.T) {
 		{"cgroupfs no split", "", cgroupSetup{hosts: "/h"}, hostPlacement{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c, _, _ := stallControllerYAML(t, "projects:\n  js: {}\nagents:\n  fake: {command: /bin/false}\npools:\n  plain: {agent: fake, dir: %[1]q}\n"+tc.limits)
+			c, _, _ := scanControllerYAML(t, "projects:\n  js: {}\nagents:\n  fake: {command: /bin/false}\npools:\n  plain: {agent: fake, dir: %[1]q}\n"+tc.limits)
 			c.cgroupOnce.Do(func() { c.cgroup = tc.setup })
 			assert.Equal(t, tc.want, c.hostPlacement())
 		})

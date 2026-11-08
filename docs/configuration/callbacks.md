@@ -56,7 +56,7 @@ listener or bypass ingest authentication/admission.
 | --- | --- | --- |
 | Workflow `on_start` | `begin(run)` | Initial transition for the persisted run |
 | Workflow `on_step_completed` | `completed(run, step)` | A relevant recorded finished-step transition |
-| Trigger `handler` | `handle(event, args)` | An admitted source delivery, a timer or fallback wakeup, or a stall |
+| Trigger `handler` | `handle(event, args)` | An admitted source delivery, a timer or fallback wakeup, or a scan finding |
 | Hook or desk command `handler` | `fn(input, args)` | A guard check or a Desk `api.exec`, while the caller waits |
 
 The function name is user-chosen. Its positional argument contract is not.
@@ -222,7 +222,7 @@ is a duplicate delivery, not a new business subject. Keep subject keys
 stable across both event delivery and reconciliation.
 
 The `demo:` key prefix is example-specific. Do not substitute it for an
-existing production key such as `stall:review_requested:<subject>`.
+existing production key such as `scan:review_requested:<subject>`.
 Returning this event batch does not perform a shell command, HTTP request
 or model decision. Those separate capability examples live in
 `packs/demo/capabilities.star` and remain unregistered by default.
@@ -516,26 +516,27 @@ authority. A trigger with `on:` and a handler polls every `fallback` with
 no `when` conditions: the handler reads its source and decides.
 `event.trigger` names the trigger the handler runs for.
 
-A handler may combine with `when.stall`. Go keeps detection, the per-stall
-`max_runs`, the cooldown, `max_open` (default 3) and the #704 subject hold,
-and calls the handler once per fireable stall with `event.source ==
-"stall"`, `event.event` the signal, `event.delivery` the stall id
-`<signal>:<subject>` and `payload` holding `signal`, `subject`, `detail`,
-`key` (the default run key) and `runs` (earlier runs for this stall). The
-run a handler starts carries `meta.trigger.stall`, so it holds the stall
-and counts toward `max_runs` whatever key it picks. `args.workflow` names
+A handler may combine with `when.scan`. Go keeps detection, the
+per-finding `max_runs`, the cooldown, `max_open` (default 3) and the #704
+subject hold, and calls the handler once per fireable finding with
+`event.source == "scan"`, `event.event` the signal, `event.delivery` the
+finding id `<signal>:<subject>` and `payload` holding `signal`,
+`subject`, `detail`, `key` (the default run key) and `runs` (earlier runs
+for this finding). The run a handler starts carries
+`meta.trigger.finding`, so it holds the finding and counts toward
+`max_runs` whatever key it picks. `args.workflow` names
 the workflow whose own runs and steps the signals skip. A handler that
-returns `[]` is offered the stall again after a cooldown (30 minutes
+returns `[]` is offered the finding again after a cooldown (30 minutes
 without one) while the signal persists.
 
-A signal that is not a store signal may name a `script` instead of a shell
-`check`: `{signal: "pr_unmerged", script: "signals.star:prs", args: {...},
+A signal that is not a store signal names a shell `check` or a Starlark
+`script`: `{signal: "pr_unmerged", script: "signals.star:prs", args: {...},
 poll: "10m"}`. The controller calls `fn(args)` outside the tick at most
 once per `poll` (5 minutes by default) and keeps the answer in between.
 The function returns a dict of subject to detail (a leading `#` is
 dropped), may use `github`, `http` and store reads, and is journaled like
-a desk handler under `stall.<signal>`. An `issue_no_run` subject with an
-open run in the signal's `repo` is skipped as for a check.
+a desk handler under `scan.<signal>`. An `issue_no_run` subject with an
+open run in the signal's `repo` is skipped.
 
 For handler triggers, a terminal invocation consumes its cron/cooldown slot
 even when it returns `[]`. Handler cooldown runs from the later of the

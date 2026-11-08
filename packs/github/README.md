@@ -2,9 +2,10 @@
 
 Agents that work one GitHub repo through issues and PRs: a planner, dev
 sessions and a refinery that merges. `packs/selfdev` is this pack with
-Jobshop's values (`extends:`, `docs/notes/107-github-pack-extends.md`).
-The additive [native candidate](NATIVE.md) documents CUE composition,
-Starlark workflows, offline checks and the remaining parity boundaries.
+Jobshop's values. The pack is CUE (`pack.cue`, `#Pack`): workflows run
+in `workflows.star`, trigger handlers and scan scripts in `triggers.star`,
+and both read GitHub through the `github` built-in with the instance's
+identity (`automation.github`), never `gh`.
 
 ## Flow: one `pr-work` run per issue
 
@@ -28,18 +29,18 @@ retries sets the run to `needs_human` and files "Escalate run <id>" in
 Dependent issues: an edge from the dependent run's `implement` step to the
 dependency's `post-merge` step. `jobshop run show <run>` shows progress.
 
-## Flow: `stall-check` on stalled work
+## Flow: `triage` on findings
 
-The `stall` trigger (`when.stall`, `docs/notes/143-stall-check.md`)
-starts one `stall-check` run per stall with key
-`stall:<signal>:<subject>`: a ready ticket nobody claimed
-(`stall_after`, 1h), a crash-looping pool, a held step with no progress
-(`stall_step_after`, 3h), a session holding work with a silent journal
-(1h), a `needs_human` run or ticket (`stall_human_after`, 4h), a ticket
-labeled `blocked` (1h), and through `gh` checks: an open issue with no
-run, a green PR nobody merged for 2h, no commit on `ci_branch` for 6h
-while PRs are open. One step, `diagnose` (plan, 1 retry,
-`prompts/stall.md`): it fixes what it can in place (start the missing
+The `scan` trigger (`when.scan`) starts one `triage` run per finding
+with key `scan:<signal>:<subject>`: a ready ticket nobody claimed
+(`scan_after`, 1h), a crash-looping pool, a held step with no progress
+(`step_idle`, `scan_step_after`, 3h), a session holding work with a
+silent journal (1h), a `needs_human` run or ticket (`scan_human_after`,
+4h), a ticket labeled `blocked` (1h), and through scan scripts in
+`triggers.star`: an open issue with no run (`issue_no_run`), a green PR
+nobody merged for 2h (`pr_unmerged`), no commit on `ci_branch` for 6h
+while PRs are open (`no_merge`). One step, `diagnose` (triage, 1 retry,
+`prompts/triage.md`): it fixes what it can in place (start the missing
 run, reroute or requeue, resume, rebase, cancel a stale drill, restart a
 session, file a bug) and closes `done`, or closes `failed` with the
 evidence, which escalates at once. Host config problems always
@@ -56,7 +57,7 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `deploy-check` pool (`deploy_sessions`, default 3): works `post-merge`
   steps, which wait up to an hour for the deploy, so they never queue a
   review behind them (#167). Prompt: `prompts/deploy-check.md`.
-- `stall` pool (1 session, `stall_model`, `stall_effort`): works `stall-check`
+- `triage` pool (1 session, `triage_model`, `triage_effort`): works `triage`
   `diagnose` steps, apart from the planner.
 - CI waits: steps that wait on CI park with `jobshop wait add
   'github.checks:...' --any --resume` (#381) and resume within a minute
@@ -66,16 +67,19 @@ It replaces `blocker-check`: the planner labels a blocked claim
 - `plan` pool (1 session): reads the `target` issue, ticks verified items,
   files the next 2-4 issues and starts their runs, handles escalations.
   Prompt: `prompts/github/plan.md`.
-- `replan` trigger: when `dev` has no ready tickets, creates a planning
-  ticket in `plan` (10m cooldown after the last one closes).
-- `master-red` trigger: when the latest completed master CI run failed,
-  starts a `ci-repair` run keyed by the failing SHA (check command via
-  `gh`; the controller needs `GH_TOKEN`).
-- `release-pr` trigger: a green release PR (label `release_pr_label`)
+- `replan` trigger (`triggers.star:replan`): when `dev` has no ready
+  tickets, creates a planning ticket in `plan` (10m cooldown after the
+  last one closes).
+- `master-red` trigger (`triggers.star:master_red`): on a failed
+  `ci_workflow` run on `ci_branch`, and on fallback polling, reads the
+  latest completed run and starts a `ci-repair` run keyed by the failing
+  SHA.
+- `release-pr` trigger (`triggers.star:release_pr`): the lowest-numbered green release PR (label `release_pr_label`)
   starts a `release-merge` run keyed `release-pr-<n>`: one `merge` step in
   `refinery`, `prompts/release-merge.md` (#698).
-- `pr-unmerged` trigger: a green non-draft PR untouched for 2h (minus the
-  `pr_unmerged` skips) starts a `pr-review` run keyed `pr-<n>`:
+- `pr-unmerged` trigger (scan script `pr_unmerged`): a green non-draft PR
+  untouched for 2h (minus `pr_review_skip_authors` and
+  `pr_review_skip_labels`) starts a `pr-review` run keyed `pr-<n>`:
   `review-merge` then `post-merge`, prompts in `prompts/pr-review/`. A
   `pr-work` run that opens a PR in another instance's repo starts that
   instance's `<prefix>pr-review` with the same key and its review-merge
@@ -87,8 +91,7 @@ substituted.
 
 ## Flow: `ci-repair` per failing master SHA
 
-`master-red` runs `jobshop run start ci-repair --var sha=<sha> --key
-<sha>` itself (a `run:` trigger, `docs/notes/98-run-triggers.md`). Two steps:
+`master-red` starts `ci-repair` with `sha` and key `<sha>`. Two steps:
 
 1. `fix` (dev, 2 retries, `prompts/ci-fix.md`): read
    `gh run view --log-failed`, find or file the fix issue, open a PR,
@@ -142,11 +145,11 @@ packs:
 
 How one issue flows:
 
-1. Intake: every `linear_poll`, the `linear_issue_no_run` stall signal
+1. Intake: every `linear_poll`, the `linear_issue_no_run` scan signal
    lists ENG issues in `linear_intake_states` with an intake label and
-   no skip label. One with no open run starts `eng-stall-check` (#287).
+   no skip label. One with no open run starts `eng-triage` (#287).
    The planner lists the same filter on its own passes (#292).
-2. stall-check or the planner runs `jobshop linear eligible` and starts
+2. triage or the planner runs `jobshop linear eligible` and starts
    `eng-pr-work` with key `linear-<KEY>`. Either start returns the other's
    run. The `intake` hook reads the issue text first; a refusal labels
    the issue `needs-human` and files a ticket on `jobshop attention`,
@@ -177,8 +180,8 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `propose_targets` | `true` (default): when targets run out the planner files one issue labeled `proposed` (`Proposed target: ...`, created if missing) and a `proposed` ticket that `jobshop attention` lists as a decision. A human approves by relabeling it `target`. `false`: only humans file targets (#488) |
 | `escalation_chat_pool` | Empty (default): an escalation is only a ticket. A `type: chat` pool (e.g. the operator pack's `operator`): the controller opens a chat session there, key `escalation:<ticket id>`, whose first message (model context) is picked by cause, see Escalation chat prompts below, and records it in `meta.escalation`. Desk's chat pool should be the same (#379) |
 | `authors` | Comma-separated GitHub logins whose issues start work besides `human` and App-filed issues. Others wait until someone adds the `accepted` label (#340) |
-| `stall_pr_skip_authors` | Comma-separated logins whose green PRs `pr_unmerged` does not flag, besides `human` (#509) |
-| `stall_pr_skip_labels` | Comma-separated PR labels `pr_unmerged` does not flag. Default `hold` (#509) |
+| `pr_review_skip_authors` | Comma-separated logins whose green PRs `pr_unmerged` does not flag, besides `human` (#509) |
+| `pr_review_skip_labels` | Comma-separated PR labels `pr_unmerged` does not flag. Default `hold` (#509) |
 | `release_pr_label` | Label of release-please PRs. Default `autorelease: pending`. A green, non-draft open PR with it gets one `release-merge` run (refinery merges it without review), and `pr_unmerged` does not flag it. Empty turns the `release-pr` trigger off (#698) |
 | `check_cmd` | Build and test command run before pushing, e.g. `make test` |
 | `docs_rule` | Where implement puts design notes and runbook checks. Default: a new file per note, never a numbered section appended to a shared doc (parallel PRs collide on the number) |
@@ -190,10 +193,10 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `dev_pool` | Default pool of pr-work's `implement` step, also a run var (`--var dev_pool=dev-sonnet`). A failed attempt or review resume moves the step to `dev` (`retry_pool`). Default `{{.pack_prefix}}dev`, the instance's own dev pool |
 | `refinery_sessions` | `max_sessions` for the refinery. Default 1; more needs strict branch protection |
 | `refinery_model`, `refinery_effort` | Refinery pool `model` and `effort` (#304). Default empty: the agent's |
-| `stall_model`, `stall_effort` | `stall` pool `model` and `effort`. Default empty: the agent's |
+| `triage_model`, `triage_effort` | `triage` pool `model` and `effort`. Default empty: the agent's |
 | `guide` | Where agents read the repo's conventions. Default: README, AGENTS.md, CONTRIBUTING.md |
-| `deploy_check` | How `post-merge` and `stall-check` tell a commit is deployed. Default: no deploy, the check passes |
-| `stall_after`, `stall_step_after`, `stall_human_after` | Stall thresholds (Go durations). Defaults 1h, 3h, 4h |
+| `deploy_check` | How `post-merge` and `triage` tell a commit is deployed. Default: no deploy, the check passes |
+| `scan_after`, `scan_step_after`, `scan_human_after` | Scan thresholds (Go durations). Defaults 1h, 3h, 4h |
 | `merge_method` | `squash` (default) or `merge`: `gh pr merge --<method> --match-head-commit <head>` |
 | `required_approver` | Empty (default): no approval needed. A GitHub login: merge only when that login has an `APPROVED` review whose `commit_id` is the current head; otherwise the merge step closes `failed` and retries |
 | `required_checks` | Empty (default): every check in `statusCheckRollup` must pass. Otherwise comma-separated check names that must be `SUCCESS` on the head |
@@ -202,7 +205,7 @@ Live checks: `docs/verify/linear-pack.md`, `docs/verify/linear-intake.md`.
 | `linear_target` | With `linear`: the Linear issue the planner reads as its goal (ENG-1) |
 | `linear_done_state` | With `linear`: state post-merge moves a shipped issue to. Default `Done` |
 | `linear_human` | With `linear`: the Linear user worker questions and run escalations mention when posted on the run's issue (#293). Replies under that comment answer the question |
-| `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` stall starts stall-check for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293, `target` and `proposed`, planner parents, JOB-4, and `tracking`; set one with `jobshop linear label <KEY> add <label>`), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
+| `linear_intake_states`, `linear_intake_labels`, `linear_skip_labels`, `linear_poll` | With `linear_team`: the `linear_issue_no_run` scan signal starts triage for open issues in these states (default `Todo`), with one of these labels (any when empty), none of the skip labels (default `Blocked`, set while a question waits, #293, `target` and `proposed`, planner parents, JOB-4, and `tracking`; set one with `jobshop linear label <KEY> add <label>`), and no open run. Linear is read every `linear_poll` (5m) (#287). The planner lists the same filter (#292) |
 | `linear_new_state` | State of Linear issues agents file (out-of-scope finds, review findings, planner work). Default `Todo`, an intake state, so they are worked; Backlog is left to humans |
 | `linear_intake_assignee` | Planner `linear list --assignee` filter: a name, `me`, or empty for any (#292) |
 

@@ -329,13 +329,13 @@ func (c *Controller) rejectLinear(ctx context.Context, key, body string) error {
 }
 
 // linearIntakeState is the first of linear_intake_states for the key's
-// team, read from the linear_issue_no_run stall signal; Todo without one.
+// team, read from the linear_issue_no_run scan signal; Todo without one.
 func (c *Controller) linearIntakeState(key string) string {
 	team, _ := linear.Team(key)
 	cfg := c.config()
 	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
-		for _, sig := range cfg.Triggers[name].When.Stall {
-			if sig.Signal != config.StallLinearIssueNoRun || !strings.EqualFold(sig.Team, team) {
+		for _, sig := range cfg.Triggers[name].When.Scan {
+			if sig.Signal != config.SignalLinearIssueNoRun || !strings.EqualFold(sig.Team, team) {
 				continue
 			}
 			if s := config.SplitList(sig.States); len(s) > 0 {
