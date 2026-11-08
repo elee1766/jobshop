@@ -31,6 +31,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/chatlife"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/control/slotprovider"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/logctx"
@@ -1059,7 +1060,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			r.setTurnTicket("")
 			return err
 		}
-		interrupted, err := r.interruptible(ctx, conn, slotPrompt(r.c.slotEnv(ctx, t))+r.ticketPrompt(t, comments))
+		interrupted, err := r.interruptible(ctx, conn, slotprovider.Prompt(r.c.slotEnv(ctx, t))+r.ticketPrompt(t, comments))
 		if err != nil {
 			r.setTurnTicket("")
 			return err

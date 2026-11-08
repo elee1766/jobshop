@@ -35,6 +35,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/scaleplan"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/control/slotprovider"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/hooks"
@@ -176,8 +177,9 @@ type Controller struct {
 	syncPrunedAt time.Time
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
-	// prov is resource provider demand and idle state (#407); tick-only.
-	prov providerState
+	// slotClient is the resource provider client (#407); see slots().
+	slotClient *slotprovider.Client
+	slotsOnce  sync.Once
 	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
 	writeKeysPrunedAt time.Time
 	// poolQuarantined maps a pool to the permanent spawn error that
