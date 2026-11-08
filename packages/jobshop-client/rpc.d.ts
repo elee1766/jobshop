@@ -1116,6 +1116,7 @@ export interface RunResult {
 export interface RunResumeParams {
   id: string;
   step?: string;
+  repin?: boolean;
 }
 
 export interface RunStartParams {

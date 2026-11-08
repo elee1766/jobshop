@@ -2311,6 +2311,9 @@ Flags:
 
       --step=STRING      Step id to reopen (default: the first step not closed
                          done).
+      --repin            Move a callback workflow run to the live callback
+                         manifest first (admin socket): for 'hook manifest
+                         changed' after a deploy.
       --json             Print JSON.
 ```
 

@@ -876,3 +876,53 @@ triggers:
 	c.Clock.Advance(11 * time.Minute)
 	c.PassUntil(func() bool { return len(scanRuns()) == 2 }, "next poll did not see the new subject")
 }
+
+// A deploy that rewrites the callbacks strands runs started before it:
+// they fail with "hook manifest changed" and plain resume refuses. An admin
+// resume with Repin moves the run to the live callbacks and it finishes.
+func TestHookRunResumeRepin(t *testing.T) {
+	root := hookTestRoot(t, `def begin(run):
+    return [start_step(id="a",pool="dev",prompt="first")]
+def completed(run, step):
+    if step.id == "a":
+        return [start_step(id="b",pool="dev",prompt="second",needs=["a"])]
+    return [finish_run(outcome="done")]
+def handle(event, args):
+    return []
+`)
+	c := controltest.Start(t, root, control.Options{})
+	var run rpc.RunResult
+	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic"}, &run)
+	c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 1 }, "first step not created")
+	first := hookRun(t, c, run.Run.ID).Steps[0]
+	// The deploy: callback source changes and the controller reloads.
+	path := filepath.Join(root.Dir, "hooks.star")
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, append(data, []byte("# deployed\n")...), 0o600))
+	c.Call(rpc.MethodReload, struct{}{}, nil)
+	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: first.ID}, nil)
+	runState := func() string {
+		f, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+		require.NoError(t, err)
+		return f.State
+	}
+	c.PassUntil(func() bool { return runState() == store.RunNeedsHuman }, "changed callbacks did not stop the run")
+
+	err = c.Admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: run.Run.ID}, nil)
+	require.Error(t, err, "plain resume must not adopt the changed manifest")
+	assert.Equal(t, store.RunNeedsHuman, runState())
+
+	require.NoError(t, c.Admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: run.Run.ID, Repin: true}, nil))
+	c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 2 }, "repinned run did not create its second step")
+	assert.Equal(t, store.RunRunning, runState())
+	var shown rpc.ShowResult
+	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: run.Run.ID}, &shown)
+	var repinned bool
+	for _, cm := range shown.Comments {
+		repinned = repinned || strings.Contains(cm.Body, "Repinned to the live callback manifest")
+	}
+	assert.True(t, repinned, "the repin is logged as a run comment")
+	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: hookRun(t, c, run.Run.ID).Steps[1].ID}, nil)
+	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == store.StatusClosed }, "repinned run did not finish")
+}

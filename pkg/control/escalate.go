@@ -138,7 +138,7 @@ func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, r
 	if w, ok := cfg.Workflows[f.Workflow]; ok {
 		pool = w.EscalatePool
 	}
-	body, err := c.escalationBody(ctx, run, f)
+	body, err := c.escalationBody(ctx, cfg, run, f)
 	if err != nil {
 		c.log.ErrorContext(ctx, "escalation body", "run", run.ID, "err", err)
 		return
@@ -168,7 +168,7 @@ func (c *Controller) ensureEscalation(ctx context.Context, cfg *config.Config, r
 
 // escalationBody lists the run and, per step, its attempts, resolution and
 // last comments, so the escalation agent need not dig.
-func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f store.RunFields) (string, error) {
+func (c *Controller) escalationBody(ctx context.Context, cfg *config.Config, run store.Ticket, f store.RunFields) (string, error) {
 	steps, err := store.Children(ctx, c.store, run.ID)
 	if err != nil {
 		return "", err
@@ -179,6 +179,13 @@ func (c *Controller) escalationBody(ctx context.Context, run store.Ticket, f sto
 		fmt.Fprintf(&b, "Vars: %v\n", f.Vars)
 	}
 	fmt.Fprintf(&b, "Inspect with `jobshop run show %s`; after fixing the blocker, `jobshop run resume %s`.\n", run.ID, run.ID)
+	if f.Automation != nil {
+		// Legacy full-manifest pins also differ here, which is right: a
+		// repin moves them to the run pin.
+		if pin := cfg.HookRunPins[f.Workflow]; pin != "" && pin != f.Automation.Digest {
+			fmt.Fprintf(&b, "The run's pinned callbacks no longer match the loaded configuration (a deploy or reload changed them). To continue it under the live callbacks, `jobshop run resume %s --repin` on the admin socket; or cancel it.\n", run.ID)
+		}
+	}
 	for _, s := range steps {
 		sf, err := store.DecodeFields[store.StepFields](s)
 		if err != nil {

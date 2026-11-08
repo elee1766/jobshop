@@ -66,13 +66,14 @@ func (c runCancelCmd) Run(g *Globals) error {
 }
 
 type runResumeCmd struct {
-	ID   string `arg:"" help:"Run id."`
-	Step string `help:"Step id to reopen (default: the first step not closed done)."`
-	JSON bool   `help:"Print JSON."`
+	ID    string `arg:"" help:"Run id."`
+	Step  string `help:"Step id to reopen (default: the first step not closed done)."`
+	Repin bool   `help:"Move a callback workflow run to the live callback manifest first (admin socket): for 'hook manifest changed' after a deploy."`
+	JSON  bool   `help:"Print JSON."`
 }
 
 func (c runResumeCmd) params() rpc.RunResumeParams {
-	return rpc.RunResumeParams{ID: c.ID, Step: c.Step}
+	return rpc.RunResumeParams{ID: c.ID, Step: c.Step, Repin: c.Repin}
 }
 
 func (c runResumeCmd) Run(g *Globals) error {
