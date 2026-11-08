@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.6](https://github.com/elee1766/jobshop/compare/v0.9.5...v0.9.6) (2026-11-08)
+
+
+### Features
+
+* **desk:** compact labels for github pr and linear issue urls (JOB-125) ([#1030](https://github.com/elee1766/jobshop/issues/1030)) ([3258d3b](https://github.com/elee1766/jobshop/commit/3258d3bb209412f78c80b718bc27b7450ddc8b8b))
+
+
+### Bug fixes
+
+* **control:** back off a Linear identity that stops answering (JOB-118) ([#1039](https://github.com/elee1766/jobshop/issues/1039)) ([ce34caa](https://github.com/elee1766/jobshop/commit/ce34caa85da1b874ebbae25d13051cbac0c906df))
+* **desk:** tighten spacing between consecutive chat tool calls (JOB-134) ([#1035](https://github.com/elee1766/jobshop/issues/1035)) ([a4e83c3](https://github.com/elee1766/jobshop/commit/a4e83c37ef7e67a941916525ab9947af6edce3e3))
+
 ## [0.9.5](https://github.com/elee1766/jobshop/compare/v0.9.4...v0.9.5) (2026-11-08)
 
 
