@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -199,7 +200,7 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 		th, seen := threadOf(fs, k)
 		cs, err := src.Comments(ctx, th, seen)
 		if err != nil {
-			if !linearDown(err) { // logged once per outage
+			if !linearsvc.Down(err) { // logged once per outage
 				c.log.WarnContext(ctx, "subscriptions: fetch", "thread", k, "err", err)
 			}
 			continue
@@ -721,7 +722,7 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 		is      linear.Issue
 		appSelf string
 	)
-	err := s.c.linearDo(ctx, name, func(ctx context.Context, cl *linear.Client) error {
+	err := s.c.linearSvc().Do(ctx, name, func(ctx context.Context, cl *linear.Client) error {
 		var err error
 		if is, err = cl.GetIssue(ctx, th.Linear); err != nil {
 			return err

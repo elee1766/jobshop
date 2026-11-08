@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -122,15 +121,6 @@ func (c *Controller) linearClientIn(cfg *config.Config, key string) (*linear.Cli
 		return nil, fmt.Errorf("bad Linear issue key %q", key)
 	}
 	return c.linearForTeam(cfg, team)
-}
-
-// linearRequestTimeout bounds one Linear request made off the tick by a
-// poller (JOB-103); the default client allows 30s.
-const linearRequestTimeout = 15 * time.Second
-
-// pollerCtx bounds each request made with ctx by linearRequestTimeout.
-func (c *Controller) pollerCtx(ctx context.Context) context.Context {
-	return apicall.WithRequestTimeout(ctx, c.linearRequestTimeoutFor())
 }
 
 func (c *Controller) linearIssue(ctx context.Context, cfg *config.Config, key string) (linear.Issue, error) {

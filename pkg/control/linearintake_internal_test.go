@@ -204,27 +204,6 @@ func TestLinearIntakeOff(t *testing.T) {
 	assert.Empty(t, found)
 }
 
-func TestLinearIntakeMatch(t *testing.T) {
-	t.Parallel()
-	is := linear.Summary{State: linear.State{Name: "Todo", Type: "unstarted"}, Labels: []string{"Agent", "x"}}
-	assert.True(t, linearIntakeMatch(is, nil, nil, nil))
-	assert.True(t, linearIntakeMatch(is, []string{"todo"}, []string{"agent"}, nil))
-	assert.False(t, linearIntakeMatch(is, []string{"Backlog"}, nil, nil))
-	assert.False(t, linearIntakeMatch(is, nil, []string{"bug"}, nil))
-	assert.False(t, linearIntakeMatch(is, nil, nil, []string{"X"}))
-	is.State.Type = "canceled"
-	assert.False(t, linearIntakeMatch(is, nil, nil, nil))
-
-	// JOB-4: target and proposed parents never start a run.
-	skip := []string{"Blocked", "target", "proposed"}
-	for _, l := range []string{"target", "Proposed"} {
-		p := linear.Summary{State: linear.State{Name: "Todo", Type: "unstarted"}, Labels: []string{"repo", l}}
-		assert.False(t, linearIntakeMatch(p, []string{"Todo"}, nil, skip), l)
-	}
-	sub := linear.Summary{State: linear.State{Name: "Todo", Type: "unstarted"}, Labels: []string{"repo"}}
-	assert.True(t, linearIntakeMatch(sub, []string{"Todo"}, nil, skip), "a target's sub-issue is taken")
-}
-
 // TestLinearPlannerIntakeKey (#292): the planner and the intake
 // triage both start pr-work with key linear-<KEY>, so whichever is
 // second gets the first run, and the finding clears.
@@ -302,12 +281,12 @@ func TestLinearIntakeRunDuringScan(t *testing.T) {
 func TestLinearIssueRecheck(t *testing.T) {
 	t.Parallel()
 	c, _, _ := scanControllerYAML(t, linearIntakeYAML)
-	busy, err := c.linearIssueHasOpenRun(t.Context(), "eng-7")
+	busy, err := c.linearSvc().HasOpenRun(t.Context(), "eng-7")
 	require.NoError(t, err)
 	assert.False(t, busy)
 	_, err = c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-7"}, Key: "linear-ENG-7"}, nil)
 	require.NoError(t, err)
-	busy, err = c.linearIssueHasOpenRun(t.Context(), "eng-7")
+	busy, err = c.linearSvc().HasOpenRun(t.Context(), "eng-7")
 	require.NoError(t, err)
 	assert.True(t, busy)
 }

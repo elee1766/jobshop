@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -178,7 +179,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	c.sweepLinearAsks(ctx, c.config())
 	n, labels := f.state()
 	require.Equal(t, 1, n, "question posted once")
-	assert.Equal(t, []string{linearBlockedLabel}, labels)
+	assert.Equal(t, []string{linearsvc.BlockedLabel}, labels)
 	f.mu.Lock()
 	askID, _ := f.comments[0]["id"].(string)
 	body, _ := f.comments[0]["body"].(string)

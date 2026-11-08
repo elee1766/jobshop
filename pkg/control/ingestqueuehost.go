@@ -25,4 +25,4 @@ func (h queueHost) Clock() clock.Clock              { return h.c.clk() }
 func (h queueHost) Store() ingest.InboxStore        { return h.c.store }
 func (h queueHost) SpoolPath() string               { return h.c.config().Ingest.SpoolPath(h.c.root) }
 func (h queueHost) WakeWaits(its []store.InboxItem) { h.c.wakeWaitsFor(its) }
-func (h queueHost) Drained(its []store.InboxItem)   { h.c.linearDelivered(its) }
+func (h queueHost) Drained(its []store.InboxItem)   { h.c.linearSvc().Delivered(its) }

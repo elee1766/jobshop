@@ -32,6 +32,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
+	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/hooks"
@@ -247,17 +248,12 @@ type Controller struct {
 	// ghIssueOpen, when set, replaces the GitHub issue state read of the
 	// intake dependency check (JOB-68; tests).
 	ghIssueOpen func(context.Context, linear.GitHubDep) (bool, error)
-	// linIntake caches linear_issue_no_run reads between polls (#287).
-	linIntake linearIntake
 	// signalScripts caches script scan signal answers between polls.
 	signalScripts signalScripts
-	// linSessions throttles the Linear agent-session sweep.
-	linSessions linearSessions
-	// linHealth backs off a Linear identity that stopped answering
-	// (JOB-118). linearTimeout, if set, replaces linearRequestTimeout
-	// (tests).
-	linHealth     linearHealth
-	linearTimeout time.Duration
+	// linSvc is the Linear orchestration (JOB-142, pkg/control/linearsvc):
+	// outage backoff, intake cache, session sweep; see linearSvc().
+	linSvc  *linearsvc.Service
+	linOnce sync.Once
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
 	// tickMu serializes supervisor passes: the tick and the event paths
@@ -517,7 +513,7 @@ func (c *Controller) serve() error {
 		c.wg.Wait()
 		return err
 	}
-	if err := c.serveLinearWebhook(); err != nil {
+	if err := c.linearSvc().Serve(); err != nil {
 		c.cancel()
 		c.wg.Wait()
 		return err

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -57,7 +58,7 @@ func TestLinearOutageWaits(t *testing.T) {
 	var logs lockedBuf
 	c.log = slog.New(slog.NewTextHandler(&logs, nil))
 	c.minter, c.linearURL = identity.NewMinter(), gql.URL
-	c.linearTimeout = 100 * time.Millisecond
+	c.linearSvc().SetRequestTimeout(100 * time.Millisecond)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	park := func(title string, cd store.WaitCond) store.Ticket {
@@ -85,7 +86,7 @@ func TestLinearOutageWaits(t *testing.T) {
 	assert.Equal(t, 1, warns(), "one WARN per outage, not per pass")
 
 	hang.Store(false)
-	clk.advance(linearBackoffFirst)
+	clk.advance(linearsvc.BackoffFirst)
 	c.pollWaits(ctx, prs, threads)
 	assert.ElementsMatch(t, []string{rn.ID, st.ID, lb.ID}, readyIDs(t, c))
 	assert.Equal(t, 1, warns())

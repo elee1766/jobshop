@@ -58,7 +58,7 @@ func (c *Controller) runScanTrigger(ctx context.Context, cfg *config.Config, nam
 	for _, s := range fire {
 		key := s.keyWith(prefix)
 		if s.signal == config.SignalLinearIssueNoRun {
-			busy, err := c.linearIssueHasOpenRun(ctx, s.subject)
+			busy, err := c.linearSvc().HasOpenRun(ctx, s.subject)
 			if err != nil {
 				c.log.ErrorContext(ctx, "finding recheck", "trigger", name, "key", key, "err", err)
 				continue

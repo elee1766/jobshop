@@ -201,7 +201,7 @@ func postWebhook(c *Controller, b []byte, sig string) int {
 	req := httptest.NewRequest(http.MethodPost, config.LinearWebhookPath, bytes.NewReader(b))
 	req.Header.Set("Linear-Signature", sig)
 	rec := httptest.NewRecorder()
-	c.linearWebhookHandler(testSpool(c)).Mux().ServeHTTP(rec, req)
+	c.linearSvc().Handler(testSpool(c)).Mux().ServeHTTP(rec, req)
 	if _, err := c.queue().DrainOnce(c.ctx); err != nil {
 		panic(err)
 	}
@@ -291,7 +291,7 @@ func TestLinearWebhookComment(t *testing.T) {
 func TestLinearWebhookOff(t *testing.T) {
 	t.Parallel()
 	c, _, _ := scanControllerYAML(t, strings.Replace(linearWebhookYAML, "webhook_listen: 127.0.0.1:0", `webhook_listen: ""`, 1))
-	require.NoError(t, c.serveLinearWebhook())
+	require.NoError(t, c.linearSvc().Serve())
 	c.wg.Wait()
 	assert.Empty(t, fmt.Sprint(c.config().Linear.WebhookListen))
 }
