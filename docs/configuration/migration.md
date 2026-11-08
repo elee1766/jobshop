@@ -330,10 +330,14 @@ at a candidate checkout.
 
 Then:
 
-1. Drain runs of each workflow you converted, and close runs keyed
-   `stall:`.
+1. Drain every open run, not only those of converted workflows, and close
+   runs keyed `stall:`. A run pins the hook manifest it started under;
+   after the packs change, its next callback fails with `hook manifest
+   changed` and `run resume` refuses it (#1012).
 2. Switch the service to the candidate config and binary together. An
-   older binary cannot read the CUE root.
+   older binary cannot read the CUE root, and an automatic deploy that
+   checks the old host config against the new packs fails on the renamed
+   vars: change the host config first, or switch by hand.
 3. `jobshop trigger list`: each trigger appears once; scan triggers list
    findings or the reason they do not hold.
 4. `jobshop automation list`: handler, scan script and hook invocations
