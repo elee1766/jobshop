@@ -207,7 +207,7 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await relationships.getByRole('button', { name: new RegExp(dependency.id) }).click();
     await expect(page.locator('.ticket-overview > h2')).toContainText(dependency.id);
     await expect(page.locator('.inspector details').filter({ hasText: 'raw ticket data' })).not.toHaveAttribute('open');
-    await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).` });
+    await call('comment.add', { id: dependency.id, body: `Fallback (acme/widget#42). Plain widget#42 #42 ENG-2 and ${child.id}. \`acme/widget#43\` <code>acme/widget#44</code>\n\n\`\`\`\nacme/widget#45\n\`\`\`\n\n[acme/widget#46](https://github.com/acme/widget/issues/46), [Linear issue](https://linear.app/acme/issue/ENG-2), [GitHub evidence](https://github.com/acme/widget/issues/9), [Implementation](jobshop://ticket/${child.id}). [Unsafe](javascript:alert%281%29) [Unknown](jobshop://command/delete) [Invalid](jobshop://ticket/%2Fetc).\n\nCompact https://github.com/elee1766/jobcity/pull/21?w=1#top, <https://linear.app/gfx-labs/issue/JOB-93/stall-triggers>. \`https://github.com/acme/widget/pull/47\` https://evilgithub.com/acme/widget/pull/48 [Authored PR](https://github.com/acme/widget/pull/49)` });
     const comment = page.locator('.ticket-comment .markdown');
     await expect(comment.getByRole('link', { name: 'Linear issue', exact: true })).toHaveAttribute('href', 'https://linear.app/acme/issue/ENG-2');
     await expect(comment.getByRole('link', { name: 'GitHub evidence', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/9');
@@ -216,7 +216,13 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await expect(comment.getByRole('link', { name: 'acme/widget#42', exact: true })).toHaveAttribute('rel', 'noopener noreferrer');
     await expect(comment.getByRole('link', { name: 'acme/widget#46', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/issues/46');
     await expect(comment.locator('code a')).toHaveCount(0);
-    await expect(comment.getByRole('link')).toHaveCount(5);
+    const compactPR = comment.getByRole('link', { name: 'PR:elee1766/jobcity#21', exact: true });
+    await expect(compactPR).toHaveAttribute('href', 'https://github.com/elee1766/jobcity/pull/21?w=1#top');
+    await expect(compactPR).toHaveCSS('text-decoration-line', 'underline');
+    await expect(comment.getByRole('link', { name: 'gfx-labs@JOB-93', exact: true })).toHaveAttribute('href', 'https://linear.app/gfx-labs/issue/JOB-93/stall-triggers');
+    await expect(comment.getByRole('link', { name: 'https://evilgithub.com/acme/widget/pull/48', exact: true })).toBeVisible();
+    await expect(comment.getByRole('link', { name: 'Authored PR', exact: true })).toHaveAttribute('href', 'https://github.com/acme/widget/pull/49');
+    await expect(comment.getByRole('link')).toHaveCount(9);
     await comment.getByRole('link', { name: 'Implementation', exact: true }).click();
     await expect(page.getByRole('textbox', { name: 'Trace reference', exact: true })).toHaveValue(child.id);
     await expect(page.locator('.ticket-overview > h2')).toContainText(child.id);
