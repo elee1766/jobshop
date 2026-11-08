@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.7](https://github.com/elee1766/jobshop/compare/v0.9.6...v0.9.7) (2026-11-08)
+
+
+### Features
+
+* **desk:** acme-style scroll bars on chat transcripts (JOB-132) ([#1043](https://github.com/elee1766/jobshop/issues/1043)) ([7d04855](https://github.com/elee1766/jobshop/commit/7d04855b64a29a2302d1370a56e7f3289505c674))
+* **desk:** keep waiting and in flight as home sections at every width (JOB-130) ([#1042](https://github.com/elee1766/jobshop/issues/1042)) ([af7bed9](https://github.com/elee1766/jobshop/commit/af7bed99fec4ff04cdd5e8abca069fa8e637e58d))
+
+
+### Bug fixes
+
+* **packs/github:** linear review-merge rechecks conflicts right before merging ([#1048](https://github.com/elee1766/jobshop/issues/1048)) ([#1049](https://github.com/elee1766/jobshop/issues/1049)) ([0481efc](https://github.com/elee1766/jobshop/commit/0481efc25633068d1846545f8e3051eae071f814))
+
 ## [0.9.6](https://github.com/elee1766/jobshop/compare/v0.9.5...v0.9.6) (2026-11-08)
 
 
