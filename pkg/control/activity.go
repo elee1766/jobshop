@@ -377,9 +377,8 @@ func (c *Controller) activityList(ctx context.Context, sc scope, p rpc.ActivityL
 // liveActivity reads GitHub over HTTP (ETag, X-Poll-Interval) and Linear
 // with pkg/linear.
 type liveActivity struct {
-	c      *Controller
-	http   *http.Client
-	linURL string // "" is linear.DefaultAPIURL
+	c    *Controller
+	http *http.Client
 
 	mu      sync.Mutex
 	ghTok   string
@@ -566,18 +565,13 @@ func (l *liveActivity) CommitPulls(ctx context.Context, repo, sha string) ([]int
 }
 
 func (l *liveActivity) Linear(ctx context.Context, team string, since time.Time) ([]rpc.ActivityItem, error) {
-	cfg := l.c.config()
-	name, ok := cfg.IdentityFor(cfg.IdentityNames(), team)
-	if !ok {
-		return nil, fmt.Errorf("no identity covers team %s", team)
-	}
-	tok, err := l.c.minter.Token(ctx, name, cfg.Identities[name], team)
+	cl, err := l.c.linearForTeam(l.c.config(), team)
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	chs, err := l.c.newLinear(l.linURL, name, cfg.Identities[name], team, tok.Token).Changes(ctx, team, since)
+	chs, err := cl.Changes(ctx, team, since)
 	if err != nil {
 		return nil, err
 	}

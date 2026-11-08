@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/automation/api"
+	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -274,13 +275,14 @@ func hookGitHubToken(ctx context.Context, repo string) (api.Token, error) {
 	return trace.engine.host.GitHubToken(ctx, repo)
 }
 
-// hookLinearToken is hookGitHubToken for the linear built-in.
-func hookLinearToken(ctx context.Context, team string) (api.Token, error) {
+// hookLinearClient asks the host for the Linear client on behalf of the
+// invocation the call belongs to.
+func hookLinearClient(ctx context.Context, team string) (*linear.Client, error) {
 	trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext)
 	if !ok {
-		return api.Token{}, errors.New("capability call has no durable invocation")
+		return nil, errors.New("capability call has no durable invocation")
 	}
-	return trace.engine.host.LinearToken(ctx, team)
+	return trace.engine.host.LinearClient(ctx, team)
 }
 
 // hookNow is time.now() in a callback: when the invocation was accepted,

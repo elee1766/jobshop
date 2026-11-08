@@ -164,7 +164,7 @@ func (c *Client) GetContext(ctx context.Context, key string, all bool) (Context,
 			Comments commentNodes `json:"comments"`
 		} `json:"issue"`
 	}
-	if err := c.do(ctx, contextQuery, map[string]any{"id": key, "comments": n}, &r); err != nil {
+	if err := c.GraphQL(ctx, contextQuery, map[string]any{"id": key, "comments": n}, &r); err != nil {
 		return Context{}, err
 	}
 	if r.Issue == nil {
@@ -341,7 +341,7 @@ func (c *Client) List(ctx context.Context, f Filter) (Page, error) {
 	var r struct {
 		Issues pageNodes `json:"issues"`
 	}
-	if err := c.do(ctx, listQuery, f.vars(), &r); err != nil {
+	if err := c.GraphQL(ctx, listQuery, f.vars(), &r); err != nil {
 		return Page{}, err
 	}
 	return r.Issues.page(), nil
@@ -357,7 +357,7 @@ func (c *Client) Search(ctx context.Context, term string, f Filter) (Page, error
 	var r struct {
 		SearchIssues pageNodes `json:"searchIssues"`
 	}
-	if err := c.do(ctx, searchQuery, v, &r); err != nil {
+	if err := c.GraphQL(ctx, searchQuery, v, &r); err != nil {
 		return Page{}, err
 	}
 	return r.SearchIssues.page(), nil
@@ -427,7 +427,7 @@ func (c *Client) Catalog(ctx context.Context, team, kind string) ([]Entry, error
 		var r struct {
 			Team map[string]conn `json:"team"`
 		}
-		if err := c.do(ctx, q, vars, &r); err != nil {
+		if err := c.GraphQL(ctx, q, vars, &r); err != nil {
 			return nil, err
 		}
 		if r.Team == nil {

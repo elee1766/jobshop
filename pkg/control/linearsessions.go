@@ -60,12 +60,8 @@ func (s *linearSessions) due(name string, now time.Time, force bool) bool {
 }
 
 func (c *Controller) endLinearAgentSessions(ctx context.Context, name string, id config.Identity) error {
-	team := id.Teams[0]
-	tok, err := c.minter.Token(ctx, name, id, team)
-	if err != nil {
-		return err
-	}
-	cl := c.pollerLinear(c.linearURL, name, id, team, tok.Token)
+	ctx = pollerCtx(ctx)
+	cl := c.linearFor(name)
 	open, err := cl.OpenAgentSessions(ctx)
 	if err != nil {
 		return err

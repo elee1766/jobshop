@@ -42,7 +42,7 @@ func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (ma
 		options.GitHub = hookGitHubToken
 	}
 	if cfg.Automation.Linear {
-		options.Linear = hookLinearToken
+		options.Linear = hookLinearClient
 	}
 	options.Tickets, options.Now = hookTickets, hookNow
 	options.Limits.OutputBytes = cfg.Automation.OutputBytes

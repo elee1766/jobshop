@@ -58,7 +58,7 @@ type linearWaitSource interface {
 type liveLinearWait struct{ c *Controller }
 
 func (l liveLinearWait) IssueContext(ctx context.Context, key string) (linear.Context, error) {
-	cl, err := l.c.linearClient(ctx, key)
+	cl, err := l.c.linearClient(key)
 	if err != nil {
 		return linear.Context{}, err
 	}
@@ -120,7 +120,7 @@ func (c *Controller) threadSrc() threadSource {
 	if c.subSource != nil {
 		return c.subSource
 	}
-	return muxSource{gh: ghSource{}, linear: linearSource{c: c, url: c.linearURL}}
+	return muxSource{gh: ghSource{}, linear: linearSource{c: c}}
 }
 
 // waitOf returns fields.wait of a task or step, nil for none.

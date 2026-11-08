@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/linear"
 )
 
@@ -60,7 +61,7 @@ func newWriteServer(t *testing.T) (*linear.Client, *writeServer) {
 		_, _ = io.WriteString(w, ws.answer(c))
 	}))
 	t.Cleanup(srv.Close)
-	return linear.New(srv.URL, "lin_api_x"), ws
+	return linear.New(srv.URL, apicall.Static("lin_api_x")), ws
 }
 
 func inputID(c call) string {

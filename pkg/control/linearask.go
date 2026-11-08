@@ -111,7 +111,7 @@ func (c *Controller) postLinearAsk(ctx context.Context, cfg *config.Config, t st
 	if !question && !escalation {
 		return nil
 	}
-	cl, err := c.linearClientIn(ctx, cfg, key)
+	cl, err := c.linearClientIn(cfg, key)
 	if err != nil {
 		return err
 	}
@@ -263,7 +263,7 @@ func (c *Controller) unblockLinear(ctx context.Context, qt store.Ticket) {
 	}) {
 		return
 	}
-	cl, err := c.linearClient(ctx, a.Issue)
+	cl, err := c.linearClient(a.Issue)
 	if err != nil {
 		c.log.WarnContext(ctx, "linear unblock", "issue", a.Issue, "err", err)
 		return

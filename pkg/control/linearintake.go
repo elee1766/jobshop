@@ -134,18 +134,11 @@ const linearIntakeTimeout = 2 * time.Minute
 // team and keeps the open ones that match. Filtering is done here: the
 // list filter takes one state and one label, the vars take several.
 func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]linear.Summary, error) {
-	name, ok := cfg.IdentityFor(cfg.IdentityNames(), sig.Team)
-	if !ok {
-		return nil, fmt.Errorf("no identity covers team %s", sig.Team)
-	}
-	if c.minter == nil {
-		return nil, fmt.Errorf("no identity minter")
-	}
-	tok, err := c.minter.Token(ctx, name, cfg.Identities[name], sig.Team)
+	cl, err := c.linearForTeam(cfg, sig.Team)
 	if err != nil {
 		return nil, err
 	}
-	cl := c.pollerLinear(c.linearURL, name, cfg.Identities[name], sig.Team, tok.Token)
+	ctx = pollerCtx(ctx)
 	states, labels, skip := config.SplitList(sig.States), config.SplitList(sig.Labels), config.SplitList(sig.SkipLabels)
 	f := linear.Filter{Team: sig.Team, Limit: 250}
 	var out []linear.Summary

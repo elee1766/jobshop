@@ -173,11 +173,10 @@ func (h hookHost) GitHubToken(ctx context.Context, repo string) (api.Token, erro
 	return api.Token{APIURL: base, Token: tok.Token}, nil
 }
 
-// LinearToken serves the linear built-in: the Linear identity covering team.
-// An empty team takes the only Linear identity.
-func (h hookHost) LinearToken(ctx context.Context, team string) (api.Token, error) {
-	c := h.c
-	cfg := c.config()
+// LinearClient serves the linear built-in: the shared client of the Linear
+// identity covering team. An empty team takes the only Linear identity.
+func (h hookHost) LinearClient(_ context.Context, team string) (*linear.Client, error) {
+	cfg := h.c.config()
 	var names []string
 	for _, n := range cfg.IdentityNames() {
 		id := cfg.Identities[n]
@@ -187,21 +186,13 @@ func (h hookHost) LinearToken(ctx context.Context, team string) (api.Token, erro
 	}
 	switch {
 	case len(names) == 0 && team == "":
-		return api.Token{}, errors.New("no Linear identity configured")
+		return nil, errors.New("no Linear identity configured")
 	case len(names) == 0:
-		return api.Token{}, fmt.Errorf("no Linear identity covers team %s", team)
+		return nil, fmt.Errorf("no Linear identity covers team %s", team)
 	case team == "" && len(names) > 1:
-		return api.Token{}, fmt.Errorf("%d Linear identities; pass team=", len(names))
+		return nil, fmt.Errorf("%d Linear identities; pass team=", len(names))
 	}
-	tok, err := c.minter.Token(ctx, names[0], cfg.Identities[names[0]], team)
-	if err != nil {
-		return api.Token{}, err
-	}
-	url := c.linearURL
-	if url == "" {
-		url = linear.DefaultAPIURL
-	}
-	return api.Token{APIURL: url, Token: tok.Token}, nil
+	return h.c.linearFor(names[0]), nil
 }
 
 func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]int64) bool {

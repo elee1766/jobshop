@@ -149,7 +149,7 @@ func (c *Client) apply(ctx context.Context, m Mutation) (Result, error) {
 			ID string `json:"id"`
 		} `json:"issueRelation"`
 	}
-	if err := c.do(ctx, m.Query, m.Variables, &raw); err != nil {
+	if err := c.GraphQL(ctx, m.Query, m.Variables, &raw); err != nil {
 		return Result{}, err
 	}
 	res := Result{Op: m.Op, ID: m.ID}
@@ -202,7 +202,7 @@ func (c *Client) lookup(ctx context.Context, op, id string) (Result, bool, error
 		URL        string `json:"url"`
 		State      *State `json:"state"`
 	}
-	if err := c.do(ctx, q, map[string]any{"id": id}, &r); err != nil {
+	if err := c.GraphQL(ctx, q, map[string]any{"id": id}, &r); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "not found") {
 			return Result{}, false, nil
 		}
@@ -259,7 +259,7 @@ func (c *Client) team(ctx context.Context, key string, need teamNeed) (teamInfo,
 	var r struct {
 		Team *TeamInfo `json:"team"`
 	}
-	if err := c.do(ctx, teamIDQuery, map[string]any{"team": key}, &r); err != nil {
+	if err := c.GraphQL(ctx, teamIDQuery, map[string]any{"team": key}, &r); err != nil {
 		return teamInfo{}, err
 	}
 	if r.Team == nil {
@@ -301,7 +301,7 @@ func teamConn[T any](ctx context.Context, c *Client, team, conn, fields string, 
 		var r struct {
 			Team map[string]json.RawMessage `json:"team"`
 		}
-		if err := c.do(ctx, q, vars, &r); err != nil {
+		if err := c.GraphQL(ctx, q, vars, &r); err != nil {
 			return err
 		}
 		if r.Team == nil {
@@ -443,7 +443,7 @@ func (c *Client) PlanUpdate(ctx context.Context, key string, p UpdateParams) (Mu
 			Team      TeamInfo  `json:"team"`
 		} `json:"issue"`
 	}
-	if err := c.do(ctx, updatedAtQuery, map[string]any{"id": key}, &r); err != nil {
+	if err := c.GraphQL(ctx, updatedAtQuery, map[string]any{"id": key}, &r); err != nil {
 		return Mutation{}, err
 	}
 	if r.Issue == nil {

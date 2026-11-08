@@ -132,13 +132,9 @@ func (c *Controller) linearWebhookEvent(ctx context.Context, name string, ev ing
 	if !id.CoversTeam(team) {
 		return nil
 	}
-	tok, err := c.minter.Token(ctx, name, id, team)
-	if err != nil {
-		return err
-	}
 	lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	cl := c.newLinear(c.linearURL, name, id, team, tok.Token)
+	cl := c.linearFor(name)
 	me, org, err := cl.Me(lctx)
 	if err != nil {
 		return err

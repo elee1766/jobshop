@@ -150,7 +150,7 @@ func TestLinearQuestion(t *testing.T) {
 
 	// The session's ticket follows ENG-5; the reply comes through
 	// subscriptions.
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c, url: c.linearURL}}
+	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
 	c.pollSubscriptions(ctx, src)
 	clk.advance(time.Minute)
 	f.reply("other", "unrelated note", "Ann", clk.now())
@@ -270,7 +270,7 @@ func TestLinearAskOff(t *testing.T) {
 	_, ok := linearAskOf(got)
 	assert.False(t, ok, "escalation stays on Desk")
 
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c, url: c.linearURL}}
+	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
 	c.pollSubscriptions(ctx, src)
 	clk.advance(time.Minute)
 	f.reply(askID, "yes, keep it", "Wile", clk.now())

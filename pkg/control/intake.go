@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Intake hooks (#288): Linear issue text is untrusted. Before it reaches
@@ -110,55 +110,31 @@ func (c *Controller) intakeRun(ctx context.Context, cfg *config.Config, plan run
 // each with its own timeout.
 const intakeTimeout = 5 * time.Minute
 
-// linearClient returns a client for the identity covering key's team.
-func (c *Controller) linearClient(ctx context.Context, key string) (*linear.Client, error) {
-	return c.linearClientIn(ctx, c.config(), key)
+// linearClient returns the shared client of the identity covering key's team.
+func (c *Controller) linearClient(key string) (*linear.Client, error) {
+	return c.linearClientIn(c.config(), key)
 }
 
 // linearClientIn is linearClient under cfg.
-func (c *Controller) linearClientIn(ctx context.Context, cfg *config.Config, key string) (*linear.Client, error) {
+func (c *Controller) linearClientIn(cfg *config.Config, key string) (*linear.Client, error) {
 	team, ok := linear.Team(key)
 	if !ok {
 		return nil, fmt.Errorf("bad Linear issue key %q", key)
 	}
-	name, ok := cfg.IdentityFor(cfg.IdentityNames(), team)
-	if !ok {
-		return nil, fmt.Errorf("no identity covers team %s", team)
-	}
-	tok, err := c.minter.Token(ctx, name, cfg.Identities[name], team)
-	if err != nil {
-		return nil, err
-	}
-	return c.newLinear(c.linearURL, name, cfg.Identities[name], team, tok.Token), nil
-}
-
-// newLinear returns a client for name's token that, on a 401, drops the
-// cached token and mints a new one once.
-func (c *Controller) newLinear(url, name string, id config.Identity, team, token string) *linear.Client {
-	cl := linear.New(url, token)
-	if id.Kind == config.IdentityLinearApp {
-		cl.Renew = func(ctx context.Context) (string, error) {
-			c.minter.Drop(name)
-			t, err := c.minter.Token(ctx, name, id, team)
-			return t.Token, err
-		}
-	}
-	return cl
+	return c.linearForTeam(cfg, team)
 }
 
 // linearRequestTimeout bounds one Linear request made off the tick by a
 // poller (JOB-103); the default client allows 30s.
 const linearRequestTimeout = 15 * time.Second
 
-// pollerLinear is newLinear with linearRequestTimeout per request.
-func (c *Controller) pollerLinear(url, name string, id config.Identity, team, token string) *linear.Client {
-	cl := c.newLinear(url, name, id, team, token)
-	cl.HTTP = telemetry.HTTPClient("linear", linearRequestTimeout)
-	return cl
+// pollerCtx bounds each request made with ctx by linearRequestTimeout.
+func pollerCtx(ctx context.Context) context.Context {
+	return apicall.WithRequestTimeout(ctx, linearRequestTimeout)
 }
 
 func (c *Controller) linearIssue(ctx context.Context, cfg *config.Config, key string) (linear.Issue, error) {
-	cl, err := c.linearClientIn(ctx, cfg, key)
+	cl, err := c.linearClientIn(cfg, key)
 	if err != nil {
 		return linear.Issue{}, err
 	}
@@ -171,7 +147,7 @@ func (c *Controller) linearIssue(ctx context.Context, cfg *config.Config, key st
 // needs-human ticket per key; ask_human also labels it a question.
 func (c *Controller) refuseIntake(ctx context.Context, cfg *config.Config, project, key string, x intakeExtra, a hooks.Answer) {
 	c.log.InfoContext(ctx, "intake refused", "issue", x.Issue, "source", x.Source, "decision", a.Decision, "reason", a.Reason)
-	if cl, err := c.linearClientIn(ctx, cfg, x.Issue); err != nil {
+	if cl, err := c.linearClientIn(cfg, x.Issue); err != nil {
 		c.log.WarnContext(ctx, "intake: label", "issue", x.Issue, "err", err)
 	} else {
 		lctx, cancel := context.WithTimeout(ctx, 2*time.Minute)

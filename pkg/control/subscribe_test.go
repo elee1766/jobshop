@@ -285,7 +285,8 @@ func TestSubscriptionsLinear(t *testing.T) {
 		}
 		nodes = append(nodes, fmt.Sprintf(`{"id":"c%d","body":%q,"url":"","createdAt":%q,"user":%s}`, len(nodes), body, at.Format(time.RFC3339Nano), u))
 	}
-	src := muxSource{gh: gh, linear: linearSource{c: c, url: srv.URL}}
+	c.linearURL = srv.URL
+	src := muxSource{gh: gh, linear: linearSource{c: c}}
 
 	sess := mkSession(t, c)
 	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"linear":{"workspace":"acme","issue":"ENG-5"},"github":{"repo":"acme/app"}}`)})

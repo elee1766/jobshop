@@ -282,7 +282,7 @@ func (c *Controller) rejectIssue(ctx context.Context, ref decisionRef, body stri
 }
 
 func (c *Controller) approveLinear(ctx context.Context, key, body string) error {
-	cl, err := c.linearClient(ctx, key)
+	cl, err := c.linearClient(key)
 	if err != nil {
 		return err
 	}
@@ -311,7 +311,7 @@ func (c *Controller) approveLinear(ctx context.Context, key, body string) error 
 }
 
 func (c *Controller) rejectLinear(ctx context.Context, key, body string) error {
-	cl, err := c.linearClient(ctx, key)
+	cl, err := c.linearClient(key)
 	if err != nil {
 		return err
 	}
