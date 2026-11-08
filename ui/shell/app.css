@@ -603,8 +603,15 @@ span.ticket-status { display: inline-block; }
 .ticket-status[data-status="closed"] { color: var(--status-closed); }
 .ticket-status[data-status="in_progress"] { color: var(--status-running); }
 .ticket-issue { display: block; width: fit-content; margin-left: var(--control-inset); font-size: var(--font-size-small); }
-.compact-pr { display: none; }
-@media (max-width: 899px) { .compact-pr { display: block; } }
+/* Reference columns (issue, pr) need room: the table's own width decides,
+   not the viewport, so an open chat rail or a narrow window stacks them under
+   the title instead. Each link is in the DOM twice and only one is shown. */
+.table-scroll.refs { container: refs / inline-size; }
+.ref-col { display: none; }
+@container refs (min-width: 720px) {
+  .ref-col { display: table-cell; }
+  .ref-stack { display: none; }
+}
 .trace-bottom { min-width: 0; min-height: 0; }
 .trace-bottom.watching { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .trace-bottom.watching > .inspector { overflow: auto; }

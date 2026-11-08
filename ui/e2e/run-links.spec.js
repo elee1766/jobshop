@@ -35,15 +35,29 @@ test('issue-started run shows no PR, then the PR its step records, without a rel
     const row = page.getByRole('region', { name: 'In flight', exact: true }).getByRole('row').filter({ has: page.locator(`.ticket-label[title*="${run.id}"]`) });
     await expect(row).toBeVisible();
     await expect(row.locator('a[href*="/pull/"]')).toHaveCount(0);
-    if (!isMobile) await expect(row.locator('td.wide').first()).toHaveText('–');
+    if (!isMobile) await expect(row.locator('td.ref-col').nth(1)).toHaveText('–');
     // A mention is not the run's PR, the handoff line is.
     await call('comment.add', { id: steps[0].id, body: 'related: https://github.com/acme/widget/pull/5' });
     await call('comment.add', { id: steps[0].id, body: 'PR https://github.com/acme/widget/pull/131 head abc1234' });
     // The wide layout shows the PR column, the compact one links beneath the title.
-    const link = row.locator(`${isMobile ? '.compact-pr' : 'td.wide a'}[href="https://github.com/acme/widget/pull/131"]`);
-    await expect(link).toBeVisible();
+    const link = row.locator('a[href="https://github.com/acme/widget/pull/131"]').locator('visible=true');
+    await expect(link).toHaveCount(1);
     await expect(link).toHaveText('widget#131');
+    await expect(link).toHaveClass(isMobile ? /ref-stack/ : /^$/);
     await expect(row.locator('a[href$="/pull/5"]')).toHaveCount(0);
+    // Desktop: labeled issue and pr columns beside the title. Compact: the same
+    // links stacked under it. Never both, and no horizontal overflow.
+    const headers = page.getByRole('region', { name: 'In flight', exact: true }).getByRole('columnheader');
+    if (isMobile) {
+      await expect(headers.filter({ hasText: /^issue$/ })).toHaveCount(0);
+      await expect(row.locator('td.ref-col').first()).toBeHidden();
+    } else {
+      await expect(headers.filter({ hasText: /^issue$/ })).toBeVisible();
+      await expect(headers.filter({ hasText: /^pr$/ })).toBeVisible();
+      await expect(row.locator('.ref-stack').first()).toBeHidden();
+    }
+    const over = await page.evaluate(() => { const s = document.querySelector('.table-scroll.refs'); return s.scrollWidth - s.clientWidth; });
+    expect(over).toBeLessThanOrEqual(0);
   } finally {
     await call('run.cancel', { id: run.id });
   }
