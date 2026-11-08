@@ -1,4 +1,4 @@
-package control
+package activity
 
 import (
 	"net/http"
@@ -20,7 +20,6 @@ import (
 // its own ETag, and a refused endpoint does not hide the others.
 func TestLiveActivityApp(t *testing.T) {
 	t.Parallel()
-	c, _, _ := activityController(t)
 	var mu sync.Mutex
 	inm := map[string][]string{}
 	var events int
@@ -65,9 +64,9 @@ func TestLiveActivityApp(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	l := &liveActivity{c: c}
+	l := &Live{C: fakeClients{}}
 	cl := github.New(srv.URL, apicall.Static("ghs_x"))
-	st := &repoPoll{}
+	st := &RepoPoll{}
 
 	items, err := l.fetchGitHub(t.Context(), cl, "o/r", st)
 	require.ErrorContains(t, err, "review_comments", "the refused endpoint is reported")

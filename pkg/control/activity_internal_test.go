@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,9 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/github"
+	"github.com/elee1766/jobshop/pkg/control/activity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -50,7 +47,7 @@ type fakeActivity struct {
 	err   error
 }
 
-func (f *fakeActivity) GitHub(_ context.Context, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
+func (f *fakeActivity) GitHub(_ context.Context, repo string, st *activity.RepoPoll) ([]rpc.ActivityItem, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls[repo]++
@@ -74,7 +71,7 @@ func activityController(t *testing.T) (*Controller, *scanClock, *fakeActivity) {
 	lc, err := newLiveConfig(cfg)
 	require.NoError(t, err)
 	c.live.Store(lc)
-	c.activity = c.loadActivity()
+	c.activitySvc().Load()
 	return c, clk, &fakeActivity{gh: map[string][]rpc.ActivityItem{}, calls: map[string]int{}}
 }
 
@@ -89,6 +86,9 @@ func listActivity(t *testing.T, c *Controller, p rpc.ActivityListParams) rpc.Act
 	return v.(rpc.ActivityListResult)
 }
 
+// TestActivityPollListAndLinks: the controller feeds polled items through
+// the inbox and admission into the feed, and listing links them to runs
+// and tickets from meta at list time.
 func TestActivityPollListAndLinks(t *testing.T) {
 	t.Parallel()
 	c, clk, src := activityController(t)
@@ -102,8 +102,8 @@ func TestActivityPollListAndLinks(t *testing.T) {
 	}
 	src.gh["elee1766/acphost"] = []rpc.ActivityItem{ghItem("elee1766/acphost", "3", "ci", "elee1766", "", now.Add(-30*time.Minute))}
 
-	assert.Equal(t, 3, c.pollActivity(t.Context(), c.activity, src))
-	assert.Equal(t, 0, c.pollActivity(t.Context(), c.activity, src), "items are deduped by id")
+	assert.Equal(t, 3, c.pollActivity(t, src))
+	assert.Equal(t, 0, c.pollActivity(t, src), "items are deduped by id")
 
 	res := listActivity(t, c, rpc.ActivityListParams{})
 	require.Len(t, res.Items, 3, "the 48h-old push is outside the 24h window")
@@ -111,27 +111,7 @@ func TestActivityPollListAndLinks(t *testing.T) {
 	assert.Equal(t, "ci", res.Items[0].Kind, "newest first")
 	assert.Equal(t, []string{run.ID}, res.Items[1].Tickets, "issue links to its run")
 	assert.Equal(t, []string{run.ID}, res.Items[2].Tickets, "a step's PR links to the step's run")
-
-	assert.Len(t, listActivity(t, c, rpc.ActivityListParams{Bots: "humans"}).Items, 2)
-	assert.Len(t, listActivity(t, c, rpc.ActivityListParams{Bots: "bots"}).Items, 1)
-	assert.Len(t, listActivity(t, c, rpc.ActivityListParams{Repo: "elee1766/acphost", Since: time.Hour}).Items, 1)
-	assert.Len(t, listActivity(t, c, rpc.ActivityListParams{Since: 45 * time.Minute}).Items, 1)
 	assert.Len(t, listActivity(t, c, rpc.ActivityListParams{Ticket: run.ID}).Items, 2)
-	assert.Len(t, listActivity(t, c, rpc.ActivityListParams{Kind: "review", Actor: "ELEE-AGENT[bot]"}).Items, 1)
-
-	// The cache survives a restart: a fresh load has the items and ETags.
-	re := c.loadActivity()
-	assert.Len(t, re.Items, 3)
-	assert.Equal(t, "etag-elee1766/jobshop", re.Repos["elee1766/jobshop"].EventsETag)
-
-	// The per-source bound (max_items 3) keeps the newest.
-	for i := range 5 {
-		src.gh["elee1766/acphost"] = append(src.gh["elee1766/acphost"], ghItem("elee1766/acphost", fmt.Sprint("n", i), "push", "x", "", now.Add(time.Duration(-i)*time.Minute)))
-	}
-	c.pollActivity(t.Context(), c.activity, src)
-	got := listActivity(t, c, rpc.ActivityListParams{Repo: "elee1766/acphost"}).Items
-	require.Len(t, got, 3)
-	assert.Equal(t, "gh:elee1766/acphost:n0", got[0].ID)
 }
 
 func TestActivityGrantAndOff(t *testing.T) {
@@ -145,98 +125,16 @@ func TestActivityGrantAndOff(t *testing.T) {
 	require.ErrorIs(t, err, store.ErrInvalid)
 }
 
-func TestActivityPollInterval(t *testing.T) {
-	t.Parallel()
-	c, clk, src := activityController(t)
-	c.activity.Repos["elee1766/jobshop"] = &repoPoll{Next: clk.now().Add(time.Minute)}
-	c.pollActivity(t.Context(), c.activity, src)
-	assert.Equal(t, 0, src.calls["elee1766/jobshop"], "X-Poll-Interval not yet passed")
-	assert.Equal(t, 1, src.calls["elee1766/acphost"])
-	clk.advance(2 * time.Minute)
-	c.pollActivity(t.Context(), c.activity, src)
-	assert.Equal(t, 1, src.calls["elee1766/jobshop"])
+// pollActivity runs one poll pass on src.
+func (c *Controller) pollActivity(t *testing.T, src activity.Source) int {
+	t.Helper()
+	return c.activitySvc().Poll(t.Context(), src)
 }
 
-func TestActivityErrorLoggedOnce(t *testing.T) {
-	t.Parallel()
-	c, _, src := activityController(t)
-	s := c.activity
-	src.err = fmt.Errorf("boom")
-	c.pollActivity(t.Context(), s, src)
-	c.pollActivity(t.Context(), s, src)
-	assert.Equal(t, "boom", s.errs["github:elee1766/jobshop"])
-	src.err = nil
-	c.pollActivity(t.Context(), s, src)
-	assert.Empty(t, s.errs)
-}
-
-// TestLiveActivityETag runs the HTTP source against a fake GitHub: the
-// second poll sends If-None-Match and a 304 yields nothing.
-func TestLiveActivityETag(t *testing.T) {
-	t.Parallel()
-	c, _, _ := activityController(t)
-	var mu sync.Mutex
-	var inm []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		defer mu.Unlock()
-		switch {
-		case strings.HasSuffix(r.URL.Path, "/events"):
-			inm = append(inm, r.Header.Get("If-None-Match"))
-			w.Header().Set("X-Poll-Interval", "60")
-			if r.Header.Get("If-None-Match") == `W/"e1"` {
-				w.WriteHeader(http.StatusNotModified)
-				return
-			}
-			w.Header().Set("ETag", `W/"e1"`)
-			_, _ = w.Write([]byte(`[{"id":"9","type":"IssueCommentEvent","actor":{"login":"elee1766"},"created_at":"2026-11-03T07:00:00Z",
-			  "payload":{"action":"created","issue":{"number":255,"title":"Desk","html_url":"https://github.com/o/r/issues/255"},"comment":{"body":"hi","html_url":"https://github.com/o/r/issues/255#c"}}}]`))
-		case strings.HasSuffix(r.URL.Path, "/actions/runs"):
-			assert.Equal(t, "main", r.URL.Query().Get("branch"))
-			_, _ = w.Write([]byte(`{"workflow_runs":[{"id":5,"run_attempt":1,"name":"ci","display_title":"x","conclusion":"failure","head_branch":"main","html_url":"u","updated_at":"2026-11-03T07:30:00Z","actor":{"login":"elee1766"}}]}`))
-		default:
-			_, _ = w.Write([]byte(`{"default_branch":"main"}`))
-		}
-	}))
-	defer srv.Close()
-	l := &liveActivity{c: c}
-	cl := github.New(srv.URL, apicall.Static("t"))
-	st := &repoPoll{}
-	// Point the host-token path at the fake.
-	items, err := l.fetchGitHub(t.Context(), cl, "o/r", st)
-	require.NoError(t, err)
-	require.Len(t, items, 2)
-	assert.Equal(t, "comment", items[0].Kind)
-	assert.Equal(t, "255", items[0].Ref)
-	assert.Equal(t, "hi", items[0].Body)
-	assert.Equal(t, "ci", items[1].Kind)
-	assert.False(t, st.Next.IsZero())
-	items, err = l.fetchGitHub(t.Context(), cl, "o/r", st)
-	require.NoError(t, err)
-	assert.Equal(t, "ci", items[0].Kind, "runs have no ETag here, events 304")
-	assert.Len(t, items, 1)
-	assert.Equal(t, []string{"", `W/"e1"`}, inm)
-}
-
-func TestParseRepoEvents(t *testing.T) {
-	t.Parallel()
-	body := `[
-	 {"id":"1","type":"PushEvent","actor":{"login":"elee-agent[bot]"},"created_at":"2026-11-03T07:00:00Z","payload":{"ref":"refs/heads/issue-1","head":"bbbbbbbbbbbbbbbb","before":"aaaaaaaaaaaaaaaa"}},
-	 {"id":"2","type":"PullRequestEvent","actor":{"login":"elee-agent[bot]"},"created_at":"2026-11-03T07:00:00Z","payload":{"action":"merged","number":254,"pull_request":{"number":254}}}, 
-	 {"id":"3","type":"PullRequestReviewEvent","actor":{"login":"elee1766"},"created_at":"2026-11-03T07:00:00Z","payload":{"action":"created","pull_request":{"number":7,"title":"T","html_url":"https://github.com/o/r/pull/7"},"review":{"state":"changes_requested","body":"no","html_url":"https://github.com/o/r/pull/7#r"}}},
-	 {"id":"4","type":"DeleteEvent","actor":{"login":"x"},"created_at":"2026-11-03T07:00:00Z","payload":{"ref":"issue-1","ref_type":"branch"}},
-	 {"id":"5","type":"IssueCommentEvent","actor":{"login":"x"},"created_at":"2026-11-03T07:00:00Z","payload":{"action":"edited","issue":{"number":1}}},
-	 {"id":"6","type":"WatchEvent","actor":{"login":"x"},"created_at":"2026-11-03T07:00:00Z","payload":{}}
-	]`
-	items, err := parseRepoEvents("o/r", []byte(body))
-	require.NoError(t, err)
-	require.Len(t, items, 4)
-	assert.Equal(t, "push", items[0].Kind)
-	assert.True(t, items[0].Bot)
-	assert.Equal(t, "https://github.com/o/r/compare/aaaaaaaaaaaa...bbbbbbbbbbbb", items[0].URL)
-	assert.Equal(t, "merge", items[1].Kind)
-	assert.Equal(t, "254", items[1].Ref)
-	assert.True(t, items[1].PR)
-	assert.Equal(t, "review changes requested on PR #7: T", items[2].Title)
-	assert.Equal(t, "branch", items[3].Kind)
+// forgetActivity drops the feed cache file and the loaded service, as a
+// lost cache directory would.
+func (c *Controller) forgetActivity(t *testing.T) {
+	t.Helper()
+	require.NoError(t, os.Remove(filepath.Join(c.root.Dir, activity.File)))
+	c.activity = activity.New(activityHost{c}, c.log, c.root.Dir)
 }

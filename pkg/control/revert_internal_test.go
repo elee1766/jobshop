@@ -79,11 +79,11 @@ func TestRevertLearning(t *testing.T) {
 		mergeItem("m270", 270, now.Add(-3*time.Minute)),
 		mergeItem("m281", 281, now.Add(-2*time.Minute)),
 	}
-	c.pollActivity(t.Context(), c.activity, src)
+	c.pollActivity(t, src)
 	assert.Empty(t, revertLearnings(t, c), "a non-revert and a revert of a non-jobshop PR record nothing")
 
 	fa.gh[revRepo] = append(fa.gh[revRepo], mergeItem("m271", 271, now.Add(-time.Minute)))
-	c.pollActivity(t.Context(), c.activity, src)
+	c.pollActivity(t, src)
 	ls := revertLearnings(t, c)
 	require.Len(t, ls, 1)
 	l := ls[0]
@@ -95,9 +95,8 @@ func TestRevertLearning(t *testing.T) {
 	assert.Contains(t, l.Fix, "broke deploy")
 
 	// Seen again (cache lost, the event re-listed): still one learning.
-	c.activity = c.loadActivity()
-	c.activity.Items, c.activity.seen = nil, map[string]struct{}{}
-	c.pollActivity(t.Context(), c.activity, src)
+	c.forgetActivity(t)
+	c.pollActivity(t, src)
 	assert.Len(t, revertLearnings(t, c), 1, "a revert is recorded once")
 }
 
