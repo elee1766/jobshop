@@ -633,11 +633,11 @@
                   Showing the first 100 runs. Narrow the controller query for
                   more.
                 </p>{/if}
-              <div class="table-scroll">
+              <div class="table-scroll refs">
                 <table class="mono">
                   <thead
                     ><tr
-                      ><th title="Status: O open, R running, C closed">s</th><th>ticket</th><th class="wide">pr</th><th>step</th><th
+                      ><th title="Status: O open, R running, C closed">s</th><th>ticket</th><th class="ref-col">issue</th><th class="ref-col">pr</th><th>step</th><th
                         >waiting</th
                       ><th
                         ><button onclick={() => (sortOldest = !sortOldest)}
@@ -654,8 +654,10 @@
                               e.shiftKey
                                 ? attach([row.ref])
                                 : openTrace(row.id)}><span>{row.title || row.ref}</span></button
-                          >{#if row.issueURL}<a class="ticket-issue" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}{#each row.prs as pr (pr.url)}<a class="ticket-issue compact-pr" href={pr.url} target="_blank" rel="noopener noreferrer">{pr.label}</a>{/each}</td
-                        ><td class="wide"
+                          >{#if row.issueURL}<a class="ticket-issue ref-stack" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}{#each row.prs as pr (pr.url)}<a class="ticket-issue ref-stack" href={pr.url} target="_blank" rel="noopener noreferrer">{pr.label}</a>{/each}</td
+                        ><td class="ref-col"
+                          >{#if row.issueURL}<a href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{:else}–{/if}</td
+                        ><td class="ref-col"
                           >{#each row.prs as pr, i (pr.url)}{#if i}, {/if}<a href={pr.url} target="_blank" rel="noopener noreferrer">{pr.label}</a>{:else}–{/each}</td
                         ><td>{row.step}</td><td>{@html md(row.waiting, true)}</td><td
                           title={row.source}>{ago(row.since, now)}</td
