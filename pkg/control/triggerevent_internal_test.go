@@ -78,7 +78,7 @@ func fireEvents(c *Controller, items ...store.InboxItem) {
 // command sees the event fields.
 func TestEventTrigger(t *testing.T) {
 	t.Parallel()
-	c, _, dir := stallControllerYAML(t, eventTriggerYAML)
+	c, _, dir := scanControllerYAML(t, eventTriggerYAML)
 
 	fireEvents(c, workflowRun("d1", "feature", "success", "aaa"))
 	assert.Empty(t, triggerTickets(t, c, "green"), "other branch")
@@ -101,7 +101,7 @@ func TestEventTrigger(t *testing.T) {
 // fallback; with no event the poll still fires.
 func TestEventTriggerFallback(t *testing.T) {
 	t.Parallel()
-	c, clk, dir := stallControllerYAML(t, eventTriggerYAML)
+	c, clk, dir := scanControllerYAML(t, eventTriggerYAML)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "red"), []byte("sha1\n"), 0o600))
 	c.root = config.Root{Dir: dir}
 
@@ -127,7 +127,7 @@ func TestEventTriggerFallback(t *testing.T) {
 // needs-human record that holds the trigger.
 func TestEventTriggerCommandFails(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallControllerYAML(t, eventTriggerYAML)
+	c, _, _ := scanControllerYAML(t, eventTriggerYAML)
 	push := func(id, sha string) store.InboxItem {
 		p, _ := json.Marshal(map[string]any{"ref": "refs/heads/broken", "after": sha})
 		return store.InboxItem{Source: "github", DeliveryID: id, Kind: "push", RepoOrTeam: "acme/app", Payload: p}

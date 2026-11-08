@@ -34,12 +34,15 @@ const ActionLinearAPIMutation = "linear-api-mutation"
 type Hook struct {
 	On string `yaml:"on"`
 	// Exactly one of Command (sh -c in the root dir, JSON on stdin, the
-	// answer on stdout) and URL (HTTP POST of the JSON, the answer in the
-	// response body, signed with SecretFile like admission url hooks).
-	Command    string    `yaml:"command"`
-	URL        string    `yaml:"url"`
-	SecretFile Secret    `yaml:"secret_file"`
-	Retry      HTTPRetry `yaml:"retry"` // url only
+	// answer on stdout), URL (HTTP POST of the JSON, the answer in the
+	// response body, signed with SecretFile like admission url hooks) and
+	// Handler (a Starlark file.star:function called as fn(event, args)).
+	Command    string         `yaml:"command"`
+	URL        string         `yaml:"url"`
+	Handler    string         `yaml:"handler,omitempty"`
+	Args       map[string]any `yaml:"args,omitempty"`
+	SecretFile Secret         `yaml:"secret_file"`
+	Retry      HTTPRetry      `yaml:"retry"` // url only
 	// Actions limits an action hook to these action names; empty is all.
 	Actions []string `yaml:"actions"`
 	// Pools limits the hook to sessions of these pools; empty is all.
@@ -63,8 +66,20 @@ func (c *Config) checkHook(h Hook) error {
 	if !slices.Contains(HookPoints, h.On) {
 		return fmt.Errorf("on %q must be one of %v", h.On, HookPoints)
 	}
-	if err := checkHookURL(h.Command, h.URL, h.SecretFile, h.Retry); err != nil {
+	if h.Handler != "" {
+		if h.Command != "" || h.URL != "" {
+			return errors.New("set exactly one of command, url and handler")
+		}
+		if h.On == HookIntake {
+			return errors.New("handler is not supported for on: intake")
+		}
+		if !h.SecretFile.IsZero() || h.Retry != (HTTPRetry{}) {
+			return errors.New("secret_file and retry are for url hooks")
+		}
+	} else if err := checkHookURL(h.Command, h.URL, h.SecretFile, h.Retry); err != nil {
 		return err
+	} else if len(h.Args) > 0 {
+		return errors.New("args needs handler")
 	}
 	if len(h.Actions) > 0 && (h.On == HookClaim || h.On == HookIntake) {
 		return errors.New("actions needs on: action or merge")

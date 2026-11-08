@@ -1,5 +1,3 @@
-def handle(event, args):
-    # The controller admits timers only after the learnings or edits gate passes.
-    if event.source != "timer" or event.event != "timer":
-        return []
+# The controller calls this only once the learnings or edits gate holds.
+def start(event, args):
     return [start_run(workflow = args["workflow"], key = args["key"])]

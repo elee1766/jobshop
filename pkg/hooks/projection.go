@@ -35,6 +35,7 @@ type hookPublicInvocation struct {
 	ParentInvocation string           `json:"parent_invocation,omitempty"`
 	Targets          any              `json:"targets,omitempty"`
 	Trigger          string           `json:"trigger,omitempty"`
+	Sync             string           `json:"sync,omitempty"`
 	Run              string           `json:"run,omitempty"`
 	Step             string           `json:"step,omitempty"`
 	StepRevision     int64            `json:"step_revision,omitempty"`
@@ -92,7 +93,7 @@ type hookPublicCall struct {
 
 // Public evidence is saved before credentials can rotate or be removed.
 func (c *Engine) hookInvocationPublic(in Invocation) json.RawMessage {
-	out := hookPublicInvocation{AcceptedAt: in.AcceptedAt, ParentInvocation: in.ParentInvocation, Trigger: in.Trigger, Run: in.Run, Step: in.Step, StepRevision: in.StepRevision, Entry: in.Entry, Digest: in.Digest, Error: c.hookAuditText(in.Error)}
+	out := hookPublicInvocation{AcceptedAt: in.AcceptedAt, ParentInvocation: in.ParentInvocation, Trigger: in.Trigger, Sync: in.Sync, Run: in.Run, Step: in.Step, StepRevision: in.StepRevision, Entry: in.Entry, Digest: in.Digest, Error: c.hookAuditText(in.Error)}
 	if in.Event != nil {
 		out.Event = &hookPublicEvent{Source: in.Event.Source, Event: in.Event.Event, Delivery: in.Event.Delivery, Repository: in.Event.Repository}
 	}
@@ -282,7 +283,7 @@ func (c *Engine) publicHookInvocation(rec store.Record, summary bool) (store.Rec
 	if DecodeJSON(rec.Value, &in) != nil {
 		return store.Record{}, errors.New("invalid automation invocation evidence")
 	}
-	out := hookPublicInvocation{AcceptedAt: in.AcceptedAt, ParentInvocation: in.ParentInvocation, Trigger: in.Trigger, Run: in.Run, Step: in.Step, StepRevision: in.StepRevision, Entry: in.Entry, Digest: in.Digest}
+	out := hookPublicInvocation{AcceptedAt: in.AcceptedAt, ParentInvocation: in.ParentInvocation, Trigger: in.Trigger, Sync: in.Sync, Run: in.Run, Step: in.Step, StepRevision: in.StepRevision, Entry: in.Entry, Digest: in.Digest}
 	if in.Public != nil && DecodeJSON(in.Public, &out) != nil {
 		return store.Record{}, errors.New("invalid public automation invocation evidence")
 	}

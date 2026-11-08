@@ -17,7 +17,7 @@ import (
 // dispatchController is a subController with admission hooks, a working
 // session holding a ticket that follows acme/widget#7, and the thread
 // registered.
-func dispatchController(t *testing.T, hooks ...config.AdmissionHook) (*Controller, *stallClock, *fakeThreads, store.Ticket) {
+func dispatchController(t *testing.T, hooks ...config.AdmissionHook) (*Controller, *scanClock, *fakeThreads, store.Ticket) {
 	t.Helper()
 	c, clk, src := subController(t)
 	cfg := *c.config()
@@ -33,7 +33,7 @@ func dispatchController(t *testing.T, hooks ...config.AdmissionHook) (*Controlle
 	return c, clk, src, sess
 }
 
-func comment(clk *stallClock, id, body string) ghComment {
+func comment(clk *scanClock, id, body string) ghComment {
 	return ghComment{ID: id, Author: "bob", Kind: "comment", Body: body, At: clk.now().Add(time.Minute).Truncate(time.Second)}
 }
 

@@ -37,7 +37,7 @@ func grantPool(t *testing.T, c *Controller, pool string, grants ...string) {
 // the same chat and the reaction reports it.
 func TestQuestionAnswerGrant(t *testing.T) {
 	t.Parallel()
-	c, _, _ := stallController(t)
+	c, _, _ := scanController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
 	step := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev"})

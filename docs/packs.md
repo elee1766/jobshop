@@ -68,22 +68,21 @@ first turn. `prompt_rules` add text to many pools at once: `text` or
 `when:` holds:
 - count: `pool` with `ready_below`, `open_above` and so on;
 - `cron` (with `timezone`);
-- `check`: a shell command; non-empty output fires, `{{.check_output}}`
-  holds it;
-- `stall`: stall signals (`ready_unclaimed`, `step_stalled`,
-  `needs_human`, ...) each with an `after` threshold.
+- `scan`: scan signals (`ready_unclaimed`, `step_idle`, `needs_human`,
+  ...) each with an `after` threshold, or a Starlark `script` that
+  returns `{subject: detail}` findings.
 
-`on:` (GitHub or Linear webhook matches) fires a trigger when a
-delivery arrives, and `fallback` sets how often it is polled otherwise;
-on a stall trigger an event re-runs its signals, and a check may use
-`{{.event.pr}}` and the other event fields
-([notes](notes/JOB-62-event-triggers.md),
-[stall](notes/JOB-72-stall-event-triggers.md)).
+`handler: <file>.star:<function>` runs a Starlark function instead of a
+fixed `run:` or `ticket:`; it reads the store and GitHub and returns the
+actions to apply. `on:` (GitHub or Linear webhook matches) fires a
+trigger when a delivery arrives, and `fallback` sets how often it is
+polled otherwise; on a scan trigger an event re-runs its signals. See
+[callbacks](configuration/callbacks.md).
 
 `cooldown` and `max_runs` limit how often a trigger fires; `max_open`
-caps a stall trigger's open runs (default 3). A stall trigger's runs are
-keyed `stall:<signal>:<subject>`; `run.key_prefix` replaces `stall` for
-intake triggers ([notes](notes/JOB-95-stall-key-prefix.md)).
+caps a scan trigger's open runs (default 3). A scan trigger's runs are
+keyed `scan:<signal>:<subject>`; `run.key_prefix` replaces `scan` for
+intake triggers.
 
 **Workflows** are how work moves from one pool to the next. A run is
 one ticket per step, each blocked on the one before, so step 2 is
@@ -105,7 +104,7 @@ frees when the step's claim ends.
 
 **Turning an entry off.** `enabled: false` on a pool, workflow or
 trigger keeps it validated but not loaded: nothing fires, starts or
-spawns, and stall checks skip it. It takes a template
+spawns, and scans skip it. It takes a template
 (`enabled: "{{.flow_on}}"`), so a host can switch it per instance. A
 live entry that needs a disabled one fails to load
 ([notes](notes/JOB-24-enabled-false.md)).
@@ -194,11 +193,11 @@ loads it. Keep the two in sync.
   command answers `{"decision":"ask_human"}`; the merge waits on a
   `needs-human` ticket (`docs/notes/188-guardrail-hooks.md`). Or end the
   review step's prompt with `jobshop report waiting ... --question`.
-- **Intake or triage in front.** A `triage` pool and a trigger (`check`
-  on new issues, or a count) that starts a `triage` step; its prompt
+- **Intake or triage in front.** A `triage` pool and a trigger (a
+  handler on new issues, or a count) that starts a `triage` step; its prompt
   runs `jobshop run start change ...` for work worth doing.
 - **Linear instead of GitHub issues.** Prompts use `jobshop linear`
-  instead of `gh`; a `linear_issue_no_run` stall signal starts runs.
+  instead of `gh`; a `linear_issue_no_run` scan signal starts runs.
   `packs/github` with `tracker: linear` shows the whole setup.
   Anything the fixed subcommands miss: `jobshop linear api` (raw
   GraphQL, like `gh api`; mutations ask the `linear-api-mutation`
@@ -231,9 +230,9 @@ loads it. Keep the two in sync.
 
 - `packs/github`: works one GitHub repo (or Linear team) through issues
   and PRs: planner, `pr-work` (implement, review-merge, post-merge),
-  `ci-repair` and `stall-check`.
-- `packs/selfdev`: `packs/github` extended with the values we use to
-  build Jobshop itself.
+  `ci-repair` and `triage`.
+- `packs/selfdev`: `packs/github` composed in CUE with the values we use
+  to build Jobshop itself, plus the curator.
 - `packs/operator`: a chat pool for the operator to manage tickets,
   issues and runs across instances.
 

@@ -1,10 +1,8 @@
-Step `diagnose` of a `stall-check` run: signal `{{.signal}}` on `{{.subject}}`.
+Step `diagnose` of a `triage` run: the scan reported signal `{{.signal}}` on
+`{{.subject}}`: {{.detail}}
 
-The controller saw work stop moving: {{.detail}}
-
-Find out why from current state, not from what tickets claim, and get
-the work moving again. Nobody else is watching; if you do nothing the
-pool stays idle.
+Find out what it needs from current state, not from what tickets claim,
+and act on it. Nobody else is watching; if you do nothing it stays as it is.
 
 What the signal means and where to start:
 - `ready_unclaimed`: ticket `{{.subject}}` is ready in its pool but no
@@ -14,7 +12,7 @@ What the signal means and where to start:
 - `pool_quarantined`: the pool before `@` crash-looped and is paused.
   Read the last session dirs' exit reason and journal (`jobshop session
   list`, `jobshop ticket trace` of what they held).
-- `step_stalled`: step `{{.subject}}` is held but nothing was recorded on
+- `step_idle`: step `{{.subject}}` is held but nothing was recorded on
   it for a long time. `jobshop ticket show {{.subject}}`, its run (`jobshop
   run show <parent_id>`), the holder's journal.
 - `session_silent`: session `{{.subject}}` holds a ticket but its agent
@@ -42,7 +40,7 @@ What the signal means and where to start:
   question in the thread), comment why on the issue (`jobshop linear
   comment {{.subject}} "<why>"`) and close. An issue that should never
   get a run (a tracking issue, one waiting on a person) gets a skip
-  label so this stall stops firing: `jobshop linear label {{.subject}}
+  label so this signal stops firing: `jobshop linear label {{.subject}}
   add <one of {{.linear_skip_labels}}>`. Only touch Linear team
   {{.linear_team}}; never read or write another team's issues.
 - `pr_unmerged`: PR #{{.subject}} has green checks but is not merged.
@@ -101,8 +99,8 @@ and short output), what is wrong, what would unblock it.
 
 Record what you found and did with `jobshop comment` on this step, and
 on the issue if there is one (`gh issue comment <n>`). Then `jobshop
-close` when the work is moving again. Earlier stall-check runs for this
-stall are listed by `jobshop run list` with key `stall:{{.signal}}:{{.subject}}`;
+close` when the work is moving again. Earlier triage runs for this
+subject are listed by `jobshop run list` with key `scan:{{.signal}}:{{.subject}}`;
 if the same fix did not hold last time, escalate.
 
 Do not release this step (a release counts as the failed attempt).

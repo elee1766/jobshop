@@ -20,20 +20,20 @@ func (c *Controller) resourceWaitSince(ctx context.Context, t store.Ticket) (tim
 	return c.lastUnblocked(ctx, t, last)
 }
 
-// waitText is how run show and stalls describe a wait.
+// waitText is how run show and findings describe a wait.
 func waitText(w store.ResourceWait) string {
 	return fmt.Sprintf("waiting on %s, %d ahead (%d/%d held)", w.Key, w.Ahead, w.Held, w.Capacity)
 }
 
-// stallResourceWait: tickets held back only by a full resource for
+// signalResourceWait: tickets held back only by a full resource for
 // after (#408). They are out of the ready frontier, so ready_unclaimed
 // does not see them.
-func (c *Controller) stallResourceWait(ctx context.Context, now time.Time, after time.Duration) ([]stall, error) {
+func (c *Controller) signalResourceWait(ctx context.Context, now time.Time, after time.Duration) ([]finding, error) {
 	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	var out []stall
+	var out []finding
 	for _, w := range rep.Waits {
 		t, err := c.store.Get(ctx, w.Ticket)
 		if err != nil {
@@ -44,7 +44,7 @@ func (c *Controller) stallResourceWait(ctx context.Context, now time.Time, after
 			return nil, err
 		}
 		if now.Sub(since) >= after {
-			out = append(out, stall{config.StallResourceWait, t.ID, fmt.Sprintf("%s for %s", waitText(w), ago(now, since))})
+			out = append(out, finding{config.SignalResourceWait, t.ID, fmt.Sprintf("%s for %s", waitText(w), ago(now, since))})
 		}
 	}
 	return out, nil

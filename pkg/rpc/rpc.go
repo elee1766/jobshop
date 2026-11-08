@@ -1190,8 +1190,8 @@ type TriggerInfo struct {
 	Labels    []string   `json:"labels,omitempty"`
 	LastFired *time.Time `json:"last_fired,omitempty"`
 	NextCron  *time.Time `json:"next_cron,omitempty"`
-	// Stalls are the stall keys a stall trigger would start runs for.
-	Stalls []string `json:"stalls,omitempty"`
+	// Findings are the scan keys a scan trigger would start runs for.
+	Findings []string `json:"findings,omitempty"`
 }
 
 // ConfigShowResult is the active merged config, keyed as in jobshop.yaml,

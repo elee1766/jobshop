@@ -17,7 +17,7 @@ import (
 
 // workerController is an admissionController in ingest.workers external
 // mode, started now on the fake clock.
-func workerController(t *testing.T, hooks []config.AdmissionHook, edit func(*config.Ingest)) (*Controller, *stallClock) {
+func workerController(t *testing.T, hooks []config.AdmissionHook, edit func(*config.Ingest)) (*Controller, *scanClock) {
 	t.Helper()
 	c, clk := admissionController(t, hooks)
 	cfg := *c.config()
@@ -144,7 +144,7 @@ func TestIngestMissingWorkerAttention(t *testing.T) {
 	assert.Empty(t, attentionIDs(t, c))
 	clk.advance(6 * time.Minute)
 	assert.Equal(t, []string{"ingest-worker"}, attentionIDs(t, c), "no worker since start")
-	s, err := c.stallIngest(t.Context(), c.config(), config.StallIngestWorker)
+	s, err := c.signalIngest(t.Context(), c.config(), config.SignalIngestWorker)
 	require.NoError(t, err)
 	require.Len(t, s, 1)
 
@@ -171,7 +171,7 @@ func TestIngestBacklogAttention(t *testing.T) {
 	assert.Empty(t, attentionIDs(t, c), "not old enough")
 	clk.advance(6 * time.Minute)
 	assert.Equal(t, []string{"ingest-backlog"}, attentionIDs(t, c))
-	s, err := c.stallIngest(t.Context(), c.config(), config.StallIngestBacklog)
+	s, err := c.signalIngest(t.Context(), c.config(), config.SignalIngestBacklog)
 	require.NoError(t, err)
 	require.Len(t, s, 1)
 	assert.Contains(t, s[0].detail, "2 pending")

@@ -94,7 +94,7 @@ func (c *Controller) maybeQuarantine(ctx context.Context, id string) {
 // poolCrashed records a crashed session of pool, ended by reason, and
 // pauses the pool when poolCrashes happened within poolCrashWindow. The
 // pause keeps the last reason and the pool's failed preflight checks
-// (JOB-27), so attention and the stall detail name the error.
+// (JOB-27), so attention and the finding detail name the error.
 func (c *Controller) poolCrashed(pool, reason string) {
 	if pool == "" {
 		return

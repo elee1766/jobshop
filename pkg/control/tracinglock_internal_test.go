@@ -19,7 +19,7 @@ func tracedController(t *testing.T, yaml string) (*Controller, *tracetest.InMemo
 	exp := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
 	t.Cleanup(func() { _ = tp.Shutdown(context.WithoutCancel(t.Context())) })
-	c, _, _ := stallControllerYAML(t, yaml)
+	c, _, _ := scanControllerYAML(t, yaml)
 	c.tracer = tp.Tracer("test")
 	return c, exp
 }

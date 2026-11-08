@@ -43,24 +43,17 @@ list/show/resume need no grant.
 | `agent` | Agent name defined in the host's jobshop.yaml |
 | `operator_sessions` | `max_sessions` for the pool. Default 0 (manual) |
 
-`repo` is the old name of `jobshop_repo`; it still works for one
-release and logs a warning (`renamed_vars` in pack.yaml, #261).
+The pack is CUE (`pack.cue`, `#Pack`). Compose it from the host's root
+CUE file next to the repo packs:
 
-```yaml
-packs:
-  - path: /var/lib/jobshop/src/jobshop/packs/selfdev
-    vars: {repo: /var/lib/jobshop/src/jobshop, agent: jcode}
-  - path: /var/lib/jobshop/src/jobshop/packs/github
-    prefix: acphost-
-    vars: {repo: elee1766/acphost, checkout: /var/lib/jobshop/src/acphost, agent: jcode, human: elee1766, check_cmd: make test}
-  - path: /var/lib/jobshop/src/jobshop/packs/operator
-    vars: {jobshop_repo: elee1766/jobshop, checkout: /var/lib/jobshop/src/jobshop, agent: jcode}
+```cue
+import operatorpack "github.com/elee1766/jobshop/packs/operator"
+
+packs: operator: operatorpack.#Pack & {
+	path: "packs/operator"
+	vars: {jobshop_repo: "elee1766/jobshop", checkout: "/var/lib/jobshop/src/jobshop", agent: "jcode"}
+}
 ```
-
-`packs/selfdev` no longer includes this pack. With the NixOS module, add
-the entry to `settings.packs` with the jobshop workspace's directory as
-the path (not to `livePacks`: those share the workspace's vars and
-prefix).
 
 ## Improvement sessions
 
@@ -80,6 +73,6 @@ it. Example: `jobshop run start pr-work --var issue=301 --key issue-301`,
 `jobshop run show <run>`, `jobshop comment -t <implement step> "PR
 https://github.com/elee1766/jobshop/pull/302 head 1a2b3c4"`.
 
-The pack's `push` action hook denies `jobshop guard push --target`
-master or main (any ref form) and a push with no target for the
-`operator` pool. Notes: `docs/notes/249-improvement-sessions.md`.
+The pack's `push` action hook (`guard.star:push`) denies `jobshop guard
+push --target` master or main (any ref form) and a push with no target
+for the `operator` pool. Notes: `docs/notes/249-improvement-sessions.md`.

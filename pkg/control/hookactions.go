@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -93,8 +94,10 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAu
 			if action.RetryPool != "" || f.RetryPool != "" {
 				want["pool:"+action.RetryPool] = f.RetryPool
 			}
+		case ticket.Kind == store.KindTask && action.Kind == "create_ticket" && action.Pool != "":
+			want["pool:"+action.Pool] = ticket.Pool
 		default:
-			continue // a step of a planned static run, from buildRun
+			continue // a step of a planned static run, from buildRun, or a task without a pool
 		}
 		for ref, planned := range want {
 			kind, name, _ := strings.Cut(ref, ":")
@@ -211,6 +214,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 	finished := false
 	newSteps := 0
 	started := map[string]string{}
+	created := map[string]bool{}
 	for i, action := range in.Actions {
 		switch action.Kind {
 		case "start_run":
@@ -229,7 +233,14 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			}
 			extra := map[string]any{"automation": map[string]any{"invocation": key, "action": i}}
 			if in.Trigger != "" {
-				extra[triggerPack] = map[string]any{"name": in.Trigger, "key": in.Trigger + "/" + key}
+				// trigger/<run key>, as a static run: action keys dedup
+				// across invocations and finding history reads them.
+				m := map[string]any{"name": in.Trigger, "key": in.Trigger + "/" + rp.params.Key}
+				if in.Event != nil && in.Event.Source == hooks.ScanSource {
+					// The #704 hold and max_runs read the finding id on its runs.
+					m[findingMetaKey] = in.Event.Delivery
+				}
+				extra[triggerPack] = m
 			}
 			graph, err := c.buildRun(lc.cfg, rp.plan, rp.params, extra, "")
 			if err != nil {
@@ -368,6 +379,20 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			fields.Automation.Output = action.Output
 			g.Close[run.ID] = action.Outcome
 			finished = true
+		case "create_ticket":
+			nt, skip, err := c.planHookTicket(ctx, lc.cfg, key, i, in, fields.Automation, action, created)
+			if err != nil {
+				return g, err
+			}
+			if !skip {
+				created[action.Key] = true
+				g.Tickets = append(g.Tickets, nt)
+			}
+		case "comment":
+			if _, err := c.store.Get(ctx, action.Ticket); err != nil {
+				return g, fmt.Errorf("comment on %s: %w", action.Ticket, err)
+			}
+			g.Comments = append(g.Comments, store.GraphComment{TicketID: action.Ticket, Body: action.Body})
 		default:
 			return g, fmt.Errorf("unsupported action %q", action.Kind)
 		}
@@ -388,23 +413,98 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 		g.Fields[run.ID] = data
 	}
-	if in.Trigger != "" && lc.cfg.Triggers[in.Trigger].MaxOpen > 0 {
+	if tr := lc.cfg.Triggers[in.Trigger]; in.Trigger != "" && (tr.MaxOpen > 0 || len(tr.When.Scan) > 0) {
+		limit := tr.MaxOpen
+		if len(tr.When.Scan) > 0 {
+			limit = tr.ScanMaxOpen()
+		}
 		n := 0
 		for _, nt := range g.Tickets {
-			if nt.Kind == store.KindRun {
+			if nt.Kind == store.KindRun || nt.Kind == store.KindTask {
 				n++
 			}
 		}
-		for _, status := range []store.Status{store.StatusOpen, store.StatusInProgress} {
-			tickets, err := c.store.List(ctx, store.Filter{MetaPack: triggerPack, MetaKey: "name", MetaValue: in.Trigger, Status: status, Limit: store.NoLimit})
-			if err != nil {
-				return g, err
-			}
-			n += len(tickets)
+		open, err := c.triggerOpen(ctx, in.Trigger)
+		if err != nil {
+			return g, err
 		}
-		if n > lc.cfg.Triggers[in.Trigger].MaxOpen {
-			return g, errors.New("returned run batch exceeds trigger max_open")
+		n += open
+		if n > limit {
+			return g, errors.New("returned batch exceeds trigger max_open")
 		}
 	}
 	return g, nil
+}
+
+// triggerOpen counts the open runs and tasks a trigger filed. Steps of its
+// runs carry no meta.trigger, but are excluded by kind in case one does.
+func (c *Controller) triggerOpen(ctx context.Context, name string) (int, error) {
+	ts, err := c.store.List(ctx, store.Filter{
+		MetaPack: triggerPack, MetaKey: "name", MetaValue: name,
+		Kinds:    []store.Kind{store.KindRun, store.KindTask},
+		Statuses: []store.Status{store.StatusOpen, store.StatusInProgress}, Limit: store.NoLimit,
+	})
+	return len(ts), err
+}
+
+// planHookTicket builds a create_ticket action's task. Its key dedups per
+// trigger or workflow: an open ticket with the same key, or one earlier in
+// the batch, makes the action a no-op (skip). The project is the pool's,
+// else the parent's, else the run's. A trigger's ticket carries
+// meta.trigger, so it holds the trigger like its runs (max_open).
+func (c *Controller) planHookTicket(ctx context.Context, cfg *config.Config, key string, i int, in hooks.Invocation, a *store.RunAutomation, action automation.Action, created map[string]bool) (store.NewTicket, bool, error) {
+	owner := "workflows."
+	if in.Trigger != "" {
+		owner = "triggers." + in.Trigger
+	} else if in.RunInput != nil {
+		owner += in.RunInput.Workflow
+	}
+	dedup := owner + "/" + action.Key
+	if created[action.Key] {
+		return store.NewTicket{}, true, nil
+	}
+	open, err := c.store.List(ctx, store.Filter{
+		Meta:     []store.MetaMatch{{Pack: "automation", Key: "key", Value: dedup}},
+		Statuses: []store.Status{store.StatusOpen, store.StatusInProgress}, Limit: 1,
+	})
+	if err != nil {
+		return store.NewTicket{}, false, err
+	}
+	if len(open) > 0 {
+		return store.NewTicket{}, true, nil
+	}
+	nt := store.NewTicket{Kind: store.KindTask, Title: action.Title, Body: action.Body, Priority: action.Priority, Labels: action.Labels, ParentID: action.Parent}
+	if action.Pool != "" {
+		pool, err := hookReference(cfg, in, a, "pool", action.Pool)
+		if err != nil {
+			return store.NewTicket{}, false, err
+		}
+		nt.Pool, nt.Project = pool, cfg.Pools[pool].Project
+	}
+	if action.Parent != "" {
+		parent, err := c.store.Get(ctx, action.Parent)
+		if err != nil {
+			return store.NewTicket{}, false, fmt.Errorf("create_ticket parent %s: %w", action.Parent, err)
+		}
+		if nt.Project == "" {
+			nt.Project = parent.Project
+		}
+	}
+	if nt.Project == "" && in.RunInput != nil {
+		nt.Project = in.RunInput.Project
+	}
+	if nt.Project == "" {
+		return store.NewTicket{}, false, errors.New("create_ticket needs a pool or parent to pick its project")
+	}
+	m := map[string]any{"automation": map[string]any{"invocation": key, "action": i, "key": dedup}}
+	if in.Trigger != "" {
+		m[triggerPack] = map[string]any{"name": in.Trigger, "key": in.Trigger + "/" + action.Key}
+	}
+	if nt.Meta, err = json.Marshal(m); err != nil {
+		return store.NewTicket{}, false, err
+	}
+	if nt.ID, err = c.store.NewID(nt.Project); err != nil {
+		return store.NewTicket{}, false, err
+	}
+	return nt, false, nil
 }

@@ -1509,7 +1509,7 @@ export interface TriggerInfo {
   labels?: string[];
   last_fired?: string;
   next_cron?: string;
-  stalls?: string[];
+  findings?: string[];
 }
 
 export interface UpdateParams {

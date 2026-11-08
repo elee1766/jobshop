@@ -41,11 +41,11 @@ subscriptions:
 hooks:
   - {on: intake, command: "cat %[1]s/decision"}
 workflows:
-  stall-check:
+  triage:
     vars: [signal, subject, detail]
     escalate_pool: plan
     steps:
-      - {id: diagnose, pool: plan, retries: 1, title: "Stall {{.signal}} {{.subject}}", prompt: x}
+      - {id: diagnose, pool: plan, retries: 1, title: "Finding {{.signal}} {{.subject}}", prompt: x}
   pr-work:
     vars: [issue]
     issue: issue
@@ -55,23 +55,23 @@ workflows:
     steps:
       - {id: implement, pool: dev, title: "Implement {{.issue}}", prompt: x}
 triggers:
-  stall:
+  scan:
     when:
-      stall:
+      scan:
         - {signal: linear_issue_no_run, team: ENG, states: Todo, skip_labels: Blocked, poll: 1m}
     run:
-      workflow: stall-check
-      vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}
+      workflow: triage
+      vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}
 `
 
 // TestLinearEndToEnd (#298) walks one Linear issue through the pieces
-// built for #258 against one fake Linear: intake signal, stall-check
+// built for #258 against one fake Linear: intake signal, triage
 // run, the intake hook refusing then approving, the planner's start
 // with the same key returning the run, and a worker question asked on
 // the issue and answered by a reply.
 func TestLinearEndToEnd(t *testing.T) {
 	t.Parallel()
-	c, clk, dir := stallControllerYAML(t, linearE2EYAML)
+	c, clk, dir := scanControllerYAML(t, linearE2EYAML)
 	ctx := t.Context()
 	write := func(name, s string) {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(s), 0o600))
@@ -124,15 +124,15 @@ func TestLinearEndToEnd(t *testing.T) {
 	w.PackVars = map[string]any{"linear_human": "wile"}
 	c.config().Workflows["pr-work"] = w
 
-	// 1. Intake: ENG-5 is in Todo with no run, so the stall fires once.
-	assert.Equal(t, []string{"stall:linear_issue_no_run:ENG-5"}, stallKeys(t, c))
+	// 1. Intake: ENG-5 is in Todo with no run, so the finding fires once.
+	assert.Equal(t, []string{"scan:linear_issue_no_run:ENG-5"}, findingKeys(t, c))
 	c.runTriggers(t.Context(), c.config())
 	c.runTriggers(t.Context(), c.config())
 	checks, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
 	require.NoError(t, err)
-	require.Len(t, checks, 1, "one stall-check run")
+	require.Len(t, checks, 1, "one triage run")
 
-	// 2. stall-check starts pr-work; the intake hook refuses the issue
+	// 2. triage starts pr-work; the intake hook refuses the issue
 	// text, so no run starts and a needs-human ticket waits.
 	admin := scope{admin: true, actor: "admin"}
 	start := func() (store.Ticket, error) {
@@ -152,7 +152,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Equal(t, "ENG-5", items[0].Ref)
 
-	// 3. The operator approves; stall-check and then the planner start
+	// 3. The operator approves; triage and then the planner start
 	// with the same key and get one run.
 	_, err = store.Close(ctx, c.store, "admin", items[0].ID, nil, "done")
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, run.ID, again.ID, "planner start returns the intake run")
 	clk.advance(2 * time.Minute)
-	assert.Empty(t, stallKeys(t, c), "an open run hides the issue from intake")
+	assert.Empty(t, findingKeys(t, c), "an open run hides the issue from intake")
 
 	// 4. The worker asks a question: posted on ENG-5 with Blocked, which
 	// also keeps intake off it; a reply under it answers.

@@ -493,6 +493,11 @@ func (s *Store) Apply(ctx context.Context, actor string, g store.Graph) (out []s
 				return err
 			}
 		}
+		for _, c := range g.Comments {
+			if err := s.graphComment(ctx, q, actor, c); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	return out, err
@@ -1050,4 +1055,22 @@ func (s *Store) Record(ctx context.Context, actor, id, op string, diff any) erro
 		}
 		return history(ctx, q, t, s.now(), actor, op, diff)
 	})
+}
+
+// graphComment appends one Graph comment with its history row, as Update
+// does for its Comment.
+func (s *Store) graphComment(ctx context.Context, q sqldb.Querier, actor string, c store.GraphComment) error {
+	if strings.TrimSpace(c.Body) == "" {
+		return fmt.Errorf("%w: empty comment", store.ErrInvalid)
+	}
+	t, err := s.get(ctx, q, c.TicketID)
+	if err != nil {
+		return err
+	}
+	now := s.now()
+	r, err := q.InsertComment(ctx, sqldb.InsertCommentParams{TicketID: c.TicketID, Author: actor, Body: c.Body, CreatedAt: ns(now)})
+	if err != nil {
+		return s.classify(err, c.TicketID)
+	}
+	return history(ctx, q, t, now, actor, "comment", map[string]any{"comment": r.ID})
 }

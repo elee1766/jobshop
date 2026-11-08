@@ -44,7 +44,7 @@ func (c *Engine) StepAttempt(ctx context.Context, key string, p *Program, entry 
 	if err != nil {
 		return automation.Result{}, err
 	}
-	callCtx := context.WithValue(ctx, hookCallContextKey{}, hookCallContext{engine: c, invocation: rec.Key, attempt: rec.Attempts})
+	callCtx := context.WithValue(ctx, hookCallContextKey{}, hookCallContext{engine: c, invocation: rec.Key, attempt: rec.Attempts, now: in.AcceptedAt})
 	result, runErr := p.engine.Step(callCtx, entry, timeout, exec, run, step)
 	in.Output, in.Decisions = result.Logs, result.Decisions
 	in.ResultMetadata, in.ResultOutput = &result.Metadata, result.Output

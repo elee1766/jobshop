@@ -17,7 +17,7 @@ import (
 
 // admitComments writes n comments on the followed thread to the inbox
 // and admits them, without dispatching.
-func admitComments(t *testing.T, c *Controller, clk *stallClock, src *fakeThreads, n int) []string {
+func admitComments(t *testing.T, c *Controller, clk *scanClock, src *fakeThreads, n int) []string {
 	t.Helper()
 	th := thread{Repo: "acme/widget", Number: 7}
 	var bodies []string

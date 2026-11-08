@@ -109,7 +109,7 @@ func cuePackLayer(file, dir string, m, vars map[string]any, sources map[string][
 			event[field] = placeholder(EventVar + "." + field)
 		}
 		textVars[EventVar] = event
-		for _, name := range StallVars {
+		for _, name := range ScanVars {
 			textVars[name] = placeholder(name)
 		}
 		maps.Copy(textVars, vars)

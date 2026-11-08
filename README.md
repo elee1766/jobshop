@@ -44,7 +44,7 @@ flowchart LR
 - [**Pools and sessions**](docs/running.md#concepts): a pool runs agent sessions, each in its own worktree and [sandbox](docs/isolation.md).
 - [**Workflows and runs**](docs/packs.md#the-parts): a run is one ticket per step, each step in a pool, with retries and escalation.
 - [**GitHub and Linear intake**](docs/ingest.md): webhooks and polling turn issues and comments into tickets; PR review and merge steps ship in [`packs/github`](packs/github/README.md).
-- [**Triggers**](docs/notes/26-triggers.md): create tickets or start runs from counts, cron, shell checks or stall signals.
+- [**Triggers**](docs/notes/26-triggers.md): create tickets or start runs from counts, cron, events, Starlark handlers or scan signals.
 - [**Packs**](docs/packs.md): directories of pools, prompts, triggers and workflows you write.
 - [**Desk and A2A**](docs/notes/202-desk.md): a web UI and HTTP API over the admin socket, and an [A2A gateway](docs/notes/547-a2a-gateway.md) that hands escalations to another agent.
 
@@ -62,8 +62,8 @@ Shipped in [`packs/`](packs/):
   an issue starts a run. `implement` opens a PR, `review-merge` reviews and
   merges it, and a post-merge step checks the deploy. Failed steps retry,
   then escalate to a human.
-- **Stalled work** (`stall-check`): unclaimed tickets, silent sessions and
-  green PRs nobody merged each start a diagnose run that fixes what it can.
+- **Triage** (`triage`): scan findings (unclaimed tickets, silent sessions,
+  green PRs nobody merged) each start a diagnose run that fixes what it can.
 - **Red master** (`ci-repair`): a failing master SHA starts one repair run, keyed by the SHA.
 - **Linear intake** ([`packs/github`](packs/github/README.md#linear-instance)):
   an eligible Linear issue starts a run; comments flow back to the ticket.

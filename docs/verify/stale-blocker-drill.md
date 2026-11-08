@@ -1,6 +1,6 @@
 # Stale-blocker drill
 
-Superseded 2026-11-02 by `stall-drill.md`: #143 removed `blocker-check`.
+Superseded 2026-11-02 by `scan-drill.md`: #143 removed `blocker-check`.
 Kept as the record of #119.
 
 Added 2026-11-02 (#119) for the #82 box "Blocker assessment", stale

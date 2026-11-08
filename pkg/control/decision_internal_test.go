@@ -72,7 +72,7 @@ func decisionGitHub(t *testing.T) (*httptest.Server, func() []ghCall) {
 	}
 }
 
-func decisionController(t *testing.T) (*Controller, *stallClock, func() []ghCall) {
+func decisionController(t *testing.T) (*Controller, *scanClock, func() []ghCall) {
 	t.Helper()
 	c, clk, _ := subController(t)
 	srv, calls := decisionGitHub(t)
@@ -92,7 +92,7 @@ func decisionController(t *testing.T) (*Controller, *stallClock, func() []ghCall
 
 // proposal makes the decision ticket and a planner ticket parked on it
 // for 24h, as the planner did before #603.
-func proposal(t *testing.T, c *Controller, clk *stallClock) (store.Ticket, store.Ticket) {
+func proposal(t *testing.T, c *Controller, clk *scanClock) (store.Ticket, store.Ticket) {
 	t.Helper()
 	d := mkTicket(t, c, store.NewTicket{Title: "Proposed target: v0.5.0 (#56)", Pool: "dev", Labels: []string{proposedLabel}, Meta: json.RawMessage(`{"github":{"repo":"acme/app","issue":56}}`)})
 	parked := mkTicket(t, c, store.NewTicket{Title: "Plan: waiting on approval of acme/app#56", Pool: "dev", DeferUntil: clk.now().Add(24 * time.Hour)})

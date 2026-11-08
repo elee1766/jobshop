@@ -82,8 +82,8 @@ func TestRunStartEligibleGate(t *testing.T) {
 		Vars: []string{"issue"}, Issue: "issue", Repo: "acme/app", Tracker: config.TrackerLinear, LinearWorkspace: "acme",
 		Steps: []config.Step{{ID: "implement", Pool: "dev", Title: "Implement {{.issue}}", Prompt: "do {{.issue}}"}},
 	}}
-	cfg.Triggers = map[string]config.Trigger{"intake": {When: config.TriggerWhen{Stall: []config.StallSignal{
-		{Signal: config.StallLinearIssueNoRun, Team: "ENG", SkipLabels: "Blocked, tracking"},
+	cfg.Triggers = map[string]config.Trigger{"intake": {When: config.TriggerWhen{Scan: []config.ScanSignal{
+		{Signal: config.SignalLinearIssueNoRun, Team: "ENG", SkipLabels: "Blocked, tracking"},
 	}}}}
 	cfg.Hooks = nil
 	lc, err := newLiveConfig(&cfg)

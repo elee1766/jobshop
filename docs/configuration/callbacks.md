@@ -56,7 +56,8 @@ listener or bypass ingest authentication/admission.
 | --- | --- | --- |
 | Workflow `on_start` | `begin(run)` | Initial transition for the persisted run |
 | Workflow `on_step_completed` | `completed(run, step)` | A relevant recorded finished-step transition |
-| Trigger `handler` | `handle(event, args)` | An admitted source delivery or registered timer wakeup |
+| Trigger `handler` | `handle(event, args)` | An admitted source delivery, a timer or fallback wakeup, or a scan finding |
+| Hook or desk command `handler` | `fn(input, args)` | A guard check or a Desk `api.exec`, while the caller waits |
 
 The function name is user-chosen. Its positional argument contract is not.
 `config check` rejects an export that cannot accept its callback's
@@ -221,10 +222,42 @@ is a duplicate delivery, not a new business subject. Keep subject keys
 stable across both event delivery and reconciliation.
 
 The `demo:` key prefix is example-specific. Do not substitute it for an
-existing production key such as `stall:review_requested:<subject>`.
+existing production key such as `scan:review_requested:<subject>`.
 Returning this event batch does not perform a shell command, HTTP request
 or model decision. Those separate capability examples live in
 `packs/demo/capabilities.star` and remain unregistered by default.
+
+## Guard hooks and desk commands
+
+A guard hook (`on: claim`, `action` or `merge`) and a `desk_commands`
+entry may name a Starlark `handler` instead of a `command` or `url`. The
+handler is called as `fn(input, args)` while the caller waits, within the
+entry's `timeout` (30s default), with the entry's static `args`:
+
+```cue
+hooks: [{
+    on: "action"
+    actions: ["push"]
+    handler: "guard.star:push"
+    args: {protected: ["master", "main"]}
+    timeout: "5s"
+}]
+desk_commands: "deploy-state": {handler: "deploy.star:state", timeout: "5s"}
+```
+
+A hook's `input` is the guard event dict (`on`, `action`, `target`,
+`detail`, `session`, `pool`, `project`, `ticket`, `extra`). It returns
+`{"decision": "allow"|"deny"|"ask_human", "reason": "..."}`; `{}` is
+allow, and an error, a timeout or another decision is deny. A desk
+handler gets the plugin's JSON input and returns the dict the plugin
+receives as `output`. Neither may return actions. `on: intake` has no
+handler form.
+
+Each call is journaled with state `sync_done` or `sync_failed` and a
+`sync` field naming `hooks.<on>` or `desk_commands.<name>`, so
+`automation list --state sync_done` and `automation show` list its
+capability calls. Nothing replays or retries a sync call. Its journal is
+deleted after 72 hours.
 
 ## Script steps
 
@@ -479,16 +512,38 @@ subject keys used by its webhooks.
 
 Keep source-specific `on` filters, `fallback` intervals and `when.cron`
 schedules distinct. Timers are wakeups, not evidence of review/delegation
-authority. Do not translate a legacy `when.stall` signal to a generic timer
-and lose the original signal's thresholds or per-subject limits. A handler
-does not combine with `when.stall`: perform explicit authoritative
-discovery in the handler and test its inventory, caps and recovery path.
+authority. A trigger with `on:` and a handler polls every `fallback` with
+no `when` conditions: the handler reads its source and decides.
+`event.trigger` names the trigger the handler runs for.
+
+A handler may combine with `when.scan`. Go keeps detection, the
+per-finding `max_runs`, the cooldown, `max_open` (default 3) and the #704
+subject hold, and calls the handler once per fireable finding with
+`event.source == "scan"`, `event.event` the signal, `event.delivery` the
+finding id `<signal>:<subject>` and `payload` holding `signal`,
+`subject`, `detail`, `key` (the default run key) and `runs` (earlier runs
+for this finding). The run a handler starts carries
+`meta.trigger.finding`, so it holds the finding and counts toward
+`max_runs` whatever key it picks. `args.workflow` names
+the workflow whose own runs and steps the signals skip. A handler that
+returns `[]` is offered the finding again after a cooldown (30 minutes
+without one) while the signal persists.
+
+A signal that is not a store signal names a shell `check` or a Starlark
+`script`: `{signal: "pr_unmerged", script: "signals.star:prs", args: {...},
+poll: "10m"}`. The controller calls `fn(args)` outside the tick at most
+once per `poll` (5 minutes by default) and keeps the answer in between.
+The function returns a dict of subject to detail (a leading `#` is
+dropped), may use `github`, `http` and store reads, and is journaled like
+a desk handler under `scan.<signal>`. An `issue_no_run` subject with an
+open run in the signal's `repo` is skipped.
 
 For handler triggers, a terminal invocation consumes its cron/cooldown slot
-even when it returns `[]`. Handler cooldown is measured from the accepted
-fire, not from a resulting ticket's eventual close. `max_open` counts the
-existing open trigger-created runs plus the proposed new batch. An unset
+even when it returns `[]`. Handler cooldown runs from the later of the
+accepted fire and the close of the newest run or ticket the trigger filed.
+`max_open` counts the trigger's open runs and `create_ticket` tasks, not
+their steps, plus the proposed new batch. A started run's
+`meta.trigger.key` is `<trigger>/<run key>`. An unset
 or zero handler `max_open` does not impose that cap. A batch that would
 exceed a configured cap fails as a whole, rather than partially creating the
-first few runs. Keep old `max_runs` per-subject history semantics explicitly
-in authoritative discovery. An open-run cap is not a historic-subject cap.
+first few runs.

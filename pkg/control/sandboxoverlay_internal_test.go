@@ -23,7 +23,7 @@ func TestPoolSandboxOverlay(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(base, "f"), []byte("agent"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(base, "only-base"), []byte("b"), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(top, "f"), []byte("pool"), 0o644))
-	c, _, dir := stallControllerYAML(t, `projects:
+	c, _, dir := scanControllerYAML(t, `projects:
   js: {}
 agents:
   a: {command: /bin/sh, sandbox: {backend: bubblewrap, overlay: {"~/.agents": {layers: [`+base+`], mode: ro}}}}

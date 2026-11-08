@@ -24,7 +24,8 @@ func (c *Controller) deskExec(ctx context.Context, sc scope, p rpc.DeskExecParam
 	if err := requireAdmin(sc, "desk exec"); err != nil {
 		return nil, err
 	}
-	dc, ok := c.config().DeskCommands[p.Name]
+	cfg := c.config()
+	dc, ok := cfg.DeskCommands[p.Name]
 	if !ok {
 		return nil, fmt.Errorf("%w: desk command %q", store.ErrNotFound, p.Name)
 	}
@@ -40,7 +41,14 @@ func (c *Controller) deskExec(ctx context.Context, sc scope, p rpc.DeskExecParam
 	if !json.Valid(in) {
 		return nil, fmt.Errorf("%w: input is not JSON", store.ErrInvalid)
 	}
-	res, exit, runErr := c.runDeskCommand(ctx, dc, in)
+	var res rpc.DeskExecResult
+	var exit int
+	var runErr error
+	if dc.Handler != "" {
+		res, exit, runErr = c.runDeskHandler(ctx, cfg, p.Name, dc, in)
+	} else {
+		res, exit, runErr = c.runDeskCommand(ctx, dc, in)
+	}
 	c.log.InfoContext(ctx, "desk exec", "name", p.Name, "actor", sc.actor, "ticket", p.Ticket, "exit", exit, "err", runErr)
 	if p.Ticket != "" {
 		d := map[string]any{"name": p.Name, "exit": exit}

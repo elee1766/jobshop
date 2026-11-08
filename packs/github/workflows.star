@@ -88,9 +88,9 @@ def pr_review_completed(run, step):
     fail("unexpected PR review step: " + step.id)
 
 
-def stall_start(run):
-    return _step(run, "diagnose", "stall", "Stall " + run.inputs["signal"] + ": " + run.inputs["subject"],
-                 "prompts/stall.md", retries=1)
+def triage_start(run):
+    return _step(run, "diagnose", "triage", "Triage " + run.inputs["signal"] + ": " + run.inputs["subject"],
+                 "prompts/triage.md", retries=1)
 
 
 def ci_start(run):

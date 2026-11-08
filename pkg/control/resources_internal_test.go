@@ -13,10 +13,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// TestResourceWaitStallAndAttention: a ticket held back by a full
-// resource is a resource_wait stall and an attention item once it has
+// TestResourceWaitSignalAndAttention: a ticket held back by a full
+// resource is a resource_wait finding and an attention item once it has
 // waited long enough (#408).
-func TestResourceWaitStallAndAttention(t *testing.T) {
+func TestResourceWaitSignalAndAttention(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := subController(t)
 	ctx := t.Context()
@@ -33,7 +33,7 @@ func TestResourceWaitStallAndAttention(t *testing.T) {
 	_, _, err := c.store.Claim(ctx, a.ID, "s1", time.Hour)
 	require.NoError(t, err)
 
-	found, err := c.stallResourceWait(ctx, clk.now(), 30*time.Minute)
+	found, err := c.signalResourceWait(ctx, clk.now(), 30*time.Minute)
 	require.NoError(t, err)
 	assert.Empty(t, found, "not waited long enough")
 	c.config().Attention.ResourceWait = "30m"
@@ -42,10 +42,10 @@ func TestResourceWaitStallAndAttention(t *testing.T) {
 	assert.Empty(t, items)
 
 	clk.advance(time.Hour)
-	found, err = c.stallResourceWait(ctx, clk.now(), 30*time.Minute)
+	found, err = c.signalResourceWait(ctx, clk.now(), 30*time.Minute)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
-	assert.Equal(t, stall{config.StallResourceWait, b.ID, "waiting on emu, 0 ahead (1/1 held) for 1h0m0s"}, found[0])
+	assert.Equal(t, finding{config.SignalResourceWait, b.ID, "waiting on emu, 0 ahead (1/1 held) for 1h0m0s"}, found[0])
 	items, err = c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	require.Len(t, items, 1)

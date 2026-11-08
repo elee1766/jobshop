@@ -22,8 +22,12 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/automation/command"
+	"github.com/elee1766/jobshop/pkg/automation/github"
 	automationhttp "github.com/elee1766/jobshop/pkg/automation/http"
 	"github.com/elee1766/jobshop/pkg/automation/jev"
+	"github.com/elee1766/jobshop/pkg/automation/tickets"
+	starlarkjson "go.starlark.net/lib/json"
+	starlarktime "go.starlark.net/lib/time"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
@@ -93,6 +97,12 @@ func (inv *invocation) MarkStarted()             { inv.externalStarted = true }
 func (inv *invocation) MarkCompleted()           { inv.externalCompleted = true }
 func (inv *invocation) RecordDecision(decision api.Decision) {
 	inv.decisions = append(inv.decisions, decision)
+}
+
+func (inv *invocation) AddSecret(secret string) {
+	if secret != "" {
+		inv.callSecrets = append(inv.callSecrets, secret)
+	}
 }
 
 func defaults(o Options) (Options, error) {
@@ -363,8 +373,22 @@ func (e *Engine) Step(ctx context.Context, entry string, timeout time.Duration, 
 	step.options.Limits.Duration = timeout
 	step.options.Exec = exec
 	step.options.AllowShell = exec != nil
+	// The sandbox builds its own environment; the controller's stays out.
+	step.options.ShellEnv = nil
 	step.options.Replay = nil
 	return step.invoke(ctx, entry, fn, args)
+}
+
+// Call runs a handler a caller waits on (a guard hook or a desk command)
+// with its own timeout. Nothing is replayed: a failure is the caller's
+// answer, not a retry.
+func (e *Engine) Call(ctx context.Context, entry string, timeout time.Duration, args ...any) (Result, error) {
+	call := *e
+	if timeout > 0 {
+		call.options.Limits.Duration = timeout
+	}
+	call.options.Replay = nil
+	return call.invoke(ctx, entry, e.functions[entry], args)
 }
 
 func (e *Engine) invoke(ctx context.Context, entry string, fn *starlark.Function, args []any) (result Result, err error) {
@@ -422,6 +446,13 @@ func (e *Engine) thread(ctx context.Context, inv *invocation) *starlark.Thread {
 	t.SetMaxExecutionSteps(e.options.Limits.Steps)
 	t.SetLocal("invocation", inv)
 	t.SetLocal("engine", e)
+	// One clock reading per invocation: a replayed callback sees the time
+	// its first attempt saw when the host pins Now.
+	now := time.Now()
+	if e.options.Now != nil {
+		now = e.options.Now(ctx)
+	}
+	starlarktime.SetNow(t, func() (time.Time, error) { return now, nil })
 	t.Print = func(t *starlark.Thread, msg string) {
 		if inv == nil {
 			t.Cancel("print is unavailable during module loading")
@@ -504,15 +535,30 @@ func active(t *starlark.Thread) (*invocation, error) {
 
 func predeclared() starlark.StringDict {
 	return starlark.StringDict{
-		"result":     starlark.NewBuiltin("result", constructResult),
-		"start_run":  starlark.NewBuiltin("start_run", constructAction),
-		"start_step": starlark.NewBuiltin("start_step", constructAction),
-		"finish_run": starlark.NewBuiltin("finish_run", constructAction),
+		"result":        starlark.NewBuiltin("result", constructResult),
+		"start_run":     starlark.NewBuiltin("start_run", constructAction),
+		"start_step":    starlark.NewBuiltin("start_step", constructAction),
+		"finish_run":    starlark.NewBuiltin("finish_run", constructAction),
+		"create_ticket": starlark.NewBuiltin("create_ticket", constructAction),
+		"comment":       starlark.NewBuiltin("comment", constructAction),
 		"http": starlarkstruct.FromStringDict(starlark.String("http"), starlark.StringDict{
 			"get":  capability("http.get", automationhttp.Call),
 			"post": capability("http.post", automationhttp.Call),
 		}),
-		"shell": capability("shell", command.Call),
-		"jev":   capability("jev", jev.Call),
+		"github": starlarkstruct.FromStringDict(starlark.String("github"), starlark.StringDict{
+			"get":     capability("github.get", github.Call),
+			"post":    capability("github.post", github.Call),
+			"patch":   capability("github.patch", github.Call),
+			"put":     capability("github.put", github.Call),
+			"delete":  capability("github.delete", github.Call),
+			"graphql": capability("github.graphql", github.GraphQL),
+		}),
+		"shell":    capability("shell", command.Call),
+		"tickets":  capability("tickets", tickets.Call),
+		"runs":     capability("runs", tickets.Call),
+		"sessions": capability("sessions", tickets.Call),
+		"json":     starlarkjson.Module,
+		"time":     starlarktime.Module,
+		"jev":      capability("jev", jev.Call),
 	}
 }

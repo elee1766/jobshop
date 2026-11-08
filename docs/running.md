@@ -21,10 +21,9 @@ For service YAML, CUE packs, Starlark callbacks and migration, start at
   a prompt, `max_sessions` and timeouts. `type: chat` pools hold one
   session per conversation key.
 - **Triggers.** These create tickets or start runs from store counts, cron,
-  a shell check, or stall signals (unclaimed work, silent sessions,
-  stalled steps, issues without a run, green PRs nobody merged). See
-  [notes/26-triggers.md](notes/26-triggers.md) and
-  [notes/143-stall-check.md](notes/143-stall-check.md).
+  webhook events, Starlark handlers, or scan signals (unclaimed work,
+  silent sessions, idle steps, issues without a run, green PRs nobody
+  merged). See [configuration/callbacks.md](configuration/callbacks.md).
 - **Workflows and runs.** Steps run in pools, with retries and
   dependencies between runs. A step that runs out of retries escalates to
   a human. Batches group runs in an order. See

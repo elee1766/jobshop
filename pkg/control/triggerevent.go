@@ -190,7 +190,7 @@ func (ev triggerEvent) vars() map[string]any {
 	return m
 }
 
-// shellSafe matches event values a stall check may get unquoted: repo,
+// shellSafe matches event values a signal check may get unquoted: repo,
 // pr, sha, action and such. Branch names and labels come from outside
 // and may hold shell syntax.
 var shellSafe = regexp.MustCompile(`^[A-Za-z0-9._/@:+=-]*$`)
@@ -266,12 +266,12 @@ func (c *Controller) triggerEvents(items []store.InboxItem) {
 	})
 }
 
-// onEvent runs one matched trigger for an event: a stall trigger
+// onEvent runs one matched trigger for an event: a scan trigger
 // evaluates its signals (JOB-72), any other evaluates and fires. Holds
 // the tick lock.
 func (c *Controller) onEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, ev triggerEvent) {
-	if len(tr.When.Stall) > 0 {
-		c.runStallTrigger(ctx, cfg, name, tr, ev)
+	if len(tr.When.Scan) > 0 {
+		c.runScanTrigger(ctx, cfg, name, tr, ev)
 		return
 	}
 	c.fireOnEvent(ctx, cfg, name, tr, ev)
@@ -326,12 +326,14 @@ func (c *Controller) triggerKeySeen(ctx context.Context, name, key string) (stri
 // triggerPollDue reports whether a tick should poll tr, and records the
 // poll. A trigger with on: polls every fallback (default
 // config.DefaultTriggerFallback), and never without when conditions;
-// without on:, every tick unless fallback is set. Stall triggers too
+// without on:, every tick unless fallback is set. Scan triggers too
 // (JOB-72). Tick-only state.
 func (c *Controller) triggerPollDue(name string, tr config.Trigger) bool {
 	every := time.Duration(0)
 	if len(tr.On) > 0 {
-		if !tr.When.HasConditions() {
+		// A handler decides for itself whether to act, so its fallback
+		// polls with no when conditions.
+		if !tr.When.HasConditions() && (tr.Handler == "" || tr.Fallback == "") {
 			return false
 		}
 		every = config.Duration(tr.Fallback, config.DefaultTriggerFallback)

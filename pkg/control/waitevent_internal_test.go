@@ -142,7 +142,7 @@ func TestWaitEventKindsValidate(t *testing.T) {
 // reason that is a real timer pass.
 func TestReleaseGuard(t *testing.T) {
 	t.Parallel()
-	c, clk, _ := stallController(t)
+	c, clk, _ := scanController(t)
 	ctx := t.Context()
 	until := clk.now().Add(30 * time.Minute)
 	_, _, sc := startWork(t, c, "r1")

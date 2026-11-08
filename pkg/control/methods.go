@@ -585,7 +585,7 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 
 // handoff re-pools, releases and notes a ticket in one store write (#492).
 // A session hands off only the ticket it holds; admin, or a pool granted
-// "handoff" (stall-check), any open ticket.
+// "handoff" (triage), any open ticket.
 func (c *Controller) handoff(ctx context.Context, sc scope, p rpc.HandoffParams) (any, error) {
 	if p.Pool == "" {
 		return nil, fmt.Errorf("%w: handoff needs --to <pool>", store.ErrInvalid)

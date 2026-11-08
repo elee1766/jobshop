@@ -292,7 +292,7 @@ Commands:
     Report the work ready for the next step.
 
   report blocked [<note>] [flags]
-    Report blocked; labels the ticket blocked for stall-check.
+    Report blocked; labels the ticket blocked for triage.
 
   report failed [<note>] [flags]
     Report failure and why (then close -r failed).
@@ -2773,7 +2773,7 @@ Commands:
     Report the work ready for the next step.
 
   report blocked [<note>] [flags]
-    Report blocked; labels the ticket blocked for stall-check.
+    Report blocked; labels the ticket blocked for triage.
 
   report failed [<note>] [flags]
     Report failure and why (then close -r failed).
@@ -2960,7 +2960,7 @@ Flags:
 ```
 Usage: jobshop report blocked [<note>] [flags]
 
-Report blocked; labels the ticket blocked for stall-check.
+Report blocked; labels the ticket blocked for triage.
 
 Arguments:
   [<note>]    Short note: what is done, what you wait for, why it is blocked or

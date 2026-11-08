@@ -28,7 +28,12 @@ func (c *Controller) runHooks(ctx context.Context, cfg *config.Config, ev hooks.
 		if !h.Applies(ev.On, ev.Action, ev.Pool) {
 			continue
 		}
-		a := (hooks.Runner{Dir: c.root.Dir, After: c.after, Executor: hookCommands{c: c, cfg: cfg}}).Run(ctx, h, ev)
+		var a hooks.Answer
+		if h.Handler != "" {
+			a = c.runHookHandler(ctx, cfg, h, ev)
+		} else {
+			a = (hooks.Runner{Dir: c.root.Dir, After: c.after, Executor: hookCommands{c: c, cfg: cfg}}).Run(ctx, h, ev)
+		}
 		if a.Decision != rpc.GuardAllow {
 			c.log.InfoContext(ctx, "hook decision", "on", ev.On, "action", ev.Action, "session", ev.Session,
 				"decision", a.Decision, "reason", a.Reason)

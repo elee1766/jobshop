@@ -11,8 +11,11 @@ import (
 
 // Automation grants capabilities to trusted Starlark hooks, not to agent sessions.
 type Automation struct {
-	HTTP        bool                            `yaml:"http,omitempty"`
-	Shell       bool                            `yaml:"shell,omitempty"`
+	HTTP  bool `yaml:"http,omitempty"`
+	Shell bool `yaml:"shell,omitempty"`
+	// GitHub enables the github built-in, authenticated by the GitHub
+	// identity covering the repo of each call.
+	GitHub      bool                            `yaml:"github,omitempty"`
 	Timeout     string                          `yaml:"timeout,omitempty"`
 	MaxSteps    uint64                          `yaml:"max_steps,omitempty"`
 	OutputBytes int                             `yaml:"output_bytes,omitempty"`

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -557,4 +559,320 @@ def handle(event, args):
 			assert.Len(t, hookRun(t, c, run.Run.ID).Steps, 1)
 		})
 	}
+}
+
+// TestHookGitHubUsesIdentity: the github built-in authenticates with the
+// identity covering the repo, read per call, and journals the call.
+func TestHookGitHubUsesIdentity(t *testing.T) {
+	var auth atomic.Value
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth.Store(r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"workflow_runs":[{"head_sha":"abc123","conclusion":"failure"}]}`))
+	}))
+	defer server.Close()
+	root := hookTestRoot(t, `def begin(run):
+    return []
+def completed(run, step):
+    return []
+def handle(event, args):
+    runs = github.get("/repos/acme/widget/actions/runs", params={"branch": "master", "per_page": 1}).json()["workflow_runs"]
+    return [start_run(workflow="dynamic", key="red-" + runs[0]["head_sha"])]
+`)
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "gh-token"), []byte("ghp_first\n"), 0o600))
+	data, err := os.ReadFile(root.Config())
+	require.NoError(t, err)
+	extra := "automation: {github: true}\nidentities:\n  bot: {kind: github-token, token_file: " + filepath.Join(root.Dir, "gh-token") + ", api_url: " + server.URL + ", repos: [acme/widget]}\n"
+	require.NoError(t, os.WriteFile(root.Config(), append(data, []byte(extra)...), 0o600))
+	c := controltest.Start(t, root, control.Options{})
+	spoolPath := filepath.Join(root.Dir, "events.db")
+	spool, err := ingest.OpenSpool(t.Context(), spoolPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = spool.Close() })
+	endpoint := config.IngestEndpoint{Name: "tasks", Source: "generic", Map: config.IngestMap{Kind: "event"}}
+	put := func(id string) {
+		_, err := ingest.Put(t.Context(), spool, endpoint, id, "", []byte(`{"event":"tasks"}`), controltest.Epoch)
+		require.NoError(t, err)
+		c.Call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: spoolPath}, nil)
+	}
+	put("d1")
+	var runs []store.Ticket
+	c.PassUntil(func() bool {
+		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+		return len(runs) == 1
+	}, "handler did not start a run from the GitHub response")
+	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	require.NoError(t, err)
+	assert.Equal(t, "red-abc123", rf.Key)
+	assert.Equal(t, "Bearer ghp_first", auth.Load())
+	// A rotated token file is picked up by the next call.
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "gh-token"), []byte("ghp_second\n"), 0o600))
+	put("d2")
+	c.PassUntil(func() bool { return auth.Load() == "Bearer ghp_second" }, "token was not read per call")
+	var invocations []store.Record
+	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{Trigger: "custom"}, &invocations)
+	require.NotEmpty(t, invocations)
+	var trace rpc.AutomationResult
+	c.Call(rpc.MethodAutomationShow, rpc.IDParams{ID: invocations[len(invocations)-1].Key}, &trace)
+	require.Len(t, trace.Calls, 1)
+	assert.Contains(t, string(trace.Calls[0].Value), `"capability":"github.get"`)
+	assert.NotContains(t, string(trace.Calls[0].Value), "ghp_")
+}
+
+// TestHookReadsAndTicketActions: a handler reads the store, files a ticket
+// once per key and comments on an existing one, and time.now() is the
+// invocation's accepted time.
+func TestHookReadsAndTicketActions(t *testing.T) {
+	root := hookTestRoot(t, `def begin(run):
+    return []
+def completed(run, step):
+    return []
+def handle(event, args):
+    open = tickets(kind="task", status="open", label="watch")
+    actions = [create_ticket(title="Plan next step", key="replan", pool="dev", labels=["plan"], priority=1, body="filed at " + str(time.now().unix))]
+    for t in open:
+        actions.append(comment(ticket=t["id"], body="seen by " + event.event))
+    return result(actions=actions, output={"open": len(open), "runs": len(runs(workflow="dynamic"))})
+`)
+	c := controltest.Start(t, root, control.Options{})
+	var watched store.Ticket
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "watched", Labels: []string{"watch"}}, &watched)
+	spoolPath := filepath.Join(root.Dir, "events.db")
+	spool, err := ingest.OpenSpool(t.Context(), spoolPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = spool.Close() })
+	endpoint := config.IngestEndpoint{Name: "tasks", Source: "generic", Map: config.IngestMap{Kind: "event"}}
+	put := func(id string) {
+		_, err := ingest.Put(t.Context(), spool, endpoint, id, "", []byte(`{"event":"tasks"}`), controltest.Epoch)
+		require.NoError(t, err)
+		c.Call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: spoolPath}, nil)
+	}
+	var records []store.Record
+	done := func(n int) func() bool {
+		return func() bool {
+			c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{Trigger: "custom"}, &records)
+			finished := 0
+			for _, r := range records {
+				if r.State == "done" {
+					finished++
+				}
+			}
+			return finished == n
+		}
+	}
+	put("d1")
+	c.PassUntil(done(1), "handler did not finish")
+	put("d2")
+	c.PassUntil(done(2), "second handler did not finish")
+	var planned []store.Ticket
+	c.Call(rpc.MethodTicketList, rpc.ListParams{Label: "plan"}, &planned)
+	require.Len(t, planned, 1, "create_ticket must dedup on its key while the ticket is open")
+	assert.Equal(t, "dev", planned[0].Pool)
+	assert.Equal(t, 1, planned[0].Priority)
+	assert.Contains(t, planned[0].Body, "filed at ")
+	assert.Contains(t, string(planned[0].Meta), `"trigger":{"key":"custom/replan","name":"custom"}`)
+	var thread rpc.ShowResult
+	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: watched.ID}, &thread)
+	require.Len(t, thread.Comments, 2)
+	assert.Equal(t, "seen by tasks", thread.Comments[0].Body)
+	var trace rpc.AutomationResult
+	c.Call(rpc.MethodAutomationShow, rpc.IDParams{ID: records[0].Key}, &trace)
+	capabilities := []string{}
+	for _, call := range trace.Calls {
+		var v struct {
+			Observation struct {
+				Capability string `json:"capability"`
+			} `json:"observation"`
+		}
+		require.NoError(t, json.Unmarshal(call.Value, &v))
+		capabilities = append(capabilities, v.Observation.Capability)
+	}
+	assert.Equal(t, []string{"tickets", "runs"}, capabilities, "store reads are journaled")
+}
+
+// TestHookScanHandler: a when.scan trigger with a handler gets each
+// finding as an event; its run carries the finding id, so the finding is held
+// while the run is open and max_runs counts it.
+func TestHookScanHandler(t *testing.T) {
+	root := controltest.NewRoot(t, `pack: pack.yaml
+projects: {js: {}}
+agents: {fake: {command: "false"}}
+`)
+	pack := `pools:
+  plan: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}
+workflows:
+  triage:
+    project: js
+    vars: [signal, subject]
+    steps:
+      - {id: diagnose, pool: plan, title: "Finding {{.signal}} {{.subject}}", prompt: x}
+triggers:
+  scan:
+    when:
+      scan: [{signal: blocked, after: 1h}]
+    handler: hooks.star:finding
+    args: {workflow: triage}
+    max_runs: 1
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "hooks.star"), []byte(`def finding(event, args):
+    if event.source != "scan" or event.trigger != "scan":
+        fail("not a finding event")
+    p = event.payload
+    return [start_run(workflow=args["workflow"], key="sc-" + p["subject"], inputs={"signal": p["signal"], "subject": p["subject"]})]
+`), 0o600))
+	_, err := config.Load(root)
+	require.NoError(t, err)
+	c := controltest.Start(t, root, control.Options{})
+	var blocked store.Ticket
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "stuck", Labels: []string{"blocked"}}, &blocked)
+	c.Clock.Advance(2 * time.Hour)
+	var runs []store.Ticket
+	c.PassUntil(func() bool {
+		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+		return len(runs) == 1
+	}, "scan handler did not start a run")
+	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	require.NoError(t, err)
+	assert.Equal(t, "sc-"+blocked.ID, rf.Key)
+	assert.Equal(t, "blocked", rf.Vars["signal"])
+	assert.Contains(t, string(runs[0].Meta), `"finding":"blocked:`+blocked.ID+`"`)
+	// Held while the run is open, then max_runs 1 holds it for good.
+	c.Clock.Advance(time.Hour)
+	c.Pass(3)
+	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+	require.Len(t, runs, 1)
+	c.Call(rpc.MethodRunCancel, rpc.IDParams{ID: runs[0].ID}, nil)
+	c.Clock.Advance(time.Hour)
+	c.Pass(3)
+	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+	require.Len(t, runs, 1, "max_runs must count handler runs")
+	assert.Equal(t, store.StatusClosed, runs[0].Status)
+}
+
+func TestSyncHandlers(t *testing.T) {
+	root := hookTestRoot(t, `def begin(run):
+    return []
+def completed(run, step):
+    return []
+def handle(event, args):
+    return []
+def push(event, args):
+    if not event.get("target"):
+        return {"decision": "deny", "reason": "push needs a target"}
+    if event["target"] in args["protected"]:
+        return {"decision": "deny", "reason": "no push to " + event["target"]}
+    return {}
+def state(input, args):
+    return {"echo": input, "open": len(tickets(kind="task", status="open")), "dir": args["dir"]}
+`)
+	data, err := os.ReadFile(root.Config())
+	require.NoError(t, err)
+	extra := `hooks:
+  - {on: action, actions: [push], handler: hooks.star:push, args: {protected: [master, main]}, timeout: 5s}
+desk_commands:
+  state: {handler: hooks.star:state, args: {dir: /srv}}
+`
+	require.NoError(t, os.WriteFile(root.Config(), append(data, []byte(extra)...), 0o600))
+	_, err = config.Load(root)
+	require.NoError(t, err)
+	c := controltest.Start(t, root, control.Options{})
+
+	guard := func(target string) rpc.GuardResult {
+		var r rpc.GuardResult
+		c.Call(rpc.MethodGuard, rpc.GuardParams{Action: "push", Target: target}, &r)
+		return r
+	}
+	assert.Equal(t, rpc.GuardResult{Decision: rpc.GuardDeny, Reason: "push needs a target"}, guard(""))
+	assert.Equal(t, rpc.GuardResult{Decision: rpc.GuardDeny, Reason: "no push to master"}, guard("master"))
+	assert.Equal(t, rpc.GuardAllow, guard("feature").Decision)
+	var other rpc.GuardResult
+	c.Call(rpc.MethodGuard, rpc.GuardParams{Action: "comment"}, &other)
+	assert.Equal(t, rpc.GuardAllow, other.Decision, "actions limits the hook")
+
+	var res rpc.DeskExecResult
+	c.Call(rpc.MethodDeskExec, rpc.DeskExecParams{Name: "state", Input: []byte(`{"a":1}`)}, &res)
+	assert.JSONEq(t, `{"echo":{"a":1},"open":0,"dir":"/srv"}`, string(res.Output))
+
+	var records []store.Record
+	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{State: hooks.SyncDone}, &records)
+	require.Len(t, records, 4)
+	desk := slices.IndexFunc(records, func(r store.Record) bool {
+		return strings.Contains(string(r.Value), `"sync":"desk_commands.state"`)
+	})
+	require.NotEqual(t, -1, desk)
+	var trace rpc.AutomationResult
+	c.Call(rpc.MethodAutomationShow, rpc.IDParams{ID: records[desk].Key}, &trace)
+	require.Len(t, trace.Calls, 1, "the store read is journaled")
+
+	// Sync journals are pruned after three days; a pass runs the prune.
+	c.Clock.Advance(73 * time.Hour)
+	c.Pass(1)
+	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{State: hooks.SyncDone}, &records)
+	assert.Empty(t, records)
+	err = c.Admin.Call(t.Context(), rpc.MethodAutomationShow, rpc.IDParams{ID: trace.Invocation.Key}, nil)
+	require.ErrorIs(t, err, store.ErrNotFound)
+}
+
+// A script scan signal returns subject -> detail; an issue with an open
+// run in its repo is skipped, and the answer stands until the next poll.
+func TestScanScriptSignal(t *testing.T) {
+	root := controltest.NewRoot(t, `pack: pack.yaml
+projects: {js: {}}
+agents: {fake: {command: "false"}}
+`)
+	pack := `pools:
+  plan: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}
+workflows:
+  triage:
+    project: js
+    vars: [signal, subject, detail]
+    steps:
+      - {id: diagnose, pool: plan, title: "Finding {{.signal}} {{.subject}}", prompt: x}
+  issue:
+    project: js
+    repo: acme/widget
+    issue: issue
+    vars: [issue]
+    steps:
+      - {id: work, pool: plan, title: "Work {{.issue}}", prompt: x}
+triggers:
+  scan:
+    when:
+      scan: [{signal: issue_no_run, repo: acme/widget, script: signals.star:issues, args: {label: watch}, poll: 10m}]
+    run: {workflow: triage, vars: {signal: "{{.signal}}", subject: "{{.subject}}", detail: "{{.detail}}"}}
+    max_runs: 1
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "signals.star"), []byte(`def issues(args):
+    found = {"#7": "open, no run", "8": "open, no run"}
+    for t in tickets(label=args["label"], status="open"):
+        found[t["title"]] = "from the store"
+    return found
+`), 0o600))
+	_, err := config.Load(root)
+	require.NoError(t, err)
+	c := controltest.Start(t, root, control.Options{})
+	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "issue", Vars: map[string]string{"issue": "8"}}, nil)
+	var runs []store.Ticket
+	scanRuns := func() []store.Ticket {
+		var all []store.Ticket
+		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &all)
+		runs = slices.DeleteFunc(all, func(r store.Ticket) bool {
+			rf, err := store.DecodeFields[store.RunFields](r)
+			return err != nil || rf.Workflow != "triage"
+		})
+		return runs
+	}
+	c.PassUntil(func() bool { return len(scanRuns()) == 1 }, "script signal did not start a run")
+	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	require.NoError(t, err)
+	assert.Equal(t, "7", rf.Vars["subject"], "issue 8 has an open run")
+	assert.Equal(t, "open, no run", rf.Vars["detail"])
+
+	// A new subject waits for the next poll.
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "9", Labels: []string{"watch"}}, nil)
+	c.Pass(3)
+	require.Len(t, scanRuns(), 1)
+	c.Clock.Advance(11 * time.Minute)
+	c.PassUntil(func() bool { return len(scanRuns()) == 2 }, "next poll did not see the new subject")
 }

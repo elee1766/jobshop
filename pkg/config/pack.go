@@ -476,7 +476,7 @@ func loadPackFile(file string, given map[string]any, prefix string, depth int, r
 		ev[f] = placeholder(EventVar + "." + f)
 	}
 	subVars[EventVar] = ev
-	for _, k := range StallVars { // likewise, per stall
+	for _, k := range ScanVars { // likewise, per finding
 		subVars[k] = placeholder(k)
 	}
 	for k, v := range vars {

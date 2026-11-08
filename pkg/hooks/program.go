@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,8 +33,15 @@ type Program struct {
 // LoadPrograms loads callbacks and binds source identity to configured host authority.
 func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (map[string]*Program, error) {
 	options := automation.Options{AllowHTTP: cfg.Automation.HTTP, AllowShell: cfg.Automation.Shell, ShellDir: root.Dir, Auth: map[string]automation.Credential{}, Observe: observeHookCall, Replay: replayHookCall}
+	// Controller-side shell runs as the controller with its environment
+	// (systemctl --user needs XDG_RUNTIME_DIR). Step functions do not get it.
+	options.ShellEnv = os.Environ()
 	secrets := []string{}
 	options.Limits.Steps = cfg.Automation.MaxSteps
+	if cfg.Automation.GitHub {
+		options.GitHub = hookGitHubToken
+	}
+	options.Tickets, options.Now = hookTickets, hookNow
 	options.Limits.OutputBytes = cfg.Automation.OutputBytes
 	if cfg.Automation.Timeout != "" {
 		options.Limits.Duration, _ = time.ParseDuration(cfg.Automation.Timeout)
@@ -62,11 +71,8 @@ func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (ma
 		secrets = append(secrets, key)
 	}
 	entries := []string{}
-	for _, w := range cfg.Workflows {
-		entries = append(entries, w.OnStart, w.OnStepCompleted)
-	}
-	for _, tr := range cfg.Triggers {
-		entries = append(entries, tr.Handler)
+	for _, e := range cfg.ScriptEntries() {
+		entries = append(entries, e.Entry)
 	}
 	programs := map[string]*Program{}
 	for _, entry := range slices.Sorted(slices.Values(entries)) {
@@ -125,8 +131,18 @@ func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, module
 		}
 	}
 	for name, tr := range cfg.Triggers {
-		if tr.Handler == entry {
+		if tr.Handler == entry || slices.ContainsFunc(tr.When.Scan, func(s config.ScanSignal) bool { return s.Script == entry }) {
 			owners["triggers."+name] = tr
+		}
+	}
+	for i, h := range cfg.Hooks {
+		if h.Handler == entry {
+			owners["hooks."+strconv.Itoa(i)] = h
+		}
+	}
+	for name, d := range cfg.DeskCommands {
+		if d.Handler == entry {
+			owners["desk_commands."+name] = d
 		}
 	}
 	credentials := map[string]string{}

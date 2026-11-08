@@ -36,12 +36,12 @@ type linearIntakeRead struct {
 	issues []linear.Summary
 }
 
-// stallLinearIssues is the linear_issue_no_run signal (#287): open issues
+// signalLinearIssues is the linear_issue_no_run signal (#287): open issues
 // of sig.Team in sig.States with one of sig.Labels and none of
 // sig.SkipLabels, minus those an open run carries in meta.linear.issue.
 // The subject is the issue key. A Linear read error is logged and the
 // signal finds nothing, so an outage does not stop the other signals.
-func (c *Controller) stallLinearIssues(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]stall, error) {
+func (c *Controller) signalLinearIssues(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]finding, error) {
 	if sig.Team == "" {
 		return nil, nil
 	}
@@ -59,7 +59,7 @@ func (c *Controller) stallLinearIssues(ctx context.Context, cfg *config.Config, 
 	}
 	grace := linearGrace(sig)
 	now := c.now()
-	var out []stall
+	var out []finding
 	for _, is := range issues {
 		if busy[is.Identifier] {
 			continue
@@ -67,18 +67,18 @@ func (c *Controller) stallLinearIssues(ctx context.Context, cfg *config.Config, 
 		if grace > 0 && !is.UpdatedAt.IsZero() && now.Before(is.UpdatedAt.Add(grace)) {
 			continue
 		}
-		out = append(out, stall{config.StallLinearIssueNoRun, is.Identifier, fmt.Sprintf("%s, no run: %s", is.State.Name, is.Title)})
+		out = append(out, finding{config.SignalLinearIssueNoRun, is.Identifier, fmt.Sprintf("%s, no run: %s", is.State.Name, is.Title)})
 	}
 	return out, nil
 }
 
 // linearGrace is sig.Grace; empty is off.
-func linearGrace(sig config.StallSignal) time.Duration {
+func linearGrace(sig config.ScanSignal) time.Duration {
 	d, _ := time.ParseDuration(sig.Grace)
 	return d
 }
 
-// linearIssueHasOpenRun rechecks the store just before a stall-check run
+// linearIssueHasOpenRun rechecks the store just before a triage run
 // starts: the planner may have started the issue's run during the scan.
 func (c *Controller) linearIssueHasOpenRun(ctx context.Context, key string) (bool, error) {
 	busy, err := c.linearIssuesWithOpenRun(ctx)
@@ -92,7 +92,7 @@ func (c *Controller) linearIssueHasOpenRun(ctx context.Context, key string) (boo
 // once per poll interval. In a pass the read runs outside the tick like a
 // check (JOB-103): the signal returns errCheckPending and the replay has
 // the issues.
-func (c *Controller) linearIntakeIssues(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]linear.Summary, error) {
+func (c *Controller) linearIntakeIssues(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]linear.Summary, error) {
 	key := strings.Join([]string{sig.Team, sig.States, sig.Labels, sig.SkipLabels}, "|")
 	poll := config.Duration(sig.Poll, config.DefaultLinearPoll)
 	now := c.now()
@@ -133,7 +133,7 @@ const linearIntakeTimeout = 2 * time.Minute
 // readLinearIntake lists the team's issues as the identity covering the
 // team and keeps the open ones that match. Filtering is done here: the
 // list filter takes one state and one label, the vars take several.
-func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]linear.Summary, error) {
+func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]linear.Summary, error) {
 	name, ok := cfg.IdentityFor(cfg.IdentityNames(), sig.Team)
 	if !ok {
 		return nil, fmt.Errorf("no identity covers team %s", sig.Team)
@@ -294,8 +294,8 @@ func (c *Controller) linearIntakeRPC(_ context.Context, _ scope, p rpc.LinearInt
 	var res rpc.LinearIntakeResult
 	anyState := false
 	for _, name := range slices.Sorted(maps.Keys(cfg.Triggers)) {
-		for _, sig := range cfg.Triggers[name].When.Stall {
-			if sig.Signal != config.StallLinearIssueNoRun || !strings.EqualFold(sig.Team, team) {
+		for _, sig := range cfg.Triggers[name].When.Scan {
+			if sig.Signal != config.SignalLinearIssueNoRun || !strings.EqualFold(sig.Team, team) {
 				continue
 			}
 			res.Watched = true

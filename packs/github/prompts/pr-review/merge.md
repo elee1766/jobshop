@@ -26,14 +26,14 @@ First, and on every resume:
    unmerged: comment that and `jobshop close --outcome closed`; the run
    ends without post-merge.
 2. Held on purpose (draft, author {{.human}} or in
-   `{{.stall_pr_skip_authors}}`, a label in `{{.stall_pr_skip_labels}}`,
+   `{{.pr_review_skip_authors}}`, a label in `{{.pr_review_skip_labels}}`,
    or the `{{.release_pr_label}}` label, which `release-merge` owns):
    comment why and `jobshop close --outcome held`. Nothing is merged.
 3. Owned by an open `pr-work` run of this instance (its implement step
    names this PR in this repo): that run's review-merge merges it, not
    this one. Comment on that review-merge step that the PR is green and
    waiting, then `jobshop close --outcome owned`. A stuck step there is
-   the stall trigger's (`step_stalled`).
+   the scan trigger's (`step_idle`).
 
 Run the repo's checks on the PR head yourself before deciding: `git fetch
 origin pull/{{.pr}}/head && git checkout --detach FETCH_HEAD`, then, as a

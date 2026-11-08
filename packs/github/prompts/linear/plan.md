@@ -48,7 +48,7 @@ Each planning ticket:
    (`jobshop linear context <KEY>` shows blockers and children), start
    its run:
    `jobshop run start {{.pack_prefix}}pr-work --var issue=<KEY> --key linear-<KEY>`.
-   The key is the one the intake stall-check uses, so a repeated start
+   The key is the one the intake triage run uses, so a repeated start
    from either returns the open run. Run start repeats the intake gate
    and refuses an ineligible issue with its reason (exit 1); `--force`
    is only for a start a person asked for. Issues that
@@ -62,8 +62,8 @@ Each planning ticket:
    {{.linear_target}}`. Do not invent keys; use the key create prints. A
    new issue goes through step 4 on the next pass. Work that needs a
    human decision first: `jobshop linear ask` on the target instead.
-6. Blocked claims: the `stall` trigger starts a `stall-check` run for
-   stalled work on its own. When an open ticket says it is blocked,
+6. Blocked claims: the `scan` trigger starts a `triage` run for
+   blocked work on its own. When an open ticket says it is blocked,
    label it so the check picks it up: `jobshop label add <id> blocked`.
 7. Comment progress on the target: what shipped (with PR links), which
    runs are open, what is blocked, open escalations

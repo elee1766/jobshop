@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/automation"
+	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -39,6 +40,11 @@ type Host interface {
 	ApplyHookPlan(context.Context, string, Invocation) error
 	HookFailed(context.Context, string, Invocation)
 	HookApplied(context.Context, Invocation)
+	// GitHubToken returns the API base and a current token of the GitHub
+	// identity covering repo, for the github built-in.
+	GitHubToken(ctx context.Context, repo string) (api.GitHubToken, error)
+	// ReadTickets serves tickets(), runs() and sessions().
+	ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, error)
 }
 
 // Collections is the persistence surface needed by the hook journal.
@@ -64,14 +70,21 @@ func New(st Collections, host Host, root string, now func() time.Time, log *slog
 	return &Engine{store: st, host: host, root: root, now: now, log: log}
 }
 
+// ScanSource is Event.Source of a finding a trigger handler is called for.
+// Delivery is the finding id, <signal>:<subject>; Payload holds signal,
+// subject and detail.
+const ScanSource = "scan"
+
 // Event is an immutable event-time snapshot, not a mutable inbox read.
 type Event struct {
-	Source     string         `json:"source"`
-	Event      string         `json:"event"`
-	Delivery   string         `json:"delivery"`
-	Repository string         `json:"repository"`
-	Payload    map[string]any `json:"payload"`
-	Fields     map[string]any `json:"fields"`
+	Source     string `json:"source"`
+	Event      string `json:"event"`
+	Delivery   string `json:"delivery"`
+	Repository string `json:"repository"`
+	// Trigger names the trigger the handler runs for.
+	Trigger string         `json:"trigger"`
+	Payload map[string]any `json:"payload"`
+	Fields  map[string]any `json:"fields"`
 }
 
 // Step is the accepted event-time state of one workflow step.
@@ -109,21 +122,23 @@ type Invocation struct {
 	ParentInvocation string                     `json:"parent_invocation,omitempty"`
 	Targets          []string                   `json:"targets,omitempty"`
 	Trigger          string                     `json:"trigger,omitempty"`
-	Run              string                     `json:"run,omitempty"`
-	Step             string                     `json:"step,omitempty"`
-	StepRevision     int64                      `json:"step_revision,omitempty"`
-	Entry            string                     `json:"entry"`
-	Digest           string                     `json:"digest"`
-	ReadSet          map[string]int64           `json:"read_set,omitempty"`
-	Event            *Event                     `json:"event,omitempty"`
-	Args             map[string]any             `json:"args,omitempty"`
-	RunInput         *Run                       `json:"run_input,omitempty"`
-	StepInput        *Step                      `json:"step_input,omitempty"`
-	Actions          []automation.Action        `json:"actions,omitempty"`
-	Plan             *store.Graph               `json:"plan,omitempty"`
-	Error            string                     `json:"error,omitempty"`
-	Output           string                     `json:"output,omitempty"`
-	Decisions        []automation.Decision      `json:"decisions,omitempty"`
+	// Sync names the guard hook or desk command a sync call ran for.
+	Sync         string                `json:"sync,omitempty"`
+	Run          string                `json:"run,omitempty"`
+	Step         string                `json:"step,omitempty"`
+	StepRevision int64                 `json:"step_revision,omitempty"`
+	Entry        string                `json:"entry"`
+	Digest       string                `json:"digest"`
+	ReadSet      map[string]int64      `json:"read_set,omitempty"`
+	Event        *Event                `json:"event,omitempty"`
+	Args         map[string]any        `json:"args,omitempty"`
+	RunInput     *Run                  `json:"run_input,omitempty"`
+	StepInput    *Step                 `json:"step_input,omitempty"`
+	Actions      []automation.Action   `json:"actions,omitempty"`
+	Plan         *store.Graph          `json:"plan,omitempty"`
+	Error        string                `json:"error,omitempty"`
+	Output       string                `json:"output,omitempty"`
+	Decisions    []automation.Decision `json:"decisions,omitempty"`
 }
 
 func hookKey(value string) string {

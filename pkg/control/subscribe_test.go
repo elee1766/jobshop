@@ -71,7 +71,7 @@ func (f *fakeThreads) Comments(_ context.Context, th thread, since time.Time) ([
 	return out, nil
 }
 
-func subController(t *testing.T) (*Controller, *stallClock, *fakeThreads) {
+func subController(t *testing.T) (*Controller, *scanClock, *fakeThreads) {
 	t.Helper()
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, config.FileName), fmt.Appendf(nil, subYAML, dir), 0o600))
@@ -82,7 +82,7 @@ func subController(t *testing.T) (*Controller, *stallClock, *fakeThreads) {
 	require.NoError(t, err)
 	live := new(atomic.Pointer[liveConfig])
 	live.Store(lc)
-	clk := newStallClock(time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC))
+	clk := newScanClock(time.Date(2026, 11, 3, 8, 0, 0, 0, time.UTC))
 	// Commits kick the hub as in production; no pumpEvents runs, so a
 	// test can wait on events.wake for the next write (JOB-84).
 	ev := newHub(0)

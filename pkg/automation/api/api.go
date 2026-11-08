@@ -50,6 +50,15 @@ type Options struct {
 	ShellDir    string
 	ShellEnv    []string
 	Jev         JevOptions
+	// GitHub, when set, enables the github built-in: it returns the API base
+	// and a current token for repo, minted by the host per call.
+	GitHub GitHubAuth
+	// Tickets, when set, enables the read-only tickets, runs and sessions
+	// built-ins over the controller's store.
+	Tickets TicketReader
+	// Now is time.now() in scripts; nil is the wall clock. A host pins it per
+	// invocation so a retried callback sees the same time.
+	Now func(context.Context) time.Time
 	// Exec, when set, runs shell's argv instead of a direct child process: a
 	// step function's shell runs in its pool's sandbox and worktree.
 	Exec    Exec
@@ -57,6 +66,36 @@ type Options struct {
 	// Replay may reuse a completed, unredacted result. The host must bind source,
 	// invocation, capability, index and InputDigest, and reject unknown outcomes.
 	Replay func(context.Context, Observation) (any, bool, error)
+}
+
+// TicketQuery is a tickets() read. Meta keys are "pack.key".
+type TicketQuery struct {
+	Kind     string
+	Statuses []string
+	Project  string
+	Pool     string
+	Label    string
+	Workflow string
+	Key      string
+	State    string
+	Parent   string
+	Holder   string
+	Meta     map[string]string
+	Order    string
+	Limit    int
+}
+
+// TicketReader returns matching tickets as JSON-shaped maps.
+type TicketReader func(ctx context.Context, q TicketQuery) ([]any, error)
+
+// GitHubAuth returns credentials for owner/repo. An empty repo asks for any
+// identity, which a github-token identity answers.
+type GitHubAuth func(ctx context.Context, repo string) (GitHubToken, error)
+
+// GitHubToken is a host credential; Token never becomes a script value.
+type GitHubToken struct {
+	APIURL string
+	Token  string
 }
 
 // ExecRequest is one shell call after argument validation. Dir is empty when
@@ -112,6 +151,9 @@ type Host interface {
 	MarkStarted()
 	MarkCompleted()
 	RecordDecision(Decision)
+	// AddSecret redacts a credential obtained during the call from logs,
+	// errors and observations of the rest of the invocation.
+	AddSecret(string)
 }
 
 // Call is a capability implementation invoked after the engine's admission checks.

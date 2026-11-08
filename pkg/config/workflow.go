@@ -265,7 +265,7 @@ var templateKeys = []string{"title", "prompt", "pool", "retry_pool", "needs_reso
 func (c *Config) checkTriggerRun(tr *Trigger) error {
 	r := tr.Run
 	if r.KeyPrefix != "" {
-		return errors.New("run: key_prefix needs when.stall")
+		return errors.New("run: key_prefix needs when.scan")
 	}
 	w, ok := c.Workflows[r.Workflow]
 	if !ok {

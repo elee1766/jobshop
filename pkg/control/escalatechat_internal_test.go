@@ -67,7 +67,7 @@ func escController(t *testing.T, dir string) *Controller {
 	require.NoError(t, err)
 	live := new(atomic.Pointer[liveConfig])
 	live.Store(lc)
-	clk := newStallClock(time.Date(2026, 11, 4, 8, 0, 0, 0, time.UTC))
+	clk := newScanClock(time.Date(2026, 11, 4, 8, 0, 0, 0, time.UTC))
 	st, err := sqlite.Open(t.Context(), filepath.Join(dir, "db"), sqlite.Options{Now: clk.now, Prefix: func(p string) string { return p }})
 	require.NoError(t, err)
 	ctx, cancel := context.WithCancel(t.Context())

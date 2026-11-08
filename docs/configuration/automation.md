@@ -69,6 +69,15 @@ Constructors accept named arguments only:
 | `start_run(...)` | `workflow`, `key` | `inputs={}`, `title=""`, `reason=""` |
 | `start_step(...)` | `id`, `pool`, exactly one of `script`, `prompt` or `prompt_file` | `inputs={}`, `title=""`, `retries`, `retry_pool=""`, `needs=[]`, `output_schema={...}`, `reason=""`; with `script`: `worktree=False`, `timeout="10m"` |
 | `finish_run(...)` | `outcome` | `output={}`, `reason=""` |
+| `create_ticket(...)` | `title`, `key` | `pool=""`, `body=""`, `labels=[]`, `priority` (0-4, default 2), `parent=""`, `reason=""` |
+| `comment(...)` | `ticket`, `body` | `reason=""` |
+
+`create_ticket` files a task. Its `key` dedups per trigger or workflow: while
+a ticket it filed with that key is open, the action is a no-op. The project
+is the pool's, else the parent's, else the run's. A trigger's tickets carry
+`meta.trigger` and count toward its `max_open`, like its runs. `comment`
+adds a comment to any existing ticket. Both apply in the same transaction as
+the rest of the batch.
 
 Names and keys must be nonempty strings. `inputs` and `output` are
 string-keyed dictionaries. An explicit `retries` is an integer from 0
@@ -137,7 +146,7 @@ jev:
   enabled: false
 ```
 
-`http` and `shell` default to false. Jev defaults to disabled and is
+`http`, `shell` and `github` default to false. Jev defaults to disabled and is
 configured separately. A credential declaration does not enable HTTP.
 Secret values are resolved by Go, not exposed as script input or copied
 into the pack. Secret references use a path string,
@@ -227,6 +236,62 @@ Never rely on a redirect to select a permitted credential destination.
 Use endpoint idempotency keys for POST mutations and reconcile after an
 unknown outcome. A timed-out request may already have changed the server.
 
+## GitHub
+
+`automation.github: true` enables the `github` built-in. Each call takes a
+token from the GitHub identity (`identities:`, kind `github-app` or
+`github-token`) covering the call's repo, minted or read per call through
+the controller's identity cache, so an App's hourly tokens and a rotated
+token file need no reload. The token never becomes a script value and is
+redacted from logs, errors and the call journal. There is no fallback to
+the `gh` CLI or `GH_TOKEN`.
+
+```python
+pulls = github.get("/repos/acme/widget/pulls", params = {"state": "open"}, pages = 3).json()
+github.post("/repos/acme/widget/issues/7/comments", json = {"body": "done"})
+data = github.graphql("query($o: String!) { organization(login: $o) { login } }", variables = {"o": "acme"}, repo = "acme/widget")
+```
+
+```text
+github.get(path, repo="", params={}, headers={}, json=None, pages=1, timeout="")
+github.post / patch / put / delete(path, repo="", params={}, headers={}, json=None, timeout="")
+github.graphql(query, variables={}, repo="", timeout="")
+```
+
+- `path` is an API path without query; `params` become the query string.
+  `repo` (owner/repo) selects the identity and defaults to the repo in a
+  `/repos/<owner>/<repo>/` path. With neither, a `github-token` identity
+  answers; an App needs a repo for its installation.
+- REST calls return the same response value as `http` (`status_code`,
+  `body`, `headers`, `json()`). Non-2xx is returned, not raised.
+- `pages` (GET, up to 10) follows `rel="next"` links and returns one JSON
+  array of all pages. The combined body counts against `output_bytes`.
+- `graphql` returns the `data` object and raises on `errors` or a non-200
+  status, with GitHub's messages.
+- Redirects off the identity's API origin fail. The script cannot set
+  `Authorization`.
+
+## Store reads, json and time
+
+```text
+tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False)
+runs(workflow="", key="", status=None, state="", meta={}, order="newest", limit=100)
+sessions(pool="", status=["open", "in_progress"], limit=100)
+```
+
+Each returns a list of ticket dictionaries as `jobshop ticket show --json`
+prints them, with `fields` and `meta` decoded and `body` dropped unless
+`body=True`. `status` is a string or list of `open`, `in_progress`,
+`closed`. `meta` maps up to three `"pack.key"` names to string values,
+for example `{"trigger.name": "scan"}`. `limit` is 1 to 500. Reads see the
+whole store, are journaled and replayed like other calls, and count toward
+the call limit. They do not fence: a decision made on a read can race a
+write, and the controller still checks every returned action.
+
+`json.encode`, `json.decode` and `json.indent` are Starlark's `json`
+module. `time` is Starlark's `time` module; `time.now()` is the time the
+invocation was accepted, so a resumed attempt sees the same value.
+
 ## Shell
 
 ```python
@@ -253,14 +318,14 @@ The result has `stdout`, `stderr`, and integer `exit_code`. A nonzero
 command exit is data for the callback to handle. Spawn failure,
 cancellation or output overflow is an error. Stdout and stderr share one
 output budget. Linux cancellation terminates the command process group.
-The engine does not inherit the entire controller environment into the
-child. Only the host-provided base and explicit `env` values are supplied.
-Do not assume `GH_TOKEN`, cloud credentials or an interactive shell setup
-will be present.
+A callback's command inherits the controller's environment, plus
+explicit `env` values, so user-manager tools such as `systemctl --user`
+work. A step function's `shell()` runs in its pool's sandbox and gets the
+sandbox environment instead. Use the `github` built-in rather than `gh`.
 
-The controller supplies the Jobshop root as the default working directory
-and no ambient base environment. Set `cwd` and required environment values
-explicitly when a tool depends on a checkout or configuration directory.
+The controller supplies the Jobshop root as the default working directory.
+Set `cwd` explicitly when a tool depends on a checkout or configuration
+directory.
 
 Shell runs as the controller OS user, outside the agent sandbox. A timeout
 cannot undo filesystem writes or external actions the command completed.

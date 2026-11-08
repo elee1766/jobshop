@@ -163,6 +163,8 @@ type Controller struct {
 	poolPauseReason map[string]string
 	// inboxPrunedAt is the last inbox prune (#321); tick-only state.
 	inboxPrunedAt time.Time
+	// syncPrunedAt is the last guard/desk handler journal prune.
+	syncPrunedAt time.Time
 	// triggerPolled is each trigger's last poll, for fallback: (JOB-62);
 	// tick-only state.
 	triggerPolled map[string]time.Time
@@ -246,6 +248,8 @@ type Controller struct {
 	ghIssueOpen func(context.Context, linear.GitHubDep) (bool, error)
 	// linIntake caches linear_issue_no_run reads between polls (#287).
 	linIntake linearIntake
+	// signalScripts caches script scan signal answers between polls.
+	signalScripts signalScripts
 	// linSessions throttles the Linear agent-session sweep.
 	linSessions linearSessions
 	// reloadMu serializes reloads so the last file read wins.
@@ -614,6 +618,7 @@ func (c *Controller) tick() {
 	c.step(ctx, "sweep_linear_agent_sessions", func(ctx context.Context) { c.sweepLinearAgentSessions(ctx, cfg, false) })
 	c.passStep(ctx, cfg, "prune_inbox", c.pruneInbox)
 	c.passStep(ctx, cfg, "prune_write_keys", c.pruneWriteKeys)
+	c.passStep(ctx, cfg, "prune_sync", c.pruneSync)
 	c.passStep(ctx, cfg, "prune_artifacts", c.pruneArtifacts)
 	c.passStep(ctx, cfg, "compress_journals", c.maybeCompressJournals)
 }

@@ -108,7 +108,7 @@ func capability(name string, call api.Call) *starlark.Builtin {
 
 func observedResult(capability string, value starlark.Value, limits Limits) (any, error) {
 	if structure, ok := value.(*starlarkstruct.Struct); ok {
-		isHTTP := capability == "http.get" || capability == "http.post"
+		isHTTP := responseCapability(capability)
 		var body string
 		dict := starlark.NewDict(0)
 		for _, name := range structure.AttrNames() {
@@ -250,3 +250,13 @@ func (inv *invocation) safeError(err error) error {
 // Observer is called synchronously outside any controller lock. It may reject a
 // call before execution. Failure after execution does not undo external effects.
 type Observer = api.Observer
+
+// responseCapability: the call returns an http response struct, whose body
+// is observed once and whose json() method is rebuilt on replay.
+func responseCapability(name string) bool {
+	switch name {
+	case "http.get", "http.post", "github.get", "github.post", "github.patch", "github.put", "github.delete":
+		return true
+	}
+	return false
+}

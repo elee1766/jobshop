@@ -25,6 +25,7 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 		Tickets:   []store.NewTicket{{ID: "js-next", Project: proj, Kind: store.KindTask, Title: "Follow-up"}},
 		Fields:    map[string]json.RawMessage{run.ID: json.RawMessage(`{"workflow":"w","key":"atomic","state":"done"}`)},
 		Close:     map[string]string{run.ID: "done"},
+		Comments:  []store.GraphComment{{TicketID: "js-next", Body: "filed by hook"}, {TicketID: observed.ID, Body: "seen"}},
 	}
 	assertUnchanged := func() {
 		t.Helper()
@@ -38,6 +39,9 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 		gotHistory, err := store.History(ctx, s, run.ID)
 		require.NoError(t, err)
 		assert.Equal(t, history, gotHistory)
+		comments, err := store.Comments(ctx, s, observed.ID)
+		require.NoError(t, err)
+		assert.Empty(t, comments, "a failed graph adds no comments")
 	}
 
 	// A read-only input belongs to the read set, not just the tickets written.
@@ -68,6 +72,13 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 	fields, err := store.DecodeFields[store.RunFields](closed)
 	require.NoError(t, err)
 	assert.Equal(t, store.RunDone, fields.State)
+	for id, body := range map[string]string{"js-next": "filed by hook", observed.ID: "seen"} {
+		comments, err := store.Comments(ctx, s, id)
+		require.NoError(t, err)
+		require.Len(t, comments, 1)
+		assert.Equal(t, body, comments[0].Body)
+		assert.Equal(t, "hook", comments[0].Author)
+	}
 }
 
 func testStructuredStepResultFences(t *testing.T, s store.Store, _ *Clock) {

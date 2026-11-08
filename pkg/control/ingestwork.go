@@ -150,7 +150,7 @@ func (c *Controller) lastWorkerBeat() time.Time {
 
 // ingestAttention lists a missing external worker and an admission
 // backlog. The same conditions are the ingest_worker and
-// ingest_backlog stall signals.
+// ingest_backlog scan signals.
 func (c *Controller) ingestAttention(ctx context.Context, cfg *config.Config) ([]rpc.AttentionItem, error) {
 	var items []rpc.AttentionItem
 	if s, ok := c.missingWorker(cfg); ok {
@@ -168,39 +168,39 @@ func (c *Controller) ingestAttention(ctx context.Context, cfg *config.Config) ([
 
 // missingWorker: external mode and no worker heartbeat for
 // ingest.worker_missing.
-func (c *Controller) missingWorker(cfg *config.Config) (stall, bool) {
+func (c *Controller) missingWorker(cfg *config.Config) (finding, bool) {
 	in := cfg.Ingest
 	if !in.External() && !in.ExternalDispatch() {
-		return stall{}, false
+		return finding{}, false
 	}
 	last := c.lastWorkerBeat()
 	if c.now().Sub(last) < in.WorkerMissingAfter() {
-		return stall{}, false
+		return finding{}, false
 	}
-	return stall{
-		signal: config.StallIngestWorker, subject: "ingest-worker@" + last.UTC().Format("20060102T150405Z"),
+	return finding{
+		signal: config.SignalIngestWorker, subject: "ingest-worker@" + last.UTC().Format("20060102T150405Z"),
 		detail: fmt.Sprintf("ingest.workers or ingest.dispatch is external and no `jobshop ingest work` has called for %s; pending items are not admitted or admitted ones not dispatched", ago(c.now(), last)),
 	}, true
 }
 
 // ingestBacklog: more than ingest.backlog_max pending items older than
 // ingest.backlog_after.
-func (c *Controller) ingestBacklog(ctx context.Context, cfg *config.Config) (stall, bool, error) {
+func (c *Controller) ingestBacklog(ctx context.Context, cfg *config.Config) (finding, bool, error) {
 	in := cfg.Ingest
 	n, err := ingest.InboxCountOlder(ctx, c.store, store.InboxPending, c.now().Add(-in.BacklogAge()))
 	if err != nil || n <= int64(in.BacklogMax) {
-		return stall{}, false, err
+		return finding{}, false, err
 	}
-	return stall{
-		signal: config.StallIngestBacklog, subject: "ingest-backlog",
+	return finding{
+		signal: config.SignalIngestBacklog, subject: "ingest-backlog",
 		detail: fmt.Sprintf("%d pending inbox items older than %s (ingest.backlog_max %d)", n, in.BacklogAge(), in.BacklogMax),
 	}, true, nil
 }
 
-func (c *Controller) stallIngest(ctx context.Context, cfg *config.Config, signal string) ([]stall, error) {
-	if signal == config.StallIngestWorker {
+func (c *Controller) signalIngest(ctx context.Context, cfg *config.Config, signal string) ([]finding, error) {
+	if signal == config.SignalIngestWorker {
 		if s, ok := c.missingWorker(cfg); ok {
-			return []stall{s}, nil
+			return []finding{s}, nil
 		}
 		return nil, nil
 	}
@@ -208,7 +208,7 @@ func (c *Controller) stallIngest(ctx context.Context, cfg *config.Config, signal
 	if !ok {
 		return nil, err
 	}
-	return []stall{s}, nil
+	return []finding{s}, nil
 }
 
 // recordInboxGauges records inbox counts by state and live workers.
