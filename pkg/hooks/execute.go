@@ -266,12 +266,21 @@ func (c *Engine) applyHookPlan(ctx context.Context, col store.Collection, rec st
 
 // hookGitHubToken asks the host for a GitHub token on behalf of the
 // invocation the call belongs to, so tokens are minted per call.
-func hookGitHubToken(ctx context.Context, repo string) (api.GitHubToken, error) {
+func hookGitHubToken(ctx context.Context, repo string) (api.Token, error) {
 	trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext)
 	if !ok {
-		return api.GitHubToken{}, errors.New("capability call has no durable invocation")
+		return api.Token{}, errors.New("capability call has no durable invocation")
 	}
 	return trace.engine.host.GitHubToken(ctx, repo)
+}
+
+// hookLinearToken is hookGitHubToken for the linear built-in.
+func hookLinearToken(ctx context.Context, team string) (api.Token, error) {
+	trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext)
+	if !ok {
+		return api.Token{}, errors.New("capability call has no durable invocation")
+	}
+	return trace.engine.host.LinearToken(ctx, team)
 }
 
 // hookNow is time.now() in a callback: when the invocation was accepted,

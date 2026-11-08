@@ -62,9 +62,9 @@ func TestGitHubCalls(t *testing.T) {
 	var repos []string
 	records := map[int]automation.Observation{}
 	options := automation.Options{
-		GitHub: func(_ context.Context, repo string) (api.GitHubToken, error) {
+		GitHub: func(_ context.Context, repo string) (api.Token, error) {
 			repos = append(repos, repo)
-			return api.GitHubToken{APIURL: server.URL, Token: token}, nil
+			return api.Token{APIURL: server.URL, Token: token}, nil
 		},
 		Observe: func(_ context.Context, o automation.Observation) error {
 			if o.Phase == "completed" {

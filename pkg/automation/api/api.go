@@ -53,6 +53,9 @@ type Options struct {
 	// GitHub, when set, enables the github built-in: it returns the API base
 	// and a current token for repo, minted by the host per call.
 	GitHub GitHubAuth
+	// Linear, when set, enables the linear built-in: it returns the GraphQL
+	// endpoint and a current token for a team key, minted by the host per call.
+	Linear LinearAuth
 	// Tickets, when set, enables the read-only tickets, runs and sessions
 	// built-ins over the controller's store.
 	Tickets TicketReader
@@ -90,10 +93,14 @@ type TicketReader func(ctx context.Context, q TicketQuery) ([]any, error)
 
 // GitHubAuth returns credentials for owner/repo. An empty repo asks for any
 // identity, which a github-token identity answers.
-type GitHubAuth func(ctx context.Context, repo string) (GitHubToken, error)
+type GitHubAuth func(ctx context.Context, repo string) (Token, error)
 
-// GitHubToken is a host credential; Token never becomes a script value.
-type GitHubToken struct {
+// LinearAuth returns credentials for a Linear team key. An empty team asks
+// for the only Linear identity.
+type LinearAuth func(ctx context.Context, team string) (Token, error)
+
+// Token is a host credential; Token never becomes a script value.
+type Token struct {
 	APIURL string
 	Token  string
 }

@@ -25,6 +25,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/automation/github"
 	automationhttp "github.com/elee1766/jobshop/pkg/automation/http"
 	"github.com/elee1766/jobshop/pkg/automation/jev"
+	"github.com/elee1766/jobshop/pkg/automation/linear"
 	"github.com/elee1766/jobshop/pkg/automation/tickets"
 	starlarkjson "go.starlark.net/lib/json"
 	starlarktime "go.starlark.net/lib/time"
@@ -552,6 +553,9 @@ func predeclared() starlark.StringDict {
 			"put":     capability("github.put", github.Call),
 			"delete":  capability("github.delete", github.Call),
 			"graphql": capability("github.graphql", github.GraphQL),
+		}),
+		"linear": starlarkstruct.FromStringDict(starlark.String("linear"), starlark.StringDict{
+			"graphql": capability("linear.graphql", linear.GraphQL),
 		}),
 		"shell":    capability("shell", command.Call),
 		"tickets":  capability("tickets", tickets.Call),

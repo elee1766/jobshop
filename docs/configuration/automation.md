@@ -146,7 +146,7 @@ jev:
   enabled: false
 ```
 
-`http`, `shell` and `github` default to false. Jev defaults to disabled and is
+`http`, `shell`, `github` and `linear` default to false. Jev defaults to disabled and is
 configured separately. A credential declaration does not enable HTTP.
 Secret values are resolved by Go, not exposed as script input or copied
 into the pack. Secret references use a path string,
@@ -270,6 +270,32 @@ github.graphql(query, variables={}, repo="", timeout="")
   status, with GitHub's messages.
 - Redirects off the identity's API origin fail. The script cannot set
   `Authorization`.
+
+## Linear
+
+`automation.linear: true` enables the `linear` built-in, the same way:
+each call takes a token from the Linear identity (kind `linear-app` or
+`linear`) covering the call's team, minted or read per call, redacted and
+never a script value.
+
+```python
+data = linear.graphql(
+    "query($k: String!) { issue(id: $k) { identifier state { name } } }",
+    variables = {"k": "ENG-12"},
+    team = "ENG",
+)
+```
+
+```text
+linear.graphql(query, variables={}, team="", timeout="")
+```
+
+- `team` (a key such as `ENG`) selects the identity. Without it the only
+  Linear identity answers; with several, the call raises.
+- It returns the `data` object and raises on `errors` or a non-200
+  status, with Linear's messages. Mutations go through like queries: the
+  `linear-api-mutation` guard covers `jobshop linear api`, not callbacks,
+  so a mutation belongs in reviewed pack code.
 
 ## Store reads, json and time
 
