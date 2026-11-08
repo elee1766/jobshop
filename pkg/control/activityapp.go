@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -27,8 +28,8 @@ const appReviewPRs = 5
 // endpoints instead of events: a github-app identity covers it, or the
 // token is an installation token ("ghs_") a github-token identity holds,
 // for example one minted by a command secret.
-func (l *liveActivity) appActivity(repo, tok string) bool {
-	if strings.HasPrefix(tok, "ghs_") {
+func (l *liveActivity) appActivity(ctx context.Context, cl *github.Client, repo string) bool {
+	if tok, err := cl.Auth.Token(ctx); err == nil && strings.HasPrefix(tok, "ghs_") {
 		return true
 	}
 	cfg := l.c.config()
@@ -39,11 +40,11 @@ func (l *liveActivity) appActivity(repo, tok string) bool {
 // fetchAppActivity reads the per-resource endpoints. A failing endpoint
 // (a permission the App lacks) does not stop the others: the items read
 // so far come back with the joined errors.
-func (l *liveActivity) fetchAppActivity(ctx context.Context, base, tok, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
+func (l *liveActivity) fetchAppActivity(ctx context.Context, cl *github.Client, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
 	var out []rpc.ActivityItem
 	var errs []error
 	read := func(name, path string, parse func([]byte) ([]rpc.ActivityItem, error)) []byte {
-		body, h, err := l.get(ctx, base+"/repos/"+repo+path, tok, st.ETags[name])
+		body, h, err := l.get(ctx, cl, "/repos/"+repo+path, st.ETags[name])
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 			return nil
@@ -73,7 +74,7 @@ func (l *liveActivity) fetchAppActivity(ctx context.Context, base, tok, repo str
 		}
 		if json.Unmarshal(body, &prs) == nil {
 			for _, p := range prs[:min(len(prs), appReviewPRs)] {
-				b, _, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews?per_page=30", base, repo, p.Number), tok, "")
+				b, _, err := l.get(ctx, cl, fmt.Sprintf("/repos/%s/pulls/%d/reviews?per_page=30", repo, p.Number), "")
 				if err != nil {
 					errs = append(errs, fmt.Errorf("reviews: %w", err))
 					break

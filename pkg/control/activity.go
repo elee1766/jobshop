@@ -1,11 +1,9 @@
 package control
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -19,9 +17,9 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Activity feed (#255): recent GitHub and Linear activity for every repo
@@ -38,7 +36,6 @@ const (
 	defaultActivityMax      = 1000
 	activityBodyMax         = 2000
 	activityFile            = "activity.json"
-	githubAPI               = "https://api.github.com"
 )
 
 // repoPoll is the per-repo poll state kept across restarts.
@@ -377,90 +374,26 @@ func (c *Controller) activityList(ctx context.Context, sc scope, p rpc.ActivityL
 // liveActivity reads GitHub over HTTP (ETag, X-Poll-Interval) and Linear
 // with pkg/linear.
 type liveActivity struct {
-	c    *Controller
-	http *http.Client
-
-	mu      sync.Mutex
-	ghTok   string
-	ghTokAt time.Time
+	c *Controller
 }
 
-// githubAuth returns the API base and token for repo: the identity
-// covering it (#200), else the host's gh token (as subscriptions use).
-func (l *liveActivity) githubAuth(ctx context.Context, repo string) (string, string, error) {
-	cfg := l.c.config()
-	if name, ok := cfg.IdentityFor(cfg.IdentityNames(), repo); ok {
-		id := cfg.Identities[name]
-		tok, err := l.c.minter.Token(ctx, name, id, repo)
-		if err != nil {
-			return "", "", err
-		}
-		base := id.APIURL
-		if base == "" {
-			base = githubAPI
-		}
-		return strings.TrimRight(base, "/"), tok.Token, nil
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.ghTok != "" && time.Since(l.ghTokAt) < 10*time.Minute {
-		return githubAPI, l.ghTok, nil
-	}
-	tok := os.Getenv("GH_TOKEN")
-	if tok == "" {
-		cmd, done := telemetry.ExecContext(ctx, "gh-auth-token", "gh", "auth", "token")
-		out, err := cmd.Output()
-		done(err)
-		if err != nil {
-			return "", "", fmt.Errorf("no identity covers %s and gh auth token failed: %w", repo, err)
-		}
-		tok = strings.TrimSpace(string(out))
-	}
-	l.ghTok, l.ghTokAt = tok, time.Now()
-	return githubAPI, tok, nil
-}
-
-// get fetches url with If-None-Match. A 304 returns nil body, no error.
-func (l *liveActivity) get(ctx context.Context, u, tok, etag string) ([]byte, http.Header, error) {
-	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}/activity"), http.MethodGet, u, nil)
+// get fetches path with If-None-Match. A 304 returns nil body, no error.
+func (l *liveActivity) get(ctx context.Context, cl *github.Client, path, etag string) ([]byte, http.Header, error) {
+	resp, err := cl.Do(ctx, github.Request{Path: path, ETag: etag, Route: "/repos/{repo}/activity"})
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	if etag != "" {
-		req.Header.Set("If-None-Match", etag)
-	}
-	hc := l.http
-	if hc == nil {
-		hc = telemetry.HTTPClient("github", time.Minute)
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusNotModified {
+	if resp.NotModified() {
 		return nil, resp.Header, nil
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
-	if err != nil {
-		return nil, nil, err
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, nil, fmt.Errorf("GET %s: %s: %s", u, resp.Status, bytes.TrimSpace(body[:min(len(body), 300)]))
-	}
-	return body, resp.Header, nil
+	return resp.Body, resp.Header, nil
 }
 
 func (l *liveActivity) GitHub(ctx context.Context, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	base, tok, err := l.githubAuth(ctx, repo)
-	if err != nil {
-		return nil, err
-	}
-	items, err := l.fetchGitHub(ctx, base, tok, repo, st)
+	cl := l.c.githubOrHost(l.c.config(), "", repo)
+	items, err := l.fetchGitHub(ctx, cl, repo, st)
 	// A github-token acts as a user, not a [bot]: mark its own events (#340).
 	if self := l.c.githubSelf(ctx, repo); self != "" {
 		for i := range items {
@@ -476,10 +409,10 @@ func (l *liveActivity) GitHub(ctx context.Context, repo string, st *repoPoll) ([
 // with its ETag: an unchanged repo is two 304s, which cost no rate limit.
 // A github-app identity reads the per-resource endpoints instead of
 // events, which are empty for an installation token (JOB-108).
-func (l *liveActivity) fetchGitHub(ctx context.Context, base, tok, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
+func (l *liveActivity) fetchGitHub(ctx context.Context, cl *github.Client, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
 	var out []rpc.ActivityItem
 	if st.DefaultBranch == "" {
-		b, _, err := l.get(ctx, fmt.Sprintf("%s/repos/%s", base, repo), tok, "")
+		b, _, err := l.get(ctx, cl, "/repos/"+repo, "")
 		if err != nil {
 			return nil, err
 		}
@@ -492,10 +425,10 @@ func (l *liveActivity) fetchGitHub(ctx context.Context, base, tok, repo string, 
 		st.DefaultBranch = r.DefaultBranch
 	}
 	var appErr error
-	if l.appActivity(repo, tok) {
-		out, appErr = l.fetchAppActivity(ctx, base, tok, repo, st)
+	if l.appActivity(ctx, cl, repo) {
+		out, appErr = l.fetchAppActivity(ctx, cl, repo, st)
 	} else {
-		body, h, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/events?per_page=100", base, repo), tok, st.EventsETag)
+		body, h, err := l.get(ctx, cl, "/repos/"+repo+"/events?per_page=100", st.EventsETag)
 		if err != nil {
 			return nil, err
 		}
@@ -511,8 +444,8 @@ func (l *liveActivity) fetchGitHub(ctx context.Context, base, tok, repo string, 
 			st.EventsETag = h.Get("ETag")
 		}
 	}
-	u := fmt.Sprintf("%s/repos/%s/actions/runs?status=completed&per_page=30&branch=%s", base, repo, url.QueryEscape(st.DefaultBranch))
-	body, h, err := l.get(ctx, u, tok, st.RunsETag)
+	u := fmt.Sprintf("/repos/%s/actions/runs?status=completed&per_page=30&branch=%s", repo, url.QueryEscape(st.DefaultBranch))
+	body, h, err := l.get(ctx, cl, u, st.RunsETag)
 	if err != nil {
 		return out, err
 	}
@@ -529,11 +462,7 @@ func (l *liveActivity) fetchGitHub(ctx context.Context, base, tok, repo string, 
 
 // PullRequest reads one PR for revert detection (#272).
 func (l *liveActivity) PullRequest(ctx context.Context, repo string, n int) (ghPR, error) {
-	base, tok, err := l.githubAuth(ctx, repo)
-	if err != nil {
-		return ghPR{}, err
-	}
-	b, _, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/pulls/%d", base, repo, n), tok, "")
+	b, _, err := l.get(ctx, l.c.githubOrHost(l.c.config(), "", repo), fmt.Sprintf("/repos/%s/pulls/%d", repo, n), "")
 	if err != nil {
 		return ghPR{}, err
 	}
@@ -543,11 +472,7 @@ func (l *liveActivity) PullRequest(ctx context.Context, repo string, n int) (ghP
 
 // CommitPulls lists the PRs a commit is associated with.
 func (l *liveActivity) CommitPulls(ctx context.Context, repo, sha string) ([]int, error) {
-	base, tok, err := l.githubAuth(ctx, repo)
-	if err != nil {
-		return nil, err
-	}
-	b, _, err := l.get(ctx, fmt.Sprintf("%s/repos/%s/commits/%s/pulls", base, repo, url.PathEscape(sha)), tok, "")
+	b, _, err := l.get(ctx, l.c.githubOrHost(l.c.config(), "", repo), fmt.Sprintf("/repos/%s/commits/%s/pulls", repo, url.PathEscape(sha)), "")
 	if err != nil {
 		return nil, err
 	}

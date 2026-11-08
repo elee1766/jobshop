@@ -10,6 +10,7 @@ import (
 
 	"go.starlark.net/starlark"
 
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 )
 
@@ -52,9 +53,9 @@ type Options struct {
 	ShellDir    string
 	ShellEnv    []string
 	Jev         JevOptions
-	// GitHub, when set, enables the github built-in: it returns the API base
-	// and a current token for repo, minted by the host per call.
-	GitHub GitHubAuth
+	// GitHub, when set, enables the github built-in: it returns the host's
+	// client for the identity covering repo.
+	GitHub GitHubClient
 	// Linear, when set, enables the linear built-in: it returns the host's
 	// client for the identity covering a team key.
 	Linear LinearClient
@@ -93,20 +94,15 @@ type TicketQuery struct {
 // TicketReader returns matching tickets as JSON-shaped maps.
 type TicketReader func(ctx context.Context, q TicketQuery) ([]any, error)
 
-// GitHubAuth returns credentials for owner/repo. An empty repo asks for any
-// identity, which a github-token identity answers.
-type GitHubAuth func(ctx context.Context, repo string) (Token, error)
+// GitHubClient returns the client for owner/repo. An empty repo asks for
+// any identity, which a github-token identity answers. The client mints its
+// token per request and reports it through the context's apicall.Observer.
+type GitHubClient func(ctx context.Context, repo string) (*github.Client, error)
 
 // LinearClient returns the client for a Linear team key. An empty team asks
 // for the only Linear identity. The client mints its token per request and
 // reports it through the context's apicall.Observer.
 type LinearClient func(ctx context.Context, team string) (*linear.Client, error)
-
-// Token is a host credential; Token never becomes a script value.
-type Token struct {
-	APIURL string
-	Token  string
-}
 
 // ExecRequest is one shell call after argument validation. Dir is empty when
 // the script set no cwd, so the host picks its own default.

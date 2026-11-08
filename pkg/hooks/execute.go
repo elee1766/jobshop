@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/automation/api"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -265,18 +266,17 @@ func (c *Engine) applyHookPlan(ctx context.Context, col store.Collection, rec st
 	c.host.HookApplied(ctx, in)
 }
 
-// hookGitHubToken asks the host for a GitHub token on behalf of the
-// invocation the call belongs to, so tokens are minted per call.
-func hookGitHubToken(ctx context.Context, repo string) (api.Token, error) {
+// hookGitHubClient asks the host for the GitHub client on behalf of the
+// invocation the call belongs to.
+func hookGitHubClient(ctx context.Context, repo string) (*github.Client, error) {
 	trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext)
 	if !ok {
-		return api.Token{}, errors.New("capability call has no durable invocation")
+		return nil, errors.New("capability call has no durable invocation")
 	}
-	return trace.engine.host.GitHubToken(ctx, repo)
+	return trace.engine.host.GitHubClient(ctx, repo)
 }
 
-// hookLinearClient asks the host for the Linear client on behalf of the
-// invocation the call belongs to.
+// hookLinearClient is hookGitHubClient for the linear built-in.
 func hookLinearClient(ctx context.Context, team string) (*linear.Client, error) {
 	trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext)
 	if !ok {

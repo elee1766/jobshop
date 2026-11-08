@@ -16,6 +16,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -245,7 +247,7 @@ func TestReconcile(t *testing.T) {
 			hd(1, "a", "2026-11-04T09:00:00Z", 500), // before the cutoff
 		},
 	})
-	r := &Reconcile{APIURL: srv.URL, JWT: func() (string, error) { return "jwt", nil }, Max: 2}
+	r := &Reconcile{Client: github.New(srv.URL, apicall.Static("jwt")), Max: 2}
 	since := time.Date(2026, 11, 4, 9, 30, 0, 0, time.UTC)
 	res, err := r.Pass(t.Context(), since)
 	require.NoError(t, err)

@@ -5,9 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"maps"
-	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -17,7 +15,6 @@ import (
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // linearIntakePages bounds one Linear read (250 issues a page).
@@ -204,30 +201,12 @@ func (c *Controller) githubIssueOpen(ctx context.Context, cfg *config.Config, d 
 	if c.ghIssueOpen != nil {
 		return c.ghIssueOpen(ctx, d)
 	}
-	base, tok, err := c.pollerAuth(ctx, cfg, "", d.Repo)
-	if err != nil {
-		return false, err
-	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}/issues/{n}"), http.MethodGet, fmt.Sprintf("%s/repos/%s/issues/%d", base, d.Repo, d.Number), nil)
-	if err != nil {
-		return false, err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	resp, err := githubHTTP.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("github issue %s: %s", d, resp.Status)
-	}
 	var v struct {
 		State string `json:"state"`
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&v); err != nil {
+	if err := c.githubOrHost(cfg, "", d.Repo).Get(ctx, fmt.Sprintf("/repos/%s/issues/%d", d.Repo, d.Number), &v); err != nil {
 		return false, err
 	}
 	return v.State == "open", nil

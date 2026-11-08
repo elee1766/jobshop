@@ -17,7 +17,6 @@ const outboundCeiling = 24 * time.Hour
 // path or query that may hold a token: set the template with
 // telemetry.WithRoute.
 var (
-	githubHTTP   = telemetry.HTTPClient("github", outboundCeiling)
 	stepHTTP     = telemetry.HTTPClient("step", outboundCeiling)
 	providerHTTP = telemetry.HTTPClient("provider", outboundCeiling)
 )

@@ -5,13 +5,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
-
-// reconcileHTTP is the client for the deliveries API.
-var reconcileHTTP = telemetry.HTTPClient("reconcile", 30*time.Second)
 
 // pumpReconcile runs the GitHub App delivery reconcile (#335) every
 // ingest.github_reconcile until the controller stops. Each pass covers
@@ -48,10 +43,7 @@ func (c *Controller) reconcileOnce(ctx context.Context, every time.Duration) {
 		if id.Kind != config.IdentityGitHubApp {
 			continue
 		}
-		r := &ingest.Reconcile{
-			HTTP: reconcileHTTP, APIURL: id.APIURL,
-			JWT: func() (string, error) { return identity.JWTFor(id, c.now()) },
-		}
+		r := &ingest.Reconcile{Client: c.githubApp(id)}
 		res, err := r.Pass(ctx, since)
 		if err != nil {
 			ok = false

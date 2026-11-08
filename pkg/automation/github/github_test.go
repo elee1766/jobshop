@@ -12,8 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/automation"
-	"github.com/elee1766/jobshop/pkg/automation/api"
+	gh "github.com/elee1766/jobshop/pkg/github"
 )
 
 const token = "ghs_minted-per-call"
@@ -62,9 +63,9 @@ func TestGitHubCalls(t *testing.T) {
 	var repos []string
 	records := map[int]automation.Observation{}
 	options := automation.Options{
-		GitHub: func(_ context.Context, repo string) (api.Token, error) {
+		GitHub: func(_ context.Context, repo string) (*gh.Client, error) {
 			repos = append(repos, repo)
-			return api.Token{APIURL: server.URL, Token: token}, nil
+			return gh.New(server.URL, apicall.Static(token)), nil
 		},
 		Observe: func(_ context.Context, o automation.Observation) error {
 			if o.Phase == "completed" {
@@ -116,7 +117,7 @@ def no_auth_header():
 	if _, err := engine.Invoke(t.Context(), "main.star:bad"); err == nil || !strings.Contains(err.Error(), "Field 'bad' doesn't exist") {
 		t.Fatalf("graphql errors not raised: %v", err)
 	}
-	if _, err := engine.Invoke(t.Context(), "main.star:redirect"); err == nil || !strings.Contains(err.Error(), "request failed") {
+	if _, err := engine.Invoke(t.Context(), "main.star:redirect"); err == nil || !strings.Contains(err.Error(), "redirect away from the API refused") {
 		t.Fatalf("redirect off the API followed: %v", err)
 	}
 	if _, err := engine.Invoke(t.Context(), "main.star:no_auth_header"); err == nil || !strings.Contains(err.Error(), "host sets Authorization") {

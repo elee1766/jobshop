@@ -4,16 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Poller reads GitHub repos that send no webhook and writes inbox rows
@@ -30,11 +28,10 @@ import (
 type Poller struct {
 	Name   string
 	Events []string
-	HTTP   *http.Client
-	// Auth returns the API base URL and token for repo.
-	Auth  func(ctx context.Context, repo string) (base, token string, err error)
-	Store PollStore
-	Now   func() time.Time
+	// Client returns the GitHub client for repo.
+	Client func(repo string) (*github.Client, error)
+	Store  PollStore
+	Now    func() time.Time
 	// MaxPages bounds pages per stream and pass; 0 is 10.
 	MaxPages int
 }
@@ -58,12 +55,11 @@ func (p *Poller) wants(ev string) bool { return slices.Contains(p.Events, ev) }
 // failure re-reads the same window and the inbox dedupes it.
 func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 	var res PollResult
-	base, tok, err := p.Auth(ctx, repo)
+	cl, err := p.Client(repo)
 	if err != nil {
 		return res, err
 	}
-	base = strings.TrimRight(base, "/")
-	g := ghGet{http: p.HTTP, token: tok, max: p.MaxPages}
+	g := ghGet{cl: cl, max: p.MaxPages}
 
 	var items []store.InboxItem
 	var cursors []store.PollCursor
@@ -75,7 +71,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 		}
 		if cur.Found {
 			var issues []ghIssue
-			etag, err := g.list(ctx, listURL(base, repo, "issues", cur.Since, "state=all"), cur.ETag, &issues)
+			etag, err := g.list(ctx, listURL(repo, "issues", cur.Since, "state=all"), cur.ETag, &issues)
 			if err != nil {
 				return res, err
 			}
@@ -109,7 +105,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 			since := cur.Since
 			for _, n := range prs {
 				var revs []ghReview
-				if _, err := g.list(ctx, fmt.Sprintf("%s/repos/%s/pulls/%d/reviews?per_page=100", base, repo, n), "", &revs); err != nil {
+				if _, err := g.list(ctx, fmt.Sprintf("/repos/%s/pulls/%d/reviews?per_page=100", repo, n), "", &revs); err != nil {
 					return res, err
 				}
 				for _, rv := range revs {
@@ -136,7 +132,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 		}
 		if cur.Found {
 			var cms []ghIssueComment
-			etag, err := g.list(ctx, listURL(base, repo, "issues/comments", cur.Since, ""), cur.ETag, &cms)
+			etag, err := g.list(ctx, listURL(repo, "issues/comments", cur.Since, ""), cur.ETag, &cms)
 			if err != nil {
 				return res, err
 			}
@@ -187,13 +183,13 @@ func (p *Poller) cursor(ctx context.Context, repo, stream string) (store.PollCur
 
 // listURL asks for items updated at or after since, oldest first. The
 // boundary item comes again next pass; its delivery id dedupes it.
-func listURL(base, repo, path string, since time.Time, extra string) string {
+func listURL(repo, path string, since time.Time, extra string) string {
 	q := url.Values{}
 	q.Set("sort", "updated")
 	q.Set("direction", "asc")
 	q.Set("per_page", "100")
 	q.Set("since", since.UTC().Format(time.RFC3339))
-	u := fmt.Sprintf("%s/repos/%s/%s?%s", base, repo, path, q.Encode())
+	u := fmt.Sprintf("/repos/%s/%s?%s", repo, path, q.Encode())
 	if extra != "" {
 		u += "&" + extra
 	}
@@ -317,69 +313,30 @@ func (p *Poller) reviewItem(repo string, pr int64, rv ghReview) (store.InboxItem
 	})
 }
 
-// ghGet lists GitHub collections with a token, ETag and pagination.
+// ghGet lists GitHub collections with ETag and pagination.
 type ghGet struct {
-	http  *http.Client
-	token string
-	max   int
+	cl  *github.Client
+	max int
 }
 
-// list GETs u and its Link next pages into out (a slice pointer). The
+// list GETs path and its Link next pages into out (a slice pointer). The
 // first request sends etag as If-None-Match; a 304 leaves out empty and
 // returns etag unchanged. It returns the first page's ETag.
-func (g ghGet) list(ctx context.Context, u, etag string, out any) (string, error) {
+func (g ghGet) list(ctx context.Context, path, etag string, out any) (string, error) {
 	limit := g.max
 	if limit <= 0 {
 		limit = 10
 	}
-	var all []json.RawMessage
-	first := ""
-	for page := 0; u != "" && page < limit; page++ {
-		req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}/poll"), http.MethodGet, u, nil)
-		if err != nil {
-			return "", err
-		}
-		req.Header.Set("Authorization", "Bearer "+g.token)
-		req.Header.Set("Accept", "application/vnd.github+json")
-		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-		if page == 0 && etag != "" {
-			req.Header.Set("If-None-Match", etag)
-		}
-		hc := g.http
-		if hc == nil {
-			hc = telemetry.HTTPClient("github", time.Minute)
-		}
-		resp, err := hc.Do(req)
-		if err != nil {
-			return "", err
-		}
-		body, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
-		_ = resp.Body.Close()
-		if err != nil {
-			return "", err
-		}
-		if resp.StatusCode == http.StatusNotModified && page == 0 {
-			return etag, nil
-		}
-		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("GET %s: %s: %s", u, resp.Status, strings.TrimSpace(string(body[:min(len(body), 300)])))
-		}
-		if page == 0 {
-			first = resp.Header.Get("ETag")
-		}
-		var items []json.RawMessage
-		if err := json.Unmarshal(body, &items); err != nil {
-			return "", fmt.Errorf("GET %s: %w", u, err)
-		}
-		all = append(all, items...)
-		u = ""
-		if m := linkNext.FindStringSubmatch(resp.Header.Get("Link")); m != nil {
-			u = m[1]
-		}
-	}
-	b, err := json.Marshal(all)
+	items, resp, err := g.cl.List(ctx, github.Request{Path: path, ETag: etag, Route: "/repos/{repo}/poll"}, limit)
 	if err != nil {
 		return "", err
 	}
-	return first, json.Unmarshal(b, out)
+	if resp.NotModified() {
+		return etag, nil
+	}
+	b, err := json.Marshal(items)
+	if err != nil {
+		return "", err
+	}
+	return resp.Header.Get("ETag"), json.Unmarshal(b, out)
 }
