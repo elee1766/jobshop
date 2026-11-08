@@ -160,8 +160,8 @@ func TestOffTickTimeout(t *testing.T) {
 	c, _, _ := offTickController(t, offTickCommandYAML, &log)
 	tr := c.config().Triggers["slow-check"]
 	unlock := c.lockTick(t.Context(), "tick")
-	c.runTriggerChecks(t.Context(), c.config(), "slow-check", false, func(ctx context.Context, cfg *config.Config) {
-		c.runTrigger(ctx, cfg, "slow-check", tr)
+	c.triggerEngine().RunChecked(t.Context(), c.config(), "slow-check", false, func(ctx context.Context, cfg *config.Config) {
+		c.triggerEngine().RunTrigger(ctx, cfg, "slow-check", tr)
 	})
 	unlock()
 	c.wg.Wait()

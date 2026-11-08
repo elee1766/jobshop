@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -266,10 +267,10 @@ func (c *Controller) recordAnswer(ctx context.Context, qt store.Ticket, about, f
 }
 
 // recordFinding records a finding the scan trigger fired on.
-func (c *Controller) recordFinding(ctx context.Context, s finding, run string) {
+func (c *Controller) recordFinding(ctx context.Context, s triggers.Finding, run string) {
 	t := store.Ticket{ID: run}
-	if st, err := c.store.Get(ctx, s.subject); err == nil {
+	if st, err := c.store.Get(ctx, s.Subject); err == nil {
 		t = st
 	}
-	c.record(ctx, store.LearningFailure, t, fmt.Sprintf("finding %s on %s: %s (triage run %s)", s.signal, s.subject, s.detail, run), "")
+	c.record(ctx, store.LearningFailure, t, fmt.Sprintf("finding %s on %s: %s (triage run %s)", s.Signal, s.Subject, s.Detail, run), "")
 }

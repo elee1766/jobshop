@@ -41,6 +41,8 @@ jobshop/
 │   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe (JOB-146)
 │   │   ├── ingestqueue/      spool drain, inbox notifier, worker heartbeats,
 │   │   │                     admission hook runner, ingest work loop (JOB-141)
+│   │   ├── triggers/         trigger and scan evaluation, event routing, off-tick
+│   │   │                     checks (JOB-145); the controller still fires
 │   │   └── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
 │   ├── github/               GitHub REST client and read-only observation of
 │   │                         PRs, checks, reviews and threads (JOB-143)

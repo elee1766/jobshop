@@ -34,6 +34,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
@@ -172,9 +173,6 @@ type Controller struct {
 	inboxPrunedAt time.Time
 	// syncPrunedAt is the last guard/desk handler journal prune.
 	syncPrunedAt time.Time
-	// triggerPolled is each trigger's last poll, for fallback: (JOB-62);
-	// tick-only state.
-	triggerPolled map[string]time.Time
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
 	// prov is resource provider demand and idle state (#407); tick-only.
@@ -248,8 +246,6 @@ type Controller struct {
 	// ghIssueOpen, when set, replaces the GitHub issue state read of the
 	// intake dependency check (JOB-68; tests).
 	ghIssueOpen func(context.Context, linear.GitHubDep) (bool, error)
-	// signalScripts caches script scan signal answers between polls.
-	signalScripts signalScripts
 	// linSvc is the Linear orchestration (JOB-142, pkg/control/linearsvc):
 	// outage backoff, intake cache, session sweep; see linearSvc().
 	linSvc  *linearsvc.Service
@@ -315,11 +311,11 @@ type Controller struct {
 	hookDrain      *hooks.Worker
 	hookWorkerOnce sync.Once
 	// Trigger checks run outside the tick when backgroundChecks is set, by
-	// Run (JOB-109, triggercheck.go). checkJobs is under tickMu.
+	// Run (JOB-109, pkg/control/triggers). trig is the trigger and scan
+	// engine (JOB-145); see triggerEngine().
 	backgroundChecks bool
-	checkJobs        checkJobs
-	checkSlots       chan struct{}
-	checkSlotsOnce   sync.Once
+	trig             *triggers.Engine
+	trigOnce         sync.Once
 	// off is the pass's calls running outside it (JOB-103, offpass.go);
 	// offWake asks the serve loop for a pass that records a finished one.
 	off     offCalls

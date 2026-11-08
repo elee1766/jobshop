@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -43,7 +44,7 @@ func (c *Controller) attentionItems(ctx context.Context, cfg *config.Config) ([]
 	escalatedRuns, escalatedPools := map[string]bool{}, map[string]bool{}
 	seen := map[string]bool{}
 	for _, label := range []string{needsHumanLabel, questionLabel, proposedLabel} {
-		ts, err := c.labeledOpen(ctx, label)
+		ts, err := triggers.LabeledOpen(ctx, c.store, label)
 		if err != nil {
 			return nil, err
 		}

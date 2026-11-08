@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -68,7 +69,7 @@ func TestScanKeyPrefix(t *testing.T) {
 	assert.Equal(t, "Run pr-review review:review_requested:5@abc", rs[0].Title)
 	assert.Equal(t, "intake/review:review_requested:5@abc", metaString(rs[0].Meta, triggerPack, "key"))
 	assert.Equal(t, "review_requested:5@abc", metaString(rs[0].Meta, triggerPack, findingMetaKey))
-	assert.True(t, isScanRun(rs[0]), "a prefixed run is a scan run")
+	assert.True(t, triggers.IsScanRun(rs[0]), "a prefixed run is a scan run")
 
 	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, triggerTickets(t, c, "intake"), 1, "open run holds the key")

@@ -6,6 +6,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -14,10 +15,10 @@ import (
 func (c *Controller) enqueueHookEvents(ctx context.Context, items []store.InboxItem) error {
 	lc := c.live.Load()
 	for _, it := range items {
-		ev := eventOf(it)
+		ev := triggers.EventOf(it)
 		for _, name := range slices.Sorted(maps.Keys(lc.cfg.Triggers)) {
 			tr := lc.cfg.Triggers[name]
-			if tr.Handler == "" || !triggerOn(tr, ev) {
+			if tr.Handler == "" || !triggers.On(tr, ev) {
 				continue
 			}
 			program := lc.hooks[tr.Handler]
@@ -32,7 +33,7 @@ func (c *Controller) enqueueHookEvents(ctx context.Context, items []store.InboxI
 			if err := hooks.DecodeJSON(payload, &object); err != nil {
 				return fmt.Errorf("trigger %s: payload must be a JSON object: %w", name, err)
 			}
-			event := &hooks.Event{Source: it.Source, Event: it.Kind, Delivery: it.DeliveryID, Repository: it.RepoOrTeam, Trigger: name, Payload: object, Fields: ev.vars()}
+			event := &hooks.Event{Source: it.Source, Event: it.Kind, Delivery: it.DeliveryID, Repository: it.RepoOrTeam, Trigger: name, Payload: object, Fields: ev.Vars()}
 			if err := c.hooks().Put(ctx, "event/"+name+"/"+it.Source+"/"+it.DeliveryID, hooks.Invocation{Trigger: name, Entry: tr.Handler, Digest: program.Digest(), Event: event, Args: tr.Args}); err != nil {
 				return err
 			}

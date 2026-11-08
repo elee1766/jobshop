@@ -428,7 +428,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				n++
 			}
 		}
-		open, err := c.triggerOpen(ctx, in.Trigger)
+		open, err := c.triggerEngine().OpenCount(ctx, in.Trigger)
 		if err != nil {
 			return g, err
 		}
@@ -438,17 +438,6 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 	}
 	return g, nil
-}
-
-// triggerOpen counts the open runs and tasks a trigger filed. Steps of its
-// runs carry no meta.trigger, but are excluded by kind in case one does.
-func (c *Controller) triggerOpen(ctx context.Context, name string) (int, error) {
-	ts, err := c.store.List(ctx, store.Filter{
-		MetaPack: triggerPack, MetaKey: "name", MetaValue: name,
-		Kinds:    []store.Kind{store.KindRun, store.KindTask},
-		Statuses: []store.Status{store.StatusOpen, store.StatusInProgress}, Limit: store.NoLimit,
-	})
-	return len(ts), err
 }
 
 // planHookTicket builds a create_ticket action's task. Its key dedups per

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -62,18 +63,18 @@ func runSourceOf(w config.Workflow, vars map[string]any) (runSource, bool) {
 // findingSource is the issue a scan finding is about: an issue_no_run
 // finding's subject is a GitHub issue number of the signal's repo, a
 // linear_issue_no_run finding's a Linear key. Other signals have none.
-func findingSource(tr config.Trigger, s finding) (runSource, bool) {
+func findingSource(tr config.Trigger, s triggers.Finding) (runSource, bool) {
 	for _, sig := range tr.When.Scan {
-		if sig.Signal != s.signal {
+		if sig.Signal != s.Signal {
 			continue
 		}
-		switch s.signal {
+		switch s.Signal {
 		case config.SignalIssueNoRun:
-			if n, err := strconv.Atoi(s.subject); err == nil && n > 0 && sig.Repo != "" {
-				return runSource{kind: runSourceIssue, repo: sig.Repo, ref: s.subject}, true
+			if n, err := strconv.Atoi(s.Subject); err == nil && n > 0 && sig.Repo != "" {
+				return runSource{kind: runSourceIssue, repo: sig.Repo, ref: s.Subject}, true
 			}
 		case config.SignalLinearIssueNoRun:
-			return runSource{kind: runSourceLinear, ref: strings.ToUpper(s.subject)}, true
+			return runSource{kind: runSourceLinear, ref: strings.ToUpper(s.Subject)}, true
 		}
 	}
 	return runSource{}, false
@@ -93,24 +94,24 @@ func (s runSource) label() string {
 func (s runSource) key() string { return s.kind + "\x00" + s.repo + "\x00" + s.ref }
 
 // sourceTitle is the title of src, or its label when the read fails. A
-// start from a pass returns errCheckPending and the replay has the read
+// start from a pass returns triggers.ErrCheckPending and the replay has the read
 // (JOB-103).
 func (c *Controller) sourceTitle(ctx context.Context, cfg *config.Config, src runSource) (string, error) {
-	res, err := offTick(ctx, checkNeed{
-		key: "runtitle\x00" + src.key(), poller: "run_title", timeout: runTitleTimeout,
-		run: func(ctx context.Context) checkResult {
+	res, err := triggers.OffTick(ctx, triggers.Need{
+		Key: "runtitle\x00" + src.key(), Poller: "run_title", Timeout: runTitleTimeout,
+		Run: func(ctx context.Context) triggers.Result {
 			t, err := c.readSourceTitle(c.linearSvc().PollerCtx(ctx), cfg, src)
-			return checkResult{out: t, err: err}
+			return triggers.Result{Out: t, Err: err}
 		},
 	})
 	if err != nil {
 		return "", err
 	}
-	if res.err != nil {
-		c.log.WarnContext(ctx, "run title: read failed, using the source label", "source", src.label(), "err", res.err)
+	if res.Err != nil {
+		c.log.WarnContext(ctx, "run title: read failed, using the source label", "source", src.label(), "err", res.Err)
 		return src.label(), nil
 	}
-	if t := cleanTitle(res.out); t != "" {
+	if t := cleanTitle(res.Out); t != "" {
 		return t, nil
 	}
 	return src.label(), nil
@@ -173,7 +174,7 @@ func (c *Controller) planTitle(ctx context.Context, cfg *config.Config, w config
 // findingTitle is the title of the run a scan trigger starts for s: its
 // issue's own, "" when the finding has no issue (stuck work keeps its
 // descriptive default) or the key already has an open run.
-func (c *Controller) findingTitle(ctx context.Context, cfg *config.Config, tr config.Trigger, s finding, workflow, key string) (string, error) {
+func (c *Controller) findingTitle(ctx context.Context, cfg *config.Config, tr config.Trigger, s triggers.Finding, workflow, key string) (string, error) {
 	src, ok := findingSource(tr, s)
 	if !ok {
 		return "", nil

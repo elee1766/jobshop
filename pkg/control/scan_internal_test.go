@@ -18,6 +18,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -105,11 +106,11 @@ func scanControllerYAML(t *testing.T, yaml string) (*Controller, *scanClock, str
 
 func findingKeys(t *testing.T, c *Controller) []string {
 	t.Helper()
-	found, err := c.detectFindings(t.Context(), c.config(), c.config().Triggers["scan"], nil)
+	found, err := c.triggerEngine().Detect(t.Context(), c.config(), c.config().Triggers["scan"], nil)
 	require.NoError(t, err)
 	var out []string
 	for _, s := range found {
-		out = append(out, s.keyWith(config.DefaultScanKeyPrefix))
+		out = append(out, s.KeyWith(config.DefaultScanKeyPrefix))
 	}
 	return out
 }
@@ -194,13 +195,13 @@ func TestPoolPauseNamesSpawnError(t *testing.T) {
 	for range poolCrashes {
 		c.poolCrashed("dev", spawnErr)
 	}
-	found, err := c.detectFindings(t.Context(), c.config(), c.config().Triggers["scan"], nil)
+	found, err := c.triggerEngine().Detect(t.Context(), c.config(), c.config().Triggers["scan"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
-	assert.Contains(t, found[0].detail, spawnErr)
-	assert.Contains(t, found[0].detail, "FAIL network.nft: nft not found")
-	assert.Contains(t, found[0].detail, "fix: install nftables")
-	assert.NotContains(t, found[0].detail, "sandbox.bwrap", "passing checks are left out")
+	assert.Contains(t, found[0].Detail, spawnErr)
+	assert.Contains(t, found[0].Detail, "FAIL network.nft: nft not found")
+	assert.Contains(t, found[0].Detail, "fix: install nftables")
+	assert.NotContains(t, found[0].Detail, "sandbox.bwrap", "passing checks are left out")
 
 	items, err := c.attentionItems(t.Context(), c.config())
 	require.NoError(t, err)
@@ -275,11 +276,11 @@ func TestScanCheckSignal(t *testing.T) {
 	c, _, dir := scanController(t)
 	assert.Empty(t, findingKeys(t, c), "check fails without the file: no finding")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 open, no run\n\nissue-9\n"), 0o600))
-	found, err := c.detectFindings(t.Context(), c.config(), c.config().Triggers["scan"], nil)
+	found, err := c.triggerEngine().Detect(t.Context(), c.config(), c.config().Triggers["scan"], nil)
 	require.NoError(t, err)
 	require.Len(t, found, 2)
-	assert.Equal(t, finding{"issue_no_run", "issue-7", "open, no run"}, found[0])
-	assert.Equal(t, "issue-9", found[1].subject)
+	assert.Equal(t, triggers.Finding{Signal: "issue_no_run", Subject: "issue-7", Detail: "open, no run"}, found[0])
+	assert.Equal(t, "issue-9", found[1].Subject)
 
 	// An issue with an open run in the same repo (meta.github) is not a
 	// finding; the same number in another repo still is (#183).
@@ -472,7 +473,7 @@ func TestScanNoCascade(t *testing.T) {
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {
-			if isScanRun(r) {
+			if triggers.IsScanRun(r) {
 				out = append(out, r)
 			}
 		}
@@ -521,7 +522,7 @@ func TestScanOwnInstance(t *testing.T) {
 		require.NoError(t, err)
 		var out []store.Ticket
 		for _, r := range rs {
-			if isScanRun(r) {
+			if triggers.IsScanRun(r) {
 				out = append(out, r)
 			}
 		}
@@ -543,22 +544,4 @@ func TestScanOwnInstance(t *testing.T) {
 		c.runTriggers(t.Context(), c.config())
 	}
 	assert.Len(t, checks(), 1, "the check escalating starts no other check")
-}
-
-// Two triggers that share a script and signal but not a repo or args make
-// separate calls: the self-dev pack's issue_no_run read took the github
-// pack's cached answer, so TestPacks intermittently started a run for an
-// issue of another repo.
-func TestScriptSignalKey(t *testing.T) {
-	t.Parallel()
-	sig := config.ScanSignal{Signal: config.SignalIssueNoRun, Script: "triggers.star:issue_no_run", Repo: "acme/widget", Args: map[string]any{"b": "2", "a": "1"}}
-	same := sig
-	same.Args = map[string]any{"a": "1", "b": "2"}
-	assert.Equal(t, scriptSignalKey(sig), scriptSignalKey(same), "map order does not matter")
-	otherRepo := sig
-	otherRepo.Repo = "acme/other"
-	assert.NotEqual(t, scriptSignalKey(sig), scriptSignalKey(otherRepo))
-	otherArgs := sig
-	otherArgs.Args = map[string]any{"a": "1", "b": "3"}
-	assert.NotEqual(t, scriptSignalKey(sig), scriptSignalKey(otherArgs))
 }

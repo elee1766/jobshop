@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -13,11 +14,11 @@ import (
 // resourceWaitSince is when t started waiting: its last activity, or
 // when its last blocker closed, whichever is later (#408).
 func (c *Controller) resourceWaitSince(ctx context.Context, t store.Ticket) (time.Time, error) {
-	last, err := c.lastActivity(ctx, t)
+	last, err := triggers.LastActivity(ctx, c.store, t)
 	if err != nil {
 		return last, err
 	}
-	return c.lastUnblocked(ctx, t, last)
+	return triggers.LastUnblocked(ctx, c.store, t, last)
 }
 
 // waitText is how run show and findings describe a wait.
@@ -28,12 +29,12 @@ func waitText(w store.ResourceWait) string {
 // signalResourceWait: tickets held back only by a full resource for
 // after (#408). They are out of the ready frontier, so ready_unclaimed
 // does not see them.
-func (c *Controller) signalResourceWait(ctx context.Context, now time.Time, after time.Duration) ([]finding, error) {
+func (c *Controller) signalResourceWait(ctx context.Context, now time.Time, after time.Duration) ([]triggers.Finding, error) {
 	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	var out []finding
+	var out []triggers.Finding
 	for _, w := range rep.Waits {
 		t, err := c.store.Get(ctx, w.Ticket)
 		if err != nil {
@@ -44,7 +45,7 @@ func (c *Controller) signalResourceWait(ctx context.Context, now time.Time, afte
 			return nil, err
 		}
 		if now.Sub(since) >= after {
-			out = append(out, finding{config.SignalResourceWait, t.ID, fmt.Sprintf("%s for %s", waitText(w), ago(now, since))})
+			out = append(out, triggers.Finding{Signal: config.SignalResourceWait, Subject: t.ID, Detail: fmt.Sprintf("%s for %s", waitText(w), triggers.Ago(now, since))})
 		}
 	}
 	return out, nil
