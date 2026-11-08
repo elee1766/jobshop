@@ -200,12 +200,6 @@ func (c *Controller) dispatchActivity(ctx context.Context, holder string, rows [
 		c.done(ctx, holder, rows)
 		return
 	}
-	c.activityMu.Lock()
-	if c.activity == nil {
-		c.activity = c.loadActivity()
-	}
-	s := c.activity
-	c.activityMu.Unlock()
 	var items []rpc.ActivityItem
 	for _, it := range rows {
 		var a rpc.ActivityItem
@@ -213,31 +207,8 @@ func (c *Controller) dispatchActivity(ctx context.Context, holder string, rows [
 			items = append(items, a)
 		}
 	}
-	now := c.now()
-	maxPer := cfg.Activity.MaxItems
-	if maxPer == 0 {
-		maxPer = defaultActivityMax
-	}
-	added := s.add(items, now, config.Duration(cfg.Activity.Window, defaultActivityWindow), maxPer)
-	if rs, ok := c.activitySource().(revertSource); ok {
-		c.checkReverts(ctx, rs, items)
-	}
-	if err := s.save(); err != nil {
-		c.activityErr(s, "cache", err)
-	}
-	if added > 0 && c.events != nil {
-		c.events.publish([]rpc.Event{{Kind: rpc.EventKindActivity, Time: now}})
-	}
+	c.activitySvc().Admit(ctx, items)
 	c.done(ctx, holder, rows)
-}
-
-// activitySource is the configured activity source: the test fake, else
-// the live APIs.
-func (c *Controller) activitySource() activitySource {
-	if c.activitySrc != nil {
-		return c.activitySrc
-	}
-	return &liveActivity{c: c}
 }
 
 // admitBudget is how many items one pass admits in process: none when

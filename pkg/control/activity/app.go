@@ -1,4 +1,4 @@
-package control
+package activity
 
 import (
 	"context"
@@ -28,11 +28,11 @@ const appReviewPRs = 5
 // endpoints instead of events: a github-app identity covers it, or the
 // token is an installation token ("ghs_") a github-token identity holds,
 // for example one minted by a command secret.
-func (l *liveActivity) appActivity(ctx context.Context, cl *github.Client, repo string) bool {
+func (l *Live) appActivity(ctx context.Context, cl *github.Client, repo string) bool {
 	if tok, err := cl.Auth.Token(ctx); err == nil && strings.HasPrefix(tok, "ghs_") {
 		return true
 	}
-	cfg := l.c.config()
+	cfg := l.C.Config()
 	name, ok := cfg.IdentityFor(cfg.IdentityNames(), repo)
 	return ok && cfg.Identities[name].Kind == config.IdentityGitHubApp
 }
@@ -40,7 +40,7 @@ func (l *liveActivity) appActivity(ctx context.Context, cl *github.Client, repo 
 // fetchAppActivity reads the per-resource endpoints. A failing endpoint
 // (a permission the App lacks) does not stop the others: the items read
 // so far come back with the joined errors.
-func (l *liveActivity) fetchAppActivity(ctx context.Context, cl *github.Client, repo string, st *repoPoll) ([]rpc.ActivityItem, error) {
+func (l *Live) fetchAppActivity(ctx context.Context, cl *github.Client, repo string, st *RepoPoll) ([]rpc.ActivityItem, error) {
 	var out []rpc.ActivityItem
 	var errs []error
 	read := func(name, path string, parse func([]byte) ([]rpc.ActivityItem, error)) []byte {
@@ -174,7 +174,7 @@ func parseAppReviews(repo string, pr int, body []byte) ([]rpc.ActivityItem, erro
 		out = append(out, rpc.ActivityItem{
 			ID: fmt.Sprintf("gh:%s:review:%d", repo, r.ID), Source: rpc.ActivityGitHub, Repo: repo, Kind: "review",
 			Actor: r.User.Login, Bot: ghBot(r.User.Login), At: r.SubmittedAt, Ref: strconv.Itoa(pr), PR: true,
-			URL: r.HTMLURL, Body: truncate(r.Body), Title: fmt.Sprintf("review %s on PR #%d", state, pr),
+			URL: r.HTMLURL, Body: Truncate(r.Body), Title: fmt.Sprintf("review %s on PR #%d", state, pr),
 		})
 	}
 	return out, nil
@@ -234,7 +234,7 @@ func parseAppComments(repo string, body []byte, review bool) ([]rpc.ActivityItem
 	for _, c := range cs {
 		it := rpc.ActivityItem{
 			Source: rpc.ActivityGitHub, Repo: repo, Actor: c.User.Login, Bot: ghBot(c.User.Login),
-			At: c.CreatedAt, URL: c.HTMLURL, Body: truncate(c.Body),
+			At: c.CreatedAt, URL: c.HTMLURL, Body: Truncate(c.Body),
 		}
 		if review {
 			n := lastSegment(c.PullURL)
@@ -285,7 +285,7 @@ func parseAppCommits(repo string, body []byte) ([]rpc.ActivityItem, error) {
 		out = append(out, rpc.ActivityItem{
 			ID: fmt.Sprintf("gh:%s:commit:%s", repo, c.SHA), Source: rpc.ActivityGitHub, Repo: repo, Kind: "push",
 			Actor: actor, Bot: ghBot(actor), At: c.Commit.Committer.Date, URL: c.HTMLURL,
-			Title: fmt.Sprintf("commit %.7s: %s", c.SHA, subject), Body: truncate(c.Commit.Message),
+			Title: fmt.Sprintf("commit %.7s: %s", c.SHA, subject), Body: Truncate(c.Commit.Message),
 		})
 	}
 	return out, nil

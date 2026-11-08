@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -40,32 +39,4 @@ func (c *Controller) activityRecord(_ context.Context, sc scope, p rpc.ActivityR
 	}
 	c.addActivity(it)
 	return struct{}{}, nil
-}
-
-// addActivity appends one item to the activity feed, if one is
-// configured, and tells subscribers.
-func (c *Controller) addActivity(it rpc.ActivityItem) {
-	cfg := c.config()
-	if cfg.Activity == nil {
-		return
-	}
-	now := it.At
-	c.activityMu.Lock()
-	if c.activity == nil {
-		c.activity = c.loadActivity()
-	}
-	s := c.activity
-	c.activityMu.Unlock()
-	maxPer := cfg.Activity.MaxItems
-	if maxPer == 0 {
-		maxPer = defaultActivityMax
-	}
-	if s.add([]rpc.ActivityItem{it}, now, config.Duration(cfg.Activity.Window, defaultActivityWindow), maxPer) > 0 {
-		if err := s.save(); err != nil {
-			c.activityErr(s, "cache", err)
-		}
-		if c.events != nil {
-			c.events.publish([]rpc.Event{{Kind: rpc.EventKindActivity, Time: now}})
-		}
-	}
 }

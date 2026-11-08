@@ -28,6 +28,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/activity"
 	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/hooks"
@@ -304,10 +305,11 @@ type Controller struct {
 	inbox     *ingest.Notifier
 	inboxOnce sync.Once
 	// activitySrc reads GitHub and Linear activity; nil means live APIs
-	// (tests set a fake). activity is the cache, loaded on first poll.
-	activitySrc activitySource
-	activityMu  sync.Mutex
-	activity    *activityState
+	// (tests set a fake). activity is the feed service (JOB-149); see
+	// activitySvc().
+	activitySrc  activity.Source
+	activity     *activity.Service
+	activityOnce sync.Once
 	// ship is journal shipping to VictoriaLogs (#530); see shipper().
 	ship     *journalship.Shipper
 	shipOnce sync.Once
