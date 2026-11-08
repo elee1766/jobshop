@@ -9,6 +9,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strings"
@@ -228,26 +229,46 @@ func keys(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &v) != nil {
 		return string(raw)
 	}
-	b, err := json.Marshal(value(v))
+	b, err := json.Marshal(value(v, ""))
 	if err != nil {
 		return string(raw)
 	}
 	return string(b)
 }
 
-func value(v any) any {
+// usageCounters are the ACP prompt-response token counters. Their names
+// contain "token", so secretKey would mask them and the journal would
+// lose accounting. They stay only as non-negative integers directly under
+// a "usage" key: any other key, parent or value type is still masked.
+var usageCounters = map[string]bool{
+	"cachedReadTokens":  true,
+	"cachedWriteTokens": true,
+	"inputTokens":       true,
+	"outputTokens":      true,
+	"totalTokens":       true,
+}
+
+// usageCount reports whether x is a counter value: a whole number >= 0.
+func usageCount(x any) bool {
+	f, ok := x.(float64)
+	return ok && f >= 0 && f == math.Trunc(f) && f < 1<<53
+}
+
+func value(v any, parent string) any {
 	switch t := v.(type) {
 	case map[string]any:
 		for k, x := range t {
-			if secretKey.MatchString(k) {
+			switch {
+			case parent == "usage" && usageCounters[k] && usageCount(x):
+			case secretKey.MatchString(k):
 				t[k] = Mask
-			} else {
-				t[k] = value(x)
+			default:
+				t[k] = value(x, k)
 			}
 		}
 	case []any:
 		for i, x := range t {
-			t[i] = value(x)
+			t[i] = value(x, "")
 		}
 	}
 	return v
