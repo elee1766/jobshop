@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/elee1766/jobshop/compare/v0.9.1...v0.9.2) (2026-11-08)
+
+
+### Bug fixes
+
+* **control:** resume --repin moves a run to the live callback manifest ([#1012](https://github.com/elee1766/jobshop/issues/1012)) ([#1016](https://github.com/elee1766/jobshop/issues/1016)) ([42d99da](https://github.com/elee1766/jobshop/commit/42d99da7a1579e7be3964dede5ecba76f3af2def))
+
 ## [0.9.1](https://github.com/elee1766/jobshop/compare/v0.9.0...v0.9.1) (2026-11-08)
 
 
