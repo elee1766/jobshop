@@ -20,6 +20,13 @@ failed attempt; a plain release is one).
    that SHA is open (`jobshop run list`), file a priority-0 dev ticket
    for it (`--pool {{.pack_prefix}}dev -p 0`), comment it here, and
    `jobshop close -r failed`.
+   A newer master commit that contains <sha> (`git merge-base
+   --is-ancestor <sha> <newer>`) with green CI counts as green: the red
+   was fixed after it (infra, a flake or a later fix). Go to step 2 with
+   that commit. Red again with the fix already filed (an earlier comment
+   here) and no green descendant: do not fail again, park on the fix,
+   `jobshop wait add 'run:id=<fix ticket>,state=closed' --resume --timeout 6h --reason "fix for red master"`,
+   then wait for CI on the newest master commit.
 2. Deploy: is the merge commit live? How to tell: {{.deploy_check}}
    Run the check fresh on every loop. Do not reuse an earlier result or
    version, the deploy may have moved since. Not yet: comment what you
