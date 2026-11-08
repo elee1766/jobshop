@@ -149,6 +149,23 @@ test('named draft clearly creates on first send and can be dismissed without wri
   expect(writes).toEqual([]);
 });
 
+test('chat transcript keeps a fixed styled scroll bar gutter', async ({ page, isMobile }) => {
+  await page.goto('./');
+  await expect(page.locator('.status')).toContainText('sys ok');
+  if (isMobile) await page.getByRole('navigation', { name: 'Mobile' }).getByRole('button', { name: 'chats', exact: true }).click();
+  const transcript = page.locator('.transcript');
+  await expect(transcript).toBeVisible();
+  const style = await transcript.evaluate(element => {
+    const css = getComputedStyle(element);
+    const border = parseFloat(css.borderLeftWidth) + parseFloat(css.borderRightWidth);
+    return { gutter: element.offsetWidth - element.clientWidth - border, gutterMode: css.scrollbarGutter, size: css.getPropertyValue('--scrollbar-size').trim() };
+  });
+  // The gutter is reserved even before the transcript overflows, so rows do not shift.
+  expect(style.gutterMode).toBe('stable');
+  expect(style.gutter).toBe(parseFloat(style.size));
+  expect(await page.locator('.chat-archive, .table-scroll').evaluateAll(elements => elements.map(element => getComputedStyle(element).scrollbarWidth))).not.toContain('auto');
+});
+
 test('archived chats form a vertical table with scrolling but no scrollbar chrome', async ({ page, isMobile }) => {
   await page.setViewportSize({ width: isMobile ? 412 : 1000, height: 400 });
   await page.goto('./');

@@ -26,6 +26,14 @@
   --status-open: #205b9b;
   --status-closed: #27633d;
   --status-running: #8a4c00;
+  /* Acme's scroll bar: a column-colored track, the visible part in paper.
+     Defined here so the dark theme's --column and --paper apply. */
+  --scrollbar-size: 12px;
+  --scrollbar-track: var(--column);
+  --scrollbar-thumb: var(--paper);
+  --scrollbar-thumb-border: var(--column);
+  --scrollbar-thumb-hover: var(--hi);
+  --scrollbar-thumb-active-border: var(--ink);
   color-scheme: light;
 }
 
