@@ -34,7 +34,7 @@ func (c *Controller) sweepLinearAgentSessions(_ context.Context, cfg *config.Con
 		}
 		// Outside the tick (JOB-103), one sweep per identity at a time.
 		c.offGo("linear-sessions\x00"+name, "linear_sessions", linearSessionTimeout, false, func(ctx context.Context) any {
-			if err := c.endLinearAgentSessions(ctx, name, id); err != nil && c.ctx.Err() == nil {
+			if err := c.endLinearAgentSessions(ctx, name, id); err != nil && c.ctx.Err() == nil && !linearDown(err) {
 				c.log.WarnContext(ctx, "linear agent sessions", "identity", name, "err", err)
 			}
 			return nil
@@ -60,20 +60,20 @@ func (s *linearSessions) due(name string, now time.Time, force bool) bool {
 }
 
 func (c *Controller) endLinearAgentSessions(ctx context.Context, name string, id config.Identity) error {
-	ctx = pollerCtx(ctx)
-	cl := c.linearFor(name)
-	open, err := cl.OpenAgentSessions(ctx)
-	if err != nil {
-		return err
-	}
-	for _, s := range open {
-		if s.Team != "" && !id.CoversTeam(s.Team) {
-			continue
-		}
-		if err := cl.EndAgentSession(ctx, s.ID, linear.AgentSessionReply); err != nil {
+	return c.linearDo(ctx, name, func(ctx context.Context, cl *linear.Client) error {
+		open, err := cl.OpenAgentSessions(ctx)
+		if err != nil {
 			return err
 		}
-		c.log.InfoContext(ctx, "linear agent session ended", "identity", name, "issue", s.Issue, "was", s.Status)
-	}
-	return nil
+		for _, s := range open {
+			if s.Team != "" && !id.CoversTeam(s.Team) {
+				continue
+			}
+			if err := cl.EndAgentSession(ctx, s.ID, linear.AgentSessionReply); err != nil {
+				return err
+			}
+			c.log.InfoContext(ctx, "linear agent session ended", "identity", name, "issue", s.Issue, "was", s.Status)
+		}
+		return nil
+	})
 }

@@ -58,13 +58,13 @@ type linearWaitSource interface {
 type liveLinearWait struct{ c *Controller }
 
 func (l liveLinearWait) IssueContext(ctx context.Context, key string) (linear.Context, error) {
-	cl, err := l.c.linearClient(key)
-	if err != nil {
-		return linear.Context{}, err
-	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	return cl.GetContext(ctx, key, false)
+	var is linear.Context
+	err := l.c.linearDoKey(ctx, key, func(ctx context.Context, cl *linear.Client) error {
+		var err error
+		is, err = cl.GetContext(ctx, key, false)
+		return err
+	})
+	return is, err
 }
 
 type issueInfo struct {
@@ -460,7 +460,10 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticke
 			return cerr
 		}
 		if err != nil {
-			errs = append(errs, err)
+			// A Linear outage is logged once by linearCall, not per wait.
+			if !linearDown(err) {
+				errs = append(errs, err)
+			}
 			continue
 		}
 		cd.Note = note

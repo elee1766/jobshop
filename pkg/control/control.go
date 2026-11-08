@@ -252,6 +252,11 @@ type Controller struct {
 	signalScripts signalScripts
 	// linSessions throttles the Linear agent-session sweep.
 	linSessions linearSessions
+	// linHealth backs off a Linear identity that stopped answering
+	// (JOB-118). linearTimeout, if set, replaces linearRequestTimeout
+	// (tests).
+	linHealth     linearHealth
+	linearTimeout time.Duration
 	// reloadMu serializes reloads so the last file read wins.
 	reloadMu sync.Mutex
 	// tickMu serializes supervisor passes: the tick and the event paths

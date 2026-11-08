@@ -217,7 +217,9 @@ func (c *Controller) pollThreads(ctx context.Context, src threadSource, only str
 		th, seen := threadOf(fs, k)
 		cs, err := src.Comments(ctx, th, seen)
 		if err != nil {
-			c.log.WarnContext(ctx, "subscriptions: fetch", "thread", k, "err", err)
+			if !linearDown(err) { // logged once per outage
+				c.log.WarnContext(ctx, "subscriptions: fetch", "thread", k, "err", err)
+			}
 			continue
 		}
 		last := seen
@@ -733,24 +735,31 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 	if !ok {
 		return nil, fmt.Errorf("linear: no identity covers team %s", team)
 	}
-	cl := s.c.linearFor(name)
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	is, err := cl.GetIssue(ctx, th.Linear)
+	var (
+		is      linear.Issue
+		appSelf string
+	)
+	err := s.c.linearDo(ctx, name, func(ctx context.Context, cl *linear.Client) error {
+		var err error
+		if is, err = cl.GetIssue(ctx, th.Linear); err != nil {
+			return err
+		}
+		// A linear-app's own comments can arrive as its app actor, not
+		// isMe: match the viewer's name so a listed bot never wakes on
+		// itself (#402).
+		if cfg.Identities[name].Kind == config.IdentityLinearApp && cfg.Subscriptions != nil && len(cfg.Subscriptions.Bots) > 0 {
+			v, err := cl.Viewer(ctx)
+			if err != nil {
+				return err
+			}
+			appSelf = v.Name
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	var out []ghComment
-	// A linear-app's own comments can arrive as its app actor, not isMe:
-	// match the viewer's name so a listed bot never wakes on itself (#402).
-	appSelf := ""
-	if cfg.Identities[name].Kind == config.IdentityLinearApp && cfg.Subscriptions != nil && len(cfg.Subscriptions.Bots) > 0 {
-		v, err := cl.Viewer(ctx)
-		if err != nil {
-			return nil, err
-		}
-		appSelf = v.Name
-	}
 	byID := map[string]linear.Comment{}
 	for _, cm := range is.Comments {
 		byID[cm.ID] = cm

@@ -47,7 +47,9 @@ func (c *Controller) signalLinearIssues(ctx context.Context, cfg *config.Config,
 		return nil, err
 	}
 	if err != nil {
-		c.log.WarnContext(ctx, "linear_issue_no_run", "team", sig.Team, "err", err)
+		if !linearDown(err) { // logged once per outage
+			c.log.WarnContext(ctx, "linear_issue_no_run", "team", sig.Team, "err", err)
+		}
 		return nil, nil
 	}
 	busy, err := c.linearIssuesWithOpenRun(ctx)
@@ -131,11 +133,20 @@ const linearIntakeTimeout = 2 * time.Minute
 // team and keeps the open ones that match. Filtering is done here: the
 // list filter takes one state and one label, the vars take several.
 func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]linear.Summary, error) {
-	cl, err := c.linearForTeam(cfg, sig.Team)
-	if err != nil {
-		return nil, err
+	name, ok := cfg.IdentityFor(cfg.IdentityNames(), sig.Team)
+	if !ok {
+		return nil, fmt.Errorf("no identity covers team %s", sig.Team)
 	}
-	ctx = pollerCtx(ctx)
+	var out []linear.Summary
+	err := c.linearDo(ctx, name, func(ctx context.Context, cl *linear.Client) error {
+		var err error
+		out, err = c.readLinearIntakeWith(ctx, cl, cfg, sig)
+		return err
+	})
+	return out, err
+}
+
+func (c *Controller) readLinearIntakeWith(ctx context.Context, cl *linear.Client, cfg *config.Config, sig config.ScanSignal) ([]linear.Summary, error) {
 	states, labels, skip := config.SplitList(sig.States), config.SplitList(sig.Labels), config.SplitList(sig.SkipLabels)
 	f := linear.Filter{Team: sig.Team, Limit: 250}
 	var out []linear.Summary
@@ -145,7 +156,14 @@ func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, s
 			return nil, err
 		}
 		for _, is := range p.Issues {
-			if linearIntakeMatch(is, states, labels, skip) && !c.linearIntakeBlocked(ctx, cl, cfg, is.Identifier) {
+			if !linearIntakeMatch(is, states, labels, skip) {
+				continue
+			}
+			blocked, err := c.linearIntakeBlocked(ctx, cl, cfg, is.Identifier)
+			if err != nil {
+				return nil, err
+			}
+			if !blocked {
 				out = append(out, is)
 			}
 		}
@@ -162,22 +180,26 @@ func (c *Controller) readLinearIntake(ctx context.Context, cfg *config.Config, s
 // an open Linear blocker or an open GitHub issue named by a "Depends on"
 // line (JOB-68). The list read carries neither, so each match is read in
 // full, once per poll. A read error keeps the issue: intake then behaves
-// as before this check.
-func (c *Controller) linearIntakeBlocked(ctx context.Context, cl *linear.Client, cfg *config.Config, key string) bool {
+// as before this check. Linear not answering (JOB-118) ends the read
+// instead, so a hung API costs one request timeout, not one per issue.
+func (c *Controller) linearIntakeBlocked(ctx context.Context, cl *linear.Client, cfg *config.Config, key string) (bool, error) {
 	is, err := cl.GetContext(ctx, key, false)
+	if linear.Unavailable(err) {
+		return false, err
+	}
 	if err != nil {
 		c.log.WarnContext(ctx, "linear_issue_no_run: read issue", "issue", key, "err", err)
-		return false
+		return false, nil
 	}
 	if len(is.OpenBlockers()) > 0 {
-		return true
+		return true, nil
 	}
 	issueOpen := func(ctx context.Context, d linear.GitHubDep) (bool, error) { return c.githubIssueOpen(ctx, cfg, d) }
 	if err := is.CheckDeps(ctx, linearRepoOwner(cfg), issueOpen); err != nil {
 		c.log.WarnContext(ctx, "linear_issue_no_run: dependency", "issue", key, "err", err)
-		return false
+		return false, nil
 	}
-	return len(is.OpenDeps) > 0
+	return len(is.OpenDeps) > 0, nil
 }
 
 // linearRepoOwner is the GitHub owner of the first (by name) Linear

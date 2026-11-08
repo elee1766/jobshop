@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -175,4 +176,29 @@ func (r *renewing) Renew(_ context.Context, stale string) (string, error) {
 	r.stale = append(r.stale, stale)
 	r.tok = "fresh"
 	return r.tok, nil
+}
+
+// TestUnavailable (JOB-118): no answer, a 5xx or a 429 is an outage; a
+// GraphQL error, even on a 4xx, is an answer.
+func TestUnavailable(t *testing.T) {
+	t.Parallel()
+	var status atomic.Int32 // read by the server goroutine
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		code := int(status.Load())
+		w.WriteHeader(code)
+		if code == http.StatusBadRequest {
+			_, _ = io.WriteString(w, notFound)
+		}
+	}))
+	defer srv.Close()
+	cl := linear.New(srv.URL, apicall.Static("lin_api_x"))
+	for code, want := range map[int]bool{http.StatusBadGateway: true, http.StatusTooManyRequests: true, http.StatusBadRequest: false, http.StatusForbidden: false} {
+		status.Store(int32(code))
+		_, err := cl.GetIssue(t.Context(), "ENG-1")
+		require.Error(t, err)
+		assert.Equal(t, want, linear.Unavailable(err), "status %d: %v", code, err)
+	}
+	_, err := linear.New("http://127.0.0.1:1", apicall.Static("lin_api_x")).GetIssue(t.Context(), "ENG-1")
+	assert.True(t, linear.Unavailable(err), "connection refused: %v", err)
+	assert.False(t, linear.Unavailable(nil))
 }
