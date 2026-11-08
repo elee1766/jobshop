@@ -84,10 +84,9 @@ func TestJournalCompressSweep(t *testing.T) {
 	require.NoError(t, err)
 	clk.advance(2 * time.Hour)
 
-	c.journalsCompressedAt = time.Time{}
 	c.maybeCompressJournals(t.Context(), c.config())
 	c.wg.Wait()
-	assert.False(t, c.journalCompressing.Load())
+	assert.False(t, c.compressor().Running())
 
 	plain := func(id string) string { return filepath.Join(c.root.SessionDir(id), host.JournalFile) }
 	zst := func(id string) string { return filepath.Join(c.root.SessionDir(id), host.CompressedJournalFile) }
@@ -97,9 +96,10 @@ func TestJournalCompressSweep(t *testing.T) {
 	assert.FileExists(t, plain(open.ID), "still open")
 
 	// The hour has not passed: no second sweep.
-	before := c.journalsCompressedAt
+	before := c.compressor().LastSweep()
+	assert.False(t, before.IsZero())
 	c.maybeCompressJournals(t.Context(), c.config())
-	assert.Equal(t, before, c.journalsCompressedAt)
+	assert.Equal(t, before, c.compressor().LastSweep())
 
 	admin := scope{admin: true, actor: "admin"}
 	out, err := c.sessionJournal(ctx, admin, rpc.SessionJournalParams{ID: old.ID, SinceSeq: 6})
@@ -157,5 +157,5 @@ func TestJournalCompressOff(t *testing.T) {
 	c.wg.Wait()
 	_, err = os.Stat(filepath.Join(c.root.SessionDir(s.ID), host.JournalFile))
 	require.NoError(t, err)
-	assert.True(t, c.journalsCompressedAt.IsZero())
+	assert.True(t, c.compressor().LastSweep().IsZero())
 }

@@ -33,7 +33,8 @@ jobshop/
 │   │                         client over the acp-go-sdk connection
 │   ├── control/              controller: tick loop, claims release, lease sweep,
 │   │                         session supervision, admin and CLI socket handlers
-│   │   └── journalship/      journal shipping to VictoriaLogs (JOB-119)
+│   │   ├── journalship/      journal shipping to VictoriaLogs (JOB-119)
+│   │   └── journalcompress/  closed-session journal compression (JOB-89)
 │   ├── config/               YAML loading, validation, defaults
 │   ├── hostspec/             jobshop's spec.json on acphost (an older
 │   │                         conv_export field is ignored, #530)
