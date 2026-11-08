@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.16](https://github.com/elee1766/jobshop/compare/v0.9.15...v0.9.16) (2026-11-08)
+
+
+### Performance
+
+* **desk:** gzip static UI assets ([#1088](https://github.com/elee1766/jobshop/issues/1088)) ([#1093](https://github.com/elee1766/jobshop/issues/1093)) ([0957398](https://github.com/elee1766/jobshop/commit/0957398728d88b0eee1d13386b9a23a962e15d61))
+
 ## [0.9.15](https://github.com/elee1766/jobshop/compare/v0.9.14...v0.9.15) (2026-11-08)
 
 
