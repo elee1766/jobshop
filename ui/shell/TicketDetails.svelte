@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { GraphResult, ShowResult, Ticket } from '../../packages/jobshop-client/rpc.js';
   import { md } from '../kit/markdown.js';
-  import { linkLabel, relationshipText, safeLinks, state, statusLetter } from './trace.js';
+  import { linkLabel, relationshipText, safeLinks, state, stateDetail, statusLetter } from './trace.js';
   import TicketHistory from './TicketHistory.svelte';
   let { detail, graph, onselect, ontrace, onwatch }: {
     detail: ShowResult;
@@ -33,7 +33,7 @@
 </script>
 
 {#snippet ticketLink(other: Ticket)}
-  <span class="ticket-status mono" data-status={other.status} title={state(other)} aria-label={state(other)}>{statusLetter(other)}</span>
+  <span class="ticket-status mono" data-status={other.status} role="img" title={state(other)} aria-label={state(other)}>{statusLetter(other)}</span>
   <button class="relation-ticket ticket-label" title={other.id} onclick={() => onselect(other.id)}><span>{other.title || other.id}</span>{#if other.title}<small class="mono muted">{other.id}</small>{/if}</button>
 {/snippet}
 
@@ -41,7 +41,7 @@
   <header class="ticket-overview">
     {#if ticket.parent_id}<div class="ticket-parent"><span class="muted">child of</span>{#if parent}{@render ticketLink(parent)}{:else}<button class="mono" onclick={() => onselect(ticket.parent_id!)}>{ticket.parent_id}</button>{/if}</div>{/if}
     <h2>{ticket.title || ticket.id}{#if ticket.title}<small class="mono muted">{ticket.id}</small>{/if}</h2>
-    <p><span class="ticket-status mono" data-status={ticket.status} title={state(ticket)}>{statusLetter(ticket)}</span> <b>{@html md(state(ticket), true)}</b> · {ticket.kind}{ticket.pool ? ' · ' + ticket.pool : ''}</p>
+    <p><span class="ticket-status mono" data-status={ticket.status} role="img" title={state(ticket)} aria-label={state(ticket)}>{statusLetter(ticket)}</span> {#if stateDetail(ticket)}<b>{@html md(stateDetail(ticket), true)}</b> · {/if}{ticket.kind}{ticket.pool ? ' · ' + ticket.pool : ''}</p>
     <p class="muted">created {new Date(ticket.created_at).toLocaleString()} · updated {new Date(ticket.updated_at).toLocaleString()}</p>
     <div class="ticket-links">
       {#each safeLinks(node) as href}<a {href} target="_blank" rel="noopener noreferrer">{linkLabel(href)}</a>{/each}

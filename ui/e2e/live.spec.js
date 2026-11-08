@@ -130,7 +130,8 @@ test("live state changes and reconnect snapshots need no browser refresh request
     const temporalNodes = await graph.locator('.graph-card').evaluateAll(nodes => nodes.map(node => ({ id: node.dataset.ticket, x: parseFloat(node.style.left), created: Date.parse(node.querySelector('time').dateTime) })).sort((a, b) => a.created - b.created));
     expect(temporalNodes.map(node => node.id)).toEqual([ticket.id, dependency.id, child.id]);
     expect(temporalNodes.every((node, i) => !i || temporalNodes[i - 1].x <= node.x)).toBeTruthy();
-    await expect(graph.locator('.graph-time-axis time')).toHaveCount(5);
+    await expect(graph.locator('.graph-axis .graph-stamp-start')).toHaveCount(1);
+    await expect(graph.locator('.graph-axis .graph-stamp-now')).toHaveCount(1);
     const viewport = graph.getByRole('application', { name: 'Ticket graph navigation', exact: true });
     const canvas = graph.locator('.graph-canvas');
     const camera = () => canvas.evaluate(node => node.style.transform);
@@ -229,8 +230,9 @@ test("live state changes and reconnect snapshots need no browser refresh request
     await page.getByLabel('Ticket relationships', { exact: true }).getByRole('button', { name: new RegExp(dependency.id) }).click();
     await call('ticket.close', { id: dependency.id });
     related.splice(related.indexOf(dependency.id), 1);
-    await expect(dependencyCard.locator('.graph-state')).toContainText('closed');
-    await expect(page.locator('.inspector')).toContainText('closed');
+    await expect(dependencyCard.locator('.ticket-status')).toHaveAttribute('aria-label', 'closed · done');
+    await expect(dependencyCard.locator('.graph-state')).toContainText('done');
+    await expect(page.locator('.ticket-overview .ticket-status')).toHaveAttribute('aria-label', 'closed · done');
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
     if (isMobile) {
       await page.getByRole('navigation', { name: 'Mobile', exact: true }).getByRole('button', { name: /^waiting/ }).click();
