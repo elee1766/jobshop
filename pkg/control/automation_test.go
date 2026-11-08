@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -745,4 +747,68 @@ triggers:
 	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
 	require.Len(t, runs, 1, "max_runs must count handler runs")
 	assert.Equal(t, store.StatusClosed, runs[0].Status)
+}
+
+func TestSyncHandlers(t *testing.T) {
+	root := hookTestRoot(t, `def begin(run):
+    return []
+def completed(run, step):
+    return []
+def handle(event, args):
+    return []
+def push(event, args):
+    if not event.get("target"):
+        return {"decision": "deny", "reason": "push needs a target"}
+    if event["target"] in args["protected"]:
+        return {"decision": "deny", "reason": "no push to " + event["target"]}
+    return {}
+def state(input, args):
+    return {"echo": input, "open": len(tickets(kind="task", status="open")), "dir": args["dir"]}
+`)
+	data, err := os.ReadFile(root.Config())
+	require.NoError(t, err)
+	extra := `hooks:
+  - {on: action, actions: [push], handler: hooks.star:push, args: {protected: [master, main]}, timeout: 5s}
+desk_commands:
+  state: {handler: hooks.star:state, args: {dir: /srv}}
+`
+	require.NoError(t, os.WriteFile(root.Config(), append(data, []byte(extra)...), 0o600))
+	_, err = config.Load(root)
+	require.NoError(t, err)
+	c := controltest.Start(t, root, control.Options{})
+
+	guard := func(target string) rpc.GuardResult {
+		var r rpc.GuardResult
+		c.Call(rpc.MethodGuard, rpc.GuardParams{Action: "push", Target: target}, &r)
+		return r
+	}
+	assert.Equal(t, rpc.GuardResult{Decision: rpc.GuardDeny, Reason: "push needs a target"}, guard(""))
+	assert.Equal(t, rpc.GuardResult{Decision: rpc.GuardDeny, Reason: "no push to master"}, guard("master"))
+	assert.Equal(t, rpc.GuardAllow, guard("feature").Decision)
+	var other rpc.GuardResult
+	c.Call(rpc.MethodGuard, rpc.GuardParams{Action: "comment"}, &other)
+	assert.Equal(t, rpc.GuardAllow, other.Decision, "actions limits the hook")
+
+	var res rpc.DeskExecResult
+	c.Call(rpc.MethodDeskExec, rpc.DeskExecParams{Name: "state", Input: []byte(`{"a":1}`)}, &res)
+	assert.JSONEq(t, `{"echo":{"a":1},"open":0,"dir":"/srv"}`, string(res.Output))
+
+	var records []store.Record
+	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{State: hooks.SyncDone}, &records)
+	require.Len(t, records, 4)
+	desk := slices.IndexFunc(records, func(r store.Record) bool {
+		return strings.Contains(string(r.Value), `"sync":"desk_commands.state"`)
+	})
+	require.NotEqual(t, -1, desk)
+	var trace rpc.AutomationResult
+	c.Call(rpc.MethodAutomationShow, rpc.IDParams{ID: records[desk].Key}, &trace)
+	require.Len(t, trace.Calls, 1, "the store read is journaled")
+
+	// Sync journals are pruned after three days; a pass runs the prune.
+	c.Clock.Advance(73 * time.Hour)
+	c.Pass(1)
+	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{State: hooks.SyncDone}, &records)
+	assert.Empty(t, records)
+	err = c.Admin.Call(t.Context(), rpc.MethodAutomationShow, rpc.IDParams{ID: trace.Invocation.Key}, nil)
+	require.ErrorIs(t, err, store.ErrNotFound)
 }

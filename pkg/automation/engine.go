@@ -379,6 +379,18 @@ func (e *Engine) Step(ctx context.Context, entry string, timeout time.Duration, 
 	return step.invoke(ctx, entry, fn, args)
 }
 
+// Call runs a handler a caller waits on (a guard hook or a desk command)
+// with its own timeout. Nothing is replayed: a failure is the caller's
+// answer, not a retry.
+func (e *Engine) Call(ctx context.Context, entry string, timeout time.Duration, args ...any) (Result, error) {
+	call := *e
+	if timeout > 0 {
+		call.options.Limits.Duration = timeout
+	}
+	call.options.Replay = nil
+	return call.invoke(ctx, entry, e.functions[entry], args)
+}
+
 func (e *Engine) invoke(ctx context.Context, entry string, fn *starlark.Function, args []any) (result Result, err error) {
 	var inv *invocation
 	defer func() {

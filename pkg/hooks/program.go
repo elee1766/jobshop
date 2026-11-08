@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -70,11 +71,8 @@ func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (ma
 		secrets = append(secrets, key)
 	}
 	entries := []string{}
-	for _, w := range cfg.Workflows {
-		entries = append(entries, w.OnStart, w.OnStepCompleted)
-	}
-	for _, tr := range cfg.Triggers {
-		entries = append(entries, tr.Handler)
+	for _, e := range cfg.ScriptEntries() {
+		entries = append(entries, e.Entry)
 	}
 	programs := map[string]*Program{}
 	for _, entry := range slices.Sorted(slices.Values(entries)) {
@@ -135,6 +133,16 @@ func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, module
 	for name, tr := range cfg.Triggers {
 		if tr.Handler == entry {
 			owners["triggers."+name] = tr
+		}
+	}
+	for i, h := range cfg.Hooks {
+		if h.Handler == entry {
+			owners["hooks."+strconv.Itoa(i)] = h
+		}
+	}
+	for name, d := range cfg.DeskCommands {
+		if d.Handler == entry {
+			owners["desk_commands."+name] = d
 		}
 	}
 	credentials := map[string]string{}

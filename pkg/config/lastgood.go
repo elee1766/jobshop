@@ -108,11 +108,8 @@ func parseLastGood(b []byte) (*Config, error) {
 
 func validateLastGoodMetadata(c *Config, metadata *lastGoodMetadata) error {
 	entries := []string{}
-	for _, workflow := range c.Workflows {
-		entries = append(entries, workflow.OnStart, workflow.OnStepCompleted)
-	}
-	for _, trigger := range c.Triggers {
-		entries = append(entries, trigger.Handler)
+	for _, e := range c.ScriptEntries() {
+		entries = append(entries, e.Entry)
 	}
 	if metadata != nil {
 		if metadata.Version != 1 {

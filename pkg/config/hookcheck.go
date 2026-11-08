@@ -25,16 +25,8 @@ func (c *Config) checkHookPrograms(watch *WatchPaths) error {
 		}
 		return nil
 	}
-	for _, workflow := range c.Workflows {
-		if err := add(workflow.OnStart, 1); err != nil {
-			return err
-		}
-		if err := add(workflow.OnStepCompleted, 2); err != nil {
-			return err
-		}
-	}
-	for _, trigger := range c.Triggers {
-		if err := add(trigger.Handler, 2); err != nil {
+	for _, e := range c.ScriptEntries() {
+		if err := add(e.Entry, e.Positional); err != nil {
 			return err
 		}
 	}

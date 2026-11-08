@@ -122,21 +122,23 @@ type Invocation struct {
 	ParentInvocation string                     `json:"parent_invocation,omitempty"`
 	Targets          []string                   `json:"targets,omitempty"`
 	Trigger          string                     `json:"trigger,omitempty"`
-	Run              string                     `json:"run,omitempty"`
-	Step             string                     `json:"step,omitempty"`
-	StepRevision     int64                      `json:"step_revision,omitempty"`
-	Entry            string                     `json:"entry"`
-	Digest           string                     `json:"digest"`
-	ReadSet          map[string]int64           `json:"read_set,omitempty"`
-	Event            *Event                     `json:"event,omitempty"`
-	Args             map[string]any             `json:"args,omitempty"`
-	RunInput         *Run                       `json:"run_input,omitempty"`
-	StepInput        *Step                      `json:"step_input,omitempty"`
-	Actions          []automation.Action        `json:"actions,omitempty"`
-	Plan             *store.Graph               `json:"plan,omitempty"`
-	Error            string                     `json:"error,omitempty"`
-	Output           string                     `json:"output,omitempty"`
-	Decisions        []automation.Decision      `json:"decisions,omitempty"`
+	// Sync names the guard hook or desk command a sync call ran for.
+	Sync         string                `json:"sync,omitempty"`
+	Run          string                `json:"run,omitempty"`
+	Step         string                `json:"step,omitempty"`
+	StepRevision int64                 `json:"step_revision,omitempty"`
+	Entry        string                `json:"entry"`
+	Digest       string                `json:"digest"`
+	ReadSet      map[string]int64      `json:"read_set,omitempty"`
+	Event        *Event                `json:"event,omitempty"`
+	Args         map[string]any        `json:"args,omitempty"`
+	RunInput     *Run                  `json:"run_input,omitempty"`
+	StepInput    *Step                 `json:"step_input,omitempty"`
+	Actions      []automation.Action   `json:"actions,omitempty"`
+	Plan         *store.Graph          `json:"plan,omitempty"`
+	Error        string                `json:"error,omitempty"`
+	Output       string                `json:"output,omitempty"`
+	Decisions    []automation.Decision `json:"decisions,omitempty"`
 }
 
 func hookKey(value string) string {
