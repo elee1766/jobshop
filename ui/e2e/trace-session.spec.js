@@ -34,7 +34,7 @@ test('converted escalation retains its transcript and claimed tickets expose a l
     await call('session.send', { id: session, text: human, context: injected });
     const operator = page.locator('.operator').filter({ hasText: human });
     await expect(operator).toHaveText(human);
-    await expect(operator).not.toContainText('From admin (');
+    await expect(operator).not.toContainText('<message from=');
     const context = page.locator('.controller-context').filter({ hasText: injected.split('\n')[0] });
     await expect(context).toHaveCount(1);
     await expect(context).not.toHaveAttribute('open');

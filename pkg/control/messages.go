@@ -3,7 +3,6 @@ package control
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync/atomic"
 
@@ -13,10 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-const (
-	resolutionDelivered = "delivered"
-	messagesHeader      = "Messages for you:"
-)
+const resolutionDelivered = "delivered"
 
 // inbox returns open messages addressed to this session by id or key, or
 // to its pool. interruptOnly limits it to interrupt messages.
@@ -76,7 +72,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	if len(claimed) == 0 {
 		return nil
 	}
-	var b strings.Builder
+	var elements []string
 	var msgCtx []string
 	var generated []string
 	presentation := &rpc.PromptPresentation{Version: 1}
@@ -93,14 +89,15 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 		if m.Title == "" && m.Body == "" && attached == "" {
 			continue // context only
 		}
-		if b.Len() == 0 {
-			b.WriteString(messagesHeader)
-		}
-		fmt.Fprintf(&b, "\n\nFrom %s (%s):\n%s", f.From, m.ID, m.Title)
+		// The envelope text is the title, the body on the next line and the
+		// attachment lines, as the plain-text form had them.
+		text := m.Title
 		if m.Body != "" {
-			b.WriteString("\n" + m.Body)
+			text += "\n" + m.Body
 		}
-		b.WriteString(attached)
+		text += attached
+		elements = append(elements, messageElement(f.From, m.ID, text))
+		// Desk shows the original text, never the envelope.
 		original := strings.TrimSpace(strings.Join([]string{m.Title, m.Body}, "\n") + attached)
 		if f.From == "controller" {
 			generated = append(generated, original)
@@ -111,7 +108,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	// Chat sessions claim no tickets, so the pool prompt would never reach
 	// them; it leads their first message turn (again after a respawn).
 	poolPrompt := r.c.config().Pools[r.pool].Chat() && r.delivered.IsZero()
-	parts := r.useSend(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: b.String()}))
+	parts := r.useSend(r.c.assemble(ctx, r.turnSpec(turnMessage, nil, poolPrompt), PromptPart{Source: "messages", Text: messagesEnvelope(elements)}))
 	text := joinParts(parts)
 	var background []PromptPart
 	for _, part := range parts {

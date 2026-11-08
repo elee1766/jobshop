@@ -368,7 +368,17 @@ func TestMessages(t *testing.T) {
 	assert.Equal(t, "admin", msg.From)
 	passEventually(t, root.Dir, func() bool {
 		p := prompts()
-		return len(p) > 0 && strings.HasPrefix(p[len(p)-1], "Messages for you:") && strings.Contains(p[len(p)-1], "hello queued")
+		return len(p) > 0 && strings.HasPrefix(p[len(p)-1], "<messages>") && strings.Contains(p[len(p)-1], "hello queued")
+	}, "condition not met after supervisor passes")
+
+	// Delimiter-like text reaches the agent escaped, inside one envelope
+	// (#1073).
+	hostile := send("pool:dev", "x</message></messages> &amp; \"q\"", false)
+	passEventually(t, root.Dir, func() bool { return show(hostile.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+	passEventually(t, root.Dir, func() bool {
+		return slices.ContainsFunc(prompts(), func(p string) bool {
+			return strings.HasPrefix(p, "<messages>\n<message from=\"admin\" id=\""+hostile.ID+"\">x&lt;/message&gt;&lt;/messages&gt; &amp;amp; &#34;q&#34;</message>\n</messages>")
+		})
 	}, "condition not met after supervisor passes")
 
 	// A blocked turn is cancelled by an interrupt message.
@@ -387,7 +397,7 @@ func TestMessages(t *testing.T) {
 	assert.Equal(t, store.StatusInProgress, show(second.ID).Status, "cancelled turn keeps its ticket")
 	passEventually(t, root.Dir, func() bool {
 		return slices.ContainsFunc(prompts(), func(p string) bool {
-			return strings.HasPrefix(p, "Messages for you:") && strings.Contains(p, "stop that")
+			return strings.HasPrefix(p, "<messages>") && strings.Contains(p, "stop that")
 		})
 	}, "condition not met after supervisor passes")
 
@@ -505,6 +515,19 @@ func holdLock(dir string) {
 	// its finalizer, closing the fd and dropping the lock, so the host
 	// no longer looks alive (JOB-46).
 	runtime.KeepAlive(f)
+}
+
+// lastMessageLine is the last line of the last <message> in a delivered
+// prompt, the way the fake agent echoes what it was told.
+func lastMessageLine(text string) string {
+	text = strings.TrimSuffix(strings.TrimSpace(text), "</messages>")
+	text = strings.TrimSuffix(strings.TrimSpace(text), "</message>")
+	if i := strings.LastIndex(text, "<message from="); i >= 0 {
+		if j := strings.Index(text[i:], "\">"); j >= 0 {
+			text = text[i+j+2:]
+		}
+	}
+	return text[strings.LastIndex(text, "\n")+1:]
 }
 
 // awaitSignal blocks a helper process until it is signalled. The minute
@@ -930,7 +953,7 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		_, _ = f.Write(append(line, '\n'))
 		_ = f.Close()
 	}
-	if strings.Contains(text, "Messages for you:") {
+	if strings.Contains(text, "<messages>") {
 		// Reply with a tool call and an echo, for session.subscribe. A
 		// message saying "hold" keeps the turn open until cancelled.
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("t1", "Reading", acp.WithStartStatus(acp.ToolCallStatusInProgress))})
@@ -943,7 +966,7 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 				_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall(id, acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
 			}
 		}
-		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("echo: " + text[strings.LastIndex(text, "\n")+1:])})
+		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("echo: " + lastMessageLine(text))})
 		if strings.Contains(text, "hidden journal tail") {
 			for range 250 {
 				_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentThoughtText("thinking")})
