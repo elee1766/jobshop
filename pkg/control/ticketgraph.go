@@ -29,22 +29,14 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 	if err != nil {
 		return nil, err
 	}
-	out := rpc.GraphResult{Root: id, Nodes: []rpc.GraphNode{}, Relations: []rpc.GraphRelation{}}
+	out := rpc.GraphResult{Root: id, Nodes: []rpc.GraphNode{}, Relations: []rpc.GraphRelation{}, External: []rpc.GraphExternal{}}
 	cfg := c.config()
 	queue := []string{id}
 	seen := map[string]bool{id: true}
 	included := map[string]bool{}
 	relations := map[rpc.GraphRelation]bool{}
-	connect := func(from, to, kind string) {
-		if from == "" || to == "" || from == to {
-			return
-		}
-		r := rpc.GraphRelation{From: from, To: to, Kind: kind}
-		if !relations[r] {
-			relations[r] = true
-			out.Relations = append(out.Relations, r)
-		}
-		for _, next := range []string{from, to} {
+	enqueue := func(ids ...string) {
+		for _, next := range ids {
 			if !seen[next] {
 				seen[next] = true
 				if len(queue) < p.Limit {
@@ -54,6 +46,49 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 				}
 			}
 		}
+	}
+	connect := func(from, to, kind string) {
+		if from == "" || to == "" || from == to {
+			return
+		}
+		r := rpc.GraphRelation{From: from, To: to, Kind: kind}
+		if !relations[r] {
+			relations[r] = true
+			out.Relations = append(out.Relations, r)
+		}
+		enqueue(from, to)
+	}
+	// Wait relations (#1091): one per waiting ticket and target, the
+	// newest wait winning. An external target is a node of its own.
+	waitAt := map[[2]string]int{}
+	externals := map[string]int{}
+	connectWait := func(w graphWait) {
+		r := w.rel
+		if w.ext == nil {
+			if r.To == r.From {
+				return
+			}
+			if _, err := c.store.Get(ctx, r.To); err != nil {
+				return // a wait on a ticket that does not exist has nothing to show
+			}
+			enqueue(r.To)
+		} else if i, ok := externals[w.ext.ID]; ok {
+			if r.Since.Before(out.External[i].At) {
+				out.External[i].At = r.Since
+			}
+		} else {
+			externals[w.ext.ID] = len(out.External)
+			e := *w.ext
+			e.At = r.Since
+			out.External = append(out.External, e)
+		}
+		key := [2]string{r.From, r.To}
+		if i, ok := waitAt[key]; ok {
+			out.Relations[i] = r
+			return
+		}
+		waitAt[key] = len(out.Relations)
+		out.Relations = append(out.Relations, r)
 	}
 	for i := 0; i < len(queue); i++ {
 		t, err := c.store.Get(ctx, queue[i])
@@ -76,6 +111,9 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 		for _, edge := range th.Edges {
 			connect(edge.From, edge.To, string(edge.Kind))
 		}
+		for _, w := range graphWaits(cfg, t, th) {
+			connectWait(w)
+		}
 		kids, err := c.childIDs(ctx, t.ID, holdWindows(th.History, c.now()))
 		if err != nil {
 			return nil, err
@@ -94,7 +132,8 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 	}
 	// A bounded graph never contains dangling or out-of-scope endpoints.
 	out.Relations = slices.DeleteFunc(out.Relations, func(r rpc.GraphRelation) bool {
-		return !included[r.From] || !included[r.To]
+		_, external := externals[r.To]
+		return !included[r.From] || !included[r.To] && !external
 	})
 	return out, nil
 }

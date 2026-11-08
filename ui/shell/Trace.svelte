@@ -4,7 +4,7 @@
   import { md } from '../kit/markdown.js';
   import { parseTitle } from '../kit/titles.js';
   import TitleText from './TitleText.svelte';
-  import { axisTicks, card, exactLabel, fullLabel, graphLayout, linkLabel, relationLabel, relativeLabel, safeLinks, shortLabel, state as ticketState, stateDetail, statusLetter, stepName, traceEnd } from './trace.js';
+  import { axisTicks, card, exactLabel, fullLabel, graphLayout, linkLabel, relationLabel, relativeLabel, safeLinks, shortLabel, state as ticketState, stateDetail, statusLetter, stepName, traceEnd, waitText } from './trace.js';
   let { graph, selected, onselect, onwatch }: {
     graph: GraphResult;
     selected: string;
@@ -158,7 +158,7 @@
 <section aria-label="Ticket dependency graph" class="ticket-graph">
   <div class="tag graph-heading">
     <h2>graph</h2>
-    <span class="muted">{graph.nodes.length} tickets · {graph.relations.length} relationships</span>
+    <span class="muted">{graph.nodes.length} tickets{#if graph.external?.length} · {graph.external.length} external{/if} · {graph.relations.length} relationships</span>
     <div class="graph-controls push-right" aria-label="Graph zoom">
       <button aria-label="Zoom out" disabled={zoom <= 0.05} onclick={() => zoomAt(zoom / 1.25)}>−</button>
       <output aria-label="Graph zoom level">{Math.round(zoom * 100)}%</output>
@@ -188,7 +188,8 @@
           {@const y1 = from.y + card.height / 2}
           {@const y2 = to.y + card.height / 2}
           {@const bend = to.x === from.x ? x1 + 36 : (x1 + x2) / 2}
-          <path class:graph-gate={edge.kind === 'blocks' || edge.kind === 'waits_for'} d={`M ${x1} ${y1} C ${bend} ${y1}, ${bend} ${y2}, ${x2} ${y2}`} marker-end="url(#graph-arrow)"><title>{edge.from} {relationLabel(edge.kind)} {edge.to}</title></path>
+          <path class:graph-gate={edge.kind === 'blocks' || edge.kind === 'waits_for'} class:graph-wait={edge.kind === 'wait'} data-wait={edge.kind === 'wait' ? edge.state || 'waiting' : undefined} d={`M ${x1} ${y1} C ${bend} ${y1}, ${bend} ${y2}, ${x2} ${y2}`} marker-end="url(#graph-arrow)"><title>{edge.from} {relationLabel(edge.kind)} {edge.to}{edge.kind === 'wait' ? ' (' + waitText(edge) + ')' : ''}</title></path>
+          {#if edge.kind === 'wait'}<text class="graph-wait-label" data-wait={edge.state || 'waiting'} x={(x1 + x2) / 2} y={(y1 + y2) / 2 - 6} text-anchor="middle">{edge.state || 'waiting'}</text>{/if}
         {/each}
       </svg>
       {#each graph.nodes as node (node.id)}
@@ -205,6 +206,16 @@
           </div>
           {#if detail || wait?.reason}<div class="graph-state" data-status={node.status}>{#if detail}<span>{@html md(detail, true)}</span>{/if}{#if wait?.reason}<div>{@html md(wait.reason, true)}</div>{/if}</div>{/if}
           <div class="graph-links">{#if node.holder || node.kind === 'session'}<button title={node.holder || node.id} onclick={() => onwatch(node.holder || node.id)}>view session ↗</button>{/if}{#each safeLinks(node) as href}<a {href} target="_blank" rel="noopener noreferrer">{linkLabel(href)}</a>{/each}</div>
+        </article>
+      {/each}
+      {#each graph.external || [] as ext (ext.id)}
+        {@const position = layout.positions.get(ext.id)!}
+        <article class="graph-card graph-external" style:left={position.x + 'px'} style:top={position.y + 'px'} style:width={card.width + 'px'} style:height={card.height + 'px'} data-external={ext.type}>
+          <div class="graph-select">
+            <strong class="graph-title" title={ext.label}>{ext.label}</strong>
+            <span class="graph-meta muted"><span>external · {ext.type}</span></span>
+          </div>
+          <div class="graph-links">{#if ext.url && /^https?:\/\//.test(ext.url)}<a href={ext.url} target="_blank" rel="noopener noreferrer">{linkLabel(ext.url)}</a>{/if}</div>
         </article>
       {/each}
     </div>
