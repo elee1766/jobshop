@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.15](https://github.com/elee1766/jobshop/compare/v0.9.14...v0.9.15) (2026-11-08)
+
+
+### Bug fixes
+
+* **redact:** keep numeric ACP usage counters in redacted JSON (JOB-160) ([#1089](https://github.com/elee1766/jobshop/issues/1089)) ([f7d7db4](https://github.com/elee1766/jobshop/commit/f7d7db48f9761f5531ed4dbb0ce3253b708be909))
+
 ## [0.9.14](https://github.com/elee1766/jobshop/compare/v0.9.13...v0.9.14) (2026-11-08)
 
 
