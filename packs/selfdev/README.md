@@ -2,7 +2,7 @@
 
 Jobshop agents that develop Jobshop itself. This pack is
 `packs/github` (flows, pools, triggers and prompts: see its README) with
-Jobshop's values, through `extends:` in `pack.yaml`:
+Jobshop's values, composed through CUE in `pack.cue`:
 
 | github var | selfdev value |
 | --- | --- |
@@ -27,29 +27,13 @@ Jobshop's values, through `extends:` in `pack.yaml`:
 | `curate_every` | Start a pass after this long when at least one learning is open. Default 24h |
 | `curate_scope` | Learning scope globs the curate trigger counts (#524). Default this repo and its pools, so other instances' learnings do not start it |
 
-```yaml
-packs:
-  - path: /var/lib/jobshop/src/jobshop/packs/selfdev
-    vars: {repo: /var/lib/jobshop/src/jobshop, agent: jcode, dev_sessions: 2}
-  # The operator chat pool is host-level, included once (#248).
-  - path: /var/lib/jobshop/src/jobshop/packs/operator
-    vars: {jobshop_repo: elee1766/jobshop, checkout: /var/lib/jobshop/src/jobshop, agent: jcode}
-agents:
-  # jcode's own memory is off: learnings come from jobshop (#320).
-  jcode: {command: jcode, args: [acp], env: {JCODE_MEMORY_ENABLED: "0"}}
-```
-
-`jobshop config show` lists both `packs/github/pack.yaml` and
-`packs/selfdev/pack.yaml` as sources of each entry. selfdev no longer
-brings the `operator` pool; see `packs/operator/README.md`.
-
 ## Native CUE and Starlark
 
-`pack.cue`, `workflow.star` and `triggers.star` are the native version beside
-the unchanged `pack.yaml`. Adding these files does not select them for an
-existing host. Validate the native configuration and callbacks first, switch
-the host separately, then remove the legacy YAML only after cutover checks.
-No host configuration is changed by this pack.
+`pack.cue`, `workflow.star` and `triggers.star` define this pack. The obsolete
+selfdev `pack.yaml` was removed after verified native cutover. Do not select
+this directory through YAML `packs:` or Nix `livePacks`; those load `pack.yaml`.
+Use a CUE root selected by host YAML's `pack:` field. Include the host-level
+[operator pack](../operator/README.md) separately, once per host.
 
 Within this checkout's CUE module, a root CUE file can compose the pack:
 

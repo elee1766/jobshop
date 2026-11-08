@@ -61,7 +61,7 @@ let
   two = eval {
     workspaces.jobshop = {
       url = "https://github.com/elee1766/jobshop.git";
-      livePacks = [ "packs/selfdev" ];
+      livePacks = [ "packs/github" ];
       followInstalled = true;
     };
     workspaces.other = {
@@ -92,7 +92,7 @@ let
   legacy = eval {
     workspace = {
       url = "https://github.com/elee1766/jobshop.git";
-      livePacks = [ "packs/selfdev" ];
+      livePacks = [ "packs/github" ];
       followInstalled = true;
     };
   };
@@ -317,7 +317,7 @@ let
     restrictEgress = false;
     workspaces.jobshop = {
       url = "https://github.com/elee1766/jobshop.git";
-      livePacks = [ "packs/selfdev" ];
+      livePacks = [ "packs/github" ];
       followInstalled = true;
     };
     identities.elee-agent = {
@@ -465,14 +465,14 @@ let
         more = eval {
           workspaces.jobshop = {
             url = "https://github.com/elee1766/jobshop.git";
-            livePacks = [ "packs/selfdev" ];
+            livePacks = [ "packs/github" ];
             livePackVars.dev_sessions = 8;
           };
         };
         base = eval {
           workspaces.jobshop = {
             url = "https://github.com/elee1766/jobshop.git";
-            livePacks = [ "packs/selfdev" ];
+            livePacks = [ "packs/github" ];
             livePackVars.dev_sessions = 4;
           };
         };
@@ -684,13 +684,13 @@ pkgs.runCommand "jobshop-module-test" { } ''
   ${userConfigTest}
   ${shutdownStopTest}
   ${configRepoTest}
-  grep -q '/var/lib/jobshop/workspaces/jobshop/packs/selfdev' ${yamlPacks two}
+  grep -q '/var/lib/jobshop/workspaces/jobshop/packs/github' ${yamlPacks two}
   grep -q 'private_key_file: /run/secrets/k.pem' ${yamlPacks ident}
   grep -q 'exec .* gh "\$@"' ${lib.head ident.config.systemd.services.jobshop.path}/bin/gh
   grep -q '/var/lib/jobshop/workspaces/other/packs/github' ${yamlPacks two}
   grep -q 'repo: elee1766/other' ${yamlPacks two}
   grep -q 'prefix: ot-' ${yamlPacks two}
-  [ "$(grep -c 'prefix:' ${yamlPacks two})" = 1 ] || { echo 'selfdev got a prefix'; exit 1; }
+  [ "$(grep -c 'prefix:' ${yamlPacks two})" = 1 ] || { echo 'jobshop got a prefix'; exit 1; }
   ! grep -q -e 'sandbox:' -e 'shared_tools' ${yamlPacks sandboxOn}
   grep -q 'url: http://127.0.0.1:9428' ${yamlPacks vlLocal}
   grep -q 'url: http://logs.internal:9428' ${yamlPacks vlExternal}

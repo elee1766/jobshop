@@ -65,8 +65,9 @@ source path, while the unchanged candidate passes.
 - Only then remove the obsolete self-dev YAML. Keep shared GitHub YAML while
   other deployed consumers still load it.
 
-Rollback changes the host pack selection back to YAML while that file is still
-present. Drain callback runs before reverting to static workflow definitions.
+After YAML removal, use `starlark_workflows: false` for static CUE workflows.
+A YAML rollback requires restoring a pre-removal source revision as well as
+changing host selection. Drain callback runs before reverting to static workflows.
 Do not reset or replace the ticket database as part of either direction.
 
 ## Isolated acceptance evidence
@@ -78,3 +79,12 @@ Eight disposable-controller starts without supplied inputs verify the actual
 default-input path preserves self-dev prompt bytes, pools and retry counts.
 The differing `repo` metadata is unused by those self-dev prompts and commands.
 This does not replace live cutover verification.
+
+## Live cutover evidence, 2026-11-08
+
+At 04:01 UTC, gasserver's `jobshop` user was running version `0.8.26+1f83223`
+with the stable CUE root selected and all ten selfdev workflows using callbacks.
+Maintenance triggers remained declarative. Live `live-check` run
+`js-00343fhs4g002` was closed with state `done`; its audit contained successful
+start, script-step and completion records. This verified native lifecycle allows
+removing selfdev YAML. Shared GitHub and operator YAML remain for peer consumers.

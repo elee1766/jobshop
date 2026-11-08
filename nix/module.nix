@@ -377,7 +377,7 @@ let
         livePacks = lib.mkOption {
           type = lib.types.listOf lib.types.str;
           default = [ ];
-          example = [ "packs/selfdev" ];
+          example = [ "packs/github" ];
           description = ''
             Packs read from the live checkout (dir) instead of the Nix store, so merged
             prompt and pool changes apply after the workspace's sync unit without a
@@ -1114,7 +1114,7 @@ in
         {
           jobshop = {
             url = "https://github.com/elee1766/jobshop.git";
-            livePacks = [ "packs/selfdev" ];
+            livePacks = [ "packs/github" ];
             followInstalled = true;
           };
           other.url = "https://github.com/elee1766/other.git";

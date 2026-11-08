@@ -21,7 +21,13 @@ homeConfigurations.jobcity = home-manager.lib.homeManagerConfiguration {
         enable = true;
         workspaces.jobshop = {
           url = "https://github.com/elee1766/jobshop.git";
-          livePacks = [ "packs/selfdev" ];
+          livePacks = [ "packs/github" ];
+          livePackVars = {
+            repo = "elee1766/jobshop";
+            checkout = "/home/jobcity/.local/state/jobshop/workspaces/jobshop";
+            agent = "jcode";
+            human = "elee1766";
+          };
         };
       };
     }

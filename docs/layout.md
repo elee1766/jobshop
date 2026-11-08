@@ -282,8 +282,11 @@ as its own user, not as `agent`.
   services.jobshop.workspaces = {
     jobshop = {
       url = "https://github.com/elee1766/jobshop.git";
-      livePacks = [ "packs/selfdev" ];
-      livePackVars = { repo = "/var/lib/jobshop/workspaces/jobshop"; };
+      livePacks = [ "packs/github" ];
+      livePackVars = {
+        repo = "elee1766/jobshop";
+        checkout = "/var/lib/jobshop/workspaces/jobshop";
+      };
       followInstalled = true; # live packs follow the installed binary
     };
     other = {

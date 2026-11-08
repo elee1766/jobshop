@@ -46,7 +46,7 @@ packs:
   instance per repo). Prompts see `{{.pack_prefix}}`.
 - **`extends:`** in `pack.yaml` lists base packs (`path` relative to the
   pack, plus `vars`). The base loads first; the pack's own keys override
-  it. `packs/selfdev` is `packs/github` with Jobshop's values.
+  it. The native selfdev pack instead composes GitHub policy through CUE.
 - `jobshop config show` prints the resolved config; `jobshop reload`
   re-reads it, keeping the old one if the new one is invalid.
 
@@ -232,8 +232,9 @@ loads it. Keep the two in sync.
 - `packs/github`: works one GitHub repo (or Linear team) through issues
   and PRs: planner, `pr-work` (implement, review-merge, post-merge),
   `ci-repair` and `stall-check`.
-- `packs/selfdev`: `packs/github` extended with the values we use to
-  build Jobshop itself.
+- [`packs/selfdev`](../packs/selfdev/README.md): native CUE composition of
+  GitHub policy with Jobshop's values and Starlark workflows. Select it with
+  the host's `pack:` field, not a YAML `packs:` entry.
 - `packs/operator`: a chat pool for the operator to manage tickets,
   issues and runs across instances.
 

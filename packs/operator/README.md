@@ -48,8 +48,6 @@ release and logs a warning (`renamed_vars` in pack.yaml, #261).
 
 ```yaml
 packs:
-  - path: /var/lib/jobshop/src/jobshop/packs/selfdev
-    vars: {repo: /var/lib/jobshop/src/jobshop, agent: jcode}
   - path: /var/lib/jobshop/src/jobshop/packs/github
     prefix: acphost-
     vars: {repo: elee1766/acphost, checkout: /var/lib/jobshop/src/acphost, agent: jcode, human: elee1766, check_cmd: make test}
@@ -57,7 +55,8 @@ packs:
     vars: {jobshop_repo: elee1766/jobshop, checkout: /var/lib/jobshop/src/jobshop, agent: jcode}
 ```
 
-`packs/selfdev` no longer includes this pack. With the NixOS module, add
+The native [selfdev pack](../selfdev/README.md) is selected separately through
+host YAML's `pack:` field and does not include this pack. With the NixOS module, add
 the entry to `settings.packs` with the jobshop workspace's directory as
 the path (not to `livePacks`: those share the workspace's vars and
 prefix).
