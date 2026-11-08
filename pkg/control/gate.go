@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/learning"
@@ -29,118 +28,11 @@ const (
 	gateRuns     = 20
 	gateAge      = 72 * time.Hour
 	gateBaseline = 7 * 24 * time.Hour
-	// gateWorse is how much the failure rate may grow before an edit
-	// counts as harmful: noise between windows of a few dozen steps.
-	gateWorse = 1.25
-	// similarMin is the word overlap (Jaccard) at which a learning
-	// repeats a cited one.
-	similarMin = 0.5
 )
 
-// reviewFindingPrefix starts the correction recordReviewFinding writes.
-const reviewFindingPrefix = "review resumed "
-
-// gateMetrics computes the metrics of steps in pools (empty: all) and
-// learnings recorded in [from, to). Recurrence counts learnings that
-// repeat one of cited (same kind, similar summary). Before the merge
-// (after false) the cited learnings are the problem itself and count.
-// After it (after true) a cited learning is not a recurrence, however
-// it matches: the session that ships the fix records a learning about
-// it later, and that is not the problem coming back (#1061).
-func gateMetrics(steps []store.Ticket, ls []store.Learning, cited []store.Learning, pools []string, from, to time.Time, after bool) store.PoolMetrics {
-	m := store.PoolMetrics{From: from, To: to}
-	inWin := func(t time.Time) bool { return !t.Before(from) && t.Before(to) }
-	runs := map[string]bool{}
-	ids := map[string]bool{}
-	for _, s := range steps {
-		if s.Kind != store.KindStep || !inWin(s.CreatedAt) || (len(pools) > 0 && !slices.Contains(pools, s.Pool)) {
-			continue
-		}
-		m.Steps++
-		ids[s.ID] = true
-		if s.ParentID != "" {
-			runs[s.ParentID] = true
-		}
-		if sf, err := store.DecodeFields[store.StepFields](s); err == nil {
-			m.Retries += sf.Failures
-		}
-		if s.Status == store.StatusClosed && s.Resolution == "failed" {
-			m.Escalations++
-		}
-	}
-	m.Runs = len(runs)
-	words := make([]map[string]bool, len(cited))
-	citedID := map[int64]bool{}
-	for i, c := range cited {
-		words[i] = wordSet(c.Summary)
-		citedID[c.ID] = true
-	}
-	for _, l := range ls {
-		if !inWin(l.CreatedAt) {
-			continue
-		}
-		if l.Kind == store.LearningCorrection && strings.HasPrefix(l.Summary, reviewFindingPrefix) && ids[l.Ticket] {
-			m.Findings++
-		}
-		if after && citedID[l.ID] {
-			continue
-		}
-		w := wordSet(l.Summary)
-		for i, c := range cited {
-			if c.ID == l.ID || (c.Kind == l.Kind && jaccard(words[i], w) >= similarMin) {
-				m.Recurrence++
-				break
-			}
-		}
-	}
-	return m
-}
-
-// gateDecide compares before and after. The edit did not help when the
-// cited problem recurs at least as often per step as before, or when
-// retries, escalations and review findings per step grew by more than
-// gateWorse. No steps after the merge is no evidence: it helped.
-func gateDecide(base, after store.PoolMetrics) (string, string) {
-	if after.Steps == 0 {
-		return store.EditHelped, "no steps in the scoped pools since the merge"
-	}
-	rb, ra := base.Rate(base.Recurrence), after.Rate(after.Recurrence)
-	if after.Recurrence > 0 && ra >= rb {
-		return store.EditNotHelped, fmt.Sprintf("cited problem still recurs: %d in %d steps after, %d in %d before",
-			after.Recurrence, after.Steps, base.Recurrence, base.Steps)
-	}
-	fb := base.Rate(base.Retries + base.Escalations + base.Findings)
-	fa := after.Rate(after.Retries + after.Escalations + after.Findings)
-	if fa > fb*gateWorse && fa > 0 && after.Retries+after.Escalations+after.Findings > 1 {
-		return store.EditNotHelped, fmt.Sprintf("failures per step rose from %.2f to %.2f (retries %d, escalations %d, findings %d in %d steps)",
-			fb, fa, after.Retries, after.Escalations, after.Findings, after.Steps)
-	}
-	return store.EditHelped, fmt.Sprintf("recurrence %d in %d steps (before %d in %d), failures per step %.2f (before %.2f)",
-		after.Recurrence, after.Steps, base.Recurrence, base.Steps, fa, fb)
-}
-
-func wordSet(s string) map[string]bool {
-	out := map[string]bool{}
-	for _, w := range strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) }) {
-		if len(w) >= 4 {
-			out[w] = true
-		}
-	}
-	return out
-}
-
-func jaccard(a, b map[string]bool) float64 {
-	if len(a) == 0 || len(b) == 0 {
-		return 0
-	}
-	n := 0
-	for w := range a {
-		if b[w] {
-			n++
-		}
-	}
-	return float64(n) / float64(len(a)+len(b)-n)
-}
+// The judgement itself (metrics over a window, helped or not) is
+// memedit.Metrics and memedit.Decide; this file reads the store and
+// applies the result.
 
 // measure reads the store and computes metrics over [from, to): the
 // window after the merge when after is true, else the baseline before.
@@ -153,7 +45,7 @@ func (c *Controller) measure(ctx context.Context, cited []store.Learning, pools 
 	if err != nil {
 		return store.PoolMetrics{}, err
 	}
-	return gateMetrics(steps, ls, cited, pools, from, to, after), nil
+	return memedit.Metrics(steps, ls, cited, pools, from, to, after), nil
 }
 
 // editPools are the pools cited learnings point at: a pool scope, or the
@@ -277,7 +169,7 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 		if !due && p.ID == 0 {
 			continue
 		}
-		state, reason := gateDecide(e.Baseline, after)
+		state, reason := memedit.Decide(e.Baseline, after)
 		u, err := memedit.SetResult(ctx, c.store, e.ID, state, after, reason, now)
 		if err != nil {
 			return nil, err

@@ -1,4 +1,4 @@
-package control
+package sessionrt
 
 import (
 	"os"
@@ -18,13 +18,13 @@ import (
 // agent pid and the agent; they are not jobs.
 var helperComms = map[string]bool{"bwrap": true, "pasta": true, "passt": true, "pasta.avx2": true}
 
-// backgroundJobs lists the command lines of agentPid's descendants that
+// BackgroundJobs lists the command lines of agentPid's descendants that
 // are not the agent itself: processes whose executable differs from
 // agentPid's and is not a sandbox helper or the host binary. Between
 // turns an agent runs no tools, so anything left is a job it started
 // and did not wait for. Nil when agentPid is unknown or /proc is
 // unreadable.
-func backgroundJobs(agentPid int, hostExe string) []string {
+func BackgroundJobs(agentPid int, hostExe string) []string {
 	if agentPid <= 0 {
 		return nil
 	}

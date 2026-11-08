@@ -1,7 +1,6 @@
 package control
 
 import (
-	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/scaleplan"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -28,9 +28,8 @@ import (
 const (
 	// scaleFile persists manual scale targets and pool drains in the root,
 	// so a controller restart keeps them.
-	scaleFile             = "scale.json"
-	defaultScaleDownAfter = 10 * time.Minute
-	resolutionScaledDown  = "scaled_down"
+	scaleFile            = "scale.json"
+	resolutionScaledDown = "scaled_down"
 )
 
 // scaleState is scaleFile.
@@ -77,125 +76,6 @@ func (c *Controller) saveScaleLocked() error {
 	return os.Rename(tmp, path)
 }
 
-// scaleSample is one raw recommendation, kept for the stabilization window.
-type scaleSample struct {
-	at time.Time
-	n  int
-}
-
-// autoDesired is clamp(min, max, demand) held at its highest value over
-// the scale-down window, so a burst does not start and stop sessions in a
-// loop. Scale up is immediate. hist is the pool's samples, pruned and
-// appended in place.
-func autoDesired(p config.Pool, demand int, now time.Time, hist []scaleSample) (int, []scaleSample) {
-	rec := min(max(demand, p.MinSessions), p.MaxSessions)
-	window := config.Duration(p.ScaleDownAfter, defaultScaleDownAfter)
-	hist = slices.DeleteFunc(hist, func(s scaleSample) bool { return now.Sub(s.at) >= window })
-	hist = append(hist, scaleSample{at: now, n: rec})
-	out := 0
-	for _, s := range hist {
-		out = max(out, s.n)
-	}
-	// A reload that lowers max_sessions applies at once, not after the window.
-	return min(out, p.MaxSessions), hist
-}
-
-// scaleSession is the reconciler's view of one open session.
-type scaleSession struct {
-	ID        string
-	Idle      bool // holds no ticket
-	LastClaim time.Time
-	Created   time.Time
-	Cordon    string // store.Cordon reason, "" when in rotation
-}
-
-// scalePlan is what one pool needs this tick.
-type scalePlan struct {
-	Cordon   []string // move to CordonScale
-	Uncordon []string // scale cordons to lift
-	Start    int      // new sessions wanted, before brakes and the host cap
-}
-
-// planPool compares desired with the sessions in rotation. Surplus is
-// cordoned idle first, then least recent claim, then oldest host. A
-// shortfall first lifts scale cordons (the session is already warm) and
-// starts the rest. Manual and drain cordons are never lifted here.
-func planPool(desired int, sessions []scaleSession) scalePlan {
-	var active, scaled []scaleSession
-	for _, s := range sessions {
-		switch s.Cordon {
-		case "":
-			active = append(active, s)
-		case store.CordonScale:
-			scaled = append(scaled, s)
-		}
-	}
-	var p scalePlan
-	if n := len(active) - desired; n > 0 {
-		slices.SortStableFunc(active, func(a, b scaleSession) int {
-			if a.Idle != b.Idle {
-				if a.Idle {
-					return -1
-				}
-				return 1
-			}
-			return cmp.Or(a.LastClaim.Compare(b.LastClaim), a.Created.Compare(b.Created), cmp.Compare(a.ID, b.ID))
-		})
-		for _, s := range active[:n] {
-			p.Cordon = append(p.Cordon, s.ID)
-		}
-		return p
-	}
-	short := desired - len(active)
-	// Lift the busiest first: a working session is the furthest from ending.
-	slices.SortStableFunc(scaled, func(a, b scaleSession) int {
-		if a.Idle != b.Idle {
-			if a.Idle {
-				return 1
-			}
-			return -1
-		}
-		return b.LastClaim.Compare(a.LastClaim)
-	})
-	for _, s := range scaled {
-		if short == 0 {
-			break
-		}
-		p.Uncordon = append(p.Uncordon, s.ID)
-		short--
-	}
-	p.Start = short
-	return p
-}
-
-// capRequest is one pool's wish to start sessions under the host cap.
-type capRequest struct {
-	Pool     string
-	Priority int
-	Start    int
-}
-
-// capStarts grants starts in priority order (lower first, then name) until
-// open plus granted reaches limit. limit 0 means no cap.
-func capStarts(reqs []capRequest, open, limit int) map[string]int {
-	out := map[string]int{}
-	slices.SortStableFunc(reqs, func(a, b capRequest) int {
-		return cmp.Or(cmp.Compare(a.Priority, b.Priority), cmp.Compare(a.Pool, b.Pool))
-	})
-	room := limit - open
-	for _, r := range reqs {
-		n := r.Start
-		if limit > 0 {
-			n = max(min(n, room), 0)
-			room -= n
-		}
-		if n > 0 {
-			out[r.Pool] = n
-		}
-	}
-	return out
-}
-
 // poolScaleView is one pool's state from the last reconcile, for pool list.
 type poolScaleView struct {
 	desired int
@@ -206,7 +86,7 @@ type poolScaleView struct {
 func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 	now := c.now()
 	backingOff := c.backingOffPools()
-	var reqs []capRequest
+	var reqs []scaleplan.CapRequest
 	open := 0
 	for _, name := range slices.Sorted(maps.Keys(cfg.Pools)) {
 		p := cfg.Pools[name]
@@ -237,7 +117,7 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 		if c.poolDrained(name) {
 			continue // the drain path ends its sessions as drained
 		}
-		plan := planPool(desired, sessions)
+		plan := scaleplan.ForPool(desired, sessions)
 		for _, id := range plan.Cordon {
 			if err := c.setCordon(ctx, "controller", id, &store.Cordon{Reason: store.CordonScale, By: "controller", At: now}); err != nil {
 				c.log.WarnContext(ctx, "scale: cordon", "session", id, "err", err)
@@ -261,11 +141,11 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 				start = min(start, free)
 			}
 			if start > 0 {
-				reqs = append(reqs, capRequest{Pool: name, Priority: p.Priority, Start: start})
+				reqs = append(reqs, scaleplan.CapRequest{Pool: name, Priority: p.Priority, Start: start})
 			}
 		}
 	}
-	grants := capStarts(reqs, open, cfg.Limits.MaxSessions)
+	grants := scaleplan.CapStarts(reqs, open, cfg.Limits.MaxSessions)
 	for _, name := range slices.Sorted(maps.Keys(grants)) {
 		p := cfg.Pools[name]
 		for range grants[name] {
@@ -281,15 +161,15 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 // scaleSessions lists a pool's open sessions and how many hold a ticket.
 // Idle is read before the caller reads ready: a claim in between then
 // drops the ticket from ready instead of counting it twice (#102).
-func (c *Controller) scaleSessions(ctx context.Context, pool string) ([]scaleSession, int, error) {
+func (c *Controller) scaleSessions(ctx context.Context, pool string) ([]scaleplan.Session, int, error) {
 	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: pool})
 	if err != nil {
 		return nil, 0, err
 	}
-	out := make([]scaleSession, 0, len(open))
+	out := make([]scaleplan.Session, 0, len(open))
 	working := 0
 	for _, t := range open {
-		s := scaleSession{ID: t.ID, Created: t.CreatedAt, LastClaim: t.CreatedAt}
+		s := scaleplan.Session{ID: t.ID, Created: t.CreatedAt, LastClaim: t.CreatedAt}
 		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.Cordoned != nil {
 			s.Cordon = f.Cordoned.Reason
 		}
@@ -320,7 +200,7 @@ func (c *Controller) desired(name string, p config.Pool, demand, open int, now t
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, seen := c.scaleHist[name]; !seen {
-		c.scaleHist[name] = []scaleSample{{at: now, n: min(open, p.MaxSessions)}}
+		c.scaleHist[name] = []scaleplan.Sample{{At: now, N: min(open, p.MaxSessions)}}
 	}
 	var d int
 	target, manual := c.scaleTargets[name]
@@ -330,7 +210,7 @@ func (c *Controller) desired(name string, p config.Pool, demand, open int, now t
 	case manual:
 		d = min(max(target, 0), p.MaxSessions)
 	default:
-		d, c.scaleHist[name] = autoDesired(p, demand, now, c.scaleHist[name])
+		d, c.scaleHist[name] = scaleplan.Desired(p, demand, now, c.scaleHist[name])
 	}
 	c.scaleViews[name] = poolScaleView{desired: d}
 	return d

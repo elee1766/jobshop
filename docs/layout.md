@@ -24,21 +24,33 @@ jobshop/
 ├── cmd/jobshop/              thin shim: calls cli.Main(os.Args) and exits
 ├── pkg/
 │   ├── store/                Store interface, Ticket/Edge/Comment types, errors,
-│   │   │                     engine kinds and their typed field structs
+│   │   │                     engine kinds and their typed field structs, collections
+│   │   ├── storerules/       I/O-free rules both backends apply alike (JOB-40)
 │   │   ├── storetest/        conformance suite every backend runs
-│   │   └── sqlite/           modernc.org/sqlite backend
+│   │   ├── storemigrate/     SQLite to Postgres copy (#632)
+│   │   ├── sqlite/           modernc.org/sqlite backend (JOB-42)
+│   │   │   ├── migrations/   goose *.sql files, embedded
+│   │   │   └── sqldb/        hand-written SQL
+│   │   └── postgres/         Postgres backend (JOB-41)
 │   │       ├── migrations/   goose *.sql files, embedded
-│   │       └── queries/      sqlc *.sql queries and generated Go
+│   │       └── pgdb/         hand-written SQL
 │   ├── rpc/                  JSON-RPC method names, request/response types,
-│   │                         client over the acp-go-sdk connection
+│   │   │                     client over the acp-go-sdk connection
+│   │   └── rpcschema/        JSON schema and TypeScript for Desk (#542);
+│   │                         cmd/deskgen writes ui/desk-plugin.d.ts
 │   ├── control/              controller: tick loop, claims release, lease sweep,
-│   │                         session supervision, admin and CLI socket handlers
+│   │   │                     session supervision, admin and CLI socket handlers.
+│   │   │                     Wiring and coordination; subsystem engines live in
+│   │   │                     the packages below, which never import it
+│   │   │                     (docs/notes/JOB-155-control-audit.md)
 │   │   ├── activity/         activity feed cache, poller and readers (JOB-149)
 │   │   ├── journalship/      journal shipping to VictoriaLogs (JOB-119)
 │   │   ├── journalcompress/  closed-session journal compression (JOB-89)
 │   │   ├── journalread/      journal paging, search and recall summaries (JOB-140)
 │   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
-│   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe (JOB-146)
+│   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe,
+│   │   │                     background job scan (JOB-146, JOB-155)
+│   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
 │   │   ├── ingestqueue/      spool drain, inbox notifier, worker heartbeats,
 │   │   │                     admission hook runner, ingest work loop (JOB-141)
 │   │   ├── triggers/         trigger and scan evaluation, event routing, off-tick
@@ -46,19 +58,42 @@ jobshop/
 │   │   ├── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
 │   │   ├── attention/        attention projection and item choices (JOB-147)
 │   │   ├── question/         question ticket content and options (JOB-147)
-│   │   └── chatlife/         managed-chat rules: desk, escalation, attention (JOB-147)
+│   │   ├── chatlife/         managed-chat rules: desk, escalation, attention (JOB-147)
+│   │   ├── controltest/      starts a controller for tests outside the package (JOB-47)
+│   │   └── journalvl/        tests only: journal shipping against a real VictoriaLogs
+│   ├── hooks/                durable hook and callback invocations, audit, replay,
+│   │                         transports (JOB-148 audit: the host adapter is in control)
+│   ├── automation/           trusted Starlark hook engine; api/ is the shared
+│   │                         contract, command/ github/ http/ jev/ linear/ tickets/
+│   │                         are the bounded host capabilities
+│   ├── apicall/              token source and per-call options Linear and GitHub share
 │   ├── github/               GitHub REST client and read-only observation of
 │   │                         PRs, checks, reviews and threads (JOB-143)
-│   ├── config/               YAML loading, validation, defaults
+│   ├── linear/               Linear GraphQL client (#201)
+│   ├── identity/             credentials for configured identities: App tokens,
+│   │                         Linear client_credentials (#200)
+│   ├── ingest/               webhook spool and inbox types (#318)
+│   ├── learning/             learnings collection (#264)
+│   ├── memedit/              memory edits collection and the curator gate's
+│   │                         metrics and verdict (#274, JOB-155)
+│   ├── memory/               memory directory reader: files and skills (#266)
+│   ├── writekey/             idempotency keys for tracker writes (#280)
+│   ├── config/               YAML loading, validation, defaults; tmpl/ renders
+│   │                         config templates
+│   ├── packcue/              local CUE package evaluation for packs
 │   ├── hostspec/             jobshop's spec.json on acphost (an older
 │   │                         conv_export field is ignored, #530)
 │   ├── gateway/              A2A gateway: escalation chats to another agent (#547)
 │   ├── desk/                 Jobshop Desk HTTP server over the admin API;
 │   │                         dist/ is the built UI, embedded
 │   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter
+│   ├── logctx/               log attributes carried in a context (JOB-49)
+│   ├── clock/                time source the controller reads, fake in tests (#362)
 │   ├── redact/               secret redaction for journal reads, shipping
 │   │                         and command step output (betterleaks, env values)
 │   ├── journal/              journal rows and the VictoriaLogs client (#530)
+│   ├── runbook/              docs/verify runbook parser and runner (#635)
+│   ├── flaky/                `go test -json` flake classifier; cmd/ci-flaky (#510)
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
 │   ├── cron/                 5-field cron parser for triggers (no dependency)
 │   └── ids/                  ticket ids: per-project prefix + sonyflake base32
@@ -80,14 +115,22 @@ Dependency direction (an arrow means "may import"):
 ```mermaid
 flowchart TD
   cmd[cmd/jobshop] --> cli
-  cli --> control & acphost & hostspec
+  cli --> control & acphost & hostspec & desk & gateway
   cli --> rpc & config
   config --> cron
-  control --> store & rpc & config & telemetry & acp & acphost & hostspec & cron
-  control --> chatlife & attention & question
-  chatlife --> attention & question & config & rpc & store
-  attention --> question & rpc & store
-  question --> rpc & store
+  control --> store & rpc & config & telemetry & acphost & hostspec
+  control --> hooks & automation & github & linear & identity
+  control --> engines
+  subgraph engines[control subpackages]
+    activity & journalship & journalcompress & journalread & linearsvc
+    sessionrt & scaleplan & ingestqueue & triggers & waitengine
+    chatlife --> attention --> question
+  end
+  engines --> store & rpc & config
+  activity --> github & linear
+  waitengine --> github & linear
+  triggers & ingestqueue --> hooks
+  hooks --> automation & github & linear
   hostspec --> acphost & telemetry
   sqlite[store/sqlite] & postgres[store/postgres] --> store
   storetest[store/storetest] --> store
