@@ -291,7 +291,7 @@ func (c *Controller) activityLinks(ctx context.Context) (map[string][]string, er
 		}
 		if m.GitHub.Repo != "" {
 			for _, v := range []any{m.GitHub.Issue, m.GitHub.PR} {
-				if n := refNumber(v); n > 0 {
+				if n := github.RefNumber(v); n > 0 {
 					addLink(fmt.Sprintf("%s#%d", m.GitHub.Repo, n), id)
 				}
 			}

@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -223,7 +224,7 @@ func TestWaitLabel(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, waitOf(got), "labeled target")
 
-	is, err := parseIssue(rec["issue_closed"])
+	is, err := github.ParseIssue(rec["issue_closed"])
 	require.NoError(t, err)
 	assert.Equal(t, "closed", is.State)
 	require.Error(t, (&store.Wait{Reason: "x", Conds: []store.WaitCond{{Type: store.WaitLabel, Repo: "acme/app"}}}).Validate(), "issue and label required")

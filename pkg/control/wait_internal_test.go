@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -30,22 +31,22 @@ const (
 
 func TestWaitParseRecorded(t *testing.T) {
 	t.Parallel()
-	pr, err := parsePR([]byte(recPR))
+	pr, err := github.ParsePR([]byte(recPR))
 	require.NoError(t, err)
-	assert.Equal(t, prInfo{Head: "aaaa1111bbbb", State: "open"}, pr)
-	rs, err := parseReviews([]byte(recReviews))
+	assert.Equal(t, github.PRInfo{Head: "aaaa1111bbbb", State: "open"}, pr)
+	rs, err := github.ParseReviews([]byte(recReviews))
 	require.NoError(t, err)
 	require.Len(t, rs, 2)
-	assert.Equal(t, prReview{Login: "bob", State: "APPROVED", Commit: "aaaa1111bbbb", At: time.Date(2026, 11, 3, 8, 5, 0, 0, time.UTC)}, rs[1])
-	cs, err := parsePRChecks([]byte(recChecks))
+	assert.Equal(t, github.Review{Login: "bob", State: "APPROVED", Commit: "aaaa1111bbbb", At: time.Date(2026, 11, 3, 8, 5, 0, 0, time.UTC)}, rs[1])
+	cs, err := github.ParsePRChecks([]byte(recChecks))
 	require.NoError(t, err)
-	assert.Equal(t, []prCheck{{"build", "pass"}, {"lint", "pending"}}, cs)
-	cs, err = parseCheckRuns([]byte(recCheckRuns))
+	assert.Equal(t, []github.Check{{Name: "build", Bucket: "pass"}, {Name: "lint", Bucket: "pending"}}, cs)
+	cs, err = github.ParseCheckRuns([]byte(recCheckRuns))
 	require.NoError(t, err)
-	assert.Equal(t, []prCheck{{"build", "pass"}, {"nix", "fail"}}, cs)
-	runs, err := parseRunList([]byte(recWorkflowRuns))
+	assert.Equal(t, []github.Check{{Name: "build", Bucket: "pass"}, {Name: "nix", Bucket: "fail"}}, cs)
+	runs, err := github.ParseRunList([]byte(recWorkflowRuns))
 	require.NoError(t, err)
-	assert.Equal(t, []actionsRun{
+	assert.Equal(t, []github.WorkflowRun{
 		{ID: 42172458357, Name: "ci", Path: ".github/workflows/ci.yml", Status: "queued"},
 		{ID: 42172458351, Name: "release", Path: ".github/workflows/release.yml", Status: "completed", Conclusion: "success"},
 	}, runs)
@@ -267,29 +268,29 @@ func (f *fakePRs) set(pr, reviews, checks string) {
 	f.pr["acme/widget#5"], f.reviews["acme/widget#5"], f.checks["acme/widget#5"] = pr, reviews, checks
 }
 
-func (f *fakePRs) PR(_ context.Context, repo string, n int) (prInfo, error) {
+func (f *fakePRs) PR(_ context.Context, repo string, n int) (github.PRInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	return parsePR([]byte(f.pr[prKey(repo, n)]))
+	return github.ParsePR([]byte(f.pr[prKey(repo, n)]))
 }
 
-func (f *fakePRs) Reviews(_ context.Context, repo string, n int) ([]prReview, error) {
+func (f *fakePRs) Reviews(_ context.Context, repo string, n int) ([]github.Review, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return parseReviews([]byte(f.reviews[prKey(repo, n)]))
+	return github.ParseReviews([]byte(f.reviews[prKey(repo, n)]))
 }
 
-func (f *fakePRs) Checks(_ context.Context, repo string, n int, _ string, _ bool) ([]prCheck, error) {
+func (f *fakePRs) Checks(_ context.Context, repo string, n int, _ string, _ bool) ([]github.Check, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return parsePRChecks([]byte(f.checks[prKey(repo, n)]))
+	return github.ParsePRChecks([]byte(f.checks[prKey(repo, n)]))
 }
 
-func (f *fakePRs) Issue(_ context.Context, repo string, n int) (issueInfo, error) {
+func (f *fakePRs) Issue(_ context.Context, repo string, n int) (github.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return parseIssue([]byte(f.issues[prKey(repo, n)]))
+	return github.ParseIssue([]byte(f.issues[prKey(repo, n)]))
 }
 
 // Tag: issues["tag:<repo>@<tag>"] set means the tag exists.
@@ -304,16 +305,16 @@ func (f *fakePRs) Tag(_ context.Context, repo, tag string) (bool, error) {
 func (f *fakePRs) Contains(_ context.Context, _ string, sha, head string) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return compareContains(f.issues["compare:"+sha+"..."+head]), nil
+	return github.CompareContains(f.issues["compare:"+sha+"..."+head]), nil
 }
 
-func (f *fakePRs) WorkflowRuns(_ context.Context, _, sha string) ([]actionsRun, error) {
+func (f *fakePRs) WorkflowRuns(_ context.Context, _, sha string) ([]github.WorkflowRun, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.runs[sha] == "" {
 		return nil, nil
 	}
-	return parseRunList([]byte(f.runs[sha]))
+	return github.ParseRunList([]byte(f.runs[sha]))
 }
 
 func waitController(t *testing.T) (*Controller, *scanClock, *fakePRs, *fakeThreads) {

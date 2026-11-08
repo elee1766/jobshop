@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -60,11 +61,12 @@ func (c *Controller) rebaseResolution(ctx context.Context, step store.Ticket) (s
 	}
 	pr, err := src.PullRequest(ctx, repo, n)
 	state := strings.ToLower(pr.MergeableState)
-	if err != nil || state == "" || state == "unknown" {
+	needs, known := github.NeedsRebase(pr.MergeableState)
+	if err != nil || !known {
 		c.log.WarnContext(ctx, "rebase check: merge state unreadable, accepting rebase", "step", step.ID, "repo", repo, "pr", n, "state", state, "err", err)
 		return store.ResolutionRebase, ""
 	}
-	if state == "dirty" || state == "behind" {
+	if needs {
 		return store.ResolutionRebase, ""
 	}
 	return "failed", fmt.Sprintf("close -r rebase counted as failed: PR %s#%d merge state is %s, not dirty or behind, so no rebase is needed.", repo, n, state)

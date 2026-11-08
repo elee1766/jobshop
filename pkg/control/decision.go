@@ -64,7 +64,7 @@ func decisionOf(t store.Ticket) (decisionRef, bool) {
 	if m.Linear.Issue != "" {
 		return decisionRef{Linear: m.Linear.Issue}, true
 	}
-	n := refNumber(m.GitHub.Issue)
+	n := github.RefNumber(m.GitHub.Issue)
 	return decisionRef{Repo: m.GitHub.Repo, Issue: n}, m.GitHub.Repo != "" && n > 0
 }
 

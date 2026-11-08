@@ -7,17 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"path"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Waits (#381). A task or step with fields.wait is out of the ready
@@ -31,16 +30,16 @@ import (
 
 // waitSource reads PR state from GitHub. Tests replace it.
 type waitSource interface {
-	PR(ctx context.Context, repo string, n int) (prInfo, error)
-	Reviews(ctx context.Context, repo string, n int) ([]prReview, error)
+	PR(ctx context.Context, repo string, n int) (github.PRInfo, error)
+	Reviews(ctx context.Context, repo string, n int) ([]github.Review, error)
 	// Checks lists the checks of a PR's current head (required only when
 	// asked), or of sha when n is 0.
-	Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error)
+	Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]github.Check, error)
 	// WorkflowRuns lists the GitHub Actions runs on commit sha, every
 	// workflow (github.checks with workflow=, JOB-75).
-	WorkflowRuns(ctx context.Context, repo, sha string) ([]actionsRun, error)
+	WorkflowRuns(ctx context.Context, repo, sha string) ([]github.WorkflowRun, error)
 	// Issue reads an issue's state and labels (github.label, #603).
-	Issue(ctx context.Context, repo string, n int) (issueInfo, error)
+	Issue(ctx context.Context, repo string, n int) (github.IssueInfo, error)
 	// Tag reports whether tag exists in repo (github.tag, JOB-11).
 	Tag(ctx context.Context, repo, tag string) (bool, error)
 	// Contains reports whether head is sha or a descendant of it in repo
@@ -67,33 +66,6 @@ func (l liveLinearWait) IssueContext(ctx context.Context, key string) (linear.Co
 	return is, err
 }
 
-type issueInfo struct {
-	State  string // open or closed
-	Labels []string
-}
-
-type prInfo struct {
-	Head   string
-	State  string // open or closed
-	Merged bool
-	// Conflicting: GitHub reports mergeable false. No pull_request CI runs
-	// on such a PR, so a checks wait on it would never resolve.
-	Conflicting bool
-}
-
-type prReview struct {
-	Login  string
-	State  string // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
-	Commit string
-	At     time.Time
-}
-
-// prCheck bucket is gh's: pass, fail, pending, skipping, cancel.
-type prCheck struct {
-	Name   string
-	Bucket string
-}
-
 // waitEvery is the poll interval: the subscriptions interval when set.
 func (c *Controller) waitEvery() time.Duration {
 	if s := c.config().Subscriptions; s != nil {
@@ -106,7 +78,7 @@ func (c *Controller) waitSrc() waitSource {
 	if c.waitSource != nil {
 		return c.waitSource
 	}
-	return ghWaitSource{}
+	return github.CLI{}
 }
 
 func (c *Controller) linearWaitSrc() linearWaitSource {
@@ -347,10 +319,10 @@ type waitPass struct {
 	src     waitSource
 	threads threadSource
 	linear  linearWaitSource
-	prs     map[string]prInfo
-	reviews map[string][]prReview
-	checks  map[string][]prCheck
-	runs    map[string][]actionsRun
+	prs     map[string]github.PRInfo
+	reviews map[string][]github.Review
+	checks  map[string][]github.Check
+	runs    map[string][]github.WorkflowRun
 	issues  map[string]linear.Context
 }
 
@@ -367,7 +339,7 @@ func (p *waitPass) linearIssue(ctx context.Context, key string) (linear.Context,
 
 func prKey(repo string, n int) string { return fmt.Sprintf("%s#%d", repo, n) }
 
-func (p *waitPass) pr(ctx context.Context, repo string, n int) (prInfo, error) {
+func (p *waitPass) pr(ctx context.Context, repo string, n int) (github.PRInfo, error) {
 	k := prKey(repo, n)
 	if v, ok := p.prs[k]; ok {
 		return v, nil
@@ -379,7 +351,7 @@ func (p *waitPass) pr(ctx context.Context, repo string, n int) (prInfo, error) {
 	return v, err
 }
 
-func (p *waitPass) reviewsOf(ctx context.Context, repo string, n int) ([]prReview, error) {
+func (p *waitPass) reviewsOf(ctx context.Context, repo string, n int) ([]github.Review, error) {
 	k := prKey(repo, n)
 	if v, ok := p.reviews[k]; ok {
 		return v, nil
@@ -391,7 +363,7 @@ func (p *waitPass) reviewsOf(ctx context.Context, repo string, n int) ([]prRevie
 	return v, err
 }
 
-func (p *waitPass) checksOf(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error) {
+func (p *waitPass) checksOf(ctx context.Context, repo string, n int, sha string, required bool) ([]github.Check, error) {
 	k := fmt.Sprintf("%s#%d@%s/%t", repo, n, sha, required)
 	if v, ok := p.checks[k]; ok {
 		return v, nil
@@ -403,7 +375,7 @@ func (p *waitPass) checksOf(ctx context.Context, repo string, n int, sha string,
 	return v, err
 }
 
-func (p *waitPass) runsOf(ctx context.Context, repo, sha string) ([]actionsRun, error) {
+func (p *waitPass) runsOf(ctx context.Context, repo, sha string) ([]github.WorkflowRun, error) {
 	k := repo + "@" + sha
 	if v, ok := p.runs[k]; ok {
 		return v, nil
@@ -588,7 +560,7 @@ func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait
 		want = "APPROVED"
 	}
 	// The login's latest review on the exact head decides.
-	var last *prReview
+	var last *github.Review
 	for i := range rs {
 		r := &rs[i]
 		if !strings.EqualFold(r.Login, cd.Login) || r.Commit != cd.Head {
@@ -722,11 +694,11 @@ func evalWorkflow(ctx context.Context, pass *waitPass, cd *store.WaitCond, head 
 		return false, "", err
 	}
 	at := short(head)
-	run, ok := newestRun(rs, cd.Workflow)
+	run, ok := github.NewestRun(rs, cd.Workflow)
 	if !ok {
 		return false, fmt.Sprintf("%s not started on %s", cd.Workflow, at), nil
 	}
-	switch checkBucket(run.Status, run.Conclusion) {
+	switch github.CheckBucket(run.Status, run.Conclusion) {
 	case "pending":
 		return false, fmt.Sprintf("%s in progress on %s", cd.Workflow, at), nil
 	case "pass":
@@ -737,28 +709,6 @@ func evalWorkflow(ctx context.Context, pass *waitPass, cd *store.WaitCond, head 
 		return false, "", errInvalidated{fmt.Sprintf("%s cancelled on %s; this head will not go green, push or wait on a newer commit", cd.Workflow, at)}
 	}
 	return false, "", errInvalidated{fmt.Sprintf("%s skipped on %s", cd.Workflow, at)}
-}
-
-// newestRun is the highest run id among the runs of workflow, matched
-// case-insensitively by name or by workflow file (ci, ci.yml or
-// .github/workflows/ci.yml), as trigger matching does: workflow=ci must
-// find a workflow named CI in ci.yml (JOB-88).
-func newestRun(rs []actionsRun, workflow string) (actionsRun, bool) {
-	var best actionsRun
-	found := false
-	for _, r := range rs {
-		base := path.Base(r.Path)
-		stem := strings.TrimSuffix(base, path.Ext(base))
-		if !slices.ContainsFunc([]string{r.Name, r.Path, base, stem}, func(s string) bool {
-			return s != "" && strings.EqualFold(s, workflow)
-		}) {
-			continue
-		}
-		if !found || r.ID > best.ID {
-			best, found = r, true
-		}
-	}
-	return best, found
 }
 
 // evalReply: a human comment on the thread after the wait started, from
@@ -791,271 +741,4 @@ func short(sha string) string {
 		return sha[:7]
 	}
 	return sha
-}
-
-// ghWaitSource reads PRs with the gh CLI, like ghSource.
-type ghWaitSource struct{}
-
-// ghCmdName names a gh call for its exec span: the subcommand only ("api",
-// "pr"), never the paths or flags after it.
-func ghCmdName(args []string) string {
-	if len(args) == 0 {
-		return ""
-	}
-	return args[0]
-}
-
-func ghRun(ctx context.Context, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	cmd, done := telemetry.ExecContext(ctx, "gh-"+ghCmdName(args), "gh", args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	b, err := cmd.Output()
-	done(err)
-	if err != nil {
-		return b, fmt.Errorf("gh %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
-	}
-	return b, nil
-}
-
-func (ghWaitSource) PR(ctx context.Context, repo string, n int) (prInfo, error) {
-	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/pulls/%d", repo, n))
-	if err != nil {
-		return prInfo{}, err
-	}
-	return parsePR(b)
-}
-
-func (ghWaitSource) Reviews(ctx context.Context, repo string, n int) ([]prReview, error) {
-	b, err := ghRun(ctx, "api", "--paginate", "--slurp", fmt.Sprintf("repos/%s/pulls/%d/reviews?per_page=100", repo, n))
-	if err != nil {
-		return nil, err
-	}
-	return parseReviews(b)
-}
-
-func (ghWaitSource) Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]prCheck, error) {
-	if n == 0 {
-		return commitChecks(ctx, repo, sha)
-	}
-	args := []string{"pr", "checks", strconv.Itoa(n), "--repo", repo, "--json", "name,bucket"}
-	if required {
-		args = append(args, "--required")
-	}
-	// gh pr checks exits non-zero while checks are pending or failing;
-	// its JSON is still the answer.
-	b, err := ghRun(ctx, args...)
-	if cs, perr := parsePRChecks(b); perr == nil && len(bytes.TrimSpace(b)) > 0 {
-		return cs, nil
-	}
-	if err != nil && (strings.Contains(err.Error(), "no required checks") || strings.Contains(err.Error(), "no checks reported")) {
-		return nil, nil // nothing reported yet: not green
-	}
-	return nil, err
-}
-
-// Tag reads GET /repos/{repo}/git/ref/tags/{tag}; 404 is not yet.
-func (ghWaitSource) Tag(ctx context.Context, repo, tag string) (bool, error) {
-	_, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/git/ref/tags/%s", repo, tag))
-	if err != nil && strings.Contains(err.Error(), "404") {
-		return false, nil
-	}
-	return err == nil, err
-}
-
-// Contains compares sha...head: identical or ahead means head has sha.
-func (ghWaitSource) Contains(ctx context.Context, repo, sha, head string) (bool, error) {
-	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/compare/%s...%s", repo, sha, head), "--jq", ".status")
-	if err != nil {
-		if strings.Contains(err.Error(), "404") {
-			return false, nil // head not pushed (a local build): not deployed
-		}
-		return false, err
-	}
-	return compareContains(string(b)), nil
-}
-
-// compareContains reads the compare API's status.
-func compareContains(status string) bool {
-	s := strings.TrimSpace(status)
-	return s == "identical" || s == "ahead"
-}
-
-// Issue reads GET /repos/{repo}/issues/{n}.
-func (ghWaitSource) Issue(ctx context.Context, repo string, n int) (issueInfo, error) {
-	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/issues/%d", repo, n))
-	if err != nil {
-		return issueInfo{}, err
-	}
-	return parseIssue(b)
-}
-
-func parseIssue(b []byte) (issueInfo, error) {
-	var r struct {
-		State  string `json:"state"`
-		Labels []struct {
-			Name string `json:"name"`
-		} `json:"labels"`
-	}
-	if err := json.Unmarshal(b, &r); err != nil {
-		return issueInfo{}, fmt.Errorf("issue: %w", err)
-	}
-	out := issueInfo{State: r.State}
-	for _, l := range r.Labels {
-		out.Labels = append(out.Labels, l.Name)
-	}
-	return out, nil
-}
-
-// parsePR reads GET /repos/{repo}/pulls/{n}.
-func parsePR(b []byte) (prInfo, error) {
-	var r struct {
-		State     string `json:"state"`
-		Merged    bool   `json:"merged"`
-		Mergeable *bool  `json:"mergeable"` // null while GitHub computes it
-		Head      struct {
-			SHA string `json:"sha"`
-		} `json:"head"`
-	}
-	if err := json.Unmarshal(b, &r); err != nil {
-		return prInfo{}, fmt.Errorf("pull request: %w", err)
-	}
-	return prInfo{Head: r.Head.SHA, State: r.State, Merged: r.Merged, Conflicting: r.Mergeable != nil && !*r.Mergeable}, nil
-}
-
-// parseReviews reads the slurped pages of GET .../pulls/{n}/reviews.
-func parseReviews(b []byte) ([]prReview, error) {
-	var pages [][]struct {
-		State       string    `json:"state"`
-		CommitID    string    `json:"commit_id"`
-		SubmittedAt time.Time `json:"submitted_at"`
-		User        struct {
-			Login string `json:"login"`
-		} `json:"user"`
-	}
-	if err := json.Unmarshal(b, &pages); err != nil {
-		return nil, fmt.Errorf("reviews: %w", err)
-	}
-	var out []prReview
-	for _, p := range pages {
-		for _, r := range p {
-			out = append(out, prReview{Login: r.User.Login, State: r.State, Commit: r.CommitID, At: r.SubmittedAt})
-		}
-	}
-	return out, nil
-}
-
-// parsePRChecks reads `gh pr checks --json name,bucket`.
-func parsePRChecks(b []byte) ([]prCheck, error) {
-	var out []prCheck
-	if err := json.Unmarshal(b, &out); err != nil {
-		return nil, fmt.Errorf("pr checks: %w", err)
-	}
-	return out, nil
-}
-
-// actionsRun is one GitHub Actions run on a commit.
-type actionsRun struct {
-	ID         int64
-	Name       string
-	Path       string // .github/workflows/ci.yml
-	Status     string
-	Conclusion string
-}
-
-func (ghWaitSource) WorkflowRuns(ctx context.Context, repo, sha string) ([]actionsRun, error) {
-	full := sha
-	if len(full) < 40 { // head_sha takes only a full sha
-		out, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/commits/%s", repo, sha), "--jq", ".sha")
-		if err != nil {
-			return nil, err
-		}
-		full = strings.TrimSpace(string(out))
-	}
-	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/actions/runs?head_sha=%s&per_page=100", repo, full))
-	if err != nil {
-		return nil, err
-	}
-	return parseRunList(b)
-}
-
-// commitChecks lists the check runs of sha plus its Actions workflow
-// runs (#831). A workflow run queued behind a concurrency group has no
-// check runs yet; without it a commit looks green once another workflow
-// (release) finishes, and a run cancelled while queued would not show.
-func commitChecks(ctx context.Context, repo, sha string) ([]prCheck, error) {
-	b, err := ghRun(ctx, "api", fmt.Sprintf("repos/%s/commits/%s/check-runs?per_page=100", repo, sha))
-	if err != nil {
-		return nil, err
-	}
-	cs, err := parseCheckRuns(b)
-	if err != nil {
-		return nil, err
-	}
-	rs, err := ghWaitSource{}.WorkflowRuns(ctx, repo, sha)
-	if err != nil {
-		return nil, err
-	}
-	for _, r := range rs {
-		cs = append(cs, prCheck{Name: r.Name + " (workflow)", Bucket: checkBucket(r.Status, r.Conclusion)})
-	}
-	return cs, nil
-}
-
-// checkBucket maps a check or workflow run's status and conclusion to
-// gh's buckets.
-func checkBucket(status, conclusion string) string {
-	if status != "completed" {
-		return "pending"
-	}
-	switch conclusion {
-	case "success", "neutral":
-		return "pass"
-	case "skipped":
-		return "skipping"
-	case "cancelled":
-		return "cancel"
-	}
-	return "fail"
-}
-
-// parseRunList reads GET .../actions/runs?head_sha=.
-func parseRunList(b []byte) ([]actionsRun, error) {
-	var r struct {
-		WorkflowRuns []struct {
-			ID         int64  `json:"id"`
-			Name       string `json:"name"`
-			Path       string `json:"path"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-		} `json:"workflow_runs"`
-	}
-	if err := json.Unmarshal(b, &r); err != nil {
-		return nil, fmt.Errorf("workflow runs: %w", err)
-	}
-	var out []actionsRun
-	for _, wr := range r.WorkflowRuns {
-		out = append(out, actionsRun{ID: wr.ID, Name: wr.Name, Path: wr.Path, Status: wr.Status, Conclusion: wr.Conclusion})
-	}
-	return out, nil
-}
-
-// parseCheckRuns reads GET .../commits/{sha}/check-runs into gh buckets.
-func parseCheckRuns(b []byte) ([]prCheck, error) {
-	var r struct {
-		CheckRuns []struct {
-			Name       string `json:"name"`
-			Status     string `json:"status"`
-			Conclusion string `json:"conclusion"`
-		} `json:"check_runs"`
-	}
-	if err := json.Unmarshal(b, &r); err != nil {
-		return nil, fmt.Errorf("check runs: %w", err)
-	}
-	var out []prCheck
-	for _, cr := range r.CheckRuns {
-		out = append(out, prCheck{Name: cr.Name, Bucket: checkBucket(cr.Status, cr.Conclusion)})
-	}
-	return out, nil
 }

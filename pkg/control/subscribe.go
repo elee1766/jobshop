@@ -1,24 +1,20 @@
 package control
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"math"
-	"regexp"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Subscriptions (#187): a ticket follows GitHub issue and PR threads. Its
@@ -39,9 +35,6 @@ const (
 	subscribeAuthorPrefix = "github:"
 	linearAuthorPrefix    = "linear:"
 )
-
-// prLink finds PR URLs in comments, e.g. the pr-work "PR <url> head <sha>".
-var prLink = regexp.MustCompile(`https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)`)
 
 // thread is one followed GitHub thread, or a Linear issue when Linear is
 // set (#233), and its read position.
@@ -137,10 +130,10 @@ func implicitThreads(t store.Ticket, comments []store.Comment) []thread {
 		out = append(out, thread{Linear: m.Linear.Issue})
 	}
 	if len(t.Meta) > 0 && json.Unmarshal(t.Meta, &m) == nil && m.GitHub.Repo != "" {
-		if n := refNumber(m.GitHub.Issue); n > 0 {
+		if n := github.RefNumber(m.GitHub.Issue); n > 0 {
 			out = append(out, thread{Repo: m.GitHub.Repo, Number: n})
 		}
-		if n := refNumber(m.GitHub.PR); n > 0 {
+		if n := github.RefNumber(m.GitHub.PR); n > 0 {
 			out = append(out, thread{Repo: m.GitHub.Repo, Number: n, PR: true})
 		}
 	}
@@ -148,23 +141,12 @@ func implicitThreads(t store.Ticket, comments []store.Comment) []thread {
 		if strings.HasPrefix(c.Author, subscribeAuthorPrefix) || strings.HasPrefix(c.Author, linearAuthorPrefix) {
 			continue // quoted tracker text, not the ticket's own links
 		}
-		for _, sm := range prLink.FindAllStringSubmatch(c.Body, -1) {
-			n, _ := strconv.Atoi(sm[2])
-			out = append(out, thread{Repo: sm[1], Number: n, PR: true})
+		// PR URLs, e.g. the pr-work "PR <url> head <sha>".
+		for _, ref := range github.PRRefs(c.Body) {
+			out = append(out, thread{Repo: ref.Repo, Number: ref.Number, PR: true})
 		}
 	}
 	return out
-}
-
-func refNumber(v any) int {
-	switch x := v.(type) {
-	case float64:
-		return int(x)
-	case string:
-		n, _ := strconv.Atoi(strings.TrimPrefix(x, "#"))
-		return n
-	}
-	return 0
 }
 
 // follower is a ticket and the threads it follows.
@@ -825,77 +807,18 @@ func replyLine(cm linear.Comment, byID map[string]linear.Comment) string {
 	return fmt.Sprintf("in reply to %s: %q", p.Display(), first)
 }
 
-// ghSource reads threads with the gh CLI, which has the host's token.
+// ghSource reads GitHub threads with the gh CLI (pkg/github), which has
+// the host's token, and adds the controller's comment fields.
 type ghSource struct{}
 
 func (ghSource) Comments(ctx context.Context, th thread, since time.Time) ([]ghComment, error) {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-	base := fmt.Sprintf("repos/%s", th.Repo)
-	s := since.UTC().Format(time.RFC3339)
-	const user = `author: .user.login, bot: (.user.type == "Bot")`
-	queries := [][2]string{{
-		fmt.Sprintf("%s/issues/%d/comments?since=%s&per_page=100", base, th.Number, s),
-		`.[] | {id: ("c" + (.id|tostring)), kind: "comment", body, url: .html_url, at: .updated_at, ` + user + `}`,
-	}}
-	if th.PR {
-		queries = append(queries,
-			[2]string{
-				fmt.Sprintf("%s/pulls/%d/reviews?per_page=100", base, th.Number),
-				`.[] | select(.submitted_at != null) | {id: ("r" + (.id|tostring)), kind: "review", state, body, url: .html_url, at: .submitted_at, ` + user + `}`,
-			},
-			[2]string{
-				fmt.Sprintf("%s/pulls/%d/comments?since=%s&per_page=100", base, th.Number, s),
-				`.[] | {id: ("p" + (.id|tostring)), kind: "review comment", body, url: .html_url, at: .updated_at, ` + user + `}`,
-			})
+	cs, err := github.CLI{}.Comments(ctx, github.Thread{Repo: th.Repo, Number: th.Number, PR: th.PR}, since)
+	if err != nil {
+		return nil, err
 	}
-	var out []ghComment
-	for _, q := range queries {
-		cmd, done := telemetry.ExecContext(ctx, "gh-api", "gh", "api", "--paginate", q[0], "--jq", q[1])
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		b, err := cmd.Output()
-		done(err)
-		if err != nil {
-			return nil, fmt.Errorf("gh api %s: %w: %s", q[0], err, strings.TrimSpace(stderr.String()))
-		}
-		cs, err := parseGHLines(b)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, cs...)
+	out := make([]ghComment, len(cs))
+	for i, cm := range cs {
+		out[i] = ghComment{ID: cm.ID, Author: cm.Author, Bot: cm.Bot, Kind: cm.Kind, State: cm.State, Body: cm.Body, URL: cm.URL, At: cm.At}
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
 	return out, nil
-}
-
-// parseGHLines reads the JSON lines the gh --jq filters print.
-func parseGHLines(b []byte) ([]ghComment, error) {
-	var out []ghComment
-	sc := bufio.NewScanner(bytes.NewReader(b))
-	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	for sc.Scan() {
-		line := bytes.TrimSpace(sc.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-		var r struct {
-			ID     string    `json:"id"`
-			Kind   string    `json:"kind"`
-			State  string    `json:"state"`
-			Body   string    `json:"body"`
-			URL    string    `json:"url"`
-			At     time.Time `json:"at"`
-			Author string    `json:"author"`
-			Bot    bool      `json:"bot"`
-		}
-		if err := json.Unmarshal(line, &r); err != nil {
-			return nil, fmt.Errorf("gh api output: %w", err)
-		}
-		if r.Kind == "review" && strings.TrimSpace(r.Body) == "" && r.State == "COMMENTED" {
-			continue // the review's line comments arrive on their own
-		}
-		out = append(out, ghComment{ID: r.ID, Author: r.Author, Bot: r.Bot, Kind: r.Kind, State: r.State, Body: r.Body, URL: r.URL, At: r.At})
-	}
-	return out, sc.Err()
 }
