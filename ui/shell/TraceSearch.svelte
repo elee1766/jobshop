@@ -3,6 +3,7 @@
   import type { Ticket } from '../../packages/jobshop-client/rpc.js';
   import { client } from './lib/api.svelte.js';
   import { state as ticketState, statusLetter } from './trace.js';
+  import TitleAction from './TitleAction.svelte';
 
   let { reference, onopen }: { reference: string; onopen: (id: string) => void } = $props();
   let query = $state('');
@@ -79,7 +80,7 @@
         <thead><tr><th title="Status: O open, R running, C closed">s</th><th>ticket</th><th>kind</th><th class="wide">pool</th></tr></thead>
         <tbody>{#each results as ticket (ticket.id)}<tr>
           <td class="ticket-status" data-status={ticket.status} title={ticketState(ticket)} aria-label={ticketState(ticket)}>{statusLetter(ticket)}</td>
-          <td><a class="ticket-label" title={ticket.id} href={"?view=trace&ref=" + encodeURIComponent(ticket.id)}>{ticket.title || ticket.id}</a></td>
+          <td><TitleAction class="ticket-label" title={ticket.title} fallback={ticket.id} tip={ticket.id} href={"?view=trace&ref=" + encodeURIComponent(ticket.id)} /></td>
           <td>{ticket.kind}</td><td class="wide">{ticket.pool || '–'}</td>
         </tr>{/each}</tbody>
       </table>

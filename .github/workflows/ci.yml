@@ -170,7 +170,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: node --test ../packages/jobshop-client/index.test.js kit/links.test.js
+      - run: node --test ../packages/jobshop-client/index.test.js kit/links.test.js kit/titles.test.js
       - run: npm run build
       - uses: actions/upload-artifact@v4
         with:
