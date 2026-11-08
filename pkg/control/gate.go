@@ -42,8 +42,12 @@ const reviewFindingPrefix = "review resumed "
 
 // gateMetrics computes the metrics of steps in pools (empty: all) and
 // learnings recorded in [from, to). Recurrence counts learnings that
-// repeat one of cited (same kind, similar summary), cited included.
-func gateMetrics(steps []store.Ticket, ls []store.Learning, cited []store.Learning, pools []string, from, to time.Time) store.PoolMetrics {
+// repeat one of cited (same kind, similar summary). Before the merge
+// (after false) the cited learnings are the problem itself and count.
+// After it (after true) a cited learning is not a recurrence, however
+// it matches: the session that ships the fix records a learning about
+// it later, and that is not the problem coming back (#1061).
+func gateMetrics(steps []store.Ticket, ls []store.Learning, cited []store.Learning, pools []string, from, to time.Time, after bool) store.PoolMetrics {
 	m := store.PoolMetrics{From: from, To: to}
 	inWin := func(t time.Time) bool { return !t.Before(from) && t.Before(to) }
 	runs := map[string]bool{}
@@ -66,8 +70,10 @@ func gateMetrics(steps []store.Ticket, ls []store.Learning, cited []store.Learni
 	}
 	m.Runs = len(runs)
 	words := make([]map[string]bool, len(cited))
+	citedID := map[int64]bool{}
 	for i, c := range cited {
 		words[i] = wordSet(c.Summary)
+		citedID[c.ID] = true
 	}
 	for _, l := range ls {
 		if !inWin(l.CreatedAt) {
@@ -75,6 +81,9 @@ func gateMetrics(steps []store.Ticket, ls []store.Learning, cited []store.Learni
 		}
 		if l.Kind == store.LearningCorrection && strings.HasPrefix(l.Summary, reviewFindingPrefix) && ids[l.Ticket] {
 			m.Findings++
+		}
+		if after && citedID[l.ID] {
+			continue
 		}
 		w := wordSet(l.Summary)
 		for i, c := range cited {
@@ -133,8 +142,9 @@ func jaccard(a, b map[string]bool) float64 {
 	return float64(n) / float64(len(a)+len(b)-n)
 }
 
-// measure reads the store and computes metrics over [from, to).
-func (c *Controller) measure(ctx context.Context, cited []store.Learning, pools []string, from, to time.Time) (store.PoolMetrics, error) {
+// measure reads the store and computes metrics over [from, to): the
+// window after the merge when after is true, else the baseline before.
+func (c *Controller) measure(ctx context.Context, cited []store.Learning, pools []string, from, to time.Time, after bool) (store.PoolMetrics, error) {
 	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Created: &store.TimeRange{Since: from, Until: to}, Order: store.OrderOldest, Limit: store.NoLimit})
 	if err != nil {
 		return store.PoolMetrics{}, err
@@ -143,7 +153,7 @@ func (c *Controller) measure(ctx context.Context, cited []store.Learning, pools 
 	if err != nil {
 		return store.PoolMetrics{}, err
 	}
-	return gateMetrics(steps, ls, cited, pools, from, to), nil
+	return gateMetrics(steps, ls, cited, pools, from, to, after), nil
 }
 
 // editPools are the pools cited learnings point at: a pool scope, or the
@@ -203,7 +213,7 @@ func (c *Controller) recordEdit(ctx context.Context, pr string, ids []int64, mer
 		mergedAt = c.now()
 	}
 	pools := c.editPools(ctx, cited)
-	base, err := c.measure(ctx, cited, pools, mergedAt.Add(-gateBaseline), mergedAt)
+	base, err := c.measure(ctx, cited, pools, mergedAt.Add(-gateBaseline), mergedAt, false)
 	if err != nil {
 		return store.MemoryEdit{}, err
 	}
@@ -221,7 +231,7 @@ func (c *Controller) editDue(ctx context.Context, e store.MemoryEdit, runs int, 
 	if err != nil {
 		return false, store.PoolMetrics{}, err
 	}
-	after, err := c.measure(ctx, cited, e.Pools, e.MergedAt, now)
+	after, err := c.measure(ctx, cited, e.Pools, e.MergedAt, now, true)
 	if err != nil {
 		return false, after, err
 	}
