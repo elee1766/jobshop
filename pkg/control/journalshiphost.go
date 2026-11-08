@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/redact"
@@ -31,7 +32,7 @@ func (h shipHost) Now() time.Time                         { return h.c.now() }
 func (h shipHost) After(d time.Duration) <-chan time.Time { return h.c.after(d) }
 func (h shipHost) SessionDir(id string) string            { return h.c.root.SessionDir(id) }
 func (h shipHost) Redactor(session string) *redact.Redactor {
-	return h.c.redactor(journalEnv(h.c.root.SessionDir(session)))
+	return h.c.redactor(journalread.Env(h.c.root.SessionDir(session)))
 }
 
 func (h shipHost) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {

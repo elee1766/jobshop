@@ -2,17 +2,9 @@ package control
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
-	"slices"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
-
-	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -22,23 +14,20 @@ import (
 // acphost's reader, so it works for live and ended sessions while the
 // session dir exists. It takes the session id only, so a later
 // multi-controller setup can forward it to the owner unchanged.
+//
+// The reading lives in pkg/control/journalread (JOB-140). This file is
+// the access boundary: it finds the ticket, decides with canReadJournal
+// and hands the reader an authorized journalread.Access.
 
-const (
-	journalDefaultLimit = 500
-	journalMaxLimit     = 5000
-	// grantSessionJournal lets a pool read journals in its project.
-	grantSessionJournal = "session-journal"
-)
+// grantSessionJournal lets a pool read journals in its project.
+const grantSessionJournal = "session-journal"
 
 func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.SessionJournalParams) (any, error) {
 	if p.ID == "" {
 		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
 	}
-	if p.From != "" && p.From != "agent" && p.From != "controller" {
-		return nil, fmt.Errorf("%w: from must be agent or controller", store.ErrInvalid)
-	}
-	if p.SinceSeq < 0 {
-		return nil, fmt.Errorf("%w: since_seq must be >= 0", store.ErrInvalid)
+	if err := journalread.ValidatePage(p); err != nil {
+		return nil, err
 	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {
@@ -50,33 +39,10 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 	if err := c.canReadJournal(sc, t); err != nil {
 		return nil, err
 	}
-	limit := p.Limit
-	if limit <= 0 {
-		limit = journalDefaultLimit
-	}
-	limit = min(limit, journalMaxLimit)
 	dir := c.root.SessionDir(t.ID)
-	frames, _, err := host.ReadJournal(filepath.Join(dir, host.JournalFile), p.SinceSeq)
-	if errors.Is(err, fs.ErrNotExist) {
-		frames, err = nil, nil
-	}
+	res, err := journalread.Page(journalread.Access{Dir: dir, Redact: c.redactor(journalread.Env(dir))}, p)
 	if err != nil {
 		return nil, err
-	}
-	red := c.redactor(journalEnv(dir))
-	res := rpc.SessionJournalResult{Frames: []rpc.JournalFrame{}, NextSeq: p.SinceSeq, Done: true}
-	for _, f := range frames {
-		if len(res.Frames) == limit {
-			res.Done = false
-			break
-		}
-		// Frames that do not match still advance the cursor, so a
-		// filtered caller does not rescan them.
-		res.NextSeq = f.Seq
-		if (p.From != "" && f.From != p.From) || (len(p.Kinds) > 0 && !slices.ContainsFunc(frameKinds(f.Msg), func(k string) bool { return slices.Contains(p.Kinds, k) })) {
-			continue
-		}
-		res.Frames = append(res.Frames, rpc.JournalFrame{Seq: f.Seq, T: f.T, From: f.From, Msg: red.JSON(f.Msg)})
 	}
 	return res, nil
 }
@@ -94,32 +60,4 @@ func (c *Controller) canReadJournal(sc scope, t store.Ticket) error {
 		return nil
 	}
 	return forbidden("reading another session's journal needs the admin socket or pool admin grant %q", grantSessionJournal)
-}
-
-// frameKinds are msg.method and params.update.sessionUpdate, the two
-// things callers filter on.
-func frameKinds(msg json.RawMessage) []string {
-	var m struct {
-		Method string `json:"method"`
-		Params struct {
-			Update struct {
-				SessionUpdate string `json:"sessionUpdate"`
-			} `json:"update"`
-		} `json:"params"`
-	}
-	if json.Unmarshal(msg, &m) != nil {
-		return nil
-	}
-	return []string{m.Method, m.Params.Update.SessionUpdate}
-}
-
-// journalEnv is the env the session's agent ran with, for redacting its
-// secret values: the host's inherited env (this controller's) plus the
-// spec's.
-func journalEnv(dir string) []string {
-	env := os.Environ()
-	if s, err := hostspec.Read(dir); err == nil {
-		env = append(env, s.Env...)
-	}
-	return env
 }

@@ -2,22 +2,18 @@ package control
 
 import (
 	"context"
-	"path/filepath"
-	"time"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
-
+	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// recallJournalBytes bounds the journal text indexed per session. Summarize
-// keeps the first prompt and the newest items when a journal is longer.
-const recallJournalBytes = 64 << 10
-
-// recall searches comments, session journals and learnings (#265).
+// recall searches comments, session journals and learnings (#265). The
+// project scope is decided here and the three sources are merged here;
+// journal.Recall and learning.Recall query their own collections, and
+// journalread.Summary builds what indexJournal writes (JOB-140).
 func (c *Controller) recall(ctx context.Context, sc scope, p rpc.RecallParams) (any, error) {
 	proj := p.Project
 	if !sc.admin {
@@ -83,15 +79,11 @@ func mergeRecall(sources [][]store.RecallHit, limit int) []store.RecallHit {
 // with a summary of its journal. One record per session keeps
 // re-indexing after every turn idempotent across controller restarts.
 func (r *runner) indexJournal(ctx context.Context, ticketID string) {
-	frames, _, err := host.ReadJournal(filepath.Join(r.dir, host.JournalFile), 0)
-	if err != nil || len(frames) == 0 {
+	text, at, ok := journalread.Summary(r.dir)
+	if !ok {
 		return
 	}
-	d := journal.Doc{
-		Session: r.id, Ticket: ticketID, Project: r.project(),
-		At:   time.UnixMilli(frames[len(frames)-1].T),
-		Text: host.Summarize(frames, recallJournalBytes),
-	}
+	d := journal.Doc{Session: r.id, Ticket: ticketID, Project: r.project(), At: at, Text: text}
 	if err := journal.Index(context.WithoutCancel(ctx), r.c.store, d); err != nil {
 		r.log.WarnContext(ctx, "index journal for recall", "err", err)
 	}
