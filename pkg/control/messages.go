@@ -133,7 +133,7 @@ func (r *runner) deliver(ctx context.Context, conn *acp.ClientSideConnection) er
 	r.c.answerDelivered(ctx, claimed)
 	r.mu.Lock()
 	r.delivered = r.c.now()
-	said := r.lastSaid.String()
+	said := r.traffic.Said()
 	r.mu.Unlock()
 	if err == nil && r.c.isReadOnly(r.id) {
 		// The first turn of an attention chat is its summary (#606, #607).
