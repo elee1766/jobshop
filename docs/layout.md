@@ -36,6 +36,8 @@ jobshop/
 │   │   ├── journalship/      journal shipping to VictoriaLogs (JOB-119)
 │   │   ├── journalcompress/  closed-session journal compression (JOB-89)
 │   │   └── journalread/      journal paging, search and recall summaries (JOB-140)
+│   ├── github/               GitHub REST client and read-only observation of
+│   │                         PRs, checks, reviews and threads (JOB-143)
 │   ├── config/               YAML loading, validation, defaults
 │   ├── hostspec/             jobshop's spec.json on acphost (an older
 │   │                         conv_export field is ignored, #530)

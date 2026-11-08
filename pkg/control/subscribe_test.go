@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -237,7 +238,7 @@ func TestSubscribeMethod(t *testing.T) {
 
 func TestParseGHLines(t *testing.T) {
 	t.Parallel()
-	out, err := parseGHLines([]byte(`{"id":"r1","kind":"review","state":"COMMENTED","body":"","at":"2026-11-03T00:00:00Z","author":"a"}
+	out, err := github.ParseCommentLines([]byte(`{"id":"r1","kind":"review","state":"COMMENTED","body":"","at":"2026-11-03T00:00:00Z","author":"a"}
 {"id":"r2","kind":"review","state":"APPROVED","body":"","at":"2026-11-03T00:00:01Z","author":"a"}
 {"id":"c1","kind":"comment","body":"x","at":"2026-11-03T00:00:02Z","author":"b","bot":true}
 `))

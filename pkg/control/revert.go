@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -174,7 +175,7 @@ func (c *Controller) checkRevert(ctx context.Context, src revertSource, repo str
 		} `json:"github"`
 	}
 	if json.Unmarshal(run.Meta, &m) == nil {
-		if i := refNumber(m.GitHub.Issue); i > 0 {
+		if i := github.RefNumber(m.GitHub.Issue); i > 0 {
 			issue = fmt.Sprintf(" for issue #%d", i)
 		}
 	}
