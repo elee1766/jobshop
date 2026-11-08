@@ -20,6 +20,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/flaky"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -171,7 +172,7 @@ func (c serveCmd) Run(g *Globals) error {
 	}()
 	bi, _ := debug.ReadBuildInfo()
 	v, cm := versionInfo(version, commit, bi)
-	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Tracer: tel.Tracer, Resource: tel.Resource, Reload: reload, Version: v, Commit: cm, ShellProbe: control.DefaultShellProbe})
+	return control.Run(ctx, r, control.Options{Tick: c.Tick, Log: log, Tracer: tel.Tracer, Resource: tel.Resource, Reload: reload, Version: v, Commit: cm, ShellProbe: sessionrt.DefaultShellProbe})
 }
 
 type reloadCmd struct {

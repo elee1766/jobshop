@@ -1,86 +1,27 @@
 package control
 
 import (
-	"os"
-	"path/filepath"
-	"syscall"
-	"time"
-
 	"github.com/elee1766/acphost/pkg/proc"
+
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 )
-
-// hostStopWait is how long stopHost waits for a host after SIGTERM before
-// it sends SIGKILL.
-const hostStopWait = 10 * time.Second
-
-// A session host records itself as a proc supervisor (#904): its pid in
-// supervisor.pid, and supervisor.lock flocked while it runs. acphost
-// StartDetached and in-process hosts both write them.
-
-// hostAlive reports whether a host runs for the session in dir.
-func hostAlive(dir string) bool {
-	d, err := proc.Open(dir)
-	return err == nil && d.Running()
-}
-
-// hostPid is the pid of the host recorded in dir, running or not, or 0.
-func hostPid(dir string) int {
-	d, err := proc.Open(dir)
-	if err != nil {
-		return 0
-	}
-	return d.Pid
-}
 
 // stopHost asks a host to stop (it forwards SIGTERM to the agent's group),
 // waits for it on its lock, and kills it if it is still running after
-// hostStopWait. Then it stops what is left of the session's processes.
+// sessionrt.HostStopWait. Then it stops what is left of the session's
+// processes. In-process hosts (Options.Hosts, tests) stop through their
+// runner.
 func (c *Controller) stopHost(dir string) {
 	if c.opt.Hosts != nil && c.opt.Hosts.Stop(dir) {
 		return
 	}
-	if stopDetachedHost(dir, hostStopWait) {
-		stopSessionProcs(dir)
+	if sessionrt.StopDetached(dir, sessionrt.HostStopWait) {
+		sessionrt.StopProcs(dir)
 	}
 }
 
-// stopDetachedHost stops the host recorded in dir: SIGTERM through
-// proc's Stop, a wait on supervisor.lock, SIGKILL after wait. It reports
-// whether a host was running.
-func stopDetachedHost(dir string, wait time.Duration) bool {
-	d, err := proc.Open(dir)
-	if err != nil || d.Pid <= 1 || !d.Running() {
-		return false
-	}
-	_ = d.Stop()
-	waitHostExit(dir, wait)
-	if d.Running() {
-		_ = syscall.Kill(d.Pid, syscall.SIGKILL)
-	}
-	return true
-}
-
-// waitHostExit blocks until the supervisor in dir releases supervisor.lock
-// or wait passes. It is proc.Detached.Wait without the exit record, which
-// stopHost does not need, and without its race when the timeout wins: Wait
-// closes the lock file while its flock goroutine still reads the fd
-// (acphost#227). Here the goroutine owns the file and closes it when the
-// lock is granted, which the supervisor's exit (or SIGKILL) always brings.
-func waitHostExit(dir string, wait time.Duration) {
-	f, err := os.Open(filepath.Join(dir, proc.LockFile))
-	if err != nil {
-		return
-	}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		defer func() { _ = f.Close() }()
-		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_SH)
-	}()
-	t := time.NewTimer(wait)
-	defer t.Stop()
-	select {
-	case <-done:
-	case <-t.C:
-	}
+// startDetachedHost starts the session host for dir where the config
+// places it (JOB-91, #992), see sessionrt.StartDetached.
+func (c *Controller) startDetachedHost(id, dir string) (*proc.Detached, error) {
+	return sessionrt.StartDetached(id, dir, hostInheritedEnv(), c.hostPlacement(), c.log)
 }

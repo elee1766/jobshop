@@ -15,6 +15,7 @@ import (
 	"github.com/elee1766/acphost/pkg/sandbox"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -297,7 +298,7 @@ func (c *Controller) sessionSandbox(ctx context.Context, sc scope, p rpc.Session
 	if err := c.applyIsolation(&spec.Spec, t.Pool); err != nil {
 		res.Error = err.Error()
 	} else if u := c.config().IsolationFor(t.Pool).User; u != nil && u.Slots() > 0 {
-		if err := applySlot(&spec.Spec, *u, f.Slot); err != nil {
+		if err := sessionrt.ApplySlot(&spec.Spec, *u, f.Slot); err != nil {
 			res.Error = err.Error()
 		}
 	}

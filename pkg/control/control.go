@@ -30,6 +30,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
 	idgen "github.com/elee1766/jobshop/pkg/ids"
@@ -121,7 +122,7 @@ type Options struct {
 	Version, Commit string
 	// ShellProbe lists the commands an agent's tool shell must find on
 	// its PATH before a host is spawned (JOB-67); a miss quarantines the
-	// pool. The serve command passes DefaultShellProbe; nil skips it, as
+	// pool. The serve command passes sessionrt.DefaultShellProbe; nil skips it, as
 	// test hosts are not named jobshop.
 	ShellProbe []string
 }
@@ -220,7 +221,7 @@ type Controller struct {
 	// cgroup is the delegated sessions cgroup for isolation limits (#388),
 	// set up once on first need.
 	cgroupOnce sync.Once
-	cgroup     cgroupSetup
+	cgroup     sessionrt.Delegation
 	// hostsMoved is set once live hosts were moved out of the controller's
 	// cgroup into the sessions cgroup (JOB-91).
 	hostsMoved atomic.Bool
