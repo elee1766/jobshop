@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.9.9](https://github.com/elee1766/jobshop/compare/v0.9.8...v0.9.9) (2026-11-08)
+
+
+### Features
+
+* **desk:** reorganize learn into an overview with problem and attempted fix (JOB-127) ([#1036](https://github.com/elee1766/jobshop/issues/1036)) ([b1a99bd](https://github.com/elee1766/jobshop/commit/b1a99bd4a0438a5b2e3793452163391d554ccc34))
+
+
+### Bug fixes
+
+* **desk:** show issue and pr in labeled columns sized by the table, not the viewport (JOB-129) ([#1038](https://github.com/elee1766/jobshop/issues/1038)) ([471bbbe](https://github.com/elee1766/jobshop/commit/471bbbe671922f9c9ac0e41a81d164339f66b9c3))
+* **packs/github:** post-merge ships on a green descendant of a red merge sha ([#1055](https://github.com/elee1766/jobshop/issues/1055)) ([#1056](https://github.com/elee1766/jobshop/issues/1056)) ([bedf14b](https://github.com/elee1766/jobshop/commit/bedf14b2e04046a4bc6cc21b2672acdb70bba068))
+* **packs/github:** review-merge checks the fetched pr head merged with master ([#1053](https://github.com/elee1766/jobshop/issues/1053)) ([#1054](https://github.com/elee1766/jobshop/issues/1054)) ([e94072b](https://github.com/elee1766/jobshop/commit/e94072b6e04be4501629cfb5b9d2808d6a53a916))
+
 ## [0.9.8](https://github.com/elee1766/jobshop/compare/v0.9.7...v0.9.8) (2026-11-08)
 
 
