@@ -53,6 +53,8 @@ jobshop/
 │   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
 │   │   ├── ingestqueue/      spool drain, inbox notifier, worker heartbeats,
 │   │   │                     admission hook runner, ingest work loop (JOB-141)
+│   │   ├── slotprovider/     resource slot provider calls, demand, idle release,
+│   │   │                     slot env and prompt (JOB-158)
 │   │   ├── triggers/         trigger and scan evaluation, event routing, off-tick
 │   │   │                     checks (JOB-145); the controller still fires
 │   │   ├── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
@@ -123,7 +125,7 @@ flowchart TD
   control --> engines
   subgraph engines[control subpackages]
     activity & journalship & journalcompress & journalread & linearsvc
-    sessionrt & scaleplan & ingestqueue & triggers & waitengine
+    sessionrt & scaleplan & ingestqueue & triggers & waitengine & slotprovider
     chatlife --> attention --> question
   end
   engines --> store & rpc & config
