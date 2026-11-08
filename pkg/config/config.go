@@ -246,11 +246,15 @@ const (
 // StallSignal is one stall condition. A store signal (StoreStallSignals)
 // uses After. Any other name runs Check (sh -c in the root dir): exit 0
 // with one stall per stdout line, "<subject> <detail>"; the subject is
-// the first word.
+// the first word. Or it runs Script, a Starlark file.star:function called
+// as fn(args) at most once per Poll, which returns a dict of subject to
+// detail.
 type StallSignal struct {
 	Signal string `yaml:"signal"`
 	After  string `yaml:"after"` // Go duration threshold
 	Check  string `yaml:"check"`
+	Script string         `yaml:"script,omitempty"`
+	Args   map[string]any `yaml:"args,omitempty"`
 	// Repo (owner/name) is the repo an issue_no_run check lists; only
 	// runs whose meta.github.repo matches hide an issue (#183).
 	Repo string `yaml:"repo"`

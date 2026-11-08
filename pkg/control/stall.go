@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
@@ -328,7 +329,11 @@ func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr co
 		case config.StallLinearIssueNoRun:
 			found, err = c.stallLinearIssues(ctx, cfg, sig)
 		default:
-			found, err = c.stallCheck(ctx, tr, sig, ev)
+			if sig.Script != "" {
+				found, err = c.stallScript(ctx, cfg, tr, sig)
+			} else {
+				found, err = c.stallCheck(ctx, tr, sig, ev)
+			}
 		}
 		if errors.Is(err, errCheckPending) {
 			// Go on: every check of the trigger is collected in one pass,
@@ -706,22 +711,92 @@ func (c *Controller) stallCheck(ctx context.Context, tr config.Trigger, sig conf
 	if err != nil || why != "" {
 		return nil, err
 	}
-	var found []stall
+	found := map[string]string{}
+	for line := range strings.Lines(out) {
+		subject, detail, _ := strings.Cut(strings.TrimSpace(line), " ")
+		found[subject] = strings.TrimSpace(detail)
+	}
+	return c.stallSubjects(ctx, sig, found)
+}
+
+// stallSubjects turns subject -> detail into stalls in subject order. An
+// issue_no_run issue with an open run in sig.Repo is not a stall.
+func (c *Controller) stallSubjects(ctx context.Context, sig config.StallSignal, found map[string]string) ([]stall, error) {
 	var busy map[string]bool
 	if sig.Signal == config.StallIssueNoRun {
+		var err error
 		if busy, err = c.issuesWithOpenRun(ctx, sig.Repo); err != nil {
 			return nil, err
 		}
 	}
-	for line := range strings.Lines(out) {
-		subject, detail, _ := strings.Cut(strings.TrimSpace(line), " ")
-		subject = strings.TrimPrefix(subject, "#")
-		if subject == "" || busy[subject] {
+	var out []stall
+	for _, raw := range slices.Sorted(maps.Keys(found)) {
+		subject := strings.TrimPrefix(raw, "#")
+		if subject == "" || strings.ContainsAny(subject, " \t\n") || busy[subject] {
 			continue
 		}
-		found = append(found, stall{sig.Signal, subject, strings.TrimSpace(detail)})
+		out = append(out, stall{sig.Signal, subject, found[raw]})
 	}
-	return found, nil
+	return out, nil
+}
+
+// stallScriptTimeout bounds one stall script call.
+const stallScriptTimeout = 2 * time.Minute
+
+// stallScript runs a script signal: fn(args) returns a dict of subject to
+// detail. It is called outside the tick like a check (JOB-109), at most
+// once per poll (default DefaultLinearPoll); between calls the last
+// answer stands.
+func (c *Controller) stallScript(ctx context.Context, cfg *config.Config, tr config.Trigger, sig config.StallSignal) ([]stall, error) {
+	key := "script\x00" + sig.Script + "\x00" + sig.Signal
+	poll := config.Duration(sig.Poll, config.DefaultLinearPoll)
+	now := c.now()
+	c.stallScripts.mu.Lock()
+	r, ok := c.stallScripts.cache[key]
+	c.stallScripts.mu.Unlock()
+	if !ok || !now.Before(r.at.Add(poll)) {
+		res, err := offTick(ctx, checkNeed{
+			key: key, poller: "stall_script", timeout: stallScriptTimeout,
+			run: func(ctx context.Context) checkResult {
+				result, err := c.callSync(ctx, cfg, "stall."+sig.Signal, sig.Script, stallScriptTimeout, sig.Args)
+				return checkResult{val: result.Output, err: err}
+			},
+		})
+		if err == nil {
+			err = res.err
+		}
+		if err != nil {
+			return nil, err
+		}
+		found := map[string]string{}
+		out, _ := res.val.(map[string]any)
+		for subject, detail := range out {
+			if s, ok := detail.(string); ok {
+				found[subject] = s
+			} else {
+				found[subject] = fmt.Sprint(detail)
+			}
+		}
+		r = stallScriptRead{at: now, found: found}
+		c.stallScripts.mu.Lock()
+		if c.stallScripts.cache == nil {
+			c.stallScripts.cache = map[string]stallScriptRead{}
+		}
+		c.stallScripts.cache[key] = r
+		c.stallScripts.mu.Unlock()
+	}
+	return c.stallSubjects(ctx, sig, r.found)
+}
+
+// stallScripts caches script signal answers between polls.
+type stallScripts struct {
+	mu    sync.Mutex
+	cache map[string]stallScriptRead
+}
+
+type stallScriptRead struct {
+	at    time.Time
+	found map[string]string
 }
 
 // issuesWithOpenRun is the meta.github.issue, as text, of every open run

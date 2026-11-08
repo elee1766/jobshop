@@ -812,3 +812,67 @@ desk_commands:
 	err = c.Admin.Call(t.Context(), rpc.MethodAutomationShow, rpc.IDParams{ID: trace.Invocation.Key}, nil)
 	require.ErrorIs(t, err, store.ErrNotFound)
 }
+
+// A script stall signal returns subject -> detail; an issue with an open
+// run in its repo is skipped, and the answer stands until the next poll.
+func TestStallScriptSignal(t *testing.T) {
+	root := controltest.NewRoot(t, `pack: pack.yaml
+projects: {js: {}}
+agents: {fake: {command: "false"}}
+`)
+	pack := `pools:
+  plan: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}
+workflows:
+  stall-check:
+    project: js
+    vars: [signal, subject, detail]
+    steps:
+      - {id: diagnose, pool: plan, title: "Stall {{.signal}} {{.subject}}", prompt: x}
+  issue:
+    project: js
+    repo: acme/widget
+    issue: issue
+    vars: [issue]
+    steps:
+      - {id: work, pool: plan, title: "Work {{.issue}}", prompt: x}
+triggers:
+  stall:
+    when:
+      stall: [{signal: issue_no_run, repo: acme/widget, script: signals.star:issues, args: {label: watch}, poll: 10m}]
+    run: {workflow: stall-check, vars: {signal: "{{.stall_signal}}", subject: "{{.stall_subject}}", detail: "{{.stall_detail}}"}}
+    max_runs: 1
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "signals.star"), []byte(`def issues(args):
+    found = {"#7": "open, no run", "8": "open, no run"}
+    for t in tickets(label=args["label"], status="open"):
+        found[t["title"]] = "from the store"
+    return found
+`), 0o600))
+	_, err := config.Load(root)
+	require.NoError(t, err)
+	c := controltest.Start(t, root, control.Options{})
+	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "issue", Vars: map[string]string{"issue": "8"}}, nil)
+	var runs []store.Ticket
+	stallRuns := func() []store.Ticket {
+		var all []store.Ticket
+		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &all)
+		runs = slices.DeleteFunc(all, func(r store.Ticket) bool {
+			rf, err := store.DecodeFields[store.RunFields](r)
+			return err != nil || rf.Workflow != "stall-check"
+		})
+		return runs
+	}
+	c.PassUntil(func() bool { return len(stallRuns()) == 1 }, "script signal did not start a run")
+	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	require.NoError(t, err)
+	assert.Equal(t, "7", rf.Vars["subject"], "issue 8 has an open run")
+	assert.Equal(t, "open, no run", rf.Vars["detail"])
+
+	// A new subject waits for the next poll.
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "9", Labels: []string{"watch"}}, nil)
+	c.Pass(3)
+	require.Len(t, stallRuns(), 1)
+	c.Clock.Advance(11 * time.Minute)
+	c.PassUntil(func() bool { return len(stallRuns()) == 2 }, "next poll did not see the new subject")
+}

@@ -131,7 +131,7 @@ func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, module
 		}
 	}
 	for name, tr := range cfg.Triggers {
-		if tr.Handler == entry {
+		if tr.Handler == entry || slices.ContainsFunc(tr.When.Stall, func(s config.StallSignal) bool { return s.Script == entry }) {
 			owners["triggers."+name] = tr
 		}
 	}

@@ -528,6 +528,15 @@ the workflow whose own runs and steps the signals skip. A handler that
 returns `[]` is offered the stall again after a cooldown (30 minutes
 without one) while the signal persists.
 
+A signal that is not a store signal may name a `script` instead of a shell
+`check`: `{signal: "pr_unmerged", script: "signals.star:prs", args: {...},
+poll: "10m"}`. The controller calls `fn(args)` outside the tick at most
+once per `poll` (5 minutes by default) and keeps the answer in between.
+The function returns a dict of subject to detail (a leading `#` is
+dropped), may use `github`, `http` and store reads, and is journaled like
+a desk handler under `stall.<signal>`. An `issue_no_run` subject with an
+open run in the signal's `repo` is skipped as for a check.
+
 For handler triggers, a terminal invocation consumes its cron/cooldown slot
 even when it returns `[]`. Handler cooldown runs from the later of the
 accepted fire and the close of the newest run or ticket the trigger filed.

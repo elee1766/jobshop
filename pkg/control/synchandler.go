@@ -21,9 +21,10 @@ const (
 	syncPruneBatch = 500
 )
 
-// callSync runs a guard or desk handler loaded with cfg. Its input goes
-// through JSON so the script sees plain dicts and lists.
-func (c *Controller) callSync(ctx context.Context, cfg *config.Config, name, entry string, timeout time.Duration, input any, args map[string]any) (automation.Result, error) {
+// callSync runs a handler loaded with cfg: a guard hook, a desk command
+// or a stall script. Its arguments go through JSON so the script sees
+// plain dicts and lists; a nil map is an empty dict.
+func (c *Controller) callSync(ctx context.Context, cfg *config.Config, name, entry string, timeout time.Duration, args ...any) (automation.Result, error) {
 	runtime := hookHost{c}.CurrentHooks()
 	if runtime.Config != cfg {
 		// A reload landed since cfg was read: its programs may differ.
@@ -33,18 +34,20 @@ func (c *Controller) callSync(ctx context.Context, cfg *config.Config, name, ent
 	if program == nil {
 		return automation.Result{}, fmt.Errorf("handler %s is not loaded", entry)
 	}
-	data, err := json.Marshal(input)
-	if err != nil {
-		return automation.Result{}, err
+	values := make([]any, len(args))
+	for i, arg := range args {
+		if m, ok := arg.(map[string]any); ok && m == nil {
+			arg = map[string]any{}
+		}
+		data, err := json.Marshal(arg)
+		if err != nil {
+			return automation.Result{}, err
+		}
+		if err := hooks.DecodeJSON(data, &values[i]); err != nil {
+			return automation.Result{}, err
+		}
 	}
-	var value any
-	if err := hooks.DecodeJSON(data, &value); err != nil {
-		return automation.Result{}, err
-	}
-	if args == nil {
-		args = map[string]any{}
-	}
-	return c.hooks().Sync(ctx, name, program, timeout, value, args)
+	return c.hooks().Sync(ctx, name, program, timeout, values...)
 }
 
 // runHookHandler answers a guard hook from its Starlark handler. It fails

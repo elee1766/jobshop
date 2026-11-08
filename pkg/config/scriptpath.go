@@ -35,6 +35,18 @@ func resolveScriptEntries(m map[string]any, dir, file string, sources map[string
 			return err
 		}
 	}
+	triggers, _ := m["triggers"].(map[string]any)
+	for _, name := range sortedKeys(triggers) {
+		trigger, _ := triggers[name].(map[string]any)
+		when, _ := trigger["when"].(map[string]any)
+		signals, _ := when["stall"].([]any)
+		for i, s := range signals {
+			entry, _ := s.(map[string]any)
+			if err := resolveScriptEntry(entry, "script", dir, file, "triggers."+name+".when.stall."+strconv.Itoa(i)+".script", nil); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -87,6 +99,9 @@ func (c *Config) ScriptEntries() []ScriptEntry {
 	}
 	for _, tr := range c.Triggers {
 		out = append(out, ScriptEntry{tr.Handler, 2})
+		for _, s := range tr.When.Stall {
+			out = append(out, ScriptEntry{s.Script, 1})
+		}
 	}
 	for _, h := range c.Hooks {
 		out = append(out, ScriptEntry{h.Handler, 2})

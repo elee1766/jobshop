@@ -52,17 +52,24 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 			}
 			continue
 		}
-		if s.Team != "" || s.States != "" || s.Labels != "" || s.SkipLabels != "" || s.Poll != "" {
-			return fmt.Errorf("when.stall: team, states, labels, skip_labels and poll are only for %s", StallLinearIssueNoRun)
+		if s.Team != "" || s.States != "" || s.Labels != "" || s.SkipLabels != "" {
+			return fmt.Errorf("when.stall: team, states, labels and skip_labels are only for %s", StallLinearIssueNoRun)
 		}
 		builtin := slices.Contains(StoreStallSignals, s.Signal)
 		switch {
-		case builtin && s.Check != "":
-			return fmt.Errorf("when.stall: %s is a store signal and takes no check", s.Signal)
-		case !builtin && s.Check == "":
-			return fmt.Errorf("when.stall: %s is not a store signal %v and needs a check", s.Signal, StoreStallSignals)
+		case builtin && (s.Check != "" || s.Script != ""):
+			return fmt.Errorf("when.stall: %s is a store signal and takes no check or script", s.Signal)
+		case !builtin && (s.Check == "") == (s.Script == ""):
+			return fmt.Errorf("when.stall: %s is not a store signal %v and needs a check or a script", s.Signal, StoreStallSignals)
+		case s.Script == "" && (s.Poll != "" || len(s.Args) > 0):
+			return fmt.Errorf("when.stall: %s: poll and args are for script signals and %s", s.Signal, StallLinearIssueNoRun)
 		}
-		if len(tr.On) > 0 {
+		if s.Poll != "" {
+			if d, err := time.ParseDuration(s.Poll); err != nil || d <= 0 {
+				return fmt.Errorf("when.stall: %s poll %q must be a positive duration", s.Signal, s.Poll)
+			}
+		}
+		if len(tr.On) > 0 && s.Check != "" {
 			if err := checkStallCheckTemplate(s); err != nil {
 				return err
 			}
@@ -171,6 +178,9 @@ func checkStallCheckTemplate(s StallSignal) error {
 // checkLinearStall validates a linear_issue_no_run entry: the controller
 // reads Linear itself, so it takes no check, repo or after.
 func checkLinearStall(s StallSignal) error {
+	if s.Script != "" || len(s.Args) > 0 {
+		return fmt.Errorf("when.stall: %s takes no script or args", s.Signal)
+	}
 	if s.Check != "" || s.Repo != "" || s.After != "" {
 		return fmt.Errorf("when.stall: %s takes team, states, labels, skip_labels, poll and grace, not check, repo or after", s.Signal)
 	}
