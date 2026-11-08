@@ -226,6 +226,53 @@ Returning this event batch does not perform a shell command, HTTP request
 or model decision. Those separate capability examples live in
 `packs/demo/capabilities.star` and remain unregistered by default.
 
+## Script steps
+
+`start_step(script=fn, pool=...)` starts a step function instead of an
+agent step (JOB-124). `fn` is a top-level function of a loaded module,
+or the string `file.star:function` relative to the callback's module
+directory. It must accept `(run, step)`, the same envelopes a completion
+callback gets.
+
+The controller runs the function in-process as a durable step: it claims
+the step, holds a lease for `timeout` (default `10m`) plus a minute,
+retries up to `retries`, and escalates an exhausted step like any other.
+A controller restart reruns the attempt. The step ticket has no pool, so
+no session claims it. `pool` names where `shell()` runs:
+
+- In the pool's sandbox, user and cgroup when it has them, else
+  directly as the controller user.
+- With `worktree=True`, in a worktree of the pool's repo under the run
+  directory, shared by every script step of the run. Otherwise in the
+  pool's `dir` or repo. A relative `cwd` resolves from there.
+- With the step environment of a command step: `JOBSHOP_BIN`,
+  `JOBSHOP_TICKET`, `JOBSHOP_STEP_KEY`, plus the call's `env`.
+
+`http` and `jev` run from the controller with the service grants, the
+same as in callbacks. Each call is recorded in the automation journal:
+`jobshop automation list --run <id>` shows one `step_done`,
+`step_failed` or `step_interrupted` record per attempt, and `automation
+show` lists its calls. Recorded results are never reused: a retry
+reruns the whole function, so make side effects safe to repeat.
+
+Return `result(outcome="word", output={...})`. The outcome routes the
+next callback (`step.outcome`); the output is checked against
+`output_schema` and becomes `step.output`. A `fail(...)` or other error
+is a failed attempt. A step function cannot return actions.
+
+```python
+def begin(run):
+    return start_step(id = "check", pool = "dev", script = check,
+                      worktree = True, timeout = "20m", retries = 0,
+                      inputs = {"runbook": run.inputs["runbook"]})
+
+def check(run, step):
+    r = shell(["jobshop", "runbook", "run", step.inputs["runbook"]])
+    if r.exit_code != 0:
+        fail("runbook failed")
+    return result(outcome = "pass", output = {"report": r.stdout})
+```
+
 ## Structured step output and retries
 
 `start_step(output_schema=...)` accepts a JSON Schema object, not a CUE

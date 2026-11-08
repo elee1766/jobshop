@@ -28,7 +28,16 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 		return "superseded", nil
 	}
 	if in.Trigger == "" {
-		return "", nil
+		run, err := c.store.Get(ctx, in.Run)
+		if err != nil {
+			return "", err
+		}
+		fields, err := store.DecodeFields[store.RunFields](run)
+		if err != nil {
+			return "", err
+		}
+		// Before evaluation, so a run2 run without its scope runs no code.
+		return "", runScopeRecorded(fields.Automation)
 	}
 	tr, ok := runtime.Config.Triggers[in.Trigger]
 	if !ok {
@@ -129,6 +138,7 @@ func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]
 }
 
 func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.Invocation) error {
+	var automation *store.RunAutomation
 	if in.Run != "" {
 		run, err := c.store.Get(ctx, in.Run)
 		if err != nil {
@@ -136,6 +146,10 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		}
 		f, err := store.DecodeFields[store.RunFields](run)
 		if err != nil {
+			return err
+		}
+		automation = f.Automation
+		if err := runScopeRecorded(f.Automation); err != nil {
 			return err
 		}
 		if f.Automation != nil {
@@ -158,15 +172,43 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 	if program == nil {
 		return errors.New("planned hook removed from active configuration")
 	}
-	expected := program.Digest()
+	pinned := program.Digest() == in.Digest
 	if in.Run != "" {
 		if in.RunInput == nil {
 			return errors.New("planned workflow hook has no accepted run input")
 		}
-		expected = hooks.WorkflowDigest(lc.hooks, lc.cfg.Workflows[in.RunInput.Workflow])
+		pinned = hooks.RunPinned(lc.hooks, lc.cfg, in.RunInput.Workflow, in.Digest)
 	}
-	if expected != in.Digest {
+	if !pinned {
 		return errors.New("planned hook manifest changed: restore the accepted configuration before applying actions")
+	}
+	// A run pin survives unrelated reloads, so recheck every pool the plan
+	// can route a ticket to: its pool, a step's retry pool and placements.
+	for _, ticket := range in.Plan.Tickets {
+		pools := []string{ticket.Pool}
+		if ticket.Kind == store.KindStep {
+			var f store.StepFields
+			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
+				return err
+			}
+			pools = append(pools, f.RetryPool)
+			if f.Placement != nil {
+				for _, option := range f.Placement.Options {
+					pools = append(pools, option.Pool)
+				}
+			}
+		}
+		for _, name := range pools {
+			if name == "" {
+				continue
+			}
+			if pool, ok := lc.cfg.Pools[name]; !ok || pool.Project != ticket.Project {
+				return fmt.Errorf("planned pool %s changed: restore it before applying actions", name)
+			}
+		}
+	}
+	if err := checkPlannedTargets(lc.cfg, in, automation); err != nil {
+		return fmt.Errorf("%w: restore the accepted configuration before applying actions", err)
 	}
 	for _, ticket := range in.Plan.Tickets {
 		if ticket.Kind != store.KindRun {

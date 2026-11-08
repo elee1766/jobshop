@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"go.starlark.net/starlark"
@@ -15,13 +16,18 @@ import (
 // Action is a validated request, not an effect. References must additionally be
 // checked against the invoking pack by the controller before accepting a batch.
 type Action struct {
-	Kind         string         `json:"kind"`
-	Workflow     string         `json:"workflow,omitempty"`
-	Key          string         `json:"key,omitempty"`
-	ID           string         `json:"id,omitempty"`
-	Pool         string         `json:"pool,omitempty"`
-	Prompt       string         `json:"prompt,omitempty"`
-	PromptFile   string         `json:"prompt_file,omitempty"`
+	Kind       string `json:"kind"`
+	Workflow   string `json:"workflow,omitempty"`
+	Key        string `json:"key,omitempty"`
+	ID         string `json:"id,omitempty"`
+	Pool       string `json:"pool,omitempty"`
+	Prompt     string `json:"prompt,omitempty"`
+	PromptFile string `json:"prompt_file,omitempty"`
+	// Script is a step function, file.star:function in the invoking module's
+	// directory. The controller runs it in-process as a durable step.
+	Script       string         `json:"script,omitempty"`
+	Worktree     bool           `json:"worktree,omitempty"`
+	Timeout      string         `json:"timeout,omitempty"`
 	Title        string         `json:"title,omitempty"`
 	Outcome      string         `json:"outcome,omitempty"`
 	Reason       string         `json:"reason,omitempty"`
@@ -79,12 +85,13 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 	a := Action{Kind: fn.Name()}
 	var inputs, output, outputSchema *starlark.Dict
 	var needs *starlark.List
+	var script starlark.Value
 	var err error
 	switch a.Kind {
 	case "start_run":
 		err = starlark.UnpackArgs(a.Kind, args, kwargs, "workflow", &a.Workflow, "key", &a.Key, "inputs?", &inputs, "title?", &a.Title, "reason?", &a.Reason)
 	case "start_step":
-		err = starlark.UnpackArgs(a.Kind, args, kwargs, "id", &a.ID, "pool", &a.Pool, "prompt?", &a.Prompt, "prompt_file?", &a.PromptFile, "inputs?", &inputs, "title?", &a.Title, "retries?", &a.Retries, "retry_pool?", &a.RetryPool, "needs?", &needs, "output_schema?", &outputSchema, "reason?", &a.Reason)
+		err = starlark.UnpackArgs(a.Kind, args, kwargs, "id", &a.ID, "pool", &a.Pool, "prompt?", &a.Prompt, "prompt_file?", &a.PromptFile, "script?", &script, "worktree?", &a.Worktree, "timeout?", &a.Timeout, "inputs?", &inputs, "title?", &a.Title, "retries?", &a.Retries, "retry_pool?", &a.RetryPool, "needs?", &needs, "output_schema?", &outputSchema, "reason?", &a.Reason)
 	case "finish_run":
 		err = starlark.UnpackArgs(a.Kind, args, kwargs, "outcome", &a.Outcome, "output?", &output, "reason?", &a.Reason)
 	}
@@ -104,8 +111,32 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 		required["workflow"], required["key"] = a.Workflow, a.Key
 	case "start_step":
 		required["id"], required["pool"] = a.ID, a.Pool
-		if (a.Prompt == "") == (a.PromptFile == "") {
-			return nil, errors.New("start_step: exactly one of prompt or prompt_file is required")
+		if script != nil && script != starlark.None {
+			engine, _ := t.Local("engine").(*Engine)
+			if engine == nil {
+				return nil, errors.New("start_step: script is only available in a callback")
+			}
+			if a.Script, err = engine.stepEntry(script); err != nil {
+				return nil, fmt.Errorf("start_step: %w", err)
+			}
+		}
+		if a.Script != "" {
+			if a.Prompt != "" || a.PromptFile != "" {
+				return nil, errors.New("start_step: script excludes prompt and prompt_file")
+			}
+		} else if (a.Prompt == "") == (a.PromptFile == "") {
+			return nil, errors.New("start_step: exactly one of script, prompt or prompt_file is required")
+		}
+		if a.Worktree && a.Script == "" {
+			return nil, errors.New("start_step: worktree needs script")
+		}
+		if a.Timeout != "" {
+			if a.Script == "" {
+				return nil, errors.New("start_step: timeout needs script")
+			}
+			if d, err := time.ParseDuration(a.Timeout); err != nil || d <= 0 {
+				return nil, errors.New("start_step: timeout must be a positive duration")
+			}
 		}
 		if a.Retries < 0 || a.Retries > 100 {
 			return nil, errors.New("start_step: retries must be between 0 and 100")
@@ -164,6 +195,7 @@ func (e *Engine) result(value starlark.Value) (Result, error) {
 	var result Result
 	if v, ok := value.(*resultValue); ok {
 		result.Output = cloneData(v.output).(map[string]any)
+		result.Outcome = v.outcome
 		value = v.actions
 	}
 	actions, batch, err := actionBatch(value)

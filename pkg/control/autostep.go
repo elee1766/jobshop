@@ -51,6 +51,8 @@ type autoResult struct {
 	command    string
 	retryAfter time.Duration
 	err        string
+	// structured is a script step's result(output=...).
+	structured map[string]any
 }
 
 // autoSteps tracks attempts the controller is running, by step ticket id,
@@ -116,6 +118,9 @@ func (c *Controller) autoStepConfig(cfg *config.Config, t store.Ticket) (config.
 	sf, err := store.DecodeFields[store.StepFields](t)
 	if err != nil || !sf.Auto() {
 		return config.Step{}, sf, false
+	}
+	if sf.Type == store.StepScript {
+		return scriptStep(sf), sf, true
 	}
 	run, err := c.store.Get(c.ctx, sf.Run)
 	if err != nil {
@@ -203,6 +208,8 @@ func (c *Controller) runAutoAttempt(cfg *config.Config, t store.Ticket, cl store
 			res = c.runCommandStep(actx, cfg, t, s, sf, st, attemptKey)
 		case config.StepHTTP:
 			res = c.runHTTPStep(actx, cfg, s, st, attemptKey)
+		case store.StepScript:
+			res = c.runScriptStep(actx, cfg, t, s, sf, st, attemptKey)
 		}
 		cancel()
 	}
@@ -224,6 +231,7 @@ func (c *Controller) runAutoAttempt(cfg *config.Config, t store.Ticket, cl store
 // defers or fails it.
 func (c *Controller) finishAutoStep(ctx context.Context, cfg *config.Config, t store.Ticket, cl store.Claim, sf store.StepFields, res autoResult) {
 	sf.Command, sf.Output, sf.Outcome, sf.Result = res.command, res.output, res.outcome, res.result
+	sf = scriptStepFields(sf, res)
 	b, err := json.Marshal(sf)
 	if err == nil {
 		_, err = c.store.Update(ctx, autoHolder, t.ID, store.Update{Fields: b})

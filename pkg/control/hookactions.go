@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/hooks"
@@ -19,17 +20,115 @@ type hookRunPlan struct {
 	plan   runPlan
 }
 
+// hookReference resolves a callback's pool or workflow name in the live
+// configuration and, for a workflow callback, within the scope its run
+// accepted at start.
+func hookReference(cfg *config.Config, in hooks.Invocation, a *store.RunAutomation, kind, name string) (string, error) {
+	if in.Trigger != "" {
+		return cfg.ResolveHookReference("triggers."+in.Trigger, kind, name)
+	}
+	if in.RunInput == nil {
+		return "", fmt.Errorf("%w: run has no automation", store.ErrConflict)
+	}
+	if err := runScopeRecorded(a); err != nil {
+		return "", err
+	}
+	return cfg.ResolvePinnedHookReference("workflows."+in.RunInput.Workflow, kind, name, a.Scope)
+}
+
+// runScopeRecorded fails closed for a run2 pin whose run lost the scope it
+// accepted at start; every callback path checks it, even with no references.
+func runScopeRecorded(a *store.RunAutomation) error {
+	if a == nil {
+		return fmt.Errorf("%w: run has no automation", store.ErrConflict)
+	}
+	if hooks.ScopedRunPin(a.Digest) && a.Scope == nil {
+		return errors.New("run has no accepted reference scope")
+	}
+	return nil
+}
+
+// checkPlannedTargets re-resolves each planned ticket's action before a
+// journaled graph is applied, as a reload since planning can narrow scope.
+func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAutomation) error {
+	for _, ticket := range in.Plan.Tickets {
+		var meta struct {
+			Automation *struct {
+				Action int `json:"action"`
+			} `json:"automation"`
+		}
+		if len(ticket.Meta) > 0 {
+			if err := hooks.DecodeJSON(ticket.Meta, &meta); err != nil {
+				return err
+			}
+		}
+		if meta.Automation == nil || meta.Automation.Action < 0 || meta.Automation.Action >= len(in.Actions) {
+			if ticket.Kind == store.KindRun {
+				return fmt.Errorf("planned run %s has no action", ticket.ID)
+			}
+			continue // a step of a planned run, checked with that run
+		}
+		action := in.Actions[meta.Automation.Action]
+		want := map[string]string{}
+		switch {
+		case ticket.Kind == store.KindRun && action.Kind == "start_run":
+			var f store.RunFields
+			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
+				return err
+			}
+			w := cfg.Workflows[f.Workflow]
+			if (f.Automation != nil) != (w.OnStart != "") || f.Automation != nil && cfg.HookRunPins[f.Workflow] != f.Automation.Digest {
+				return fmt.Errorf("planned workflow %s changed", f.Workflow)
+			}
+			want["workflow:"+action.Workflow] = f.Workflow
+		case ticket.Kind == store.KindStep && action.Kind == "start_step" && ticket.ParentID == in.Run:
+			var f store.StepFields
+			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
+				return err
+			}
+			want["pool:"+action.Pool] = ticket.Pool
+			if f.Type == store.StepScript {
+				want["pool:"+action.Pool] = f.ScriptPool
+			}
+			if action.RetryPool != "" || f.RetryPool != "" {
+				want["pool:"+action.RetryPool] = f.RetryPool
+			}
+		default:
+			continue // a step of a planned static run, from buildRun
+		}
+		for ref, planned := range want {
+			kind, name, _ := strings.Cut(ref, ":")
+			resolved, err := hookReference(cfg, in, a, kind, name)
+			if err != nil {
+				return fmt.Errorf("planned %s %q: %w", kind, name, err)
+			}
+			if resolved != planned {
+				return fmt.Errorf("planned %s %q now resolves to %s, not %s", kind, name, resolved, planned)
+			}
+		}
+	}
+	return nil
+}
+
 func (c *Controller) prepareHookRuns(ctx context.Context, lc *liveConfig, in hooks.Invocation) (map[int]hookRunPlan, error) {
 	plans := map[int]hookRunPlan{}
-	owner := "triggers." + in.Trigger
+	var automation *store.RunAutomation
 	if in.Trigger == "" {
-		owner = "workflows." + in.RunInput.Workflow
+		run, err := c.store.Get(ctx, in.Run)
+		if err != nil {
+			return nil, err
+		}
+		fields, err := store.DecodeFields[store.RunFields](run)
+		if err != nil {
+			return nil, err
+		}
+		automation = fields.Automation
 	}
 	for i, action := range in.Actions {
 		if action.Kind != "start_run" {
 			continue
 		}
-		workflow, err := lc.cfg.ResolveHookReference(owner, "workflow", action.Workflow)
+		workflow, err := hookReference(lc.cfg, in, automation, "workflow", action.Workflow)
 		if err != nil {
 			return nil, err
 		}
@@ -83,6 +182,9 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 		if run.Status == store.StatusClosed || fields.State != store.RunRunning || fields.Automation == nil {
 			return g, fmt.Errorf("%w: run no longer running", store.ErrConflict)
+		}
+		if err := runScopeRecorded(fields.Automation); err != nil {
+			return g, err
 		}
 		children, err := store.Children(ctx, c.store, in.Run)
 		if err != nil {
@@ -152,7 +254,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			if ids[action.ID] != "" {
 				return g, fmt.Errorf("step %q already exists", action.ID)
 			}
-			pool, err := lc.cfg.ResolveHookReference("workflows."+in.RunInput.Workflow, "pool", action.Pool)
+			pool, err := hookReference(lc.cfg, in, fields.Automation, "pool", action.Pool)
 			if err != nil {
 				return g, err
 			}
@@ -161,7 +263,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			}
 			retryPool := ""
 			if action.RetryPool != "" {
-				retryPool, err = lc.cfg.ResolveHookReference("workflows."+in.RunInput.Workflow, "pool", action.RetryPool)
+				retryPool, err = hookReference(lc.cfg, in, fields.Automation, "pool", action.RetryPool)
 				if err != nil {
 					return g, err
 				}
@@ -169,9 +271,12 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 					return g, errors.New("retry_pool is outside the run project")
 				}
 			}
-			prompt, err := program.Prompt(action)
-			if err != nil {
-				return g, err
+			prompt := ""
+			if action.Script == "" {
+				prompt, err = program.Prompt(action)
+				if err != nil {
+					return g, err
+				}
 			}
 			if action.PromptFile != "" {
 				vars := maps.Clone(fields.Inputs)
@@ -201,6 +306,15 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				title = action.ID
 			}
 			f := store.StepFields{Run: run.ID, Step: action.ID, Index: len(steps) + newSteps, Retries: retries, RetryPool: retryPool, Needs: action.Needs, Inputs: action.Inputs, OutputSchema: action.OutputSchema}
+			ticketPool := pool
+			if action.Script != "" {
+				if action.Worktree && lc.cfg.Pools[pool].Repo == "" {
+					return g, fmt.Errorf("step %s: worktree needs a pool with a repo, %s has none", action.ID, pool)
+				}
+				// No ticket pool: the controller runs it, no session claims it.
+				f.Type, f.Script, f.ScriptHook, f.ScriptPool = store.StepScript, action.Script, in.Entry, pool
+				f.Worktree, f.Timeout, ticketPool = action.Worktree, action.Timeout, ""
+			}
 			if slices.Contains(action.Needs, previous) {
 				f.OnRequestChanges = previous
 			}
@@ -219,7 +333,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			if err != nil {
 				return g, err
 			}
-			g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: run.Project, Kind: store.KindStep, Title: title, Body: prompt, Pool: pool, ParentID: run.ID, Meta: provenance, Fields: data})
+			g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: run.Project, Kind: store.KindStep, Title: title, Body: prompt, Pool: ticketPool, ParentID: run.ID, Meta: provenance, Fields: data})
 			for _, need := range action.Needs {
 				target := ids[need]
 				if target == "" {

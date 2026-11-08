@@ -469,3 +469,92 @@ def handle(event, args):
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: review.ID}, nil)
 	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == store.StatusClosed }, "review did not finish run")
 }
+
+// A callback run pins its code, grants and the references accepted at start,
+// not the rest of the configuration, which a live pack checkout reloads often.
+func TestHookRunPinSurvivesUnrelatedReloadOnly(t *testing.T) {
+	const script = `def begin(run):
+    return [start_step(id="a",pool="dev",prompt="first")]
+def completed(run, step):
+    if step.id == "a":
+        return [start_step(id="b",pool=run.inputs["next"],prompt="second",needs=["a"])]
+    return [finish_run(outcome="done")]
+def handle(event, args):
+    return []
+`
+	pool := func(name string) string {
+		return "  " + name + `: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}` + "\n"
+	}
+	for name, tc := range map[string]struct {
+		next   string
+		before string // pools present when the run starts
+		edit   func(t *testing.T, root config.Root, pack string) string
+		done   bool
+		// pinChanged: resume is refused. Otherwise it retries and the
+		// pinned reference scope rejects the action again.
+		pinChanged bool
+	}{
+		"unrelated pool and workflow": {next: "dev", done: true, edit: func(_ *testing.T, _ config.Root, pack string) string {
+			pack = strings.Replace(pack, "pools:\n", "pools:\n"+pool("other"), 1)
+			return strings.Replace(pack, "workflows:\n", "workflows:\n  other-flow:\n    steps: [{id: x, pool: other, title: x, prompt: x}]\n", 1)
+		}},
+		"pool added after start": {next: "later", edit: func(_ *testing.T, _ config.Root, pack string) string {
+			return strings.Replace(pack, "pools:\n", "pools:\n"+pool("later"), 1)
+		}},
+		"pool removed after start": {next: "spare", before: pool("spare"), edit: func(_ *testing.T, root config.Root, pack string) string {
+			return strings.Replace(pack, strings.ReplaceAll(pool("spare"), "$ROOT", root.Dir), "", 1)
+		}},
+		"callback source": {next: "dev", pinChanged: true, edit: func(t *testing.T, root config.Root, pack string) string {
+			path := filepath.Join(root.Dir, "hooks.star")
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(path, append(data, []byte("# changed\n")...), 0o600))
+			return pack
+		}},
+		"capability grant": {next: "dev", pinChanged: true, edit: func(t *testing.T, root config.Root, pack string) string {
+			data, err := os.ReadFile(root.Config())
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(root.Config(), append(data, []byte("automation: {http: true}\n")...), 0o600))
+			return pack
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := hookTestRoot(t, script)
+			path := filepath.Join(root.Dir, "pack.yaml")
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+			pack := strings.Replace(string(data), "pools:\n", "pools:\n"+strings.ReplaceAll(tc.before, "$ROOT", root.Dir), 1)
+			require.NoError(t, os.WriteFile(path, []byte(pack), 0o600))
+			c := controltest.Start(t, root, control.Options{})
+			var run rpc.RunResult
+			c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Inputs: map[string]any{"next": tc.next}}, &run)
+			c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 1 }, "first step not created")
+			first := hookRun(t, c, run.Run.ID).Steps[0]
+			pack = strings.ReplaceAll(tc.edit(t, root, pack), "$ROOT", root.Dir)
+			require.NoError(t, os.WriteFile(path, []byte(pack), 0o600))
+			c.Call(rpc.MethodReload, struct{}{}, nil)
+			c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: first.ID}, nil)
+			if tc.done {
+				c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 2 }, "second step not created after reload")
+				c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: hookRun(t, c, run.Run.ID).Steps[1].ID}, nil)
+				c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == store.StatusClosed }, "run did not finish after unrelated reload")
+				return
+			}
+			needsHuman := func() bool {
+				f, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+				require.NoError(t, err)
+				return f.State == store.RunNeedsHuman
+			}
+			c.PassUntil(needsHuman, "changed authority did not stop the run")
+			assert.Len(t, hookRun(t, c, run.Run.ID).Steps, 1)
+			err = c.Admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: run.Run.ID}, nil)
+			if tc.pinChanged {
+				assert.Error(t, err, "resume must not adopt the changed pin")
+				return
+			}
+			require.NoError(t, err)
+			c.PassUntil(needsHuman, "retried action outside the accepted scope did not fail again")
+			assert.Len(t, hookRun(t, c, run.Run.ID).Steps, 1)
+		})
+	}
+}

@@ -26,6 +26,9 @@ import (
 type Config struct {
 	// HookDigests are populated by the controller when it compiles a live snapshot.
 	HookDigests map[string]string `yaml:"-" json:"-"`
+	// HookRunPins are the run pins of callback workflows, by workflow name,
+	// populated with HookDigests (see hooks.RunPin).
+	HookRunPins map[string]string `yaml:"-" json:"-"`
 	// Pack names the root work-definition file, relative to jobshop.yaml.
 	Pack string `yaml:"pack,omitempty"`
 	// Automation grants host capabilities to trusted Starlark hooks.

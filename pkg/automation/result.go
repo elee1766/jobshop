@@ -12,6 +12,7 @@ type resultValue struct {
 	*starlarkstruct.Struct
 	actions starlark.Value
 	output  map[string]any
+	outcome string
 }
 
 func constructResult(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -20,7 +21,8 @@ func constructResult(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 	}
 	var actions starlark.Value = starlark.Tuple{}
 	output := starlark.NewDict(0)
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "actions?", &actions, "output?", &output); err != nil {
+	var outcome string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "actions?", &actions, "output?", &output, "outcome?", &outcome); err != nil {
 		return nil, err
 	}
 	if _, ok, err := actionBatch(actions); err != nil {
@@ -37,9 +39,10 @@ func constructResult(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 		return nil, err
 	}
 	value := &resultValue{
-		Struct:  starlarkstruct.FromStringDict(starlark.String("result"), starlark.StringDict{"actions": actions, "output": output}),
+		Struct:  starlarkstruct.FromStringDict(starlark.String("result"), starlark.StringDict{"actions": actions, "output": output, "outcome": starlark.String(outcome)}),
 		actions: actions,
 		output:  data.(map[string]any),
+		outcome: outcome,
 	}
 	value.Freeze()
 	return value, nil

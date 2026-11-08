@@ -8,6 +8,9 @@ import (
 
 // The caller holds runMu. The engine rejects unknown or unsafe external outcomes.
 func (c *Controller) resumeHook(ctx context.Context, actor string, run store.Ticket, fields store.RunFields) (bool, error) {
+	if err := runScopeRecorded(fields.Automation); err != nil {
+		return false, err
+	}
 	key, err := c.hooks().Resume(ctx, run.ID, fields.Workflow, fields.Automation.Digest)
 	if err != nil || key == "" {
 		return false, err

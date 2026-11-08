@@ -47,11 +47,13 @@ type Decision = api.Decision
 
 // Result separates host-owned metadata and effects from arbitrary callback output.
 type Result struct {
-	Metadata  ResultMetadata `json:"metadata"`
-	Output    map[string]any `json:"output"`
-	Actions   []Action       `json:"actions"`
-	Logs      string         `json:"logs"`
-	Decisions []Decision     `json:"decisions"`
+	Metadata ResultMetadata `json:"metadata"`
+	Output   map[string]any `json:"output"`
+	// Outcome is result(outcome=...), the routing word of a step function.
+	Outcome   string     `json:"outcome,omitempty"`
+	Actions   []Action   `json:"actions"`
+	Logs      string     `json:"logs"`
+	Decisions []Decision `json:"decisions"`
 }
 
 // ResultMetadata identifies the loaded code and observed capability count.
@@ -66,8 +68,12 @@ type ResultMetadata struct {
 type Engine struct {
 	options   Options
 	functions map[string]*starlark.Function
-	files     []string
-	digest    string
+	// modules are the frozen globals of every loaded file, by root-relative
+	// name, so a step function named in an action resolves to loaded code.
+	modules map[string]starlark.StringDict
+	root    string
+	files   []string
+	digest  string
 }
 
 type invocation struct {
@@ -174,7 +180,7 @@ func Load(ctx context.Context, root string, entries []string, options Options) (
 		return nil, fmt.Errorf("hook root: %w", err)
 	}
 	defer func() { _ = fs.Close() }()
-	e := &Engine{options: options, functions: make(map[string]*starlark.Function)}
+	e := &Engine{options: options, functions: make(map[string]*starlark.Function), root: root}
 	ctx, cancel := context.WithTimeout(ctx, options.Limits.Duration)
 	defer cancel()
 	thread := e.thread(ctx, nil)
@@ -268,6 +274,7 @@ func Load(ctx context.Context, root string, entries []string, options Options) (
 		e.functions[entry] = fn
 	}
 	slices.Sort(e.files)
+	e.modules = cache
 	hasher := sha256.New()
 	for _, name := range slices.Sorted(maps.Keys(sources)) {
 		for _, data := range [][]byte{[]byte(name), sources[name]} {
@@ -293,6 +300,10 @@ func (e *Engine) CheckArity(entry string, positional int) error {
 	if fn == nil {
 		return fmt.Errorf("hook %s: entry is not loaded", entry)
 	}
+	return checkArity(entry, fn, positional)
+}
+
+func checkArity(entry string, fn *starlark.Function, positional int) error {
 	if positional < 0 {
 		return errors.New("callback positional argument count must be nonnegative")
 	}
@@ -322,6 +333,41 @@ func (e *Engine) CheckArity(entry string, positional int) error {
 // Invoke calls a previously validated hook with maps as dictionaries and Go
 // structs as attribute-accessible values. Every call has its own thread locals.
 func (e *Engine) Invoke(ctx context.Context, entry string, args ...any) (result Result, err error) {
+	return e.invoke(ctx, entry, e.functions[entry], args)
+}
+
+// StepFunction resolves a step function entry (file.star:function, relative to
+// the engine root) against the loaded modules and checks it accepts (run, step).
+func (e *Engine) StepFunction(entry string) (*starlark.Function, error) {
+	file, name, err := splitEntry(entry)
+	if err != nil {
+		return nil, err
+	}
+	fn, _ := e.modules[file][name].(*starlark.Function)
+	if fn == nil {
+		return nil, fmt.Errorf("step function %s is not a loaded top-level function", entry)
+	}
+	return fn, checkArity(entry, fn, 2)
+}
+
+// Step runs a step function. Unlike a callback it has the step's timeout and
+// shell runs through exec (the step's sandbox). Calls are journaled through
+// Observe like a callback's, but never replayed: a retry reruns the whole
+// function.
+func (e *Engine) Step(ctx context.Context, entry string, timeout time.Duration, exec api.Exec, args ...any) (Result, error) {
+	fn, err := e.StepFunction(entry)
+	if err != nil {
+		return Result{}, err
+	}
+	step := *e
+	step.options.Limits.Duration = timeout
+	step.options.Exec = exec
+	step.options.AllowShell = exec != nil
+	step.options.Replay = nil
+	return step.invoke(ctx, entry, fn, args)
+}
+
+func (e *Engine) invoke(ctx context.Context, entry string, fn *starlark.Function, args []any) (result Result, err error) {
 	var inv *invocation
 	defer func() {
 		result.Metadata = ResultMetadata{Entry: entry, Digest: e.digest}
@@ -338,8 +384,7 @@ func (e *Engine) Invoke(ctx context.Context, entry string, args ...any) (result 
 			result.Decisions = []Decision{}
 		}
 	}()
-	fn, ok := e.functions[entry]
-	if !ok {
+	if fn == nil {
 		return Result{}, fmt.Errorf("hook %s is not loaded", entry)
 	}
 	ctx, cancel := context.WithTimeout(ctx, e.options.Limits.Duration)
@@ -376,6 +421,7 @@ func (e *Engine) thread(ctx context.Context, inv *invocation) *starlark.Thread {
 	t := &starlark.Thread{Name: "automation"}
 	t.SetMaxExecutionSteps(e.options.Limits.Steps)
 	t.SetLocal("invocation", inv)
+	t.SetLocal("engine", e)
 	t.Print = func(t *starlark.Thread, msg string) {
 		if inv == nil {
 			t.Cancel("print is unavailable during module loading")
@@ -392,6 +438,29 @@ func (e *Engine) thread(ctx context.Context, inv *invocation) *starlark.Thread {
 		t.Cancel("hook context cancelled")
 	}
 	return t
+}
+
+// stepEntry names a step function for an action: a top-level function value
+// from a loaded module, or file.star:function relative to the engine root.
+func (e *Engine) stepEntry(value starlark.Value) (string, error) {
+	switch v := value.(type) {
+	case starlark.String:
+		entry := string(v)
+		_, err := e.StepFunction(entry)
+		return entry, err
+	case *starlark.Function:
+		file, err := filepath.Rel(e.root, v.Position().Filename())
+		if err != nil {
+			return "", err
+		}
+		entry := filepath.ToSlash(file) + ":" + v.Name()
+		if fn, err := e.StepFunction(entry); err != nil || fn != v {
+			return "", errors.New("script must be a top-level function of a loaded module")
+		}
+		return entry, nil
+	default:
+		return "", errors.New("script must be a function or file.star:function")
+	}
 }
 
 func localPath(base, name string) (string, error) {

@@ -148,6 +148,7 @@ type runPlan struct {
 	// placements are the resolved placements by step index (#409).
 	placements map[int]*store.StepPlacement
 	hookDigest string
+	hookScope  *store.RunScope
 }
 
 // planRun checks p against the config and the caller's scope.
@@ -255,7 +256,8 @@ func (c *Controller) planRun(ctx context.Context, cfg *config.Config, sc scope, 
 	}
 	plan := runPlan{w: w, proj: proj, vars: vars, meta: meta, placements: placements}
 	if w.OnStart != "" {
-		plan.hookDigest = cfg.HookDigests[w.OnStart] + ":" + cfg.HookDigests[w.OnStepCompleted]
+		plan.hookDigest = cfg.HookRunPins[p.Workflow]
+		plan.hookScope = cfg.HookScope("workflows." + p.Workflow)
 	}
 	if err := c.intakeRun(ctx, cfg, plan); err != nil {
 		return runPlan{}, err
@@ -282,7 +284,7 @@ func (c *Controller) buildRun(cfg *config.Config, plan runPlan, p rpc.RunStartPa
 	}
 	fields := store.RunFields{Workflow: p.Workflow, Pack: pack, Vars: p.Vars, Inputs: inputs, Key: p.Key, State: store.RunRunning}
 	if w.OnStart != "" {
-		fields.Automation = &store.RunAutomation{OnStart: w.OnStart, OnStepCompleted: w.OnStepCompleted, Digest: plan.hookDigest, After: p.After}
+		fields.Automation = &store.RunAutomation{OnStart: w.OnStart, OnStepCompleted: w.OnStepCompleted, Digest: plan.hookDigest, Scope: plan.hookScope, After: p.After}
 	}
 	rf, err := json.Marshal(fields)
 	if err != nil {

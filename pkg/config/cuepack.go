@@ -101,7 +101,20 @@ func cuePackLayer(file, dir string, m, vars map[string]any, sources map[string][
 		return packLayer{}, err
 	}
 	textSources := map[string][]string{}
-	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, sources: textSources}); err != nil {
+	var textVars map[string]any
+	if vars != nil {
+		textVars = map[string]any{CheckOutputVar: placeholder(CheckOutputVar)}
+		event := map[string]any{}
+		for _, field := range EventFields {
+			event[field] = placeholder(EventVar + "." + field)
+		}
+		textVars[EventVar] = event
+		for _, name := range StallVars {
+			textVars[name] = placeholder(name)
+		}
+		maps.Copy(textVars, vars)
+	}
+	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: textVars, sources: textSources}); err != nil {
 		return packLayer{}, err
 	}
 	if err := resolveScriptEntries(m, dir, file, textSources); err != nil {

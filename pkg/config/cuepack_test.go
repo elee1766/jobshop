@@ -18,6 +18,7 @@ func TestCUEPack(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.CopyFS(dir, os.DirFS("testdata/cue-starlark-example")))
 	writeFiles(t, dir, map[string]string{
+		"packs/demo/prompt.md": "Work on {{.repo}} using {{.branch}}.\n",
 		"instances.cue": `package city
 import demopack "jobshop.example/automation/packs/demo"
 packs: qa: demopack.#Pack & {vars: repo: "acme/second"}
@@ -41,6 +42,8 @@ pools: "demo-dev": max_sessions: 2
 	require.NoError(t, err)
 	assert.Equal(t, "demo", c.Pools["demo-dev"].Agent)
 	assert.Equal(t, 2, c.Pools["demo-dev"].MaxSessions)
+	assert.Equal(t, "Work on acme/widget using main.\n", c.Pools["demo-dev"].Prompt)
+	assert.Equal(t, "Work on acme/second using main.\n", c.Pools["qa-dev"].Prompt)
 	assert.Contains(t, c.Workflows["demo-change"].Steps[0].Prompt, "{{.task}}", "CUE prompt files keep runtime templates")
 	assert.Equal(t, "demo-dev", c.Workflows["demo-change"].Steps[0].Pool)
 	assert.Contains(t, c.Disabled.Workflows, "qa-change")
