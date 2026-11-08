@@ -69,7 +69,7 @@ test('trace axis aligns with cards, labels endpoints and keeps bars compact', as
 
     // Title first, one status marker with a full label, no visible status word.
     const card = graph.locator(`[data-ticket="${done.id}"]`);
-    await expect(card.locator('.graph-select > :first-child')).toHaveText(done.title);
+    await expect(card.locator('.graph-select > .graph-title')).toHaveText(done.title);
     await expect(card.locator('.ticket-status')).toHaveText('C');
     await expect(card.locator('.ticket-status')).toHaveAttribute('aria-label', 'closed · done');
     for (const text of await graph.locator('.graph-card').allInnerTexts()) expect(text).not.toMatch(/\b(open|in_progress|closed)\b/);

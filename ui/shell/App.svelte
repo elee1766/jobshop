@@ -6,6 +6,7 @@
   import Learn from "./Learn.svelte";
   import TraceSearch from "./TraceSearch.svelte";
   import TicketDetails from "./TicketDetails.svelte";
+  import TitleAction from "./TitleAction.svelte";
   import SessionViewer from "./SessionViewer.svelte";
   import { client } from "./lib/api.svelte.js";
   import {
@@ -17,6 +18,7 @@
   import { ago, flights } from "./model.js";
   import { state as ticketState, statusLetter } from "./trace.js";
   import { md } from "../kit/markdown.js";
+  import { parseTitle } from "../kit/titles.js";
   import type {
     AttentionItem,
     RunResult,
@@ -75,7 +77,7 @@
             .split(/\s+/)
             .filter(Boolean)
             .every((term) =>
-              `${r.title} ${r.id} ${r.step} ${r.repo} ${r.ref} ${r.waiting} ${r.prs.map((p) => p.label).join(" ")}`
+              `${parseTitle(r.title).text} ${r.id} ${r.step} ${r.repo} ${r.ref} ${r.waiting} ${r.prs.map((p) => p.label).join(" ")}`
                 .toLowerCase()
                 .includes(term),
             ) &&
@@ -535,11 +537,9 @@
                       aria-label={"Trace " + (item.ref || item.id)}
                       >trace</a
                     >{/if}
-                  <button class="item-title" onclick={() => (focused = item.id)}
-                    >
-                    {item.title}
-                    <span class="muted">{ago(item.since, now)}</span></button
-                  >
+                  <TitleAction class="item-title" title={item.title} onactivate={() => (focused = item.id)}>
+                    {#snippet children()}{" "}<span class="muted">{ago(item.since, now)}</span>{/snippet}
+                  </TitleAction>
                   {#if current?.id === item.id}<div
                       class="attention-context markdown"
                     >
@@ -650,12 +650,11 @@
                     >{#each filtered as row (row.id)}<tr
                         class:stalled={row.stalled}
                         ><td class="ticket-status" title={ticketState(row.run.run)} aria-label={ticketState(row.run.run)}>{statusLetter(row.run.run)}</td><td
-                          ><button class="ticket-label" title={row.ref === row.id ? row.id : `${row.id} · ${row.ref}`}
-                            onclick={(e) =>
+                          ><TitleAction class="ticket-label" title={row.title} fallback={row.ref} tip={row.ref === row.id ? row.id : `${row.id} · ${row.ref}`}
+                            onactivate={(e) =>
                               e.shiftKey
                                 ? attach([row.ref])
-                                : openTrace(row.id)}><span>{row.title || row.ref}</span></button
-                          >{#if row.issueURL}<a class="ticket-issue ref-stack" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}{#each row.prs as pr (pr.url)}<a class="ticket-issue ref-stack" href={pr.url} target="_blank" rel="noopener noreferrer">{pr.label}</a>{/each}</td
+                                : openTrace(row.id)} />{#if row.issueURL}<a class="ticket-issue ref-stack" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}{#each row.prs as pr (pr.url)}<a class="ticket-issue ref-stack" href={pr.url} target="_blank" rel="noopener noreferrer">{pr.label}</a>{/each}</td
                         ><td class="ref-col"
                           >{#if row.issueURL}<a href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{:else}–{/if}</td
                         ><td class="ref-col"

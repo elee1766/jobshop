@@ -2,6 +2,8 @@
   import { onDestroy } from 'svelte';
   import type { GraphResult } from '../../packages/jobshop-client/rpc.js';
   import { md } from '../kit/markdown.js';
+  import { parseTitle } from '../kit/titles.js';
+  import TitleText from './TitleText.svelte';
   import { axisTicks, card, exactLabel, fullLabel, graphLayout, linkLabel, relationLabel, relativeLabel, safeLinks, shortLabel, state as ticketState, stateDetail, statusLetter, stepName, traceEnd } from './trace.js';
   let { graph, selected, onselect, onwatch }: {
     graph: GraphResult;
@@ -195,11 +197,12 @@
         {@const detail = stateDetail(node)}
         {@const step = stepName(node.fields)}
         <article class="graph-card" class:graph-selected={selected === node.id} style:left={position.x + 'px'} style:top={position.y + 'px'} style:width={card.width + 'px'} style:height={card.height + 'px'} data-ticket={node.id} data-status={node.status}>
-          <button class="graph-select" aria-label={'Inspect ' + node.id} aria-describedby={'graph-status-' + node.id} aria-pressed={selected === node.id} onclick={() => onselect(node.id)}>
-            <strong class="graph-title" title={node.title}>{node.title || node.kind}</strong>
+          <div class="graph-select hosted">
+            <button class="hit" aria-label={'Inspect ' + node.id} aria-describedby={'graph-status-' + node.id} aria-pressed={selected === node.id} onclick={() => onselect(node.id)}></button>
+            <strong class="graph-title" title={parseTitle(node.title).text}>{#if node.title}<TitleText title={node.title} />{:else}{node.kind}{/if}</strong>
             <span class="graph-meta"><span id={'graph-status-' + node.id} class="ticket-status mono" data-status={node.status} role="img" title={ticketState(node)} aria-label={ticketState(node)}>{statusLetter(node)}</span><span class="mono">{node.id}</span><span>{node.kind}{node.pool ? ' · ' + node.pool : ''}{step ? ' · ' + step : ''}</span></span>
             <span class="graph-meta muted"><time datetime={node.created_at} title={exactLabel(node.created_at)}>{shortLabel(node.created_at)}</time>{#if node.closed_at}<span>→ <time datetime={node.closed_at} title={exactLabel(node.closed_at)}>{shortLabel(node.closed_at)}</time></span>{/if}</span>
-          </button>
+          </div>
           {#if detail || wait?.reason}<div class="graph-state" data-status={node.status}>{#if detail}<span>{@html md(detail, true)}</span>{/if}{#if wait?.reason}<div>{@html md(wait.reason, true)}</div>{/if}</div>{/if}
           <div class="graph-links">{#if node.holder || node.kind === 'session'}<button title={node.holder || node.id} onclick={() => onwatch(node.holder || node.id)}>view session ↗</button>{/if}{#each safeLinks(node) as href}<a {href} target="_blank" rel="noopener noreferrer">{linkLabel(href)}</a>{/each}</div>
         </article>

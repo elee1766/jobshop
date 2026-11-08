@@ -3,6 +3,8 @@
   import { md } from '../kit/markdown.js';
   import { linkLabel, relationshipText, safeLinks, state, stateDetail, statusLetter } from './trace.js';
   import TicketHistory from './TicketHistory.svelte';
+  import TitleAction from './TitleAction.svelte';
+  import TitleText from './TitleText.svelte';
   let { detail, graph, onselect, ontrace, onwatch }: {
     detail: ShowResult;
     graph: GraphResult;
@@ -34,13 +36,15 @@
 
 {#snippet ticketLink(other: Ticket)}
   <span class="ticket-status mono" data-status={other.status} role="img" title={state(other)} aria-label={state(other)}>{statusLetter(other)}</span>
-  <button class="relation-ticket ticket-label" title={other.id} onclick={() => onselect(other.id)}><span>{other.title || other.id}</span>{#if other.title}<small class="mono muted">{other.id}</small>{/if}</button>
+  <TitleAction class="relation-ticket ticket-label" title={other.title} fallback={other.id} tip={other.id} onactivate={() => onselect(other.id)}>
+    {#snippet children()}{#if other.title}<small class="mono muted">{other.id}</small>{/if}{/snippet}
+  </TitleAction>
 {/snippet}
 
 <div class="inspector" aria-label="Ticket details">
   <header class="ticket-overview">
     {#if ticket.parent_id}<div class="ticket-parent"><span class="muted">child of</span>{#if parent}{@render ticketLink(parent)}{:else}<button class="mono" onclick={() => onselect(ticket.parent_id!)}>{ticket.parent_id}</button>{/if}</div>{/if}
-    <h2>{ticket.title || ticket.id}{#if ticket.title}<small class="mono muted">{ticket.id}</small>{/if}</h2>
+    <h2><TitleText title={ticket.title} fallback={ticket.id} />{#if ticket.title}<small class="mono muted">{ticket.id}</small>{/if}</h2>
     <p><span class="ticket-status mono" data-status={ticket.status} role="img" title={state(ticket)} aria-label={state(ticket)}>{statusLetter(ticket)}</span> {#if stateDetail(ticket)}<b>{@html md(stateDetail(ticket), true)}</b> · {/if}{ticket.kind}{ticket.pool ? ' · ' + ticket.pool : ''}</p>
     <p class="muted">created {new Date(ticket.created_at).toLocaleString()} · updated {new Date(ticket.updated_at).toLocaleString()}</p>
     <div class="ticket-links">

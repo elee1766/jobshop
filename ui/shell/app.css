@@ -120,6 +120,36 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
+/* A title that holds links (JOB-135) cannot sit inside its button or link, so
+   the action is an empty .hit control stretched behind the text. Clicks on
+   text fall through to it, clicks on a title link go to the link only. */
+.hosted {
+  position: relative;
+  z-index: 0;
+  display: inline-block;
+  padding: var(--space-1) var(--control-inset);
+  text-align: left;
+  pointer-events: none;
+}
+.hosted > .hit,
+.hosted a {
+  pointer-events: auto;
+}
+.hosted > .hit {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  padding: 0;
+  background: transparent;
+  text-decoration: none;
+  cursor: pointer;
+}
+.hosted > .hit:hover {
+  background: var(--hi);
+}
+td .hosted {
+  padding: 0;
+}
 a[href],
 summary,
 select:not(:disabled),
