@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -18,15 +19,15 @@ func TestRebaseMergeState(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
-		prs      map[int]ghPR
+		prs      map[int]github.Pull
 		failures int
 		comment  bool
 	}{
-		{"dirty", map[int]ghPR{300: {Number: 300, MergeableState: "dirty"}}, 0, false},
-		{"behind", map[int]ghPR{300: {Number: 300, MergeableState: "behind"}}, 0, false},
-		{"clean", map[int]ghPR{300: {Number: 300, MergeableState: "clean"}}, 1, true},
+		{"dirty", map[int]github.Pull{300: {Number: 300, MergeableState: "dirty"}}, 0, false},
+		{"behind", map[int]github.Pull{300: {Number: 300, MergeableState: "behind"}}, 0, false},
+		{"clean", map[int]github.Pull{300: {Number: 300, MergeableState: "clean"}}, 1, true},
 		{"read error", nil, 0, false},
-		{"unknown", map[int]ghPR{300: {Number: 300, MergeableState: "unknown"}}, 0, false},
+		{"unknown", map[int]github.Pull{300: {Number: 300, MergeableState: "unknown"}}, 0, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -68,7 +68,8 @@ jobshop/
 │   │                         are the bounded host capabilities
 │   ├── apicall/              token source and per-call options Linear and GitHub share
 │   ├── github/               GitHub REST client and read-only observation of
-│   │                         PRs, checks, reviews and threads (JOB-143)
+│   │                         PRs, checks, reviews and threads (JOB-143),
+│   │                         REST PR reads and revert rules (JOB-159)
 │   ├── linear/               Linear GraphQL client (#201)
 │   ├── identity/             credentials for configured identities: App tokens,
 │   │                         Linear client_credentials (#200)

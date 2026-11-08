@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"net/url"
 	"slices"
 	"time"
 
@@ -50,7 +49,7 @@ func (h activityHost) Ingest(ctx context.Context) { h.c.ingestPass(ctx) }
 // Admitted checks newly admitted merges for reverts. It runs before the
 // cache is saved, as before the extraction.
 func (h activityHost) Admitted(ctx context.Context, items []rpc.ActivityItem) {
-	if rs, ok := h.c.activitySource().(revertSource); ok {
+	if rs, ok := h.c.activitySource().(github.PullSource); ok {
 		h.c.checkReverts(ctx, rs, items)
 	}
 }
@@ -100,42 +99,18 @@ func (c *Controller) liveActivity() *liveActivity {
 	return &liveActivity{Live: activity.Live{C: activityClients{c}}, c: c}
 }
 
-// get reads path as repo's identity.
-func (l *liveActivity) get(ctx context.Context, repo, path string) ([]byte, error) {
-	resp, err := l.c.githubOrHost(l.c.config(), "", repo).Do(ctx, github.Request{Path: path, Route: "/repos/{repo}/activity"})
-	if err != nil {
-		return nil, err
-	}
-	return resp.Body, nil
+// PullRequest and CommitPulls read as the repo's identity through
+// github.Client (JOB-159).
+func (l *liveActivity) PullRequest(ctx context.Context, repo string, n int) (github.Pull, error) {
+	return l.client(repo).PullRequest(ctx, repo, n)
 }
 
-// PullRequest reads one PR for revert detection (#272).
-func (l *liveActivity) PullRequest(ctx context.Context, repo string, n int) (ghPR, error) {
-	b, err := l.get(ctx, repo, fmt.Sprintf("/repos/%s/pulls/%d", repo, n))
-	if err != nil {
-		return ghPR{}, err
-	}
-	var pr ghPR
-	return pr, json.Unmarshal(b, &pr)
-}
-
-// CommitPulls lists the PRs a commit is associated with.
 func (l *liveActivity) CommitPulls(ctx context.Context, repo, sha string) ([]int, error) {
-	b, err := l.get(ctx, repo, fmt.Sprintf("/repos/%s/commits/%s/pulls", repo, url.PathEscape(sha)))
-	if err != nil {
-		return nil, err
-	}
-	var prs []struct {
-		Number int `json:"number"`
-	}
-	if err := json.Unmarshal(b, &prs); err != nil {
-		return nil, err
-	}
-	out := make([]int, len(prs))
-	for i, p := range prs {
-		out[i] = p.Number
-	}
-	return out, nil
+	return l.client(repo).CommitPulls(ctx, repo, sha)
+}
+
+func (l *liveActivity) client(repo string) *github.Client {
+	return l.c.githubOrHost(l.c.config(), "", repo)
 }
 
 // truncate bounds feed text to what the feed stores.
