@@ -50,6 +50,31 @@ func TestJSON(t *testing.T) {
 	assert.Contains(t, got, `"n":1`)
 }
 
+// ACP usage counters have "token" in their names; JOB-160 kept them
+// readable in journals. Only whole numbers under a "usage" key survive.
+func TestJSONUsageCounters(t *testing.T) {
+	// js-s-0034cxpaw8002 seq 164, a real prompt response.
+	resp := `{"id":"h5","jsonrpc":"2.0","result":{"stopReason":"end_turn","usage":{"cachedReadTokens":109517,"cachedWriteTokens":7328,"inputTokens":6453,"outputTokens":766,"totalTokens":124064}}}`
+	assert.JSONEq(t, resp, string(JSON(json.RawMessage(resp), nil)), "numeric accounting survives")
+
+	sk := "sk-" + rnd(alnum, 20)
+	for name, raw := range map[string]string{
+		"string value":     `{"usage":{"inputTokens":"` + sk + `","totalTokens":"12"}}`,
+		"object value":     `{"usage":{"inputTokens":{"v":"` + sk + `"}}}`,
+		"array value":      `{"usage":{"outputTokens":["` + sk + `"]}}`,
+		"negative":         `{"usage":{"totalTokens":-5}}`,
+		"fraction":         `{"usage":{"totalTokens":1.5}}`,
+		"outside usage":    `{"result":{"inputTokens":6453}}`,
+		"other token key":  `{"usage":{"accessToken":6453}}`,
+		"counter in array": `{"usage":[{"inputTokens":6453}]}`,
+	} {
+		got := string(JSON(json.RawMessage(raw), nil))
+		assert.NotContains(t, got, sk, name)
+		assert.NotRegexp(t, `:(-5|1\.5|6453)\b`, got, name)
+		assert.Contains(t, got, Mask, name)
+	}
+}
+
 func TestText(t *testing.T) {
 	tok := ghToken()
 	got := Text("tok "+tok, nil)
