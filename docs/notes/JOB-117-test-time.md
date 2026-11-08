@@ -60,5 +60,28 @@ and preparing statements). Building the pkg/control test binary with
   uses a 1m hook timeout: with more tests in parallel the 10s wall
   clock timeout could fire before cancel and end the hook `failed`.
 
-After: see the PR's CI run and the next master runs on
-[JOB-117](https://linear.app/gfx-labs/issue/JOB-117).
+## After (CI, PR #1060)
+
+| package | master 42468831522 | PR, tests only (34a9910) | PR, with sqlite flag (58921e3) |
+| --- | --- | --- | --- |
+| pkg/control | 51.8s | 51.6s | 31.0s |
+| pkg/store/sqlite | not in top 5 | 12.2s | 4.2s |
+| pkg/store/postgres | 8.9s | 8.7s | 7.6s |
+| pkg/cli | 5.3s | 1.6s | 1.2s |
+| go test step | 64s | 76s | 64s |
+
+The PR step times probably include a cold build (not verified): the PR
+cache is read-only (only master commits to it), and the new `-gcflags`
+for `modernc.org/sqlite/lib` changes the build of every package that
+imports it under `-race`. The `go build` step took 8s on the PR runs
+against 4s on the master run. Package test times are not affected by
+this, the step time may be. Judge the acceptance (three consecutive
+master steps under 60s) on master runs after the first one post-merge.
+Check with `gh run view <id> --json jobs` (step `go test`, started to
+completed). The step was 64s on the PR run, so it is not yet shown to be
+under 60s.
+
+If it is still over 60s: the next cost in pkg/control is sqlite statement
+parsing (~18% of CPU), from stores opened and queries prepared per test,
+then the race runtime itself. See `pkg/control` CPU profile with
+`go test -race -c` and `-test.cpuprofile`.
