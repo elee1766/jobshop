@@ -2,10 +2,13 @@ package desk
 
 import (
 	"bufio"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -432,4 +435,53 @@ func TestFavicon(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "image/svg+xml", w.Header().Get("Content-Type"))
 	assert.Equal(t, svg, w.Body.Bytes())
+}
+
+// TestStaticCompression: assets are gzipped for a client that accepts it
+// and sent as is otherwise; streams and the API are never compressed (#1088).
+func TestStaticCompression(t *testing.T) {
+	s := New(Config{}, &fakeCtl{events: []rpc.Event{{Kind: rpc.EventKindReady}}}, nil)
+	h := s.Handler()
+	entries, err := fs.ReadDir(s.ui, "assets")
+	require.NoError(t, err)
+	var asset string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".js") {
+			asset = "/assets/" + e.Name()
+		}
+	}
+	require.NotEmpty(t, asset, "built UI has a script")
+	raw, err := fs.ReadFile(s.ui, strings.TrimPrefix(asset, "/"))
+	require.NoError(t, err)
+
+	fetch := func(path, encoding string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Host = "127.0.0.1:7480"
+		if encoding != "" {
+			req.Header.Set("Accept-Encoding", encoding)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, req)
+		return w
+	}
+
+	w := fetch(asset, "gzip")
+	assert.Equal(t, "gzip", w.Header().Get("Content-Encoding"))
+	assert.Contains(t, w.Header().Values("Vary"), "Accept-Encoding")
+	assert.Contains(t, w.Header().Get("Cache-Control"), "immutable", "caching headers survive")
+	zr, err := gzip.NewReader(w.Body)
+	require.NoError(t, err)
+	got, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	assert.Equal(t, raw, got)
+	assert.Less(t, w.Body.Len(), len(raw))
+
+	w = fetch(asset, "")
+	assert.Empty(t, w.Header().Get("Content-Encoding"))
+	assert.Equal(t, raw, w.Body.Bytes())
+
+	for _, p := range []string{"/api/events", "/api/attention"} {
+		w = fetch(p, "gzip")
+		assert.Empty(t, w.Header().Get("Content-Encoding"), p)
+	}
 }

@@ -25,6 +25,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/klauspost/compress/gzhttp"
+
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -330,7 +332,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /plugins/", http.NotFound)
 	mux.HandleFunc("GET /api/rpc", s.json(s.rpcList))
 	mux.HandleFunc("POST /api/rpc/{method}", s.json(s.rpcCall))
-	mux.Handle("GET /", s.static())
+	// Only the static files are compressed: SSE and the JSON API stay
+	// untouched so streams are never buffered (#1088).
+	mux.Handle("GET /", gzhttp.GzipHandler(s.static()))
 	return s.guard(s.stripBase(mux))
 }
 
