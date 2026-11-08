@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.10](https://github.com/elee1766/jobshop/compare/v0.9.9...v0.9.10) (2026-11-08)
+
+
+### Features
+
+* **control:** title runs with the source issue or pr title (JOB-133) ([#1046](https://github.com/elee1766/jobshop/issues/1046)) ([a7ac59b](https://github.com/elee1766/jobshop/commit/a7ac59bc96aa676c597d939bbc8007f3329b5144))
+
 ## [0.9.9](https://github.com/elee1766/jobshop/compare/v0.9.8...v0.9.9) (2026-11-08)
 
 
