@@ -61,6 +61,11 @@ func (inv *invocation) restore(name string, cached any, args starlark.Tuple, kwa
 			return nil, errors.New("github capability is disabled by host")
 		}
 		return api.ToValue(fields, options.Limits.DataBytes)
+	case "linear.graphql":
+		if options.Linear == nil {
+			return nil, errors.New("linear capability is disabled by host")
+		}
+		return api.ToValue(fields, options.Limits.DataBytes)
 	default:
 		return nil, errors.New("unknown recorded capability")
 	}

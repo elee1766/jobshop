@@ -308,7 +308,9 @@ A desk handler `fn(input, args)` returns the dict Desk's `api.exec` gets.
 
 Capabilities are off by default and granted in `jobshop.yaml`:
 `automation.github` for the `github` built-in (needs a `github-app` or
-`github-token` identity covering the repo), `automation.shell` for
+`github-token` identity covering the repo), `automation.linear` for
+`linear.graphql` (a `linear-app` or `linear` identity covering the team),
+`automation.shell` for
 `shell()` in script steps and handlers, `automation.http` for `http`. A
 handler shell runs as the controller with its environment; a script step
 runs in the pool's sandbox. Remove `GH_TOKEN` and `gh` from the

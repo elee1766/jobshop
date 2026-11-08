@@ -42,7 +42,10 @@ type Host interface {
 	HookApplied(context.Context, Invocation)
 	// GitHubToken returns the API base and a current token of the GitHub
 	// identity covering repo, for the github built-in.
-	GitHubToken(ctx context.Context, repo string) (api.GitHubToken, error)
+	GitHubToken(ctx context.Context, repo string) (api.Token, error)
+	// LinearToken returns the GraphQL endpoint and a current token of the
+	// Linear identity covering team, for the linear built-in.
+	LinearToken(ctx context.Context, team string) (api.Token, error)
 	// ReadTickets serves tickets(), runs() and sessions().
 	ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, error)
 }
