@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/elee1766/jobshop/compare/v0.9.2...v0.9.3) (2026-11-08)
+
+
+### Features
+
+* **automation:** linear built-in authenticated by identities ([#1018](https://github.com/elee1766/jobshop/issues/1018)) ([0cac324](https://github.com/elee1766/jobshop/commit/0cac324e01baf639f29bc4ed0cd86cbf02439b67))
+
 ## [0.9.2](https://github.com/elee1766/jobshop/compare/v0.9.1...v0.9.2) (2026-11-08)
 
 
