@@ -27,6 +27,14 @@ of rows one RPC at a time:
 | TestInboxPruneBatches (pkg/ingest) | 4-7s | <0.1s |
 | TestCLIDoc (pkg/cli) | 3.5-8.6s | 0.1s |
 
+Removing those did not move pkg/control on the CI runner (51.6s on the
+PR run, no test over 3.6s). The runner has 2 vCPUs and the package is
+CPU bound: the summed test time is ~127s, and the profile puts ~40% of
+CPU in race-instrumented sqlite C (`modernc.org/sqlite/lib`: parsing
+and preparing statements). Building the pkg/control test binary with
+`-gcflags=modernc.org/sqlite/lib=-race=false` cut user CPU from 3m04s to
+2m04s on this host.
+
 ## What changed
 
 - Bulk seeding: `seedStore` (pkg/control/seed_test.go) opens the test
@@ -43,6 +51,11 @@ of rows one RPC at a time:
 - CI sets `GORACE=atexit_sleep_ms=0`. The race runtime otherwise sleeps
   1s before every race-built process exits, once per test binary and
   per child process a test runs, about 34 package-seconds a run.
+- CI and ci-flaky pass `-gcflags=modernc.org/sqlite/lib=-race=false`,
+  next to the checkptr flag from #433. Tradeoff: the race detector no
+  longer instruments sqlite's translated C. That code is single
+  threaded behind sqlite's own mutexes, and the Go wrapper and all our
+  packages stay instrumented.
 - `TestHookCapabilitiesOutsideControllerLocksAndCancelDiscardsActions`
   uses a 1m hook timeout: with more tests in parallel the 10s wall
   clock timeout could fire before cancel and end the hook `failed`.
