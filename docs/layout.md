@@ -37,7 +37,8 @@ jobshop/
 │   │   ├── journalship/      journal shipping to VictoriaLogs (JOB-119)
 │   │   ├── journalcompress/  closed-session journal compression (JOB-89)
 │   │   ├── journalread/      journal paging, search and recall summaries (JOB-140)
-│   │   └── sessionrt/        host stop/start, cgroups, ACLs, shell probe (JOB-146)
+│   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe (JOB-146)
+│   │   └── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
 │   ├── github/               GitHub REST client and read-only observation of
 │   │                         PRs, checks, reviews and threads (JOB-143)
 │   ├── config/               YAML loading, validation, defaults

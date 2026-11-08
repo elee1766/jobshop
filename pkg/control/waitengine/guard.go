@@ -1,4 +1,4 @@
-package control
+package waitengine
 
 import (
 	"fmt"
@@ -7,15 +7,16 @@ import (
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// eventWaitRe matches a release --until reason that names an event a wait
+// eventRe matches a release --until reason that names an event a wait
 // kind covers (JOB-11). Such a timer guesses: the step sits idle after the
 // event, or wakes early and burns an attempt.
-var eventWaitRe = regexp.MustCompile(`(?i)\b(ci|checks?|pr|pull request|deploy\w*|tags?|merge\w*)\b`)
+var eventRe = regexp.MustCompile(`(?i)\b(ci|checks?|pr|pull request|deploy\w*|tags?|merge\w*)\b`)
 
-// eventWaitHint is the error for a timed release whose reason is an
-// event, naming the wait add line to use instead.
-func eventWaitHint(reason string) error {
-	m := eventWaitRe.FindString(reason)
+// TimerHint is the error for a timed release whose reason is an event,
+// naming the wait add line to use instead. It is nil when the reason
+// names no event.
+func TimerHint(reason string) error {
+	m := eventRe.FindString(reason)
 	if m == "" {
 		return nil
 	}

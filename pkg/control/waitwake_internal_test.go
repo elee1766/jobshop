@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -45,7 +46,7 @@ func TestWaitWebhookResume(t *testing.T) {
 	require.NoError(t, err)
 	// The pump's first full pass is the startup reconcile; drop the wake
 	// waitAdd queued so only the webhook can wake it below.
-	c.takeWaitWakes()
+	c.waitWakes.Take()
 	select {
 	case <-c.waitWake:
 	default:
@@ -140,12 +141,12 @@ func TestWaitWakeTargeted(t *testing.T) {
 		return tk
 	}
 	five, six := park(5), park(6)
-	c.takeWaitWakes()
+	c.waitWakes.Take()
 
 	c.wakeWaitsFor([]store.InboxItem{{Source: "github", RepoOrTeam: "Acme/Widget", Number: 5}})
-	w := c.takeWaitWakes()
-	assert.False(t, w.all)
-	c.pollWaitsOn(ctx, prs, threads, w.subj)
+	w := c.waitWakes.Take()
+	assert.False(t, w.All)
+	c.pollWaitsOn(ctx, prs, threads, w.Subjects)
 	assert.Nil(t, waitOf(mustGet(t, c, five.ID)), "PR 5's wait evaluated and cleared")
 	assert.NotNil(t, waitOf(mustGet(t, c, six.ID)), "PR 6's wait not evaluated")
 
@@ -154,13 +155,13 @@ func TestWaitWakeTargeted(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.setRunState(ctx, "controller", run, f, store.RunDone, "")
 	require.NoError(t, err)
-	assert.True(t, c.takeWaitWakes().subj[runSubject(run.ID)], "run state change wakes its waits")
+	assert.True(t, c.waitWakes.Take().Subjects[waitengine.RunSubject(run.ID)], "run state change wakes its waits")
 
 	c.wakeWaitsFor([]store.InboxItem{{Source: "github", RepoOrTeam: "acme/widget"}})
-	assert.True(t, c.takeWaitWakes().subj[repoSubject("acme/widget")], "an event with no number names the repo")
+	assert.True(t, c.waitWakes.Take().Subjects[waitengine.RepoSubject("acme/widget")], "an event with no number names the repo")
 
 	c.wakeWaitsFor([]store.InboxItem{{Source: "generic"}})
-	assert.True(t, c.takeWaitWakes().all, "an item with no subject wakes a full pass")
+	assert.True(t, c.waitWakes.Take().All, "an item with no subject wakes a full pass")
 }
 
 // TestWaitNextTime (#679): the pump sleeps until the earliest time

@@ -1,7 +1,6 @@
 package control
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -27,25 +27,6 @@ import (
 // its head invalidates review and checks conditions bound to the old
 // head; that also clears the wait, with the reason, so the agent decides
 // again. Past its timeout a wait is labeled needs-human once.
-
-// waitSource reads PR state from GitHub. Tests replace it.
-type waitSource interface {
-	PR(ctx context.Context, repo string, n int) (github.PRInfo, error)
-	Reviews(ctx context.Context, repo string, n int) ([]github.Review, error)
-	// Checks lists the checks of a PR's current head (required only when
-	// asked), or of sha when n is 0.
-	Checks(ctx context.Context, repo string, n int, sha string, required bool) ([]github.Check, error)
-	// WorkflowRuns lists the GitHub Actions runs on commit sha, every
-	// workflow (github.checks with workflow=, JOB-75).
-	WorkflowRuns(ctx context.Context, repo, sha string) ([]github.WorkflowRun, error)
-	// Issue reads an issue's state and labels (github.label, #603).
-	Issue(ctx context.Context, repo string, n int) (github.IssueInfo, error)
-	// Tag reports whether tag exists in repo (github.tag, JOB-11).
-	Tag(ctx context.Context, repo, tag string) (bool, error)
-	// Contains reports whether head is sha or a descendant of it in repo
-	// (deploy, JOB-11).
-	Contains(ctx context.Context, repo, sha, head string) (bool, error)
-}
 
 // linearWaitSource reads a Linear issue for linear.state and
 // linear.label. Tests replace it.
@@ -74,7 +55,7 @@ func (c *Controller) waitEvery() time.Duration {
 	return defaultSubInterval
 }
 
-func (c *Controller) waitSrc() waitSource {
+func (c *Controller) waitSrc() waitengine.Source {
 	if c.waitSource != nil {
 		return c.waitSource
 	}
@@ -313,82 +294,8 @@ func (c *Controller) resumeHolder(ctx context.Context, id string) (holder, busy 
 	return id, ""
 }
 
-// waitPass caches GitHub reads within one pass, so waits on one PR
-// share a fetch.
-type waitPass struct {
-	src     waitSource
-	threads threadSource
-	linear  linearWaitSource
-	prs     map[string]github.PRInfo
-	reviews map[string][]github.Review
-	checks  map[string][]github.Check
-	runs    map[string][]github.WorkflowRun
-	issues  map[string]linear.Context
-}
-
-func (p *waitPass) linearIssue(ctx context.Context, key string) (linear.Context, error) {
-	if v, ok := p.issues[key]; ok {
-		return v, nil
-	}
-	v, err := p.linear.IssueContext(ctx, key)
-	if err == nil {
-		p.issues[key] = v
-	}
-	return v, err
-}
-
-func prKey(repo string, n int) string { return fmt.Sprintf("%s#%d", repo, n) }
-
-func (p *waitPass) pr(ctx context.Context, repo string, n int) (github.PRInfo, error) {
-	k := prKey(repo, n)
-	if v, ok := p.prs[k]; ok {
-		return v, nil
-	}
-	v, err := p.src.PR(ctx, repo, n)
-	if err == nil {
-		p.prs[k] = v
-	}
-	return v, err
-}
-
-func (p *waitPass) reviewsOf(ctx context.Context, repo string, n int) ([]github.Review, error) {
-	k := prKey(repo, n)
-	if v, ok := p.reviews[k]; ok {
-		return v, nil
-	}
-	v, err := p.src.Reviews(ctx, repo, n)
-	if err == nil {
-		p.reviews[k] = v
-	}
-	return v, err
-}
-
-func (p *waitPass) checksOf(ctx context.Context, repo string, n int, sha string, required bool) ([]github.Check, error) {
-	k := fmt.Sprintf("%s#%d@%s/%t", repo, n, sha, required)
-	if v, ok := p.checks[k]; ok {
-		return v, nil
-	}
-	v, err := p.src.Checks(ctx, repo, n, sha, required)
-	if err == nil {
-		p.checks[k] = v
-	}
-	return v, err
-}
-
-func (p *waitPass) runsOf(ctx context.Context, repo, sha string) ([]github.WorkflowRun, error) {
-	k := repo + "@" + sha
-	if v, ok := p.runs[k]; ok {
-		return v, nil
-	}
-	v, err := p.src.WorkflowRuns(ctx, repo, sha)
-	if err == nil {
-		p.runs[k] = v
-	}
-	return v, err
-}
-
 // pollWaits runs one pass over every waiting ticket.
-func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads threadSource) {
+func (c *Controller) pollWaits(ctx context.Context, src waitengine.Source, threads threadSource) {
 	c.waitMu.Lock()
 	defer c.waitMu.Unlock()
 	ts, err := c.waiting(ctx, "")
@@ -398,6 +305,8 @@ func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads thre
 		}
 		return
 	}
+	// The pass starts after the list: every observation it caches is newer
+	// than the snapshots it is applied to (JOB-144).
 	pass := c.newWaitPass(src, threads)
 	for _, t := range ts {
 		if err := c.evalWait(ctx, pass, t); err != nil && ctx.Err() == nil {
@@ -406,59 +315,31 @@ func (c *Controller) pollWaits(ctx context.Context, src waitSource, threads thre
 	}
 }
 
-// errInvalidated means a condition can no longer hold as stated.
-type errInvalidated struct{ why string }
-
-func (e errInvalidated) Error() string { return e.why }
-
-// evalWait evaluates one ticket's wait and clears, times out or saves it.
-func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticket) error {
+// evalWait evaluates one ticket's wait with the engine and applies the
+// decision. t is the snapshot the decision was made from: every write
+// below is at t's revision, so a wait that was cleared, replaced or
+// re-parked since the snapshot (by a person, a release, an agent) makes
+// the write fail with store.ErrConflict instead of acting on a stale
+// observation. The next pass or wake evaluates the current wait.
+func (c *Controller) evalWait(ctx context.Context, pass *waitengine.Pass, t store.Ticket) error {
 	w := waitOf(t)
 	if w == nil {
 		return nil
 	}
-	now := c.now().UTC()
-	before, _ := json.Marshal(w)
-	var errs []error
-	for i := range w.Conds {
-		cd := &w.Conds[i]
-		if cd.Met {
-			continue
-		}
-		met, note, err := c.evalCond(ctx, pass, w, cd, now)
-		var inv errInvalidated
-		if errors.As(err, &inv) {
-			_, cerr := c.clearWait(ctx, t, w, "invalidated: "+inv.why)
-			return cerr
-		}
-		if err != nil {
-			// A Linear outage is logged once by linearCall, not per wait.
-			if !linearDown(err) {
-				errs = append(errs, err)
-			}
-			continue
-		}
-		cd.Note = note
-		if met {
-			cd.Met, cd.MetAt = true, now
-		}
-	}
-	if w.Satisfied() {
-		var notes []string
-		for _, cd := range w.Conds {
-			if cd.Met && cd.Note != "" {
-				notes = append(notes, cd.Note)
-			}
-		}
-		_, err := c.clearWait(ctx, t, w, "condition met: "+strings.Join(notes, "; "))
+	d := waitengine.Evaluate(ctx, pass, *w, c.now().UTC())
+	if d.Clear {
+		_, err := c.clearWait(ctx, t, w, d.Why)
 		return err
 	}
-	timedOut := !w.Timeout.IsZero() && !now.Before(w.Timeout) && !w.TimedOut
-	if timedOut {
-		w.TimedOut = true
+	var errs []error
+	for _, err := range d.Errs {
+		// A Linear outage is logged once by linearCall, not per wait.
+		if !linearDown(err) {
+			errs = append(errs, err)
+		}
 	}
-	if after, _ := json.Marshal(w); !bytes.Equal(before, after) {
-		fields, err := withWait(t, w)
+	if d.Save {
+		fields, err := withWait(t, &d.Wait)
 		if err != nil {
 			return err
 		}
@@ -466,7 +347,8 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticke
 			return err
 		}
 	}
-	if timedOut {
+	if d.TimedOut {
+		w = &d.Wait
 		if err := store.AddLabel(ctx, c.store, "controller", t.ID, needsHumanLabel); err != nil {
 			return err
 		}
@@ -481,264 +363,66 @@ func (c *Controller) evalWait(ctx context.Context, pass *waitPass, t store.Ticke
 	return errors.Join(errs...)
 }
 
-// evalCond reports whether cd holds now. It records cd.Head the first
-// time a PR condition is evaluated without one.
-func (c *Controller) evalCond(ctx context.Context, pass *waitPass, w *store.Wait, cd *store.WaitCond, now time.Time) (bool, string, error) {
-	switch cd.Type {
-	case store.WaitTime:
-		return !now.Before(cd.At), "time " + cd.At.Format(time.RFC3339), nil
-	case store.WaitReply:
-		return c.evalReply(ctx, pass, w, cd)
-	case store.WaitLabel:
-		return evalLabel(ctx, pass, cd)
-	case store.WaitTag:
-		ok, err := pass.src.Tag(ctx, cd.Repo, cd.Tag)
-		// The note is stored on every pass, met or not (#716).
-		if !ok {
-			return false, fmt.Sprintf("tag %s not pushed to %s yet", cd.Tag, cd.Repo), err
-		}
-		return true, fmt.Sprintf("tag %s pushed to %s", cd.Tag, cd.Repo), err
-	case store.WaitDeploy:
-		if c.opt.Commit == "" {
-			return false, "", errInvalidated{"this controller reports no build commit"}
-		}
-		ok, err := pass.src.Contains(ctx, cd.Repo, cd.SHA, c.opt.Commit)
-		if !ok {
-			return false, fmt.Sprintf("deployed %s does not contain %s yet", short(c.opt.Commit), short(cd.SHA)), err
-		}
-		return true, fmt.Sprintf("deployed %s contains %s", short(c.opt.Commit), short(cd.SHA)), err
-	case store.WaitRun:
-		return c.evalRun(ctx, cd)
-	case store.WaitLinearState, store.WaitLinearLabel:
-		return evalLinear(ctx, pass, cd)
-	case store.WaitChecks:
-		if cd.PR == 0 {
-			return evalChecks(ctx, pass, cd, cd.SHA)
-		}
+// waitSources is what a pass observes through: the gh and Linear
+// adapters, this controller's runs and subscription filters, and its
+// build commit.
+func (c *Controller) waitSources(src waitengine.Source, threads threadSource) waitengine.Sources {
+	return waitengine.Sources{
+		GitHub:  src,
+		Linear:  c.linearWaitSrc(),
+		Runs:    runWaitSource{c: c},
+		Replies: replyWaitSource{c: c, threads: threads},
+		Commit:  c.opt.Commit,
 	}
-	pr, err := pass.pr(ctx, cd.Repo, cd.PR)
-	if err != nil {
-		return false, "", err
-	}
-	ref := prKey(cd.Repo, cd.PR)
-	if cd.Head == "" {
-		cd.Head = pr.Head
-	}
-	if cd.Type == store.WaitPR {
-		switch cd.State {
-		case "merged":
-			if pr.State == "closed" && !pr.Merged {
-				return false, "", errInvalidated{ref + " closed without merging"}
-			}
-			return pr.Merged, ref + " merged", nil
-		case "closed":
-			return pr.State == "closed", ref + " closed", nil
-		}
-		return pr.Head != cd.Head || pr.State == "closed", fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head)), nil
-	}
-	if pr.Merged {
-		return false, "", errInvalidated{ref + " merged"}
-	}
-	if pr.State == "closed" {
-		return false, "", errInvalidated{ref + " closed"}
-	}
-	if pr.Head != cd.Head {
-		return false, "", errInvalidated{fmt.Sprintf("%s head moved %s -> %s", ref, short(cd.Head), short(pr.Head))}
-	}
-	if cd.Type == store.WaitChecks {
-		if pr.Conflicting {
-			return false, "", errInvalidated{ref + " conflicts with its base; CI will not run until it is rebased"}
-		}
-		return evalChecks(ctx, pass, cd, pr.Head)
-	}
-	rs, err := pass.reviewsOf(ctx, cd.Repo, cd.PR)
-	if err != nil {
-		return false, "", err
-	}
-	want := strings.ToUpper(cd.State)
-	if want == "" {
-		want = "APPROVED"
-	}
-	// The login's latest review on the exact head decides.
-	var last *github.Review
-	for i := range rs {
-		r := &rs[i]
-		if !strings.EqualFold(r.Login, cd.Login) || r.Commit != cd.Head {
-			continue
-		}
-		if last == nil || !r.At.Before(last.At) {
-			last = r
-		}
-	}
-	observed := "no review"
-	if last != nil {
-		observed = last.State
-	}
-	return last != nil && last.State == want, fmt.Sprintf("%s wants %s by %s on %s, observed %s", ref, want, cd.Login, short(cd.Head), observed), nil
 }
 
-// evalRun: the run is done (state done) or ended any way (closed). A
-// done wait on a run that was cancelled can never hold.
-func (c *Controller) evalRun(ctx context.Context, cd *store.WaitCond) (bool, string, error) {
-	r, err := c.store.Get(ctx, cd.Run)
-	if err != nil {
-		return false, "", err
-	}
-	f, err := store.DecodeFields[store.RunFields](r)
-	if err != nil {
-		return false, "", err
-	}
-	ended := r.Status == store.StatusClosed || f.State == store.RunDone || f.State == store.RunCancelled
-	if cd.State == "closed" {
-		return ended, fmt.Sprintf("run %s ended (%s)", cd.Run, f.State), nil
-	}
-	if f.State == store.RunCancelled {
-		return false, "", errInvalidated{"run " + cd.Run + " was cancelled"}
-	}
-	return f.State == store.RunDone, "run " + cd.Run + " done", nil
+func (c *Controller) newWaitPass(src waitengine.Source, threads threadSource) *waitengine.Pass {
+	return waitengine.NewPass(c.waitSources(src, threads))
 }
 
-// evalLinear: linear.state matches the state name or type
-// (case-insensitive); linear.label has the label, or lacks it with Absent.
-func evalLinear(ctx context.Context, pass *waitPass, cd *store.WaitCond) (bool, string, error) {
-	is, err := pass.linearIssue(ctx, cd.Thread)
+// runWaitSource reads run tickets for the run condition.
+type runWaitSource struct{ c *Controller }
+
+func (r runWaitSource) Run(ctx context.Context, id string) (waitengine.RunState, error) {
+	t, err := r.c.store.Get(ctx, id)
 	if err != nil {
-		return false, "", err
+		return waitengine.RunState{}, err
 	}
-	if cd.Type == store.WaitLinearState {
-		ok := strings.EqualFold(is.State.Name, cd.State) || strings.EqualFold(is.State.Type, cd.State)
-		return ok, fmt.Sprintf("%s is %s", cd.Thread, is.State.Name), nil
+	f, err := store.DecodeFields[store.RunFields](t)
+	if err != nil {
+		return waitengine.RunState{}, err
 	}
-	has := slices.ContainsFunc(is.Labels, func(l string) bool { return strings.EqualFold(l, cd.Label) })
-	if cd.Absent {
-		return !has, fmt.Sprintf("%s no longer labeled %s", cd.Thread, cd.Label), nil
-	}
-	return has, fmt.Sprintf("%s labeled %s", cd.Thread, cd.Label), nil
+	return waitengine.RunState{Closed: t.Status == store.StatusClosed, State: f.State}, nil
 }
 
-// evalLabel: the issue carries the label, or is closed (a rejected
-// proposal also ends the wait).
-func evalLabel(ctx context.Context, pass *waitPass, cd *store.WaitCond) (bool, string, error) {
-	is, err := pass.src.Issue(ctx, cd.Repo, cd.Issue)
-	if err != nil {
-		return false, "", err
-	}
-	ref := fmt.Sprintf("%s#%d", cd.Repo, cd.Issue)
-	if is.State == "closed" {
-		return true, ref + " closed", nil
-	}
-	return slices.ContainsFunc(is.Labels, func(l string) bool { return strings.EqualFold(l, cd.Label) }), ref + " labeled " + cd.Label, nil
+// replyWaitSource answers thread.reply: a human comment on the thread
+// after the wait started, from From when set. It reads through the
+// subscription source, so the same filters (bots, ignore, authors) apply;
+// they live in the controller's config, which is why this is not engine
+// code.
+type replyWaitSource struct {
+	c       *Controller
+	threads threadSource
 }
 
-// evalChecks: success needs at least one check and none pending or
-// failed; failure is any failed check.
-//
-// A cancelled check is not a failure (#831, JOB-75): a newer push or a
-// concurrency group superseded the run, and the agent has nothing to fix.
-// Once nothing is pending or failed and something was cancelled, the head
-// will never go green, so the wait is invalidated with that reason and
-// the agent decides again. Skipped checks count for neither side. On a
-// commit success needs at least one passed check, so the release
-// workflow's skipped jobs alone are not green.
-//
-// With cd.Workflow set only that workflow's newest run on the commit
-// counts (evalWorkflow).
-func evalChecks(ctx context.Context, pass *waitPass, cd *store.WaitCond, head string) (bool, string, error) {
-	if cd.Workflow != "" {
-		return evalWorkflow(ctx, pass, cd, head)
-	}
-	cs, err := pass.checksOf(ctx, cd.Repo, cd.PR, head, cd.Required)
-	if err != nil {
-		return false, "", err
-	}
-	what := "checks"
-	if cd.Required {
-		what = "required checks"
-	}
-	commit := cd.PR == 0
-	var failed, pending, cancelled []string
-	passed := 0
-	for _, ch := range cs {
-		switch ch.Bucket {
-		case "cancel":
-			cancelled = append(cancelled, ch.Name)
-		case "fail":
-			failed = append(failed, ch.Name)
-		case "pending":
-			pending = append(pending, ch.Name)
-		case "pass":
-			passed++
-		}
-	}
-	at := short(head)
-	if len(cancelled) > 0 && len(failed) == 0 && len(pending) == 0 {
-		return false, "", errInvalidated{fmt.Sprintf("%s cancelled on %s: %s; this head will not go green, push or wait on a newer commit", what, at, strings.Join(cancelled, ", "))}
-	}
-	if cd.State == "failure" {
-		return len(failed) > 0, fmt.Sprintf("%s failed on %s: %s", what, at, strings.Join(failed, ", ")), nil
-	}
-	green := len(cs) > 0 && len(failed) == 0 && len(pending) == 0 && len(cancelled) == 0
-	if commit {
-		green = green && passed > 0
-	}
-	return green, fmt.Sprintf("%s green on %s", what, at), nil
-}
-
-// evalWorkflow follows the newest run of cd.Workflow on head:
-// none yet or in progress is not met, success meets state=success,
-// failure meets state=failure, and a cancelled or skipped run can never
-// become green, so the wait is invalidated and the agent resumes now.
-func evalWorkflow(ctx context.Context, pass *waitPass, cd *store.WaitCond, head string) (bool, string, error) {
-	rs, err := pass.runsOf(ctx, cd.Repo, head)
-	if err != nil {
-		return false, "", err
-	}
-	at := short(head)
-	run, ok := github.NewestRun(rs, cd.Workflow)
-	if !ok {
-		return false, fmt.Sprintf("%s not started on %s", cd.Workflow, at), nil
-	}
-	switch github.CheckBucket(run.Status, run.Conclusion) {
-	case "pending":
-		return false, fmt.Sprintf("%s in progress on %s", cd.Workflow, at), nil
-	case "pass":
-		return cd.State == "success", fmt.Sprintf("%s green on %s", cd.Workflow, at), nil
-	case "fail":
-		return cd.State == "failure", fmt.Sprintf("%s failed on %s", cd.Workflow, at), nil
-	case "cancel":
-		return false, "", errInvalidated{fmt.Sprintf("%s cancelled on %s; this head will not go green, push or wait on a newer commit", cd.Workflow, at)}
-	}
-	return false, "", errInvalidated{fmt.Sprintf("%s skipped on %s", cd.Workflow, at)}
-}
-
-// evalReply: a human comment on the thread after the wait started, from
-// From when set. It reads through the subscription source, so the same
-// filters (bots, ignore, authors) apply.
-func (c *Controller) evalReply(ctx context.Context, pass *waitPass, w *store.Wait, cd *store.WaitCond) (bool, string, error) {
+func (r replyWaitSource) Reply(ctx context.Context, cd store.WaitCond, since time.Time) (bool, string, error) {
 	th := thread{Linear: cd.Thread}
 	if repo, num, ok := strings.Cut(cd.Thread, "#"); ok {
 		n, _ := strconv.Atoi(num)
 		th = thread{Repo: repo, Number: n, PR: true}
 	}
-	cs, err := pass.threads.Comments(ctx, th, w.Since)
+	cs, err := r.threads.Comments(ctx, th, since)
 	if err != nil {
 		return false, "", err
 	}
 	for _, cm := range cs {
-		if !cm.At.After(w.Since) || c.ignored(cm) {
+		if !cm.At.After(since) || r.c.ignored(cm) {
 			continue
 		}
-		if cd.From != "" && !strings.EqualFold(cd.From, cm.Author) && (!cm.Linear || !c.linearMatch(cd.From, cm)) {
+		if cd.From != "" && !strings.EqualFold(cd.From, cm.Author) && (!cm.Linear || !r.c.linearMatch(cd.From, cm)) {
 			continue
 		}
 		return true, fmt.Sprintf("%s replied on %s", cm.Author, cd.Thread), nil
 	}
 	return false, "", nil
-}
-
-func short(sha string) string {
-	if len(sha) > 7 {
-		return sha[:7]
-	}
-	return sha
 }

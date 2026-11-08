@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -272,25 +273,25 @@ func (f *fakePRs) PR(_ context.Context, repo string, n int) (github.PRInfo, erro
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
-	return github.ParsePR([]byte(f.pr[prKey(repo, n)]))
+	return github.ParsePR([]byte(f.pr[waitengine.PRKey(repo, n)]))
 }
 
 func (f *fakePRs) Reviews(_ context.Context, repo string, n int) ([]github.Review, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return github.ParseReviews([]byte(f.reviews[prKey(repo, n)]))
+	return github.ParseReviews([]byte(f.reviews[waitengine.PRKey(repo, n)]))
 }
 
 func (f *fakePRs) Checks(_ context.Context, repo string, n int, _ string, _ bool) ([]github.Check, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return github.ParsePRChecks([]byte(f.checks[prKey(repo, n)]))
+	return github.ParsePRChecks([]byte(f.checks[waitengine.PRKey(repo, n)]))
 }
 
 func (f *fakePRs) Issue(_ context.Context, repo string, n int) (github.IssueInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return github.ParseIssue([]byte(f.issues[prKey(repo, n)]))
+	return github.ParseIssue([]byte(f.issues[waitengine.PRKey(repo, n)]))
 }
 
 // Tag: issues["tag:<repo>@<tag>"] set means the tag exists.
