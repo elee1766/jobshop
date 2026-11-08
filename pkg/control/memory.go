@@ -66,7 +66,7 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 	}
 	now := c.now()
 	pools := c.editPools(ctx, cited)
-	base, err := c.measure(ctx, cited, pools, now.Add(-gateBaseline), now)
+	base, err := c.measure(ctx, cited, pools, now.Add(-gateBaseline), now, false)
 	if err != nil {
 		return nil, err
 	}
