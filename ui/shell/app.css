@@ -459,6 +459,17 @@ td pre {
   margin: 8px 0;
   font-size: 12px;
 }
+/* A run of tool calls reads as one group: no gaps inside it, the usual
+   gap before it and after it. Spacing sits on the following row, so a
+   new row never changes the height of an already measured one. */
+.transcript-row > .tool { margin: var(--space-3) 0 0; }
+.transcript-row.tool-next > .tool { margin-top: 0; }
+.transcript-row.after-tools { padding-top: var(--space-3); }
+.transcript-row > .tool > summary { padding-block: var(--space-1); }
+.transcript-row > .tool > pre { margin: 0 0 var(--space-2); }
+@media (pointer: coarse) {
+  .transcript-row > .tool > summary { padding-block: var(--space-2); }
+}
 .ticket-history ol { padding-left: 20px; }
 .ticket-history li { padding: 8px 0; border-bottom: 1px solid var(--rule); }
 .history-heading { display: flex; flex-wrap: wrap; gap: 4px 10px; }

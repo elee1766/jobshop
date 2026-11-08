@@ -163,7 +163,8 @@
   </div>
   {#each view.items as row (row.key)}
     {@const message = messages[row.index]}
-    <div class="transcript-row" data-index={row.index} data-row-key={row.key} use:measure style:transform={'translateY(' + row.start + 'px)'}>
+    {@const afterTool = !!messages[row.index - 1]?.tool}
+    <div class="transcript-row" class:tool-next={afterTool && !!message.tool} class:after-tools={afterTool && !message.tool} data-index={row.index} data-row-key={row.key} use:measure style:transform={'translateY(' + row.start + 'px)'}>
         {#if message.pending}
           <div class="operator" data-message={message.pending.id}>{message.pending.text}{#if message.pending.attachments.length}<small>{message.pending.attachments.join(', ')}</small>{/if}<span class="message-delivery muted" role="status">{message.pending.state === 'sending' ? 'sending…' : 'queued'}</span></div>
         {:else if message.type === 'turn_start'}
