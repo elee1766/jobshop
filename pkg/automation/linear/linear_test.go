@@ -12,8 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/automation"
-	"github.com/elee1766/jobshop/pkg/automation/api"
+	linclient "github.com/elee1766/jobshop/pkg/linear"
 )
 
 const token = "lin_oauth_minted-per-call"
@@ -44,9 +45,9 @@ func TestLinearGraphQL(t *testing.T) {
 	var teams []string
 	records := map[int]automation.Observation{}
 	options := automation.Options{
-		Linear: func(_ context.Context, team string) (api.Token, error) {
+		Linear: func(_ context.Context, team string) (*linclient.Client, error) {
 			teams = append(teams, team)
-			return api.Token{APIURL: server.URL, Token: token}, nil
+			return linclient.New(server.URL, apicall.Static(token)), nil
 		},
 		Observe: func(_ context.Context, o automation.Observation) error {
 			if o.Phase == "completed" {

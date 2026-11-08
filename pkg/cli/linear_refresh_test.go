@@ -145,8 +145,8 @@ func TestLinearSessionTokenRevoked(t *testing.T) {
 }
 
 // TestLinearSessionAuthFailureIsAnError: when the controller can only hand
-// back the same dead token, the command fails with Linear's message after
-// one retry and prints nothing, as it would for a missing issue.
+// back the same dead token, the command fails with Linear's message without
+// resending it and prints nothing, as it would for a missing issue.
 func TestLinearSessionAuthFailureIsAnError(t *testing.T) {
 	a := &linearApp{sticky: true}
 	g := &Globals{Socket: a.serveController(t)}
@@ -165,6 +165,6 @@ func TestLinearSessionAuthFailureIsAnError(t *testing.T) {
 	assert.Empty(t, out, "no output as if the read had worked")
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	assert.Equal(t, before+2, a.reqs, "the refused request and one retry, no loop")
+	assert.Equal(t, before+1, a.reqs, "the refused request only: the same token is not resent")
 	assert.Len(t, a.stales, 1)
 }

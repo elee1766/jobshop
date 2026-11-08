@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/linear"
 )
 
@@ -87,7 +88,7 @@ func complexityServer(t *testing.T) (*linear.Client, *[]call) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return linear.New(srv.URL, "lin_api_x"), &calls
+	return linear.New(srv.URL, apicall.Static("lin_api_x")), &calls
 }
 
 // TestComplexityModel: the fake rejects the query shape the real API

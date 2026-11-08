@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/linear"
 )
 
@@ -37,7 +38,7 @@ func recorded(t *testing.T, pick func(c call) string) (*linear.Client, *[]call) 
 		_, _ = w.Write(data)
 	}))
 	t.Cleanup(srv.Close)
-	return linear.New(srv.URL, "lin_api_x"), &calls
+	return linear.New(srv.URL, apicall.Static("lin_api_x")), &calls
 }
 
 func TestContext(t *testing.T) {

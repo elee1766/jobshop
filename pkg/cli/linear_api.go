@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -86,12 +87,9 @@ func (c linearAPICmd) Run(g *Globals, l *linearCmd) error {
 			return errors.New(msg)
 		}
 	}
+	var src apicall.Source = apicall.Static(token)
 	if token == "" {
-		var r rpc.IdentityTokenResult
-		if err := g.call(rpc.MethodIdentityToken, rpc.IdentityParams{Target: team}, &r); err != nil {
-			return fmt.Errorf("linear api: identity for %s: %w", team, err)
-		}
-		token = r.Token
+		src = &controllerToken{g: g, team: team}
 	}
 	body, err := json.Marshal(map[string]any{"query": query, "variables": vars})
 	if err != nil {
@@ -99,11 +97,7 @@ func (c linearAPICmd) Run(g *Globals, l *linearCmd) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	cl := linear.New(l.APIURL, token)
-	if os.Getenv("LINEAR_API_KEY") == "" {
-		cl = identityLinearClient(g, l.APIURL, team, token)
-	}
-	out, err := cl.Raw(ctx, body)
+	out, err := linear.New(l.APIURL, src).Raw(ctx, body)
 	if len(out) > 0 {
 		_, _ = stdout.Write(out)
 		if out[len(out)-1] != '\n' {

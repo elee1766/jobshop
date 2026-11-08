@@ -16,7 +16,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -197,10 +199,11 @@ func TestLiveActivityETag(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	l := &liveActivity{c: c, ghTok: "t", ghTokAt: time.Now()}
+	l := &liveActivity{c: c}
+	cl := github.New(srv.URL, apicall.Static("t"))
 	st := &repoPoll{}
 	// Point the host-token path at the fake.
-	items, err := l.fetchGitHub(t.Context(), srv.URL, "t", "o/r", st)
+	items, err := l.fetchGitHub(t.Context(), cl, "o/r", st)
 	require.NoError(t, err)
 	require.Len(t, items, 2)
 	assert.Equal(t, "comment", items[0].Kind)
@@ -208,7 +211,7 @@ func TestLiveActivityETag(t *testing.T) {
 	assert.Equal(t, "hi", items[0].Body)
 	assert.Equal(t, "ci", items[1].Kind)
 	assert.False(t, st.Next.IsZero())
-	items, err = l.fetchGitHub(t.Context(), srv.URL, "t", "o/r", st)
+	items, err = l.fetchGitHub(t.Context(), cl, "o/r", st)
 	require.NoError(t, err)
 	assert.Equal(t, "ci", items[0].Kind, "runs have no ETag here, events 304")
 	assert.Len(t, items, 1)

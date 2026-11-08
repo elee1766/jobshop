@@ -13,6 +13,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
+	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -40,12 +42,12 @@ type Host interface {
 	ApplyHookPlan(context.Context, string, Invocation) error
 	HookFailed(context.Context, string, Invocation)
 	HookApplied(context.Context, Invocation)
-	// GitHubToken returns the API base and a current token of the GitHub
-	// identity covering repo, for the github built-in.
-	GitHubToken(ctx context.Context, repo string) (api.Token, error)
-	// LinearToken returns the GraphQL endpoint and a current token of the
-	// Linear identity covering team, for the linear built-in.
-	LinearToken(ctx context.Context, team string) (api.Token, error)
+	// GitHubClient returns the shared client of the GitHub identity
+	// covering repo, for the github built-in.
+	GitHubClient(ctx context.Context, repo string) (*github.Client, error)
+	// LinearClient returns the shared client of the Linear identity
+	// covering team, for the linear built-in.
+	LinearClient(ctx context.Context, team string) (*linear.Client, error)
 	// ReadTickets serves tickets(), runs() and sessions().
 	ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, error)
 }

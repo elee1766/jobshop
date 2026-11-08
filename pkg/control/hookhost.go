@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -137,47 +138,27 @@ func (h hookHost) HookApplied(ctx context.Context, in hooks.Invocation) {
 	c.runBatchEvent(ctx, in.Run)
 }
 
-// GitHubToken serves the github built-in: the GitHub identity covering repo.
-// An empty repo takes the first github-token identity, since an App token
-// needs an owner. There is no fallback to the gh CLI.
-func (h hookHost) GitHubToken(ctx context.Context, repo string) (api.Token, error) {
-	c := h.c
-	cfg := c.config()
-	name, ok := "", false
+// GitHubClient serves the github built-in: the shared client of the GitHub
+// identity covering repo. An empty repo takes the first github-token
+// identity, since an App token needs an owner. There is no fallback to the
+// gh CLI.
+func (h hookHost) GitHubClient(_ context.Context, repo string) (*github.Client, error) {
+	cfg := h.c.config()
 	if repo != "" {
-		name, ok = cfg.IdentityFor(cfg.IdentityNames(), repo)
-		ok = ok && config.IsGitHub(cfg.Identities[name].Kind)
-	} else {
-		for _, n := range cfg.IdentityNames() {
-			if cfg.Identities[n].Kind == config.IdentityGitHubToken {
-				name, ok = n, true
-				break
-			}
+		return h.c.githubForRepo(cfg, "", repo)
+	}
+	for _, n := range cfg.IdentityNames() {
+		if id := cfg.Identities[n]; id.Kind == config.IdentityGitHubToken {
+			return h.c.githubFor(n, id, ""), nil
 		}
 	}
-	if !ok {
-		if repo == "" {
-			return api.Token{}, errors.New("no github-token identity answers a call without repo; pass repo=")
-		}
-		return api.Token{}, fmt.Errorf("no GitHub identity covers %s", repo)
-	}
-	id := cfg.Identities[name]
-	tok, err := c.minter.Token(ctx, name, id, repo)
-	if err != nil {
-		return api.Token{}, err
-	}
-	base := id.APIURL
-	if base == "" {
-		base = githubAPI
-	}
-	return api.Token{APIURL: base, Token: tok.Token}, nil
+	return nil, errors.New("no github-token identity answers a call without repo; pass repo=")
 }
 
-// LinearToken serves the linear built-in: the Linear identity covering team.
-// An empty team takes the only Linear identity.
-func (h hookHost) LinearToken(ctx context.Context, team string) (api.Token, error) {
-	c := h.c
-	cfg := c.config()
+// LinearClient serves the linear built-in: the shared client of the Linear
+// identity covering team. An empty team takes the only Linear identity.
+func (h hookHost) LinearClient(_ context.Context, team string) (*linear.Client, error) {
+	cfg := h.c.config()
 	var names []string
 	for _, n := range cfg.IdentityNames() {
 		id := cfg.Identities[n]
@@ -187,21 +168,13 @@ func (h hookHost) LinearToken(ctx context.Context, team string) (api.Token, erro
 	}
 	switch {
 	case len(names) == 0 && team == "":
-		return api.Token{}, errors.New("no Linear identity configured")
+		return nil, errors.New("no Linear identity configured")
 	case len(names) == 0:
-		return api.Token{}, fmt.Errorf("no Linear identity covers team %s", team)
+		return nil, fmt.Errorf("no Linear identity covers team %s", team)
 	case team == "" && len(names) > 1:
-		return api.Token{}, fmt.Errorf("%d Linear identities; pass team=", len(names))
+		return nil, fmt.Errorf("%d Linear identities; pass team=", len(names))
 	}
-	tok, err := c.minter.Token(ctx, names[0], cfg.Identities[names[0]], team)
-	if err != nil {
-		return api.Token{}, err
-	}
-	url := c.linearURL
-	if url == "" {
-		url = linear.DefaultAPIURL
-	}
-	return api.Token{APIURL: url, Token: tok.Token}, nil
+	return h.c.linearFor(names[0]), nil
 }
 
 func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]int64) bool {

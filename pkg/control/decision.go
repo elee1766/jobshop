@@ -1,12 +1,9 @@
 package control
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"maps"
 	"math"
 	"net/http"
@@ -16,10 +13,10 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Decisions (#603, docs/notes/603-decision-resolve.md). A planner
@@ -263,7 +260,7 @@ func (c *Controller) approveIssue(ctx context.Context, ref decisionRef, body str
 	if err := c.githubWrite(ctx, ref.Repo, http.MethodPost, base+"/labels", map[string]any{"labels": []string{targetLabel}}); err != nil {
 		return err
 	}
-	if err := c.githubWrite(ctx, ref.Repo, http.MethodDelete, base+"/labels/"+url.PathEscape(proposedLabel), nil); err != nil && !isNotFound(err) {
+	if err := c.githubWrite(ctx, ref.Repo, http.MethodDelete, base+"/labels/"+url.PathEscape(proposedLabel), nil); err != nil && !github.IsNotFound(err) {
 		return err
 	}
 	return c.githubWrite(ctx, ref.Repo, http.MethodPost, base+"/comments", map[string]any{"body": body})
@@ -282,7 +279,7 @@ func (c *Controller) rejectIssue(ctx context.Context, ref decisionRef, body stri
 }
 
 func (c *Controller) approveLinear(ctx context.Context, key, body string) error {
-	cl, err := c.linearClient(ctx, key)
+	cl, err := c.linearClient(key)
 	if err != nil {
 		return err
 	}
@@ -311,7 +308,7 @@ func (c *Controller) approveLinear(ctx context.Context, key, body string) error 
 }
 
 func (c *Controller) rejectLinear(ctx context.Context, key, body string) error {
-	cl, err := c.linearClient(ctx, key)
+	cl, err := c.linearClient(key)
 	if err != nil {
 		return err
 	}
@@ -346,52 +343,11 @@ func (c *Controller) linearIntakeState(key string) string {
 	return "Todo"
 }
 
-type githubStatusError struct {
-	status int
-	msg    string
-}
-
-func (e githubStatusError) Error() string { return e.msg }
-
-func isNotFound(err error) bool {
-	var ge githubStatusError
-	return errors.As(err, &ge) && ge.status == http.StatusNotFound
-}
-
 // githubWrite calls the GitHub REST API as the identity covering repo,
-// else the host's gh token (pollerAuth).
+// else the host's gh token.
 func (c *Controller) githubWrite(ctx context.Context, repo, method, path string, body any) error {
-	base, tok, err := c.pollerAuth(ctx, c.config(), "", repo)
-	if err != nil {
-		return fmt.Errorf("github auth for %s: %w", repo, err)
-	}
-	var rd io.Reader
-	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		rd = bytes.NewReader(b)
-	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/repos/{repo}"), method, base+path, rd)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("Authorization", "Bearer "+tok)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	resp, err := githubHTTP.Do(req)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-	if resp.StatusCode/100 != 2 {
-		return githubStatusError{resp.StatusCode, fmt.Sprintf("github %s %s: %s: %s", method, path, resp.Status, strings.TrimSpace(string(b)))}
-	}
-	return nil
+	_, err := c.githubOrHost(c.config(), "", repo).Do(ctx, github.Request{Method: method, Path: path, Body: body, Route: "/repos/{repo}"})
+	return err
 }

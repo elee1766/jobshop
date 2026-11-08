@@ -56,28 +56,34 @@ func (l *linearCmd) client(g *Globals, key string) (*linear.Client, context.Cont
 	if !ok {
 		return nil, nil, nil, fmt.Errorf("%q is not a Linear issue key like ENG-123", key)
 	}
-	var r rpc.IdentityTokenResult
-	if err := g.call(rpc.MethodIdentityToken, rpc.IdentityParams{Target: team}, &r); err != nil {
-		return nil, nil, nil, err
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	return identityLinearClient(g, l.APIURL, team, r.Token), ctx, cancel, nil
+	return linear.New(l.APIURL, &controllerToken{g: g, team: team}), ctx, cancel, nil
 }
 
-// identityLinearClient is a Linear client for token. When Linear refuses
-// it, the client asks the controller for a renewed one, naming the refused
-// token, and resends once (#866): the controller's cache can hold a token
-// that another mint for the same Linear app revoked.
-func identityLinearClient(g *Globals, url, team, token string) *linear.Client {
-	cl := linear.New(url, token)
-	cl.Renew = func(context.Context) (string, error) {
-		var r rpc.IdentityTokenResult
-		if err := g.call(rpc.MethodIdentityToken, rpc.IdentityParams{Target: team, Stale: cl.Token}, &r); err != nil {
-			return "", err
-		}
-		return r.Token, nil
+// controllerToken is the token of the identity covering team, asked of the
+// controller once per command. When Linear refuses it, Renew names the
+// refused token so the controller mints past it (#866): its cache can hold
+// a token that another mint for the same Linear app revoked.
+type controllerToken struct {
+	g    *Globals
+	team string
+	tok  string
+}
+
+func (t *controllerToken) Token(ctx context.Context) (string, error) {
+	if t.tok != "" {
+		return t.tok, nil
 	}
-	return cl
+	return t.Renew(ctx, "")
+}
+
+func (t *controllerToken) Renew(_ context.Context, stale string) (string, error) {
+	var r rpc.IdentityTokenResult
+	if err := t.g.call(rpc.MethodIdentityToken, rpc.IdentityParams{Target: t.team, Stale: stale}, &r); err != nil {
+		return "", fmt.Errorf("identity for %s: %w", t.team, err)
+	}
+	t.tok = r.Token
+	return r.Token, nil
 }
 
 func (c linearIssueCmd) Run(g *Globals, l *linearCmd) error {

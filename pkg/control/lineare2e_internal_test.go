@@ -185,7 +185,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	f.mu.Unlock()
 	assert.True(t, strings.HasPrefix(body, "https://linear.app/acme/profiles/wile "), body)
 
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c, url: c.linearURL}}
+	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
 	c.pollSubscriptions(ctx, src)
 	clk.advance(time.Minute)
 	f.reply(askID, "yes, keep it", "Wile", clk.now())

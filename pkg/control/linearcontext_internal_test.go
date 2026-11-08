@@ -52,7 +52,7 @@ func TestLinearCommentContext(t *testing.T) {
 	_, _, err = c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
 
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c, url: c.linearURL}}
+	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
 	c.pollSubscriptions(ctx, src) // follows ENG-5 at 08:00
 	clk.advance(10 * time.Minute)
 	c.pollSubscriptions(ctx, src)

@@ -1,6 +1,8 @@
 package control
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,9 +13,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/identity"
 )
 
-// LinearToken picks the Linear identity covering the team, reads its key
-// per call, and needs team= when more than one Linear identity exists.
-func TestHookLinearToken(t *testing.T) {
+// LinearClient picks the Linear identity covering the team, shares one
+// client per identity, reads its key per request, and needs team= when
+// more than one Linear identity exists.
+func TestHookLinearClient(t *testing.T) {
 	c, _, dir := scanControllerYAML(t, `projects: {js: {}}
 agents: {fake: {command: /bin/false}}
 identities:
@@ -22,21 +25,34 @@ identities:
 `)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "eng"), []byte("lin_api_eng\n"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "ops"), []byte("lin_api_ops\n"), 0o600))
-	c.minter, c.linearURL = identity.NewMinter(), "http://linear.test/graphql"
+	var auth []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = append(auth, r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":{"viewer":{"id":"u","name":"bot"}}}`))
+	}))
+	t.Cleanup(srv.Close)
+	c.minter, c.linearURL = identity.NewMinter(), srv.URL
 	host := hookHost{c}
 
-	tok, err := host.LinearToken(t.Context(), "OPS")
+	ops, err := host.LinearClient(t.Context(), "OPS")
 	require.NoError(t, err)
-	assert.Equal(t, "lin_api_ops", tok.Token)
-	assert.Equal(t, "http://linear.test/graphql", tok.APIURL)
+	_, err = ops.Viewer(t.Context())
+	require.NoError(t, err)
+	eng, err := host.LinearClient(t.Context(), "ENG")
+	require.NoError(t, err)
+	assert.NotSame(t, ops, eng)
+	again, err := host.LinearClient(t.Context(), "ENG")
+	require.NoError(t, err)
+	assert.Same(t, eng, again, "one client per identity")
+	assert.Same(t, eng, c.linearFor("eng"), "the controller's own callers share it")
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "eng"), []byte("lin_api_rotated\n"), 0o600))
-	tok, err = host.LinearToken(t.Context(), "ENG")
+	_, err = eng.Viewer(t.Context())
 	require.NoError(t, err)
-	assert.Equal(t, "lin_api_rotated", tok.Token, "key read per call")
+	assert.Equal(t, []string{"lin_api_ops", "lin_api_rotated"}, auth, "key read per request")
 
-	_, err = host.LinearToken(t.Context(), "")
+	_, err = host.LinearClient(t.Context(), "")
 	require.ErrorContains(t, err, "pass team=")
-	_, err = host.LinearToken(t.Context(), "SALES")
+	_, err = host.LinearClient(t.Context(), "SALES")
 	require.ErrorContains(t, err, "no Linear identity covers team SALES")
 }

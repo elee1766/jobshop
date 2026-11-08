@@ -35,7 +35,7 @@ func (c *Client) OpenAgentSessions(ctx context.Context) ([]AgentSession, error) 
 		} `json:"agentSessions"`
 	}
 	const q = `query { viewer { id } agentSessions(first: 100, orderBy: updatedAt) { nodes { id status appUser { id } issue { identifier team { id key } } } } }`
-	if err := c.do(ctx, q, nil, &r); err != nil {
+	if err := c.GraphQL(ctx, q, nil, &r); err != nil {
 		return nil, err
 	}
 	var out []AgentSession
@@ -60,5 +60,5 @@ func (c *Client) EndAgentSession(ctx context.Context, id, body string) error {
 		} `json:"agentActivityCreate"`
 	}
 	const m = `mutation($s: String!, $content: JSONObject!) { agentActivityCreate(input: {agentSessionId: $s, content: $content}) { success } }`
-	return c.do(ctx, m, map[string]any{"s": id, "content": map[string]any{"type": "response", "body": body}}, &r)
+	return c.GraphQL(ctx, m, map[string]any{"s": id, "content": map[string]any{"type": "response", "body": body}}, &r)
 }

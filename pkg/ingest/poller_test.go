@@ -1,7 +1,6 @@
 package ingest
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,7 +12,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -70,9 +71,9 @@ func pollFixture(t *testing.T) (*Poller, *fakeGitHub, *sqlite.Store, *time.Time)
 	t.Cleanup(srv.Close)
 	now := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 	p := &Poller{
-		Name: "gh-poll", Events: config.PollerEvents, HTTP: srv.Client(), Store: st,
-		Now:  func() time.Time { return now },
-		Auth: func(context.Context, string) (string, string, error) { return srv.URL, "tok", nil },
+		Name: "gh-poll", Events: config.PollerEvents, Store: st,
+		Now:    func() time.Time { return now },
+		Client: func(string) (*github.Client, error) { return github.New(srv.URL, apicall.Static("tok")), nil },
 	}
 	return p, fk, st, &now
 }

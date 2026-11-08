@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -64,9 +66,10 @@ func TestLiveActivityApp(t *testing.T) {
 	}))
 	defer srv.Close()
 	l := &liveActivity{c: c}
+	cl := github.New(srv.URL, apicall.Static("ghs_x"))
 	st := &repoPoll{}
 
-	items, err := l.fetchGitHub(t.Context(), srv.URL, "ghs_x", "o/r", st)
+	items, err := l.fetchGitHub(t.Context(), cl, "o/r", st)
 	require.ErrorContains(t, err, "review_comments", "the refused endpoint is reported")
 	assert.Zero(t, events, "events are not read for an installation token")
 	byID := map[string]rpc.ActivityItem{}
@@ -88,7 +91,7 @@ func TestLiveActivityApp(t *testing.T) {
 	assert.Equal(t, "commit abcdef0: fix: x", byID["gh:o/r:commit:abcdef0123456"].Title)
 
 	// Second poll: every endpoint with an ETag answers 304 and adds nothing.
-	items, err = l.fetchGitHub(t.Context(), srv.URL, "ghs_x", "o/r", st)
+	items, err = l.fetchGitHub(t.Context(), cl, "o/r", st)
 	require.ErrorContains(t, err, "review_comments")
 	assert.Empty(t, items)
 	assert.Equal(t, []string{"", `W/"/pulls"`}, inm["/pulls"])

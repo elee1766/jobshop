@@ -185,7 +185,7 @@ func (c *Controller) pollSubscriptions(ctx context.Context, src threadSource) {
 func (c *Controller) pollSubscriptionThread(ctx context.Context, th thread) {
 	src := c.subSource
 	if src == nil {
-		src = muxSource{gh: ghSource{}, linear: linearSource{c: c, url: c.linearURL}}
+		src = muxSource{gh: ghSource{}, linear: linearSource{c: c}}
 	}
 	c.pollThreads(ctx, src, th.key())
 }
@@ -720,8 +720,7 @@ func (m muxSource) Comments(ctx context.Context, th thread, since time.Time) ([]
 // its team (#200). Comments by that identity's own user are jobshop's
 // sessions talking, so they count as bot comments: seen, not delivered.
 type linearSource struct {
-	c   *Controller
-	url string // "" is linear.DefaultAPIURL; tests set a fake
+	c *Controller
 }
 
 func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) ([]ghComment, error) {
@@ -734,13 +733,9 @@ func (s linearSource) Comments(ctx context.Context, th thread, since time.Time) 
 	if !ok {
 		return nil, fmt.Errorf("linear: no identity covers team %s", team)
 	}
-	tok, err := s.c.minter.Token(ctx, name, cfg.Identities[name], team)
-	if err != nil {
-		return nil, err
-	}
+	cl := s.c.linearFor(name)
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	cl := s.c.newLinear(s.url, name, cfg.Identities[name], team, tok.Token)
 	is, err := cl.GetIssue(ctx, th.Linear)
 	if err != nil {
 		return nil, err

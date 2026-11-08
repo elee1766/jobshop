@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -34,22 +35,27 @@ func Team(key string) (string, bool) {
 	return m[1], true
 }
 
-// Client calls the Linear API with one API key.
+// Client calls the Linear API as one identity. It asks Auth for the token
+// on every request and holds no per-call state, so one Client serves every
+// caller of that identity.
 type Client struct {
-	URL   string
-	Token string
-	HTTP  *http.Client
-	// Renew, if set, returns a replacement token after a 401. Linear
-	// revokes an app's tokens when another mint asks for different scopes.
-	Renew func(ctx context.Context) (string, error)
+	URL  string
+	Auth apicall.Source
+	HTTP *http.Client
 }
 
-// New returns a client for token. url "" is DefaultAPIURL.
-func New(url, token string) *Client {
+// maxBody bounds a response body.
+const maxBody = 4 << 20
+
+// New returns a client for auth. url "" is DefaultAPIURL. The API never
+// redirects; following one would resend the token elsewhere.
+func New(url string, auth apicall.Source) *Client {
 	if url == "" {
 		url = DefaultAPIURL
 	}
-	return &Client{URL: url, Token: token, HTTP: telemetry.HTTPClient("linear", 30*time.Second)}
+	hc := telemetry.HTTPClient("linear", 30*time.Second)
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &Client{URL: url, Auth: auth, HTTP: hc}
 }
 
 // Issue is the part of a Linear issue the prompts need.
@@ -158,7 +164,7 @@ func (c *Client) Viewer(ctx context.Context) (Viewer, error) {
 	var r struct {
 		Viewer Viewer `json:"viewer"`
 	}
-	if err := c.do(ctx, `query { viewer { id name app } }`, nil, &r); err != nil {
+	if err := c.GraphQL(ctx, `query { viewer { id name app } }`, nil, &r); err != nil {
 		return Viewer{}, err
 	}
 	if r.Viewer.ID == "" {
@@ -178,7 +184,7 @@ func (c *Client) Me(ctx context.Context) (user, org string, err error) {
 			} `json:"organization"`
 		} `json:"viewer"`
 	}
-	if err := c.do(ctx, `query { viewer { id organization { id } } }`, nil, &r); err != nil {
+	if err := c.GraphQL(ctx, `query { viewer { id organization { id } } }`, nil, &r); err != nil {
 		return "", "", err
 	}
 	if r.Viewer.ID == "" || r.Viewer.Organization.ID == "" {
@@ -187,7 +193,10 @@ func (c *Client) Me(ctx context.Context) (user, org string, err error) {
 	return r.Viewer.ID, r.Viewer.Organization.ID, nil
 }
 
-func (c *Client) do(ctx context.Context, query string, vars map[string]any, out any) error {
+// GraphQL runs query with vars and decodes data into out (a
+// *json.RawMessage keeps it as sent). A transport error, a non-200 status
+// or a response with errors is an error carrying Linear's messages.
+func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any, out any) error {
 	b, err := json.Marshal(map[string]any{"query": query, "variables": vars})
 	if err != nil {
 		return err
@@ -218,39 +227,51 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 	return json.Unmarshal(r.Data, out)
 }
 
-// post sends one GraphQL request body and reads the response.
+// post sends one GraphQL request body and reads the response. On a 401 it
+// asks Auth to renew the refused token and resends once: Linear revokes an
+// app's tokens when another mint asks for different scopes.
 func (c *Client) post(ctx context.Context, b []byte) (*http.Response, []byte, error) {
-	resp, body, err := c.send(ctx, b)
-	if err != nil || resp.StatusCode != http.StatusUnauthorized || c.Renew == nil {
-		return resp, body, err
-	}
-	tok, err := c.Renew(ctx)
+	tok, err := c.Auth.Token(ctx)
 	if err != nil {
-		return resp, body, nil
+		return nil, nil, fmt.Errorf("linear: %w", err)
 	}
-	c.Token = tok
-	return c.send(ctx, b)
+	resp, body, err := c.send(ctx, tok, b)
+	if err == nil && resp.StatusCode == http.StatusUnauthorized {
+		if fresh, rerr := c.Auth.Renew(ctx, tok); rerr == nil && fresh != tok {
+			resp, body, err = c.send(ctx, fresh, b)
+		}
+	}
+	if err == nil {
+		apicall.Received(ctx)
+	}
+	return resp, body, err
 }
 
-func (c *Client) send(ctx context.Context, b []byte) (*http.Response, []byte, error) {
+func (c *Client) send(ctx context.Context, tok string, b []byte) (*http.Response, []byte, error) {
+	ctx, cancel := apicall.Request(ctx)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(b))
 	if err != nil {
 		return nil, nil, err
 	}
 	// Personal API keys (lin_api_...) go in Authorization as they are;
 	// OAuth tokens, such as a linear-app identity's (#278), need Bearer.
-	auth := c.Token
+	auth := tok
 	if !strings.HasPrefix(auth, "lin_api_") && !strings.HasPrefix(auth, "Bearer ") {
 		auth = "Bearer " + auth
 	}
 	req.Header.Set("Authorization", auth)
 	req.Header.Set("Content-Type", "application/json")
+	apicall.Sending(ctx, tok)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+	if err == nil && len(body) > maxBody {
+		err = fmt.Errorf("linear: response over %d bytes", maxBody)
+	}
 	return resp, body, err
 }
 
@@ -297,7 +318,7 @@ func (c *Client) GetIssue(ctx context.Context, key string) (Issue, error) {
 			} `json:"comments"`
 		} `json:"issue"`
 	}
-	if err := c.do(ctx, issueQuery, map[string]any{"id": key}, &r); err != nil {
+	if err := c.GraphQL(ctx, issueQuery, map[string]any{"id": key}, &r); err != nil {
 		return Issue{}, err
 	}
 	if r.Issue == nil {
@@ -333,7 +354,7 @@ func (c *Client) AddComment(ctx context.Context, key, body string) error {
 			Success bool `json:"success"`
 		} `json:"commentCreate"`
 	}
-	if err := c.do(ctx, commentMutation, map[string]any{"input": map[string]any{"issueId": is.ID, "body": body}}, &r); err != nil {
+	if err := c.GraphQL(ctx, commentMutation, map[string]any{"input": map[string]any{"issueId": is.ID, "body": body}}, &r); err != nil {
 		return err
 	}
 	if !r.CommentCreate.Success {
@@ -390,7 +411,7 @@ func (c *Client) SetState(ctx context.Context, key, name string) (State, error) 
 			Success bool `json:"success"`
 		} `json:"issueUpdate"`
 	}
-	if err := c.do(ctx, updateMutation, map[string]any{"id": is.ID, "input": map[string]any{"stateId": st.ID}}, &ur); err != nil {
+	if err := c.GraphQL(ctx, updateMutation, map[string]any{"id": is.ID, "input": map[string]any{"stateId": st.ID}}, &ur); err != nil {
 		return State{}, err
 	}
 	if !ur.IssueUpdate.Success {
@@ -471,7 +492,7 @@ func (c *Client) Changes(ctx context.Context, team string, since time.Time) ([]C
 		} `json:"issues"`
 	}
 	vars := map[string]any{"team": team, "since": since.UTC().Format(time.RFC3339Nano)}
-	if err := c.do(ctx, activityQuery, vars, &r); err != nil {
+	if err := c.GraphQL(ctx, activityQuery, vars, &r); err != nil {
 		return nil, err
 	}
 	who := func(a *actor) (string, bool, bool) {
@@ -549,7 +570,7 @@ func (c *Client) AddLabel(ctx context.Context, key, name string) error {
 			} `json:"nodes"`
 		} `json:"issueLabels"`
 	}
-	if err := c.do(ctx, labelsQuery, map[string]any{"name": name}, &lr); err != nil {
+	if err := c.GraphQL(ctx, labelsQuery, map[string]any{"name": name}, &lr); err != nil {
 		return err
 	}
 	id := ""
@@ -566,7 +587,7 @@ func (c *Client) AddLabel(ctx context.Context, key, name string) error {
 				IssueLabel TeamID `json:"issueLabel"`
 			} `json:"issueLabelCreate"`
 		}
-		if err := c.do(ctx, labelCreateMutation, map[string]any{"input": map[string]any{"name": name, "teamId": is.Team.ID}}, &cr); err != nil {
+		if err := c.GraphQL(ctx, labelCreateMutation, map[string]any{"input": map[string]any{"name": name, "teamId": is.Team.ID}}, &cr); err != nil {
 			return err
 		}
 		if !cr.IssueLabelCreate.Success || cr.IssueLabelCreate.IssueLabel.ID == "" {
@@ -579,7 +600,7 @@ func (c *Client) AddLabel(ctx context.Context, key, name string) error {
 			Success bool `json:"success"`
 		} `json:"issueAddLabel"`
 	}
-	if err := c.do(ctx, addLabelMutation, map[string]any{"id": is.ID, "labelId": id}, &ar); err != nil {
+	if err := c.GraphQL(ctx, addLabelMutation, map[string]any{"id": is.ID, "labelId": id}, &ar); err != nil {
 		return err
 	}
 	if !ar.IssueAddLabel.Success {
@@ -603,7 +624,7 @@ func (c *Client) RemoveLabel(ctx context.Context, key, name string) error {
 			} `json:"labels"`
 		} `json:"issue"`
 	}
-	if err := c.do(ctx, issueLabelsQuery, map[string]any{"id": key}, &r); err != nil {
+	if err := c.GraphQL(ctx, issueLabelsQuery, map[string]any{"id": key}, &r); err != nil {
 		return err
 	}
 	if r.Issue == nil {
@@ -618,7 +639,7 @@ func (c *Client) RemoveLabel(ctx context.Context, key, name string) error {
 				Success bool `json:"success"`
 			} `json:"issueRemoveLabel"`
 		}
-		if err := c.do(ctx, removeLabelMutation, map[string]any{"id": r.Issue.ID, "labelId": l.ID}, &rr); err != nil {
+		if err := c.GraphQL(ctx, removeLabelMutation, map[string]any{"id": r.Issue.ID, "labelId": l.ID}, &rr); err != nil {
 			return err
 		}
 		if !rr.IssueRemoveLabel.Success {

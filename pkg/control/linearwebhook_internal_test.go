@@ -266,7 +266,7 @@ func TestLinearWebhookComment(t *testing.T) {
 	askID, _ := f.ask.comments[0]["id"].(string)
 	f.ask.mu.Unlock()
 	// The pump registers the thread; then the reply arrives by webhook.
-	c.subSource = muxSource{gh: &fakeThreads{}, linear: linearSource{c: c, url: c.linearURL}}
+	c.subSource = muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
 	c.pollSubscriptions(ctx, c.subSource)
 	clk.advance(time.Minute)
 	f.ask.reply(askID, "yes", "Wile", clk.now())

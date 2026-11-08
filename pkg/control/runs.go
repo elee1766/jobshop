@@ -52,7 +52,7 @@ func (c *Controller) eligibleRun(ctx context.Context, p rpc.RunStartParams) erro
 			return nil
 		}
 	}
-	cl, err := c.linearClient(ctx, key)
+	cl, err := c.linearClient(key)
 	if err != nil {
 		return fmt.Errorf("%w: intake gate for %s: %w (--force skips the gate)", store.ErrInvalid, key, err)
 	}

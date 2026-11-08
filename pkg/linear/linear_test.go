@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/linear"
 )
 
@@ -60,7 +61,7 @@ func fake(t *testing.T) (*httptest.Server, *[]call) {
 
 func TestIssueCommentState(t *testing.T) {
 	srv, calls := fake(t)
-	c := linear.New(srv.URL, "lin_api_x")
+	c := linear.New(srv.URL, apicall.Static("lin_api_x"))
 	ctx := t.Context()
 
 	is, err := c.GetIssue(ctx, "ENG-123")
@@ -118,7 +119,7 @@ func TestChanges(t *testing.T) {
 	}))
 	defer srv.Close()
 	since, _ := time.Parse(time.RFC3339, "2026-11-02T00:00:00Z")
-	chs, err := linear.New(srv.URL, "lin_api_x").Changes(t.Context(), "ENG", since)
+	chs, err := linear.New(srv.URL, apicall.Static("lin_api_x")).Changes(t.Context(), "ENG", since)
 	require.NoError(t, err)
 	assert.Equal(t, "ENG", got.Variables["team"])
 	assert.Equal(t, "2026-11-02T00:00:00Z", got.Variables["since"])
@@ -148,16 +149,30 @@ func TestRenewAfter401(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cl := linear.New(srv.URL, "revoked")
+	cl := linear.New(srv.URL, apicall.Static("revoked"))
 	_, err := cl.GetIssue(t.Context(), "ENG-123")
 	require.ErrorContains(t, err, "Authentication required")
 
-	renews := 0
-	cl.Renew = func(context.Context) (string, error) { renews++; return "fresh", nil }
+	src := &renewing{tok: "revoked"}
+	cl = linear.New(srv.URL, src)
 	is, err := cl.GetIssue(t.Context(), "ENG-123")
 	require.NoError(t, err)
 	assert.Equal(t, "ENG-123", is.Identifier)
 	_, err = cl.GetIssue(t.Context(), "ENG-123")
 	require.NoError(t, err)
-	assert.Equal(t, 1, renews)
+	assert.Equal(t, []string{"revoked"}, src.stale, "renewed once, naming the refused token")
+}
+
+// renewing is a source whose token is refused until renewed.
+type renewing struct {
+	tok   string
+	stale []string
+}
+
+func (r *renewing) Token(context.Context) (string, error) { return r.tok, nil }
+
+func (r *renewing) Renew(_ context.Context, stale string) (string, error) {
+	r.stale = append(r.stale, stale)
+	r.tok = "fresh"
+	return r.tok, nil
 }

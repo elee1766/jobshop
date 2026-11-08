@@ -2,16 +2,12 @@ package control
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/telemetry"
 )
-
-// pollerHTTP is the client for ingest pollers.
-var pollerHTTP = telemetry.HTTPClient("poller", time.Minute)
 
 // pumpPollers runs each ingest.pollers entry (#341) on its interval
 // until the controller stops. It wakes at the shortest interval and polls
@@ -44,9 +40,9 @@ func (c *Controller) pumpPollers() {
 // does not stop the others.
 func (c *Controller) pollOnce(ctx context.Context, cfg *config.Config, pc config.IngestPoller) {
 	p := &ingest.Poller{
-		Name: pc.Name, Events: pc.EventSet(), HTTP: pollerHTTP, Store: c.store, Now: c.now,
-		Auth: func(ctx context.Context, repo string) (string, string, error) {
-			return c.pollerAuth(ctx, cfg, pc.Identity, repo)
+		Name: pc.Name, Events: pc.EventSet(), Store: c.store, Now: c.now,
+		Client: func(repo string) (*github.Client, error) {
+			return c.githubOrHost(cfg, pc.Identity, repo), nil
 		},
 	}
 	for _, repo := range pc.Repos {
@@ -62,26 +58,4 @@ func (c *Controller) pollOnce(ctx context.Context, cfg *config.Config, pc config
 			c.log.InfoContext(ctx, "ingest poller", "poller", pc.Name, "repo", repo, "items", res.Items, "fresh", res.Fresh)
 		}
 	}
-}
-
-// pollerAuth returns the API base and token: the named identity, else the
-// identity covering repo, else the host's gh token (as activity does).
-func (c *Controller) pollerAuth(ctx context.Context, cfg *config.Config, name, repo string) (string, string, error) {
-	if name == "" {
-		name, _ = cfg.IdentityFor(cfg.IdentityNames(), repo)
-	}
-	if name == "" {
-		l := &liveActivity{c: c}
-		return l.githubAuth(ctx, repo)
-	}
-	id := cfg.Identities[name]
-	tok, err := c.minter.Token(ctx, name, id, repo)
-	if err != nil {
-		return "", "", err
-	}
-	base := id.APIURL
-	if base == "" {
-		base = githubAPI
-	}
-	return strings.TrimRight(base, "/"), tok.Token, nil
 }

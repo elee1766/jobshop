@@ -39,10 +39,10 @@ func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (ma
 	secrets := []string{}
 	options.Limits.Steps = cfg.Automation.MaxSteps
 	if cfg.Automation.GitHub {
-		options.GitHub = hookGitHubToken
+		options.GitHub = hookGitHubClient
 	}
 	if cfg.Automation.Linear {
-		options.Linear = hookLinearToken
+		options.Linear = hookLinearClient
 	}
 	options.Tickets, options.Now = hookTickets, hookNow
 	options.Limits.OutputBytes = cfg.Automation.OutputBytes

@@ -244,6 +244,8 @@ type Controller struct {
 	// linearURL is the Linear GraphQL endpoint for identity check; "" is
 	// linear.DefaultAPIURL (tests set a fake).
 	linearURL string
+	// clients are the shared API clients, one per identity.
+	clients apiClients
 	// ghIssueOpen, when set, replaces the GitHub issue state read of the
 	// intake dependency check (JOB-68; tests).
 	ghIssueOpen func(context.Context, linear.GitHubDep) (bool, error)

@@ -4,13 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"regexp"
-	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/github"
 )
 
 // Reconcile asks GitHub to redeliver App webhook deliveries that failed
@@ -19,10 +16,8 @@ import (
 // a deliveries API reachable with the App's JWT, so this is off for
 // github-token identities.
 type Reconcile struct {
-	HTTP   *http.Client
-	APIURL string // https://api.github.com when empty
-	// JWT returns a fresh App JWT.
-	JWT func() (string, error)
+	// Client is the App's client, authenticated with its JWT.
+	Client *github.Client
 	// Max bounds redeliveries per pass; 0 is DefaultReconcileMax.
 	Max int
 }
@@ -57,7 +52,7 @@ func (r *Reconcile) Pass(ctx context.Context, since time.Time) (ReconcileResult,
 	var res ReconcileResult
 	byGUID := map[string][]HookDelivery{}
 	var order []string
-	u := r.base() + "/app/hook/deliveries?per_page=100"
+	u := "/app/hook/deliveries?per_page=100"
 	for u != "" {
 		var page []HookDelivery
 		next, err := r.do(ctx, http.MethodGet, u, &page)
@@ -104,7 +99,7 @@ func (r *Reconcile) Pass(ctx context.Context, since time.Time) (ReconcileResult,
 		if res.Redelivered >= limit {
 			continue
 		}
-		if _, err := r.do(ctx, http.MethodPost, fmt.Sprintf("%s/app/hook/deliveries/%d/attempts", r.base(), last.ID), nil); err != nil {
+		if _, err := r.do(ctx, http.MethodPost, fmt.Sprintf("/app/hook/deliveries/%d/attempts", last.ID), nil); err != nil {
 			return res, fmt.Errorf("redeliver %s: %w", last.GUID, err)
 		}
 		res.Redelivered++
@@ -112,50 +107,17 @@ func (r *Reconcile) Pass(ctx context.Context, since time.Time) (ReconcileResult,
 	return res, nil
 }
 
-func (r *Reconcile) base() string {
-	if r.APIURL == "" {
-		return "https://api.github.com"
-	}
-	return strings.TrimRight(r.APIURL, "/")
-}
-
-var linkNext = regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
-
 // do sends one request and decodes a JSON body into out (if non-nil).
 // It returns the Link rel="next" URL.
 func (r *Reconcile) do(ctx context.Context, method, u string, out any) (string, error) {
-	jwt, err := r.JWT()
+	resp, err := r.Client.Do(ctx, github.Request{Method: method, Path: u, Route: "/app/hook/deliveries", MaxBody: 8 << 20})
 	if err != nil {
 		return "", err
-	}
-	req, err := http.NewRequestWithContext(telemetry.WithRoute(ctx, "/app/hook/deliveries"), method, u, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Authorization", "Bearer "+jwt)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	hc := r.HTTP
-	if hc == nil {
-		hc = telemetry.HTTPClient("github", 30*time.Second)
-	}
-	resp, err := hc.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if resp.StatusCode/100 != 2 {
-		return "", fmt.Errorf("%s %s: %s: %s", method, u, resp.Status, strings.TrimSpace(string(body)))
 	}
 	if out != nil {
-		if err := json.Unmarshal(body, out); err != nil {
+		if err := json.Unmarshal(resp.Body, out); err != nil {
 			return "", fmt.Errorf("%s %s: %w", method, u, err)
 		}
 	}
-	next := ""
-	if m := linkNext.FindStringSubmatch(resp.Header.Get("Link")); m != nil {
-		next = m[1]
-	}
-	return next, nil
+	return resp.Next(), nil
 }
