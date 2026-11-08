@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/elee1766/jobshop/compare/v0.9.0...v0.9.1) (2026-11-08)
+
+
+### Bug fixes
+
+* **packs/github:** planner checks for a finished run before run start ([#1010](https://github.com/elee1766/jobshop/issues/1010)) ([#1011](https://github.com/elee1766/jobshop/issues/1011)) ([30a4c73](https://github.com/elee1766/jobshop/commit/30a4c73efb11fc646e7f8051401813709fe8c5bf))
+
 ## [0.9.0](https://github.com/elee1766/jobshop/compare/v0.8.26...v0.9.0) (2026-11-08)
 
 
