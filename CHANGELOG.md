@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.5](https://github.com/elee1766/jobshop/compare/v0.9.4...v0.9.5) (2026-11-08)
+
+
+### Features
+
+* **desk:** link PRs a run's steps record in the in-flight table (JOB-131) ([#1032](https://github.com/elee1766/jobshop/issues/1032)) ([4fb6b43](https://github.com/elee1766/jobshop/commit/4fb6b43bac97abf84e9cc673a3ce9f693f621087))
+
 ## [0.9.4](https://github.com/elee1766/jobshop/compare/v0.9.3...v0.9.4) (2026-11-08)
 
 
