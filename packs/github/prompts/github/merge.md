@@ -13,7 +13,10 @@ contributor docs name them, e.g. a linter) on the PR head in your
 worktree. `gh pr checkout` fails or stays on an old head in a detached
 worktree: run `git fetch origin pull/<n>/head && git checkout --detach
 FETCH_HEAD`, then, as a separate command, confirm `git rev-parse HEAD`
-equals the PR's `headRefOid`. Then run `{{.check_cmd}}`. A failure, a lint finding, or a new
+equals the PR's `headRefOid`. A CLEAN PR can still break on master (an
+API it uses changed with no file overlap), so then `git fetch origin &&
+git merge --no-edit origin/master` (a conflict is case 2) and run
+`{{.check_cmd}}` on that merge. A failure, a lint finding, or a new
 `//nolint` or relaxed linter config without a reason in the PR body is
 case 4: put the exact output in your findings. You do not fix code
 yourself.
