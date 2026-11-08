@@ -59,8 +59,11 @@ jobs:
           mkdir -p "$RUNNER_TEMP/vl"
           cd "$RUNNER_TEMP/vl"
           f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
-          curl -fsSLO "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
+          # The release host returns 504 now and then (master went red on
+          # it twice): retry every error, including HTTP ones, for ~10 min.
+          get() { curl -fsSLO --retry 20 --retry-all-errors --retry-delay 10 --retry-max-time 600 "$1"; }
+          get "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
+          get "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
           grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
           tar xzf "$f"
           bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
