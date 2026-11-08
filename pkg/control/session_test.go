@@ -1587,6 +1587,15 @@ func TestLoadFallback(t *testing.T) {
 
 			require.NoError(t, os.WriteFile(filepath.Join(root.Dir, marker), nil, 0o600))
 			if name == "nojournal" {
+				// The agent closes the ticket mid-turn and the journal is
+				// indexed when the turn ends (afterTurn): wait for the
+				// record before deleting the file, or there is nothing to
+				// summarize from (#1024).
+				passEventually(t, root.Dir, func() bool {
+					var hits []store.RecallHit
+					err := admin.Call(t.Context(), rpc.MethodRecall, rpc.RecallParams{Query: "first-ticket-title", Kind: "journal"}, &hits)
+					return err == nil && slices.ContainsFunc(hits, func(h store.RecallHit) bool { return h.Ref == id })
+				}, "journal indexed for recall")
 				require.NoError(t, os.Remove(filepath.Join(sdir, host.JournalFile)))
 			}
 			require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionRestart, rpc.SessionRestartParams{ID: id}, nil))
