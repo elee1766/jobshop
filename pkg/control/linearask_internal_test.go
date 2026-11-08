@@ -19,6 +19,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -151,7 +152,7 @@ func TestLinearQuestion(t *testing.T) {
 
 	// The session's ticket follows ENG-5; the reply comes through
 	// subscriptions.
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
+	src := threads.Mux{GH: &fakeThreads{}, Linear: c.threadEngine().LinearSource()}
 	c.pollSubscriptions(ctx, src)
 	clk.advance(time.Minute)
 	f.reply("other", "unrelated note", "Ann", clk.now())
@@ -271,7 +272,7 @@ func TestLinearAskOff(t *testing.T) {
 	_, ok := linearsvc.AskOf(got)
 	assert.False(t, ok, "escalation stays on Desk")
 
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
+	src := threads.Mux{GH: &fakeThreads{}, Linear: c.threadEngine().LinearSource()}
 	c.pollSubscriptions(ctx, src)
 	clk.advance(time.Minute)
 	f.reply(askID, "yes, keep it", "Wile", clk.now())

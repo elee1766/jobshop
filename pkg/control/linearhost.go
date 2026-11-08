@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -77,16 +78,16 @@ func (c *Controller) linearIntakeRPC(_ context.Context, _ scope, p rpc.LinearInt
 // linearAnswers takes replies to open questions' ask comments out of cs
 // and answers those questions with them; the rest is returned for normal
 // delivery. A failed answer leaves the reply in cs so it is not lost.
-func (c *Controller) linearAnswers(ctx context.Context, th thread, cs []ghComment) []ghComment {
+func (c *Controller) linearAnswers(ctx context.Context, th threads.Thread, cs []threads.Comment) []threads.Comment {
 	if th.Linear == "" {
 		return cs
 	}
 	replies := make([]linearsvc.Reply, len(cs))
 	for i, cm := range cs {
-		replies[i] = linearsvc.Reply{Parent: cm.Parent, Body: cm.Body, Author: linearAuthorPrefix + cm.Author}
+		replies[i] = linearsvc.Reply{Parent: cm.Parent, Body: cm.Body, Author: threads.LinearAuthorPrefix + cm.Author}
 	}
 	taken := c.linearSvc().Answers(ctx, th.Linear, replies)
-	var rest []ghComment
+	var rest []threads.Comment
 	for i, cm := range cs {
 		if !taken[i] {
 			rest = append(rest, cm)
@@ -197,7 +198,7 @@ func (h linearHost) RunTriggers(ctx context.Context) {
 }
 
 func (h linearHost) PollThread(ctx context.Context, issue string) {
-	h.c.pollSubscriptionThread(ctx, thread{Linear: issue})
+	h.c.pollSubscriptionThread(ctx, threads.Thread{Linear: issue})
 }
 
 // setMetaPack replaces meta[pack] on id, conditional on the revision read.

@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -18,7 +20,7 @@ import (
 // pollComment is a subscription poller row's payload: the thread and the
 // comment, as admission hooks see and may rewrite them.
 type pollComment struct {
-	Thread  thread          `json:"thread"`
+	Thread  threads.Thread  `json:"thread"`
 	Comment pollCommentBody `json:"comment"`
 }
 
@@ -45,19 +47,33 @@ type pollCommentBody struct {
 	IssueState string `json:"issue_state,omitempty"`
 }
 
-func (b pollCommentBody) comment() ghComment {
-	return ghComment(b)
+func newPollCommentBody(cm threads.Comment) pollCommentBody {
+	return pollCommentBody{
+		ID: cm.ID, Author: cm.Author, Bot: cm.Bot, Self: cm.Self, Kind: cm.Kind, State: cm.State,
+		Body: cm.Body, URL: cm.URL, At: cm.At, Parent: cm.Parent,
+		Linear: cm.Linear, AuthorID: cm.AuthorID, Name: cm.Name, Handle: cm.Handle, Email: cm.Email,
+		Reply: cm.Reply, Title: cm.Title, IssueState: cm.IssueState,
+	}
+}
+
+func (b pollCommentBody) comment() threads.Comment {
+	return threads.Comment{
+		Comment: github.Comment{ID: b.ID, Author: b.Author, Bot: b.Bot, Kind: b.Kind, State: b.State, Body: b.Body, URL: b.URL, At: b.At},
+		Self:    b.Self, Parent: b.Parent,
+		Linear: b.Linear, AuthorID: b.AuthorID, Name: b.Name, Handle: b.Handle, Email: b.Email,
+		Reply: b.Reply, Title: b.Title, IssueState: b.IssueState,
+	}
 }
 
 // inboxComment records a subscription poller comment. A webhook copy
 // already stored under the same natural key is not dispatched (the
 // dispatcher only delivers poller rows), so the poller then stores its
 // own row without the natural key.
-func (c *Controller) inboxComment(ctx context.Context, th thread, cm ghComment) error {
+func (c *Controller) inboxComment(ctx context.Context, th threads.Thread, cm threads.Comment) error {
 	it := store.InboxItem{ReceivedAt: c.now(), Actor: cm.Author}
 	seenless := th
 	seenless.Seen = time.Time{}
-	p := pollComment{Thread: seenless, Comment: pollCommentBody(cm)}
+	p := pollComment{Thread: seenless, Comment: newPollCommentBody(cm)}
 	if th.Linear != "" {
 		team, num, _ := strings.Cut(th.Linear, "-")
 		it.Source, it.RepoOrTeam, it.Kind, it.CommentID = ingest.SourceLinear, team, "Comment", cm.ID

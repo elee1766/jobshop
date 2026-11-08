@@ -497,7 +497,7 @@ func TestWaitTimeoutAttention(t *testing.T) {
 	assert.Empty(t, items)
 
 	clk.advance(90 * time.Minute)
-	threads.add("acme/widget#7", ghComment{Author: "mallory", Body: "not alice", At: clk.now()})
+	threads.add("acme/widget#7", github.Comment{Author: "mallory", Body: "not alice", At: clk.now()})
 	c.pollWaits(ctx, prs, threads)
 	c.pollWaits(ctx, prs, threads)
 	got := mustGet(t, c, a.ID)
@@ -514,7 +514,7 @@ func TestWaitTimeoutAttention(t *testing.T) {
 	assert.Contains(t, items[0].Title, "reply from alice")
 
 	clk.advance(time.Hour)
-	threads.add("acme/widget#7", ghComment{Author: "Alice", Body: "go ahead", At: clk.now()})
+	threads.add("acme/widget#7", github.Comment{Author: "Alice", Body: "go ahead", At: clk.now()})
 	c.pollWaits(ctx, prs, threads)
 	got = mustGet(t, c, a.ID)
 	assert.Nil(t, waitOf(got))

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -22,7 +23,7 @@ func TestRunMetaLinear(t *testing.T) {
 	require.NoError(t, json.Unmarshal(mb, &m))
 	assert.Equal(t, map[string]any{"workspace": "acme", "issue": "ENG-42"}, m["linear"])
 	assert.Equal(t, map[string]any{"repo": "acme/app"}, m["github"])
-	assert.Equal(t, []thread{{Linear: "ENG-42"}}, implicitThreads(store.Ticket{Meta: mb}, nil), "the Linear issue, no GitHub thread for its key")
+	assert.Equal(t, []threads.Thread{{Linear: "ENG-42"}}, threads.Implicit(store.Ticket{Meta: mb}, nil), "the Linear issue, no GitHub thread for its key")
 
 	_, err = runMeta(w, map[string]any{"issue": "42"})
 	require.ErrorContains(t, err, "not a Linear issue key")

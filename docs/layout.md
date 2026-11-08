@@ -64,6 +64,9 @@ jobshop/
 │   │   ├── triggers/         trigger and scan evaluation, event routing, off-tick
 │   │   │                     checks (JOB-145); the controller still fires
 │   │   ├── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
+│   │   ├── threads/          thread subscriptions: discovery, comment sources,
+│   │   │                     poll plan, reply filters, message text; delivery
+│   │   │                     stays in control (JOB-156)
 │   │   ├── attention/        attention projection and item choices (JOB-147)
 │   │   ├── question/         question ticket content and options (JOB-147)
 │   │   ├── chatlife/         managed-chat rules: desk, escalation, attention (JOB-147)

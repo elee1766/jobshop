@@ -23,6 +23,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -91,7 +93,7 @@ func e2eController(t *testing.T, dir string, clk *scanClock, hooks ...config.Adm
 		c.queue().CloseSpool()
 		_ = st.Close()
 	})
-	e := &e2eEnv{c: c, clk: clk, dir: dir, src: &fakeThreads{cs: map[string][]ghComment{}, since: map[string]time.Time{}, pr: map[string]bool{}}}
+	e := &e2eEnv{c: c, clk: clk, dir: dir, src: &fakeThreads{cs: map[string][]threads.Comment{}, since: map[string]time.Time{}, pr: map[string]bool{}}}
 	if fresh {
 		e.sess = mkSession(t, c)
 		tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`)})
@@ -162,7 +164,7 @@ func (e *e2eEnv) webhook(t *testing.T, cm e2eComment, delivery, secret string) i
 // poll pass, which admits and dispatches what it wrote.
 func (e *e2eEnv) poll(t *testing.T, cm e2eComment) {
 	t.Helper()
-	e.src.add("acme/widget#7", ghComment{ID: fmt.Sprintf("c%d", cm.id), Author: "bob", Kind: "comment", Body: cm.body, At: cm.at})
+	e.src.add("acme/widget#7", github.Comment{ID: fmt.Sprintf("c%d", cm.id), Author: "bob", Kind: "comment", Body: cm.body, At: cm.at})
 	e.c.pollSubscriptions(t.Context(), e.src)
 }
 

@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/identity"
-	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -52,7 +51,7 @@ func TestLinearCommentContext(t *testing.T) {
 	_, _, err = c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
 	require.NoError(t, err)
 
-	src := muxSource{gh: &fakeThreads{}, linear: linearSource{c: c}}
+	src := threads.Mux{GH: &fakeThreads{}, Linear: c.threadEngine().LinearSource()}
 	c.pollSubscriptions(ctx, src) // follows ENG-5 at 08:00
 	clk.advance(10 * time.Minute)
 	c.pollSubscriptions(ctx, src)
@@ -62,7 +61,7 @@ func TestLinearCommentContext(t *testing.T) {
 	require.NoError(t, err)
 	var got []store.Comment
 	for _, cm := range cs {
-		if strings.HasPrefix(cm.Author, linearAuthorPrefix) {
+		if strings.HasPrefix(cm.Author, threads.LinearAuthorPrefix) {
 			got = append(got, cm)
 		}
 	}
@@ -77,20 +76,4 @@ func TestLinearCommentContext(t *testing.T) {
 	assert.Equal(t, 1, strings.Count(body, "ann (Ann Lee) comment (edited) "), body)
 	assert.Contains(t, body, "also Firefox")
 	assert.Len(t, messagesTo(t, c, sess.ID), 1)
-}
-
-// TestLinearDeliveryAuthor: one author gets their displayName, a reply to
-// a comment outside the fetched set links its URL.
-func TestLinearDeliveryAuthor(t *testing.T) {
-	t.Parallel()
-	th := thread{Linear: "ENG-5"}
-	one := []ghComment{{Linear: true, AuthorID: "u1", Handle: "ann", Author: "ann (Ann Lee)"}, {Linear: true, AuthorID: "u1", Handle: "ann", Author: "ann (Ann Lee)"}}
-	assert.Equal(t, "linear:ann", deliveryAuthor(th, one))
-	two := append(slices.Clone(one), ghComment{Linear: true, AuthorID: "u2", Handle: "ann", Author: "ann (Ann Lee)"})
-	assert.Equal(t, "linear:several", deliveryAuthor(th, two), "same handle, different id")
-
-	byID := map[string]linear.Comment{}
-	assert.Equal(t, "in reply to https://linear.app/c/c0", replyLine(linear.Comment{ParentID: "c0", ParentURL: "https://linear.app/c/c0"}, byID))
-	byID["c0"] = linear.Comment{Author: "Bob", Body: strings.Repeat("x", 130) + "\nmore"}
-	assert.Equal(t, `in reply to Bob: "`+strings.Repeat("x", 120)+`..."`, replyLine(linear.Comment{ParentID: "c0"}, byID))
 }

@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -33,8 +35,8 @@ func dispatchController(t *testing.T, hooks ...config.AdmissionHook) (*Controlle
 	return c, clk, src, sess
 }
 
-func comment(clk *scanClock, id, body string) ghComment {
-	return ghComment{ID: id, Author: "bob", Kind: "comment", Body: body, At: clk.now().Add(time.Minute).Truncate(time.Second)}
+func comment(clk *scanClock, id, body string) threads.Comment {
+	return threads.Comment{Comment: github.Comment{ID: id, Author: "bob", Kind: "comment", Body: body, At: clk.now().Add(time.Minute).Truncate(time.Second)}}
 }
 
 func inboxStates(t *testing.T, c *Controller) []string {
@@ -54,7 +56,7 @@ func TestDispatchMutatedPayload(t *testing.T) {
 	t.Parallel()
 	c, clk, src, sess := dispatchController(t,
 		mut("redact", `printf '{"patch":[{"op":"replace","path":"/payload/comment/body","value":"[redacted]"}]}'`))
-	src.add("acme/widget#7", comment(clk, "c1", "the password is hunter2"))
+	src.add("acme/widget#7", comment(clk, "c1", "the password is hunter2").Comment)
 	c.pollSubscriptions(t.Context(), src)
 	msgs := messagesTo(t, c, sess.ID)
 	require.Len(t, msgs, 1)
@@ -68,7 +70,7 @@ func TestDispatchMutatedPayload(t *testing.T) {
 func TestDispatchDenied(t *testing.T) {
 	t.Parallel()
 	c, clk, src, sess := dispatchController(t, val("nope", `echo '{"decision":"deny","reason":"spam"}'`))
-	src.add("acme/widget#7", comment(clk, "c1", "buy now"))
+	src.add("acme/widget#7", comment(clk, "c1", "buy now").Comment)
 	c.pollSubscriptions(t.Context(), src)
 	c.pollSubscriptions(t.Context(), src)
 	assert.Empty(t, messagesTo(t, c, sess.ID))
@@ -80,7 +82,7 @@ func TestDispatchDenied(t *testing.T) {
 func TestDispatchHeldThenReleased(t *testing.T) {
 	t.Parallel()
 	c, clk, src, sess := dispatchController(t, val("ask", `echo '{"decision":"ask_human","reason":"check"}'`))
-	src.add("acme/widget#7", comment(clk, "c1", "hello"))
+	src.add("acme/widget#7", comment(clk, "c1", "hello").Comment)
 	c.pollSubscriptions(t.Context(), src)
 	assert.Empty(t, messagesTo(t, c, sess.ID))
 	assert.Equal(t, []string{store.InboxHeld}, inboxStates(t, c))
@@ -102,9 +104,9 @@ func TestDispatchHeldThenReleased(t *testing.T) {
 func TestDispatchCrashAfterAdmit(t *testing.T) {
 	t.Parallel()
 	c, clk, src, sess := dispatchController(t)
-	src.add("acme/widget#7", comment(clk, "c1", "hello"))
+	src.add("acme/widget#7", comment(clk, "c1", "hello").Comment)
 	// Write and admit only: the crash happens before dispatch.
-	th := thread{Repo: "acme/widget", Number: 7}
+	th := threads.Thread{Repo: "acme/widget", Number: 7}
 	require.NoError(t, c.inboxComment(t.Context(), th, src.cs["acme/widget#7"][0]))
 	ok, err := c.admitNext(t.Context())
 	require.NoError(t, err)
@@ -133,7 +135,7 @@ func TestDispatchWebhookFirst(t *testing.T) {
 	c, clk, src, sess := dispatchController(t)
 	cm := comment(clk, "c42", "hi")
 	putInbox(t, c, store.InboxItem{DeliveryID: "github:w1", NaturalKey: "github:comment:acme/widget:42:" + cm.At.UTC().Format(time.RFC3339)})
-	src.add("acme/widget#7", cm)
+	src.add("acme/widget#7", cm.Comment)
 	c.pollSubscriptions(t.Context(), src)
 	require.Len(t, messagesTo(t, c, sess.ID), 1)
 	assert.True(t, strings.Contains(messagesTo(t, c, sess.ID)[0].Body, "hi"))

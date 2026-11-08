@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
@@ -47,24 +48,24 @@ subscriptions:
 // each fetch asked for.
 type fakeThreads struct {
 	mu    sync.Mutex
-	cs    map[string][]ghComment
+	cs    map[string][]threads.Comment
 	since map[string]time.Time
 	pr    map[string]bool
 }
 
-func (f *fakeThreads) add(key string, cm ghComment) {
+func (f *fakeThreads) add(key string, cm github.Comment) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.cs[key] = append(f.cs[key], cm)
+	f.cs[key] = append(f.cs[key], threads.Comment{Comment: cm})
 }
 
-func (f *fakeThreads) Comments(_ context.Context, th thread, since time.Time) ([]ghComment, error) {
+func (f *fakeThreads) Comments(_ context.Context, th threads.Thread, since time.Time) ([]threads.Comment, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.since[th.key()] = since
-	f.pr[th.key()] = th.PR
-	var out []ghComment
-	for _, c := range f.cs[th.key()] {
+	f.since[th.Key()] = since
+	f.pr[th.Key()] = th.PR
+	var out []threads.Comment
+	for _, c := range f.cs[th.Key()] {
 		if c.At.After(since) {
 			out = append(out, c)
 		}
@@ -95,15 +96,15 @@ func subController(t *testing.T) (*Controller, *scanClock, *fakeThreads) {
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{}, events: ev,
 	}
 	c.ctx = t.Context()
-	src := &fakeThreads{cs: map[string][]ghComment{}, since: map[string]time.Time{}, pr: map[string]bool{}}
+	src := &fakeThreads{cs: map[string][]threads.Comment{}, since: map[string]time.Time{}, pr: map[string]bool{}}
 	return c, clk, src
 }
 
-func threadsOf(t *testing.T, c *Controller, id string) []thread {
+func threadsOf(t *testing.T, c *Controller, id string) []threads.Thread {
 	t.Helper()
 	tk, err := c.store.Get(t.Context(), id)
 	require.NoError(t, err)
-	sm, _ := decodeSubMeta(tk.Meta)
+	sm, _ := threads.DecodeMeta(tk.Meta)
 	return sm.Threads
 }
 
@@ -146,21 +147,21 @@ func TestSubscriptionsWorkingSession(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 	ths := threadsOf(t, c, tk.ID)
 	require.Len(t, ths, 2)
-	assert.Equal(t, thread{Repo: "acme/widget", Number: 7, Seen: clk.now()}, ths[0])
-	assert.Equal(t, thread{Repo: "other/lib", Number: 12, PR: true, Seen: clk.now()}, ths[1])
+	assert.Equal(t, threads.Thread{Repo: "acme/widget", Number: 7, Seen: clk.now()}, ths[0])
+	assert.Equal(t, threads.Thread{Repo: "other/lib", Number: 12, PR: true, Seen: clk.now()}, ths[1])
 	assert.True(t, src.pr["other/lib#12"])
 
 	at := clk.now().Add(time.Minute)
-	src.add("other/lib#12", ghComment{Author: "github-actions[bot]", Body: "CI", At: at})
-	src.add("other/lib#12", ghComment{Author: "ci-person", Body: "noise", At: at})
-	src.add("other/lib#12", ghComment{Author: "renovate", Bot: true, Body: "bump", At: at})
-	src.add("other/lib#12", ghComment{Author: "mallory", Body: "not on authors", At: at})
+	src.add("other/lib#12", github.Comment{Author: "github-actions[bot]", Body: "CI", At: at})
+	src.add("other/lib#12", github.Comment{Author: "ci-person", Body: "noise", At: at})
+	src.add("other/lib#12", github.Comment{Author: "renovate", Bot: true, Body: "bump", At: at})
+	src.add("other/lib#12", github.Comment{Author: "mallory", Body: "not on authors", At: at})
 	c.pollSubscriptions(ctx, src)
 	assert.Empty(t, messagesTo(t, c, sess.ID), "bots, ignored logins and non-authors are filtered")
 	assert.Equal(t, at, threadsOf(t, c, tk.ID)[1].Seen, "read position advances past filtered comments")
 
 	at2 := at.Add(time.Minute)
-	src.add("other/lib#12", ghComment{Author: "alice", Kind: "review", State: "CHANGES_REQUESTED", Body: "rename foo", URL: "u", At: at2})
+	src.add("other/lib#12", github.Comment{Author: "alice", Kind: "review", State: "CHANGES_REQUESTED", Body: "rename foo", URL: "u", At: at2})
 	c.pollSubscriptions(ctx, src)
 	msgs := messagesTo(t, c, sess.ID)
 	require.Len(t, msgs, 1)
@@ -194,7 +195,7 @@ func TestSubscriptionsResume(t *testing.T) {
 	require.NoError(t, err)
 
 	clk.advance(time.Hour)
-	src.add("acme/widget#3", ghComment{Author: "bob", Body: "one more thing", At: clk.now()})
+	src.add("acme/widget#3", github.Comment{Author: "bob", Body: "one more thing", At: clk.now()})
 	c.pollSubscriptions(ctx, src)
 	got, err := c.store.Get(ctx, tk.ID)
 	require.NoError(t, err)
@@ -206,7 +207,7 @@ func TestSubscriptionsResume(t *testing.T) {
 	_, err = store.Close(ctx, c.store, sess.ID, tk.ID, &cl, "done")
 	require.NoError(t, err)
 	clk.advance(25 * time.Hour)
-	src.add("acme/widget#3", ghComment{Author: "bob", Body: "late", At: clk.now()})
+	src.add("acme/widget#3", github.Comment{Author: "bob", Body: "late", At: clk.now()})
 	c.pollSubscriptions(ctx, src)
 	got, err = c.store.Get(ctx, tk.ID)
 	require.NoError(t, err)
@@ -229,9 +230,9 @@ func TestSubscribeMethod(t *testing.T) {
 	require.NoError(t, err)
 	_, err = c.subscribe(ctx, sc, rpc.SubscribeParams{Repo: "x/y", Number: 9})
 	require.NoError(t, err, "idempotent")
-	assert.Equal(t, []thread{{Repo: "x/y", Number: 9, Seen: clk.now()}}, threadsOf(t, c, tk.ID))
+	assert.Equal(t, []threads.Thread{{Repo: "x/y", Number: 9, Seen: clk.now()}}, threadsOf(t, c, tk.ID))
 
-	src.add("x/y#9", ghComment{Author: "carol", Body: "hi", At: clk.now().Add(time.Second)})
+	src.add("x/y#9", github.Comment{Author: "carol", Body: "hi", At: clk.now().Add(time.Second)})
 	c.pollSubscriptions(ctx, src)
 	assert.Len(t, messagesTo(t, c, sess.ID), 1)
 }
@@ -287,7 +288,7 @@ func TestSubscriptionsLinear(t *testing.T) {
 		nodes = append(nodes, fmt.Sprintf(`{"id":"c%d","body":%q,"url":"","createdAt":%q,"user":%s}`, len(nodes), body, at.Format(time.RFC3339Nano), u))
 	}
 	c.linearURL = srv.URL
-	src := muxSource{gh: gh, linear: linearSource{c: c}}
+	src := threads.Mux{GH: gh, Linear: c.threadEngine().LinearSource()}
 
 	sess := mkSession(t, c)
 	tk := mkTicket(t, c, store.NewTicket{Title: "work", Pool: "dev", Meta: json.RawMessage(`{"linear":{"workspace":"acme","issue":"ENG-5"},"github":{"repo":"acme/app"}}`)})
@@ -296,7 +297,7 @@ func TestSubscriptionsLinear(t *testing.T) {
 	addNode("old", "Ann", false, clk.now().Add(-time.Hour))
 
 	c.pollSubscriptions(ctx, src)
-	assert.Equal(t, []thread{{Linear: "ENG-5", Seen: clk.now()}}, threadsOf(t, c, tk.ID))
+	assert.Equal(t, []threads.Thread{{Linear: "ENG-5", Seen: clk.now()}}, threadsOf(t, c, tk.ID))
 	assert.Empty(t, messagesTo(t, c, sess.ID), "older comments are not news")
 
 	clk.advance(time.Minute)
@@ -350,11 +351,11 @@ func TestSubscriptionsGitHubTokenSelf(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 
 	at := clk.now().Add(time.Minute)
-	src.add("acme/widget#7", ghComment{Author: "alice", Body: "my own PR note", At: at})
+	src.add("acme/widget#7", github.Comment{Author: "alice", Body: "my own PR note", At: at})
 	c.pollSubscriptions(ctx, src)
 	assert.Empty(t, messagesTo(t, c, sess.ID), "own comments are filtered")
 
-	src.add("acme/widget#7", ghComment{Author: "bob", Body: "please rename", At: at.Add(time.Minute)})
+	src.add("acme/widget#7", github.Comment{Author: "bob", Body: "please rename", At: at.Add(time.Minute)})
 	c.pollSubscriptions(ctx, src)
 	msgs := messagesTo(t, c, sess.ID)
 	require.Len(t, msgs, 1)
@@ -372,7 +373,7 @@ func TestSubscriptionsWriteInbox(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 
 	at := clk.now().Add(time.Minute).Truncate(time.Second)
-	src.add("acme/widget#7", ghComment{ID: "c99", Author: "bob", Kind: "comment", Body: "hi", At: at})
+	src.add("acme/widget#7", github.Comment{ID: "c99", Author: "bob", Kind: "comment", Body: "hi", At: at})
 	c.pollSubscriptions(ctx, src)
 	its, err := ingest.InboxList(ctx, c.store, store.InboxFilter{})
 	require.NoError(t, err)
@@ -424,14 +425,14 @@ func TestSubscriptionsBots(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 
 	at := clk.now().Add(time.Minute)
-	src.add("acme/widget#4", ghComment{Author: "github-actions[bot]", Bot: true, Body: "CI", At: at})
-	src.add("acme/widget#4", ghComment{Author: "jobshop-host[bot]", Bot: true, Body: "PR head abc", At: at})
+	src.add("acme/widget#4", github.Comment{Author: "github-actions[bot]", Bot: true, Body: "CI", At: at})
+	src.add("acme/widget#4", github.Comment{Author: "jobshop-host[bot]", Bot: true, Body: "PR head abc", At: at})
 	c.pollSubscriptions(ctx, src)
 	assert.Empty(t, messagesTo(t, c, sess.ID), "unlisted and own bots dropped")
 	assert.Equal(t, at, threadsOf(t, c, tk.ID)[0].Seen)
 
 	at2 := at.Add(time.Minute)
-	src.add("acme/widget#4", ghComment{Author: "kody[bot]", Bot: true, Kind: "review", State: "CHANGES_REQUESTED", Body: "null check", URL: "u", At: at2})
+	src.add("acme/widget#4", github.Comment{Author: "kody[bot]", Bot: true, Kind: "review", State: "CHANGES_REQUESTED", Body: "null check", URL: "u", At: at2})
 	c.pollSubscriptions(ctx, src)
 	msgs := messagesTo(t, c, sess.ID)
 	require.Len(t, msgs, 1)
@@ -446,7 +447,7 @@ func TestSubscriptionsBots(t *testing.T) {
 	_, err = store.Close(ctx, c.store, sess.ID, tk.ID, &cl, "done")
 	require.NoError(t, err)
 	clk.advance(time.Hour)
-	src.add("acme/widget#4", ghComment{Author: "kody[bot]", Bot: true, Kind: "review comment", Body: "one more", At: clk.now()})
+	src.add("acme/widget#4", github.Comment{Author: "kody[bot]", Bot: true, Kind: "review comment", Body: "one more", At: clk.now()})
 	c.pollSubscriptions(ctx, src)
 	got, err := c.store.Get(ctx, tk.ID)
 	require.NoError(t, err)
