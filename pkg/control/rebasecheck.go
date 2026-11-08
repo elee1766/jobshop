@@ -54,7 +54,7 @@ func (c *Controller) rebaseResolution(ctx context.Context, step store.Ticket) (s
 	if n == 0 {
 		return store.ResolutionRebase, ""
 	}
-	src, ok := c.activitySource().(revertSource)
+	src, ok := c.activitySource().(github.PullSource)
 	if !ok {
 		c.log.WarnContext(ctx, "rebase check: no PR source", "step", step.ID, "repo", repo, "pr", n)
 		return store.ResolutionRebase, ""

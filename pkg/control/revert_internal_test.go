@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -18,14 +19,14 @@ import (
 // fakeReverts is fakeActivity plus the PR reads revert detection needs.
 type fakeReverts struct {
 	*fakeActivity
-	prs     map[int]ghPR
+	prs     map[int]github.Pull
 	commits map[string][]int
 }
 
-func (f *fakeReverts) PullRequest(_ context.Context, _ string, n int) (ghPR, error) {
+func (f *fakeReverts) PullRequest(_ context.Context, _ string, n int) (github.Pull, error) {
 	pr, ok := f.prs[n]
 	if !ok {
-		return ghPR{}, fmt.Errorf("no PR %d", n)
+		return github.Pull{}, fmt.Errorf("no PR %d", n)
 	}
 	return pr, nil
 }
@@ -64,7 +65,7 @@ func TestRevertLearning(t *testing.T) {
 
 	src := &fakeReverts{
 		fakeActivity: fa,
-		prs: map[int]ghPR{
+		prs: map[int]github.Pull{
 			268: {Number: 268, Title: "recall (#265)", Merged: true, MergeCommitSHA: "aaaa1111bbbb"},
 			270: {Number: 270, Title: "other fix", Body: "plain change", Merged: true, MergeCommitSHA: "cccc"},
 			271: {Number: 271, Title: `Revert "recall (#265)"`, Body: "This reverts commit aaaa1111bbbb.\n\nbroke deploy", Merged: true, HTMLURL: "https://github.com/elee1766/jobshop/pull/271"},
@@ -98,21 +99,4 @@ func TestRevertLearning(t *testing.T) {
 	c.forgetActivity(t)
 	c.pollActivity(t, src)
 	assert.Len(t, revertLearnings(t, c), 1, "a revert is recorded once")
-}
-
-func TestRevertedPRByNumber(t *testing.T) {
-	t.Parallel()
-	src := &fakeReverts{prs: map[int]ghPR{
-		5: {Number: 5, Merged: true, MergeCommitSHA: "x"},
-		6: {Number: 6, Merged: false},
-	}}
-	got, err := revertedPR(t.Context(), src, revRepo, ghPR{Number: 9, Body: "Reverts elee1766/jobshop#5"})
-	require.NoError(t, err)
-	assert.Equal(t, 5, got.Number)
-	got, err = revertedPR(t.Context(), src, revRepo, ghPR{Number: 9, Body: "Reverts #6"})
-	require.NoError(t, err)
-	assert.Zero(t, got.Number, "an unmerged PR was not reverted")
-	got, err = revertedPR(t.Context(), src, revRepo, ghPR{Number: 9, Body: "Reverts other/repo#5"})
-	require.NoError(t, err)
-	assert.Zero(t, got.Number, "another repo's PR")
 }
