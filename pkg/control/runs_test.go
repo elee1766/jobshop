@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -570,4 +571,35 @@ packs:
 		}
 	})
 	return dial(t, root.AdminSocket())
+}
+
+// TestRunShowStepPRLinks: a PR opened after the run started is a run link
+// once a step records it, by a wait on it or a "PR <url>" comment. An issue
+// number or a casual mention is not (JOB-131).
+func TestRunShowStepPRLinks(t *testing.T) {
+	admin := runRoot(t)
+	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "42"}})
+	step := r.Steps[0].ID
+	links := func() []string { return showRun(t, admin, r.Run.ID).Links }
+	assert.NotContains(t, strings.Join(links(), " "), "/pull/", "no PR yet, none invented")
+
+	comment := func(body string) {
+		t.Helper()
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodCommentAdd, rpc.CommentParams{ID: step, Body: body}, nil))
+	}
+	comment("see also https://github.com/acme/widget/pull/99 for context")
+	assert.NotContains(t, strings.Join(links(), " "), "/pull/99", "a mention is not the run's PR")
+
+	comment("PR https://github.com/acme/widget/pull/7 head abc123")
+	assert.Contains(t, links(), "https://github.com/acme/widget/pull/7")
+
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodWaitAdd, rpc.WaitAddParams{
+		ID:     step,
+		Conds:  []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", PR: 8, State: "success"}},
+		Reason: "CI",
+	}, nil))
+	got := links()
+	assert.Contains(t, got, "https://github.com/acme/widget/pull/7")
+	assert.Contains(t, got, "https://github.com/acme/widget/pull/8", "several PRs, each linked")
+	assert.NotContains(t, got, "https://github.com/acme/widget/pull/99")
 }

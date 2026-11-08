@@ -44,6 +44,8 @@ change to the CLI, config, protocol or store schema gets `!` after the
 scope (`feat(store)!: ...`) or a `BREAKING CHANGE:` line in the body.
 PR body: at most ~10 lines, plain text: what changed, why, how it was
 tested. No long summaries, file lists or pasted output.
+Comment the PR on this step, which is what Desk's in-flight table reads:
+`jobshop comment "PR <url>"`.
 Wait for CI with a wait, not a fixed deferral or polling: after each push,
 once `gh pr view <n> --json headRefOid` shows the pushed sha (or the wait
 records the old head), run
