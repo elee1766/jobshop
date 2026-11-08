@@ -935,6 +935,14 @@ func (a *agent) prompt(ctx context.Context, p acp.PromptRequest) (acp.PromptResp
 		// message saying "hold" keeps the turn open until cancelled.
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall("t1", "Reading", acp.WithStartStatus(acp.ToolCallStatusInProgress))})
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall("t1", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
+		if strings.Contains(text, "tool run") {
+			// More tool calls in a row, for Desk's transcript spacing (JOB-134).
+			for i := 2; i <= 4; i++ {
+				id := acp.ToolCallId(fmt.Sprintf("t%d", i))
+				_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.StartToolCall(id, fmt.Sprintf("Step %d", i), acp.WithStartStatus(acp.ToolCallStatusInProgress), acp.WithStartRawInput(map[string]any{"command": fmt.Sprintf("echo step %d", i)}))})
+				_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateToolCall(id, acp.WithUpdateStatus(acp.ToolCallStatusCompleted))})
+			}
+		}
 		_ = a.conn.Load().SessionUpdate(ctx, acp.SessionNotification{SessionId: p.SessionId, Update: acp.UpdateAgentMessageText("echo: " + text[strings.LastIndex(text, "\n")+1:])})
 		if strings.Contains(text, "hidden journal tail") {
 			for range 250 {
