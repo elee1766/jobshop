@@ -167,7 +167,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
-      - run: node --test ../packages/jobshop-client/index.test.js
+      - run: node --test ../packages/jobshop-client/index.test.js kit/links.test.js
       - run: npm run build
       - name: pkg/desk/dist is current
         run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"

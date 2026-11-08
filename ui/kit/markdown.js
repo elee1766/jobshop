@@ -1,10 +1,10 @@
 // Shared sanitized Markdown for chat, waiting items and ticket bodies.
-import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { marked } from './links.js';
 
 /** @param {string} text */
 export function md(text, inline = false) {
-  const html = /** @type {string} */ ((inline ? marked.parseInline : marked.parse)(text || '', { async: false, gfm: true, breaks: true }));
+  const html = /** @type {string} */ ((inline ? marked.parseInline : marked.parse)(text || ''));
   const clean = DOMPurify.sanitize(html, {
     USE_PROFILES: { html: true },
     FORBID_TAGS: ['style', 'form', 'input', 'button', 'iframe', 'object', 'embed', 'svg', 'math', 'img'],
