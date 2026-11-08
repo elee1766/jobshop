@@ -84,8 +84,8 @@ func TestSessionSendSubscribe(t *testing.T) {
 	for _, e := range got {
 		if e.Type == rpc.EventTurnStart && strings.Contains(e.Context, "CHAT-POOL-PROMPT") {
 			prompted++
-			assert.NotContains(t, e.Text, "Messages for you:")
-			assert.Contains(t, e.RawPrompt, "Messages for you:")
+			assert.NotContains(t, e.Text, "<messages>")
+			assert.Contains(t, e.RawPrompt, "<messages>")
 			assert.NotEmpty(t, e.Messages)
 		}
 	}

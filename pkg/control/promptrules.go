@@ -323,7 +323,7 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		body = PromptPart{Source: "ticket", Text: ticketPromptText("", *t, comments)}
 	} else {
 		ts.poolPrompt = pool.Chat() && delivered.IsZero()
-		body = PromptPart{Source: "messages", Text: messagesHeader + "\n\n(next messages)"}
+		body = PromptPart{Source: "messages", Text: messagesPlaceholder}
 	}
 	parts := c.assemble(ctx, ts, body)
 	var sent map[string]string
