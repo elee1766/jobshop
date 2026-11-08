@@ -161,7 +161,7 @@ func TestPacks(t *testing.T) {
 
 	var planned []store.Ticket
 	c.PassUntil(func() bool {
-		c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: "task", Pool: "github-plan"}, &planned)
+		c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: "task", Pool: "github-plan", Meta: map[string]string{"trigger.name": "github-replan"}}, &planned)
 		return len(planned) > 0
 	}, "replan did not file a planning task")
 	assert.Len(t, planned, 1)
