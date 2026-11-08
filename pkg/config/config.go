@@ -250,9 +250,9 @@ const (
 // as fn(args) at most once per Poll, which returns a dict of subject to
 // detail.
 type StallSignal struct {
-	Signal string `yaml:"signal"`
-	After  string `yaml:"after"` // Go duration threshold
-	Check  string `yaml:"check"`
+	Signal string         `yaml:"signal"`
+	After  string         `yaml:"after"` // Go duration threshold
+	Check  string         `yaml:"check"`
 	Script string         `yaml:"script,omitempty"`
 	Args   map[string]any `yaml:"args,omitempty"`
 	// Repo (owner/name) is the repo an issue_no_run check lists; only

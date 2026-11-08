@@ -330,7 +330,7 @@ func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr co
 			found, err = c.stallLinearIssues(ctx, cfg, sig)
 		default:
 			if sig.Script != "" {
-				found, err = c.stallScript(ctx, cfg, tr, sig)
+				found, err = c.stallScript(ctx, cfg, sig)
 			} else {
 				found, err = c.stallCheck(ctx, tr, sig, ev)
 			}
@@ -747,7 +747,7 @@ const stallScriptTimeout = 2 * time.Minute
 // detail. It is called outside the tick like a check (JOB-109), at most
 // once per poll (default DefaultLinearPoll); between calls the last
 // answer stands.
-func (c *Controller) stallScript(ctx context.Context, cfg *config.Config, tr config.Trigger, sig config.StallSignal) ([]stall, error) {
+func (c *Controller) stallScript(ctx context.Context, cfg *config.Config, sig config.StallSignal) ([]stall, error) {
 	key := "script\x00" + sig.Script + "\x00" + sig.Signal
 	poll := config.Duration(sig.Poll, config.DefaultLinearPoll)
 	now := c.now()
