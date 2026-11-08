@@ -37,8 +37,11 @@ First, and on every resume:
 
 Run the repo's checks on the PR head yourself before deciding: `git fetch
 origin pull/{{.pr}}/head && git checkout --detach FETCH_HEAD`, then, as a
-separate command, confirm `git rev-parse HEAD` equals `headRefOid`. Then
-run `{{.check_cmd}}`. A failure, a lint finding, or a new `//nolint` or
+separate command, confirm `git rev-parse HEAD` equals `headRefOid`. A
+CLEAN PR can still break on master (an API it uses changed with no file
+overlap), so then `git fetch origin && git merge --no-edit origin/master`
+(a conflict: see case 2) and run `{{.check_cmd}}` on that merge. A
+failure, a lint finding, or a new `//nolint` or
 relaxed linter config without a reason in the PR body is a finding (case
 4 below). You do not fix code yourself.
 
