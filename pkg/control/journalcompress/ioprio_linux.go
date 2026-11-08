@@ -1,6 +1,6 @@
 //go:build linux
 
-package control
+package journalcompress
 
 import "golang.org/x/sys/unix"
 

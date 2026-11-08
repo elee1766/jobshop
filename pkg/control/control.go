@@ -28,6 +28,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
@@ -173,10 +174,6 @@ type Controller struct {
 	hookPending   atomic.Bool
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
-	// journalsCompressedAt is the last journal compression sweep start
-	// (#631); journalCompressing is set while one runs.
-	journalsCompressedAt time.Time
-	journalCompressing   atomic.Bool
 	// prov is resource provider demand and idle state (#407); tick-only.
 	prov providerState
 	// writeKeysPrunedAt is the last write key prune (#415); tick-only.
@@ -307,11 +304,14 @@ type Controller struct {
 	activityMu  sync.Mutex
 	activity    *activityState
 	// ship is journal shipping to VictoriaLogs (#530); see shipper().
-	ship       *journalship.Shipper
-	shipOnce   sync.Once
-	wg         sync.WaitGroup
-	hooksOnce  sync.Once
-	hookEngine *hooks.Engine
+	ship     *journalship.Shipper
+	shipOnce sync.Once
+	// compress is the journal compression sweeper (#631); see compressor().
+	compress     *journalcompress.Sweeper
+	compressOnce sync.Once
+	wg           sync.WaitGroup
+	hooksOnce    sync.Once
+	hookEngine   *hooks.Engine
 	// Trigger checks run outside the tick when backgroundChecks is set, by
 	// Run (JOB-109, triggercheck.go). checkJobs is under tickMu.
 	backgroundChecks bool
