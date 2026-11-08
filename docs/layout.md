@@ -50,7 +50,8 @@ jobshop/
 │   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
 │   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe,
 │   │   │                     background job scan, mapped homes, slot
-│   │   │                     allocation (JOB-146, JOB-153, JOB-155)
+│   │   │                     allocation, host connect, ACP client and traffic
+│   │   │                     (JOB-146, JOB-153, JOB-154, JOB-155)
 │   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
 │   │   ├── ingestqueue/      spool drain, inbox notifier, worker heartbeats,
 │   │   │                     admission hook runner, ingest work loop (JOB-141)

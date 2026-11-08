@@ -781,8 +781,8 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 		info.Crashes = r.crashCount()
 		if r.inTurn.Load() {
 			info.Busy = true
-			t := r.runningTool()
-			info.Tool, info.ToolTarget, info.ToolIntent = t.title, t.target, t.intent
+			t := r.traffic.Running()
+			info.Tool, info.ToolTarget, info.ToolIntent = t.Title, t.Target, t.Intent
 		}
 	}
 	c.mu.Unlock()

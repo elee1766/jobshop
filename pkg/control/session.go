@@ -1,7 +1,6 @@
 package control
 
 import (
-	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -94,10 +93,9 @@ type runner struct {
 	// (holdForJobs); zero when there are none. Runner goroutine only.
 	jobsSince time.Time
 
-	// lastStop and lastSaid are the stop reason and agent text of the
-	// last turn, recorded when a session ends stuck (#301).
+	// lastStop is the stop reason of the last turn, recorded with the
+	// agent text (traffic.Said) when a session ends stuck (#301).
 	lastStop string
-	lastSaid strings.Builder
 	// backoffUntil is set while the agent's provider is rate limited and the
 	// runner waits to retry the same turn.
 	backoffUntil time.Time
@@ -111,10 +109,10 @@ type runner struct {
 	// running turn and sends nothing. inTurn is set while one runs.
 	cancelNow chan struct{}
 	inTurn    atomic.Bool
-	// tools maps the running turn's open tool calls to their labels,
-	// for session list (JOB-54). Cleared when a turn starts. Under mu.
-	tools     map[acp.ToolCallId]openTool
-	toolOrder []acp.ToolCallId
+	// traffic holds the running turn's open tool calls (session list,
+	// JOB-54) and the agent's text tail. Reset when a turn starts. It has
+	// its own lock: the ACP callbacks write it.
+	traffic sessionrt.Traffic
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
@@ -244,18 +242,6 @@ func (r *runner) setACPID(id string) {
 	r.mu.Unlock()
 }
 
-// unknownSession reports whether a prompt failed because the agent does
-// not know the session id: jcode answers -32602 "Unknown ACP session id"
-// when its process lost the session (seen 2026-11-05 after restarts,
-// JOB-65). A host restart would only repeat it.
-func unknownSession(err error) bool {
-	var re *acp.RequestError
-	if !errors.As(err, &re) || re.Code != -32602 {
-		return false
-	}
-	return strings.Contains(strings.ToLower(fmt.Sprint(re.Message, " ", re.Data)), "unknown acp session")
-}
-
 // replaceConversation opens a new conversation, seeded with the journal
 // summary, in place of one the agent rejected mid-session.
 func (r *runner) replaceConversation(ctx context.Context, conn *acp.ClientSideConnection) error {
@@ -317,51 +303,10 @@ func (r *runner) takeSeed() string {
 	return s
 }
 
-// rateLimited reports whether a prompt error is the provider refusing
-// work for now (account limit) rather than a broken agent. Agents report
-// it as a generic ACP error, so match the message.
-func rateLimited(err error) bool {
-	var re *acp.RequestError
-	if !errors.As(err, &re) {
-		return false
-	}
-	s := strings.ToLower(fmt.Sprint(re.Message, " ", re.Data))
-	for _, k := range []string{"429", "rate_limit", "rate limit", "is unavailable"} {
-		if strings.Contains(s, k) {
-			return true
-		}
-	}
-	return false
-}
-
 // providerNetRetries bounds prompt retries after provider transport
 // errors. With the doubling backoff capped at 15x Options.Backoff this is
 // a few minutes in production before the turn fails as before.
 const providerNetRetries = 6
-
-// providerUnreachable reports whether a prompt error is the agent failing
-// to reach its provider (seen 2026-11-05 on acphost-dev: -32000 "Failed
-// to send request ... Connect").
-func providerUnreachable(err error) bool {
-	var re *acp.RequestError
-	if !errors.As(err, &re) {
-		return false
-	}
-	s := strings.ToLower(fmt.Sprint(re.Message, " ", re.Data))
-	return strings.Contains(s, "failed to send request") || strings.Contains(s, "error sending request")
-}
-
-// agentBusy reports whether the agent refused a prompt because it still
-// considers an earlier one in flight. jcode does this after a prompt fails
-// mid-stream (seen 2026-11-01); a session/cancel clears it, a host restart
-// does not, so restarting only burns the crash budget.
-func agentBusy(err error) bool {
-	var re *acp.RequestError
-	if !errors.As(err, &re) {
-		return false
-	}
-	return strings.Contains(strings.ToLower(fmt.Sprint(re.Message, " ", re.Data)), "already processing")
-}
 
 func (r *runner) setBackoff(until time.Time) {
 	r.mu.Lock()
@@ -570,7 +515,7 @@ func (r *runner) session() error {
 	} else {
 		r.lifecycle("adopt")
 	}
-	nc, rd, welcome, err := r.connect()
+	nc, rd, welcome, err := sessionrt.Connect(r.ctx, r.dir)
 	if err != nil {
 		return err
 	}
@@ -602,7 +547,7 @@ func (r *runner) session() error {
 	}
 
 	gate := rpc.NewGate(rd)
-	conn := acp.NewClientSideConnection(&client{r: r}, nc, gate)
+	conn := acp.NewClientSideConnection(r.client(), nc, gate)
 	// The ACP library logs without our ctx: name the session here.
 	conn.SetLogger(rpc.QuietLogger(r.log.With("session", r.id, "pool", r.pool)))
 	gate.Open()
@@ -915,33 +860,6 @@ func (r *runner) saveFields(f store.SessionFields) error {
 	})
 }
 
-func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
-	deadline := time.Now().Add(15 * time.Second)
-	// A new host listens within milliseconds: poll quickly at first, then
-	// back off to the old 100ms.
-	wait := 5 * time.Millisecond
-	for {
-		nc, br, wel, err := host.Connect(r.ctx, r.dir)
-		if err == nil {
-			return nc, br, wel, nil
-		}
-		// The host wrote exit.json with spawn_failed and is gone:
-		// retrying until the deadline would only hide why (acphost#100).
-		var se *host.SpawnError
-		if errors.As(err, &se) {
-			return nil, nil, wel, fmt.Errorf("connect to host: %w", err)
-		}
-		if time.Now().After(deadline) || r.ctx.Err() != nil {
-			return nil, nil, wel, fmt.Errorf("connect to host: %w", err)
-		}
-		if ex, exited := host.ReadExit(r.dir); exited && !sessionrt.HostAlive(r.dir) {
-			return nil, nil, wel, fmt.Errorf("host exited: %s", ex.Reason)
-		}
-		time.Sleep(wait)
-		wait = min(2*wait, 100*time.Millisecond)
-	}
-}
-
 // work claims and prompts tickets until the pool has none for idle_timeout.
 // A stale host is refreshed after the first turn that leaves it idle.
 func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc net.Conn, stale bool) error {
@@ -1143,9 +1061,8 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 	}()
 	r.mu.Lock()
 	r.lastStop = ""
-	r.lastSaid.Reset()
-	r.tools, r.toolOrder = nil, nil
 	r.mu.Unlock()
+	r.traffic.Reset()
 	defer func() {
 		r.mu.Lock()
 		r.lastStop = string(res.StopReason)
@@ -1175,7 +1092,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			Prompt:    append([]acp.ContentBlock{acp.TextBlock(text)}, attachments...),
 			Meta:      meta,
 		})
-		if err != nil && ctx.Err() == nil && unknownSession(err) && !replaced {
+		if err != nil && ctx.Err() == nil && sessionrt.UnknownSession(err) && !replaced {
 			// The agent lost the conversation (a restart it did not
 			// reload): continue in a new one on this host, keeping the
 			// claims, instead of restarting the host into the same error.
@@ -1194,7 +1111,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			}
 			continue
 		}
-		if err != nil && ctx.Err() == nil && agentBusy(err) && busyRetries < 3 {
+		if err != nil && ctx.Err() == nil && sessionrt.AgentBusy(err) && busyRetries < 3 {
 			busyRetries++
 			r.log.WarnContext(ctx, "agent still busy with an earlier prompt, cancelling it", "attempt", busyRetries, "err", err)
 			_ = conn.Cancel(context.WithoutCancel(ctx), acp.CancelNotification{SessionId: r.acpID()})
@@ -1205,7 +1122,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			}
 			continue
 		}
-		if err != nil && ctx.Err() == nil && agentBusy(err) {
+		if err != nil && ctx.Err() == nil && sessionrt.AgentBusy(err) {
 			// Reconnecting keeps the same stuck agent (the crash loop seen
 			// on gasserver); a new host starts a new agent and reloads the
 			// conversation, and the claim survives for the next prompt.
@@ -1220,8 +1137,8 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 		// A transport failure to the provider is the network, not the
 		// agent (JOB-66): retry on the same host, bounded, so a short
 		// outage does not burn the crash budget into quarantine.
-		net := providerUnreachable(err) && netRetries < providerNetRetries
-		if !net && (providerUnreachable(err) || !rateLimited(err)) {
+		net := sessionrt.ProviderUnreachable(err) && netRetries < providerNetRetries
+		if !net && (sessionrt.ProviderUnreachable(err) || !sessionrt.RateLimited(err)) {
 			break
 		}
 		if net {
@@ -1329,7 +1246,7 @@ func unclosedReminder(held string) string {
 func (r *runner) turnEndReason() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	said := strings.Join(strings.Fields(r.lastSaid.String()), " ")
+	said := strings.Join(strings.Fields(r.traffic.Said()), " ")
 	if n := len(said); n > 200 {
 		said = "..." + said[n-200:]
 	}
@@ -1475,162 +1392,6 @@ ended and its process tree and worktree removed. Wait for them in the
 turn, and push work-in-progress commits before any release (release
 refuses with unpushed commits unless --force).`)
 	return b.String()
-}
-
-// client is the ACP client side the agent talks to. It auto-approves
-// permission prompts: agents run unattended in their own slice and worktree.
-type client struct{ r *runner }
-
-func (c *client) RequestPermission(_ context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
-	kinds := []acp.PermissionOptionKind{acp.PermissionOptionKindAllowAlways, acp.PermissionOptionKindAllowOnce}
-	if c.r.c.isReadOnly(c.r.id) && !chatlife.ReadOnlyTool(p.ToolCall.Kind) {
-		// A read-only attention chat (#606) reads; it does not edit,
-		// run or delete until the operator writes. Once only: the same
-		// tool is allowed after that.
-		kinds = []acp.PermissionOptionKind{acp.PermissionOptionKindRejectOnce}
-	}
-	for _, kind := range kinds {
-		for _, o := range p.Options {
-			if o.Kind == kind {
-				return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeSelected(o.OptionId)}, nil
-			}
-		}
-	}
-	return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
-}
-
-// openTool is a running tool call's title and what it acts on.
-type openTool struct{ title, target, intent string }
-
-// toolInput is rawInput as JSON for rpc.ToolTarget; nil when absent.
-func toolInput(v any) json.RawMessage {
-	if v == nil {
-		return nil
-	}
-	b, _ := json.Marshal(v)
-	return b
-}
-
-func toolPaths(l []acp.ToolCallLocation) []string {
-	var out []string
-	for _, x := range l {
-		out = append(out, x.Path)
-	}
-	return out
-}
-
-// trackTool records a tool call's label and drops it once it completes
-// or fails, so runningTool names the latest open call (JOB-54). Empty
-// fields keep what an earlier frame said.
-func (r *runner) trackTool(id acp.ToolCallId, t openTool, st acp.ToolCallStatus) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if st == acp.ToolCallStatusCompleted || st == acp.ToolCallStatusFailed {
-		delete(r.tools, id)
-		r.toolOrder = slices.DeleteFunc(r.toolOrder, func(x acp.ToolCallId) bool { return x == id })
-		return
-	}
-	if r.tools == nil {
-		r.tools = map[acp.ToolCallId]openTool{}
-	}
-	old, ok := r.tools[id]
-	if !ok {
-		r.toolOrder = append(r.toolOrder, id)
-	}
-	if t.title == "" {
-		t.title = old.title
-	}
-	if t.target == "" {
-		t.target = old.target
-	}
-	if t.intent == "" {
-		t.intent = old.intent
-	}
-	r.tools[id] = t
-}
-
-// runningTool is the latest open tool call, or zero.
-func (r *runner) runningTool() openTool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if n := len(r.toolOrder); n > 0 {
-		return r.tools[r.toolOrder[n-1]]
-	}
-	return openTool{}
-}
-
-func (c *client) SessionUpdate(_ context.Context, n acp.SessionNotification) error {
-	if tc := n.Update.ToolCall; tc != nil {
-		in := toolInput(tc.RawInput)
-		c.r.trackTool(tc.ToolCallId, openTool{tc.Title, rpc.ToolTarget(in, toolPaths(tc.Locations)), rpc.ToolIntent(in)}, tc.Status)
-	}
-	if tu := n.Update.ToolCallUpdate; tu != nil {
-		title := ""
-		if tu.Title != nil {
-			title = *tu.Title
-		}
-		var st acp.ToolCallStatus
-		if tu.Status != nil {
-			st = *tu.Status
-		}
-		in := toolInput(tu.RawInput)
-		c.r.trackTool(tu.ToolCallId, openTool{title, rpc.ToolTarget(in, toolPaths(tu.Locations)), rpc.ToolIntent(in)}, st)
-	}
-	if m := n.Update.AgentMessageChunk; m != nil && m.Content.Text != nil {
-		c.r.mu.Lock()
-		c.r.lastSaid.WriteString(m.Content.Text.Text)
-		if s := c.r.lastSaid.String(); len(s) > 4096 { // only the tail is reported
-			c.r.lastSaid.Reset()
-			c.r.lastSaid.WriteString(s[len(s)-1024:])
-		}
-		c.r.mu.Unlock()
-	}
-	return nil
-}
-
-func (c *client) HandleExtensionMethod(_ context.Context, method string, _ json.RawMessage) (any, error) {
-	if method == host.MethodExportStats {
-		// Hosts no longer export (#530); an older host may still report.
-		return nil, nil
-	}
-	if method == host.MethodTurnEnd {
-		select {
-		case c.r.turnEnd <- struct{}{}:
-		default:
-		}
-		return nil, nil
-	}
-	return nil, acp.NewMethodNotFound(method)
-}
-
-var errUnsupported = acp.NewMethodNotFound("not supported by jobshop")
-
-func (c *client) ReadTextFile(context.Context, acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {
-	return acp.ReadTextFileResponse{}, errUnsupported
-}
-
-func (c *client) WriteTextFile(context.Context, acp.WriteTextFileRequest) (acp.WriteTextFileResponse, error) {
-	return acp.WriteTextFileResponse{}, errUnsupported
-}
-
-func (c *client) CreateTerminal(context.Context, acp.CreateTerminalRequest) (acp.CreateTerminalResponse, error) {
-	return acp.CreateTerminalResponse{}, errUnsupported
-}
-
-func (c *client) KillTerminal(context.Context, acp.KillTerminalRequest) (acp.KillTerminalResponse, error) {
-	return acp.KillTerminalResponse{}, errUnsupported
-}
-
-func (c *client) TerminalOutput(context.Context, acp.TerminalOutputRequest) (acp.TerminalOutputResponse, error) {
-	return acp.TerminalOutputResponse{}, errUnsupported
-}
-
-func (c *client) ReleaseTerminal(context.Context, acp.ReleaseTerminalRequest) (acp.ReleaseTerminalResponse, error) {
-	return acp.ReleaseTerminalResponse{}, errUnsupported
-}
-
-func (c *client) WaitForTerminalExit(context.Context, acp.WaitForTerminalExitRequest) (acp.WaitForTerminalExitResponse, error) {
-	return acp.WaitForTerminalExitResponse{}, errUnsupported
 }
 
 // sessionCwd is where the agent works: the session worktree or pool dir.
@@ -2092,5 +1853,18 @@ func (c *Controller) drive(cfg *config.Config, t store.Ticket) {
 	}
 	if _, ok := cfg.Agents[f.Agent]; ok {
 		c.startRunner(t)
+	}
+}
+
+// client is the ACP client side for this runner's connection. A read-only
+// attention chat (#606) reads; it does not edit, run or delete until the
+// operator writes.
+func (r *runner) client() *sessionrt.Client {
+	return &sessionrt.Client{
+		Traffic: &r.traffic,
+		TurnEnd: r.turnEnd,
+		Refuse: func(kind *acp.ToolKind) bool {
+			return r.c.isReadOnly(r.id) && !chatlife.ReadOnlyTool(kind)
+		},
 	}
 }
