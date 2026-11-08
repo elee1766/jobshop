@@ -10,7 +10,8 @@ at the [README](../README.md).
 2. [docs/plan.md](../docs/plan.md) sections 3 (architecture) and 6
    (decisions).
 3. [docs/layout.md](../docs/layout.md): packages and dependencies.
-4. Check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
+4. Generate Desk assets: `npm --prefix ui ci && npm --prefix ui run build`.
+   Then check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
    After changing a command's help, run `go generate ./pkg/cli` to
    refresh [cli.md](cli.md).
 

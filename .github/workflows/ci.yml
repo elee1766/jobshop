@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   go:
+    needs: ui
     # ubuntu-latest moved to 26.04, which has bwrap, so the sandbox tests
     # stopped skipping and crash there (#619). Pinned until they pass on it.
     runs-on:
@@ -43,6 +44,10 @@ jobs:
       JOBSHOP_REQUIRE_VICTORIALOGS: "1"
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: desk-ui
+          path: pkg/desk/dist
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -133,10 +138,9 @@ jobs:
       # Nix files stay formatted with the flake's formatter (#583).
       - name: nix fmt check
         run: nix fmt -- --check $(git ls-files '*.nix')
-      # The fallback builder (hosts without the plugin) pins a vendorHash.
-      # Building only its vendored modules checks the pin; it is cached
-      # until go.sum changes.
-      - run: nix build .#jobshop.goModules --print-build-logs
+      # Check generated assets and the vendorHash with the fallback builder too.
+      - run: nix build .#jobshop --out-link result-fallback --print-build-logs
+      - run: ./result-fallback/bin/jobshop version
       # Loads go2nix's plugin so jobshop builds one derivation per Go package,
       # each cached on its own in the store volume.
       - name: go2nix plugin
@@ -146,8 +150,7 @@ jobs:
       # NixOS module evaluation checks (nix/module-test.nix).
       - run: nix build .#checks.x86_64-linux.module --print-build-logs
 
-  # Desk's built UI is committed in pkg/desk/dist and embedded (#208):
-  # svelte-check must pass and the committed build must match ui/src.
+  # Build once for the Go checks. Nix builds its own cached frontend derivation.
   ui:
     runs-on:
       - nscloud-ubuntu-24.04-amd64-2x4-with-cache
@@ -169,5 +172,8 @@ jobs:
       - run: npm run check
       - run: node --test ../packages/jobshop-client/index.test.js kit/links.test.js
       - run: npm run build
-      - name: pkg/desk/dist is current
-        run: git diff --exit-code -- ../pkg/desk/dist && test -z "$(git status --porcelain -- ../pkg/desk/dist)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desk-ui
+          path: pkg/desk/dist
+          if-no-files-found: error

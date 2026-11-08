@@ -34,7 +34,9 @@
           system = pkgs.stdenv.hostPlatform.system;
         in
         rec {
+          desk-ui = pkgs.callPackage ./nix/desk-ui.nix { };
           jobshop = pkgs.callPackage ./nix/package.nix {
+            deskUi = desk-ui;
             rev = self.shortRev or self.dirtyShortRev or "unknown";
             goEnv = go2nix.lib.mkGoEnv {
               go = pkgs.go_1_27;
@@ -65,6 +67,7 @@
             pkgs.go_1_27
             pkgs.gopls
             pkgs.sqlite
+            pkgs.nodejs_22
           ];
         };
       });

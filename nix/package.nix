@@ -2,6 +2,8 @@
   lib,
   goEnv,
   buildGo127Module,
+  runCommand,
+  deskUi,
   rev ? "unknown",
 }:
 
@@ -13,19 +15,25 @@ let
   # self-deploy builds master commits after a release, which would
   # otherwise report that release and look one version behind.
   binVersion = if rev == "unknown" then version else "${version}+${rev}";
+  goSource = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../go.mod
+      ../go.sum
+      ../cmd
+      (lib.fileset.difference ../pkg (lib.fileset.maybeMissing ../pkg/desk/dist))
+    ];
+  };
   args = {
     pname = "jobshop";
     inherit version;
 
-    src = lib.fileset.toSource {
-      root = ../.;
-      fileset = lib.fileset.unions [
-        ../go.mod
-        ../go.sum
-        ../cmd
-        ../pkg
-      ];
-    };
+    # go2nix discovers embedded files before build hooks run.
+    src = runCommand "jobshop-source" { } ''
+      cp -r ${goSource} "$out"
+      chmod -R u+w "$out"
+      cp -r ${deskUi} "$out/pkg/desk/dist"
+    '';
 
     ldflags = [
       "-s"

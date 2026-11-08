@@ -74,9 +74,13 @@ Shipped in [`packs/`](packs/):
 ## Quick start
 Linux binaries are on [Releases](https://github.com/elee1766/jobshop/releases), or `nix run github:elee1766/jobshop/v<version>` ([notes](docs/notes/644-release.md)).
 ```
-go install github.com/elee1766/jobshop/cmd/jobshop@latest   # or: nix build github:elee1766/jobshop
-jobshop init ./root          # writes root/jobshop.yaml and root/pack.yaml
+nix profile add github:elee1766/jobshop
+jobshop init ./root
 ```
+
+This writes `root/jobshop.yaml` and `root/pack.yaml`. To install from source,
+follow [Develop](#develop). `go install ...@latest` alone cannot build the Desk
+assets, which are generated rather than stored in Git.
 
 `root/jobshop.yaml` selects the root pack with `pack: pack.yaml`.
 In `root/pack.yaml`, load one reusable pack ([`packs/agent`](packs/agent/pack.yaml)):
@@ -119,7 +123,18 @@ The rest is in [docs/running.md](docs/running.md).
 
 ## Develop
 
-`go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
+Use Go and Node.js 22.12+ (or `nix develop`), then build the embedded frontend
+before Go:
+
+```sh
+npm --prefix ui ci
+npm --prefix ui run build
+go build ./... && go vet ./... && go test ./... && golangci-lint run ./...
+go install ./cmd/jobshop
+```
+
+Rebuild the frontend after UI changes. `pkg/desk/dist` is ignored build output.
+`nix build .#jobshop` builds both parts with a cached frontend derivation.
 Contributor rules for people and agents (plain SQL store queries, Desk `dist`, Nix
 `vendorHash`) are in [AGENTS.md](AGENTS.md); PR titles are conventional
 commits ([CONTRIBUTING.md](CONTRIBUTING.md)).

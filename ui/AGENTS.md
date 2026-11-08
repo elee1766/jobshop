@@ -14,7 +14,8 @@ simple, accessible Unix approach to interactions.
 - Verify populated desktop and mobile views, light and dark themes, focus,
   overflow and live state. Inspect rendered alignment, not just CSS values.
 - Run `npm --prefix ui run check` and `npm --prefix ui run build` for UI changes.
-  Commit the resulting `pkg/desk/dist` assets with their source changes. Follow
-  the root checks and relevant browser acceptance runbooks in `docs/verify/`.
+  The resulting `pkg/desk/dist` is ignored output needed before Go builds and
+  tests, not source to commit. Nix and CI generate it automatically. Follow the
+  root checks and relevant browser acceptance runbooks in `docs/verify/`.
 - Run mutating browser tests only against an isolated controller, never live
   Jobcity. See `docs/verify/desk-redesign.md`.

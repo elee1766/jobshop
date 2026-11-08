@@ -198,17 +198,20 @@ Notes:
 
 ## Build
 
-**Development and CI: plain Go.**
+**Development: build the frontend, then Go.**
 
 ```
+npm --prefix ui ci
+npm --prefix ui run build
 go build ./...
 go vet ./...
 golangci-lint run
 go test -race ./...
 ```
 
-CI runs those on GitHub Actions, plus `nix build` to catch packaging
-breakage. No Makefile unless a real need appears.
+Desk assets are generated into ignored `pkg/desk/dist` before Go embeds them.
+CI shares the frontend build with its Go checks. Nix builds it separately in a
+cached derivation. No Makefile unless a real need appears.
 
 **Deployment: Nix flake.**
 
