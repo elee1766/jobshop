@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
+
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 )
 
 // detachedHostDir writes a spec for a fake-agent host in a fresh session
@@ -45,9 +47,9 @@ func TestDetachedHostSpawnStop(t *testing.T) {
 
 	d, err := c.startDetachedHost("js-s1", dir)
 	require.NoError(t, err)
-	t.Cleanup(func() { stopDetachedHost(dir, time.Second) })
-	assert.Equal(t, d.Pid, hostPid(dir), "host pid from supervisor.pid")
-	assert.True(t, hostAlive(dir))
+	t.Cleanup(func() { sessionrt.StopDetached(dir, time.Second) })
+	assert.Equal(t, d.Pid, sessionrt.HostPid(dir), "host pid from supervisor.pid")
+	assert.True(t, sessionrt.HostAlive(dir))
 	_, ok := host.ReadExit(dir)
 	assert.False(t, ok, "the previous exit.json is gone")
 
@@ -58,12 +60,12 @@ func TestDetachedHostSpawnStop(t *testing.T) {
 	assert.Positive(t, wel.AgentPid)
 
 	c.stopHost(dir)
-	assert.False(t, hostAlive(dir), "stopped")
+	assert.False(t, sessionrt.HostAlive(dir), "stopped")
 	assert.False(t, d.Running())
 	ex, ok := host.ReadExit(dir)
 	require.True(t, ok, "the host recorded the agent's exit")
 	assert.NotEmpty(t, ex.Reason)
-	assert.Equal(t, d.Pid, hostPid(dir), "the pid stays readable after the host ends")
+	assert.Equal(t, d.Pid, sessionrt.HostPid(dir), "the pid stays readable after the host ends")
 }
 
 // TestDetachedHostCgroupFallback: a sessions cgroup that cannot be opened
@@ -71,12 +73,12 @@ func TestDetachedHostSpawnStop(t *testing.T) {
 func TestDetachedHostCgroupFallback(t *testing.T) {
 	t.Parallel()
 	c, logs := rulesController(t, rulesBase+"limits:\n  cgroup: {}\n")
-	c.cgroupOnce.Do(func() { c.cgroup = cgroupSetup{hosts: filepath.Join(t.TempDir(), "missing")} })
+	c.cgroupOnce.Do(func() { c.cgroup = sessionrt.Delegation{Hosts: filepath.Join(t.TempDir(), "missing")} })
 	require.NotEmpty(t, c.hostsCgroup())
 	dir := detachedHostDir(t)
 	d, err := c.startDetachedHost("js-s1", dir)
 	require.NoError(t, err)
-	t.Cleanup(func() { stopDetachedHost(dir, time.Second) })
+	t.Cleanup(func() { sessionrt.StopDetached(dir, time.Second) })
 	assert.True(t, d.Running())
 	assert.Contains(t, logs.b.String(), "session host stays in the controller cgroup")
 }
@@ -93,7 +95,7 @@ func TestDetachedHostScopeFallback(t *testing.T) {
 	dir := detachedHostDir(t)
 	d, err := c.startDetachedHost("js-s1", dir)
 	require.NoError(t, err)
-	t.Cleanup(func() { stopDetachedHost(dir, time.Second) })
+	t.Cleanup(func() { sessionrt.StopDetached(dir, time.Second) })
 	assert.True(t, d.Running())
 	assert.Contains(t, logs.b.String(), "session host stays in the controller cgroup")
 }
@@ -113,9 +115,9 @@ func TestStopHostKills(t *testing.T) {
 	go func() { exited <- holder.Wait() }()
 	t.Cleanup(func() { _ = holder.Process.Kill() })
 	require.Equal(t, "ready\n", line)
-	require.True(t, hostAlive(dir))
+	require.True(t, sessionrt.HostAlive(dir))
 
-	require.True(t, stopDetachedHost(dir, 100*time.Millisecond), "a host was running")
+	require.True(t, sessionrt.StopDetached(dir, 100*time.Millisecond), "a host was running")
 	select {
 	case err := <-exited:
 		require.Error(t, err)
@@ -123,8 +125,8 @@ func TestStopHostKills(t *testing.T) {
 	case <-time.After(time.Minute):
 		t.Fatal("host not killed")
 	}
-	assert.False(t, hostAlive(dir))
-	assert.False(t, stopDetachedHost(dir, time.Second), "nothing left to stop")
+	assert.False(t, sessionrt.HostAlive(dir))
+	assert.False(t, sessionrt.StopDetached(dir, time.Second), "nothing left to stop")
 }
 
 // TestNoSupervisorPid (#918): a session dir with no supervisor.pid has no
@@ -132,11 +134,11 @@ func TestStopHostKills(t *testing.T) {
 func TestNoSupervisorPid(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	assert.False(t, hostAlive(dir))
-	assert.Zero(t, hostPid(dir))
-	assert.False(t, stopDetachedHost(dir, time.Second))
+	assert.False(t, sessionrt.HostAlive(dir))
+	assert.Zero(t, sessionrt.HostPid(dir))
+	assert.False(t, sessionrt.StopDetached(dir, time.Second))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "host.pid"), []byte("4242\n"), 0o600))
-	assert.Zero(t, hostPid(dir))
-	assert.False(t, hostAlive(dir))
-	assert.False(t, stopDetachedHost(dir, time.Second))
+	assert.Zero(t, sessionrt.HostPid(dir))
+	assert.False(t, sessionrt.HostAlive(dir))
+	assert.False(t, sessionrt.StopDetached(dir, time.Second))
 }

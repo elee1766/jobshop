@@ -1,4 +1,4 @@
-package control
+package sessionrt
 
 import (
 	"os"
@@ -24,19 +24,19 @@ func TestProbeShell(t *testing.T) {
 	inherited := []string{"PATH=" + filepath.Dir(sh), "HOME=/x"}
 
 	ok := host.Spec{Env: []string{"JOBSHOP_SESSION=js-s1", "PATH=" + bin + ":" + filepath.Dir(sh)}}
-	require.NoError(t, probeShell(ok, inherited, want))
+	require.NoError(t, ProbeShell(ok, inherited, want))
 
 	noPath := host.Spec{Env: []string{"JOBSHOP_SESSION=js-s1", "PATH=" + bin}}
-	err = probeShell(noPath, inherited, want)
+	err = ProbeShell(noPath, inherited, want)
 	require.Error(t, err)
 	assert.True(t, host.Permanent(err))
 	assert.Contains(t, err.Error(), "missing sh on")
 
 	noSession := host.Spec{Env: []string{"PATH=" + bin + ":" + filepath.Dir(sh)}}
-	err = probeShell(noSession, inherited, want)
+	err = ProbeShell(noSession, inherited, want)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing $JOBSHOP_SESSION on")
 
-	assert.NoError(t, probeShell(host.Spec{Sandbox: &sandbox.Sandbox{}}, nil, want))
-	assert.NoError(t, probeShell(noPath, inherited, nil))
+	assert.NoError(t, ProbeShell(host.Spec{Sandbox: &sandbox.Sandbox{}}, nil, want))
+	assert.NoError(t, ProbeShell(noPath, inherited, nil))
 }

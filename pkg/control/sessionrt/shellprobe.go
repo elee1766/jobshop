@@ -1,4 +1,4 @@
-package control
+package sessionrt
 
 import (
 	"slices"
@@ -13,14 +13,14 @@ import (
 // commands use (`$(dirname $(which go))` emptied PATH in #780).
 var DefaultShellProbe = []string{"jobshop", "gh", "git", "sh", "env", "dirname", "which", "awk"}
 
-// probeShell checks the env an agent's tool shell inherits (the
+// ProbeShell checks the env an agent's tool shell inherits (the
 // controller's, overridden by the spec env) before a host is spawned:
 // JOBSHOP_SESSION set and every command in want on its PATH. A miss is a
 // permanent spawn error naming what is missing, so the pool is
 // quarantined instead of sessions starting into "command not found" and
 // burning step attempts (#780). Sandboxed agents resolve commands inside
 // the sandbox, so they are not probed here.
-func probeShell(spec host.Spec, inherited, want []string) error {
+func ProbeShell(spec host.Spec, inherited, want []string) error {
 	if len(want) == 0 || spec.Sandbox != nil {
 		return nil
 	}

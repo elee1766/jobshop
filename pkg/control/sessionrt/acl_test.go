@@ -1,4 +1,4 @@
-package control
+package sessionrt
 
 import (
 	"encoding/binary"
@@ -20,15 +20,15 @@ func TestApplySlot(t *testing.T) {
 	u := config.IsolationUser{UID: 1000, MapUID: 100000, MapGID: 200000, Groups: []string{"100"}, PerSession: &config.PerSession{Range: 4}}
 	spec := host.Spec{User: &userns.User{UID: 1000, GID: 1000, MapUID: 100000, MapGID: 200000, Groups: []int{100}}}
 	slot := 3
-	require.NoError(t, applySlot(&spec, u, &slot))
+	require.NoError(t, ApplySlot(&spec, u, &slot))
 	assert.Equal(t, 100003, spec.User.MapUID)
 	assert.Equal(t, 200003, spec.User.MapGID)
 	assert.Empty(t, spec.User.Groups, "no shared groups across sessions")
 
 	var p *host.PermanentError
-	assert.ErrorAs(t, applySlot(&spec, u, nil), &p, "no slot is permanent")
+	assert.ErrorAs(t, ApplySlot(&spec, u, nil), &p, "no slot is permanent")
 	big := 4
-	assert.ErrorAs(t, applySlot(&spec, u, &big), &p, "slot outside a shrunk range")
+	assert.ErrorAs(t, ApplySlot(&spec, u, &big), &p, "slot outside a shrunk range")
 }
 
 func TestSessionACL(t *testing.T) {
@@ -50,7 +50,7 @@ func TestRestrictDir(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "a"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "a", "f"), []byte("x"), 0o644))
-	err := restrictDir(dir, os.Getuid()+1, os.Getgid(), true)
+	err := RestrictDir(dir, os.Getuid()+1, os.Getgid(), true)
 	if p := new(host.PermanentError); errors.As(err, &p) {
 		t.Skip(err)
 	}

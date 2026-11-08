@@ -2,7 +2,6 @@ package control
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,11 +16,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -31,8 +28,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
-	"github.com/elee1766/acphost/pkg/proc"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/logctx"
@@ -526,73 +523,6 @@ func (r *runner) finish(resolution, reason string) {
 	r.c.endSession(ctx, r.c.config(), r.id, "session "+resolution)
 }
 
-// stopSessionProcs stops processes that still carry the session's env
-// after its host is gone. Agents may start a detached daemon (jcode
-// `acp --socket` runs tools in a `jcode serve` outside the host's process
-// group); it keeps the env it started with, so without this a refreshed
-// session still runs tools with the old PATH (#111).
-func stopSessionProcs(dir string) {
-	if dir == "" {
-		return
-	}
-	pids := sessionProcs(dir)
-	for _, p := range pids {
-		_ = syscall.Kill(p, syscall.SIGTERM)
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for len(pids) > 0 && time.Now().Before(deadline) {
-		time.Sleep(50 * time.Millisecond)
-		pids = slices.DeleteFunc(pids, procGone)
-	}
-	for _, p := range pids {
-		_ = syscall.Kill(p, syscall.SIGKILL)
-	}
-}
-
-// procGone reports whether pid has exited. A zombie counts as gone:
-// kill(pid, 0) succeeds on it until its parent reaps it, and a detached
-// daemon's parent (init or a subreaper) may take a while, which held
-// every env refresh for the full 5s deadline (#433).
-func procGone(pid int) bool {
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return syscall.Kill(pid, 0) != nil
-	}
-	// The state follows the parenthesized command, which may hold spaces.
-	i := bytes.LastIndexByte(b, ')')
-	return i >= 0 && i+2 < len(b) && (b[i+2] == 'Z' || b[i+2] == 'X')
-}
-
-// sessionProcs lists processes whose environ has the JOBSHOP_SOCKET the
-// controller gives agents of the session in dir (unique per root, unlike
-// the session id). Linux only; elsewhere it finds none.
-func sessionProcs(dir string) []int {
-	want := []byte("JOBSHOP_SOCKET=" + filepath.Join(dir, "cli.sock"))
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil
-	}
-	self := os.Getpid()
-	var out []int
-	for _, e := range entries {
-		pid, err := strconv.Atoi(e.Name())
-		if err != nil || pid <= 1 || pid == self {
-			continue
-		}
-		env, err := os.ReadFile(filepath.Join("/proc", e.Name(), "environ"))
-		if err != nil {
-			continue
-		}
-		for _, kv := range bytes.Split(env, []byte{0}) {
-			if bytes.Equal(kv, want) {
-				out = append(out, pid)
-				break
-			}
-		}
-	}
-	return out
-}
-
 type errSessionEnd struct {
 	resolution, reason string
 	// permanent marks a spawn error that will repeat (host.Permanent).
@@ -614,11 +544,11 @@ func (r *runner) session() error {
 	if err != nil {
 		return err
 	}
-	if fields.Suspended && !hostAlive(r.dir) {
+	if fields.Suspended && !sessionrt.HostAlive(r.dir) {
 		return errSuspended
 	}
 	fresh := false
-	if !hostAlive(r.dir) {
+	if !sessionrt.HostAlive(r.dir) {
 		r.clearRestart()
 		if err := r.c.spawnHost(t, fields); err != nil {
 			var se *host.SpawnError
@@ -908,7 +838,7 @@ func (r *runner) clearRestart() {
 // afterTurn: held tickets stay claimed (the supervisor keeps heartbeating
 // them) and the new host is prompted with them again.
 func (r *runner) restart(nc net.Conn) error {
-	r.log.InfoContext(r.ctx, "restarting host on request", "host_pid", hostPid(r.dir))
+	r.log.InfoContext(r.ctx, "restarting host on request", "host_pid", sessionrt.HostPid(r.dir))
 	r.lifecycle("restart_requested")
 	_ = nc.Close()
 	r.c.stopHost(r.dir)
@@ -942,7 +872,7 @@ func (r *runner) worktreeMissing() bool {
 }
 
 func (r *runner) refresh(nc net.Conn) error {
-	r.log.InfoContext(r.ctx, "refreshing host env", "host_pid", hostPid(r.dir))
+	r.log.InfoContext(r.ctx, "refreshing host env", "host_pid", sessionrt.HostPid(r.dir))
 	_ = nc.Close()
 	r.c.stopHost(r.dir)
 	return errRefresh
@@ -1002,7 +932,7 @@ func (r *runner) connect() (net.Conn, *bufio.Reader, host.Welcome, error) {
 		if time.Now().After(deadline) || r.ctx.Err() != nil {
 			return nil, nil, wel, fmt.Errorf("connect to host: %w", err)
 		}
-		if ex, exited := host.ReadExit(r.dir); exited && !hostAlive(r.dir) {
+		if ex, exited := host.ReadExit(r.dir); exited && !sessionrt.HostAlive(r.dir) {
 			return nil, nil, wel, fmt.Errorf("host exited: %s", ex.Reason)
 		}
 		time.Sleep(wait)
@@ -1029,7 +959,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			// claim and drop tickets. Respawning recreates the worktree
 			// (spawnHost) and keeps the conversation and claims.
 			r.log.WarnContext(ctx, "session worktree missing, respawning host",
-				"caller", "runner.worktreeMissing", "host_pid", hostPid(r.dir))
+				"caller", "runner.worktreeMissing", "host_pid", sessionrt.HostPid(r.dir))
 			r.lifecycle("worktree_missing")
 			_ = nc.Close()
 			r.c.stopHost(r.dir)
@@ -1277,7 +1207,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			// Reconnecting keeps the same stuck agent (the crash loop seen
 			// on gasserver); a new host starts a new agent and reloads the
 			// conversation, and the claim survives for the next prompt.
-			r.log.WarnContext(ctx, "agent stuck busy, respawning host", "host_pid", hostPid(r.dir))
+			r.log.WarnContext(ctx, "agent stuck busy, respawning host", "host_pid", sessionrt.HostPid(r.dir))
 			r.lifecycle("agent_stuck_busy")
 			r.c.stopHost(r.dir)
 			return errRefresh
@@ -1825,17 +1755,17 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 		return err
 	}
 	if u := c.config().IsolationFor(t.Pool).User; u != nil && u.Slots() > 0 {
-		if err := c.restrictSession(&spec.Spec, *u, f.Slot, dir); err != nil {
+		if err := sessionrt.RestrictSession(&spec.Spec, *u, f.Slot, dir); err != nil {
 			return err
 		}
 	} else if u := spec.User; u != nil && len(u.Groups) > 0 {
 		// The mapped user reaches cli.sock and writes the worktree through
 		// the first shared group, so the controller and refinery can still
 		// read and remove what it leaves.
-		if err := shareDir(dir, u.Groups[0], false); err != nil {
+		if err := sessionrt.ShareDir(dir, u.Groups[0], false); err != nil {
 			return host.Permanentf("isolation: share session dir: %w", err)
 		}
-		if err := shareDir(spec.Dir, u.Groups[0], true); err != nil {
+		if err := sessionrt.ShareDir(spec.Dir, u.Groups[0], true); err != nil {
 			return host.Permanentf("isolation: share worktree: %w", err)
 		}
 	}
@@ -1850,7 +1780,7 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	if err := host.CheckSpawn(spec.Spec, worktree, host.WithHostDir(dir)); err != nil {
 		return err
 	}
-	if err := probeShell(spec.Spec, hostInheritedEnv(), c.opt.ShellProbe); err != nil {
+	if err := sessionrt.ProbeShell(spec.Spec, hostInheritedEnv(), c.opt.ShellProbe); err != nil {
 		return err
 	}
 	if err := hostspec.Write(dir, spec); err != nil {
@@ -1872,40 +1802,6 @@ func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
 	}
 	c.log.Info("spawned host", "session", t.ID, "pid", d.Pid, "agent", f.Agent)
 	return nil
-}
-
-// startDetachedHost starts the session host for dir as this binary
-// re-exec'd in its own session (acphost.StartDetached, #904). It returns
-// once the agent started; a setup failure is a *host.SpawnError, and
-// host.Permanent sees through it.
-func (c *Controller) startDetachedHost(id, dir string) (*proc.Detached, error) {
-	// In the sessions slice or cgroup, so its load counts against the
-	// sessions cap and not the controller's share (JOB-91), and with
-	// systemd outside the controller's unit (#992).
-	switch p := c.hostPlacement(); {
-	case p.systemd:
-		d, err := host.StartDetached(dir, hostInheritedEnv(), host.InScope(p.slice))
-		var se *host.SpawnError
-		if err == nil || errors.As(err, &se) {
-			// A SpawnError is the agent's setup, not the scope: a start
-			// without the scope would fail the same way.
-			return d, err
-		}
-		// The scope could not be started (no manager, or this process is
-		// outside its manager's tree): the host stays in the
-		// controller's unit, as before.
-		c.log.Warn("session host stays in the controller cgroup", "session", id, "slice", p.slice, "err", err)
-	case p.cgroup != "":
-		d, err := host.StartDetached(dir, hostInheritedEnv(), host.InCgroup(p.cgroup))
-		var pe *fs.PathError
-		if err == nil || !errors.As(err, &pe) || pe.Path != p.cgroup {
-			return d, err
-		}
-		// InCgroup fails the start when the cgroup cannot be opened; the
-		// host then stays in the controller's, as before.
-		c.log.Warn("session host stays in the controller cgroup", "session", id, "err", err)
-	}
-	return host.StartDetached(dir, hostInheritedEnv())
 }
 
 func (c *Controller) hostExe() (string, error) {
@@ -2007,7 +1903,7 @@ func (c *Controller) removeWorktree(cfg *config.Config, t store.Ticket, caller s
 	if _, err := os.Stat(cwd); err != nil {
 		return
 	}
-	if t.Status != store.StatusClosed || hostAlive(c.root.SessionDir(t.ID)) {
+	if t.Status != store.StatusClosed || sessionrt.HostAlive(c.root.SessionDir(t.ID)) {
 		c.log.Warn("refusing to remove worktree of live session", "session", t.ID, "caller", caller,
 			"status", t.Status, "cwd", cwd)
 		return

@@ -20,6 +20,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalread"
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -729,7 +730,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		if seen[id] || !hostAlive(c.root.SessionDir(id)) {
+		if seen[id] || !sessionrt.HostAlive(c.root.SessionDir(id)) {
 			continue
 		}
 		info, err := c.sessionInfo(ctx, id)
@@ -765,7 +766,7 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 // none) and the in-progress tickets it holds.
 func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.Ticket) rpc.SessionInfo {
 	dir := c.root.SessionDir(id)
-	info := rpc.SessionInfo{ID: id, Alive: hostAlive(dir), HostPid: hostPid(dir)}
+	info := rpc.SessionInfo{ID: id, Alive: sessionrt.HostAlive(dir), HostPid: sessionrt.HostPid(dir)}
 	c.mu.Lock()
 	r := c.runners[id]
 	if r != nil {
@@ -863,7 +864,7 @@ func (c *Controller) sessionRestart(ctx context.Context, sc scope, p rpc.Session
 	}
 	c.log.InfoContext(ctx, "session restart requested", "session", p.ID, "now", p.Now)
 	r.requestRestart(p.Now)
-	return rpc.SessionRestartResult{ID: p.ID, HostPid: hostPid(c.root.SessionDir(p.ID)), Now: p.Now}, nil
+	return rpc.SessionRestartResult{ID: p.ID, HostPid: sessionrt.HostPid(c.root.SessionDir(p.ID)), Now: p.Now}, nil
 }
 
 // sessionCancel cancels the running turn of a controller-driven session
@@ -933,7 +934,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 		}
 		// Still alive after the stop above means stopHost could not end it;
 		// leave it for a later run rather than delete under a live host.
-		if !p.DryRun && hostAlive(dir) {
+		if !p.DryRun && sessionrt.HostAlive(dir) {
 			c.log.WarnContext(ctx, "reap: host still alive, keeping dir", "session", t.ID)
 			continue
 		}

@@ -1,4 +1,4 @@
-package control
+package sessionrt
 
 import (
 	"os"
@@ -11,7 +11,7 @@ import (
 )
 
 // TestProcGone: a live process is not gone; an exited, unreaped child (a
-// zombie) is, so stopSessionProcs does not wait out its deadline (#433).
+// zombie) is, so StopProcs does not wait out its deadline (#433).
 func TestProcGone(t *testing.T) {
 	t.Parallel()
 	assert.False(t, procGone(os.Getpid()))
