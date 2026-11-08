@@ -6,7 +6,7 @@ table on the read pool, while `Collection()` registers other collections'
 FTS5 tables on the writer (`CREATE VIRTUAL TABLE IF NOT EXISTS`). A read
 that reloads the `recall` virtual table while the schema changes fails
 with SQLITE_SCHEMA instead of being re-prepared. Reproduced with
-`TestRecallDuringCollectionDDL` (fails every run before the fix).
+`TestRecallDuringCollectionDDL` (failed repeatedly before the fix).
 
 Fix: `Store.recall` repeats the query on SQLITE_SCHEMA, up to 16 tries
 with the jittered `busyWait` between them. Five immediate retries were
