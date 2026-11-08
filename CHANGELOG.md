@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.13](https://github.com/elee1766/jobshop/compare/v0.9.12...v0.9.13) (2026-11-08)
+
+
+### Features
+
+* **control:** deliver messages as xml envelopes ([#1073](https://github.com/elee1766/jobshop/issues/1073)) ([#1075](https://github.com/elee1766/jobshop/issues/1075)) ([88bb96d](https://github.com/elee1766/jobshop/commit/88bb96df2fac0c7c37d21c1a166ebf377bc6780a))
+
 ## [0.9.12](https://github.com/elee1766/jobshop/compare/v0.9.11...v0.9.12) (2026-11-08)
 
 
