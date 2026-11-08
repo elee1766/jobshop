@@ -33,6 +33,8 @@ the pinned decision log issue (#569). Progress: open `target` issues.
   Never add a numbered section to gasserver-verify.md (#131).
   Do not append long paragraphs to other docs.
 - Plain names, short comments explaining why, no marketing language.
+- Desk UI work: read `ui/AGENTS.md` and `docs/desk-design.md` before changing
+  layout, styling, interaction or user-facing copy.
 
 ## Nix
 
