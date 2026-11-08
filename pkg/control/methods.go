@@ -19,6 +19,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -784,7 +785,7 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 	c.mu.Unlock()
 	if info.ToolTarget != "" || info.ToolIntent != "" {
 		// A command line can carry a secret: redact as the journal is.
-		red := c.redactor(journalEnv(dir))
+		red := c.redactor(journalread.Env(dir))
 		info.ToolTarget, info.ToolIntent = red.Text(info.ToolTarget), red.Text(info.ToolIntent)
 	}
 	info.Drained = r != nil && c.poolDrained(r.pool)
