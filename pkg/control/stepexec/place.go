@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -86,13 +87,7 @@ func RemoveRunDir(ctx context.Context, log *slog.Logger, gitMu sync.Locker, root
 }
 
 // GitCommonDir is repo's shared git dir, or "" if git does not know it.
-func GitCommonDir(repo string) string {
-	out, err := exec.Command("git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
+func GitCommonDir(repo string) string { return sessionrt.GitCommonDir(repo) }
 
 // StaleRunDirs lists the run dirs under root whose run is closed or gone:
 // a close that raced a running attempt, or a restart between close and

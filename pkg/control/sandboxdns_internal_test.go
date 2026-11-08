@@ -49,5 +49,5 @@ pools:
 	h, err := c.poolSandbox("host", dir, "/bin/true", "/tmp", "")
 	require.NoError(t, err)
 	require.NoError(t, c.checkSandboxDNS("host", h))
-	assert.Empty(t, c.dnsChecked)
+	assert.Zero(t, c.dnsChecks.Len())
 }

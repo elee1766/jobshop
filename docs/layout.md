@@ -50,8 +50,9 @@ jobshop/
 │   │   ├── linearsvc/        Linear sweeps, intake, webhook, asks, outage backoff (JOB-142)
 │   │   ├── sessionrt/        host stop/start, cgroups, ACLs, shell probe,
 │   │   │                     background job scan, mapped homes, slot
-│   │   │                     allocation, host connect, ACP client and traffic
-│   │   │                     (JOB-146, JOB-153, JOB-154, JOB-155)
+│   │   │                     allocation, sandbox spec, isolated command, host
+│   │   │                     connect, ACP client and traffic
+│   │   │                     (JOB-146, JOB-152, JOB-153, JOB-154, JOB-155)
 │   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
 │   │   ├── stepexec/         command, http and script step attempts: templating, run dir
 │   │   │                     placement, one attempt to a Result (JOB-157); the controller
@@ -75,8 +76,7 @@ jobshop/
 │   │                         are the bounded host capabilities
 │   ├── apicall/              token source and per-call options Linear and GitHub share
 │   ├── github/               GitHub REST client and read-only observation of
-│   │                         PRs, checks, reviews and threads (JOB-143),
-│   │                         REST PR reads and revert rules (JOB-159)
+│   │                         PRs, checks, reviews and threads (JOB-143)
 │   ├── linear/               Linear GraphQL client (#201)
 │   ├── identity/             credentials for configured identities: App tokens,
 │   │                         Linear client_credentials (#200)

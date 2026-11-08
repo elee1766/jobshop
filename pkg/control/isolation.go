@@ -9,7 +9,6 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/acphost/pkg/cgroup"
-	"github.com/elee1766/acphost/pkg/userns"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
@@ -104,13 +103,9 @@ func (c *Controller) ensureCgroup() sessionrt.Delegation {
 func (c *Controller) applyIsolation(spec *host.Spec, pool string) error {
 	iso := c.config().IsolationFor(pool)
 	if u := iso.User; u != nil {
-		hu := &userns.User{UID: u.UID, GID: u.GIDOrUID(), MapUID: u.MapUID, MapGID: u.MapGID}
-		for _, g := range u.Groups {
-			gid, err := config.LookupGroup(g)
-			if err != nil {
-				return host.Permanentf("isolation user: %w", err)
-			}
-			hu.Groups = append(hu.Groups, gid)
+		hu, err := sessionrt.UserFor(*u)
+		if err != nil {
+			return host.Permanentf("%w", err)
 		}
 		spec.User = hu
 	}
