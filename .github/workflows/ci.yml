@@ -55,15 +55,28 @@ jobs:
       - name: install victoria-logs
         env:
           VL_VERSION: v1.53.0
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p "$RUNNER_TEMP/vl"
           cd "$RUNNER_TEMP/vl"
           f=victoria-logs-linux-amd64-$VL_VERSION.tar.gz
-          # The release host returns 504 now and then (master went red on
-          # it twice): retry every error, including HTTP ones, for ~10 min.
-          get() { curl -fsSLO --retry 20 --retry-all-errors --retry-delay 10 --retry-max-time 600 "$1"; }
-          get "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/$f"
-          get "https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION/victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
+          # The release download host (github.com/.../releases/download)
+          # returned 504 on every try on 2026-11-08 and failed master twice,
+          # retries included. The API asset endpoint was up: fetch from it
+          # first, then fall back to the download host with retries. The
+          # sha256 check below covers either source.
+          rel="https://api.github.com/repos/VictoriaMetrics/VictoriaLogs/releases/tags/$VL_VERSION"
+          dl="https://github.com/VictoriaMetrics/VictoriaLogs/releases/download/$VL_VERSION"
+          api_get() {
+            id=$(curl -fsS --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" "$rel" | jq -r --arg n "$1" '.assets[] | select(.name == $n) | .id') &&
+              [ -n "$id" ] &&
+              curl -fsSL --retry 3 --retry-all-errors -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/octet-stream" -o "$1" "https://api.github.com/repos/VictoriaMetrics/VictoriaLogs/releases/assets/$id"
+          }
+          get() {
+            api_get "$1" || curl -fsSLO --retry 20 --retry-all-errors --retry-delay 10 --retry-max-time 600 "$dl/$1"
+          }
+          get "$f"
+          get "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt"
           grep " $f\$" "victoria-logs-linux-amd64-${VL_VERSION}_checksums.txt" | sha256sum -c -
           tar xzf "$f"
           bin=$(find "$PWD" -type f -name 'victoria-logs*' ! -name '*.tar.gz' ! -name '*.txt' | head -1)
