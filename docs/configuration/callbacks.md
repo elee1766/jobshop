@@ -56,7 +56,7 @@ listener or bypass ingest authentication/admission.
 | --- | --- | --- |
 | Workflow `on_start` | `begin(run)` | Initial transition for the persisted run |
 | Workflow `on_step_completed` | `completed(run, step)` | A relevant recorded finished-step transition |
-| Trigger `handler` | `handle(event, args)` | An admitted source delivery or registered timer wakeup |
+| Trigger `handler` | `handle(event, args)` | An admitted source delivery, a timer or fallback wakeup, or a stall |
 
 The function name is user-chosen. Its positional argument contract is not.
 `config check` rejects an export that cannot accept its callback's
@@ -479,16 +479,28 @@ subject keys used by its webhooks.
 
 Keep source-specific `on` filters, `fallback` intervals and `when.cron`
 schedules distinct. Timers are wakeups, not evidence of review/delegation
-authority. Do not translate a legacy `when.stall` signal to a generic timer
-and lose the original signal's thresholds or per-subject limits. A handler
-does not combine with `when.stall`: perform explicit authoritative
-discovery in the handler and test its inventory, caps and recovery path.
+authority. A trigger with `on:` and a handler polls every `fallback` with
+no `when` conditions: the handler reads its source and decides.
+`event.trigger` names the trigger the handler runs for.
+
+A handler may combine with `when.stall`. Go keeps detection, the per-stall
+`max_runs`, the cooldown, `max_open` (default 3) and the #704 subject hold,
+and calls the handler once per fireable stall with `event.source ==
+"stall"`, `event.event` the signal, `event.delivery` the stall id
+`<signal>:<subject>` and `payload` holding `signal`, `subject`, `detail`,
+`key` (the default run key) and `runs` (earlier runs for this stall). The
+run a handler starts carries `meta.trigger.stall`, so it holds the stall
+and counts toward `max_runs` whatever key it picks. `args.workflow` names
+the workflow whose own runs and steps the signals skip. A handler that
+returns `[]` is offered the stall again after a cooldown (30 minutes
+without one) while the signal persists.
 
 For handler triggers, a terminal invocation consumes its cron/cooldown slot
-even when it returns `[]`. Handler cooldown is measured from the accepted
-fire, not from a resulting ticket's eventual close. `max_open` counts the
-existing open trigger-created runs plus the proposed new batch. An unset
+even when it returns `[]`. Handler cooldown runs from the later of the
+accepted fire and the close of the newest run or ticket the trigger filed.
+`max_open` counts the trigger's open runs and `create_ticket` tasks, not
+their steps, plus the proposed new batch. A started run's
+`meta.trigger.key` is `<trigger>/<run key>`. An unset
 or zero handler `max_open` does not impose that cap. A batch that would
 exceed a configured cap fails as a whole, rather than partially creating the
-first few runs. Keep old `max_runs` per-subject history semantics explicitly
-in authoritative discovery. An open-run cap is not a historic-subject cap.
+first few runs.

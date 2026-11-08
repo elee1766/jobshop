@@ -40,6 +40,7 @@ func LoadPrograms(ctx context.Context, cfg *config.Config, root config.Root) (ma
 	if cfg.Automation.GitHub {
 		options.GitHub = hookGitHubToken
 	}
+	options.Tickets, options.Now = hookTickets, hookNow
 	options.Limits.OutputBytes = cfg.Automation.OutputBytes
 	if cfg.Automation.Timeout != "" {
 		options.Limits.Duration, _ = time.ParseDuration(cfg.Automation.Timeout)

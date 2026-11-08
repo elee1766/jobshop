@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -68,6 +70,10 @@ func (c *Controller) runStallTrigger(ctx context.Context, cfg *config.Config, na
 				continue
 			}
 		}
+		if tr.Handler != "" {
+			c.enqueueStall(ctx, cfg, name, tr, s)
+			continue
+		}
 		t, existing, err := c.fireStall(ctx, cfg, name, tr, s)
 		if errors.Is(err, errCheckPending) {
 			continue // its intake check runs outside the tick (JOB-103)
@@ -85,6 +91,37 @@ func (c *Controller) runStallTrigger(ctx context.Context, cfg *config.Config, na
 		c.log.InfoContext(ctx, "stall trigger fired", "trigger", name, "key", key, "run", t.ID, "delivery", ev["delivery"])
 		c.recordStall(ctx, s, t.ID)
 	}
+}
+
+// enqueueStall calls a stall trigger's handler for one fireable stall. The
+// invocation key is the stall, its run count and a cooldown slot, so one
+// stall is offered once per slot; max_runs, the cooldown and the #704 hold
+// were checked by evalStall. The handler's start_run gets
+// meta.trigger.stall, so the next evaluation sees its run.
+func (c *Controller) enqueueStall(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s stall) {
+	digest := cfg.HookDigests[tr.Handler]
+	if digest == "" {
+		return
+	}
+	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: triggerPack, Key: "name", Value: name}, {Pack: triggerPack, Key: stallMetaKey, Value: s.id()}}, Limit: store.NoLimit})
+	if err != nil {
+		c.log.ErrorContext(ctx, "stall handler", "trigger", name, "err", err)
+		return
+	}
+	event := &hooks.Event{
+		Source: hooks.StallSource, Event: s.signal, Delivery: s.id(), Trigger: name,
+		Payload: map[string]any{"signal": s.signal, "subject": s.subject, "detail": s.detail, "key": s.keyWith(tr.StallKeyPrefix()), "runs": len(runs)},
+		Fields:  map[string]any{},
+	}
+	// A handler that declines a stall is offered it again a cooldown later
+	// (30m without one), while the signal persists.
+	bucket := c.now().Truncate(config.Duration(tr.Cooldown, 30*time.Minute)).UTC().Format(time.RFC3339)
+	key := "stall/" + name + "/" + s.id() + "/" + strconv.Itoa(len(runs)) + "/" + bucket
+	if err := c.hooks().Put(ctx, key, hooks.Invocation{Trigger: name, Entry: tr.Handler, Digest: digest, Event: event, Args: tr.Args}); err != nil {
+		c.log.ErrorContext(ctx, "enqueue stall hook", "trigger", name, "err", err)
+		return
+	}
+	c.kickHooks()
 }
 
 // evalStall detects stalls and returns those that may fire now: no open
@@ -119,7 +156,12 @@ func (c *Controller) evalStall(ctx context.Context, cfg *config.Config, name str
 	var reasons []string
 	for _, s := range found {
 		key := s.keyWith(prefix)
-		runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + key, Order: store.OrderNewest})
+		f := store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "key", MetaValue: name + "/" + key, Order: store.OrderNewest}
+		if tr.Handler != "" {
+			// A handler picks its own run keys; its runs carry the stall id.
+			f = store.Filter{Kind: store.KindRun, Meta: []store.MetaMatch{{Pack: triggerPack, Key: "name", Value: name}, {Pack: triggerPack, Key: stallMetaKey, Value: s.id()}}, Order: store.OrderNewest}
+		}
+		runs, err := c.store.List(ctx, f)
 		if err != nil {
 			return nil, "", err
 		}
@@ -255,7 +297,7 @@ func (c *Controller) fireStall(ctx context.Context, cfg *config.Config, name str
 // that belong to the trigger's own workflow. An event re-evaluates all
 // of them; only a check uses its fields.
 func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr config.Trigger, ev triggerEvent) ([]stall, error) {
-	own, err := c.workflowTickets(ctx, tr.Run.Workflow)
+	own, err := c.workflowTickets(ctx, tr.StallWorkflow())
 	if err != nil {
 		return nil, err
 	}
@@ -276,7 +318,7 @@ func (c *Controller) detectStalls(ctx context.Context, cfg *config.Config, tr co
 		case config.StallSessionSilent:
 			found, err = c.stallSessions(ctx, now, after)
 		case config.StallNeedsHuman:
-			found, err = c.stallNeedsHuman(ctx, cfg, now, after, tr.Run.Workflow)
+			found, err = c.stallNeedsHuman(ctx, cfg, now, after, tr.StallWorkflow())
 		case config.StallBlocked:
 			found, err = c.stallBlocked(ctx, now, after)
 		case config.StallResourceWait:

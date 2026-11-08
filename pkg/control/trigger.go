@@ -96,7 +96,7 @@ func (c *Controller) runTrigger(ctx context.Context, cfg *config.Config, name st
 		if key == "" {
 			key = c.now().UTC().Truncate(time.Minute).Format(time.RFC3339)
 		}
-		event := &hooks.Event{Source: "timer", Event: "timer", Delivery: key, Payload: map[string]any{}, Fields: map[string]any{}}
+		event := &hooks.Event{Source: "timer", Event: "timer", Delivery: key, Trigger: name, Payload: map[string]any{}, Fields: map[string]any{}}
 		if err := c.hooks().Put(ctx, "timer/"+name+"/"+key, hooks.Invocation{Trigger: name, Entry: tr.Handler, Digest: digest, Event: event, Args: tr.Args}); err != nil {
 			c.log.ErrorContext(ctx, "enqueue timer hook", "trigger", name, "err", err)
 		}
@@ -156,21 +156,22 @@ func (c *Controller) evalTrigger(ctx context.Context, cfg *config.Config, name s
 	}
 
 	openCount := 0
+	if tr.Handler != "" && tr.MaxOpen > 0 {
+		if openCount, err = c.triggerOpen(ctx, name); err != nil {
+			return st, err
+		}
+	}
 	for _, s := range []store.Status{store.StatusOpen, store.StatusInProgress} {
-		if tr.Handler != "" && tr.MaxOpen == 0 {
+		if tr.Handler != "" {
 			break
 		}
 		f := mine
 		f.Status, f.Limit = s, 1
-		if tr.Handler != "" {
-			f.Limit = store.NoLimit
-		}
 		open, err := c.store.List(ctx, f)
 		if err != nil {
 			return st, err
 		}
-		openCount += len(open)
-		if len(open) > 0 && tr.Handler == "" {
+		if len(open) > 0 {
 			st.open = open[0].ID
 			st.why = "ticket " + open[0].ID + " is still open"
 			return st, nil
@@ -181,8 +182,15 @@ func (c *Controller) evalTrigger(ctx context.Context, cfg *config.Config, name s
 		return st, nil
 	}
 
-	if tr.Handler != "" && !st.last.IsZero() && tr.Cooldown != "" {
-		if until := st.last.Add(config.Duration(tr.Cooldown, 0)); now.Before(until) {
+	if tr.Handler != "" && tr.Cooldown != "" {
+		// From the last fire or the close of the newest ticket it filed,
+		// whichever is later: a max_open hold ends at the close, and the
+		// cooldown runs from there.
+		base := st.last
+		if lastT != nil && lastT.ClosedAt.After(base) {
+			base = lastT.ClosedAt
+		}
+		if until := base.Add(config.Duration(tr.Cooldown, 0)); !base.IsZero() && now.Before(until) {
 			st.why = "cooldown until " + until.UTC().Format(time.RFC3339)
 			return st, nil
 		}

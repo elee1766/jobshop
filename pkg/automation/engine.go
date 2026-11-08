@@ -25,6 +25,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/automation/github"
 	automationhttp "github.com/elee1766/jobshop/pkg/automation/http"
 	"github.com/elee1766/jobshop/pkg/automation/jev"
+	"github.com/elee1766/jobshop/pkg/automation/tickets"
+	starlarkjson "go.starlark.net/lib/json"
+	starlarktime "go.starlark.net/lib/time"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
@@ -431,6 +434,13 @@ func (e *Engine) thread(ctx context.Context, inv *invocation) *starlark.Thread {
 	t.SetMaxExecutionSteps(e.options.Limits.Steps)
 	t.SetLocal("invocation", inv)
 	t.SetLocal("engine", e)
+	// One clock reading per invocation: a replayed callback sees the time
+	// its first attempt saw when the host pins Now.
+	now := time.Now()
+	if e.options.Now != nil {
+		now = e.options.Now(ctx)
+	}
+	starlarktime.SetNow(t, func() (time.Time, error) { return now, nil })
 	t.Print = func(t *starlark.Thread, msg string) {
 		if inv == nil {
 			t.Cancel("print is unavailable during module loading")
@@ -513,10 +523,12 @@ func active(t *starlark.Thread) (*invocation, error) {
 
 func predeclared() starlark.StringDict {
 	return starlark.StringDict{
-		"result":     starlark.NewBuiltin("result", constructResult),
-		"start_run":  starlark.NewBuiltin("start_run", constructAction),
-		"start_step": starlark.NewBuiltin("start_step", constructAction),
-		"finish_run": starlark.NewBuiltin("finish_run", constructAction),
+		"result":        starlark.NewBuiltin("result", constructResult),
+		"start_run":     starlark.NewBuiltin("start_run", constructAction),
+		"start_step":    starlark.NewBuiltin("start_step", constructAction),
+		"finish_run":    starlark.NewBuiltin("finish_run", constructAction),
+		"create_ticket": starlark.NewBuiltin("create_ticket", constructAction),
+		"comment":       starlark.NewBuiltin("comment", constructAction),
 		"http": starlarkstruct.FromStringDict(starlark.String("http"), starlark.StringDict{
 			"get":  capability("http.get", automationhttp.Call),
 			"post": capability("http.post", automationhttp.Call),
@@ -529,7 +541,12 @@ func predeclared() starlark.StringDict {
 			"delete":  capability("github.delete", github.Call),
 			"graphql": capability("github.graphql", github.GraphQL),
 		}),
-		"shell": capability("shell", command.Call),
-		"jev":   capability("jev", jev.Call),
+		"shell":    capability("shell", command.Call),
+		"tickets":  capability("tickets", tickets.Call),
+		"runs":     capability("runs", tickets.Call),
+		"sessions": capability("sessions", tickets.Call),
+		"json":     starlarkjson.Module,
+		"time":     starlarktime.Module,
+		"jev":      capability("jev", jev.Call),
 	}
 }

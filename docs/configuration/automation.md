@@ -69,6 +69,15 @@ Constructors accept named arguments only:
 | `start_run(...)` | `workflow`, `key` | `inputs={}`, `title=""`, `reason=""` |
 | `start_step(...)` | `id`, `pool`, exactly one of `script`, `prompt` or `prompt_file` | `inputs={}`, `title=""`, `retries`, `retry_pool=""`, `needs=[]`, `output_schema={...}`, `reason=""`; with `script`: `worktree=False`, `timeout="10m"` |
 | `finish_run(...)` | `outcome` | `output={}`, `reason=""` |
+| `create_ticket(...)` | `title`, `key` | `pool=""`, `body=""`, `labels=[]`, `priority` (0-4, default 2), `parent=""`, `reason=""` |
+| `comment(...)` | `ticket`, `body` | `reason=""` |
+
+`create_ticket` files a task. Its `key` dedups per trigger or workflow: while
+a ticket it filed with that key is open, the action is a no-op. The project
+is the pool's, else the parent's, else the run's. A trigger's tickets carry
+`meta.trigger` and count toward its `max_open`, like its runs. `comment`
+adds a comment to any existing ticket. Both apply in the same transaction as
+the rest of the batch.
 
 Names and keys must be nonempty strings. `inputs` and `output` are
 string-keyed dictionaries. An explicit `retries` is an integer from 0
@@ -261,6 +270,27 @@ github.graphql(query, variables={}, repo="", timeout="")
   status, with GitHub's messages.
 - Redirects off the identity's API origin fail. The script cannot set
   `Authorization`.
+
+## Store reads, json and time
+
+```text
+tickets(kind="", status=None, project="", pool="", label="", workflow="", key="", state="", parent="", holder="", meta={}, order="newest", limit=100, body=False)
+runs(workflow="", key="", status=None, state="", meta={}, order="newest", limit=100)
+sessions(pool="", status=["open", "in_progress"], limit=100)
+```
+
+Each returns a list of ticket dictionaries as `jobshop ticket show --json`
+prints them, with `fields` and `meta` decoded and `body` dropped unless
+`body=True`. `status` is a string or list of `open`, `in_progress`,
+`closed`. `meta` maps up to three `"pack.key"` names to string values,
+for example `{"trigger.name": "stall"}`. `limit` is 1 to 500. Reads see the
+whole store, are journaled and replayed like other calls, and count toward
+the call limit. They do not fence: a decision made on a read can race a
+write, and the controller still checks every returned action.
+
+`json.encode`, `json.decode` and `json.indent` are Starlark's `json`
+module. `time` is Starlark's `time` module; `time.now()` is the time the
+invocation was accepted, so a resumed attempt sees the same value.
 
 ## Shell
 

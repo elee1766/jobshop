@@ -33,7 +33,7 @@ func (c *Controller) enqueueHookEvents(ctx context.Context, items []store.InboxI
 			if err := hooks.DecodeJSON(payload, &object); err != nil {
 				return fmt.Errorf("trigger %s: payload must be a JSON object: %w", name, err)
 			}
-			event := &hooks.Event{Source: it.Source, Event: it.Kind, Delivery: it.DeliveryID, Repository: it.RepoOrTeam, Payload: object, Fields: ev.vars()}
+			event := &hooks.Event{Source: it.Source, Event: it.Kind, Delivery: it.DeliveryID, Repository: it.RepoOrTeam, Trigger: name, Payload: object, Fields: ev.vars()}
 			if err := c.hooks().Put(ctx, "event/"+name+"/"+it.Source+"/"+it.DeliveryID, hooks.Invocation{Trigger: name, Entry: tr.Handler, Digest: program.Digest(), Event: event, Args: tr.Args}); err != nil {
 				return err
 			}

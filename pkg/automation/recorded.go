@@ -8,6 +8,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/automation/command"
 	automationhttp "github.com/elee1766/jobshop/pkg/automation/http"
 	"github.com/elee1766/jobshop/pkg/automation/jev"
+	"github.com/elee1766/jobshop/pkg/automation/tickets"
 	"go.starlark.net/starlark"
 )
 
@@ -36,6 +37,10 @@ func (inv *invocation) restore(name string, cached any, args starlark.Tuple, kwa
 	value, err := api.DecodeJSON(encoded)
 	if err != nil {
 		return nil, errors.New("invalid recorded capability result JSON")
+	}
+	switch name {
+	case "tickets", "runs", "sessions":
+		return tickets.Restore(value, options)
 	}
 	fields, ok := value.(map[string]any)
 	if !ok {

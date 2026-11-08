@@ -38,6 +38,14 @@ type Action struct {
 	OutputSchema map[string]any `json:"output_schema,omitempty"`
 	RetryPool    string         `json:"retry_pool,omitempty"`
 	Needs        []string       `json:"needs,omitempty"`
+	// create_ticket and comment: Body is the ticket body or comment text,
+	// Ticket the ticket commented on. Labels, Priority and Parent are for
+	// create_ticket.
+	Body     string   `json:"body,omitempty"`
+	Ticket   string   `json:"ticket,omitempty"`
+	Labels   []string `json:"labels,omitempty"`
+	Priority *int     `json:"priority,omitempty"`
+	Parent   string   `json:"parent,omitempty"`
 }
 
 type actionValue struct {
@@ -56,6 +64,11 @@ func cloneAction(a Action) Action {
 		a.OutputSchema = cloneData(a.OutputSchema).(map[string]any)
 	}
 	a.Needs = slices.Clone(a.Needs)
+	a.Labels = slices.Clone(a.Labels)
+	if a.Priority != nil {
+		p := *a.Priority
+		a.Priority = &p
+	}
 	return a
 }
 
@@ -85,6 +98,7 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 	a := Action{Kind: fn.Name()}
 	var inputs, output, outputSchema *starlark.Dict
 	var needs *starlark.List
+	var labels *starlark.List
 	var script starlark.Value
 	var err error
 	switch a.Kind {
@@ -94,6 +108,14 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 		err = starlark.UnpackArgs(a.Kind, args, kwargs, "id", &a.ID, "pool", &a.Pool, "prompt?", &a.Prompt, "prompt_file?", &a.PromptFile, "script?", &script, "worktree?", &a.Worktree, "timeout?", &a.Timeout, "inputs?", &inputs, "title?", &a.Title, "retries?", &a.Retries, "retry_pool?", &a.RetryPool, "needs?", &needs, "output_schema?", &outputSchema, "reason?", &a.Reason)
 	case "finish_run":
 		err = starlark.UnpackArgs(a.Kind, args, kwargs, "outcome", &a.Outcome, "output?", &output, "reason?", &a.Reason)
+	case "create_ticket":
+		priority := -1
+		err = starlark.UnpackArgs(a.Kind, args, kwargs, "title", &a.Title, "key", &a.Key, "pool?", &a.Pool, "body?", &a.Body, "labels?", &labels, "priority?", &priority, "parent?", &a.Parent, "reason?", &a.Reason)
+		if priority != -1 {
+			a.Priority = &priority
+		}
+	case "comment":
+		err = starlark.UnpackArgs(a.Kind, args, kwargs, "ticket", &a.Ticket, "body", &a.Body, "reason?", &a.Reason)
 	}
 	if err != nil {
 		return nil, err
@@ -143,6 +165,22 @@ func constructAction(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tup
 		}
 	case "finish_run":
 		required["outcome"] = a.Outcome
+	case "create_ticket":
+		required["title"], required["key"] = a.Title, a.Key
+		if a.Priority != nil && (*a.Priority < 0 || *a.Priority > 4) {
+			return nil, errors.New("create_ticket: priority must be 0 to 4")
+		}
+		if labels != nil {
+			for i := 0; i < labels.Len(); i++ {
+				label, ok := starlark.AsString(labels.Index(i))
+				if !ok || strings.TrimSpace(label) == "" {
+					return nil, errors.New("create_ticket: labels must be nonempty strings")
+				}
+				a.Labels = append(a.Labels, label)
+			}
+		}
+	case "comment":
+		required["ticket"], required["body"] = a.Ticket, a.Body
 	}
 	for name, value := range required {
 		if strings.TrimSpace(value) == "" {

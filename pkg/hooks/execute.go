@@ -21,6 +21,7 @@ type (
 		engine     *Engine
 		invocation string
 		attempt    int64
+		now        time.Time
 	}
 )
 
@@ -208,7 +209,7 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 		_, _ = c.saveHook(ctx, col, rec, in, state)
 		return
 	}
-	invokeCtx := context.WithValue(ctx, hookCallContextKey{}, hookCallContext{engine: c, invocation: rec.Key, attempt: rec.Attempts})
+	invokeCtx := context.WithValue(ctx, hookCallContextKey{}, hookCallContext{engine: c, invocation: rec.Key, attempt: rec.Attempts, now: in.AcceptedAt})
 	args := []any{in.RunInput}
 	if in.StepInput != nil {
 		args = append(args, in.StepInput)
@@ -271,4 +272,23 @@ func hookGitHubToken(ctx context.Context, repo string) (api.GitHubToken, error) 
 		return api.GitHubToken{}, errors.New("capability call has no durable invocation")
 	}
 	return trace.engine.host.GitHubToken(ctx, repo)
+}
+
+// hookNow is time.now() in a callback: when the invocation was accepted,
+// so a resumed attempt sees the same time and tests follow the controller
+// clock.
+func hookNow(ctx context.Context) time.Time {
+	if trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext); ok && !trace.now.IsZero() {
+		return trace.now
+	}
+	return time.Now()
+}
+
+// hookTickets serves tickets(), runs() and sessions().
+func hookTickets(ctx context.Context, q api.TicketQuery) ([]any, error) {
+	trace, ok := ctx.Value(hookCallContextKey{}).(hookCallContext)
+	if !ok {
+		return nil, errors.New("capability call has no durable invocation")
+	}
+	return trace.engine.host.ReadTickets(ctx, q)
 }

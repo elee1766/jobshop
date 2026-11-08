@@ -92,6 +92,20 @@ func (c *Config) checkStallTrigger(tr *Trigger) error {
 	if tr.MaxOpen < 0 {
 		return errors.New("max_open must be >= 0")
 	}
+	if tr.Handler != "" {
+		// The handler gets each stall as an event and returns its own
+		// actions; args.workflow names the workflow whose tickets it skips.
+		if tr.Ticket != nil || tr.Run != nil || tr.Command != nil {
+			return errors.New("a stall trigger with handler takes no run, ticket or command")
+		}
+		if w, ok := tr.Args["workflow"]; ok {
+			name, isString := w.(string)
+			if _, known := c.Workflows[name]; !isString || !known {
+				return fmt.Errorf("args.workflow: unknown workflow %v", w)
+			}
+		}
+		return nil
+	}
 	if tr.Ticket != nil || tr.Run == nil {
 		return errors.New("a stall trigger needs run and no ticket")
 	}
@@ -215,4 +229,14 @@ func (tr Trigger) StallMaxOpen() int {
 		return tr.MaxOpen
 	}
 	return DefaultStallMaxOpen
+}
+
+// StallWorkflow is the workflow a stall trigger starts, whose own runs and
+// steps it does not watch: run.workflow, or a handler's args.workflow.
+func (tr Trigger) StallWorkflow() string {
+	if tr.Run != nil {
+		return tr.Run.Workflow
+	}
+	w, _ := tr.Args["workflow"].(string)
+	return w
 }

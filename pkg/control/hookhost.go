@@ -2,9 +2,12 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
+	"strings"
 
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
@@ -48,6 +51,10 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 	if in.Event != nil && in.Event.Source == "timer" {
 		// The timer slot was accepted before the durable invocation existed.
 		tr.When.Cron, tr.Cooldown = "", ""
+	}
+	if len(tr.When.Stall) > 0 {
+		// evalStall admitted the stall; max_open is checked again on commit.
+		return "", nil
 	}
 	st, err := c.evalTrigger(ctx, runtime.Config, in.Trigger, tr)
 	if err != nil {
@@ -177,7 +184,8 @@ func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]
 
 func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.Invocation) error {
 	var automation *store.RunAutomation
-	if in.Run != "" {
+	switch {
+	case in.Run != "":
 		run, err := c.store.Get(ctx, in.Run)
 		if err != nil {
 			return err
@@ -197,12 +205,25 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 				}
 			}
 		}
-	} else if len(in.Plan.Tickets) > 0 {
+	case len(in.Plan.Tickets) > 0:
 		// Stable IDs were journaled before Apply. The graph is all-or-nothing.
 		if _, err := c.store.Get(ctx, in.Plan.Tickets[0].ID); err == nil {
 			return nil
 		} else if !errors.Is(err, store.ErrNotFound) {
 			return err
+		}
+	case len(in.Plan.Comments) > 0:
+		// A comment-only plan has no ticket to find: look for its first
+		// comment by this invocation's actor.
+		first := in.Plan.Comments[0]
+		comments, err := store.Comments(ctx, c.store, first.TicketID)
+		if err != nil {
+			return err
+		}
+		for _, cm := range comments {
+			if cm.Author == "automation:"+key && cm.Body == first.Body {
+				return nil
+			}
 		}
 	}
 	lc := c.live.Load()
@@ -272,4 +293,38 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		return fmt.Errorf("apply hook actions: %w", err)
 	}
 	return nil
+}
+
+// ReadTickets serves tickets(), runs() and sessions(): a read of the whole
+// store, as the controller sees it. Hooks are trusted code; writes still go
+// through returned actions.
+func (h hookHost) ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, error) {
+	f := store.Filter{
+		Kind: store.Kind(q.Kind), Project: q.Project, Pool: q.Pool, Label: q.Label,
+		Workflow: q.Workflow, Key: q.Key, State: q.State, ParentID: q.Parent, Holder: q.Holder,
+		Order: store.Order(q.Order), Limit: q.Limit,
+	}
+	for _, s := range q.Statuses {
+		f.Statuses = append(f.Statuses, store.Status(s))
+	}
+	for _, k := range slices.Sorted(maps.Keys(q.Meta)) {
+		pack, key, _ := strings.Cut(k, ".")
+		f.Meta = append(f.Meta, store.MetaMatch{Pack: pack, Key: key, Value: q.Meta[k]})
+	}
+	ts, err := h.c.store.List(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(ts)
+	if err != nil {
+		return nil, err
+	}
+	var list []any
+	if err := hooks.DecodeJSON(data, &list); err != nil {
+		return nil, err
+	}
+	if list == nil {
+		list = []any{}
+	}
+	return list, nil
 }

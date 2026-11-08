@@ -615,3 +615,134 @@ def handle(event, args):
 	assert.Contains(t, string(trace.Calls[0].Value), `"capability":"github.get"`)
 	assert.NotContains(t, string(trace.Calls[0].Value), "ghp_")
 }
+
+// TestHookReadsAndTicketActions: a handler reads the store, files a ticket
+// once per key and comments on an existing one, and time.now() is the
+// invocation's accepted time.
+func TestHookReadsAndTicketActions(t *testing.T) {
+	root := hookTestRoot(t, `def begin(run):
+    return []
+def completed(run, step):
+    return []
+def handle(event, args):
+    open = tickets(kind="task", status="open", label="watch")
+    actions = [create_ticket(title="Plan next step", key="replan", pool="dev", labels=["plan"], priority=1, body="filed at " + str(time.now().unix))]
+    for t in open:
+        actions.append(comment(ticket=t["id"], body="seen by " + event.event))
+    return result(actions=actions, output={"open": len(open), "runs": len(runs(workflow="dynamic"))})
+`)
+	c := controltest.Start(t, root, control.Options{})
+	var watched store.Ticket
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "watched", Labels: []string{"watch"}}, &watched)
+	spoolPath := filepath.Join(root.Dir, "events.db")
+	spool, err := ingest.OpenSpool(t.Context(), spoolPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = spool.Close() })
+	endpoint := config.IngestEndpoint{Name: "tasks", Source: "generic", Map: config.IngestMap{Kind: "event"}}
+	put := func(id string) {
+		_, err := ingest.Put(t.Context(), spool, endpoint, id, "", []byte(`{"event":"tasks"}`), controltest.Epoch)
+		require.NoError(t, err)
+		c.Call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: spoolPath}, nil)
+	}
+	var records []store.Record
+	done := func(n int) func() bool {
+		return func() bool {
+			c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{Trigger: "custom"}, &records)
+			finished := 0
+			for _, r := range records {
+				if r.State == "done" {
+					finished++
+				}
+			}
+			return finished == n
+		}
+	}
+	put("d1")
+	c.PassUntil(done(1), "handler did not finish")
+	put("d2")
+	c.PassUntil(done(2), "second handler did not finish")
+	var planned []store.Ticket
+	c.Call(rpc.MethodTicketList, rpc.ListParams{Label: "plan"}, &planned)
+	require.Len(t, planned, 1, "create_ticket must dedup on its key while the ticket is open")
+	assert.Equal(t, "dev", planned[0].Pool)
+	assert.Equal(t, 1, planned[0].Priority)
+	assert.Contains(t, planned[0].Body, "filed at ")
+	assert.Contains(t, string(planned[0].Meta), `"trigger":{"key":"custom/replan","name":"custom"}`)
+	var thread rpc.ShowResult
+	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: watched.ID}, &thread)
+	require.Len(t, thread.Comments, 2)
+	assert.Equal(t, "seen by tasks", thread.Comments[0].Body)
+	var trace rpc.AutomationResult
+	c.Call(rpc.MethodAutomationShow, rpc.IDParams{ID: records[0].Key}, &trace)
+	capabilities := []string{}
+	for _, call := range trace.Calls {
+		var v struct {
+			Observation struct {
+				Capability string `json:"capability"`
+			} `json:"observation"`
+		}
+		require.NoError(t, json.Unmarshal(call.Value, &v))
+		capabilities = append(capabilities, v.Observation.Capability)
+	}
+	assert.Equal(t, []string{"tickets", "runs"}, capabilities, "store reads are journaled")
+}
+
+// TestHookStallHandler: a when.stall trigger with a handler gets each
+// stall as an event; its run carries the stall id, so the stall is held
+// while the run is open and max_runs counts it.
+func TestHookStallHandler(t *testing.T) {
+	root := controltest.NewRoot(t, `pack: pack.yaml
+projects: {js: {}}
+agents: {fake: {command: "false"}}
+`)
+	pack := `pools:
+  plan: {project: js, agent: fake, max_sessions: 0, dir: "$ROOT"}
+workflows:
+  stall-check:
+    project: js
+    vars: [signal, subject]
+    steps:
+      - {id: diagnose, pool: plan, title: "Stall {{.signal}} {{.subject}}", prompt: x}
+triggers:
+  stall:
+    when:
+      stall: [{signal: blocked, after: 1h}]
+    handler: hooks.star:stall
+    args: {workflow: stall-check}
+    max_runs: 1
+`
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pack.yaml"), []byte(strings.ReplaceAll(pack, "$ROOT", root.Dir)), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "hooks.star"), []byte(`def stall(event, args):
+    if event.source != "stall" or event.trigger != "stall":
+        fail("not a stall event")
+    p = event.payload
+    return [start_run(workflow=args["workflow"], key="sc-" + p["subject"], inputs={"signal": p["signal"], "subject": p["subject"]})]
+`), 0o600))
+	_, err := config.Load(root)
+	require.NoError(t, err)
+	c := controltest.Start(t, root, control.Options{})
+	var blocked store.Ticket
+	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "stuck", Labels: []string{"blocked"}}, &blocked)
+	c.Clock.Advance(2 * time.Hour)
+	var runs []store.Ticket
+	c.PassUntil(func() bool {
+		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+		return len(runs) == 1
+	}, "stall handler did not start a run")
+	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	require.NoError(t, err)
+	assert.Equal(t, "sc-"+blocked.ID, rf.Key)
+	assert.Equal(t, "blocked", rf.Vars["signal"])
+	assert.Contains(t, string(runs[0].Meta), `"stall":"blocked:`+blocked.ID+`"`)
+	// Held while the run is open, then max_runs 1 holds it for good.
+	c.Clock.Advance(time.Hour)
+	c.Pass(3)
+	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+	require.Len(t, runs, 1)
+	c.Call(rpc.MethodRunCancel, rpc.IDParams{ID: runs[0].ID}, nil)
+	c.Clock.Advance(time.Hour)
+	c.Pass(3)
+	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
+	require.Len(t, runs, 1, "max_runs must count handler runs")
+	assert.Equal(t, store.StatusClosed, runs[0].Status)
+}

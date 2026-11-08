@@ -213,6 +213,15 @@ type Graph struct {
 	Edges       []Edge
 	RemoveEdges []Edge
 	Unclaimed   []string
+	// Comments are appended after the rest, so a comment may name a ticket
+	// created in the same graph.
+	Comments []GraphComment
+}
+
+// GraphComment is one comment a Graph adds.
+type GraphComment struct {
+	TicketID string
+	Body     string
 }
 
 // Update changes mutable, non-claim fields, labels and comments, and

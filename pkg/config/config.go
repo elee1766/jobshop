@@ -1847,9 +1847,6 @@ func (c *Config) checkTrigger(name string, tr *Trigger) error {
 		return fmt.Errorf("name must match %s", namePattern)
 	}
 	w := tr.When
-	if len(w.Stall) > 0 && tr.Handler != "" {
-		return errors.New("handler cannot be combined with when.stall")
-	}
 	if len(w.Stall) > 0 {
 		return c.checkStallTrigger(tr)
 	}

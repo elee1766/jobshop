@@ -331,7 +331,9 @@ func (c *Controller) triggerKeySeen(ctx context.Context, name, key string) (stri
 func (c *Controller) triggerPollDue(name string, tr config.Trigger) bool {
 	every := time.Duration(0)
 	if len(tr.On) > 0 {
-		if !tr.When.HasConditions() {
+		// A handler decides for itself whether to act, so its fallback
+		// polls with no when conditions.
+		if !tr.When.HasConditions() && (tr.Handler == "" || tr.Fallback == "") {
 			return false
 		}
 		every = config.Duration(tr.Fallback, config.DefaultTriggerFallback)
