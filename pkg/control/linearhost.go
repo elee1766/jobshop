@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -45,17 +46,17 @@ func (c *Controller) sweepLinearAgentSessions(ctx context.Context, cfg *config.C
 }
 
 // signalLinearIssues is the linear_issue_no_run scan signal.
-func (c *Controller) signalLinearIssues(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]finding, error) {
+func (c *Controller) signalLinearIssues(ctx context.Context, cfg *config.Config, sig config.ScanSignal) ([]triggers.Finding, error) {
 	found, pending, err := c.linearSvc().Signal(ctx, cfg, sig)
 	if pending {
-		return nil, errCheckPending
+		return nil, triggers.ErrCheckPending
 	}
 	if err != nil {
 		return nil, err
 	}
-	out := make([]finding, len(found))
+	out := make([]triggers.Finding, len(found))
 	for i, f := range found {
-		out[i] = finding{config.SignalLinearIssueNoRun, f.Subject, f.Detail}
+		out[i] = triggers.Finding{Signal: config.SignalLinearIssueNoRun, Subject: f.Subject, Detail: f.Detail}
 	}
 	return out, nil
 }
@@ -117,20 +118,20 @@ func (h linearHost) OffGo(key, poller string, timeout time.Duration, fn func(ctx
 }
 
 func (h linearHost) OffTick(ctx context.Context, key, poller string, timeout time.Duration, run func(ctx context.Context) (any, error)) (any, bool, error) {
-	res, err := offTick(ctx, checkNeed{
-		key: key, poller: poller, timeout: timeout,
-		run: func(ctx context.Context) checkResult {
+	res, err := triggers.OffTick(ctx, triggers.Need{
+		Key: key, Poller: poller, Timeout: timeout,
+		Run: func(ctx context.Context) triggers.Result {
 			v, err := run(ctx)
-			return checkResult{val: v, err: err}
+			return triggers.Result{Val: v, Err: err}
 		},
 	})
-	if errors.Is(err, errCheckPending) {
+	if errors.Is(err, triggers.ErrCheckPending) {
 		return nil, true, nil
 	}
 	if err == nil {
-		err = res.err
+		err = res.Err
 	}
-	return res.val, false, err
+	return res.Val, false, err
 }
 
 func (h linearHost) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {

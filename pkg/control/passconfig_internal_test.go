@@ -11,8 +11,13 @@ import (
 )
 
 // passRoots are the functions that run a supervisor pass or part of one
-// under tickMu: tick, and the trigger event path (JOB-104).
-var passRoots = []string{"tick", "onEvent"}
+// under tickMu: tick, and the Controller methods the trigger engine calls
+// back into during a pass or an event job (JOB-104, JOB-145). The engine's
+// own code is checked by TestPassConfigInEngine in pkg/control/triggers.
+var passRoots = []string{
+	"tick", "fireTriggerEvent", "fireFinding", "signalPoolQuarantined", "signalResourceWait",
+	"signalIngest", "signalLinearIssues", "waitsOnQuestion", "editsHold", "runTriggers",
+}
 
 // passLoads may read the live config: tick loads it once per pass.
 var passLoads = map[string]bool{"tick": true}

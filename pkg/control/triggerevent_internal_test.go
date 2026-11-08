@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -64,10 +65,10 @@ func triggerTickets(t *testing.T, c *Controller, name string) []store.Ticket {
 func fireEvents(c *Controller, items ...store.InboxItem) {
 	trs := c.config().Triggers
 	for _, it := range items {
-		ev := eventOf(it)
+		ev := triggers.EventOf(it)
 		for name, tr := range trs {
-			if len(tr.On) > 0 && triggerOn(tr, ev) {
-				c.onEvent(c.ctx, c.config(), name, tr, ev)
+			if len(tr.On) > 0 && triggers.On(tr, ev) {
+				c.triggerEngine().OnEvent(c.ctx, c.config(), name, tr, ev)
 			}
 		}
 	}
@@ -145,13 +146,13 @@ func TestEventTriggerCommandFails(t *testing.T) {
 
 func TestEventMatch(t *testing.T) {
 	t.Parallel()
-	ev := eventOf(workflowRun("d", "master", "success", "abc"))
+	ev := triggers.EventOf(workflowRun("d", "master", "success", "abc"))
 	assert.Equal(t, "abc", ev["head_sha"])
 	m := config.EventMatch{Event: "workflow_run", Workflow: "ci", Branch: "Master", Conclusion: "success", Repo: "acme/app"}
-	assert.True(t, ev.matches("github", m), "workflow by file name, case-insensitive")
+	assert.True(t, ev.Matches("github", m), "workflow by file name, case-insensitive")
 	m.Workflow = "CI"
-	assert.True(t, ev.matches("github", m), "workflow by name")
-	assert.False(t, ev.matches("linear", m))
+	assert.True(t, ev.Matches("github", m), "workflow by name")
+	assert.False(t, ev.Matches("linear", m))
 	m.Label = "x"
-	assert.False(t, ev.matches("github", m))
+	assert.False(t, ev.Matches("github", m))
 }

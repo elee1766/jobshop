@@ -175,7 +175,7 @@ func TestIngestBacklogAttention(t *testing.T) {
 	s, err := c.signalIngest(t.Context(), c.config(), config.SignalIngestBacklog)
 	require.NoError(t, err)
 	require.Len(t, s, 1)
-	assert.Contains(t, s[0].detail, "2 pending")
+	assert.Contains(t, s[0].Detail, "2 pending")
 
 	_, err = worker(c, "w1").Once(t.Context())
 	require.NoError(t, err)

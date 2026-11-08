@@ -81,7 +81,7 @@ func TestEventJobRootSpan(t *testing.T) {
 	c, exp := tracedController(t, eventTriggerYAML)
 	c.lockSpanMin = time.Nanosecond
 
-	c.triggerEvents([]store.InboxItem{workflowRun("d1", "master", "success", "aaa")})
+	c.triggerEngine().Events([]store.InboxItem{workflowRun("d1", "master", "success", "aaa")})
 	c.wg.Wait()
 
 	var job tracetest.SpanStub

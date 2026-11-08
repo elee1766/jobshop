@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -110,53 +111,53 @@ func (c *Controller) lastWorkerBeat() time.Time { return c.queue().LastBeat(c.st
 func (c *Controller) ingestAttention(ctx context.Context, cfg *config.Config) ([]rpc.AttentionItem, error) {
 	var items []rpc.AttentionItem
 	if s, ok := c.missingWorker(cfg); ok {
-		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionIngest, ID: "ingest-worker", Title: s.detail, Since: c.lastWorkerBeat()})
+		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionIngest, ID: "ingest-worker", Title: s.Detail, Since: c.lastWorkerBeat()})
 	}
 	s, ok, err := c.ingestBacklog(ctx, cfg)
 	if err != nil {
 		return nil, err
 	}
 	if ok {
-		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionIngest, ID: "ingest-backlog", Title: s.detail, Since: c.now().Add(-cfg.Ingest.BacklogAge())})
+		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionIngest, ID: "ingest-backlog", Title: s.Detail, Since: c.now().Add(-cfg.Ingest.BacklogAge())})
 	}
 	return items, nil
 }
 
 // missingWorker: external mode and no worker heartbeat for
 // ingest.worker_missing.
-func (c *Controller) missingWorker(cfg *config.Config) (finding, bool) {
+func (c *Controller) missingWorker(cfg *config.Config) (triggers.Finding, bool) {
 	in := cfg.Ingest
 	if !in.External() && !in.ExternalDispatch() {
-		return finding{}, false
+		return triggers.Finding{}, false
 	}
 	last := c.lastWorkerBeat()
 	if c.now().Sub(last) < in.WorkerMissingAfter() {
-		return finding{}, false
+		return triggers.Finding{}, false
 	}
-	return finding{
-		signal: config.SignalIngestWorker, subject: "ingest-worker@" + last.UTC().Format("20060102T150405Z"),
-		detail: fmt.Sprintf("ingest.workers or ingest.dispatch is external and no `jobshop ingest work` has called for %s; pending items are not admitted or admitted ones not dispatched", ago(c.now(), last)),
+	return triggers.Finding{
+		Signal: config.SignalIngestWorker, Subject: "ingest-worker@" + last.UTC().Format("20060102T150405Z"),
+		Detail: fmt.Sprintf("ingest.workers or ingest.dispatch is external and no `jobshop ingest work` has called for %s; pending items are not admitted or admitted ones not dispatched", triggers.Ago(c.now(), last)),
 	}, true
 }
 
 // ingestBacklog: more than ingest.backlog_max pending items older than
 // ingest.backlog_after.
-func (c *Controller) ingestBacklog(ctx context.Context, cfg *config.Config) (finding, bool, error) {
+func (c *Controller) ingestBacklog(ctx context.Context, cfg *config.Config) (triggers.Finding, bool, error) {
 	in := cfg.Ingest
 	n, err := ingest.InboxCountOlder(ctx, c.store, store.InboxPending, c.now().Add(-in.BacklogAge()))
 	if err != nil || n <= int64(in.BacklogMax) {
-		return finding{}, false, err
+		return triggers.Finding{}, false, err
 	}
-	return finding{
-		signal: config.SignalIngestBacklog, subject: "ingest-backlog",
-		detail: fmt.Sprintf("%d pending inbox items older than %s (ingest.backlog_max %d)", n, in.BacklogAge(), in.BacklogMax),
+	return triggers.Finding{
+		Signal: config.SignalIngestBacklog, Subject: "ingest-backlog",
+		Detail: fmt.Sprintf("%d pending inbox items older than %s (ingest.backlog_max %d)", n, in.BacklogAge(), in.BacklogMax),
 	}, true, nil
 }
 
-func (c *Controller) signalIngest(ctx context.Context, cfg *config.Config, signal string) ([]finding, error) {
+func (c *Controller) signalIngest(ctx context.Context, cfg *config.Config, signal string) ([]triggers.Finding, error) {
 	if signal == config.SignalIngestWorker {
 		if s, ok := c.missingWorker(cfg); ok {
-			return []finding{s}, nil
+			return []triggers.Finding{s}, nil
 		}
 		return nil, nil
 	}
@@ -164,7 +165,7 @@ func (c *Controller) signalIngest(ctx context.Context, cfg *config.Config, signa
 	if !ok {
 		return nil, err
 	}
-	return []finding{s}, nil
+	return []triggers.Finding{s}, nil
 }
 
 // recordInboxGauges records inbox counts by state and live workers.

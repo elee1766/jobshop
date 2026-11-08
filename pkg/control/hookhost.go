@@ -59,11 +59,11 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 		// evalScan admitted the finding; max_open is checked again on commit.
 		return "", nil
 	}
-	st, err := c.evalTrigger(ctx, runtime.Config, in.Trigger, tr)
+	st, err := c.triggerEngine().Eval(ctx, runtime.Config, in.Trigger, tr)
 	if err != nil {
 		return "", err
 	}
-	if !st.holds {
+	if !st.Holds {
 		return "held", nil
 	}
 	return "", nil

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -45,7 +46,7 @@ func TestResourceWaitSignalAndAttention(t *testing.T) {
 	found, err = c.signalResourceWait(ctx, clk.now(), 30*time.Minute)
 	require.NoError(t, err)
 	require.Len(t, found, 1)
-	assert.Equal(t, finding{config.SignalResourceWait, b.ID, "waiting on emu, 0 ahead (1/1 held) for 1h0m0s"}, found[0])
+	assert.Equal(t, triggers.Finding{Signal: config.SignalResourceWait, Subject: b.ID, Detail: "waiting on emu, 0 ahead (1/1 held) for 1h0m0s"}, found[0])
 	items, err = c.attentionItems(ctx, c.config())
 	require.NoError(t, err)
 	require.Len(t, items, 1)

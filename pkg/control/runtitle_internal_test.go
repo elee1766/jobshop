@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -116,21 +117,21 @@ func TestRunTitleFallback(t *testing.T) {
 	assert.Equal(t, "PR acme/app#98", pr.Title)
 }
 
-// In a pass the read runs off the tick: the start returns errCheckPending
+// In a pass the read runs off the tick: the start returns triggers.ErrCheckPending
 // with the read noted, and the replay with its result starts the run.
 func TestRunTitleOffTick(t *testing.T) {
 	t.Parallel()
 	c, gh := titleController(t)
 	p := rpc.RunStartParams{Workflow: "pw", Vars: map[string]string{"issue": "7"}, Key: "issue-7"}
-	cp := &checkPass{}
-	_, err := c.startRun(withCheckPass(t.Context(), cp), c.config(), scope{admin: true, actor: "admin"}, p, nil)
-	require.ErrorIs(t, err, errCheckPending)
-	require.Len(t, cp.need, 1)
+	cp := &triggers.Pass{}
+	_, err := c.startRun(triggers.WithPass(t.Context(), cp), c.config(), scope{admin: true, actor: "admin"}, p, nil)
+	require.ErrorIs(t, err, triggers.ErrCheckPending)
+	require.Len(t, cp.Need, 1)
 	assert.Zero(t, gh.count("/repos/acme/app/issues/7"), "nothing is read inside the pass")
 	assert.Zero(t, runCount(t, c))
 
-	results := c.runChecks(t.Context(), cp.need)
-	res, err := c.startRun(withCheckPass(t.Context(), &checkPass{results: results}), c.config(), scope{admin: true, actor: "admin"}, p, nil)
+	results := c.triggerEngine().RunChecks(t.Context(), cp.Need)
+	res, err := c.startRun(triggers.WithPass(t.Context(), &triggers.Pass{Results: results}), c.config(), scope{admin: true, actor: "admin"}, p, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "Add a thing", res.(rpc.RunResult).Run.Title)
 }
@@ -145,12 +146,12 @@ func TestFindingTitle(t *testing.T) {
 		Run:  &config.TriggerRun{Workflow: "plain"},
 	}
 	cfg := c.config()
-	run, _, err := c.fireFinding(t.Context(), cfg, "scan", tr, finding{config.SignalIssueNoRun, "7", "open, no run"})
+	run, _, err := c.fireFinding(t.Context(), cfg, "scan", tr, triggers.Finding{Signal: config.SignalIssueNoRun, Subject: "7", Detail: "open, no run"})
 	require.NoError(t, err)
 	assert.Equal(t, "Add a thing", run.Title)
 	assert.Equal(t, "scan:issue_no_run:7", metaString(run.Meta, triggerPack, "key")[len("scan/"):])
 
-	stuck, _, err := c.fireFinding(t.Context(), cfg, "scan", tr, finding{config.SignalNeedsHuman, "js-1", "stuck"})
+	stuck, _, err := c.fireFinding(t.Context(), cfg, "scan", tr, triggers.Finding{Signal: config.SignalNeedsHuman, Subject: "js-1", Detail: "stuck"})
 	require.NoError(t, err)
 	assert.Equal(t, "Run plain scan:needs_human:js-1", stuck.Title, "stuck work keeps its descriptive title")
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -82,23 +83,23 @@ func (c *Controller) intakeIssue(ctx context.Context, cfg *config.Config, projec
 
 // intakeRun gates a run start for a Linear workflow. Started from a pass
 // (a trigger), the Linear read and the hooks run outside the tick like a
-// check (JOB-103): the start returns errCheckPending and the replay has
+// check (JOB-103): the start returns triggers.ErrCheckPending and the replay has
 // the answer.
 func (c *Controller) intakeRun(ctx context.Context, cfg *config.Config, plan runPlan) error {
 	if plan.w.Tracker != config.TrackerLinear || !hasIntakeHooks(cfg) {
 		return nil
 	}
 	key := metaString(plan.meta, "linear", "issue")
-	res, err := offTick(ctx, checkNeed{
-		key: "intake\x00" + plan.proj + "\x00" + key, poller: "intake", timeout: intakeTimeout,
-		run: func(ctx context.Context) checkResult {
-			return checkResult{val: c.intakeIssue(ctx, cfg, plan.proj, key)}
+	res, err := triggers.OffTick(ctx, triggers.Need{
+		Key: "intake\x00" + plan.proj + "\x00" + key, Poller: "intake", Timeout: intakeTimeout,
+		Run: func(ctx context.Context) triggers.Result {
+			return triggers.Result{Val: c.intakeIssue(ctx, cfg, plan.proj, key)}
 		},
 	})
 	if err != nil {
 		return err
 	}
-	a, _ := res.val.(hooks.Answer)
+	a, _ := res.Val.(hooks.Answer)
 	if a.Decision == rpc.GuardAllow {
 		return nil
 	}
