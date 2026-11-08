@@ -52,6 +52,9 @@ jobshop/
 │   │   │                     background job scan, mapped homes, slot
 │   │   │                     allocation (JOB-146, JOB-153, JOB-155)
 │   │   ├── scaleplan/        pool scaling decisions, pure (JOB-155)
+│   │   ├── stepexec/         command, http and script step attempts: templating, run dir
+│   │   │                     placement, one attempt to a Result (JOB-157); the controller
+│   │   │                     keeps claims, leases, the step record and escalation
 │   │   ├── ingestqueue/      spool drain, inbox notifier, worker heartbeats,
 │   │   │                     admission hook runner, ingest work loop (JOB-141)
 │   │   ├── slotprovider/     resource slot provider calls, demand, idle release,
