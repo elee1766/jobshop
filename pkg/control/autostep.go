@@ -11,13 +11,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -536,25 +536,11 @@ func (c *Controller) runHTTPStep(ctx context.Context, cfg *config.Config, s conf
 		res.result = resultOK
 	case code == http.StatusConflict || code == http.StatusTooEarly || code == http.StatusTooManyRequests || code == http.StatusServiceUnavailable:
 		res.result = resultNotYet
-		res.retryAfter = retryAfter(resp.Header.Get("Retry-After"), c.now())
+		res.retryAfter = hooks.RetryAfter(resp.Header.Get("Retry-After"), c.now())
 	default:
 		res.result, res.err = resultFailed, resp.Status
 	}
 	return res
-}
-
-// retryAfter parses a Retry-After header: seconds or an HTTP date.
-func retryAfter(h string, now time.Time) time.Duration {
-	if h == "" {
-		return 0
-	}
-	if n, err := strconv.Atoi(strings.TrimSpace(h)); err == nil && n > 0 {
-		return time.Duration(n) * time.Second
-	}
-	if t, err := http.ParseTime(h); err == nil && t.After(now) {
-		return t.Sub(now)
-	}
-	return 0
 }
 
 // outcomeOf is the outcome word an attempt set: a top-level JSON

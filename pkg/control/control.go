@@ -170,8 +170,6 @@ type Controller struct {
 	// triggerPolled is each trigger's last poll, for fallback: (JOB-62);
 	// tick-only state.
 	triggerPolled map[string]time.Time
-	hookRunning   atomic.Bool
-	hookPending   atomic.Bool
 	// artifactsPrunedAt is the last attachment prune (#508); tick-only state.
 	artifactsPrunedAt time.Time
 	// prov is resource provider demand and idle state (#407); tick-only.
@@ -317,6 +315,9 @@ type Controller struct {
 	wg           sync.WaitGroup
 	hooksOnce    sync.Once
 	hookEngine   *hooks.Engine
+	// hookDrain is the bounded callback drain (hooks.Worker); see hookWorker().
+	hookDrain      *hooks.Worker
+	hookWorkerOnce sync.Once
 	// Trigger checks run outside the tick when backgroundChecks is set, by
 	// Run (JOB-109, triggercheck.go). checkJobs is under tickMu.
 	backgroundChecks bool

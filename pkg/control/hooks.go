@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -43,11 +42,6 @@ func (c *Controller) enqueueHookEvents(ctx context.Context, items []store.InboxI
 	return nil
 }
 
-func stepHookInput(t store.Ticket) (hooks.Step, error) {
-	f, err := store.DecodeFields[store.StepFields](t)
-	return hooks.Step{ID: f.Step, TicketID: t.ID, Pool: t.Pool, Status: string(t.Status), Resolution: t.Resolution, Outcome: f.Outcome, Output: f.StructuredOutput, Inputs: f.Inputs, Failures: f.Failures, Retries: f.Retries}, err
-}
-
 func (c *Controller) enqueueRunHooks(ctx context.Context) error {
 	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunRunning, Limit: store.NoLimit})
 	if err != nil {
@@ -58,46 +52,20 @@ func (c *Controller) enqueueRunHooks(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		a := f.Automation
-		if a == nil || run.Status == store.StatusClosed {
+		if f.Automation == nil || run.Status == store.StatusClosed {
 			continue
 		}
 		children, err := store.Children(ctx, c.store, run.ID)
 		if err != nil {
 			return err
 		}
-		input := &hooks.Run{ID: run.ID, Workflow: f.Workflow, Key: f.Key, Project: run.Project, Inputs: f.Inputs, Vars: f.Vars, State: f.State, Steps: []hooks.Step{}}
-		readSet := map[string]int64{run.ID: run.Revision}
-		for _, child := range children {
-			readSet[child.ID] = child.Revision
-			if child.Kind != store.KindStep {
-				continue
-			}
-			step, err := stepHookInput(child)
-			if err != nil {
-				return err
-			}
-			input.Steps = append(input.Steps, step)
+		// What is due and its key are hooks.RunDue's; the controller only
+		// reads the run and hands the invocation to the journal.
+		key, in, due, err := hooks.RunDue(run, f, children, metaString(run.Meta, "automation", "invocation"))
+		if err != nil {
+			return err
 		}
-		in := hooks.Invocation{Run: run.ID, RunInput: input, ReadSet: readSet, Digest: a.Digest, ParentInvocation: metaString(run.Meta, "automation", "invocation")}
-		key := run.ID + "/start"
-		if a.Version == 0 {
-			in.Entry = a.OnStart
-		} else {
-			for _, child := range children {
-				if child.Kind != store.KindStep || !store.StepFinished(child) || a.Completed[child.ID] == child.Revision {
-					continue
-				}
-				step, err := stepHookInput(child)
-				if err != nil {
-					return err
-				}
-				in.Entry, in.Step, in.StepRevision, in.StepInput = a.OnStepCompleted, child.ID, child.Revision, &step
-				key = run.ID + "/step/" + child.ID + "/" + strconv.FormatInt(child.Revision, 10) + "/" + strconv.FormatInt(a.Version, 10)
-				break
-			}
-		}
-		if in.Entry != "" {
+		if due {
 			if err := c.hooks().Put(ctx, key, in); err != nil {
 				return err
 			}
@@ -106,41 +74,19 @@ func (c *Controller) enqueueRunHooks(ctx context.Context) error {
 	return nil
 }
 
-// One bounded worker evaluates hooks without tickMu, runMu, or controller mu.
-func (c *Controller) kickHooks() {
-	if c.ctx == nil || c.ctx.Err() != nil {
-		return
-	}
-	c.hookPending.Store(true)
-	if !c.hookRunning.CompareAndSwap(false, true) {
-		return
-	}
-	c.wg.Go(func() {
-		c.hookPending.Store(false)
-		defer func() {
-			c.hookRunning.Store(false)
-			if c.hookPending.Swap(false) {
-				c.kickHooks()
-			}
-		}()
-		if err := c.enqueueRunHooks(c.ctx); err != nil {
-			c.log.ErrorContext(c.ctx, "enqueue workflow hooks", "err", err)
-			return
+// kickHooks starts the bounded hook drain (hooks.Worker) without tickMu,
+// runMu or the controller mu.
+func (c *Controller) kickHooks() { c.hookWorker().Kick() }
+
+func (c *Controller) hookWorker() *hooks.Worker {
+	c.hookWorkerOnce.Do(func() {
+		c.hookDrain = &hooks.Worker{
+			Go:      func(f func()) { c.wg.Go(f) },
+			Context: func() context.Context { return c.ctx },
+			Enqueue: c.enqueueRunHooks,
+			Process: func(ctx context.Context) (bool, error) { return c.hooks().Process(ctx) },
+			Log:     c.log,
 		}
-		for range 64 {
-			processed, err := c.hooks().Process(c.ctx)
-			if err != nil {
-				c.log.ErrorContext(c.ctx, "process hook", "err", err)
-				return
-			}
-			if !processed {
-				return
-			}
-			if err := c.enqueueRunHooks(c.ctx); err != nil {
-				return
-			}
-		}
-		// Continue draining when the bounded pass exhausted its budget.
-		c.hookPending.Store(true)
 	})
+	return c.hookDrain
 }

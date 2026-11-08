@@ -57,7 +57,7 @@ func (c *Controller) runScriptStep(ctx context.Context, cfg *config.Config, t st
 		res.result, res.err = resultFailed, "a step function returns result(outcome=..., output=...), not actions"
 		return res
 	}
-	if err := checkHookSchema(sf.OutputSchema, out.Output, true); err != nil {
+	if err := hooks.CheckSchema(sf.OutputSchema, out.Output, true); err != nil {
 		res.result, res.err = resultFailed, err.Error()
 		return res
 	}
@@ -98,7 +98,7 @@ func (c *Controller) scriptInputs(ctx context.Context, t store.Ticket, sf store.
 		if child.Kind != store.KindStep {
 			continue
 		}
-		in, err := stepHookInput(child)
+		in, err := hooks.StepInput(child)
 		if err != nil {
 			return nil, nil, nil, err
 		}
