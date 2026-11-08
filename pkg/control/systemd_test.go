@@ -23,9 +23,10 @@ import (
 
 // TestSystemdScopeRestart (#944): with limits.cgroup_driver systemd a
 // limited pool's agent runs in a transient scope in the sessions slice.
-// The controller restarts mid-turn; the host is adopted and the scope
-// keeps its memory.max, pids.max and cpu.max. Skipped without a systemd
-// manager this process can reach (a user manager, or root).
+// The controller restarts twice mid-turn (JOB-99); the host is adopted
+// and the scope keeps its memory.max, pids.max and cpu.max. Skipped
+// without a systemd manager this process can reach (a user manager, or
+// root).
 func TestSystemdScopeRestart(t *testing.T) {
 	if err := cgroup.CheckManager(); err != nil {
 		t.Skipf("no systemd manager: %v", err)
@@ -118,14 +119,19 @@ limits:
 	assert.Contains(t, string(hcg), "/"+slice+"/"+strings.TrimSuffix(hostUnit, "1.scope"), "host in an acphost-host scope in the slice")
 	assert.True(t, strings.HasSuffix(strings.TrimSpace(string(hcg)), ".scope"), string(hcg))
 
-	stop()
-	require.True(t, hostRunning(sdir), "host outlives the controller")
-	stop = start()
-	defer stop()
-	assert.Equal(t, before, limits(), "the scope keeps its limits across the restart")
+	// Two restarts (JOB-99): the cgroupfs EBUSY of JOB-97 showed on the
+	// restart after the first.
+	for i := range 2 {
+		stop()
+		require.True(t, hostRunning(sdir), "host outlives the controller (restart %d)", i+1)
+		stop = start()
+		// Serving: a stop during startup cancels the migration.
+		admin = dial(t, root.AdminSocket())
+		assert.Equal(t, before, limits(), "the scope keeps its limits across restart %d", i+1)
+	}
+	defer func() { stop() }()
 
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	admin = dial(t, root.AdminSocket())
 	passEventually(t, root.Dir, func() bool {
 		var got store.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &struct {
