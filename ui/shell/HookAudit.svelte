@@ -58,7 +58,7 @@
     </form>
   </div>
   <div class="table-scroll">
-    <table aria-label="Automation invocations">
+    <table class="rows" aria-label="Automation invocations">
       <thead><tr><th>invocation</th><th>event / run</th><th>state</th><th>attempts</th><th>updated</th></tr></thead>
       <tbody>
         {#each items as item (item.key)}
@@ -103,14 +103,14 @@
           {:else}<pre>{payload(invocation.decisions)}</pre>{/if}
         {/if}
         <h3>attempts</h3>
-        <ol class="audit-attempts">
+        <ol class="audit-attempts rows">
           {#each audit.attempts as attempt (attempt.key)}
             <li><b>attempt {attempt.value.attempt}</b> · <span class:warn={attempt.state.toUpperCase() === 'UNKNOWN'}>{attempt.state}</span> · {duration(attempt.value)}<p class="muted"><time datetime={started(attempt)}>{stamp(started(attempt))}</time>{#if attempt.value.finished_at} → <time datetime={attempt.value.finished_at}>{stamp(attempt.value.finished_at)}</time>{/if}</p>{#if attempt.value.error}<p class="error">{attempt.value.error}</p>{/if}<details><summary>attempt evidence</summary><pre>{payload({ result_metadata: attempt.value.result_metadata, result_output: attempt.value.result_output, output: attempt.value.output, decisions: attempt.value.decisions, actions: attempt.value.actions, targets: attempt.value.targets, reused_calls: attempt.value.reused_calls })}</pre></details></li>
           {:else}<li class="muted">No attempts recorded.</li>{/each}
         </ol>
         <h3>ordered capability calls</h3>
         <p class="muted">Capability inputs and results use the runtime's credential redaction. Large bodies remain artifact references.</p>
-        <ol class="audit-calls">
+        <ol class="audit-calls rows">
           {#each audit.calls as call (call.key)}
             {@const observation = call.value.observation || {}}
             <li data-call-index={observation.index}>
@@ -125,7 +125,7 @@
         </ol>
         {#if audit.truncated}<p class="warn">Trace limited to 50 attempts and 200 capability calls.</p>{/if}
         <h3>resulting tickets</h3>
-        <ul>{#each tickets as ticket}<li><a href={'?view=trace&ref=' + encodeURIComponent(ticket.id)}>{ticket.id}</a> · {ticket.label}</li>{:else}<li class="muted">No resulting tickets recorded.</li>{/each}</ul>
+        <ul class="rows">{#each tickets as ticket}<li><a href={'?view=trace&ref=' + encodeURIComponent(ticket.id)}>{ticket.id}</a> · {ticket.label}</li>{:else}<li class="muted">No resulting tickets recorded.</li>{/each}</ul>
         {#if invocation.targets && !Array.isArray(invocation.targets)}<pre>{payload(invocation.targets)}</pre>{/if}
         {#if invocation.actions}<details><summary>planned actions</summary><pre>{payload(invocation.actions)}</pre></details>{/if}
         {#if invocation.result_metadata || invocation.result_output}<details><summary>callback result</summary><pre>{payload({ metadata: invocation.result_metadata, output: invocation.result_output })}</pre></details>{/if}
@@ -149,7 +149,7 @@
   .audit-id { padding-left: 0; }
   dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; }
   dd { margin: 0; }
-  .audit-calls > li, .audit-attempts > li { margin-block: 8px; }
+  .audit-calls > li, .audit-attempts > li { padding-block: 8px; }
   .audit-detail pre { max-height: 24rem; overflow: auto; }
   code { overflow-wrap: anywhere; }
 </style>

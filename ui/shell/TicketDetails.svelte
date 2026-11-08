@@ -60,7 +60,7 @@
   {#if groups.length}<div class="relationship-groups" aria-label="Ticket relationships">
     {#each groups as [kind, others]}<section class="relationship-group" aria-label={kind}>
       <h3>{kind} <span class="muted">{others.length}</span></h3>
-      <ul>{#each others as other (other.id)}<li>{@render ticketLink(other)}</li>{/each}</ul>
+      <ul class="rows">{#each others as other (other.id)}<li>{@render ticketLink(other)}</li>{/each}</ul>
     </section>{/each}
   </div>{/if}
   {#if detail.history?.length}<TicketHistory entries={detail.history} {ticket} {graph} {onwatch} />{/if}

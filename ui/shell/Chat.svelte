@@ -434,7 +434,7 @@
     <span class="muted">newest first</span>
   </div>
   <div class="chat-archive">
-    <table aria-label={archived ? "Archived chats" : "Recent chats"}>
+    <table class="rows" aria-label={archived ? "Archived chats" : "Recent chats"}>
       <thead><tr><th scope="col">chat</th><th scope="col">type</th><th scope="col">updated</th></tr></thead>
       <tbody>{#each recentChats as chat (chat.id)}
         <tr class:chosen={!creating && active?.id === chat.id}>

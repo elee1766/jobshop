@@ -296,7 +296,7 @@ table {
   padding: 6px var(--page-inset);
 }
 .section-body article {
-  padding: 3px 0 5px;
+  padding: 3px var(--space-2) 5px;
 }
 .item-title {
   padding: 0;
@@ -357,6 +357,28 @@ td button {
 }
 td pre {
   margin: 0;
+}
+/* Alternating backgrounds for repeated rows (JOB-128). Put .rows on a table
+   or on the element whose children are the rows (ul, ol, a wrapper of
+   articles or paragraphs). Zero specificity, so hover, chosen, stalled and
+   status backgrounds still win. Rows get a small inset so text does not
+   touch the stripe edge. */
+:where(.rows:not(table) > :nth-child(even), table.rows > tbody > tr:nth-child(even)) {
+  background: var(--row-alt);
+}
+:where(ul.rows, ol.rows) {
+  list-style: none;
+  padding-left: 0;
+}
+:where(.rows:not(table) > *) {
+  padding-inline: var(--space-2);
+}
+:where(table.rows) :is(th, td):first-child {
+  padding-left: var(--space-2);
+}
+.rows > p {
+  margin: 0;
+  padding-block: var(--space-2);
 }
 .step-strip {
   display: flex;
@@ -555,7 +577,7 @@ td pre {
   .transcript-row > .tool > summary { padding-block: var(--space-2); }
 }
 .ticket-history ol { padding-left: 20px; }
-.ticket-history li { padding: 8px 0; border-bottom: 1px solid var(--rule); }
+.ticket-history li { padding: 8px var(--space-2); border-bottom: 1px solid var(--rule); }
 .history-heading { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .history-step { background: var(--tag); padding: 0 var(--space-2); }
 .ticket-history { margin: var(--space-5) 0; }
@@ -626,7 +648,7 @@ td pre {
 .relationship-group { min-width: 0; border-top: 1px solid var(--column); }
 .relationship-group h3 { margin: var(--space-3) 0; font-size: var(--font-size-body); }
 .relationship-group ul { list-style: none; margin: 0; padding: 0; }
-.relationship-group li { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-2) 0; }
+.relationship-group li { display: flex; align-items: baseline; gap: var(--space-3); padding: var(--space-2); }
 .ticket-status[data-status] { text-align: center; min-width: 1.7ch; font-weight: bold; background: var(--tag); }
 span.ticket-status { display: inline-block; }
 .ticket-status[data-status="open"] { color: var(--status-open); }
@@ -916,7 +938,7 @@ span.ticket-status { display: inline-block; }
 .learn-group h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-4); margin: var(--space-4) 0 var(--space-2); border-bottom: 1px solid var(--rule); }
 .learn-toggle { font: inherit; font-weight: bold; padding-inline: 0; min-height: var(--control-height); }
 .learn-hint { font-size: var(--font-size-small); font-weight: normal; }
-.learn-row { padding: var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--rule); min-width: 0; }
+.learn-row { padding: var(--space-2) var(--space-2) var(--space-3); border-bottom: 1px solid var(--rule); min-width: 0; }
 .learn-row p { margin: var(--space-1) 0; overflow-wrap: anywhere; }
 .learn-problem, .learn-fix { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .learn-meta, .learn-row .mono, .learn-cited .mono { font-size: var(--font-size-small); }

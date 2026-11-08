@@ -76,7 +76,7 @@
     </div>
     {#if error}<p class="error" role="alert">{error}</p>{:else if !busy && !results.length}<p class="muted">no matching tickets. try a title, ticket id, or related reference.</p>{/if}
     {#if results.length}<div class="table-scroll">
-      <table class="mono">
+      <table class="mono rows">
         <thead><tr><th title="Status: O open, R running, C closed">s</th><th>ticket</th><th>kind</th><th class="wide">pool</th></tr></thead>
         <tbody>{#each results as ticket (ticket.id)}<tr>
           <td class="ticket-status" data-status={ticket.status} title={ticketState(ticket)} aria-label={ticketState(ticket)}>{statusLetter(ticket)}</td>
