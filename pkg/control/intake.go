@@ -129,8 +129,8 @@ func (c *Controller) linearClientIn(cfg *config.Config, key string) (*linear.Cli
 const linearRequestTimeout = 15 * time.Second
 
 // pollerCtx bounds each request made with ctx by linearRequestTimeout.
-func pollerCtx(ctx context.Context) context.Context {
-	return apicall.WithRequestTimeout(ctx, linearRequestTimeout)
+func (c *Controller) pollerCtx(ctx context.Context) context.Context {
+	return apicall.WithRequestTimeout(ctx, c.linearRequestTimeoutFor())
 }
 
 func (c *Controller) linearIssue(ctx context.Context, cfg *config.Config, key string) (linear.Issue, error) {

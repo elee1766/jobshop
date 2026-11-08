@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
@@ -212,7 +213,7 @@ func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any,
 		} `json:"errors"`
 	}
 	if err := json.Unmarshal(body, &r); err != nil {
-		return fmt.Errorf("linear: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return &StatusError{Code: resp.StatusCode, Status: resp.Status, Body: strings.TrimSpace(string(body))}
 	}
 	if len(r.Errors) > 0 {
 		msgs := make([]string, len(r.Errors))
@@ -222,16 +223,47 @@ func (c *Client) GraphQL(ctx context.Context, query string, vars map[string]any,
 		return fmt.Errorf("linear: %s", strings.Join(msgs, "; "))
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("linear: %s", resp.Status)
+		return &StatusError{Code: resp.StatusCode, Status: resp.Status}
 	}
 	return json.Unmarshal(r.Data, out)
+}
+
+// StatusError is a response that carries no GraphQL errors to report:
+// a non-200 status, or a body that is not JSON.
+type StatusError struct {
+	Code   int
+	Status string
+	Body   string
+}
+
+func (e *StatusError) Error() string {
+	if e.Body != "" {
+		return "linear: " + e.Status + ": " + e.Body
+	}
+	return "linear: " + e.Status
+}
+
+// Unavailable reports whether err means Linear did not answer: a
+// timeout, a failed connection, or a 5xx or 429 status (JOB-118). A
+// GraphQL error such as not found is an answer.
+func Unavailable(err error) bool {
+	if se, ok := errors.AsType[*StatusError](err); ok {
+		return se.Code >= http.StatusInternalServerError || se.Code == http.StatusTooManyRequests
+	}
+	if _, ok := errors.AsType[*url.Error](err); ok {
+		return true
+	}
+	return errors.Is(err, context.DeadlineExceeded)
 }
 
 // post sends one GraphQL request body and reads the response. On a 401 it
 // asks Auth to renew the refused token and resends once: Linear revokes an
 // app's tokens when another mint asks for different scopes.
 func (c *Client) post(ctx context.Context, b []byte) (*http.Response, []byte, error) {
-	tok, err := c.Auth.Token(ctx)
+	// Minting a token is a request too: bound it like one.
+	tctx, cancel := apicall.Request(ctx)
+	tok, err := c.Auth.Token(tctx)
+	cancel()
 	if err != nil {
 		return nil, nil, fmt.Errorf("linear: %w", err)
 	}
