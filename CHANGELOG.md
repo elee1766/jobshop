@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.8](https://github.com/elee1766/jobshop/compare/v0.9.7...v0.9.8) (2026-11-08)
+
+
+### Features
+
+* **desk:** align trace timeline, compact ticket cards and unify trace bars (JOB-126) ([#1047](https://github.com/elee1766/jobshop/issues/1047)) ([c4f9934](https://github.com/elee1766/jobshop/commit/c4f9934dd238a858a65c126031b32caed14e05a0))
+
 ## [0.9.7](https://github.com/elee1766/jobshop/compare/v0.9.6...v0.9.7) (2026-11-08)
 
 
