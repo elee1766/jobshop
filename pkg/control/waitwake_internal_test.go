@@ -29,7 +29,6 @@ func TestWaitWebhookResume(t *testing.T) {
 	c, clk, prs, threads := waitController(t)
 	c.waitSource, c.subSource = prs, threads
 	c.waitWake = make(chan struct{}, 1)
-	c.ingest.wake = make(chan struct{}, 1)
 	ctx := t.Context()
 	sess := mkSession(t, c)
 	step := mkTicket(t, c, store.NewTicket{Title: "implement", Pool: "dev"})
@@ -54,7 +53,7 @@ func TestWaitWebhookResume(t *testing.T) {
 
 	pctx, cancel := context.WithCancel(ctx)
 	c.ctx = pctx
-	t.Cleanup(func() { cancel(); c.wg.Wait(); c.closeSpool() })
+	t.Cleanup(func() { cancel(); c.wg.Wait(); c.queue().CloseSpool() })
 	c.wg.Go(c.pumpWaits)
 	c.wg.Go(c.pumpDrain)
 	// Both pumps parked on their timers: the first full pass is done.
@@ -62,7 +61,7 @@ func TestWaitWebhookResume(t *testing.T) {
 	require.NotNil(t, waitOf(mustGet(t, c, step.ID)), "checks still pending")
 
 	prs.set(recPR, `[[]]`, `[{"name":"build","bucket":"pass"},{"name":"lint","bucket":"pass"}]`)
-	sp, err := c.spool(ctx)
+	sp, err := c.queue().Spool(ctx)
 	require.NoError(t, err)
 	ep := config.IngestEndpoint{Name: "gh", Source: config.IngestGitHub}
 	h := &ingest.Handler{
@@ -70,7 +69,7 @@ func TestWaitWebhookResume(t *testing.T) {
 		Secret:  func(config.IngestEndpoint) (ingest.Secret, error) { return ingest.Secret{Key: []byte("s")}, nil },
 		Now:     c.now,
 		Log:     slog.New(slog.DiscardHandler),
-		OnSpool: func(ingest.Delivery) { c.wakeDrain() },
+		OnSpool: func(ingest.Delivery) { c.queue().WakeDrain() },
 	}
 	body := `{"action":"completed","repository":{"full_name":"acme/widget"},"check_suite":{"conclusion":"success","pull_requests":[{"number":5}]}}`
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/github/gh", strings.NewReader(body))

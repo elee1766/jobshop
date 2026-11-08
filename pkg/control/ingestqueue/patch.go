@@ -1,4 +1,4 @@
-package control
+package ingestqueue
 
 import (
 	"encoding/json"

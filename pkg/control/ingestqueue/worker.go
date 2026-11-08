@@ -1,4 +1,4 @@
-package control
+package ingestqueue
 
 import (
 	"context"
@@ -9,10 +9,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
-// IngestWorker is the loop of `jobshop ingest work` (#443): claim a
+// Worker is the loop of `jobshop ingest work` (#443): claim a
 // pending item from the controller, run the admission hooks here, report
 // the run. It never opens the database; every write is the controller's.
-type IngestWorker struct {
+type Worker struct {
 	// Call is one RPC to the controller's admin socket.
 	Call func(ctx context.Context, method string, params, out any) error
 	// Dir is the root: hook commands run in it and secret files are
@@ -30,7 +30,7 @@ type IngestWorker struct {
 
 // DispatchOnce asks the controller to dispatch admitted items under
 // this worker's lease holder, returning how many it claimed.
-func (w IngestWorker) DispatchOnce(ctx context.Context) (int, error) {
+func (w Worker) DispatchOnce(ctx context.Context) (int, error) {
 	var res rpc.IngestDispatchResult
 	err := w.Call(ctx, rpc.MethodIngestDispatch, rpc.IngestClaimParams{Worker: w.Worker, Host: w.Host}, &res)
 	return res.Dispatched, err
@@ -38,7 +38,7 @@ func (w IngestWorker) DispatchOnce(ctx context.Context) (int, error) {
 
 // Pass admits (unless NoAdmit) then dispatches (with Dispatch),
 // returning the admitted and dispatched counts.
-func (w IngestWorker) Pass(ctx context.Context) (admitted, dispatched int, err error) {
+func (w Worker) Pass(ctx context.Context) (admitted, dispatched int, err error) {
 	if !w.NoAdmit {
 		if admitted, err = w.Once(ctx); err != nil {
 			return admitted, 0, err
@@ -52,8 +52,8 @@ func (w IngestWorker) Pass(ctx context.Context) (admitted, dispatched int, err e
 
 // Once claims and admits until nothing is pending, returning how many
 // items it admitted.
-func (w IngestWorker) Once(ctx context.Context) (int, error) {
-	ar := admissionRunner{dir: w.Dir}
+func (w Worker) Once(ctx context.Context) (int, error) {
+	ar := Runner{Dir: w.Dir}
 	n := 0
 	for ctx.Err() == nil {
 		var cl rpc.IngestClaimResult
@@ -65,7 +65,7 @@ func (w IngestWorker) Once(ctx context.Context) (int, error) {
 		}
 		// Hooks must finish inside the lease the controller granted.
 		hctx, cancel := context.WithTimeout(ctx, time.Duration(cl.LeaseMS)*time.Millisecond)
-		run := ar.run(hctx, cl.Project, cl.Hooks, *cl.Item, cl.Answered)
+		run := ar.Run(hctx, cl.Project, cl.Hooks, *cl.Item, cl.Answered)
 		cancel()
 		raw, err := json.Marshal(run)
 		if err != nil {
@@ -87,7 +87,7 @@ func (w IngestWorker) Once(ctx context.Context) (int, error) {
 // that fails (a controller restart, or one without the method) falls
 // back to waiting idle. A failed pass is logged and retried, so a
 // controller restart does not stop the worker.
-func (w IngestWorker) Run(ctx context.Context, idle time.Duration, after func(time.Duration) <-chan time.Time) error {
+func (w Worker) Run(ctx context.Context, idle time.Duration, after func(time.Duration) <-chan time.Time) error {
 	// After -1 never matches a seq, so the first call returns the
 	// current one at once: the cursor taken before the first pass.
 	seq, ok := w.next(ctx, -1)
@@ -110,7 +110,7 @@ func (w IngestWorker) Run(ctx context.Context, idle time.Duration, after func(ti
 }
 
 // next is one ingest.next call; false when it failed.
-func (w IngestWorker) next(ctx context.Context, after int64) (int64, bool) {
+func (w Worker) next(ctx context.Context, after int64) (int64, bool) {
 	var res rpc.IngestNextResult
 	if err := w.Call(ctx, rpc.MethodIngestNext, rpc.IngestNextParams{After: after}, &res); err != nil {
 		if ctx.Err() == nil {
@@ -121,7 +121,7 @@ func (w IngestWorker) next(ctx context.Context, after int64) (int64, bool) {
 	return res.Seq, true
 }
 
-func (w IngestWorker) logger() *slog.Logger {
+func (w Worker) logger() *slog.Logger {
 	if w.Log == nil {
 		return slog.New(slog.DiscardHandler)
 	}

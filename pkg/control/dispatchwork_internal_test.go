@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -101,7 +102,7 @@ func TestDispatchWorkerOnlyWhenExternal(t *testing.T) {
 	for _, b := range bodies {
 		assert.Equal(t, 1, deliveredCounts(t, c, sess.ID, bodies)[b], b)
 	}
-	require.Len(t, c.workerList(), 1, "a dispatch call is a heartbeat")
+	require.Len(t, c.queue().Workers(), 1, "a dispatch call is a heartbeat")
 }
 
 // TestDispatchWorkerDiesMidLease: a worker that claims admitted rows and
@@ -112,7 +113,7 @@ func TestDispatchWorkerDiesMidLease(t *testing.T) {
 	c, clk, src, sess := dispatchController(t)
 	setDispatch(t, c, config.IngestWorkersExternal)
 	bodies := admitComments(t, c, clk, src, 1)
-	dead, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxAdmitted}, ingestWorkerPrefix+"dead", dispatchLease)
+	dead, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxAdmitted}, ingestqueue.WorkerPrefix+"dead", dispatchLease)
 	require.NoError(t, err)
 
 	n, err := worker(c, "w2").DispatchOnce(t.Context())
@@ -127,6 +128,6 @@ func TestDispatchWorkerDiesMidLease(t *testing.T) {
 	assert.Equal(t, 1, deliveredCounts(t, c, sess.ID, bodies)[bodies[0]])
 	assert.Equal(t, []string{store.InboxDispatched}, inboxStates(t, c))
 
-	_, err = ingest.InboxSetState(t.Context(), c.store, dead.ID, ingestWorkerPrefix+"dead", store.InboxUpdate{State: store.InboxDispatched})
+	_, err = ingest.InboxSetState(t.Context(), c.store, dead.ID, ingestqueue.WorkerPrefix+"dead", store.InboxUpdate{State: store.InboxDispatched})
 	require.ErrorIs(t, err, store.ErrConflict)
 }

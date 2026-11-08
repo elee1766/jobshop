@@ -44,7 +44,7 @@ func (c *Controller) linearWebhookHandler(sp *ingest.Spool) *ingest.Handler {
 		},
 		Now:     c.now,
 		Log:     c.log,
-		OnSpool: func(ingest.Delivery) { c.wakeDrain() },
+		OnSpool: func(ingest.Delivery) { c.queue().WakeDrain() },
 	}
 }
 
@@ -83,7 +83,7 @@ func (c *Controller) serveLinearWebhook() error {
 	if addr == "" {
 		return nil
 	}
-	sp, err := c.spool(c.ctx)
+	sp, err := c.queue().Spool(c.ctx)
 	if err != nil {
 		return fmt.Errorf("linear webhook: %w", err)
 	}

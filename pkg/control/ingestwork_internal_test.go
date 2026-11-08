@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -52,8 +53,8 @@ func inProcCall(c *Controller) func(ctx context.Context, method string, params, 
 	}
 }
 
-func worker(c *Controller, id string) IngestWorker {
-	return IngestWorker{Call: inProcCall(c), Dir: c.root.Dir, Worker: id, Host: "h"}
+func worker(c *Controller, id string) ingestqueue.Worker {
+	return ingestqueue.Worker{Call: inProcCall(c), Dir: c.root.Dir, Worker: id, Host: "h"}
 }
 
 func TestIngestWorkerAdmitsControllerDoesNot(t *testing.T) {
@@ -81,7 +82,7 @@ func TestIngestWorkerAdmitsControllerDoesNot(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, store.InboxDenied, got.State)
 
-	ws := c.workerList()
+	ws := c.queue().Workers()
 	require.Len(t, ws, 1)
 	assert.Equal(t, "w1", ws[0].ID)
 	assert.EqualValues(t, 2, ws[0].Admitted)
@@ -111,7 +112,7 @@ func TestIngestWorkerDeadLeaseExpires(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, n, "leased by the dead worker")
 
-	clk.advance(admissionLease(nil) + time.Second)
+	clk.advance(ingestqueue.Lease(nil) + time.Second)
 	n, err = worker(c, "w2").Once(t.Context())
 	require.NoError(t, err)
 	assert.Equal(t, 1, n)
@@ -120,7 +121,7 @@ func TestIngestWorkerDeadLeaseExpires(t *testing.T) {
 	assert.Equal(t, store.InboxAdmitted, got.State)
 	assert.EqualValues(t, 2, got.Attempts)
 
-	run, _ := json.Marshal(admissionRun{})
+	run, _ := json.Marshal(ingestqueue.Run{})
 	err = inProcCall(c)(t.Context(), rpc.MethodIngestAdmit, rpc.IngestAdmitParams{Worker: "dead", ID: it.ID, Run: run}, &json.RawMessage{})
 	require.ErrorIs(t, err, store.ErrConflict)
 }

@@ -29,6 +29,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/activity"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
@@ -185,8 +186,6 @@ type Controller struct {
 	// dnsChecked holds the pool and DNS settings whose sandbox DNS check
 	// passed (JOB-20); guarded by mu.
 	dnsChecked map[string]bool
-	// ingestWorkers is each external ingest worker's last heartbeat (#443).
-	ingestWorkers map[string]*rpc.IngestWorker
 	// configErr is the pack load error the controller started past,
 	// serving the last good config (#227); cleared by a good reload.
 	configErr   string
@@ -235,8 +234,9 @@ type Controller struct {
 	// selfLoginErr is the last self-login error logged per identity, so a
 	// refused lookup warns once, not on every poll (JOB-108).
 	selfLoginErr sync.Map
-	// ingest is the spool drain (#335).
-	ingest ingestDrain
+	// ingestQ is the ingest queue (JOB-141); see queue().
+	ingestQ   *ingestqueue.Service
+	queueOnce sync.Once
 	// reconcileAt is the last GitHub App delivery reconcile (#335).
 	reconcileAt time.Time
 	// linearURL is the Linear GraphQL endpoint for identity check; "" is
@@ -300,9 +300,6 @@ type Controller struct {
 	waitMu     sync.Mutex
 	// waitWakes is what a wake asked of the wait pump (#679).
 	waitWakes waitengine.Wakes
-	// inbox is the inbox change signal (#679); see inboxNotifier.
-	inbox     *ingest.Notifier
-	inboxOnce sync.Once
 	// activitySrc reads GitHub and Linear activity; nil means live APIs
 	// (tests set a fake). activity is the feed service (JOB-149); see
 	// activitySvc().
@@ -419,7 +416,6 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		tracer:   opt.Tracer,
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{}, readOnly: map[string]bool{},
 		minter:       identity.NewMinter(),
-		ingest:       ingestDrain{wake: make(chan struct{}, 1)},
 		waitWake:     make(chan struct{}, 1),
 		drained:      map[string]bool{},
 		scaleTargets: map[string]int{}, scaleHist: map[string][]scaleSample{}, scaleViews: map[string]poolScaleView{},
@@ -586,7 +582,7 @@ func (c *Controller) serve() error {
 func (c *Controller) stop() {
 	c.cancel()
 	c.wg.Wait()
-	c.closeSpool()
+	c.queue().CloseSpool()
 	_ = os.Remove(c.root.AdminSocket())
 	c.log.Info("controller stopped")
 }

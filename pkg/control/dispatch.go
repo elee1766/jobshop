@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -232,8 +233,8 @@ func (c *Controller) ingestDispatchMethod(ctx context.Context, sc scope, p rpc.I
 	if p.Worker == "" {
 		return nil, fmt.Errorf("%w: worker is required", store.ErrInvalid)
 	}
-	c.beat(p, false, false)
-	n, err := c.dispatchAll(ctx, ingestWorkerPrefix+p.Worker)
+	c.queue().Beat(p, false, false)
+	n, err := c.dispatchAll(ctx, ingestqueue.WorkerPrefix+p.Worker)
 	if err != nil {
 		return nil, err
 	}

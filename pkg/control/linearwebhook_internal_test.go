@@ -162,7 +162,7 @@ func webhookController(t *testing.T) (*Controller, *scanClock, *webhookLinear) {
 	sp, err := ingest.OpenSpool(t.Context(), c.config().Ingest.SpoolPath(c.root))
 	require.NoError(t, err)
 	testSpools.Store(c, sp)
-	t.Cleanup(func() { testSpools.Delete(c); _ = sp.Close(); c.closeSpool() })
+	t.Cleanup(func() { testSpools.Delete(c); _ = sp.Close(); c.queue().CloseSpool() })
 	return c, clk, f
 }
 
@@ -202,7 +202,7 @@ func postWebhook(c *Controller, b []byte, sig string) int {
 	req.Header.Set("Linear-Signature", sig)
 	rec := httptest.NewRecorder()
 	c.linearWebhookHandler(testSpool(c)).Mux().ServeHTTP(rec, req)
-	if _, err := c.drainOnce(c.ctx); err != nil {
+	if _, err := c.queue().DrainOnce(c.ctx); err != nil {
 		panic(err)
 	}
 	c.wg.Wait()

@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
@@ -62,7 +62,7 @@ func (c ingestWorkCmd) Run(g *Globals) error {
 		return err
 	}
 	defer func() { _ = tel.Shutdown(context.WithoutCancel(ctx)) }()
-	w := control.IngestWorker{
+	w := ingestqueue.Worker{
 		Call: func(_ context.Context, method string, params, out any) error { return g.call(method, params, out) },
 		Dir:  r.Dir, Worker: id, Host: host, Dispatch: c.Dispatch, NoAdmit: c.NoAdmit,
 		Log: tel.Log.With("component", "ingest-work", "worker", id),

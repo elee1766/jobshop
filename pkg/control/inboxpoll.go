@@ -79,21 +79,7 @@ func (c *Controller) inboxComment(ctx context.Context, th thread, cm ghComment) 
 	if it.Payload, err = json.Marshal(p); err != nil {
 		return err
 	}
-	got, dup, err := ingest.InboxPut(ctx, c.store, it)
-	if err == nil && !dup {
-		c.inboxAppended([]store.InboxItem{got})
-	}
-	if err != nil || !dup || got.DeliveryID == it.DeliveryID {
-		return err
-	}
-	// The webhook copy came first: keep it (deduped for the record) and
-	// add the poller row the dispatcher delivers.
-	it.NaturalKey = ""
-	got, dup, err = ingest.InboxPut(ctx, c.store, it)
-	if err == nil && !dup {
-		c.inboxAppended([]store.InboxItem{got})
-	}
-	return err
+	return c.queue().PutPolled(ctx, it)
 }
 
 // ghCommentKind maps the subscription poller's prefixed ids (c, r, p) to
@@ -138,9 +124,7 @@ func (c *Controller) inboxActivity(ctx context.Context, items []rpc.ActivityItem
 		_ = json.Unmarshal([]byte(a.Ref), &it.Number)
 		its = append(its, it)
 	}
-	fresh, err := ingest.InboxPutBatch(ctx, c.store, its)
-	c.inboxAppended(fresh)
-	if err != nil {
+	if err := c.queue().PutBatch(ctx, its); err != nil {
 		c.log.WarnContext(ctx, "inbox: activity write", "items", len(its), "err", err)
 	}
 }

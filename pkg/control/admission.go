@@ -6,104 +6,23 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
-	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/hooks"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// Ingest admission (#348): a stage that lease-claims pending inbox items,
-// runs the mutating hooks in config order and then the validating hooks
-// on the final event, and moves the item to admitted, denied or held.
-
-const (
-	admissionHolder = "admission"
-	// admissionIdle is how long the pump sleeps when nothing is pending.
-	admissionIdle = time.Second
-	// admissionOn is the "on" field of an admission event; on: intake
-	// hooks run as validating hooks get "intake".
-	admissionOn = "admission"
-)
-
-// admissionEvent is what an admission hook reads. DeliveryID lets a hook
-// dedupe: an item whose lease expired is claimed and admitted again.
-type admissionEvent struct {
-	On         string          `json:"on"`
-	DeliveryID string          `json:"delivery_id"`
-	Source     string          `json:"source"`
-	Kind       string          `json:"kind,omitempty"`
-	RepoOrTeam string          `json:"repo_or_team,omitempty"`
-	Number     int64           `json:"number,omitempty"`
-	CommentID  string          `json:"comment_id,omitempty"`
-	Actor      string          `json:"actor,omitempty"`
-	Project    string          `json:"project,omitempty"`
-	ReceivedAt time.Time       `json:"received_at"`
-	Payload    json.RawMessage `json:"payload"`
-}
-
-// mutateAnswer is a mutating hook's answer: a full event or an RFC 6902
-// patch against the event. Neither is no change.
-type mutateAnswer struct {
-	Event  json.RawMessage `json:"event"`
-	Patch  json.RawMessage `json:"patch"`
-	Reason string          `json:"reason"`
-}
-
-// admissionResult is one hook's entry in an item's hook_results.
-type admissionResult struct {
-	Name       string          `json:"name"`
-	Type       string          `json:"type"`
-	Decision   string          `json:"decision"` // allow, deny, ask_human, mutated, unchanged, failed, ignored
-	Reason     string          `json:"reason,omitempty"`
-	Diff       json.RawMessage `json:"diff,omitempty"`
-	DurationMS int64           `json:"duration_ms"`
-	Error      string          `json:"error,omitempty"`
-}
-
-// Result decisions beyond the validating ones.
-const (
-	admitMutated   = "mutated"
-	admitUnchanged = "unchanged"
-	admitFailed    = "failed"
-	admitIgnored   = "ignored"
-)
-
-// admissionHooks is ingest.admission plus every on: intake hook as a
-// validating hook for Linear events, so #288 setups keep their guard.
-func admissionHooks(cfg *config.Config) []config.AdmissionHook {
-	out := append([]config.AdmissionHook(nil), cfg.Ingest.Admission...)
-	n := 0
-	for _, h := range cfg.Hooks {
-		if h.On != config.HookIntake {
-			continue
-		}
-		n++
-		out = append(out, config.AdmissionHook{
-			Name: fmt.Sprintf("on-intake-%d", n), Type: config.AdmissionValidating, Command: h.Command, Intake: true,
-			Timeout: h.Timeout, Match: config.AdmissionMatch{Sources: []string{config.IngestLinear}},
-		})
-	}
-	return out
-}
+// Ingest admission (#348): the controller's half. The hook runner, the
+// event and result types and the state decision live in
+// pkg/control/ingestqueue; this file claims pending items, stores a
+// run's outcome and files the hold ticket, all store writes.
 
 // pumpAdmission admits pending items and dispatches admitted ones (#442)
-// until the controller stops. It waits on the inbox notifier (#679), so
-// a new item is admitted as it lands; admissionIdle stays as the
-// backstop for state changes the notifier does not see (a lease
-// expiring, a hold answered).
+// until the controller stops. The queue wakes it on an inbox change
+// (#679) and on a backstop timer.
 func (c *Controller) pumpAdmission() {
-	for c.ctx.Err() == nil {
-		changed := c.inboxNotifier().Changed()
-		c.ingestPass(c.ctx)
-		select {
-		case <-c.ctx.Done():
-		case <-changed:
-		case <-time.After(admissionIdle):
-		}
-	}
+	c.queue().RunPass(c.ctx, c.ingestPass)
 }
 
 // releaseAnswered moves held items whose needs-human ticket is closed
@@ -132,21 +51,11 @@ func (c *Controller) releaseAnswered(ctx context.Context) error {
 	return nil
 }
 
-// admissionLease is how long an admitter holds an item: a minute plus
-// every hook's timeout.
-func admissionLease(hooks []config.AdmissionHook) time.Duration {
-	lease := time.Minute
-	for _, h := range hooks {
-		lease += h.Retry.Budget(config.Duration(h.Timeout, 30*time.Second))
-	}
-	return lease
-}
-
 // admitNext claims one pending item and admits it. false: none pending.
 func (c *Controller) admitNext(ctx context.Context) (bool, error) {
 	cfg := c.config()
-	hooks := admissionHooks(cfg)
-	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, admissionHolder, admissionLease(hooks))
+	hooks := ingestqueue.Hooks(cfg)
+	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, ingestqueue.Holder, ingestqueue.Lease(hooks))
 	if errors.Is(err, store.ErrNotFound) {
 		return false, nil
 	}
@@ -154,8 +63,8 @@ func (c *Controller) admitNext(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	_, answered := c.humanAnswer(ctx, it.DeliveryID)
-	run := c.admissionRunner().run(ctx, cfg.DefaultProject, hooks, it, answered)
-	return true, c.finishAdmission(ctx, it, admissionHolder, run)
+	run := c.admissionRunner().Run(ctx, cfg.DefaultProject, hooks, it, answered)
+	return true, c.finishAdmission(ctx, it, ingestqueue.Holder, run)
 }
 
 // humanAnswer is a human's closed answer to an earlier hold of delivery.
@@ -167,96 +76,17 @@ func (c *Controller) humanAnswer(ctx context.Context, delivery string) (rpc.Guar
 	return a, true
 }
 
-// admissionRun is what running the hooks on one item produced. Event
-// is the event after the mutating hooks; Asks are the ask_human
-// reasons. The state is decided by finishAdmission, which alone sees
-// the store, so an external worker (#443) and the in-process loop
-// decide the same way.
-type admissionRun struct {
-	Event   admissionEvent    `json:"event"`
-	Results []admissionResult `json:"results"`
-	Denied  bool              `json:"denied,omitempty"`
-	Asks    []string          `json:"asks,omitempty"`
-}
-
-// admissionRunner runs admission hooks. It needs no store, so the
-// external `ingest work` process uses it too.
-type admissionRunner struct {
-	dir string // working dir for commands, root for secret files
-	// after waits between url hook retries; nil is time.After.
-	after func(time.Duration) <-chan time.Time
-}
-
-func (c *Controller) admissionRunner() admissionRunner {
-	return admissionRunner{dir: c.root.Dir, after: c.after}
-}
-
-// run runs the mutating hooks, then, unless a human already answered,
-// the validating hooks.
-func (ar admissionRunner) run(ctx context.Context, project string, hooks []config.AdmissionHook, it store.InboxItem, answered bool) admissionRun {
-	ev := admissionEvent{
-		On: admissionOn, DeliveryID: it.DeliveryID, Source: it.Source, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam,
-		Number: it.Number, CommentID: it.CommentID, Actor: it.Actor, Project: project,
-		ReceivedAt: it.ReceivedAt, Payload: it.Payload,
-	}
-	subj := config.AdmissionSubject{
-		Source: it.Source, Kind: it.Kind, RepoOrTeam: it.RepoOrTeam, Actor: it.Actor,
-		Project: ev.Project, Bot: strings.HasSuffix(it.Actor, "[bot]"),
-	}
-	out := admissionRun{Results: []admissionResult{}}
-	for _, h := range hooks {
-		if h.Type == config.AdmissionMutating && h.Match.Matches(subj) {
-			var r admissionResult
-			ev, r = ar.mutate(ctx, h, ev)
-			out.Results = append(out.Results, r)
-		}
-	}
-	out.Event = ev
-	if answered {
-		return out // a human's answer stands; validating hooks do not run
-	}
-	for _, h := range hooks {
-		if h.Type != config.AdmissionValidating || !h.Match.Matches(subj) {
-			continue
-		}
-		r := ar.validate(ctx, h, ev)
-		out.Results = append(out.Results, r)
-		switch r.Decision {
-		case rpc.GuardDeny:
-			out.Denied = true
-		case rpc.GuardAskHuman:
-			out.Asks = append(out.Asks, h.Name+": "+r.Reason)
-		}
-	}
-	return out
-}
-
-// settle decides an item's state from a run and a human's answer.
-// answered is false when no human has closed a hold for it.
-func settle(run admissionRun, a rpc.GuardResult, answered bool) (string, json.RawMessage, []admissionResult) {
-	results := run.Results
-	if answered {
-		results = append(results, admissionResult{Name: "human", Type: config.AdmissionValidating, Decision: a.Decision, Reason: a.Reason})
-		if a.Decision == rpc.GuardAllow {
-			return store.InboxAdmitted, run.Event.Payload, results
-		}
-		return store.InboxDenied, nil, results
-	}
-	switch {
-	case run.Denied:
-		return store.InboxDenied, nil, results
-	case len(run.Asks) > 0:
-		return store.InboxHeld, nil, results
-	}
-	return store.InboxAdmitted, run.Event.Payload, results
+// admissionRunner runs the in-process hooks in the controller's root.
+func (c *Controller) admissionRunner() ingestqueue.Runner {
+	return ingestqueue.Runner{Dir: c.root.Dir, After: c.after}
 }
 
 // finishAdmission stores a run's outcome for an item holder leases,
 // filing the needs-human ticket for a hold. A human's closed answer to
 // an earlier hold overrides the validating hooks.
-func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, holder string, run admissionRun) error {
+func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, holder string, run ingestqueue.Run) error {
 	a, answered := c.humanAnswer(ctx, it.DeliveryID)
-	state, admitted, results := settle(run, a, answered)
+	state, admitted, results := ingestqueue.Settle(run, a, answered)
 	if state == store.InboxHeld {
 		c.holdForHuman(ctx, "admission/"+it.DeliveryID, run.Event, strings.Join(run.Asks, "\n"))
 	}
@@ -273,120 +103,16 @@ func (c *Controller) finishAdmission(ctx context.Context, it store.InboxItem, ho
 	}
 	if state == store.InboxAdmitted {
 		// Dispatch-only workers long-poll for admitted items (#679).
-		c.inboxNotifier().Advance()
+		c.queue().Advance()
 	}
 	c.log.InfoContext(ctx, "inbox admission", "delivery", it.DeliveryID, "state", state, "by", holder)
 	return nil
 }
 
-// mutate runs a mutating hook. Any failure leaves ev unchanged.
-func (ar admissionRunner) mutate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) (admissionEvent, admissionResult) {
-	r := admissionResult{Name: h.Name, Type: h.Type}
-	start := time.Now()
-	out, err := ar.callAdmission(ctx, h, ev)
-	r.DurationMS = time.Since(start).Milliseconds()
-	fail := func(err error) (admissionEvent, admissionResult) {
-		r.Decision, r.Error = admitFailed, err.Error()
-		if h.Policy() == config.FailurePolicyIgnore {
-			r.Decision = admitIgnored
-		}
-		return ev, r
-	}
-	if err != nil {
-		return fail(err)
-	}
-	r.Decision = admitUnchanged
-	if len(out) == 0 {
-		return ev, r
-	}
-	var a mutateAnswer
-	if err := json.Unmarshal(out, &a); err != nil {
-		return fail(fmt.Errorf("answer is not JSON: %w", err))
-	}
-	r.Reason = a.Reason
-	before, err := json.Marshal(ev)
-	if err != nil {
-		return fail(err)
-	}
-	var after []byte
-	switch {
-	case len(a.Event) > 0 && len(a.Patch) > 0:
-		return fail(errors.New("answer has both event and patch"))
-	case len(a.Event) > 0:
-		after = a.Event
-	case len(a.Patch) > 0:
-		after, err = applyJSONPatch(before, a.Patch)
-		if err != nil {
-			return fail(err)
-		}
-		r.Diff = a.Patch
-	default:
-		return ev, r
-	}
-	next := ev
-	next.Payload = nil
-	if err := json.Unmarshal(after, &next); err != nil {
-		return fail(fmt.Errorf("mutated event: %w", err))
-	}
-	// Identity fields stay: a hook may not move an item to another delivery.
-	next.On, next.DeliveryID, next.Source = ev.On, ev.DeliveryID, ev.Source
-	if len(next.Payload) == 0 {
-		next.Payload = json.RawMessage("null")
-	}
-	if r.Diff == nil {
-		r.Diff = topLevelDiff(before, after)
-	}
-	r.Decision = admitMutated
-	return next, r
-}
-
-// validate runs a validating hook. Under failure_policy fail an error,
-// timeout or bad answer denies; under ignore it is skipped.
-func (ar admissionRunner) validate(ctx context.Context, h config.AdmissionHook, ev admissionEvent) admissionResult {
-	r := admissionResult{Name: h.Name, Type: h.Type}
-	if h.Intake {
-		ev.On = config.HookIntake
-	}
-	start := time.Now()
-	out, err := ar.callAdmission(ctx, h, ev)
-	r.DurationMS = time.Since(start).Milliseconds()
-	var a hooks.Answer
-	if err == nil && len(out) > 0 {
-		if jerr := json.Unmarshal(out, &a); jerr != nil {
-			err = fmt.Errorf("answer is not JSON: %w", jerr)
-		} else if a.Decision != rpc.GuardAllow && a.Decision != rpc.GuardDeny && a.Decision != rpc.GuardAskHuman {
-			err = fmt.Errorf("decision %q is not allow, deny or ask_human", a.Decision)
-		}
-	}
-	if err != nil {
-		r.Error = err.Error()
-		if h.Policy() == config.FailurePolicyIgnore {
-			r.Decision = admitIgnored
-		} else {
-			r.Decision, r.Reason = rpc.GuardDeny, "hook failed: "+err.Error()
-		}
-		return r
-	}
-	if len(out) == 0 {
-		a.Decision = rpc.GuardAllow
-	}
-	r.Decision, r.Reason = a.Decision, a.Reason
-	return r
-}
-
-// callAdmission sends ev to the hook and returns its trimmed answer.
-func (ar admissionRunner) callAdmission(ctx context.Context, h config.AdmissionHook, ev admissionEvent) ([]byte, error) {
-	body, err := json.Marshal(ev)
-	if err != nil {
-		return nil, err
-	}
-	return (hooks.Runner{Dir: ar.dir, After: ar.after, Executor: hookCommands{dir: ar.dir}}).Admission(ctx, h, body, ev.DeliveryID)
-}
-
 // holdForHuman files one needs-human ticket per held delivery, like a
 // refused intake (#288). Closing it done admits the item when it is
 // next claimed; any other resolution denies it.
-func (c *Controller) holdForHuman(ctx context.Context, key string, ev admissionEvent, reason string) {
+func (c *Controller) holdForHuman(ctx context.Context, key string, ev ingestqueue.Event, reason string) {
 	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Order: store.OrderNewest, Limit: 1})
 	if err == nil && len(open) > 0 && open[0].Status != store.StatusClosed {
 		return
