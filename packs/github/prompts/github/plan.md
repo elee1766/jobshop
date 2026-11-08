@@ -33,9 +33,17 @@ Each planning ticket:
    `needs-decision`, and not a drill or tracking issue, needs work moving
    on it. Issues filed by the operator or other sessions count the same as
    yours. Start (or confirm) its run
-   with step 8's command; the key makes
-   this safe to repeat. Do this before step 6, every pass. An open issue
-   with no run never gets worked.
+   with step 8's command. Do this before step 6, every pass. An open issue
+   with no run never gets worked. The key only returns an open run: a
+   finished or cancelled run frees it, so a repeat start opens a duplicate.
+   Start only for an issue still open (`gh issue view <n> --json state`)
+   with no earlier run under its key (`jobshop run list | jq '.[] |
+   select(.fields.workflow=="{{.pack_prefix}}pr-work" and
+   .fields.key=="issue-<n>")'`). An open issue whose run is done
+   is waiting on a follow-up or missed its close: read the run and the
+   issue, then close the issue or comment what is left; do not start a
+   second run unless it names new work. Cancel a mistaken run with
+   `jobshop run cancel <id>`.
 6. If more than 6 issues are open, file nothing new. Comment why on the
    ticket and close it.
 7. Otherwise file the next 2-4 issues toward unchecked items. Each issue
@@ -44,8 +52,8 @@ Each planning ticket:
 8. For each new issue, start a `pr-work` run (the dev, refinery and
    post-merge steps for that issue):
    `jobshop run start {{.pack_prefix}}pr-work --var issue=<n> --key issue-<n>`.
-   The key makes a repeated start return the open run, so starting
-   again is safe. Do not create "Resolve #n" pointer tickets.
+   The key makes a repeated start return the open run while that run is
+   open (see step 5). Do not create "Resolve #n" pointer tickets.
    Keep single independent issues on `run start {{.pack_prefix}}pr-work`.
    When the issues you file depend on each other, start them together
    as one batch instead of separate runs:
