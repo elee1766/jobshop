@@ -185,9 +185,9 @@ type Controller struct {
 	// poolQuarantined maps a pool to the permanent spawn error that
 	// stopped it; cleared by reload or pool unquarantine (#146).
 	poolQuarantined map[string]string
-	// dnsChecked holds the pool and DNS settings whose sandbox DNS check
-	// passed (JOB-20); guarded by mu.
-	dnsChecked map[string]bool
+	// dnsChecks holds the pool and DNS settings whose sandbox DNS check
+	// passed (JOB-20); it has its own lock.
+	dnsChecks sessionrt.DNSChecks
 	// configErr is the pack load error the controller started past,
 	// serving the last good config (#227); cleared by a good reload.
 	configErr   string

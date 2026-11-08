@@ -2,20 +2,14 @@ package control
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 
 	"github.com/elee1766/acphost/pkg/proc"
-	"github.com/elee1766/acphost/pkg/userns"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -44,7 +38,7 @@ type isolatedCmd struct {
 }
 
 // errSetup is a sandbox or isolation failure: the command never ran.
-var errSetup = errors.New("isolation setup failed")
+var errSetup = sessionrt.ErrSetup
 
 // runIsolated runs ic and returns its exit. err is a start failure, a
 // setup failure (wrapping errSetup) or a wait error; a non-zero exit is
@@ -65,7 +59,12 @@ func (c *Controller) runIsolated(ctx context.Context, ic isolatedCmd) (proc.Exit
 func (c *Controller) runIsolatedCmd(ctx context.Context, ic isolatedCmd) (proc.Exit, error) {
 	spec := proc.Spec{Command: ic.argv[0], Args: ic.argv[1:], Dir: ic.dir, Env: ic.env}
 	if ic.pool != "" {
-		cleanup, err := c.isolateSpec(&spec, ic)
+		cleanup, err := sessionrt.IsolateSpec(&spec, sessionrt.CommandSetup{
+			Cfg: ic.cfg, Pool: ic.pool, Own: ic.own, Name: ic.name,
+			TmpDir: filepath.Join(c.root.Dir, "tmp"),
+			Exe:    c.hostExe,
+			Cgroup: c.poolCgroup,
+		})
 		if cleanup != nil {
 			defer cleanup()
 		}
@@ -73,111 +72,7 @@ func (c *Controller) runIsolatedCmd(ctx context.Context, ic isolatedCmd) (proc.E
 			return proc.Exit{}, fmt.Errorf("%w: %w", errSetup, err)
 		}
 	}
-	// The parent-death signal follows the thread that started it, so
-	// keep this goroutine on it until the command is done.
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	opts := []proc.Option{}
-	if ic.stdin != nil {
-		opts = append(opts, proc.Stdin(ic.stdin))
-	}
-	if ic.stdout != nil {
-		opts = append(opts, proc.Stdout(ic.stdout))
-	}
-	if ic.stderr != nil {
-		opts = append(opts, proc.Stderr(ic.stderr))
-	}
-	p, err := proc.Start(ctx, spec, opts...)
-	if err != nil {
-		return proc.Exit{}, err
-	}
-	ex, err := p.Wait()
-	if err == nil && ex.SetupError != "" {
-		err = fmt.Errorf("%w: %s", errSetup, ex.SetupError)
-	}
-	return ex, err
-}
-
-// isolateSpec adds pool's sandbox, user and cgroup to spec. The cleanup
-// removes the scratch dir it made.
-func (c *Controller) isolateSpec(spec *proc.Spec, ic isolatedCmd) (func(), error) {
-	cfg := ic.cfg
-	if cfg == nil {
-		return nil, fmt.Errorf("isolated command for pool %s: no config", ic.pool)
-	}
-	var cleanup func()
-	sbCfg := cfg.SandboxFor(ic.pool)
-	if sbCfg.Backend != "" {
-		own := ic.own
-		if own == "" {
-			base := filepath.Join(c.root.Dir, "tmp")
-			if err := os.MkdirAll(base, 0o700); err != nil {
-				return nil, err
-			}
-			d, err := os.MkdirTemp(base, "cmd-")
-			if err != nil {
-				return nil, err
-			}
-			own, cleanup = d, func() { _ = os.RemoveAll(d) }
-		}
-		if spec.Dir == "" {
-			spec.Dir = own
-		}
-		exe, err := c.hostExe()
-		if err != nil {
-			return cleanup, err
-		}
-		sb, err := c.poolSandboxIn(cfg, ic.pool, own, exe, spec.Dir, "")
-		if err != nil {
-			return cleanup, err
-		}
-		if sb != nil {
-			// bwrap clears the env and PATH is not in sandboxEnvKeep
-			// (sessions set their own), so pass the controller's.
-			if !hasEnv(spec.Env, "PATH") {
-				spec.Env = append([]string{"PATH=" + os.Getenv("PATH")}, spec.Env...)
-			}
-			spec.Sandbox = sb
-		}
-	}
-	iso := cfg.IsolationFor(ic.pool)
-	if u := iso.User; u != nil {
-		hu := &userns.User{UID: u.UID, GID: u.GIDOrUID(), MapUID: u.MapUID, MapGID: u.MapGID}
-		for _, g := range u.Groups {
-			gid, err := config.LookupGroup(g)
-			if err != nil {
-				return cleanup, fmt.Errorf("isolation user: %w", err)
-			}
-			hu.Groups = append(hu.Groups, gid)
-		}
-		spec.User = hu
-	}
-	if iso.Limits != nil {
-		hc, err := c.poolCgroup(cfg, ic.pool)
-		if err != nil {
-			return cleanup, err
-		}
-		b := make([]byte, 6)
-		_, _ = rand.Read(b)
-		spec.Cgroup, spec.Name = hc, firstNonEmpty(ic.name, "cmd")+"-"+hex.EncodeToString(b)
-	}
-	return cleanup, nil
-}
-
-func hasEnv(env []string, key string) bool {
-	for _, kv := range env {
-		if strings.HasPrefix(kv, key+"=") {
-			return true
-		}
-	}
-	return false
-}
-
-func firstNonEmpty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
+	return sessionrt.Run(ctx, spec, sessionrt.Streams{Stdin: ic.stdin, Stdout: ic.stdout, Stderr: ic.stderr})
 }
 
 // shArgv is sh -c command.
