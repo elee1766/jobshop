@@ -3,6 +3,10 @@
 On gasserver with `isolation.enable` and a build of at least the release
 with JOB-91.
 
+This is the cgroupfs driver. With `isolation.cgroupDriver = "systemd"`
+(JOB-99) there is no `controller`/`sessions` split: check restarts and a
+kill -9 with live limited sessions in `systemd-cgroup-driver.md`.
+
 1. After the switch, `systemctl status jobshop` shows `controller` and
    `sessions/hosts` under its cgroup. Journal: `isolation: sessions cgroup
    ready`, and no `tuning not applied` warning.
