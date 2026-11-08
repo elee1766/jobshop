@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.11](https://github.com/elee1766/jobshop/compare/v0.9.10...v0.9.11) (2026-11-08)
+
+
+### Features
+
+* **desk:** alternate row backgrounds in repeated lists and tables (JOB-128) ([#1033](https://github.com/elee1766/jobshop/issues/1033)) ([74584e3](https://github.com/elee1766/jobshop/commit/74584e370728d99c0c1309ef549b03ddacce92d4))
+* **desk:** render Markdown links in ticket and run titles (JOB-135) ([#1044](https://github.com/elee1766/jobshop/issues/1044)) ([73ff669](https://github.com/elee1766/jobshop/commit/73ff669d238f168f9da977db4d461522305408c2))
+
 ## [0.9.10](https://github.com/elee1766/jobshop/compare/v0.9.9...v0.9.10) (2026-11-08)
 
 
