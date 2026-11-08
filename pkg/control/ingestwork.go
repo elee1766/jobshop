@@ -6,13 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -23,36 +22,10 @@ import (
 // ingest.workers external the controller does not admit; `jobshop ingest
 // work` processes claim pending items over the admin socket, run the
 // hooks themselves and report the run. The controller keeps every store
-// write: the claim, the needs-human ticket for a hold and the state.
-// Heartbeats are kept in memory: after a controller restart the missing
+// write: the claim, the needs-human ticket for a hold and the state. The
+// worker loop, heartbeats and hook runner are pkg/control/ingestqueue;
+// the heartbeats are in memory, so after a controller restart the missing
 // worker clock starts at the restart.
-
-// ingestWorkerPrefix makes a worker's inbox holder distinct from the
-// in-process admitter's.
-const ingestWorkerPrefix = "worker:"
-
-func (c *Controller) beat(w rpc.IngestClaimParams, claimed, admitted bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.ingestWorkers == nil {
-		c.ingestWorkers = map[string]*rpc.IngestWorker{}
-	}
-	hb := c.ingestWorkers[w.Worker]
-	if hb == nil {
-		hb = &rpc.IngestWorker{ID: w.Worker}
-		c.ingestWorkers[w.Worker] = hb
-	}
-	if w.Host != "" {
-		hb.Host = w.Host
-	}
-	hb.Seen = c.now()
-	if claimed {
-		hb.LastClaim = hb.Seen
-	}
-	if admitted {
-		hb.Admitted++
-	}
-}
 
 // ingestClaim leases one pending item to an external worker.
 func (c *Controller) ingestClaim(ctx context.Context, sc scope, p rpc.IngestClaimParams) (any, error) {
@@ -64,21 +37,22 @@ func (c *Controller) ingestClaim(ctx context.Context, sc scope, p rpc.IngestClai
 	}
 	cfg := c.config()
 	if !cfg.Ingest.External() {
-		c.beat(p, false, false)
+		c.queue().Beat(p, false, false)
 		return nil, fmt.Errorf("%w: ingest.workers is not external; the controller admits", store.ErrConflict)
 	}
-	hooks := admissionHooks(cfg)
-	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, ingestWorkerPrefix+p.Worker, admissionLease(hooks))
+	hooks := ingestqueue.Hooks(cfg)
+	lease := ingestqueue.Lease(hooks)
+	it, err := ingest.InboxClaim(ctx, c.store, []string{store.InboxPending}, ingestqueue.WorkerPrefix+p.Worker, lease)
 	if errors.Is(err, store.ErrNotFound) {
-		c.beat(p, false, false)
+		c.queue().Beat(p, false, false)
 		return rpc.IngestClaimResult{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	c.beat(p, true, false)
+	c.queue().Beat(p, true, false)
 	_, answered := c.humanAnswer(ctx, it.DeliveryID)
-	return rpc.IngestClaimResult{Item: &it, Hooks: hooks, Project: cfg.DefaultProject, Answered: answered, LeaseMS: admissionLease(hooks).Milliseconds()}, nil
+	return rpc.IngestClaimResult{Item: &it, Hooks: hooks, Project: cfg.DefaultProject, Answered: answered, LeaseMS: lease.Milliseconds()}, nil
 }
 
 // ingestAdmit stores a worker's run for an item it still leases.
@@ -89,7 +63,7 @@ func (c *Controller) ingestAdmit(ctx context.Context, sc scope, p rpc.IngestAdmi
 	if p.Worker == "" {
 		return nil, fmt.Errorf("%w: worker is required", store.ErrInvalid)
 	}
-	var run admissionRun
+	var run ingestqueue.Run
 	if err := json.Unmarshal(p.Run, &run); err != nil {
 		return nil, fmt.Errorf("%w: run: %w", store.ErrInvalid, err)
 	}
@@ -98,14 +72,14 @@ func (c *Controller) ingestAdmit(ctx context.Context, sc scope, p rpc.IngestAdmi
 		return nil, err
 	}
 	// The worker may not move the item to another delivery.
-	run.Event.On, run.Event.DeliveryID, run.Event.Source = admissionOn, it.DeliveryID, it.Source
+	run.Event.On, run.Event.DeliveryID, run.Event.Source = ingestqueue.On, it.DeliveryID, it.Source
 	if run.Results == nil {
-		run.Results = []admissionResult{}
+		run.Results = []ingestqueue.Result{}
 	}
-	if err := c.finishAdmission(ctx, it, ingestWorkerPrefix+p.Worker, run); err != nil {
+	if err := c.finishAdmission(ctx, it, ingestqueue.WorkerPrefix+p.Worker, run); err != nil {
 		return nil, err
 	}
-	c.beat(rpc.IngestClaimParams{Worker: p.Worker}, false, true)
+	c.queue().Beat(rpc.IngestClaimParams{Worker: p.Worker}, false, true)
 	got, err := ingest.InboxGet(ctx, c.store, p.ID)
 	if err != nil {
 		return nil, err
@@ -123,30 +97,12 @@ func (c *Controller) ingestWorkersMethod(ctx context.Context, sc scope, _ struct
 		return nil, err
 	}
 	mode := cmp.Or(c.config().Ingest.Workers, config.IngestWorkersInternal)
-	return rpc.IngestWorkersResult{Mode: mode, Workers: c.workerList(), Counts: counts}, nil
-}
-
-func (c *Controller) workerList() []rpc.IngestWorker {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	out := make([]rpc.IngestWorker, 0, len(c.ingestWorkers))
-	for _, k := range slices.Sorted(maps.Keys(c.ingestWorkers)) {
-		out = append(out, *c.ingestWorkers[k])
-	}
-	return out
+	return rpc.IngestWorkersResult{Mode: mode, Workers: c.queue().Workers(), Counts: counts}, nil
 }
 
 // lastWorkerBeat is the newest heartbeat, or the controller's start when
 // no worker has called since.
-func (c *Controller) lastWorkerBeat() time.Time {
-	last := c.started
-	for _, w := range c.workerList() {
-		if w.Seen.After(last) {
-			last = w.Seen
-		}
-	}
-	return last
-}
+func (c *Controller) lastWorkerBeat() time.Time { return c.queue().LastBeat(c.started) }
 
 // ingestAttention lists a missing external worker and an admission
 // backlog. The same conditions are the ingest_worker and
@@ -220,12 +176,5 @@ func (c *Controller) recordInboxGauges(ctx context.Context, cfg *config.Config) 
 	for st, n := range counts {
 		c.metrics.Inbox.Record(ctx, n, metric.WithAttributes(telemetry.AttrState.String(st)))
 	}
-	live := int64(0)
-	cutoff := c.now().Add(-cfg.Ingest.WorkerMissingAfter())
-	for _, w := range c.workerList() {
-		if w.Seen.After(cutoff) {
-			live++
-		}
-	}
-	c.metrics.IngestWorkers.Record(ctx, live)
+	c.metrics.IngestWorkers.Record(ctx, c.queue().Live(c.now().Add(-cfg.Ingest.WorkerMissingAfter())))
 }

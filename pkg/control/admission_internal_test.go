@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -62,14 +63,14 @@ func putInbox(t *testing.T, c *Controller, it store.InboxItem) store.InboxItem {
 	return out
 }
 
-func admitOne(t *testing.T, c *Controller, id int64) (store.InboxItem, []admissionResult) {
+func admitOne(t *testing.T, c *Controller, id int64) (store.InboxItem, []ingestqueue.Result) {
 	t.Helper()
 	ok, err := c.admitNext(t.Context())
 	require.NoError(t, err)
 	require.True(t, ok)
 	it, err := ingest.InboxGet(t.Context(), c.store, id)
 	require.NoError(t, err)
-	var rs []admissionResult
+	var rs []ingestqueue.Result
 	require.NoError(t, json.Unmarshal(it.HookResults, &rs))
 	return it, rs
 }
@@ -116,15 +117,15 @@ func TestAdmissionOrderAndMutation(t *testing.T) {
 	assert.JSONEq(t, string(it.Payload), string(got.Payload), "the raw payload stays")
 	require.Len(t, rs, 3)
 	assert.Equal(t, []string{"redact", "full", "check"}, []string{rs[0].Name, rs[1].Name, rs[2].Name})
-	assert.Equal(t, admitMutated, rs[0].Decision)
+	assert.Equal(t, ingestqueue.Mutated, rs[0].Decision)
 	assert.Equal(t, "secret", rs[0].Reason)
 	assert.Contains(t, string(rs[0].Diff), "[redacted]")
-	assert.Equal(t, admitMutated, rs[1].Decision)
+	assert.Equal(t, ingestqueue.Mutated, rs[1].Decision)
 	assert.Contains(t, string(rs[1].Diff), "HELLO")
 	assert.Equal(t, "allow", rs[2].Decision)
 	seen, err := os.ReadFile(filepath.Join(dir, "seen.json"))
 	require.NoError(t, err)
-	var ev admissionEvent
+	var ev ingestqueue.Event
 	require.NoError(t, json.Unmarshal(seen, &ev))
 	assert.Equal(t, "d1", ev.DeliveryID)
 	assert.JSONEq(t, `{"body":"HELLO","token":"[redacted]"}`, string(ev.Payload))
@@ -203,9 +204,9 @@ func TestAdmissionTimeout(t *testing.T) {
 		policy, typ, state, decision string
 	}{
 		{"", config.AdmissionValidating, store.InboxDenied, "deny"},
-		{"ignore", config.AdmissionValidating, store.InboxAdmitted, admitIgnored},
-		{"", config.AdmissionMutating, store.InboxAdmitted, admitFailed},
-		{"ignore", config.AdmissionMutating, store.InboxAdmitted, admitIgnored},
+		{"ignore", config.AdmissionValidating, store.InboxAdmitted, ingestqueue.Ignored},
+		{"", config.AdmissionMutating, store.InboxAdmitted, ingestqueue.Failed},
+		{"ignore", config.AdmissionMutating, store.InboxAdmitted, ingestqueue.Ignored},
 	} {
 		t.Run(tc.typ+"/"+tc.policy, func(t *testing.T) {
 			t.Parallel()
@@ -347,9 +348,9 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 	it := putInbox(t, c, store.InboxItem{DeliveryID: "dx"})
 	// A first admitter claims the item, runs the hooks and dies before
 	// storing the result.
-	claimed, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxPending}, admissionHolder, time.Minute)
+	claimed, err := ingest.InboxClaim(t.Context(), c.store, []string{store.InboxPending}, ingestqueue.Holder, time.Minute)
 	require.NoError(t, err)
-	c.admissionRunner().run(t.Context(), "", admissionHooks(c.config()), claimed, false)
+	c.admissionRunner().Run(t.Context(), "", ingestqueue.Hooks(c.config()), claimed, false)
 	ok, err := c.admitNext(t.Context())
 	require.NoError(t, err)
 	assert.False(t, ok, "leased item is not claimable")
@@ -360,21 +361,4 @@ func TestAdmissionReclaimAfterLeaseExpiry(t *testing.T) {
 	b, err := os.ReadFile(log)
 	require.NoError(t, err)
 	assert.Equal(t, strings.Repeat(`"delivery_id":"dx"`+"\n", 2), string(b))
-}
-
-func TestApplyJSONPatch(t *testing.T) {
-	t.Parallel()
-	out, err := applyJSONPatch([]byte(`{"a":[1,2],"b":{"c":"x"}}`), []byte(`[
-		{"op":"add","path":"/a/1","value":9},
-		{"op":"remove","path":"/b/c"},
-		{"op":"copy","from":"/a/0","path":"/b/d"},
-		{"op":"move","from":"/a/2","path":"/e"},
-		{"op":"test","path":"/e","value":2}
-	]`))
-	require.NoError(t, err)
-	assert.JSONEq(t, `{"a":[1,9],"b":{"d":1},"e":2}`, string(out))
-	_, err = applyJSONPatch([]byte(`{"a":1}`), []byte(`[{"op":"test","path":"/a","value":2}]`))
-	require.Error(t, err)
-	_, err = applyJSONPatch([]byte(`{"a":1}`), []byte(`[{"op":"replace","path":"/nope","value":2}]`))
-	require.Error(t, err)
 }

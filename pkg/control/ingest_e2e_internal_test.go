@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -84,11 +85,10 @@ func e2eController(t *testing.T, dir string, clk *scanClock, hooks ...config.Adm
 	c := &Controller{
 		root: root, live: live, store: st, opt: Options{Clock: clk}, log: slog.New(slog.DiscardHandler),
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{},
-		ingest: ingestDrain{wake: make(chan struct{}, 1)},
 	}
 	c.ctx = t.Context()
 	t.Cleanup(func() {
-		c.closeSpool()
+		c.queue().CloseSpool()
 		_ = st.Close()
 	})
 	e := &e2eEnv{c: c, clk: clk, dir: dir, src: &fakeThreads{cs: map[string][]ghComment{}, since: map[string]time.Time{}, pr: map[string]bool{}}}
@@ -105,7 +105,7 @@ func e2eController(t *testing.T, dir string, clk *scanClock, hooks ...config.Adm
 // restart is the controller after a crash: same dir, DB, spool and clock.
 func (e *e2eEnv) restart(t *testing.T, hooks ...config.AdmissionHook) *e2eEnv {
 	t.Helper()
-	e.c.closeSpool()
+	e.c.queue().CloseSpool()
 	require.NoError(t, e.c.store.Close())
 	n := e2eController(t, e.dir, e.clk, hooks...)
 	n.sess, n.src = e.sess, e.src
@@ -138,7 +138,7 @@ func (e *e2eEnv) webhook(t *testing.T, cm e2eComment, delivery, secret string) i
 		"comment":    map[string]any{"id": cm.id, "body": cm.body, "updated_at": cm.at.Format(time.RFC3339)},
 	})
 	require.NoError(t, err)
-	sp, err := e.c.spool(t.Context())
+	sp, err := e.c.queue().Spool(t.Context())
 	require.NoError(t, err)
 	h := &ingest.Handler{
 		Spool: sp, Endpoints: e.c.config().IngestEndpoints(),
@@ -170,7 +170,7 @@ func (e *e2eEnv) poll(t *testing.T, cm e2eComment) {
 // dispatch pass, as the drain and admission pumps do.
 func (e *e2eEnv) drain(t *testing.T) ingest.DrainResult {
 	t.Helper()
-	res, err := e.c.drainOnce(t.Context())
+	res, err := e.c.queue().DrainOnce(t.Context())
 	require.NoError(t, err)
 	e.c.ingestPass(t.Context())
 	return res
@@ -197,7 +197,7 @@ func TestIngestE2ERestart(t *testing.T) {
 			cm := e.newComment(42, "please rebase")
 			require.Equal(t, http.StatusAccepted, e.webhook(t, cm, "d-1", e2eSecret))
 			if tc.drained {
-				res, err := e.c.drainOnce(t.Context())
+				res, err := e.c.queue().DrainOnce(t.Context())
 				require.NoError(t, err)
 				require.Equal(t, 1, res.Fresh)
 			}
@@ -285,10 +285,10 @@ func TestIngestE2ERedaction(t *testing.T) {
 		assert.Equal(t, store.InboxDispatched, it.State, it.DeliveryID)
 		assert.Contains(t, string(it.Payload), "hunter2", "the raw payload stays")
 		assert.NotContains(t, string(it.Admitted), "hunter2")
-		var rs []admissionResult
+		var rs []ingestqueue.Result
 		require.NoError(t, json.Unmarshal(it.HookResults, &rs))
 		require.Len(t, rs, 1)
-		assert.Equal(t, admitMutated, rs[0].Decision)
+		assert.Equal(t, ingestqueue.Mutated, rs[0].Decision)
 		assert.Equal(t, "secret", rs[0].Reason)
 		assert.Contains(t, string(rs[0].Diff), "[redacted]")
 	}
@@ -337,9 +337,9 @@ func TestIngestE2EHookTimeout(t *testing.T) {
 		delivered             bool
 	}{
 		{"", config.AdmissionValidating, "deny", false},
-		{"ignore", config.AdmissionValidating, admitIgnored, true},
-		{"", config.AdmissionMutating, admitFailed, true},
-		{"ignore", config.AdmissionMutating, admitIgnored, true},
+		{"ignore", config.AdmissionValidating, ingestqueue.Ignored, true},
+		{"", config.AdmissionMutating, ingestqueue.Failed, true},
+		{"ignore", config.AdmissionMutating, ingestqueue.Ignored, true},
 	} {
 		t.Run(tc.typ+"/"+tc.policy, func(t *testing.T) {
 			t.Parallel()
@@ -353,7 +353,7 @@ func TestIngestE2EHookTimeout(t *testing.T) {
 			its, err := ingest.InboxList(t.Context(), e.c.store, store.InboxFilter{})
 			require.NoError(t, err)
 			require.Len(t, its, 1)
-			var rs []admissionResult
+			var rs []ingestqueue.Result
 			require.NoError(t, json.Unmarshal(its[0].HookResults, &rs))
 			require.Len(t, rs, 1)
 			assert.Equal(t, tc.decision, rs[0].Decision)
@@ -422,7 +422,7 @@ func TestIngestE2EURLHookSignature(t *testing.T) {
 			assert.Empty(t, e.prompts(t))
 			its, err := ingest.InboxList(t.Context(), e.c.store, store.InboxFilter{})
 			require.NoError(t, err)
-			var rs []admissionResult
+			var rs []ingestqueue.Result
 			require.NoError(t, json.Unmarshal(its[0].HookResults, &rs))
 			assert.Contains(t, rs[0].Error, "HTTP 401")
 		})

@@ -47,7 +47,7 @@ func (c *Controller) pollOnce(ctx context.Context, cfg *config.Config, pc config
 	}
 	for _, repo := range pc.Repos {
 		res, err := p.Poll(ctx, repo)
-		c.inboxAppended(res.New)
+		c.queue().Appended(res.New)
 		if err != nil {
 			if ctx.Err() == nil {
 				c.log.WarnContext(ctx, "ingest poller", "poller", pc.Name, "repo", repo, "err", err)
