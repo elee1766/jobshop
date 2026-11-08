@@ -71,7 +71,7 @@
             .split(/\s+/)
             .filter(Boolean)
             .every((term) =>
-              `${r.title} ${r.id} ${r.step} ${r.repo} ${r.ref} ${r.waiting}`
+              `${r.title} ${r.id} ${r.step} ${r.repo} ${r.ref} ${r.waiting} ${r.prs.map((p) => p.label).join(" ")}`
                 .toLowerCase()
                 .includes(term),
             ) &&
@@ -631,9 +631,9 @@
                               e.shiftKey
                                 ? attach([row.ref])
                                 : openTrace(row.id)}><span>{row.title || row.ref}</span></button
-                          >{#if row.issueURL}<a class="ticket-issue" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}{#if row.prURL}<a class="ticket-issue compact-pr" href={row.prURL} target="_blank" rel="noopener noreferrer">{row.repo.split("/").at(-1)}#{row.pr || row.prURL.split('/').at(-1)}</a>{/if}</td
+                          >{#if row.issueURL}<a class="ticket-issue" href={row.issueURL} target="_blank" rel="noopener noreferrer">{row.ref}</a>{/if}{#each row.prs as pr (pr.url)}<a class="ticket-issue compact-pr" href={pr.url} target="_blank" rel="noopener noreferrer">{pr.label}</a>{/each}</td
                         ><td class="wide"
-                          >{#if row.prURL}<a href={row.prURL} target="_blank" rel="noopener noreferrer">{row.repo.split("/").at(-1)}#{row.pr || row.prURL.split('/').at(-1)}</a>{:else}{row.pr ? row.repo.split("/").at(-1) + "#" + row.pr : "–"}{/if}</td
+                          >{#each row.prs as pr, i (pr.url)}{#if i}, {/if}<a href={pr.url} target="_blank" rel="noopener noreferrer">{pr.label}</a>{:else}–{/each}</td
                         ><td>{row.step}</td><td>{@html md(row.waiting, true)}</td><td
                           title={row.source}>{ago(row.since, now)}</td
                         ><td class="wide"

@@ -514,9 +514,10 @@ func (c *Controller) runShow(ctx context.Context, sc scope, p rpc.IDParams) (any
 		return nil, err
 	}
 	result, err := c.runResult(ctx, t)
-	if err == nil {
-		result.Links = graphLinks(c.config(), t, nil)
+	if err != nil {
+		return result, err
 	}
+	result.Links, err = c.runLinks(ctx, t, result.Steps)
 	return result, err
 }
 

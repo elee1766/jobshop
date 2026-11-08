@@ -62,7 +62,8 @@ scope (`feat(store)!: ...`) or a `BREAKING CHANGE:` line in the body.
 PR body: at most ~10 lines, plain text: what changed, why, how it was
 tested. No long summaries, file lists or pasted output.
 Comment the PR link on the issue:
-`jobshop linear comment {{.issue}} "PR <url>"`.
+`jobshop linear comment {{.issue}} "PR <url>"`, and on this step, which is
+what Desk's in-flight table reads: `jobshop comment "PR <url>"`.
 Wait for CI with a wait, not a fixed deferral or polling: after each push
 run
 `jobshop wait add 'github.checks:pr={{.repo}}#<n>,state=success,workflow={{.ci_workflow}}' 'github.checks:pr={{.repo}}#<n>,state=failure,workflow={{.ci_workflow}}' --any --resume --timeout 1h --reason "CI on PR #<n>"`

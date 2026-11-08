@@ -10,13 +10,30 @@ export function ago(value?: string, now = Date.now()) {
       : Math.floor(minutes / 1440) + "d";
 }
 
+export interface PRLink {
+  url: string;
+  label: string;
+}
+
+const pullURL = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)$/;
+
+// prLinks are the run's GitHub PR links, labelled repo#n from the link
+// itself: a PR may live in another repo than the run's (JOB-131).
+export function prLinks(links?: string[]): PRLink[] {
+  const out: PRLink[] = [];
+  for (const url of links || []) {
+    const m = pullURL.exec(url);
+    if (m) out.push({ url, label: `${m[2]}#${m[3]}` });
+  }
+  return out;
+}
+
 export interface Flight {
   id: string;
   title: string;
   ref: string;
   repo: string;
-  pr: string;
-  prURL: string;
+  prs: PRLink[];
   issueURL: string;
   step: string;
   waiting: string;
@@ -89,8 +106,7 @@ export function flights(
           : String(issue)
         : run.run.id,
       repo,
-      pr: vars.pr || meta.github?.pr || "",
-      prURL: (run.links || []).find(link => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+$/.test(link)) || '',
+      prs: prLinks(run.links),
       issueURL: (run.links || []).find(link => /^https:\/\/linear\.app\//.test(link)) || '',
       step: sf.step || "queued",
       waiting,

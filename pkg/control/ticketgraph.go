@@ -187,3 +187,52 @@ func commentBodies(comments []store.Comment) []string {
 	}
 	return out
 }
+
+// stepPRComment is the handoff line a step records for its PR: "PR <url>
+// head <sha>" at the start of a line (the pr-work prompts, JOB-131). A PR
+// merely mentioned in a comment does not match.
+var stepPRComment = regexp.MustCompile(`(?m)^PR (https://github\.com/[\w.-]+/[\w.-]+/pull/\d+)(?:\s|$)`)
+
+// stepPRLinks are the PRs a step records itself: those its wait conditions
+// watch (structured, set right after the PR is opened) and those it
+// announced with a "PR <url>" comment. It never reads an issue number or
+// a casual mention.
+func stepPRLinks(t store.Ticket, comments []store.Comment) []string {
+	var out []string
+	add := func(link string) {
+		if !slices.Contains(out, link) {
+			out = append(out, link)
+		}
+	}
+	if w := waitOf(t); w != nil {
+		for _, cd := range w.Conds {
+			if cd.Repo != "" && cd.PR > 0 {
+				add(fmt.Sprintf("https://github.com/%s/pull/%d", cd.Repo, cd.PR))
+			}
+		}
+	}
+	for _, body := range commentBodies(comments) {
+		for _, m := range stepPRComment.FindAllStringSubmatch(body, -1) {
+			add(m[1])
+		}
+	}
+	return out
+}
+
+// runLinks are a run's links: what its vars and meta name, plus the PRs
+// its steps recorded after it started (JOB-131), in step order.
+func (c *Controller) runLinks(ctx context.Context, run store.Ticket, steps []store.Ticket) ([]string, error) {
+	links := graphLinks(c.config(), run, nil)
+	for _, s := range steps {
+		th, err := c.store.Thread(ctx, s.ID, store.Parts{Comments: true})
+		if err != nil {
+			return nil, err
+		}
+		for _, link := range stepPRLinks(s, th.Comments) {
+			if !slices.Contains(links, link) {
+				links = append(links, link)
+			}
+		}
+	}
+	return links, nil
+}
