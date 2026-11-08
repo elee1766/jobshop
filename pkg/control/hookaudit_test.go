@@ -23,8 +23,12 @@ import (
 )
 
 func TestHookAuditPublicProjectionSurvivesCredentialRotation(t *testing.T) {
+	t.Parallel()
 	for _, recoveredState := range []string{"done", "failed"} {
-		t.Run(recoveredState, func(t *testing.T) { testHookAuditCredentialRotation(t, recoveredState) })
+		t.Run(recoveredState, func(t *testing.T) {
+			t.Parallel()
+			testHookAuditCredentialRotation(t, recoveredState)
+		})
 	}
 }
 
@@ -153,6 +157,7 @@ def handle(event, args):
 }
 
 func TestHookColdFallbackVerifiesAcceptedManifest(t *testing.T) {
+	t.Parallel()
 	const script = `def begin(run):
     return []
 def completed(run, step):
@@ -181,6 +186,7 @@ def handle(event, args):
 }
 
 func TestHookPublicInventoryIsBoundedBeyondOnePage(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return []
 def completed(run, step):
@@ -189,15 +195,29 @@ def handle(event, args):
     return []
 `)
 	c := controltest.Start(t, root, control.Options{})
-	var last rpc.RunResult
-	for i := range 105 {
-		c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Key: fmt.Sprint(i)}, &last)
-	}
+	var run rpc.RunResult
+	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Key: "0"}, &run)
 	c.PassUntil(func() bool {
-		fields, err := store.DecodeFields[store.RunFields](hookRun(t, c, last.Run.ID).Run)
+		fields, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
 		require.NoError(t, err)
 		return fields.Automation.Version == 1
 	}, "workflow callbacks did not finish")
+	c.Stop()
+	// More invocations than one page, copied from the real one in the
+	// store: starting 105 runs over RPC took 14s under -race (JOB-117).
+	seedStore(t, root, func(st store.Store) {
+		invocations, err := st.Collection(t.Context(), store.CollectionSpec{Name: "hook_invocations", Index: []store.Field{{Name: "run", Path: "run"}, {Name: "trigger", Path: "trigger"}, {Name: "event", Path: "event.delivery"}}})
+		require.NoError(t, err)
+		done, err := invocations.List(t.Context(), store.RecordFilter{})
+		require.NoError(t, err)
+		require.Len(t, done, 1)
+		for i := 1; i < 105; i++ {
+			_, created, err := invocations.Put(t.Context(), store.Record{Key: fmt.Sprintf("%s-%d", done[0].Key, i), State: done[0].State, Value: done[0].Value})
+			require.NoError(t, err)
+			require.True(t, created)
+		}
+	})
+	c = controltest.Start(t, root, control.Options{})
 	var records []store.Record
 	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{}, &records)
 	assert.Len(t, records, 50)

@@ -53,6 +53,7 @@ func run() error {
 		// #nosec G204 -- names come from our own test output.
 		cmd := exec.Command("go", "test", "-json", "-race",
 			"-gcflags=modernc.org/...=-d=checkptr=0",
+			"-gcflags=modernc.org/sqlite/lib=-race=false",
 			"-run", "^"+t.Test+"$", fmt.Sprintf("-count=%d", *count), t.Package)
 		cmd.Stdout = &buf
 		cmd.Stderr = os.Stderr

@@ -51,6 +51,7 @@ triggers:
 }
 
 func TestHookCapabilitiesOutsideControllerLocksAndCancelDiscardsActions(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -75,7 +76,9 @@ def handle(event, args):
 `)
 	data, err := os.ReadFile(root.Config())
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(root.Config(), append(data, []byte("automation: {http: true, timeout: 10s}\n")...), 0o600))
+	// The timeout is wall time. 10s ran out under a loaded parallel run
+	// before the cancel landed, failing the hook instead (JOB-117).
+	require.NoError(t, os.WriteFile(root.Config(), append(data, []byte("automation: {http: true, timeout: 1m}\n")...), 0o600))
 	c := controltest.Start(t, root, control.Options{})
 	var run rpc.RunResult
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Inputs: map[string]any{"url": server.URL}}, &run)
@@ -125,6 +128,7 @@ func hookRun(t *testing.T, c *controltest.Controller, id string) rpc.RunResult {
 }
 
 func TestHookWorkflowRoutesValidatedOutputAndSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, routingHooks)
 	c := controltest.Start(t, root, control.Options{})
 	var started rpc.RunResult
@@ -182,6 +186,7 @@ func TestHookWorkflowRoutesValidatedOutputAndSurvivesRestart(t *testing.T) {
 }
 
 func TestHookInvalidLaterActionDoesNotCreateEarlierStep(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return [start_step(id="valid",pool="dev",prompt="Do work"), start_step(id="invalid",pool="missing",prompt="Must reject whole batch")]
 def completed(run, step):
@@ -208,6 +213,7 @@ def handle(event, args):
 }
 
 func TestHookResumeReusesCompletedCallAfterPromptRepair(t *testing.T) {
+	t.Parallel()
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		requests.Add(1)
@@ -260,6 +266,7 @@ def handle(event, args):
 }
 
 func TestHookInterruptedExternalCallRemainsUnknownAcrossRestart(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{})
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -310,6 +317,7 @@ def handle(event, args):
 }
 
 func TestHookAdmittedGenericDeliveryDeduplicatesAcrossRestart(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, routingHooks)
 	c := controltest.Start(t, root, control.Options{})
 	spoolPath := filepath.Join(root.Dir, "events.db")
@@ -345,6 +353,7 @@ func TestHookAdmittedGenericDeliveryDeduplicatesAcrossRestart(t *testing.T) {
 }
 
 func TestHookDocumentedCUEWorkflowFixture(t *testing.T) {
+	t.Parallel()
 	root := controltest.NewRoot(t, "")
 	require.NoError(t, os.Remove(root.Config()))
 	require.NoError(t, os.CopyFS(root.Dir, os.DirFS("../config/testdata/cue-starlark-example")))
@@ -365,6 +374,7 @@ func TestHookDocumentedCUEWorkflowFixture(t *testing.T) {
 }
 
 func TestHookTimerEmptyActionsRetainScheduleAcrossRestart(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return []
 def completed(run, step):
@@ -397,6 +407,7 @@ def handle(event, args):
 }
 
 func TestHookBatchOrderBlocksDynamicSourceSteps(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return [start_step(id="work",pool="dev",prompt="Issue " + run.inputs["issue"])]
 def completed(run, step):
@@ -432,6 +443,7 @@ def handle(event, args):
 }
 
 func TestHookReviewLoopReusesStepsAndClearsPriorOutput(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return [start_step(id="work",pool="dev",prompt="Implement")]
 def completed(run, step):
@@ -475,6 +487,7 @@ def handle(event, args):
 // A callback run pins its code, grants and the references accepted at start,
 // not the rest of the configuration, which a live pack checkout reloads often.
 func TestHookRunPinSurvivesUnrelatedReloadOnly(t *testing.T) {
+	t.Parallel()
 	const script = `def begin(run):
     return [start_step(id="a",pool="dev",prompt="first")]
 def completed(run, step):
@@ -564,6 +577,7 @@ def handle(event, args):
 // TestHookGitHubUsesIdentity: the github built-in authenticates with the
 // identity covering the repo, read per call, and journals the call.
 func TestHookGitHubUsesIdentity(t *testing.T) {
+	t.Parallel()
 	var auth atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth.Store(r.Header.Get("Authorization"))
@@ -622,6 +636,7 @@ def handle(event, args):
 // once per key and comments on an existing one, and time.now() is the
 // invocation's accepted time.
 func TestHookReadsAndTicketActions(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return []
 def completed(run, step):
@@ -693,6 +708,7 @@ def handle(event, args):
 // finding as an event; its run carries the finding id, so the finding is held
 // while the run is open and max_runs counts it.
 func TestHookScanHandler(t *testing.T) {
+	t.Parallel()
 	root := controltest.NewRoot(t, `pack: pack.yaml
 projects: {js: {}}
 agents: {fake: {command: "false"}}
@@ -750,6 +766,7 @@ triggers:
 }
 
 func TestSyncHandlers(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return []
 def completed(run, step):
@@ -816,6 +833,7 @@ desk_commands:
 // A script scan signal returns subject -> detail; an issue with an open
 // run in its repo is skipped, and the answer stands until the next poll.
 func TestScanScriptSignal(t *testing.T) {
+	t.Parallel()
 	root := controltest.NewRoot(t, `pack: pack.yaml
 projects: {js: {}}
 agents: {fake: {command: "false"}}
@@ -890,6 +908,7 @@ workflows:
 // they fail with "hook manifest changed" and plain resume refuses. An admin
 // resume with Repin moves the run to the live callbacks and it finishes.
 func TestHookRunResumeRepin(t *testing.T) {
+	t.Parallel()
 	root := hookTestRoot(t, `def begin(run):
     return [start_step(id="a",pool="dev",prompt="first")]
 def completed(run, step):

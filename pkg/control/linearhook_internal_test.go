@@ -17,6 +17,7 @@ import (
 // client per identity, reads its key per request, and needs team= when
 // more than one Linear identity exists.
 func TestHookLinearClient(t *testing.T) {
+	t.Parallel()
 	c, _, dir := scanControllerYAML(t, `projects: {js: {}}
 agents: {fake: {command: /bin/false}}
 identities:
