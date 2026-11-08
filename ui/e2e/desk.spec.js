@@ -65,7 +65,7 @@ for (const view of ['trace', 'improvements', 'system']) {
     const errors = [];
     page.on('pageerror', (error) => errors.push(String(error)));
     await page.goto('./?view=' + view);
-    await expect(page.locator('main .tag').first()).toContainText('/' + view);
+    await expect(page.locator('main .tag').first()).toContainText('/' + ({ improvements: 'learn' }[view] || view));
     await expect(page.locator('.top nav .chosen')).toHaveText({ trace: 'trace', improvements: 'learn', system: 'sys' }[view]);
     await expect(page.locator('.status')).toContainText('sys ok');
     expect(errors).toEqual([]);

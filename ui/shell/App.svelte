@@ -3,6 +3,7 @@
   import Chat, { type Chat as ChatInfo } from "./Chat.svelte";
   import Trace from "./Trace.svelte";
   import HookAudit from "./HookAudit.svelte";
+  import Learn from "./Learn.svelte";
   import TraceSearch from "./TraceSearch.svelte";
   import TicketDetails from "./TicketDetails.svelte";
   import SessionViewer from "./SessionViewer.svelte";
@@ -691,36 +692,7 @@
           <p class="section-body">automation invocation <button class="mono" onclick={() => openAudit(selected.meta.automation.invocation)}>{selected.meta.automation.invocation}</button></p>
         {/if}
       {:else if view === "improvements"}
-        <div class="tag">
-          <span class="mono">/improvements</span>
-        </div>
-        <div class="section-body">
-          <h2>memory changes</h2>
-          {#each improvements?.edits || [] as edit}<article>
-              <b>{edit.pr || edit.path || "Edit " + edit.id}</b> · {edit.state}
-              <span class="muted">{ago(edit.created_at, now)}</span>
-              <p>{@html md(edit.reason || "Gate has not evaluated this change yet.", true)}</p>
-              <details>
-                <summary>before / after measurements</summary>
-                <pre>{JSON.stringify(
-                    { before: edit.baseline, after: edit.after },
-                    null,
-                    2,
-                  )}</pre>
-              </details>
-            </article>{:else}<p class="muted">
-              No memory changes recorded.
-            </p>{/each}
-          <h2>proposals</h2>
-          {#each improvements?.learnings || [] as learning}<article>
-              <b>{learning.summary}</b> · {learning.status}
-              <p>{learning.fix || ""}</p>
-              <p class="muted">
-                {learning.pr || learning.ticket}
-                {learning.gate || ""}
-              </p>
-            </article>{/each}
-        </div>
+        <Learn learnings={improvements?.learnings || []} edits={improvements?.edits || []} {now} />
       {:else if view === "system"}
         <div class="tag">
           <span class="mono">/system</span><button
