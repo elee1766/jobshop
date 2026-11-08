@@ -626,16 +626,7 @@ func (c *Controller) resumeFollower(ctx context.Context, t store.Ticket, th thre
 
 // lastHolder is the session that last claimed id.
 func (c *Controller) lastHolder(ctx context.Context, id string) string {
-	hist, err := store.History(ctx, c.store, id)
-	if err != nil {
-		return ""
-	}
-	for i := len(hist) - 1; i >= 0; i-- {
-		if hist[i].Op == "claim" {
-			return hist[i].Actor
-		}
-	}
-	return ""
+	return store.LastClaimant(ctx, c.store, id)
 }
 
 // subscribe adds a thread to a ticket's meta.subscribe (session or admin).

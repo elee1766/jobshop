@@ -28,3 +28,17 @@ func LastSeq(ctx context.Context, s Store) (int64, error) {
 	p, err := s.Changes(ctx, 0, -1)
 	return p.Last, err
 }
+
+// LastClaimant is the actor of id's last claim, "" when none.
+func LastClaimant(ctx context.Context, s Store, id string) string {
+	hist, err := History(ctx, s, id)
+	if err != nil {
+		return ""
+	}
+	for i := len(hist) - 1; i >= 0; i-- {
+		if hist[i].Op == "claim" {
+			return hist[i].Actor
+		}
+	}
+	return ""
+}

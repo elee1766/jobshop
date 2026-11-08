@@ -189,7 +189,7 @@ func (c *Controller) waitsOnQuestion(ctx context.Context, t store.Ticket) bool {
 
 // metaString is meta[pack][key] when it is a string.
 func metaString(raw json.RawMessage, pack, key string) string {
-	return triggers.MetaString(raw, pack, key)
+	return store.MetaString(raw, pack, key)
 }
 
 // fireTriggerEvent fires tr; ev is the event that fired it, nil for a

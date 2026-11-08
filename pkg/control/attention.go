@@ -2,27 +2,24 @@ package control
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"math"
-	"net/url"
-	"slices"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/attention"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// questionLabel marks a ticket where a worker asks a human (#185, #186).
-const questionLabel = "question"
+// The attention projection lives in pkg/control/attention (JOB-147).
+// This file is the controller's side: the grant, and the Source that
+// hands the projection the tickets and the subsystem rows.
 
-// proposedLabel marks the planner's proposed next target, which waits
-// on a human to approve (#488).
-const proposedLabel = "proposed"
+const (
+	questionLabel = attention.QuestionLabel
+	proposedLabel = attention.ProposedLabel
+)
 
 // attention lists only what waits on a human, across all projects,
 // oldest first (#185). Empty when healthy.
@@ -38,211 +35,88 @@ func (c *Controller) attention(ctx context.Context, sc scope, _ struct{}) (any, 
 }
 
 func (c *Controller) attentionItems(ctx context.Context, cfg *config.Config) ([]rpc.AttentionItem, error) {
-	items := []rpc.AttentionItem{}
-	// Runs and pools an open escalation already stands for are listed once,
-	// as the escalation ticket.
-	escalatedRuns, escalatedPools := map[string]bool{}, map[string]bool{}
-	seen := map[string]bool{}
-	for _, label := range []string{needsHumanLabel, questionLabel, proposedLabel} {
-		ts, err := triggers.LabeledOpen(ctx, c.store, label)
-		if err != nil {
-			return nil, err
-		}
-		for _, t := range ts {
-			if id := metaString(t.Meta, runMetaPack, "id"); id != "" {
-				escalatedRuns[id] = true
-			}
-			if p := metaString(t.Meta, poolMetaPack, "name"); p != "" {
-				escalatedPools[p] = true
-			}
-			if seen[t.ID] {
-				continue
-			}
-			seen[t.ID] = true
-			kind := rpc.AttentionTicket
-			switch {
-			case label == proposedLabel && !slices.Contains(t.Labels, needsHumanLabel):
-				kind = rpc.AttentionDecision
-			case (label == questionLabel && !slices.Contains(t.Labels, needsHumanLabel)) || metaString(t.Meta, questionMetaPack, "ticket") != "":
-				kind = rpc.AttentionQuestion
-			}
-			items = append(items, ticketItem(kind, t))
-		}
-	}
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest, Limit: math.MaxInt32})
+	return attention.Build(ctx, attentionSource{c, cfg})
+}
+
+// attentionSource is the controller as attention.Source. cfg is the
+// config the caller holds, so one pass reads one config.
+type attentionSource struct {
+	c   *Controller
+	cfg *config.Config
+}
+
+func (s attentionSource) Now() time.Time { return s.c.now() }
+
+func (s attentionSource) Ticket(ctx context.Context, id string) (store.Ticket, error) {
+	return s.c.store.Get(ctx, id)
+}
+
+func (s attentionSource) Steps(ctx context.Context, run string) ([]store.Ticket, error) {
+	return store.Children(ctx, s.c.store, run)
+}
+
+func (s attentionSource) LabeledOpen(ctx context.Context, label string) ([]store.Ticket, error) {
+	return triggers.LabeledOpen(ctx, s.c.store, label)
+}
+
+func (s attentionSource) NeedsHumanRuns(ctx context.Context) ([]store.Ticket, error) {
+	return s.c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest, Limit: math.MaxInt32})
+}
+
+func (s attentionSource) TimedOut(ctx context.Context) ([]attention.Waiting, error) {
+	ts, err := s.c.waiting(ctx, "")
 	if err != nil {
 		return nil, err
 	}
-	// Waits past their timeout (#381), with reason and owner. Listed even
-	// though the timeout labeled them needs-human, so the title says why.
-	waits, err := c.waiting(ctx, "")
+	var out []attention.Waiting
+	for _, t := range ts {
+		if w := waitOf(t); !w.Timeout.IsZero() && !s.c.now().Before(w.Timeout) {
+			out = append(out, attention.Waiting{Ticket: t, Wait: w})
+		}
+	}
+	return out, nil
+}
+
+// Subsystems are the rows the resource, ingest and journal shipping
+// subsystems own.
+func (s attentionSource) Subsystems(ctx context.Context) ([]rpc.AttentionItem, error) {
+	items, err := s.c.resourceAttention(ctx, s.cfg)
 	if err != nil {
 		return nil, err
 	}
-	for _, t := range waits {
-		w := waitOf(t)
-		if w.Timeout.IsZero() || c.now().Before(w.Timeout) {
-			continue
-		}
-		it := ticketItem(rpc.AttentionWait, t)
-		it.Title = fmt.Sprintf("%s: wait past timeout: %s", t.Title, w.Reason)
-		it.Owner, it.Since = w.Owner, w.Timeout
-		if metaString(t.Meta, "desk", "attention_summary") == "" {
-			it.Summary = summaryOf(w.Reason)
-		}
-		if i := slices.IndexFunc(items, func(x rpc.AttentionItem) bool { return x.ID == t.ID }); i >= 0 {
-			items[i] = it
-		} else {
-			items = append(items, it)
-		}
-	}
-	for _, r := range runs {
-		if !escalatedRuns[r.ID] && r.Status != store.StatusClosed {
-			items = append(items, ticketItem(rpc.AttentionRun, r))
-		}
-	}
-	res, err := c.resourceAttention(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	items = append(items, res...)
-	ing, err := c.ingestAttention(ctx, cfg)
+	ing, err := s.c.ingestAttention(ctx, s.cfg)
 	if err != nil {
 		return nil, err
 	}
 	items = append(items, ing...)
-	items = append(items, c.shipper().LagAttention(cfg)...)
-	stale, err := c.staleAttention(ctx, cfg)
-	if err != nil {
-		return nil, err
-	}
-	for _, it := range stale {
-		// A needs-human or question ticket with no pool is listed once,
-		// as itself.
-		if !slices.ContainsFunc(items, func(x rpc.AttentionItem) bool { return x.ID == it.ID }) {
-			items = append(items, it)
-		}
-	}
+	return append(items, s.c.shipper().LagAttention(s.cfg)...), nil
+}
+
+func (s attentionSource) Stale(ctx context.Context) ([]rpc.AttentionItem, error) {
+	return s.c.staleAttention(ctx, s.cfg)
+}
+
+func (s attentionSource) Health() attention.Health {
+	c := s.c
 	c.mu.Lock()
-	if c.configErr != "" {
-		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfig, ID: "config", Title: "serving last good config, a pack failed to load: " + c.configErr, Since: c.configErrAt})
-	}
-	if c.watchErr != "" {
-		items = append(items, rpc.AttentionItem{Kind: rpc.AttentionConfigInvalid, ID: "config-invalid", Title: "a watched config change failed to load, running config kept: " + c.watchErr, Since: c.watchErrAt})
+	defer c.mu.Unlock()
+	h := attention.Health{
+		Started: c.started, ConfigErr: c.configErr, ConfigErrAt: c.configErrAt, WatchErr: c.watchErr, WatchErrAt: c.watchErrAt,
+		Quarantined: make(map[string]string, len(c.poolQuarantined)), PausedFor: poolPause,
 	}
 	for p, why := range c.poolQuarantined {
-		if !escalatedPools[p] {
-			items = append(items, rpc.AttentionItem{Kind: rpc.AttentionPool, ID: p, Title: "pool " + p + " quarantined: " + why, Since: c.started})
-		}
+		h.Quarantined[p] = why
 	}
-	// Crash-loop pauses (JOB-27) name the last session error.
 	now := c.now()
 	for p, until := range c.poolPausedUntil {
-		if _, permanent := c.poolQuarantined[p]; permanent || !now.Before(until) || escalatedPools[p] {
-			continue
-		}
-		why := c.poolPauseWhy(p)
-		items = append(items, rpc.AttentionItem{
-			Kind: rpc.AttentionPool, ID: p, Since: until.Add(-poolPause),
-			Title:   clipTitle("pool " + p + " paused until " + until.UTC().Format(time.RFC3339) + ", sessions crash-looping: " + why),
-			Summary: summaryOf(why),
-		})
-	}
-	c.mu.Unlock()
-	for i := range items {
-		if items[i].Kind == rpc.AttentionQuestion && len(items[i].Options) > 0 {
-			continue
-		}
-		for _, a := range c.attentionActions(ctx, items[i]) {
-			items[i].Options = append(items[i].Options, a.option)
+		if now.Before(until) {
+			h.Paused = append(h.Paused, attention.Pause{Pool: p, Until: until, Why: c.poolPauseWhy(p)})
 		}
 	}
-	slices.SortStableFunc(items, func(a, b rpc.AttentionItem) int {
-		if n := a.Since.Compare(b.Since); n != 0 {
-			return n
-		}
-		return strings.Compare(a.ID, b.ID)
-	})
-	return items, nil
+	return h
 }
 
-// maxSummary bounds an attention summary, about two lines of a row.
-const maxSummary = 240
+// ticketItem lists t as an attention row of kind (see attention.TicketItem).
+func ticketItem(kind string, t store.Ticket) rpc.AttentionItem { return attention.TicketItem(kind, t) }
 
-// summaryOf is s's first non-empty lines, at most maxSummary bytes, on one line.
-func summaryOf(s string) string {
-	var parts []string
-	n := 0
-	for l := range strings.Lines(s) {
-		l = strings.TrimSpace(l)
-		if l == "" {
-			continue
-		}
-		parts = append(parts, l)
-		if n += len(l); n >= maxSummary || len(parts) == 2 {
-			break
-		}
-	}
-	out := strings.Join(parts, " ")
-	if len(out) > maxSummary {
-		cut := maxSummary
-		for cut > 0 && !utf8.RuneStart(out[cut]) {
-			cut--
-		}
-		out = out[:cut] + "..."
-	}
-	return out
-}
-
-// ticketItem lists t. A run waits since it last changed (when it went
-// needs_human), a ticket since it was filed.
-func ticketItem(kind string, t store.Ticket) rpc.AttentionItem {
-	it := rpc.AttentionItem{Kind: kind, ID: t.ID, Project: t.Project, Title: t.Title, Since: t.CreatedAt}
-	if kind == rpc.AttentionRun {
-		it.Since = t.UpdatedAt
-	}
-	it.Summary = summaryOf(metaString(t.Meta, "desk", "attention_summary"))
-	if it.Summary == "" {
-		it.Summary = summaryOf(t.Body)
-	}
-	if qm, ok := questionOf(t); ok {
-		it.Context, it.Options = qm.Context, qm.Options
-	}
-	if full := metaString(t.Meta, deskMetaPack, "attention_context"); full != "" {
-		it.Context = full
-	} else if it.Context == "" {
-		it.Context = t.Body
-	}
-	var m struct {
-		GitHub struct {
-			Repo  string `json:"repo"`
-			Issue any    `json:"issue"`
-			PR    any    `json:"pr"`
-		} `json:"github"`
-		Linear struct {
-			Issue     string `json:"issue"`
-			Workspace string `json:"workspace"`
-		} `json:"linear"`
-	}
-	if len(t.Meta) > 0 && json.Unmarshal(t.Meta, &m) == nil {
-		it.Repo = m.GitHub.Repo
-		switch {
-		case m.Linear.Issue != "":
-			it.Ref = m.Linear.Issue
-			if m.Linear.Workspace != "" {
-				it.URL = "https://linear.app/" + url.PathEscape(m.Linear.Workspace) + "/issue/" + url.PathEscape(m.Linear.Issue)
-			}
-		case m.GitHub.Issue != nil:
-			it.Ref = fmt.Sprintf("#%v", m.GitHub.Issue)
-			if m.GitHub.Repo != "" {
-				it.URL = fmt.Sprintf("https://github.com/%s/issues/%v", m.GitHub.Repo, m.GitHub.Issue)
-			}
-		case m.GitHub.PR != nil:
-			it.Ref = fmt.Sprintf("PR #%v", m.GitHub.PR)
-			if m.GitHub.Repo != "" {
-				it.URL = fmt.Sprintf("https://github.com/%s/pull/%v", m.GitHub.Repo, m.GitHub.PR)
-			}
-		}
-	}
-	return it
-}
+const maxSummary = attention.MaxSummary

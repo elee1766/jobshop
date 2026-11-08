@@ -7,48 +7,47 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 	"strings"
-	"unicode/utf8"
 
+	"github.com/elee1766/jobshop/pkg/control/chatlife"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
-// chatManage keeps lifecycle and name uniqueness in the controller.
+// chatManage keeps lifecycle and name uniqueness in the controller. What
+// each kind of chat may do is in pkg/control/chatlife (JOB-147); the
+// writes, the chat mutex and the live session calls stay here. Archive
+// and resolve close the session, resolve first closes the escalation
+// ticket the chat answered for, and neither touches the journal, so the
+// transcript stays for restore.
 func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageParams) (any, error) {
 	if err := requireAdmin(sc, "chat manage"); err != nil {
 		return nil, err
 	}
 	c.chatMu.Lock()
 	defer c.chatMu.Unlock()
-	name := strings.Join(strings.Fields(p.Name), " ")
-	if p.Action == "new" || p.Action == "rename" || p.Action == "convert" {
-		if name == "" || utf8.RuneCountInString(name) > maxDisplayName {
-			return nil, fmt.Errorf("%w: give a chat name of 1 to %d characters", store.ErrInvalid, maxDisplayName)
+	var name string
+	if chatlife.NeedsName(p.Action) {
+		var err error
+		if name, err = chatlife.NormalizeName(p.Name); err != nil {
+			return nil, err
 		}
 		list, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Limit: math.MaxInt32})
 		if err != nil {
 			return nil, err
 		}
-		for _, t := range list {
-			f, _ := store.DecodeFields[store.SessionFields](t)
-			if t.ID != p.ID && (f.Named || strings.HasPrefix(f.Key, "desk:")) && strings.EqualFold(f.DisplayName, name) {
-				return nil, fmt.Errorf("%w: chat name %q is already used", store.ErrConflict, name)
-			}
+		if err := chatlife.CheckNameFree(list, p.ID, name); err != nil {
+			return nil, err
 		}
 	}
-	if p.Action == "new" {
+	if p.Action == chatlife.ActionNew {
 		if err := validateAttachments(p.Attachments); err != nil {
 			return nil, err
 		}
-		if len(p.Context) > 32<<10 {
-			return nil, fmt.Errorf("%w: context is too long", store.ErrInvalid)
+		if err := chatlife.CheckNew(p); err != nil {
+			return nil, err
 		}
-		if (strings.TrimSpace(p.Text) == "" && len(p.Attachments) == 0) || len(p.Text) > 32<<10 {
-			return nil, fmt.Errorf("%w: first message must be 1 to 32768 bytes", store.ErrInvalid)
-		}
-		sess, _, err := c.keyedSession(ctx, c.config(), sc, p.Pool, "desk:"+strings.ToLower(rand.Text()[:12]))
+		sess, _, err := c.keyedSession(ctx, c.config(), sc, p.Pool, chatlife.DeskPrefix+strings.ToLower(rand.Text()[:12]))
 		if err != nil {
 			return nil, err
 		}
@@ -64,40 +63,38 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 	if err != nil {
 		return nil, err
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
-	if err != nil || t.Kind != store.KindSession || (!strings.HasPrefix(f.Key, "desk:") && !strings.HasPrefix(f.Key, escalationKeyPrefix) && !strings.HasPrefix(f.Key, attentionKeyPrefix)) {
-		return nil, fmt.Errorf("%w: not a managed chat", store.ErrInvalid)
+	f, err := chatlife.Target(t)
+	if err != nil {
+		return nil, err
 	}
 	switch p.Action {
-	case "convert":
-		if !strings.HasPrefix(f.Key, escalationKeyPrefix) || t.Status == store.StatusClosed {
-			return nil, fmt.Errorf("%w: convert requires an escalation chat", store.ErrInvalid)
-		}
-		// The stable routing key keeps pending messages and source references valid.
-		if err := c.updateSessionFields(ctx, t.ID, func(f *store.SessionFields) {
-			f.Named, f.DisplayName, f.Prestart, f.ReadOnly = true, name, false, false
-		}); err != nil {
+	case chatlife.ActionConvert:
+		if err := chatlife.CheckConvert(t, f); err != nil {
 			return nil, err
 		}
-	case "rename":
+		// The stable routing key keeps pending messages and source references valid.
+		if err := c.updateSessionFields(ctx, t.ID, func(f *store.SessionFields) { chatlife.Convert(f, name) }); err != nil {
+			return nil, err
+		}
+	case chatlife.ActionRename:
 		if err := c.setDisplayName(ctx, sc.actor, t.ID, name); err != nil {
 			return nil, err
 		}
-	case "archive", "resolve":
-		if p.Action == "resolve" {
-			id, ok := strings.CutPrefix(f.Key, escalationKeyPrefix)
-			if !ok || f.Named {
-				return nil, fmt.Errorf("%w: resolve requires an escalation chat", store.ErrInvalid)
+	case chatlife.ActionArchive, chatlife.ActionResolve:
+		if p.Action == chatlife.ActionResolve {
+			id, err := chatlife.ResolveTarget(f)
+			if err != nil {
+				return nil, err
 			}
 			target, err := c.store.Get(ctx, id)
 			if err != nil {
 				return nil, err
 			}
-			if e, ok := escalationMeta(target); !ok || e.Session != t.ID {
-				return nil, fmt.Errorf("%w: this chat is no longer the escalation's current session", store.ErrConflict)
+			if err := chatlife.CheckCurrent(target, t.ID); err != nil {
+				return nil, err
 			}
 			if target.Status != store.StatusClosed {
-				if _, err := c.closeTicketIn(ctx, c.config(), sc, rpc.CloseParams{ID: id, Resolution: "done", Comment: "Resolved by the operator from the escalation chat."}); err != nil && !errors.Is(err, store.ErrClosed) {
+				if _, err := c.closeTicketIn(ctx, c.config(), sc, rpc.CloseParams{ID: id, Resolution: "done", Comment: chatlife.ResolveComment}); err != nil && !errors.Is(err, store.ErrClosed) {
 					return nil, err
 				}
 			}
@@ -111,7 +108,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 		if err := c.updateSessionFields(ctx, t.ID, func(f *store.SessionFields) { f.Archived = &at }); err != nil {
 			return nil, err
 		}
-	case "restore":
+	case chatlife.ActionRestore:
 		if t.Status != store.StatusClosed {
 			return c.sessionInfo(ctx, t.ID)
 		}
@@ -127,7 +124,7 @@ func (c *Controller) chatManage(ctx context.Context, sc scope, p rpc.ChatManageP
 			return nil, err
 		}
 		// Keep the ACP conversation id and journal, then load on the next send.
-		f.Archived, f.Ended, f.Suspended = nil, nil, true
+		chatlife.Restore(&f)
 		fields, err := json.Marshal(f)
 		if err != nil {
 			return nil, err
@@ -162,33 +159,14 @@ func (c *Controller) deskCommand(ctx context.Context, sc scope, p rpc.DeskComman
 		return nil, err
 	}
 	f, err := store.DecodeFields[store.SessionFields](t)
-	if err != nil || (!strings.HasPrefix(f.Key, "desk:") && !f.Named) {
+	if err != nil {
 		return nil, fmt.Errorf("%w: desk commands require a named chat", store.ErrInvalid)
 	}
-	allowed := map[string][]string{
-		"navigate": {"view", "ref"}, "filter": {"window", "repo", "step", "waiting_on"},
-		"select": {"refs"}, "attach": {"refs"}, "expand": {"window"}, "collapse": {"window"},
+	if err := chatlife.CheckViewTarget(f); err != nil {
+		return nil, err
 	}
-	keys, ok := allowed[p.Action]
-	if !ok {
-		return nil, fmt.Errorf("%w: unknown view action %q", store.ErrInvalid, p.Action)
-	}
-	for k, v := range p.Args {
-		if !slices.Contains(keys, k) || len(v) > 2048 {
-			return nil, fmt.Errorf("%w: invalid %s argument %q", store.ErrInvalid, p.Action, k)
-		}
-	}
-	if p.Action == "navigate" && !slices.Contains([]string{"home", "trace", "improvements", "system"}, p.Args["view"]) {
-		return nil, fmt.Errorf("%w: unknown view", store.ErrInvalid)
-	}
-	if slices.Contains([]string{"filter", "expand", "collapse"}, p.Action) && !slices.Contains([]string{"waiting", "not-moving", "inflight"}, strings.TrimPrefix(p.Args["window"], "/")) {
-		return nil, fmt.Errorf("%w: unknown window", store.ErrInvalid)
-	}
-	if p.Action == "filter" && strings.TrimPrefix(p.Args["window"], "/") != "inflight" {
-		return nil, fmt.Errorf("%w: filters currently apply to inflight only", store.ErrInvalid)
-	}
-	if slices.Contains([]string{"select", "attach"}, p.Action) && strings.TrimSpace(p.Args["refs"]) == "" {
-		return nil, fmt.Errorf("%w: refs are required", store.ErrInvalid)
+	if err := chatlife.CheckView(p); err != nil {
+		return nil, err
 	}
 	ev := rpc.Event{Kind: "desk", Op: p.Action, Session: t.ID, Args: p.Args, Time: c.now(), Actor: sc.actor}
 	if err := c.store.Record(ctx, sc.actor, t.ID, "desk_command", p); err != nil {

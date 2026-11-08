@@ -78,18 +78,7 @@ func (c *Controller) threadSrc() threadSource {
 }
 
 // waitOf returns fields.wait of a task or step, nil for none.
-func waitOf(t store.Ticket) *store.Wait {
-	if t.Kind != store.KindTask && t.Kind != store.KindStep || len(t.Fields) == 0 {
-		return nil
-	}
-	var f struct {
-		Wait *store.Wait `json:"wait"`
-	}
-	if json.Unmarshal(t.Fields, &f) != nil {
-		return nil
-	}
-	return f.Wait
-}
+func waitOf(t store.Ticket) *store.Wait { return store.WaitOf(t) }
 
 // withWait returns t's fields with wait set (nil removes it), keeping
 // the other fields.

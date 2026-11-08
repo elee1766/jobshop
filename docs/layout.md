@@ -43,7 +43,10 @@ jobshop/
 │   │   │                     admission hook runner, ingest work loop (JOB-141)
 │   │   ├── triggers/         trigger and scan evaluation, event routing, off-tick
 │   │   │                     checks (JOB-145); the controller still fires
-│   │   └── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
+│   │   ├── waitengine/       wait evaluation and wake planning, no writes (JOB-144)
+│   │   ├── attention/        attention projection and item choices (JOB-147)
+│   │   ├── question/         question ticket content and options (JOB-147)
+│   │   └── chatlife/         managed-chat rules: desk, escalation, attention (JOB-147)
 │   ├── github/               GitHub REST client and read-only observation of
 │   │                         PRs, checks, reviews and threads (JOB-143)
 │   ├── config/               YAML loading, validation, defaults
@@ -81,6 +84,10 @@ flowchart TD
   cli --> rpc & config
   config --> cron
   control --> store & rpc & config & telemetry & acp & acphost & hostspec & cron
+  control --> chatlife & attention & question
+  chatlife --> attention & question & config & rpc & store
+  attention --> question & rpc & store
+  question --> rpc & store
   hostspec --> acphost & telemetry
   sqlite[store/sqlite] & postgres[store/postgres] --> store
   storetest[store/storetest] --> store

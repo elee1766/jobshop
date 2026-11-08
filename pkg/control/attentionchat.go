@@ -7,12 +7,11 @@ import (
 	"fmt"
 	"net"
 	"slices"
-	"strconv"
 	"strings"
 
-	acp "github.com/coder/acp-go-sdk"
-
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/attention"
+	"github.com/elee1766/jobshop/pkg/control/chatlife"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -25,19 +24,19 @@ import (
 // answered. The key is kept on tickets in meta.desk.attention_chat;
 // other items use the default key. A chat ends when its item leaves
 // attention.
+//
+// The rules (keys, prompt, which chats ended, read-only limits) are in
+// pkg/control/chatlife and pkg/control/attention. This file starts,
+// resumes, suspends and closes the sessions, and writes the meta.
 
 const (
-	attentionKeyPrefix = "attention:"
-	deskMetaPack       = "desk"
+	attentionKeyPrefix = chatlife.AttentionPrefix
+	deskMetaPack       = store.MetaDesk
 )
 
-// attentionTicketKinds are attention kinds whose ID is a ticket.
-var attentionTicketKinds = []string{
-	rpc.AttentionRun, rpc.AttentionTicket, rpc.AttentionQuestion, rpc.AttentionDecision,
-	rpc.AttentionStale, rpc.AttentionWait,
-}
+var attentionTicketKinds = attention.TicketKinds
 
-func attentionKey(kind, id string) string { return attentionKeyPrefix + kind + ":" + id }
+func attentionKey(kind, id string) string { return attention.Key(kind, id) }
 
 // attentionChat is attention.chat: the item's chat, started when it has
 // none. A pre-started chat is attached to and nothing is sent.
@@ -80,7 +79,7 @@ func (c *Controller) ensureAttentionChat(ctx context.Context, cfg *config.Config
 			}
 			return res, nil
 		}
-		if k := metaString(t.Meta, deskMetaPack, "attention_chat"); k != "" {
+		if k := metaString(t.Meta, deskMetaPack, attention.MetaChat); k != "" {
 			res.Key = k
 		}
 	}
@@ -156,42 +155,33 @@ func (c *Controller) openKeyed(ctx context.Context, key string) (store.Ticket, b
 
 // recordAttentionChat keeps key in meta.desk.attention_chat.
 func (c *Controller) recordAttentionChat(ctx context.Context, id, key string) error {
-	return c.updateDeskMeta(ctx, id, "attention_chat", key)
+	return c.updateDeskMeta(ctx, id, attention.MetaChat, key)
 }
 
 // recordAttentionSummary keeps a read-only attention chat's reply as the
 // item's row summary, meta.desk.attention_summary (#607).
 func (c *Controller) recordAttentionSummary(ctx context.Context, session, said string) {
-	said = strings.TrimSpace(said)
-	if said == "" {
-		return
-	}
 	t, err := c.store.Get(ctx, session)
 	if err != nil {
 		return
 	}
 	f, err := store.DecodeFields[store.SessionFields](t)
-	if err != nil || !strings.HasPrefix(f.Key, attentionKeyPrefix) {
+	if err != nil {
 		return
 	}
-	kind, id, _ := strings.Cut(strings.TrimPrefix(f.Key, attentionKeyPrefix), ":")
-	if !slices.Contains(attentionTicketKinds, kind) {
+	id, s, ok := chatlife.Summarize(f.Key, said)
+	if !ok {
 		return
 	}
-	for _, line := range strings.Split(said, "\n") {
-		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "Recommended option: "); ok {
-			if option, err := strconv.Atoi(value); err == nil && option >= 1 && option <= 5 {
-				if err := c.updateDeskMeta(ctx, id, "attention_recommend", value); err != nil {
-					c.log.WarnContext(ctx, "record attention recommendation", "ticket", id, "err", err)
-				}
-			}
+	if s.Recommend != "" {
+		if err := c.updateDeskMeta(ctx, id, attention.MetaRecommend, s.Recommend); err != nil {
+			c.log.WarnContext(ctx, "record attention recommendation", "ticket", id, "err", err)
 		}
 	}
-	// Keep authored Markdown intact. The row preview may clip a link destination.
-	if err := c.updateDeskMeta(ctx, id, "attention_context", said); err != nil {
+	if err := c.updateDeskMeta(ctx, id, attention.MetaContext, s.Context); err != nil {
 		c.log.WarnContext(ctx, "record attention context", "ticket", id, "err", err)
 	}
-	if err := c.updateDeskMeta(ctx, id, "attention_summary", summaryOf(said)); err != nil {
+	if err := c.updateDeskMeta(ctx, id, attention.MetaSummary, s.Row); err != nil {
 		c.log.WarnContext(ctx, "record attention summary", "ticket", id, "err", err)
 	}
 }
@@ -224,53 +214,13 @@ func (c *Controller) updateDeskMeta(ctx context.Context, id, field, value string
 
 // attentionPrompt is the context of a resolving chat's first turn.
 func (c *Controller) attentionPrompt(ctx context.Context, it rpc.AttentionItem, why string, t store.Ticket) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Desk attention item: %s %s\n", it.Kind, it.ID)
-	title := it.Title
-	if title == "" {
-		title = t.Title
-	}
-	if title != "" {
-		fmt.Fprintf(&b, "Title: %s\n", title)
-	}
-	if why != "" && why != it.Kind {
-		fmt.Fprintf(&b, "Why: %s\n", why)
-	}
-	if t.ID != "" {
-		var m struct {
-			GitHub struct {
-				Repo  string `json:"repo"`
-				Issue any    `json:"issue"`
-				PR    any    `json:"pr"`
-			} `json:"github"`
-		}
-		_ = json.Unmarshal(t.Meta, &m)
-		if m.GitHub.Repo != "" && m.GitHub.Issue != nil {
-			fmt.Fprintf(&b, "Issue: https://github.com/%s/issues/%v\n", m.GitHub.Repo, m.GitHub.Issue)
-		}
-		if m.GitHub.Repo != "" && m.GitHub.PR != nil {
-			fmt.Fprintf(&b, "PR: https://github.com/%s/pull/%v\n", m.GitHub.Repo, m.GitHub.PR)
-		}
-	}
+	p := chatlife.AttentionPrompt{Item: it, Why: why, Ticket: t, Actions: c.attentionActions(ctx, it)}
 	if it.Kind == rpc.AttentionRun && t.Kind == store.KindRun {
 		if run, err := c.runResult(ctx, t); err == nil {
-			out, _ := json.MarshalIndent(run, "", "  ")
-			if len(out) > 16<<10 {
-				out = append(out[:16<<10], "\n[cut]"...)
-			}
-			fmt.Fprintf(&b, "\n`jobshop run show %s`:\n```json\n%s\n```\n", it.ID, out)
+			p.Run = &run
 		}
 	}
-	b.WriteString("\nThe operator opens this chat from Desk. Read the item with the jobshop CLI (read-only commands only: this session cannot write until the operator sends a message), then reply in a few lines: what blocks it, and the concrete actions available, as Desk's resolve buttons (approve, reject or dismiss for a decision; close, resume, unquarantine, clear wait) and the exact CLI commands. Do not act until the operator agrees.")
-	for _, action := range c.attentionActions(ctx, it) {
-		fmt.Fprintf(&b, "\nOption %d: %s. %s", action.option.ID, action.option.Title, action.option.Description)
-	}
-	b.WriteString("\nIf one option is supported by the evidence, end with a line exactly 'Recommended option: N', replacing N with its number. Otherwise do not recommend one.")
-	if it.Kind == rpc.AttentionQuestion {
-		qm, _ := questionOf(t)
-		b.WriteString(questionChatPrompt(it.ID, qm))
-	}
-	return b.String()
+	return p.Text()
 }
 
 // sweepAttentionChats starts chats for items that entered attention, up
@@ -289,38 +239,14 @@ func (c *Controller) sweepAttentionChats(ctx context.Context, cfg *config.Config
 	if err != nil {
 		return
 	}
-	listed := map[string]bool{}
-	for _, it := range items {
-		listed[it.Kind+":"+it.ID] = true
-		if slices.Contains(attentionTicketKinds, it.Kind) {
-			listed["ticket:"+it.ID] = true
-		}
-	}
 	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
 	if err != nil {
 		return
 	}
-	prestarted := 0
-	for _, s := range open {
-		f, err := store.DecodeFields[store.SessionFields](s)
-		if err != nil || !strings.HasPrefix(f.Key, attentionKeyPrefix) {
-			continue
-		}
-		kind, id, _ := strings.Cut(strings.TrimPrefix(f.Key, attentionKeyPrefix), ":")
-		// A ticket listed under another kind (a question that became a
-		// wait) still counts as in attention.
-		inList := listed[kind+":"+id] || (slices.Contains(attentionTicketKinds, kind) && listed["ticket:"+id])
-		if !inList && kind == rpc.AttentionQuestion && c.questionChatOpen(ctx, s, f) {
-			// Answered is not settled: the chat follows the asker (JOB-52).
-			inList = true
-		}
-		if !inList {
-			c.closeAttentionChat(ctx, cfg, s, kind+":"+id)
-			continue
-		}
-		if f.Prestart {
-			prestarted++
-		}
+	// Answered is not settled: a question's chat follows the asker (JOB-52).
+	left, prestarted := chatlife.Sweep(items, open, func(s store.Ticket, f store.SessionFields) bool { return c.questionChatOpen(ctx, s, f) })
+	for _, l := range left {
+		c.closeAttentionChat(ctx, cfg, l.Session, l.Item)
 	}
 	if !cfg.PrestartOn() {
 		return
@@ -385,17 +311,6 @@ func (c *Controller) closeAttentionChat(ctx context.Context, cfg *config.Config,
 	}
 }
 
-// readOnlyMethods are what a read-only session may call (#606).
-var readOnlyMethods = []string{
-	rpc.MethodWhoami, rpc.MethodVersion, rpc.MethodTicketShow, rpc.MethodTicketTrace, rpc.MethodTicketGraph, rpc.MethodTicketList,
-	rpc.MethodReady, rpc.MethodRecall, rpc.MethodRunShow, rpc.MethodRunList, rpc.MethodBatchShow,
-	rpc.MethodBatchList, rpc.MethodAttention, rpc.MethodConfigShow, rpc.MethodPoolList, rpc.MethodSessionList,
-	rpc.MethodSessionJournal, rpc.MethodJournalSearch, rpc.MethodTriggerList, rpc.MethodActivityList,
-	rpc.MethodLearnList, rpc.MethodMemoryShow, rpc.MethodReportIncidents, rpc.MethodLinearIntake,
-	// Naming itself changes only its label (#626).
-	rpc.MethodSessionRename,
-}
-
 // setReadOnly records a session's read-only state for the socket gate.
 func (c *Controller) setReadOnly(id string, on bool) {
 	c.mu.Lock()
@@ -413,9 +328,10 @@ func (c *Controller) isReadOnly(id string) bool {
 	return c.readOnly[id]
 }
 
-// checkReadOnly refuses a write from a read-only session.
+// checkReadOnly refuses a write from a read-only session. Which methods
+// count as reads is chatlife.ReadOnlyMethods.
 func (c *Controller) checkReadOnly(sc scope, method string) error {
-	if sc.admin || sc.session == "" || !c.isReadOnly(sc.session) || slices.Contains(readOnlyMethods, method) {
+	if sc.admin || sc.session == "" || !c.isReadOnly(sc.session) || chatlife.ReadOnlyMethod(method) {
 		return nil
 	}
 	return forbidden("session %s is read-only until the operator sends a message (%s)", sc.session, method)
@@ -501,15 +417,4 @@ func (r *runner) suspended() bool {
 		case <-r.c.after(r.c.opt.Poll):
 		}
 	}
-}
-
-// readOnlyTool: a tool call kind a read-only session may run. Execute
-// stays allowed so the agent can run the jobshop CLI; its writes are
-// refused at the session socket (checkReadOnly). Edit, delete and move
-// are refused.
-func readOnlyTool(k *acp.ToolKind) bool {
-	if k == nil {
-		return true
-	}
-	return !slices.Contains([]acp.ToolKind{acp.ToolKindEdit, acp.ToolKindDelete, acp.ToolKindMove}, *k)
 }
