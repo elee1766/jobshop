@@ -33,6 +33,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/control/scaleplan"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
@@ -161,7 +162,7 @@ type Controller struct {
 	// Pool scaling (#281): manual targets (persisted with drains), the
 	// stabilization samples and each pool's last desired count.
 	scaleTargets map[string]int
-	scaleHist    map[string][]scaleSample
+	scaleHist    map[string][]scaleplan.Sample
 	scaleViews   map[string]poolScaleView
 	// Pool crash-loop quarantine, memory only (see quarantine.go).
 	poolCrashLog    map[string][]time.Time
@@ -410,7 +411,7 @@ func Run(ctx context.Context, root config.Root, opt Options) error {
 		minter:       identity.NewMinter(),
 		waitWake:     make(chan struct{}, 1),
 		drained:      map[string]bool{},
-		scaleTargets: map[string]int{}, scaleHist: map[string][]scaleSample{}, scaleViews: map[string]poolScaleView{},
+		scaleTargets: map[string]int{}, scaleHist: map[string][]scaleplan.Sample{}, scaleViews: map[string]poolScaleView{},
 		poolCrashLog: map[string][]time.Time{}, poolPausedUntil: map[string]time.Time{},
 		poolQuarantined: map[string]string{},
 		events:          ev,

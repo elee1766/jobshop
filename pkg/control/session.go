@@ -779,7 +779,7 @@ func (r *runner) holdForJobs(ctx context.Context) bool {
 	pid := r.agentPid
 	r.mu.Unlock()
 	exe, _ := r.c.hostExe()
-	jobs := backgroundJobs(pid, exe)
+	jobs := sessionrt.BackgroundJobs(pid, exe)
 	if len(jobs) == 0 {
 		r.jobsSince = time.Time{}
 		return false
