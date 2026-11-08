@@ -21,6 +21,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -568,7 +569,7 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 			return nil, fmt.Errorf("%w: until must be in the future", store.ErrInvalid)
 		}
 		if !p.TimeWait {
-			if err := eventWaitHint(p.Reason); err != nil {
+			if err := waitengine.TimerHint(p.Reason); err != nil {
 				return nil, err
 			}
 		}

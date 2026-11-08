@@ -31,6 +31,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/journalcompress"
 	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/identity"
 	idgen "github.com/elee1766/jobshop/pkg/ids"
@@ -291,14 +292,13 @@ type Controller struct {
 	dispatchMu sync.Mutex
 	// waitSource reads PR state for waits; nil means gh (#381). waitWake
 	// asks for a pass now; waitMu serializes passes.
-	waitSource waitSource
+	waitSource waitengine.Source
 	// linearWait reads Linear issues for linear.* waits; nil means live.
 	linearWait linearWaitSource
 	waitWake   chan struct{}
 	waitMu     sync.Mutex
-	// waitPending is what a wake asked of the wait pump (#679).
-	waitWakeMu  sync.Mutex
-	waitPending waitWakes
+	// waitWakes is what a wake asked of the wait pump (#679).
+	waitWakes waitengine.Wakes
 	// inbox is the inbox change signal (#679); see inboxNotifier.
 	inbox     *ingest.Notifier
 	inboxOnce sync.Once

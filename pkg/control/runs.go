@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -547,7 +548,7 @@ func (c *Controller) setRunState(ctx context.Context, actor string, t store.Tick
 	t, err = c.store.Update(ctx, actor, t.ID, store.Update{Fields: b, IfRevision: t.Revision})
 	if err == nil {
 		// A run wait reads the state: wake the waits on this run (#679).
-		c.wakeWaitsSubjects(runSubject(t.ID))
+		c.wakeWaitsSubjects(waitengine.RunSubject(t.ID))
 	}
 	if err != nil || resolution == "" {
 		return t, err

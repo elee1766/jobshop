@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -131,7 +132,7 @@ func (h hookHost) HookApplied(ctx context.Context, in hooks.Invocation) {
 		return
 	}
 	c := h.c
-	c.wakeWaitsSubjects(runSubject(in.Run))
+	c.wakeWaitsSubjects(waitengine.RunSubject(in.Run))
 	if run, err := c.store.Get(ctx, in.Run); err == nil && run.Status == store.StatusClosed {
 		c.removeRunDir(run.ID)
 	}
