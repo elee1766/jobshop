@@ -1,0 +1,42 @@
+/* Tailwind for Desk (JOB-150). Preflight is not imported: app.css already
+   carries Desk's own base styles. app.css sits in the components layer, so a
+   utility class always wins over it. tokens.css stays the single source of
+   the design tokens; @theme inline maps them to utilities without copying
+   the values, so the dark theme's overrides apply to utilities too. */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme);
+@import './tokens.css' layer(base);
+@import './app.css' layer(components);
+@import 'tailwindcss/utilities.css' layer(utilities);
+
+@theme inline {
+  --color-*: initial;
+  --color-ink: var(--ink);
+  --color-paper: var(--paper);
+  --color-tag: var(--tag);
+  --color-tag-border: var(--tag-border);
+  --color-column: var(--column);
+  --color-rule: var(--rule);
+  --color-hi: var(--hi);
+  --color-row-alt: var(--row-alt);
+  --color-muted: var(--muted);
+  --color-warn: var(--warn);
+  --color-open: var(--status-open);
+  --color-closed: var(--status-closed);
+  --color-running: var(--status-running);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+  --text-body: var(--font-size-body);
+  --text-compact: var(--font-size-compact);
+  --text-small: var(--font-size-small);
+  --spacing-1u: var(--space-1);
+  --spacing-2u: var(--space-2);
+  --spacing-3u: var(--space-3);
+  --spacing-4u: var(--space-4);
+  --spacing-5u: var(--space-5);
+  --spacing-inset: var(--control-inset);
+  --spacing-page: var(--page-inset);
+  --spacing-rail: var(--rail-inset);
+  --spacing-ctl: var(--control-height);
+}

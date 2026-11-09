@@ -1,0 +1,40 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "jsx-a11y", "oxc", "unicorn"],
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "react/jsx-no-target-blank": "error",
+    "react/no-danger": "off",
+    "unicorn/no-null": "off"
+  },
+  "overrides": [
+    {
+      // role="img" names a one-letter text status ("O", "R", "C"), and
+      // role="group" names a row of toggle chips and the graph's positioned
+      // time axis. <img> and <fieldset> carry rendering and box behavior that
+      // do not fit these, and the e2e specs address them by role.
+      "files": ["src/components/StatusLetter.tsx", "src/screens/Learn.tsx", "src/screens/Graph.tsx"],
+      "rules": { "jsx-a11y/prefer-tag-over-role": "off" }
+    },
+    {
+      // TanStack Virtual's useVirtualizer returns functions that cannot be
+      // memoized safely, so React Compiler skips this one component (it is
+      // the only use). That is a limit of the library, recorded in
+      // docs/notes/JOB-150-desk-react-port.md, not something to work around.
+      "files": ["src/screens/Transcript.tsx"],
+      "rules": { "react/incompatible-library": "off" }
+    },
+    {
+      // The graph camera is one focusable application region with its own
+      // keyboard handling (arrows, plus, minus, zero) and pointer panning.
+      // Its ticket controls are native buttons inside it.
+      "files": ["src/screens/Graph.tsx"],
+      "rules": {
+        "jsx-a11y/no-noninteractive-element-interactions": "off",
+        "jsx-a11y/no-noninteractive-tabindex": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["node_modules", "e2e", "perf", "public", "test-results", "playwright-report"]
+}
