@@ -70,6 +70,15 @@ func (s *Server) traceView(r *http.Request) (any, error) {
 	}
 	view := value.(TicketView)
 	view.Graph = &graph
+	// The timeline replays every node's history: only when Desk shows it
+	// (?timeline=1, #1103).
+	if r.URL.Query().Get("timeline") != "" {
+		var tl rpc.TimelineResult
+		if err := s.ctl.Call(r.Context(), rpc.MethodTicketTimeline, rpc.GraphParams{ID: graph.Root, Limit: 2000}, &tl); err != nil {
+			return nil, err
+		}
+		view.Timeline = &tl
+	}
 	return view, nil
 }
 

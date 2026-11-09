@@ -903,6 +903,7 @@ func init() {
 		rpc.MethodTicketShow:        bind((*Controller).show),
 		rpc.MethodTicketTrace:       bind((*Controller).trace),
 		rpc.MethodTicketGraph:       bind((*Controller).ticketGraph),
+		rpc.MethodTicketTimeline:    bind((*Controller).ticketTimeline),
 		rpc.MethodRecall:            bind((*Controller).recall),
 		rpc.MethodLinearIntake:      bind((*Controller).linearIntakeRPC),
 		rpc.MethodTicketList:        bind((*Controller).list),

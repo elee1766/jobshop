@@ -25,6 +25,7 @@ var Specs = map[string]Spec{
 	MethodTicketShow:        {IDParams{}, ShowResult{}},
 	MethodTicketTrace:       {TraceParams{}, TraceNode{}},
 	MethodTicketGraph:       {GraphParams{}, GraphResult{}},
+	MethodTicketTimeline:    {GraphParams{}, TimelineResult{}},
 	MethodTicketList:        {ListParams{}, []store.Ticket{}},
 	MethodTicketUpdate:      {UpdateParams{}, store.Ticket{}},
 	MethodTicketClose:       {CloseParams{}, store.Ticket{}},

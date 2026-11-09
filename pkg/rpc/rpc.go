@@ -35,6 +35,7 @@ const (
 	MethodTicketShow       = "ticket.show"
 	MethodTicketTrace      = "ticket.trace"
 	MethodTicketGraph      = "ticket.graph"
+	MethodTicketTimeline   = "ticket.timeline"
 	MethodTicketList       = "ticket.list"
 	MethodTicketUpdate     = "ticket.update"
 	MethodTicketClose      = "ticket.close"
@@ -1155,6 +1156,115 @@ type GraphResult struct {
 	Relations []GraphRelation `json:"relations"`
 	// External lists what wait relations point at outside the store.
 	External  []GraphExternal `json:"external"`
+	Truncated bool            `json:"truncated"`
+}
+
+// Timeline segment states (#1103).
+const (
+	TimelineQueued   = "queued"   // open, not claimed
+	TimelineWorking  = "working"  // claimed, or a run or batch in progress
+	TimelineWaiting  = "waiting"  // parked on outside state (fields.wait)
+	TimelineHuman    = "human"    // on hold for a person (needs-human, question, proposed, run needs_human)
+	TimelineDeferred = "deferred" // released until a time, or waiting on a time
+	TimelineRetry    = "retry"    // a claim that ended in a failed attempt
+	TimelineUnknown  = "unknown"  // before the oldest history the store kept
+)
+
+// TimelineWait is one condition of a waiting segment. Target is a ticket
+// or run id the condition waits on; URL is the canonical page of an
+// outside target (empty when unknown).
+type TimelineWait struct {
+	Type   string `json:"type"`
+	Label  string `json:"label,omitempty"`
+	URL    string `json:"url,omitempty"`
+	Target string `json:"target,omitempty"`
+	State  string `json:"state,omitempty"` // waiting, met, invalidated, cleared or ended
+}
+
+// TimelineSegment is a span of one ticket's life in one state. A zero End
+// means it is still going.
+type TimelineSegment struct {
+	State string    `json:"state"`
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end,omitzero"`
+	// Actor is the session holding the ticket in a working or retry span.
+	Actor string `json:"actor,omitempty"`
+	// Detail is the wait's reason, the label that put the ticket on hold,
+	// or why a claim failed.
+	Detail string `json:"detail,omitempty"`
+	// Until is when a deferral ends.
+	Until time.Time `json:"until,omitzero"`
+	// Wait lists the conditions of a waiting or deferred span. Ended says
+	// how a finished wait ended: met, invalidated, cleared or ended.
+	Wait  []TimelineWait `json:"wait,omitempty"`
+	Ended string         `json:"ended,omitempty"`
+}
+
+// Timeline marker kinds.
+const (
+	MarkerComment = "comment"
+	MarkerPR      = "pr"      // a PR opened (the step's "PR <url>" comment)
+	MarkerMerged  = "merged"  // a github.pr wait for merged was met
+	MarkerSession = "session" // another session took over
+)
+
+// TimelineMarker is a point on a ticket's bar.
+type TimelineMarker struct {
+	At    time.Time `json:"at"`
+	Kind  string    `json:"kind"`
+	Label string    `json:"label,omitempty"`
+	Actor string    `json:"actor,omitempty"`
+	URL   string    `json:"url,omitempty"`
+}
+
+// TimelineRow is one ticket: a bar of segments. Rows come in tree order
+// (a run, its steps, what they created) and Depth is the nesting.
+type TimelineRow struct {
+	ID         string       `json:"id"`
+	Kind       store.Kind   `json:"kind"`
+	Title      string       `json:"title,omitempty"`
+	Pool       string       `json:"pool,omitempty"`
+	Status     store.Status `json:"status"`
+	Resolution string       `json:"resolution,omitempty"`
+	Parent     string       `json:"parent,omitempty"`
+	Depth      int          `json:"depth"`
+	CreatedAt  time.Time    `json:"created_at"`
+	// Started is the first claim, zero when it was never claimed.
+	Started  time.Time `json:"started,omitzero"`
+	ClosedAt time.Time `json:"closed_at,omitzero"`
+	// Partial: the history is missing or compacted, so Segments cover
+	// only part of the ticket's life (ephemeral tickets have none).
+	Partial  bool              `json:"partial,omitempty"`
+	Segments []TimelineSegment `json:"segments"`
+	Markers  []TimelineMarker  `json:"markers"`
+}
+
+// Timeline arrow states. A blocking edge is met when the blocker closed
+// before the blocked ticket started, blocking while the blocker is open
+// and the blocked ticket has not started, and conflict when the blocked
+// ticket started before the blocker closed.
+const (
+	ArrowMet      = "met"
+	ArrowBlocking = "blocking"
+	ArrowConflict = "conflict"
+)
+
+// TimelineArrow runs from the prerequisite to the ticket that depends on
+// it. Kind is blocks, waits_for, tracks or wait (a wait on a ticket or
+// run). Only blocks and waits_for are met, blocking or conflict; a wait
+// carries the wait's own state.
+type TimelineArrow struct {
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Kind  string `json:"kind"`
+	State string `json:"state,omitempty"`
+}
+
+// TimelineResult is a trace as bars on one time axis.
+type TimelineResult struct {
+	Root      string          `json:"root"`
+	Rows      []TimelineRow   `json:"rows"`
+	Arrows    []TimelineArrow `json:"arrows"`
 	Truncated bool            `json:"truncated"`
 }
 

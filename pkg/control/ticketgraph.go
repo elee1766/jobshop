@@ -15,20 +15,31 @@ import (
 )
 
 func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParams) (any, error) {
+	g, _, err := c.graphWalk(ctx, sc, p)
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+// graphWalk builds the graph and returns the thread of every node it read,
+// so the timeline (JOB-1103) reads history once.
+func (c *Controller) graphWalk(ctx context.Context, sc scope, p rpc.GraphParams) (rpc.GraphResult, map[string]store.Thread, error) {
 	if p.Limit < 0 || p.Limit > 2000 {
-		return nil, fmt.Errorf("%w: graph limit must be between 1 and 2000", store.ErrInvalid)
+		return rpc.GraphResult{}, nil, fmt.Errorf("%w: graph limit must be between 1 and 2000", store.ErrInvalid)
 	}
 	if p.Limit == 0 {
 		p.Limit = 500
 	}
 	id, err := c.current(ctx, sc, p.ID)
 	if err != nil {
-		return nil, err
+		return rpc.GraphResult{}, nil, err
 	}
 	id, err = c.traceReference(ctx, sc, id)
 	if err != nil {
-		return nil, err
+		return rpc.GraphResult{}, nil, err
 	}
+	threads := map[string]store.Thread{}
 	out := rpc.GraphResult{Root: id, Nodes: []rpc.GraphNode{}, Relations: []rpc.GraphRelation{}, External: []rpc.GraphExternal{}}
 	cfg := c.config()
 	queue := []string{id}
@@ -93,19 +104,20 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 	for i := 0; i < len(queue); i++ {
 		t, err := c.store.Get(ctx, queue[i])
 		if err != nil {
-			return nil, err
+			return rpc.GraphResult{}, nil, err
 		}
 		if !sc.admin && t.Project != sc.project {
 			if i == 0 {
-				return nil, forbidden("ticket belongs to another project")
+				return rpc.GraphResult{}, nil, forbidden("ticket belongs to another project")
 			}
 			continue
 		}
 		th, err := c.store.Thread(ctx, t.ID, store.AllParts)
 		if err != nil {
-			return nil, err
+			return rpc.GraphResult{}, nil, err
 		}
 		included[t.ID] = true
+		threads[t.ID] = th
 		out.Nodes = append(out.Nodes, rpc.GraphNode{Ticket: t, Links: graphLinks(cfg, t, th.Comments)})
 		connect(t.ParentID, t.ID, "parent")
 		for _, edge := range th.Edges {
@@ -116,12 +128,12 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 		}
 		kids, err := c.childIDs(ctx, t.ID, holdWindows(th.History, c.now()))
 		if err != nil {
-			return nil, err
+			return rpc.GraphResult{}, nil, err
 		}
 		for _, kid := range kids {
 			child, err := c.store.Get(ctx, kid)
 			if err != nil {
-				return nil, err
+				return rpc.GraphResult{}, nil, err
 			}
 			kind := "created"
 			if child.ParentID == t.ID {
@@ -135,7 +147,7 @@ func (c *Controller) ticketGraph(ctx context.Context, sc scope, p rpc.GraphParam
 		_, external := externals[r.To]
 		return !included[r.From] || !included[r.To] && !external
 	})
-	return out, nil
+	return out, threads, nil
 }
 
 var trackerLink = regexp.MustCompile(`https://(?:github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+|linear\.app/[\w./%+-]+)`)

@@ -165,6 +165,15 @@ func StepFailure(t *store.Ticket, how string, d map[string]any, now time.Time) (
 	return store.StepFailureComment(f, how, exhausted), nil
 }
 
+// CreateDiff is the history diff of a new ticket: the labels it was born
+// with, so a replay of the history knows them (#1103). Nil for none.
+func CreateDiff(nt store.NewTicket) any {
+	if len(nt.Labels) == 0 {
+		return nil
+	}
+	return map[string]any{"labels": nt.Labels}
+}
+
 // Release returns a ticket held by c to open. With until set it is a
 // deferral ("not yet"), not a failed attempt; otherwise a step counts a
 // failure. It returns the history diff and the controller note.

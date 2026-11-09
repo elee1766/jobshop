@@ -99,6 +99,7 @@ export interface RpcMethods {
   "ticket.ready": { params: ReadyParams; result: Ticket[] };
   "ticket.reopen": { params: IDParams; result: Ticket };
   "ticket.show": { params: IDParams; result: ShowResult };
+  "ticket.timeline": { params: GraphParams; result: TimelineResult };
   "ticket.trace": { params: TraceParams; result: TraceNode };
   "ticket.undefer": { params: IDParams; result: Ticket };
   "ticket.update": { params: UpdateParams; result: Ticket };
@@ -1479,6 +1480,64 @@ export interface Ticket {
   created_at: string;
   updated_at: string;
   closed_at?: string;
+}
+
+export interface TimelineArrow {
+  from: string;
+  to: string;
+  kind: string;
+  state?: string;
+}
+
+export interface TimelineMarker {
+  at: string;
+  kind: string;
+  label?: string;
+  actor?: string;
+  url?: string;
+}
+
+export interface TimelineResult {
+  root: string;
+  rows: TimelineRow[];
+  arrows: TimelineArrow[];
+  truncated: boolean;
+}
+
+export interface TimelineRow {
+  id: string;
+  kind: string;
+  title?: string;
+  pool?: string;
+  status: string;
+  resolution?: string;
+  parent?: string;
+  depth: number;
+  created_at: string;
+  started?: string;
+  closed_at?: string;
+  partial?: boolean;
+  segments: TimelineSegment[];
+  markers: TimelineMarker[];
+}
+
+export interface TimelineSegment {
+  state: string;
+  start: string;
+  end?: string;
+  actor?: string;
+  detail?: string;
+  until?: string;
+  wait?: TimelineWait[];
+  ended?: string;
+}
+
+export interface TimelineWait {
+  type: string;
+  label?: string;
+  url?: string;
+  target?: string;
+  state?: string;
 }
 
 export interface ToolSummary {

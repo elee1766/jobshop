@@ -14,6 +14,7 @@ import type {
   ShowResult,
   TraceNode,
   GraphResult,
+  TimelineResult,
   HolderInfo,
   Ticket,
   IngestWorkersResult,
@@ -47,12 +48,15 @@ export interface ChatSession {
 export interface LiveOptions extends StreamOptions {
   trace?: string;
   inspect?: string;
+  // Add the timeline (ticket.timeline) to the trace snapshot.
+  timeline?: boolean;
   audit?: string;
 }
 export interface TraceView extends ShowResult {
   inspected?: Ticket;
   inspection?: ShowResult;
   graph?: GraphResult;
+  timeline?: TimelineResult;
   run?: RunResult;
   trace?: TraceNode;
   sessions?: Record<string, HolderInfo>;

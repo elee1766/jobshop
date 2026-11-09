@@ -205,7 +205,7 @@ func CheckViewTarget(f store.SessionFields) error {
 
 // ReadOnlyMethods are what a read-only session may call (#606).
 var ReadOnlyMethods = []string{
-	rpc.MethodWhoami, rpc.MethodVersion, rpc.MethodTicketShow, rpc.MethodTicketTrace, rpc.MethodTicketGraph, rpc.MethodTicketList,
+	rpc.MethodWhoami, rpc.MethodVersion, rpc.MethodTicketShow, rpc.MethodTicketTrace, rpc.MethodTicketGraph, rpc.MethodTicketTimeline, rpc.MethodTicketList,
 	rpc.MethodReady, rpc.MethodRecall, rpc.MethodRunShow, rpc.MethodRunList, rpc.MethodBatchShow,
 	rpc.MethodBatchList, rpc.MethodAttention, rpc.MethodConfigShow, rpc.MethodPoolList, rpc.MethodSessionList,
 	rpc.MethodSessionJournal, rpc.MethodJournalSearch, rpc.MethodTriggerList, rpc.MethodActivityList,

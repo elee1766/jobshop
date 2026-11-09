@@ -31,6 +31,8 @@ export interface Route {
   filter: string;
   since: boolean;
   section: Section;
+  // The trace as a timeline (#1103) instead of the graph.
+  timeline: boolean;
 }
 
 export function parseRoute(search: string, hash: string): Route {
@@ -48,6 +50,7 @@ export function parseRoute(search: string, hash: string): Route {
     item: params.get('item') || '',
     filter: params.get('filter') || '',
     since: params.get('since') === '1',
+    timeline: params.get('layout') === 'timeline',
     section: view === 'home' && (h === 'waiting' || h === 'inflight') ? h : '',
   };
 }

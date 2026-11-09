@@ -16,7 +16,7 @@ export function LiveOwner() {
   // The scope is a string, so the stream reopens only when it changes.
   const scope = JSON.stringify(
     route.view === 'trace'
-      ? { trace: route.ref, inspect: route.inspect }
+      ? { trace: route.ref, inspect: route.inspect, timeline: route.timeline }
       : route.view === 'system' && route.audit
         ? { audit: route.audit }
         : {},

@@ -385,7 +385,7 @@ func (s *Store) insert(ctx context.Context, q sqldb.Querier, actor string, nt st
 	if err != nil {
 		return t, err
 	}
-	return t, history(ctx, q, t, now, actor, "create", nil)
+	return t, history(ctx, q, t, now, actor, "create", storerules.CreateDiff(nt))
 }
 
 func boolInt(b bool) int64 {

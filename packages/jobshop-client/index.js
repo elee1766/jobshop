@@ -139,6 +139,7 @@ export function createClient({
               new URLSearchParams({
                 ...(opts.trace ? { trace: opts.trace } : {}),
                 ...(opts.inspect ? { inspect: opts.inspect } : {}),
+                ...(opts.trace && opts.timeline ? { timeline: "1" } : {}),
                 ...(opts.audit ? { audit: opts.audit } : {}),
               })
             : ""),
