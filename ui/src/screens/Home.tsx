@@ -3,6 +3,7 @@ import { memo, useMemo } from 'react';
 import type { AttentionItem } from '../../../packages/jobshop-client/rpc.js';
 import { Markdown } from '../components/Markdown.tsx';
 import { TitleAction } from '../components/TitleAction.tsx';
+import { ticketMenuRef, TicketMenuButton } from '../components/TicketMenu.tsx';
 import { parseTitle } from '../../kit/titles.js';
 import { ago, type Flight } from '../lib/model.ts';
 import { useDeskRoute, useUrlText } from '../lib/route.ts';
@@ -24,6 +25,10 @@ import {
 } from '../state/ui.ts';
 
 const minuteOf = (t: number) => Math.floor(t / 60000) * 60000;
+
+// Attention items that are not tickets (a quarantined pool, config and
+// ingest health) have no ticket id to copy or open.
+const notTickets = new Set(['pool', 'config', 'config-invalid', 'ingest', 'journal-lag']);
 
 export function Home() {
   const route = useDeskRoute();
@@ -115,14 +120,16 @@ const AttentionRow = memo(function AttentionRow({ itemKey }: { itemKey: string }
   const setFocused = useSetAtom(focusedAtom);
   const now = minuteOf(useAtomValue(nowAtom));
   if (!item) return null;
+  const target = notTickets.has(item.kind) ? null : { id: item.id, ref: item.ref, item };
   return (
-    <article className={focused ? 'focused' : undefined}>
+    <article className={focused ? 'focused' : undefined} ref={target ? ticketMenuRef(target) : undefined}>
       <Reference item={item} />
       {item.kind !== 'pool' && (
         <a href={'?view=trace&ref=' + encodeURIComponent(item.id)} aria-label={'Trace ' + (item.ref || item.id)}>
           trace
         </a>
       )}
+      {target && <TicketMenuButton target={target} />}
       <TitleAction className="item-title" title={item.title} onActivate={() => setFocused(item.id)}>
         {' '}
         <span className="muted">{ago(item.since, now)}</span>
@@ -193,11 +200,16 @@ function NotMoving() {
       {!collapsed && (
         <div className="section-body rows">
           {stalled.map((row) => (
-            <p key={row.id} className={row.hold ? 'muted' : undefined}>
+            <p
+              key={row.id}
+              className={row.hold ? 'muted' : undefined}
+              ref={ticketMenuRef({ id: row.id, ref: row.ref, session: row.holder })}
+            >
               <button className="mono" onClick={() => openTrace(row.id)}>
                 {row.ref}
               </button>{' '}
-              {ago(row.since, now)} <Markdown inline text={row.diagnosis} />
+              <TicketMenuButton target={{ id: row.id, ref: row.ref, session: row.holder }} /> {ago(row.since, now)}{' '}
+              <Markdown inline text={row.diagnosis} />
               {row.hold ? ' (external hold?)' : ''}
             </p>
           ))}
@@ -283,6 +295,7 @@ function InFlight() {
                     <button onClick={() => setSortOldest(!sortOldest)}>age</button>
                   </th>
                   <th className="wide">session</th>
+                  <th aria-label="actions" />
                 </tr>
               </thead>
               <tbody>
@@ -301,8 +314,9 @@ function InFlight() {
 const FlightRow = memo(function FlightRow({ row, now }: { row: Flight; now: number }) {
   const setWatched = useSetAtom(watchedSessionAtom);
   const ext = { target: '_blank', rel: 'noopener noreferrer' } as const;
+  const target = { id: row.id, ref: row.ref, session: row.holder };
   return (
-    <tr className={row.stalled ? 'stalled' : undefined}>
+    <tr className={row.stalled ? 'stalled' : undefined} ref={ticketMenuRef(target)}>
       <td className="ticket-status" title={ticketState(row.run.run)} aria-label={ticketState(row.run.run)}>
         {statusLetter(row.run.run)}
       </td>
@@ -361,6 +375,9 @@ const FlightRow = memo(function FlightRow({ row, now }: { row: Flight; now: numb
         >
           {row.state}
         </button>
+      </td>
+      <td>
+        <TicketMenuButton target={target} />
       </td>
     </tr>
   );

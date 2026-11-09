@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Ticket } from '../../../packages/jobshop-client/rpc.js';
 import { TitleAction } from '../components/TitleAction.tsx';
+import { ticketMenuRef, TicketMenuButton } from '../components/TicketMenu.tsx';
 import { client } from '../lib/api.ts';
 import { state as ticketState, statusLetter } from '../lib/trace.ts';
 
@@ -141,7 +142,13 @@ export function TraceSearch({ reference, onOpen }: { reference: string; onOpen: 
                 </thead>
                 <tbody>
                   {results.map((ticket) => (
-                    <tr key={ticket.id}>
+                    <tr
+                      key={ticket.id}
+                      ref={ticketMenuRef({
+                        id: ticket.id,
+                        session: ticket.holder || (ticket.kind === 'session' ? ticket.id : ''),
+                      })}
+                    >
                       <td
                         className="ticket-status"
                         data-status={ticket.status}
@@ -157,6 +164,12 @@ export function TraceSearch({ reference, onOpen }: { reference: string; onOpen: 
                           fallback={ticket.id}
                           tip={ticket.id}
                           href={'?view=trace&ref=' + encodeURIComponent(ticket.id)}
+                        />
+                        <TicketMenuButton
+                          target={{
+                            id: ticket.id,
+                            session: ticket.holder || (ticket.kind === 'session' ? ticket.id : ''),
+                          }}
                         />
                       </td>
                       <td>{ticket.kind}</td>

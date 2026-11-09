@@ -4,6 +4,7 @@ import { Chat } from './screens/Chat.tsx';
 import { Embed } from './screens/Embed.tsx';
 import { Home } from './screens/Home.tsx';
 import { LiveOwner, useTabLifecycle } from './components/LiveOwner.tsx';
+import { Notice, TicketMenu } from './components/TicketMenu.tsx';
 import { useDeskRoute, viewLabel, views } from './lib/route.ts';
 import { goSection, hideChat, navigate, openTrace, showChat, showSection, toggleSince } from './state/actions.ts';
 import { connectedAtom, embedsAtom, errorAtom, systemAtom, attention } from './state/live.ts';
@@ -150,6 +151,8 @@ function Desk() {
         </aside>
       </div>
       <PhoneNav />
+      <TicketMenu />
+      <Notice />
     </div>
   );
 }
