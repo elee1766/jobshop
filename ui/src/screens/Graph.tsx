@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -26,6 +27,7 @@ import {
   shortLabel,
   stateDetail,
   stepName,
+  waitText,
   traceEnd,
 } from '../lib/trace.ts';
 
@@ -253,7 +255,9 @@ export function Graph({
       <div className="tag graph-heading">
         <h2>graph</h2>
         <span className="muted">
-          {graph.nodes.length} tickets · {graph.relations.length} relationships
+          {graph.nodes.length} tickets
+          {graph.external?.length ? ` · ${graph.external.length} external` : ''} · {graph.relations.length}{' '}
+          relationships
         </span>
         <div className="graph-controls push-right" aria-label="Graph zoom">
           <button aria-label="Zoom out" disabled={zoom <= minZoom} onClick={() => zoomAt(zoom / 1.25)}>
@@ -335,16 +339,36 @@ export function Graph({
               const y2 = to.y + card.height / 2;
               const bend = to.x === from.x ? x1 + 36 : (x1 + x2) / 2;
               return (
-                <path
-                  key={i}
-                  className={edge.kind === 'blocks' || edge.kind === 'waits_for' ? 'graph-gate' : undefined}
-                  d={`M ${x1} ${y1} C ${bend} ${y1}, ${bend} ${y2}, ${x2} ${y2}`}
-                  markerEnd="url(#graph-arrow)"
-                >
-                  <title>
-                    {edge.from} {relationLabel(edge.kind)} {edge.to}
-                  </title>
-                </path>
+                <Fragment key={i}>
+                  <path
+                    className={
+                      edge.kind === 'blocks' || edge.kind === 'waits_for'
+                        ? 'graph-gate'
+                        : edge.kind === 'wait'
+                          ? 'graph-wait'
+                          : undefined
+                    }
+                    data-wait={edge.kind === 'wait' ? edge.state || 'waiting' : undefined}
+                    d={`M ${x1} ${y1} C ${bend} ${y1}, ${bend} ${y2}, ${x2} ${y2}`}
+                    markerEnd="url(#graph-arrow)"
+                  >
+                    <title>
+                      {edge.from} {relationLabel(edge.kind)} {edge.to}
+                      {edge.kind === 'wait' ? ' (' + waitText(edge) + ')' : ''}
+                    </title>
+                  </path>
+                  {edge.kind === 'wait' && (
+                    <text
+                      className="graph-wait-label"
+                      data-wait={edge.state || 'waiting'}
+                      x={(x1 + x2) / 2}
+                      y={(y1 + y2) / 2 - 6}
+                      textAnchor="middle"
+                    >
+                      {edge.state || 'waiting'}
+                    </text>
+                  )}
+                </Fragment>
               );
             })}
           </svg>
@@ -421,6 +445,39 @@ export function Graph({
                       {linkLabel(href)}
                     </a>
                   ))}
+                </div>
+              </article>
+            );
+          })}
+          {(graph.external || []).map((ext) => {
+            const position = layout.positions.get(ext.id);
+            if (!position) return null;
+            return (
+              <article
+                key={ext.id}
+                className="graph-card graph-external"
+                style={{
+                  left: position.x + 'px',
+                  top: position.y + 'px',
+                  width: card.width + 'px',
+                  height: card.height + 'px',
+                }}
+                data-external={ext.type}
+              >
+                <div className="graph-select">
+                  <strong className="graph-title" title={ext.label}>
+                    {ext.label}
+                  </strong>
+                  <span className="graph-meta muted">
+                    <span>external · {ext.type}</span>
+                  </span>
+                </div>
+                <div className="graph-links">
+                  {ext.url && /^https?:\/\//.test(ext.url) && (
+                    <a href={ext.url} target="_blank" rel="noopener noreferrer">
+                      {linkLabel(ext.url)}
+                    </a>
+                  )}
                 </div>
               </article>
             );

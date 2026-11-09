@@ -95,8 +95,8 @@ dataset the numbers are 448 ms, 25 rows, 206 ms, 3093 nodes and 7.6 MB:
 the node count follows accumulated chat sessions, and the Svelte build on that
 same controller measured 849 ms, 262 ms, 4924 nodes and 9.6 MB.
 
-Bundle: JS 588.7 KB raw (budget 640), 189.0 KB gzip (190), 163.5 KB brotli
-(165). CSS 6.6 KB gzip (14). The entry chunk is 182 KB gzip. The trace graph,
+Bundle: JS 589.9 KB raw (budget 640), 189.3 KB gzip (190), 163.9 KB brotli
+(165). CSS 6.7 KB gzip (14). The entry chunk is 182 KB gzip. The trace graph,
 learn and sys screens are separate chunks (14 KB gzip together) and the app
 fetches them when the browser is idle after the first render, so one entry is
 the only initial request and a first switch finds them loaded. Without that
@@ -116,10 +116,13 @@ are budgets, not a claim that Oxc is faster than the Svelte compiler.
 Tests: 18 unit tests (search, links, titles, client), and the Playwright suite
 on desktop and mobile against an isolated controller started with `--tick=1s`:
 58 passed and 6 skipped (the skips are the real-agent specs and the one spec
-that needs a waiting ticket at start), the same as the Svelte baseline. The
-suite also passes behind a path prefix (`DESK_PREFIX=1`). New in this change:
-`e2e/shell.spec.js` (one live connection, URL contract with an encoded filter,
-Back and Forward, shortcut scoping). Search has unit tests for exact-id
+that needs a waiting ticket at start), the same as the Svelte baseline, plus
+the new specs below. The suite also passes behind a path prefix
+(`DESK_PREFIX=1`). New in this change: `e2e/shell.spec.js` (one live
+connection, URL contract with an encoded filter, Back and Forward, shortcut
+scoping) and `e2e/graph-waits.spec.js` (the wait edges and external cards that
+#1095 added to the Svelte graph, ported here and checked in a browser, which
+#1095 was not). Search has unit tests for exact-id
 priority, weighted and typo matches, empty and no-result, rebuilt indexes with
 additions and removals, and bounded latency on a large collection.
 

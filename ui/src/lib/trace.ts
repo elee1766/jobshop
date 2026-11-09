@@ -24,9 +24,15 @@ export function relationLabel(kind: string) {
         tracks: 'tracks',
         parent: 'parent of',
         created: 'led to',
+        wait: 'is parked on',
       } as Record<string, string>
     )[kind] || kind
   );
+}
+
+// The tooltip and text of a wait edge: what it waits on, its state and why.
+export function waitText(edge: GraphRelation) {
+  return [edge.state || 'waiting', edge.reason].filter(Boolean).join(': ');
 }
 
 export function linkLabel(href: string) {
@@ -70,18 +76,22 @@ export function traceEnd(graph: GraphResult, now: number) {
 // which the time axis reuses; lanes keep simultaneous tickets apart. The
 // scale spreads creations over the canvas; the trace end (now or the last
 // close) may lie right of the last card.
+// External nodes (what a wait names outside the store) are placed by the
+// time the earliest wait on them began.
 export function graphLayout(graph: GraphResult) {
-  const ordered = graph.nodes.toSorted(
-    (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id),
-  );
-  const start = ordered.length ? Date.parse(ordered[0].created_at) : 0;
-  const last = ordered.length ? Date.parse(ordered[ordered.length - 1].created_at) : start;
-  const span = Math.max(600, Math.min(3600, graph.nodes.length * 160));
+  const items = [
+    ...graph.nodes.map((node) => ({ id: node.id, at: node.created_at })),
+    ...(graph.external || []).map((ext) => ({ id: ext.id, at: ext.at })),
+  ];
+  const ordered = items.toSorted((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.id.localeCompare(b.id));
+  const start = ordered.length ? Date.parse(ordered[0].at) : 0;
+  const last = ordered.length ? Date.parse(ordered[ordered.length - 1].at) : start;
+  const span = Math.max(600, Math.min(3600, items.length * 160));
   const scale = span / (last > start ? last - start : 60_000);
   const lanes: number[] = [];
   const positions = new Map<string, { x: number; y: number }>();
   for (const node of ordered) {
-    const x = card.left + (Date.parse(node.created_at) - start) * scale;
+    const x = card.left + (Date.parse(node.at) - start) * scale;
     let lane = lanes.findIndex((right) => right + 36 <= x);
     if (lane < 0) lane = lanes.length;
     lanes[lane] = x + card.width;
@@ -200,6 +210,7 @@ export function relationshipText(edge: GraphRelation, id: string) {
         tracks: 'tracked by',
         parent: 'child of',
         created: 'created from',
+        wait: 'waited on by',
       } as Record<string, string>
     )[edge.kind] || edge.kind
   );
