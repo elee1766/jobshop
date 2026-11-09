@@ -28,10 +28,10 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/control/slotprovider"
 	"github.com/elee1766/jobshop/pkg/conversation"
-	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/logctx"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
@@ -114,7 +114,7 @@ type runner struct {
 	// traffic holds the running turn's open tool calls (session list,
 	// JOB-54) and the agent's text tail. Reset when a turn starts. It has
 	// its own lock: the ACP callbacks write it.
-	traffic sessionrt.Traffic
+	traffic session.Traffic
 	// seed is a journal summary for a conversation that could not be
 	// reloaded; the next turn's prompt starts with it. Memory only.
 	seed string
@@ -493,11 +493,11 @@ func (r *runner) session() error {
 	if err != nil {
 		return err
 	}
-	if fields.Suspended && !sessionrt.HostAlive(r.dir) {
+	if fields.Suspended && !session.HostAlive(r.dir) {
 		return errSuspended
 	}
 	fresh := false
-	if !sessionrt.HostAlive(r.dir) {
+	if !session.HostAlive(r.dir) {
 		r.clearRestart()
 		if err := r.c.spawnHost(t, fields); err != nil {
 			var se *host.SpawnError
@@ -517,7 +517,7 @@ func (r *runner) session() error {
 	} else {
 		r.lifecycle("adopt")
 	}
-	nc, rd, welcome, err := sessionrt.Connect(r.ctx, r.dir)
+	nc, rd, welcome, err := session.Connect(r.ctx, r.dir)
 	if err != nil {
 		return err
 	}
@@ -687,7 +687,7 @@ var errRefresh = errors.New("host env refresh")
 // staleEnv reports whether the adopted host's spec env differs from what a
 // new host would get, e.g. after a deploy changed PATH or credentials.
 func (r *runner) staleEnv(t domain.Ticket, f domain.SessionFields) bool {
-	spec, err := hostspec.Read(r.dir)
+	spec, err := session.Read(r.dir)
 	if err != nil {
 		return false
 	}
@@ -727,7 +727,7 @@ func (r *runner) holdForJobs(ctx context.Context) bool {
 	pid := r.agentPid
 	r.mu.Unlock()
 	exe, _ := r.c.hostExe()
-	jobs := sessionrt.BackgroundJobs(pid, exe)
+	jobs := session.BackgroundJobs(pid, exe)
 	if len(jobs) == 0 {
 		r.jobsSince = time.Time{}
 		return false
@@ -787,7 +787,7 @@ func (r *runner) clearRestart() {
 // afterTurn: held tickets stay claimed (the supervisor keeps heartbeating
 // them) and the new host is prompted with them again.
 func (r *runner) restart(nc net.Conn) error {
-	r.log.InfoContext(r.ctx, "restarting host on request", "host_pid", sessionrt.HostPid(r.dir))
+	r.log.InfoContext(r.ctx, "restarting host on request", "host_pid", session.HostPid(r.dir))
 	r.lifecycle("restart_requested")
 	_ = nc.Close()
 	r.c.stopHost(r.dir)
@@ -821,7 +821,7 @@ func (r *runner) worktreeMissing() bool {
 }
 
 func (r *runner) refresh(nc net.Conn) error {
-	r.log.InfoContext(r.ctx, "refreshing host env", "host_pid", sessionrt.HostPid(r.dir))
+	r.log.InfoContext(r.ctx, "refreshing host env", "host_pid", session.HostPid(r.dir))
 	_ = nc.Close()
 	r.c.stopHost(r.dir)
 	return errRefresh
@@ -881,7 +881,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			// claim and drop tickets. Respawning recreates the worktree
 			// (spawnHost) and keeps the conversation and claims.
 			r.log.WarnContext(ctx, "session worktree missing, respawning host",
-				"caller", "runner.worktreeMissing", "host_pid", sessionrt.HostPid(r.dir))
+				"caller", "runner.worktreeMissing", "host_pid", session.HostPid(r.dir))
 			r.lifecycle("worktree_missing")
 			_ = nc.Close()
 			r.c.stopHost(r.dir)
@@ -1094,7 +1094,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			Prompt:    append([]acp.ContentBlock{acp.TextBlock(text)}, attachments...),
 			Meta:      meta,
 		})
-		if err != nil && ctx.Err() == nil && sessionrt.UnknownSession(err) && !replaced {
+		if err != nil && ctx.Err() == nil && session.UnknownSession(err) && !replaced {
 			// The agent lost the conversation (a restart it did not
 			// reload): continue in a new one on this host, keeping the
 			// claims, instead of restarting the host into the same error.
@@ -1113,7 +1113,7 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			}
 			continue
 		}
-		if err != nil && ctx.Err() == nil && sessionrt.AgentBusy(err) && busyRetries < 3 {
+		if err != nil && ctx.Err() == nil && session.AgentBusy(err) && busyRetries < 3 {
 			busyRetries++
 			r.log.WarnContext(ctx, "agent still busy with an earlier prompt, cancelling it", "attempt", busyRetries, "err", err)
 			_ = conn.Cancel(context.WithoutCancel(ctx), acp.CancelNotification{SessionId: r.acpID()})
@@ -1124,11 +1124,11 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 			}
 			continue
 		}
-		if err != nil && ctx.Err() == nil && sessionrt.AgentBusy(err) {
+		if err != nil && ctx.Err() == nil && session.AgentBusy(err) {
 			// Reconnecting keeps the same stuck agent (the crash loop seen
 			// on gasserver); a new host starts a new agent and reloads the
 			// conversation, and the claim survives for the next prompt.
-			r.log.WarnContext(ctx, "agent stuck busy, respawning host", "host_pid", sessionrt.HostPid(r.dir))
+			r.log.WarnContext(ctx, "agent stuck busy, respawning host", "host_pid", session.HostPid(r.dir))
 			r.lifecycle("agent_stuck_busy")
 			r.c.stopHost(r.dir)
 			return errRefresh
@@ -1139,8 +1139,8 @@ func (r *runner) turn(ctx context.Context, conn *acp.ClientSideConnection, text 
 		// A transport failure to the provider is the network, not the
 		// agent (JOB-66): retry on the same host, bounded, so a short
 		// outage does not burn the crash budget into quarantine.
-		net := sessionrt.ProviderUnreachable(err) && netRetries < providerNetRetries
-		if !net && (sessionrt.ProviderUnreachable(err) || !sessionrt.RateLimited(err)) {
+		net := session.ProviderUnreachable(err) && netRetries < providerNetRetries
+		if !net && (session.ProviderUnreachable(err) || !session.RateLimited(err)) {
 			break
 		}
 		if net {
@@ -1414,14 +1414,14 @@ func (c *Controller) sessionCwdIn(cfg *config.Config, t domain.Ticket) string {
 // hostSpec builds the spec a new host for t would get. EnvHash also covers
 // the env the host inherits from this controller, so a deploy that changes
 // either is noticed when a live host is adopted.
-func (c *Controller) hostSpec(t domain.Ticket, f domain.SessionFields) (hostspec.Spec, string, error) {
+func (c *Controller) hostSpec(t domain.Ticket, f domain.SessionFields) (session.Spec, string, error) {
 	agent, ok := c.config().Agents[f.Agent]
 	if !ok {
-		return hostspec.Spec{}, "", fmt.Errorf("unknown agent %q", f.Agent)
+		return session.Spec{}, "", fmt.Errorf("unknown agent %q", f.Agent)
 	}
 	exe, err := c.hostExe()
 	if err != nil {
-		return hostspec.Spec{}, "", err
+		return session.Spec{}, "", err
 	}
 	dir := c.root.SessionDir(t.ID)
 	env := []string{
@@ -1450,7 +1450,7 @@ func (c *Controller) hostSpec(t domain.Ticket, f domain.SessionFields) (hostspec
 	}
 	// The sandbox config is hashed with the env, so a reload that changes
 	// it refreshes idle sessions like an env change (#262).
-	spec := hostspec.Spec{Spec: host.Spec{
+	spec := session.Spec{Spec: host.Spec{
 		Protocol: host.Protocol, Session: t.ID, Command: agent.Command, Args: args,
 		Env: env, EnvHash: envHash(hostInheritedEnv(), slices.Concat(env, c.sandboxKey(t.Pool), c.isolationKey(t.Pool))), Dir: c.sessionCwd(t),
 		LeaseMS: hostLease.Milliseconds(),
@@ -1520,17 +1520,17 @@ func (c *Controller) spawnHost(t domain.Ticket, f domain.SessionFields) error {
 		return err
 	}
 	if u := c.config().IsolationFor(t.Pool).User; u != nil && u.Slots() > 0 {
-		if err := sessionrt.RestrictSession(&spec.Spec, *u, f.Slot, dir); err != nil {
+		if err := sandbox.RestrictSession(spec.User, spec.Dir, *u, f.Slot, dir); err != nil {
 			return err
 		}
 	} else if u := spec.User; u != nil && len(u.Groups) > 0 {
 		// The mapped user reaches cli.sock and writes the worktree through
 		// the first shared group, so the controller and refinery can still
 		// read and remove what it leaves.
-		if err := sessionrt.ShareDir(dir, u.Groups[0], false); err != nil {
+		if err := sandbox.ShareDir(dir, u.Groups[0], false); err != nil {
 			return host.Permanentf("isolation: share session dir: %w", err)
 		}
-		if err := sessionrt.ShareDir(spec.Dir, u.Groups[0], true); err != nil {
+		if err := sandbox.ShareDir(spec.Dir, u.Groups[0], true); err != nil {
 			return host.Permanentf("isolation: share worktree: %w", err)
 		}
 	}
@@ -1545,10 +1545,10 @@ func (c *Controller) spawnHost(t domain.Ticket, f domain.SessionFields) error {
 	if err := host.CheckSpawn(spec.Spec, worktree, host.WithHostDir(dir)); err != nil {
 		return err
 	}
-	if err := sessionrt.ProbeShell(spec.Spec, hostInheritedEnv(), c.opt.ShellProbe); err != nil {
+	if err := session.ProbeShell(spec.Spec, hostInheritedEnv(), c.opt.ShellProbe); err != nil {
 		return err
 	}
-	if err := hostspec.Write(dir, spec); err != nil {
+	if err := session.Write(dir, spec); err != nil {
 		return err
 	}
 	// The previous host's exit record would make connect() report this
@@ -1668,7 +1668,7 @@ func (c *Controller) removeWorktree(cfg *config.Config, t domain.Ticket, caller 
 	if _, err := os.Stat(cwd); err != nil {
 		return
 	}
-	if t.Status != domain.StatusClosed || sessionrt.HostAlive(c.root.SessionDir(t.ID)) {
+	if t.Status != domain.StatusClosed || session.HostAlive(c.root.SessionDir(t.ID)) {
 		c.log.Warn("refusing to remove worktree of live session", "session", t.ID, "caller", caller,
 			"status", t.Status, "cwd", cwd)
 		return
@@ -1861,8 +1861,8 @@ func (c *Controller) drive(cfg *config.Config, t domain.Ticket) {
 // client is the ACP client side for this runner's connection. A read-only
 // attention chat (#606) reads; it does not edit, run or delete until the
 // operator writes.
-func (r *runner) client() *sessionrt.Client {
-	return &sessionrt.Client{
+func (r *runner) client() *session.Client {
+	return &session.Client{
 		Traffic: &r.traffic,
 		TurnEnd: r.turnEnd,
 		Refuse: func(kind *acp.ToolKind) bool {

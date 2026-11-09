@@ -12,9 +12,9 @@ import (
 	"sync"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
 )
 
 // RunDir is a run's scratch dir for its command steps under root: the
@@ -88,7 +88,7 @@ func RemoveRunDir(ctx context.Context, log *slog.Logger, gitMu sync.Locker, root
 }
 
 // GitCommonDir is repo's shared git dir, or "" if git does not know it.
-func GitCommonDir(repo string) string { return sessionrt.GitCommonDir(repo) }
+func GitCommonDir(repo string) string { return sandbox.GitCommonDir(repo) }
 
 // StaleRunDirs lists the run dirs under root whose run is closed or gone:
 // a close that raced a running attempt, or a restart between close and

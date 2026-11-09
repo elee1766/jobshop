@@ -6,17 +6,17 @@ import (
 	"fmt"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 )
 
-// Per-session isolation (#540): see sessionrt/slot.go. The slot is part of
+// Per-session isolation (#540): see execution/session/slot.go. The slot is part of
 // the session's durable fields, so choosing it stays here: newSession
 // holds c.slotMu from the pick until the row is created.
 
 // slotStore reads the slots of open sessions from the store. It
-// implements sessionrt.SlotSource.
+// implements session.SlotSource.
 type slotStore struct{ store store.Store }
 
 // UsedSlots is the slots of pool's open sessions.
@@ -41,7 +41,7 @@ func (c *Controller) slotCapacity(ctx context.Context, cfg *config.Config, pool 
 	if u == nil || u.Slots() == 0 {
 		return -1
 	}
-	n, err := sessionrt.FreeSlots(ctx, slotStore{c.store}, pool, u.Slots())
+	n, err := session.FreeSlots(ctx, slotStore{c.store}, pool, u.Slots())
 	if err != nil {
 		return 0
 	}
@@ -59,7 +59,7 @@ func (c *Controller) sessionSlot(ctx context.Context, cfg *config.Config, pool s
 	if u == nil || u.Slots() == 0 {
 		return nil, nil
 	}
-	s, ok, err := sessionrt.AllocSlot(ctx, slotStore{c.store}, pool, u.Slots())
+	s, ok, err := session.AllocSlot(ctx, slotStore{c.store}, pool, u.Slots())
 	if err != nil {
 		return nil, err
 	}

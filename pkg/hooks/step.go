@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/automation"
-	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/elee1766/jobshop/pkg/execution/automation/api"
 )
 
 // Script step attempts (JOB-124) are journaled like callbacks: one

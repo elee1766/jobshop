@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 )
 
 // TestApplyIsolationNoDelegation: a pool with limits and no delegated
@@ -28,7 +29,7 @@ pools:
   mapped: {agent: fake, dir: %[1]q, isolation: {user: {uid: 1000, map_uid: 100000, map_gid: 100000, groups: ["0"]}}}
 `)
 	c.cgroupOnce.Do(func() {})
-	c.cgroup = sessionrt.Delegation{Err: os.ErrPermission}
+	c.cgroup = sandbox.Delegation{Err: os.ErrPermission}
 
 	var s host.Spec
 	require.NoError(t, c.applyIsolation(&s, "plain"))
@@ -64,7 +65,7 @@ limits:
   cgroup_driver: systemd
 `)
 	c.cgroupOnce.Do(func() {})
-	c.cgroup = sessionrt.Delegation{Err: os.ErrPermission}
+	c.cgroup = sandbox.Delegation{Err: os.ErrPermission}
 	cfg := c.config()
 	assert.False(t, wantsCgroup(cfg), "no delegated cgroup set up")
 	assert.Empty(t, c.hostsCgroup())
@@ -100,13 +101,13 @@ func TestHostPlacement(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		limits string
-		setup  sessionrt.Delegation
-		want   sessionrt.Placement
+		setup  sandbox.Delegation
+		want   session.Placement
 	}{
-		{"systemd default slice", "limits:\n  cgroup_driver: systemd\n", sessionrt.Delegation{}, sessionrt.Placement{Systemd: true, Slice: config.DefaultSessionsSlice}},
-		{"systemd slice", "limits:\n  cgroup_driver: systemd\n  sessions_slice: x.slice\n  cgroup: {}\n", sessionrt.Delegation{Hosts: "/h"}, sessionrt.Placement{Systemd: true, Slice: "x.slice"}},
-		{"cgroupfs split", "limits:\n  cgroup: {}\n", sessionrt.Delegation{Hosts: "/h"}, sessionrt.Placement{Cgroup: "/h"}},
-		{"cgroupfs no split", "", sessionrt.Delegation{Hosts: "/h"}, sessionrt.Placement{}},
+		{"systemd default slice", "limits:\n  cgroup_driver: systemd\n", sandbox.Delegation{}, session.Placement{Systemd: true, Slice: config.DefaultSessionsSlice}},
+		{"systemd slice", "limits:\n  cgroup_driver: systemd\n  sessions_slice: x.slice\n  cgroup: {}\n", sandbox.Delegation{Hosts: "/h"}, session.Placement{Systemd: true, Slice: "x.slice"}},
+		{"cgroupfs split", "limits:\n  cgroup: {}\n", sandbox.Delegation{Hosts: "/h"}, session.Placement{Cgroup: "/h"}},
+		{"cgroupfs no split", "", sandbox.Delegation{Hosts: "/h"}, session.Placement{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, _, _ := scanControllerYAML(t, "projects:\n  js: {}\nagents:\n  fake: {command: /bin/false}\npools:\n  plain: {agent: fake, dir: %[1]q}\n"+tc.limits)

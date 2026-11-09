@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -188,7 +188,7 @@ func (c *Controller) artifactFiles(ctx context.Context, sc scope, paths []string
 		if err != nil {
 			return nil, fmt.Errorf("%w: attachment %s: %w", domain.ErrInvalid, p, err)
 		}
-		if !sc.admin && !slices.ContainsFunc(allowed, func(d string) bool { return sessionrt.Within(resolved, d) }) {
+		if !sc.admin && !slices.ContainsFunc(allowed, func(d string) bool { return sandbox.Within(resolved, d) }) {
 			return nil, forbidden("attachment %s is outside the session dir", p)
 		}
 		fi, err := os.Stat(resolved)

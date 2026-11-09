@@ -9,7 +9,7 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 
-	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 )
 
 // InProcHosts runs session hosts as goroutines of the test process
@@ -49,7 +49,7 @@ func (h *InProcHosts) Start(dir string) error {
 	}
 	done := make(chan struct{})
 	h.runs[dir] = done
-	opts := hostspec.HostOptions(dir)
+	opts := session.HostOptions(dir)
 	go func() {
 		defer close(done)
 		_ = host.Main(dir, opts...)

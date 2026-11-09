@@ -5,9 +5,9 @@ import (
 	"os"
 	"sync"
 
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 )
 
 // reapOrphans stops hosts whose session is not open: leftovers from a crash
@@ -33,7 +33,7 @@ func (c *Controller) orphans(open []domain.Ticket) []string {
 	}
 	var out []string
 	for _, e := range entries {
-		if !keep[e.Name()] && sessionrt.HostAlive(c.root.SessionDir(e.Name())) {
+		if !keep[e.Name()] && session.HostAlive(c.root.SessionDir(e.Name())) {
 			out = append(out, e.Name())
 		}
 	}

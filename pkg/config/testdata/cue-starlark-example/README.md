@@ -10,7 +10,7 @@ From the repository root:
 go run ./cmd/jobshop config check --file pkg/config/testdata/cue-starlark-example/jobshop.yaml
 go run ./cmd/jobshop config resolve --file pkg/config/testdata/cue-starlark-example/jobshop.yaml
 go test ./pkg/config -run '^TestCUEPack' -count=1
-go test ./pkg/automation -run '^TestDocumented(Hook|Capability)Examples$' -count=1 -v
+go test ./pkg/execution/automation -run '^TestDocumented(Hook|Capability)Examples$' -count=1 -v
 ```
 
 No controller, external registry or live credentials are needed. Tests

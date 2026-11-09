@@ -6,15 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/acphost/pkg/userns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
 )
 
 const slotYAML = `projects:
@@ -134,9 +133,9 @@ func TestSlotRestart(t *testing.T) {
 func TestApplySlotMapCount(t *testing.T) {
 	u := config.IsolationUser{MapUID: 100000, MapGID: 200000, Groups: []string{"100"}, PerSession: &config.PerSession{Range: 4}}
 	for slot, want := range []int{4, 3, 2, 1} {
-		spec := host.Spec{User: &userns.User{MapUID: 100000, MapGID: 200000}}
-		require.NoError(t, sessionrt.ApplySlot(&spec, u, &slot))
-		assert.Equal(t, want, spec.User.MapCount, "slot %d", slot)
-		assert.Equal(t, 100000+spec.User.MapCount+slot, 100004, "block end")
+		user := &userns.User{MapUID: 100000, MapGID: 200000}
+		require.NoError(t, sandbox.ApplySlot(user, u, &slot))
+		assert.Equal(t, want, user.MapCount, "slot %d", slot)
+		assert.Equal(t, 100000+user.MapCount+slot, 100004, "block end")
 	}
 }

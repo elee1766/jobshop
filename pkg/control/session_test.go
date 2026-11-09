@@ -37,7 +37,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
-	"github.com/elee1766/jobshop/pkg/hostspec"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -49,7 +49,7 @@ import (
 // the real process tree: controller -> host -> agent.
 func TestMain(m *testing.M) {
 	// The controller starts detached hosts as this binary (#904).
-	host.MaybeChild(hostspec.HostOptions("")...)
+	host.MaybeChild(session.HostOptions("")...)
 	if len(os.Args) >= 2 && os.Args[1] == "fake-daemon" {
 		// Record this process and the env it holds, then live on.
 		line := fmt.Sprintf("%d %s\n", os.Getpid(), os.Getenv("DEPLOY"))
@@ -164,11 +164,11 @@ func TestEnvRefresh(t *testing.T) {
 	stop()
 
 	// Pretend the host was spawned by an older deploy with another env.
-	spec, err := hostspec.Read(sdir)
+	spec, err := session.Read(sdir)
 	require.NoError(t, err)
 	spec.Env = append(spec.Env, "OLD_DEPLOY=1")
 	spec.EnvHash = "old"
-	require.NoError(t, hostspec.Write(sdir, spec))
+	require.NoError(t, session.Write(sdir, spec))
 
 	stop = start()
 	defer stop()
@@ -190,7 +190,7 @@ func TestEnvRefresh(t *testing.T) {
 	assert.True(t, strings.HasSuffix(shell, "|"+sessions[0].ID), "JOBSHOP_SESSION in the shell: %s", shell)
 	assert.Contains(t, shell, os.Getenv("PATH"), "the controller PATH is kept")
 	passEventually(t, root.Dir, func() bool {
-		s, err := hostspec.Read(sdir)
+		s, err := session.Read(sdir)
 		return err == nil && s.EnvHash != "old"
 	}, "condition not met after supervisor passes")
 	assert.Equal(t, domain.StatusOpen, show(sessions[0].ID).Status)
@@ -1441,7 +1441,7 @@ func TestSessionRestartIdle(t *testing.T) {
 	// re-checks the env hash on every poll (#106) and refreshes the host
 	// by itself, so wait for that before restarting: asserting the old
 	// spec right after the reload raced the refresh (#327).
-	oldSpec, err := hostspec.Read(sdir)
+	oldSpec, err := session.Read(sdir)
 	require.NoError(t, err)
 	require.NotContains(t, oldSpec.Env, "RESTART_MARK=1")
 	cfgPath := filepath.Join(root.Dir, config.FileName)
@@ -1451,11 +1451,11 @@ func TestSessionRestartIdle(t *testing.T) {
 	require.NoError(t, os.WriteFile(cfgPath, b, 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	passEventually(t, root.Dir, func() bool {
-		s, err := hostspec.Read(sdir)
+		s, err := session.Read(sdir)
 		p := hostPidOf(t, sdir)
 		return err == nil && slices.Contains(s.Env, "RESTART_MARK=1") && p != 0 && p != pid && hostRunning(sdir)
 	}, "reload refreshed the host")
-	refreshed, err := hostspec.Read(sdir)
+	refreshed, err := session.Read(sdir)
 	require.NoError(t, err)
 	assert.NotEqual(t, oldSpec.EnvHash, refreshed.EnvHash, "fresh spec")
 	pid = hostPidOf(t, sdir)
@@ -1467,7 +1467,7 @@ func TestSessionRestartIdle(t *testing.T) {
 		p := hostPidOf(t, sdir)
 		return p != 0 && p != pid && hostRunning(sdir)
 	}, "host respawned")
-	s, err := hostspec.Read(sdir)
+	s, err := session.Read(sdir)
 	require.NoError(t, err)
 	assert.Contains(t, s.Env, "RESTART_MARK=1", "spec reflects the reloaded config")
 

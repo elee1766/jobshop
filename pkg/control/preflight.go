@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	execsandbox "github.com/elee1766/jobshop/pkg/execution/sandbox"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -31,7 +31,7 @@ func (c *Controller) preflightSpec(cfg *config.Config, pool string) (host.Spec, 
 			s.Sandbox.DNS = &sandbox.DNS{Forward: sb.DNS.Forward, Host: sb.DNS.Host}
 		}
 		if sb.ResolvConf != "" {
-			s.Sandbox.ResolvConf = sessionrt.ExpandHome(sb.ResolvConf)
+			s.Sandbox.ResolvConf = execsandbox.ExpandHome(sb.ResolvConf)
 		}
 	}
 	iso := cfg.IsolationFor(pool)

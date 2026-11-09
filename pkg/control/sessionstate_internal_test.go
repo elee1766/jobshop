@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 )
@@ -81,7 +81,7 @@ func TestSessionListState(t *testing.T) {
 	// lock to be gone, as a real host's exit would have made it, so the
 	// listing cannot see it flip between its two liveness checks.
 	require.NoError(t, lf.Close())
-	require.Eventually(t, func() bool { return !sessionrt.HostAlive(odir) }, time.Minute, time.Millisecond, "flock released")
+	require.Eventually(t, func() bool { return !session.HostAlive(odir) }, time.Minute, time.Millisecond, "flock released")
 	assert.NotContains(t, list(), "js-orphan")
 }
 

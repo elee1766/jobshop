@@ -12,14 +12,15 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/execution/sandbox"
+	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
 // Per-pool isolation (#388): a pool with isolation.user runs its agents
 // as a mapped host uid/gid, one with isolation.limits in its own cgroup
 // v2 with limits, and sandbox.network pasta gives a filtered network.
-// acphost does the work and pkg/control/sessionrt holds the mechanics;
+// acphost does the work and pkg/execution/sandbox holds the mechanics;
 // this file reads the pool's config and builds the spec. With no
 // isolation config nothing here runs.
 
@@ -34,11 +35,11 @@ func wantsCgroup(cfg *config.Config) bool {
 	return !cfg.Limits.Systemd() && (cfg.Limits.Cgroup != nil || anyLimits(cfg))
 }
 
-func (c *Controller) hostPlacement() sessionrt.Placement {
+func (c *Controller) hostPlacement() session.Placement {
 	if l := c.config().Limits; l.Systemd() {
-		return sessionrt.Placement{Systemd: true, Slice: l.Slice()}
+		return session.Placement{Systemd: true, Slice: l.Slice()}
 	}
-	return sessionrt.Placement{Cgroup: c.hostsCgroup()}
+	return session.Placement{Cgroup: c.hostsCgroup()}
 }
 
 // hostsCgroup is the cgroup directory a new session host starts in, ""
@@ -65,11 +66,11 @@ func (c *Controller) tuneCgroup(cfg *config.Config) {
 	if cg.Err != nil {
 		return
 	}
-	if err := sessionrt.TuneAt(filepath.Dir(cg.Sessions), *hc); err != nil {
+	if err := sandbox.TuneAt(filepath.Dir(cg.Sessions), *hc); err != nil {
 		c.log.Warn("isolation: sessions cgroup tuning not applied", "err", err)
 	}
 	if c.hostsMoved.CompareAndSwap(false, true) {
-		sessionrt.MoveHosts(cg, os.Getpid())
+		sandbox.MoveHosts(cg, os.Getpid())
 	}
 }
 
@@ -85,9 +86,9 @@ func anyLimits(cfg *config.Config) bool {
 
 // ensureCgroup sets up the delegated cgroup once, the first time a pool
 // with limits needs it (start, or a reload that adds limits).
-func (c *Controller) ensureCgroup() sessionrt.Delegation {
+func (c *Controller) ensureCgroup() sandbox.Delegation {
 	c.cgroupOnce.Do(func() {
-		c.cgroup = sessionrt.Setup()
+		c.cgroup = sandbox.Setup()
 		if c.cgroup.Err != nil {
 			c.log.Warn("isolation limits unavailable", "err", c.cgroup.Err)
 		} else {
@@ -103,7 +104,7 @@ func (c *Controller) ensureCgroup() sessionrt.Delegation {
 func (c *Controller) applyIsolation(spec *host.Spec, pool string) error {
 	iso := c.config().IsolationFor(pool)
 	if u := iso.User; u != nil {
-		hu, err := sessionrt.UserFor(*u)
+		hu, err := sandbox.UserFor(*u)
 		if err != nil {
 			return host.Permanentf("%w", err)
 		}
@@ -132,7 +133,7 @@ func (c *Controller) poolCgroup(cfg *config.Config, pool string) (*cgroup.Cgroup
 		hc := &cgroup.Cgroup{}
 		if l != nil {
 			var err error
-			if hc, err = sessionrt.For(*l, ""); err != nil {
+			if hc, err = sandbox.For(*l, ""); err != nil {
 				return nil, fmt.Errorf("isolation limits: %w", err)
 			}
 		}
@@ -146,7 +147,7 @@ func (c *Controller) poolCgroup(cfg *config.Config, pool string) (*cgroup.Cgroup
 	if cg.Err != nil {
 		return nil, fmt.Errorf("isolation limits: no delegated cgroup: %w", cg.Err)
 	}
-	hc, err := sessionrt.For(*l, cg.Sessions)
+	hc, err := sandbox.For(*l, cg.Sessions)
 	if err != nil {
 		return nil, fmt.Errorf("isolation limits: %w", err)
 	}
@@ -200,13 +201,13 @@ func (c *Controller) recordCgroupMetrics(ctx context.Context, cfg *config.Config
 		if cfg.IsolationFor(pool).Limits == nil {
 			continue
 		}
-		var sum sessionrt.Stats
+		var sum sandbox.Stats
 		for _, id := range ids {
 			dir := c.sessionCgroupDir(cfg, id)
 			if dir == "" {
 				continue
 			}
-			s := sessionrt.ReadStats(dir)
+			s := sandbox.ReadStats(dir)
 			sum.Memory += s.Memory
 			sum.CPUUsec += s.CPUUsec
 			sum.OOMKills += s.OOMKills
