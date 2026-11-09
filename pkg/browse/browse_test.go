@@ -122,7 +122,12 @@ func newRig(t *testing.T) *rig {
 		Activity: &config.Activity{Repos: []string{"elee1766/jobshop"}},
 	}
 	r.host = &fakeHost{
-		cfg: cfg, now: time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC),
+		cfg: cfg,
+		// The provider clients stamp a Retry-After with the real clock, and the
+		// service subtracts its own: a fixed date here makes the wait grow with
+		// the real date (it broke master once real time passed it). Start at the
+		// real time, then only advance.
+		now: time.Now(),
 		lin: linear.New(srv.URL, apicall.Static("lin_api_secretvalue")),
 		gh:  github.New(srv.URL, apicall.Static("ghs_secretvalue")),
 	}
