@@ -74,3 +74,12 @@ export const chatListAtom = atom((get) =>
     return chat ? [chat] : [];
   }),
 );
+
+// Writes in flight, by "pool:<name>" or "session:<id>", so a control shows
+// pending and cannot be submitted twice (JOB-178).
+export const pendingAtom = atom<Record<string, boolean>>({});
+
+// The admin methods this Desk allows (GET api/rpc), or null until read. A
+// control for a method that is not listed stays hidden: desk.rpc is the grant
+// Desk can see, and the controller still checks its own.
+export const rpcMethodsAtom = atom<string[] | null>(null);

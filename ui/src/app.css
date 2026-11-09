@@ -1549,3 +1549,21 @@ fieldset.browse-props {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* Desired-sessions control in the System pools table (JOB-178). */
+.pool-scale {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.pool-scale input {
+  width: 6ch;
+  height: calc(1em * var(--line-height) + 2 * var(--space-1));
+  padding-block: 0;
+}
+@media (pointer: coarse) {
+  .pool-scale input,
+  .pool-scale button {
+    min-height: 40px;
+  }
+}
