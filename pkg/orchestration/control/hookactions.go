@@ -89,9 +89,30 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *domain.RunA
 			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
 				return err
 			}
-			want["pool:"+action.Pool] = ticket.Pool
-			if f.Type == domain.StepScript {
-				want["pool:"+action.Pool] = f.ScriptPool
+			if action.Placement != nil {
+				// The ticket sits on the top option; each option is rechecked
+				// below, the plan keeps them sorted by weight.
+				if f.Placement == nil || len(f.Placement.Options) != len(action.Placement.Options) {
+					return fmt.Errorf("planned step %s lost its placement", action.ID)
+				}
+				planned := map[string]int{}
+				for _, o := range f.Placement.Options {
+					planned[o.Pool]++
+				}
+				for _, o := range action.Placement.Options {
+					resolved, err := hookReference(cfg, in, a, "pool", o.Pool)
+					if err != nil {
+						return fmt.Errorf("planned pool %q: %w", o.Pool, err)
+					}
+					if planned[resolved]--; planned[resolved] < 0 {
+						return fmt.Errorf("planned pool %q now resolves to %s, not a planned option", o.Pool, resolved)
+					}
+				}
+			} else {
+				want["pool:"+action.Pool] = ticket.Pool
+				if f.Type == domain.StepScript {
+					want["pool:"+action.Pool] = f.ScriptPool
+				}
 			}
 			if action.RetryPool != "" || f.RetryPool != "" {
 				want["pool:"+action.RetryPool] = f.RetryPool
@@ -271,12 +292,29 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			if ids[action.ID] != "" {
 				return g, fmt.Errorf("step %q already exists", action.ID)
 			}
-			pool, err := hookReference(lc.cfg, in, fields.Automation, "pool", action.Pool)
+			var placement *domain.StepPlacement
+			var err error
+			resources := action.NeedsResources
+			poolName := action.Pool
+			if action.Placement != nil {
+				placement, err = hookPlacement(lc.cfg, in, fields.Automation, run.Project, action.Placement)
+				if err != nil {
+					return g, fmt.Errorf("step %s: %w", action.ID, err)
+				}
+				// The step starts on its top option, like a workflow step.
+				resources = placement.Options[0].Resources
+				poolName = placement.Options[0].Pool
+			}
+			pool, err := hookReference(lc.cfg, in, fields.Automation, "pool", poolName)
 			if err != nil {
 				return g, err
 			}
 			if lc.cfg.Pools[pool].Project != run.Project {
 				return g, fmt.Errorf("pool %s is outside run project %s", pool, run.Project)
+			}
+			resources, err = checkHookResources(lc.cfg, resources)
+			if err != nil {
+				return g, fmt.Errorf("step %s: %w", action.ID, err)
 			}
 			retryPool := ""
 			if action.RetryPool != "" {
@@ -323,6 +361,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				title = action.ID
 			}
 			f := domain.StepFields{Run: run.ID, Step: action.ID, Index: len(steps) + newSteps, Retries: retries, RetryPool: retryPool, Needs: action.Needs, Inputs: action.Inputs, OutputSchema: action.OutputSchema}
+			f.Resources, f.Placement, f.RetryAfter, f.MaxReviewRounds = resources, placement, action.RetryAfter, action.MaxReviewRounds
 			ticketPool := pool
 			if action.Script != "" {
 				if action.Worktree && lc.cfg.Pools[pool].Repo == "" {
@@ -332,7 +371,10 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				f.Type, f.Script, f.ScriptHook, f.ScriptPool = domain.StepScript, action.Script, in.Entry, pool
 				f.Worktree, f.Timeout, ticketPool = action.Worktree, action.Timeout, ""
 			}
-			if slices.Contains(action.Needs, previous) {
+			switch {
+			case action.OnRequestChanges != "":
+				f.OnRequestChanges = action.OnRequestChanges
+			case slices.Contains(action.Needs, previous):
 				f.OnRequestChanges = previous
 			}
 			data, err := json.Marshal(f)

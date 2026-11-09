@@ -293,6 +293,11 @@ next callback (`step.outcome`); the output is checked against
 `output_schema` and becomes `step.output`. A `fail(...)` or other error
 is a failed attempt. A step function cannot return actions.
 
+`result(not_yet=True)` is "not yet", not a failure: the controller
+releases the step and runs it again after `retry_after` (a Go duration
+given to `start_step`, default `1m`). It cannot be combined with
+`outcome`. Use it to poll for something outside the controller.
+
 ```python
 def begin(run):
     return start_step(id = "check", pool = "dev", script = check,

@@ -67,7 +67,7 @@ Constructors accept named arguments only:
 | Constructor | Required | Optional |
 | --- | --- | --- |
 | `start_run(...)` | `workflow`, `key` | `inputs={}`, `title=""`, `reason=""` |
-| `start_step(...)` | `id`, `pool`, exactly one of `script`, `prompt` or `prompt_file` | `inputs={}`, `title=""`, `retries`, `retry_pool=""`, `needs=[]`, `output_schema={...}`, `reason=""`; with `script`: `worktree=False`, `timeout="10m"` |
+| `start_step(...)` | `id`, `pool` (or `placement`), exactly one of `script`, `prompt` or `prompt_file` | `inputs={}`, `title=""`, `retries`, `retry_pool=""`, `needs=[]`, `output_schema={...}`, `needs_resources=[]`, `reason=""`; agent steps: `placement={...}`, `max_review_rounds`, `on_request_changes=""`; with `script`: `worktree=False`, `timeout="10m"`, `retry_after="1m"` |
 | `finish_run(...)` | `outcome` | `output={}`, `reason=""` |
 | `create_ticket(...)` | `title`, `key` | `pool=""`, `body=""`, `labels=[]`, `priority` (0-4, default 2), `parent=""`, `reason=""` |
 | `comment(...)` | `ticket`, `body` | `reason=""` |

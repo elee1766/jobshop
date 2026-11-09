@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/elee1766/jobshop/pkg/execution/automation"
 )
@@ -314,4 +315,121 @@ func TestProcessHelper(_ *testing.T) {
 	_ = file.Close()
 	fmt.Print("counted")
 	os.Exit(0)
+}
+
+func TestStartStepAgentFields(t *testing.T) {
+	engine := hook(t, `def handle():
+    return [
+        start_step(id="build",pool="dev",prompt="b"),
+        start_step(id="review",pool="dev",prompt="r",needs=["build"],needs_resources=["pr:acme#1","emu"],
+                   max_review_rounds=0,on_request_changes="build"),
+        start_step(id="placed",prompt="p",placement={
+            "required": ["pr:acme#1"],
+            "prefer_for": "10m",
+            "options": [{"pool":"flagship","resources":["gpu"],"weight":100}, {"pool":"dev"}],
+        }),
+    ]
+`, automation.Options{})
+	result, err := engine.Invoke(t.Context(), "main.star:handle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	review := result.Actions[1]
+	if strings.Join(review.NeedsResources, ",") != "pr:acme#1,emu" || review.MaxReviewRounds == nil || *review.MaxReviewRounds != 0 || review.OnRequestChanges != "build" {
+		t.Fatalf("lost review step fields: %#v", review)
+	}
+	if result.Actions[0].MaxReviewRounds != nil {
+		t.Fatal("unset max_review_rounds must stay nil, not 0")
+	}
+	p := result.Actions[2].Placement
+	if p == nil || result.Actions[2].Pool != "" || p.PreferFor != "10m" || len(p.Options) != 2 || p.Options[0].Pool != "flagship" || p.Options[0].Weight != 100 || p.Options[0].Resources[0] != "gpu" || p.Required[0] != "pr:acme#1" {
+		t.Fatalf("lost placement: %#v", p)
+	}
+	// A caller mutating the result must not reach the frozen module value.
+	p.Options[0].Pool = "changed"
+	again, err := engine.Invoke(t.Context(), "main.star:handle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Actions[2].Placement.Options[0].Pool != "flagship" {
+		t.Fatal("placement is shared between invocations")
+	}
+}
+
+func TestStartStepScriptRetryAfter(t *testing.T) {
+	root := t.TempDir()
+	writeHook(t, root, "main.star", `def handle():
+    return start_step(id="wait",pool="dev",script=poll,retry_after="30s")
+
+def poll(run, step):
+    return result(not_yet=True)
+
+def bad(run, step):
+    return result(not_yet=True, outcome="x")
+`)
+	engine, err := automation.Load(t.Context(), root, []string{"main.star:handle"}, automation.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := engine.Invoke(t.Context(), "main.star:handle")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Actions[0].RetryAfter != "30s" || result.Actions[0].Script != "main.star:poll" {
+		t.Fatalf("lost retry_after: %#v", result.Actions[0])
+	}
+	step, err := engine.Step(t.Context(), "main.star:poll", time.Minute, nil, struct{}{}, struct{}{})
+	if err != nil || !step.NotYet {
+		t.Fatalf("not_yet lost: %#v %v", step, err)
+	}
+	if _, err := engine.Step(t.Context(), "main.star:bad", time.Minute, nil, struct{}{}, struct{}{}); err == nil || !strings.Contains(err.Error(), "not_yet excludes outcome") {
+		t.Fatalf("not_yet with an outcome accepted: %v", err)
+	}
+}
+
+func TestStartStepFieldValidation(t *testing.T) {
+	for _, tc := range []struct{ name, call, want string }{
+		{"resources not list", `start_step(id="a",pool="p",prompt="x",needs_resources="emu")`, "needs_resources"},
+		{"resources blank", `start_step(id="a",pool="p",prompt="x",needs_resources=[""])`, "nonempty strings"},
+		{"retry_after agent", `start_step(id="a",pool="p",prompt="x",retry_after="1m")`, "retry_after needs script"},
+		{"rounds negative", `start_step(id="a",pool="p",prompt="x",max_review_rounds=-1)`, "max_review_rounds"},
+		{"rounds string", `start_step(id="a",pool="p",prompt="x",max_review_rounds="2")`, "max_review_rounds"},
+		{"request changes not a need", `start_step(id="a",pool="p",prompt="x",needs=["b"],on_request_changes="c")`, "on_request_changes"},
+		{"request changes no needs", `start_step(id="a",pool="p",prompt="x",on_request_changes="c")`, "on_request_changes"},
+		{"pool missing", `start_step(id="a",prompt="x")`, "pool must be nonempty"},
+		{"placement and pool", `start_step(id="a",pool="p",prompt="x",placement={"options":[{"pool":"p"}]})`, "set one or the other"},
+		{"placement and resources", `start_step(id="a",prompt="x",needs_resources=["emu"],placement={"options":[{"pool":"p"}]})`, "set one or the other"},
+		{"placement and retry_pool", `start_step(id="a",prompt="x",retry_pool="p",placement={"options":[{"pool":"p"}]})`, "retry_pool"},
+		{"placement no options", `start_step(id="a",prompt="x",placement={"options":[]})`, "at least one option"},
+		{"placement option no pool", `start_step(id="a",prompt="x",placement={"options":[{"weight":1}]})`, "pool is required"},
+		{"placement bad prefer_for", `start_step(id="a",prompt="x",placement={"prefer_for":"soon","options":[{"pool":"p"}]})`, "prefer_for"},
+		{"placement negative prefer_for", `start_step(id="a",prompt="x",placement={"prefer_for":"-1m","options":[{"pool":"p"}]})`, "prefer_for"},
+		{"placement unknown key", `start_step(id="a",prompt="x",placement={"options":[{"pool":"p"}],"when":"x"})`, "unknown key"},
+		{"placement option unknown key", `start_step(id="a",prompt="x",placement={"options":[{"pool":"p","when":"x"}]})`, "unknown key"},
+		{"placement weight", `start_step(id="a",prompt="x",placement={"options":[{"pool":"p","weight":"1"}]})`, "weight"},
+		{"placement resources", `start_step(id="a",prompt="x",placement={"required":"emu","options":[{"pool":"p"}]})`, "placement required"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := hook(t, "def handle():\n    return "+tc.call+"\n", automation.Options{})
+			_, err := engine.Invoke(t.Context(), "main.star:handle")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+	for _, tc := range []struct{ name, call, want string }{
+		{"retry_after", `start_step(id="a",pool="p",script=run_it,retry_after="0s")`, "retry_after must be a positive duration"},
+		{"retry_after junk", `start_step(id="a",pool="p",script=run_it,retry_after="soon")`, "retry_after must be a positive duration"},
+		{"script placement", `start_step(id="a",script=run_it,placement={"options":[{"pool":"p"}]})`, "placement is for agent steps"},
+		{"script rounds", `start_step(id="a",pool="p",script=run_it,max_review_rounds=1)`, "max_review_rounds is for agent steps"},
+		{"script request changes", `start_step(id="a",pool="p",script=run_it,needs=["b"],on_request_changes="b")`, "on_request_changes is for agent steps"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := hook(t, "def run_it(run, step):\n    return result()\n\ndef handle():\n    return "+tc.call+"\n", automation.Options{})
+			_, err := engine.Invoke(t.Context(), "main.star:handle")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
 }
