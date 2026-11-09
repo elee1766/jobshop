@@ -124,7 +124,7 @@ test('chat and read-only inspector reach the beginning of journal history', asyn
     await page.setViewportSize(viewport);
     await openChat(page, isMobile, name);
     await loadBeginning(page.locator('.transcript'));
-    await page.goto('./?view=trace&ref=' + session.id);
+    await page.goto('./?view=trace&layout=graph&ref=' + session.id);
     await page.getByRole('button', { name: 'Inspect ' + session.id, exact: true }).click();
     await loadBeginning(page.getByRole('region', { name: 'Read-only session' }).locator('.session-output'));
   } finally {
@@ -177,7 +177,7 @@ test('consecutive tool calls sit tighter than separate messages', async ({ page,
     await expect(page.locator('.transcript .markdown').last()).toContainText('echo: tool run one');
     await post(request, 'api/chat/send', { key: session.ticket.fields.key, text: 'tool run two' });
     await check(page.locator('.transcript'));
-    await page.goto('./?view=trace&ref=' + session.id);
+    await page.goto('./?view=trace&layout=graph&ref=' + session.id);
     await page.getByRole('button', { name: 'Inspect ' + session.id, exact: true }).click();
     await check(page.getByRole('region', { name: 'Read-only session' }).locator('.session-output'));
   } finally {

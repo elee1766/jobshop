@@ -7,8 +7,8 @@ seed a live instance.
    /tmp/tl/jobshop ./cmd/jobshop`), `jobshop init` a root under /tmp, serve
    with `--tick=1s`, and serve Desk from the same binary.
 2. Create a parent task with a child (`--parent`), add `needs-human` to the
-   child, comment on it, close it. Open `?view=trace&ref=<parent>`, press
-   `timeline`.
+   child, comment on it, close it. Open `?view=trace&ref=<parent>`: it opens as
+   the timeline (#1136; `layout=graph` or the `graph` button shows the graph).
 3. Expected: one row per ticket, the child nested under the parent. The child
    has queued then yellow human segments ending at its close, and a comment
    tick. An open row's bar reaches the dashed now line. `graph` returns to the

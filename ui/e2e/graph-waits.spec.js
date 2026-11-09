@@ -42,7 +42,7 @@ test('wait edges are drawn with their state and external targets are dashed card
       body: `event: trace\ndata: ${JSON.stringify(trace)}\n\n`,
     }),
   );
-  await page.goto('./?view=trace&ref=js-wait');
+  await page.goto('./?view=trace&ref=js-wait&layout=graph');
   const graph = page.getByRole('region', { name: 'Ticket dependency graph' });
   await expect(graph).toContainText('1 tickets · 2 external · 2 relationships');
 

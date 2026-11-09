@@ -113,20 +113,30 @@ async function open(page, extra = '') {
   await page.goto('./?view=trace&ref=js-run' + extra);
 }
 
-test('the graph offers a timeline, the timeline a way back', async ({ page }) => {
+test('a trace opens as the timeline, the graph is one click away and back', async ({ page }) => {
   await open(page);
-  const graph = page.getByRole('region', { name: 'Ticket dependency graph' });
-  await graph.getByRole('button', { name: 'timeline' }).click();
-  await expect(page).toHaveURL(/layout=timeline/);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
   await expect(tl).toBeVisible();
+  const graph = page.getByRole('region', { name: 'Ticket dependency graph' });
+  await expect(graph).toHaveCount(0);
   await tl.getByRole('button', { name: 'graph' }).click();
-  await expect(page).not.toHaveURL(/layout=timeline/);
+  await expect(page).toHaveURL(/layout=graph/);
   await expect(graph).toBeVisible();
+  await graph.getByRole('button', { name: 'timeline' }).click();
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(tl).toBeVisible();
+});
+
+test('layout=graph opens the graph and layout=timeline still opens the timeline', async ({ page }) => {
+  await open(page, '&layout=graph');
+  await expect(page.getByRole('region', { name: 'Ticket dependency graph' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Ticket timeline' })).toHaveCount(0);
+  await open(page, '&layout=timeline');
+  await expect(page.getByRole('region', { name: 'Ticket timeline' })).toBeVisible();
 });
 
 test('bars show state, retries, waits and conflicts without color alone', async ({ page }) => {
-  await open(page, '&layout=timeline');
+  await open(page);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
   await expect(tl).toContainText('4 tickets · 2 arrows');
   const dev = tl.locator('.tl-row').filter({ hasText: 'Implement #7' });
@@ -142,7 +152,7 @@ test('bars show state, retries, waits and conflicts without color alone', async 
 });
 
 test('collapsing a row hides what is nested under it and the detail lists every segment', async ({ page }) => {
-  await open(page, '&layout=timeline');
+  await open(page);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
   await expect(tl.locator('.tl-row')).toHaveCount(4);
   await tl.getByRole('button', { name: 'Collapse js-rev' }).click();
@@ -160,7 +170,7 @@ test('collapsing a row hides what is nested under it and the detail lists every 
 });
 
 test('zoom widens the chart and the page does not overflow', async ({ page }) => {
-  await open(page, '&layout=timeline');
+  await open(page);
   const tl = page.getByRole('region', { name: 'Ticket timeline' });
   const canvas = tl.locator('.tl-canvas');
   const before = (await canvas.boundingBox()).width;
