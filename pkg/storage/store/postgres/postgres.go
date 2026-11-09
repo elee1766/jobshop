@@ -1,6 +1,6 @@
 // Package postgres is the Postgres store backend (#493, JOB-41). It owns
 // its SQL (pgdb, list.go), transactions, retries and connection pools;
-// it shares only the pkg/store types and the pure rules in storerules
+// it shares only the pkg/storage/store types and the pure rules in storerules
 // with the SQLite store.
 package postgres
 

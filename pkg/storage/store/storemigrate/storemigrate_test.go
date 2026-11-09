@@ -22,7 +22,7 @@ import (
 )
 
 // dsnEnv names a Postgres server the test may create a database on, as
-// in pkg/store/postgres. Unset, the copy test skips.
+// in pkg/storage/store/postgres. Unset, the copy test skips.
 const dsnEnv = "JOBSHOP_TEST_POSTGRES"
 
 // TestTablesComplete: every SQLite table is copied, so a new table
