@@ -1,0 +1,146 @@
+package archcheck
+
+// Jobshop is the ownership table and boundary rules for this repository
+// (JOB-165, parent JOB-164). Paths are today's paths. A child that moves a
+// package updates its row, and adds the rules the move makes possible, in the
+// same PR. docs/notes/JOB-165-package-boundaries.md explains the decisions.
+func Jobshop() Config {
+	return Config{
+		Families: families(),
+		Owners:   owners(),
+		Rules:    rules(),
+		Only:     onlyRules(),
+		Known:    known(),
+	}
+}
+
+// families lists the layers. A family's May list is every other family its
+// production code may import, so a new edge between families fails until
+// someone decides it is wanted. The family graph must have no cycle.
+func families() []Family {
+	return []Family{
+		{Name: "support"},
+		{Name: "ids"},
+		{Name: "pack"},
+		{Name: "store", May: []string{"support", "ids"}},
+		{Name: "knowledge", May: []string{"store", "support"}},
+		// config reads the store's types (scope refs, kinds) until JOB-166
+		// moves the shared ones to domain, and compiles hook programs to
+		// reject a bad script at load (config/hookcheck.go).
+		{Name: "config", May: []string{"support", "ids", "pack", "store", "automation"}},
+		{Name: "integrations", May: []string{"support", "config"}},
+		{Name: "automation", May: []string{"integrations"}},
+		{Name: "wire", May: []string{"support", "config", "store"}},
+		{Name: "session", May: []string{"support", "config", "wire"}},
+		{Name: "journal", May: []string{"support", "store", "wire", "config"}},
+		{Name: "conversation", May: []string{"support", "config", "store", "wire"}},
+		{Name: "orchestration", May: []string{
+			"support", "ids", "store", "knowledge", "config", "integrations",
+			"automation", "wire", "session", "journal", "conversation", "pack",
+		}},
+		{Name: "transport", May: []string{
+			"support", "ids", "store", "knowledge", "config", "integrations",
+			"wire", "session", "journal", "orchestration", "tooling",
+		}},
+		{Name: "tooling", May: []string{"wire"}},
+		{Name: "content", May: []string{"config", "store", "wire", "orchestration"}},
+	}
+}
+
+func owners() []Owner {
+	return []Owner{
+		// support: separate cross-cutting primitives, no umbrella package.
+		{Pkg: "./pkg/clock", Target: "support/clock", Family: "support", Child: "JOB-174"},
+		{Pkg: "./pkg/redact", Target: "support/redact", Family: "support", Child: "JOB-174"},
+		{Pkg: "./pkg/logctx", Target: "support/logctx", Family: "support", Child: "JOB-174"},
+		{Pkg: "./pkg/telemetry", Target: "support/telemetry", Family: "support", Child: "JOB-174"},
+
+		// ids: the generator stays a leaf (sonyflake); JOB-166 moves only
+		// identifier kinds and checks that domain needs into domain.
+		{Pkg: "./pkg/ids", Target: "stay (leaf generator)", Family: "ids", Child: "JOB-166"},
+
+		{Pkg: "./pkg/packcue", Target: "pack/cue", Family: "pack", Child: "JOB-172"},
+
+		// storage
+		{Pkg: "./pkg/store", Target: "storage/store", Family: "store", Child: "JOB-173"},
+		{Pkg: "./pkg/store/sqlite", Target: "storage/store/sqlite", Family: "store", Child: "JOB-173"},
+		{Pkg: "./pkg/store/sqlite/sqldb", Target: "storage/store/sqlite/sqldb", Family: "store", Child: "JOB-173"},
+		{Pkg: "./pkg/store/postgres", Target: "storage/store/postgres", Family: "store", Child: "JOB-173"},
+		{Pkg: "./pkg/store/postgres/pgdb", Target: "storage/store/postgres/pgdb", Family: "store", Child: "JOB-173"},
+		{Pkg: "./pkg/store/storerules", Target: "storage/store/storerules (I/O-free rules both backends share)", Family: "store", Child: "JOB-173"},
+		{Pkg: "./pkg/store/storemigrate", Target: "storage/store/storemigrate", Family: "store", Child: "JOB-173"},
+		{Pkg: "./pkg/store/storetest", Target: "storage/store/storetest", Family: "store", Child: "JOB-173", Harness: true},
+		{Pkg: "./pkg/writekey", Target: "storage/store/writekey (a store collection; control is the only caller)", Family: "store", Child: "JOB-173"},
+
+		{Pkg: "./pkg/journal", Target: "storage/journal", Family: "journal", Child: "JOB-173"},
+		{Pkg: "./pkg/journal/vltest", Target: "storage/journal/vltest", Family: "journal", Child: "JOB-173", Harness: true},
+		{Pkg: "./pkg/control/journalship", Target: "storage/journal/ship", Family: "journal", Child: "JOB-173"},
+		{Pkg: "./pkg/control/journalcompress", Target: "storage/journal/compress", Family: "journal", Child: "JOB-173"},
+		{Pkg: "./pkg/control/journalread", Target: "storage/journal/read", Family: "journal", Child: "JOB-173"},
+		{Pkg: "./pkg/control/journalvl", Target: "storage/journal (tests only)", Family: "journal", Child: "JOB-173", Harness: true},
+
+		// knowledge: memory stays usable without the database-backed records.
+		{Pkg: "./pkg/learning", Target: "knowledge", Family: "knowledge", Child: "JOB-170"},
+		{Pkg: "./pkg/memedit", Target: "knowledge (merged with learning's coordination)", Family: "knowledge", Child: "JOB-170"},
+		{Pkg: "./pkg/memory", Target: "knowledge/memory", Family: "knowledge", Child: "JOB-170"},
+
+		// config
+		{Pkg: "./pkg/config", Target: "config", Family: "config", Child: "JOB-172"},
+		{Pkg: "./pkg/config/tmpl", Target: "config/tmpl", Family: "config", Child: "-"},
+		{Pkg: "./pkg/cron", Target: "config/cron (parsed by config at load, evaluated by triggers)", Family: "config", Child: "JOB-172"},
+
+		// integrations
+		{Pkg: "./pkg/apicall", Target: "integrations/apicall (used by automation, cli and linearsvc, so not internal)", Family: "integrations", Child: "JOB-169"},
+		{Pkg: "./pkg/github", Target: "integrations/github", Family: "integrations", Child: "JOB-169"},
+		{Pkg: "./pkg/linear", Target: "integrations/linear", Family: "integrations", Child: "JOB-169"},
+		{Pkg: "./pkg/identity", Target: "integrations/identity", Family: "integrations", Child: "JOB-169"},
+
+		// execution
+		{Pkg: "./pkg/automation/...", Target: "execution/automation/...", Family: "automation", Child: "JOB-167"},
+		{Pkg: "./pkg/automation", Target: "execution/automation", Family: "automation", Child: "JOB-167"},
+		{Pkg: "./pkg/control/sessionrt", Target: "execution/session + execution/sandbox (split by file)", Family: "session", Child: "JOB-167"},
+		{Pkg: "./pkg/hostspec", Target: "execution/session", Family: "session", Child: "JOB-167"},
+
+		// wire
+		{Pkg: "./pkg/rpc", Target: "transport/rpc", Family: "wire", Child: "JOB-174"},
+		{Pkg: "./pkg/rpc/rpcschema", Target: "transport/rpc/rpcschema", Family: "wire", Child: "JOB-174"},
+
+		// conversation
+		{Pkg: "./pkg/control/chatlife", Target: "conversation", Family: "conversation", Child: "JOB-171"},
+
+		// orchestration
+		{Pkg: "./pkg/control", Target: "orchestration/control", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/controltest", Target: "orchestration/control/controltest", Family: "orchestration", Child: "JOB-168", Harness: true},
+		{Pkg: "./pkg/control/activity", Target: "orchestration/activity", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/attention", Target: "orchestration/attention", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/question", Target: "orchestration/question", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/ingestqueue", Target: "orchestration/ingest", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/ingest", Target: "orchestration/ingest", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/linearsvc", Target: "orchestration/linearsvc", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/scaleplan", Target: "orchestration/scaleplan", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/slotprovider", Target: "orchestration/slotprovider", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/stepexec", Target: "orchestration/stepexec", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/threads", Target: "orchestration/threads", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/triggers", Target: "orchestration/triggers", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/control/waitengine", Target: "orchestration/workflow", Family: "orchestration", Child: "JOB-168"},
+		{Pkg: "./pkg/hooks", Target: "orchestration/hooks", Family: "orchestration", Child: "JOB-168"},
+
+		// transport
+		{Pkg: "./cmd/jobshop", Target: "stay", Family: "transport", Child: "-"},
+		{Pkg: "./pkg/cli", Target: "transport/cli", Family: "transport", Child: "JOB-174"},
+		{Pkg: "./pkg/desk", Target: "transport/desk", Family: "transport", Child: "JOB-174"},
+		{Pkg: "./pkg/gateway", Target: "transport/gateway", Family: "transport", Child: "JOB-174"},
+
+		// tooling
+		{Pkg: "./pkg/runbook", Target: "tooling/runbook", Family: "tooling", Child: "JOB-174"},
+		{Pkg: "./pkg/flaky", Target: "tooling/flaky", Family: "tooling", Child: "JOB-174"},
+		{Pkg: "./pkg/flaky/cmd/ci-flaky", Target: "tooling/flaky/cmd/ci-flaky", Family: "tooling", Child: "JOB-174"},
+		{Pkg: "./pkg/rpc/rpcschema/cmd/deskgen", Target: "transport/rpc/rpcschema/cmd/deskgen", Family: "tooling", Child: "JOB-174"},
+		{Pkg: "./pkg/tooling/archcheck", Target: "stay", Family: "tooling", Child: "-"},
+		{Pkg: "./pkg/tooling/archcheck/cmd/archcheck", Target: "stay", Family: "tooling", Child: "-"},
+
+		// content with tests only
+		{Pkg: "./deploy", Target: "stay (docs and dashboards tests)", Family: "content", Child: "-"},
+		{Pkg: "./packs", Target: "stay (bundled pack content tests)", Family: "content", Child: "-"},
+	}
+}

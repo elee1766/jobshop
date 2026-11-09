@@ -107,7 +107,9 @@ jobshop/
 │   ├── flaky/                `go test -json` flake classifier; cmd/ci-flaky (#510)
 │   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
 │   ├── cron/                 5-field cron parser for triggers (no dependency)
-│   └── ids/                  ticket ids: per-project prefix + sonyflake base32
+│   ├── ids/                  ticket ids: per-project prefix + sonyflake base32
+│   └── tooling/archcheck/    import-graph boundary check and the package ownership
+│                             table (JOB-165); cmd/archcheck runs it in CI
 ├── docs/                     plan.md, data-model.md, layout.md
 ├── ui/                       Desk UI source (React, Vite); builds into pkg/desk/dist
 ├── examples/                 sample jobshop.yaml, agent prompts
@@ -150,6 +152,11 @@ flowchart TD
 
 `acphost` never imports jobshop: it has no ticket or policy logic
 (plan section 8.3), which keeps it small and rarely changing.
+
+The arrows above are a sketch. The enforced rules and the current-to-target
+ownership of every package are in `pkg/tooling/archcheck` and
+`docs/notes/JOB-165-package-boundaries.md`. `go run
+./pkg/tooling/archcheck/cmd/archcheck -inventory` prints the live graph.
 
 The session host is the external module `github.com/elee1766/acphost`
 (issue #256, 2026-11-04), extracted from the old `pkg/host` so other
