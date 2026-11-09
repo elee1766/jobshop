@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/elee1766/jobshop/pkg/knowledge"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // recall searches comments, session journals and learnings (#265). The

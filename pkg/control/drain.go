@@ -7,7 +7,7 @@ import (
 	"slices"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // drainAll is the key in Controller.drained that drains every pool.

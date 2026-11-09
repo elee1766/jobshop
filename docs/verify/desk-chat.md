@@ -15,7 +15,7 @@ send on desktop.
 3. For the escalation panel, play the gateway's part: create a
    `needs-human` ticket, `session.send` to pool `operator` with key
    `matrix:<room>:<root>`, and set `meta.gateway` to
-   `{gateway, room, root, key, session}`, as `pkg/gateway/escalate.go`
+   `{gateway, room, root, key, session}`, as `pkg/transport/gateway/escalate.go`
    does.
 4. In `ui/` (browsers from nixpkgs, as in `docs/verify/desk.md`):
    `DESK_CHAT=1 DESK_CHAT_ESC_SEND=1 DESK_URL=http://127.0.0.1:7483 npx playwright test`.

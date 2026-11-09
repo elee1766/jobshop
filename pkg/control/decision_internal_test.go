@@ -19,9 +19,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/integrations/identity"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // ghCall is one request the fake GitHub saw.

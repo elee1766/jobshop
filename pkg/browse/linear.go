@@ -12,7 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 var linearID = regexp.MustCompile(`^[0-9a-fA-F-]{8,64}$`)

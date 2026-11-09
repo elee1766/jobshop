@@ -21,7 +21,8 @@ Companion to `plan.md`.
 
 ```
 jobshop/
-├── cmd/jobshop/              thin shim: calls cli.Main(os.Args) and exits
+├── cmd/jobshop/              thin entry point: cli.Main(os.Args, control.Run); the one
+│                             place the CLI and the controller meet (JOB-174)
 ├── pkg/
 │   ├── domain/               shared types and invariants, standard library only: Ticket,
 │   │                         Edge, Comment, kinds and their typed fields, waits,
@@ -46,10 +47,6 @@ jobshop/
 │   │       ├── compress/     closed-session journal compression (JOB-89)
 │   │       ├── vltest/       a real VictoriaLogs for tests
 │   │       └── journalvl/    tests only: shipping and search against a real VictoriaLogs
-│   ├── rpc/                  JSON-RPC method names, request/response types,
-│   │   │                     client over the acp-go-sdk connection
-│   │   └── rpcschema/        JSON schema and TypeScript for Desk (#542);
-│   │                         cmd/deskgen writes ui/desk-plugin.d.ts
 │   ├── control/              controller: tick loop, claims release, lease sweep,
 │   │   │                     session supervision, admin and CLI socket handlers.
 │   │   │                     Wiring and coordination; subsystem engines live in
@@ -114,23 +111,38 @@ jobshop/
 │   ├── config/               YAML loading, validation, defaults; tmpl/ renders
 │   │                         config templates
 │   ├── packcue/              local CUE package evaluation for packs
-│   ├── gateway/              A2A gateway: escalation chats to another agent (#547)
-│   ├── desk/                 Jobshop Desk HTTP server over the admin API;
-│   │                         dist/ is the built UI, embedded
-│   ├── telemetry/            OTel providers, slog bridge, Prometheus exporter
-│   ├── logctx/               log attributes carried in a context (JOB-49)
-│   ├── clock/                time source the controller reads, fake in tests (#362)
-│   ├── redact/               secret redaction for journal reads, shipping
+│   ├── transport/            external entry points, independent adapters (JOB-174).
+│   │   │                     No orchestration policy: they carry requests to the
+│   │   │                     controller's admin API and render the answers
+│   │   ├── rpc/              JSON-RPC method names, request/response types,
+│   │   │   │                 client over the acp-go-sdk connection
+│   │   │   └── rpcschema/    JSON schema and TypeScript for Desk (#542);
+│   │   │                     cmd/deskgen writes packages/jobshop-client/rpc.d.ts
+│   │   ├── cli/              CLI subcommands (ticket, claim, assign, session, ...).
+│   │   │                     Does not import control: cmd/jobshop passes it the
+│   │   │                     controller to run for `serve`
+│   │   ├── desk/             Jobshop Desk HTTP server over the admin API;
+│   │   │                     dist/ is the built UI, embedded
+│   │   └── gateway/          A2A gateway: escalation chats to another agent (#547)
+│   ├── support/              separate cross-cutting primitives. No umbrella API,
+│   │   │                     no shared container (JOB-174)
+│   │   ├── telemetry/        OTel providers, slog bridge, Prometheus exporter
+│   │   ├── logctx/           log attributes carried in a context (JOB-49); telemetry
+│   │   │                     reads them, control and cli set them
+│   │   ├── clock/            time source the controller reads, fake in tests (#362)
+│   │   └── redact/           secret redaction for journal reads, shipping
 │   │                         and command step output (betterleaks, env values)
-│   ├── runbook/              docs/verify runbook parser and runner (#635)
-│   ├── flaky/                `go test -json` flake classifier; cmd/ci-flaky (#510)
-│   ├── cli/                  CLI subcommands (ticket, claim, assign, session, ...)
 │   ├── cron/                 5-field cron parser for triggers (no dependency)
 │   ├── ids/                  ticket ids: per-project prefix + sonyflake base32
-│   └── tooling/archcheck/    import-graph boundary check and the package ownership
-│                             table (JOB-165); cmd/archcheck runs it in CI
+│   └── tooling/              development and verification tools, not linked into
+│       │                     the controller
+│       ├── archcheck/        import-graph boundary check and the package ownership
+│       │                     table (JOB-165); cmd/archcheck runs it in CI
+│       ├── runbook/          docs/verify runbook parser and runner (#635); the CLI's
+│       │                     `runbook run` is its one caller, so it stays a package
+│       └── flaky/            `go test -json` flake classifier; cmd/ci-flaky (#510)
 ├── docs/                     plan.md, data-model.md, layout.md
-├── ui/                       Desk UI source (React, Vite); builds into pkg/desk/dist
+├── ui/                       Desk UI source (React, Vite); builds into pkg/transport/desk/dist
 ├── examples/                 sample jobshop.yaml, agent prompts
 ├── nix/
 │   ├── package.nix           go2nix build, buildGo127Module fallback
@@ -146,8 +158,8 @@ Dependency direction (an arrow means "may import"):
 
 ```mermaid
 flowchart TD
-  cmd[cmd/jobshop] --> cli
-  cli --> control & acphost & session & desk & gateway
+  cmd[cmd/jobshop] --> cli & control
+  cli --> acphost & session & desk & gateway
   cli --> rpc & config
   config --> cron
   control --> store & rpc & config & telemetry & acphost & session & sandbox
@@ -221,7 +233,7 @@ Subcommands:
 | `/proc` parsing (PID start time) | `github.com/prometheus/procfs` | v0.23.0 |
 | Goroutine groups | `golang.org/x/sync/errgroup` | v0.24.0 |
 | Secret redaction | `github.com/betterleaks/betterleaks/v2` (`scan`, `config`) (2026-11-05, #578): gitleaks' successor, about twice the rules, 9 modules instead of 63, no viper global state. Pinned to an rc until v2.0.0 is out | v2.0.0-rc.7 |
-| Desk UI (build-time only, `ui/`) | React, TypeScript, Vite, Jotai, Wouter, Tailwind, Base UI, Oxlint/Oxfmt, Playwright (2026-11-09, JOB-150), replacing Svelte 5 (2026-11-03, #202): output is built into `pkg/desk/dist` and embedded, so the Go module gains no dependency. Versions are exact in `ui/package.json`; ownership and conventions in `docs/notes/JOB-150-desk-react-port.md` | react 19.3.1, vite 8.3.5, jotai 3.0.1, wouter 3.13.0, tailwindcss 4.3.5 |
+| Desk UI (build-time only, `ui/`) | React, TypeScript, Vite, Jotai, Wouter, Tailwind, Base UI, Oxlint/Oxfmt, Playwright (2026-11-09, JOB-150), replacing Svelte 5 (2026-11-03, #202): output is built into `pkg/transport/desk/dist` and embedded, so the Go module gains no dependency. Versions are exact in `ui/package.json`; ownership and conventions in `docs/notes/JOB-150-desk-react-port.md` | react 19.3.1, vite 8.3.5, jotai 3.0.1, wouter 3.13.0, tailwindcss 4.3.5 |
 | Lint (tool, not a module) | golangci-lint, run by CI (`golangci-lint-action`). Not packaged in the flake (2026-11-05): hosts put it on agents' PATH through `services.jobshop.path` | v2.15.0 |
 
 Uses:
@@ -240,19 +252,19 @@ Uses:
   Already an indirect dependency of the Prometheus exporter.
 - **Prometheus exporter** (added 2026-11-01, issue #14): brings
   `github.com/prometheus/client_golang` for its registry and `promhttp`
-  handler. `pkg/telemetry` uses a private registry per controller rather
+  handler. `pkg/support/telemetry` uses a private registry per controller rather
   than the global one, so tests and restarts do not collide.
 - **OTLP HTTP exporters and otelslog** (added 2026-11-01, issue #15):
   `otlptracehttp`, `otlploghttp` (v0.23.0) and `sdk/log` for
   `telemetry.otlp_endpoint`; the bridge sends controller logs with trace
   ids. They pull in `grpc-gateway` and `otlp` protos (types only, HTTP
-  transport). Only imported by `pkg/telemetry`.
+  transport). Only imported by `pkg/support/telemetry`.
 - **errgroup**: controller and host goroutine lifetimes and shutdown.
 - **betterleaks**: its scanner and default rules, plus jobshop's
   built-ins and the host's `redact` rules, redact secrets in text
   leaving the controller and refuse `jobshop gh`/`linear` writes
   holding one; launch-env secret values are masked by exact match.
-  Replaced gitleaks (2026-11-05, #578). Only imported by `pkg/redact`.
+  Replaced gitleaks (2026-11-05, #578). Only imported by `pkg/support/redact`.
 
 Standard library by choice (decided 2026-11-01):
 - `log/slog` for logging, `net/http` for `/metrics`, `text/tabwriter`
@@ -313,7 +325,7 @@ golangci-lint run
 go test -race ./...
 ```
 
-Desk assets are generated into ignored `pkg/desk/dist` before Go embeds them.
+Desk assets are generated into ignored `pkg/transport/desk/dist` before Go embeds them.
 CI shares the frontend build with its Go checks. Nix builds it separately in a
 cached derivation. No Makefile unless a real need appears.
 

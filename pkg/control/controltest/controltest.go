@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/support/clock"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Epoch is the fake clock's start time.
@@ -107,6 +107,26 @@ func Start(t testing.TB, root config.Root, opt control.Options) *Controller {
 	t.Cleanup(c.Stop)
 	c.Admin = c.Dial(root.AdminSocket())
 	return c
+}
+
+// Option adjusts the controller options before StartWith starts it.
+type Option func(*control.Options)
+
+// WithVersion sets the version and commit the version method reports.
+func WithVersion(version, commit string) Option {
+	return func(o *control.Options) { o.Version, o.Commit = version, commit }
+}
+
+// StartWith is Start for a test outside pkg/control that needs only the
+// default controller or a few options: it names no control type, so an
+// adapter's tests do not import the controller (JOB-174).
+func StartWith(t testing.TB, root config.Root, opts ...Option) *Controller {
+	t.Helper()
+	var o control.Options
+	for _, f := range opts {
+		f(&o)
+	}
+	return Start(t, root, o)
 }
 
 // MetricsURL is the /metrics URL. The config must set

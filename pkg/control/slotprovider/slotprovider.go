@@ -24,7 +24,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 // outboundCeiling bounds an http call whose caller sets no deadline. Every

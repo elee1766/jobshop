@@ -14,8 +14,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/knowledge/memory"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Prompt rules (#205): operator guidance from config added to the prompts

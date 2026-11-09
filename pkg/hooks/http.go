@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 var hookHTTP = telemetry.HTTPClient("hook", 24*time.Hour)

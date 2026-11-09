@@ -3,7 +3,7 @@ package config
 import (
 	"fmt"
 
-	"github.com/elee1766/jobshop/pkg/redact"
+	"github.com/elee1766/jobshop/pkg/support/redact"
 )
 
 // Redact configures secret scanning (#578): rules added to betterleaks'

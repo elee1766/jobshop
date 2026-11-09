@@ -9,7 +9,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 // Off-pass calls (JOB-103). The supervisor pass holds tickMu, so a

@@ -15,7 +15,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	execsandbox "github.com/elee1766/jobshop/pkg/execution/sandbox"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 // preflightSpec is what pool's sessions ask the host for, enough for

@@ -12,7 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // TestSessionRename (#626): a session renames itself, names need not be

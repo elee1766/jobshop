@@ -7,7 +7,7 @@ isolated controller, never a live one: the reload spec rewrites its
 ## Setup
 
 ```sh
-go run ./pkg/rpc/rpcschema/cmd/deskgen
+go run ./pkg/transport/rpc/rpcschema/cmd/deskgen
 npm --prefix ui ci && npm --prefix ui run check && npm --prefix ui run build
 go build -o /tmp/embeds/jobshop ./cmd/jobshop
 env -u JOBSHOP_SOCKET -u JOBSHOP_SESSION -u JOBSHOP_ROOT /tmp/embeds/jobshop init /tmp/embeds/root
@@ -77,7 +77,7 @@ the old ones.
 
 ```sh
 go test ./pkg/config -run DeskEmbeds
-go test ./pkg/desk -run Embeds
+go test ./pkg/transport/desk -run Embeds
 go test ./pkg/control -run TestReloadPublishesStateForDesk
 ```
 

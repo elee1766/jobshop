@@ -12,7 +12,7 @@ at the [README](../README.md).
 3. [docs/layout.md](../docs/layout.md): packages and dependencies.
 4. Generate Desk assets: `npm --prefix ui ci && npm --prefix ui run build`.
    Then check: `go build ./... && go vet ./... && go test ./... && golangci-lint run ./...`.
-   After changing a command's help, run `go generate ./pkg/cli` to
+   After changing a command's help, run `go generate ./pkg/transport/cli` to
    refresh [cli.md](cli.md).
 
 ## Writing or editing a pack

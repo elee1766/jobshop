@@ -1,10 +1,10 @@
 package control
 
 import (
-	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/support/clock"
 )
 
 // queue is the ingest queue (JOB-141, pkg/control/ingestqueue), made on

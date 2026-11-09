@@ -12,7 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/conversation/attention"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 var t0 = time.Date(2026, 11, 8, 12, 0, 0, 0, time.UTC)

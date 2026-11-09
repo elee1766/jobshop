@@ -21,11 +21,11 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
 	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
 	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/redact"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
 
 // fakeHost is a ship.Host over fixed tickets and a temp dir.

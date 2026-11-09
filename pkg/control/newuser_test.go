@@ -10,10 +10,10 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/cli"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/cli"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // guideBlocks returns the fenced blocks of the "A minimal pack" section of
@@ -55,7 +55,7 @@ func TestNewUserPath(t *testing.T) {
 
 	// 1. jobshop init.
 	require.NoError(t, os.Remove(root.Config()))
-	require.Equal(t, 0, cli.Main([]string{"init", root.Dir}))
+	require.Equal(t, 0, cli.Main([]string{"init", root.Dir}, nil))
 
 	// 2. The guide's pack in <root>/packs/main.
 	pack := filepath.Join(root.Dir, "packs", "main")
@@ -117,7 +117,7 @@ func TestNewUserPath(t *testing.T) {
 	require.NotEmpty(t, line, "guide has a run start line")
 	args := []string{"--root", root.Dir, "--socket", root.AdminSocket()}
 	args = append(args, shellWords(t, strings.TrimPrefix(line, "jobshop "))...)
-	require.Equal(t, 0, cli.Main(args), "jobshop %s", line)
+	require.Equal(t, 0, cli.Main(args, nil), "jobshop %s", line)
 
 	// The same start with the same key returns the run it made.
 	var p rpc.RunStartParams

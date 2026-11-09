@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/redact"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/support/redact"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Redaction on write (#574): comments, reports, learnings and artifacts

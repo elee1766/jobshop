@@ -50,7 +50,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: desk-ui
-          path: pkg/desk/dist
+          path: pkg/transport/desk/dist
           if-no-files-found: error
 
   binaries:
@@ -71,7 +71,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: desk-ui
-          path: pkg/desk/dist
+          path: pkg/transport/desk/dist
       - name: build
         env:
           GOOS: ${{ matrix.goos }}
@@ -82,7 +82,7 @@ jobs:
           name="jobshop_${VERSION}_${GOOS}_${GOARCH}"
           mkdir -p "dist/$name"
           go build -trimpath \
-            -ldflags "-s -w -X github.com/elee1766/jobshop/pkg/cli.version=${VERSION} -X github.com/elee1766/jobshop/pkg/cli.commit=${GITHUB_SHA::7}" \
+            -ldflags "-s -w -X github.com/elee1766/jobshop/pkg/transport/cli.version=${VERSION} -X github.com/elee1766/jobshop/pkg/transport/cli.commit=${GITHUB_SHA::7}" \
             -o "dist/$name/jobshop" ./cmd/jobshop
           cp LICENSE README.md "dist/$name/"
           tar -C dist -czf "dist/$name.tar.gz" "$name"

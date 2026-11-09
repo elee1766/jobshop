@@ -23,7 +23,7 @@
    confirm the alert clears. A host-only setting such as `store:` in the
    root pack must be rejected.
 
-Automated coverage: `go test ./pkg/config ./pkg/cli` and
+Automated coverage: `go test ./pkg/config ./pkg/transport/cli` and
 `go test ./pkg/control -run '^TestConfigWatch'`. These cover composition,
 inheritance, namespacing, provenance, linked configs, deployment path
 rewrites, startup fallback, initialization collisions and event-driven reload.

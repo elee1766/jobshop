@@ -32,11 +32,11 @@ import (
 	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/execution/sandbox"
 	"github.com/elee1766/jobshop/pkg/execution/session"
-	"github.com/elee1766/jobshop/pkg/logctx"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
 	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/logctx"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 
 	"github.com/elee1766/jobshop/pkg/domain"
 )

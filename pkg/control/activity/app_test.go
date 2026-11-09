@@ -12,7 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/integrations/apicall"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // TestLiveActivityApp (JOB-108): with an installation token the events API

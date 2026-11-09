@@ -57,10 +57,10 @@ func families() []Family {
 func owners() []Owner {
 	return []Owner{
 		// support: separate cross-cutting primitives, no umbrella package.
-		{Pkg: "./pkg/clock", Target: "support/clock", Family: "support", Child: "JOB-174"},
-		{Pkg: "./pkg/redact", Target: "support/redact", Family: "support", Child: "JOB-174"},
-		{Pkg: "./pkg/logctx", Target: "support/logctx", Family: "support", Child: "JOB-174"},
-		{Pkg: "./pkg/telemetry", Target: "support/telemetry", Family: "support", Child: "JOB-174"},
+		{Pkg: "./pkg/support/clock", Target: "stay", Family: "support", Child: "-"},
+		{Pkg: "./pkg/support/redact", Target: "stay", Family: "support", Child: "-"},
+		{Pkg: "./pkg/support/logctx", Target: "stay", Family: "support", Child: "-"},
+		{Pkg: "./pkg/support/telemetry", Target: "stay", Family: "support", Child: "-"},
 
 		// ids: the generator and its id shape checks stay a leaf. Only the two
 		// store backends and a store test use it besides config and control, and
@@ -119,8 +119,8 @@ func owners() []Owner {
 		{Pkg: "./pkg/execution/session", Target: "stay (host start, adopt, stop, liveness, slots, homes, ACP client, spec.json)", Family: "session", Child: "-"},
 
 		// wire
-		{Pkg: "./pkg/rpc", Target: "transport/rpc", Family: "wire", Child: "JOB-174"},
-		{Pkg: "./pkg/rpc/rpcschema", Target: "transport/rpc/rpcschema", Family: "wire", Child: "JOB-174"},
+		{Pkg: "./pkg/transport/rpc", Target: "stay", Family: "wire", Child: "-"},
+		{Pkg: "./pkg/transport/rpc/rpcschema", Target: "stay", Family: "wire", Child: "-"},
 
 		// conversation
 		{Pkg: "./pkg/conversation", Target: "stay (managed chat rules, escalation chat policy, message envelope, attachments)", Family: "conversation", Child: "JOB-171"},
@@ -145,15 +145,15 @@ func owners() []Owner {
 
 		// transport
 		{Pkg: "./cmd/jobshop", Target: "stay", Family: "transport", Child: "-"},
-		{Pkg: "./pkg/cli", Target: "transport/cli", Family: "transport", Child: "JOB-174"},
-		{Pkg: "./pkg/desk", Target: "transport/desk", Family: "transport", Child: "JOB-174"},
-		{Pkg: "./pkg/gateway", Target: "transport/gateway", Family: "transport", Child: "JOB-174"},
+		{Pkg: "./pkg/transport/cli", Target: "stay", Family: "transport", Child: "-"},
+		{Pkg: "./pkg/transport/desk", Target: "stay", Family: "transport", Child: "-"},
+		{Pkg: "./pkg/transport/gateway", Target: "stay", Family: "transport", Child: "-"},
 
 		// tooling
-		{Pkg: "./pkg/runbook", Target: "tooling/runbook", Family: "tooling", Child: "JOB-174"},
-		{Pkg: "./pkg/flaky", Target: "tooling/flaky", Family: "tooling", Child: "JOB-174"},
-		{Pkg: "./pkg/flaky/cmd/ci-flaky", Target: "tooling/flaky/cmd/ci-flaky", Family: "tooling", Child: "JOB-174"},
-		{Pkg: "./pkg/rpc/rpcschema/cmd/deskgen", Target: "transport/rpc/rpcschema/cmd/deskgen", Family: "tooling", Child: "JOB-174"},
+		{Pkg: "./pkg/tooling/runbook", Target: "stay", Family: "tooling", Child: "-"},
+		{Pkg: "./pkg/tooling/flaky", Target: "stay", Family: "tooling", Child: "-"},
+		{Pkg: "./pkg/tooling/flaky/cmd/ci-flaky", Target: "stay", Family: "tooling", Child: "-"},
+		{Pkg: "./pkg/transport/rpc/rpcschema/cmd/deskgen", Target: "stay", Family: "tooling", Child: "-"},
 		{Pkg: "./pkg/tooling/archcheck", Target: "stay", Family: "tooling", Child: "-"},
 		{Pkg: "./pkg/tooling/archcheck/cmd/archcheck", Target: "stay", Family: "tooling", Child: "-"},
 

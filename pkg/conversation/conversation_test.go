@@ -15,8 +15,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/conversation/attention"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 func session(id, key string, mods ...func(*domain.SessionFields)) domain.Ticket {

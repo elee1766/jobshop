@@ -13,8 +13,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/execution/automation"
 	"github.com/elee1766/jobshop/pkg/hooks"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 type hookRunPlan struct {

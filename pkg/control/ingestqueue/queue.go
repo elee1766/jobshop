@@ -21,10 +21,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/support/clock"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Ingest queue (#335, #679, docs/notes/679-ingest-queue.md). Every

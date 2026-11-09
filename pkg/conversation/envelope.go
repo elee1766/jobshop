@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Messages reach the model as XML envelopes (#1073):

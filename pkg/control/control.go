@@ -27,7 +27,6 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/elee1766/jobshop/pkg/browse"
-	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/activity"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
@@ -45,15 +44,16 @@ import (
 	"github.com/elee1766/jobshop/pkg/integrations/identity"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
 	"github.com/elee1766/jobshop/pkg/knowledge"
-	"github.com/elee1766/jobshop/pkg/logctx"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal/compress"
 	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/postgres"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
 	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/clock"
+	"github.com/elee1766/jobshop/pkg/support/logctx"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // DefaultLease is the claim lease when the config sets none.

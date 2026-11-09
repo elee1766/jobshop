@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/journal"
 	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // grantJournalSearch lets a pool search its own project's journals.

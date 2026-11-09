@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // incidentCap bounds the in-memory WARN/ERROR log. A crash loop can log

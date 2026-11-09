@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // Worker is the loop of `jobshop ingest work` (#443): claim a

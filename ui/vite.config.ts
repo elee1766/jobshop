@@ -13,7 +13,7 @@ export default defineConfig({
   // href> for its path prefix (#516): one build works at any prefix.
   base: './',
   build: {
-    outDir: '../pkg/desk/dist',
+    outDir: '../pkg/transport/desk/dist',
     emptyOutDir: true,
     // No inline scripts or styles: the CSP is script-src 'self'.
     assetsInlineLimit: 0,

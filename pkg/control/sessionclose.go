@@ -9,9 +9,9 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/storage/store"
-	"github.com/elee1766/jobshop/pkg/telemetry"
+	"github.com/elee1766/jobshop/pkg/support/telemetry"
+	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
 
 // resolutionClosed: ended on request by `session close` or Desk (JOB-111).
