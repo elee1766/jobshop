@@ -12,6 +12,7 @@ import (
 // startTelemetry builds a long-running command's logger and tracer from
 // the telemetry section of r's config. A missing config file exports
 // nothing, so a command that does not otherwise need the config still runs.
+// When only a pack fails, the last good config supplies the section.
 func startTelemetry(ctx context.Context, r config.Root, name string, f LogFlags) (*telemetry.Process, error) {
 	base, err := f.logger()
 	if err != nil {
@@ -19,8 +20,12 @@ func startTelemetry(ctx context.Context, r config.Root, name string, f LogFlags)
 	}
 	var tc config.Telemetry
 	if _, err := os.Stat(r.Config()); err == nil {
-		cfg, err := config.Load(r)
-		if err != nil {
+		// A failing pack does not change host settings such as telemetry, and
+		// the controller serves the last good snapshot then (#227): do not
+		// stop serve before it gets there (#1128). The pack error is dropped
+		// here, the controller reports it.
+		cfg, err := config.LoadOrLastGood(r)
+		if cfg == nil {
 			return nil, err
 		}
 		tc = cfg.Telemetry
