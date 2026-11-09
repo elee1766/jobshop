@@ -5,20 +5,20 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // HookScope records every pool and workflow reference owner's callbacks
 // can resolve now, as a run pins it at start (see store.RunScope).
-func (c *Config) HookScope(owner string) *store.RunScope {
-	scope := &store.RunScope{Pools: map[string]store.ScopeRef{}, Workflows: map[string]store.ScopeRef{}}
+func (c *Config) HookScope(owner string) *domain.RunScope {
+	scope := &domain.RunScope{Pools: map[string]domain.ScopeRef{}, Workflows: map[string]domain.ScopeRef{}}
 	var prefixes []string
 	for _, in := range c.Instances {
 		if in.Prefix != "" {
 			prefixes = append(prefixes, in.Prefix)
 		}
 	}
-	add := func(kind, name, project string, into map[string]store.ScopeRef) {
+	add := func(kind, name, project string, into map[string]domain.ScopeRef) {
 		inputs := []string{name}
 		for _, prefix := range prefixes {
 			if local, ok := strings.CutPrefix(name, prefix); ok && local != "" {
@@ -27,7 +27,7 @@ func (c *Config) HookScope(owner string) *store.RunScope {
 		}
 		for _, input := range inputs {
 			if resolved, err := c.ResolveHookReference(owner, kind, input); err == nil && resolved == name {
-				into[input] = store.ScopeRef{Name: name, Project: project}
+				into[input] = domain.ScopeRef{Name: name, Project: project}
 			}
 		}
 	}
@@ -42,7 +42,7 @@ func (c *Config) HookScope(owner string) *store.RunScope {
 
 // ResolvePinnedHookReference resolves name now and requires the run's
 // pinned scope to have accepted the same target in the same project.
-func (c *Config) ResolvePinnedHookReference(owner, kind, name string, scope *store.RunScope) (string, error) {
+func (c *Config) ResolvePinnedHookReference(owner, kind, name string, scope *domain.RunScope) (string, error) {
 	resolved, err := c.ResolveHookReference(owner, kind, name)
 	if err != nil || scope == nil {
 		return resolved, err
@@ -51,7 +51,7 @@ func (c *Config) ResolvePinnedHookReference(owner, kind, name string, scope *sto
 	if kind == "workflow" {
 		pinned, project = scope.Workflows, c.Workflows[resolved].Project
 	}
-	if ref, ok := pinned[name]; !ok || ref != (store.ScopeRef{Name: resolved, Project: project}) {
+	if ref, ok := pinned[name]; !ok || ref != (domain.ScopeRef{Name: resolved, Project: project}) {
 		return "", fmt.Errorf("%s %q is outside the scope %s accepted when the run started", kind, name, owner)
 	}
 	return resolved, nil

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Linear webhook intake (#300). Linear pushes Issue and Comment events
@@ -48,7 +48,7 @@ func (s *Service) Handler(sp *ingest.Spool) *ingest.Handler {
 // Delivered runs the Linear consumer for new Linear inbox items from the
 // drain, in the background: it reads Linear. The endpoint names the
 // identity whose secret signed the delivery.
-func (s *Service) Delivered(items []store.InboxItem) {
+func (s *Service) Delivered(items []domain.InboxItem) {
 	eps := map[string]string{}
 	for _, e := range s.host.Config().IngestEndpoints() {
 		if e.Source == config.IngestLinear {

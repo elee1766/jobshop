@@ -7,8 +7,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/slotprovider"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Provider-owned resource slots (#407). The store keeps slot state and
@@ -35,7 +35,7 @@ func (h slotHost) Context() context.Context { return h.c.ctx }
 func (h slotHost) Dir() string              { return h.c.root.Dir }
 func (h slotHost) Env() []string            { return hostInheritedEnv() }
 
-func (h slotHost) Resources(ctx context.Context, pool string) (store.ResourceReport, error) {
+func (h slotHost) Resources(ctx context.Context, pool string) (domain.ResourceReport, error) {
 	return h.c.store.Resources(ctx, pool)
 }
 
@@ -65,7 +65,7 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 		if !ok || r.Provider == nil || sl.Removing {
 			// No provider any more, or removed while held: nothing to
 			// reset. SlotReset deletes a removing slot.
-			_, _, _ = c.store.Slot(ctx, "", store.SlotEvent{Op: store.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: !ok || r.Provider == nil})
+			_, _, _ = c.store.Slot(ctx, "", domain.SlotEvent{Op: domain.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: !ok || r.Provider == nil})
 			continue
 		}
 		p := r.Provider
@@ -87,14 +87,14 @@ func (c *Controller) resetSlots(ctx context.Context, cfg *config.Config) {
 		if err != nil {
 			c.log.WarnContext(ctx, "resource reset failed: slot gone", "resource", sl.Pool, "slot", sl.ID, "err", err)
 		}
-		if _, _, serr := c.store.Slot(ctx, "", store.SlotEvent{Op: store.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: err == nil}); serr != nil {
+		if _, _, serr := c.store.Slot(ctx, "", domain.SlotEvent{Op: domain.SlotReset, Pool: sl.Pool, ID: sl.ID, OK: err == nil}); serr != nil {
 			c.log.ErrorContext(ctx, "record slot reset", "resource", sl.Pool, "slot", sl.ID, "err", serr)
 		}
 	}
 }
 
 // slotEnv is the env of the slots t's claim holds, sorted, as KEY=value.
-func (c *Controller) slotEnv(ctx context.Context, t store.Ticket) []string {
+func (c *Controller) slotEnv(ctx context.Context, t domain.Ticket) []string {
 	rep, err := c.store.Resources(ctx, "")
 	if err != nil {
 		return nil
@@ -106,7 +106,7 @@ func (c *Controller) slotEnv(ctx context.Context, t store.Ticket) []string {
 func (c *Controller) providerResource(name string) error {
 	r, ok := c.config().Resources[name]
 	if !ok || r.Provider == nil {
-		return fmt.Errorf("%w: %q is not a resource with a provider", store.ErrInvalid, name)
+		return fmt.Errorf("%w: %q is not a resource with a provider", domain.ErrInvalid, name)
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func (c *Controller) resourceAdd(ctx context.Context, sc scope, p rpc.SlotParams
 	if err := c.providerResource(p.Resource); err != nil {
 		return nil, err
 	}
-	sl, _, err := c.store.Slot(ctx, sc.actor, store.SlotEvent{Op: store.SlotAdd, Pool: p.Resource, ID: p.Slot, Env: p.Env})
+	sl, _, err := c.store.Slot(ctx, sc.actor, domain.SlotEvent{Op: domain.SlotAdd, Pool: p.Resource, ID: p.Slot, Env: p.Env})
 	return sl, err
 }
 
@@ -126,7 +126,7 @@ func (c *Controller) resourceRemove(ctx context.Context, sc scope, p rpc.SlotPar
 	if err := c.requireGrant(sc, rpc.MethodResourceRemove, "resource remove"); err != nil {
 		return nil, err
 	}
-	sl, _, err := c.store.Slot(ctx, sc.actor, store.SlotEvent{Op: store.SlotRemove, Pool: p.Resource, ID: p.Slot})
+	sl, _, err := c.store.Slot(ctx, sc.actor, domain.SlotEvent{Op: domain.SlotRemove, Pool: p.Resource, ID: p.Slot})
 	return sl, err
 }
 
@@ -138,7 +138,7 @@ func (c *Controller) resourceUnhealthy(ctx context.Context, sc scope, p rpc.Slot
 	if reason == "" {
 		reason = "reported by provider"
 	}
-	sl, reopened, err := c.store.Slot(ctx, sc.actor, store.SlotEvent{Op: store.SlotUnhealthy, Pool: p.Resource, ID: p.Slot, Reason: reason})
+	sl, reopened, err := c.store.Slot(ctx, sc.actor, domain.SlotEvent{Op: domain.SlotUnhealthy, Pool: p.Resource, ID: p.Slot, Reason: reason})
 	if err != nil {
 		return nil, err
 	}

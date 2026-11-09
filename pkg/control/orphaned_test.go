@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type syncBuf struct {
@@ -42,12 +42,12 @@ func TestOrphanedTickets(t *testing.T) {
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 
-	var none, gone store.Ticket
+	var none, gone domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "none"}, &none))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "gone", Pool: "gone"}, &gone))
 
 	orphaned := func(project string) []string {
-		var out []store.Ticket
+		var out []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Orphaned: true, Project: project}, &out))
 		ids := []string{}
 		for _, o := range out {

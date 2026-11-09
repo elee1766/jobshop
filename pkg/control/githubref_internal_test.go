@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -18,11 +19,11 @@ func TestBackfillGitHubRepo(t *testing.T) {
 	c, _, _ := scanController(t)
 	ctx := t.Context()
 	run := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindRun, Title: "r",
+		Kind: domain.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"issue":7}}`),
 	})
 	step := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
+		Kind: domain.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
 		Fields: json.RawMessage(`{"run":"` + run.ID + `","step":"a","index":0}`), Meta: json.RawMessage(`{"github":{"issue":7}}`),
 	})
 	esc := mkTicket(t, c, store.NewTicket{
@@ -30,14 +31,14 @@ func TestBackfillGitHubRepo(t *testing.T) {
 		Meta:  json.RawMessage(`{"github":{"issue":7},"run":{"id":"` + run.ID + `","workflow":"work","escalation":"x"}}`),
 	})
 	gone := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindRun, Title: "g",
+		Kind: domain.KindRun, Title: "g",
 		Fields: json.RawMessage(`{"workflow":"removed","state":"running"}`), Meta: json.RawMessage(`{"github":{"issue":8}}`),
 	})
 
 	require.NoError(t, c.backfillGitHubRepo(ctx))
 	require.NoError(t, c.backfillGitHubRepo(ctx), "idempotent")
 
-	get := func(id string) store.Ticket {
+	get := func(id string) domain.Ticket {
 		tk, err := c.store.Get(ctx, id)
 		require.NoError(t, err)
 		return tk

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -34,15 +35,15 @@ func TestRebaseMergeState(t *testing.T) {
 			c, _, fa := activityController(t)
 			c.activitySrc = &fakeReverts{fakeActivity: fa, prs: tc.prs}
 			run := mkTicket(t, c, store.NewTicket{
-				Kind: store.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`),
+				Kind: domain.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`),
 				Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":511}}`),
 			})
 			impl := mkTicket(t, c, store.NewTicket{
-				Kind: store.KindStep, Title: "implement", ParentID: run.ID,
+				Kind: domain.KindStep, Title: "implement", ParentID: run.ID,
 				Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`),
 			})
 			review := mkTicket(t, c, store.NewTicket{
-				Kind: store.KindStep, Title: "review-merge", ParentID: run.ID,
+				Kind: domain.KindStep, Title: "review-merge", ParentID: run.ID,
 				Fields: json.RawMessage(`{"step":"review-merge","run":"` + run.ID + `"}`),
 			})
 			_, err := store.AddComment(t.Context(), c.store, "s1", impl.ID, "PR https://github.com/elee1766/jobshop/pull/300 head abc")
@@ -51,7 +52,7 @@ func TestRebaseMergeState(t *testing.T) {
 			res, why := c.rebaseResolution(t.Context(), review)
 			got, err := store.Close(t.Context(), c.store, "admin", review.ID, nil, res)
 			require.NoError(t, err)
-			sf, err := store.DecodeFields[store.StepFields](got)
+			sf, err := domain.DecodeFields[domain.StepFields](got)
 			require.NoError(t, err)
 			assert.Equal(t, tc.failures, sf.Failures)
 			assert.Equal(t, tc.comment, strings.HasPrefix(why, "close -r rebase counted as failed"))

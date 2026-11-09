@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -25,67 +26,67 @@ const maxFindings = 16000
 // so either spelling works. Any other resolution with that outcome is a
 // contradiction.
 func closeOutcome(p *rpc.CloseParams) error {
-	if p.Outcome != store.ResolutionRequestChanges {
+	if p.Outcome != domain.ResolutionRequestChanges {
 		return nil
 	}
 	switch p.Resolution {
-	case "", "done", store.ResolutionRequestChanges:
+	case "", "done", domain.ResolutionRequestChanges:
 		// The resolution is the record; fields.outcome stays for when:
 		// gates, which never open on a request.
-		p.Resolution, p.Outcome = store.ResolutionRequestChanges, ""
+		p.Resolution, p.Outcome = domain.ResolutionRequestChanges, ""
 		return nil
 	}
-	return fmt.Errorf("%w: --outcome request_changes closes with resolution request_changes, not %q", store.ErrInvalid, p.Resolution)
+	return fmt.Errorf("%w: --outcome request_changes closes with resolution request_changes, not %q", domain.ErrInvalid, p.Resolution)
 }
 
 // requestChangesTarget is the closed step of t's run that a
 // request_changes close of t reopens.
-func (c *Controller) requestChangesTarget(ctx context.Context, cfg *config.Config, t store.Ticket, findings string) (store.Ticket, error) {
-	if t.Kind != store.KindStep || t.ParentID == "" {
-		return store.Ticket{}, fmt.Errorf("%w: request_changes is for workflow steps; %s is a %s", store.ErrInvalid, t.ID, t.Kind)
+func (c *Controller) requestChangesTarget(ctx context.Context, cfg *config.Config, t domain.Ticket, findings string) (domain.Ticket, error) {
+	if t.Kind != domain.KindStep || t.ParentID == "" {
+		return domain.Ticket{}, fmt.Errorf("%w: request_changes is for workflow steps; %s is a %s", domain.ErrInvalid, t.ID, t.Kind)
 	}
-	if t.Status == store.StatusClosed {
-		return store.Ticket{}, fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
+	if t.Status == domain.StatusClosed {
+		return domain.Ticket{}, fmt.Errorf("%w: %s", domain.ErrClosed, t.ID)
 	}
 	if strings.TrimSpace(findings) == "" {
-		return store.Ticket{}, fmt.Errorf("%w: request_changes needs the findings: --comment \"<findings>\"", store.ErrInvalid)
+		return domain.Ticket{}, fmt.Errorf("%w: request_changes needs the findings: --comment \"<findings>\"", domain.ErrInvalid)
 	}
-	sf, err := store.DecodeFields[store.StepFields](t)
+	sf, err := domain.DecodeFields[domain.StepFields](t)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	name := sf.OnRequestChanges
 	if name == "" {
 		name = c.configTarget(ctx, cfg, t.ParentID, sf)
 	}
 	if name == "" {
-		return store.Ticket{}, fmt.Errorf("%w: step %s has no step to send changes to (set on_request_changes in the workflow)", store.ErrInvalid, sf.Step)
+		return domain.Ticket{}, fmt.Errorf("%w: step %s has no step to send changes to (set on_request_changes in the workflow)", domain.ErrInvalid, sf.Step)
 	}
 	steps, err := store.Children(ctx, c.store, t.ParentID)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	for _, s := range steps {
-		f, err := store.DecodeFields[store.StepFields](s)
+		f, err := domain.DecodeFields[domain.StepFields](s)
 		if err != nil || f.Step != name {
 			continue
 		}
-		if s.Status != store.StatusClosed {
-			return store.Ticket{}, fmt.Errorf("%w: step %s is %s; request_changes reopens a finished step", store.ErrInvalid, name, s.Status)
+		if s.Status != domain.StatusClosed {
+			return domain.Ticket{}, fmt.Errorf("%w: step %s is %s; request_changes reopens a finished step", domain.ErrInvalid, name, s.Status)
 		}
 		return s, nil
 	}
-	return store.Ticket{}, fmt.Errorf("%w: run %s has no step %q", store.ErrInvalid, t.ParentID, name)
+	return domain.Ticket{}, fmt.Errorf("%w: run %s has no step %q", domain.ErrInvalid, t.ParentID, name)
 }
 
 // configTarget reads the target from cfg for a run
 // started before steps recorded on_request_changes.
-func (c *Controller) configTarget(ctx context.Context, cfg *config.Config, runID string, sf store.StepFields) string {
+func (c *Controller) configTarget(ctx context.Context, cfg *config.Config, runID string, sf domain.StepFields) string {
 	run, err := c.store.Get(ctx, runID)
 	if err != nil {
 		return ""
 	}
-	rf, err := store.DecodeFields[store.RunFields](run)
+	rf, err := domain.DecodeFields[domain.RunFields](run)
 	if err != nil {
 		return ""
 	}
@@ -99,14 +100,14 @@ func (c *Controller) configTarget(ctx context.Context, cfg *config.Config, runID
 // closeRequestChanges is close for resolution request_changes: the close
 // and the reopen of the reviewed step in one store write, then the
 // retry-pool move and the review-finding learning.
-func (c *Controller) closeRequestChanges(ctx context.Context, cfg *config.Config, sc scope, id string, cl *store.Claim, findings string) (store.Ticket, error) {
+func (c *Controller) closeRequestChanges(ctx context.Context, cfg *config.Config, sc scope, id string, cl *store.Claim, findings string) (domain.Ticket, error) {
 	cur, err := c.store.Get(ctx, id)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	target, err := c.requestChangesTarget(ctx, cfg, cur, findings)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	findings = strings.TrimSpace(findings)
 	kept := findings
@@ -114,31 +115,31 @@ func (c *Controller) closeRequestChanges(ctx context.Context, cfg *config.Config
 		kept = strings.ToValidUTF8(kept[:maxFindings], "") + " [truncated; full text on " + id + "]"
 	}
 	if _, err := store.AddComment(ctx, c.store, sc.actor, id, "Changes requested:\n\n"+findings); err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
-	t, err := c.store.Release(ctx, sc.actor, id, cl, store.Outcome{Close: store.ResolutionRequestChanges, Reopen: target.ID, Note: kept})
+	t, err := c.store.Release(ctx, sc.actor, id, cl, store.Outcome{Close: domain.ResolutionRequestChanges, Reopen: target.ID, Note: kept})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
-	if t.Status == store.StatusClosed {
+	if t.Status == domain.StatusClosed {
 		// Over the round cap: nothing reopened; checkRun escalates.
 		c.log.WarnContext(ctx, "review round limit reached", "step", id, "run", t.ParentID)
 		return t, nil
 	}
 	if target, err = c.store.Get(ctx, target.ID); err == nil {
 		c.escalatePool(ctx, cfg, &target, "changes requested by "+id)
-		c.record(ctx, store.LearningCorrection, target, memedit.ReviewFindingPrefix+c.stepName(ctx, target)+": "+findings, "")
+		c.record(ctx, domain.LearningCorrection, target, memedit.ReviewFindingPrefix+c.stepName(ctx, target)+": "+findings, "")
 	}
 	c.log.InfoContext(ctx, "changes requested", "step", id, "reopened", target.ID, "run", t.ParentID)
 	return t, nil
 }
 
 // changesPrompt is the ticket prompt section for an open change request.
-func changesPrompt(t store.Ticket) string {
-	if t.Kind != store.KindStep {
+func changesPrompt(t domain.Ticket) string {
+	if t.Kind != domain.KindStep {
 		return ""
 	}
-	f, err := store.DecodeFields[store.StepFields](t)
+	f, err := domain.DecodeFields[domain.StepFields](t)
 	if err != nil || f.Changes == nil {
 		return ""
 	}

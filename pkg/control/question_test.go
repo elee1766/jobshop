@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestQuestionOptions (JOB-101): a session asks with context and two
@@ -34,7 +34,7 @@ func TestQuestionOptions(t *testing.T) {
 	ctx := t.Context()
 	admin := dial(t, root.AdminSocket())
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{
 		Title: "Pick a base branch", Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`),
 	}, &task))
@@ -48,7 +48,7 @@ func TestQuestionOptions(t *testing.T) {
 	require.NoError(t, w.Call(ctx, rpc.MethodReport, rpc.ReportParams{
 		State: rpc.ReportWaiting, Note: "base?", Question: "Which base branch?",
 		Context: "I rebased the fix onto both branches.\nmain has the new API, release does not; the fix needs it there too.",
-		Options: []rpc.QuestionOption{
+		Options: []domain.QuestionOption{
 			{Title: "main", Description: "Ship in the next minor.", Recommended: true},
 			{Title: "release", Description: "Backport the API with the fix."},
 		},
@@ -66,7 +66,7 @@ func TestQuestionOptions(t *testing.T) {
 	}
 	require.NotNil(t, it, "the question is listed")
 	assert.Equal(t, rpc.AttentionQuestion, it.Kind)
-	assert.Equal(t, []rpc.QuestionOption{
+	assert.Equal(t, []domain.QuestionOption{
 		{ID: 1, Title: "main", Description: "Ship in the next minor.", Recommended: true},
 		{ID: 2, Title: "release", Description: "Backport the API with the fix."},
 	}, it.Options)
@@ -82,7 +82,7 @@ func TestQuestionOptions(t *testing.T) {
 
 	// An option the question does not have is refused; option 2 answers.
 	err = admin.Call(ctx, rpc.MethodQuestionAnswer, rpc.AnswerParams{ID: q.ID, Option: 3}, nil)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	var ans rpc.AnswerResult
 	require.NoError(t, admin.Call(ctx, rpc.MethodQuestionAnswer, rpc.AnswerParams{ID: q.ID, Option: 2, Text: "after the freeze", From: "@op"}, &ans))
 	require.NotNil(t, ans.Message)

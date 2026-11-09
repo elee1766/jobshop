@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // labelLinear is a fake Linear that keeps one issue's labels, enough for
@@ -85,7 +85,7 @@ func strs(v any) []string {
 // names the team's labels, and a repeat with the same key sends one
 // mutation.
 func TestLinearLabel(t *testing.T) {
-	f := &fakeController{decision: rpc.GuardAllow, keys: map[string]string{}}
+	f := &fakeController{decision: domain.GuardAllow, keys: map[string]string{}}
 	g := &Globals{Socket: f.serve(t)}
 	lin := &labelLinear{}
 	l := &linearCmd{APIURL: lin.serve(t)}

@@ -48,6 +48,12 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 		{"cli production imports controltest", "pkg/cli", "pkg/control/controltest", false, "[no-harness-in-production] " + m + "pkg/cli imports " + m + "pkg/control/controltest"},
 		{"gateway imports starlark", "pkg/gateway", "go.starlark.net/starlark", false, "[starlark-only-in-automation] " + m + "pkg/gateway imports go.starlark.net/starlark"},
 		{"clock imports store", "pkg/clock", "pkg/store", false, "[independent-leaves] " + m + "pkg/clock imports " + m + "pkg/store"},
+		{"domain imports store", "pkg/domain", "pkg/store", false, "[domain-is-a-leaf] " + m + "pkg/domain imports " + m + "pkg/store"},
+		{"domain test imports rpc", "pkg/domain", "pkg/rpc", true, "[domain-is-a-leaf] " + m + "pkg/domain imports in a test file " + m + "pkg/rpc"},
+		{"domain imports a third party", "pkg/domain", "github.com/stretchr/testify/assert", false, "[family-domain] " + m + "pkg/domain imports github.com/stretchr/testify/assert"},
+		{"config imports rpc", "pkg/config", "pkg/rpc", false, "[types-not-from-store-or-rpc] " + m + "pkg/config imports " + m + "pkg/rpc"},
+		{"question imports store", "pkg/control/question", "pkg/store", false, "[types-not-from-store-or-rpc] " + m + "pkg/control/question imports " + m + "pkg/store"},
+		{"hooks imports rpc", "pkg/hooks", "pkg/rpc", false, "[hooks-not-from-rpc] " + m + "pkg/hooks imports " + m + "pkg/rpc"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -55,7 +61,7 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 			from := g.Pkgs[m+tc.from]
 			require.NotNil(t, from)
 			to := tc.to
-			if !strings.HasPrefix(to, "go.") {
+			if !strings.HasPrefix(to, "go.") && !strings.HasPrefix(to, "github.com/stretchr") {
 				to = m + to
 			}
 			if g.Pkgs[to] == nil {

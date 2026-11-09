@@ -12,6 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
@@ -40,7 +41,7 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 		if err != nil {
 			return "", err
 		}
-		fields, err := store.DecodeFields[store.RunFields](run)
+		fields, err := domain.DecodeFields[domain.RunFields](run)
 		if err != nil {
 			return "", err
 		}
@@ -72,11 +73,11 @@ func (h hookHost) AdmitHook(ctx context.Context, runtime *hooks.Runtime, in hook
 func (h hookHost) CommitHook(ctx context.Context, runtime *hooks.Runtime, key string, in hooks.Invocation, journal hooks.JournalPlan) (hooks.Invocation, error) {
 	c := h.c
 	if !c.hookReadSetCurrent(ctx, in.ReadSet) {
-		return in, store.ErrConflict
+		return in, domain.ErrConflict
 	}
 	lc := c.live.Load()
 	if lc.runtime != runtime {
-		return in, fmt.Errorf("%w: hook configuration changed", store.ErrConflict)
+		return in, fmt.Errorf("%w: hook configuration changed", domain.ErrConflict)
 	}
 	plans, err := c.prepareHookRuns(ctx, lc, in)
 	if err != nil {
@@ -117,10 +118,10 @@ func (h hookHost) HookFailed(ctx context.Context, key string, in hooks.Invocatio
 	c := h.c
 	c.runMu.Lock()
 	t, err := c.store.Get(ctx, in.Run)
-	if err == nil && t.Status != store.StatusClosed {
-		f, decodeErr := store.DecodeFields[store.RunFields](t)
-		if decodeErr == nil && f.State == store.RunRunning {
-			_, _ = c.setRunState(ctx, "controller", t, f, store.RunNeedsHuman, "")
+	if err == nil && t.Status != domain.StatusClosed {
+		f, decodeErr := domain.DecodeFields[domain.RunFields](t)
+		if decodeErr == nil && f.State == domain.RunRunning {
+			_, _ = c.setRunState(ctx, "controller", t, f, domain.RunNeedsHuman, "")
 		}
 	}
 	c.runMu.Unlock()
@@ -133,7 +134,7 @@ func (h hookHost) HookApplied(ctx context.Context, in hooks.Invocation) {
 	}
 	c := h.c
 	c.wakeWaitsSubjects(waitengine.RunSubject(in.Run))
-	if run, err := c.store.Get(ctx, in.Run); err == nil && run.Status == store.StatusClosed {
+	if run, err := c.store.Get(ctx, in.Run); err == nil && run.Status == domain.StatusClosed {
 		c.removeRunDir(run.ID)
 	}
 	c.runBatchEvent(ctx, in.Run)
@@ -189,14 +190,14 @@ func (c *Controller) hookReadSetCurrent(ctx context.Context, readSet map[string]
 }
 
 func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.Invocation) error {
-	var automation *store.RunAutomation
+	var automation *domain.RunAutomation
 	switch {
 	case in.Run != "":
 		run, err := c.store.Get(ctx, in.Run)
 		if err != nil {
 			return err
 		}
-		f, err := store.DecodeFields[store.RunFields](run)
+		f, err := domain.DecodeFields[domain.RunFields](run)
 		if err != nil {
 			return err
 		}
@@ -215,7 +216,7 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		// Stable IDs were journaled before Apply. The graph is all-or-nothing.
 		if _, err := c.store.Get(ctx, in.Plan.Tickets[0].ID); err == nil {
 			return nil
-		} else if !errors.Is(err, store.ErrNotFound) {
+		} else if !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
 	case len(in.Plan.Comments) > 0:
@@ -251,8 +252,8 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 	// can route a ticket to: its pool, a step's retry pool and placements.
 	for _, ticket := range in.Plan.Tickets {
 		pools := []string{ticket.Pool}
-		if ticket.Kind == store.KindStep {
-			var f store.StepFields
+		if ticket.Kind == domain.KindStep {
+			var f domain.StepFields
 			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
 				return err
 			}
@@ -276,10 +277,10 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		return fmt.Errorf("%w: restore the accepted configuration before applying actions", err)
 	}
 	for _, ticket := range in.Plan.Tickets {
-		if ticket.Kind != store.KindRun {
+		if ticket.Kind != domain.KindRun {
 			continue
 		}
-		var fields store.RunFields
+		var fields domain.RunFields
 		if err := hooks.DecodeJSON(ticket.Fields, &fields); err != nil {
 			return err
 		}
@@ -290,7 +291,7 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 		if err == nil && existing.ID != ticket.ID {
 			return errors.New("a run with the planned workflow and key was created before this batch committed")
 		}
-		if err != nil && !errors.Is(err, store.ErrNotFound) {
+		if err != nil && !errors.Is(err, domain.ErrNotFound) {
 			return err
 		}
 	}
@@ -306,12 +307,12 @@ func (c *Controller) applyPlannedHook(ctx context.Context, key string, in hooks.
 // through returned actions.
 func (h hookHost) ReadTickets(ctx context.Context, q api.TicketQuery) ([]any, error) {
 	f := store.Filter{
-		Kind: store.Kind(q.Kind), Project: q.Project, Pool: q.Pool, Label: q.Label,
+		Kind: domain.Kind(q.Kind), Project: q.Project, Pool: q.Pool, Label: q.Label,
 		Workflow: q.Workflow, Key: q.Key, State: q.State, ParentID: q.Parent, Holder: q.Holder,
 		Order: store.Order(q.Order), Limit: q.Limit,
 	}
 	for _, s := range q.Statuses {
-		f.Statuses = append(f.Statuses, store.Status(s))
+		f.Statuses = append(f.Statuses, domain.Status(s))
 	}
 	for _, k := range slices.Sorted(maps.Keys(q.Meta)) {
 		pack, key, _ := strings.Cut(k, ".")

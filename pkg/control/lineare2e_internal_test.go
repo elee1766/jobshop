@@ -18,6 +18,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -130,17 +131,17 @@ func TestLinearEndToEnd(t *testing.T) {
 	assert.Equal(t, []string{"scan:linear_issue_no_run:ENG-5"}, findingKeys(t, c))
 	c.runTriggers(t.Context(), c.config())
 	c.runTriggers(t.Context(), c.config())
-	checks, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
+	checks, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun})
 	require.NoError(t, err)
 	require.Len(t, checks, 1, "one triage run")
 
 	// 2. triage starts pr-work; the intake hook refuses the issue
 	// text, so no run starts and a needs-human ticket waits.
 	admin := scope{admin: true, actor: "admin"}
-	start := func() (store.Ticket, error) {
+	start := func() (domain.Ticket, error) {
 		res, err := c.runStart(ctx, admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"issue": "ENG-5"}, Key: "linear-ENG-5"})
 		if err != nil {
-			return store.Ticket{}, err
+			return domain.Ticket{}, err
 		}
 		return res.(rpc.RunResult).Run, nil
 	}
@@ -194,7 +195,7 @@ func TestLinearEndToEnd(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 	got, err := c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, got.Status)
+	assert.Equal(t, domain.StatusClosed, got.Status)
 	assert.Equal(t, resolutionAnswered, got.Resolution)
 	_, labels = f.state()
 	assert.Empty(t, labels, "Blocked removed on answer")

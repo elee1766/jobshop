@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -16,7 +17,7 @@ type Templates struct {
 	W     config.Workflow
 	Vars  map[string]any
 	Steps map[string]any // id -> {output, outcome, json} for template: go
-	Out   map[string]store.StepFields
+	Out   map[string]domain.StepFields
 }
 
 // Fill renders one template.
@@ -25,13 +26,13 @@ func (t Templates) Fill(s string) (string, error) {
 }
 
 // LoadTemplates loads the run's vars and earlier steps' outputs.
-func LoadTemplates(ctx context.Context, st store.Store, cfg *config.Config, sf store.StepFields) (Templates, error) {
+func LoadTemplates(ctx context.Context, st store.Store, cfg *config.Config, sf domain.StepFields) (Templates, error) {
 	var t Templates
 	run, err := st.Get(ctx, sf.Run)
 	if err != nil {
 		return t, err
 	}
-	rf, err := store.DecodeFields[store.RunFields](run)
+	rf, err := domain.DecodeFields[domain.RunFields](run)
 	if err != nil {
 		return t, err
 	}
@@ -49,10 +50,10 @@ func LoadTemplates(ctx context.Context, st store.Store, cfg *config.Config, sf s
 	if err != nil {
 		return t, err
 	}
-	t.Out = map[string]store.StepFields{}
+	t.Out = map[string]domain.StepFields{}
 	t.Steps = map[string]any{}
 	for _, s := range steps {
-		f, err := store.DecodeFields[store.StepFields](s)
+		f, err := domain.DecodeFields[domain.StepFields](s)
 		if err != nil || f.Index >= sf.Index {
 			continue
 		}
@@ -69,7 +70,7 @@ func LoadTemplates(ctx context.Context, st store.Store, cfg *config.Config, sf s
 
 // Env is what a command step gets on top of the controller's env: the
 // run vars as JOBSHOP_VAR_<NAME> and the attempt key.
-func Env(vars map[string]any, attemptKey string, t store.Ticket) []string {
+func Env(vars map[string]any, attemptKey string, t domain.Ticket) []string {
 	var env []string
 	for k, v := range vars {
 		env = append(env, "JOBSHOP_VAR_"+strings.ToUpper(k)+"="+fmt.Sprint(v))

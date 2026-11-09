@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 	"github.com/elee1766/jobshop/pkg/writekey"
 )
@@ -39,9 +39,9 @@ func TestClaimFinish(t *testing.T) {
 	assert.False(t, k.Done)
 
 	_, err = writekey.Claim(ctx, s, "js/k1", "linear.create", "sess")
-	require.ErrorIs(t, err, store.ErrInvalid, "a key is bound to its op")
+	require.ErrorIs(t, err, domain.ErrInvalid, "a key is bound to its op")
 	_, err = writekey.Claim(ctx, s, " ", "op", "sess")
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	k, err = writekey.Finish(ctx, s, "js/k1", `{"id":"a"}`)
 	require.NoError(t, err)
@@ -56,7 +56,7 @@ func TestClaimFinish(t *testing.T) {
 	assert.JSONEq(t, `{"id":"a"}`, k.Result)
 
 	_, err = writekey.Finish(ctx, s, "js/none", "x")
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 // TestPrune: keys older than the cutoff go, done or pending; newer keys

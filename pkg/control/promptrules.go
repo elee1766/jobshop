@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -57,8 +58,8 @@ type RuleEvent struct {
 // turnSpec says which turn a prompt is assembled for.
 type turnSpec struct {
 	session, pool, agent, project string
-	kind                          string        // turnTicket or turnMessage
-	ticket                        *store.Ticket // the claimed ticket, ticket turns only
+	kind                          string         // turnTicket or turnMessage
+	ticket                        *domain.Ticket // the claimed ticket, ticket turns only
 	// system: the first turn of this host. poolPrompt: the pool prompt
 	// (and before/after rules) belong in this turn.
 	system, poolPrompt bool
@@ -76,7 +77,7 @@ func (c *Controller) ruleSubject(ctx context.Context, cfg *config.Config, ts tur
 	ev := RuleEvent{Session: ts.session, Pool: ts.pool, Agent: ts.agent, Project: ts.project, Turn: ts.kind}
 	if ts.session != "" {
 		if st, err := c.store.Get(ctx, ts.session); err == nil {
-			if f, err := store.DecodeFields[store.SessionFields](st); err == nil {
+			if f, err := domain.DecodeFields[domain.SessionFields](st); err == nil {
 				s.Key, ev.Key = f.Key, f.Key
 			}
 		}
@@ -89,11 +90,11 @@ func (c *Controller) ruleSubject(ctx context.Context, cfg *config.Config, ts tur
 	ev.Ticket = t.ID
 	s.Repo = metaRepo(t)
 	ev.Repo = s.Repo
-	if t.Kind == store.KindStep {
-		if f, err := store.DecodeFields[store.StepFields](t); err == nil {
+	if t.Kind == domain.KindStep {
+		if f, err := domain.DecodeFields[domain.StepFields](t); err == nil {
 			s.Step, ev.Step, ev.Run = f.Step, f.Step, f.Run
 			if run, err := c.store.Get(ctx, f.Run); err == nil {
-				if rf, err := store.DecodeFields[store.RunFields](run); err == nil {
+				if rf, err := domain.DecodeFields[domain.RunFields](run); err == nil {
 					s.Workflow = rf.Workflow
 				}
 			}
@@ -103,7 +104,7 @@ func (c *Controller) ruleSubject(ctx context.Context, cfg *config.Config, ts tur
 }
 
 // metaRepo is meta.github.repo ("owner/name"), or "".
-func metaRepo(t store.Ticket) string {
+func metaRepo(t domain.Ticket) string {
 	var m struct {
 		GitHub struct {
 			Repo string `json:"repo"`
@@ -277,13 +278,13 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		return nil, err
 	}
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
 	sess, err := c.openSessionTicket(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	f, err := store.DecodeFields[store.SessionFields](sess)
+	f, err := domain.DecodeFields[domain.SessionFields](sess)
 	if err != nil {
 		return nil, err
 	}
@@ -299,10 +300,10 @@ func (c *Controller) sessionPrompt(ctx context.Context, sc scope, p rpc.SessionP
 		r.mu.Unlock()
 	}
 	pool, havePool := c.config().Pools[sess.Pool]
-	var t *store.Ticket
-	if held, err := c.store.List(ctx, store.Filter{Holder: sess.ID, Status: store.StatusInProgress}); err == nil {
+	var t *domain.Ticket
+	if held, err := c.store.List(ctx, store.Filter{Holder: sess.ID, Status: domain.StatusInProgress}); err == nil {
 		for _, h := range held {
-			if h.Kind != store.KindMessage {
+			if h.Kind != domain.KindMessage {
 				t = &h
 				break
 			}

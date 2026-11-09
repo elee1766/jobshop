@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // SourceGeneric is any other HMAC-signed JSON sender (#399).
@@ -83,7 +83,7 @@ func Put(ctx context.Context, sp *Spool, ep config.IngestEndpoint, id, kind stri
 	return sp.Write(ctx, d)
 }
 
-func genericSubject(it *store.InboxItem, d Delivery) error {
+func genericSubject(it *domain.InboxItem, d Delivery) error {
 	var m config.IngestMap
 	if s := d.Headers[MapHeader]; s != "" {
 		if err := json.Unmarshal([]byte(s), &m); err != nil {

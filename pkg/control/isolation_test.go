@@ -21,8 +21,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // isolationEnv skips unless this host can run an isolated pool: working
@@ -162,14 +162,14 @@ pools:
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	var ended store.Ticket
+	var ended domain.Ticket
 	passEventually(t, root.Dir, func() bool {
 		// The first session ends oom; a retry may then quarantine the pool
 		// (the agent's files are the mapped uid's), so check ended first.
-		var got []store.Ticket
-		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusClosed, Kind: store.KindSession}, &got) == nil {
+		var got []domain.Ticket
+		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: domain.StatusClosed, Kind: domain.KindSession}, &got) == nil {
 			for _, s := range got {
 				if s.Resolution == "oom" {
 					ended = s
@@ -262,21 +262,21 @@ pools:
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 	for range 2 {
-		var task store.Ticket
+		var task domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	}
 
 	var work, homes []string
 	passEventually(t, root.Dir, func() bool {
 		quarantined(t, admin)
-		var got []store.Ticket
-		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusOpen, Kind: store.KindSession}, &got) != nil || len(got) < 2 {
+		var got []domain.Ticket
+		if admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: domain.StatusOpen, Kind: domain.KindSession}, &got) != nil || len(got) < 2 {
 			return false
 		}
 		work, homes = work[:0], homes[:0]
 		for _, s := range got[:2] {
 			w := filepath.Join(root.SessionDir(s.ID), "work")
-			f, err := store.DecodeFields[store.SessionFields](s)
+			f, err := domain.DecodeFields[domain.SessionFields](s)
 			if err != nil || f.Slot == nil {
 				return false
 			}
@@ -325,8 +325,8 @@ pools:
 
 	// Closing the sessions frees their slots and deletes their homes, so
 	// the next session in a slot cannot read what the last one left.
-	var open []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: store.StatusOpen, Kind: store.KindSession}, &open))
+	var open []domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Status: domain.StatusOpen, Kind: domain.KindSession}, &open))
 	for _, s := range open {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: s.ID}, nil))
 	}
@@ -428,7 +428,7 @@ pools:
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 
 	cache := filepath.Join(root.Dir, "homes", "dev", sub, ".cache", "probe", "home-probe")

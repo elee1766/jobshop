@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -37,7 +38,7 @@ func GetPollCursor(ctx context.Context, st PollStore, poller, repo, stream strin
 		return out, err
 	}
 	r, err := col.Get(ctx, cursorKey(poller, repo, stream))
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		return out, nil
 	}
 	if err != nil {
@@ -76,9 +77,9 @@ func SetPollCursor(ctx context.Context, st PollStore, c store.PollCursor) error 
 		}
 		r.Value = b
 		_, err = col.Update(ctx, r)
-		if !errors.Is(err, store.ErrConflict) {
+		if !errors.Is(err, domain.ErrConflict) {
 			return err
 		}
 	}
-	return fmt.Errorf("%w: poll cursor %s: lost every race", store.ErrConflict, key)
+	return fmt.Errorf("%w: poll cursor %s: lost every race", domain.ErrConflict, key)
 }

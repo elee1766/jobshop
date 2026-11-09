@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -46,7 +47,7 @@ type PollResult struct {
 	Items int // rows written, before dedupe
 	Fresh int // new inbox rows
 	// New are the new inbox rows, for the controller's wake (#679).
-	New []store.InboxItem
+	New []domain.InboxItem
 }
 
 func (p *Poller) wants(ev string) bool { return slices.Contains(p.Events, ev) }
@@ -61,7 +62,7 @@ func (p *Poller) Poll(ctx context.Context, repo string) (PollResult, error) {
 	}
 	g := ghGet{cl: cl, max: p.MaxPages}
 
-	var items []store.InboxItem
+	var items []domain.InboxItem
 	var cursors []store.PollCursor
 	var prs []int64
 	if p.wants("issues") || p.wants("pull_request") || p.wants("pull_request_review") {
@@ -234,12 +235,12 @@ type ghReview struct {
 
 // item builds a row from a webhook-shaped payload, with the drain's
 // subject and natural key.
-func (p *Poller) item(kind, deliveryID string, payload map[string]any) (store.InboxItem, error) {
+func (p *Poller) item(kind, deliveryID string, payload map[string]any) (domain.InboxItem, error) {
 	b, err := json.Marshal(payload)
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
-	it := store.InboxItem{
+	it := domain.InboxItem{
 		Source: SourceGitHub, Endpoint: p.Name, Kind: kind, ReceivedAt: p.Now(), Payload: b,
 	}
 	if err := githubSubject(&it, b); err != nil {
@@ -260,13 +261,13 @@ func repoObj(repo string) map[string]any { return map[string]any{"full_name": re
 // issueItem maps an issue or pull request. Polling sees the latest
 // state, not each change, so the action is opened for one created since
 // it was last seen and updated otherwise.
-func (p *Poller) issueItem(repo string, is ghIssue) (store.InboxItem, bool, error) {
+func (p *Poller) issueItem(repo string, is ghIssue) (domain.InboxItem, bool, error) {
 	kind, key := "issues", "issue"
 	if is.PullRequest != nil {
 		kind, key = "pull_request", "pull_request"
 	}
 	if !p.wants(kind) {
-		return store.InboxItem{}, false, nil
+		return domain.InboxItem{}, false, nil
 	}
 	action := "updated"
 	if is.CreatedAt.Equal(is.UpdatedAt) {
@@ -286,7 +287,7 @@ func (p *Poller) issueItem(repo string, is ghIssue) (store.InboxItem, bool, erro
 	return it, err == nil, err
 }
 
-func (p *Poller) commentItem(repo string, cm ghIssueComment) (store.InboxItem, error) {
+func (p *Poller) commentItem(repo string, cm ghIssueComment) (domain.InboxItem, error) {
 	n, _ := strconv.ParseInt(cm.IssueURL[strings.LastIndex(cm.IssueURL, "/")+1:], 10, 64)
 	action := "edited"
 	if cm.CreatedAt.Equal(cm.UpdatedAt) {
@@ -302,7 +303,7 @@ func (p *Poller) commentItem(repo string, cm ghIssueComment) (store.InboxItem, e
 	})
 }
 
-func (p *Poller) reviewItem(repo string, pr int64, rv ghReview) (store.InboxItem, error) {
+func (p *Poller) reviewItem(repo string, pr int64, rv ghReview) (domain.InboxItem, error) {
 	return p.item("pull_request_review", "", map[string]any{
 		"action": "submitted", "repository": repoObj(repo), "sender": rv.User,
 		"pull_request": map[string]any{"number": pr},

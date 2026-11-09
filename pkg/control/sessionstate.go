@@ -8,6 +8,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -24,9 +25,9 @@ import (
 const endedBackfillBatch = 100
 
 // hostEnded reads a stopped host's state from its session directory.
-func (c *Controller) hostEnded(id string) store.SessionEnded {
+func (c *Controller) hostEnded(id string) domain.SessionEnded {
 	dir := c.root.SessionDir(id)
-	e := store.SessionEnded{HostPid: sessionrt.HostPid(dir)}
+	e := domain.SessionEnded{HostPid: sessionrt.HostPid(dir)}
 	if ex, ok := host.ReadExit(dir); ok {
 		e.Exit = ex.Reason
 	}
@@ -39,7 +40,7 @@ func (c *Controller) hostEnded(id string) store.SessionEnded {
 // saveEnded stores the host state of a session that just ended.
 func (c *Controller) saveEnded(ctx context.Context, id string) {
 	e := c.hostEnded(id)
-	if err := c.updateSessionFields(ctx, id, func(f *store.SessionFields) { f.Ended = &e }); err != nil {
+	if err := c.updateSessionFields(ctx, id, func(f *domain.SessionFields) { f.Ended = &e }); err != nil {
 		c.log.WarnContext(ctx, "save ended session state", "session", id, "err", err)
 	}
 }
@@ -48,7 +49,7 @@ func (c *Controller) saveEnded(ctx context.Context, id string) {
 // it keeps the ids with a live host and no open session ticket, and
 // fills Ended on closed sessions that ended before it was recorded.
 func (c *Controller) scanSessions(ctx context.Context) {
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Statuses: []store.Status{store.StatusOpen, store.StatusInProgress}, Limit: math.MaxInt32})
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Statuses: []domain.Status{domain.StatusOpen, domain.StatusInProgress}, Limit: math.MaxInt32})
 	if err != nil {
 		return
 	}
@@ -66,7 +67,7 @@ func (c *Controller) scanSessions(ctx context.Context) {
 // backfillEnded fills Ended on up to endedBackfillBatch closed sessions
 // per pass, until none is left.
 func (c *Controller) backfillEnded(ctx context.Context, orphans []string) {
-	closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Limit: math.MaxInt32})
+	closed, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusClosed, Limit: math.MaxInt32})
 	if err != nil {
 		return
 	}
@@ -75,7 +76,7 @@ func (c *Controller) backfillEnded(ctx context.Context, orphans []string) {
 		if slices.Contains(orphans, t.ID) {
 			continue // host still running: filled once it is reaped
 		}
-		f, err := store.DecodeFields[store.SessionFields](t)
+		f, err := domain.DecodeFields[domain.SessionFields](t)
 		if err != nil || f.Ended != nil {
 			continue
 		}
@@ -92,7 +93,7 @@ func (c *Controller) backfillEnded(ctx context.Context, orphans []string) {
 
 // scannedOrphans returns the last pass's orphaned host ids. Before the
 // first pass it walks the directories itself.
-func (c *Controller) scannedOrphans(open []store.Ticket) []string {
+func (c *Controller) scannedOrphans(open []domain.Ticket) []string {
 	c.sessScanMu.Lock()
 	ids, ok := slices.Clone(c.sessOrphans), c.sessScanned
 	c.sessScanMu.Unlock()
@@ -104,9 +105,9 @@ func (c *Controller) scannedOrphans(open []store.Ticket) []string {
 
 // closedSessionInfo is a closed session's list entry from its ticket
 // alone: its host is stopped, so the saved Ended state is current.
-func closedSessionInfo(t store.Ticket) rpc.SessionInfo {
+func closedSessionInfo(t domain.Ticket) rpc.SessionInfo {
 	info := rpc.SessionInfo{ID: t.ID}
-	if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
+	if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
 		info.DisplayName = f.DisplayName
 		info.Model, info.Effort, info.Override = f.Model, f.Effort, f.Override
 		if e := f.Ended; e != nil {

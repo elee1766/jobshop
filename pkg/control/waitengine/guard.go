@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // eventRe matches a release --until reason that names an event a wait
@@ -26,5 +26,5 @@ func TimerHint(reason string) error {
 		"  merge:  jobshop wait add 'github.pr:pr=<o/r>#<n>,state=merged' --resume -r %q\n"+
 		"  deploy: jobshop wait add 'deploy:repo=<o/r>,sha=<sha>' --resume -r %q\n"+
 		"  tag:    jobshop wait add 'github.tag:repo=<o/r>,tag=<tag>' --resume -r %q\n"+
-		"A real timer (a window, a rate limit backoff): add --time-wait", store.ErrInvalid, m, reason, reason, reason, reason, reason)
+		"A real timer (a window, a rate limit backoff): add --time-wait", domain.ErrInvalid, m, reason, reason, reason, reason, reason)
 }

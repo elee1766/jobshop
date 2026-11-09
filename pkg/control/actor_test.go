@@ -12,8 +12,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestMetaActor: an admin call may name its actor (Desk's proxy user, #515)
@@ -32,11 +32,11 @@ func TestMetaActor(t *testing.T) {
 
 	admin := dial(t, root.AdminSocket())
 	actx := rpc.WithActor(ctx, "desk:alice")
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(actx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	assert.Equal(t, "desk:alice", task.CreatedBy)
 	require.NoError(t, admin.Call(actx, rpc.MethodCommentAdd, rpc.CommentParams{ID: task.ID, Body: "hi"}, nil))
-	var plain store.Ticket
+	var plain domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "u", Pool: "dev"}, &plain))
 	assert.Equal(t, "admin", plain.CreatedBy, "no actor: unchanged")
 
@@ -48,7 +48,7 @@ func TestMetaActor(t *testing.T) {
 	assert.Equal(t, "desk:alice", show.Comments[0].Author)
 
 	err = admin.Call(rpc.WithActor(ctx, "bad\x00name"), rpc.MethodWhoami, struct{}{}, nil)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	var sess rpc.SessionNewResult
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "jcode", Pool: "dev"}, &sess))

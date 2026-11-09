@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/clock"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 const a2aToken = "s3cret-a2a-token"
@@ -143,7 +143,7 @@ type a2aCtl struct {
 	mu       sync.Mutex
 	sends    []rpc.SessionSendParams
 	events   chan rpc.SessionEvent
-	ticket   map[string]store.Ticket
+	ticket   map[string]domain.Ticket
 	cmu      sync.Mutex
 	comments []string
 	seq      int64
@@ -156,10 +156,10 @@ func (f *a2aCtl) Events(ctx context.Context, _ rpc.EventsSubscribeParams, fn fun
 	return rpc.EventsSubscribeResult{}, nil
 }
 
-func (f *a2aCtl) List(_ context.Context, p rpc.ListParams) ([]store.Ticket, error) {
+func (f *a2aCtl) List(_ context.Context, p rpc.ListParams) ([]domain.Ticket, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	var out []store.Ticket
+	var out []domain.Ticket
 	for _, t := range f.ticket {
 		if slices.Contains(t.Labels, p.Label) && (p.Status == "" || t.Status == p.Status) {
 			out = append(out, t)
@@ -173,17 +173,17 @@ func (f *a2aCtl) Show(_ context.Context, id string) (rpc.ShowResult, error) {
 	defer f.mu.Unlock()
 	t, ok := f.ticket[id]
 	if !ok {
-		return rpc.ShowResult{}, store.ErrNotFound
+		return rpc.ShowResult{}, domain.ErrNotFound
 	}
 	return rpc.ShowResult{Ticket: t}, nil
 }
 
-func (f *a2aCtl) Update(_ context.Context, p rpc.UpdateParams) (store.Ticket, error) {
+func (f *a2aCtl) Update(_ context.Context, p rpc.UpdateParams) (domain.Ticket, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	t := f.ticket[p.ID]
 	if p.IfRevision != 0 && p.IfRevision != t.Revision {
-		return t, store.ErrConflict
+		return t, domain.ErrConflict
 	}
 	t.Meta = p.Meta
 	t.Revision++
@@ -238,16 +238,16 @@ func (f *a2aCtl) turn(text string) {
 	f.events <- rpc.SessionEvent{Type: rpc.EventTurnEnd, Seq: f.seq}
 }
 
-func a2aEsc(id, cause string) store.Ticket {
-	return store.Ticket{
-		ID: id, Title: "drill needs a human", Status: store.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
+func a2aEsc(id, cause string) domain.Ticket {
+	return domain.Ticket{
+		ID: id, Title: "drill needs a human", Status: domain.StatusOpen, Labels: []string{"needs-human"}, Revision: 1,
 		Meta: []byte(`{"escalation":{"key":"escalation:` + id + `","pool":"chat","session":"s-esc","cause":"` + cause + `"}}`),
 	}
 }
 
-func a2aSetup(t *testing.T, mode string, tickets ...store.Ticket) (*A2A, *a2aPeer, *a2aCtl, *clock.Fake, context.Context) {
+func a2aSetup(t *testing.T, mode string, tickets ...domain.Ticket) (*A2A, *a2aPeer, *a2aCtl, *clock.Fake, context.Context) {
 	peer := newA2APeer(t, mode)
-	ctl := &a2aCtl{events: make(chan rpc.SessionEvent, 16), ticket: map[string]store.Ticket{}}
+	ctl := &a2aCtl{events: make(chan rpc.SessionEvent, 16), ticket: map[string]domain.Ticket{}}
 	for _, tk := range tickets {
 		ctl.ticket[tk.ID] = tk
 	}

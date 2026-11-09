@@ -10,9 +10,9 @@ import (
 	"slices"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/rpc/rpcschema"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Generic RPC for clients (#517): POST /api/rpc/{method} forwards to the
@@ -161,11 +161,11 @@ func rpcErrCode(err error) string {
 	switch {
 	case errors.Is(err, errForbidden):
 		return "forbidden"
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, domain.ErrNotFound):
 		return "not_found"
-	case errors.Is(err, errBadRequest), errors.Is(err, store.ErrInvalid), errors.Is(err, store.ErrClosed):
+	case errors.Is(err, errBadRequest), errors.Is(err, domain.ErrInvalid), errors.Is(err, domain.ErrClosed):
 		return "invalid"
-	case errors.Is(err, store.ErrConflict):
+	case errors.Is(err, domain.ErrConflict):
 		return "conflict"
 	}
 	return "internal"

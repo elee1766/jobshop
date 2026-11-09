@@ -11,7 +11,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 func tracedController(t *testing.T, yaml string) (*Controller, *tracetest.InMemoryExporter) {
@@ -81,7 +81,7 @@ func TestEventJobRootSpan(t *testing.T) {
 	c, exp := tracedController(t, eventTriggerYAML)
 	c.lockSpanMin = time.Nanosecond
 
-	c.triggerEngine().Events([]store.InboxItem{workflowRun("d1", "master", "success", "aaa")})
+	c.triggerEngine().Events([]domain.InboxItem{workflowRun("d1", "master", "success", "aaa")})
 	c.wg.Wait()
 
 	var job tracetest.SpanStub

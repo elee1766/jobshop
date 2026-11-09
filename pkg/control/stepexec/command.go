@@ -9,7 +9,7 @@ import (
 	"github.com/elee1766/acphost/pkg/proc"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // withoutPath drops PATH from env: the step's own PATH comes from HostEnv.
@@ -24,7 +24,7 @@ func withoutPath(env []string) []string {
 }
 
 // command runs one attempt of a command step.
-func (e Executor) command(ctx context.Context, cfg *config.Config, t store.Ticket, s config.Step, sf store.StepFields, tpl Templates, attemptKey string) Result {
+func (e Executor) command(ctx context.Context, cfg *config.Config, t domain.Ticket, s config.Step, sf domain.StepFields, tpl Templates, attemptKey string) Result {
 	argv, err := s.Argv()
 	if err != nil {
 		return failed("", err)

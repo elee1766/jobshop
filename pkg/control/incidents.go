@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -141,7 +142,7 @@ func (c *Controller) reportIncidents(ctx context.Context, sc scope, p rpc.Incide
 	}
 	res.Sessions, res.Steps = []rpc.SessionIncident{}, []rpc.StepIncident{}
 
-	sessions, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed, Order: store.OrderNewest, Limit: incidentsLimit})
+	sessions, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusClosed, Order: store.OrderNewest, Limit: incidentsLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +155,7 @@ func (c *Controller) reportIncidents(ctx context.Context, sc scope, p rpc.Incide
 		})
 	}
 
-	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Order: store.OrderNewest, Limit: incidentsLimit})
+	steps, err := c.store.List(ctx, store.Filter{Kind: domain.KindStep, Order: store.OrderNewest, Limit: incidentsLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +163,7 @@ func (c *Controller) reportIncidents(ctx context.Context, sc scope, p rpc.Incide
 		if s.UpdatedAt.Before(from) {
 			continue
 		}
-		f, err := store.DecodeFields[store.StepFields](s)
+		f, err := domain.DecodeFields[domain.StepFields](s)
 		if err != nil || f.Failures == 0 {
 			continue
 		}

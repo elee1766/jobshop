@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -73,11 +74,11 @@ func (a reportArgs) question(p *rpc.ReportParams) error {
 	return nil
 }
 
-func (a reportArgs) options() ([]rpc.QuestionOption, error) {
+func (a reportArgs) options() ([]domain.QuestionOption, error) {
 	if a.OptionsJSON != "" && len(a.Option) > 0 {
 		return nil, errors.New("use --option or --options-json, not both")
 	}
-	var out []rpc.QuestionOption
+	var out []domain.QuestionOption
 	if a.OptionsJSON != "" {
 		b, err := readBody(a.OptionsJSON)
 		if err != nil {
@@ -89,10 +90,10 @@ func (a reportArgs) options() ([]rpc.QuestionOption, error) {
 	}
 	for _, o := range a.Option {
 		title, desc, _ := strings.Cut(o, "|")
-		out = append(out, rpc.QuestionOption{Title: strings.TrimSpace(title), Description: strings.TrimSpace(desc)})
+		out = append(out, domain.QuestionOption{Title: strings.TrimSpace(title), Description: strings.TrimSpace(desc)})
 	}
-	if len(out) > rpc.MaxQuestionOptions {
-		return nil, fmt.Errorf("at most %d options, got %d", rpc.MaxQuestionOptions, len(out))
+	if len(out) > domain.MaxQuestionOptions {
+		return nil, fmt.Errorf("at most %d options, got %d", domain.MaxQuestionOptions, len(out))
 	}
 	for i, o := range out {
 		if strings.TrimSpace(o.Title) == "" {

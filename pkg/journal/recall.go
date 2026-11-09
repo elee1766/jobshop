@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -56,7 +57,7 @@ const putTries = 10
 // empty Text removes the session's record.
 func Index(ctx context.Context, st Store, d Doc) error {
 	if d.Session == "" {
-		return fmt.Errorf("%w: journal needs a session", store.ErrInvalid)
+		return fmt.Errorf("%w: journal needs a session", domain.ErrInvalid)
 	}
 	col, err := st.Collection(ctx, Spec)
 	if err != nil {
@@ -76,11 +77,11 @@ func Index(ctx context.Context, st Store, d Doc) error {
 			return err
 		}
 		r.Value = b
-		if _, err = col.Update(ctx, r); !errors.Is(err, store.ErrConflict) {
+		if _, err = col.Update(ctx, r); !errors.Is(err, domain.ErrConflict) {
 			return err
 		}
 	}
-	return fmt.Errorf("%w: journal %s: lost every race", store.ErrConflict, d.Session)
+	return fmt.Errorf("%w: journal %s: lost every race", domain.ErrConflict, d.Session)
 }
 
 // snippetMax bounds a recall snippet.
@@ -152,7 +153,7 @@ func Load(ctx context.Context, st Store, session string) (string, error) {
 		return "", err
 	}
 	r, err := col.Get(ctx, session)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		return "", nil
 	}
 	if err != nil {

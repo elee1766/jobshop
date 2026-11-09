@@ -8,6 +8,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -21,7 +22,7 @@ import (
 // only. Gateways and Desk attach to the key.
 
 // escalationMetaPack is meta.escalation on an escalation ticket.
-const escalationMetaPack = store.MetaEscalation
+const escalationMetaPack = domain.MetaEscalation
 
 // escalationKeyPrefix starts every escalation chat session key.
 const escalationKeyPrefix = chatlife.EscalationPrefix
@@ -29,17 +30,17 @@ const escalationKeyPrefix = chatlife.EscalationPrefix
 // EscalationMeta is meta.escalation.
 type EscalationMeta = chatlife.Escalation
 
-func metaMap(raw json.RawMessage) map[string]json.RawMessage { return store.MetaMap(raw) }
+func metaMap(raw json.RawMessage) map[string]json.RawMessage { return domain.MetaMap(raw) }
 
-func escalationMeta(t store.Ticket) (EscalationMeta, bool) { return chatlife.EscalationOf(t) }
+func escalationMeta(t domain.Ticket) (EscalationMeta, bool) { return chatlife.EscalationOf(t) }
 
 // holdTicket reports whether t is a hold that wants an escalation chat.
-func holdTicket(t store.Ticket) bool { return chatlife.Hold(t) }
+func holdTicket(t domain.Ticket) bool { return chatlife.Hold(t) }
 
 // escalationChat returns the chat pool and the rendered prompt for hold
 // ticket t, or ok false when t gets no chat: no policy for its cause, or
 // a pool quarantine of the chat pool itself.
-func (c *Controller) escalationChat(ctx context.Context, cfg *config.Config, t store.Ticket) (pool, prompt string, x chatlife.Cause, ok bool) {
+func (c *Controller) escalationChat(ctx context.Context, cfg *config.Config, t domain.Ticket) (pool, prompt string, x chatlife.Cause, ok bool) {
 	x = chatlife.ClassifyHold(ctx, c.store, t)
 	pool, prompt, ok, err := chatlife.Policy(cfg, t, x)
 	if err != nil {
@@ -53,7 +54,7 @@ func (c *Controller) escalationChat(ctx context.Context, cfg *config.Config, t s
 // meta.escalation, and writes it conditional on the revision read,
 // retrying on conflicts. fn returning errSkipEscalation ends without a
 // write.
-func (c *Controller) updateEscalationMeta(ctx context.Context, id string, fn func(t store.Ticket, e *EscalationMeta, ok bool) error) (store.Ticket, error) {
+func (c *Controller) updateEscalationMeta(ctx context.Context, id string, fn func(t domain.Ticket, e *EscalationMeta, ok bool) error) (domain.Ticket, error) {
 	for attempt := 0; ; attempt++ {
 		t, err := c.store.Get(ctx, id)
 		if err != nil {
@@ -70,7 +71,7 @@ func (c *Controller) updateEscalationMeta(ctx context.Context, id string, fn fun
 			return t, err
 		}
 		t, err = c.store.Update(ctx, "controller", id, store.Update{Meta: mb, IfRevision: t.Revision})
-		if errors.Is(err, store.ErrConflict) && attempt < 5 {
+		if errors.Is(err, domain.ErrConflict) && attempt < 5 {
 			continue
 		}
 		return t, err
@@ -83,8 +84,8 @@ var errSkipEscalation = errors.New("skip")
 // has one. The key is recorded before the first send, so a crash between
 // the two resends to the same keyed session, and the prompt goes only to
 // a session this call started.
-func (c *Controller) ensureEscalationChat(ctx context.Context, cfg *config.Config, t store.Ticket) {
-	if t.Status == store.StatusClosed || !holdTicket(t) {
+func (c *Controller) ensureEscalationChat(ctx context.Context, cfg *config.Config, t domain.Ticket) {
+	if t.Status == domain.StatusClosed || !holdTicket(t) {
 		return
 	}
 	if e, ok := escalationMeta(t); ok && e.Session != "" {
@@ -95,7 +96,7 @@ func (c *Controller) ensureEscalationChat(ctx context.Context, cfg *config.Confi
 		return
 	}
 	key := escalationKeyPrefix + t.ID
-	_, err := c.updateEscalationMeta(ctx, t.ID, func(_ store.Ticket, e *EscalationMeta, ok bool) error {
+	_, err := c.updateEscalationMeta(ctx, t.ID, func(_ domain.Ticket, e *EscalationMeta, ok bool) error {
 		if ok {
 			return errSkipEscalation
 		}
@@ -128,7 +129,7 @@ func (c *Controller) ensureEscalationChat(ctx context.Context, cfg *config.Confi
 			return
 		}
 	}
-	_, err = c.updateEscalationMeta(ctx, t.ID, func(_ store.Ticket, e *EscalationMeta, _ bool) error {
+	_, err = c.updateEscalationMeta(ctx, t.ID, func(_ domain.Ticket, e *EscalationMeta, _ bool) error {
 		e.Session = sess.ID
 		return nil
 	})
@@ -140,19 +141,19 @@ func (c *Controller) ensureEscalationChat(ctx context.Context, cfg *config.Confi
 }
 
 // escalationClosed sends the final message once ticket t closed.
-func (c *Controller) escalationClosed(ctx context.Context, t store.Ticket) {
+func (c *Controller) escalationClosed(ctx context.Context, t domain.Ticket) {
 	e, ok := escalationMeta(t)
-	if !ok || e.Final || e.Session == "" || t.Status != store.StatusClosed {
+	if !ok || e.Final || e.Session == "" || t.Status != domain.StatusClosed {
 		return
 	}
 	if session, err := c.store.Get(ctx, e.Session); err == nil {
-		if fields, err := store.DecodeFields[store.SessionFields](session); err == nil && fields.Named {
+		if fields, err := domain.DecodeFields[domain.SessionFields](session); err == nil && fields.Named {
 			return // A converted chat has an independent lifecycle.
 		}
 	}
 	var sent EscalationMeta
-	cur, err := c.updateEscalationMeta(ctx, t.ID, func(t store.Ticket, e *EscalationMeta, ok bool) error {
-		if !ok || e.Final || t.Status != store.StatusClosed {
+	cur, err := c.updateEscalationMeta(ctx, t.ID, func(t domain.Ticket, e *EscalationMeta, ok bool) error {
+		if !ok || e.Final || t.Status != domain.StatusClosed {
 			return errSkipEscalation
 		}
 		e.Final = true
@@ -177,14 +178,14 @@ func (c *Controller) escalationClosed(ctx context.Context, t store.Ticket) {
 
 // sendMessage queues a message to session sess: text is shown, msgContext
 // goes to the model only (session.send context).
-func (c *Controller) sendMessage(ctx context.Context, sess store.Ticket, text, msgContext string) error {
-	fields, err := json.Marshal(store.MessageFields{To: sess.ID, From: "controller", Context: strings.TrimSpace(msgContext)})
+func (c *Controller) sendMessage(ctx context.Context, sess domain.Ticket, text, msgContext string) error {
+	fields, err := json.Marshal(domain.MessageFields{To: sess.ID, From: "controller", Context: strings.TrimSpace(msgContext)})
 	if err != nil {
 		return err
 	}
 	title, body, _ := strings.Cut(text, "\n")
 	_, err = store.Create(ctx, c.store, "controller", store.NewTicket{
-		Project: sess.Project, Kind: store.KindMessage, Title: title, Body: body, Fields: fields,
+		Project: sess.Project, Kind: domain.KindMessage, Title: title, Body: body, Fields: fields,
 	})
 
 	if err == nil {
@@ -213,7 +214,7 @@ func (c *Controller) sweepEscalationChats(ctx context.Context, cfg *config.Confi
 	if !chatlife.Configured(cfg) {
 		return
 	}
-	for _, st := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+	for _, st := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
 		ts, err := c.store.List(ctx, store.Filter{Label: needsHumanLabel, Status: st})
 		if err != nil {
 			return
@@ -223,7 +224,7 @@ func (c *Controller) sweepEscalationChats(ctx context.Context, cfg *config.Confi
 		}
 	}
 	// Recently closed escalations that still owe a final message.
-	ts, err := c.store.List(ctx, store.Filter{Label: needsHumanLabel, Status: store.StatusClosed, Order: store.OrderNewest, Limit: 50})
+	ts, err := c.store.List(ctx, store.Filter{Label: needsHumanLabel, Status: domain.StatusClosed, Order: store.OrderNewest, Limit: 50})
 	if err != nil {
 		return
 	}

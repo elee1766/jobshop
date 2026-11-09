@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // prestartRoot is poolRoot with an operator chat pool and
@@ -26,13 +26,13 @@ func prestartRoot(t *testing.T) (config.Root, func() func()) {
 	return root, start
 }
 
-func attentionSessions(t *testing.T, admin *rpc.Client) map[string]store.Ticket {
+func attentionSessions(t *testing.T, admin *rpc.Client) map[string]domain.Ticket {
 	t.Helper()
-	var all []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &all))
-	out := map[string]store.Ticket{}
+	var all []domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession}, &all))
+	out := map[string]domain.Ticket{}
 	for _, s := range all {
-		f, err := store.DecodeFields[store.SessionFields](s)
+		f, err := domain.DecodeFields[domain.SessionFields](s)
 		require.NoError(t, err)
 		if strings.HasPrefix(f.Key, "attention:") {
 			out[f.Key] = s
@@ -54,7 +54,7 @@ func TestAttentionPrestart(t *testing.T) {
 	ctx := t.Context()
 	pass(t, root.Dir, 1)
 
-	var q1, q2 store.Ticket
+	var q1, q2 domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "which branch?", Labels: []string{"question"}}, &q1))
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "which tag?", Labels: []string{"question"}}, &q2))
 	k1, k2 := "attention:question:"+q1.ID, "attention:question:"+q2.ID
@@ -64,7 +64,7 @@ func TestAttentionPrestart(t *testing.T) {
 	require.Len(t, sess, 1, "prestart_max 1")
 	s1, ok := sess[k1]
 	require.True(t, ok, "the oldest item first")
-	f, err := store.DecodeFields[store.SessionFields](s1)
+	f, err := domain.DecodeFields[domain.SessionFields](s1)
 	require.NoError(t, err)
 	assert.True(t, f.Prestart)
 	assert.True(t, f.ReadOnly)
@@ -98,26 +98,26 @@ func TestAttentionPrestart(t *testing.T) {
 	assert.True(t, res.Started)
 	assert.Equal(t, k2, res.Key)
 	s2 := attentionSessions(t, admin)[k2]
-	f2, err := store.DecodeFields[store.SessionFields](s2)
+	f2, err := domain.DecodeFields[domain.SessionFields](s2)
 	require.NoError(t, err)
 	assert.False(t, f2.Prestart, "started on click")
 
 	// A human message lifts read-only.
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionSend, rpc.SessionSendParams{ID: s1.ID, Text: "go ahead"}, &rpc.SessionSendResult{}))
-	f, err = store.DecodeFields[store.SessionFields](getTicket(t, admin, s1.ID).Ticket)
+	f, err = domain.DecodeFields[domain.SessionFields](getTicket(t, admin, s1.ID).Ticket)
 	require.NoError(t, err)
 	assert.False(t, f.ReadOnly)
-	var made store.Ticket
+	var made domain.Ticket
 	require.NoError(t, sock.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "follow-up"}, &made))
 
 	// Resolving the item closes its chat once nothing keeps it (JOB-52).
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketClose, rpc.CloseParams{ID: q1.ID}, nil))
 	pass(t, root.Dir, 1)
-	assert.Equal(t, store.StatusClosed, getTicket(t, admin, s1.ID).Ticket.Status)
-	assert.Equal(t, store.StatusOpen, getTicket(t, admin, s2.ID).Ticket.Status)
+	assert.Equal(t, domain.StatusClosed, getTicket(t, admin, s1.ID).Ticket.Status)
+	assert.Equal(t, domain.StatusOpen, getTicket(t, admin, s2.ID).Ticket.Status)
 }
 
-func metaDesk(t *testing.T, tk store.Ticket) string {
+func metaDesk(t *testing.T, tk domain.Ticket) string {
 	t.Helper()
 	var m struct {
 		Desk struct {

@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // Collections (#579, docs/notes/579-collections.md) are named buckets of
@@ -132,13 +134,13 @@ const (
 // identifiers and literals, so only this pattern is allowed.
 func (s CollectionSpec) Validate() error {
 	if !collectionName.MatchString(s.Name) || len(s.Name) > maxCollectionName {
-		return fmt.Errorf("%w: collection name %q: want [a-z][a-z0-9_]*, at most %d chars", ErrInvalid, s.Name, maxCollectionName)
+		return fmt.Errorf("%w: collection name %q: want [a-z][a-z0-9_]*, at most %d chars", domain.ErrInvalid, s.Name, maxCollectionName)
 	}
 	seen := map[string]bool{}
 	for _, fs := range [][]Field{s.Index, s.Unique} {
 		for _, f := range fs {
 			if seen[f.Name] {
-				return fmt.Errorf("%w: collection %s: field %q declared twice", ErrInvalid, s.Name, f.Name)
+				return fmt.Errorf("%w: collection %s: field %q declared twice", domain.ErrInvalid, s.Name, f.Name)
 			}
 			seen[f.Name] = true
 		}
@@ -146,10 +148,10 @@ func (s CollectionSpec) Validate() error {
 	for _, fs := range [][]Field{s.Index, s.Unique, s.Search} {
 		for _, f := range fs {
 			if !fieldName.MatchString(f.Name) || !fieldPath.MatchString(f.Path) {
-				return fmt.Errorf("%w: collection %s: field %q path %q", ErrInvalid, s.Name, f.Name, f.Path)
+				return fmt.Errorf("%w: collection %s: field %q path %q", domain.ErrInvalid, s.Name, f.Name, f.Path)
 			}
 			if len("ru_"+s.Name+"_"+f.Name) > maxIdent {
-				return fmt.Errorf("%w: collection %s: field name %q too long", ErrInvalid, s.Name, f.Name)
+				return fmt.Errorf("%w: collection %s: field name %q too long", domain.ErrInvalid, s.Name, f.Name)
 			}
 		}
 	}
@@ -180,7 +182,7 @@ func (s CollectionSpec) CheckValue(v json.RawMessage) (json.RawMessage, error) {
 	}
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(v, &m); err != nil || m == nil {
-		return nil, fmt.Errorf("%w: %s: value must be a JSON object", ErrInvalid, s.Name)
+		return nil, fmt.Errorf("%w: %s: value must be a JSON object", domain.ErrInvalid, s.Name)
 	}
 	return v, nil
 }
@@ -223,5 +225,5 @@ func RecordOrder(o string) (string, error) {
 	case OrderUpdated:
 		return "updated_at, key", nil
 	}
-	return "", fmt.Errorf("%w: record order %q", ErrInvalid, o)
+	return "", fmt.Errorf("%w: record order %q", domain.ErrInvalid, o)
 }

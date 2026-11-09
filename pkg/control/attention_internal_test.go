@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -31,16 +32,16 @@ func TestAttention(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := scanController(t)
 	// Healthy: a running run and an ordinary ticket are not listed.
-	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "ok", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`)})
+	mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "ok", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`)})
 	mkTicket(t, c, store.NewTicket{Title: "task"})
 	assert.Empty(t, attentionKinds(t, c))
 
 	run := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindRun, Title: "stuck", Project: "js",
+		Kind: domain.KindRun, Title: "stuck", Project: "js",
 		Fields: json.RawMessage(`{"workflow":"work","state":"needs_human"}`), Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":7}}`),
 	})
 	clk.advance(time.Minute)
-	bare := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "bare", Fields: json.RawMessage(`{"workflow":"work","state":"needs_human"}`)})
+	bare := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "bare", Fields: json.RawMessage(`{"workflow":"work","state":"needs_human"}`)})
 	clk.advance(time.Minute)
 	esc := mkTicket(t, c, store.NewTicket{
 		Title: "Escalate run " + run.ID, Labels: []string{needsHumanLabel},

@@ -37,6 +37,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 const (
@@ -194,7 +196,7 @@ func (r *runner) setTurnRules(names []string) {
 
 // newConversation starts a new ACP session in place of one the agent could
 // not reload, and queues a summary of the old one from the host journal.
-func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnection, cwd string, fields *store.SessionFields) error {
+func (r *runner) newConversation(ctx context.Context, conn *acp.ClientSideConnection, cwd string, fields *domain.SessionFields) error {
 	ns, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	if err != nil {
 		return fmt.Errorf("session/new: %w", err)
@@ -249,7 +251,7 @@ func (r *runner) replaceConversation(ctx context.Context, conn *acp.ClientSideCo
 	if err != nil {
 		return err
 	}
-	fields, err := store.DecodeFields[store.SessionFields](t)
+	fields, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return err
 	}
@@ -320,7 +322,7 @@ func (r *runner) backoff() time.Time {
 	return r.backoffUntil
 }
 
-func (c *Controller) startRunner(t store.Ticket) {
+func (c *Controller) startRunner(t domain.Ticket) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if _, ok := c.runners[t.ID]; ok {
@@ -337,7 +339,7 @@ func (c *Controller) startRunner(t store.Ticket) {
 		restartWake: make(chan struct{}, 1), restartNow: make(chan struct{}, 1),
 		cancelNow: make(chan struct{}, 1),
 	}
-	if f, err := store.DecodeFields[store.SessionFields](t); err == nil {
+	if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil {
 		r.traceParent = f.TraceParent
 		r.agent = f.Agent
 	}
@@ -455,11 +457,11 @@ func (r *runner) finish(resolution, reason string) {
 	}
 	r.c.metrics.SessionsEnded.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
 		telemetry.AttrResolution.String(resolution)))
-	if _, err := store.Close(ctx, r.c.store, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, store.ErrClosed) {
+	if _, err := store.Close(ctx, r.c.store, "controller", r.id, nil, resolution); err != nil && !errors.Is(err, domain.ErrClosed) {
 		r.log.ErrorContext(r.ctx, "close session ticket", "err", err)
 	} else if err == nil {
 		r.c.metrics.Closes.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.pool),
-			telemetry.AttrKind.String(string(store.KindSession)), telemetry.AttrResolution.String(resolution)))
+			telemetry.AttrKind.String(string(domain.KindSession)), telemetry.AttrResolution.String(resolution)))
 	}
 	if reason != "" {
 		_, _ = store.AddComment(ctx, r.c.store, "controller", r.id, reason)
@@ -484,10 +486,10 @@ func (r *runner) session() error {
 	if err != nil {
 		return err
 	}
-	if t.Status == store.StatusClosed {
+	if t.Status == domain.StatusClosed {
 		return errSessionEnd{resolution: t.Resolution}
 	}
-	fields, err := store.DecodeFields[store.SessionFields](t)
+	fields, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return err
 	}
@@ -601,7 +603,7 @@ func (r *runner) session() error {
 
 	if ai := init.AgentInfo; ai != nil && (ai.Name != fields.AgentName || ai.Version != fields.AgentVersion) {
 		fields.AgentName, fields.AgentVersion = ai.Name, ai.Version
-		if err := r.c.updateSessionFields(ctx, r.id, func(f *store.SessionFields) {
+		if err := r.c.updateSessionFields(ctx, r.id, func(f *domain.SessionFields) {
 			f.AgentName, f.AgentVersion = ai.Name, ai.Version
 		}); err != nil {
 			return err
@@ -634,7 +636,7 @@ func (r *runner) session() error {
 			switch {
 			case err == nil:
 				loaded = true
-				if err := r.c.updateSessionFields(ctx, r.id, func(f *store.SessionFields) { noteAdvertised(f, ls.ConfigOptions) }); err != nil {
+				if err := r.c.updateSessionFields(ctx, r.id, func(f *domain.SessionFields) { noteAdvertised(f, ls.ConfigOptions) }); err != nil {
 					return err
 				}
 				r.log.InfoContext(r.ctx, "resumed conversation", "acp_session", fields.ACPSession, "path", "load")
@@ -684,7 +686,7 @@ var errRefresh = errors.New("host env refresh")
 
 // staleEnv reports whether the adopted host's spec env differs from what a
 // new host would get, e.g. after a deploy changed PATH or credentials.
-func (r *runner) staleEnv(t store.Ticket, f store.SessionFields) bool {
+func (r *runner) staleEnv(t domain.Ticket, f domain.SessionFields) bool {
 	spec, err := hostspec.Read(r.dir)
 	if err != nil {
 		return false
@@ -702,7 +704,7 @@ func (r *runner) currentEnvStale() bool {
 	if err != nil {
 		return false
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return false
 	}
@@ -711,7 +713,7 @@ func (r *runner) currentEnvStale() bool {
 
 // idle: the session holds no in_progress ticket.
 func (r *runner) idle() bool {
-	held, err := r.c.store.List(r.ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
+	held, err := r.c.store.List(r.ctx, store.Filter{Holder: r.id, Status: domain.StatusInProgress})
 	return err == nil && len(held) == 0
 }
 
@@ -845,11 +847,11 @@ func (r *runner) dropped(conn *acp.ClientSideConnection) error {
 	}
 }
 
-func (r *runner) saveFields(f store.SessionFields) error {
+func (r *runner) saveFields(f domain.SessionFields) error {
 	// The runner's copy has a stale journal cursor; keep the stored one,
 	// which only the shipper moves (#530). Prestart, ReadOnly and
 	// Suspended belong to the controller's attention chats (#606).
-	return r.c.updateSessionFields(context.WithoutCancel(r.ctx), r.id, func(cur *store.SessionFields) {
+	return r.c.updateSessionFields(context.WithoutCancel(r.ctx), r.id, func(cur *domain.SessionFields) {
 		shipped := cur.ShippedSeq
 		prestart, readOnly, suspended, ended := cur.Prestart, cur.ReadOnly, cur.Suspended, cur.Ended
 		named, archived, name := cur.Named, cur.Archived, cur.DisplayName
@@ -915,21 +917,21 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 		}
 		if cordon != nil && cordonWork == "" && !r.holdForJobs(ctx) {
 			switch cordon.Reason {
-			case store.CordonScale:
+			case domain.CordonScale:
 				return errSessionEnd{resolution: resolutionScaledDown}
-			case store.CordonDrain:
+			case domain.CordonDrain:
 				return errSessionEnd{resolution: resolutionDrained}
 			}
 		}
-		var t store.Ticket
-		err := store.ErrNoWork
+		var t domain.Ticket
+		err := domain.ErrNoWork
 		switch {
 		case pool.Chat(): // chat sessions answer messages only
 		case cordon != nil:
 			if cordonWork != "" {
 				t, _, err = r.c.store.Claim(ctx, cordonWork, r.id, r.c.leaseDur())
 				if err != nil && ctx.Err() == nil {
-					err = store.ErrNoWork // closed or reassigned meanwhile; look again
+					err = domain.ErrNoWork // closed or reassigned meanwhile; look again
 				}
 			}
 		default:
@@ -938,7 +940,7 @@ func (r *runner) work(ctx context.Context, conn *acp.ClientSideConnection, nc ne
 			})
 		}
 		switch {
-		case errors.Is(err, store.ErrNoWork):
+		case errors.Is(err, domain.ErrNoWork):
 			if r.delivered.After(idleSince) {
 				idleSince = r.delivered
 			}
@@ -1218,13 +1220,13 @@ func (r *runner) afterTurn(ctx context.Context, conn *acp.ClientSideConnection, 
 // session with one, so a turn cannot be expected to close it. Without
 // this, a ticket claimed for the session by id while a turn was ending
 // got the unclosed reminder and the agent closed it.
-func (r *runner) promptable(ctx context.Context) ([]store.Ticket, error) {
-	held, err := r.c.store.List(ctx, store.Filter{Holder: r.id, Status: store.StatusInProgress})
+func (r *runner) promptable(ctx context.Context) ([]domain.Ticket, error) {
+	held, err := r.c.store.List(ctx, store.Filter{Holder: r.id, Status: domain.StatusInProgress})
 	if err != nil {
 		return nil, err
 	}
 	now := r.c.now()
-	return slices.DeleteFunc(held, func(t store.Ticket) bool { return t.DeferUntil.After(now) }), nil
+	return slices.DeleteFunc(held, func(t domain.Ticket) bool { return t.DeferUntil.After(now) }), nil
 }
 
 const unclosedReason = "agent turn ended without closing or releasing"
@@ -1275,7 +1277,7 @@ func (r *runner) releasedUnclosedBefore(ctx context.Context, id string) bool {
 	return false
 }
 
-func ids(ts []store.Ticket) string {
+func ids(ts []domain.Ticket) string {
 	s := make([]string, len(ts))
 	for i, t := range ts {
 		s[i] = t.ID
@@ -1283,14 +1285,14 @@ func ids(ts []store.Ticket) string {
 	return strings.Join(s, ", ")
 }
 
-func (r *runner) ticketPrompt(t store.Ticket, comments []store.Comment) string {
+func (r *runner) ticketPrompt(t domain.Ticket, comments []domain.Comment) string {
 	parts := r.c.assemble(r.ctx, r.turnSpec(turnTicket, &t, true), PromptPart{Source: "ticket", Text: ticketPromptText("", t, comments)})
 	return r.useParts(parts)
 }
 
 // turnSpec describes this session's next turn. It takes the pending
 // system flag: system rules go out once per host.
-func (r *runner) turnSpec(kind string, t *store.Ticket, poolPrompt bool) turnSpec {
+func (r *runner) turnSpec(kind string, t *domain.Ticket, poolPrompt bool) turnSpec {
 	r.mu.Lock()
 	sys := r.systemDue
 	r.systemDue = false
@@ -1347,7 +1349,7 @@ const (
 	promptCommentSize = 2000
 )
 
-func ticketPromptText(poolPrompt string, t store.Ticket, comments []store.Comment) string {
+func ticketPromptText(poolPrompt string, t domain.Ticket, comments []domain.Comment) string {
 	var b strings.Builder
 	if p := poolPrompt; p != "" {
 		b.WriteString(strings.TrimSpace(p))
@@ -1395,10 +1397,10 @@ refuses with unpushed commits unless --force).`)
 }
 
 // sessionCwd is where the agent works: the session worktree or pool dir.
-func (c *Controller) sessionCwd(t store.Ticket) string { return c.sessionCwdIn(c.config(), t) }
+func (c *Controller) sessionCwd(t domain.Ticket) string { return c.sessionCwdIn(c.config(), t) }
 
 // sessionCwdIn is sessionCwd under cfg.
-func (c *Controller) sessionCwdIn(cfg *config.Config, t store.Ticket) string {
+func (c *Controller) sessionCwdIn(cfg *config.Config, t domain.Ticket) string {
 	p, ok := cfg.Pools[t.Pool]
 	if ok && p.Repo != "" {
 		return filepath.Join(c.root.SessionDir(t.ID), "work")
@@ -1412,7 +1414,7 @@ func (c *Controller) sessionCwdIn(cfg *config.Config, t store.Ticket) string {
 // hostSpec builds the spec a new host for t would get. EnvHash also covers
 // the env the host inherits from this controller, so a deploy that changes
 // either is noticed when a live host is adopted.
-func (c *Controller) hostSpec(t store.Ticket, f store.SessionFields) (hostspec.Spec, string, error) {
+func (c *Controller) hostSpec(t domain.Ticket, f domain.SessionFields) (hostspec.Spec, string, error) {
 	agent, ok := c.config().Agents[f.Agent]
 	if !ok {
 		return hostspec.Spec{}, "", fmt.Errorf("unknown agent %q", f.Agent)
@@ -1480,7 +1482,7 @@ func envHash(inherited, env []string) string {
 }
 
 // spawnHost prepares the session directory and starts a detached host.
-func (c *Controller) spawnHost(t store.Ticket, f store.SessionFields) error {
+func (c *Controller) spawnHost(t domain.Ticket, f domain.SessionFields) error {
 	spec, exe, err := c.hostSpec(t, f)
 	if err != nil {
 		return err
@@ -1595,7 +1597,7 @@ func withoutEnv(env []string, keys ...string) []string {
 // ensureWorktree makes the session's worktree of the pool repo. It reports
 // whether the pool uses a worktree. A missing repo, or a ref or path git
 // rejects, is a permanent error (#146).
-func (c *Controller) ensureWorktree(t store.Ticket, cwd string) (bool, error) {
+func (c *Controller) ensureWorktree(t domain.Ticket, cwd string) (bool, error) {
 	p, ok := c.config().Pools[t.Pool]
 	if !ok || p.Repo == "" {
 		return false, nil
@@ -1657,7 +1659,7 @@ func worktreeAddPermanent(out string) bool {
 // removeWorktree deletes a session's worktree. caller names the code path
 // for the WARN (#154). It refuses while the ticket is open or the host is
 // alive: a live session's worktree must never go.
-func (c *Controller) removeWorktree(cfg *config.Config, t store.Ticket, caller string) {
+func (c *Controller) removeWorktree(cfg *config.Config, t domain.Ticket, caller string) {
 	p, ok := cfg.Pools[t.Pool]
 	if !ok || p.Repo == "" {
 		return
@@ -1666,7 +1668,7 @@ func (c *Controller) removeWorktree(cfg *config.Config, t store.Ticket, caller s
 	if _, err := os.Stat(cwd); err != nil {
 		return
 	}
-	if t.Status != store.StatusClosed || sessionrt.HostAlive(c.root.SessionDir(t.ID)) {
+	if t.Status != domain.StatusClosed || sessionrt.HostAlive(c.root.SessionDir(t.ID)) {
 		c.log.Warn("refusing to remove worktree of live session", "session", t.ID, "caller", caller,
 			"status", t.Status, "cwd", cwd)
 		return
@@ -1687,13 +1689,13 @@ func (c *Controller) removeWorktree(cfg *config.Config, t store.Ticket, caller s
 func (c *Controller) supervise(ctx context.Context, cfg *config.Config, lease time.Duration) {
 	live := c.liveRunners()
 	for _, id := range live {
-		held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
+		held, err := c.store.List(ctx, store.Filter{Holder: id, Status: domain.StatusInProgress})
 		if err != nil {
 			continue
 		}
 		for _, t := range held {
 			cl := store.Claim{TicketID: t.ID, Holder: id, Fence: t.Fence}
-			if _, err := c.store.Heartbeat(ctx, cl, lease); err != nil && !errors.Is(err, store.ErrNotHolder) {
+			if _, err := c.store.Heartbeat(ctx, cl, lease); err != nil && !errors.Is(err, domain.ErrNotHolder) {
 				c.log.WarnContext(ctx, "heartbeat", "ticket", t.ID, "err", err)
 			}
 		}
@@ -1716,7 +1718,7 @@ func (c *Controller) recordGauges(ctx context.Context, cfg *config.Config) {
 		}
 	}
 	c.mu.Unlock()
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		return
 	}
@@ -1730,7 +1732,7 @@ func (c *Controller) recordGauges(ctx context.Context, cfg *config.Config) {
 		state := "idle"
 		if backoff[s.ID] {
 			state = "backoff"
-		} else if held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: store.StatusInProgress, Limit: 1}); err == nil && len(held) > 0 {
+		} else if held, err := c.store.List(ctx, store.Filter{Holder: s.ID, Status: domain.StatusInProgress, Limit: 1}); err == nil && len(held) > 0 {
 			state = "working"
 		}
 		counts[[2]string{s.Pool, state}]++
@@ -1804,9 +1806,9 @@ func (r *runner) lifecycle(event string, attrs ...attribute.KeyValue) {
 // agent is configured, starts its driver. Sessions whose agent is not in
 // the config are external: something else (a human running an agent with
 // JOBSHOP_SOCKET) drives them.
-func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, project, pool, agent, key, title, displayName string) (store.Ticket, error) {
+func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, project, pool, agent, key, title, displayName string) (domain.Ticket, error) {
 	if agent == "" {
-		return store.Ticket{}, fmt.Errorf("%w: agent is required", store.ErrInvalid)
+		return domain.Ticket{}, fmt.Errorf("%w: agent is required", domain.ErrInvalid)
 	}
 	// The slot pick and the create are one step, so two creates in the
 	// same pool never take the same per-session id (#540).
@@ -1814,15 +1816,15 @@ func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, 
 	slot, err := c.sessionSlot(ctx, cfg, pool)
 	if err != nil {
 		c.slotMu.Unlock()
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	if displayName == "" {
 		displayName = cfg.Pools[pool].DisplayName
 	}
-	fields, err := json.Marshal(store.SessionFields{Agent: agent, Key: key, DisplayName: displayName, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
+	fields, err := json.Marshal(domain.SessionFields{Agent: agent, Key: key, DisplayName: displayName, TraceParent: c.sessionTrace(ctx, project, pool, agent), Slot: slot})
 	if err != nil {
 		c.slotMu.Unlock()
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	if title == "" {
 		title = agent + " session"
@@ -1831,7 +1833,7 @@ func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, 
 		}
 	}
 	t, err := store.Create(ctx, c.store, actor, store.NewTicket{
-		Project: project, Kind: store.KindSession, Title: title, Pool: pool, Fields: fields,
+		Project: project, Kind: domain.KindSession, Title: title, Pool: pool, Fields: fields,
 	})
 
 	c.slotMu.Unlock()
@@ -1846,8 +1848,8 @@ func (c *Controller) newSession(ctx context.Context, cfg *config.Config, actor, 
 }
 
 // drive starts the driver for a session whose agent is configured.
-func (c *Controller) drive(cfg *config.Config, t store.Ticket) {
-	f, err := store.DecodeFields[store.SessionFields](t)
+func (c *Controller) drive(cfg *config.Config, t domain.Ticket) {
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return
 	}

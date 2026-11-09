@@ -25,6 +25,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
@@ -108,13 +109,13 @@ func threadsOf(t *testing.T, c *Controller, id string) []threads.Thread {
 	return sm.Threads
 }
 
-func messagesTo(t *testing.T, c *Controller, to string) []store.Ticket {
+func messagesTo(t *testing.T, c *Controller, to string) []domain.Ticket {
 	t.Helper()
-	msgs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindMessage})
+	msgs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindMessage})
 	require.NoError(t, err)
-	var out []store.Ticket
+	var out []domain.Ticket
 	for _, m := range msgs {
-		f, err := store.DecodeFields[store.MessageFields](m)
+		f, err := domain.DecodeFields[domain.MessageFields](m)
 		require.NoError(t, err)
 		if f.To == to {
 			out = append(out, m)
@@ -123,9 +124,9 @@ func messagesTo(t *testing.T, c *Controller, to string) []store.Ticket {
 	return out
 }
 
-func mkSession(t *testing.T, c *Controller) store.Ticket {
+func mkSession(t *testing.T, c *Controller) domain.Ticket {
 	t.Helper()
-	return mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Title: "s", Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	return mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Title: "s", Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 }
 
 // TestSubscriptionsWorkingSession: the issue and a PR linked in a comment
@@ -167,7 +168,7 @@ func TestSubscriptionsWorkingSession(t *testing.T) {
 	require.Len(t, msgs, 1)
 	assert.Contains(t, msgs[0].Body, "rename foo")
 	assert.Contains(t, msgs[0].Body, "review (changes_requested)")
-	f, err := store.DecodeFields[store.MessageFields](msgs[0])
+	f, err := domain.DecodeFields[domain.MessageFields](msgs[0])
 	require.NoError(t, err)
 	assert.True(t, f.Interrupt)
 	cs, err := store.Comments(ctx, c.store, tk.ID)
@@ -199,7 +200,7 @@ func TestSubscriptionsResume(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 	got, err := c.store.Get(ctx, tk.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Equal(t, domain.StatusOpen, got.Status)
 	assert.Equal(t, sess.ID, got.Holder, "same session resumes it")
 
 	_, cl, err = c.store.Claim(ctx, tk.ID, sess.ID, time.Hour)
@@ -211,7 +212,7 @@ func TestSubscriptionsResume(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 	got, err = c.store.Get(ctx, tk.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, got.Status, "outside the window")
+	assert.Equal(t, domain.StatusClosed, got.Status, "outside the window")
 }
 
 // TestSubscribeMethod: a session adds a thread to its current ticket.
@@ -225,7 +226,7 @@ func TestSubscribeMethod(t *testing.T) {
 	require.NoError(t, err)
 	sc := scope{actor: sess.ID, session: sess.ID, project: "js", pool: "dev"}
 	_, err = c.subscribe(ctx, sc, rpc.SubscribeParams{Repo: "bad", Number: 1})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = c.subscribe(ctx, sc, rpc.SubscribeParams{Repo: "x/y", Number: 9})
 	require.NoError(t, err)
 	_, err = c.subscribe(ctx, sc, rpc.SubscribeParams{Repo: "x/y", Number: 9})
@@ -437,7 +438,7 @@ func TestSubscriptionsBots(t *testing.T) {
 	msgs := messagesTo(t, c, sess.ID)
 	require.Len(t, msgs, 1)
 	assert.Contains(t, msgs[0].Body, "null check")
-	f, err := store.DecodeFields[store.MessageFields](msgs[0])
+	f, err := domain.DecodeFields[domain.MessageFields](msgs[0])
 	require.NoError(t, err)
 	assert.True(t, f.Interrupt)
 	cs, err := store.Comments(ctx, c.store, tk.ID)
@@ -451,7 +452,7 @@ func TestSubscriptionsBots(t *testing.T) {
 	c.pollSubscriptions(ctx, src)
 	got, err := c.store.Get(ctx, tk.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, got.Status, "a listed bot resumes the ticket")
+	assert.Equal(t, domain.StatusOpen, got.Status, "a listed bot resumes the ticket")
 }
 
 func writeRSAKey(t *testing.T) string {

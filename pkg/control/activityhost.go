@@ -10,6 +10,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/activity"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -134,7 +135,7 @@ func (c *Controller) activityLinks(ctx context.Context) (map[string][]string, er
 		}
 	}
 	for _, t := range all {
-		if t.Kind != store.KindRun && t.Kind != store.KindStep && t.Kind != store.KindTask {
+		if t.Kind != domain.KindRun && t.Kind != domain.KindStep && t.Kind != domain.KindTask {
 			continue
 		}
 		var m struct {
@@ -151,7 +152,7 @@ func (c *Controller) activityLinks(ctx context.Context) (map[string][]string, er
 			continue
 		}
 		id := t.ID
-		if t.Kind == store.KindStep && t.ParentID != "" {
+		if t.Kind == domain.KindStep && t.ParentID != "" {
 			id = t.ParentID
 		}
 		if m.GitHub.Repo != "" {
@@ -173,7 +174,7 @@ func (c *Controller) activityList(ctx context.Context, sc scope, p rpc.ActivityL
 		return nil, err
 	}
 	if !activity.ValidBots(p.Bots) {
-		return nil, fmt.Errorf("%w: bots must be humans, bots or all", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: bots must be humans, bots or all", domain.ErrInvalid)
 	}
 	cfg := c.config()
 	res := rpc.ActivityListResult{Items: []rpc.ActivityItem{}, Sources: []string{}}

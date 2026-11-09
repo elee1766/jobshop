@@ -17,6 +17,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/journalcompress"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -26,7 +27,7 @@ type fakeHost struct {
 	t        *testing.T
 	root     string
 	now      time.Time
-	sessions []store.Ticket
+	sessions []domain.Ticket
 	wg       sync.WaitGroup
 }
 
@@ -34,8 +35,8 @@ func (h *fakeHost) Now() time.Time              { return h.now }
 func (h *fakeHost) SessionDir(id string) string { return filepath.Join(h.root, id) }
 func (h *fakeHost) Go(f func())                 { h.wg.Go(f) }
 func (h *fakeHost) Context() context.Context    { return h.t.Context() }
-func (h *fakeHost) List(_ context.Context, f store.Filter) ([]store.Ticket, error) {
-	var out []store.Ticket
+func (h *fakeHost) List(_ context.Context, f store.Filter) ([]domain.Ticket, error) {
+	var out []domain.Ticket
 	for _, s := range h.sessions {
 		if s.Kind == f.Kind && s.Status == f.Status {
 			out = append(out, s)
@@ -44,10 +45,10 @@ func (h *fakeHost) List(_ context.Context, f store.Filter) ([]store.Ticket, erro
 	return out, nil
 }
 
-func (h *fakeHost) add(id string, status store.Status, closedAgo time.Duration) {
+func (h *fakeHost) add(id string, status domain.Status, closedAgo time.Duration) {
 	h.t.Helper()
-	s := store.Ticket{ID: id, Kind: store.KindSession, Status: status}
-	if status == store.StatusClosed {
+	s := domain.Ticket{ID: id, Kind: domain.KindSession, Status: status}
+	if status == domain.StatusClosed {
 		s.ClosedAt = h.now.Add(-closedAgo)
 	}
 	h.sessions = append(h.sessions, s)
@@ -68,9 +69,9 @@ func (h *fakeHost) plain(id string) string { return filepath.Join(h.SessionDir(i
 func TestMaybe(t *testing.T) {
 	t.Parallel()
 	h := &fakeHost{t: t, root: t.TempDir(), now: time.Date(2026, 11, 8, 8, 0, 0, 0, time.UTC)}
-	h.add("old", store.StatusClosed, 48*time.Hour)
-	h.add("newer", store.StatusClosed, time.Hour)
-	h.add("open", store.StatusOpen, 0)
+	h.add("old", domain.StatusClosed, 48*time.Hour)
+	h.add("newer", domain.StatusClosed, time.Hour)
+	h.add("open", domain.StatusOpen, 0)
 	sw := journalcompress.New(h, slog.New(slog.DiscardHandler))
 
 	sw.Maybe(config.JournalCompress{})

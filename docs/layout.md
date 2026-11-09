@@ -23,8 +23,12 @@ Companion to `plan.md`.
 jobshop/
 ├── cmd/jobshop/              thin shim: calls cli.Main(os.Args) and exits
 ├── pkg/
-│   ├── store/                Store interface, Ticket/Edge/Comment types, errors,
-│   │   │                     engine kinds and their typed field structs, collections
+│   ├── domain/               shared types and invariants, standard library only: Ticket,
+│   │                         Edge, Comment, kinds and their typed fields, waits,
+│   │                         learnings, resources and slots, inbox items, guard
+│   │                         decisions, question options (JOB-166)
+│   ├── store/                Store interface, its filters and update shapes, collections,
+│   │   │                     the tracing wrapper. Types live in domain
 │   │   ├── storerules/       I/O-free rules both backends apply alike (JOB-40)
 │   │   ├── storetest/        conformance suite every backend runs
 │   │   ├── storemigrate/     SQLite to Postgres copy (#632)

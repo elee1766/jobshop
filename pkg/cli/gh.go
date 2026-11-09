@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -326,7 +327,7 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 			warn(stderr, fmt.Sprintf("jobshop gh: guard %s: %v (not run)", c.action, err))
 			return 1
 		}
-		if r.Decision != rpc.GuardAllow {
+		if r.Decision != domain.GuardAllow {
 			msg := fmt.Sprintf("jobshop gh: guard %s %s: %s: %s (not run)", c.action, target, r.Decision, r.Reason)
 			if r.Ticket != "" {
 				msg += "; waiting on " + r.Ticket
@@ -338,7 +339,7 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 	}
 	if key != "" {
 		code := runGHKeyed(g, gh, env, c, repo, key, args, stdin, stdout, stderr)
-		recordGH(g, c.action, repo, target, rpc.GuardAllow, code, args, stderr)
+		recordGH(g, c.action, repo, target, domain.GuardAllow, code, args, stderr)
 		return code
 	}
 	cmd := exec.Command(gh, args...)
@@ -353,7 +354,7 @@ func runGH(g *Globals, args []string, stdin io.Reader, stdout, stderr io.Writer)
 		code = ee.ExitCode()
 	}
 	if c.action != "" {
-		recordGH(g, c.action, repo, target, rpc.GuardAllow, code, args, stderr)
+		recordGH(g, c.action, repo, target, domain.GuardAllow, code, args, stderr)
 	}
 	return code
 }

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -27,17 +28,17 @@ func parseOrder(order, issues []string) ([][2]string, error) {
 	for _, chain := range order {
 		parts := strings.Split(chain, ">")
 		if len(parts) < 2 {
-			return nil, fmt.Errorf("%w: order %q: want a>b", store.ErrInvalid, chain)
+			return nil, fmt.Errorf("%w: order %q: want a>b", domain.ErrInvalid, chain)
 		}
 		for i := range parts {
 			parts[i] = strings.TrimSpace(parts[i])
 			if !slices.Contains(issues, parts[i]) {
-				return nil, fmt.Errorf("%w: order %q: issue %q is not in the batch", store.ErrInvalid, chain, parts[i])
+				return nil, fmt.Errorf("%w: order %q: issue %q is not in the batch", domain.ErrInvalid, chain, parts[i])
 			}
 		}
 		for i := 1; i < len(parts); i++ {
 			if parts[i-1] == parts[i] {
-				return nil, fmt.Errorf("%w: order %q: issue %s after itself", store.ErrInvalid, chain, parts[i])
+				return nil, fmt.Errorf("%w: order %q: issue %s after itself", domain.ErrInvalid, chain, parts[i])
 			}
 			p := [2]string{parts[i-1], parts[i]}
 			if !slices.Contains(pairs, p) {
@@ -51,9 +52,9 @@ func parseOrder(order, issues []string) ([][2]string, error) {
 // batchMember is one issue's run while a start is being planned.
 type batchMember struct {
 	issue   string
-	run     store.Ticket   // adopted run, or the new run ticket
-	steps   []store.Ticket // adopted steps
-	newRun  store.Graph    // new run graph; empty when adopted
+	run     domain.Ticket   // adopted run, or the new run ticket
+	steps   []domain.Ticket // adopted steps
+	newRun  store.Graph     // new run graph; empty when adopted
 	adopted bool
 }
 
@@ -82,16 +83,16 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	// Scope is checked per member by planRun, as for run.start: the
 	// planner is a session and starts batches in its own project.
 	if p.Key == "" {
-		return nil, fmt.Errorf("%w: batch: key is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: batch: key is required", domain.ErrInvalid)
 	}
 	if len(p.Issues) == 0 {
-		return nil, fmt.Errorf("%w: batch: issues are required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: batch: issues are required", domain.ErrInvalid)
 	}
 	issues := make([]string, len(p.Issues))
 	for i, n := range p.Issues {
 		n = strings.TrimPrefix(strings.TrimSpace(n), "#")
 		if n == "" || slices.Contains(issues[:i], n) {
-			return nil, fmt.Errorf("%w: batch: empty or repeated issue %q", store.ErrInvalid, p.Issues[i])
+			return nil, fmt.Errorf("%w: batch: empty or repeated issue %q", domain.ErrInvalid, p.Issues[i])
 		}
 		issues[i] = n
 	}
@@ -131,7 +132,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 		}
 		res.Existing = true
 		return res, nil
-	} else if !errors.Is(err, store.ErrNotFound) {
+	} else if !errors.Is(err, domain.ErrNotFound) {
 		return nil, err
 	}
 
@@ -139,13 +140,13 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	if err != nil {
 		return nil, err
 	}
-	bf, err := json.Marshal(store.BatchFields{Key: p.Key, Issues: issues, Order: pairs, State: store.BatchOpen})
+	bf, err := json.Marshal(domain.BatchFields{Key: p.Key, Issues: issues, Order: pairs, State: domain.BatchOpen})
 	if err != nil {
 		return nil, err
 	}
 	g := store.Graph{
 		Fields: map[string]json.RawMessage{}, Revisions: map[string]int64{}, Children: map[string]int64{},
-		Tickets:  []store.NewTicket{{ID: batchID, Project: proj, Kind: store.KindBatch, Title: "Batch " + p.Key, Fields: bf}},
+		Tickets:  []store.NewTicket{{ID: batchID, Project: proj, Kind: domain.KindBatch, Title: "Batch " + p.Key, Fields: bf}},
 		Reparent: map[string]string{},
 	}
 	members := map[string]*batchMember{}
@@ -157,8 +158,8 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 		switch {
 		case err == nil:
 			if run.ParentID != "" && run.ParentID != batchID {
-				if parent, err := c.store.Get(ctx, run.ParentID); err == nil && parent.Kind == store.KindBatch && parent.Status != store.StatusClosed {
-					return nil, fmt.Errorf("%w: issue %s: run %s is already in batch %s", store.ErrInvalid, n, run.ID, parent.ID)
+				if parent, err := c.store.Get(ctx, run.ParentID); err == nil && parent.Kind == domain.KindBatch && parent.Status != domain.StatusClosed {
+					return nil, fmt.Errorf("%w: issue %s: run %s is already in batch %s", domain.ErrInvalid, n, run.ID, parent.ID)
 				}
 			}
 			steps, err := store.Children(ctx, c.store, run.ID)
@@ -166,12 +167,12 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 				return nil, err
 			}
 			if len(steps) == 0 && !dynamic {
-				return nil, fmt.Errorf("%w: issue %s: run %s has no steps", store.ErrInvalid, n, run.ID)
+				return nil, fmt.Errorf("%w: issue %s: run %s has no steps", domain.ErrInvalid, n, run.ID)
 			}
 			m.run, m.steps, m.adopted = run, steps, true
 			g.Reparent[run.ID] = batchID
 			adopted = append(adopted, run.ID)
-		case errors.Is(err, store.ErrNotFound):
+		case errors.Is(err, domain.ErrNotFound):
 			if m.newRun, err = c.buildRun(cfg, plans[i], params[i], nil, batchID); err != nil {
 				return nil, fmt.Errorf("issue %s: %w", n, err)
 			}
@@ -184,8 +185,8 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 	for _, pr := range pairs {
 		a, b := members[pr[0]], members[pr[1]]
 		if dynamic {
-			g.Edges = append(g.Edges, store.Edge{From: b.runID(), To: a.runID(), Kind: store.EdgeBlocks})
-			var fields store.RunFields
+			g.Edges = append(g.Edges, domain.Edge{From: b.runID(), To: a.runID(), Kind: domain.EdgeBlocks})
+			var fields domain.RunFields
 			var raw json.RawMessage
 			if b.adopted {
 				raw = b.run.Fields
@@ -196,7 +197,7 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 				return nil, err
 			}
 			if fields.Automation == nil {
-				return nil, fmt.Errorf("%w: cannot order an adopted static run as a hook workflow", store.ErrInvalid)
+				return nil, fmt.Errorf("%w: cannot order an adopted static run as a hook workflow", domain.ErrInvalid)
 			}
 			if !slices.Contains(fields.Automation.After, a.runID()) {
 				fields.Automation.After = append(fields.Automation.After, a.runID())
@@ -210,18 +211,18 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 				g.Revisions[b.run.ID] = b.run.Revision
 				g.Children[b.run.ID] = int64(len(b.steps))
 				for _, step := range b.steps {
-					f, err := store.DecodeFields[store.StepFields](step)
+					f, err := domain.DecodeFields[domain.StepFields](step)
 					if err != nil {
 						return nil, err
 					}
 					if len(f.Needs) > 0 {
 						continue
 					}
-					if step.Status != store.StatusOpen || step.Holder != "" {
-						return nil, fmt.Errorf("%w: run %s has already started", store.ErrNotHolder, b.run.ID)
+					if step.Status != domain.StatusOpen || step.Holder != "" {
+						return nil, fmt.Errorf("%w: run %s has already started", domain.ErrNotHolder, b.run.ID)
 					}
 					g.Unclaimed = append(g.Unclaimed, step.ID)
-					g.Edges = append(g.Edges, store.Edge{From: step.ID, To: a.runID(), Kind: store.EdgeBlocks})
+					g.Edges = append(g.Edges, domain.Edge{From: step.ID, To: a.runID(), Kind: domain.EdgeBlocks})
 				}
 				b.run.Fields = data
 			} else {
@@ -240,15 +241,15 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 			// An edge on a claimed step does not stop the session working
 			// it, so refuse instead of reporting an order that will not hold.
 			s := b.steps[0]
-			if s.Status != store.StatusOpen || s.Holder != "" {
+			if s.Status != domain.StatusOpen || s.Holder != "" {
 				return nil, fmt.Errorf("%w: issue %s must wait for issue %s, but its run %s step %s is already %s (holder %q)",
-					store.ErrNotHolder, b.issue, a.issue, b.run.ID, s.ID, s.Status, s.Holder)
+					domain.ErrNotHolder, b.issue, a.issue, b.run.ID, s.ID, s.Status, s.Holder)
 			}
 			if !slices.Contains(g.Unclaimed, first) {
 				g.Unclaimed = append(g.Unclaimed, first)
 			}
 		}
-		g.Edges = append(g.Edges, store.Edge{From: first, To: a.lastStep(), Kind: store.EdgeBlocks})
+		g.Edges = append(g.Edges, domain.Edge{From: first, To: a.lastStep(), Kind: domain.EdgeBlocks})
 	}
 	out, err := c.store.Apply(ctx, sc.actor, g)
 	if err != nil {
@@ -265,27 +266,27 @@ func (c *Controller) batchStart(ctx context.Context, sc scope, p rpc.BatchStartP
 }
 
 // batchResult loads the batch's member runs in fields.issues order.
-func (c *Controller) batchResult(ctx context.Context, b store.Ticket) (rpc.BatchResult, error) {
+func (c *Controller) batchResult(ctx context.Context, b domain.Ticket) (rpc.BatchResult, error) {
 	res := rpc.BatchResult{Batch: b, Runs: []rpc.RunResult{}}
 	kids, err := store.Children(ctx, c.store, b.ID)
 	if err != nil {
 		return res, err
 	}
-	f, err := store.DecodeFields[store.BatchFields](b)
+	f, err := domain.DecodeFields[domain.BatchFields](b)
 	if err != nil {
 		return res, err
 	}
-	rank := func(t store.Ticket) int {
-		if rf, err := store.DecodeFields[store.RunFields](t); err == nil {
+	rank := func(t domain.Ticket) int {
+		if rf, err := domain.DecodeFields[domain.RunFields](t); err == nil {
 			if i := slices.Index(f.Issues, strings.TrimPrefix(rf.Key, "issue-")); i >= 0 {
 				return i
 			}
 		}
 		return len(f.Issues)
 	}
-	slices.SortStableFunc(kids, func(x, y store.Ticket) int { return rank(x) - rank(y) })
+	slices.SortStableFunc(kids, func(x, y domain.Ticket) int { return rank(x) - rank(y) })
 	for _, k := range kids {
-		if k.Kind != store.KindRun {
+		if k.Kind != domain.KindRun {
 			continue
 		}
 		r, err := c.runResult(ctx, k)
@@ -307,10 +308,10 @@ func (c *Controller) deriveBatch(ctx context.Context, batchID string) {
 	c.runMu.Lock()
 	defer c.runMu.Unlock()
 	b, err := c.store.Get(ctx, batchID)
-	if err != nil || b.Kind != store.KindBatch || b.Status == store.StatusClosed {
+	if err != nil || b.Kind != domain.KindBatch || b.Status == domain.StatusClosed {
 		return
 	}
-	f, err := store.DecodeFields[store.BatchFields](b)
+	f, err := domain.DecodeFields[domain.BatchFields](b)
 	if err != nil {
 		return
 	}
@@ -331,7 +332,7 @@ func (c *Controller) deriveBatch(ctx context.Context, batchID string) {
 		c.log.ErrorContext(ctx, "batch state", "batch", batchID, "err", err)
 		return
 	}
-	if state == store.BatchDone || state == store.BatchFailed {
+	if state == domain.BatchDone || state == domain.BatchFailed {
 		if _, err := store.Close(ctx, c.store, "controller", b.ID, nil, state); err != nil {
 			c.log.ErrorContext(ctx, "close batch", "batch", batchID, "err", err)
 			return
@@ -343,25 +344,25 @@ func (c *Controller) deriveBatch(ctx context.Context, batchID string) {
 // batchState computes the state from the member runs. cur is the stored
 // state: a batch that left open does not return to it (a resumed step is
 // open again, but the batch has been running).
-func (c *Controller) batchState(ctx context.Context, cur string, kids []store.Ticket) (string, error) {
-	members, done, needsHuman, started := 0, 0, false, cur != store.BatchOpen
+func (c *Controller) batchState(ctx context.Context, cur string, kids []domain.Ticket) (string, error) {
+	members, done, needsHuman, started := 0, 0, false, cur != domain.BatchOpen
 	for _, k := range kids {
-		if k.Kind != store.KindRun {
+		if k.Kind != domain.KindRun {
 			continue
 		}
 		members++
-		rf, err := store.DecodeFields[store.RunFields](k)
+		rf, err := domain.DecodeFields[domain.RunFields](k)
 		if err != nil {
 			return "", err
 		}
 		switch {
-		case k.Status == store.StatusClosed && rf.State == store.RunDone:
+		case k.Status == domain.StatusClosed && rf.State == domain.RunDone:
 			done++
 			started = true
 			continue
-		case k.Status == store.StatusClosed:
-			return store.BatchFailed, nil
-		case rf.State == store.RunNeedsHuman:
+		case k.Status == domain.StatusClosed:
+			return domain.BatchFailed, nil
+		case rf.State == domain.RunNeedsHuman:
 			needsHuman = true
 		}
 		if started {
@@ -372,7 +373,7 @@ func (c *Controller) batchState(ctx context.Context, cur string, kids []store.Ti
 			return "", err
 		}
 		for _, s := range steps {
-			if s.Status != store.StatusOpen || s.Holder != "" {
+			if s.Status != domain.StatusOpen || s.Holder != "" {
 				started = true
 				break
 			}
@@ -382,13 +383,13 @@ func (c *Controller) batchState(ctx context.Context, cur string, kids []store.Ti
 	case members == 0:
 		return cur, nil
 	case done == members:
-		return store.BatchDone, nil
+		return domain.BatchDone, nil
 	case needsHuman:
-		return store.BatchNeedsHuman, nil
+		return domain.BatchNeedsHuman, nil
 	case started:
-		return store.BatchRunning, nil
+		return domain.BatchRunning, nil
 	}
-	return store.BatchOpen, nil
+	return domain.BatchOpen, nil
 }
 
 // runBatchEvent derives the state of the batch a run belongs to, if any.
@@ -403,7 +404,7 @@ func (c *Controller) runBatchEvent(ctx context.Context, runID string) {
 // sweepBatches re-derives every open batch each tick, catching changes
 // made by paths that do not call runBatchEvent.
 func (c *Controller) sweepBatches(ctx context.Context) {
-	bs, err := c.store.List(ctx, store.Filter{Kind: store.KindBatch, Status: store.StatusOpen})
+	bs, err := c.store.List(ctx, store.Filter{Kind: domain.KindBatch, Status: domain.StatusOpen})
 	if err != nil {
 		return
 	}
@@ -414,7 +415,7 @@ func (c *Controller) sweepBatches(ctx context.Context) {
 
 func (c *Controller) batchShow(ctx context.Context, sc scope, p rpc.IDParams) (any, error) {
 	b, err := c.store.Get(ctx, p.ID)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		proj, perr := c.project(sc, "")
 		if perr != nil {
 			return nil, err
@@ -424,8 +425,8 @@ func (c *Controller) batchShow(ctx context.Context, sc scope, p rpc.IDParams) (a
 	if err != nil {
 		return nil, err
 	}
-	if b.Kind != store.KindBatch {
-		return nil, fmt.Errorf("%w: %s is a %s, not a batch", store.ErrInvalid, p.ID, b.Kind)
+	if b.Kind != domain.KindBatch {
+		return nil, fmt.Errorf("%w: %s is a %s, not a batch", domain.ErrInvalid, p.ID, b.Kind)
 	}
 	if !sc.admin && b.Project != sc.project {
 		return nil, forbidden("session is scoped to project %s", sc.project)
@@ -442,7 +443,7 @@ func (c *Controller) batchShow(ctx context.Context, sc scope, p rpc.IDParams) (a
 func (c *Controller) batchBlocked(ctx context.Context, res *rpc.BatchResult) error {
 	issueOf := map[string]string{} // step id -> issue
 	for _, r := range res.Runs {
-		rf, err := store.DecodeFields[store.RunFields](r.Run)
+		rf, err := domain.DecodeFields[domain.RunFields](r.Run)
 		if err != nil {
 			return err
 		}
@@ -453,13 +454,13 @@ func (c *Controller) batchBlocked(ctx context.Context, res *rpc.BatchResult) err
 	open := map[string]bool{}
 	for _, r := range res.Runs {
 		for _, s := range r.Steps {
-			open[s.ID] = s.Status != store.StatusClosed
+			open[s.ID] = s.Status != domain.StatusClosed
 		}
 	}
 	res.BlockedBy = map[string][]string{}
 	for _, r := range res.Runs {
 		cur := currentStep(r.Steps)
-		if cur == nil || r.Run.Status == store.StatusClosed {
+		if cur == nil || r.Run.Status == domain.StatusClosed {
 			continue
 		}
 		edges, err := store.Edges(ctx, c.store, cur.ID)
@@ -479,9 +480,9 @@ func (c *Controller) batchBlocked(ctx context.Context, res *rpc.BatchResult) err
 }
 
 // currentStep is the first step not closed done or skipped, or nil.
-func currentStep(steps []store.Ticket) *store.Ticket {
+func currentStep(steps []domain.Ticket) *domain.Ticket {
 	for i := range steps {
-		if !store.StepFinished(steps[i]) {
+		if !domain.StepFinished(steps[i]) {
 			return &steps[i]
 		}
 	}
@@ -492,5 +493,5 @@ func (c *Controller) batchList(ctx context.Context, sc scope, p rpc.BatchListPar
 	if !sc.admin {
 		p.Project = sc.project
 	}
-	return c.store.List(ctx, store.Filter{Project: p.Project, Kind: store.KindBatch, Status: store.StatusOpen, Order: store.OrderNewest, Limit: p.Limit})
+	return c.store.List(ctx, store.Filter{Project: p.Project, Kind: domain.KindBatch, Status: domain.StatusOpen, Order: store.OrderNewest, Limit: p.Limit})
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // fakeHost records the command it was asked to run.
@@ -34,7 +34,7 @@ func (h *fakeHost) Run(_ context.Context, c Cmd) (proc.Exit, error) {
 
 func (h *fakeHost) Worktree(string, string, string, string, string) error { return nil }
 
-func (h *fakeHost) SlotEnv(context.Context, store.Ticket) []string { return []string{"SLOT=1"} }
+func (h *fakeHost) SlotEnv(context.Context, domain.Ticket) []string { return []string{"SLOT=1"} }
 
 func (h *fakeHost) HostEnv() []string { return []string{"JOBSHOP_BIN=/bin/jobshop"} }
 
@@ -58,7 +58,7 @@ func TestCommandResults(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			h := c.host
-			res := newExec(&h).command(t.Context(), &config.Config{}, store.Ticket{ID: "t1"}, cmdStep, store.StepFields{}, tpl, "run/s/1")
+			res := newExec(&h).command(t.Context(), &config.Config{}, domain.Ticket{ID: "t1"}, cmdStep, domain.StepFields{}, tpl, "run/s/1")
 			assert.Equal(t, c.want, res.Result)
 			assert.Equal(t, c.err, res.Err)
 			assert.Equal(t, "echo bob", res.Command)
@@ -79,7 +79,7 @@ func TestCommandResults(t *testing.T) {
 func TestCommandBadTemplate(t *testing.T) {
 	h := &fakeHost{}
 	s := config.Step{ID: "s", Type: config.StepCommand, Run: "echo {{.missing"}
-	res := newExec(h).command(t.Context(), &config.Config{}, store.Ticket{}, s, store.StepFields{}, Templates{Vars: map[string]any{}}, "k")
+	res := newExec(h).command(t.Context(), &config.Config{}, domain.Ticket{}, s, domain.StepFields{}, Templates{Vars: map[string]any{}}, "k")
 	assert.Equal(t, ResultFailed, res.Result)
 	assert.NotEmpty(t, res.Err)
 	assert.Empty(t, h.cmd.Argv, "the command must not run")
@@ -125,7 +125,7 @@ func TestLimitedBuffer(t *testing.T) {
 }
 
 func TestPlaceNoPool(t *testing.T) {
-	pl, err := newExec(&fakeHost{}).Place(&config.Config{}, config.Step{}, store.StepFields{Run: "r"}, Templates{})
+	pl, err := newExec(&fakeHost{}).Place(&config.Config{}, config.Step{}, domain.StepFields{Run: "r"}, Templates{})
 	require.NoError(t, err)
 	assert.Equal(t, Place{Dir: "/root"}, pl)
 	assert.Equal(t, "/root/runs/r", RunDir("/root", "r"))

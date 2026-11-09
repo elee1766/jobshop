@@ -22,6 +22,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -243,7 +244,7 @@ func TestLinearWebhookIssue(t *testing.T) {
 	}
 
 	assert.Equal(t, http.StatusAccepted, postWebhook(c, good, sign(webhookSecret, good)))
-	runs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
+	runs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun})
 	require.NoError(t, err)
 	require.Len(t, runs, 1, "the webhook started the intake run")
 	assert.Contains(t, string(runs[0].Meta), "ENG-5")
@@ -284,7 +285,7 @@ func TestLinearWebhookComment(t *testing.T) {
 	assert.Contains(t, eps, "linear-lapp", "drained into the inbox from the implicit identity endpoint")
 	got, err := c.store.Get(ctx, q.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, got.Status)
+	assert.Equal(t, domain.StatusClosed, got.Status)
 	assert.Equal(t, resolutionAnswered, got.Resolution)
 }
 

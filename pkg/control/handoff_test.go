@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestHandoff checks that a session hands off its own ticket in one
@@ -16,7 +16,7 @@ import (
 func TestHandoff(t *testing.T) {
 	admin := runRoot(t)
 	ctx := t.Context()
-	var a, b store.Ticket
+	var a, b domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
 
@@ -41,7 +41,7 @@ func TestHandoff(t *testing.T) {
 	require.NoError(t, s.Call(ctx, rpc.MethodHandoff, rpc.HandoffParams{Pool: "refinery", Note: "needs review"}, nil))
 	got = getTicket(t, admin, a.ID)
 	assert.Equal(t, "refinery", got.Ticket.Pool)
-	assert.Equal(t, store.StatusOpen, got.Ticket.Status)
+	assert.Equal(t, domain.StatusOpen, got.Ticket.Status)
 	assert.Empty(t, got.Ticket.Holder)
 	assert.Greater(t, got.Ticket.Fence, cl.Claim.Fence)
 	assert.Equal(t, before.Revision+1, got.Ticket.Revision, "one write")

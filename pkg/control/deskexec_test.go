@@ -13,6 +13,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -43,7 +44,7 @@ func TestDeskExec(t *testing.T) {
 	t.Cleanup(func() { cancel(); require.NoError(t, <-done) })
 	admin := dial(t, root.AdminSocket())
 
-	var tk store.Ticket
+	var tk domain.Ticket
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{Title: "t"}, &tk))
 
 	var res rpc.DeskExecResult
@@ -59,7 +60,7 @@ func TestDeskExec(t *testing.T) {
 	assert.Contains(t, err.Error(), "exited 3: broken")
 
 	err = admin.Call(ctx, rpc.MethodDeskExec, rpc.DeskExecParams{Name: "nope"}, nil)
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	var show rpc.ShowResult
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketShow, rpc.IDParams{ID: tk.ID}, &show))

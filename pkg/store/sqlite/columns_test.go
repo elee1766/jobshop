@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -69,20 +70,20 @@ func TestPortableColumnsBackfill(t *testing.T) {
 	path := testPath(t)
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
-	rf, _ := json.Marshal(store.RunFields{Workflow: "w", Key: "k1", State: store.RunRunning})
+	rf, _ := json.Marshal(domain.RunFields{Workflow: "w", Key: "k1", State: domain.RunRunning})
 	meta := json.RawMessage(`{"trigger":{"name":"nightly","n":3}}`)
-	run, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf, Meta: meta})
+	run, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindRun, Title: "r", Fields: rf, Meta: meta})
 	require.NoError(t, err)
 	var steps []string
 	for _, i := range []int{1, 0} {
-		sf, _ := json.Marshal(store.StepFields{Run: run.ID, Step: "s", Index: i})
-		st, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
+		sf, _ := json.Marshal(domain.StepFields{Run: run.ID, Step: "s", Index: i})
+		st, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
 		require.NoError(t, err)
 		steps = append(steps, st.ID)
 	}
-	cond := store.WaitCond{Type: store.WaitTime, At: run.CreatedAt.Add(time.Hour)}
-	wf, _ := json.Marshal(store.TaskFields{Wait: &store.Wait{Reason: "later", Since: run.CreatedAt, Conds: []store.WaitCond{cond}}})
-	waiting, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "w", Pool: "dev", Fields: wf})
+	cond := domain.WaitCond{Type: domain.WaitTime, At: run.CreatedAt.Add(time.Hour)}
+	wf, _ := json.Marshal(domain.TaskFields{Wait: &domain.Wait{Reason: "later", Since: run.CreatedAt, Conds: []domain.WaitCond{cond}}})
+	waiting, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindTask, Title: "w", Pool: "dev", Fields: wf})
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
@@ -100,7 +101,7 @@ func TestPortableColumnsBackfill(t *testing.T) {
 	got, err := store.OpenRun(ctx, s, "w", "k1")
 	require.NoError(t, err)
 	assert.Equal(t, run.ID, got.ID)
-	runs, err := s.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunRunning, Order: store.OrderNewest})
+	runs, err := s.List(ctx, store.Filter{Kind: domain.KindRun, State: domain.RunRunning, Order: store.OrderNewest})
 	require.NoError(t, err)
 	require.Len(t, runs, 1)
 	kids, err := store.Children(ctx, s, run.ID)
@@ -127,14 +128,14 @@ func TestTicketResourcesBackfill(t *testing.T) {
 	path := testPath(t)
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
-	require.NoError(t, s.SetResources(ctx, store.ResourceConfig{Caps: map[string]int{"pr": 1}}))
-	rf, _ := json.Marshal(store.RunFields{Workflow: "w", State: store.RunRunning})
-	run, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindRun, Title: "r", Fields: rf})
+	require.NoError(t, s.SetResources(ctx, domain.ResourceConfig{Caps: map[string]int{"pr": 1}}))
+	rf, _ := json.Marshal(domain.RunFields{Workflow: "w", State: domain.RunRunning})
+	run, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindRun, Title: "r", Fields: rf})
 	require.NoError(t, err)
 	var ids []string
 	for range 2 {
-		sf, _ := json.Marshal(store.StepFields{Run: run.ID, Step: "s", Resources: []string{"pr:x#1"}})
-		st, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
+		sf, _ := json.Marshal(domain.StepFields{Run: run.ID, Step: "s", Resources: []string{"pr:x#1"}})
+		st, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindStep, Title: "s", Pool: "dev", ParentID: run.ID, Fields: sf})
 		require.NoError(t, err)
 		ids = append(ids, st.ID)
 	}
@@ -158,5 +159,5 @@ func TestTicketResourcesBackfill(t *testing.T) {
 	assert.Empty(t, ready, "pr:x#1 is held by the backfilled claim")
 	rep, err := s.Resources(ctx, "")
 	require.NoError(t, err)
-	assert.Equal(t, []store.ResourceUse{{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1}}, rep.Use)
+	assert.Equal(t, []domain.ResourceUse{{Key: "pr:x#1", Capacity: 1, Held: 1, Waiting: 1}}, rep.Use)
 }

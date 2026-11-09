@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestPoolShowSandbox (JOB-83): pool.show returns the merged sandbox and
@@ -69,5 +69,5 @@ pools:
 
 	err := admin.Call(t.Context(), rpc.MethodPoolShow, rpc.PoolShowParams{Pool: "nope"}, &res)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), store.ErrNotFound.Error())
+	assert.Contains(t, err.Error(), domain.ErrNotFound.Error())
 }

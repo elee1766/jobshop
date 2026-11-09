@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/control/chatlife"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -24,12 +25,12 @@ const (
 
 // noteOperator keeps the human who wrote to an attention chat, so the
 // answer the chat relays records them as from.
-func (c *Controller) noteOperator(ctx context.Context, sess store.Ticket, actor string) {
-	f, err := store.DecodeFields[store.SessionFields](sess)
+func (c *Controller) noteOperator(ctx context.Context, sess domain.Ticket, actor string) {
+	f, err := domain.DecodeFields[domain.SessionFields](sess)
 	if err != nil || !strings.HasPrefix(f.Key, attentionKeyPrefix) || f.Operator == actor || actor == "" || actor == "admin" || actor == "controller" {
 		return
 	}
-	if err := c.updateSessionFields(ctx, sess.ID, func(f *store.SessionFields) { f.Operator = actor }); err != nil {
+	if err := c.updateSessionFields(ctx, sess.ID, func(f *domain.SessionFields) { f.Operator = actor }); err != nil {
 		c.log.WarnContext(ctx, "record chat operator", "session", sess.ID, "err", err)
 	}
 }
@@ -38,7 +39,7 @@ func (c *Controller) noteOperator(ctx context.Context, sess store.Ticket, actor 
 // wrote to the chat, else the session.
 func (c *Controller) chatAnswerFrom(ctx context.Context, sc scope) string {
 	if s, err := c.store.Get(ctx, sc.session); err == nil {
-		if f, err := store.DecodeFields[store.SessionFields](s); err == nil && f.Operator != "" {
+		if f, err := domain.DecodeFields[domain.SessionFields](s); err == nil && f.Operator != "" {
 			return f.Operator
 		}
 	}
@@ -47,22 +48,22 @@ func (c *Controller) chatAnswerFrom(ctx context.Context, sc scope) string {
 
 // followAnswer marks the answering chat as waiting on the asker's
 // reaction to message (nil when the asker had ended).
-func (c *Controller) followAnswer(ctx context.Context, chat string, qt store.Ticket, qm questionMeta, msg *store.Ticket) {
+func (c *Controller) followAnswer(ctx context.Context, chat string, qt domain.Ticket, qm questionMeta, msg *domain.Ticket) {
 	if chat == "" {
 		return
 	}
-	fl := &store.QuestionFollow{Question: qt.ID, Ticket: qm.Ticket, Asker: qm.Session, Since: c.now().UTC()}
+	fl := &domain.QuestionFollow{Question: qt.ID, Ticket: qm.Ticket, Asker: qm.Session, Since: c.now().UTC()}
 	if msg != nil {
 		fl.Message = msg.ID
 	}
-	if err := c.updateSessionFields(ctx, chat, func(f *store.SessionFields) { f.Follow = fl }); err != nil {
+	if err := c.updateSessionFields(ctx, chat, func(f *domain.SessionFields) { f.Follow = fl }); err != nil {
 		c.log.WarnContext(ctx, "follow answer", "session", chat, "err", err)
 	}
 }
 
 // answerDelivered is called after the turn that delivered msgs ended: a
 // chat following one of them reports the reaction now.
-func (c *Controller) answerDelivered(ctx context.Context, msgs []store.Ticket) {
+func (c *Controller) answerDelivered(ctx context.Context, msgs []domain.Ticket) {
 	for _, m := range msgs {
 		if !strings.HasPrefix(m.Title, answerTitlePrefix) {
 			continue
@@ -72,7 +73,7 @@ func (c *Controller) answerDelivered(ctx context.Context, msgs []store.Ticket) {
 			return
 		}
 		for _, s := range chats {
-			if f, _ := store.DecodeFields[store.SessionFields](s); f.Follow != nil && f.Follow.Message == m.ID {
+			if f, _ := domain.DecodeFields[domain.SessionFields](s); f.Follow != nil && f.Follow.Message == m.ID {
 				c.reportReaction(ctx, s, *f.Follow)
 			}
 		}
@@ -80,14 +81,14 @@ func (c *Controller) answerDelivered(ctx context.Context, msgs []store.Ticket) {
 }
 
 // followingChats are the open sessions waiting on an asker's reaction.
-func (c *Controller) followingChats(ctx context.Context) ([]store.Ticket, error) {
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+func (c *Controller) followingChats(ctx context.Context) ([]domain.Ticket, error) {
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		return nil, err
 	}
-	var out []store.Ticket
+	var out []domain.Ticket
 	for _, s := range open {
-		if f, err := store.DecodeFields[store.SessionFields](s); err == nil && f.Follow != nil {
+		if f, err := domain.DecodeFields[domain.SessionFields](s); err == nil && f.Follow != nil {
 			out = append(out, s)
 		}
 	}
@@ -102,11 +103,11 @@ func (c *Controller) sweepQuestionFollows(ctx context.Context) {
 		return
 	}
 	for _, s := range chats {
-		f, _ := store.DecodeFields[store.SessionFields](s)
+		f, _ := domain.DecodeFields[domain.SessionFields](s)
 		fl := *f.Follow
 		gone := fl.Message == "" || fl.Asker == ""
 		if !gone {
-			if a, err := c.store.Get(ctx, fl.Asker); err != nil || a.Status == store.StatusClosed {
+			if a, err := c.store.Get(ctx, fl.Asker); err != nil || a.Status == domain.StatusClosed {
 				gone = true
 			}
 		}
@@ -118,8 +119,8 @@ func (c *Controller) sweepQuestionFollows(ctx context.Context) {
 
 // reportReaction tells the chat what the asker did after the answer and
 // ends the follow-up.
-func (c *Controller) reportReaction(ctx context.Context, chat store.Ticket, fl store.QuestionFollow) {
-	if err := c.updateSessionFields(ctx, chat.ID, func(f *store.SessionFields) { f.Follow = nil }); err != nil {
+func (c *Controller) reportReaction(ctx context.Context, chat domain.Ticket, fl domain.QuestionFollow) {
+	if err := c.updateSessionFields(ctx, chat.ID, func(f *domain.SessionFields) { f.Follow = nil }); err != nil {
 		c.log.WarnContext(ctx, "end follow-up", "session", chat.ID, "err", err)
 		return
 	}
@@ -132,7 +133,7 @@ func (c *Controller) reportReaction(ctx context.Context, chat store.Ticket, fl s
 
 // reaction describes the work ticket after the asker's turn: re-asked,
 // parked or resolved.
-func (c *Controller) reaction(ctx context.Context, fl store.QuestionFollow) string {
+func (c *Controller) reaction(ctx context.Context, fl domain.QuestionFollow) string {
 	head := fmt.Sprintf("Reaction of the asking session %s on %s to the answer to %s: ", fl.Asker, fl.Ticket, fl.Question)
 	if re, ok := c.reask(ctx, fl.Asker, fl.Ticket, fl.Question); ok {
 		return head + "re-asked. New question " + re.ID + ": " + strings.TrimPrefix(re.Title, "Question: ") +
@@ -143,7 +144,7 @@ func (c *Controller) reaction(ctx context.Context, fl store.QuestionFollow) stri
 		return head + "unknown (" + err.Error() + ")."
 	}
 	switch {
-	case t.Status == store.StatusClosed:
+	case t.Status == domain.StatusClosed:
 		return head + "resolved: " + t.ID + " is closed (" + t.Resolution + "). Tell the operator, then this chat can end."
 	case waitOf(t) != nil:
 		return head + "parked: " + t.ID + " waits on " + waitOf(t).Reason + ". Tell the operator."
@@ -165,35 +166,35 @@ func noteSuffix(n string) string {
 
 // reask is the newest open question from asker on ticket other than
 // skip.
-func (c *Controller) reask(ctx context.Context, asker, ticket, skip string) (store.Ticket, bool) {
+func (c *Controller) reask(ctx context.Context, asker, ticket, skip string) (domain.Ticket, bool) {
 	if asker == "" {
-		return store.Ticket{}, false
+		return domain.Ticket{}, false
 	}
-	qs, err := c.store.List(ctx, store.Filter{Kind: store.KindMessage, Status: store.StatusOpen, MetaPack: questionMetaPack, MetaKey: "session", MetaValue: asker, Order: store.OrderNewest})
+	qs, err := c.store.List(ctx, store.Filter{Kind: domain.KindMessage, Status: domain.StatusOpen, MetaPack: questionMetaPack, MetaKey: "session", MetaValue: asker, Order: store.OrderNewest})
 	if err != nil {
-		return store.Ticket{}, false
+		return domain.Ticket{}, false
 	}
 	for _, q := range qs {
 		if qm, ok := questionOf(q); ok && q.ID != skip && qm.Ticket == ticket {
 			return q, true
 		}
 	}
-	return store.Ticket{}, false
+	return domain.Ticket{}, false
 }
 
 // threadQuestion puts a re-ask into the open chat of an earlier question
 // from the same session on the same ticket: the new question records
 // that chat's key, so it gets no chat of its own, and the chat is told.
-func (c *Controller) threadQuestion(ctx context.Context, q store.Ticket, qm questionMeta) {
+func (c *Controller) threadQuestion(ctx context.Context, q domain.Ticket, qm questionMeta) {
 	if qm.Session == "" {
 		return
 	}
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		return
 	}
 	for _, s := range open {
-		f, err := store.DecodeFields[store.SessionFields](s)
+		f, err := domain.DecodeFields[domain.SessionFields](s)
 		if err != nil || !strings.HasPrefix(f.Key, questionChatPrefix) {
 			continue
 		}
@@ -222,11 +223,11 @@ func (c *Controller) threadQuestion(ctx context.Context, q store.Ticket, qm ques
 
 // questionChatOpen: a question chat stays open while its follow-up or a
 // threaded question is unsettled, or while a Desk client watches it.
-func (c *Controller) questionChatOpen(ctx context.Context, s store.Ticket, f store.SessionFields) bool {
+func (c *Controller) questionChatOpen(ctx context.Context, s domain.Ticket, f domain.SessionFields) bool {
 	if f.Follow != nil || c.watched(s.ID) {
 		return true
 	}
-	qs, err := c.store.List(ctx, store.Filter{Kind: store.KindMessage, Status: store.StatusOpen, MetaPack: deskMetaPack, MetaKey: "attention_chat", MetaValue: f.Key})
+	qs, err := c.store.List(ctx, store.Filter{Kind: domain.KindMessage, Status: domain.StatusOpen, MetaPack: deskMetaPack, MetaKey: "attention_chat", MetaValue: f.Key})
 	return err == nil && len(qs) > 0
 }
 

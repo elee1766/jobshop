@@ -9,6 +9,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
@@ -56,18 +57,18 @@ func (c *Controller) callSync(ctx context.Context, cfg *config.Config, name, ent
 func (c *Controller) runHookHandler(ctx context.Context, cfg *config.Config, h config.Hook, ev hooks.GuardEvent) hooks.Answer {
 	result, err := c.callSync(ctx, cfg, "hooks."+ev.On, h.Handler, config.Duration(h.Timeout, 30*time.Second), ev, h.Args)
 	if err != nil {
-		return hooks.Answer{Decision: rpc.GuardDeny, Reason: "hook " + h.Handler + ": " + err.Error()}
+		return hooks.Answer{Decision: domain.GuardDeny, Reason: "hook " + h.Handler + ": " + err.Error()}
 	}
 	if len(result.Output) == 0 {
-		return hooks.Answer{Decision: rpc.GuardAllow}
+		return hooks.Answer{Decision: domain.GuardAllow}
 	}
 	decision, _ := result.Output["decision"].(string)
 	reason, _ := result.Output["reason"].(string)
 	switch decision {
-	case rpc.GuardAllow, rpc.GuardDeny, rpc.GuardAskHuman:
+	case domain.GuardAllow, domain.GuardDeny, domain.GuardAskHuman:
 		return hooks.Answer{Decision: decision, Reason: reason}
 	}
-	return hooks.Answer{Decision: rpc.GuardDeny, Reason: fmt.Sprintf("hook decision %q is not allow, deny or ask_human", decision)}
+	return hooks.Answer{Decision: domain.GuardDeny, Reason: fmt.Sprintf("hook decision %q is not allow, deny or ask_human", decision)}
 }
 
 // runDeskHandler is runDeskCommand for a Starlark handler: the returned

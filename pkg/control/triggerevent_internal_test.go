@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -42,7 +43,7 @@ triggers:
 `
 
 // workflowRun is an admitted workflow_run delivery.
-func workflowRun(delivery, branch, conclusion, sha string) store.InboxItem {
+func workflowRun(delivery, branch, conclusion, sha string) domain.InboxItem {
 	p, _ := json.Marshal(map[string]any{
 		"action": "completed",
 		"workflow_run": map[string]any{
@@ -51,10 +52,10 @@ func workflowRun(delivery, branch, conclusion, sha string) store.InboxItem {
 		},
 		"repository": map[string]any{"full_name": "acme/app"},
 	})
-	return store.InboxItem{Source: "github", DeliveryID: delivery, Kind: "workflow_run", RepoOrTeam: "acme/app", Payload: p}
+	return domain.InboxItem{Source: "github", DeliveryID: delivery, Kind: "workflow_run", RepoOrTeam: "acme/app", Payload: p}
 }
 
-func triggerTickets(t *testing.T, c *Controller, name string) []store.Ticket {
+func triggerTickets(t *testing.T, c *Controller, name string) []domain.Ticket {
 	t.Helper()
 	ts, err := c.store.List(t.Context(), store.Filter{MetaPack: triggerPack, MetaKey: "name", MetaValue: name})
 	require.NoError(t, err)
@@ -62,7 +63,7 @@ func triggerTickets(t *testing.T, c *Controller, name string) []store.Ticket {
 }
 
 // fireEvents runs what triggerEvents runs in the background, in line.
-func fireEvents(c *Controller, items ...store.InboxItem) {
+func fireEvents(c *Controller, items ...domain.InboxItem) {
 	trs := c.config().Triggers
 	for _, it := range items {
 		ev := triggers.EventOf(it)
@@ -87,7 +88,7 @@ func TestEventTrigger(t *testing.T) {
 	fireEvents(c, workflowRun("d2", "master", "success", "bbb"), workflowRun("d3", "master", "success", "bbb"))
 	ts := triggerTickets(t, c, "green")
 	require.Len(t, ts, 1, "a redelivery of the same commit fires once")
-	assert.Equal(t, store.StatusClosed, ts[0].Status)
+	assert.Equal(t, domain.StatusClosed, ts[0].Status)
 	b, err := os.ReadFile(filepath.Join(dir, "deployed"))
 	require.NoError(t, err)
 	assert.Equal(t, "deploy bbb\n", string(b))
@@ -129,14 +130,14 @@ func TestEventTriggerFallback(t *testing.T) {
 func TestEventTriggerCommandFails(t *testing.T) {
 	t.Parallel()
 	c, _, _ := scanControllerYAML(t, eventTriggerYAML)
-	push := func(id, sha string) store.InboxItem {
+	push := func(id, sha string) domain.InboxItem {
 		p, _ := json.Marshal(map[string]any{"ref": "refs/heads/broken", "after": sha})
-		return store.InboxItem{Source: "github", DeliveryID: id, Kind: "push", RepoOrTeam: "acme/app", Payload: p}
+		return domain.InboxItem{Source: "github", DeliveryID: id, Kind: "push", RepoOrTeam: "acme/app", Payload: p}
 	}
 	fireEvents(c, push("p1", "s1"))
 	ts := triggerTickets(t, c, "broken")
 	require.Len(t, ts, 1)
-	assert.Equal(t, store.StatusOpen, ts[0].Status)
+	assert.Equal(t, domain.StatusOpen, ts[0].Status)
 	assert.Contains(t, ts[0].Labels, needsHumanLabel)
 	fireEvents(c, push("p2", "s2"))
 	assert.Len(t, triggerTickets(t, c, "broken"), 1, "held while the failure is open")

@@ -20,7 +20,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/hostspec"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // writePoolConfig rewrites the root's config with one fake-agent pool.
@@ -34,19 +35,19 @@ func writePoolConfig(t *testing.T, root config.Root, maxSessions int, prompt str
 func waitClosed(t *testing.T, root config.Root, admin *rpc.Client, id string) {
 	t.Helper()
 	passEventually(t, root.Dir, func() bool {
-		var got store.Ticket
+		var got domain.Ticket
 		err := admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
-			Ticket *store.Ticket `json:"ticket"`
+			Ticket *domain.Ticket `json:"ticket"`
 		}{&got})
-		return err == nil && got.Status == store.StatusClosed
+		return err == nil && got.Status == domain.StatusClosed
 	}, "condition not met after supervisor passes")
 }
 
-func openSessions(t *testing.T, admin *rpc.Client) []store.Ticket {
+func openSessions(t *testing.T, admin *rpc.Client) []domain.Ticket {
 	t.Helper()
-	var out []store.Ticket
+	var out []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList,
-		rpc.ListParams{Kind: store.KindSession, Status: store.StatusOpen}, &out))
+		rpc.ListParams{Kind: domain.KindSession, Status: domain.StatusOpen}, &out))
 	return out
 }
 
@@ -59,7 +60,7 @@ func TestReloadPrompt(t *testing.T) {
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 
-	var a, b store.Ticket
+	var a, b domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
 	waitClosed(t, root, admin, a.ID)
 	sess := openSessions(t, admin)
@@ -95,7 +96,7 @@ func TestReloadMaxSessions(t *testing.T) {
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 
-	var tickets [3]store.Ticket
+	var tickets [3]domain.Ticket
 	for i := range 2 {
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &tickets[i]))
 	}
@@ -104,11 +105,11 @@ func TestReloadMaxSessions(t *testing.T) {
 	// scaled down, which is correct but not what this test checks.
 	for i := range 2 {
 		passEventually(t, root.Dir, func() bool {
-			var got store.Ticket
+			var got domain.Ticket
 			err := admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: tickets[i].ID}, &struct {
-				Ticket *store.Ticket `json:"ticket"`
+				Ticket *domain.Ticket `json:"ticket"`
 			}{&got})
-			return err == nil && got.Status == store.StatusInProgress
+			return err == nil && got.Status == domain.StatusInProgress
 		}, "both sessions working")
 	}
 
@@ -142,7 +143,7 @@ func TestReloadInvalid(t *testing.T) {
 	require.NoError(t, os.WriteFile(root.Config(), []byte("bogus_key: 1\n"), 0o600))
 	reload <- struct{}{} // like SIGHUP; the error is only logged
 
-	var a store.Ticket
+	var a domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
 	waitClosed(t, root, admin, a.ID)
 	prompts, err := os.ReadFile(filepath.Join(root.Dir, "prompts"))
@@ -154,7 +155,7 @@ func TestReloadInvalid(t *testing.T) {
 	reload <- struct{}{}
 	// The loop takes the next send only after the first reload finished.
 	reload <- struct{}{}
-	var b store.Ticket
+	var b domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
 	waitClosed(t, root, admin, b.ID)
 	prompts, err = os.ReadFile(filepath.Join(root.Dir, "prompts"))
@@ -226,7 +227,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	defer stop()
 	admin := dial(t, root.AdminSocket())
 
-	var a store.Ticket
+	var a domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
 	waitClosed(t, root, admin, a.ID)
 	sess := openSessions(t, admin)
@@ -247,7 +248,7 @@ func TestEnvRefreshLive(t *testing.T) {
 		pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 		return err == nil && string(pid) != string(pid1) && hostRunning(sdir) && hasEnv("DEPLOY=two")
 	}, "idle host respawned with the new env")
-	var b store.Ticket
+	var b domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
 	waitClosed(t, root, admin, b.ID) // a prompt to an unloaded conversation would fail
 	now := openSessions(t, admin)
@@ -258,7 +259,7 @@ func TestEnvRefreshLive(t *testing.T) {
 	pid2, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
-	var c store.Ticket
+	var c domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "c", Pool: "dev"}, &c))
 	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
@@ -270,9 +271,9 @@ func TestEnvRefreshLive(t *testing.T) {
 	pid, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
 	assert.Equal(t, string(pid2), string(pid), "busy host not stopped mid-turn")
-	var held store.Ticket
+	var held domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: c.ID}, &struct {
-		Ticket *store.Ticket `json:"ticket"`
+		Ticket *domain.Ticket `json:"ticket"`
 	}{&held}))
 	assert.Equal(t, sess[0].ID, held.Holder, "claim kept")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
@@ -320,7 +321,7 @@ func TestEnvRefreshStopsDaemon(t *testing.T) {
 	writeEnv("one")
 	stop := start()
 	admin := dial(t, root.AdminSocket())
-	var a store.Ticket
+	var a domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "a", Pool: "dev"}, &a))
 	waitClosed(t, root, admin, a.ID)
 	passEventually(t, root.Dir, func() bool { return daemons()["one"] != 0 }, "condition not met after supervisor passes")
@@ -336,7 +337,7 @@ func TestEnvRefreshStopsDaemon(t *testing.T) {
 	admin = dial(t, root.AdminSocket())
 	passEventually(t, root.Dir, func() bool { return daemons()["two"] != 0 }, "agent respawned with the new env")
 	passEventually(t, root.Dir, func() bool { return !alive(old) }, "old daemon stopped")
-	var b store.Ticket
+	var b domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "b", Pool: "dev"}, &b))
 	waitClosed(t, root, admin, b.ID)
 	assert.Equal(t, sess[0].ID, openSessions(t, admin)[0].ID, "same session")

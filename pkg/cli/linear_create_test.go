@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
@@ -63,7 +64,7 @@ func TestLinearCreateIntakeNote(t *testing.T) {
 		{name: "old controller", landed: "Backlog"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := &fakeController{decision: rpc.GuardAllow, keys: map[string]string{}, intake: tc.intake}
+			f := &fakeController{decision: domain.GuardAllow, keys: map[string]string{}, intake: tc.intake}
 			g := &Globals{Socket: f.serve(t)}
 			l := &linearCmd{APIURL: createLinear(t, tc.landed)}
 			var out, errb bytes.Buffer

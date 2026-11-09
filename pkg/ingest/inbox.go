@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -67,7 +68,7 @@ const (
 )
 
 // terminal states are pruned.
-var terminal = []string{store.InboxDispatched, store.InboxDenied, store.InboxFailed}
+var terminal = []string{domain.InboxDispatched, domain.InboxDenied, domain.InboxFailed}
 
 func inboxCol(ctx context.Context, st InboxStore) (store.Collection, error) {
 	return st.Collection(ctx, InboxSpec)
@@ -77,13 +78,13 @@ func inboxKey(id int64) string { return strconv.FormatInt(id, 10) }
 
 // InboxPut stores an ingested item, deduped by delivery id and then natural
 // key (#321, #335). A repeat returns the stored item and dup true.
-func InboxPut(ctx context.Context, st InboxStore, it store.InboxItem) (store.InboxItem, bool, error) {
+func InboxPut(ctx context.Context, st InboxStore, it domain.InboxItem) (domain.InboxItem, bool, error) {
 	if err := checkInbox(it); err != nil {
-		return store.InboxItem{}, false, err
+		return domain.InboxItem{}, false, err
 	}
 	col, ids, err := cols(ctx, st)
 	if err != nil {
-		return store.InboxItem{}, false, err
+		return domain.InboxItem{}, false, err
 	}
 	return put(ctx, col, ids, it)
 }
@@ -100,7 +101,7 @@ func cols(ctx context.Context, st InboxStore) (col, ids store.Collection, err er
 // new ones as stored (with their ids): the targeted wait wake reads
 // their subjects (#679). It is not atomic: a failure part way leaves the
 // earlier items stored, and a retry dedupes them.
-func InboxPutBatch(ctx context.Context, st InboxStore, its []store.InboxItem) ([]store.InboxItem, error) {
+func InboxPutBatch(ctx context.Context, st InboxStore, its []domain.InboxItem) ([]domain.InboxItem, error) {
 	for _, it := range its {
 		if err := checkInbox(it); err != nil {
 			return nil, err
@@ -110,7 +111,7 @@ func InboxPutBatch(ctx context.Context, st InboxStore, its []store.InboxItem) ([
 	if err != nil {
 		return nil, err
 	}
-	var fresh []store.InboxItem
+	var fresh []domain.InboxItem
 	for _, it := range its {
 		got, dup, err := put(ctx, col, ids, it)
 		if err != nil {
@@ -123,12 +124,12 @@ func InboxPutBatch(ctx context.Context, st InboxStore, its []store.InboxItem) ([
 	return fresh, nil
 }
 
-func checkInbox(it store.InboxItem) error {
+func checkInbox(it domain.InboxItem) error {
 	if it.DeliveryID == "" {
-		return fmt.Errorf("%w: inbox item needs a delivery id", store.ErrInvalid)
+		return fmt.Errorf("%w: inbox item needs a delivery id", domain.ErrInvalid)
 	}
 	if it.Source == "" {
-		return fmt.Errorf("%w: inbox item needs a source", store.ErrInvalid)
+		return fmt.Errorf("%w: inbox item needs a source", domain.ErrInvalid)
 	}
 	return nil
 }
@@ -137,7 +138,7 @@ func checkInbox(it store.InboxItem) error {
 // else inserts it under a new id. A put that still clashes lost a race
 // to a concurrent put of the same item, or found its id taken: the
 // record it returns says which.
-func put(ctx context.Context, col, ids store.Collection, it store.InboxItem) (store.InboxItem, bool, error) {
+func put(ctx context.Context, col, ids store.Collection, it domain.InboxItem) (domain.InboxItem, bool, error) {
 	if got, ok, err := existing(ctx, col, it); err != nil || ok {
 		return got, ok, err
 	}
@@ -145,20 +146,20 @@ func put(ctx context.Context, col, ids store.Collection, it store.InboxItem) (st
 	for range inboxTries {
 		id, err := nextID(ctx, ids)
 		if err != nil {
-			return store.InboxItem{}, false, err
+			return domain.InboxItem{}, false, err
 		}
 		v.ID = id
 		b, err := json.Marshal(v)
 		if err != nil {
-			return store.InboxItem{}, false, err
+			return domain.InboxItem{}, false, err
 		}
-		r, created, err := col.Put(ctx, store.Record{Key: inboxKey(id), State: store.InboxPending, Value: b, CreatedAt: it.ReceivedAt})
+		r, created, err := col.Put(ctx, store.Record{Key: inboxKey(id), State: domain.InboxPending, Value: b, CreatedAt: it.ReceivedAt})
 		if err != nil {
-			return store.InboxItem{}, false, err
+			return domain.InboxItem{}, false, err
 		}
 		got, err := fromInbox(r)
 		if err != nil {
-			return store.InboxItem{}, false, err
+			return domain.InboxItem{}, false, err
 		}
 		if created {
 			return got, false, nil
@@ -167,12 +168,12 @@ func put(ctx context.Context, col, ids store.Collection, it store.InboxItem) (st
 			return got, true, nil
 		}
 	}
-	return store.InboxItem{}, false, fmt.Errorf("%w: inbox: lost every id race", store.ErrConflict)
+	return domain.InboxItem{}, false, fmt.Errorf("%w: inbox: lost every id race", domain.ErrConflict)
 }
 
 // existing finds the stored item with its delivery id, else its
 // natural key.
-func existing(ctx context.Context, col store.Collection, it store.InboxItem) (store.InboxItem, bool, error) {
+func existing(ctx context.Context, col store.Collection, it domain.InboxItem) (domain.InboxItem, bool, error) {
 	wheres := []map[string]string{{"delivery_id": it.DeliveryID}}
 	if it.NaturalKey != "" {
 		wheres = append(wheres, map[string]string{"natural_key": it.NaturalKey})
@@ -180,21 +181,21 @@ func existing(ctx context.Context, col store.Collection, it store.InboxItem) (st
 	for _, w := range wheres {
 		rs, err := col.List(ctx, store.RecordFilter{Where: w, Limit: 1})
 		if err != nil {
-			return store.InboxItem{}, false, err
+			return domain.InboxItem{}, false, err
 		}
 		if len(rs) > 0 {
 			got, err := fromInbox(rs[0])
 			return got, err == nil, err
 		}
 	}
-	return store.InboxItem{}, false, nil
+	return domain.InboxItem{}, false, nil
 }
 
 // nextID takes the next id from the counter.
 func nextID(ctx context.Context, ids store.Collection) (int64, error) {
 	for range inboxTries {
 		r, err := ids.Get(ctx, "next")
-		if errors.Is(err, store.ErrNotFound) {
+		if errors.Is(err, domain.ErrNotFound) {
 			if _, _, err := ids.Put(ctx, store.Record{Key: "next", Value: json.RawMessage(`{"next":1}`)}); err != nil {
 				return 0, err
 			}
@@ -212,43 +213,43 @@ func nextID(ctx context.Context, ids store.Collection) (int64, error) {
 			return 0, err
 		}
 		_, err = ids.Update(ctx, r)
-		if errors.Is(err, store.ErrConflict) {
+		if errors.Is(err, domain.ErrConflict) {
 			continue
 		}
 		return id, err
 	}
-	return 0, fmt.Errorf("%w: inbox id counter: lost every race", store.ErrConflict)
+	return 0, fmt.Errorf("%w: inbox id counter: lost every race", domain.ErrConflict)
 }
 
 // InboxClaim leases the oldest item in one of states whose lease is empty or
 // expired, adding one to attempts. ErrNotFound if none.
-func InboxClaim(ctx context.Context, st InboxStore, states []string, holder string, lease time.Duration) (store.InboxItem, error) {
+func InboxClaim(ctx context.Context, st InboxStore, states []string, holder string, lease time.Duration) (domain.InboxItem, error) {
 	if holder == "" || lease <= 0 || len(states) == 0 {
-		return store.InboxItem{}, fmt.Errorf("%w: inbox claim needs states, a holder and a lease", store.ErrInvalid)
+		return domain.InboxItem{}, fmt.Errorf("%w: inbox claim needs states, a holder and a lease", domain.ErrInvalid)
 	}
 	if err := checkStates(states...); err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	col, err := inboxCol(ctx, st)
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	r, err := col.Claim(ctx, store.RecordFilter{States: states}, holder, lease)
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	return fromInbox(r)
 }
 
 // InboxRenew extends holder's live lease; ErrConflict if not held.
-func InboxRenew(ctx context.Context, st InboxStore, id int64, holder string, lease time.Duration) (store.InboxItem, error) {
+func InboxRenew(ctx context.Context, st InboxStore, id int64, holder string, lease time.Duration) (domain.InboxItem, error) {
 	col, err := inboxCol(ctx, st)
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	r, err := col.Renew(ctx, inboxKey(id), holder, lease)
 	if err != nil {
-		return store.InboxItem{}, conflict(err)
+		return domain.InboxItem{}, conflict(err)
 	}
 	return fromInbox(r)
 }
@@ -256,12 +257,12 @@ func InboxRenew(ctx context.Context, st InboxStore, id int64, holder string, lea
 // InboxSetState moves a held item to u.State and drops the lease. Nil
 // Admitted or HookResults keep the stored value. ErrConflict if holder
 // no longer holds a live lease.
-func InboxSetState(ctx context.Context, st InboxStore, id int64, holder string, u store.InboxUpdate) (store.InboxItem, error) {
+func InboxSetState(ctx context.Context, st InboxStore, id int64, holder string, u store.InboxUpdate) (domain.InboxItem, error) {
 	if err := checkStates(u.State); err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	if holder == "" {
-		return store.InboxItem{}, fmt.Errorf("%w: inbox set state needs a holder", store.ErrInvalid)
+		return domain.InboxItem{}, fmt.Errorf("%w: inbox set state needs a holder", domain.ErrInvalid)
 	}
 	return update(ctx, st, id, func(r *store.Record, v *inboxValue) error {
 		r.State, r.Holder = u.State, holder
@@ -278,13 +279,13 @@ func InboxSetState(ctx context.Context, st InboxStore, id int64, holder string, 
 // InboxRequeue moves an item no one leases from state from to state to
 // (held -> pending once a human answered, #353). ErrConflict if it is
 // not in from or is leased.
-func InboxRequeue(ctx context.Context, st InboxStore, id int64, from, to string) (store.InboxItem, error) {
+func InboxRequeue(ctx context.Context, st InboxStore, id int64, from, to string) (domain.InboxItem, error) {
 	if err := checkStates(from, to); err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	return update(ctx, st, id, func(r *store.Record, _ *inboxValue) error {
 		if r.State != from {
-			return fmt.Errorf("%w: inbox item %d is not %s", store.ErrConflict, id, from)
+			return fmt.Errorf("%w: inbox item %d is not %s", domain.ErrConflict, id, from)
 		}
 		// No holder: the update fails with a conflict while a live
 		// lease is on the item.
@@ -295,71 +296,71 @@ func InboxRequeue(ctx context.Context, st InboxStore, id int64, from, to string)
 
 // update reads id, applies fn and writes it back with the lease
 // cleared, retrying a lost compare-and-set.
-func update(ctx context.Context, st InboxStore, id int64, fn func(*store.Record, *inboxValue) error) (store.InboxItem, error) {
+func update(ctx context.Context, st InboxStore, id int64, fn func(*store.Record, *inboxValue) error) (domain.InboxItem, error) {
 	col, err := inboxCol(ctx, st)
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	for range inboxTries {
 		r, err := col.Get(ctx, inboxKey(id))
 		if err != nil {
-			return store.InboxItem{}, err
+			return domain.InboxItem{}, err
 		}
 		var v inboxValue
 		if err := json.Unmarshal(r.Value, &v); err != nil {
-			return store.InboxItem{}, fmt.Errorf("inbox item %d: %w", id, err)
+			return domain.InboxItem{}, fmt.Errorf("inbox item %d: %w", id, err)
 		}
 		if err := fn(&r, &v); err != nil {
-			return store.InboxItem{}, err
+			return domain.InboxItem{}, err
 		}
 		r.LeaseUntil = time.Time{}
 		if r.Value, err = json.Marshal(v); err != nil {
-			return store.InboxItem{}, err
+			return domain.InboxItem{}, err
 		}
 		r, err = col.Update(ctx, r)
-		if errors.Is(err, store.ErrConflict) {
+		if errors.Is(err, domain.ErrConflict) {
 			continue
 		}
 		if err != nil {
-			return store.InboxItem{}, conflict(err)
+			return domain.InboxItem{}, conflict(err)
 		}
 		return fromInbox(r)
 	}
-	return store.InboxItem{}, fmt.Errorf("%w: inbox item %d: lost every race", store.ErrConflict, id)
+	return domain.InboxItem{}, fmt.Errorf("%w: inbox item %d: lost every race", domain.ErrConflict, id)
 }
 
 // conflict reports a lost lease as ErrConflict, as the inbox always has.
 func conflict(err error) error {
-	if errors.Is(err, store.ErrNotHolder) {
-		return fmt.Errorf("%w: %w", store.ErrConflict, err)
+	if errors.Is(err, domain.ErrNotHolder) {
+		return fmt.Errorf("%w: %w", domain.ErrConflict, err)
 	}
 	return err
 }
 
 func checkStates(states ...string) error {
 	for _, s := range states {
-		if !slices.Contains(store.InboxStates, s) {
-			return fmt.Errorf("%w: unknown inbox state %q", store.ErrInvalid, s)
+		if !slices.Contains(domain.InboxStates, s) {
+			return fmt.Errorf("%w: unknown inbox state %q", domain.ErrInvalid, s)
 		}
 	}
 	return nil
 }
 
 // InboxGet returns one item.
-func InboxGet(ctx context.Context, st InboxStore, id int64) (store.InboxItem, error) {
+func InboxGet(ctx context.Context, st InboxStore, id int64) (domain.InboxItem, error) {
 	col, err := inboxCol(ctx, st)
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	r, err := col.Get(ctx, inboxKey(id))
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	return fromInbox(r)
 }
 
 // InboxList lists items newest first; Limit 0 is 100.
-func InboxList(ctx context.Context, st InboxStore, f store.InboxFilter) ([]store.InboxItem, error) {
+func InboxList(ctx context.Context, st InboxStore, f store.InboxFilter) ([]domain.InboxItem, error) {
 	col, err := inboxCol(ctx, st)
 	if err != nil {
 		return nil, err
@@ -375,7 +376,7 @@ func InboxList(ctx context.Context, st InboxStore, f store.InboxFilter) ([]store
 	if err != nil {
 		return nil, err
 	}
-	out := make([]store.InboxItem, 0, len(rs))
+	out := make([]domain.InboxItem, 0, len(rs))
 	for _, r := range rs {
 		it, err := fromInbox(r)
 		if err != nil {
@@ -385,7 +386,7 @@ func InboxList(ctx context.Context, st InboxStore, f store.InboxFilter) ([]store
 	}
 	// Ties in received_at: newest id first, as the table ordered. Keys
 	// are decimal text, so the store's tie order is not numeric.
-	slices.SortStableFunc(out, func(a, b store.InboxItem) int {
+	slices.SortStableFunc(out, func(a, b domain.InboxItem) int {
 		return cmp.Or(b.ReceivedAt.Compare(a.ReceivedAt), cmp.Compare(b.ID, a.ID))
 	})
 	return out, nil
@@ -437,8 +438,8 @@ func InboxCounts(ctx context.Context, st InboxStore) (map[string]int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]int64, len(store.InboxStates))
-	for _, s := range store.InboxStates {
+	out := make(map[string]int64, len(domain.InboxStates))
+	for _, s := range domain.InboxStates {
 		out[s] = 0
 	}
 	for s, n := range m {
@@ -460,7 +461,7 @@ func InboxCountOlder(ctx context.Context, st InboxStore, state string, before ti
 	return int64(m[state]), nil
 }
 
-func toInboxValue(it store.InboxItem) inboxValue {
+func toInboxValue(it domain.InboxItem) inboxValue {
 	v := inboxValue{
 		Source: it.Source, DeliveryID: it.DeliveryID, Endpoint: it.Endpoint, NaturalKey: it.NaturalKey,
 		Kind: it.Kind, RepoOrTeam: it.RepoOrTeam, Number: it.Number, CommentID: it.CommentID, Actor: it.Actor,
@@ -472,12 +473,12 @@ func toInboxValue(it store.InboxItem) inboxValue {
 	return v
 }
 
-func fromInbox(r store.Record) (store.InboxItem, error) {
+func fromInbox(r store.Record) (domain.InboxItem, error) {
 	var v inboxValue
 	if err := json.Unmarshal(r.Value, &v); err != nil {
-		return store.InboxItem{}, fmt.Errorf("inbox item %s: %w", r.Key, err)
+		return domain.InboxItem{}, fmt.Errorf("inbox item %s: %w", r.Key, err)
 	}
-	it := store.InboxItem{
+	it := domain.InboxItem{
 		ID: v.ID, Source: v.Source, DeliveryID: v.DeliveryID, Endpoint: v.Endpoint, NaturalKey: v.NaturalKey,
 		Kind: v.Kind, RepoOrTeam: v.RepoOrTeam, Number: v.Number, CommentID: v.CommentID, Actor: v.Actor,
 		ReceivedAt: r.CreatedAt, Payload: v.Payload, State: r.State, HookResults: v.HookResults,

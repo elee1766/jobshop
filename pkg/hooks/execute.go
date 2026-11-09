@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/automation/api"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -124,7 +125,7 @@ func replayHookCall(ctx context.Context, observation automation.Observation) (an
 	}
 	key := trace.invocation + "/" + strconv.Itoa(observation.Index)
 	rec, err := col.Get(ctx, key)
-	if errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, domain.ErrNotFound) {
 		return nil, false, nil
 	}
 	if err != nil {
@@ -240,7 +241,7 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 		return err
 	})
 	in.Public = evidence
-	if errors.Is(err, store.ErrConflict) {
+	if errors.Is(err, domain.ErrConflict) {
 		_, _ = c.saveHook(ctx, col, rec, in, "superseded")
 		return
 	}
@@ -254,7 +255,7 @@ func (c *Engine) executeHook(ctx context.Context, col store.Collection, rec stor
 
 func (c *Engine) applyHookPlan(ctx context.Context, col store.Collection, rec store.Record, in Invocation) {
 	err := c.host.ApplyHookPlan(ctx, rec.Key, in)
-	if errors.Is(err, store.ErrConflict) {
+	if errors.Is(err, domain.ErrConflict) {
 		_, _ = c.saveHook(ctx, col, rec, in, "superseded")
 		return
 	}

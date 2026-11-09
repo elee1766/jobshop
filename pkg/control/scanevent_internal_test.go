@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // review is a scan trigger woken by review requests (JOB-72). Its check
@@ -48,20 +48,20 @@ triggers:
 `
 
 // pullRequest is an admitted pull_request delivery.
-func pullRequest(delivery, action string, n int, branch, sha string) store.InboxItem {
+func pullRequest(delivery, action string, n int, branch, sha string) domain.InboxItem {
 	p, _ := json.Marshal(map[string]any{
 		"action":       action,
 		"number":       n,
 		"pull_request": map[string]any{"head": map[string]any{"ref": branch, "sha": sha}},
 	})
-	return store.InboxItem{Source: "github", DeliveryID: delivery, Kind: "pull_request", RepoOrTeam: "acme/app", Number: int64(n), Payload: p}
+	return domain.InboxItem{Source: "github", DeliveryID: delivery, Kind: "pull_request", RepoOrTeam: "acme/app", Number: int64(n), Payload: p}
 }
 
 func scanRunKeys(t *testing.T, c *Controller, trigger string) []string {
 	t.Helper()
 	var keys []string
 	for _, r := range triggerTickets(t, c, trigger) {
-		f, err := store.DecodeFields[store.RunFields](r)
+		f, err := domain.DecodeFields[domain.RunFields](r)
 		require.NoError(t, err)
 		keys = append(keys, f.Key)
 	}

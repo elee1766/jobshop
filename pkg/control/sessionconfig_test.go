@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // setPoolConfig rewrites the dev pool's model lines and reloads if asked.
@@ -45,10 +45,10 @@ func TestSessionConfig(t *testing.T) {
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	show := func(id string) store.Ticket {
-		var got store.Ticket
+	show := func(id string) domain.Ticket {
+		var got domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: id}, &struct {
-			Ticket *store.Ticket `json:"ticket"`
+			Ticket *domain.Ticket `json:"ticket"`
 		}{&got}))
 		return got
 	}
@@ -59,9 +59,9 @@ func TestSessionConfig(t *testing.T) {
 		return infos[0]
 	}
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
-	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+	passEventually(t, root.Dir, func() bool { return show(task.ID).Status == domain.StatusClosed }, "condition not met after supervisor passes")
 	assert.Equal(t, "model=m1 busy=false\n", configSets(t, root), "set once before the turn; other_id skipped")
 	in := info()
 	assert.Equal(t, "m1", in.Model)
@@ -70,7 +70,7 @@ func TestSessionConfig(t *testing.T) {
 
 	// A reload during a turn waits for it to end.
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
-	var busy store.Ticket
+	var busy domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "busy", Pool: "dev"}, &busy))
 	passEventually(t, root.Dir, func() bool {
 		_, err := os.Stat(filepath.Join(root.Dir, "started"))
@@ -81,7 +81,7 @@ func TestSessionConfig(t *testing.T) {
 	pass(t, root.Dir, 3)
 	assert.NotContains(t, configSets(t, root), "m2", "not applied mid-turn")
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
-	passEventually(t, root.Dir, func() bool { return show(busy.ID).Status == store.StatusClosed }, "condition not met after supervisor passes")
+	passEventually(t, root.Dir, func() bool { return show(busy.ID).Status == domain.StatusClosed }, "condition not met after supervisor passes")
 	// Model and effort are applied one after the other; wait for both.
 	passEventually(t, root.Dir, func() bool { in := info(); return in.Model == "m2" && in.Effort == "high" }, "condition not met after supervisor passes")
 	sets := configSets(t, root)
@@ -99,7 +99,7 @@ func TestSessionConfig(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodSessionConfig, rpc.SessionConfigParams{ID: sess, Reset: true}, nil))
 	passEventually(t, root.Dir, func() bool { return info().Model == "m2" }, "condition not met after supervisor passes")
 	assert.Empty(t, info().Override)
-	assert.Equal(t, store.StatusOpen, show(sess).Status)
+	assert.Equal(t, domain.StatusOpen, show(sess).Status)
 
 	assert.Error(t, admin.Call(t.Context(), rpc.MethodSessionConfig, rpc.SessionConfigParams{ID: sess}, nil), "options or reset required")
 	sc := dial(t, filepath.Join(root.SessionDir(sess), "cli.sock"))
@@ -121,15 +121,15 @@ func TestSessionConfigRejected(t *testing.T) {
 	// once the first ended.
 	pass(t, root.Dir, 1)
 
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	// One pass spawns the session; the hourly tick never comes (#550).
 	// No more passes: one would spawn another session after this one ends.
 	pass(t, root.Dir, 1)
-	var sess store.Ticket
+	var sess domain.Ticket
 	require.Eventually(t, func() bool {
-		var all []store.Ticket
-		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession, Status: store.StatusClosed}, &all))
+		var all []domain.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession, Status: domain.StatusClosed}, &all))
 		if len(all) == 0 {
 			return false
 		}

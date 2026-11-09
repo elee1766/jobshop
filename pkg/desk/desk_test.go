@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // fakeCtl answers admin calls from canned results and records them.
@@ -97,7 +97,7 @@ func TestAttention(t *testing.T) {
 		rpc.MethodAttention: rpc.AttentionResult{Items: []rpc.AttentionItem{
 			{Kind: rpc.AttentionTicket, ID: "t1", Title: "deploy:rollback", Since: old, Repo: "acme/w", Ref: "#7"},
 			{Kind: rpc.AttentionWait, ID: "w1", Title: "wait", Owner: "bob"},
-			{Kind: rpc.AttentionQuestion, ID: "q1", Title: "Question: which base?", Context: "ran tests\nboth pass", Options: []rpc.QuestionOption{{ID: 1, Title: "main"}}},
+			{Kind: rpc.AttentionQuestion, ID: "q1", Title: "Question: which base?", Context: "ran tests\nboth pass", Options: []domain.QuestionOption{{ID: 1, Title: "main"}}},
 		}},
 	}}
 	h := New(Config{}, ctl, nil).Handler()
@@ -107,7 +107,7 @@ func TestAttention(t *testing.T) {
 	assert.Equal(t, []AttentionItem{
 		{Kind: "ticket", ID: "t1", Title: "deploy:rollback", Why: "acme/w #7", Since: items[0].Since, Ref: "#7"},
 		{Kind: "wait", ID: "w1", Title: "wait", Why: "owner bob"},
-		{Kind: "question", ID: "q1", Title: "Question: which base?", Context: "ran tests\nboth pass", Options: []rpc.QuestionOption{{ID: 1, Title: "main"}}},
+		{Kind: "question", ID: "q1", Title: "Question: which base?", Context: "ran tests\nboth pass", Options: []domain.QuestionOption{{ID: 1, Title: "main"}}},
 	}, items)
 	assert.Equal(t, []string{rpc.MethodAttention + " {}"}, ctl.calls)
 }
@@ -119,7 +119,7 @@ func TestAttentionEmpty(t *testing.T) {
 }
 
 func TestAPIError(t *testing.T) {
-	ctl := &fakeCtl{results: map[string]any{rpc.MethodTicketShow: fmt.Errorf("x: %w", store.ErrNotFound)}}
+	ctl := &fakeCtl{results: map[string]any{rpc.MethodTicketShow: fmt.Errorf("x: %w", domain.ErrNotFound)}}
 	h := New(Config{}, ctl, nil).Handler()
 	w := get(t, h, "/api/ticket/js-1", nil)
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -131,12 +131,12 @@ func TestAPIError(t *testing.T) {
 
 func TestViews(t *testing.T) {
 	ctl := &fakeCtl{results: map[string]any{
-		rpc.MethodRunList:     []store.Ticket{{ID: "r1"}},
-		rpc.MethodBatchList:   []store.Ticket{{ID: "b1"}},
+		rpc.MethodRunList:     []domain.Ticket{{ID: "r1"}},
+		rpc.MethodBatchList:   []domain.Ticket{{ID: "b1"}},
 		rpc.MethodTriggerList: []rpc.TriggerInfo{{Name: "z"}, {Name: "a"}},
 		rpc.MethodVersion:     rpc.VersionResult{Version: "v", Commit: "c"},
-		rpc.MethodTicketShow:  rpc.ShowResult{Ticket: store.Ticket{ID: "r1", Kind: store.KindRun}},
-		rpc.MethodRunShow:     rpc.RunResult{Steps: []store.Ticket{{ID: "s1"}}},
+		rpc.MethodTicketShow:  rpc.ShowResult{Ticket: domain.Ticket{ID: "r1", Kind: domain.KindRun}},
+		rpc.MethodRunShow:     rpc.RunResult{Steps: []domain.Ticket{{ID: "s1"}}},
 		rpc.MethodTicketTrace: rpc.TraceNode{ID: "r1"},
 	}}
 	h := New(Config{}, ctl, nil).Handler()
@@ -168,7 +168,7 @@ func TestTraceTimeline(t *testing.T) {
 	ctl := &fakeCtl{results: map[string]any{
 		rpc.MethodTicketGraph:    rpc.GraphResult{Root: "r1"},
 		rpc.MethodTicketTimeline: rpc.TimelineResult{Root: "r1", Rows: []rpc.TimelineRow{{ID: "r1"}}},
-		rpc.MethodTicketShow:     rpc.ShowResult{Ticket: store.Ticket{ID: "r1"}},
+		rpc.MethodTicketShow:     rpc.ShowResult{Ticket: domain.Ticket{ID: "r1"}},
 		rpc.MethodTicketTrace:    rpc.TraceNode{ID: "r1"},
 	}}
 	h := New(Config{}, ctl, nil).Handler()
@@ -186,17 +186,17 @@ func TestTraceTimeline(t *testing.T) {
 // comment and the holder of its in-progress step, and api/ticket fills
 // trace nodes with their holder session (JOB-54).
 func TestHolderSessions(t *testing.T) {
-	step := store.Ticket{ID: "s1", Status: store.StatusInProgress, Holder: "js-s-abc123"}
+	step := domain.Ticket{ID: "s1", Status: domain.StatusInProgress, Holder: "js-s-abc123"}
 	ctl := &fakeCtl{results: map[string]any{
-		rpc.MethodRunList: []store.Ticket{{ID: "r1", Kind: store.KindRun}},
-		rpc.MethodRunShow: rpc.RunResult{Steps: []store.Ticket{step, {ID: "s2", Status: store.StatusOpen}}},
+		rpc.MethodRunList: []domain.Ticket{{ID: "r1", Kind: domain.KindRun}},
+		rpc.MethodRunShow: rpc.RunResult{Steps: []domain.Ticket{step, {ID: "s2", Status: domain.StatusOpen}}},
 		rpc.MethodTicketShow: rpc.ShowResult{
-			Ticket:   store.Ticket{ID: "r1", Kind: store.KindRun},
-			Comments: []store.Comment{{ID: 1, Body: "a"}, {ID: 2, Body: "b"}},
+			Ticket:   domain.Ticket{ID: "r1", Kind: domain.KindRun},
+			Comments: []domain.Comment{{ID: 1, Body: "a"}, {ID: 2, Body: "b"}},
 		},
 		rpc.MethodTicketTrace: rpc.TraceNode{ID: "r1", Children: []rpc.TraceNode{{ID: "s1", Holder: "js-s-abc123"}}},
 		rpc.MethodSessionList: []rpc.SessionInfo{
-			{ID: "js-s-abc123", DisplayName: "dev worker", Alive: true, Busy: true, Tool: "go test", Ticket: &store.Ticket{Pool: "dev"}},
+			{ID: "js-s-abc123", DisplayName: "dev worker", Alive: true, Busy: true, Tool: "go test", Ticket: &domain.Ticket{Pool: "dev"}},
 			{ID: "js-s-other"},
 		},
 	}}
@@ -339,13 +339,13 @@ func TestEscalations(t *testing.T) {
 	}
 	t0 := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	ctl := &fakeCtl{results: map[string]any{
-		rpc.MethodTicketList + ":open": []store.Ticket{
+		rpc.MethodTicketList + ":open": []domain.Ticket{
 			{ID: "e2", Title: "newer", Body: "why two\nmore", Meta: meta("s2", "wait"), CreatedAt: t0.Add(time.Hour)},
 			{ID: "e1", Title: "older", Meta: meta("s1", "run"), CreatedAt: t0},
 			{ID: "nochat", Title: "no chat", CreatedAt: t0},
 		},
-		rpc.MethodTicketList + ":closed": []store.Ticket{
-			{ID: "e0", Title: "done", Status: store.StatusClosed, Resolution: "done", Meta: meta("s0", "label"), CreatedAt: t0, ClosedAt: t0.Add(2 * time.Hour)},
+		rpc.MethodTicketList + ":closed": []domain.Ticket{
+			{ID: "e0", Title: "done", Status: domain.StatusClosed, Resolution: "done", Meta: meta("s0", "label"), CreatedAt: t0, ClosedAt: t0.Add(2 * time.Hour)},
 		},
 	}}
 	h := New(Config{}, ctl, nil).Handler()

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // maxDeskExecOutput bounds a desk command's stdout kept in the result.
@@ -27,7 +27,7 @@ func (c *Controller) deskExec(ctx context.Context, sc scope, p rpc.DeskExecParam
 	cfg := c.config()
 	dc, ok := cfg.DeskCommands[p.Name]
 	if !ok {
-		return nil, fmt.Errorf("%w: desk command %q", store.ErrNotFound, p.Name)
+		return nil, fmt.Errorf("%w: desk command %q", domain.ErrNotFound, p.Name)
 	}
 	if p.Ticket != "" {
 		if _, err := c.store.Get(ctx, p.Ticket); err != nil {
@@ -39,7 +39,7 @@ func (c *Controller) deskExec(ctx context.Context, sc scope, p rpc.DeskExecParam
 		in = []byte("null")
 	}
 	if !json.Valid(in) {
-		return nil, fmt.Errorf("%w: input is not JSON", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: input is not JSON", domain.ErrInvalid)
 	}
 	var res rpc.DeskExecResult
 	var exit int

@@ -11,6 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/automation"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -24,12 +25,12 @@ type hookRunPlan struct {
 // hookReference resolves a callback's pool or workflow name in the live
 // configuration and, for a workflow callback, within the scope its run
 // accepted at start.
-func hookReference(cfg *config.Config, in hooks.Invocation, a *store.RunAutomation, kind, name string) (string, error) {
+func hookReference(cfg *config.Config, in hooks.Invocation, a *domain.RunAutomation, kind, name string) (string, error) {
 	if in.Trigger != "" {
 		return cfg.ResolveHookReference("triggers."+in.Trigger, kind, name)
 	}
 	if in.RunInput == nil {
-		return "", fmt.Errorf("%w: run has no automation", store.ErrConflict)
+		return "", fmt.Errorf("%w: run has no automation", domain.ErrConflict)
 	}
 	if err := runScopeRecorded(a); err != nil {
 		return "", err
@@ -39,9 +40,9 @@ func hookReference(cfg *config.Config, in hooks.Invocation, a *store.RunAutomati
 
 // runScopeRecorded fails closed for a run2 pin whose run lost the scope it
 // accepted at start; every callback path checks it, even with no references.
-func runScopeRecorded(a *store.RunAutomation) error {
+func runScopeRecorded(a *domain.RunAutomation) error {
 	if a == nil {
-		return fmt.Errorf("%w: run has no automation", store.ErrConflict)
+		return fmt.Errorf("%w: run has no automation", domain.ErrConflict)
 	}
 	if hooks.ScopedRunPin(a.Digest) && a.Scope == nil {
 		return errors.New("run has no accepted reference scope")
@@ -51,7 +52,7 @@ func runScopeRecorded(a *store.RunAutomation) error {
 
 // checkPlannedTargets re-resolves each planned ticket's action before a
 // journaled graph is applied, as a reload since planning can narrow scope.
-func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAutomation) error {
+func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *domain.RunAutomation) error {
 	for _, ticket := range in.Plan.Tickets {
 		var meta struct {
 			Automation *struct {
@@ -64,7 +65,7 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAu
 			}
 		}
 		if meta.Automation == nil || meta.Automation.Action < 0 || meta.Automation.Action >= len(in.Actions) {
-			if ticket.Kind == store.KindRun {
+			if ticket.Kind == domain.KindRun {
 				return fmt.Errorf("planned run %s has no action", ticket.ID)
 			}
 			continue // a step of a planned run, checked with that run
@@ -72,8 +73,8 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAu
 		action := in.Actions[meta.Automation.Action]
 		want := map[string]string{}
 		switch {
-		case ticket.Kind == store.KindRun && action.Kind == "start_run":
-			var f store.RunFields
+		case ticket.Kind == domain.KindRun && action.Kind == "start_run":
+			var f domain.RunFields
 			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
 				return err
 			}
@@ -82,19 +83,19 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAu
 				return fmt.Errorf("planned workflow %s changed", f.Workflow)
 			}
 			want["workflow:"+action.Workflow] = f.Workflow
-		case ticket.Kind == store.KindStep && action.Kind == "start_step" && ticket.ParentID == in.Run:
-			var f store.StepFields
+		case ticket.Kind == domain.KindStep && action.Kind == "start_step" && ticket.ParentID == in.Run:
+			var f domain.StepFields
 			if err := hooks.DecodeJSON(ticket.Fields, &f); err != nil {
 				return err
 			}
 			want["pool:"+action.Pool] = ticket.Pool
-			if f.Type == store.StepScript {
+			if f.Type == domain.StepScript {
 				want["pool:"+action.Pool] = f.ScriptPool
 			}
 			if action.RetryPool != "" || f.RetryPool != "" {
 				want["pool:"+action.RetryPool] = f.RetryPool
 			}
-		case ticket.Kind == store.KindTask && action.Kind == "create_ticket" && action.Pool != "":
+		case ticket.Kind == domain.KindTask && action.Kind == "create_ticket" && action.Pool != "":
 			want["pool:"+action.Pool] = ticket.Pool
 		default:
 			continue // a step of a planned static run, from buildRun, or a task without a pool
@@ -115,13 +116,13 @@ func checkPlannedTargets(cfg *config.Config, in hooks.Invocation, a *store.RunAu
 
 func (c *Controller) prepareHookRuns(ctx context.Context, lc *liveConfig, in hooks.Invocation) (map[int]hookRunPlan, error) {
 	plans := map[int]hookRunPlan{}
-	var automation *store.RunAutomation
+	var automation *domain.RunAutomation
 	if in.Trigger == "" {
 		run, err := c.store.Get(ctx, in.Run)
 		if err != nil {
 			return nil, err
 		}
-		fields, err := store.DecodeFields[store.RunFields](run)
+		fields, err := domain.DecodeFields[domain.RunFields](run)
 		if err != nil {
 			return nil, err
 		}
@@ -170,11 +171,11 @@ func (c *Controller) prepareHookRuns(ctx context.Context, lc *liveConfig, in hoo
 func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key string, in hooks.Invocation, program *hooks.Program, plans map[int]hookRunPlan) (store.Graph, error) {
 	g := store.Graph{Revisions: in.ReadSet, Children: map[string]int64{}, Fields: map[string]json.RawMessage{}, Close: map[string]string{}}
 	if c.live.Load() != lc {
-		return g, fmt.Errorf("%w: hook configuration changed", store.ErrConflict)
+		return g, fmt.Errorf("%w: hook configuration changed", domain.ErrConflict)
 	}
-	var run store.Ticket
-	var fields store.RunFields
-	steps := map[string]store.Ticket{}
+	var run domain.Ticket
+	var fields domain.RunFields
+	steps := map[string]domain.Ticket{}
 	ids := map[string]string{}
 	previous, previousIndex := "", -1
 	if in.Run != "" {
@@ -183,12 +184,12 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		if err != nil {
 			return g, err
 		}
-		fields, err = store.DecodeFields[store.RunFields](run)
+		fields, err = domain.DecodeFields[domain.RunFields](run)
 		if err != nil {
 			return g, err
 		}
-		if run.Status == store.StatusClosed || fields.State != store.RunRunning || fields.Automation == nil {
-			return g, fmt.Errorf("%w: run no longer running", store.ErrConflict)
+		if run.Status == domain.StatusClosed || fields.State != domain.RunRunning || fields.Automation == nil {
+			return g, fmt.Errorf("%w: run no longer running", domain.ErrConflict)
 		}
 		if err := runScopeRecorded(fields.Automation); err != nil {
 			return g, err
@@ -199,13 +200,13 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 		g.Children[in.Run] = int64(len(children))
 		if !c.hookReadSetCurrent(ctx, in.ReadSet) || len(children)+1 != len(in.ReadSet) {
-			return g, fmt.Errorf("%w: hook input changed", store.ErrConflict)
+			return g, fmt.Errorf("%w: hook input changed", domain.ErrConflict)
 		}
 		for _, step := range children {
-			if step.Kind != store.KindStep {
+			if step.Kind != domain.KindStep {
 				continue
 			}
-			f, err := store.DecodeFields[store.StepFields](step)
+			f, err := domain.DecodeFields[domain.StepFields](step)
 			if err != nil {
 				return g, err
 			}
@@ -232,7 +233,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				started[dedup] = existing.ID
 				continue
 			}
-			if !errors.Is(err, store.ErrNotFound) {
+			if !errors.Is(err, domain.ErrNotFound) {
 				return g, err
 			}
 			extra := map[string]any{"automation": map[string]any{"invocation": key, "action": i}}
@@ -320,14 +321,14 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			if title == "" {
 				title = action.ID
 			}
-			f := store.StepFields{Run: run.ID, Step: action.ID, Index: len(steps) + newSteps, Retries: retries, RetryPool: retryPool, Needs: action.Needs, Inputs: action.Inputs, OutputSchema: action.OutputSchema}
+			f := domain.StepFields{Run: run.ID, Step: action.ID, Index: len(steps) + newSteps, Retries: retries, RetryPool: retryPool, Needs: action.Needs, Inputs: action.Inputs, OutputSchema: action.OutputSchema}
 			ticketPool := pool
 			if action.Script != "" {
 				if action.Worktree && lc.cfg.Pools[pool].Repo == "" {
 					return g, fmt.Errorf("step %s: worktree needs a pool with a repo, %s has none", action.ID, pool)
 				}
 				// No ticket pool: the controller runs it, no session claims it.
-				f.Type, f.Script, f.ScriptHook, f.ScriptPool = store.StepScript, action.Script, in.Entry, pool
+				f.Type, f.Script, f.ScriptHook, f.ScriptPool = domain.StepScript, action.Script, in.Entry, pool
 				f.Worktree, f.Timeout, ticketPool = action.Worktree, action.Timeout, ""
 			}
 			if slices.Contains(action.Needs, previous) {
@@ -348,17 +349,17 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 			if err != nil {
 				return g, err
 			}
-			g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: run.Project, Kind: store.KindStep, Title: title, Body: prompt, Pool: ticketPool, ParentID: run.ID, Meta: provenance, Fields: data})
+			g.Tickets = append(g.Tickets, store.NewTicket{ID: id, Project: run.Project, Kind: domain.KindStep, Title: title, Body: prompt, Pool: ticketPool, ParentID: run.ID, Meta: provenance, Fields: data})
 			for _, need := range action.Needs {
 				target := ids[need]
 				if target == "" {
 					return g, fmt.Errorf("step %s needs unknown or later step %s", action.ID, need)
 				}
-				g.Edges = append(g.Edges, store.Edge{From: id, To: target, Kind: store.EdgeBlocks})
+				g.Edges = append(g.Edges, domain.Edge{From: id, To: target, Kind: domain.EdgeBlocks})
 			}
 			if len(action.Needs) == 0 {
 				for _, after := range fields.Automation.After {
-					g.Edges = append(g.Edges, store.Edge{From: id, To: after, Kind: store.EdgeBlocks})
+					g.Edges = append(g.Edges, domain.Edge{From: id, To: after, Kind: domain.EdgeBlocks})
 				}
 			}
 			ids[action.ID] = id
@@ -372,14 +373,14 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 				return g, errors.New("finish_run cannot be combined with start_step or another finish_run")
 			}
 			for _, step := range steps {
-				if !store.StepFinished(step) {
+				if !domain.StepFinished(step) {
 					return g, fmt.Errorf("cannot finish run with unfinished step %s", step.ID)
 				}
 			}
 			if !config.OutcomePattern.MatchString(action.Outcome) {
 				return g, errors.New("invalid finish_run outcome")
 			}
-			fields.State = store.RunDone
+			fields.State = domain.RunDone
 			fields.Automation.Output = action.Output
 			g.Close[run.ID] = action.Outcome
 			finished = true
@@ -424,7 +425,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 		}
 		n := 0
 		for _, nt := range g.Tickets {
-			if nt.Kind == store.KindRun || nt.Kind == store.KindTask {
+			if nt.Kind == domain.KindRun || nt.Kind == domain.KindTask {
 				n++
 			}
 		}
@@ -445,7 +446,7 @@ func (c *Controller) planHookActions(ctx context.Context, lc *liveConfig, key st
 // the batch, makes the action a no-op (skip). The project is the pool's,
 // else the parent's, else the run's. A trigger's ticket carries
 // meta.trigger, so it holds the trigger like its runs (max_open).
-func (c *Controller) planHookTicket(ctx context.Context, cfg *config.Config, key string, i int, in hooks.Invocation, a *store.RunAutomation, action automation.Action, created map[string]bool) (store.NewTicket, bool, error) {
+func (c *Controller) planHookTicket(ctx context.Context, cfg *config.Config, key string, i int, in hooks.Invocation, a *domain.RunAutomation, action automation.Action, created map[string]bool) (store.NewTicket, bool, error) {
 	owner := "workflows."
 	if in.Trigger != "" {
 		owner = "triggers." + in.Trigger
@@ -458,7 +459,7 @@ func (c *Controller) planHookTicket(ctx context.Context, cfg *config.Config, key
 	}
 	open, err := c.store.List(ctx, store.Filter{
 		Meta:     []store.MetaMatch{{Pack: "automation", Key: "key", Value: dedup}},
-		Statuses: []store.Status{store.StatusOpen, store.StatusInProgress}, Limit: 1,
+		Statuses: []domain.Status{domain.StatusOpen, domain.StatusInProgress}, Limit: 1,
 	})
 	if err != nil {
 		return store.NewTicket{}, false, err
@@ -466,7 +467,7 @@ func (c *Controller) planHookTicket(ctx context.Context, cfg *config.Config, key
 	if len(open) > 0 {
 		return store.NewTicket{}, true, nil
 	}
-	nt := store.NewTicket{Kind: store.KindTask, Title: action.Title, Body: action.Body, Priority: action.Priority, Labels: action.Labels, ParentID: action.Parent}
+	nt := store.NewTicket{Kind: domain.KindTask, Title: action.Title, Body: action.Body, Priority: action.Priority, Labels: action.Labels, ParentID: action.Parent}
 	if action.Pool != "" {
 		pool, err := hookReference(cfg, in, a, "pool", action.Pool)
 		if err != nil {

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // Targeted wait wake (#679). An event wakes only the waits it can
@@ -37,24 +37,24 @@ func RunSubject(id string) string { return "run:" + id }
 // name only the sha. Deploy has none: the startup pass (a deploy
 // restarts the controller) and the interval cover it; time conditions
 // set the pump's timer.
-func CondSubjects(cd store.WaitCond) []string {
+func CondSubjects(cd domain.WaitCond) []string {
 	switch cd.Type {
-	case store.WaitReview, store.WaitPR:
+	case domain.WaitReview, domain.WaitPR:
 		return []string{IssueSubject(cd.Repo, cd.PR)}
-	case store.WaitChecks:
+	case domain.WaitChecks:
 		if cd.PR == 0 {
 			return []string{RepoSubject(cd.Repo)}
 		}
 		return []string{IssueSubject(cd.Repo, cd.PR), RepoSubject(cd.Repo)}
-	case store.WaitLabel:
+	case domain.WaitLabel:
 		return []string{IssueSubject(cd.Repo, cd.Issue)}
-	case store.WaitTag:
+	case domain.WaitTag:
 		return []string{RepoSubject(cd.Repo)}
-	case store.WaitRun:
+	case domain.WaitRun:
 		return []string{RunSubject(cd.Run)}
-	case store.WaitLinearState, store.WaitLinearLabel:
+	case domain.WaitLinearState, domain.WaitLinearLabel:
 		return []string{LinearSubject(cd.Thread)}
-	case store.WaitReply:
+	case domain.WaitReply:
 		if repo, num, ok := strings.Cut(cd.Thread, "#"); ok {
 			var n int
 			_, _ = fmt.Sscan(num, &n)
@@ -68,7 +68,7 @@ func CondSubjects(cd store.WaitCond) []string {
 // ItemSubjects are the subjects an inbox item names: repo#number, or
 // the repo alone for an event with no number (status, push, a check run
 // on no PR), or a Linear key.
-func ItemSubjects(it store.InboxItem) []string {
+func ItemSubjects(it domain.InboxItem) []string {
 	if it.RepoOrTeam == "" {
 		return nil
 	}
@@ -85,7 +85,7 @@ func ItemSubjects(it store.InboxItem) []string {
 }
 
 // Names reports whether an unmet condition of w is on one of subjects.
-func Names(w *store.Wait, subjects map[string]bool) bool {
+func Names(w *domain.Wait, subjects map[string]bool) bool {
 	if w == nil {
 		return false
 	}
@@ -145,7 +145,7 @@ func (w *Wakes) Subjects(subjects ...string) bool {
 // Items queues the waits new inbox items name. An item with no subject (a
 // generic endpoint without a map) queues a full pass: it may still be
 // what a wait is on. It reports whether it queued anything.
-func (w *Wakes) Items(items []store.InboxItem) bool {
+func (w *Wakes) Items(items []domain.InboxItem) bool {
 	var subj []string
 	for _, it := range items {
 		s := ItemSubjects(it)
@@ -169,7 +169,7 @@ func (w *Wakes) Take() Pending {
 
 // NextDue is how long until the earliest unmet time condition or wait
 // timeout, capped at every.
-func NextDue(waits []store.Wait, now time.Time, every time.Duration) time.Duration {
+func NextDue(waits []domain.Wait, now time.Time, every time.Duration) time.Duration {
 	d := every
 	at := func(t time.Time) {
 		if !t.IsZero() {
@@ -181,7 +181,7 @@ func NextDue(waits []store.Wait, now time.Time, every time.Duration) time.Durati
 			at(w.Timeout)
 		}
 		for _, cd := range w.Conds {
-			if cd.Type == store.WaitTime && !cd.Met {
+			if cd.Type == domain.WaitTime && !cd.Met {
 				at(cd.At)
 			}
 		}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -16,7 +17,7 @@ import (
 // idempotent and runs at every start.
 func (c *Controller) backfillGitHubRepo(ctx context.Context) error {
 	cfg := c.config()
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, Limit: math.MaxInt32})
+	runs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun, Limit: math.MaxInt32})
 	if err != nil {
 		return err
 	}
@@ -25,7 +26,7 @@ func (c *Controller) backfillGitHubRepo(ctx context.Context) error {
 		if !needsRepo(run.Meta) {
 			continue
 		}
-		f, err := store.DecodeFields[store.RunFields](run)
+		f, err := domain.DecodeFields[domain.RunFields](run)
 		if err != nil {
 			continue
 		}
@@ -33,7 +34,7 @@ func (c *Controller) backfillGitHubRepo(ctx context.Context) error {
 		if repo == "" {
 			continue
 		}
-		related := []store.Ticket{run}
+		related := []domain.Ticket{run}
 		steps, err := store.Children(ctx, c.store, run.ID)
 		if err != nil {
 			return err

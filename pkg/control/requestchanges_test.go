@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // A deliver -> review -> merge workflow like packs/agent's, with a review
@@ -53,7 +53,7 @@ func TestRequestChanges(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"task": "one round"}, Key: "one"})
-	passEventually(t, root.Dir, func() bool { return showRun(t, admin, r.Run.ID).Run.Status == store.StatusClosed }, "run did not finish after one review round")
+	passEventually(t, root.Dir, func() bool { return showRun(t, admin, r.Run.ID).Run.Status == domain.StatusClosed }, "run did not finish after one review round")
 	got := showRun(t, admin, r.Run.ID)
 	assert.Equal(t, "done", got.Run.Resolution)
 	s := stepByName(t, got)
@@ -61,11 +61,11 @@ func TestRequestChanges(t *testing.T) {
 		assert.Equal(t, "done", st.Resolution, n)
 		assert.Zero(t, failures(t, st), n)
 	}
-	rf, err := store.DecodeFields[store.StepFields](s["review"])
+	rf, err := domain.DecodeFields[domain.StepFields](s["review"])
 	require.NoError(t, err)
 	assert.Equal(t, 1, rf.ReviewRounds)
 	assert.Equal(t, "deliver", rf.OnRequestChanges, "default: the previous step")
-	df, err := store.DecodeFields[store.StepFields](s["deliver"])
+	df, err := domain.DecodeFields[domain.StepFields](s["deliver"])
 	require.NoError(t, err)
 	assert.Nil(t, df.Changes, "cleared when deliver closed done")
 
@@ -90,16 +90,16 @@ func TestRequestChanges(t *testing.T) {
 	// The controller sets needs_human, then files the escalation ticket in
 	// a later write, so wait for both (#923).
 	passEventually(t, root.Dir, func() bool {
-		return runState(t, showRun(t, admin, r.Run.ID)) == store.RunNeedsHuman && len(escalations(t, admin, r.Run.ID)) > 0
+		return runState(t, showRun(t, admin, r.Run.ID)) == domain.RunNeedsHuman && len(escalations(t, admin, r.Run.ID)) > 0
 	}, "run did not reach needs_human with an escalation")
 	s = stepByName(t, showRun(t, admin, r.Run.ID))
-	assert.Equal(t, store.ResolutionRequestChanges, s["review"].Resolution)
-	rf, err = store.DecodeFields[store.StepFields](s["review"])
+	assert.Equal(t, domain.ResolutionRequestChanges, s["review"].Resolution)
+	rf, err = domain.DecodeFields[domain.StepFields](s["review"])
 	require.NoError(t, err)
 	assert.Equal(t, 3, rf.ReviewRounds)
 	assert.Zero(t, rf.Failures)
 	assert.Equal(t, "done", s["deliver"].Resolution, "deliver is not reopened past the cap")
-	assert.Equal(t, store.StatusOpen, s["merge"].Status)
+	assert.Equal(t, domain.StatusOpen, s["merge"].Status)
 	esc := escalations(t, admin, r.Run.ID)
 	require.Len(t, esc, 1)
 	assert.Contains(t, esc[0].Body, "past its review round limit")
@@ -113,29 +113,29 @@ func TestRequestChangesRejected(t *testing.T) {
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "7"}})
 	impl, review := r.Steps[0].ID, r.Steps[1].ID
 	call := func(id, comment string) error {
-		return admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: id, Resolution: store.ResolutionRequestChanges, Comment: comment}, nil)
+		return admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: id, Resolution: domain.ResolutionRequestChanges, Comment: comment}, nil)
 	}
-	require.ErrorIs(t, call(impl, "x"), store.ErrInvalid, "the first step has no step to send changes to")
-	require.ErrorIs(t, call(review, "x"), store.ErrInvalid, "implement is not finished")
+	require.ErrorIs(t, call(impl, "x"), domain.ErrInvalid, "the first step has no step to send changes to")
+	require.ErrorIs(t, call(review, "x"), domain.ErrInvalid, "implement is not finished")
 	closeStep(t, admin, impl, "done")
-	require.ErrorIs(t, call(review, "  "), store.ErrInvalid, "findings are required")
-	err := admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: review, Resolution: "failed", Outcome: store.ResolutionRequestChanges}, nil)
-	require.ErrorIs(t, err, store.ErrInvalid, "outcome request_changes with another resolution")
-	assert.Equal(t, store.StatusOpen, getTicket(t, admin, review).Ticket.Status)
-	assert.Equal(t, store.StatusClosed, getTicket(t, admin, impl).Ticket.Status)
+	require.ErrorIs(t, call(review, "  "), domain.ErrInvalid, "findings are required")
+	err := admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: review, Resolution: "failed", Outcome: domain.ResolutionRequestChanges}, nil)
+	require.ErrorIs(t, err, domain.ErrInvalid, "outcome request_changes with another resolution")
+	assert.Equal(t, domain.StatusOpen, getTicket(t, admin, review).Ticket.Status)
+	assert.Equal(t, domain.StatusClosed, getTicket(t, admin, impl).Ticket.Status)
 
 	// --outcome request_changes is the same close.
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: review, Outcome: store.ResolutionRequestChanges, Comment: "rename x"}, nil))
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: review, Outcome: domain.ResolutionRequestChanges, Comment: "rename x"}, nil))
 	sh := getTicket(t, admin, impl)
-	assert.Equal(t, store.StatusOpen, sh.Ticket.Status)
-	f, err := store.DecodeFields[store.StepFields](sh.Ticket)
+	assert.Equal(t, domain.StatusOpen, sh.Ticket.Status)
+	f, err := domain.DecodeFields[domain.StepFields](sh.Ticket)
 	require.NoError(t, err)
 	require.NotNil(t, f.Changes)
 	assert.Equal(t, "rename x", f.Changes.Findings)
 	assert.Equal(t, 3, f.Changes.Max, "default cap")
 	rs := getTicket(t, admin, review)
-	assert.Equal(t, store.StatusOpen, rs.Ticket.Status)
+	assert.Equal(t, domain.StatusOpen, rs.Ticket.Status)
 	require.NotEmpty(t, rs.Comments)
 	assert.Contains(t, rs.Comments[0].Body, "Changes requested:\n\nrename x")
-	assert.Equal(t, store.RunRunning, runState(t, showRun(t, admin, r.Run.ID)))
+	assert.Equal(t, domain.RunRunning, runState(t, showRun(t, admin, r.Run.ID)))
 }

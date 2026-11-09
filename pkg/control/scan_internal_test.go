@@ -22,6 +22,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 const scanYAML = `projects:
@@ -115,13 +117,13 @@ func findingKeys(t *testing.T, c *Controller) []string {
 	return out
 }
 
-func mkTicket(t *testing.T, c *Controller, nt store.NewTicket) store.Ticket {
+func mkTicket(t *testing.T, c *Controller, nt store.NewTicket) domain.Ticket {
 	t.Helper()
 	if nt.Project == "" {
 		nt.Project = "js"
 	}
 	if nt.Kind == "" {
-		nt.Kind = store.KindTask
+		nt.Kind = domain.KindTask
 	}
 	tk, err := store.Create(t.Context(), c.store, "admin", nt)
 	require.NoError(t, err)
@@ -147,10 +149,10 @@ func TestScanReadyUnclaimedSinceUnblock(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := scanController(t)
 	ctx := t.Context()
-	blocked := func() (store.Ticket, store.Ticket) {
+	blocked := func() (domain.Ticket, domain.Ticket) {
 		step := mkTicket(t, c, store.NewTicket{Title: "step", Pool: "dev"})
 		b := mkTicket(t, c, store.NewTicket{Title: "blocker"})
-		require.NoError(t, store.AddEdge(ctx, c.store, "admin", store.Edge{From: step.ID, To: b.ID, Kind: store.EdgeBlocks}))
+		require.NoError(t, store.AddEdge(ctx, c.store, "admin", domain.Edge{From: step.ID, To: b.ID, Kind: domain.EdgeBlocks}))
 		return step, b
 	}
 	// Blocker closed 2h ago: the step is idle.
@@ -230,7 +232,7 @@ func TestScanStepAndSession(t *testing.T) {
 	res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}, Key: "w1"}, nil)
 	require.NoError(t, err)
 	steps := res.(rpc.RunResult).Steps
-	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Fields: json.RawMessage(`{"agent":"fake"}`)})
+	sess := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, _, err = c.store.Claim(t.Context(), steps[0].ID, sess.ID, time.Hour)
 	require.NoError(t, err)
 
@@ -254,9 +256,9 @@ func TestScanNeedsHumanAndBlocked(t *testing.T) {
 	res, err := c.startRun(t.Context(), c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
 	run := res.(rpc.RunResult).Run
-	f, err := store.DecodeFields[store.RunFields](run)
+	f, err := domain.DecodeFields[domain.RunFields](run)
 	require.NoError(t, err)
-	_, err = c.setRunState(t.Context(), "controller", run, f, store.RunNeedsHuman, "")
+	_, err = c.setRunState(t.Context(), "controller", run, f, domain.RunNeedsHuman, "")
 	require.NoError(t, err)
 	_, err = store.Close(t.Context(), c.store, "admin", res.(rpc.RunResult).Steps[0].ID, nil, "failed")
 	require.NoError(t, err)
@@ -285,8 +287,8 @@ func TestScanCheckSignal(t *testing.T) {
 	// An issue with an open run in the same repo (meta.github) is not a
 	// finding; the same number in another repo still is (#183).
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("#12\n13\n"), 0o600))
-	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":12}}`)})
-	mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "r2", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"other/repo","issue":13}}`)})
+	mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "r", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"acme/widget","issue":12}}`)})
+	mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "r2", Fields: json.RawMessage(`{"workflow":"work","state":"running"}`), Meta: json.RawMessage(`{"github":{"repo":"other/repo","issue":13}}`)})
 	assert.Equal(t, []string{"scan:issue_no_run:13"}, findingKeys(t, c))
 }
 
@@ -296,12 +298,12 @@ func TestScanFire(t *testing.T) {
 	t.Parallel()
 	c, clk, dir := scanController(t)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("issue-7 no run\n"), 0o600))
-	runs := func() []store.Ticket {
-		rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
+	runs := func() []domain.Ticket {
+		rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun, Order: store.OrderNewest})
 		require.NoError(t, err)
-		var out []store.Ticket
+		var out []domain.Ticket
 		for _, r := range rs {
-			if f, _ := store.DecodeFields[store.RunFields](r); f.Workflow == "triage" {
+			if f, _ := domain.DecodeFields[domain.RunFields](r); f.Workflow == "triage" {
 				out = append(out, r)
 			}
 		}
@@ -310,7 +312,7 @@ func TestScanFire(t *testing.T) {
 	c.runTriggers(t.Context(), c.config())
 	rs := runs()
 	require.Len(t, rs, 1)
-	f, err := store.DecodeFields[store.RunFields](rs[0])
+	f, err := domain.DecodeFields[domain.RunFields](rs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "scan:issue_no_run:issue-7", f.Key)
 	assert.Equal(t, map[string]string{"signal": "issue_no_run", "subject": "issue-7", "detail": "no run"}, f.Vars)
@@ -358,7 +360,7 @@ func TestScanMaxOpen(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\n"), 0o600))
 	c.runTriggers(t.Context(), c.config())
 	c.runTriggers(t.Context(), c.config())
-	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
+	rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Len(t, rs, config.DefaultScanMaxOpen)
 	infos, err := c.triggerList(t.Context(), scope{admin: true}, struct{}{})
@@ -375,7 +377,7 @@ func TestScanMaxOpenConfigured(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "issues"), []byte("a\nb\nc\nd\ne\nf\ng\n"), 0o600))
 	c.runTriggers(t.Context(), c.config())
 	c.runTriggers(t.Context(), c.config())
-	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun, Order: store.OrderNewest})
+	rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Len(t, rs, 5)
 }
@@ -461,17 +463,17 @@ func TestScanNoCascade(t *testing.T) {
 	ctx := t.Context()
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
-	failStep := func(step store.Ticket) {
+	failStep := func(step domain.Ticket) {
 		t.Helper()
 		_, err := store.Close(ctx, c.store, "admin", step.ID, nil, "failed")
 		require.NoError(t, err)
 		require.True(t, c.escalateRun(ctx, c.config(), step.ParentID))
 	}
 	failStep(res.(rpc.RunResult).Steps[0])
-	checks := func() []store.Ticket {
-		rs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
+	checks := func() []domain.Ticket {
+		rs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun})
 		require.NoError(t, err)
-		var out []store.Ticket
+		var out []domain.Ticket
 		for _, r := range rs {
 			if triggers.IsScanRun(r) {
 				out = append(out, r)
@@ -510,17 +512,17 @@ func TestScanOwnInstance(t *testing.T) {
 	ctx := t.Context()
 	res, err := c.startRun(ctx, c.config(), scope{admin: true, actor: "admin"}, rpc.RunStartParams{Workflow: "work", Vars: map[string]string{"n": "1"}}, nil)
 	require.NoError(t, err)
-	failStep := func(step store.Ticket) {
+	failStep := func(step domain.Ticket) {
 		t.Helper()
 		_, err := store.Close(ctx, c.store, "admin", step.ID, nil, "failed")
 		require.NoError(t, err)
 		require.True(t, c.escalateRun(ctx, c.config(), step.ParentID))
 	}
 	failStep(res.(rpc.RunResult).Steps[0])
-	checks := func() []store.Ticket {
-		rs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
+	checks := func() []domain.Ticket {
+		rs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun})
 		require.NoError(t, err)
-		var out []store.Ticket
+		var out []domain.Ticket
 		for _, r := range rs {
 			if triggers.IsScanRun(r) {
 				out = append(out, r)

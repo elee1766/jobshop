@@ -15,6 +15,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -40,11 +41,11 @@ func (c *Controller) artifactDir(id string) string {
 func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.ArtifactDeliverParams) (any, error) {
 	title := strings.TrimSpace(p.Title)
 	if title == "" {
-		return nil, fmt.Errorf("%w: artifact title is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: artifact title is required", domain.ErrInvalid)
 	}
 	am := rpc.ArtifactMeta{Session: sc.session, Pool: sc.pool}
 	project := sc.project
-	var src *store.Ticket
+	var src *domain.Ticket
 	if p.Ticket != "" || !sc.admin {
 		id, err := c.current(ctx, sc, p.Ticket)
 		if err != nil {
@@ -67,7 +68,7 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 		project = c.config().DefaultProject
 	}
 	if project == "" {
-		return nil, fmt.Errorf("%w: no project; pass a source ticket with -t", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: no project; pass a source ticket with -t", domain.ErrInvalid)
 	}
 	files, err := c.artifactFiles(ctx, sc, p.Files)
 	if err != nil {
@@ -105,12 +106,12 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 	if err != nil {
 		return nil, err
 	}
-	fields, err := json.Marshal(store.MessageFields{To: questionTo, From: sc.actor})
+	fields, err := json.Marshal(domain.MessageFields{To: questionTo, From: sc.actor})
 	if err != nil {
 		return nil, err
 	}
 	t, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
-		ID: id, Project: project, Kind: store.KindMessage, Title: title, Body: p.Body,
+		ID: id, Project: project, Kind: domain.KindMessage, Title: title, Body: p.Body,
 		Labels: []string{artifactLabel}, Meta: meta, Fields: fields,
 	})
 	if err != nil {
@@ -118,7 +119,7 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 		return nil, err
 	}
 	if src != nil {
-		if err := store.AddEdge(ctx, c.store, sc.actor, store.Edge{From: t.ID, To: src.ID, Kind: store.EdgeTracks}); err != nil {
+		if err := store.AddEdge(ctx, c.store, sc.actor, domain.Edge{From: t.ID, To: src.ID, Kind: domain.EdgeTracks}); err != nil {
 			return nil, err
 		}
 		if _, err := store.AddComment(ctx, c.store, sc.actor, src.ID, "artifact delivered: "+t.ID+" "+title); err != nil {
@@ -130,12 +131,12 @@ func (c *Controller) artifactDeliver(ctx context.Context, sc scope, p rpc.Artifa
 
 // artifactRun finds the run of a source ticket (itself, or a step's run)
 // and the trigger that started it.
-func (c *Controller) artifactRun(ctx context.Context, t store.Ticket) (run, trigger string) {
+func (c *Controller) artifactRun(ctx context.Context, t domain.Ticket) (run, trigger string) {
 	switch t.Kind {
-	case store.KindRun:
+	case domain.KindRun:
 		run = t.ID
-	case store.KindStep:
-		if f, err := store.DecodeFields[store.StepFields](t); err == nil && f.Run != "" {
+	case domain.KindStep:
+		if f, err := domain.DecodeFields[domain.StepFields](t); err == nil && f.Run != "" {
 			run = f.Run
 		} else {
 			run = t.ParentID
@@ -181,34 +182,34 @@ func (c *Controller) artifactFiles(ctx context.Context, sc scope, paths []string
 	var total int64
 	for _, p := range paths {
 		if !filepath.IsAbs(p) {
-			return nil, fmt.Errorf("%w: attachment %q must be an absolute path", store.ErrInvalid, p)
+			return nil, fmt.Errorf("%w: attachment %q must be an absolute path", domain.ErrInvalid, p)
 		}
 		resolved, err := filepath.EvalSymlinks(p)
 		if err != nil {
-			return nil, fmt.Errorf("%w: attachment %s: %w", store.ErrInvalid, p, err)
+			return nil, fmt.Errorf("%w: attachment %s: %w", domain.ErrInvalid, p, err)
 		}
 		if !sc.admin && !slices.ContainsFunc(allowed, func(d string) bool { return sessionrt.Within(resolved, d) }) {
 			return nil, forbidden("attachment %s is outside the session dir", p)
 		}
 		fi, err := os.Stat(resolved)
 		if err != nil {
-			return nil, fmt.Errorf("%w: attachment %s: %w", store.ErrInvalid, p, err)
+			return nil, fmt.Errorf("%w: attachment %s: %w", domain.ErrInvalid, p, err)
 		}
 		if !fi.Mode().IsRegular() {
-			return nil, fmt.Errorf("%w: attachment %s is not a regular file", store.ErrInvalid, p)
+			return nil, fmt.Errorf("%w: attachment %s is not a regular file", domain.ErrInvalid, p)
 		}
 		name := filepath.Base(p)
 		if !validArtifactName(name) {
-			return nil, fmt.Errorf("%w: attachment name %q is not allowed", store.ErrInvalid, name)
+			return nil, fmt.Errorf("%w: attachment name %q is not allowed", domain.ErrInvalid, name)
 		}
 		if slices.ContainsFunc(out, func(f artifactFile) bool { return f.name == name }) {
-			return nil, fmt.Errorf("%w: two attachments are named %s", store.ErrInvalid, name)
+			return nil, fmt.Errorf("%w: two attachments are named %s", domain.ErrInvalid, name)
 		}
 		total += fi.Size()
 		out = append(out, artifactFile{path: resolved, name: name, size: fi.Size()})
 	}
 	if limit := c.config().Artifacts.MaxBytesOrDefault(); total > limit {
-		return nil, fmt.Errorf("%w: attachments total %d bytes, over artifacts.max_bytes %d; nothing was delivered", store.ErrInvalid, total, limit)
+		return nil, fmt.Errorf("%w: attachments total %d bytes, over artifacts.max_bytes %d; nothing was delivered", domain.ErrInvalid, total, limit)
 	}
 	return out, nil
 }
@@ -264,15 +265,15 @@ func copyFile(src, dst string, limit int64) (int64, error) {
 		err = cerr
 	}
 	if err == nil && n > limit {
-		err = fmt.Errorf("%w: attachment %s changed size while copying", store.ErrInvalid, filepath.Base(src))
+		err = fmt.Errorf("%w: attachment %s changed size while copying", domain.ErrInvalid, filepath.Base(src))
 	}
 	return n, err
 }
 
 // artifactOf parses meta.artifact; ok is false for other tickets.
-func artifactOf(t store.Ticket) (rpc.ArtifactMeta, bool) {
+func artifactOf(t domain.Ticket) (rpc.ArtifactMeta, bool) {
 	var am rpc.ArtifactMeta
-	if !slices.Contains(t.Labels, artifactLabel) || t.Kind != store.KindMessage {
+	if !slices.Contains(t.Labels, artifactLabel) || t.Kind != domain.KindMessage {
 		return am, false
 	}
 	var m map[string]json.RawMessage
@@ -282,18 +283,18 @@ func artifactOf(t store.Ticket) (rpc.ArtifactMeta, bool) {
 	return am, true
 }
 
-func toArtifact(t store.Ticket, am rpc.ArtifactMeta) rpc.Artifact {
-	return rpc.Artifact{Ticket: t, Meta: am, Read: t.Status == store.StatusClosed}
+func toArtifact(t domain.Ticket, am rpc.ArtifactMeta) rpc.Artifact {
+	return rpc.Artifact{Ticket: t, Meta: am, Read: t.Status == domain.StatusClosed}
 }
 
 // artifactList lists artifacts unread first, then newest first.
 func (c *Controller) artifactList(ctx context.Context, sc scope, p rpc.ArtifactListParams) (any, error) {
-	f := store.Filter{Kind: store.KindMessage, Label: artifactLabel, Order: store.OrderNewest}
+	f := store.Filter{Kind: domain.KindMessage, Label: artifactLabel, Order: store.OrderNewest}
 	if !sc.admin {
 		f.Project = sc.project
 	}
 	if p.Unread {
-		f.Status = store.StatusOpen
+		f.Status = domain.StatusOpen
 	}
 	ts, err := c.store.List(ctx, f)
 	if err != nil {
@@ -322,17 +323,17 @@ func (c *Controller) artifactList(ctx context.Context, sc scope, p rpc.ArtifactL
 	return out, nil
 }
 
-func (c *Controller) getArtifact(ctx context.Context, sc scope, id string) (store.Ticket, rpc.ArtifactMeta, error) {
+func (c *Controller) getArtifact(ctx context.Context, sc scope, id string) (domain.Ticket, rpc.ArtifactMeta, error) {
 	t, err := c.store.Get(ctx, id)
 	if err != nil {
 		return t, rpc.ArtifactMeta{}, err
 	}
 	if !sc.admin && t.Project != sc.project {
-		return t, rpc.ArtifactMeta{}, store.ErrNotFound
+		return t, rpc.ArtifactMeta{}, domain.ErrNotFound
 	}
 	am, ok := artifactOf(t)
 	if !ok {
-		return t, am, fmt.Errorf("%w: %s is not an artifact", store.ErrInvalid, id)
+		return t, am, fmt.Errorf("%w: %s is not an artifact", domain.ErrInvalid, id)
 	}
 	return t, am, nil
 }
@@ -363,8 +364,8 @@ func (c *Controller) artifactAck(ctx context.Context, sc scope, p rpc.ArtifactAc
 	if err != nil {
 		return nil, err
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: artifact %s is already acknowledged", store.ErrClosed, t.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: artifact %s is already acknowledged", domain.ErrClosed, t.ID)
 	}
 	if note := strings.TrimSpace(p.Note); note != "" {
 		if _, err := store.AddComment(ctx, c.store, sc.actor, t.ID, note); err != nil {
@@ -401,7 +402,7 @@ func (c *Controller) pruneArtifacts(ctx context.Context, cfg *config.Config) {
 }
 
 func (c *Controller) pruneArtifactsBefore(ctx context.Context, cutoff time.Time) (int, error) {
-	ts, err := c.store.List(ctx, store.Filter{Kind: store.KindMessage, Label: artifactLabel, Status: store.StatusClosed})
+	ts, err := c.store.List(ctx, store.Filter{Kind: domain.KindMessage, Label: artifactLabel, Status: domain.StatusClosed})
 	if err != nil {
 		return 0, err
 	}
@@ -446,7 +447,7 @@ func (c *Controller) setArtifactMeta(ctx context.Context, id string, am rpc.Arti
 			return err
 		}
 		_, err = c.store.Update(ctx, "controller", id, store.Update{Meta: mb, IfRevision: t.Revision})
-		if errors.Is(err, store.ErrConflict) && attempt < 5 {
+		if errors.Is(err, domain.ErrConflict) && attempt < 5 {
 			continue
 		}
 		return err

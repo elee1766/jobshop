@@ -6,8 +6,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // ghCallSeq makes activity ids unique within one controller run.
@@ -18,7 +18,7 @@ var ghCallSeq atomic.Int64
 // Any session may record its own calls; the actor is the caller.
 func (c *Controller) activityRecord(_ context.Context, sc scope, p rpc.ActivityRecordParams) (any, error) {
 	if p.Action == "" || p.Decision == "" {
-		return nil, fmt.Errorf("%w: action and decision are required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: action and decision are required", domain.ErrInvalid)
 	}
 	cfg := c.config()
 	if cfg.Activity == nil {

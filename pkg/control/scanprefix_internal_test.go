@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -74,7 +75,7 @@ func TestScanKeyPrefix(t *testing.T) {
 	c.runTriggers(t.Context(), c.config())
 	assert.Len(t, triggerTickets(t, c, "intake"), 1, "open run holds the key")
 
-	closeRun := func(run store.Ticket) {
+	closeRun := func(run domain.Ticket) {
 		t.Helper()
 		steps, err := store.Children(ctx, c.store, run.ID)
 		require.NoError(t, err)
@@ -87,7 +88,7 @@ func TestScanKeyPrefix(t *testing.T) {
 	assert.Len(t, triggerTickets(t, c, "intake"), 1, "cooldown")
 	clk.advance(11 * time.Minute)
 	c.runTriggers(t.Context(), c.config())
-	rs, err = c.store.List(ctx, store.Filter{Kind: store.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: "intake", Order: store.OrderNewest})
+	rs, err = c.store.List(ctx, store.Filter{Kind: domain.KindRun, MetaPack: triggerPack, MetaKey: "name", MetaValue: "intake", Order: store.OrderNewest})
 	require.NoError(t, err)
 	require.Len(t, rs, 2, "past the cooldown")
 	closeRun(rs[0])

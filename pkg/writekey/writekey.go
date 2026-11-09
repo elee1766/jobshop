@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -46,7 +47,7 @@ const maxTries = 10
 func Claim(ctx context.Context, st Store, key, op, actor string) (store.WriteKey, error) {
 	key, op = strings.TrimSpace(key), strings.TrimSpace(op)
 	if key == "" || op == "" {
-		return store.WriteKey{}, fmt.Errorf("%w: write key needs a key and an op", store.ErrInvalid)
+		return store.WriteKey{}, fmt.Errorf("%w: write key needs a key and an op", domain.ErrInvalid)
 	}
 	col, err := st.Collection(ctx, Spec)
 	if err != nil {
@@ -65,7 +66,7 @@ func Claim(ctx context.Context, st Store, key, op, actor string) (store.WriteKey
 		return out, err
 	}
 	if out.Op != op {
-		return out, fmt.Errorf("%w: write key %q was used for %s, not %s", store.ErrInvalid, key, out.Op, op)
+		return out, fmt.Errorf("%w: write key %q was used for %s, not %s", domain.ErrInvalid, key, out.Op, op)
 	}
 	out.New = created
 	return out, nil
@@ -96,7 +97,7 @@ func Finish(ctx context.Context, st Store, key, result string) (store.WriteKey, 
 		}
 		r.State = Done
 		r, err = col.Update(ctx, r)
-		if errors.Is(err, store.ErrConflict) {
+		if errors.Is(err, domain.ErrConflict) {
 			continue // another writer finished or touched it; reread
 		}
 		if err != nil {
@@ -104,7 +105,7 @@ func Finish(ctx context.Context, st Store, key, result string) (store.WriteKey, 
 		}
 		return fromRecord(r)
 	}
-	return store.WriteKey{}, fmt.Errorf("%w: write key %q: finish lost every race", store.ErrConflict, key)
+	return store.WriteKey{}, fmt.Errorf("%w: write key %q: finish lost every race", domain.ErrConflict, key)
 }
 
 // Prune deletes keys created before before, done or pending (#415): the

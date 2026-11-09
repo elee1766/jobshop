@@ -7,6 +7,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -20,13 +21,13 @@ type slotStore struct{ store store.Store }
 
 // UsedSlots is the slots of pool's open sessions.
 func (s slotStore) UsedSlots(ctx context.Context, pool string) (map[int]bool, error) {
-	open, err := s.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: pool})
+	open, err := s.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Pool: pool})
 	if err != nil {
 		return nil, err
 	}
 	used := map[int]bool{}
 	for _, t := range open {
-		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.Slot != nil {
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Slot != nil {
 			used[*f.Slot] = true
 		}
 	}

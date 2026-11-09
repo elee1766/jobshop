@@ -15,9 +15,10 @@ import (
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 func TestChatAttachments(t *testing.T) {
@@ -80,7 +81,7 @@ pools:
 		{Name: "wrong.png", MimeType: "image/png", Data: []byte("not an image")},
 		{Name: "large.txt", MimeType: "text/plain", Data: bytes.Repeat([]byte("x"), (2<<20)+1)},
 	} {
-		require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodSessionSend, rpc.SessionSendParams{ID: chat.ID, Attachments: []rpc.AttachmentContent{invalid}}, nil), store.ErrInvalid)
+		require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodSessionSend, rpc.SessionSendParams{ID: chat.ID, Attachments: []rpc.AttachmentContent{invalid}}, nil), domain.ErrInvalid)
 	}
 	c.Stop()
 	controltest.Start(t, root, control.Options{})

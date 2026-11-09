@@ -10,9 +10,9 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/linear"
-	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -50,10 +50,10 @@ func (c *Controller) intake(ctx context.Context, cfg *config.Config, project, ke
 	}
 	raw, err := json.Marshal(x)
 	if err != nil {
-		return hooks.Answer{Decision: rpc.GuardDeny, Reason: "intake event: " + err.Error()}
+		return hooks.Answer{Decision: domain.GuardDeny, Reason: "intake event: " + err.Error()}
 	}
 	a := c.runHooks(ctx, cfg, hooks.GuardEvent{On: config.HookIntake, Target: x.Issue, Project: project, Extra: raw})
-	if a.Decision != rpc.GuardAllow {
+	if a.Decision != domain.GuardAllow {
 		c.refuseIntake(ctx, cfg, project, key, x, a)
 	}
 	return a
@@ -65,7 +65,7 @@ func (c *Controller) intakeIssue(ctx context.Context, cfg *config.Config, projec
 	x := intakeExtra{Source: intakeRunStart, Issue: key}
 	is, err := c.linearIssue(ctx, cfg, key)
 	if err != nil {
-		a := hooks.Answer{Decision: rpc.GuardDeny, Reason: "intake: read " + key + ": " + err.Error()}
+		a := hooks.Answer{Decision: domain.GuardDeny, Reason: "intake: read " + key + ": " + err.Error()}
 		c.refuseIntake(ctx, cfg, project, "intake/"+key, x, a)
 		return a
 	}
@@ -100,7 +100,7 @@ func (c *Controller) intakeRun(ctx context.Context, cfg *config.Config, plan run
 		return err
 	}
 	a, _ := res.Val.(hooks.Answer)
-	if a.Decision == rpc.GuardAllow {
+	if a.Decision == domain.GuardAllow {
 		return nil
 	}
 	return forbidden("intake hook %s for %s: %s", a.Decision, key, a.Reason)
@@ -149,7 +149,7 @@ func (c *Controller) refuseIntake(ctx context.Context, cfg *config.Config, proje
 		}
 	}
 	open, err := c.store.List(ctx, store.Filter{MetaPack: hookMetaPack, MetaKey: "key", MetaValue: key, Order: store.OrderNewest, Limit: 1})
-	if err == nil && len(open) > 0 && open[0].Status != store.StatusClosed {
+	if err == nil && len(open) > 0 && open[0].Status != domain.StatusClosed {
 		return
 	}
 	meta, err := json.Marshal(map[string]map[string]string{hookMetaPack: {"key": key}, "linear": {"issue": x.Issue}})
@@ -162,7 +162,7 @@ func (c *Controller) refuseIntake(ctx context.Context, cfg *config.Config, proje
 		fmt.Fprintf(&b, "Author: %s\n", x.Author)
 	}
 	labels := []string{needsHumanLabel}
-	if a.Decision == rpc.GuardAskHuman {
+	if a.Decision == domain.GuardAskHuman {
 		labels = append(labels, questionLabel)
 		b.WriteString("\nQuestion: may this text reach an agent prompt?")
 	}
@@ -172,7 +172,7 @@ func (c *Controller) refuseIntake(ctx context.Context, cfg *config.Config, proje
 	}
 	prio := 1
 	if _, err := store.Create(ctx, c.store, "controller", store.NewTicket{
-		Project: project, Kind: store.KindTask, Title: "Intake refused for " + x.Issue,
+		Project: project, Kind: domain.KindTask, Title: "Intake refused for " + x.Issue,
 		Body: b.String(), Priority: &prio, Labels: labels, Meta: meta,
 	}); err != nil {
 		c.log.WarnContext(ctx, "intake: file ticket", "issue", x.Issue, "err", err)

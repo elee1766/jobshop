@@ -30,6 +30,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -94,10 +95,10 @@ type Host interface {
 
 	// Fire files what tr says for a fire: a ticket, a run or a command. ev
 	// is the event that fired it, nil for a poll.
-	Fire(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string, ev Event) (store.Ticket, error)
+	Fire(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string, ev Event) (domain.Ticket, error)
 	// FireFinding starts the workflow of a scan trigger for one finding.
 	// existing is true when an open run already had its key.
-	FireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s Finding) (run store.Ticket, existing bool, err error)
+	FireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s Finding) (run domain.Ticket, existing bool, err error)
 	// RecordFinding records the learning of a fired finding.
 	RecordFinding(ctx context.Context, s Finding, run string)
 
@@ -237,7 +238,7 @@ func (e *Engine) Eval(ctx context.Context, cfg *config.Config, name string, tr c
 	if err != nil {
 		return st, err
 	}
-	var lastT *store.Ticket
+	var lastT *domain.Ticket
 	if len(last) > 0 {
 		lastT = &last[0]
 		st.Last = lastT.CreatedAt
@@ -269,7 +270,7 @@ func (e *Engine) Eval(ctx context.Context, cfg *config.Config, name string, tr c
 			return st, err
 		}
 	}
-	for _, status := range []store.Status{store.StatusOpen, store.StatusInProgress} {
+	for _, status := range []domain.Status{domain.StatusOpen, domain.StatusInProgress} {
 		if tr.Handler != "" {
 			break
 		}
@@ -380,8 +381,8 @@ func (e *Engine) Eval(ctx context.Context, cfg *config.Config, name string, tr c
 func (e *Engine) OpenCount(ctx context.Context, name string) (int, error) {
 	ts, err := e.host.Store().List(ctx, store.Filter{
 		MetaPack: Pack, MetaKey: "name", MetaValue: name,
-		Kinds:    []store.Kind{store.KindRun, store.KindTask},
-		Statuses: []store.Status{store.StatusOpen, store.StatusInProgress}, Limit: store.NoLimit,
+		Kinds:    []domain.Kind{domain.KindRun, domain.KindTask},
+		Statuses: []domain.Status{domain.StatusOpen, domain.StatusInProgress}, Limit: store.NoLimit,
 	})
 	return len(ts), err
 }
@@ -411,8 +412,8 @@ func (e *Engine) learningsHold(ctx context.Context, l config.LearningsWhen, sinc
 		// millisecond belongs to that pass.
 		from = from.Add(time.Millisecond)
 	}
-	n, err := learning.Count(ctx, e.host.Store(), from, store.LearningCount{
-		Status: store.LearningOpen, Kinds: l.Kinds, Scopes: l.Scope, Source: l.Source,
+	n, err := learning.Count(ctx, e.host.Store(), from, domain.LearningCount{
+		Status: domain.LearningOpen, Kinds: l.Kinds, Scopes: l.Scope, Source: l.Source,
 	})
 	if err != nil {
 		return "", err
@@ -432,11 +433,11 @@ func (e *Engine) countsHold(ctx context.Context, cfg *config.Config, w config.Tr
 	if !w.HasCounts() {
 		return "", nil
 	}
-	kind := store.Kind(w.Kind)
+	kind := domain.Kind(w.Kind)
 	if kind == "" {
-		kind = store.KindTask
+		kind = domain.KindTask
 	}
-	count := func(s store.Status) (int, error) {
+	count := func(s domain.Status) (int, error) {
 		ts, err := e.host.Store().List(ctx, store.Filter{Kind: kind, Status: s, Pool: w.Pool, Label: w.Label})
 		return len(ts), err
 	}
@@ -446,8 +447,8 @@ func (e *Engine) countsHold(ctx context.Context, cfg *config.Config, w config.Tr
 		n            func() (int, error)
 	}{
 		{"ready", w.ReadyBelow, w.ReadyAbove, func() (int, error) { return e.readyCount(ctx, cfg, w, kind) }},
-		{"open", w.OpenBelow, w.OpenAbove, func() (int, error) { return count(store.StatusOpen) }},
-		{"in_progress", w.InProgressBelow, w.InProgressAbove, func() (int, error) { return count(store.StatusInProgress) }},
+		{"open", w.OpenBelow, w.OpenAbove, func() (int, error) { return count(domain.StatusOpen) }},
+		{"in_progress", w.InProgressBelow, w.InProgressAbove, func() (int, error) { return count(domain.StatusInProgress) }},
 	}
 	for _, ch := range checks {
 		if ch.below == nil && ch.above == nil {
@@ -469,8 +470,8 @@ func (e *Engine) countsHold(ctx context.Context, cfg *config.Config, w config.Tr
 
 // readyCount counts claimable tickets: open, unblocked and not deferred.
 // Only claimable kinds (tasks) can be ready, so other kinds count zero.
-func (e *Engine) readyCount(ctx context.Context, cfg *config.Config, w config.TriggerWhen, kind store.Kind) (int, error) {
-	if !slices.Contains(store.ClaimableKinds, kind) {
+func (e *Engine) readyCount(ctx context.Context, cfg *config.Config, w config.TriggerWhen, kind domain.Kind) (int, error) {
+	if !slices.Contains(domain.ClaimableKinds, kind) {
 		return 0, nil
 	}
 	projects := slices.Sorted(maps.Keys(cfg.Projects))

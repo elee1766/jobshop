@@ -21,6 +21,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -31,7 +32,7 @@ const Every = time.Hour
 type Host interface {
 	Now() time.Time
 	// List lists tickets (closed sessions).
-	List(ctx context.Context, f store.Filter) ([]store.Ticket, error)
+	List(ctx context.Context, f store.Filter) ([]domain.Ticket, error)
 	// SessionDir is where a session's journal.ndjson lives.
 	SessionDir(id string) string
 	// Go runs f in the background, tracked so the controller waits for it
@@ -92,7 +93,7 @@ func (s *Sweeper) Sweep(ctx context.Context, cutoff time.Time, level int) (int, 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	lowIOPriority()
-	closed, err := s.h.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed})
+	closed, err := s.h.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusClosed})
 	if err != nil {
 		return 0, err
 	}

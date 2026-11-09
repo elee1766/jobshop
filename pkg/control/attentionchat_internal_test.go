@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -20,7 +21,7 @@ func TestAttentionSummaryFromChat(t *testing.T) {
 	q := mkTicket(t, c, store.NewTicket{Title: "which branch?", Body: "the body", Labels: []string{questionLabel}})
 	key := attentionKey("question", q.ID)
 	require.NoError(t, c.recordAttentionChat(ctx, q.ID, key))
-	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Title: "s", Fields: json.RawMessage(`{"agent":"fake","key":"` + key + `"}`)})
+	sess := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Title: "s", Fields: json.RawMessage(`{"agent":"fake","key":"` + key + `"}`)})
 
 	c.recordAttentionSummary(ctx, sess.ID, "  It asks which branch.\n\nRun jobshop question answer.  ")
 	got, err := c.store.Get(ctx, q.ID)
@@ -42,7 +43,7 @@ func TestAttentionSummaryFromChat(t *testing.T) {
 	require.NoError(t, err)
 
 	// Not an attention chat: nothing is written.
-	other := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Title: "s2", Fields: json.RawMessage(`{"agent":"fake","key":"desk:abc"}`)})
+	other := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Title: "s2", Fields: json.RawMessage(`{"agent":"fake","key":"desk:abc"}`)})
 	c.recordAttentionSummary(ctx, other.ID, "hello")
 	got2, err := c.store.Get(ctx, q.ID)
 	require.NoError(t, err)

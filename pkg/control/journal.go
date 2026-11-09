@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/elee1766/jobshop/pkg/control/journalread"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // session.journal (#529): read-only, paged, redacted access to a
@@ -24,7 +24,7 @@ const grantSessionJournal = "session-journal"
 
 func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.SessionJournalParams) (any, error) {
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
 	if err := journalread.ValidatePage(p); err != nil {
 		return nil, err
@@ -33,8 +33,8 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindSession {
-		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	if t.Kind != domain.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", domain.ErrInvalid, p.ID, t.Kind)
 	}
 	if err := c.canReadJournal(sc, t); err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (c *Controller) sessionJournal(ctx context.Context, sc scope, p rpc.Session
 
 // canReadJournal: admin; a session for itself; a pool with the
 // session-journal grant for sessions in its project.
-func (c *Controller) canReadJournal(sc scope, t store.Ticket) error {
+func (c *Controller) canReadJournal(sc scope, t domain.Ticket) error {
 	if sc.admin || sc.session == t.ID {
 		return nil
 	}

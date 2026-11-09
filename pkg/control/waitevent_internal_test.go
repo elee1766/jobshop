@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -46,18 +47,18 @@ func TestWaitEventKinds(t *testing.T) {
 	admin := scope{admin: true, actor: "admin"}
 	lin.set("ENG-1", "In Progress", "started", "Blocked")
 
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "dep", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
-	park := func(title string, cd store.WaitCond) store.Ticket {
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "dep", Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)})
+	park := func(title string, cd domain.WaitCond) domain.Ticket {
 		tk := mkTicket(t, c, store.NewTicket{Title: title, Pool: "dev"})
-		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: title, Conds: []store.WaitCond{cd}})
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: title, Conds: []domain.WaitCond{cd}})
 		require.NoError(t, err)
 		return tk
 	}
-	tag := park("tag", store.WaitCond{Type: store.WaitTag, Repo: "acme/widget", Tag: "v1.2.3"})
-	dep := park("deploy", store.WaitCond{Type: store.WaitDeploy, Repo: "acme/widget", SHA: "aaaa1111"})
-	rn := park("run", store.WaitCond{Type: store.WaitRun, Run: run.ID, State: "done"})
-	st := park("state", store.WaitCond{Type: store.WaitLinearState, Thread: "ENG-1", State: "done"})
-	lb := park("label", store.WaitCond{Type: store.WaitLinearLabel, Thread: "ENG-1", Label: "blocked", Absent: true})
+	tag := park("tag", domain.WaitCond{Type: domain.WaitTag, Repo: "acme/widget", Tag: "v1.2.3"})
+	dep := park("deploy", domain.WaitCond{Type: domain.WaitDeploy, Repo: "acme/widget", SHA: "aaaa1111"})
+	rn := park("run", domain.WaitCond{Type: domain.WaitRun, Run: run.ID, State: "done"})
+	st := park("state", domain.WaitCond{Type: domain.WaitLinearState, Thread: "ENG-1", State: "done"})
+	lb := park("label", domain.WaitCond{Type: domain.WaitLinearLabel, Thread: "ENG-1", Label: "blocked", Absent: true})
 
 	prs.issues["compare:aaaa1111...dddd0000"] = "behind"
 	c.pollWaits(ctx, prs, threads)
@@ -93,11 +94,11 @@ func TestWaitRunCancelled(t *testing.T) {
 	c, _, prs, threads := waitController(t)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "dep", Fields: json.RawMessage(`{"workflow":"w","state":"cancelled"}`)})
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "dep", Fields: json.RawMessage(`{"workflow":"w","state":"cancelled"}`)})
 	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
 	b := mkTicket(t, c, store.NewTicket{Title: "b", Pool: "dev"})
 	for id, state := range map[string]string{a.ID: "done", b.ID: "closed"} {
-		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: id, Reason: "dep", Conds: []store.WaitCond{{Type: store.WaitRun, Run: run.ID, State: state}}})
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: id, Reason: "dep", Conds: []domain.WaitCond{{Type: domain.WaitRun, Run: run.ID, State: state}}})
 		require.NoError(t, err)
 	}
 	c.pollWaits(ctx, prs, threads)
@@ -117,23 +118,23 @@ func TestWaitDeployNoCommit(t *testing.T) {
 	a := mkTicket(t, c, store.NewTicket{Title: "a", Pool: "dev"})
 	_, err := c.waitAdd(t.Context(), scope{admin: true, actor: "admin"}, rpc.WaitAddParams{
 		ID: a.ID, Reason: "deploy",
-		Conds: []store.WaitCond{{Type: store.WaitDeploy, Repo: "acme/widget", SHA: "aaaa1111"}},
+		Conds: []domain.WaitCond{{Type: domain.WaitDeploy, Repo: "acme/widget", SHA: "aaaa1111"}},
 	})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	assert.ErrorContains(t, err, "reports no build commit")
 }
 
 func TestWaitEventKindsValidate(t *testing.T) {
 	t.Parallel()
-	for _, cd := range []store.WaitCond{
-		{Type: store.WaitTag, Repo: "acme/widget"},
-		{Type: store.WaitDeploy, Repo: "acme/widget", SHA: "main"},
-		{Type: store.WaitRun, Run: "js-1", State: "running"},
-		{Type: store.WaitLinearState, Thread: "acme/widget#1", State: "Done"},
-		{Type: store.WaitLinearLabel, Thread: "ENG-1"},
+	for _, cd := range []domain.WaitCond{
+		{Type: domain.WaitTag, Repo: "acme/widget"},
+		{Type: domain.WaitDeploy, Repo: "acme/widget", SHA: "main"},
+		{Type: domain.WaitRun, Run: "js-1", State: "running"},
+		{Type: domain.WaitLinearState, Thread: "acme/widget#1", State: "Done"},
+		{Type: domain.WaitLinearLabel, Thread: "ENG-1"},
 	} {
-		w := &store.Wait{Reason: "x", Conds: []store.WaitCond{cd}}
-		require.ErrorIs(t, w.Validate(), store.ErrInvalid, "%+v", cd)
+		w := &domain.Wait{Reason: "x", Conds: []domain.WaitCond{cd}}
+		require.ErrorIs(t, w.Validate(), domain.ErrInvalid, "%+v", cd)
 	}
 }
 
@@ -148,7 +149,7 @@ func TestReleaseGuard(t *testing.T) {
 	_, _, sc := startWork(t, c, "r1")
 	for _, reason := range []string{"CI on PR #672", "waiting for checks", "Deploy pending", "tag v1 not pushed", "merge queue"} {
 		_, err := c.release(ctx, sc, rpc.ReleaseParams{Reason: reason, Until: &until})
-		require.ErrorIs(t, err, store.ErrInvalid, reason)
+		require.ErrorIs(t, err, domain.ErrInvalid, reason)
 		assert.ErrorContains(t, err, "jobshop wait add", reason)
 	}
 	_, err := c.release(ctx, sc, rpc.ReleaseParams{Reason: "precise: the deploy window opens at 18:00", Until: &until, TimeWait: true})

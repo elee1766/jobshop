@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sync"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -119,7 +120,7 @@ func (c *Controller) changes(ctx context.Context, after int64) ([]rpc.Event, err
 	if err != nil {
 		return nil, err
 	}
-	tickets := map[string]*store.Ticket{}
+	tickets := map[string]*domain.Ticket{}
 	out := make([]rpc.Event, 0, len(page.Changes))
 	for _, r := range page.Changes {
 		t, ok := tickets[r.TicketID]
@@ -135,7 +136,7 @@ func (c *Controller) changes(ctx context.Context, after int64) ([]rpc.Event, err
 }
 
 // toEvent maps a history row. t is the ticket now, nil if it is gone.
-func toEvent(h store.HistoryEntry, t *store.Ticket) rpc.Event {
+func toEvent(h store.HistoryEntry, t *domain.Ticket) rpc.Event {
 	ev := rpc.Event{
 		Seq: h.Seq, Time: h.At, Kind: rpc.EventKindTicket, Op: h.Op,
 		ID: h.TicketID, Revision: h.Revision, Actor: h.Actor,
@@ -151,7 +152,7 @@ func toEvent(h store.HistoryEntry, t *store.Ticket) rpc.Event {
 		ev.TicketKind, ev.Status, ev.Resolution, ev.Labels = t.Kind, t.Status, t.Resolution, t.Labels
 	}
 	switch ev.TicketKind {
-	case store.KindSession:
+	case domain.KindSession:
 		ev.Kind = rpc.EventKindSession
 		switch h.Op {
 		case "create":
@@ -162,15 +163,15 @@ func toEvent(h store.HistoryEntry, t *store.Ticket) rpc.Event {
 				ev.Op = rpc.OpSessionCrash
 			}
 		}
-	case store.KindRun:
+	case domain.KindRun:
 		ev.Kind = rpc.EventKindRun
 		if t != nil {
-			if f, err := store.DecodeFields[store.RunFields](*t); err == nil {
+			if f, err := domain.DecodeFields[domain.RunFields](*t); err == nil {
 				ev.State = f.State
 			}
 		}
 		if h.Op == "update" && len(diff.Fields) > 0 {
-			var f store.RunFields
+			var f domain.RunFields
 			if json.Unmarshal(diff.Fields, &f) == nil && f.State != "" {
 				ev.Op, ev.State = rpc.OpRunState, f.State
 			}
@@ -201,7 +202,7 @@ func (c *Controller) eventsSubscribe(ctx context.Context, sc scope, p rpc.Events
 		return nil, err
 	}
 	if sc.peer == nil || sc.peer.conn == nil {
-		return nil, fmt.Errorf("%w: subscribe needs a socket connection", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: subscribe needs a socket connection", domain.ErrInvalid)
 	}
 	sub, live := c.events.add()
 	defer c.events.remove(sub)

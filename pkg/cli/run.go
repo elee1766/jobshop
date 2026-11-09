@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 type runCmd struct {
@@ -97,7 +97,7 @@ func (g *Globals) runCall(method string, params any, asJSON bool) error {
 // printRun writes the run line, its vars, then one line per step: index,
 // id, pool, status, resolution, holder, failures/retries.
 func printRun(w io.Writer, r rpc.RunResult) error {
-	f, err := store.DecodeFields[store.RunFields](r.Run)
+	f, err := domain.DecodeFields[domain.RunFields](r.Run)
 	if err != nil {
 		return err
 	}
@@ -129,12 +129,12 @@ func printRun(w io.Writer, r rpc.RunResult) error {
 			return err
 		}
 	}
-	waits := map[string]store.ResourceWait{}
+	waits := map[string]domain.ResourceWait{}
 	for _, wt := range r.Waits {
 		waits[wt.Ticket] = wt
 	}
 	for _, s := range r.Steps {
-		sf, err := store.DecodeFields[store.StepFields](s)
+		sf, err := domain.DecodeFields[domain.StepFields](s)
 		if err != nil {
 			return err
 		}
@@ -270,7 +270,7 @@ func (c batchStartCmd) Run(g *Globals) error {
 // printBatch writes the batch line, its order, then one line per member
 // run: issue, run id, run state, current step, blocking issues, adopted.
 func printBatch(w io.Writer, r rpc.BatchResult) error {
-	f, err := store.DecodeFields[store.BatchFields](r.Batch)
+	f, err := domain.DecodeFields[domain.BatchFields](r.Batch)
 	if err != nil {
 		return err
 	}
@@ -291,7 +291,7 @@ func printBatch(w io.Writer, r rpc.BatchResult) error {
 		}
 	}
 	for _, run := range r.Runs {
-		rf, err := store.DecodeFields[store.RunFields](run.Run)
+		rf, err := domain.DecodeFields[domain.RunFields](run.Run)
 		if err != nil {
 			return err
 		}
@@ -314,12 +314,12 @@ func printBatch(w io.Writer, r rpc.BatchResult) error {
 
 // currentStepName is the workflow step name of the first step not closed
 // done, or "" when all are done.
-func currentStepName(steps []store.Ticket) string {
+func currentStepName(steps []domain.Ticket) string {
 	for _, s := range steps {
-		if store.StepFinished(s) {
+		if domain.StepFinished(s) {
 			continue
 		}
-		if sf, err := store.DecodeFields[store.StepFields](s); err == nil {
+		if sf, err := domain.DecodeFields[domain.StepFields](s); err == nil {
 			return sf.Step
 		}
 		return s.ID

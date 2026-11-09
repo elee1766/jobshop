@@ -8,6 +8,7 @@ import (
 
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -30,29 +31,29 @@ func (c *Controller) sessionCloseRPC(ctx context.Context, sc scope, p rpc.Sessio
 		return nil, err
 	}
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
 	if p.ID == sc.session {
 		// stopRunner would wait for the turn that is making this call.
-		return nil, fmt.Errorf("%w: a session cannot close itself; close or release its ticket instead", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: a session cannot close itself; close or release its ticket instead", domain.ErrInvalid)
 	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindSession {
-		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	if t.Kind != domain.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", domain.ErrInvalid, p.ID, t.Kind)
 	}
 	if !sc.admin && t.Project != sc.project {
 		return nil, forbidden("session %s is not in project %s", p.ID, sc.project)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: session %s", store.ErrClosed, p.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: session %s", domain.ErrClosed, p.ID)
 	}
 	cfg := c.config()
 	if p.Handoff != "" {
 		if _, ok := cfg.Pools[p.Handoff]; !ok {
-			return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Handoff)
+			return nil, fmt.Errorf("%w: unknown pool %q", domain.ErrInvalid, p.Handoff)
 		}
 	}
 	if p.DryRun {
@@ -74,7 +75,7 @@ func (c *Controller) sessionCloseRPC(ctx context.Context, sc scope, p rpc.Sessio
 		// Pre-assigned tickets were never started: endSession unassigns
 		// them. A claimed one with no pool to go back to is released there
 		// too, which counts a failed attempt for a step.
-		if h.Pool == "" || (h.Status != store.StatusInProgress && p.Handoff == "") {
+		if h.Pool == "" || (h.Status != domain.StatusInProgress && p.Handoff == "") {
 			continue
 		}
 		note := fmt.Sprintf("Session %s was closed by %s (%s); handed back to pool %s.", p.ID, sc.actor, why, h.Pool)
@@ -100,7 +101,7 @@ func (c *Controller) sessionCloseRPC(ctx context.Context, sc scope, p rpc.Sessio
 // heldBy lists what session id holds, claimed or pre-assigned, with the
 // pool each would go to: handoff when set, else its own.
 func (c *Controller) heldBy(ctx context.Context, id, handoff string) ([]rpc.HeldTicket, error) {
-	ts, err := c.store.List(ctx, store.Filter{Holder: id, Statuses: []store.Status{store.StatusInProgress, store.StatusOpen}})
+	ts, err := c.store.List(ctx, store.Filter{Holder: id, Statuses: []domain.Status{domain.StatusInProgress, domain.StatusOpen}})
 	if err != nil {
 		return nil, err
 	}

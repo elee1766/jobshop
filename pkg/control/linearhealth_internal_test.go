@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -61,16 +62,16 @@ func TestLinearOutageWaits(t *testing.T) {
 	c.linearSvc().SetRequestTimeout(100 * time.Millisecond)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	park := func(title string, cd store.WaitCond) store.Ticket {
+	park := func(title string, cd domain.WaitCond) domain.Ticket {
 		tk := mkTicket(t, c, store.NewTicket{Title: title, Pool: "dev"})
-		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: title, Conds: []store.WaitCond{cd}})
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: title, Conds: []domain.WaitCond{cd}})
 		require.NoError(t, err)
 		return tk
 	}
-	run := mkTicket(t, c, store.NewTicket{Kind: store.KindRun, Title: "dep", Fields: json.RawMessage(`{"workflow":"w","state":"done"}`)})
-	st := park("state", store.WaitCond{Type: store.WaitLinearState, Thread: "ENG-1", State: "done"})
-	lb := park("label", store.WaitCond{Type: store.WaitLinearLabel, Thread: "ENG-2", Label: "blocked", Absent: true})
-	rn := park("run", store.WaitCond{Type: store.WaitRun, Run: run.ID, State: "done"})
+	run := mkTicket(t, c, store.NewTicket{Kind: domain.KindRun, Title: "dep", Fields: json.RawMessage(`{"workflow":"w","state":"done"}`)})
+	st := park("state", domain.WaitCond{Type: domain.WaitLinearState, Thread: "ENG-1", State: "done"})
+	lb := park("label", domain.WaitCond{Type: domain.WaitLinearLabel, Thread: "ENG-2", Label: "blocked", Absent: true})
+	rn := park("run", domain.WaitCond{Type: domain.WaitRun, Run: run.ID, State: "done"})
 	prs := &fakePRs{pr: map[string]string{}, reviews: map[string]string{}, checks: map[string]string{}, issues: map[string]string{}, runs: map[string]string{}}
 	threads := &fakeThreads{}
 	warns := func() int { return strings.Count(logs.String(), `msg="linear unavailable"`) }

@@ -16,8 +16,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // runRoot starts a controller whose pools never spawn sessions, with a
@@ -135,11 +135,11 @@ func startRun(t *testing.T, admin *rpc.Client, p rpc.RunStartParams) rpc.RunResu
 // readyIDs lists ready step tickets (escalation tasks are left out).
 func readyIDs(t *testing.T, admin *rpc.Client) []string {
 	t.Helper()
-	var ts []store.Ticket
+	var ts []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReady, rpc.ReadyParams{Project: "js"}, &ts))
 	out := []string{}
 	for _, x := range ts {
-		if x.Kind == store.KindStep {
+		if x.Kind == domain.KindStep {
 			out = append(out, x.ID)
 		}
 	}
@@ -160,7 +160,7 @@ func closeStep(t *testing.T, admin *rpc.Client, id, res string) {
 
 func runState(t *testing.T, r rpc.RunResult) string {
 	t.Helper()
-	f, err := store.DecodeFields[store.RunFields](r.Run)
+	f, err := domain.DecodeFields[domain.RunFields](r.Run)
 	require.NoError(t, err)
 	return f.State
 }
@@ -171,22 +171,22 @@ func TestRunStart(t *testing.T) {
 	admin := runRoot(t)
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr", Vars: map[string]string{"issue": "42"}})
 
-	assert.Equal(t, store.KindRun, r.Run.Kind)
+	assert.Equal(t, domain.KindRun, r.Run.Kind)
 	assert.Empty(t, r.Run.Pool, "runs are never claimed")
-	assert.Equal(t, store.RunRunning, runState(t, r))
+	assert.Equal(t, domain.RunRunning, runState(t, r))
 	require.Len(t, r.Steps, 3)
 	s0 := r.Steps[0]
-	assert.Equal(t, store.KindStep, s0.Kind)
+	assert.Equal(t, domain.KindStep, s0.Kind)
 	assert.Equal(t, "dev", s0.Pool)
 	assert.Equal(t, r.Run.ID, s0.ParentID)
 	assert.Equal(t, "Implement #42", s0.Title)
 	assert.Equal(t, "Implement #42 in /src.\n", s0.Body, "run vars and pack vars filled")
 	assert.JSONEq(t, `{"github":{"repo":"acme/widget","issue":42}}`, string(s0.Meta))
 	assert.JSONEq(t, `{"github":{"repo":"acme/widget","issue":42}}`, string(r.Run.Meta))
-	sf, err := store.DecodeFields[store.StepFields](s0)
+	sf, err := domain.DecodeFields[domain.StepFields](s0)
 	require.NoError(t, err)
-	assert.Equal(t, store.StepFields{Run: r.Run.ID, Step: "implement", Index: 0, Retries: 3}, sf)
-	sf, err = store.DecodeFields[store.StepFields](r.Steps[1])
+	assert.Equal(t, domain.StepFields{Run: r.Run.ID, Step: "implement", Index: 0, Retries: 3}, sf)
+	sf, err = domain.DecodeFields[domain.StepFields](r.Steps[1])
 	require.NoError(t, err)
 	assert.Equal(t, config.DefaultStepRetries, sf.Retries)
 
@@ -194,8 +194,8 @@ func TestRunStart(t *testing.T) {
 	closeStep(t, admin, s0.ID, "done")
 	assert.Equal(t, []string{r.Steps[1].ID}, readyIDs(t, admin))
 
-	var runs []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{State: store.RunRunning}, &runs))
+	var runs []domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{State: domain.RunRunning}, &runs))
 	require.Len(t, runs, 1)
 	assert.Equal(t, r.Run.ID, runs[0].ID)
 }
@@ -213,7 +213,7 @@ func TestRunStepPoolVar(t *testing.T) {
 	err := admin.Call(t.Context(), rpc.MethodRunStart, rpc.RunStartParams{Workflow: "routed", Vars: map[string]string{"review_pool": "nope"}}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), `unknown pool "nope"`)
-	var runs []store.Ticket
+	var runs []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
 	assert.Len(t, runs, 2, "a bad pool creates no ticket")
 }
@@ -225,13 +225,13 @@ func TestRunRetryPool(t *testing.T) {
 	admin := runRoot(t)
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "tiered", Vars: map[string]string{"dev_pool": "dev"}})
 	require.Equal(t, "dev", r.Steps[0].Pool)
-	sf, err := store.DecodeFields[store.StepFields](r.Steps[0])
+	sf, err := domain.DecodeFields[domain.StepFields](r.Steps[0])
 	require.NoError(t, err)
 	assert.Equal(t, "refinery", sf.RetryPool)
 
 	closeStep(t, admin, r.Steps[0].ID, "failed")
 	got := showRun(t, admin, r.Run.ID)
-	assert.Equal(t, store.StatusOpen, got.Steps[0].Status)
+	assert.Equal(t, domain.StatusOpen, got.Steps[0].Status)
 	assert.Equal(t, "refinery", got.Steps[0].Pool, "failed attempt escalates")
 	closeStep(t, admin, r.Steps[0].ID, "failed")
 	assert.Equal(t, "refinery", showRun(t, admin, r.Run.ID).Steps[0].Pool, "never back down")
@@ -240,13 +240,13 @@ func TestRunRetryPool(t *testing.T) {
 	r = startRun(t, admin, rpc.RunStartParams{Workflow: "tiered", Vars: map[string]string{"dev_pool": "dev"}})
 	closeStep(t, admin, r.Steps[0].ID, "done")
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: r.Run.ID, Step: "implement"}, &got))
-	assert.Equal(t, store.StatusOpen, got.Steps[0].Status)
+	assert.Equal(t, domain.StatusOpen, got.Steps[0].Status)
 	assert.Equal(t, "refinery", got.Steps[0].Pool)
 
 	// Started on the retry pool (the pack default): nothing to move.
 	r = startRun(t, admin, rpc.RunStartParams{Workflow: "tiered"})
 	assert.Equal(t, "refinery", r.Steps[0].Pool)
-	sf, err = store.DecodeFields[store.StepFields](r.Steps[0])
+	sf, err = domain.DecodeFields[domain.StepFields](r.Steps[0])
 	require.NoError(t, err)
 	assert.Empty(t, sf.RetryPool)
 
@@ -262,7 +262,7 @@ func TestRunStepResources(t *testing.T) {
 	a := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "1"}})
 	b := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "1"}})
 	c := startRun(t, admin, rpc.RunStartParams{Workflow: "locked", Vars: map[string]string{"pr": "2"}})
-	sf, err := store.DecodeFields[store.StepFields](a.Steps[0])
+	sf, err := domain.DecodeFields[domain.StepFields](a.Steps[0])
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pr:acme#1", "emu"}, sf.Resources)
 
@@ -271,7 +271,7 @@ func TestRunStepResources(t *testing.T) {
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodClaim, rpc.ClaimParams{ID: c.Steps[0].ID, Holder: "s2"}, nil))
 	assert.Empty(t, readyIDs(t, admin), "emu (max 2) is full too")
 	// run show says what b waits on (#408).
-	assert.Equal(t, []store.ResourceWait{{Ticket: b.Steps[0].ID, Key: "emu", Held: 2, Capacity: 2}}, showRun(t, admin, b.Run.ID).Waits)
+	assert.Equal(t, []domain.ResourceWait{{Ticket: b.Steps[0].ID, Key: "emu", Held: 2, Capacity: 2}}, showRun(t, admin, b.Run.ID).Waits)
 	assert.Empty(t, showRun(t, admin, a.Run.ID).Waits, "a holds its slots")
 
 	closeStep(t, admin, a.Steps[0].ID, "done")
@@ -287,9 +287,9 @@ func TestRunPlacement(t *testing.T) {
 	hog := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "1", "risk": "low"}})
 	low := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "2", "risk": "low"}})
 	high := startRun(t, admin, rpc.RunStartParams{Workflow: "placed", Vars: map[string]string{"pr": "3", "risk": "high"}})
-	placement := func(id string) (string, *store.StepPlacement) {
+	placement := func(id string) (string, *domain.StepPlacement) {
 		r := showRun(t, admin, id)
-		sf, err := store.DecodeFields[store.StepFields](r.Steps[0])
+		sf, err := domain.DecodeFields[domain.StepFields](r.Steps[0])
 		require.NoError(t, err)
 		return r.Steps[0].Pool, sf.Placement
 	}
@@ -341,7 +341,7 @@ func TestRunStartErrors(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.want)
 		})
 	}
-	err := admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "x", Kind: store.KindStep}, nil)
+	err := admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "x", Kind: domain.KindStep}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "run start")
 }
@@ -391,13 +391,13 @@ func TestRunCompletes(t *testing.T) {
 		closeStep(t, admin, s.ID, "done")
 		if i < len(r.Steps)-1 {
 			got := showRun(t, admin, r.Run.ID)
-			assert.Equal(t, store.StatusOpen, got.Run.Status)
+			assert.Equal(t, domain.StatusOpen, got.Run.Status)
 		}
 	}
 	got := showRun(t, admin, r.Run.ID)
-	assert.Equal(t, store.StatusClosed, got.Run.Status)
+	assert.Equal(t, domain.StatusClosed, got.Run.Status)
 	assert.Equal(t, "done", got.Run.Resolution)
-	assert.Equal(t, store.RunDone, runState(t, got))
+	assert.Equal(t, domain.RunDone, runState(t, got))
 }
 
 // TestRunCancel closes open steps and the run as cancelled.
@@ -407,13 +407,13 @@ func TestRunCancel(t *testing.T) {
 	closeStep(t, admin, r.Steps[0].ID, "done")
 	var got rpc.RunResult
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunCancel, rpc.IDParams{ID: r.Run.ID}, &got))
-	assert.Equal(t, store.StatusClosed, got.Run.Status)
-	assert.Equal(t, store.RunCancelled, got.Run.Resolution)
-	assert.Equal(t, store.RunCancelled, runState(t, got))
+	assert.Equal(t, domain.StatusClosed, got.Run.Status)
+	assert.Equal(t, domain.RunCancelled, got.Run.Resolution)
+	assert.Equal(t, domain.RunCancelled, runState(t, got))
 	assert.Equal(t, "done", got.Steps[0].Resolution, "finished steps keep their resolution")
 	for _, s := range got.Steps[1:] {
-		assert.Equal(t, store.StatusClosed, s.Status)
-		assert.Equal(t, store.RunCancelled, s.Resolution)
+		assert.Equal(t, domain.StatusClosed, s.Status)
+		assert.Equal(t, domain.RunCancelled, s.Resolution)
 	}
 	assert.Empty(t, readyIDs(t, admin))
 	err := admin.Call(t.Context(), rpc.MethodRunCancel, rpc.IDParams{ID: r.Run.ID}, nil)
@@ -430,24 +430,24 @@ func TestRunResume(t *testing.T) {
 	closeStep(t, admin, r.Steps[1].ID, "failed")
 	closeStep(t, admin, r.Steps[1].ID, "failed")
 	got := showRun(t, admin, r.Run.ID)
-	require.Equal(t, store.RunNeedsHuman, runState(t, got))
+	require.Equal(t, domain.RunNeedsHuman, runState(t, got))
 	assert.Empty(t, readyIDs(t, admin), "later steps stay blocked")
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: r.Run.ID}, &got))
-	assert.Equal(t, store.RunRunning, runState(t, got))
-	assert.Equal(t, store.StatusOpen, got.Steps[1].Status)
-	f, err := store.DecodeFields[store.StepFields](got.Steps[1])
+	assert.Equal(t, domain.RunRunning, runState(t, got))
+	assert.Equal(t, domain.StatusOpen, got.Steps[1].Status)
+	f, err := domain.DecodeFields[domain.StepFields](got.Steps[1])
 	require.NoError(t, err)
 	assert.Equal(t, 0, f.Failures)
 	assert.Equal(t, []string{r.Steps[1].ID}, readyIDs(t, admin))
 
 	// A resumed step gets its full retries again: one failure only reopens.
 	closeStep(t, admin, r.Steps[1].ID, "failed")
-	assert.Equal(t, store.RunRunning, runState(t, showRun(t, admin, r.Run.ID)))
+	assert.Equal(t, domain.RunRunning, runState(t, showRun(t, admin, r.Run.ID)))
 
 	// --step reopens a finished step; the step after it is blocked again.
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: r.Run.ID, Step: "implement"}, &got))
-	assert.Equal(t, store.StatusOpen, got.Steps[0].Status)
+	assert.Equal(t, domain.StatusOpen, got.Steps[0].Status)
 	assert.Equal(t, []string{r.Steps[0].ID}, readyIDs(t, admin))
 
 	err = admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: r.Run.ID, Step: "nope"}, nil)
@@ -509,7 +509,7 @@ func TestSelfdevDrill(t *testing.T) {
 	assert.Contains(t, r.Steps[0].Body, "jobshop close -r failed")
 	closeStep(t, admin, r.Steps[0].ID, "failed")
 
-	assert.Equal(t, store.RunNeedsHuman, runState(t, showRun(t, admin, r.Run.ID)))
+	assert.Equal(t, domain.RunNeedsHuman, runState(t, showRun(t, admin, r.Run.ID)))
 	esc := escalations(t, admin, r.Run.ID)
 	require.Len(t, esc, 1)
 	assert.Equal(t, "plan", esc[0].Pool)
@@ -595,7 +595,7 @@ func TestRunShowStepPRLinks(t *testing.T) {
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodWaitAdd, rpc.WaitAddParams{
 		ID:     step,
-		Conds:  []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", PR: 8, State: "success"}},
+		Conds:  []domain.WaitCond{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 8, State: "success"}},
 		Reason: "CI",
 	}, nil))
 	got := links()

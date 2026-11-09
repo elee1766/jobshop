@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // wait (#381): park a ticket until outside state holds.
@@ -52,9 +52,9 @@ func (c waitAddCmd) Run(g *Globals) error {
 var linearKeyRe = regexp.MustCompile(`^[A-Z][A-Z0-9]*-\d+$`)
 
 // parseWaitCond reads TYPE:key=val,key=val.
-func parseWaitCond(s string, now time.Time) (store.WaitCond, error) {
+func parseWaitCond(s string, now time.Time) (domain.WaitCond, error) {
 	typ, rest, _ := strings.Cut(s, ":")
-	cd := store.WaitCond{Type: typ}
+	cd := domain.WaitCond{Type: typ}
 	if rest == "" {
 		return cd, fmt.Errorf("condition %q: want TYPE:key=val[,key=val]", s)
 	}

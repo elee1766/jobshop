@@ -14,8 +14,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // reloadPassYAML has a manual-only pool and the given triggers. The
@@ -94,8 +94,8 @@ func TestReloadDuringPass(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	titles := func() []string {
 		t.Helper()
-		var ts []store.Ticket
-		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindTask}, &ts))
+		var ts []domain.Ticket
+		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindTask}, &ts))
 		var out []string
 		for _, tk := range ts {
 			if tk.Title != "gate" && tk.Title != "hold" {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // DrainBatch is how many spool rows one drain step moves.
@@ -20,7 +20,7 @@ type DrainResult struct {
 	Fresh int `json:"fresh"` // of those, new inbox items (the rest deduped)
 	Bad   int `json:"bad"`   // rows moved to spool_bad
 	// Items are the new inbox items, for the controller's wake (#679).
-	Items []store.InboxItem `json:"-"`
+	Items []domain.InboxItem `json:"-"`
 }
 
 // Drain moves spool rows into the inbox in id order until the spool is
@@ -38,7 +38,7 @@ func Drain(ctx context.Context, sp *Spool, in InboxStore, now func() time.Time, 
 		if len(rows) == 0 {
 			return res, nil
 		}
-		items := make([]store.InboxItem, 0, len(rows))
+		items := make([]domain.InboxItem, 0, len(rows))
 		ids := make([]int64, 0, len(rows))
 		for _, r := range rows {
 			it, err := InboxItem(r)
@@ -68,15 +68,15 @@ func Drain(ctx context.Context, sp *Spool, in InboxStore, now func() time.Time, 
 
 // InboxItem maps a spool row to an inbox item with its subject and
 // natural key.
-func InboxItem(r Row) (store.InboxItem, error) {
+func InboxItem(r Row) (domain.InboxItem, error) {
 	d, err := r.Delivery()
 	if err != nil {
-		return store.InboxItem{}, err
+		return domain.InboxItem{}, err
 	}
 	if d.Source != SourceGitHub && d.Source != SourceLinear && d.Source != SourceGeneric {
-		return store.InboxItem{}, fmt.Errorf("unknown source %q", d.Source)
+		return domain.InboxItem{}, fmt.Errorf("unknown source %q", d.Source)
 	}
-	it := store.InboxItem{
+	it := domain.InboxItem{
 		Source: d.Source, DeliveryID: d.Source + ":" + d.DeliveryID, Endpoint: d.Endpoint,
 		Kind: d.Kind, ReceivedAt: d.ReceivedAt, Payload: d.Payload,
 	}
@@ -143,7 +143,7 @@ func (p ghPayload) firstPR() int64 {
 	return 0
 }
 
-func githubSubject(it *store.InboxItem, payload json.RawMessage) error {
+func githubSubject(it *domain.InboxItem, payload json.RawMessage) error {
 	var p ghPayload
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return fmt.Errorf("github payload: %w", err)
@@ -176,7 +176,7 @@ func githubSubject(it *store.InboxItem, payload json.RawMessage) error {
 	return nil
 }
 
-func linearSubject(it *store.InboxItem, payload json.RawMessage) error {
+func linearSubject(it *domain.InboxItem, payload json.RawMessage) error {
 	var ev LinearEvent
 	if err := json.Unmarshal(payload, &ev); err != nil {
 		return fmt.Errorf("linear payload: %w", err)

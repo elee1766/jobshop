@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -36,21 +37,21 @@ const (
 
 // measure reads the store and computes metrics over [from, to): the
 // window after the merge when after is true, else the baseline before.
-func (c *Controller) measure(ctx context.Context, cited []store.Learning, pools []string, from, to time.Time, after bool) (store.PoolMetrics, error) {
-	steps, err := c.store.List(ctx, store.Filter{Kind: store.KindStep, Created: &store.TimeRange{Since: from, Until: to}, Order: store.OrderOldest, Limit: store.NoLimit})
+func (c *Controller) measure(ctx context.Context, cited []domain.Learning, pools []string, from, to time.Time, after bool) (domain.PoolMetrics, error) {
+	steps, err := c.store.List(ctx, store.Filter{Kind: domain.KindStep, Created: &store.TimeRange{Since: from, Until: to}, Order: store.OrderOldest, Limit: store.NoLimit})
 	if err != nil {
-		return store.PoolMetrics{}, err
+		return domain.PoolMetrics{}, err
 	}
 	ls, err := learning.Between(ctx, c.store, from, to)
 	if err != nil {
-		return store.PoolMetrics{}, err
+		return domain.PoolMetrics{}, err
 	}
 	return memedit.Metrics(steps, ls, cited, pools, from, to, after), nil
 }
 
 // editPools are the pools cited learnings point at: a pool scope, or the
 // pool of the ticket (or its run's steps) they are about. Empty: all.
-func (c *Controller) editPools(ctx context.Context, ls []store.Learning) []string {
+func (c *Controller) editPools(ctx context.Context, ls []domain.Learning) []string {
 	var out []string
 	add := func(p string) {
 		if p != "" && !slices.Contains(out, p) {
@@ -69,7 +70,7 @@ func (c *Controller) editPools(ctx context.Context, ls []store.Learning) []strin
 		if err != nil {
 			continue
 		}
-		if t.Kind == store.KindRun {
+		if t.Kind == domain.KindRun {
 			if steps, err := store.Children(ctx, c.store, t.ID); err == nil {
 				for _, s := range steps {
 					add(s.Pool)
@@ -85,19 +86,19 @@ func (c *Controller) editPools(ctx context.Context, ls []store.Learning) []strin
 
 // recordEdit records a merged curator PR with its baseline. ids empty:
 // the learnings whose pr is pr.
-func (c *Controller) recordEdit(ctx context.Context, pr string, ids []int64, mergedAt time.Time) (store.MemoryEdit, error) {
-	var cited []store.Learning
+func (c *Controller) recordEdit(ctx context.Context, pr string, ids []int64, mergedAt time.Time) (domain.MemoryEdit, error) {
+	var cited []domain.Learning
 	if len(ids) == 0 {
 		ls, err := learning.ByPR(ctx, c.store, pr)
 		if err != nil {
-			return store.MemoryEdit{}, err
+			return domain.MemoryEdit{}, err
 		}
 		cited = ls
 	}
 	for _, id := range ids {
 		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
-			return store.MemoryEdit{}, err
+			return domain.MemoryEdit{}, err
 		}
 		cited = append(cited, l)
 	}
@@ -107,9 +108,9 @@ func (c *Controller) recordEdit(ctx context.Context, pr string, ids []int64, mer
 	pools := c.editPools(ctx, cited)
 	base, err := c.measure(ctx, cited, pools, mergedAt.Add(-gateBaseline), mergedAt, false)
 	if err != nil {
-		return store.MemoryEdit{}, err
+		return domain.MemoryEdit{}, err
 	}
-	e := store.MemoryEdit{PR: pr, Pools: pools, MergedAt: mergedAt, Baseline: base}
+	e := domain.MemoryEdit{PR: pr, Pools: pools, MergedAt: mergedAt, Baseline: base}
 	for _, l := range cited {
 		e.Learnings = append(e.Learnings, l.ID)
 	}
@@ -118,10 +119,10 @@ func (c *Controller) recordEdit(ctx context.Context, pr string, ids []int64, mer
 
 // editDue reports whether a pending edit has enough evidence: runs runs
 // in its pools since the merge, or age since the merge.
-func (c *Controller) editDue(ctx context.Context, e store.MemoryEdit, runs int, age time.Duration, now time.Time) (bool, store.PoolMetrics, error) {
+func (c *Controller) editDue(ctx context.Context, e domain.MemoryEdit, runs int, age time.Duration, now time.Time) (bool, domain.PoolMetrics, error) {
 	cited, err := c.citedLearnings(ctx, e)
 	if err != nil {
-		return false, store.PoolMetrics{}, err
+		return false, domain.PoolMetrics{}, err
 	}
 	after, err := c.measure(ctx, cited, e.Pools, e.MergedAt, now, true)
 	if err != nil {
@@ -130,8 +131,8 @@ func (c *Controller) editDue(ctx context.Context, e store.MemoryEdit, runs int, 
 	return after.Runs >= runs || !now.Before(e.MergedAt.Add(age)), after, nil
 }
 
-func (c *Controller) citedLearnings(ctx context.Context, e store.MemoryEdit) ([]store.Learning, error) {
-	out := make([]store.Learning, 0, len(e.Learnings))
+func (c *Controller) citedLearnings(ctx context.Context, e domain.MemoryEdit) ([]domain.Learning, error) {
+	out := make([]domain.Learning, 0, len(e.Learnings))
 	for _, id := range e.Learnings {
 		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
@@ -152,12 +153,12 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 	if age <= 0 {
 		age = gateAge
 	}
-	edits, err := memedit.List(ctx, c.store, store.EditPending, 0)
+	edits, err := memedit.List(ctx, c.store, domain.EditPending, 0)
 	if err != nil {
 		return nil, err
 	}
 	now := c.now()
-	out := []store.MemoryEdit{}
+	out := []domain.MemoryEdit{}
 	for _, e := range edits {
 		if p.ID != 0 && e.ID != p.ID {
 			continue
@@ -185,7 +186,7 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 		}
 		// A local write that did not help is undone here (#592); a PR edit
 		// is reverted by the evaluate step.
-		if state == store.EditNotHelped {
+		if state == domain.EditNotHelped {
 			if err := c.restoreEdit(ctx, u); err != nil {
 				return nil, err
 			}
@@ -193,7 +194,7 @@ func (c *Controller) learnEvaluate(ctx context.Context, _ scope, p rpc.LearnEval
 		out = append(out, u)
 	}
 	if p.ID != 0 && len(out) == 0 {
-		return nil, fmt.Errorf("%w: no pending memory edit %d", store.ErrNotFound, p.ID)
+		return nil, fmt.Errorf("%w: no pending memory edit %d", domain.ErrNotFound, p.ID)
 	}
 	return out, nil
 }
@@ -204,7 +205,7 @@ func (c *Controller) learnEdits(ctx context.Context, _ scope, p rpc.LearnEditsPa
 
 // editsHold returns "" when a pending memory edit is due for evaluation.
 func (c *Controller) editsHold(ctx context.Context, w config.EditsWhen, now time.Time) (string, error) {
-	edits, err := memedit.List(ctx, c.store, store.EditPending, 0)
+	edits, err := memedit.List(ctx, c.store, domain.EditPending, 0)
 	if err != nil {
 		return "", err
 	}

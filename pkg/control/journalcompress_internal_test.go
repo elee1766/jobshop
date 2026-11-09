@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -71,8 +72,8 @@ func TestJournalCompressSweep(t *testing.T) {
 	require.NoError(t, err)
 	c.live.Store(lc)
 
-	mk := func() store.Ticket {
-		s := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	mk := func() domain.Ticket {
+		s := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 		writeJournal(t, c, s.ID, 10)
 		return s
 	}
@@ -148,7 +149,7 @@ func TestJournalCompressSweep(t *testing.T) {
 func TestJournalCompressOff(t *testing.T) {
 	t.Parallel()
 	c, clk, _ := scanControllerYAML(t, journalYAML)
-	s := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	s := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	writeJournal(t, c, s.ID, 3)
 	_, err := store.Close(t.Context(), c.store, "controller", s.ID, nil, "done")
 	require.NoError(t, err)

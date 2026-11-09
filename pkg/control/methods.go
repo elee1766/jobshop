@@ -26,6 +26,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
+
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
@@ -66,10 +68,10 @@ func (c *Controller) project(sc scope, asked string) (string, error) {
 		asked = c.config().DefaultProject
 	}
 	if asked == "" {
-		return "", fmt.Errorf("%w: no project given and no default_project configured", store.ErrInvalid)
+		return "", fmt.Errorf("%w: no project given and no default_project configured", domain.ErrInvalid)
 	}
 	if _, ok := c.config().Projects[asked]; !ok {
-		return "", fmt.Errorf("%w: unknown project %q", store.ErrInvalid, asked)
+		return "", fmt.Errorf("%w: unknown project %q", domain.ErrInvalid, asked)
 	}
 	return asked, nil
 }
@@ -82,19 +84,19 @@ func (c *Controller) current(ctx context.Context, sc scope, id string) (string, 
 		return id, nil
 	}
 	if sc.admin {
-		return "", fmt.Errorf("%w: ticket id is required", store.ErrInvalid)
+		return "", fmt.Errorf("%w: ticket id is required", domain.ErrInvalid)
 	}
-	held, err := c.store.List(ctx, store.Filter{Holder: sc.session, Status: store.StatusInProgress})
+	held, err := c.store.List(ctx, store.Filter{Holder: sc.session, Status: domain.StatusInProgress})
 	if err != nil {
 		return "", err
 	}
 	switch len(held) {
 	case 0:
-		return "", fmt.Errorf("%w: session holds no ticket; pass an id", store.ErrInvalid)
+		return "", fmt.Errorf("%w: session holds no ticket; pass an id", domain.ErrInvalid)
 	case 1:
 		return held[0].ID, nil
 	}
-	return "", fmt.Errorf("%w: session holds %d tickets; pass an id", store.ErrInvalid, len(held))
+	return "", fmt.Errorf("%w: session holds %d tickets; pass an id", domain.ErrInvalid, len(held))
 }
 
 // heldClaim returns the claim for id. Sessions must hold it; admin acts on
@@ -104,11 +106,11 @@ func (c *Controller) heldClaim(ctx context.Context, sc scope, id string) (store.
 	if err != nil {
 		return store.Claim{}, err
 	}
-	if t.Status != store.StatusInProgress {
-		return store.Claim{}, fmt.Errorf("%w: %s is %s", store.ErrNotHolder, id, t.Status)
+	if t.Status != domain.StatusInProgress {
+		return store.Claim{}, fmt.Errorf("%w: %s is %s", domain.ErrNotHolder, id, t.Status)
 	}
 	if !sc.admin && t.Holder != sc.session {
-		return store.Claim{}, fmt.Errorf("%w: %s is held by %s", store.ErrNotHolder, id, t.Holder)
+		return store.Claim{}, fmt.Errorf("%w: %s is held by %s", domain.ErrNotHolder, id, t.Holder)
 	}
 	return store.Claim{TicketID: t.ID, Holder: t.Holder, Fence: t.Fence, LeaseUntil: t.LeaseUntil}, nil
 }
@@ -121,7 +123,7 @@ func (c *Controller) grantedClaim(ctx context.Context, sc scope, id string, notH
 		return store.Claim{}, notHolder
 	}
 	t, err := c.store.Get(ctx, id)
-	if err != nil || t.Status != store.StatusInProgress || t.Project != sc.project {
+	if err != nil || t.Status != domain.StatusInProgress || t.Project != sc.project {
 		return store.Claim{}, notHolder
 	}
 	c.log.InfoContext(ctx, "release by grant", "ticket", id, "holder", t.Holder, "by", sc.actor)
@@ -144,16 +146,16 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 		return nil, err
 	}
 	if p.Kind == "" {
-		p.Kind = store.KindTask
+		p.Kind = domain.KindTask
 	}
-	if p.Kind == store.KindSession {
-		return nil, fmt.Errorf("%w: use session new to create sessions", store.ErrInvalid)
+	if p.Kind == domain.KindSession {
+		return nil, fmt.Errorf("%w: use session new to create sessions", domain.ErrInvalid)
 	}
-	if p.Kind == store.KindRun || p.Kind == store.KindStep {
-		return nil, fmt.Errorf("%w: use run start to create runs and steps", store.ErrInvalid)
+	if p.Kind == domain.KindRun || p.Kind == domain.KindStep {
+		return nil, fmt.Errorf("%w: use run start to create runs and steps", domain.ErrInvalid)
 	}
-	if p.Kind == store.KindBatch {
-		return nil, fmt.Errorf("%w: use batch start to create batches", store.ErrInvalid)
+	if p.Kind == domain.KindBatch {
+		return nil, fmt.Errorf("%w: use batch start to create batches", domain.ErrInvalid)
 	}
 	if p.Holder != "" && !sc.admin {
 		return nil, forbidden("assigning needs the admin socket")
@@ -163,18 +165,18 @@ func (c *Controller) create(ctx context.Context, sc scope, p rpc.CreateParams) (
 	}
 	// A session's follow-up task with no pool would never be claimed (#244);
 	// it goes to the creator's pool, which can reroute it.
-	if p.Kind == store.KindTask && p.Pool == "" && !sc.admin {
+	if p.Kind == domain.KindTask && p.Pool == "" && !sc.admin {
 		p.Pool = sc.pool
 	}
 	if err := c.checkMetaPacks(p.Meta); err != nil {
 		return nil, err
 	}
-	if p.Kind == store.KindMessage {
+	if p.Kind == domain.KindMessage {
 		// A message's sender is the caller; sessions cannot speak for others.
-		var f store.MessageFields
+		var f domain.MessageFields
 		if len(p.Fields) > 0 {
 			if err := json.Unmarshal(p.Fields, &f); err != nil {
-				return nil, fmt.Errorf("%w: message fields: %w", store.ErrInvalid, err)
+				return nil, fmt.Errorf("%w: message fields: %w", domain.ErrInvalid, err)
 			}
 		}
 		if !sc.admin || f.From == "" {
@@ -223,7 +225,7 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	}
 	if p.Run != "" {
 		if p.ParentID != "" && p.ParentID != p.Run {
-			return nil, fmt.Errorf("%w: run and parent_id differ", store.ErrInvalid)
+			return nil, fmt.Errorf("%w: run and parent_id differ", domain.ErrInvalid)
 		}
 		f.ParentID = p.Run
 	}
@@ -235,13 +237,13 @@ func (c *Controller) list(ctx context.Context, sc scope, p rpc.ListParams) (any,
 	case "newest":
 		f.Order = store.OrderNewest
 	default:
-		return nil, fmt.Errorf("%w: order %q: want priority or newest", store.ErrInvalid, p.Order)
+		return nil, fmt.Errorf("%w: order %q: want priority or newest", domain.ErrInvalid, p.Order)
 	}
 	keys := slices.Sorted(maps.Keys(p.Meta))
 	for _, k := range keys {
 		pack, key, ok := strings.Cut(k, ".")
 		if !ok || pack == "" || key == "" {
-			return nil, fmt.Errorf("%w: meta filter %q: want pack.key", store.ErrInvalid, k)
+			return nil, fmt.Errorf("%w: meta filter %q: want pack.key", domain.ErrInvalid, k)
 		}
 		f.Meta = append(f.Meta, store.MetaMatch{Pack: pack, Key: key, Value: p.Meta[k]})
 	}
@@ -309,9 +311,9 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 	if err := c.checkStepResolution(ctx, sc, id, p.Resolution); err != nil {
 		return nil, err
 	}
-	if p.Resolution == store.ResolutionRequestChanges {
+	if p.Resolution == domain.ResolutionRequestChanges {
 		if p.Output != nil || p.Outcome != "" {
-			return nil, fmt.Errorf("%w: request_changes accepts findings, not a successful result", store.ErrInvalid)
+			return nil, fmt.Errorf("%w: request_changes accepts findings, not a successful result", domain.ErrInvalid)
 		}
 		t, err := c.closeRequestChanges(ctx, cfg, sc, id, cl, p.Comment)
 		if err != nil {
@@ -319,7 +321,7 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 		}
 		// Within the cap the step is open again: count the close it made.
 		counted := t
-		counted.Resolution = store.ResolutionRequestChanges
+		counted.Resolution = domain.ResolutionRequestChanges
 		c.countClose(ctx, counted)
 		c.checkRun(ctx, cfg, t.ParentID)
 		return t, nil
@@ -334,14 +336,14 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 	if err != nil {
 		return nil, err
 	}
-	if p.Outcome != "" || p.Output != nil || cur.Kind == store.KindStep {
-		if cur.Kind != store.KindStep {
-			return nil, fmt.Errorf("%w: outcome and output require a workflow step", store.ErrInvalid)
+	if p.Outcome != "" || p.Output != nil || cur.Kind == domain.KindStep {
+		if cur.Kind != domain.KindStep {
+			return nil, fmt.Errorf("%w: outcome and output require a workflow step", domain.ErrInvalid)
 		}
 		if p.Outcome != "" && !config.OutcomePattern.MatchString(p.Outcome) {
-			return nil, fmt.Errorf("%w: invalid outcome %q", store.ErrInvalid, p.Outcome)
+			return nil, fmt.Errorf("%w: invalid outcome %q", domain.ErrInvalid, p.Outcome)
 		}
-		f, err := store.DecodeFields[store.StepFields](cur)
+		f, err := domain.DecodeFields[domain.StepFields](cur)
 		if err != nil {
 			return nil, err
 		}
@@ -355,7 +357,7 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 		}
 		result = &store.StepResult{Revision: cur.Revision, Outcome: p.Outcome, Output: p.Output}
 	}
-	if p.Resolution == store.ResolutionRebase {
+	if p.Resolution == domain.ResolutionRebase {
 		if cur, err := c.store.Get(ctx, id); err == nil {
 			res, why := c.rebaseResolution(ctx, cur)
 			if why != "" {
@@ -374,10 +376,10 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 	if p.Resolution == "failed" {
 		c.recordStepFailure(ctx, t, "closed failed", failedReason(t))
 	}
-	if t.Kind == store.KindStep && t.ParentID != "" {
+	if t.Kind == domain.KindStep && t.ParentID != "" {
 		c.checkRun(ctx, cfg, t.ParentID)
 	}
-	if t.Kind == store.KindSession {
+	if t.Kind == domain.KindSession {
 		c.stopRunner(t.ID)
 		c.endSession(ctx, cfg, t.ID, "session closed")
 	}
@@ -391,9 +393,9 @@ func (c *Controller) closeTicketIn(ctx context.Context, cfg *config.Config, sc s
 // skipped is the controller's: only an admin caller may set it.
 func (c *Controller) checkStepResolution(ctx context.Context, sc scope, id, res string) error {
 	switch res {
-	case "done", "failed", store.ResolutionRebase, store.ResolutionRequestChanges, store.RunCancelled:
+	case "done", "failed", domain.ResolutionRebase, domain.ResolutionRequestChanges, domain.RunCancelled:
 		return nil
-	case store.StepSkipped:
+	case domain.StepSkipped:
 		if sc.admin {
 			return nil
 		}
@@ -402,11 +404,11 @@ func (c *Controller) checkStepResolution(ctx context.Context, sc scope, id, res 
 	if err != nil {
 		return err
 	}
-	if t.Kind != store.KindStep {
+	if t.Kind != domain.KindStep {
 		return nil
 	}
 	return fmt.Errorf("%w: step %s takes resolution done, failed, rebase, request_changes or cancelled, not %q; put a summary in a comment (jobshop comment) and a verdict in --outcome",
-		store.ErrInvalid, id, res)
+		domain.ErrInvalid, id, res)
 }
 
 // endSession stops a session's socket, frees everything it held and removes
@@ -448,11 +450,11 @@ func (c *Controller) comment(ctx context.Context, sc scope, p rpc.CommentParams)
 }
 
 func (c *Controller) edgeAdd(ctx context.Context, sc scope, p rpc.EdgeParams) (any, error) {
-	return struct{}{}, store.AddEdge(ctx, c.store, sc.actor, store.Edge{From: p.From, To: p.To, Kind: p.Kind})
+	return struct{}{}, store.AddEdge(ctx, c.store, sc.actor, domain.Edge{From: p.From, To: p.To, Kind: p.Kind})
 }
 
 func (c *Controller) edgeRemove(ctx context.Context, sc scope, p rpc.EdgeParams) (any, error) {
-	return struct{}{}, store.RemoveEdge(ctx, c.store, sc.actor, store.Edge{From: p.From, To: p.To, Kind: p.Kind})
+	return struct{}{}, store.RemoveEdge(ctx, c.store, sc.actor, domain.Edge{From: p.From, To: p.To, Kind: p.Kind})
 }
 
 func (c *Controller) labelAdd(ctx context.Context, sc scope, p rpc.LabelParams) (any, error) {
@@ -480,14 +482,14 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 			pool = sc.pool
 		}
 	} else if holder == "" {
-		return nil, fmt.Errorf("%w: admin claims need --holder", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: admin claims need --holder", domain.ErrInvalid)
 	}
 	var (
 		r   rpc.ClaimResult
 		err error
 	)
 	if p.ID != "" {
-		if t, gerr := c.store.Get(ctx, p.ID); gerr == nil && (t.Status != store.StatusInProgress || t.Holder != holder) {
+		if t, gerr := c.store.Get(ctx, p.ID); gerr == nil && (t.Status != domain.StatusInProgress || t.Holder != holder) {
 			if err := c.claimHook(ctx, sc, t); err != nil {
 				return nil, err
 			}
@@ -499,11 +501,11 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 			return nil, perr
 		}
 		// Resuming held work is not a new claim, so it skips claim hooks.
-		held, _ := c.store.List(ctx, store.Filter{Holder: holder, Status: store.StatusInProgress, Limit: 1})
+		held, _ := c.store.List(ctx, store.Filter{Holder: holder, Status: domain.StatusInProgress, Limit: 1})
 		if len(held) == 0 && c.sessionCordon(ctx, holder) != nil {
 			// A cordoned session takes no new work (#281); it may still
 			// claim a ticket pre-assigned to it by id.
-			return nil, fmt.Errorf("%w: session %s is cordoned", store.ErrNoWork, holder)
+			return nil, fmt.Errorf("%w: session %s is cordoned", domain.ErrNoWork, holder)
 		}
 		r.Ticket, r.Claim, err = c.store.ClaimNext(ctx, store.ClaimNext{
 			Project: proj, Pool: pool, Holder: holder, Lease: c.leaseDur(),
@@ -525,13 +527,13 @@ func (c *Controller) claim(ctx context.Context, sc scope, p rpc.ClaimParams) (an
 		return nil, err
 	}
 	c.metrics.Claims.Add(ctx, 1, metric.WithAttributes(telemetry.AttrPool.String(r.Ticket.Pool)))
-	if r.Ticket.Kind == store.KindStep && r.Ticket.ParentID != "" {
+	if r.Ticket.Kind == domain.KindStep && r.Ticket.ParentID != "" {
 		c.runBatchEvent(ctx, r.Ticket.ParentID) // a batch is running once a member step is claimed
 	}
 	return r, nil
 }
 
-func (c *Controller) countClose(ctx context.Context, t store.Ticket) {
+func (c *Controller) countClose(ctx context.Context, t domain.Ticket) {
 	c.metrics.Closes.Add(ctx, 1, metric.WithAttributes(
 		telemetry.AttrPool.String(t.Pool), telemetry.AttrKind.String(string(t.Kind)),
 		telemetry.AttrResolution.String(t.Resolution)))
@@ -555,7 +557,7 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 		return nil, err
 	}
 	cl, err := c.heldClaim(ctx, sc, id)
-	if errors.Is(err, store.ErrNotHolder) {
+	if errors.Is(err, domain.ErrNotHolder) {
 		// An escalation chat may hand back a blocked worker's ticket
 		// (pool grant ticket-release), in its own project only.
 		cl, err = c.grantedClaim(ctx, sc, id, err)
@@ -566,7 +568,7 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 	var until time.Time
 	if p.Until != nil {
 		if !p.Until.After(c.now()) {
-			return nil, fmt.Errorf("%w: until must be in the future", store.ErrInvalid)
+			return nil, fmt.Errorf("%w: until must be in the future", domain.ErrInvalid)
 		}
 		if !p.TimeWait {
 			if err := waitengine.TimerHint(p.Reason); err != nil {
@@ -592,10 +594,10 @@ func (c *Controller) release(ctx context.Context, sc scope, p rpc.ReleaseParams)
 // "handoff" (triage), any open ticket.
 func (c *Controller) handoff(ctx context.Context, sc scope, p rpc.HandoffParams) (any, error) {
 	if p.Pool == "" {
-		return nil, fmt.Errorf("%w: handoff needs --to <pool>", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: handoff needs --to <pool>", domain.ErrInvalid)
 	}
 	if _, ok := c.config().Pools[p.Pool]; !ok {
-		return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
+		return nil, fmt.Errorf("%w: unknown pool %q", domain.ErrInvalid, p.Pool)
 	}
 	id, err := c.current(ctx, sc, p.ID)
 	if err != nil {
@@ -648,23 +650,23 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		return nil, err
 	}
 	if p.Since < 0 {
-		return nil, fmt.Errorf("%w: since must not be negative", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: since must not be negative", domain.ErrInvalid)
 	}
 	ended := p.State != "" || p.Since > 0
-	statuses := []store.Status{store.StatusOpen, store.StatusInProgress}
+	statuses := []domain.Status{domain.StatusOpen, domain.StatusInProgress}
 	switch {
 	case ended:
-		statuses = []store.Status{store.StatusClosed}
+		statuses = []domain.Status{domain.StatusClosed}
 	case p.All:
-		statuses = []store.Status{""}
+		statuses = []domain.Status{""}
 	}
 	var cutoff time.Time
 	if p.Since > 0 {
 		cutoff = c.now().Add(-p.Since)
 	}
-	var tickets []store.Ticket
+	var tickets []domain.Ticket
 	for _, s := range statuses {
-		ts, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: s, Limit: store.NoLimit})
+		ts, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: s, Limit: store.NoLimit})
 		if err != nil {
 			return nil, err
 		}
@@ -672,21 +674,21 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 	}
 
 	// One query for what every session holds, not one per session.
-	inProgress, err := c.store.List(ctx, store.Filter{Status: store.StatusInProgress, Limit: math.MaxInt32})
+	inProgress, err := c.store.List(ctx, store.Filter{Status: domain.StatusInProgress, Limit: math.MaxInt32})
 	if err != nil {
 		return nil, err
 	}
-	held := map[string][]store.Ticket{}
+	held := map[string][]domain.Ticket{}
 	for _, t := range inProgress {
 		if t.Holder != "" {
 			held[t.Holder] = append(held[t.Holder], t)
 		}
 	}
 
-	var open []store.Ticket
+	var open []domain.Ticket
 	if !ended {
 		for _, t := range tickets {
-			if t.Status != store.StatusClosed {
+			if t.Status != domain.StatusClosed {
 				open = append(open, t)
 			}
 		}
@@ -709,7 +711,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 			continue
 		}
 		var info rpc.SessionInfo
-		if t.Status == store.StatusClosed && !orphans[t.ID] {
+		if t.Status == domain.StatusClosed && !orphans[t.ID] {
 			// Its host is stopped: the state saved at the end is current.
 			info = closedSessionInfo(t)
 		} else {
@@ -717,7 +719,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		}
 		info.Ticket = &t
 		// A closed ticket whose host still runs is a leak too.
-		info.Orphan = t.Status == store.StatusClosed && info.Alive
+		info.Orphan = t.Status == domain.StatusClosed && info.Alive
 		seen[t.ID] = true
 		out = append(out, info)
 	}
@@ -740,7 +742,7 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 		}
 		if t, err := c.store.Get(ctx, id); err == nil {
 			info.Ticket = &t
-			if t.Kind == store.KindSession && t.Status != store.StatusClosed {
+			if t.Kind == domain.KindSession && t.Status != domain.StatusClosed {
 				continue // opened since the pass
 			}
 		}
@@ -752,11 +754,11 @@ func (c *Controller) sessionList(ctx context.Context, sc scope, p rpc.SessionLis
 
 // sessionInfo reads the live state of one session directory.
 func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInfo, error) {
-	var sess *store.Ticket
+	var sess *domain.Ticket
 	if t, err := c.store.Get(ctx, id); err == nil {
 		sess = &t
 	}
-	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: store.StatusInProgress})
+	held, err := c.store.List(ctx, store.Filter{Holder: id, Status: domain.StatusInProgress})
 	if err != nil {
 		return rpc.SessionInfo{ID: id}, err
 	}
@@ -765,7 +767,7 @@ func (c *Controller) sessionInfo(ctx context.Context, id string) (rpc.SessionInf
 
 // sessionInfoOf is sessionInfo given the session's ticket (nil if it has
 // none) and the in-progress tickets it holds.
-func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.Ticket) rpc.SessionInfo {
+func (c *Controller) sessionInfoOf(id string, sess *domain.Ticket, held []domain.Ticket) rpc.SessionInfo {
 	dir := c.root.SessionDir(id)
 	info := rpc.SessionInfo{ID: id, Alive: sessionrt.HostAlive(dir), HostPid: sessionrt.HostPid(dir)}
 	c.mu.Lock()
@@ -792,11 +794,11 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 		info.ToolTarget, info.ToolIntent = red.Text(info.ToolTarget), red.Text(info.ToolIntent)
 	}
 	info.Drained = r != nil && c.poolDrained(r.pool)
-	var sessTicket store.Ticket
+	var sessTicket domain.Ticket
 	if sess != nil {
 		sessTicket = *sess
 		info.Ticket = sess
-		if f, err := store.DecodeFields[store.SessionFields](sessTicket); err == nil {
+		if f, err := domain.DecodeFields[domain.SessionFields](sessTicket); err == nil {
 			info.DisplayName = f.DisplayName
 			if f.Cordoned != nil {
 				info.Cordon = f.Cordoned.Reason
@@ -827,7 +829,7 @@ func (c *Controller) sessionInfoOf(id string, sess *store.Ticket, held []store.T
 
 // defaultDisplayName labels a session with no name of its own (#626):
 // its pool and the title of the ticket it works, else its ticket title.
-func defaultDisplayName(sess store.Ticket, held []store.Ticket) string {
+func defaultDisplayName(sess domain.Ticket, held []domain.Ticket) string {
 	if len(held) > 0 && held[0].Title != "" {
 		if sess.Pool != "" {
 			return sess.Pool + ": " + held[0].Title
@@ -845,23 +847,23 @@ func (c *Controller) sessionRestart(ctx context.Context, sc scope, p rpc.Session
 		return nil, err
 	}
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindSession {
-		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	if t.Kind != domain.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", domain.ErrInvalid, p.ID, t.Kind)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: session %s", store.ErrClosed, p.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: session %s", domain.ErrClosed, p.ID)
 	}
 	c.mu.Lock()
 	r := c.runners[p.ID]
 	c.mu.Unlock()
 	if r == nil {
-		return nil, fmt.Errorf("%w: session %s has no controller-driven host", store.ErrInvalid, p.ID)
+		return nil, fmt.Errorf("%w: session %s has no controller-driven host", domain.ErrInvalid, p.ID)
 	}
 	c.log.InfoContext(ctx, "session restart requested", "session", p.ID, "now", p.Now)
 	r.requestRestart(p.Now)
@@ -875,13 +877,13 @@ func (c *Controller) sessionCancel(ctx context.Context, sc scope, p rpc.IDParams
 		return nil, err
 	}
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
 	c.mu.Lock()
 	r := c.runners[p.ID]
 	c.mu.Unlock()
 	if r == nil {
-		return nil, fmt.Errorf("%w: session %s has no controller-driven host", store.ErrInvalid, p.ID)
+		return nil, fmt.Errorf("%w: session %s has no controller-driven host", domain.ErrInvalid, p.ID)
 	}
 	if !r.inTurn.Load() {
 		return rpc.SessionCancelResult{ID: p.ID}, nil
@@ -906,7 +908,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 		p.OlderThan = 24 * time.Hour
 	}
 	res := rpc.SessionReapResult{Stopped: []string{}, Removed: []string{}, DryRun: p.DryRun}
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen})
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen})
 	if err != nil {
 		return nil, err
 	}
@@ -920,7 +922,7 @@ func (c *Controller) sessionReap(ctx context.Context, sc scope, p rpc.SessionRea
 	if !p.Closed {
 		return res, nil
 	}
-	closed, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusClosed})
+	closed, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusClosed})
 	if err != nil {
 		return nil, err
 	}
@@ -999,7 +1001,7 @@ func (c *Controller) checkMetaPacks(raw json.RawMessage) error {
 	cfg := c.live.Load().cfg
 	for name := range m {
 		if !cfg.KnownMetaPack(name) {
-			return fmt.Errorf("%w: meta: unknown pack %q (add it to meta_packs in %s)", store.ErrInvalid, name, config.FileName)
+			return fmt.Errorf("%w: meta: unknown pack %q (add it to meta_packs in %s)", domain.ErrInvalid, name, config.FileName)
 		}
 	}
 	return nil

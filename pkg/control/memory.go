@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/memedit"
 	"github.com/elee1766/jobshop/pkg/memory"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Local memory (#592). Memory lives in <root>/memory on the Jobshop host,
@@ -44,12 +44,12 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 	}
 	rel, err := memory.Target(p.Scope)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", store.ErrInvalid, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrInvalid, err)
 	}
 	if strings.TrimSpace(p.Text) == "" {
-		return nil, fmt.Errorf("%w: memory write needs text; to drop a file write one line saying so", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: memory write needs text; to drop a file write one line saying so", domain.ErrInvalid)
 	}
-	cited := make([]store.Learning, 0, len(p.Learnings))
+	cited := make([]domain.Learning, 0, len(p.Learnings))
 	for _, id := range p.Learnings {
 		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
@@ -72,11 +72,11 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 	}
 	if err := memory.Write(dir, rel, p.Text, c.memoryCap()); err != nil {
 		if errors.Is(err, memory.ErrOverCap) {
-			return nil, fmt.Errorf("%w: %w", store.ErrInvalid, err)
+			return nil, fmt.Errorf("%w: %w", domain.ErrInvalid, err)
 		}
 		return nil, err
 	}
-	e := store.MemoryEdit{Path: rel, Before: before, Existed: existed, Pools: pools, MergedAt: now, Baseline: base}
+	e := domain.MemoryEdit{Path: rel, Before: before, Existed: existed, Pools: pools, MergedAt: now, Baseline: base}
 	for _, l := range cited {
 		e.Learnings = append(e.Learnings, l.ID)
 	}
@@ -87,7 +87,7 @@ func (c *Controller) memoryWrite(ctx context.Context, sc scope, p rpc.MemoryWrit
 		return nil, err
 	}
 	for _, id := range out.Learnings {
-		if _, err := learning.Update(ctx, c.store, id, store.LearningApplied, memoryRef(out.ID)); err != nil {
+		if _, err := learning.Update(ctx, c.store, id, domain.LearningApplied, memoryRef(out.ID)); err != nil {
 			return nil, err
 		}
 	}
@@ -101,7 +101,7 @@ func (c *Controller) memoryShow(_ context.Context, _ scope, p rpc.MemoryShowPara
 	if p.Scope != "" {
 		rel, err := memory.Target(p.Scope)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %w", store.ErrInvalid, err)
+			return nil, fmt.Errorf("%w: %w", domain.ErrInvalid, err)
 		}
 		want = rel
 	}
@@ -124,7 +124,7 @@ func (c *Controller) memoryShow(_ context.Context, _ scope, p rpc.MemoryShowPara
 // and the cited learnings become rejected so the curator does not write
 // the same thing again. A newer write to the same path wins: restoring
 // under it would drop that write, so the restore is skipped and logged.
-func (c *Controller) restoreEdit(ctx context.Context, e store.MemoryEdit) error {
+func (c *Controller) restoreEdit(ctx context.Context, e domain.MemoryEdit) error {
 	if e.Path == "" {
 		return nil
 	}
@@ -148,9 +148,9 @@ func (c *Controller) restoreEdit(ctx context.Context, e store.MemoryEdit) error 
 	return c.rejectCited(ctx, e)
 }
 
-func (c *Controller) rejectCited(ctx context.Context, e store.MemoryEdit) error {
+func (c *Controller) rejectCited(ctx context.Context, e domain.MemoryEdit) error {
 	for _, id := range e.Learnings {
-		if _, err := learning.Update(ctx, c.store, id, store.LearningRejected, memoryRef(e.ID)); err != nil {
+		if _, err := learning.Update(ctx, c.store, id, domain.LearningRejected, memoryRef(e.ID)); err != nil {
 			return err
 		}
 	}

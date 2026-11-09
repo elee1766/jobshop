@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -93,7 +94,7 @@ func decisionController(t *testing.T) (*Controller, *scanClock, func() []ghCall)
 
 // proposal makes the decision ticket and a planner ticket parked on it
 // for 24h, as the planner did before #603.
-func proposal(t *testing.T, c *Controller, clk *scanClock) (store.Ticket, store.Ticket) {
+func proposal(t *testing.T, c *Controller, clk *scanClock) (domain.Ticket, domain.Ticket) {
 	t.Helper()
 	d := mkTicket(t, c, store.NewTicket{Title: "Proposed target: v0.5.0 (#56)", Pool: "dev", Labels: []string{proposedLabel}, Meta: json.RawMessage(`{"github":{"repo":"acme/app","issue":56}}`)})
 	parked := mkTicket(t, c, store.NewTicket{Title: "Plan: waiting on approval of acme/app#56", Pool: "dev", DeferUntil: clk.now().Add(24 * time.Hour)})
@@ -127,7 +128,7 @@ func TestDecisionApprove(t *testing.T) {
 	assert.True(t, p.DeferUntil.IsZero(), "the parked planner ticket is ready now")
 
 	_, err = c.decisionResolve(ctx, scope{admin: true, actor: "x"}, rpc.DecisionResolveParams{ID: d.ID, Action: rpc.DecisionApprove})
-	require.ErrorIs(t, err, store.ErrClosed, "a second click does not act twice")
+	require.ErrorIs(t, err, domain.ErrClosed, "a second click does not act twice")
 }
 
 func TestDecisionReject(t *testing.T) {
@@ -191,7 +192,7 @@ func TestDecisionGrant(t *testing.T) {
 
 	out, err := c.ticketUndefer(ctx, sc, rpc.IDParams{ID: parked.ID})
 	require.NoError(t, err)
-	assert.True(t, out.(store.Ticket).DeferUntil.IsZero())
+	assert.True(t, out.(domain.Ticket).DeferUntil.IsZero())
 	_, err = c.ticketUndefer(ctx, scope{actor: "x", session: "x", project: "other", pool: "dev"}, rpc.IDParams{ID: parked.ID})
 	require.ErrorIs(t, err, rpc.ErrForbidden)
 	_, err = c.decisionResolve(ctx, sc, rpc.DecisionResolveParams{ID: d.ID, Action: rpc.DecisionDismiss})
@@ -209,7 +210,7 @@ func TestWaitLabel(t *testing.T) {
 	var rec map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(raw, &rec))
 	tk := mkTicket(t, c, store.NewTicket{Title: "proposal", Pool: "dev"})
-	_, err = c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "approval", Conds: []store.WaitCond{{Type: store.WaitLabel, Repo: "acme/app", Issue: 56, Label: "target"}}})
+	_, err = c.waitAdd(ctx, scope{admin: true, actor: "admin"}, rpc.WaitAddParams{ID: tk.ID, Reason: "approval", Conds: []domain.WaitCond{{Type: domain.WaitLabel, Repo: "acme/app", Issue: 56, Label: "target"}}})
 	require.NoError(t, err)
 	prs.issues["acme/app#56"] = string(rec["issue_proposed"])
 	c.pollWaits(ctx, prs, threads)
@@ -227,7 +228,7 @@ func TestWaitLabel(t *testing.T) {
 	is, err := github.ParseIssue(rec["issue_closed"])
 	require.NoError(t, err)
 	assert.Equal(t, "closed", is.State)
-	require.Error(t, (&store.Wait{Reason: "x", Conds: []store.WaitCond{{Type: store.WaitLabel, Repo: "acme/app"}}}).Validate(), "issue and label required")
+	require.Error(t, (&domain.Wait{Reason: "x", Conds: []domain.WaitCond{{Type: domain.WaitLabel, Repo: "acme/app"}}}).Validate(), "issue and label required")
 }
 
 // TestSendWakesRunner: a message for a session ends its runner's idle

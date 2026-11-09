@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // EscalationLabel marks escalation tickets.
@@ -23,9 +23,9 @@ type Controller interface {
 	Subscribe(ctx context.Context, p rpc.SessionSubscribeParams, fn func(rpc.SessionEvent)) (rpc.SessionSubscribeResult, error)
 	Send(ctx context.Context, p rpc.SessionSendParams) (rpc.SessionSendResult, error)
 	// List, Show and Update read and mark escalation tickets.
-	List(ctx context.Context, p rpc.ListParams) ([]store.Ticket, error)
+	List(ctx context.Context, p rpc.ListParams) ([]domain.Ticket, error)
 	Show(ctx context.Context, id string) (rpc.ShowResult, error)
-	Update(ctx context.Context, p rpc.UpdateParams) (store.Ticket, error)
+	Update(ctx context.Context, p rpc.UpdateParams) (domain.Ticket, error)
 	// Events follows events.subscribe; conversations are driven by it.
 	Events(ctx context.Context, p rpc.EventsSubscribeParams, fn func(rpc.Event)) (rpc.EventsSubscribeResult, error)
 	// Comment records A2A failures on the ticket.
@@ -48,7 +48,7 @@ type Escalation struct {
 	A2A map[string]*A2AState `json:"a2a,omitempty"`
 }
 
-func ticketMeta(t store.Ticket) map[string]json.RawMessage {
+func ticketMeta(t domain.Ticket) map[string]json.RawMessage {
 	m := map[string]json.RawMessage{}
 	if len(t.Meta) > 0 {
 		_ = json.Unmarshal(t.Meta, &m)
@@ -63,7 +63,7 @@ type chatMeta struct {
 	Session string `json:"session"`
 }
 
-func metaChat(t store.Ticket) (chatMeta, bool) {
+func metaChat(t domain.Ticket) (chatMeta, bool) {
 	var c chatMeta
 	raw, ok := ticketMeta(t)["escalation"]
 	if !ok || json.Unmarshal(raw, &c) != nil || c.Key == "" || c.Session == "" {
@@ -76,11 +76,11 @@ func metaChat(t store.Ticket) (chatMeta, bool) {
 // writes it conditional on the revision read, retrying on conflicts (the
 // session claiming or commenting moves the revision). e holds what was
 // read even when ok is false, so a writer keeps fields it does not own.
-func updateGatewayMeta(ctx context.Context, ctl Controller, id string, fn func(t store.Ticket, e *Escalation, ok bool) error) (store.Ticket, error) {
+func updateGatewayMeta(ctx context.Context, ctl Controller, id string, fn func(t domain.Ticket, e *Escalation, ok bool) error) (domain.Ticket, error) {
 	for attempt := 0; ; attempt++ {
 		r, err := ctl.Show(ctx, id)
 		if err != nil {
-			return store.Ticket{}, err
+			return domain.Ticket{}, err
 		}
 		t := r.Ticket
 		e, ok := metaEscalationAny(t)
@@ -94,7 +94,7 @@ func updateGatewayMeta(ctx context.Context, ctl Controller, id string, fn func(t
 			return t, err
 		}
 		t, err = ctl.Update(ctx, rpc.UpdateParams{ID: id, Meta: mb, IfRevision: t.Revision})
-		if errors.Is(err, store.ErrConflict) && attempt < 5 {
+		if errors.Is(err, domain.ErrConflict) && attempt < 5 {
 			continue
 		}
 		return t, err

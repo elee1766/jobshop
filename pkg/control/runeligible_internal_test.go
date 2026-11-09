@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // gateLinear serves ENG-5 for GetContext with a state, labels and an
@@ -102,7 +102,7 @@ func TestRunStartEligibleGate(t *testing.T) {
 
 	f.set(true)
 	_, err = start(false)
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	assert.Contains(t, err.Error(), "blocked by ENG-4")
 	assert.Contains(t, err.Error(), "--force")
 	assert.Zero(t, runCount(t, c))

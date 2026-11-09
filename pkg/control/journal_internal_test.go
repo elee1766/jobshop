@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -42,7 +43,7 @@ func TestSessionJournal(t *testing.T) {
 	c, _, _ := scanControllerYAML(t, journalYAML)
 	ctx := t.Context()
 	admin := scope{admin: true, actor: "admin"}
-	sess := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	sess := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	writeJournal(t, c, sess.ID, 10)
 
 	page := func(sc scope, p rpc.SessionJournalParams) rpc.SessionJournalResult {
@@ -88,14 +89,14 @@ func TestSessionJournal(t *testing.T) {
 	// A session reads its own; another session without the grant is refused.
 	own := scope{actor: sess.ID, session: sess.ID, project: "js", pool: "dev"}
 	assert.Len(t, page(own, rpc.SessionJournalParams{ID: sess.ID}).Frames, 10)
-	other := mkTicket(t, c, store.NewTicket{Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	other := mkTicket(t, c, store.NewTicket{Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	_, err := c.sessionJournal(ctx, scope{actor: other.ID, session: other.ID, project: "js", pool: "dev"}, rpc.SessionJournalParams{ID: sess.ID})
 	require.ErrorIs(t, err, rpc.ErrForbidden)
 
 	// A granted pool reads sessions in its project, not another project's.
 	reader := scope{actor: "r", session: "r", project: "js", pool: "reader"}
 	assert.Len(t, page(reader, rpc.SessionJournalParams{ID: sess.ID}).Frames, 10)
-	foreign := mkTicket(t, c, store.NewTicket{Project: "zz", Kind: store.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
+	foreign := mkTicket(t, c, store.NewTicket{Project: "zz", Kind: domain.KindSession, Pool: "dev", Fields: json.RawMessage(`{"agent":"fake"}`)})
 	writeJournal(t, c, foreign.ID, 2)
 	_, err = c.sessionJournal(ctx, reader, rpc.SessionJournalParams{ID: foreign.ID})
 	require.ErrorIs(t, err, rpc.ErrForbidden)
@@ -108,5 +109,5 @@ func TestSessionJournal(t *testing.T) {
 	// Not a session.
 	task := mkTicket(t, c, store.NewTicket{})
 	_, err = c.sessionJournal(ctx, admin, rpc.SessionJournalParams{ID: task.ID})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }

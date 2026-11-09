@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // nixosProfile is the part of NixOS's generated /etc/profile that reset
@@ -32,7 +32,7 @@ func TestResumeShellEnv(t *testing.T) {
 	c, _ := rulesController(t, rulesBase)
 	exe := filepath.Join(t.TempDir(), "bin", "jobshop")
 	c.opt.HostExe = exe
-	spec, _, err := c.hostSpec(store.Ticket{ID: "js-s1", Pool: "dev"}, store.SessionFields{Agent: "fake"})
+	spec, _, err := c.hostSpec(domain.Ticket{ID: "js-s1", Pool: "dev"}, domain.SessionFields{Agent: "fake"})
 	require.NoError(t, err)
 	assert.Contains(t, spec.Env, "__NIXOS_SET_ENVIRONMENT_DONE=1")
 

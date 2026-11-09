@@ -3,8 +3,8 @@ package cli
 import (
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // learnCmd is `jobshop learn` (#264).
@@ -36,15 +36,15 @@ func (c learnKindCmd) send(g *Globals, kind string) error {
 
 type learnCorrectionCmd struct{ learnKindCmd }
 
-func (c learnCorrectionCmd) Run(g *Globals) error { return c.send(g, store.LearningCorrection) }
+func (c learnCorrectionCmd) Run(g *Globals) error { return c.send(g, domain.LearningCorrection) }
 
 type learnFailureCmd struct{ learnKindCmd }
 
-func (c learnFailureCmd) Run(g *Globals) error { return c.send(g, store.LearningFailure) }
+func (c learnFailureCmd) Run(g *Globals) error { return c.send(g, domain.LearningFailure) }
 
 type learnWorkaroundCmd struct{ learnKindCmd }
 
-func (c learnWorkaroundCmd) Run(g *Globals) error { return c.send(g, store.LearningWorkaround) }
+func (c learnWorkaroundCmd) Run(g *Globals) error { return c.send(g, domain.LearningWorkaround) }
 
 // learnAddCmd is `jobshop learn add <kind> <summary>` (#524); the
 // controller checks the kind against learnings.kinds.

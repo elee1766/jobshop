@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // The pr-work step gates as packs/github declares them (JOB-10).
@@ -47,7 +47,7 @@ func TestNonPRWork(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 
 	finished := func(id string) func() bool {
-		return func() bool { return showRun(t, admin, id).Run.Status == store.StatusClosed }
+		return func() bool { return showRun(t, admin, id).Run.Status == domain.StatusClosed }
 	}
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "pr-work", Vars: map[string]string{"task": "run a check"}, Key: "no-pr"})
 	passEventually(t, root.Dir, finished(r.Run.ID), "run with outcome done did not finish")
@@ -56,7 +56,7 @@ func TestNonPRWork(t *testing.T) {
 	s := stepByName(t, got)
 	assert.Equal(t, "done", s["implement"].Resolution)
 	for _, n := range []string{"review-merge", "post-merge"} {
-		assert.Equal(t, store.StepSkipped, s[n].Resolution, n)
+		assert.Equal(t, domain.StepSkipped, s[n].Resolution, n)
 	}
 
 	// A code change: outcome pr opens both steps; the fake agent closes

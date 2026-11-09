@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // TestGHExtra (JOB-113): the guard event carries the parsed write
@@ -90,7 +90,7 @@ func TestGHGuardExtra(t *testing.T) {
 	gh, _ := tokenGH(t, dir)
 	t.Setenv("JOBSHOP_GH", gh)
 	t.Setenv("GH_TOKEN", "set")
-	f := &fakeController{decision: rpc.GuardAllow}
+	f := &fakeController{decision: domain.GuardAllow}
 	g := &Globals{Socket: f.serve(t)}
 	var out, errb bytes.Buffer
 	args := []string{"pr", "edit", "5", "-R", "o/n", "--add-reviewer", "elee1766"}

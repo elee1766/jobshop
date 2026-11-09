@@ -8,9 +8,9 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // Linear read commands (#279). Each asks the controller for the team's
@@ -130,9 +130,9 @@ func (c linearEligibleCmd) Run(g *Globals, l *linearCmd) error {
 	if err != nil {
 		return err
 	}
-	var runs []store.Ticket
-	for _, st := range []string{store.RunRunning, store.RunNeedsHuman} {
-		var rs []store.Ticket
+	var runs []domain.Ticket
+	for _, st := range []string{domain.RunRunning, domain.RunNeedsHuman} {
+		var rs []domain.Ticket
 		if err := g.call(rpc.MethodRunList, rpc.RunListParams{State: st}, &rs); err != nil {
 			return err
 		}
@@ -171,9 +171,9 @@ func ghIssueOpen(ctx context.Context, d linear.GitHubDep) (bool, error) {
 }
 
 // openLinearRun is the id of an open run whose meta.linear.issue is key.
-func openLinearRun(runs []store.Ticket, key string) string {
+func openLinearRun(runs []domain.Ticket, key string) string {
 	for _, r := range runs {
-		if r.Status == store.StatusClosed {
+		if r.Status == domain.StatusClosed {
 			continue
 		}
 		var m struct {

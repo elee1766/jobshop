@@ -7,13 +7,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	run, err := store.Create(ctx, s, "test", store.NewTicket{
-		ID: "js-a-run", Project: proj, Kind: store.KindRun,
+		ID: "js-a-run", Project: proj, Kind: domain.KindRun,
 		Fields: json.RawMessage(`{"workflow":"w","key":"atomic","state":"running"}`),
 	})
 	require.NoError(t, err)
@@ -22,7 +23,7 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	graph := store.Graph{
 		Revisions: map[string]int64{run.ID: run.Revision, observed.ID: observed.Revision},
-		Tickets:   []store.NewTicket{{ID: "js-next", Project: proj, Kind: store.KindTask, Title: "Follow-up"}},
+		Tickets:   []store.NewTicket{{ID: "js-next", Project: proj, Kind: domain.KindTask, Title: "Follow-up"}},
 		Fields:    map[string]json.RawMessage{run.ID: json.RawMessage(`{"workflow":"w","key":"atomic","state":"done"}`)},
 		Close:     map[string]string{run.ID: "done"},
 		Comments:  []store.GraphComment{{TicketID: "js-next", Body: "filed by hook"}, {TicketID: observed.ID, Body: "seen"}},
@@ -30,7 +31,7 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 	assertUnchanged := func() {
 		t.Helper()
 		_, err := s.Get(ctx, "js-next")
-		require.ErrorIs(t, err, store.ErrNotFound)
+		require.ErrorIs(t, err, domain.ErrNotFound)
 		got, err := s.Get(ctx, run.ID)
 		require.NoError(t, err)
 		assert.Equal(t, run.Status, got.Status)
@@ -49,13 +50,13 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 	observed, err = s.Update(ctx, "other", observed.ID, store.Update{Title: &title})
 	require.NoError(t, err)
 	_, err = s.Apply(ctx, "hook", graph)
-	require.ErrorIs(t, err, store.ErrConflict)
+	require.ErrorIs(t, err, domain.ErrConflict)
 	assertUnchanged()
 
 	graph.Revisions[observed.ID] = observed.Revision
 	graph.Close["js-z-missing"] = "done"
 	_, err = s.Apply(ctx, "hook", graph)
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 	assertUnchanged()
 
 	delete(graph.Close, "js-z-missing")
@@ -67,11 +68,11 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	closed, err := s.Get(ctx, run.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, closed.Status)
+	assert.Equal(t, domain.StatusClosed, closed.Status)
 	assert.Equal(t, "done", closed.Resolution)
-	fields, err := store.DecodeFields[store.RunFields](closed)
+	fields, err := domain.DecodeFields[domain.RunFields](closed)
 	require.NoError(t, err)
-	assert.Equal(t, store.RunDone, fields.State)
+	assert.Equal(t, domain.RunDone, fields.State)
 	for id, body := range map[string]string{"js-next": "filed by hook", observed.ID: "seen"} {
 		comments, err := store.Comments(ctx, s, id)
 		require.NoError(t, err)
@@ -84,9 +85,9 @@ func testApplyRevisionedGraph(t *testing.T, s store.Store, _ *Clock) {
 func testStructuredStepResultFences(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{
-		{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"result","state":"running"}`)},
+		{ID: "js-run", Project: proj, Kind: domain.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"result","state":"running"}`)},
 		{
-			ID: "js-step", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+			ID: "js-step", Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: "js-run",
 			Fields: json.RawMessage(`{"run":"js-run","step":"implement","index":0,"retries":1,"outcome":"pending","structured_output":{"plan":"original"}}`),
 		},
 	}})
@@ -107,7 +108,7 @@ func testStructuredStepResultFences(t *testing.T, s store.Store, _ *Clock) {
 		t.Helper()
 		got, err := s.Get(ctx, "js-step")
 		require.NoError(t, err)
-		assert.Equal(t, store.StatusInProgress, got.Status)
+		assert.Equal(t, domain.StatusInProgress, got.Status)
 		assert.Equal(t, before.Revision, got.Revision)
 		assert.Equal(t, current.Holder, got.Holder)
 		assert.Equal(t, current.Fence, got.Fence)
@@ -118,11 +119,11 @@ func testStructuredStepResultFences(t *testing.T, s store.Store, _ *Clock) {
 	}
 
 	_, err = s.Release(ctx, "worker", "js-step", &stale, store.Outcome{Close: "done", StepResult: result})
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 	assertUnchanged()
 	result.Revision = claimed.Revision
 	_, err = s.Release(ctx, "worker", "js-step", &current, store.Outcome{Close: "done", StepResult: result})
-	require.ErrorIs(t, err, store.ErrConflict)
+	require.ErrorIs(t, err, domain.ErrConflict)
 	assertUnchanged()
 
 	result.Revision = before.Revision
@@ -130,16 +131,16 @@ func testStructuredStepResultFences(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	closed, err := s.Get(ctx, "js-step")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, closed.Status)
+	assert.Equal(t, domain.StatusClosed, closed.Status)
 	assert.Equal(t, "done", closed.Resolution)
-	fields, err := store.DecodeFields[store.StepFields](closed)
+	fields, err := domain.DecodeFields[domain.StepFields](closed)
 	require.NoError(t, err)
 	assert.Equal(t, "implemented", fields.Outcome)
 	assert.Equal(t, map[string]any{"plan": "new", "checks": []any{"build", "test"}}, fields.StructuredOutput)
 
 	result.Output = map[string]any{"plan": "duplicate"}
 	_, err = s.Release(ctx, "worker", "js-step", &current, store.Outcome{Close: "done", StepResult: result})
-	require.ErrorIs(t, err, store.ErrClosed)
+	require.ErrorIs(t, err, domain.ErrClosed)
 	got, err := s.Get(ctx, "js-step")
 	require.NoError(t, err)
 	assert.Equal(t, closed.Revision, got.Revision)

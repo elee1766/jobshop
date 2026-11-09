@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -22,7 +23,7 @@ func TestWaitStaleSnapshot(t *testing.T) {
 	tk := mkTicket(t, c, store.NewTicket{Title: "ci", Pool: "dev"})
 	prs.set(recPR, `[[]]`, `[{"name":"go","bucket":"pass"}]`)
 	park := func(reason string) {
-		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: reason, Conds: []store.WaitCond{{Type: store.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"}}})
+		_, err := c.waitAdd(ctx, admin, rpc.WaitAddParams{ID: tk.ID, Reason: reason, Conds: []domain.WaitCond{{Type: domain.WaitChecks, Repo: "acme/widget", PR: 5, State: "success"}}})
 		require.NoError(t, err)
 	}
 	park("first")
@@ -38,7 +39,7 @@ func TestWaitStaleSnapshot(t *testing.T) {
 	// wait on that observation would be wrong.
 	pass := c.newWaitPass(prs, threads)
 	err = c.evalWait(ctx, pass, stale)
-	require.ErrorIs(t, err, store.ErrConflict)
+	require.ErrorIs(t, err, domain.ErrConflict)
 	w := waitOf(mustGet(t, c, tk.ID))
 	require.NotNil(t, w, "the newer wait is untouched")
 	assert.Equal(t, "second", w.Reason)

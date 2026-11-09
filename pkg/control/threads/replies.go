@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // Replies answers a thread.reply wait (waitengine.ReplySource): a human
@@ -21,7 +21,7 @@ type Replies struct {
 }
 
 // Reply implements waitengine.ReplySource.
-func (r Replies) Reply(ctx context.Context, cd store.WaitCond, since time.Time) (bool, string, error) {
+func (r Replies) Reply(ctx context.Context, cd domain.WaitCond, since time.Time) (bool, string, error) {
 	th := Thread{Linear: cd.Thread}
 	if repo, num, ok := strings.Cut(cd.Thread, "#"); ok {
 		n, _ := strconv.Atoi(num)

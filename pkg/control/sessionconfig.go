@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -42,7 +43,7 @@ func advertised(opts []acp.SessionConfigOption) ([]string, map[string]string) {
 
 // noteAdvertised records what a session/new or session/load returned. The
 // agent process is new, so every configured option is set again.
-func noteAdvertised(f *store.SessionFields, opts []acp.SessionConfigOption) {
+func noteAdvertised(f *domain.SessionFields, opts []acp.SessionConfigOption) {
 	ids, cur := advertised(opts)
 	f.ConfigIDs = ids
 	f.Options = nil
@@ -51,7 +52,7 @@ func noteAdvertised(f *store.SessionFields, opts []acp.SessionConfigOption) {
 
 // wantOptions is what the session should run with now: the pool's and
 // agent's options, then the session's override.
-func (r *runner) wantOptions(f store.SessionFields) map[string]string {
+func (r *runner) wantOptions(f domain.SessionFields) map[string]string {
 	want := r.c.config().SessionOptions(r.pool, f.Agent)
 	maps.Copy(want, f.Override)
 	return want
@@ -67,7 +68,7 @@ func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection
 	if err != nil {
 		return err
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return err
 	}
@@ -109,7 +110,7 @@ func (r *runner) applyConfig(ctx context.Context, conn *acp.ClientSideConnection
 		}
 		old := f.Options[id]
 		ids, cur := advertised(res.ConfigOptions)
-		err = r.c.updateSessionFields(ctx, r.id, func(sf *store.SessionFields) {
+		err = r.c.updateSessionFields(ctx, r.id, func(sf *domain.SessionFields) {
 			if sf.Options == nil {
 				sf.Options = map[string]string{}
 			}
@@ -156,13 +157,13 @@ func (r *runner) setModel(model, effort string) {
 
 // updateSessionFields applies fn to a session's fields with a revision
 // check, retrying on a concurrent change.
-func (c *Controller) updateSessionFields(ctx context.Context, id string, fn func(*store.SessionFields)) error {
+func (c *Controller) updateSessionFields(ctx context.Context, id string, fn func(*domain.SessionFields)) error {
 	for range 5 {
 		t, err := c.store.Get(ctx, id)
 		if err != nil {
 			return err
 		}
-		f, err := store.DecodeFields[store.SessionFields](t)
+		f, err := domain.DecodeFields[domain.SessionFields](t)
 		if err != nil {
 			return err
 		}
@@ -172,11 +173,11 @@ func (c *Controller) updateSessionFields(ctx context.Context, id string, fn func
 			return err
 		}
 		_, err = c.store.Update(context.WithoutCancel(ctx), "controller", id, store.Update{Fields: b, IfRevision: t.Revision})
-		if !errors.Is(err, store.ErrConflict) {
+		if !errors.Is(err, domain.ErrConflict) {
 			return err
 		}
 	}
-	return fmt.Errorf("%w: session %s kept changing", store.ErrConflict, id)
+	return fmt.Errorf("%w: session %s kept changing", domain.ErrConflict, id)
 }
 
 // sessionConfigRPC sets or resets a session's option override; the
@@ -189,18 +190,18 @@ func (c *Controller) sessionConfigRPC(ctx context.Context, sc scope, p rpc.Sessi
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindSession {
-		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	if t.Kind != domain.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", domain.ErrInvalid, p.ID, t.Kind)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: session %s", store.ErrClosed, p.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: session %s", domain.ErrClosed, p.ID)
 	}
 	if !p.Reset && len(p.Options) == 0 {
-		return nil, fmt.Errorf("%w: give options (model=<value>) or reset", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: give options (model=<value>) or reset", domain.ErrInvalid)
 	}
 	for k, v := range p.Options {
 		if k == "" || v == "" {
-			return nil, fmt.Errorf("%w: option %q=%q: id and value are required", store.ErrInvalid, k, v)
+			return nil, fmt.Errorf("%w: option %q=%q: id and value are required", domain.ErrInvalid, k, v)
 		}
 	}
 	opts := map[string]string{}
@@ -210,7 +211,7 @@ func (c *Controller) sessionConfigRPC(ctx context.Context, sc scope, p rpc.Sessi
 		}
 		opts[k] = v
 	}
-	err = c.updateSessionFields(ctx, p.ID, func(f *store.SessionFields) {
+	err = c.updateSessionFields(ctx, p.ID, func(f *domain.SessionFields) {
 		if p.Reset {
 			// Back to the pool's values: clear what was set so applyConfig
 			// sets the pool's value again.

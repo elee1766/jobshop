@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -21,7 +22,7 @@ func TestLearningsMigrate(t *testing.T) {
 	path := testPath(t)
 	s, err := sqlite.Open(ctx, path, sqlite.Options{})
 	require.NoError(t, err)
-	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: store.KindTask, Title: "t"})
+	tk, err := store.Create(ctx, s, "admin", store.NewTicket{Project: "p", Kind: domain.KindTask, Title: "t"})
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
 
@@ -49,7 +50,7 @@ func TestLearningsMigrate(t *testing.T) {
 		assert.Equal(t, "repo:a/b", l.Scope)
 		assert.Equal(t, tk.ID, l.Ticket)
 		assert.Equal(t, "sess", l.Session)
-		assert.Equal(t, store.LearningApplied, l.Status)
+		assert.Equal(t, domain.LearningApplied, l.Status)
 		assert.Equal(t, "https://x/pull/1", l.PR)
 		assert.Equal(t, "helped: x", l.Gate)
 		assert.Equal(t, time.UnixMilli(1000).UTC(), l.CreatedAt)
@@ -62,7 +63,7 @@ func TestLearningsMigrate(t *testing.T) {
 		idx, err := s.Recall(ctx, store.RecallQuery{Text: "flaky"})
 		require.NoError(t, err)
 		assert.Empty(t, idx, "learning rows left the shared recall index")
-		n, err := learning.Add(ctx, s, store.Learning{Kind: "failure", Summary: "new", Source: "agent"}, "")
+		n, err := learning.Add(ctx, s, domain.Learning{Kind: "failure", Summary: "new", Source: "agent"}, "")
 		require.NoError(t, err)
 		assert.Equal(t, int64(13), n.ID)
 	}

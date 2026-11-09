@@ -8,6 +8,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -23,7 +24,7 @@ func (c *Controller) sessionRenameRPC(ctx context.Context, sc scope, p rpc.Sessi
 		p.ID = sc.session
 	}
 	if p.ID == "" {
-		return nil, fmt.Errorf("%w: session id is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: session id is required", domain.ErrInvalid)
 	}
 	if p.ID != sc.session {
 		if err := c.requireGrant(sc, "session-rename", "session rename of another session"); err != nil {
@@ -32,17 +33,17 @@ func (c *Controller) sessionRenameRPC(ctx context.Context, sc scope, p rpc.Sessi
 	}
 	name := strings.Join(strings.Fields(p.Name), " ")
 	if utf8.RuneCountInString(name) > maxDisplayName {
-		return nil, fmt.Errorf("%w: name is longer than %d characters", store.ErrInvalid, maxDisplayName)
+		return nil, fmt.Errorf("%w: name is longer than %d characters", domain.ErrInvalid, maxDisplayName)
 	}
 	t, err := c.store.Get(ctx, p.ID)
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindSession {
-		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	if t.Kind != domain.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", domain.ErrInvalid, p.ID, t.Kind)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: session %s", store.ErrClosed, p.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: session %s", domain.ErrClosed, p.ID)
 	}
 	if err := c.setDisplayName(ctx, sc.actor, p.ID, name); err != nil {
 		return nil, err
@@ -58,7 +59,7 @@ func (c *Controller) setDisplayName(ctx context.Context, actor, id, name string)
 		if err != nil {
 			return err
 		}
-		f, err := store.DecodeFields[store.SessionFields](t)
+		f, err := domain.DecodeFields[domain.SessionFields](t)
 		if err != nil {
 			return err
 		}
@@ -68,9 +69,9 @@ func (c *Controller) setDisplayName(ctx context.Context, actor, id, name string)
 			return err
 		}
 		_, err = c.store.Update(ctx, actor, id, store.Update{Fields: b, IfRevision: t.Revision})
-		if !errors.Is(err, store.ErrConflict) {
+		if !errors.Is(err, domain.ErrConflict) {
 			return err
 		}
 	}
-	return fmt.Errorf("%w: session %s kept changing", store.ErrConflict, id)
+	return fmt.Errorf("%w: session %s kept changing", domain.ErrConflict, id)
 }

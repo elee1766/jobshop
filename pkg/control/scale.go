@@ -15,6 +15,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/scaleplan"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -119,7 +120,7 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 		}
 		plan := scaleplan.ForPool(desired, sessions)
 		for _, id := range plan.Cordon {
-			if err := c.setCordon(ctx, "controller", id, &store.Cordon{Reason: store.CordonScale, By: "controller", At: now}); err != nil {
+			if err := c.setCordon(ctx, "controller", id, &domain.Cordon{Reason: domain.CordonScale, By: "controller", At: now}); err != nil {
 				c.log.WarnContext(ctx, "scale: cordon", "session", id, "err", err)
 				continue
 			}
@@ -162,7 +163,7 @@ func (c *Controller) reconcile(ctx context.Context, cfg *config.Config) {
 // Idle is read before the caller reads ready: a claim in between then
 // drops the ticket from ready instead of counting it twice (#102).
 func (c *Controller) scaleSessions(ctx context.Context, pool string) ([]scaleplan.Session, int, error) {
-	open, err := c.store.List(ctx, store.Filter{Kind: store.KindSession, Status: store.StatusOpen, Pool: pool})
+	open, err := c.store.List(ctx, store.Filter{Kind: domain.KindSession, Status: domain.StatusOpen, Pool: pool})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -170,10 +171,10 @@ func (c *Controller) scaleSessions(ctx context.Context, pool string) ([]scalepla
 	working := 0
 	for _, t := range open {
 		s := scaleplan.Session{ID: t.ID, Created: t.CreatedAt, LastClaim: t.CreatedAt}
-		if f, err := store.DecodeFields[store.SessionFields](t); err == nil && f.Cordoned != nil {
+		if f, err := domain.DecodeFields[domain.SessionFields](t); err == nil && f.Cordoned != nil {
 			s.Cordon = f.Cordoned.Reason
 		}
-		held, err := c.store.List(ctx, store.Filter{Holder: t.ID, Status: store.StatusInProgress, Limit: 1})
+		held, err := c.store.List(ctx, store.Filter{Holder: t.ID, Status: domain.StatusInProgress, Limit: 1})
 		s.Idle = err == nil && len(held) == 0
 		if !s.Idle {
 			working++
@@ -262,13 +263,13 @@ func (c *Controller) keepWarm(ctx context.Context, pool string) bool {
 
 // setCordon writes a session's cordon (nil lifts it) with a revision check,
 // so a concurrent fields write by the runner is not lost.
-func (c *Controller) setCordon(ctx context.Context, actor, id string, cd *store.Cordon) error {
+func (c *Controller) setCordon(ctx context.Context, actor, id string, cd *domain.Cordon) error {
 	for range 5 {
 		t, err := c.store.Get(ctx, id)
 		if err != nil {
 			return err
 		}
-		f, err := store.DecodeFields[store.SessionFields](t)
+		f, err := domain.DecodeFields[domain.SessionFields](t)
 		if err != nil {
 			return err
 		}
@@ -278,14 +279,14 @@ func (c *Controller) setCordon(ctx context.Context, actor, id string, cd *store.
 			return err
 		}
 		_, err = c.store.Update(ctx, actor, id, store.Update{Fields: b, IfRevision: t.Revision})
-		if !errors.Is(err, store.ErrConflict) {
+		if !errors.Is(err, domain.ErrConflict) {
 			if err == nil {
 				c.wakeRunner(id)
 			}
 			return err
 		}
 	}
-	return fmt.Errorf("%w: session %s kept changing", store.ErrConflict, id)
+	return fmt.Errorf("%w: session %s kept changing", domain.ErrConflict, id)
 }
 
 // wakeRunner ends a runner's idle wait so it sees a cordon change, or a
@@ -305,12 +306,12 @@ func (c *Controller) wakeRunner(id string) {
 
 // sessionCordon reads a session's cordon from the store; nil when in
 // rotation or unreadable.
-func (c *Controller) sessionCordon(ctx context.Context, id string) *store.Cordon {
+func (c *Controller) sessionCordon(ctx context.Context, id string) *domain.Cordon {
 	t, err := c.store.Get(ctx, id)
 	if err != nil {
 		return nil
 	}
-	f, err := store.DecodeFields[store.SessionFields](t)
+	f, err := domain.DecodeFields[domain.SessionFields](t)
 	if err != nil {
 		return nil
 	}
@@ -331,13 +332,13 @@ func (c *Controller) poolScaleRPC(ctx context.Context, sc scope, p rpc.PoolScale
 	}
 	pool, ok := c.config().Pools[p.Pool]
 	if !ok {
-		return nil, fmt.Errorf("%w: unknown pool %q", store.ErrInvalid, p.Pool)
+		return nil, fmt.Errorf("%w: unknown pool %q", domain.ErrInvalid, p.Pool)
 	}
 	if pool.Chat() {
-		return nil, fmt.Errorf("%w: pool %s is a chat pool; it does not scale", store.ErrInvalid, p.Pool)
+		return nil, fmt.Errorf("%w: pool %s is a chat pool; it does not scale", domain.ErrInvalid, p.Pool)
 	}
 	if !p.Auto && (p.Target == nil || *p.Target < 0) {
-		return nil, fmt.Errorf("%w: give a target >= 0 or auto", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: give a target >= 0 or auto", domain.ErrInvalid)
 	}
 	c.mu.Lock()
 	if p.Auto {
@@ -369,20 +370,20 @@ func (c *Controller) sessionCordonRPC(ctx context.Context, sc scope, p rpc.Sessi
 	if err != nil {
 		return nil, err
 	}
-	if t.Kind != store.KindSession {
-		return nil, fmt.Errorf("%w: %s is a %s, not a session", store.ErrInvalid, p.ID, t.Kind)
+	if t.Kind != domain.KindSession {
+		return nil, fmt.Errorf("%w: %s is a %s, not a session", domain.ErrInvalid, p.ID, t.Kind)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: session %s", store.ErrClosed, p.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: session %s", domain.ErrClosed, p.ID)
 	}
-	var cd *store.Cordon
+	var cd *domain.Cordon
 	op := "uncordon"
 	if !p.Uncordon {
-		reason := store.CordonManual
+		reason := domain.CordonManual
 		if p.Drain {
-			reason = store.CordonDrain
+			reason = domain.CordonDrain
 		}
-		cd = &store.Cordon{Reason: reason, By: sc.actor, At: c.now()}
+		cd = &domain.Cordon{Reason: reason, By: sc.actor, At: c.now()}
 		op = "cordon"
 	}
 	if err := c.setCordon(ctx, sc.actor, p.ID, cd); err != nil {
@@ -434,7 +435,7 @@ func (c *Controller) checkAssign(ctx context.Context, holder string, force bool)
 		return nil
 	}
 	if cd := c.sessionCordon(ctx, holder); cd != nil {
-		return fmt.Errorf("%w: session %s is cordoned (%s); pass --force to assign anyway", store.ErrConflict, holder, cd.Reason)
+		return fmt.Errorf("%w: session %s is cordoned (%s); pass --force to assign anyway", domain.ErrConflict, holder, cd.Reason)
 	}
 	return nil
 }
@@ -443,7 +444,7 @@ func (c *Controller) checkAssign(ctx context.Context, holder string, force bool)
 // ticket, then a ticket pre-assigned to it (only with --force). Zero id
 // means nothing.
 func (c *Controller) cordonedWork(ctx context.Context, id string) string {
-	for _, st := range []store.Status{store.StatusInProgress, store.StatusOpen} {
+	for _, st := range []domain.Status{domain.StatusInProgress, domain.StatusOpen} {
 		held, err := c.store.List(ctx, store.Filter{Holder: id, Status: st, Limit: 1})
 		if err == nil && len(held) > 0 {
 			return held[0].ID

@@ -23,8 +23,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/elee1766/jobshop/pkg/control/question"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 const (
@@ -61,8 +61,8 @@ func ParseKey(key string) (kind, id string, ok bool) {
 
 // Waiting is a ticket whose wait passed its timeout.
 type Waiting struct {
-	Ticket store.Ticket
-	Wait   *store.Wait
+	Ticket domain.Ticket
+	Wait   *domain.Wait
 }
 
 // Pause is a pool paused for crash-looping (JOB-27) until Until.
@@ -88,9 +88,9 @@ type Health struct {
 // ActionSource reads what describing choices needs.
 type ActionSource interface {
 	// Ticket is the ticket with id, or an error.
-	Ticket(ctx context.Context, id string) (store.Ticket, error)
+	Ticket(ctx context.Context, id string) (domain.Ticket, error)
 	// Steps are the steps of a run, in order.
-	Steps(ctx context.Context, run string) ([]store.Ticket, error)
+	Steps(ctx context.Context, run string) ([]domain.Ticket, error)
 }
 
 // Source is what the controller supplies to Build.
@@ -98,9 +98,9 @@ type Source interface {
 	ActionSource
 	Now() time.Time
 	// LabeledOpen lists open and in-progress tickets with label.
-	LabeledOpen(ctx context.Context, label string) ([]store.Ticket, error)
+	LabeledOpen(ctx context.Context, label string) ([]domain.Ticket, error)
 	// NeedsHumanRuns lists runs in needs_human, newest first.
-	NeedsHumanRuns(ctx context.Context) ([]store.Ticket, error)
+	NeedsHumanRuns(ctx context.Context) ([]domain.Ticket, error)
 	// TimedOut lists tickets whose wait passed its timeout.
 	TimedOut(ctx context.Context) ([]Waiting, error)
 	// Subsystems are rows owned by other subsystems: resource waits,
@@ -134,10 +134,10 @@ func Build(ctx context.Context, src Source) ([]rpc.AttentionItem, error) {
 			return nil, err
 		}
 		for _, t := range ts {
-			if id := store.MetaString(t.Meta, store.MetaRun, "id"); id != "" {
+			if id := domain.MetaString(t.Meta, domain.MetaRun, "id"); id != "" {
 				escalatedRuns[id] = true
 			}
-			if p := store.MetaString(t.Meta, store.MetaPool, "name"); p != "" {
+			if p := domain.MetaString(t.Meta, domain.MetaPool, "name"); p != "" {
 				escalatedPools[p] = true
 			}
 			if seen[t.ID] {
@@ -148,7 +148,7 @@ func Build(ctx context.Context, src Source) ([]rpc.AttentionItem, error) {
 			switch {
 			case label == ProposedLabel && !slices.Contains(t.Labels, NeedsHumanLabel):
 				kind = rpc.AttentionDecision
-			case (label == QuestionLabel && !slices.Contains(t.Labels, NeedsHumanLabel)) || store.MetaString(t.Meta, store.MetaQuestion, "ticket") != "":
+			case (label == QuestionLabel && !slices.Contains(t.Labels, NeedsHumanLabel)) || domain.MetaString(t.Meta, domain.MetaQuestion, "ticket") != "":
 				kind = rpc.AttentionQuestion
 			}
 			items = append(items, TicketItem(kind, t))
@@ -169,7 +169,7 @@ func Build(ctx context.Context, src Source) ([]rpc.AttentionItem, error) {
 		it := TicketItem(rpc.AttentionWait, t)
 		it.Title = fmt.Sprintf("%s: wait past timeout: %s", t.Title, w.Wait.Reason)
 		it.Owner, it.Since = w.Wait.Owner, w.Wait.Timeout
-		if store.MetaString(t.Meta, store.MetaDesk, MetaSummary) == "" {
+		if domain.MetaString(t.Meta, domain.MetaDesk, MetaSummary) == "" {
 			it.Summary = SummaryOf(w.Wait.Reason)
 		}
 		if i := slices.IndexFunc(items, func(x rpc.AttentionItem) bool { return x.ID == t.ID }); i >= 0 {
@@ -179,7 +179,7 @@ func Build(ctx context.Context, src Source) ([]rpc.AttentionItem, error) {
 		}
 	}
 	for _, r := range runs {
-		if !escalatedRuns[r.ID] && r.Status != store.StatusClosed {
+		if !escalatedRuns[r.ID] && r.Status != domain.StatusClosed {
 			items = append(items, TicketItem(rpc.AttentionRun, r))
 		}
 	}
@@ -293,19 +293,19 @@ func SummaryOf(s string) string {
 
 // TicketItem lists t. A run waits since it last changed (when it went
 // needs_human), a ticket since it was filed.
-func TicketItem(kind string, t store.Ticket) rpc.AttentionItem {
+func TicketItem(kind string, t domain.Ticket) rpc.AttentionItem {
 	it := rpc.AttentionItem{Kind: kind, ID: t.ID, Project: t.Project, Title: t.Title, Since: t.CreatedAt}
 	if kind == rpc.AttentionRun {
 		it.Since = t.UpdatedAt
 	}
-	it.Summary = SummaryOf(store.MetaString(t.Meta, store.MetaDesk, MetaSummary))
+	it.Summary = SummaryOf(domain.MetaString(t.Meta, domain.MetaDesk, MetaSummary))
 	if it.Summary == "" {
 		it.Summary = SummaryOf(t.Body)
 	}
 	if qm, ok := question.Of(t); ok {
 		it.Context, it.Options = qm.Context, qm.Options
 	}
-	if full := store.MetaString(t.Meta, store.MetaDesk, MetaContext); full != "" {
+	if full := domain.MetaString(t.Meta, domain.MetaDesk, MetaContext); full != "" {
 		it.Context = full
 	} else if it.Context == "" {
 		it.Context = t.Body
@@ -361,7 +361,7 @@ const (
 // Action is one choice of an item: what Desk shows (Option) and what the
 // controller does when it is picked (Verb on Target, with Step).
 type Action struct {
-	Option       rpc.QuestionOption
+	Option       domain.QuestionOption
 	Verb, Target string
 	Step         string
 }
@@ -371,10 +371,10 @@ type Action struct {
 func Actions(ctx context.Context, src ActionSource, it rpc.AttentionItem) []Action {
 	var actions []Action
 	add := func(title, description, verb, target, step string) {
-		actions = append(actions, Action{rpc.QuestionOption{ID: len(actions) + 1, Title: title, Description: description}, verb, target, step})
+		actions = append(actions, Action{domain.QuestionOption{ID: len(actions) + 1, Title: title, Description: description}, verb, target, step})
 	}
 	t, _ := src.Ticket(ctx, it.ID)
-	runID, pool := store.MetaString(t.Meta, store.MetaRun, "id"), store.MetaString(t.Meta, store.MetaPool, "name")
+	runID, pool := domain.MetaString(t.Meta, domain.MetaRun, "id"), domain.MetaString(t.Meta, domain.MetaPool, "name")
 	if it.Kind == rpc.AttentionRun {
 		runID = it.ID
 	}
@@ -396,15 +396,15 @@ func Actions(ctx context.Context, src ActionSource, it rpc.AttentionItem) []Acti
 		if runID != "" {
 			add("Cancel run", "Stop this workflow run", VerbCancel, runID, "")
 		}
-	case store.MetaString(t.Meta, store.MetaHook, "key") != "":
+	case domain.MetaString(t.Meta, domain.MetaHook, "key") != "":
 		add("Allow", "Resolve the guardrail approval", VerbGuard, it.ID, "done")
 		add("Deny", "Resolve the guardrail approval", VerbGuard, it.ID, "denied")
 	case runID != "":
 		add("Resume", "Retry the first unfinished step", VerbResume, runID, "")
 		if steps, err := src.Steps(ctx, runID); err == nil {
 			for _, st := range steps {
-				sf, _ := store.DecodeFields[store.StepFields](st)
-				if !store.StepFinished(st) || len(actions) >= 4 {
+				sf, _ := domain.DecodeFields[domain.StepFields](st)
+				if !domain.StepFinished(st) || len(actions) >= 4 {
 					break
 				}
 				add("Resume at "+sf.Step, "Reopen this earlier step", VerbResume, runID, sf.Step)
@@ -418,7 +418,7 @@ func Actions(ctx context.Context, src ActionSource, it rpc.AttentionItem) []Acti
 		add("Discuss", "Open the resolving chat with context", VerbDiscuss, it.ID, "")
 		add("Leave waiting", "Keep this item open for a later decision", VerbKeep, it.ID, "")
 	}
-	if recommended := store.MetaString(t.Meta, store.MetaDesk, MetaRecommend); recommended != "" {
+	if recommended := domain.MetaString(t.Meta, domain.MetaDesk, MetaRecommend); recommended != "" {
 		for i := range actions {
 			actions[i].Option.Recommended = recommended == strconv.Itoa(actions[i].Option.ID)
 		}

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -51,7 +52,7 @@ func TestInboxMigrate(t *testing.T) {
 		assert.Equal(t, "a/b", it.RepoOrTeam)
 		assert.EqualValues(t, 7, it.Number)
 		assert.Equal(t, "c1", it.CommentID)
-		assert.Equal(t, store.InboxAdmitted, it.State)
+		assert.Equal(t, domain.InboxAdmitted, it.State)
 		assert.JSONEq(t, `{"x":1}`, string(it.Payload))
 		assert.JSONEq(t, `{"ok":true}`, string(it.Admitted))
 		assert.JSONEq(t, `[{"name":"h"}]`, string(it.HookResults))
@@ -64,14 +65,14 @@ func TestInboxMigrate(t *testing.T) {
 		assert.Nil(t, other.Admitted)
 		assert.JSONEq(t, `[]`, string(other.HookResults))
 
-		_, dup, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "poll:x", NaturalKey: "github:comment:a/b:c1:t"})
+		_, dup, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: "poll:x", NaturalKey: "github:comment:a/b:c1:t"})
 		require.NoError(t, err)
 		assert.True(t, dup, "natural key of a migrated row")
-		n, dup, err := ingest.InboxPut(ctx, s, store.InboxItem{Source: "github", DeliveryID: "new", Payload: json.RawMessage(`{}`)})
+		n, dup, err := ingest.InboxPut(ctx, s, domain.InboxItem{Source: "github", DeliveryID: "new", Payload: json.RawMessage(`{}`)})
 		require.NoError(t, err)
 		assert.False(t, dup)
 		assert.EqualValues(t, 41, n.ID, "past the highest id")
-		pend, err := ingest.InboxList(ctx, s, store.InboxFilter{State: store.InboxPending})
+		pend, err := ingest.InboxList(ctx, s, store.InboxFilter{State: domain.InboxPending})
 		require.NoError(t, err)
 		assert.Len(t, pend, 2)
 	}

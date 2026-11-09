@@ -15,8 +15,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // newClock is the fake clock the trigger tests start at.
@@ -75,10 +75,10 @@ func TestTriggers(t *testing.T) {
 	stop := triggerController(t, root, clk)
 
 	admin := dial(t, root.AdminSocket())
-	byTrigger := func(name string) []store.Ticket {
-		var all []store.Ticket
+	byTrigger := func(name string) []domain.Ticket {
+		var all []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{}, &all))
-		var out []store.Ticket
+		var out []domain.Ticket
 		for _, tk := range all {
 			if string(tk.Meta) == `{"trigger":{"name":"`+name+`"}}` {
 				out = append(out, tk)
@@ -118,7 +118,7 @@ func TestTriggers(t *testing.T) {
 	passUntil(t, root.Dir, func() bool { return len(byTrigger("replan")) == 2 }, "trigger")
 
 	// Work in dev: the condition no longer holds after the ticket closes.
-	var work store.Ticket
+	var work domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "w", Pool: "dev"}, &work))
 	for _, tk := range byTrigger("replan") {
 		_ = admin.Call(t.Context(), rpc.MethodTicketClose, rpc.CloseParams{ID: tk.ID}, nil)
@@ -180,8 +180,8 @@ func TestTriggerCheck(t *testing.T) {
 	stop := triggerController(t, root, clk)
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	list := func() []store.Ticket {
-		var all []store.Ticket
+	list := func() []domain.Ticket {
+		var all []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{}, &all))
 		return all
 	}
@@ -227,9 +227,9 @@ func TestTicketTrace(t *testing.T) {
 	admin := dial(t, root.AdminSocket())
 	ctx := t.Context()
 
-	var plan store.Ticket
+	var plan domain.Ticket
 	passUntil(t, root.Dir, func() bool {
-		var l []store.Ticket
+		var l []domain.Ticket
 		require.NoError(t, admin.Call(ctx, rpc.MethodTicketList, rpc.ListParams{Pool: "plan"}, &l))
 		if len(l) == 0 {
 			return false
@@ -243,7 +243,7 @@ func TestTicketTrace(t *testing.T) {
 	require.NoError(t, admin.Call(ctx, rpc.MethodSessionNew, rpc.SessionNewParams{Agent: "fake", Pool: "plan"}, &ps))
 	p := dial(t, ps.Socket)
 	require.NoError(t, p.Call(ctx, rpc.MethodClaim, rpc.ClaimParams{ID: plan.ID}, nil))
-	var dev store.Ticket
+	var dev domain.Ticket
 	require.NoError(t, p.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{
 		Title: "Resolve #70", Pool: "dev", Body: "https://github.com/elee1766/jobshop/issues/70",
 	}, &dev))
@@ -264,7 +264,7 @@ func TestTicketTrace(t *testing.T) {
 	require.NoError(t, admin.Call(ctx, rpc.MethodTicketTrace, rpc.TraceParams{ID: plan.ID}, &tr))
 	assert.Equal(t, "replan", tr.Trigger)
 	assert.Equal(t, "controller", tr.CreatedBy)
-	assert.Equal(t, store.StatusClosed, tr.Status)
+	assert.Equal(t, domain.StatusClosed, tr.Status)
 	assert.Equal(t, []string{ps.Ticket.ID}, tr.Holders)
 	assert.Equal(t, []string{"https://github.com/elee1766/jobshop/issues/70"}, tr.Links)
 	require.Len(t, tr.Children, 1, "only the ticket filed while holding the plan")
@@ -319,8 +319,8 @@ func TestTriggerRun(t *testing.T) {
 	stop := triggerController(t, root, clk)
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	runs := func() []store.Ticket {
-		var out []store.Ticket
+	runs := func() []domain.Ticket {
+		var out []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &out))
 		return out
 	}
@@ -336,7 +336,7 @@ func TestTriggerRun(t *testing.T) {
 	assert.Contains(t, string(r.Run.Meta), `"key":"red/abc`)
 	require.Len(t, r.Steps, 1)
 	assert.Equal(t, "Fix abc", r.Steps[0].Title, "first line of the output")
-	var f store.RunFields
+	var f domain.RunFields
 	require.NoError(t, json.Unmarshal(r.Run.Fields, &f))
 	assert.Equal(t, "red-abc", f.Key)
 
@@ -386,14 +386,14 @@ func TestTriggerLearnings(t *testing.T) {
 	stop := triggerController(t, root, clk)
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	runs := func() []store.Ticket {
-		var out []store.Ticket
+	runs := func() []domain.Ticket {
+		var out []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &out))
 		return out
 	}
 	learn := func(n int) {
 		for i := range n {
-			require.NoError(t, admin.Call(t.Context(), rpc.MethodLearnAdd, rpc.LearnParams{Kind: store.LearningFailure, Summary: fmt.Sprint("l", i)}, nil))
+			require.NoError(t, admin.Call(t.Context(), rpc.MethodLearnAdd, rpc.LearnParams{Kind: domain.LearningFailure, Summary: fmt.Sprint("l", i)}, nil))
 		}
 	}
 	settle := func() { pass(t, root.Dir, 3) }
@@ -453,8 +453,8 @@ func TestTriggerLearningsFiltered(t *testing.T) {
 	stop := triggerController(t, root, newClock())
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	runs := func() []store.Ticket {
-		var out []store.Ticket
+	runs := func() []domain.Ticket {
+		var out []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &out))
 		return out
 	}
@@ -463,7 +463,7 @@ func TestTriggerLearningsFiltered(t *testing.T) {
 	}
 	err = learn("blocker", "global")
 	require.ErrorContains(t, err, "friction, review-*", "unlisted kind names the patterns")
-	require.ErrorIs(t, learn("workaround", "global"), store.ErrInvalid, "set kinds replace the defaults")
+	require.ErrorIs(t, learn("workaround", "global"), domain.ErrInvalid, "set kinds replace the defaults")
 	require.NoError(t, learn("correction", "repo:acme/widget"), "the controller's kinds stay allowed")
 	require.NoError(t, learn("review-nit", "repo:other/repo"), "another repo")
 	require.NoError(t, learn("friction", "repo:acme/widget"), "kind not in the trigger")

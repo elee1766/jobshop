@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -102,7 +103,7 @@ func startLinearRun(t *testing.T, c *Controller) error {
 
 func runCount(t *testing.T, c *Controller) int {
 	t.Helper()
-	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
+	rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun})
 	require.NoError(t, err)
 	return len(rs)
 }
@@ -114,7 +115,7 @@ func TestIntakeNoHookAllows(t *testing.T) {
 	assert.Equal(t, 1, runCount(t, c))
 	assert.Zero(t, f.reads, "no hook: the issue is not read")
 	assert.Equal(t, 1, f.titles, "the run title is read")
-	rs, err := c.store.List(t.Context(), store.Filter{Kind: store.KindRun})
+	rs, err := c.store.List(t.Context(), store.Filter{Kind: domain.KindRun})
 	require.NoError(t, err)
 	require.Len(t, rs, 1)
 	assert.Equal(t, "Fix login", rs[0].Title, "the run is titled with the issue's title")

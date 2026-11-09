@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -24,7 +25,7 @@ const (
 // claim: their pool is empty or not in the loaded config. A disabled
 // pool's tickets wait for it to be enabled again, so they are not
 // orphans (JOB-24).
-func (c *Controller) orphaned(ctx context.Context, cfg *config.Config, project string, limit int) ([]store.Ticket, error) {
+func (c *Controller) orphaned(ctx context.Context, cfg *config.Config, project string, limit int) ([]domain.Ticket, error) {
 	pools := make([]string, 0, len(cfg.Pools)+len(cfg.Disabled.Pools))
 	for name := range cfg.Pools {
 		pools = append(pools, name)
@@ -32,7 +33,7 @@ func (c *Controller) orphaned(ctx context.Context, cfg *config.Config, project s
 	pools = append(pools, cfg.Disabled.Pools...)
 	sort.Strings(pools)
 	ts, err := c.store.List(ctx, store.Filter{
-		Project: project, Kinds: store.ClaimableKinds, Status: store.StatusOpen, Unheld: true,
+		Project: project, Kinds: domain.ClaimableKinds, Status: domain.StatusOpen, Unheld: true,
 		PoolNotIn: pools, Limit: limit,
 	})
 	if err != nil {
@@ -42,7 +43,7 @@ func (c *Controller) orphaned(ctx context.Context, cfg *config.Config, project s
 	// runs them (#396).
 	out := ts[:0]
 	for _, t := range ts {
-		if f, err := store.DecodeFields[store.StepFields](t); t.Kind == store.KindStep && err == nil && f.Auto() {
+		if f, err := domain.DecodeFields[domain.StepFields](t); t.Kind == domain.KindStep && err == nil && f.Auto() {
 			continue
 		}
 		out = append(out, t)
@@ -50,7 +51,7 @@ func (c *Controller) orphaned(ctx context.Context, cfg *config.Config, project s
 	return out, nil
 }
 
-func orphanReason(t store.Ticket) string {
+func orphanReason(t domain.Ticket) string {
 	if t.Pool == "" {
 		return orphanNoPool
 	}

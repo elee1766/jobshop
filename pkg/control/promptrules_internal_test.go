@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
 )
@@ -77,13 +78,13 @@ func TestAssembleOrder(t *testing.T) {
 `)
 	ctx := t.Context()
 	run, err := store.Create(ctx, c.store, "t", store.NewTicket{
-		Project: "js", Kind: store.KindRun, Title: "r",
+		Project: "js", Kind: domain.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"pr-work","state":"running"}`),
 	})
 
 	require.NoError(t, err)
 	step, err := store.Create(ctx, c.store, "t", store.NewTicket{
-		Project: "js", Kind: store.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
+		Project: "js", Kind: domain.KindStep, Title: "s", Pool: "dev", ParentID: run.ID,
 		Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"implement"}`, run.ID)),
 	})
 
@@ -124,7 +125,7 @@ func TestRuleCommand(t *testing.T) {
 `, config.MaxRuleOutput+100))
 	ctx := t.Context()
 	tk, err := store.Create(ctx, c.store, "t", store.NewTicket{
-		Project: "js", Kind: store.KindTask, Title: "x", Pool: "dev",
+		Project: "js", Kind: domain.KindTask, Title: "x", Pool: "dev",
 		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":205}}`),
 	})
 
@@ -173,7 +174,7 @@ func TestRuleMemory(t *testing.T) {
 `, mem, filepath.Join(mem, "absent")))
 	ctx := t.Context()
 	tk, err := store.Create(ctx, c.store, "t", store.NewTicket{
-		Project: "js", Kind: store.KindTask, Title: "x", Pool: "dev",
+		Project: "js", Kind: domain.KindTask, Title: "x", Pool: "dev",
 		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":266}}`),
 	})
 
@@ -216,7 +217,7 @@ prompt_rules:
     text: "run jobshop learn. Do not record a learning for routine success."
 `)
 	ctx := t.Context()
-	task, err := store.Create(ctx, c.store, "t", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "t"})
+	task, err := store.Create(ctx, c.store, "t", store.NewTicket{Project: "js", Kind: domain.KindTask, Title: "t"})
 	require.NoError(t, err)
 	body := PromptPart{Source: "ticket", Text: "BODY"}
 	for _, pool := range []string{"dev", "refinery", "operator"} {

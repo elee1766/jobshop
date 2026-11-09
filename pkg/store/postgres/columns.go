@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"sort"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 	sqldb "github.com/elee1766/jobshop/pkg/store/postgres/pgdb"
 	"github.com/elee1766/jobshop/pkg/store/storerules"
 )
@@ -79,7 +79,7 @@ func syncResources(ctx context.Context, q sqldb.Querier, id string, fields json.
 		return nil
 	}
 	for _, k := range f.Resources {
-		if err := q.AddTicketResource(ctx, sqldb.AddTicketResourceParams{TicketID: id, Rkey: k, Rname: store.ResourceName(k)}); err != nil {
+		if err := q.AddTicketResource(ctx, sqldb.AddTicketResourceParams{TicketID: id, Rkey: k, Rname: domain.ResourceName(k)}); err != nil {
 			return err
 		}
 	}

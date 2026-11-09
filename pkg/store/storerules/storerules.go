@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -62,7 +63,7 @@ func (c *Clock) Seed(last int64) {
 
 // Bump moves t to its next revision at now and returns the revision the
 // guarded write must still find.
-func Bump(t *store.Ticket, now time.Time) (prev int64) {
+func Bump(t *domain.Ticket, now time.Time) (prev int64) {
 	prev = t.Revision
 	t.Revision++
 	t.UpdatedAt = Stamp(now)
@@ -72,7 +73,7 @@ func Bump(t *store.Ticket, now time.Time) (prev int64) {
 // CheckLease rejects a claim or heartbeat without a holder or lease.
 func CheckLease(holder string, lease time.Duration) error {
 	if holder == "" || lease <= 0 {
-		return fmt.Errorf("%w: holder and a positive lease are required", store.ErrInvalid)
+		return fmt.Errorf("%w: holder and a positive lease are required", domain.ErrInvalid)
 	}
 	return nil
 }
@@ -80,27 +81,27 @@ func CheckLease(holder string, lease time.Duration) error {
 // CanClaim is the check for claiming one named ticket: it must be open
 // and unassigned or assigned to holder (or already held by holder, a
 // resume), unblocked, and an open one must not wait for a resource slot.
-func CanClaim(t store.Ticket, holder string, blocked, waitsSlot bool) error {
+func CanClaim(t domain.Ticket, holder string, blocked, waitsSlot bool) error {
 	switch {
-	case t.Status == store.StatusClosed:
-		return fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
-	case t.Status == store.StatusInProgress && t.Holder != holder:
-		return fmt.Errorf("%w: %s is held by %s", store.ErrNotHolder, t.ID, t.Holder)
-	case t.Status == store.StatusOpen && t.Holder != "" && t.Holder != holder:
-		return fmt.Errorf("%w: %s is assigned to %s", store.ErrNotHolder, t.ID, t.Holder)
+	case t.Status == domain.StatusClosed:
+		return fmt.Errorf("%w: %s", domain.ErrClosed, t.ID)
+	case t.Status == domain.StatusInProgress && t.Holder != holder:
+		return fmt.Errorf("%w: %s is held by %s", domain.ErrNotHolder, t.ID, t.Holder)
+	case t.Status == domain.StatusOpen && t.Holder != "" && t.Holder != holder:
+		return fmt.Errorf("%w: %s is assigned to %s", domain.ErrNotHolder, t.ID, t.Holder)
 	case blocked:
-		return fmt.Errorf("%w: %s is blocked", store.ErrNoWork, t.ID)
-	case waitsSlot && t.Status == store.StatusOpen:
-		return fmt.Errorf("%w: %s waits for a resource slot", store.ErrNoWork, t.ID)
+		return fmt.Errorf("%w: %s is blocked", domain.ErrNoWork, t.ID)
+	case waitsSlot && t.Status == domain.StatusOpen:
+		return fmt.Errorf("%w: %s waits for a resource slot", domain.ErrNoWork, t.ID)
 	}
 	return nil
 }
 
 // StillCandidate rechecks a ClaimNext candidate inside the claiming
 // transaction: without a single writer another claimer may have taken it.
-func StillCandidate(t store.Ticket, holder string) error {
-	if t.Status == store.StatusClosed || (t.Holder != "" && t.Holder != holder) {
-		return fmt.Errorf("%w: %s was taken", store.ErrConflict, t.ID)
+func StillCandidate(t domain.Ticket, holder string) error {
+	if t.Status == domain.StatusClosed || (t.Holder != "" && t.Holder != holder) {
+		return fmt.Errorf("%w: %s was taken", domain.ErrConflict, t.ID)
 	}
 	return nil
 }
@@ -108,9 +109,9 @@ func StillCandidate(t store.Ticket, holder string) error {
 // Claim gives t to holder until now+lease. A fresh claim (from open)
 // bumps the fence; a resume by the same holder keeps it. It returns the
 // claim and the history diff; fresh reports whether slots must be taken.
-func Claim(t *store.Ticket, holder string, lease time.Duration, now time.Time) (c store.Claim, diff map[string]any, fresh bool) {
-	resumed := t.Status == store.StatusInProgress
-	t.Status = store.StatusInProgress
+func Claim(t *domain.Ticket, holder string, lease time.Duration, now time.Time) (c store.Claim, diff map[string]any, fresh bool) {
+	resumed := t.Status == domain.StatusInProgress
+	t.Status = domain.StatusInProgress
 	t.Holder = holder
 	t.LeaseUntil = Stamp(now.Add(lease))
 	if !resumed {
@@ -121,22 +122,22 @@ func Claim(t *store.Ticket, holder string, lease time.Duration, now time.Time) (
 }
 
 // Holds reports ErrNotHolder unless c is t's current claim.
-func Holds(t store.Ticket, c store.Claim) error {
-	if t.Status != store.StatusInProgress || t.Holder != c.Holder || t.Fence != c.Fence {
-		return fmt.Errorf("%w: %s", store.ErrNotHolder, t.ID)
+func Holds(t domain.Ticket, c store.Claim) error {
+	if t.Status != domain.StatusInProgress || t.Holder != c.Holder || t.Fence != c.Fence {
+		return fmt.Errorf("%w: %s", domain.ErrNotHolder, t.ID)
 	}
 	return nil
 }
 
 // Reopen returns t to open and unassigned. Resolution and closed time
 // are the caller's to clear.
-func Reopen(t *store.Ticket) {
-	t.Status = store.StatusOpen
+func Reopen(t *domain.Ticket) {
+	t.Status = domain.StatusOpen
 	t.Holder = ""
 	t.LeaseUntil = time.Time{}
 }
 
-func reopenClosed(t *store.Ticket) {
+func reopenClosed(t *domain.Ticket) {
 	Reopen(t)
 	t.Resolution = ""
 	t.ClosedAt = time.Time{}
@@ -146,23 +147,23 @@ func reopenClosed(t *store.Ticket) {
 // step is closed failed; below it a failed close becomes another
 // attempt. It returns the comment to add ("" for non-steps) and records
 // the count in d.
-func StepFailure(t *store.Ticket, how string, d map[string]any, now time.Time) (string, error) {
-	f, exhausted, isStep, err := store.StepFailure(t)
+func StepFailure(t *domain.Ticket, how string, d map[string]any, now time.Time) (string, error) {
+	f, exhausted, isStep, err := domain.StepFailure(t)
 	if err != nil || !isStep {
 		return "", err
 	}
 	d["failures"] = f.Failures
-	if exhausted && t.Status != store.StatusClosed {
-		t.Status = store.StatusClosed
+	if exhausted && t.Status != domain.StatusClosed {
+		t.Status = domain.StatusClosed
 		t.Resolution = "failed"
 		t.Holder = ""
 		t.LeaseUntil = time.Time{}
 		t.ClosedAt = Stamp(now)
 	}
-	if !exhausted && t.Status == store.StatusClosed {
+	if !exhausted && t.Status == domain.StatusClosed {
 		reopenClosed(t)
 	}
-	return store.StepFailureComment(f, how, exhausted), nil
+	return domain.StepFailureComment(f, how, exhausted), nil
 }
 
 // CreateDiff is the history diff of a new ticket: the labels it was born
@@ -177,7 +178,7 @@ func CreateDiff(nt store.NewTicket) any {
 // Release returns a ticket held by c to open. With until set it is a
 // deferral ("not yet"), not a failed attempt; otherwise a step counts a
 // failure. It returns the history diff and the controller note.
-func Release(t *store.Ticket, c store.Claim, reason string, until, now time.Time) (map[string]any, string, error) {
+func Release(t *domain.Ticket, c store.Claim, reason string, until, now time.Time) (map[string]any, string, error) {
 	if err := Holds(*t, c); err != nil {
 		return nil, "", err
 	}
@@ -195,12 +196,12 @@ func Release(t *store.Ticket, c store.Claim, reason string, until, now time.Time
 // Handoff moves t to pool. A held ticket is released and its fence
 // bumped, so the old holder's claim stops working. A non-nil c must
 // still hold it. It is not a step failure.
-func Handoff(t *store.Ticket, c *store.Claim, pool, note string) (map[string]any, error) {
+func Handoff(t *domain.Ticket, c *store.Claim, pool, note string) (map[string]any, error) {
 	if pool == "" {
-		return nil, fmt.Errorf("%w: handoff needs a pool", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: handoff needs a pool", domain.ErrInvalid)
 	}
-	if t.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
+	if t.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: %s", domain.ErrClosed, t.ID)
 	}
 	if c != nil {
 		if err := Holds(*t, *c); err != nil {
@@ -209,7 +210,7 @@ func Handoff(t *store.Ticket, c *store.Claim, pool, note string) (map[string]any
 	}
 	d := map[string]any{"from_pool": t.Pool, "pool": pool, "holder": t.Holder}
 	t.Pool = pool
-	if t.Status == store.StatusInProgress {
+	if t.Status == domain.StatusInProgress {
 		Reopen(t)
 		t.Fence++
 	}
@@ -223,9 +224,9 @@ func Handoff(t *store.Ticket, c *store.Claim, pool, note string) (map[string]any
 // close counts a step failure (and below the limit reopens it); a
 // rebase close of a step reopens it without counting. It returns the
 // history diff and the controller note.
-func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time, results ...*store.StepResult) (map[string]any, string, error) {
-	if t.Status == store.StatusClosed {
-		return nil, "", fmt.Errorf("%w: %s", store.ErrClosed, t.ID)
+func Close(t *domain.Ticket, c *store.Claim, resolution string, now time.Time, results ...*store.StepResult) (map[string]any, string, error) {
+	if t.Status == domain.StatusClosed {
+		return nil, "", fmt.Errorf("%w: %s", domain.ErrClosed, t.ID)
 	}
 	if c != nil {
 		if err := Holds(*t, *c); err != nil {
@@ -234,12 +235,12 @@ func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time, re
 	}
 	if len(results) > 0 && results[0] != nil {
 		if results[0].Revision != 0 && results[0].Revision != t.Revision {
-			return nil, "", fmt.Errorf("%w: step changed before close", store.ErrConflict)
+			return nil, "", fmt.Errorf("%w: step changed before close", domain.ErrConflict)
 		}
-		if t.Kind != store.KindStep {
-			return nil, "", fmt.Errorf("%w: structured results require a step", store.ErrInvalid)
+		if t.Kind != domain.KindStep {
+			return nil, "", fmt.Errorf("%w: structured results require a step", domain.ErrInvalid)
 		}
-		f, err := store.DecodeFields[store.StepFields](*t)
+		f, err := domain.DecodeFields[domain.StepFields](*t)
 		if err != nil {
 			return nil, "", err
 		}
@@ -249,7 +250,7 @@ func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time, re
 			return nil, "", err
 		}
 	}
-	t.Status = store.StatusClosed
+	t.Status = domain.StatusClosed
 	t.Resolution = resolution
 	t.LeaseUntil = time.Time{}
 	t.ClosedAt = Stamp(now)
@@ -258,16 +259,16 @@ func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time, re
 		note, err := StepFailure(t, "closed failed", d, now)
 		return d, note, err
 	}
-	if resolution == store.ResolutionRebase && t.Kind == store.KindStep {
+	if resolution == domain.ResolutionRebase && t.Kind == domain.KindStep {
 		reopenClosed(t)
 		return d, "Closed for a rebase: reopened without counting a failed attempt.", nil
 	}
-	if resolution == store.ResolutionRequestChanges && t.Kind == store.KindStep {
+	if resolution == domain.ResolutionRequestChanges && t.Kind == domain.KindStep {
 		return requestChangesRound(t, d)
 	}
-	if resolution == "done" && t.Kind == store.KindStep {
+	if resolution == "done" && t.Kind == domain.KindStep {
 		// The change request was answered: later prompts drop it.
-		if f, err := store.DecodeFields[store.StepFields](*t); err == nil && f.Changes != nil {
+		if f, err := domain.DecodeFields[domain.StepFields](*t); err == nil && f.Changes != nil {
 			f.Changes = nil
 			if t.Fields, err = json.Marshal(f); err != nil {
 				return nil, "", err
@@ -281,8 +282,8 @@ func Close(t *store.Ticket, c *store.Claim, resolution string, now time.Time, re
 // request_changes (JOB-98). Within the cap it reopens the step, without
 // counting a failure; past it the step stays closed and the run needs a
 // human.
-func requestChangesRound(t *store.Ticket, d map[string]any) (map[string]any, string, error) {
-	f, err := store.DecodeFields[store.StepFields](*t)
+func requestChangesRound(t *domain.Ticket, d map[string]any) (map[string]any, string, error) {
+	f, err := domain.DecodeFields[domain.StepFields](*t)
 	if err != nil {
 		return nil, "", err
 	}
@@ -303,22 +304,22 @@ func requestChangesRound(t *store.Ticket, d map[string]any) (map[string]any, str
 // the reviewer's findings in fields.changes (JOB-98). reviewer is the
 // reviewing step after its close counted the round. It returns the
 // history diff and the comment for target.
-func RequestChanges(target *store.Ticket, reviewer store.Ticket, findings string) (map[string]any, string, error) {
-	if target.Kind != store.KindStep || target.ID == reviewer.ID || target.ParentID == "" || target.ParentID != reviewer.ParentID {
-		return nil, "", fmt.Errorf("%w: request_changes: %s is not another step of run %s", store.ErrInvalid, target.ID, reviewer.ParentID)
+func RequestChanges(target *domain.Ticket, reviewer domain.Ticket, findings string) (map[string]any, string, error) {
+	if target.Kind != domain.KindStep || target.ID == reviewer.ID || target.ParentID == "" || target.ParentID != reviewer.ParentID {
+		return nil, "", fmt.Errorf("%w: request_changes: %s is not another step of run %s", domain.ErrInvalid, target.ID, reviewer.ParentID)
 	}
-	if target.Status != store.StatusClosed {
-		return nil, "", fmt.Errorf("%w: request_changes: step %s is %s, not closed", store.ErrInvalid, target.ID, target.Status)
+	if target.Status != domain.StatusClosed {
+		return nil, "", fmt.Errorf("%w: request_changes: step %s is %s, not closed", domain.ErrInvalid, target.ID, target.Status)
 	}
-	rf, err := store.DecodeFields[store.StepFields](reviewer)
+	rf, err := domain.DecodeFields[domain.StepFields](reviewer)
 	if err != nil {
 		return nil, "", err
 	}
-	tf, err := store.DecodeFields[store.StepFields](*target)
+	tf, err := domain.DecodeFields[domain.StepFields](*target)
 	if err != nil {
 		return nil, "", err
 	}
-	tf.Changes = &store.StepChanges{
+	tf.Changes = &domain.StepChanges{
 		Step: rf.Step, Ticket: reviewer.ID, Round: rf.ReviewRounds, Max: rf.ReviewRoundLimit(), Findings: findings,
 	}
 	tf.StructuredOutput = nil
@@ -333,15 +334,15 @@ func RequestChanges(target *store.Ticket, reviewer store.Ticket, findings string
 }
 
 // ReopenClosed returns a closed ticket to open, checking ifRev when set.
-func ReopenClosed(t *store.Ticket, ifRev int64) error {
+func ReopenClosed(t *domain.Ticket, ifRev int64) error {
 	if ifRev != 0 && ifRev != t.Revision {
-		return fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, t.ID, t.Revision, ifRev)
+		return fmt.Errorf("%w: %s at revision %d, want %d", domain.ErrConflict, t.ID, t.Revision, ifRev)
 	}
-	if t.Status != store.StatusClosed {
-		return fmt.Errorf("%w: %s is not closed", store.ErrInvalid, t.ID)
+	if t.Status != domain.StatusClosed {
+		return fmt.Errorf("%w: %s is not closed", domain.ErrInvalid, t.ID)
 	}
-	if t.Kind == store.KindStep {
-		fields, err := store.DecodeFields[store.StepFields](*t)
+	if t.Kind == domain.KindStep {
+		fields, err := domain.DecodeFields[domain.StepFields](*t)
 		if err != nil {
 			return err
 		}
@@ -358,12 +359,12 @@ func ReopenClosed(t *store.Ticket, ifRev int64) error {
 // lease ran out (op "release" or "lease_expired"). extra is merged into
 // the diff. A pre-assigned ticket that was never claimed has not failed;
 // a claimed step counts a failure. It returns the diff and the note.
-func Expire(t *store.Ticket, op string, extra map[string]any, now time.Time) (map[string]any, string, error) {
+func Expire(t *domain.Ticket, op string, extra map[string]any, now time.Time) (map[string]any, string, error) {
 	d := map[string]any{"holder": t.Holder, "status": t.Status}
 	for k, v := range extra {
 		d[k] = v
 	}
-	claimed := t.Status == store.StatusInProgress
+	claimed := t.Status == domain.StatusInProgress
 	Reopen(t)
 	if !claimed {
 		return d, "", nil
@@ -379,9 +380,9 @@ func Expire(t *store.Ticket, op string, extra map[string]any, now time.Time) (ma
 // ApplyUpdate applies u's field changes to t and returns the history
 // diff: only what changed. Holder changes (pre-assignment) are allowed
 // only while open.
-func ApplyUpdate(t *store.Ticket, u store.Update) (map[string]any, error) {
+func ApplyUpdate(t *domain.Ticket, u store.Update) (map[string]any, error) {
 	if u.IfRevision != 0 && u.IfRevision != t.Revision {
-		return nil, fmt.Errorf("%w: %s at revision %d, want %d", store.ErrConflict, t.ID, t.Revision, u.IfRevision)
+		return nil, fmt.Errorf("%w: %s at revision %d, want %d", domain.ErrConflict, t.ID, t.Revision, u.IfRevision)
 	}
 	d := map[string]any{}
 	set := func(name string, dst *string, v *string) {
@@ -394,8 +395,8 @@ func ApplyUpdate(t *store.Ticket, u store.Update) (map[string]any, error) {
 	set("body", &t.Body, u.Body)
 	set("pool", &t.Pool, u.Pool)
 	if u.Holder != nil && *u.Holder != t.Holder {
-		if t.Status != store.StatusOpen {
-			return nil, fmt.Errorf("%w: %s: assign only while open (status %s)", store.ErrInvalid, t.ID, t.Status)
+		if t.Status != domain.StatusOpen {
+			return nil, fmt.Errorf("%w: %s: assign only while open (status %s)", domain.ErrInvalid, t.ID, t.Status)
 		}
 		t.Holder = *u.Holder
 		d["holder"] = *u.Holder
@@ -409,7 +410,7 @@ func ApplyUpdate(t *store.Ticket, u store.Update) (map[string]any, error) {
 		d["defer_until"] = t.DeferUntil
 	}
 	if u.Fields != nil {
-		f, err := store.NormalizeFields(t.Kind, u.Fields)
+		f, err := domain.NormalizeFields(t.Kind, u.Fields)
 		if err != nil {
 			return nil, err
 		}
@@ -417,7 +418,7 @@ func ApplyUpdate(t *store.Ticket, u store.Update) (map[string]any, error) {
 		d["fields"] = f
 	}
 	if u.Meta != nil {
-		m, err := store.NormalizeMeta(u.Meta)
+		m, err := domain.NormalizeMeta(u.Meta)
 		if err != nil {
 			return nil, err
 		}

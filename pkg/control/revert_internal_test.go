@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -41,9 +42,9 @@ func mergeItem(id string, n int, at time.Time) rpc.ActivityItem {
 	return ghItem(revRepo, id, "merge", "elee1766", fmt.Sprint(n), at)
 }
 
-func revertLearnings(t *testing.T, c *Controller) []store.Learning {
+func revertLearnings(t *testing.T, c *Controller) []domain.Learning {
 	t.Helper()
-	ls, err := learning.List(t.Context(), c.store, store.LearningFilter{Kind: store.LearningCorrection})
+	ls, err := learning.List(t.Context(), c.store, store.LearningFilter{Kind: domain.LearningCorrection})
 	require.NoError(t, err)
 	return ls
 }
@@ -53,11 +54,11 @@ func TestRevertLearning(t *testing.T) {
 	c, clk, fa := activityController(t)
 	now := clk.now()
 	run := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"done"}`),
+		Kind: domain.KindRun, Title: "run", Fields: json.RawMessage(`{"workflow":"pr-work","state":"done"}`),
 		Meta: json.RawMessage(`{"github":{"repo":"elee1766/jobshop","issue":265}}`),
 	})
 	step := mkTicket(t, c, store.NewTicket{
-		Kind: store.KindStep, Title: "implement", ParentID: run.ID,
+		Kind: domain.KindStep, Title: "implement", ParentID: run.ID,
 		Fields: json.RawMessage(`{"step":"implement","run":"` + run.ID + `"}`),
 	})
 	_, err := store.AddComment(t.Context(), c.store, "s1", step.ID, "PR https://github.com/elee1766/jobshop/pull/268 head abc")
@@ -89,7 +90,7 @@ func TestRevertLearning(t *testing.T) {
 	require.Len(t, ls, 1)
 	l := ls[0]
 	assert.Equal(t, run.ID, l.Ticket)
-	assert.Equal(t, store.LearningSourceController, l.Source)
+	assert.Equal(t, domain.LearningSourceController, l.Source)
 	assert.Equal(t, "repo:"+revRepo, l.Scope)
 	assert.Contains(t, l.Summary, "PR #268 for issue #265")
 	assert.Contains(t, l.Summary, "reverted by PR #271")

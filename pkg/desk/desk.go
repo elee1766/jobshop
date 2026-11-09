@@ -27,8 +27,8 @@ import (
 
 	"github.com/klauspost/compress/gzhttp"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 //go:embed all:dist
@@ -421,11 +421,11 @@ func (s *Server) json(fn func(*http.Request) (any, error)) http.HandlerFunc {
 		if err != nil {
 			code := http.StatusBadGateway
 			switch {
-			case errors.Is(err, store.ErrNotFound):
+			case errors.Is(err, domain.ErrNotFound):
 				code = http.StatusNotFound
-			case errors.Is(err, errBadRequest), errors.Is(err, store.ErrInvalid), errors.Is(err, store.ErrClosed):
+			case errors.Is(err, errBadRequest), errors.Is(err, domain.ErrInvalid), errors.Is(err, domain.ErrClosed):
 				code = http.StatusBadRequest
-			case errors.Is(err, store.ErrConflict):
+			case errors.Is(err, domain.ErrConflict):
 				code = http.StatusConflict
 			case errors.Is(err, errForbidden):
 				code = http.StatusForbidden
@@ -492,8 +492,8 @@ type AttentionItem struct {
 	Summary string `json:"summary,omitempty"`
 	// Context (markdown) and Options are a question's (JOB-101): the
 	// row expands the context and shows each option as a button.
-	Context string               `json:"context,omitempty"`
-	Options []rpc.QuestionOption `json:"options,omitempty"`
+	Context string                  `json:"context,omitempty"`
+	Options []domain.QuestionOption `json:"options,omitempty"`
 }
 
 // attention is the controller's attention list (#577): Desk adds no
@@ -527,16 +527,16 @@ func (s *Server) attention(r *http.Request) (any, error) {
 // the holder of every in-progress step, so a card needs no request of
 // its own.
 type Work struct {
-	Runs     []store.Ticket            `json:"runs"`
-	Batches  []store.Ticket            `json:"batches"`
+	Runs     []domain.Ticket           `json:"runs"`
+	Batches  []domain.Ticket           `json:"batches"`
 	Detail   map[string]RunDetail      `json:"detail,omitempty"`
 	Sessions map[string]rpc.HolderInfo `json:"sessions,omitempty"`
 }
 
 // RunDetail is a run's steps and its last comment.
 type RunDetail struct {
-	Steps   []store.Ticket `json:"steps"`
-	Comment *store.Comment `json:"comment,omitempty"`
+	Steps   []domain.Ticket `json:"steps"`
+	Comment *domain.Comment `json:"comment,omitempty"`
 }
 
 // maxDetailRuns bounds the per-run calls one detail request makes.
@@ -548,7 +548,7 @@ func (s *Server) work(r *http.Request) (any, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	w := Work{Runs: []store.Ticket{}, Batches: []store.Ticket{}}
+	w := Work{Runs: []domain.Ticket{}, Batches: []domain.Ticket{}}
 	p := rpc.RunListParams{State: r.URL.Query().Get("state"), Limit: limit}
 	if err := s.ctl.Call(ctx, rpc.MethodRunList, p, &w.Runs); err != nil {
 		return nil, err
@@ -575,7 +575,7 @@ func (s *Server) work(r *http.Request) (any, error) {
 			d.Comment = &sh.Comments[len(sh.Comments)-1]
 		}
 		for _, st := range d.Steps {
-			if st.Status == store.StatusInProgress && st.Holder != "" {
+			if st.Status == domain.StatusInProgress && st.Holder != "" {
 				holders = append(holders, st.Holder)
 			}
 		}
@@ -653,7 +653,7 @@ func (s *Server) pools(r *http.Request) (any, error) {
 // nodes carry theirs in Session.
 type TicketView struct {
 	rpc.ShowResult
-	Inspected  *store.Ticket             `json:"inspected,omitempty"`
+	Inspected  *domain.Ticket            `json:"inspected,omitempty"`
 	Inspection *rpc.ShowResult           `json:"inspection,omitempty"`
 	Graph      *rpc.GraphResult          `json:"graph,omitempty"`
 	Timeline   *rpc.TimelineResult       `json:"timeline,omitempty"`
@@ -677,7 +677,7 @@ func (s *Server) ticket(r *http.Request) (any, error) {
 		v.Inspected = &shown.Ticket
 		v.Inspection = &shown
 	}
-	if v.Ticket.Kind == store.KindRun {
+	if v.Ticket.Kind == domain.KindRun {
 		var run rpc.RunResult
 		if err := s.ctl.Call(ctx, rpc.MethodRunShow, rpc.IDParams{ID: id}, &run); err == nil {
 			v.Run = &run
@@ -688,12 +688,12 @@ func (s *Server) ticket(r *http.Request) (any, error) {
 		v.Trace = &tr
 	}
 	var ids []string
-	if v.Ticket.Status == store.StatusInProgress && v.Ticket.Holder != "" {
+	if v.Ticket.Status == domain.StatusInProgress && v.Ticket.Holder != "" {
 		ids = append(ids, v.Ticket.Holder)
 	}
 	if v.Run != nil {
 		for _, st := range v.Run.Steps {
-			if st.Status == store.StatusInProgress && st.Holder != "" {
+			if st.Status == domain.StatusInProgress && st.Holder != "" {
 				ids = append(ids, st.Holder)
 			}
 		}

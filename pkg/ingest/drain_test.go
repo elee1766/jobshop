@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/apicall"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -86,7 +87,7 @@ func TestDrainInsertsThenDeletes(t *testing.T) {
 	its, err := InboxList(ctx, st, store.InboxFilter{})
 	require.NoError(t, err)
 	require.Len(t, its, 2)
-	var c store.InboxItem
+	var c domain.InboxItem
 	for _, it := range its {
 		if it.DeliveryID == "github:d1" {
 			c = it
@@ -181,7 +182,7 @@ func TestWebhookAndPollDedupe(t *testing.T) {
 
 	at := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
 	key := GitHubKey("acme/app", "comment", "99", at)
-	_, dup, err := InboxPut(ctx, st, store.InboxItem{Source: "github", DeliveryID: "poll:" + key, NaturalKey: key})
+	_, dup, err := InboxPut(ctx, st, domain.InboxItem{Source: "github", DeliveryID: "poll:" + key, NaturalKey: key})
 	require.NoError(t, err)
 	assert.True(t, dup)
 	its, err := InboxList(ctx, st, store.InboxFilter{})
@@ -190,7 +191,7 @@ func TestWebhookAndPollDedupe(t *testing.T) {
 
 	// An edit is a new version, so a new row.
 	key2 := GitHubKey("acme/app", "comment", "99", at.Add(time.Minute))
-	_, dup, err = InboxPut(ctx, st, store.InboxItem{Source: "github", DeliveryID: "poll:" + key2, NaturalKey: key2})
+	_, dup, err = InboxPut(ctx, st, domain.InboxItem{Source: "github", DeliveryID: "poll:" + key2, NaturalKey: key2})
 	require.NoError(t, err)
 	assert.False(t, dup)
 }

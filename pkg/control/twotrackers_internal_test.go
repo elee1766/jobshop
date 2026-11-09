@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -95,7 +96,7 @@ func TestTwoTrackersLinearIntake(t *testing.T) {
 
 	assert.Equal(t, []string{"scan:linear_issue_no_run:JOB-1"}, findingKeys(t, c))
 	c.runTriggers(t.Context(), c.config())
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun})
+	runs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun})
 	require.NoError(t, err)
 	require.Len(t, runs, 1, "one triage run")
 

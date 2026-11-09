@@ -13,6 +13,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/sessionrt"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -33,7 +34,7 @@ type Place struct {
 // Place resolves a command step's pool and working dir: the run
 // worktree when the step asks for one, else the pool's dir, else its
 // repo, else the root. It makes the worktree.
-func (e Executor) Place(cfg *config.Config, s config.Step, sf store.StepFields, t Templates) (Place, error) {
+func (e Executor) Place(cfg *config.Config, s config.Step, sf domain.StepFields, t Templates) (Place, error) {
 	pl := Place{Dir: e.Root}
 	if s.Pool == "" {
 		return pl, nil
@@ -100,7 +101,7 @@ func StaleRunDirs(ctx context.Context, st store.Store, root string) []string {
 	var out []string
 	for _, e := range ents {
 		t, err := st.Get(ctx, e.Name())
-		if errors.Is(err, store.ErrNotFound) || (err == nil && t.Status == store.StatusClosed) {
+		if errors.Is(err, domain.ErrNotFound) || (err == nil && t.Status == domain.StatusClosed) {
 			out = append(out, e.Name())
 		}
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -22,12 +23,12 @@ import (
 const learnSummaryMax = 500
 
 func (c *Controller) learnAdd(ctx context.Context, sc scope, p rpc.LearnParams) (any, error) {
-	if err := store.CheckLearningKind(strings.TrimSpace(p.Kind), c.config().LearningKinds()); err != nil {
+	if err := domain.CheckLearningKind(strings.TrimSpace(p.Kind), c.config().LearningKinds()); err != nil {
 		return nil, err
 	}
-	l := store.Learning{
+	l := domain.Learning{
 		Kind: p.Kind, Summary: p.Summary, Fix: p.Fix, Scope: p.Scope, Ticket: p.Ticket,
-		Session: sc.session, Source: store.LearningSourceAgent,
+		Session: sc.session, Source: domain.LearningSourceAgent,
 	}
 	if l.Ticket == "" && !sc.admin {
 		// Default to the held ticket; holding none is fine.
@@ -50,7 +51,7 @@ func (c *Controller) learnAdd(ctx context.Context, sc scope, p rpc.LearnParams) 
 }
 
 // addLearning stores l with its ticket's project, which recall filters on.
-func (c *Controller) addLearning(ctx context.Context, l store.Learning) (store.Learning, error) {
+func (c *Controller) addLearning(ctx context.Context, l domain.Learning) (domain.Learning, error) {
 	project := ""
 	if l.Ticket != "" {
 		if t, err := c.store.Get(ctx, l.Ticket); err == nil {
@@ -66,12 +67,12 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 	glob := strings.ContainsAny(p.Kind, "*?[")
 	if glob {
 		if _, err := path.Match(p.Kind, ""); err != nil {
-			return nil, fmt.Errorf("%w: kind %q: %w", store.ErrInvalid, p.Kind, err)
+			return nil, fmt.Errorf("%w: kind %q: %w", domain.ErrInvalid, p.Kind, err)
 		}
 		f.Kind, f.Limit = "", store.DefaultLimit
 	}
 	if p.Scope != "" {
-		s, err := store.ParseScope(p.Scope)
+		s, err := domain.ParseScope(p.Scope)
 		if err != nil {
 			return nil, err
 		}
@@ -88,9 +89,9 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 	if limit <= 0 {
 		limit = store.DefaultLimit
 	}
-	out := []store.Learning{}
+	out := []domain.Learning{}
 	for _, l := range ls {
-		if store.Glob(p.Kind, l.Kind) && len(out) < limit {
+		if domain.Glob(p.Kind, l.Kind) && len(out) < limit {
 			out = append(out, l)
 		}
 	}
@@ -103,12 +104,12 @@ func (c *Controller) learnList(ctx context.Context, _ scope, p rpc.LearnListPara
 // the curator can see what was turned down.
 func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdateParams) (any, error) {
 	if len(p.IDs) == 0 {
-		return nil, fmt.Errorf("%w: learn update needs at least one id", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: learn update needs at least one id", domain.ErrInvalid)
 	}
 	if p.Status == "" && strings.TrimSpace(p.PR) == "" {
-		return nil, fmt.Errorf("%w: learn update needs --status or --pr", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: learn update needs --status or --pr", domain.ErrInvalid)
 	}
-	cur := make([]store.Learning, 0, len(p.IDs))
+	cur := make([]domain.Learning, 0, len(p.IDs))
 	for _, id := range p.IDs {
 		l, err := learning.Get(ctx, c.store, id)
 		if err != nil {
@@ -121,13 +122,13 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 		if strings.TrimSpace(p.PR) != "" {
 			pr = p.PR
 		}
-		if st == store.LearningRejected && strings.TrimSpace(pr) == "" {
-			return nil, fmt.Errorf("%w: learning %d: rejected needs --pr", store.ErrInvalid, id)
+		if st == domain.LearningRejected && strings.TrimSpace(pr) == "" {
+			return nil, fmt.Errorf("%w: learning %d: rejected needs --pr", domain.ErrInvalid, id)
 		}
 		l.Status, l.PR = st, pr
 		cur = append(cur, l)
 	}
-	out := make([]store.Learning, 0, len(cur))
+	out := make([]domain.Learning, 0, len(cur))
 	merged := map[string][]int64{}
 	var prs []string
 	for i, l := range cur {
@@ -137,7 +138,7 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 		}
 		out = append(out, u)
 		// memory:<id> is a local write (#592), recorded by memory.write.
-		if p.Status == store.LearningApplied && u.PR != "" && !strings.HasPrefix(u.PR, "memory:") {
+		if p.Status == domain.LearningApplied && u.PR != "" && !strings.HasPrefix(u.PR, "memory:") {
 			if _, ok := merged[u.PR]; !ok {
 				prs = append(prs, u.PR)
 			}
@@ -156,38 +157,38 @@ func (c *Controller) learnUpdate(ctx context.Context, _ scope, p rpc.LearnUpdate
 
 // learnScope is the narrowest scope a ticket names: its repo (from its
 // meta or its run's), else its pool, else global.
-func (c *Controller) learnScope(ctx context.Context, t store.Ticket) string {
+func (c *Controller) learnScope(ctx context.Context, t domain.Ticket) string {
 	if repo := metaString(t.Meta, "github", "repo"); repo != "" {
-		if s, err := store.ParseScope(store.RepoScope(repo)); err == nil {
+		if s, err := domain.ParseScope(domain.RepoScope(repo)); err == nil {
 			return s
 		}
 	}
 	if t.ParentID != "" {
 		if p, err := c.store.Get(ctx, t.ParentID); err == nil {
 			if repo := metaString(p.Meta, "github", "repo"); repo != "" {
-				if s, err := store.ParseScope(store.RepoScope(repo)); err == nil {
+				if s, err := domain.ParseScope(domain.RepoScope(repo)); err == nil {
 					return s
 				}
 			}
 		}
 	}
 	if t.Pool != "" {
-		if s, err := store.ParseScope(store.PoolScope(t.Pool)); err == nil {
+		if s, err := domain.ParseScope(domain.PoolScope(t.Pool)); err == nil {
 			return s
 		}
 	}
-	return store.ScopeGlobal
+	return domain.ScopeGlobal
 }
 
 // record stores a controller learning about t. A failure only logs: a
 // learning must never fail the action that caused it.
-func (c *Controller) record(ctx context.Context, kind string, t store.Ticket, summary, fix string) {
+func (c *Controller) record(ctx context.Context, kind string, t domain.Ticket, summary, fix string) {
 	summary = clip(summary, learnSummaryMax)
-	l := store.Learning{
+	l := domain.Learning{
 		Kind: kind, Summary: summary, Fix: clip(fix, learnSummaryMax), Scope: c.learnScope(ctx, t),
-		Ticket: t.ID, Source: store.LearningSourceController,
+		Ticket: t.ID, Source: domain.LearningSourceController,
 	}
-	if t.Kind == store.KindStep || t.Kind == store.KindTask {
+	if t.Kind == domain.KindStep || t.Kind == domain.KindTask {
 		l.Session = t.Holder
 	}
 	if _, err := c.addLearning(ctx, l); err != nil {
@@ -204,14 +205,14 @@ func clip(s string, n int) string {
 }
 
 // stepName is "<step> of <workflow> run <id>" for a run's step, else the id.
-func (c *Controller) stepName(ctx context.Context, t store.Ticket) string {
-	sf, err := store.DecodeFields[store.StepFields](t)
-	if err != nil || t.Kind != store.KindStep || sf.Step == "" {
+func (c *Controller) stepName(ctx context.Context, t domain.Ticket) string {
+	sf, err := domain.DecodeFields[domain.StepFields](t)
+	if err != nil || t.Kind != domain.KindStep || sf.Step == "" {
 		return t.ID
 	}
 	wf := ""
 	if r, err := c.store.Get(ctx, t.ParentID); err == nil {
-		if rf, err := store.DecodeFields[store.RunFields](r); err == nil {
+		if rf, err := domain.DecodeFields[domain.RunFields](r); err == nil {
 			wf = rf.Workflow + " "
 		}
 	}
@@ -221,20 +222,20 @@ func (c *Controller) stepName(ctx context.Context, t store.Ticket) string {
 // recordStepFailure records a failed close or a release that counts as a
 // step failure. reason is the release reason or the worker's last failed
 // report note.
-func (c *Controller) recordStepFailure(ctx context.Context, t store.Ticket, how, reason string) {
-	if t.Kind != store.KindStep {
+func (c *Controller) recordStepFailure(ctx context.Context, t domain.Ticket, how, reason string) {
+	if t.Kind != domain.KindStep {
 		return
 	}
-	sf, _ := store.DecodeFields[store.StepFields](t)
+	sf, _ := domain.DecodeFields[domain.StepFields](t)
 	s := fmt.Sprintf("%s %s (failure %d/%d)", c.stepName(ctx, t), how, sf.Failures, sf.Retries)
 	if reason = strings.TrimSpace(reason); reason != "" {
 		s += ": " + reason
 	}
-	c.record(ctx, store.LearningFailure, t, s, "")
+	c.record(ctx, domain.LearningFailure, t, s, "")
 }
 
 // failedReason is the note of the worker's last failed or dropped report.
-func failedReason(t store.Ticket) string {
+func failedReason(t domain.Ticket) string {
 	if rm, ok := reportOf(t); ok && (rm.State == rpc.ReportFailed || rm.State == rpc.ReportDropped) {
 		return rm.Note
 	}
@@ -244,7 +245,7 @@ func failedReason(t store.Ticket) string {
 // recordReviewFinding records a resume of a finished step by a reviewer:
 // the review found something the step should have done. The finding is
 // the reviewer's last comment on its own ticket, when it holds one.
-func (c *Controller) recordReviewFinding(ctx context.Context, sc scope, step store.Ticket) {
+func (c *Controller) recordReviewFinding(ctx context.Context, sc scope, step domain.Ticket) {
 	s := "review resumed " + c.stepName(ctx, step)
 	if !sc.admin {
 		if id, err := c.current(ctx, sc, ""); err == nil && id != step.ID {
@@ -253,24 +254,24 @@ func (c *Controller) recordReviewFinding(ctx context.Context, sc scope, step sto
 			}
 		}
 	}
-	c.record(ctx, store.LearningCorrection, step, s, "")
+	c.record(ctx, domain.LearningCorrection, step, s, "")
 }
 
 // recordAnswer records a human's answer to a question as a correction.
-func (c *Controller) recordAnswer(ctx context.Context, qt store.Ticket, about, from, text string) {
+func (c *Controller) recordAnswer(ctx context.Context, qt domain.Ticket, about, from, text string) {
 	t, err := c.store.Get(ctx, about)
 	if err != nil {
 		t = qt
 	}
 	q := strings.TrimPrefix(qt.Title, "Question: ")
-	c.record(ctx, store.LearningCorrection, t, fmt.Sprintf("question %s on %s: %s", qt.ID, about, q), "answer from "+from+": "+text)
+	c.record(ctx, domain.LearningCorrection, t, fmt.Sprintf("question %s on %s: %s", qt.ID, about, q), "answer from "+from+": "+text)
 }
 
 // recordFinding records a finding the scan trigger fired on.
 func (c *Controller) recordFinding(ctx context.Context, s triggers.Finding, run string) {
-	t := store.Ticket{ID: run}
+	t := domain.Ticket{ID: run}
 	if st, err := c.store.Get(ctx, s.Subject); err == nil {
 		t = st
 	}
-	c.record(ctx, store.LearningFailure, t, fmt.Sprintf("finding %s on %s: %s (triage run %s)", s.Signal, s.Subject, s.Detail, run), "")
+	c.record(ctx, domain.LearningFailure, t, fmt.Sprintf("finding %s on %s: %s (triage run %s)", s.Signal, s.Subject, s.Detail, run), "")
 }

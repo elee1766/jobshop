@@ -19,6 +19,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -135,14 +136,14 @@ func TestHookWorkflowRoutesValidatedOutputAndSurvivesRestart(t *testing.T) {
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Key: "task-1", Inputs: map[string]any{"task": "nested input", "data": map[string]any{"count": int64(9007199254740993)}}}, &started)
 	c.PassUntil(func() bool { return len(hookRun(t, c, started.Run.ID).Steps) == 1 }, "start hook did not create work")
 	run := hookRun(t, c, started.Run.ID)
-	assert.Equal(t, store.StatusOpen, run.Run.Status)
+	assert.Equal(t, domain.StatusOpen, run.Run.Status)
 	assert.Equal(t, "Work nested input", run.Steps[0].Body)
 	work := run.Steps[0]
 	require.Contains(t, string(work.Fields), "9007199254740993", "structured inputs must survive durable invocation and action planning")
-	var invalid store.Ticket
+	var invalid domain.Ticket
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: work.ID, Output: map[string]any{"route": "invalid"}}, &invalid)
-	assert.Equal(t, store.StatusOpen, invalid.Status)
-	f, err := store.DecodeFields[store.StepFields](invalid)
+	assert.Equal(t, domain.StatusOpen, invalid.Status)
+	f, err := domain.DecodeFields[domain.StepFields](invalid)
 	require.NoError(t, err)
 	assert.Equal(t, 1, f.Failures)
 	assert.Nil(t, f.StructuredOutput)
@@ -151,10 +152,10 @@ func TestHookWorkflowRoutesValidatedOutputAndSurvivesRestart(t *testing.T) {
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: work.ID, Outcome: "selected", Output: map[string]any{"route": "small"}}, nil)
 	c.PassUntil(func() bool { return len(hookRun(t, c, started.Run.ID).Steps) == 2 }, "completion hook did not route")
 	run = hookRun(t, c, started.Run.ID)
-	require.Equal(t, store.StatusOpen, run.Run.Status)
-	var selected store.Ticket
+	require.Equal(t, domain.StatusOpen, run.Run.Status)
+	var selected domain.Ticket
 	for _, step := range run.Steps {
-		sf, err := store.DecodeFields[store.StepFields](step)
+		sf, err := domain.DecodeFields[domain.StepFields](step)
 		require.NoError(t, err)
 		assert.NotEqual(t, "large", sf.Step)
 		if sf.Step == "small" {
@@ -167,9 +168,9 @@ func TestHookWorkflowRoutesValidatedOutputAndSurvivesRestart(t *testing.T) {
 	c.Pass(2)
 	require.Len(t, hookRun(t, c, started.Run.ID).Steps, 2)
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: selected.ID, Output: map[string]any{"summary": "reviewed"}}, nil)
-	c.PassUntil(func() bool { return hookRun(t, c, started.Run.ID).Run.Status == store.StatusClosed }, "explicit finish action did not close run")
+	c.PassUntil(func() bool { return hookRun(t, c, started.Run.ID).Run.Status == domain.StatusClosed }, "explicit finish action did not close run")
 	run = hookRun(t, c, started.Run.ID)
-	rf, err := store.DecodeFields[store.RunFields](run.Run)
+	rf, err := domain.DecodeFields[domain.RunFields](run.Run)
 	require.NoError(t, err)
 	assert.Equal(t, "small", rf.Automation.Output["selected"])
 	require.Contains(t, string(run.Run.Fields), "9007199254740993", "structured data must remain exact through restart and finish actions")
@@ -198,9 +199,9 @@ def handle(event, args):
 	var run rpc.RunResult
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic"}, &run)
 	c.PassUntil(func() bool {
-		f, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+		f, err := domain.DecodeFields[domain.RunFields](hookRun(t, c, run.Run.ID).Run)
 		require.NoError(t, err)
-		return f.State == store.RunNeedsHuman
+		return f.State == domain.RunNeedsHuman
 	}, "invalid batch did not fail")
 	assert.Empty(t, hookRun(t, c, run.Run.ID).Steps)
 	var audit []store.Record
@@ -235,9 +236,9 @@ def handle(event, args):
 	var run rpc.RunResult
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "dynamic", Inputs: map[string]any{"url": server.URL}}, &run)
 	c.PassUntil(func() bool {
-		fields, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+		fields, err := domain.DecodeFields[domain.RunFields](hookRun(t, c, run.Run.ID).Run)
 		require.NoError(t, err)
-		return fields.State == store.RunNeedsHuman
+		return fields.State == domain.RunNeedsHuman
 	}, "missing prompt did not stop hook")
 	c.Stop()
 	c = controltest.Start(t, root, control.Options{})
@@ -298,9 +299,9 @@ def handle(event, args):
 	c.Stop()
 	c = controltest.Start(t, root, control.Options{})
 	c.PassUntil(func() bool {
-		fields, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+		fields, err := domain.DecodeFields[domain.RunFields](hookRun(t, c, run.Run.ID).Run)
 		require.NoError(t, err)
-		return fields.State == store.RunNeedsHuman
+		return fields.State == domain.RunNeedsHuman
 	}, "unknown effect was not surfaced after restart")
 	assert.Empty(t, hookRun(t, c, run.Run.ID).Steps)
 	assert.EqualValues(t, 1, requests.Load())
@@ -332,7 +333,7 @@ func TestHookAdmittedGenericDeliveryDeduplicatesAcrossRestart(t *testing.T) {
 		c.Call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: spoolPath}, nil)
 	}
 	put()
-	var runs []store.Ticket
+	var runs []domain.Ticket
 	c.PassUntil(func() bool {
 		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
 		return len(runs) == 1 && len(hookRun(t, c, runs[0].ID).Steps) == 1
@@ -367,8 +368,8 @@ func TestHookDocumentedCUEWorkflowFixture(t *testing.T) {
 	assert.Contains(t, step.Body, "Add a verbose flag")
 	assert.NotContains(t, step.Body, "{{")
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: step.ID, Outcome: "implemented", Output: map[string]any{"summary": "Verbose flag added"}}, nil)
-	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == store.StatusClosed }, "documented completion callback did not finish run")
-	fields, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == domain.StatusClosed }, "documented completion callback did not finish run")
+	fields, err := domain.DecodeFields[domain.RunFields](hookRun(t, c, run.Run.ID).Run)
 	require.NoError(t, err)
 	assert.Equal(t, "Verbose flag added", fields.Automation.Output["summary"])
 }
@@ -429,7 +430,7 @@ def handle(event, args):
 	}, "batch hooks did not create source steps")
 	first := hookRun(t, c, batch.Runs[0].Run.ID).Steps[0]
 	second := hookRun(t, c, batch.Runs[1].Run.ID).Steps[0]
-	var ready []store.Ticket
+	var ready []domain.Ticket
 	c.Call(rpc.MethodReady, rpc.ReadyParams{Pool: "dev"}, &ready)
 	require.Len(t, ready, 1)
 	assert.Equal(t, first.ID, ready[0].ID)
@@ -464,11 +465,11 @@ def handle(event, args):
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: work.ID, Output: map[string]any{"summary": "first attempt"}}, nil)
 	c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 2 }, "review step missing")
 	review := hookRun(t, c, run.Run.ID).Steps[1]
-	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: review.ID, Resolution: store.ResolutionRequestChanges, Comment: "Add the missing validation"}, nil)
+	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: review.ID, Resolution: domain.ResolutionRequestChanges, Comment: "Add the missing validation"}, nil)
 	current := hookRun(t, c, run.Run.ID)
-	assert.Equal(t, store.StatusOpen, current.Steps[0].Status)
-	assert.Equal(t, store.StatusOpen, current.Steps[1].Status)
-	fields, err := store.DecodeFields[store.StepFields](current.Steps[0])
+	assert.Equal(t, domain.StatusOpen, current.Steps[0].Status)
+	assert.Equal(t, domain.StatusOpen, current.Steps[1].Status)
+	fields, err := domain.DecodeFields[domain.StepFields](current.Steps[0])
 	require.NoError(t, err)
 	assert.Nil(t, fields.StructuredOutput)
 	require.NotNil(t, fields.Changes)
@@ -481,7 +482,7 @@ def handle(event, args):
 	}, "revised work callback did not complete")
 	assert.Len(t, hookRun(t, c, run.Run.ID).Steps, 2)
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: review.ID}, nil)
-	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == store.StatusClosed }, "review did not finish run")
+	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == domain.StatusClosed }, "review did not finish run")
 }
 
 // A callback run pins its code, grants and the references accepted at start,
@@ -552,13 +553,13 @@ def handle(event, args):
 			if tc.done {
 				c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 2 }, "second step not created after reload")
 				c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: hookRun(t, c, run.Run.ID).Steps[1].ID}, nil)
-				c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == store.StatusClosed }, "run did not finish after unrelated reload")
+				c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == domain.StatusClosed }, "run did not finish after unrelated reload")
 				return
 			}
 			needsHuman := func() bool {
-				f, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+				f, err := domain.DecodeFields[domain.RunFields](hookRun(t, c, run.Run.ID).Run)
 				require.NoError(t, err)
-				return f.State == store.RunNeedsHuman
+				return f.State == domain.RunNeedsHuman
 			}
 			c.PassUntil(needsHuman, "changed authority did not stop the run")
 			assert.Len(t, hookRun(t, c, run.Run.ID).Steps, 1)
@@ -609,12 +610,12 @@ def handle(event, args):
 		c.Call(rpc.MethodIngestDrain, rpc.IngestDrainParams{Spool: spoolPath}, nil)
 	}
 	put("d1")
-	var runs []store.Ticket
+	var runs []domain.Ticket
 	c.PassUntil(func() bool {
 		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
 		return len(runs) == 1
 	}, "handler did not start a run from the GitHub response")
-	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	rf, err := domain.DecodeFields[domain.RunFields](runs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "red-abc123", rf.Key)
 	assert.Equal(t, "Bearer ghp_first", auth.Load())
@@ -649,7 +650,7 @@ def handle(event, args):
     return result(actions=actions, output={"open": len(open), "runs": len(runs(workflow="dynamic"))})
 `)
 	c := controltest.Start(t, root, control.Options{})
-	var watched store.Ticket
+	var watched domain.Ticket
 	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "watched", Labels: []string{"watch"}}, &watched)
 	spoolPath := filepath.Join(root.Dir, "events.db")
 	spool, err := ingest.OpenSpool(t.Context(), spoolPath)
@@ -678,7 +679,7 @@ def handle(event, args):
 	c.PassUntil(done(1), "handler did not finish")
 	put("d2")
 	c.PassUntil(done(2), "second handler did not finish")
-	var planned []store.Ticket
+	var planned []domain.Ticket
 	c.Call(rpc.MethodTicketList, rpc.ListParams{Label: "plan"}, &planned)
 	require.Len(t, planned, 1, "create_ticket must dedup on its key while the ticket is open")
 	assert.Equal(t, "dev", planned[0].Pool)
@@ -739,15 +740,15 @@ triggers:
 	_, err := config.Load(root)
 	require.NoError(t, err)
 	c := controltest.Start(t, root, control.Options{})
-	var blocked store.Ticket
+	var blocked domain.Ticket
 	c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Project: "js", Title: "stuck", Labels: []string{"blocked"}}, &blocked)
 	c.Clock.Advance(2 * time.Hour)
-	var runs []store.Ticket
+	var runs []domain.Ticket
 	c.PassUntil(func() bool {
 		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
 		return len(runs) == 1
 	}, "scan handler did not start a run")
-	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	rf, err := domain.DecodeFields[domain.RunFields](runs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "sc-"+blocked.ID, rf.Key)
 	assert.Equal(t, "blocked", rf.Vars["signal"])
@@ -762,7 +763,7 @@ triggers:
 	c.Pass(3)
 	c.Call(rpc.MethodRunList, rpc.RunListParams{}, &runs)
 	require.Len(t, runs, 1, "max_runs must count handler runs")
-	assert.Equal(t, store.StatusClosed, runs[0].Status)
+	assert.Equal(t, domain.StatusClosed, runs[0].Status)
 }
 
 func TestSyncHandlers(t *testing.T) {
@@ -799,12 +800,12 @@ desk_commands:
 		c.Call(rpc.MethodGuard, rpc.GuardParams{Action: "push", Target: target}, &r)
 		return r
 	}
-	assert.Equal(t, rpc.GuardResult{Decision: rpc.GuardDeny, Reason: "push needs a target"}, guard(""))
-	assert.Equal(t, rpc.GuardResult{Decision: rpc.GuardDeny, Reason: "no push to master"}, guard("master"))
-	assert.Equal(t, rpc.GuardAllow, guard("feature").Decision)
+	assert.Equal(t, rpc.GuardResult{Decision: domain.GuardDeny, Reason: "push needs a target"}, guard(""))
+	assert.Equal(t, rpc.GuardResult{Decision: domain.GuardDeny, Reason: "no push to master"}, guard("master"))
+	assert.Equal(t, domain.GuardAllow, guard("feature").Decision)
 	var other rpc.GuardResult
 	c.Call(rpc.MethodGuard, rpc.GuardParams{Action: "comment"}, &other)
-	assert.Equal(t, rpc.GuardAllow, other.Decision, "actions limits the hook")
+	assert.Equal(t, domain.GuardAllow, other.Decision, "actions limits the hook")
 
 	var res rpc.DeskExecResult
 	c.Call(rpc.MethodDeskExec, rpc.DeskExecParams{Name: "state", Input: []byte(`{"a":1}`)}, &res)
@@ -827,7 +828,7 @@ desk_commands:
 	c.Call(rpc.MethodAutomationList, rpc.AutomationListParams{State: hooks.SyncDone}, &records)
 	assert.Empty(t, records)
 	err = c.Admin.Call(t.Context(), rpc.MethodAutomationShow, rpc.IDParams{ID: trace.Invocation.Key}, nil)
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 // A script scan signal returns subject -> detail; an issue with an open
@@ -880,18 +881,18 @@ workflows:
 	c.Call(rpc.MethodRunStart, rpc.RunStartParams{Workflow: "issue", Vars: map[string]string{"issue": "8"}}, nil)
 	writePack(packBase + scan)
 	c.Call(rpc.MethodReload, struct{}{}, nil)
-	var runs []store.Ticket
-	scanRuns := func() []store.Ticket {
-		var all []store.Ticket
+	var runs []domain.Ticket
+	scanRuns := func() []domain.Ticket {
+		var all []domain.Ticket
 		c.Call(rpc.MethodRunList, rpc.RunListParams{}, &all)
-		runs = slices.DeleteFunc(all, func(r store.Ticket) bool {
-			rf, err := store.DecodeFields[store.RunFields](r)
+		runs = slices.DeleteFunc(all, func(r domain.Ticket) bool {
+			rf, err := domain.DecodeFields[domain.RunFields](r)
 			return err != nil || rf.Workflow != "triage"
 		})
 		return runs
 	}
 	c.PassUntil(func() bool { return len(scanRuns()) == 1 }, "script signal did not start a run")
-	rf, err := store.DecodeFields[store.RunFields](runs[0])
+	rf, err := domain.DecodeFields[domain.RunFields](runs[0])
 	require.NoError(t, err)
 	assert.Equal(t, "7", rf.Vars["subject"], "issue 8 has an open run")
 	assert.Equal(t, "open, no run", rf.Vars["detail"])
@@ -931,19 +932,19 @@ def handle(event, args):
 	c.Call(rpc.MethodReload, struct{}{}, nil)
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: first.ID}, nil)
 	runState := func() string {
-		f, err := store.DecodeFields[store.RunFields](hookRun(t, c, run.Run.ID).Run)
+		f, err := domain.DecodeFields[domain.RunFields](hookRun(t, c, run.Run.ID).Run)
 		require.NoError(t, err)
 		return f.State
 	}
-	c.PassUntil(func() bool { return runState() == store.RunNeedsHuman }, "changed callbacks did not stop the run")
+	c.PassUntil(func() bool { return runState() == domain.RunNeedsHuman }, "changed callbacks did not stop the run")
 
 	err = c.Admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: run.Run.ID}, nil)
 	require.Error(t, err, "plain resume must not adopt the changed manifest")
-	assert.Equal(t, store.RunNeedsHuman, runState())
+	assert.Equal(t, domain.RunNeedsHuman, runState())
 
 	require.NoError(t, c.Admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: run.Run.ID, Repin: true}, nil))
 	c.PassUntil(func() bool { return len(hookRun(t, c, run.Run.ID).Steps) == 2 }, "repinned run did not create its second step")
-	assert.Equal(t, store.RunRunning, runState())
+	assert.Equal(t, domain.RunRunning, runState())
 	var shown rpc.ShowResult
 	c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: run.Run.ID}, &shown)
 	var repinned bool
@@ -952,5 +953,5 @@ def handle(event, args):
 	}
 	assert.True(t, repinned, "the repin is logged as a run comment")
 	c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: hookRun(t, c, run.Run.ID).Steps[1].ID}, nil)
-	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == store.StatusClosed }, "repinned run did not finish")
+	c.PassUntil(func() bool { return hookRun(t, c, run.Run.ID).Run.Status == domain.StatusClosed }, "repinned run did not finish")
 }

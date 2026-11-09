@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
-	"github.com/elee1766/jobshop/pkg/rpc"
 )
 
 func TestHookURLControllerConfiguration(t *testing.T) {
@@ -37,5 +37,5 @@ func TestHookURLControllerConfiguration(t *testing.T) {
 	require.NoError(t, err)
 	c.live.Store(lc)
 	got := c.runHooks(t.Context(), c.config(), hooks.GuardEvent{On: config.HookAction, Action: "push"})
-	assert.Equal(t, hooks.Answer{Decision: rpc.GuardDeny, Reason: "remote says no"}, got)
+	assert.Equal(t, hooks.Answer{Decision: domain.GuardDeny, Reason: "remote says no"}, got)
 }

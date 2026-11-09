@@ -25,6 +25,7 @@ import (
 	"github.com/elee1766/acphost/pkg/userns"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
@@ -174,7 +175,7 @@ type IngestClaimParams struct {
 // human already closed a hold for the item, so validating hooks are
 // skipped.
 type IngestClaimResult struct {
-	Item     *store.InboxItem       `json:"item,omitempty"`
+	Item     *domain.InboxItem      `json:"item,omitempty"`
 	Hooks    []config.AdmissionHook `json:"hooks,omitempty"`
 	Project  string                 `json:"project,omitempty"`
 	Answered bool                   `json:"answered,omitempty"`
@@ -270,7 +271,7 @@ type ActivityRecordParams struct {
 // CreateParams creates a ticket. Project defaults to the caller's project.
 type CreateParams struct {
 	Project  string          `json:"project,omitempty"`
-	Kind     store.Kind      `json:"kind,omitempty"` // default task
+	Kind     domain.Kind     `json:"kind,omitempty"` // default task
 	Title    string          `json:"title"`
 	Body     string          `json:"body,omitempty"`
 	Priority *int            `json:"priority,omitempty"`
@@ -292,23 +293,23 @@ type IDParams struct {
 
 // ShowResult is a ticket with its relations and timeline.
 type ShowResult struct {
-	Ticket   store.Ticket         `json:"ticket"`
-	Edges    []store.Edge         `json:"edges"`
-	Comments []store.Comment      `json:"comments"`
+	Ticket   domain.Ticket        `json:"ticket"`
+	Edges    []domain.Edge        `json:"edges"`
+	Comments []domain.Comment     `json:"comments"`
 	History  []store.HistoryEntry `json:"history"`
 }
 
 // ListParams filters tickets.
 type ListParams struct {
 	// Query matches literal case-insensitive terms in id, title, body, fields and metadata.
-	Query    string       `json:"query,omitempty"`
-	Project  string       `json:"project,omitempty"`
-	Kind     store.Kind   `json:"kind,omitempty"`
-	Status   store.Status `json:"status,omitempty"`
-	Pool     string       `json:"pool,omitempty"`
-	Holder   string       `json:"holder,omitempty"`
-	ParentID string       `json:"parent_id,omitempty"`
-	Label    string       `json:"label,omitempty"`
+	Query    string        `json:"query,omitempty"`
+	Project  string        `json:"project,omitempty"`
+	Kind     domain.Kind   `json:"kind,omitempty"`
+	Status   domain.Status `json:"status,omitempty"`
+	Pool     string        `json:"pool,omitempty"`
+	Holder   string        `json:"holder,omitempty"`
+	ParentID string        `json:"parent_id,omitempty"`
+	Label    string        `json:"label,omitempty"`
 	// Meta matches "pack.key" to a string value, all required, at most
 	// store.MaxMetaFilters (#541). A plugin keeps state in meta.<plugin>
 	// and lists it back with this.
@@ -377,8 +378,8 @@ type UpsertParams struct {
 // UpsertResult is the ticket and what happened: created, updated,
 // unchanged, closed or none (Close with no open ticket).
 type UpsertResult struct {
-	Op     string        `json:"op"`
-	Ticket *store.Ticket `json:"ticket,omitempty"`
+	Op     string         `json:"op"`
+	Ticket *domain.Ticket `json:"ticket,omitempty"`
 }
 
 // CloseParams closes a ticket. In a session scope the session must hold it.
@@ -403,9 +404,9 @@ type CommentParams struct {
 
 // EdgeParams adds or removes an edge.
 type EdgeParams struct {
-	From string         `json:"from"`
-	To   string         `json:"to"`
-	Kind store.EdgeKind `json:"kind"`
+	From string          `json:"from"`
+	To   string          `json:"to"`
+	Kind domain.EdgeKind `json:"kind"`
 }
 
 // LabelParams adds or removes a label.
@@ -425,8 +426,8 @@ type ClaimParams struct {
 
 // ClaimResult is the claimed ticket and its fence.
 type ClaimResult struct {
-	Ticket store.Ticket `json:"ticket"`
-	Claim  store.Claim  `json:"claim"`
+	Ticket domain.Ticket `json:"ticket"`
+	Claim  store.Claim   `json:"claim"`
 }
 
 // SubscribeParams makes a ticket (default: the session's current one)
@@ -527,8 +528,8 @@ type ShutdownParams struct {
 
 // SessionNewResult names the new session and where its socket is.
 type SessionNewResult struct {
-	Ticket store.Ticket `json:"ticket"`
-	Socket string       `json:"socket"`
+	Ticket domain.Ticket `json:"ticket"`
+	Socket string        `json:"socket"`
 }
 
 // SessionListParams selects sessions. All includes closed session tickets.
@@ -615,17 +616,17 @@ type SessionInfo struct {
 	ID string `json:"id"`
 	// DisplayName is the session's label (#626): its own, or a default
 	// from pool and ticket titles. Not unique.
-	DisplayName string        `json:"display_name,omitempty"`
-	Ticket      *store.Ticket `json:"ticket,omitempty"`
-	Orphan      bool          `json:"orphan,omitempty"`
-	Alive       bool          `json:"alive"`
-	HostPid     int           `json:"host_pid,omitempty"`
-	AgentPid    int           `json:"agent_pid,omitempty"` // known once a driver connected
-	Current     string        `json:"current,omitempty"`   // ticket the session holds
-	Seq         int64         `json:"seq,omitempty"`       // last journal sequence number
-	SeqTime     *time.Time    `json:"seq_time,omitempty"`
-	Exit        string        `json:"exit,omitempty"`    // exit.json reason, for dead hosts
-	Drained     bool          `json:"drained,omitempty"` // takes no new tickets
+	DisplayName string         `json:"display_name,omitempty"`
+	Ticket      *domain.Ticket `json:"ticket,omitempty"`
+	Orphan      bool           `json:"orphan,omitempty"`
+	Alive       bool           `json:"alive"`
+	HostPid     int            `json:"host_pid,omitempty"`
+	AgentPid    int            `json:"agent_pid,omitempty"` // known once a driver connected
+	Current     string         `json:"current,omitempty"`   // ticket the session holds
+	Seq         int64          `json:"seq,omitempty"`       // last journal sequence number
+	SeqTime     *time.Time     `json:"seq_time,omitempty"`
+	Exit        string         `json:"exit,omitempty"`    // exit.json reason, for dead hosts
+	Drained     bool           `json:"drained,omitempty"` // takes no new tickets
 	// Cordon is the session's cordon reason (scale, manual, drain), empty
 	// while in rotation (#281).
 	Cordon string `json:"cordon,omitempty"`
@@ -698,14 +699,14 @@ var codes = []struct {
 	code int
 	err  error
 }{
-	{CodeNotFound, store.ErrNotFound},
-	{CodeConflict, store.ErrConflict},
-	{CodeNotHolder, store.ErrNotHolder},
-	{CodeNoWork, store.ErrNoWork},
-	{CodeInvalid, store.ErrInvalid},
-	{CodeCycle, store.ErrCycle},
-	{CodeClosed, store.ErrClosed},
-	{CodeAlreadyExist, store.ErrAlreadyExist},
+	{CodeNotFound, domain.ErrNotFound},
+	{CodeConflict, domain.ErrConflict},
+	{CodeNotHolder, domain.ErrNotHolder},
+	{CodeNoWork, domain.ErrNoWork},
+	{CodeInvalid, domain.ErrInvalid},
+	{CodeCycle, domain.ErrCycle},
+	{CodeClosed, domain.ErrClosed},
+	{CodeAlreadyExist, domain.ErrAlreadyExist},
 	{CodeForbidden, ErrForbidden},
 }
 
@@ -870,11 +871,11 @@ const MaxActor = 256
 // text, no control characters.
 func ValidActor(a string) error {
 	if a == "" || len(a) > MaxActor || !utf8.ValidString(a) {
-		return fmt.Errorf("%w: actor must be 1 to %d bytes of UTF-8", store.ErrInvalid, MaxActor)
+		return fmt.Errorf("%w: actor must be 1 to %d bytes of UTF-8", domain.ErrInvalid, MaxActor)
 	}
 	for _, r := range a {
 		if !unicode.IsPrint(r) {
-			return fmt.Errorf("%w: actor has a non-printable character", store.ErrInvalid)
+			return fmt.Errorf("%w: actor has a non-printable character", domain.ErrInvalid)
 		}
 	}
 	return nil
@@ -1053,21 +1054,21 @@ type SessionCloseParams struct {
 // SessionCloseResult names the tickets the session held and, unless
 // DryRun, the closed session ticket.
 type SessionCloseResult struct {
-	ID      string        `json:"id"`
-	DryRun  bool          `json:"dry_run,omitempty"`
-	Held    []HeldTicket  `json:"held"`
-	Session *store.Ticket `json:"session,omitempty"`
+	ID      string         `json:"id"`
+	DryRun  bool           `json:"dry_run,omitempty"`
+	Held    []HeldTicket   `json:"held"`
+	Session *domain.Ticket `json:"session,omitempty"`
 }
 
 // HeldTicket is a ticket a closing session held: claimed (in_progress) or
 // pre-assigned (open). Pool is where it goes; empty when it has none and
 // is only released.
 type HeldTicket struct {
-	ID     string       `json:"id"`
-	Title  string       `json:"title"`
-	Kind   store.Kind   `json:"kind"`
-	Status store.Status `json:"status"`
-	Pool   string       `json:"pool,omitempty"`
+	ID     string        `json:"id"`
+	Title  string        `json:"title"`
+	Kind   domain.Kind   `json:"kind"`
+	Status domain.Status `json:"status"`
+	Pool   string        `json:"pool,omitempty"`
 }
 
 // SessionRenameParams sets a session's display name (#626). ID empty
@@ -1145,7 +1146,7 @@ type GraphExternal struct {
 
 // GraphNode carries a ticket and links found in its body and comments.
 type GraphNode struct {
-	store.Ticket
+	domain.Ticket
 	Links []string `json:"links,omitempty"`
 }
 
@@ -1220,15 +1221,15 @@ type TimelineMarker struct {
 // TimelineRow is one ticket: a bar of segments. Rows come in tree order
 // (a run, its steps, what they created) and Depth is the nesting.
 type TimelineRow struct {
-	ID         string       `json:"id"`
-	Kind       store.Kind   `json:"kind"`
-	Title      string       `json:"title,omitempty"`
-	Pool       string       `json:"pool,omitempty"`
-	Status     store.Status `json:"status"`
-	Resolution string       `json:"resolution,omitempty"`
-	Parent     string       `json:"parent,omitempty"`
-	Depth      int          `json:"depth"`
-	CreatedAt  time.Time    `json:"created_at"`
+	ID         string        `json:"id"`
+	Kind       domain.Kind   `json:"kind"`
+	Title      string        `json:"title,omitempty"`
+	Pool       string        `json:"pool,omitempty"`
+	Status     domain.Status `json:"status"`
+	Resolution string        `json:"resolution,omitempty"`
+	Parent     string        `json:"parent,omitempty"`
+	Depth      int           `json:"depth"`
+	CreatedAt  time.Time     `json:"created_at"`
 	// Started is the first claim, zero when it was never claimed.
 	Started  time.Time `json:"started,omitzero"`
 	ClosedAt time.Time `json:"closed_at,omitzero"`
@@ -1271,25 +1272,25 @@ type TimelineResult struct {
 // TraceNode is one ticket in a trace: how it came to be, what it links to
 // and the tickets it led to.
 type TraceNode struct {
-	Kind       store.Kind   `json:"kind"`
-	CreatedAt  time.Time    `json:"created_at"`
-	UpdatedAt  time.Time    `json:"updated_at"`
-	ClosedAt   time.Time    `json:"closed_at,omitzero"`
-	ID         string       `json:"id"`
-	Title      string       `json:"title,omitempty"`
-	Pool       string       `json:"pool,omitempty"`
-	Status     store.Status `json:"status"`
-	Resolution string       `json:"resolution,omitempty"`
-	CreatedBy  string       `json:"created_by,omitempty"`
-	Trigger    string       `json:"trigger,omitempty"` // meta.trigger.name
+	Kind       domain.Kind   `json:"kind"`
+	CreatedAt  time.Time     `json:"created_at"`
+	UpdatedAt  time.Time     `json:"updated_at"`
+	ClosedAt   time.Time     `json:"closed_at,omitzero"`
+	ID         string        `json:"id"`
+	Title      string        `json:"title,omitempty"`
+	Pool       string        `json:"pool,omitempty"`
+	Status     domain.Status `json:"status"`
+	Resolution string        `json:"resolution,omitempty"`
+	CreatedBy  string        `json:"created_by,omitempty"`
+	Trigger    string        `json:"trigger,omitempty"` // meta.trigger.name
 	// Sessions that claimed the ticket, oldest first.
 	Holders []string `json:"holders,omitempty"`
 	// Holder is the session holding the ticket now (JOB-54).
 	Holder string `json:"holder,omitempty"`
 	// Session is the holder's display name and busy state, filled by
 	// Desk (JOB-54); the controller leaves it empty.
-	Session *HolderInfo  `json:"session,omitempty"`
-	Edges   []store.Edge `json:"edges,omitempty"`
+	Session *HolderInfo   `json:"session,omitempty"`
+	Edges   []domain.Edge `json:"edges,omitempty"`
 	// GitHub issue and PR URLs found in the body and comments.
 	Links    []string    `json:"links,omitempty"`
 	Children []TraceNode `json:"children,omitempty"`
@@ -1371,13 +1372,13 @@ type RunStartParams struct {
 
 // RunResult is a run ticket and its steps in order.
 type RunResult struct {
-	Run   store.Ticket   `json:"run"`
-	Steps []store.Ticket `json:"steps"`
-	Links []string       `json:"links,omitempty"`
+	Run   domain.Ticket   `json:"run"`
+	Steps []domain.Ticket `json:"steps"`
+	Links []string        `json:"links,omitempty"`
 	// Existing is true when start returned an open run for the key.
 	Existing bool `json:"existing,omitempty"`
 	// Waits are steps held back by a full resource (#408).
-	Waits []store.ResourceWait `json:"waits,omitempty"`
+	Waits []domain.ResourceWait `json:"waits,omitempty"`
 }
 
 // BatchStartParams starts one run per issue under a batch ticket (#169).
@@ -1393,8 +1394,8 @@ type BatchStartParams struct {
 
 // BatchResult is a batch ticket and its member runs in issue order.
 type BatchResult struct {
-	Batch store.Ticket `json:"batch"`
-	Runs  []RunResult  `json:"runs"`
+	Batch domain.Ticket `json:"batch"`
+	Runs  []RunResult   `json:"runs"`
 	// Existing is true when start returned an open batch for the key.
 	Existing bool `json:"existing,omitempty"`
 	// Adopted lists runs that existed and were re-parented.
@@ -1450,9 +1451,9 @@ type SessionSendParams struct {
 
 // SessionSendResult names the session and the message ticket.
 type SessionSendResult struct {
-	Session string       `json:"session"`
-	Message store.Ticket `json:"message"`
-	Started bool         `json:"started,omitempty"` // the send started the session
+	Session string        `json:"session"`
+	Message domain.Ticket `json:"message"`
+	Started bool          `json:"started,omitempty"` // the send started the session
 }
 
 // SessionSubscribeParams streams a session's events after SinceSeq. The
@@ -1508,7 +1509,7 @@ type SessionEvent struct {
 	Tool       *ToolSummary    `json:"tool,omitempty"`
 	StopReason string          `json:"stop_reason,omitempty"`
 	Error      string          `json:"error,omitempty"`
-	Status     store.Status    `json:"status,omitempty"`
+	Status     domain.Status   `json:"status,omitempty"`
 	Resolution string          `json:"resolution,omitempty"`
 	Usage      *Usage          `json:"usage,omitempty"`
 }
@@ -1657,9 +1658,9 @@ type Event struct {
 	ID         string            `json:"id,omitempty"`
 	Revision   int64             `json:"revision,omitempty"`
 	Actor      string            `json:"actor,omitempty"`
-	TicketKind store.Kind        `json:"ticket_kind,omitempty"`
+	TicketKind domain.Kind       `json:"ticket_kind,omitempty"`
 	Label      string            `json:"label,omitempty"` // label_add, label_remove
-	Status     store.Status      `json:"status,omitempty"`
+	Status     domain.Status     `json:"status,omitempty"`
 	Resolution string            `json:"resolution,omitempty"`
 	State      string            `json:"state,omitempty"` // run state
 	Labels     []string          `json:"labels,omitempty"`
@@ -1756,8 +1757,8 @@ type AttentionItem struct {
 	Summary string `json:"summary,omitempty"`
 	// Context and Options are a question's meta.question context
 	// (markdown) and suggested answers (JOB-101).
-	Context string           `json:"context,omitempty"`
-	Options []QuestionOption `json:"options,omitempty"`
+	Context string                  `json:"context,omitempty"`
+	Options []domain.QuestionOption `json:"options,omitempty"`
 }
 
 // Desk controller methods keep mutations independent of the browser.
@@ -1881,23 +1882,16 @@ type SessionIncident struct {
 
 // StepIncident is a run step with at least one failed attempt.
 type StepIncident struct {
-	ID         string       `json:"id"`
-	Run        string       `json:"run"`
-	Step       string       `json:"step"`
-	Title      string       `json:"title,omitempty"`
-	Status     store.Status `json:"status"`
-	Resolution string       `json:"resolution,omitempty"`
-	Failures   int          `json:"failures"`
-	Retries    int          `json:"retries"`
-	LastError  string       `json:"last_error,omitempty"` // last comment
+	ID         string        `json:"id"`
+	Run        string        `json:"run"`
+	Step       string        `json:"step"`
+	Title      string        `json:"title,omitempty"`
+	Status     domain.Status `json:"status"`
+	Resolution string        `json:"resolution,omitempty"`
+	Failures   int           `json:"failures"`
+	Retries    int           `json:"retries"`
+	LastError  string        `json:"last_error,omitempty"` // last comment
 }
-
-// Guard decisions (#188).
-const (
-	GuardAllow    = "allow"
-	GuardDeny     = "deny"
-	GuardAskHuman = "ask_human"
-)
 
 // SecretScanParams are texts an outbound write would send (#574, #578).
 // The controller scans them with the configured rules.
@@ -1969,27 +1963,15 @@ type ReportParams struct {
 	Context string `json:"context,omitempty"`
 	// Options are suggested answers, at most MaxQuestionOptions. Their
 	// IDs are assigned 1..n in order.
-	Options []QuestionOption `json:"options,omitempty"`
+	Options []domain.QuestionOption `json:"options,omitempty"`
 	// Until (waiting only) releases the ticket deferred until then.
 	Until *time.Time `json:"until,omitempty"`
 }
 
-// MaxQuestionOptions bounds the options on one question.
-const MaxQuestionOptions = 5
-
-// QuestionOption is a suggested answer to a question (JOB-101).
-// Recommended marks the asker's pick.
-type QuestionOption struct {
-	ID          int    `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
-	Recommended bool   `json:"recommended,omitempty"`
-}
-
 // ReportResult is the reported ticket and the question filed, if any.
 type ReportResult struct {
-	Ticket   store.Ticket  `json:"ticket"`
-	Question *store.Ticket `json:"question,omitempty"`
+	Ticket   domain.Ticket  `json:"ticket"`
+	Question *domain.Ticket `json:"question,omitempty"`
 }
 
 // AnswerParams answers a question ticket (admin).
@@ -2005,8 +1987,8 @@ type AnswerParams struct {
 // AnswerResult is the closed question and the message to the asking
 // session (nil when that session has ended).
 type AnswerResult struct {
-	Question store.Ticket  `json:"question"`
-	Message  *store.Ticket `json:"message,omitempty"`
+	Question domain.Ticket  `json:"question"`
+	Message  *domain.Ticket `json:"message,omitempty"`
 }
 
 // LearnParams records a learning (#264). Kind is correction, failure or
@@ -2114,13 +2096,13 @@ const (
 // until the conditions hold. A held ticket is released without counting
 // a step failure.
 type WaitAddParams struct {
-	ID      string           `json:"id,omitempty"`
-	Conds   []store.WaitCond `json:"conds"`
-	Any     bool             `json:"any,omitempty"`
-	Reason  string           `json:"reason"`
-	Owner   string           `json:"owner,omitempty"`
-	Resume  bool             `json:"resume,omitempty"`
-	Timeout *time.Time       `json:"timeout,omitempty"`
+	ID      string            `json:"id,omitempty"`
+	Conds   []domain.WaitCond `json:"conds"`
+	Any     bool              `json:"any,omitempty"`
+	Reason  string            `json:"reason"`
+	Owner   string            `json:"owner,omitempty"`
+	Resume  bool              `json:"resume,omitempty"`
+	Timeout *time.Time        `json:"timeout,omitempty"`
 }
 
 // WaitListParams lists waiting tickets; Project empty is all (admin) or
@@ -2131,10 +2113,10 @@ type WaitListParams struct {
 
 // WaitItem is one waiting ticket.
 type WaitItem struct {
-	ID      string     `json:"id"`
-	Project string     `json:"project"`
-	Title   string     `json:"title"`
-	Wait    store.Wait `json:"wait"`
+	ID      string      `json:"id"`
+	Project string      `json:"project"`
+	Title   string      `json:"title"`
+	Wait    domain.Wait `json:"wait"`
 }
 
 // WaitClearParams removes a ticket's wait; the ticket becomes ready.
@@ -2168,8 +2150,8 @@ type DecisionResolveParams struct {
 // DecisionResolveResult is the closed decision ticket and the tickets
 // whose deferral was cleared.
 type DecisionResolveResult struct {
-	Ticket     store.Ticket `json:"ticket"`
-	Undeferred []string     `json:"undeferred,omitempty"`
+	Ticket     domain.Ticket `json:"ticket"`
+	Undeferred []string      `json:"undeferred,omitempty"`
 }
 
 // Resource slot methods (#407): a resource provider adds, removes and
@@ -2191,14 +2173,14 @@ type SlotParams struct {
 
 // SlotResult is resource.unhealthy: the slot and the ticket requeued.
 type SlotResult struct {
-	Slot     store.Slot `json:"slot"`
-	Requeued string     `json:"requeued,omitempty"`
+	Slot     domain.Slot `json:"slot"`
+	Requeued string      `json:"requeued,omitempty"`
 }
 
 // ResourceListResult is resource.list.
 type ResourceListResult struct {
-	Slots []store.Slot        `json:"slots"`
-	Use   []store.ResourceUse `json:"use"`
+	Slots []domain.Slot        `json:"slots"`
+	Use   []domain.ResourceUse `json:"use"`
 }
 
 // Artifact methods (#508): deliverables a human reads and acks in Desk.
@@ -2246,16 +2228,16 @@ type ArtifactListParams struct {
 
 // Artifact is one artifact ticket with its parsed meta.
 type Artifact struct {
-	Ticket store.Ticket `json:"ticket"`
-	Meta   ArtifactMeta `json:"artifact"`
-	Read   bool         `json:"read"`
+	Ticket domain.Ticket `json:"ticket"`
+	Meta   ArtifactMeta  `json:"artifact"`
+	Read   bool          `json:"read"`
 }
 
 // ArtifactShowResult is artifact.show: the artifact, its comments and
 // history, and the attachment dir (admin only; Desk serves files from it).
 type ArtifactShowResult struct {
 	Artifact
-	Comments []store.Comment      `json:"comments"`
+	Comments []domain.Comment     `json:"comments"`
 	History  []store.HistoryEntry `json:"history"`
 	Dir      string               `json:"dir,omitempty"`
 }

@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func startBatch(t *testing.T, admin *rpc.Client, p rpc.BatchStartParams) rpc.BatchResult {
@@ -28,16 +28,16 @@ func TestBatchStartOrder(t *testing.T) {
 	admin := runRoot(t)
 	r := startBatch(t, admin, rpc.BatchStartParams{Key: "track", Workflow: "pr", Issues: []string{"1", "2", "3"}, Order: []string{"1>2>3"}})
 	require.Len(t, r.Runs, 3)
-	assert.Equal(t, store.KindBatch, r.Batch.Kind)
+	assert.Equal(t, domain.KindBatch, r.Batch.Kind)
 	assert.Empty(t, r.Batch.Pool)
-	f, err := store.DecodeFields[store.BatchFields](r.Batch)
+	f, err := domain.DecodeFields[domain.BatchFields](r.Batch)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"1", "2", "3"}, f.Issues)
 	assert.Equal(t, [][2]string{{"1", "2"}, {"2", "3"}}, f.Order)
-	assert.Equal(t, store.BatchOpen, f.State)
+	assert.Equal(t, domain.BatchOpen, f.State)
 	for i, run := range r.Runs {
 		assert.Equal(t, r.Batch.ID, run.Run.ParentID)
-		rf, err := store.DecodeFields[store.RunFields](run.Run)
+		rf, err := domain.DecodeFields[domain.RunFields](run.Run)
 		require.NoError(t, err)
 		assert.Equal(t, "issue-"+f.Issues[i], rf.Key)
 	}
@@ -87,7 +87,7 @@ func TestBatchStartAdoptClaimed(t *testing.T) {
 	err := admin.Call(t.Context(), rpc.MethodBatchStart, rpc.BatchStartParams{Key: "k", Workflow: "pr", Issues: []string{"1", "2"}, Order: []string{"1>2"}}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), old.Steps[0].ID)
-	var runs []store.Ticket
+	var runs []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
 	assert.Len(t, runs, 1, "no run for issue 1 was created")
 	assert.Empty(t, showRun(t, admin, old.Run.ID).Run.ParentID)
@@ -110,7 +110,7 @@ func TestBatchStartInvalid(t *testing.T) {
 	} {
 		assert.Error(t, admin.Call(t.Context(), rpc.MethodBatchStart, p, nil), "%+v", p)
 	}
-	var runs []store.Ticket
+	var runs []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunList, rpc.RunListParams{}, &runs))
 	assert.Empty(t, runs)
 }
@@ -124,7 +124,7 @@ func showBatch(t *testing.T, admin *rpc.Client, id string) rpc.BatchResult {
 
 func batchState(t *testing.T, r rpc.BatchResult) string {
 	t.Helper()
-	f, err := store.DecodeFields[store.BatchFields](r.Batch)
+	f, err := domain.DecodeFields[domain.BatchFields](r.Batch)
 	require.NoError(t, err)
 	return f.State
 }
@@ -144,26 +144,26 @@ func TestBatchStateDone(t *testing.T) {
 	a, b := r.Runs[0], r.Runs[1]
 
 	s := showBatch(t, admin, "track")
-	assert.Equal(t, store.BatchOpen, batchState(t, s))
+	assert.Equal(t, domain.BatchOpen, batchState(t, s))
 	assert.Equal(t, []string{"1"}, s.BlockedBy[b.Run.ID])
 	assert.Empty(t, s.BlockedBy[a.Run.ID])
 
 	require.NoError(t, claimID(t, admin, a.Steps[0].ID))
-	assert.Equal(t, store.BatchRunning, batchState(t, showBatch(t, admin, r.Batch.ID)))
+	assert.Equal(t, domain.BatchRunning, batchState(t, showBatch(t, admin, r.Batch.ID)))
 
 	finishRun(t, admin, a)
 	s = showBatch(t, admin, r.Batch.ID)
-	assert.Equal(t, store.BatchRunning, batchState(t, s))
+	assert.Equal(t, domain.BatchRunning, batchState(t, s))
 	assert.Empty(t, s.BlockedBy[b.Run.ID])
-	assert.Equal(t, store.StatusOpen, s.Batch.Status)
+	assert.Equal(t, domain.StatusOpen, s.Batch.Status)
 
 	finishRun(t, admin, b)
 	s = showBatch(t, admin, r.Batch.ID)
-	assert.Equal(t, store.BatchDone, batchState(t, s))
-	assert.Equal(t, store.StatusClosed, s.Batch.Status)
+	assert.Equal(t, domain.BatchDone, batchState(t, s))
+	assert.Equal(t, domain.StatusClosed, s.Batch.Status)
 	assert.Equal(t, "done", s.Batch.Resolution)
 
-	var open []store.Ticket
+	var open []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodBatchList, rpc.BatchListParams{Project: "js"}, &open))
 	assert.Empty(t, open)
 }
@@ -178,18 +178,18 @@ func TestBatchStateNeedsHuman(t *testing.T) {
 		require.NoError(t, claimID(t, admin, a.Steps[0].ID))
 		closeStep(t, admin, a.Steps[0].ID, "failed")
 	}
-	assert.Equal(t, store.RunNeedsHuman, runState(t, showRun(t, admin, a.Run.ID)))
+	assert.Equal(t, domain.RunNeedsHuman, runState(t, showRun(t, admin, a.Run.ID)))
 	s := showBatch(t, admin, r.Batch.ID)
-	assert.Equal(t, store.BatchNeedsHuman, batchState(t, s))
-	assert.Equal(t, store.StatusOpen, s.Batch.Status)
+	assert.Equal(t, domain.BatchNeedsHuman, batchState(t, s))
+	assert.Equal(t, domain.StatusOpen, s.Batch.Status)
 
-	var esc []store.Ticket
+	var esc []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Project: "js", Label: "needs-human"}, &esc))
 	require.Len(t, esc, 1, "one escalation, for the run only")
 	assert.Equal(t, "Escalate run "+a.Run.ID, esc[0].Title)
 
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunResume, rpc.RunResumeParams{ID: a.Run.ID}, nil))
-	assert.Equal(t, store.BatchRunning, batchState(t, showBatch(t, admin, r.Batch.ID)))
+	assert.Equal(t, domain.BatchRunning, batchState(t, showBatch(t, admin, r.Batch.ID)))
 }
 
 // TestBatchStateFailed: a member run cancelled closes the batch failed.
@@ -198,8 +198,8 @@ func TestBatchStateFailed(t *testing.T) {
 	r := startBatch(t, admin, rpc.BatchStartParams{Key: "k", Workflow: "pr", Issues: []string{"1", "2"}})
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodRunCancel, rpc.IDParams{ID: r.Runs[1].Run.ID}, nil))
 	s := showBatch(t, admin, r.Batch.ID)
-	assert.Equal(t, store.BatchFailed, batchState(t, s))
-	assert.Equal(t, store.StatusClosed, s.Batch.Status)
+	assert.Equal(t, domain.BatchFailed, batchState(t, s))
+	assert.Equal(t, domain.StatusClosed, s.Batch.Status)
 	assert.Equal(t, "failed", s.Batch.Resolution)
 }
 
@@ -207,7 +207,7 @@ func TestBatchStateFailed(t *testing.T) {
 func TestBatchList(t *testing.T) {
 	admin := runRoot(t)
 	r := startBatch(t, admin, rpc.BatchStartParams{Key: "k", Workflow: "pr", Issues: []string{"1"}})
-	var open []store.Ticket
+	var open []domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodBatchList, rpc.BatchListParams{}, &open))
 	require.Len(t, open, 1)
 	assert.Equal(t, r.Batch.ID, open[0].ID)

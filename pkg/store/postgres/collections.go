@@ -14,6 +14,7 @@ import (
 
 	"github.com/nullism/bqb"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -194,7 +195,7 @@ func exec(ctx context.Context, db querier, q *bqb.Query) (int64, error) {
 
 func (c *collection) notFound(err error, key string) error {
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("%w: %s %s", store.ErrNotFound, c.spec.Name, key)
+		return fmt.Errorf("%w: %s %s", domain.ErrNotFound, c.spec.Name, key)
 	}
 	return err
 }
@@ -212,7 +213,7 @@ func (c *collection) where(f store.RecordFilter) (*bqb.Query, error) {
 	for _, n := range slices.Sorted(maps.Keys(f.Where)) {
 		fld, unique, ok := c.spec.Lookup(n)
 		if !ok {
-			return nil, fmt.Errorf("%w: collection %s: field %q is not declared", store.ErrInvalid, c.spec.Name, n)
+			return nil, fmt.Errorf("%w: collection %s: field %q is not declared", domain.ErrInvalid, c.spec.Name, n)
 		}
 		w.And(field(fld.Path)+" = ?", f.Where[n])
 		if unique {
@@ -255,7 +256,7 @@ func (c *collection) get(key string) *bqb.Query {
 
 func (c *collection) Put(ctx context.Context, r store.Record) (rec store.Record, created bool, err error) {
 	if r.Key == "" {
-		return rec, false, fmt.Errorf("%w: %s: record needs a key", store.ErrInvalid, c.spec.Name)
+		return rec, false, fmt.Errorf("%w: %s: record needs a key", domain.ErrInvalid, c.spec.Name)
 	}
 	if r.Value, err = c.spec.CheckValue(r.Value); err != nil {
 		return rec, false, err
@@ -300,7 +301,7 @@ func (c *collection) existingUnique(ctx context.Context, tx *sql.Tx, r store.Rec
 			return err
 		}
 	}
-	return fmt.Errorf("%w: %s %s: insert ignored but no conflicting record found", store.ErrConflict, c.spec.Name, r.Key)
+	return fmt.Errorf("%w: %s %s: insert ignored but no conflicting record found", domain.ErrConflict, c.spec.Name, r.Key)
 }
 
 func (c *collection) Get(ctx context.Context, key string) (store.Record, error) {
@@ -310,7 +311,7 @@ func (c *collection) Get(ctx context.Context, key string) (store.Record, error) 
 
 func (c *collection) Update(ctx context.Context, r store.Record) (rec store.Record, err error) {
 	if r.Key == "" {
-		return rec, fmt.Errorf("%w: %s: record needs a key", store.ErrInvalid, c.spec.Name)
+		return rec, fmt.Errorf("%w: %s: record needs a key", domain.ErrInvalid, c.spec.Name)
 	}
 	if r.Value, err = c.spec.CheckValue(r.Value); err != nil {
 		return rec, err
@@ -346,11 +347,11 @@ func (c *collection) whyNot(ctx context.Context, tx *sql.Tx, r store.Record, now
 	live := cur.Holder != "" && cur.LeaseUntil.After(now)
 	switch {
 	case r.Holder != "" && (!live || cur.Holder != r.Holder):
-		return fmt.Errorf("%w: %s %s is not leased to %s", store.ErrNotHolder, c.spec.Name, r.Key, r.Holder)
+		return fmt.Errorf("%w: %s %s is not leased to %s", domain.ErrNotHolder, c.spec.Name, r.Key, r.Holder)
 	case r.Holder == "" && live:
-		return fmt.Errorf("%w: %s %s is leased to %s", store.ErrNotHolder, c.spec.Name, r.Key, cur.Holder)
+		return fmt.Errorf("%w: %s %s is leased to %s", domain.ErrNotHolder, c.spec.Name, r.Key, cur.Holder)
 	}
-	return fmt.Errorf("%w: %s %s at revision %d, not %d", store.ErrConflict, c.spec.Name, r.Key, cur.Revision, r.Revision)
+	return fmt.Errorf("%w: %s %s at revision %d, not %d", domain.ErrConflict, c.spec.Name, r.Key, cur.Revision, r.Revision)
 }
 
 func (c *collection) List(ctx context.Context, f store.RecordFilter) ([]store.Record, error) {
@@ -391,7 +392,7 @@ func (c *collection) Count(ctx context.Context, f store.RecordFilter) (map[strin
 
 func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder string, lease time.Duration) (rec store.Record, err error) {
 	if f.Empty() || holder == "" || lease <= 0 {
-		return rec, fmt.Errorf("%w: %s: claim needs a filter, a holder and a lease", store.ErrInvalid, c.spec.Name)
+		return rec, fmt.Errorf("%w: %s: claim needs a filter, a holder and a lease", domain.ErrInvalid, c.spec.Name)
 	}
 	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		for range claimTries {
@@ -416,14 +417,14 @@ func (c *collection) Claim(ctx context.Context, f store.RecordFilter, holder str
 			}
 			return err
 		}
-		return fmt.Errorf("%w: %s: claim lost every race", store.ErrConflict, c.spec.Name)
+		return fmt.Errorf("%w: %s: claim lost every race", domain.ErrConflict, c.spec.Name)
 	})
 	return rec, err
 }
 
 func (c *collection) Renew(ctx context.Context, key, holder string, lease time.Duration) (rec store.Record, err error) {
 	if holder == "" || lease <= 0 {
-		return rec, fmt.Errorf("%w: %s: renew needs a holder and a lease", store.ErrInvalid, c.spec.Name)
+		return rec, fmt.Errorf("%w: %s: renew needs a holder and a lease", domain.ErrInvalid, c.spec.Name)
 	}
 	err = c.s.writeTx(ctx, func(tx *sql.Tx) error {
 		now := c.s.Now()
@@ -436,14 +437,14 @@ func (c *collection) Renew(ctx context.Context, key, holder string, lease time.D
 		if _, err := c.one(ctx, tx, c.get(key)); err != nil {
 			return c.notFound(err, key)
 		}
-		return fmt.Errorf("%w: %s %s is not leased to %s", store.ErrNotHolder, c.spec.Name, key, holder)
+		return fmt.Errorf("%w: %s %s is not leased to %s", domain.ErrNotHolder, c.spec.Name, key, holder)
 	})
 	return rec, err
 }
 
 func (c *collection) Delete(ctx context.Context, f store.RecordFilter) (n int, err error) {
 	if f.Empty() {
-		return 0, fmt.Errorf("%w: %s: delete needs a filter", store.ErrInvalid, c.spec.Name)
+		return 0, fmt.Errorf("%w: %s: delete needs a filter", domain.ErrInvalid, c.spec.Name)
 	}
 	w, err := c.where(f)
 	if err != nil {
@@ -463,11 +464,11 @@ const defaultSearchLimit = 10
 
 func (c *collection) Search(ctx context.Context, query string, limit int) ([]store.Record, error) {
 	if len(c.spec.Search) == 0 {
-		return nil, fmt.Errorf("%w: collection %s has no search fields", store.ErrInvalid, c.spec.Name)
+		return nil, fmt.Errorf("%w: collection %s has no search fields", domain.ErrInvalid, c.spec.Name)
 	}
 	words := strings.Fields(query)
 	if len(words) == 0 {
-		return nil, fmt.Errorf("%w: empty search query", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: empty search query", domain.ErrInvalid)
 	}
 	if limit <= 0 {
 		limit = defaultSearchLimit

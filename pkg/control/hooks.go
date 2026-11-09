@@ -7,12 +7,13 @@ import (
 	"slices"
 
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // enqueueHookEvents runs before acknowledging ingress. Re-delivery is harmless.
-func (c *Controller) enqueueHookEvents(ctx context.Context, items []store.InboxItem) error {
+func (c *Controller) enqueueHookEvents(ctx context.Context, items []domain.InboxItem) error {
 	lc := c.live.Load()
 	for _, it := range items {
 		ev := triggers.EventOf(it)
@@ -44,16 +45,16 @@ func (c *Controller) enqueueHookEvents(ctx context.Context, items []store.InboxI
 }
 
 func (c *Controller) enqueueRunHooks(ctx context.Context) error {
-	runs, err := c.store.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunRunning, Limit: store.NoLimit})
+	runs, err := c.store.List(ctx, store.Filter{Kind: domain.KindRun, State: domain.RunRunning, Limit: store.NoLimit})
 	if err != nil {
 		return err
 	}
 	for _, run := range runs {
-		f, err := store.DecodeFields[store.RunFields](run)
+		f, err := domain.DecodeFields[domain.RunFields](run)
 		if err != nil {
 			return err
 		}
-		if f.Automation == nil || run.Status == store.StatusClosed {
+		if f.Automation == nil || run.Status == domain.StatusClosed {
 			continue
 		}
 		children, err := store.Children(ctx, c.store, run.ID)

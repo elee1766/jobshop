@@ -24,6 +24,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/ingestqueue"
 	"github.com/elee1766/jobshop/pkg/control/threads"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -59,7 +60,7 @@ type e2eEnv struct {
 	clk  *scanClock
 	src  *fakeThreads
 	dir  string
-	sess store.Ticket
+	sess domain.Ticket
 }
 
 // e2eController opens a controller on dir (a fresh one when dir is "").
@@ -178,7 +179,7 @@ func (e *e2eEnv) drain(t *testing.T) ingest.DrainResult {
 	return res
 }
 
-func (e *e2eEnv) prompts(t *testing.T) []store.Ticket {
+func (e *e2eEnv) prompts(t *testing.T) []domain.Ticket {
 	t.Helper()
 	return messagesTo(t, e.c, e.sess.ID)
 }
@@ -218,8 +219,8 @@ func TestIngestE2ERestart(t *testing.T) {
 			msgs := e.prompts(t)
 			require.Len(t, msgs, 1, "dispatched exactly once")
 			assert.Contains(t, msgs[0].Body, "please rebase")
-			assert.NotContains(t, inboxStates(t, e.c), store.InboxPending)
-			assert.NotContains(t, inboxStates(t, e.c), store.InboxAdmitted)
+			assert.NotContains(t, inboxStates(t, e.c), domain.InboxPending)
+			assert.NotContains(t, inboxStates(t, e.c), domain.InboxAdmitted)
 		})
 	}
 }
@@ -270,7 +271,7 @@ func TestIngestE2ERedaction(t *testing.T) {
 	require.Len(t, msgs, 1)
 	assert.Contains(t, msgs[0].Body, "[redacted]")
 	assert.NotContains(t, msgs[0].Body, "hunter2")
-	tks, err := e.c.store.List(t.Context(), store.Filter{Kind: store.KindTask})
+	tks, err := e.c.store.List(t.Context(), store.Filter{Kind: domain.KindTask})
 	require.NoError(t, err)
 	for _, tk := range tks {
 		cs, err := store.Comments(t.Context(), e.c.store, tk.ID)
@@ -284,7 +285,7 @@ func TestIngestE2ERedaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, its, 2, "the webhook row and the poller row")
 	for _, it := range its {
-		assert.Equal(t, store.InboxDispatched, it.State, it.DeliveryID)
+		assert.Equal(t, domain.InboxDispatched, it.State, it.DeliveryID)
 		assert.Contains(t, string(it.Payload), "hunter2", "the raw payload stays")
 		assert.NotContains(t, string(it.Admitted), "hunter2")
 		var rs []ingestqueue.Result
@@ -302,7 +303,7 @@ func TestIngestE2EValidating(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		decision, state string
-	}{{"deny", store.InboxDenied}, {"ask_human", store.InboxHeld}} {
+	}{{"deny", domain.InboxDenied}, {"ask_human", domain.InboxHeld}} {
 		t.Run(tc.decision, func(t *testing.T) {
 			t.Parallel()
 			e := e2eController(t, "", nil, val("check", `echo '{"decision":"`+tc.decision+`","reason":"injection"}'`))
@@ -361,11 +362,11 @@ func TestIngestE2EHookTimeout(t *testing.T) {
 			assert.Equal(t, tc.decision, rs[0].Decision)
 			assert.Contains(t, rs[0].Error, "timed out")
 			if !tc.delivered {
-				assert.Equal(t, store.InboxDenied, its[0].State)
+				assert.Equal(t, domain.InboxDenied, its[0].State)
 				assert.Empty(t, e.prompts(t))
 				return
 			}
-			assert.Equal(t, store.InboxDispatched, its[0].State)
+			assert.Equal(t, domain.InboxDispatched, its[0].State)
 			assert.JSONEq(t, string(its[0].Payload), string(its[0].Admitted), "unchanged")
 			require.Len(t, e.prompts(t), 1)
 			assert.Contains(t, e.prompts(t)[0].Body, "hello there")
@@ -401,9 +402,9 @@ func TestIngestE2EURLHookSignature(t *testing.T) {
 		name, secret, policy, state string
 		delivered                   bool
 	}{
-		{"right secret", hookSecret, "", store.InboxDispatched, true},
-		{"wrong secret fail", "other", "", store.InboxDenied, false},
-		{"wrong secret ignore", "other", "ignore", store.InboxDispatched, true},
+		{"right secret", hookSecret, "", domain.InboxDispatched, true},
+		{"wrong secret fail", "other", "", domain.InboxDenied, false},
+		{"wrong secret ignore", "other", "ignore", domain.InboxDispatched, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

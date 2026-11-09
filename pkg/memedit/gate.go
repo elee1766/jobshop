@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // The curator gate's judgement (#274), moved out of pkg/control by the
@@ -33,13 +33,13 @@ const (
 // After it (after true) a cited learning is not a recurrence, however
 // it matches: the session that ships the fix records a learning about
 // it later, and that is not the problem coming back (#1061).
-func Metrics(steps []store.Ticket, ls []store.Learning, cited []store.Learning, pools []string, from, to time.Time, after bool) store.PoolMetrics {
-	m := store.PoolMetrics{From: from, To: to}
+func Metrics(steps []domain.Ticket, ls []domain.Learning, cited []domain.Learning, pools []string, from, to time.Time, after bool) domain.PoolMetrics {
+	m := domain.PoolMetrics{From: from, To: to}
 	inWin := func(t time.Time) bool { return !t.Before(from) && t.Before(to) }
 	runs := map[string]bool{}
 	ids := map[string]bool{}
 	for _, s := range steps {
-		if s.Kind != store.KindStep || !inWin(s.CreatedAt) || (len(pools) > 0 && !slices.Contains(pools, s.Pool)) {
+		if s.Kind != domain.KindStep || !inWin(s.CreatedAt) || (len(pools) > 0 && !slices.Contains(pools, s.Pool)) {
 			continue
 		}
 		m.Steps++
@@ -47,10 +47,10 @@ func Metrics(steps []store.Ticket, ls []store.Learning, cited []store.Learning, 
 		if s.ParentID != "" {
 			runs[s.ParentID] = true
 		}
-		if sf, err := store.DecodeFields[store.StepFields](s); err == nil {
+		if sf, err := domain.DecodeFields[domain.StepFields](s); err == nil {
 			m.Retries += sf.Failures
 		}
-		if s.Status == store.StatusClosed && s.Resolution == "failed" {
+		if s.Status == domain.StatusClosed && s.Resolution == "failed" {
 			m.Escalations++
 		}
 	}
@@ -65,7 +65,7 @@ func Metrics(steps []store.Ticket, ls []store.Learning, cited []store.Learning, 
 		if !inWin(l.CreatedAt) {
 			continue
 		}
-		if l.Kind == store.LearningCorrection && strings.HasPrefix(l.Summary, ReviewFindingPrefix) && ids[l.Ticket] {
+		if l.Kind == domain.LearningCorrection && strings.HasPrefix(l.Summary, ReviewFindingPrefix) && ids[l.Ticket] {
 			m.Findings++
 		}
 		if after && citedID[l.ID] {
@@ -86,22 +86,22 @@ func Metrics(steps []store.Ticket, ls []store.Learning, cited []store.Learning, 
 // cited problem recurs at least as often per step as before, or when
 // retries, escalations and review findings per step grew by more than
 // Worse. No steps after the merge is no evidence: it helped.
-func Decide(base, after store.PoolMetrics) (string, string) {
+func Decide(base, after domain.PoolMetrics) (string, string) {
 	if after.Steps == 0 {
-		return store.EditHelped, "no steps in the scoped pools since the merge"
+		return domain.EditHelped, "no steps in the scoped pools since the merge"
 	}
 	rb, ra := base.Rate(base.Recurrence), after.Rate(after.Recurrence)
 	if after.Recurrence > 0 && ra >= rb {
-		return store.EditNotHelped, fmt.Sprintf("cited problem still recurs: %d in %d steps after, %d in %d before",
+		return domain.EditNotHelped, fmt.Sprintf("cited problem still recurs: %d in %d steps after, %d in %d before",
 			after.Recurrence, after.Steps, base.Recurrence, base.Steps)
 	}
 	fb := base.Rate(base.Retries + base.Escalations + base.Findings)
 	fa := after.Rate(after.Retries + after.Escalations + after.Findings)
 	if fa > fb*Worse && fa > 0 && after.Retries+after.Escalations+after.Findings > 1 {
-		return store.EditNotHelped, fmt.Sprintf("failures per step rose from %.2f to %.2f (retries %d, escalations %d, findings %d in %d steps)",
+		return domain.EditNotHelped, fmt.Sprintf("failures per step rose from %.2f to %.2f (retries %d, escalations %d, findings %d in %d steps)",
 			fb, fa, after.Retries, after.Escalations, after.Findings, after.Steps)
 	}
-	return store.EditHelped, fmt.Sprintf("recurrence %d in %d steps (before %d in %d), failures per step %.2f (before %.2f)",
+	return domain.EditHelped, fmt.Sprintf("recurrence %d in %d steps (before %d in %d), failures per step %.2f (before %.2f)",
 		after.Recurrence, after.Steps, base.Recurrence, base.Steps, fa, fb)
 }
 

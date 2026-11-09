@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -55,7 +56,7 @@ func TestGenericEndpoint(t *testing.T) {
 	require.NoError(t, err)
 	it, err := InboxItem(rs[0])
 	require.NoError(t, err)
-	assert.Equal(t, store.InboxItem{
+	assert.Equal(t, domain.InboxItem{
 		Source: SourceGeneric, DeliveryID: "generic:d-1", Endpoint: "gh-hints", Kind: "check_suite",
 		RepoOrTeam: "acme/app", Number: 42, Actor: "ci", NaturalKey: "generic:gh-hints:acme/app:abc123",
 		ReceivedAt: it.ReceivedAt, Payload: it.Payload,

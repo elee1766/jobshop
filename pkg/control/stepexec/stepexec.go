@@ -15,7 +15,7 @@ import (
 	"github.com/elee1766/acphost/pkg/proc"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // ExitNotYet is the command exit code for "not yet, retry after
@@ -71,7 +71,7 @@ type Host interface {
 	// unless dir exists. what names the owner in errors.
 	Worktree(repo, ref, dir, reason, what string) error
 	// SlotEnv is the env of the slots t's claim holds.
-	SlotEnv(ctx context.Context, t store.Ticket) []string
+	SlotEnv(ctx context.Context, t domain.Ticket) []string
 	// HostEnv is JOBSHOP_BIN and the PATH that has the controller's binary
 	// first, as for sessions (#669). Empty when the binary is unknown.
 	HostEnv() []string

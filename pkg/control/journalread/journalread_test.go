@@ -17,10 +17,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/control/journalread"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // writeJournal writes n frames: odd seqs are agent message chunks, even
@@ -132,8 +132,8 @@ func TestValidatePage(t *testing.T) {
 	t.Parallel()
 	require.NoError(t, journalread.ValidatePage(rpc.SessionJournalParams{From: "agent", SinceSeq: 0}))
 	require.NoError(t, journalread.ValidatePage(rpc.SessionJournalParams{From: "controller"}))
-	require.ErrorIs(t, journalread.ValidatePage(rpc.SessionJournalParams{From: "nobody"}), store.ErrInvalid)
-	require.ErrorIs(t, journalread.ValidatePage(rpc.SessionJournalParams{SinceSeq: -1}), store.ErrInvalid)
+	require.ErrorIs(t, journalread.ValidatePage(rpc.SessionJournalParams{From: "nobody"}), domain.ErrInvalid)
+	require.ErrorIs(t, journalread.ValidatePage(rpc.SessionJournalParams{SinceSeq: -1}), domain.ErrInvalid)
 }
 
 func TestSummaryEmpty(t *testing.T) {
@@ -210,7 +210,7 @@ func TestRun(t *testing.T) {
 
 	// A blank query is the caller's error.
 	_, err = journalread.Run(t.Context(), journalread.Search{Client: cl, Now: now, JournalSearchParams: rpc.JournalSearchParams{Query: "  "}})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 func TestRunErrors(t *testing.T) {
@@ -220,14 +220,14 @@ func TestRunErrors(t *testing.T) {
 	_, err := journalread.Run(t.Context(), journalread.Search{
 		Client: vlServer(t, 0, http.StatusBadRequest, &form), JournalSearchParams: rpc.JournalSearchParams{Query: "bad("},
 	})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	assert.Contains(t, err.Error(), "syntax error")
 	// Any other status is not.
 	_, err = journalread.Run(t.Context(), journalread.Search{
 		Client: vlServer(t, 0, http.StatusBadGateway, &form), JournalSearchParams: rpc.JournalSearchParams{Query: "*"},
 	})
 	require.Error(t, err)
-	assert.NotErrorIs(t, err, store.ErrInvalid)
+	assert.NotErrorIs(t, err, domain.ErrInvalid)
 
 	// A cancelled context stops the query.
 	ctx, cancel := context.WithCancel(t.Context())

@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -144,10 +145,10 @@ func (e *Engine) Followers(ctx context.Context, window time.Duration, now time.T
 	}
 	var followers []*Follower
 	for _, t := range all {
-		if t.Kind != store.KindTask && t.Kind != store.KindStep {
+		if t.Kind != domain.KindTask && t.Kind != domain.KindStep {
 			continue
 		}
-		if t.Status == store.StatusClosed && now.Sub(t.ClosedAt) > window {
+		if t.Status == domain.StatusClosed && now.Sub(t.ClosedAt) > window {
 			continue
 		}
 		f, err := e.follow(ctx, t, now)
@@ -175,11 +176,11 @@ func (e *Engine) Followers(ctx context.Context, window time.Duration, now time.T
 // follow returns the ticket's threads, adding implicit ones with the read
 // position at now (older comments are already on the thread when the
 // work starts). It saves new entries right away so a restart keeps them.
-func (e *Engine) follow(ctx context.Context, t store.Ticket, now time.Time) (*Follower, error) {
+func (e *Engine) follow(ctx context.Context, t domain.Ticket, now time.Time) (*Follower, error) {
 	sm, _ := DecodeMeta(t.Meta)
-	var comments []store.Comment
+	var comments []domain.Comment
 	var err error
-	if t.Status != store.StatusClosed || len(sm.Threads) > 0 {
+	if t.Status != domain.StatusClosed || len(sm.Threads) > 0 {
 		if comments, err = store.Comments(ctx, e.h.Store(), t.ID); err != nil {
 			return nil, err
 		}
@@ -189,7 +190,7 @@ func (e *Engine) follow(ctx context.Context, t store.Ticket, now time.Time) (*Fo
 		if slices.ContainsFunc(f.Threads, func(x Thread) bool { return x.Key() == th.Key() }) {
 			continue
 		}
-		if t.Status == store.StatusClosed {
+		if t.Status == domain.StatusClosed {
 			continue // a closed ticket only keeps what it followed
 		}
 		th.Seen = now

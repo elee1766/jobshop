@@ -10,8 +10,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func TestManagedChatDismissal(t *testing.T) {
@@ -44,18 +44,18 @@ attention:
 			if kind == "attention" {
 				label = "question"
 			}
-			var source store.Ticket
+			var source domain.Ticket
 			c.Call(rpc.MethodTicketCreate, rpc.CreateParams{Title: "Operator decision", Labels: []string{label}}, &source)
 			key := "escalation:" + source.ID
 			if kind == "attention" {
 				key = "attention:question:" + source.ID
 			}
-			var chat store.Ticket
+			var chat domain.Ticket
 			c.PassUntil(func() bool {
-				var sessions []store.Ticket
-				c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions)
+				var sessions []domain.Ticket
+				c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession}, &sessions)
 				for _, s := range sessions {
-					f, err := store.DecodeFields[store.SessionFields](s)
+					f, err := domain.DecodeFields[domain.SessionFields](s)
 					require.NoError(t, err)
 					if f.Key == key {
 						chat = s
@@ -70,12 +70,12 @@ attention:
 				assert.Equal(t, chat.ID, converted.ID)
 				var sourceView rpc.ShowResult
 				c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: source.ID}, &sourceView)
-				assert.Equal(t, store.StatusOpen, sourceView.Ticket.Status)
-				fields, err := store.DecodeFields[store.SessionFields](*converted.Ticket)
+				assert.Equal(t, domain.StatusOpen, sourceView.Ticket.Status)
+				fields, err := domain.DecodeFields[domain.SessionFields](*converted.Ticket)
 				require.NoError(t, err)
 				assert.True(t, fields.Named)
 				assert.Equal(t, key, fields.Key)
-				require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodChatManage, rpc.ChatManageParams{Action: "resolve", ID: chat.ID}, nil), store.ErrInvalid)
+				require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodChatManage, rpc.ChatManageParams{Action: "resolve", ID: chat.ID}, nil), domain.ErrInvalid)
 				c.Call(rpc.MethodSessionSend, rpc.SessionSendParams{ID: chat.ID, Text: "Continue independently"}, nil)
 				c.PassUntil(func() bool {
 					var journal rpc.SessionJournalResult
@@ -92,7 +92,7 @@ attention:
 				c.Pass(2)
 				var shown rpc.ShowResult
 				c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &shown)
-				assert.Equal(t, store.StatusOpen, shown.Ticket.Status)
+				assert.Equal(t, domain.StatusOpen, shown.Ticket.Status)
 				c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "archive", ID: chat.ID}, nil)
 				return
 			}
@@ -100,17 +100,17 @@ attention:
 			c.Pass(2)
 			var shown rpc.ShowResult
 			c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: source.ID}, &shown)
-			assert.Equal(t, store.StatusOpen, shown.Ticket.Status, "closing the chat does not resolve its source")
+			assert.Equal(t, domain.StatusOpen, shown.Ticket.Status, "closing the chat does not resolve its source")
 			c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &shown)
-			assert.Equal(t, store.StatusClosed, shown.Ticket.Status)
-			fields, err := store.DecodeFields[store.SessionFields](shown.Ticket)
+			assert.Equal(t, domain.StatusClosed, shown.Ticket.Status)
+			fields, err := domain.DecodeFields[domain.SessionFields](shown.Ticket)
 			require.NoError(t, err)
 			assert.False(t, fields.Named, "managed chats keep their original type")
 			require.NotNil(t, fields.Archived)
-			var sessions []store.Ticket
-			c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession, Status: store.StatusOpen}, &sessions)
+			var sessions []domain.Ticket
+			c.Call(rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession, Status: domain.StatusOpen}, &sessions)
 			for _, s := range sessions {
-				f, err := store.DecodeFields[store.SessionFields](s)
+				f, err := domain.DecodeFields[domain.SessionFields](s)
 				require.NoError(t, err)
 				assert.NotEqual(t, key, f.Key, "a supervisor pass does not undo explicit dismissal")
 			}
@@ -119,11 +119,11 @@ attention:
 				c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "resolve", ID: chat.ID}, nil)
 				c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "resolve", ID: chat.ID}, nil)
 				c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: source.ID}, &shown)
-				assert.Equal(t, store.StatusClosed, shown.Ticket.Status)
+				assert.Equal(t, domain.StatusClosed, shown.Ticket.Status)
 				c.Call(rpc.MethodTicketShow, rpc.IDParams{ID: chat.ID}, &shown)
-				assert.Equal(t, store.StatusClosed, shown.Ticket.Status)
+				assert.Equal(t, domain.StatusClosed, shown.Ticket.Status)
 			} else {
-				require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodChatManage, rpc.ChatManageParams{Action: "resolve", ID: chat.ID}, nil), store.ErrInvalid)
+				require.ErrorIs(t, c.Admin.Call(t.Context(), rpc.MethodChatManage, rpc.ChatManageParams{Action: "resolve", ID: chat.ID}, nil), domain.ErrInvalid)
 				c.Call(rpc.MethodChatManage, rpc.ChatManageParams{Action: "archive", ID: chat.ID}, nil)
 				c.Call(rpc.MethodTicketClose, rpc.CloseParams{ID: source.ID}, nil)
 			}

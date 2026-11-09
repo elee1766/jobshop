@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
@@ -107,9 +108,9 @@ func Run(t *testing.T, newStore Factory) {
 	}
 }
 
-func task(t *testing.T, s store.Store, title, pool string, opts ...func(*store.NewTicket)) store.Ticket {
+func task(t *testing.T, s store.Store, title, pool string, opts ...func(*store.NewTicket)) domain.Ticket {
 	t.Helper()
-	nt := store.NewTicket{Project: proj, Kind: store.KindTask, Title: title, Pool: pool}
+	nt := store.NewTicket{Project: proj, Kind: domain.KindTask, Title: title, Pool: pool}
 	for _, o := range opts {
 		o(&nt)
 	}
@@ -120,7 +121,7 @@ func task(t *testing.T, s store.Store, title, pool string, opts ...func(*store.N
 
 func prio(p int) func(*store.NewTicket) { return func(n *store.NewTicket) { n.Priority = &p } }
 
-func ids(ts []store.Ticket) []string {
+func ids(ts []domain.Ticket) []string {
 	out := make([]string, len(ts))
 	for i, t := range ts {
 		out[i] = t.ID
@@ -189,13 +190,13 @@ func testListFilters(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, []string{b.ID}, list(store.Filter{Since: mark}))
 
 	_, err = s.List(ctx, store.Filter{Meta: make([]store.MetaMatch, store.MaxMetaFilters+1)})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 func testListCreatedBy(t *testing.T, s store.Store, _ *Clock) {
-	a, err := store.Create(t.Context(), s, "js-sess1", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "a"})
+	a, err := store.Create(t.Context(), s, "js-sess1", store.NewTicket{Project: "js", Kind: domain.KindTask, Title: "a"})
 	require.NoError(t, err)
-	_, err = store.Create(t.Context(), s, "admin", store.NewTicket{Project: "js", Kind: store.KindTask, Title: "b"})
+	_, err = store.Create(t.Context(), s, "admin", store.NewTicket{Project: "js", Kind: domain.KindTask, Title: "b"})
 	require.NoError(t, err)
 	l, err := s.List(t.Context(), store.Filter{CreatedBy: "js-sess1"})
 	require.NoError(t, err)
@@ -209,7 +210,7 @@ func testCreateGet(t *testing.T, s store.Store, _ *Clock) {
 		n.Meta = json.RawMessage(`{"gx":{"linear_id":"ENG-1"}}`)
 	})
 	assert.Regexp(t, `^js-[0-9a-z]{13}$`, a.ID)
-	assert.Equal(t, store.StatusOpen, a.Status)
+	assert.Equal(t, domain.StatusOpen, a.Status)
 	assert.Equal(t, store.DefaultPriority, a.Priority)
 	assert.EqualValues(t, 1, a.Revision)
 
@@ -220,13 +221,13 @@ func testCreateGet(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, "test", got.CreatedBy)
 
 	_, err = s.Get(ctx, "js-missing")
-	assert.ErrorIs(t, err, store.ErrNotFound)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 
-	_, err = store.Create(ctx, s, "test", store.NewTicket{ID: a.ID, Project: proj, Kind: store.KindTask})
-	assert.ErrorIs(t, err, store.ErrAlreadyExist)
+	_, err = store.Create(ctx, s, "test", store.NewTicket{ID: a.ID, Project: proj, Kind: domain.KindTask})
+	assert.ErrorIs(t, err, domain.ErrAlreadyExist)
 
-	_, err = store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: store.KindTask, ParentID: "js-missing"})
-	assert.ErrorIs(t, err, store.ErrNotFound)
+	_, err = store.Create(ctx, s, "test", store.NewTicket{Project: proj, Kind: domain.KindTask, ParentID: "js-missing"})
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 
 	l, err := s.List(ctx, store.Filter{Project: proj, Label: "x"})
 	require.NoError(t, err)
@@ -237,25 +238,25 @@ func testFieldsValidated(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	cases := []store.NewTicket{
 		{Project: proj, Kind: "nope"},
-		{Project: proj, Kind: store.KindMessage, Fields: json.RawMessage(`{}`)},
-		{Project: proj, Kind: store.KindMessage, Fields: json.RawMessage(`{"to":"pool:"}`)},
-		{Project: proj, Kind: store.KindSession, Fields: json.RawMessage(`{"agent":"a","extra":1}`)},
-		{Project: proj, Kind: store.KindTask, Meta: json.RawMessage(`{"flat":"string"}`)},
-		{Kind: store.KindTask},
+		{Project: proj, Kind: domain.KindMessage, Fields: json.RawMessage(`{}`)},
+		{Project: proj, Kind: domain.KindMessage, Fields: json.RawMessage(`{"to":"pool:"}`)},
+		{Project: proj, Kind: domain.KindSession, Fields: json.RawMessage(`{"agent":"a","extra":1}`)},
+		{Project: proj, Kind: domain.KindTask, Meta: json.RawMessage(`{"flat":"string"}`)},
+		{Kind: domain.KindTask},
 	}
 	for _, nt := range cases {
 		_, err := store.Create(ctx, s, "test", nt)
-		assert.ErrorIs(t, err, store.ErrInvalid, "%+v", nt)
+		assert.ErrorIs(t, err, domain.ErrInvalid, "%+v", nt)
 	}
 	m, err := store.Create(ctx, s, "test", store.NewTicket{
-		Project: proj, Kind: store.KindMessage,
+		Project: proj, Kind: domain.KindMessage,
 		Fields: json.RawMessage(`{"to":"pool:dev","from":"me"}`),
 	})
 
 	require.NoError(t, err)
-	f, err := store.DecodeFields[store.MessageFields](m)
+	f, err := domain.DecodeFields[domain.MessageFields](m)
 	require.NoError(t, err)
-	assert.Equal(t, store.MessageFields{To: "pool:dev", From: "me"}, f)
+	assert.Equal(t, domain.MessageFields{To: "pool:dev", From: "me"}, f)
 }
 
 func testUpdateCAS(t *testing.T, s store.Store, _ *Clock) {
@@ -268,10 +269,10 @@ func testUpdateCAS(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, a.Revision+1, u.Revision)
 
 	_, err = s.Update(ctx, "test", a.ID, store.Update{Title: &title, IfRevision: a.Revision})
-	assert.ErrorIs(t, err, store.ErrConflict)
+	assert.ErrorIs(t, err, domain.ErrConflict)
 
 	_, err = s.Update(ctx, "test", a.ID, store.Update{Fields: json.RawMessage(`{"bad":1}`)})
-	assert.ErrorIs(t, err, store.ErrInvalid)
+	assert.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 func testReadyRespectsEdges(t *testing.T, s store.Store, _ *Clock) {
@@ -279,8 +280,8 @@ func testReadyRespectsEdges(t *testing.T, s store.Store, _ *Clock) {
 	a := task(t, s, "a", "dev", prio(1))
 	b := task(t, s, "b", "dev", prio(2))
 	c := task(t, s, "c", "dev", prio(3))
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}))
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: a.ID, To: b.ID, Kind: domain.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: c.ID, To: b.ID, Kind: domain.EdgeTracks}))
 
 	r, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
 	require.NoError(t, err)
@@ -295,20 +296,20 @@ func testReadyRespectsEdges(t *testing.T, s store.Store, _ *Clock) {
 	e, err := store.Edges(ctx, s, b.ID)
 	require.NoError(t, err)
 	assert.Len(t, e, 2)
-	require.NoError(t, store.RemoveEdge(ctx, s, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}))
-	assert.ErrorIs(t, store.RemoveEdge(ctx, s, "test", store.Edge{From: c.ID, To: b.ID, Kind: store.EdgeTracks}), store.ErrNotFound)
+	require.NoError(t, store.RemoveEdge(ctx, s, "test", domain.Edge{From: c.ID, To: b.ID, Kind: domain.EdgeTracks}))
+	assert.ErrorIs(t, store.RemoveEdge(ctx, s, "test", domain.Edge{From: c.ID, To: b.ID, Kind: domain.EdgeTracks}), domain.ErrNotFound)
 }
 
 func testEdgeCycle(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	a, b, c := task(t, s, "a", ""), task(t, s, "b", ""), task(t, s, "c", "")
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}))
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: b.ID, To: c.ID, Kind: store.EdgeWaitsFor}))
-	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", store.Edge{From: c.ID, To: a.ID, Kind: store.EdgeBlocks}), store.ErrCycle)
-	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: a.ID, Kind: store.EdgeBlocks}), store.ErrInvalid)
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: a.ID, To: b.ID, Kind: domain.EdgeBlocks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: b.ID, To: c.ID, Kind: domain.EdgeWaitsFor}))
+	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", domain.Edge{From: c.ID, To: a.ID, Kind: domain.EdgeBlocks}), domain.ErrCycle)
+	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", domain.Edge{From: a.ID, To: a.ID, Kind: domain.EdgeBlocks}), domain.ErrInvalid)
 	// tracks never gates readiness, so it may close a loop.
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: c.ID, To: a.ID, Kind: store.EdgeTracks}))
-	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: "js-missing", Kind: store.EdgeBlocks}), store.ErrNotFound)
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: c.ID, To: a.ID, Kind: domain.EdgeTracks}))
+	assert.ErrorIs(t, store.AddEdge(ctx, s, "test", domain.Edge{From: a.ID, To: "js-missing", Kind: domain.EdgeBlocks}), domain.ErrNotFound)
 }
 
 // testApplySwapsEdges moves a blocking edge in one Apply: removals run
@@ -316,17 +317,17 @@ func testEdgeCycle(t *testing.T, s store.Store, _ *Clock) {
 func testApplySwapsEdges(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	a, b, c := task(t, s, "a", ""), task(t, s, "b", ""), task(t, s, "c", "")
-	ab := store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeBlocks}
-	ba := store.Edge{From: b.ID, To: a.ID, Kind: store.EdgeBlocks}
-	ac := store.Edge{From: a.ID, To: c.ID, Kind: store.EdgeBlocks}
+	ab := domain.Edge{From: a.ID, To: b.ID, Kind: domain.EdgeBlocks}
+	ba := domain.Edge{From: b.ID, To: a.ID, Kind: domain.EdgeBlocks}
+	ac := domain.Edge{From: a.ID, To: c.ID, Kind: domain.EdgeBlocks}
 	require.NoError(t, store.AddEdge(ctx, s, "test", ab))
 
 	// b -> a would be a cycle unless a -> b is removed first.
-	_, err := s.Apply(ctx, "test", store.Graph{RemoveEdges: []store.Edge{ab}, Edges: []store.Edge{ba}})
+	_, err := s.Apply(ctx, "test", store.Graph{RemoveEdges: []domain.Edge{ab}, Edges: []domain.Edge{ba}})
 	require.NoError(t, err)
 
-	_, err = s.Apply(ctx, "test", store.Graph{RemoveEdges: []store.Edge{ab}, Edges: []store.Edge{ac}})
-	require.ErrorIs(t, err, store.ErrNotFound)
+	_, err = s.Apply(ctx, "test", store.Graph{RemoveEdges: []domain.Edge{ab}, Edges: []domain.Edge{ac}})
+	require.ErrorIs(t, err, domain.ErrNotFound)
 	e, err := store.Edges(ctx, s, a.ID)
 	require.NoError(t, err)
 	require.Len(t, e, 1, "the failed apply added nothing")
@@ -343,8 +344,8 @@ func testOrphaned(t *testing.T, s store.Store, _ *Clock) {
 	_, err := store.Close(ctx, s, "test", closed.ID, nil, "done")
 	require.NoError(t, err)
 
-	orphaned := func(project string, pools []string) ([]store.Ticket, error) {
-		return s.List(ctx, store.Filter{Project: project, Kinds: store.ClaimableKinds, Status: store.StatusOpen, Unheld: true, PoolNotIn: pools})
+	orphaned := func(project string, pools []string) ([]domain.Ticket, error) {
+		return s.List(ctx, store.Filter{Project: project, Kinds: domain.ClaimableKinds, Status: domain.StatusOpen, Unheld: true, PoolNotIn: pools})
 	}
 	got, err := orphaned("", []string{"dev"})
 	require.NoError(t, err)
@@ -365,12 +366,12 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	assert.True(t, strings.HasPrefix(runID, proj+"-"))
 	run := store.NewTicket{
-		ID: runID, Project: proj, Kind: store.KindRun, Title: "r",
+		ID: runID, Project: proj, Kind: domain.KindRun, Title: "r",
 		Fields: json.RawMessage(`{"workflow":"w","key":"k1","state":"running"}`),
 	}
 	step := func(i int, id string) store.NewTicket {
 		return store.NewTicket{
-			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: runID,
+			ID: id, Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: runID,
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":%q,"step":"s%d","index":%d,"retries":2}`, runID, i, i)),
 		}
 	}
@@ -385,12 +386,12 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	assert.Equal(t, runID, got.ID)
 	_, err = store.OpenRun(ctx, s, "other", "k1")
-	assert.ErrorIs(t, err, store.ErrNotFound)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 
-	r, err := s.List(ctx, store.Filter{Kind: store.KindRun, Project: proj, State: store.RunRunning, Order: store.OrderNewest, Limit: 0})
+	r, err := s.List(ctx, store.Filter{Kind: domain.KindRun, Project: proj, State: domain.RunRunning, Order: store.OrderNewest, Limit: 0})
 	require.NoError(t, err)
 	assert.Equal(t, []string{runID}, ids(r))
-	r, err = s.List(ctx, store.Filter{Kind: store.KindRun, State: store.RunNeedsHuman, Order: store.OrderNewest})
+	r, err = s.List(ctx, store.Filter{Kind: domain.KindRun, State: domain.RunNeedsHuman, Order: store.OrderNewest})
 	require.NoError(t, err)
 	assert.Empty(t, r)
 
@@ -402,7 +403,7 @@ func testRuns(t *testing.T, s store.Store, _ *Clock) {
 	_, err = store.Close(ctx, s, "test", runID, nil, "done")
 	require.NoError(t, err)
 	_, err = store.OpenRun(ctx, s, "w", "k1")
-	assert.ErrorIs(t, err, store.ErrNotFound, "closed runs do not dedup")
+	assert.ErrorIs(t, err, domain.ErrNotFound, "closed runs do not dedup")
 }
 
 // testStepFailures: each failure source bumps fields.failures in its own
@@ -412,19 +413,19 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	ctx := t.Context()
 	mk := func(id string, i int) store.NewTicket {
 		return store.NewTicket{
-			ID: id, Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+			ID: id, Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: "js-run",
 			Fields: json.RawMessage(fmt.Sprintf(`{"run":"js-run","step":"s%d","index":%d,"retries":4}`, i, i)),
 		}
 	}
-	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)}
-	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, mk("js-a", 0), mk("js-b", 1)}, Edges: []store.Edge{{From: "js-b", To: "js-a", Kind: store.EdgeBlocks}}})
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: domain.KindRun, Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)}
+	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, mk("js-a", 0), mk("js-b", 1)}, Edges: []domain.Edge{{From: "js-b", To: "js-a", Kind: domain.EdgeBlocks}}})
 
 	require.NoError(t, err)
 	fails := func() int {
 		t.Helper()
 		tk, err := s.Get(ctx, "js-a")
 		require.NoError(t, err)
-		f, err := store.DecodeFields[store.StepFields](tk)
+		f, err := domain.DecodeFields[domain.StepFields](tk)
 		require.NoError(t, err)
 		return f.Failures
 	}
@@ -432,14 +433,14 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	// Close failed reopens below the limit.
 	tk, err := store.Close(ctx, s, "test", "js-a", nil, "failed")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, tk.Status)
+	assert.Equal(t, domain.StatusOpen, tk.Status)
 	assert.Equal(t, 1, fails())
 
 	// A rebase close reopens without counting, however often (#424).
 	for range 5 {
-		tk, err = store.Close(ctx, s, "test", "js-a", nil, store.ResolutionRebase)
+		tk, err = store.Close(ctx, s, "test", "js-a", nil, domain.ResolutionRebase)
 		require.NoError(t, err)
-		assert.Equal(t, store.StatusOpen, tk.Status)
+		assert.Equal(t, domain.StatusOpen, tk.Status)
 		assert.Empty(t, tk.Resolution)
 	}
 	assert.Equal(t, 1, fails())
@@ -456,7 +457,7 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	tk, err = s.Release(ctx, "", cl.TicketID, &cl, store.Outcome{Reason: "not yet", Until: c.T.Add(time.Hour)})
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, tk.Status)
+	assert.Equal(t, domain.StatusOpen, tk.Status)
 	assert.Equal(t, 2, fails())
 	r, err := s.List(ctx, store.Filter{Project: proj, Pool: "dev", Ready: true})
 	require.NoError(t, err)
@@ -482,7 +483,7 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	assert.Equal(t, 4, fails())
 	tk, err = s.Get(ctx, "js-a")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, tk.Status)
+	assert.Equal(t, domain.StatusClosed, tk.Status)
 	assert.Equal(t, "failed", tk.Resolution)
 	cs, err := store.Comments(ctx, s, "js-a")
 	require.NoError(t, err)
@@ -496,13 +497,13 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	assert.Empty(t, ids(ready))
 	_, _, err = s.Claim(ctx, "js-b", "s4", lease)
-	assert.ErrorIs(t, err, store.ErrNoWork)
+	assert.ErrorIs(t, err, domain.ErrNoWork)
 
 	// Tasks are not counted.
 	task := task(t, s, "plain", "dev")
 	tk, err = store.Close(ctx, s, "test", task.ID, nil, "failed")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, tk.Status)
+	assert.Equal(t, domain.StatusClosed, tk.Status)
 }
 
 // testRequestChanges: a request_changes close of a step reopens it and
@@ -511,48 +512,48 @@ func testStepFailures(t *testing.T, s store.Store, c *Clock) {
 // closed and nothing reopens (JOB-98).
 func testRequestChanges(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
-	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)}
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: domain.KindRun, Fields: json.RawMessage(`{"workflow":"w","state":"running"}`)}
 	deliver := store.NewTicket{
-		ID: "js-a", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+		ID: "js-a", Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: "js-run",
 		Fields: json.RawMessage(`{"run":"js-run","step":"deliver","index":0,"retries":2}`),
 	}
 	review := store.NewTicket{
-		ID: "js-b", Project: proj, Kind: store.KindStep, Pool: "review", ParentID: "js-run",
+		ID: "js-b", Project: proj, Kind: domain.KindStep, Pool: "review", ParentID: "js-run",
 		Fields: json.RawMessage(`{"run":"js-run","step":"review","index":1,"retries":2,"on_request_changes":"deliver","max_review_rounds":2}`),
 	}
-	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, deliver, review}, Edges: []store.Edge{{From: "js-b", To: "js-a", Kind: store.EdgeBlocks}}})
+	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, deliver, review}, Edges: []domain.Edge{{From: "js-b", To: "js-a", Kind: domain.EdgeBlocks}}})
 	require.NoError(t, err)
-	fields := func(id string) (store.Ticket, store.StepFields) {
+	fields := func(id string) (domain.Ticket, domain.StepFields) {
 		t.Helper()
 		tk, err := s.Get(ctx, id)
 		require.NoError(t, err)
-		f, err := store.DecodeFields[store.StepFields](tk)
+		f, err := domain.DecodeFields[domain.StepFields](tk)
 		require.NoError(t, err)
 		return tk, f
 	}
-	requestChanges := func(findings string) store.Ticket {
+	requestChanges := func(findings string) domain.Ticket {
 		t.Helper()
 		_, err := store.Close(ctx, s, "test", "js-a", nil, "done")
 		require.NoError(t, err)
 		_, cl, err := s.Claim(ctx, "js-b", "s1", lease)
 		require.NoError(t, err)
-		tk, err := s.Release(ctx, "", "js-b", &cl, store.Outcome{Close: store.ResolutionRequestChanges, Reopen: "js-a", Note: findings})
+		tk, err := s.Release(ctx, "", "js-b", &cl, store.Outcome{Close: domain.ResolutionRequestChanges, Reopen: "js-a", Note: findings})
 		require.NoError(t, err)
 		return tk
 	}
 
 	for round := 1; round <= 2; round++ {
 		tk := requestChanges(fmt.Sprintf("fix %d", round))
-		assert.Equal(t, store.StatusOpen, tk.Status, "round %d reopens the reviewer", round)
+		assert.Equal(t, domain.StatusOpen, tk.Status, "round %d reopens the reviewer", round)
 		assert.Empty(t, tk.Holder)
 		_, rf := fields("js-b")
 		assert.Equal(t, round, rf.ReviewRounds)
 		assert.Zero(t, rf.Failures, "not a failed attempt")
 		a, af := fields("js-a")
-		assert.Equal(t, store.StatusOpen, a.Status)
+		assert.Equal(t, domain.StatusOpen, a.Status)
 		assert.Empty(t, a.Resolution)
 		require.NotNil(t, af.Changes)
-		assert.Equal(t, store.StepChanges{Step: "review", Ticket: "js-b", Round: round, Max: 2, Findings: fmt.Sprintf("fix %d", round)}, *af.Changes)
+		assert.Equal(t, domain.StepChanges{Step: "review", Ticket: "js-b", Round: round, Max: 2, Findings: fmt.Sprintf("fix %d", round)}, *af.Changes)
 		assert.Zero(t, af.Failures)
 		// The reviewer waits behind the reopened step.
 		ready, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
@@ -567,12 +568,12 @@ func testRequestChanges(t *testing.T, s store.Store, _ *Clock) {
 	// Round 3 is over the cap: the reviewer stays closed, deliver is left
 	// alone (closed done, which cleared the request).
 	tk := requestChanges("fix 3")
-	assert.Equal(t, store.StatusClosed, tk.Status)
-	assert.Equal(t, store.ResolutionRequestChanges, tk.Resolution)
+	assert.Equal(t, domain.StatusClosed, tk.Status)
+	assert.Equal(t, domain.ResolutionRequestChanges, tk.Resolution)
 	_, rf := fields("js-b")
 	assert.Equal(t, 3, rf.ReviewRounds)
 	a, af := fields("js-a")
-	assert.Equal(t, store.StatusClosed, a.Status)
+	assert.Equal(t, domain.StatusClosed, a.Status)
 	assert.Nil(t, af.Changes, "a done close clears the request")
 
 	// A target that is not closed rolls the whole close back.
@@ -580,10 +581,10 @@ func testRequestChanges(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	_, err = s.Update(ctx, "test", "js-b", store.Update{Reopen: true, Fields: json.RawMessage(`{"run":"js-run","step":"review","index":1,"retries":2}`)})
 	require.NoError(t, err)
-	_, err = s.Release(ctx, "test", "js-b", nil, store.Outcome{Close: store.ResolutionRequestChanges, Reopen: "js-a", Note: "x"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	_, err = s.Release(ctx, "test", "js-b", nil, store.Outcome{Close: domain.ResolutionRequestChanges, Reopen: "js-a", Note: "x"})
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	b, bf := fields("js-b")
-	assert.Equal(t, store.StatusOpen, b.Status, "rolled back")
+	assert.Equal(t, domain.StatusOpen, b.Status, "rolled back")
 	assert.Zero(t, bf.ReviewRounds, "rolled back")
 }
 
@@ -597,7 +598,7 @@ func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {
 	got, c1, err := s.ClaimNext(ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, assigned.ID, got.ID, "pre-assigned beats queue regardless of priority")
-	assert.Equal(t, store.StatusInProgress, got.Status)
+	assert.Equal(t, domain.StatusInProgress, got.Status)
 	assert.EqualValues(t, 1, c1.Fence)
 
 	again, c2, err := s.ClaimNext(ctx, req)
@@ -612,10 +613,10 @@ func testClaimNextTiers(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, queue.ID, got.ID)
 
 	_, _, err = s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: "s2", Lease: lease})
-	assert.ErrorIs(t, err, store.ErrNoWork)
+	assert.ErrorIs(t, err, domain.ErrNoWork)
 
 	_, _, err = s.Claim(ctx, queue.ID, "s2", lease)
-	assert.ErrorIs(t, err, store.ErrNotHolder)
+	assert.ErrorIs(t, err, domain.ErrNotHolder)
 }
 
 // testHandoff: pool, release, fence and note in one revision (#492).
@@ -627,12 +628,12 @@ func testHandoff(t *testing.T, s store.Store, _ *Clock) {
 	stale := cl
 	stale.Fence--
 	_, err = s.Release(ctx, "s1", a.ID, &stale, store.Outcome{Pool: "refinery", Note: "x"})
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 
 	got, err := s.Release(ctx, "s1", a.ID, &cl, store.Outcome{Pool: "refinery", Note: "over to you"})
 	require.NoError(t, err)
 	assert.Equal(t, "refinery", got.Pool)
-	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Equal(t, domain.StatusOpen, got.Status)
 	assert.Empty(t, got.Holder)
 	assert.Greater(t, got.Fence, cl.Fence)
 	assert.Equal(t, held.Revision+1, got.Revision)
@@ -643,7 +644,7 @@ func testHandoff(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, "s1", cs[0].Author)
 
 	_, err = s.Release(ctx, "admin", a.ID, nil, store.Outcome{})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 // testReleaseOutcomeRules (#579): close and pool are exclusive, a claim
@@ -657,13 +658,13 @@ func testReleaseOutcomeRules(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 
 	_, err = s.Release(ctx, "s1", a.ID, &cl, store.Outcome{Close: "done", Pool: "refinery"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = s.Release(ctx, "s1", b.ID, &cl, store.Outcome{Close: "done"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	got, err := s.Release(ctx, "", "", &cl, store.Outcome{Close: "done"})
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, got.Status)
+	assert.Equal(t, domain.StatusClosed, got.Status)
 	assert.Equal(t, "done", got.Resolution)
 	h, err := store.History(ctx, s, a.ID)
 	require.NoError(t, err)
@@ -682,20 +683,20 @@ func testFencedClose(t *testing.T, s store.Store, c *Clock) {
 	assert.Greater(t, cur.Fence, old.Fence)
 
 	_, err = store.Close(ctx, s, "s1", a.ID, &old, "stale")
-	assert.ErrorIs(t, err, store.ErrNotHolder, "stale fence is rejected")
+	assert.ErrorIs(t, err, domain.ErrNotHolder, "stale fence is rejected")
 	c.Advance(time.Second)
 	closed, err := store.Close(ctx, s, "s1", a.ID, &cur, "done")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusClosed, closed.Status)
+	assert.Equal(t, domain.StatusClosed, closed.Status)
 	assert.Equal(t, "done", closed.Resolution)
 	assert.Equal(t, c.T, closed.ClosedAt)
 	assert.True(t, closed.LeaseUntil.IsZero())
 
 	_, err = store.Close(ctx, s, "admin", a.ID, nil, "again")
-	assert.ErrorIs(t, err, store.ErrClosed)
+	assert.ErrorIs(t, err, domain.ErrClosed)
 	re, err := store.Reopen(ctx, s, "admin", a.ID)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, re.Status)
+	assert.Equal(t, domain.StatusOpen, re.Status)
 	assert.Empty(t, re.Resolution)
 }
 
@@ -717,7 +718,7 @@ func testHeartbeat(t *testing.T, s store.Store, c *Clock) {
 	bad := cl
 	bad.Holder = "s2"
 	_, err = s.Heartbeat(ctx, bad, lease)
-	assert.ErrorIs(t, err, store.ErrNotHolder)
+	assert.ErrorIs(t, err, domain.ErrNotHolder)
 }
 
 func testReleaseHolder(t *testing.T, s store.Store, _ *Clock) {
@@ -736,7 +737,7 @@ func testReleaseHolder(t *testing.T, s store.Store, _ *Clock) {
 	for _, id := range released {
 		got, err := s.Get(ctx, id)
 		require.NoError(t, err)
-		assert.Equal(t, store.StatusOpen, got.Status)
+		assert.Equal(t, domain.StatusOpen, got.Status)
 		assert.Empty(t, got.Holder)
 	}
 	got, err := s.Get(ctx, other.ID)
@@ -761,7 +762,7 @@ func testSweepLeases(t *testing.T, s store.Store, c *Clock) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{a.ID}, swept)
 	_, err = s.Heartbeat(ctx, ca, lease)
-	assert.ErrorIs(t, err, store.ErrNotHolder, "swept holder lost the claim")
+	assert.ErrorIs(t, err, domain.ErrNotHolder, "swept holder lost the claim")
 
 	h, err := store.History(ctx, s, a.ID)
 	require.NoError(t, err)
@@ -790,14 +791,14 @@ func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	got, err := s.Get(ctx, a.ID)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"bug"}, got.Labels)
-	assert.ErrorIs(t, store.AddLabel(ctx, s, "u", "js-missing", "x"), store.ErrNotFound)
+	assert.ErrorIs(t, store.AddLabel(ctx, s, "u", "js-missing", "x"), domain.ErrNotFound)
 
 	_, err = store.AddComment(ctx, s, "u", a.ID, "first")
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, s, "u", a.ID, "second")
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, s, "u", "js-missing", "x")
-	assert.ErrorIs(t, err, store.ErrNotFound)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 	cs, err := store.Comments(ctx, s, a.ID)
 	require.NoError(t, err)
 	require.Len(t, cs, 2)
@@ -857,10 +858,10 @@ func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	assert.Equal(t, pre.Revision+1, got.Revision)
 	_, err = s.Update(ctx, "u", a.ID, store.Update{Comment: "  "})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	// A failing part rolls back the rest.
 	_, err = s.Update(ctx, "u", a.ID, store.Update{Reopen: true, Comment: "lost"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 	cs, err = store.Comments(ctx, s, a.ID)
 	require.NoError(t, err)
 	assert.Len(t, cs, 3)
@@ -879,15 +880,15 @@ func testLabelsCommentsHistory(t *testing.T, s store.Store, _ *Clock) {
 	after, err := s.Get(ctx, a.ID)
 	require.NoError(t, err)
 	assert.Equal(t, before.Revision, after.Revision)
-	assert.ErrorIs(t, s.Record(ctx, "u", "js-missing", "x", nil), store.ErrNotFound)
+	assert.ErrorIs(t, s.Record(ctx, "u", "js-missing", "x", nil), domain.ErrNotFound)
 }
 
 func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
-	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindTask}
-	s1 := store.NewTicket{ID: "js-s1", Project: proj, Kind: store.KindTask, ParentID: "js-run"}
-	s2 := store.NewTicket{ID: "js-s2", Project: proj, Kind: store.KindTask, ParentID: "js-run"}
-	out, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, s1, s2}, Edges: []store.Edge{{From: "js-s2", To: "js-s1", Kind: store.EdgeBlocks}}})
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: domain.KindTask}
+	s1 := store.NewTicket{ID: "js-s1", Project: proj, Kind: domain.KindTask, ParentID: "js-run"}
+	s2 := store.NewTicket{ID: "js-s2", Project: proj, Kind: domain.KindTask, ParentID: "js-run"}
+	out, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, s1, s2}, Edges: []domain.Edge{{From: "js-s2", To: "js-s1", Kind: domain.EdgeBlocks}}})
 
 	require.NoError(t, err)
 	assert.Len(t, out, 3)
@@ -896,23 +897,23 @@ func testCreateGraphAtomic(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, []string{"js-s1", "js-s2"}, ids(kids))
 
 	// A cycle aborts the whole graph.
-	x := store.NewTicket{ID: "js-x", Project: proj, Kind: store.KindTask}
-	y := store.NewTicket{ID: "js-y", Project: proj, Kind: store.KindTask}
-	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{x, y}, Edges: []store.Edge{
-		{From: "js-x", To: "js-y", Kind: store.EdgeBlocks},
-		{From: "js-y", To: "js-x", Kind: store.EdgeBlocks},
+	x := store.NewTicket{ID: "js-x", Project: proj, Kind: domain.KindTask}
+	y := store.NewTicket{ID: "js-y", Project: proj, Kind: domain.KindTask}
+	_, err = s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{x, y}, Edges: []domain.Edge{
+		{From: "js-x", To: "js-y", Kind: domain.EdgeBlocks},
+		{From: "js-y", To: "js-x", Kind: domain.EdgeBlocks},
 	}})
 
-	assert.ErrorIs(t, err, store.ErrCycle)
+	assert.ErrorIs(t, err, domain.ErrCycle)
 	_, err = s.Get(ctx, "js-x")
-	assert.ErrorIs(t, err, store.ErrNotFound)
+	assert.ErrorIs(t, err, domain.ErrNotFound)
 }
 
 func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
-	sess := func() (store.Ticket, error) {
+	sess := func() (domain.Ticket, error) {
 		return store.Create(ctx, s, "test", store.NewTicket{
-			Project: proj, Kind: store.KindSession,
+			Project: proj, Kind: domain.KindSession,
 			Fields: json.RawMessage(`{"agent":"jcode","key":"matrix:!r"}`),
 		})
 	}
@@ -920,19 +921,19 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	assert.Regexp(t, `^js-s-[0-9a-z]{13}$`, a.ID, "session ids carry the s tag (#615)")
 	_, err = sess()
-	assert.ErrorIs(t, err, store.ErrAlreadyExist)
+	assert.ErrorIs(t, err, domain.ErrAlreadyExist)
 	_, err = store.Close(ctx, s, "test", a.ID, nil, "stopped")
 	require.NoError(t, err)
 	_, err = sess()
 	assert.NoError(t, err, "key is reusable once the session closes")
 	_, err = store.Create(ctx, s, "test", store.NewTicket{
-		Project: proj, Kind: store.KindSession,
+		Project: proj, Kind: domain.KindSession,
 		Fields: json.RawMessage(`{"agent":"jcode"}`),
 	})
 
 	assert.NoError(t, err)
 	_, err = store.Create(ctx, s, "test", store.NewTicket{
-		Project: proj, Kind: store.KindSession,
+		Project: proj, Kind: domain.KindSession,
 		Fields: json.RawMessage(`{"agent":"jcode"}`),
 	})
 
@@ -943,16 +944,16 @@ func testSessionKeyUnique(t *testing.T, s store.Store, _ *Clock) {
 // Unclaimed ticket aborts the whole apply.
 func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
-	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"issue-1","state":"running"}`)}
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: domain.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"issue-1","state":"running"}`)}
 	step := store.NewTicket{
-		ID: "js-s", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+		ID: "js-s", Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: "js-run",
 		Fields: json.RawMessage(`{"run":"js-run","step":"s","index":0,"retries":1}`),
 	}
 	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, step}, Edges: nil})
 	require.NoError(t, err)
 	other := task(t, s, "other", "dev")
 	batch := func(id string) store.NewTicket {
-		return store.NewTicket{ID: id, Project: proj, Kind: store.KindBatch, Fields: json.RawMessage(`{"key":"k","issues":["1"],"state":"open"}`)}
+		return store.NewTicket{ID: id, Project: proj, Kind: domain.KindBatch, Fields: json.RawMessage(`{"key":"k","issues":["1"],"state":"open"}`)}
 	}
 
 	// Held: nothing is written.
@@ -960,14 +961,14 @@ func testApplyGraph(t *testing.T, s store.Store, _ *Clock) {
 	require.NoError(t, err)
 	_, err = s.Apply(ctx, "test", store.Graph{
 		Tickets: []store.NewTicket{batch("js-b1")}, Reparent: map[string]string{"js-run": "js-b1"},
-		Edges: []store.Edge{{From: "js-s", To: other.ID, Kind: store.EdgeBlocks}}, Unclaimed: []string{"js-s"},
+		Edges: []domain.Edge{{From: "js-s", To: other.ID, Kind: domain.EdgeBlocks}}, Unclaimed: []string{"js-s"},
 	})
 
-	require.ErrorIs(t, err, store.ErrNotHolder)
+	require.ErrorIs(t, err, domain.ErrNotHolder)
 	_, err = s.Get(ctx, "js-b1")
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 	_, err = store.OpenBatch(ctx, s, proj, "k")
-	require.ErrorIs(t, err, store.ErrNotFound)
+	require.ErrorIs(t, err, domain.ErrNotFound)
 
 	out, err := s.Apply(ctx, "test", store.Graph{
 		Tickets: []store.NewTicket{batch("js-b2")}, Reparent: map[string]string{"js-run": "js-b2"},

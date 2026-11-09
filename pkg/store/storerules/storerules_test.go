@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/storerules"
 )
@@ -15,7 +16,7 @@ import (
 var now = time.Date(2026, 11, 6, 1, 2, 3, 456789000, time.UTC)
 
 func TestClaimFence(t *testing.T) {
-	tk := store.Ticket{ID: "t1", Status: store.StatusOpen, Fence: 3}
+	tk := domain.Ticket{ID: "t1", Status: domain.StatusOpen, Fence: 3}
 	c, d, fresh := storerules.Claim(&tk, "h", time.Minute, now)
 	assert.True(t, fresh)
 	assert.Equal(t, int64(4), c.Fence)
@@ -28,59 +29,59 @@ func TestClaimFence(t *testing.T) {
 	assert.Equal(t, c.Fence, c2.Fence)
 	assert.Equal(t, true, d2["resumed"])
 	require.NoError(t, storerules.Holds(tk, c2))
-	assert.ErrorIs(t, storerules.Holds(tk, store.Claim{Holder: "h", Fence: 3}), store.ErrNotHolder)
+	assert.ErrorIs(t, storerules.Holds(tk, store.Claim{Holder: "h", Fence: 3}), domain.ErrNotHolder)
 }
 
 func TestCanClaim(t *testing.T) {
-	open := store.Ticket{ID: "t", Status: store.StatusOpen}
+	open := domain.Ticket{ID: "t", Status: domain.StatusOpen}
 	require.NoError(t, storerules.CanClaim(open, "h", false, false))
-	assert.ErrorIs(t, storerules.CanClaim(open, "h", true, false), store.ErrNoWork)
-	assert.ErrorIs(t, storerules.CanClaim(open, "h", false, true), store.ErrNoWork)
-	assigned := store.Ticket{ID: "t", Status: store.StatusOpen, Holder: "other"}
-	assert.ErrorIs(t, storerules.CanClaim(assigned, "h", false, false), store.ErrNotHolder)
-	held := store.Ticket{ID: "t", Status: store.StatusInProgress, Holder: "h"}
+	assert.ErrorIs(t, storerules.CanClaim(open, "h", true, false), domain.ErrNoWork)
+	assert.ErrorIs(t, storerules.CanClaim(open, "h", false, true), domain.ErrNoWork)
+	assigned := domain.Ticket{ID: "t", Status: domain.StatusOpen, Holder: "other"}
+	assert.ErrorIs(t, storerules.CanClaim(assigned, "h", false, false), domain.ErrNotHolder)
+	held := domain.Ticket{ID: "t", Status: domain.StatusInProgress, Holder: "h"}
 	require.NoError(t, storerules.CanClaim(held, "h", false, true), "a resume does not wait for a slot")
-	assert.ErrorIs(t, storerules.CanClaim(store.Ticket{Status: store.StatusClosed}, "h", false, false), store.ErrClosed)
-	assert.ErrorIs(t, storerules.StillCandidate(assigned, "h"), store.ErrConflict)
+	assert.ErrorIs(t, storerules.CanClaim(domain.Ticket{Status: domain.StatusClosed}, "h", false, false), domain.ErrClosed)
+	assert.ErrorIs(t, storerules.StillCandidate(assigned, "h"), domain.ErrConflict)
 }
 
 func TestHandoffBumpsFence(t *testing.T) {
-	tk := store.Ticket{ID: "t", Status: store.StatusInProgress, Holder: "h", Fence: 2, Pool: "a"}
+	tk := domain.Ticket{ID: "t", Status: domain.StatusInProgress, Holder: "h", Fence: 2, Pool: "a"}
 	c := store.Claim{Holder: "h", Fence: 2}
 	d, err := storerules.Handoff(&tk, &c, "b", "why")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, tk.Status)
+	assert.Equal(t, domain.StatusOpen, tk.Status)
 	assert.Equal(t, int64(3), tk.Fence)
 	assert.Equal(t, "b", tk.Pool)
 	assert.Equal(t, map[string]any{"from_pool": "a", "pool": "b", "holder": "h", "note": "why"}, d)
 	_, err = storerules.Handoff(&tk, nil, "", "")
-	assert.ErrorIs(t, err, store.ErrInvalid)
+	assert.ErrorIs(t, err, domain.ErrInvalid)
 }
 
 func TestReleaseDeferIsNotFailure(t *testing.T) {
-	tk := store.Ticket{ID: "t", Kind: store.KindStep, Status: store.StatusInProgress, Holder: "h", Fence: 1, Fields: json.RawMessage(`{}`)}
+	tk := domain.Ticket{ID: "t", Kind: domain.KindStep, Status: domain.StatusInProgress, Holder: "h", Fence: 1, Fields: json.RawMessage(`{}`)}
 	until := now.Add(time.Hour)
 	d, note, err := storerules.Release(&tk, store.Claim{Holder: "h", Fence: 1}, "ci", until, now)
 	require.NoError(t, err)
 	assert.NotContains(t, d, "failures")
 	assert.Contains(t, note, "Released until")
-	assert.Equal(t, store.StatusOpen, tk.Status)
+	assert.Equal(t, domain.StatusOpen, tk.Status)
 }
 
 func TestCloseRebaseReopensStep(t *testing.T) {
-	tk := store.Ticket{ID: "t", Kind: store.KindStep, Status: store.StatusInProgress, Holder: "h"}
-	_, note, err := storerules.Close(&tk, nil, store.ResolutionRebase, now)
+	tk := domain.Ticket{ID: "t", Kind: domain.KindStep, Status: domain.StatusInProgress, Holder: "h"}
+	_, note, err := storerules.Close(&tk, nil, domain.ResolutionRebase, now)
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, tk.Status)
+	assert.Equal(t, domain.StatusOpen, tk.Status)
 	assert.Empty(t, tk.Resolution)
 	assert.True(t, tk.ClosedAt.IsZero())
 	assert.Contains(t, note, "rebase")
-	_, _, err = storerules.Close(&store.Ticket{Status: store.StatusClosed}, nil, "done", now)
-	assert.ErrorIs(t, err, store.ErrClosed)
+	_, _, err = storerules.Close(&domain.Ticket{Status: domain.StatusClosed}, nil, "done", now)
+	assert.ErrorIs(t, err, domain.ErrClosed)
 }
 
 func TestExpireUnclaimedIsNotFailure(t *testing.T) {
-	tk := store.Ticket{ID: "t", Kind: store.KindStep, Status: store.StatusOpen, Holder: "h"}
+	tk := domain.Ticket{ID: "t", Kind: domain.KindStep, Status: domain.StatusOpen, Holder: "h"}
 	d, note, err := storerules.Expire(&tk, "release", map[string]any{"reason": "gone"}, now)
 	require.NoError(t, err)
 	assert.Empty(t, note)
@@ -90,15 +91,15 @@ func TestExpireUnclaimedIsNotFailure(t *testing.T) {
 
 func TestApplyUpdateDiff(t *testing.T) {
 	title, same := "new", "p"
-	tk := store.Ticket{ID: "t", Title: "old", Pool: "p", Status: store.StatusInProgress, Revision: 4}
+	tk := domain.Ticket{ID: "t", Title: "old", Pool: "p", Status: domain.StatusInProgress, Revision: 4}
 	d, err := storerules.ApplyUpdate(&tk, store.Update{Title: &title, Pool: &same})
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"title": "new"}, d)
 	h := "x"
 	_, err = storerules.ApplyUpdate(&tk, store.Update{Holder: &h})
-	assert.ErrorIs(t, err, store.ErrInvalid)
+	assert.ErrorIs(t, err, domain.ErrInvalid)
 	_, err = storerules.ApplyUpdate(&tk, store.Update{IfRevision: 3})
-	assert.ErrorIs(t, err, store.ErrConflict)
+	assert.ErrorIs(t, err, domain.ErrConflict)
 
 	prev := storerules.Bump(&tk, now)
 	assert.Equal(t, int64(4), prev)

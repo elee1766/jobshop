@@ -12,8 +12,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/cli"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // guideBlocks returns the fenced blocks of the "A minimal pack" section of
@@ -140,7 +140,7 @@ func TestNewUserPath(t *testing.T) {
 	// 5. The run finishes done: wait for its close event.
 	done := func() bool {
 		for _, ev := range runs.get() {
-			if ev.ID == r.Run.ID && ev.Status == store.StatusClosed {
+			if ev.ID == r.Run.ID && ev.Status == domain.StatusClosed {
 				return true
 			}
 		}
@@ -150,7 +150,7 @@ func TestNewUserPath(t *testing.T) {
 	got := showRun(t, admin, r.Run.ID)
 	require.Equal(t, "done", got.Run.Resolution)
 	for _, s := range got.Steps {
-		require.Equal(t, store.StatusClosed, s.Status, s.Title)
+		require.Equal(t, domain.StatusClosed, s.Status, s.Title)
 	}
 }
 

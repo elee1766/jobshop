@@ -15,8 +15,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // escChatRoot writes a config with a pack whose workflow pr escalates to
@@ -67,11 +67,11 @@ const escChatBlock = `    escalate:
       pool_prompt_file: prompts/pool.md
       hold_prompt_file: prompts/hold.md`
 
-func chatSessions(t *testing.T, admin *rpc.Client) []store.Ticket {
+func chatSessions(t *testing.T, admin *rpc.Client) []domain.Ticket {
 	t.Helper()
-	var all []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &all))
-	var out []store.Ticket
+	var all []domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession}, &all))
+	var out []domain.Ticket
 	for _, s := range all {
 		if s.Pool == "escalations" {
 			out = append(out, s)
@@ -86,7 +86,7 @@ func promptsFile(t *testing.T, root config.Root) string {
 	return string(b)
 }
 
-func metaEsc(t *testing.T, tk store.Ticket) map[string]any {
+func metaEsc(t *testing.T, tk domain.Ticket) map[string]any {
 	t.Helper()
 	var m map[string]map[string]any
 	require.NoError(t, json.Unmarshal(tk.Meta, &m))
@@ -119,7 +119,7 @@ func TestEscalationChat(t *testing.T) {
 	sessions := chatSessions(t, admin)
 	require.Len(t, sessions, 1)
 	assert.Equal(t, m["session"], sessions[0].ID)
-	f, err := store.DecodeFields[store.SessionFields](sessions[0])
+	f, err := domain.DecodeFields[domain.SessionFields](sessions[0])
 	require.NoError(t, err)
 	assert.Equal(t, key, f.Key)
 
@@ -174,14 +174,14 @@ func TestEscalationChatPool(t *testing.T) {
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "bad"}, &task))
 
-	var esc store.Ticket
+	var esc domain.Ticket
 	// Test controllers tick hourly (#433): a pass spawns the session that
 	// quarantines the pool.
 	passUntil(t, root.Dir, func() bool {
-		var all []store.Ticket
+		var all []domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Label: "needs-human"}, &all))
 		if len(all) != 1 {
 			return false
@@ -201,7 +201,7 @@ func TestEscalationChatPool(t *testing.T) {
 // holdTask files a task as session sess (a worker) and returns its id.
 func holdTask(t *testing.T, sess *rpc.Client, title string) string {
 	t.Helper()
-	var tk store.Ticket
+	var tk domain.Ticket
 	require.NoError(t, sess.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: title}, &tk))
 	return tk.ID
 }
@@ -240,7 +240,7 @@ func TestEscalationChatHolds(t *testing.T) {
 	// 2. A guard ask_human files an approval ticket that gets a chat.
 	var g rpc.GuardResult
 	require.NoError(t, w.Call(ctx, rpc.MethodGuard, rpc.GuardParams{Action: "merge", Target: "PR 5"}, &g))
-	require.Equal(t, rpc.GuardAskHuman, g.Decision)
+	require.Equal(t, domain.GuardAskHuman, g.Decision)
 	gm := metaEsc(t, getTicket(t, admin, g.Ticket).Ticket)
 	require.NotNil(t, gm, "the guard ask opened a chat")
 	assert.Equal(t, "guard", gm["cause"])
@@ -277,23 +277,23 @@ func TestEscalationChatPowers(t *testing.T) {
 	require.NotNil(t, m)
 	chat := dial(t, filepath.Join(root.SessionDir(m["session"].(string)), "cli.sock"))
 
-	assert.ErrorIs(t, o.Call(ctx, rpc.MethodRelease, rpc.ReleaseParams{ID: id}, nil), store.ErrNotHolder, "no grant, not the holder")
+	assert.ErrorIs(t, o.Call(ctx, rpc.MethodRelease, rpc.ReleaseParams{ID: id}, nil), domain.ErrNotHolder, "no grant, not the holder")
 	_ = other
 	require.NoError(t, chat.Call(ctx, rpc.MethodCommentAdd, rpc.CommentParams{ID: id, Body: "operator says use the sandbox key"}, nil))
 	require.NoError(t, chat.Call(ctx, rpc.MethodRelease, rpc.ReleaseParams{ID: id, Reason: "operator unblocked"}, nil))
 	got := getTicket(t, admin, id).Ticket
-	assert.Equal(t, store.StatusOpen, got.Status)
+	assert.Equal(t, domain.StatusOpen, got.Status)
 	assert.Empty(t, got.Holder)
 	// Other admin methods stay closed to the chat.
 	assert.ErrorIs(t, chat.Call(ctx, rpc.MethodTicketReopen, rpc.IDParams{ID: id}, nil), rpc.ErrForbidden)
 	assert.ErrorIs(t, chat.Call(ctx, rpc.MethodDrain, struct{}{}, nil), rpc.ErrForbidden)
 	// It reaches the worker session with send (interrupt allowed).
-	var msg store.Ticket
+	var msg domain.Ticket
 	require.NoError(t, chat.Call(ctx, rpc.MethodTicketCreate, rpc.CreateParams{
-		Kind: store.KindMessage, Title: "use the sandbox key",
+		Kind: domain.KindMessage, Title: "use the sandbox key",
 		Fields: json.RawMessage(`{"to":"` + worker.Ticket.ID + `","interrupt":true}`),
 	}, &msg))
-	assert.Equal(t, store.KindMessage, msg.Kind)
+	assert.Equal(t, domain.KindMessage, msg.Kind)
 }
 
 // TestEscalationChatSweepsLabel: a ticket labeled needs-human by the
@@ -303,7 +303,7 @@ func TestEscalationChatSweepsLabel(t *testing.T) {
 	stop := start()
 	defer stop()
 	admin := dial(t, root.AdminSocket())
-	var tk store.Ticket
+	var tk domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "stuck", Pool: "ops", Labels: []string{"needs-human"}}, &tk))
 	passUntil(t, root.Dir, func() bool { return metaEsc(t, getTicket(t, admin, tk.ID).Ticket) != nil }, "the sweep opens a chat")
 	assert.Equal(t, "label", metaEsc(t, getTicket(t, admin, tk.ID).Ticket)["cause"])

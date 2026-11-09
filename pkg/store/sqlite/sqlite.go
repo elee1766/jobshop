@@ -12,7 +12,7 @@ import (
 	msqlite "modernc.org/sqlite" // database/sql driver "sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 //go:embed migrations/*.sql
@@ -138,11 +138,11 @@ func classifyErr(err error) error {
 	msg := err.Error()
 	switch {
 	case strings.Contains(msg, "UNIQUE constraint failed"), strings.Contains(msg, "PRIMARY KEY"):
-		return store.ErrAlreadyExist
+		return domain.ErrAlreadyExist
 	case strings.Contains(msg, "FOREIGN KEY constraint failed"):
-		return store.ErrNotFound
+		return domain.ErrNotFound
 	case strings.Contains(msg, "CHECK constraint failed"):
-		return store.ErrInvalid
+		return domain.ErrInvalid
 	}
 	return nil
 }

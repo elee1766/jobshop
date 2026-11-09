@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/domain"
 )
 
 // markerGH is a fake gh: `api` prints the URL of a stored post containing
@@ -51,7 +51,7 @@ func TestGHKeyedCommentAfterLocalKeyGone(t *testing.T) {
 	gh, posts := markerGH(t, dir)
 	t.Setenv("JOBSHOP_GH", gh)
 	t.Setenv("GH_TOKEN", "set")
-	f := &fakeController{decision: rpc.GuardAllow, keys: map[string]string{}}
+	f := &fakeController{decision: domain.GuardAllow, keys: map[string]string{}}
 	g := &Globals{Socket: f.serve(t)}
 	args := []string{"issue", "comment", "9", "-R", "o/n", "--body", "hello", "--jobshop-key", "c1"}
 

@@ -14,6 +14,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/clock"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -56,7 +57,7 @@ func TestScriptStepSandboxWorktree(t *testing.T) {
 	admin, _ := startAuto(t, root, clock.NewFake(time.Date(2026, 11, 7, 12, 0, 0, 0, time.UTC)))
 	r := startRun(t, admin, rpc.RunStartParams{Workflow: "scripted", Vars: map[string]string{"issue": "42"}})
 	passUntilWall(t, root, func() bool {
-		return showRun(t, admin, r.Run.ID).Run.Status == store.StatusClosed
+		return showRun(t, admin, r.Run.ID).Run.Status == domain.StatusClosed
 	}, "script step did not finish the run")
 
 	res := showRun(t, admin, r.Run.ID)
@@ -64,7 +65,7 @@ func TestScriptStepSandboxWorktree(t *testing.T) {
 	step := res.Steps[0]
 	sf := stepFields(t, step)
 	assert.Empty(t, step.Pool, "no session may claim a script step")
-	assert.Equal(t, store.StepScript, sf.Type)
+	assert.Equal(t, domain.StepScript, sf.Type)
 	assert.Equal(t, "hooks.star:check", sf.Script)
 	require.Equal(t, "ok", sf.Result, sf.Output)
 	assert.Equal(t, "pass", sf.Outcome)
@@ -73,9 +74,9 @@ func TestScriptStepSandboxWorktree(t *testing.T) {
 	_, err = os.Stat(filepath.Join(repo, "note"))
 	assert.True(t, os.IsNotExist(err), "main checkout untouched")
 
-	rf, err := store.DecodeFields[store.RunFields](res.Run)
+	rf, err := domain.DecodeFields[domain.RunFields](res.Run)
 	require.NoError(t, err)
-	assert.Equal(t, store.RunDone, rf.State)
+	assert.Equal(t, domain.RunDone, rf.State)
 	assert.Equal(t, "42", rf.Automation.Output["note"])
 
 	var audit []store.Record

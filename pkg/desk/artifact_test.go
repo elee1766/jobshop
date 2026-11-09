@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func TestArtifactFiles(t *testing.T) {
@@ -22,7 +22,7 @@ func TestArtifactFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "secret"), []byte("s"), 0o600))
 	require.NoError(t, os.Symlink(filepath.Join(root, "secret"), filepath.Join(dir, "link.txt")))
 	show := rpc.ArtifactShowResult{
-		Artifact: rpc.Artifact{Ticket: store.Ticket{ID: "js-1"}, Meta: rpc.ArtifactMeta{Files: []rpc.ArtifactFile{
+		Artifact: rpc.Artifact{Ticket: domain.Ticket{ID: "js-1"}, Meta: rpc.ArtifactMeta{Files: []rpc.ArtifactFile{
 			{Name: "out.csv"}, {Name: "pic.svg"}, {Name: "link.txt"}, {Name: "old.txt", Pruned: true},
 		}}},
 		Dir: dir,

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func (s *Server) attentionAnswer(r *http.Request) (any, error) {
@@ -40,8 +40,8 @@ func (s *Server) chatManage(r *http.Request) (any, error) {
 
 // overview keeps run details complete within an explicit, reported bound.
 func (s *Server) overview(r *http.Request) (any, error) {
-	var runs []store.Ticket
-	if err := s.ctl.Call(r.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindRun, Status: store.StatusOpen, Limit: 101}, &runs); err != nil {
+	var runs []domain.Ticket
+	if err := s.ctl.Call(r.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindRun, Status: domain.StatusOpen, Limit: 101}, &runs); err != nil {
 		return nil, err
 	}
 	out := struct {
@@ -113,8 +113,8 @@ func (s *Server) systemView(r *http.Request) (any, error) {
 
 func (s *Server) improvements(r *http.Request) (any, error) {
 	var out struct {
-		Learnings []store.Learning   `json:"learnings"`
-		Edits     []store.MemoryEdit `json:"edits"`
+		Learnings []domain.Learning   `json:"learnings"`
+		Edits     []domain.MemoryEdit `json:"edits"`
 	}
 	if err := s.ctl.Call(r.Context(), rpc.MethodLearnList, rpc.LearnListParams{Limit: 500}, &out.Learnings); err != nil {
 		return nil, err

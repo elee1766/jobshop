@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestReportIncidents lists a step with a failed attempt and its last
@@ -27,7 +27,7 @@ func TestReportIncidents(t *testing.T) {
 	require.Equal(t, r.Run.ID, st.Run)
 	require.Equal(t, "implement", st.Step)
 	require.Equal(t, 1, st.Failures)
-	require.Equal(t, store.StatusOpen, st.Status, "reopened for retry")
+	require.Equal(t, domain.StatusOpen, st.Status, "reopened for retry")
 	require.NotEmpty(t, st.LastError)
 	require.NotNil(t, res.Logs)
 	require.NotNil(t, res.Sessions)

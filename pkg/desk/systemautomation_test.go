@@ -22,9 +22,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/control"
 	"github.com/elee1766/jobshop/pkg/control/controltest"
 	"github.com/elee1766/jobshop/pkg/desk"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // This boundary catches audit changes that never invalidate Desk before a ticket exists.
@@ -166,8 +166,8 @@ triggers:
 	id := listed.Automation.Items[0].Key
 	assert.Equal(t, "generic:desk-event", listed.Automation.Items[0].Event.Delivery)
 	assert.NotContains(t, string(nextSummary(t, listed.Automation)), "payload")
-	var runs []store.Ticket
-	controller.Call(rpc.MethodTicketList, rpc.ListParams{Kind: store.KindRun}, &runs)
+	var runs []domain.Ticket
+	controller.Call(rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindRun}, &runs)
 	require.Empty(t, runs, "audit must be available before the hook creates tickets")
 	disconnect()
 	messages, disconnect = connect("?audit=" + id)
@@ -200,7 +200,7 @@ triggers:
 	assert.NotContains(t, string(trace.Invocation.Value), `"plan"`)
 	var shown rpc.ShowResult
 	controller.Call(rpc.MethodTicketShow, rpc.IDParams{ID: result.Targets[0]}, &shown)
-	assert.Equal(t, store.KindRun, shown.Ticket.Kind)
+	assert.Equal(t, domain.KindRun, shown.Ticket.Kind)
 }
 
 func nextSummary(t *testing.T, value desk.AutomationList) []byte {

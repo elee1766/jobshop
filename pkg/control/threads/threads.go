@@ -17,9 +17,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/linear"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 const (
@@ -124,7 +124,7 @@ func DecodeMeta(meta json.RawMessage) (Meta, map[string]json.RawMessage) {
 // Implicit are the threads a ticket follows without asking: its
 // meta.github issue or pr, its meta.linear issue, and PRs linked in its
 // comments.
-func Implicit(t store.Ticket, comments []store.Comment) []Thread {
+func Implicit(t domain.Ticket, comments []domain.Comment) []Thread {
 	var out []Thread
 	var m struct {
 		GitHub struct {
@@ -161,7 +161,7 @@ func Implicit(t store.Ticket, comments []store.Comment) []Thread {
 
 // Follower is a ticket and the threads it follows.
 type Follower struct {
-	T       store.Ticket
+	T       domain.Ticket
 	Threads []Thread
 	Changed bool // Threads gained an entry not yet saved
 }
@@ -191,11 +191,11 @@ func Of(fs []*Follower, k string) (Thread, time.Time) {
 // Owner picks the follower that gets a thread's news: the one being
 // worked, else an open one, else the most recently closed.
 func Owner(fs []*Follower) *Follower {
-	rank := func(t store.Ticket) int {
+	rank := func(t domain.Ticket) int {
 		switch t.Status {
-		case store.StatusInProgress:
+		case domain.StatusInProgress:
 			return 0
-		case store.StatusOpen:
+		case domain.StatusOpen:
 			return 1
 		}
 		return 2
@@ -206,7 +206,7 @@ func Owner(fs []*Follower) *Follower {
 		if rank(a) != rank(b) {
 			return rank(a) < rank(b)
 		}
-		if a.Status == store.StatusClosed {
+		if a.Status == domain.StatusClosed {
 			return a.ClosedAt.After(b.ClosedAt)
 		}
 		return a.CreatedAt.After(b.CreatedAt)

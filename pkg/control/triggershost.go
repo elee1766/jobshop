@@ -21,6 +21,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/telemetry"
@@ -108,11 +109,11 @@ func (h triggerHost) EditsHold(ctx context.Context, w config.EditsWhen, now time
 	return h.c.editsHold(ctx, w, now)
 }
 
-func (h triggerHost) Fire(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string, ev triggers.Event) (store.Ticket, error) {
+func (h triggerHost) Fire(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string, ev triggers.Event) (domain.Ticket, error) {
 	return h.c.fireTriggerEvent(ctx, cfg, name, tr, key, ev)
 }
 
-func (h triggerHost) FireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s triggers.Finding) (store.Ticket, bool, error) {
+func (h triggerHost) FireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s triggers.Finding) (domain.Ticket, bool, error) {
 	return h.c.fireFinding(ctx, cfg, name, tr, s)
 }
 
@@ -129,7 +130,7 @@ func (h triggerHost) JournalAt(session string) time.Time {
 	return at
 }
 
-func (h triggerHost) WaitsOnQuestion(ctx context.Context, t store.Ticket) bool {
+func (h triggerHost) WaitsOnQuestion(ctx context.Context, t domain.Ticket) bool {
 	return h.c.waitsOnQuestion(ctx, t)
 }
 
@@ -178,23 +179,23 @@ func (c *Controller) signalPoolQuarantined(cfg *config.Config) []triggers.Findin
 // waitsOnQuestion: the ticket's last report is waiting on a question that
 // is still open. The question itself is a needs-human ticket, so the
 // needs_human signal covers it and the step or session is not idle.
-func (c *Controller) waitsOnQuestion(ctx context.Context, t store.Ticket) bool {
+func (c *Controller) waitsOnQuestion(ctx context.Context, t domain.Ticket) bool {
 	rm, ok := reportOf(t)
 	if !ok || rm.State != rpc.ReportWaiting || rm.Question == "" {
 		return false
 	}
 	q, err := c.store.Get(ctx, rm.Question)
-	return err == nil && q.Status != store.StatusClosed
+	return err == nil && q.Status != domain.StatusClosed
 }
 
 // metaString is meta[pack][key] when it is a string.
 func metaString(raw json.RawMessage, pack, key string) string {
-	return store.MetaString(raw, pack, key)
+	return domain.MetaString(raw, pack, key)
 }
 
 // fireTriggerEvent fires tr; ev is the event that fired it, nil for a
 // poll. Its fields are the event template var (empty on a poll).
-func (c *Controller) fireTriggerEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string, ev triggers.Event) (store.Ticket, error) {
+func (c *Controller) fireTriggerEvent(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, key string, ev triggers.Event) (domain.Ticket, error) {
 	m := map[string]string{"name": name}
 	if key != "" {
 		// Prefixed with the trigger name so keys of different triggers
@@ -203,7 +204,7 @@ func (c *Controller) fireTriggerEvent(ctx context.Context, cfg *config.Config, n
 	}
 	meta, err := json.Marshal(map[string]map[string]string{triggerPack: m})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	out, _, _ := strings.Cut(key, "\n")
 	tv := map[string]any{config.CheckOutputVar: strings.TrimSpace(out), config.EventVar: ev.Vars()}
@@ -218,7 +219,7 @@ func (c *Controller) fireTriggerEvent(ctx context.Context, cfg *config.Config, n
 		tt.Body = strings.TrimSpace(tt.Body + "\n\nCheck output: " + key)
 	}
 	return store.Create(ctx, c.store, "controller", store.NewTicket{
-		Project: tt.Project, Kind: store.KindTask, Title: tt.Title, Body: tt.Body,
+		Project: tt.Project, Kind: domain.KindTask, Title: tt.Title, Body: tt.Body,
 		Priority: tt.Priority, Pool: tt.Pool, Labels: tt.Labels, Meta: meta,
 	})
 }
@@ -227,23 +228,23 @@ func (c *Controller) fireTriggerEvent(ctx context.Context, cfg *config.Config, n
 // ticket, so the open run holds the trigger and its key dedups like a
 // ticket's. A run already open under the same run key is not an error;
 // the trigger stays held by that run only if it carries the trigger meta.
-func (c *Controller) fireRun(ctx context.Context, cfg *config.Config, r *config.TriggerRun, m map[string]string, tv map[string]any) (store.Ticket, error) {
+func (c *Controller) fireRun(ctx context.Context, cfg *config.Config, r *config.TriggerRun, m map[string]string, tv map[string]any) (domain.Ticket, error) {
 	p := rpc.RunStartParams{Workflow: r.Workflow, Vars: map[string]string{}}
 	for k, v := range r.Vars {
 		s, err := r.Fill(v, tv)
 		if err != nil {
-			return store.Ticket{}, fmt.Errorf("run var %s: %w", k, err)
+			return domain.Ticket{}, fmt.Errorf("run var %s: %w", k, err)
 		}
 		p.Vars[k] = s
 	}
 	k, err := r.Fill(r.Key, tv)
 	if err != nil {
-		return store.Ticket{}, fmt.Errorf("run key: %w", err)
+		return domain.Ticket{}, fmt.Errorf("run key: %w", err)
 	}
 	p.Key = k
 	res, err := c.startRun(ctx, cfg, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	return res.(rpc.RunResult).Run, nil
 }
@@ -252,23 +253,23 @@ func (c *Controller) fireRun(ctx context.Context, cfg *config.Config, r *config.
 // <key_prefix>:<signal>:<subject>, or the trigger's run key filled with
 // the scan vars. existing is true when an open run already had that key
 // (one started by hand or by another run, JOB-33).
-func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s triggers.Finding) (run store.Ticket, existing bool, err error) {
+func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, s triggers.Finding) (run domain.Ticket, existing bool, err error) {
 	tv := map[string]any{config.ScanSignalVar: s.Signal, config.ScanSubjectVar: s.Subject, config.ScanDetailVar: s.Detail}
 	key := s.KeyWith(tr.ScanKeyPrefix())
 	p := rpc.RunStartParams{Workflow: tr.Run.Workflow, Vars: map[string]string{}, Key: key}
 	if tr.Run.Key != "" {
 		if p.Key, err = tr.Run.Fill(tr.Run.Key, tv); err != nil {
-			return store.Ticket{}, false, fmt.Errorf("run key: %w", err)
+			return domain.Ticket{}, false, fmt.Errorf("run key: %w", err)
 		}
 	}
 	// A finding about an issue titles its run with the issue's (JOB-133).
 	if p.Title, err = c.findingTitle(ctx, cfg, tr, s, p.Workflow, p.Key); err != nil {
-		return store.Ticket{}, false, err
+		return domain.Ticket{}, false, err
 	}
 	for k, v := range tr.Run.Vars {
 		out, err := tr.Run.Fill(v, tv)
 		if err != nil {
-			return store.Ticket{}, false, fmt.Errorf("run var %s: %w", k, err)
+			return domain.Ticket{}, false, fmt.Errorf("run var %s: %w", k, err)
 		}
 		p.Vars[k] = out
 	}
@@ -280,7 +281,7 @@ func (c *Controller) fireFinding(ctx context.Context, cfg *config.Config, name s
 	}
 	res, err := c.startRun(ctx, cfg, scope{admin: true, actor: "controller"}, p, map[string]any{triggerPack: m})
 	if err != nil {
-		return store.Ticket{}, false, err
+		return domain.Ticket{}, false, err
 	}
 	rr := res.(rpc.RunResult)
 	return rr.Run, rr.Existing, nil
@@ -294,15 +295,15 @@ const commandLabel = "trigger-command"
 // runs and dedups its key. Success closes it; failure keeps it open as
 // needs-human with the output, so a broken command is reported once
 // and the trigger waits for a human to close it.
-func (c *Controller) fireCommand(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, meta json.RawMessage, tv map[string]any) (store.Ticket, error) {
+func (c *Controller) fireCommand(ctx context.Context, cfg *config.Config, name string, tr config.Trigger, meta json.RawMessage, tv map[string]any) (domain.Ticket, error) {
 	cm := tr.Command
 	script, err := config.Fill(cm.Run, tv)
 	if err != nil {
-		return store.Ticket{}, fmt.Errorf("command: %w", err)
+		return domain.Ticket{}, fmt.Errorf("command: %w", err)
 	}
-	fields, err := json.Marshal(store.MessageFields{To: questionTo, From: "controller"})
+	fields, err := json.Marshal(domain.MessageFields{To: questionTo, From: "controller"})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	// A root with several projects has no default; the record only needs
 	// one to live in.
@@ -311,14 +312,14 @@ func (c *Controller) fireCommand(ctx context.Context, cfg *config.Config, name s
 		project = projects[0]
 	}
 	if project == "" {
-		return store.Ticket{}, errors.New("command: no project to record the run in")
+		return domain.Ticket{}, errors.New("command: no project to record the run in")
 	}
 	t, err := store.Create(ctx, c.store, "controller", store.NewTicket{
-		Project: project, Kind: store.KindMessage, Title: "Trigger " + name + ": command",
+		Project: project, Kind: domain.KindMessage, Title: "Trigger " + name + ": command",
 		Body: "```\n" + script + "\n```\n", Labels: []string{commandLabel}, Meta: meta, Fields: fields,
 	})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	// The open record holds the trigger, so the command runs outside the
 	// tick (JOB-103) and closes or flags the record when it ends. Its
@@ -333,7 +334,7 @@ func (c *Controller) fireCommand(ctx context.Context, cfg *config.Config, name s
 
 // finishCommand runs a trigger command and closes its record, or marks
 // it needs-human with the output when the command fails.
-func (c *Controller) finishCommand(ctx context.Context, name string, t store.Ticket, script string, timeout time.Duration) {
+func (c *Controller) finishCommand(ctx context.Context, name string, t domain.Ticket, script string, timeout time.Duration) {
 	out, runErr := c.runTriggerCommand(ctx, script, timeout)
 	if runErr == nil {
 		if out != "" {

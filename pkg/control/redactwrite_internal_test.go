@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
@@ -40,9 +41,9 @@ func TestRedactOnWrite(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotContains(t, string(got.Meta), fakeGHToken)
 
-	out, err := c.learnAdd(ctx, sc, rpc.LearnParams{Kind: store.LearningWorkaround, Summary: "set " + fakeGHToken, Fix: "unset " + fakeGHToken})
+	out, err := c.learnAdd(ctx, sc, rpc.LearnParams{Kind: domain.LearningWorkaround, Summary: "set " + fakeGHToken, Fix: "unset " + fakeGHToken})
 	require.NoError(t, err)
-	l := out.(store.Learning)
+	l := out.(domain.Learning)
 	assert.NotContains(t, l.Summary+l.Fix, fakeGHToken)
 	ls := learnings(t, c, store.LearningFilter{})
 	for _, x := range ls {

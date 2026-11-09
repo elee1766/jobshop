@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/control/question"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -23,7 +24,7 @@ import (
 
 const (
 	reportMetaPack   = "report"
-	questionMetaPack = store.MetaQuestion
+	questionMetaPack = domain.MetaQuestion
 	// The question ticket's content lives in pkg/control/question (JOB-147).
 	resolutionAnswered = question.Resolution
 	answerTitlePrefix  = question.AnswerTitlePrefix
@@ -46,13 +47,13 @@ type questionMeta = question.Meta
 
 func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (any, error) {
 	if !slices.Contains(rpc.ReportStates, p.State) {
-		return nil, fmt.Errorf("%w: report state %q is not one of %s", store.ErrInvalid, p.State, strings.Join(rpc.ReportStates, ", "))
+		return nil, fmt.Errorf("%w: report state %q is not one of %s", domain.ErrInvalid, p.State, strings.Join(rpc.ReportStates, ", "))
 	}
 	if p.Until != nil && p.State != rpc.ReportWaiting {
-		return nil, fmt.Errorf("%w: --until is only for waiting", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: --until is only for waiting", domain.ErrInvalid)
 	}
 	if p.Until != nil && !p.Until.After(c.now()) {
-		return nil, fmt.Errorf("%w: until must be in the future", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: until must be in the future", domain.ErrInvalid)
 	}
 	id, err := c.current(ctx, sc, p.ID)
 	if err != nil {
@@ -69,10 +70,10 @@ func (c *Controller) report(ctx context.Context, sc scope, p rpc.ReportParams) (
 	}
 	q := strings.TrimSpace(p.Question)
 	if q == "" && (strings.TrimSpace(p.Context) != "" || len(p.Options) > 0) {
-		return nil, fmt.Errorf("%w: context and options go with a question", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: context and options go with a question", domain.ErrInvalid)
 	}
 	if len(p.Context) > maxQuestionContext {
-		return nil, fmt.Errorf("%w: context is over %d bytes", store.ErrInvalid, maxQuestionContext)
+		return nil, fmt.Errorf("%w: context is over %d bytes", domain.ErrInvalid, maxQuestionContext)
 	}
 	opts, err := question.Options(p.Options)
 	if err != nil {
@@ -149,7 +150,7 @@ func reportComment(rm reportMeta, question string) string {
 
 // setReport replaces meta.report, keeping the other packs, conditional on
 // the revision read.
-func (c *Controller) setReport(ctx context.Context, actor, id string, rm reportMeta) (store.Ticket, error) {
+func (c *Controller) setReport(ctx context.Context, actor, id string, rm reportMeta) (domain.Ticket, error) {
 	for attempt := 0; ; attempt++ {
 		t, err := c.store.Get(ctx, id)
 		if err != nil {
@@ -165,7 +166,7 @@ func (c *Controller) setReport(ctx context.Context, actor, id string, rm reportM
 			return t, err
 		}
 		t, err = c.store.Update(ctx, actor, id, store.Update{Meta: mb, IfRevision: t.Revision})
-		if errors.Is(err, store.ErrConflict) && attempt < 5 {
+		if errors.Is(err, domain.ErrConflict) && attempt < 5 {
 			continue
 		}
 		return t, err
@@ -173,7 +174,7 @@ func (c *Controller) setReport(ctx context.Context, actor, id string, rm reportM
 }
 
 // reportOf is the ticket's last report, if any.
-func reportOf(t store.Ticket) (reportMeta, bool) {
+func reportOf(t domain.Ticket) (reportMeta, bool) {
 	var m map[string]json.RawMessage
 	var rm reportMeta
 	if json.Unmarshal(t.Meta, &m) != nil || json.Unmarshal(m[reportMetaPack], &rm) != nil || rm.State == "" {
@@ -186,7 +187,7 @@ func reportOf(t store.Ticket) (reportMeta, bool) {
 // A message is not claimable and has no pool, so no agent picks it up and
 // it is not an orphan; a human answers through the gateway or
 // `jobshop answer`.
-func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket, q, qctx string, opts []rpc.QuestionOption) (store.Ticket, error) {
+func (c *Controller) fileQuestion(ctx context.Context, sc scope, t domain.Ticket, q, qctx string, opts []domain.QuestionOption) (domain.Ticket, error) {
 	meta := map[string]json.RawMessage{}
 	if len(t.Meta) > 0 {
 		_ = json.Unmarshal(t.Meta, &meta)
@@ -197,7 +198,7 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 	meta[questionMetaPack], _ = json.Marshal(questionMeta{Ticket: t.ID, Session: sc.session, Context: qctx, Options: opts})
 	mb, err := json.Marshal(meta)
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	title, _, _ := strings.Cut(q, "\n")
 	if len(title) > 120 {
@@ -211,19 +212,19 @@ func (c *Controller) fileQuestion(ctx context.Context, sc scope, t store.Ticket,
 		b += "\n## Context\n\n" + qctx + "\n"
 	}
 	b += fmt.Sprintf("\nAnswer with `jobshop answer <this ticket> \"<text>\"` (or `--option N [note]`) or in its gateway thread; the answer is delivered to the asking session and commented on %s.\n", t.ID)
-	fields, err := json.Marshal(store.MessageFields{To: questionTo, From: sc.actor})
+	fields, err := json.Marshal(domain.MessageFields{To: questionTo, From: sc.actor})
 	if err != nil {
-		return store.Ticket{}, err
+		return domain.Ticket{}, err
 	}
 	prio := 1
 	return store.Create(ctx, c.store, sc.actor, store.NewTicket{
-		Project: t.Project, Kind: store.KindMessage, Title: "Question: " + title, Body: b,
+		Project: t.Project, Kind: domain.KindMessage, Title: "Question: " + title, Body: b,
 		Priority: &prio, Labels: []string{needsHumanLabel}, Meta: mb, Fields: fields,
 	})
 }
 
 // questionOf is meta.question of a question ticket.
-func questionOf(t store.Ticket) (questionMeta, bool) { return question.Of(t) }
+func questionOf(t domain.Ticket) (questionMeta, bool) { return question.Of(t) }
 
 // answerQuestion delivers a human's answer: a message to the asking
 // session when it is still open, a comment on the asked ticket (so a new
@@ -238,7 +239,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 	}
 	text := strings.TrimSpace(p.Text)
 	if text == "" && p.Option == 0 {
-		return nil, fmt.Errorf("%w: answer text is required", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: answer text is required", domain.ErrInvalid)
 	}
 	qt, err := c.store.Get(ctx, p.ID)
 	if err != nil {
@@ -246,17 +247,17 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 	}
 	qm, ok := questionOf(qt)
 	if !ok {
-		return nil, fmt.Errorf("%w: %s is not a question", store.ErrInvalid, qt.ID)
+		return nil, fmt.Errorf("%w: %s is not a question", domain.ErrInvalid, qt.ID)
 	}
-	if qt.Status == store.StatusClosed {
-		return nil, fmt.Errorf("%w: question %s is already closed (%s)", store.ErrInvalid, qt.ID, qt.Resolution)
+	if qt.Status == domain.StatusClosed {
+		return nil, fmt.Errorf("%w: question %s is already closed (%s)", domain.ErrInvalid, qt.ID, qt.Resolution)
 	}
 	// Options are suggestions (JOB-101): a pick sends the option with an
 	// optional note, free text is still an answer.
 	if p.Option != 0 {
-		i := slices.IndexFunc(qm.Options, func(o rpc.QuestionOption) bool { return o.ID == p.Option })
+		i := slices.IndexFunc(qm.Options, func(o domain.QuestionOption) bool { return o.ID == p.Option })
 		if i < 0 {
-			return nil, fmt.Errorf("%w: question %s has no option %d (it has %d)", store.ErrInvalid, qt.ID, p.Option, len(qm.Options))
+			return nil, fmt.Errorf("%w: question %s has no option %d (it has %d)", domain.ErrInvalid, qt.ID, p.Option, len(qm.Options))
 		}
 		text = question.ChosenText(qm.Options[i], text)
 	}
@@ -280,13 +281,13 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 		return nil, err
 	}
 	if qm.Session != "" {
-		if s, err := c.store.Get(ctx, qm.Session); err == nil && s.Status != store.StatusClosed {
-			fields, err := json.Marshal(store.MessageFields{To: s.ID, From: from})
+		if s, err := c.store.Get(ctx, qm.Session); err == nil && s.Status != domain.StatusClosed {
+			fields, err := json.Marshal(domain.MessageFields{To: s.ID, From: from})
 			if err != nil {
 				return nil, err
 			}
 			m, err := store.Create(ctx, c.store, sc.actor, store.NewTicket{
-				Project: s.Project, Kind: store.KindMessage,
+				Project: s.Project, Kind: domain.KindMessage,
 				Title: fmt.Sprintf(answerTitlePrefix+"%s on %s", qt.ID, qm.Ticket), Body: text, Fields: fields,
 			})
 			if err != nil {
@@ -296,7 +297,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 			res.Message = &m
 		}
 	}
-	if t, err := c.store.Get(ctx, qm.Ticket); err == nil && t.Status != store.StatusClosed {
+	if t, err := c.store.Get(ctx, qm.Ticket); err == nil && t.Status != domain.StatusClosed {
 		if rm, ok := reportOf(t); ok && rm.Question == qt.ID {
 			rm.State, rm.Note, rm.Question, rm.Until, rm.By, rm.At = rpc.ReportProgress, "question "+qt.ID+" answered", "", "", sc.actor, c.now().UTC()
 			if _, err := c.setReport(ctx, sc.actor, t.ID, rm); err != nil {
@@ -308,7 +309,7 @@ func (c *Controller) answerQuestion(ctx context.Context, sc scope, p rpc.AnswerP
 				}
 			}
 		}
-		if t.Status == store.StatusOpen && t.DeferUntil.After(c.now()) {
+		if t.Status == domain.StatusOpen && t.DeferUntil.After(c.now()) {
 			now := c.now()
 			if _, err := c.store.Update(ctx, sc.actor, t.ID, store.Update{DeferUntil: &now}); err != nil {
 				return nil, err

@@ -6,6 +6,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
@@ -32,63 +33,63 @@ func slow(ctx context.Context, op, coll string, start time.Time, err error) {
 	telemetry.RecordSlow(ctx, name, start, SlowCall, err, attrs...)
 }
 
-func (t *tracedStore) Get(ctx context.Context, id string) (Ticket, error) {
+func (t *tracedStore) Get(ctx context.Context, id string) (domain.Ticket, error) {
 	start := time.Now()
 	r, err := t.Store.Get(ctx, id)
 	slow(ctx, "get", "", start, err)
 	return r, err
 }
 
-func (t *tracedStore) List(ctx context.Context, f Filter) ([]Ticket, error) {
+func (t *tracedStore) List(ctx context.Context, f Filter) ([]domain.Ticket, error) {
 	start := time.Now()
 	r, err := t.Store.List(ctx, f)
 	slow(ctx, "list", "", start, err)
 	return r, err
 }
 
-func (t *tracedStore) Update(ctx context.Context, actor, id string, u Update) (Ticket, error) {
+func (t *tracedStore) Update(ctx context.Context, actor, id string, u Update) (domain.Ticket, error) {
 	start := time.Now()
 	r, err := t.Store.Update(ctx, actor, id, u)
 	slow(ctx, "update", "", start, err)
 	return r, err
 }
 
-func (t *tracedStore) SetResources(ctx context.Context, rc ResourceConfig) error {
+func (t *tracedStore) SetResources(ctx context.Context, rc domain.ResourceConfig) error {
 	start := time.Now()
 	err := t.Store.SetResources(ctx, rc)
 	slow(ctx, "set_resources", "", start, err)
 	return err
 }
 
-func (t *tracedStore) Slot(ctx context.Context, actor string, e SlotEvent) (Slot, string, error) {
+func (t *tracedStore) Slot(ctx context.Context, actor string, e domain.SlotEvent) (domain.Slot, string, error) {
 	start := time.Now()
 	sl, id, err := t.Store.Slot(ctx, actor, e)
 	slow(ctx, "slot", "", start, err)
 	return sl, id, err
 }
 
-func (t *tracedStore) ReleaseSlots(ctx context.Context) ([]Slot, error) {
+func (t *tracedStore) ReleaseSlots(ctx context.Context) ([]domain.Slot, error) {
 	start := time.Now()
 	r, err := t.Store.ReleaseSlots(ctx)
 	slow(ctx, "release_slots", "", start, err)
 	return r, err
 }
 
-func (t *tracedStore) Resources(ctx context.Context, pool string) (ResourceReport, error) {
+func (t *tracedStore) Resources(ctx context.Context, pool string) (domain.ResourceReport, error) {
 	start := time.Now()
 	r, err := t.Store.Resources(ctx, pool)
 	slow(ctx, "resources", "", start, err)
 	return r, err
 }
 
-func (t *tracedStore) ClaimNext(ctx context.Context, req ClaimNext) (Ticket, Claim, error) {
+func (t *tracedStore) ClaimNext(ctx context.Context, req ClaimNext) (domain.Ticket, Claim, error) {
 	start := time.Now()
 	tk, c, err := t.Store.ClaimNext(ctx, req)
 	slow(ctx, "claim_next", "", start, err)
 	return tk, c, err
 }
 
-func (t *tracedStore) Claim(ctx context.Context, id, holder string, lease time.Duration) (Ticket, Claim, error) {
+func (t *tracedStore) Claim(ctx context.Context, id, holder string, lease time.Duration) (domain.Ticket, Claim, error) {
 	start := time.Now()
 	tk, c, err := t.Store.Claim(ctx, id, holder, lease)
 	slow(ctx, "claim", "", start, err)
@@ -102,7 +103,7 @@ func (t *tracedStore) Heartbeat(ctx context.Context, c Claim, lease time.Duratio
 	return r, err
 }
 
-func (t *tracedStore) Release(ctx context.Context, actor, id string, c *Claim, o Outcome) (Ticket, error) {
+func (t *tracedStore) Release(ctx context.Context, actor, id string, c *Claim, o Outcome) (domain.Ticket, error) {
 	start := time.Now()
 	r, err := t.Store.Release(ctx, actor, id, c, o)
 	slow(ctx, "release", "", start, err)
@@ -137,7 +138,7 @@ func (t *tracedStore) Changes(ctx context.Context, after int64, n int) (ChangePa
 	return r, err
 }
 
-func (t *tracedStore) Apply(ctx context.Context, actor string, g Graph) ([]Ticket, error) {
+func (t *tracedStore) Apply(ctx context.Context, actor string, g Graph) ([]domain.Ticket, error) {
 	start := time.Now()
 	r, err := t.Store.Apply(ctx, actor, g)
 	slow(ctx, "apply", "", start, err)

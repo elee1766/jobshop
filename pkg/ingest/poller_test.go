@@ -14,6 +14,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/store"
 	"github.com/elee1766/jobshop/pkg/store/sqlite"
@@ -78,7 +79,7 @@ func pollFixture(t *testing.T) (*Poller, *fakeGitHub, *sqlite.Store, *time.Time)
 	return p, fk, st, &now
 }
 
-func inbox(t *testing.T, st *sqlite.Store) []store.InboxItem {
+func inbox(t *testing.T, st *sqlite.Store) []domain.InboxItem {
 	t.Helper()
 	its, err := InboxList(t.Context(), st, store.InboxFilter{})
 	require.NoError(t, err)
@@ -115,7 +116,7 @@ func TestPollerRows(t *testing.T) {
 	assert.Equal(t, 4, res.Fresh)
 	assert.Len(t, res.New, 4, "the new rows, for the controller's wake")
 
-	byKind := map[string]store.InboxItem{}
+	byKind := map[string]domain.InboxItem{}
 	for _, it := range inbox(t, st) {
 		byKind[it.Kind] = it
 		assert.Equal(t, "gh-poll", it.Endpoint)

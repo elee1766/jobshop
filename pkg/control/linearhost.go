@@ -13,6 +13,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/linearsvc"
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/control/triggers"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
 	"github.com/elee1766/jobshop/pkg/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
@@ -69,7 +70,7 @@ func (c *Controller) signalLinearIssues(ctx context.Context, cfg *config.Config,
 func (c *Controller) linearIntakeRPC(_ context.Context, _ scope, p rpc.LinearIntakeParams) (any, error) {
 	team := strings.TrimSpace(p.Team)
 	if team == "" {
-		return nil, fmt.Errorf("%w: linear.intake needs a team", store.ErrInvalid)
+		return nil, fmt.Errorf("%w: linear.intake needs a team", domain.ErrInvalid)
 	}
 	watched, states := linearsvc.IntakeStates(c.config(), team)
 	return rpc.LinearIntakeResult{Watched: watched, States: states}, nil
@@ -135,24 +136,24 @@ func (h linearHost) OffTick(ctx context.Context, key, poller string, timeout tim
 	return res.Val, false, err
 }
 
-func (h linearHost) List(ctx context.Context, f store.Filter) ([]store.Ticket, error) {
+func (h linearHost) List(ctx context.Context, f store.Filter) ([]domain.Ticket, error) {
 	return h.c.store.List(ctx, f)
 }
 
-func (h linearHost) Get(ctx context.Context, id string) (store.Ticket, error) {
+func (h linearHost) Get(ctx context.Context, id string) (domain.Ticket, error) {
 	return h.c.store.Get(ctx, id)
 }
 
-func (h linearHost) OpenNeedsHuman(ctx context.Context, kind store.Kind) ([]store.Ticket, error) {
-	return h.c.store.List(ctx, store.Filter{Kind: kind, Status: store.StatusOpen, Label: needsHumanLabel, Limit: 200})
+func (h linearHost) OpenNeedsHuman(ctx context.Context, kind domain.Kind) ([]domain.Ticket, error) {
+	return h.c.store.List(ctx, store.Filter{Kind: kind, Status: domain.StatusOpen, Label: needsHumanLabel, Limit: 200})
 }
 
-func (h linearHost) IsQuestion(t store.Ticket) bool {
+func (h linearHost) IsQuestion(t domain.Ticket) bool {
 	_, ok := questionOf(t)
 	return ok
 }
 
-func (h linearHost) IsEscalation(t store.Ticket) bool {
+func (h linearHost) IsEscalation(t domain.Ticket) bool {
 	return metaString(t.Meta, runMetaPack, "escalation") != ""
 }
 
@@ -220,7 +221,7 @@ func (c *Controller) setMetaPack(ctx context.Context, id, pack string, v any) er
 			return err
 		}
 		_, err = c.store.Update(ctx, "controller", id, store.Update{Meta: mb, IfRevision: t.Revision})
-		if errors.Is(err, store.ErrConflict) && attempt < 5 {
+		if errors.Is(err, domain.ErrConflict) && attempt < 5 {
 			continue
 		}
 		return err

@@ -12,14 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 
 func waitJSON(t *testing.T, since time.Time) json.RawMessage {
 	t.Helper()
-	w := store.TaskFields{Wait: &store.Wait{
-		Conds:  []store.WaitCond{{Type: store.WaitChecks, Repo: "o/r", PR: 1, State: "success"}},
-		Mode:   store.WaitAny,
+	w := domain.TaskFields{Wait: &domain.Wait{
+		Conds:  []domain.WaitCond{{Type: domain.WaitChecks, Repo: "o/r", PR: 1, State: "success"}},
+		Mode:   domain.WaitAny,
 		Reason: "ci",
 		Since:  since,
 	}}
@@ -36,7 +37,7 @@ func testWaitGates(t *testing.T, s store.Store, c *Clock) {
 
 	got, err := s.Get(ctx, a.ID)
 	require.NoError(t, err)
-	f, err := store.DecodeFields[store.TaskFields](got)
+	f, err := domain.DecodeFields[domain.TaskFields](got)
 	require.NoError(t, err)
 	require.NotNil(t, f.Wait)
 	assert.Equal(t, "ci", f.Wait.Reason)
@@ -50,11 +51,11 @@ func testWaitGates(t *testing.T, s store.Store, c *Clock) {
 	}
 	assert.Empty(t, ready())
 	_, _, err = s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: "s1", Lease: lease})
-	require.ErrorIs(t, err, store.ErrNoWork)
+	require.ErrorIs(t, err, domain.ErrNoWork)
 
 	// An invalid wait is rejected.
 	_, err = s.Update(ctx, "test", a.ID, store.Update{Fields: json.RawMessage(`{"wait":{"conds":[],"reason":"x"}}`)})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 
 	_, err = s.Update(ctx, "test", a.ID, store.Update{Fields: json.RawMessage(`{}`)})
 	require.NoError(t, err)
@@ -68,9 +69,9 @@ func testWaitGates(t *testing.T, s store.Store, c *Clock) {
 // claimable again.
 func testReopenReady(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
-	run := store.NewTicket{ID: "js-run", Project: proj, Kind: store.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"k","state":"running"}`)}
+	run := store.NewTicket{ID: "js-run", Project: proj, Kind: domain.KindRun, Fields: json.RawMessage(`{"workflow":"w","key":"k","state":"running"}`)}
 	step := store.NewTicket{
-		ID: "js-st", Project: proj, Kind: store.KindStep, Pool: "dev", ParentID: "js-run",
+		ID: "js-st", Project: proj, Kind: domain.KindStep, Pool: "dev", ParentID: "js-run",
 		Fields: json.RawMessage(`{"run":"js-run","step":"s","index":0,"retries":1}`),
 	}
 	_, err := s.Apply(ctx, "test", store.Graph{Tickets: []store.NewTicket{run, step}})
@@ -84,10 +85,10 @@ func testReopenReady(t *testing.T, s store.Store, _ *Clock) {
 
 	r, err := store.Reopen(ctx, s, "test", "js-run")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, r.Status)
+	assert.Equal(t, domain.StatusOpen, r.Status)
 	st, err := store.Reopen(ctx, s, "test", "js-st")
 	require.NoError(t, err)
-	assert.Equal(t, store.StatusOpen, st.Status)
+	assert.Equal(t, domain.StatusOpen, st.Status)
 	assert.Empty(t, st.Holder)
 
 	l, err := s.List(ctx, store.Filter{Project: proj, Ready: true})
@@ -98,7 +99,7 @@ func testReopenReady(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, "js-st", tk.ID)
 
 	_, err = store.Reopen(ctx, s, "test", "js-run")
-	require.ErrorIs(t, err, store.ErrInvalid, "reopen of an open ticket")
+	require.ErrorIs(t, err, domain.ErrInvalid, "reopen of an open ticket")
 }
 
 // testTracksDoesNotGate: a tracks edge to an open ticket leaves the
@@ -107,7 +108,7 @@ func testTracksDoesNotGate(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	a := task(t, s, "a", "dev", prio(1))
 	b := task(t, s, "b", "other")
-	require.NoError(t, store.AddEdge(ctx, s, "test", store.Edge{From: a.ID, To: b.ID, Kind: store.EdgeTracks}))
+	require.NoError(t, store.AddEdge(ctx, s, "test", domain.Edge{From: a.ID, To: b.ID, Kind: domain.EdgeTracks}))
 	tk, _, err := s.ClaimNext(ctx, store.ClaimNext{Project: proj, Pool: "dev", Holder: "s1", Lease: lease})
 	require.NoError(t, err)
 	assert.Equal(t, a.ID, tk.ID)
@@ -136,8 +137,8 @@ func testListMoreFilters(t *testing.T, s store.Store, _ *Clock) {
 	assert.Equal(t, []string{kid.ID}, list(store.Filter{ParentID: parent.ID}))
 	assert.ElementsMatch(t, []string{parent.ID, kid.ID}, list(store.Filter{PoolNotIn: []string{"ops"}}))
 	assert.ElementsMatch(t, []string{parent.ID}, list(store.Filter{PoolNotIn: []string{"ops", "dev"}}))
-	assert.ElementsMatch(t, []string{kid.ID, done.ID}, list(store.Filter{Statuses: []store.Status{store.StatusInProgress, store.StatusClosed}}))
-	assert.ElementsMatch(t, []string{parent.ID, held.ID}, list(store.Filter{Statuses: []store.Status{store.StatusOpen}}))
+	assert.ElementsMatch(t, []string{kid.ID, done.ID}, list(store.Filter{Statuses: []domain.Status{domain.StatusInProgress, domain.StatusClosed}}))
+	assert.ElementsMatch(t, []string{parent.ID, held.ID}, list(store.Filter{Statuses: []domain.Status{domain.StatusOpen}}))
 }
 
 // testRecallFilters: Project, TicketID, Limit (default 10), ranking and
@@ -145,7 +146,7 @@ func testListMoreFilters(t *testing.T, s store.Store, _ *Clock) {
 func testRecallFilters(t *testing.T, s store.Store, _ *Clock) {
 	ctx := t.Context()
 	a := task(t, s, "a", "")
-	b, err := store.Create(ctx, s, "test", store.NewTicket{Project: "other", Kind: store.KindTask, Title: "b"})
+	b, err := store.Create(ctx, s, "test", store.NewTicket{Project: "other", Kind: domain.KindTask, Title: "b"})
 	require.NoError(t, err)
 	_, err = store.AddComment(ctx, s, "u", a.ID, "zebra failure in the build")
 	require.NoError(t, err)

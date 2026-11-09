@@ -6,8 +6,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestActivityRecord: a session's jobshop gh call lands in the feed with
@@ -17,7 +17,7 @@ func TestActivityRecord(t *testing.T) {
 	c, _, _ := activityController(t)
 	sc := scope{session: "js-s1", pool: "dev"}
 	_, err := c.activityRecord(t.Context(), sc, rpc.ActivityRecordParams{
-		Action: "merge", Repo: "o/n", Target: "o/n#12", Decision: rpc.GuardDeny, ExitCode: 1, Command: "gh pr merge 12",
+		Action: "merge", Repo: "o/n", Target: "o/n#12", Decision: domain.GuardDeny, ExitCode: 1, Command: "gh pr merge 12",
 	})
 	require.NoError(t, err)
 	res := listActivity(t, c, rpc.ActivityListParams{Kind: "gh-merge"})
@@ -30,5 +30,5 @@ func TestActivityRecord(t *testing.T) {
 	assert.Equal(t, "gh pr merge 12", it.Body)
 
 	_, err = c.activityRecord(t.Context(), sc, rpc.ActivityRecordParams{Action: "merge"})
-	require.ErrorIs(t, err, store.ErrInvalid)
+	require.ErrorIs(t, err, domain.ErrInvalid)
 }

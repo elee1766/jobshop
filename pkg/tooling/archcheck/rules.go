@@ -134,6 +134,30 @@ func rules() []Rule {
 			From:  []string{"./pkg/store/postgres", "./pkg/store/postgres/..."},
 			To:    []string{"./pkg/store/sqlite", "./pkg/store/sqlite/..."},
 		},
+		{
+			Name:  "domain-is-a-leaf",
+			Why:   "domain is imported by every family for its types. Its production code reaching any other package of the module (store, rpc, config, control) would hand every consumer that package's dependencies again, which is what the package exists to avoid. The family rule keeps third-party modules out too.",
+			Scope: ProdAndTest,
+			From:  []string{"./pkg/domain"},
+			To:    []string{"./pkg/...", "./cmd/..."},
+		},
+		{
+			Name:  "types-not-from-store-or-rpc",
+			Why:   "These packages need ticket, wait, learning and question types, not a persistence interface or the wire protocol. Reaching store or rpc, even through another package, drags SQL builders, the ACP connection and the sandbox types into a consumer of a struct. A package that needs the store itself is not listed.",
+			Scope: Closure,
+			From: []string{
+				"./pkg/config", "./pkg/control/question", "./pkg/control/scaleplan",
+				"./pkg/control/waitengine",
+			},
+			To: []string{"./pkg/rpc", "./pkg/store"},
+		},
+		{
+			Name:  "hooks-not-from-rpc",
+			Why:   "hooks owns durable hook execution. Its host adapter in control maps the wire envelopes, so hooks takes plain inputs and returns plain results. Reaching rpc also reached the ACP SDK and the sandbox types.",
+			Scope: Closure,
+			From:  []string{"./pkg/hooks"},
+			To:    []string{"./pkg/rpc"},
+		},
 	}
 }
 

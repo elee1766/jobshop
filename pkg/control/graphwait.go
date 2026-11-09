@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
 	"github.com/elee1766/jobshop/pkg/store"
 )
@@ -41,16 +42,16 @@ type graphWait struct {
 
 // waitEpisode is one wait the ticket had: the live one has end zero.
 type waitEpisode struct {
-	wait store.Wait
+	wait domain.Wait
 	end  time.Time
 }
 
 // graphWaits lists the wait edges of t, oldest wait first, so a later wait
 // on the same target replaces an earlier one when the caller dedupes.
-func graphWaits(cfg *config.Config, t store.Ticket, th store.Thread) []graphWait {
+func graphWaits(cfg *config.Config, t domain.Ticket, th store.Thread) []graphWait {
 	var out []graphWait
 	for _, ep := range waitEpisodes(t, th) {
-		state := func(cd store.WaitCond) string {
+		state := func(cd domain.WaitCond) string {
 			if ep.end.IsZero() {
 				if cd.Met {
 					return waitStateMet
@@ -78,16 +79,16 @@ func graphWaits(cfg *config.Config, t store.Ticket, th store.Thread) []graphWait
 
 // waitEpisodes is the ticket's finished waits (newest maxEndedWaits) then
 // its live one.
-func waitEpisodes(t store.Ticket, th store.Thread) []waitEpisode {
+func waitEpisodes(t domain.Ticket, th store.Thread) []waitEpisode {
 	var out []waitEpisode
-	var cur *store.Wait
+	var cur *domain.Wait
 	for _, h := range th.History {
 		if h.Op != "update" || len(h.Diff) == 0 {
 			continue
 		}
 		var d struct {
 			Fields *struct {
-				Wait *store.Wait `json:"wait"`
+				Wait *domain.Wait `json:"wait"`
 			} `json:"fields"`
 		}
 		if json.Unmarshal(h.Diff, &d) != nil || d.Fields == nil {
@@ -109,7 +110,7 @@ func waitEpisodes(t store.Ticket, th store.Thread) []waitEpisode {
 }
 
 // endReason is the text after "ended: " in the comment that closed ep.
-func endReason(ep waitEpisode, comments []store.Comment) string {
+func endReason(ep waitEpisode, comments []domain.Comment) string {
 	prefix := "Wait (" + ep.wait.Reason + ") ended: "
 	for _, cm := range comments {
 		if cm.CreatedAt.Before(ep.end) || !strings.HasPrefix(cm.Body, prefix) {
@@ -124,14 +125,14 @@ func endReason(ep waitEpisode, comments []store.Comment) string {
 // endedState is how a condition stood when its wait ended. The final
 // evaluation that met the wait is not saved, so with mode any and several
 // conditions, one not saved as met may or may not have held: "ended".
-func endedState(w store.Wait, cd store.WaitCond, why string) string {
+func endedState(w domain.Wait, cd domain.WaitCond, why string) string {
 	switch {
 	case strings.HasPrefix(why, "invalidated"):
 		return waitStateInvalidated
 	case strings.HasPrefix(why, "cleared"):
 		return waitStateCleared
 	case strings.HasPrefix(why, "condition met"):
-		if cd.Met || w.Mode != store.WaitAny || len(w.Conds) == 1 {
+		if cd.Met || w.Mode != domain.WaitAny || len(w.Conds) == 1 {
 			return waitStateMet
 		}
 	}
@@ -141,7 +142,7 @@ func endedState(w store.Wait, cd store.WaitCond, why string) string {
 // waitTarget names what a condition waits on: a ticket id (ext nil) or an
 // external node's id. Empty for a condition with nothing to point at, such
 // as a time.
-func waitTarget(cfg *config.Config, project string, cd store.WaitCond) (string, *rpc.GraphExternal) {
+func waitTarget(cfg *config.Config, project string, cd domain.WaitCond) (string, *rpc.GraphExternal) {
 	ext := func(label, link string) (string, *rpc.GraphExternal) {
 		e := rpc.GraphExternal{ID: "ext:" + cd.Type + ":" + label, Type: cd.Type, Label: label, URL: link}
 		return e.ID, &e
@@ -149,19 +150,19 @@ func waitTarget(cfg *config.Config, project string, cd store.WaitCond) (string, 
 	pr := fmt.Sprintf("%s PR #%d", cd.Repo, cd.PR)
 	prURL := fmt.Sprintf("https://github.com/%s/pull/%d", cd.Repo, cd.PR)
 	switch cd.Type {
-	case store.WaitRun:
+	case domain.WaitRun:
 		return cd.Run, nil
-	case store.WaitLinearState:
+	case domain.WaitLinearState:
 		return ext("Linear "+cd.Thread+": "+cd.State, linearIssueURL(cfg, project, cd.Thread, ""))
-	case store.WaitLinearLabel:
+	case domain.WaitLinearLabel:
 		label := "Linear " + cd.Thread + " label " + cd.Label
 		if cd.Absent {
 			label = "Linear " + cd.Thread + " without label " + cd.Label
 		}
 		return ext(label, linearIssueURL(cfg, project, cd.Thread, ""))
-	case store.WaitPR:
+	case domain.WaitPR:
 		return ext(pr+": "+cd.State, prURL)
-	case store.WaitChecks:
+	case domain.WaitChecks:
 		label := pr + " checks: " + cd.State
 		link := prURL
 		if cd.PR == 0 {
@@ -173,15 +174,15 @@ func waitTarget(cfg *config.Config, project string, cd store.WaitCond) (string, 
 			label += " (" + cd.Workflow + ")"
 		}
 		return ext(label, link)
-	case store.WaitReview:
+	case domain.WaitReview:
 		return ext(pr+" review by "+cd.Login, prURL)
-	case store.WaitLabel:
+	case domain.WaitLabel:
 		return ext(fmt.Sprintf("%s #%d label %s", cd.Repo, cd.Issue, cd.Label), fmt.Sprintf("https://github.com/%s/issues/%d", cd.Repo, cd.Issue))
-	case store.WaitTag:
+	case domain.WaitTag:
 		return ext(cd.Repo+" tag "+cd.Tag, "https://github.com/"+cd.Repo+"/releases/tag/"+url.PathEscape(cd.Tag))
-	case store.WaitDeploy:
+	case domain.WaitDeploy:
 		return ext(fmt.Sprintf("deploy %s@%s", cd.Repo, cd.SHA[:min(7, len(cd.SHA))]), "https://github.com/"+cd.Repo+"/commit/"+cd.SHA)
-	case store.WaitReply:
+	case domain.WaitReply:
 		return ext("reply on "+cd.Thread, threadURL(cfg, project, cd.Thread))
 	}
 	return "", nil

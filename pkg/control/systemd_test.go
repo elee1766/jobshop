@@ -17,8 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
 )
 
 // TestSystemdScopeRestart (#944): with limits.cgroup_driver systemd a
@@ -73,7 +73,7 @@ limits:
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "block"), nil, 0o600))
 	stop := start()
 	admin := dial(t, root.AdminSocket())
-	var task store.Ticket
+	var task domain.Ticket
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketCreate, rpc.CreateParams{Title: "t", Pool: "dev"}, &task))
 	passEventually(t, root.Dir, func() bool {
 		quarantined(t, admin)
@@ -81,8 +81,8 @@ limits:
 		return err == nil
 	}, "limited agent started its turn")
 
-	var sessions []store.Ticket
-	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: store.KindSession}, &sessions))
+	var sessions []domain.Ticket
+	require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketList, rpc.ListParams{Kind: domain.KindSession}, &sessions))
 	require.Len(t, sessions, 1)
 	sdir := root.SessionDir(sessions[0].ID)
 	iso, ok, err := host.ReadIsolation(sdir)
@@ -133,11 +133,11 @@ limits:
 
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "go"), nil, 0o600))
 	passEventually(t, root.Dir, func() bool {
-		var got store.Ticket
+		var got domain.Ticket
 		require.NoError(t, admin.Call(t.Context(), rpc.MethodTicketShow, rpc.IDParams{ID: task.ID}, &struct {
-			Ticket *store.Ticket `json:"ticket"`
+			Ticket *domain.Ticket `json:"ticket"`
 		}{&got}))
-		return got.Status == store.StatusClosed
+		return got.Status == domain.StatusClosed
 	}, "the adopted turn closes the ticket")
 	pid2, err := os.ReadFile(filepath.Join(sdir, proc.SupervisorPidFile))
 	require.NoError(t, err)
