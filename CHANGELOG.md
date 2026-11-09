@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.23](https://github.com/elee1766/jobshop/compare/v0.9.22...v0.9.23) (2026-11-09)
+
+
+### Features
+
+* **desk:** native Linear and GitHub views (JOB-163) ([#1115](https://github.com/elee1766/jobshop/issues/1115)) ([adf0aff](https://github.com/elee1766/jobshop/commit/adf0aff694facb701ac3ec866a487330796d3afb))
+
 ## [0.9.22](https://github.com/elee1766/jobshop/compare/v0.9.21...v0.9.22) (2026-11-09)
 
 
