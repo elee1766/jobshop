@@ -7,7 +7,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/writekey"
+	"github.com/elee1766/jobshop/pkg/storage/store/writekey"
 )
 
 // Idempotency keys for tracker writes (#280). The CLI claims a key before

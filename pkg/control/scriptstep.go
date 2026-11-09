@@ -8,7 +8,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/stepexec"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/hooks"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // Script steps (JOB-124) run in stepexec. What stays here is loading the

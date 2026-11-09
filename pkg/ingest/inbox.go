@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // The inbox (#321) lives in the inbox store collection (#579). Records

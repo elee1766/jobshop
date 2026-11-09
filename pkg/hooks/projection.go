@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 const (

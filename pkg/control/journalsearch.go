@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/elee1766/jobshop/pkg/control/journalread"
-	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
+	"github.com/elee1766/jobshop/pkg/storage/journal"
+	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
 )
 
 // grantJournalSearch lets a pool search its own project's journals.
@@ -25,15 +25,15 @@ func (c *Controller) journalSearch(ctx context.Context, sc scope, p rpc.JournalS
 	if err := c.requireGrant(sc, grantJournalSearch, "journal search"); err != nil {
 		return nil, err
 	}
-	cl := journalship.Client(c.config())
+	cl := ship.Client(c.config())
 	if cl == nil {
 		return nil, errNoVictoriaLogs
 	}
-	s := journalread.Search{Client: cl, Now: c.now(), JournalSearchParams: p}
+	s := journal.Search{Client: cl, Now: c.now(), JournalSearchParams: p}
 	if !sc.admin {
 		s.Project = sc.project
 	}
-	res, err := journalread.Run(ctx, s)
+	res, err := journal.RunSearch(ctx, s)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func (c *Controller) journalBackfill(ctx context.Context, sc scope, p rpc.Journa
 	if !sc.admin {
 		return nil, forbidden("journal backfill needs the admin socket")
 	}
-	cl := journalship.Client(c.config())
+	cl := ship.Client(c.config())
 	if cl == nil {
 		return nil, errNoVictoriaLogs
 	}

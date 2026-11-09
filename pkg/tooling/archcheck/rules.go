@@ -66,8 +66,8 @@ func rules() []Rule {
 			Why:   "Stores, knowledge, config, integrations, packs and support must be usable without the process host and the ACP SDK. A consumer of one of them must not link a session runtime.",
 			Scope: Closure,
 			From: []string{
-				"./pkg/store", "./pkg/store/sqlite", "./pkg/store/postgres", "./pkg/store/storerules",
-				"./pkg/writekey", "./pkg/learning", "./pkg/memedit", "./pkg/memory",
+				"./pkg/storage/store", "./pkg/storage/store/sqlite", "./pkg/storage/store/postgres", "./pkg/storage/store/storerules",
+				"./pkg/storage/store/writekey", "./pkg/learning", "./pkg/memedit", "./pkg/memory",
 				"./pkg/config", "./pkg/config/tmpl", "./pkg/cron", "./pkg/ids", "./pkg/packcue",
 				"./pkg/integrations/apicall", "./pkg/integrations/github", "./pkg/integrations/linear", "./pkg/integrations/identity",
 				"./pkg/clock", "./pkg/redact", "./pkg/logctx", "./pkg/telemetry",
@@ -102,7 +102,7 @@ func rules() []Rule {
 			Scope: ProdAndTest,
 			From:  []string{"./pkg/...", "./cmd/..."},
 			Except: []string{
-				"./pkg/store/sqlite",
+				"./pkg/storage/store/sqlite",
 				"./pkg/ingest",
 			},
 			To: []string{"modernc.org/sqlite"},
@@ -113,10 +113,10 @@ func rules() []Rule {
 			Scope: ProdAndTest,
 			From:  []string{"./pkg/...", "./cmd/..."},
 			Except: []string{
-				"./pkg/store/postgres",
+				"./pkg/storage/store/postgres",
 				// Its test opens an admin connection to create a scratch
 				// database before copying into it.
-				"./pkg/store/storemigrate",
+				"./pkg/storage/store/storemigrate",
 			},
 			To: []string{"github.com/jackc/pgx/..."},
 		},
@@ -124,15 +124,15 @@ func rules() []Rule {
 			Name:  "store-backends-are-siblings",
 			Why:   "The SQLite and Postgres backends share only store types and storerules. Importing each other would couple their SQL.",
 			Scope: ProdAndTest,
-			From:  []string{"./pkg/store/sqlite", "./pkg/store/sqlite/..."},
-			To:    []string{"./pkg/store/postgres", "./pkg/store/postgres/..."},
+			From:  []string{"./pkg/storage/store/sqlite", "./pkg/storage/store/sqlite/..."},
+			To:    []string{"./pkg/storage/store/postgres", "./pkg/storage/store/postgres/..."},
 		},
 		{
 			Name:  "store-backends-are-siblings-reverse",
 			Why:   "The SQLite and Postgres backends share only store types and storerules. Importing each other would couple their SQL.",
 			Scope: ProdAndTest,
-			From:  []string{"./pkg/store/postgres", "./pkg/store/postgres/..."},
-			To:    []string{"./pkg/store/sqlite", "./pkg/store/sqlite/..."},
+			From:  []string{"./pkg/storage/store/postgres", "./pkg/storage/store/postgres/..."},
+			To:    []string{"./pkg/storage/store/sqlite", "./pkg/storage/store/sqlite/..."},
 		},
 		{
 			Name:  "domain-is-a-leaf",
@@ -149,7 +149,7 @@ func rules() []Rule {
 				"./pkg/config", "./pkg/conversation/question", "./pkg/control/scaleplan",
 				"./pkg/control/waitengine",
 			},
-			To: []string{"./pkg/rpc", "./pkg/store"},
+			To: []string{"./pkg/rpc", "./pkg/storage/store"},
 		},
 		{
 			Name:  "hooks-not-from-rpc",

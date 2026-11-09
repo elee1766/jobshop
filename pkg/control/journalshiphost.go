@@ -5,19 +5,18 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/journalread"
-	"github.com/elee1766/jobshop/pkg/control/journalship"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/redact"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/journal"
+	"github.com/elee1766/jobshop/pkg/storage/journal/ship"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
-// shipper is the journal shipper (#530, pkg/control/journalship), made on
+// shipper is the journal shipper (#530, pkg/storage/journal/ship), made on
 // first use so controllers built without Run get one too.
-func (c *Controller) shipper() *journalship.Shipper {
+func (c *Controller) shipper() *ship.Shipper {
 	c.shipOnce.Do(func() {
-		c.ship = journalship.New(shipHost{c}, c.log, c.metrics)
+		c.ship = ship.New(shipHost{c}, c.log, c.metrics)
 	})
 	return c.ship
 }
@@ -25,7 +24,7 @@ func (c *Controller) shipper() *journalship.Shipper {
 // pumpJournal ships journals until the controller stops.
 func (c *Controller) pumpJournal() { c.shipper().Run(c.ctx) }
 
-// shipHost is the controller as journalship.Host.
+// shipHost is the controller as ship.Host.
 type shipHost struct{ c *Controller }
 
 func (h shipHost) Config() *config.Config                 { return h.c.config() }
@@ -33,7 +32,7 @@ func (h shipHost) Now() time.Time                         { return h.c.now() }
 func (h shipHost) After(d time.Duration) <-chan time.Time { return h.c.after(d) }
 func (h shipHost) SessionDir(id string) string            { return h.c.root.SessionDir(id) }
 func (h shipHost) Redactor(session string) *redact.Redactor {
-	return h.c.redactor(journalread.Env(h.c.root.SessionDir(session)))
+	return h.c.redactor(sessionEnv(h.c.root.SessionDir(session)))
 }
 
 func (h shipHost) List(ctx context.Context, f store.Filter) ([]domain.Ticket, error) {

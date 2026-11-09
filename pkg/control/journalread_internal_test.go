@@ -14,7 +14,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // searchYAML adds a second project and a pool with the journal-search
@@ -77,7 +77,7 @@ func TestJournalSearchAccess(t *testing.T) {
 }
 
 // TestRecallJournalScope: journal hits come from the summaries indexJournal
-// wrote, read through journalread.Summary from a plain and from a
+// wrote, read through journal.Summary from a plain and from a
 // compressed journal, and a session's recall sees only its project's.
 func TestRecallJournalScope(t *testing.T) {
 	t.Parallel()

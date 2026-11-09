@@ -27,9 +27,5 @@ func known() []Known {
 			Rule: "cue-only-in-packcue", From: "./pkg/hooks", To: "cuelang.org/go/...", Issue: "JOB-172",
 			Why: "hooks/schema.go compiles a CUE schema for hook input and imports CUE directly. JOB-172 gives pack/cue the one evaluation API and hooks calls it.",
 		},
-		{
-			Rule: "family-journal", From: "./pkg/control/journalread", To: "./pkg/hostspec", Issue: "JOB-173",
-			Why: "journalread.Env reads spec.json to add a session's env for redaction. JOB-173 passes the env in from the controller so the journal family does not import session ownership.",
-		},
 	}
 }

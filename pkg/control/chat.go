@@ -12,11 +12,10 @@ import (
 
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/control/journalread"
 	"github.com/elee1766/jobshop/pkg/conversation"
 	"github.com/elee1766/jobshop/pkg/redact"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/elee1766/jobshop/pkg/domain"
@@ -195,7 +194,7 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 	defer c.watch(p.ID)()
 	// Events reach Desk, chat gateways and A2A peers (#574): redact with
 	// the session's env and the configured rules, built once per subscription.
-	red := c.redactor(journalread.Env(c.root.SessionDir(p.ID)))
+	red := c.redactor(sessionEnv(c.root.SessionDir(p.ID)))
 	send := func(ev rpc.SessionEvent) error {
 		ev.Session = p.ID
 		redactEvent(red, &ev)
@@ -223,7 +222,7 @@ func (c *Controller) sessionSubscribe(ctx context.Context, sc scope, p rpc.Sessi
 			_ = watcher.Close()
 		}
 	}()
-	env := c.redactor(journalread.Env(c.root.SessionDir(p.ID)))
+	env := c.redactor(sessionEnv(c.root.SessionDir(p.ID)))
 	ev := rpc.EventDecoder{Redact: env.Text}
 	var off int64
 	res := rpc.SessionSubscribeResult{Seq: p.SinceSeq}

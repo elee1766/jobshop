@@ -11,8 +11,13 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/domain"
+<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/store"
+=======
+	"github.com/elee1766/jobshop/pkg/github"
+	"github.com/elee1766/jobshop/pkg/storage/store"
+>>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 )
 
 // Poller reads GitHub repos that send no webhook and writes inbox rows

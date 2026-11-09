@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // backfillGitHubRepo adds meta.github.repo to runs created before work

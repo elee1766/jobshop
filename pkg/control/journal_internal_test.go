@@ -13,7 +13,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 var journalYAML = strings.Replace(scanYAML, "pools:\n", "pools:\n  reader: {agent: fake, dir: %[1]q, admin: [session-journal]}\n", 1)

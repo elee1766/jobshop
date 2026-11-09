@@ -57,7 +57,7 @@ CREATE TABLE tickets (
 -- Empty string / 0 instead of NULL for optional scalars (decided 2026-11-01):
 -- simpler generated Go, no three-valued comparisons. parent_id stays NULL
 -- because it is a foreign key. The SQL below is illustrative; the source of
--- truth is pkg/store/sqlite/migrations and queries.
+-- truth is pkg/storage/store/sqlite/migrations and queries.
 -- Postgres: fields/meta JSONB, booleans as BOOLEAN.
 
 CREATE INDEX tickets_queue   ON tickets(project, pool, status, priority, created_at);

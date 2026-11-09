@@ -37,25 +37,31 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 		test     bool
 		want     string
 	}{
-		{"store imports control", "pkg/store", "pkg/control", false, "[control-is-top] " + m + "pkg/store imports " + m + "pkg/control"},
-		{"journal test imports control", "pkg/journal", "pkg/control", true, "[control-is-top] " + m + "pkg/journal imports in a test file " + m + "pkg/control"},
+		{"store imports control", "pkg/storage/store", "pkg/control", false, "[control-is-top] " + m + "pkg/storage/store imports " + m + "pkg/control"},
+		{"journal test imports control", "pkg/storage/journal", "pkg/control", true, "[control-is-top] " + m + "pkg/storage/journal imports in a test file " + m + "pkg/control"},
 		{"hooks imports sessionrt", "pkg/hooks", "pkg/control/sessionrt", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/control/sessionrt"},
 		{"hooks imports hostspec", "pkg/hooks", "pkg/hostspec", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/hostspec"},
 		{"automation imports conversation", "pkg/automation/command", "pkg/conversation", false, "[command-paths-no-session] " + m + "pkg/automation/command imports " + m + "pkg/conversation"},
+<<<<<<< HEAD
 		{"memory imports store", "pkg/memory", "pkg/store", false, "[independent-leaves] " + m + "pkg/memory imports " + m + "pkg/store"},
 		{"linear imports hooks", "pkg/integrations/linear", "pkg/hooks", false, "[family-integrations] " + m + "pkg/integrations/linear imports " + m + "pkg/hooks"},
 		{"linear imports github", "pkg/integrations/linear", "pkg/integrations/github", false, "[provider-clients-are-siblings-reverse] " + m + "pkg/integrations/linear imports " + m + "pkg/integrations/github"},
 		{"github imports identity", "pkg/integrations/github", "pkg/integrations/identity", false, "[provider-clients-stay-small] " + m + "pkg/integrations/github imports " + m + "pkg/integrations/identity"},
 		{"hooks imports identity", "pkg/hooks", "pkg/integrations/identity", false, "[identity-only-in-control] " + m + "pkg/hooks imports " + m + "pkg/integrations/identity"},
 		{"sqlite imports postgres", "pkg/store/sqlite", "pkg/store/postgres", false, "[store-backends-are-siblings] " + m + "pkg/store/sqlite imports " + m + "pkg/store/postgres"},
+=======
+		{"memory imports store", "pkg/memory", "pkg/storage/store", false, "[independent-leaves] " + m + "pkg/memory imports " + m + "pkg/storage/store"},
+		{"linear imports hooks", "pkg/linear", "pkg/hooks", false, "[family-integrations] " + m + "pkg/linear imports " + m + "pkg/hooks"},
+		{"sqlite imports postgres", "pkg/storage/store/sqlite", "pkg/storage/store/postgres", false, "[store-backends-are-siblings] " + m + "pkg/storage/store/sqlite imports " + m + "pkg/storage/store/postgres"},
+>>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 		{"cli production imports controltest", "pkg/cli", "pkg/control/controltest", false, "[no-harness-in-production] " + m + "pkg/cli imports " + m + "pkg/control/controltest"},
 		{"gateway imports starlark", "pkg/gateway", "go.starlark.net/starlark", false, "[starlark-only-in-automation] " + m + "pkg/gateway imports go.starlark.net/starlark"},
-		{"clock imports store", "pkg/clock", "pkg/store", false, "[independent-leaves] " + m + "pkg/clock imports " + m + "pkg/store"},
-		{"domain imports store", "pkg/domain", "pkg/store", false, "[domain-is-a-leaf] " + m + "pkg/domain imports " + m + "pkg/store"},
+		{"clock imports store", "pkg/clock", "pkg/storage/store", false, "[independent-leaves] " + m + "pkg/clock imports " + m + "pkg/storage/store"},
+		{"domain imports store", "pkg/domain", "pkg/storage/store", false, "[domain-is-a-leaf] " + m + "pkg/domain imports " + m + "pkg/storage/store"},
 		{"domain test imports rpc", "pkg/domain", "pkg/rpc", true, "[domain-is-a-leaf] " + m + "pkg/domain imports in a test file " + m + "pkg/rpc"},
 		{"domain imports a third party", "pkg/domain", "github.com/stretchr/testify/assert", false, "[family-domain] " + m + "pkg/domain imports github.com/stretchr/testify/assert"},
 		{"config imports rpc", "pkg/config", "pkg/rpc", false, "[types-not-from-store-or-rpc] " + m + "pkg/config imports " + m + "pkg/rpc"},
-		{"question imports store", "pkg/conversation/question", "pkg/store", false, "[types-not-from-store-or-rpc] " + m + "pkg/conversation/question imports " + m + "pkg/store"},
+		{"question imports store", "pkg/conversation/question", "pkg/storage/store", false, "[types-not-from-store-or-rpc] " + m + "pkg/conversation/question imports " + m + "pkg/storage/store"},
 		{"hooks imports rpc", "pkg/hooks", "pkg/rpc", false, "[hooks-not-from-rpc] " + m + "pkg/hooks imports " + m + "pkg/rpc"},
 	}
 	for _, tc := range cases {
@@ -90,7 +96,7 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 func TestRepositoryLegitimateTestHarnessEdgesPass(t *testing.T) {
 	g := repoGraph(t)
 	const m = "github.com/elee1766/jobshop/"
-	for _, h := range []string{"pkg/store/storetest", "pkg/control/controltest"} {
+	for _, h := range []string{"pkg/storage/store/storetest", "pkg/control/controltest"} {
 		var testImporters int
 		for _, p := range g.Pkgs {
 			if !p.Main {

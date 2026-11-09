@@ -3,17 +3,16 @@ package control
 import (
 	"context"
 
-	"github.com/elee1766/jobshop/pkg/control/journalread"
-	"github.com/elee1766/jobshop/pkg/journal"
 	"github.com/elee1766/jobshop/pkg/learning"
 	"github.com/elee1766/jobshop/pkg/rpc"
-	"github.com/elee1766/jobshop/pkg/store"
+	"github.com/elee1766/jobshop/pkg/storage/journal"
+	"github.com/elee1766/jobshop/pkg/storage/store"
 )
 
 // recall searches comments, session journals and learnings (#265). The
 // project scope is decided here and the three sources are merged here;
 // journal.Recall and learning.Recall query their own collections, and
-// journalread.Summary builds what indexJournal writes (JOB-140).
+// journal.Summary builds what indexJournal writes (JOB-140).
 func (c *Controller) recall(ctx context.Context, sc scope, p rpc.RecallParams) (any, error) {
 	proj := p.Project
 	if !sc.admin {
@@ -79,7 +78,7 @@ func mergeRecall(sources [][]store.RecallHit, limit int) []store.RecallHit {
 // with a summary of its journal. One record per session keeps
 // re-indexing after every turn idempotent across controller restarts.
 func (r *runner) indexJournal(ctx context.Context, ticketID string) {
-	text, at, ok := journalread.Summary(r.dir)
+	text, at, ok := journal.Summary(r.dir)
 	if !ok {
 		return
 	}

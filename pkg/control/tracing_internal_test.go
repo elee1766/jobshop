@@ -17,8 +17,13 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
+<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/identity"
 	"github.com/elee1766/jobshop/pkg/store"
+=======
+	"github.com/elee1766/jobshop/pkg/identity"
+	"github.com/elee1766/jobshop/pkg/storage/store"
+>>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 	"github.com/elee1766/jobshop/pkg/telemetry"
 )
 
