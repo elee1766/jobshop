@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.21](https://github.com/elee1766/jobshop/compare/v0.9.20...v0.9.21) (2026-11-09)
+
+
+### Features
+
+* **desk:** timeline view of a trace with state-shaded bars and blocker arrows ([#1103](https://github.com/elee1766/jobshop/issues/1103)) ([#1110](https://github.com/elee1766/jobshop/issues/1110)) ([d6ef99a](https://github.com/elee1766/jobshop/commit/d6ef99a8e13e6df3b2c30be2fe55750579ee7be4))
+
 ## [0.9.20](https://github.com/elee1766/jobshop/compare/v0.9.19...v0.9.20) (2026-11-09)
 
 
