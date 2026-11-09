@@ -16,13 +16,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/domain"
-<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/identity"
-	"github.com/elee1766/jobshop/pkg/store"
-=======
-	"github.com/elee1766/jobshop/pkg/identity"
 	"github.com/elee1766/jobshop/pkg/storage/store"
->>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 )
 
 // TestLinearCommentContext (#595) reads testdata/linear_comments.json: two

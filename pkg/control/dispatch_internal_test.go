@@ -13,12 +13,8 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/store"
-=======
 	"github.com/elee1766/jobshop/pkg/storage/store"
->>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 )
 
 // dispatchController is a subController with admission hooks, a working

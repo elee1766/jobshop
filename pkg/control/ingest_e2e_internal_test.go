@@ -26,14 +26,9 @@ import (
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite"
-=======
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
->>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 )
 
 // Ingest pipeline tests (#453): one GitHub comment goes through the

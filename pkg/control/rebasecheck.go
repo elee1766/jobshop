@@ -7,13 +7,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control/threads"
 	"github.com/elee1766/jobshop/pkg/domain"
-<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/store"
-=======
-	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/storage/store"
->>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 )
 
 // Rebase check (#511): close -r rebase routes a run back without counting

@@ -14,16 +14,10 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/apicall"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/store"
-	"github.com/elee1766/jobshop/pkg/store/sqlite"
-=======
-	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
->>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 )
 
 // fakeGitHub serves the issues, comments and reviews lists of one repo

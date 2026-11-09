@@ -42,18 +42,12 @@ func TestRepositoryCatchesDeliberateEdges(t *testing.T) {
 		{"hooks imports sessionrt", "pkg/hooks", "pkg/control/sessionrt", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/control/sessionrt"},
 		{"hooks imports hostspec", "pkg/hooks", "pkg/hostspec", false, "[command-paths-no-session] " + m + "pkg/hooks imports " + m + "pkg/hostspec"},
 		{"automation imports conversation", "pkg/automation/command", "pkg/conversation", false, "[command-paths-no-session] " + m + "pkg/automation/command imports " + m + "pkg/conversation"},
-<<<<<<< HEAD
-		{"memory imports store", "pkg/memory", "pkg/store", false, "[independent-leaves] " + m + "pkg/memory imports " + m + "pkg/store"},
+		{"memory imports store", "pkg/memory", "pkg/storage/store", false, "[independent-leaves] " + m + "pkg/memory imports " + m + "pkg/storage/store"},
 		{"linear imports hooks", "pkg/integrations/linear", "pkg/hooks", false, "[family-integrations] " + m + "pkg/integrations/linear imports " + m + "pkg/hooks"},
 		{"linear imports github", "pkg/integrations/linear", "pkg/integrations/github", false, "[provider-clients-are-siblings-reverse] " + m + "pkg/integrations/linear imports " + m + "pkg/integrations/github"},
 		{"github imports identity", "pkg/integrations/github", "pkg/integrations/identity", false, "[provider-clients-stay-small] " + m + "pkg/integrations/github imports " + m + "pkg/integrations/identity"},
 		{"hooks imports identity", "pkg/hooks", "pkg/integrations/identity", false, "[identity-only-in-control] " + m + "pkg/hooks imports " + m + "pkg/integrations/identity"},
-		{"sqlite imports postgres", "pkg/store/sqlite", "pkg/store/postgres", false, "[store-backends-are-siblings] " + m + "pkg/store/sqlite imports " + m + "pkg/store/postgres"},
-=======
-		{"memory imports store", "pkg/memory", "pkg/storage/store", false, "[independent-leaves] " + m + "pkg/memory imports " + m + "pkg/storage/store"},
-		{"linear imports hooks", "pkg/linear", "pkg/hooks", false, "[family-integrations] " + m + "pkg/linear imports " + m + "pkg/hooks"},
 		{"sqlite imports postgres", "pkg/storage/store/sqlite", "pkg/storage/store/postgres", false, "[store-backends-are-siblings] " + m + "pkg/storage/store/sqlite imports " + m + "pkg/storage/store/postgres"},
->>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 		{"cli production imports controltest", "pkg/cli", "pkg/control/controltest", false, "[no-harness-in-production] " + m + "pkg/cli imports " + m + "pkg/control/controltest"},
 		{"gateway imports starlark", "pkg/gateway", "go.starlark.net/starlark", false, "[starlark-only-in-automation] " + m + "pkg/gateway imports go.starlark.net/starlark"},
 		{"clock imports store", "pkg/clock", "pkg/storage/store", false, "[independent-leaves] " + m + "pkg/clock imports " + m + "pkg/storage/store"},

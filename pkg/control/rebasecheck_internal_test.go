@@ -9,13 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-<<<<<<< HEAD
 	"github.com/elee1766/jobshop/pkg/integrations/github"
-	"github.com/elee1766/jobshop/pkg/store"
-=======
-	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/storage/store"
->>>>>>> 7fea25a3 (refactor(storage): group store and journal packages under pkg/storage (JOB-173))
 )
 
 // TestRebaseMergeState: a rebase close on a step whose run's PR is dirty
