@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/elee1766/jobshop/pkg/integrations/apicall"
 	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
 	linclient "github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 

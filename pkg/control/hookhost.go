@@ -12,6 +12,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/execution/automation/api"
 	"github.com/elee1766/jobshop/pkg/hooks"
 	"github.com/elee1766/jobshop/pkg/integrations/github"
 	"github.com/elee1766/jobshop/pkg/integrations/linear"
