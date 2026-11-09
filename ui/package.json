@@ -11,7 +11,8 @@
     "format:check": "oxfmt --check src vite.config.ts",
     "check": "npm run typecheck && npm run lint && npm run format:check",
     "test:unit": "node --test src/lib/search.test.ts kit/links.test.js kit/titles.test.js ../packages/jobshop-client/index.test.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:isolated": "node e2e/run-isolated.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.59.1",

@@ -158,6 +158,52 @@ jobs:
       # NixOS module evaluation checks (nix/module-test.nix).
       - run: nix build .#checks.x86_64-linux.module --print-build-logs
 
+  # Desk browser checks on an isolated controller (JOB-162): ticket menu,
+  # message headers and iframe tabs. The script makes its own root, ports and
+  # fixture, so nothing here touches a real instance.
+  e2e:
+    needs: ui
+    runs-on:
+      - nscloud-ubuntu-24.04-amd64-2x4-with-cache
+      - nscloud-cache-tag-jobshop-go
+      - nscloud-cache-size-20gb
+      - nscloud-cache-allow-commit-from-master
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: desk-ui
+          path: pkg/desk/dist
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - uses: namespacelabs/nscloud-cache-action@v1
+        with:
+          cache: go
+      # The test binary is the ACP test agent that chat sessions run.
+      - run: |
+          go build -o "$RUNNER_TEMP/jobshop" ./cmd/jobshop
+          go test -c -o "$RUNNER_TEMP/control.test" ./pkg/control
+      - run: npm --prefix ui ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: ui
+      - name: desk e2e
+        working-directory: ui
+        env:
+          JOBSHOP_BIN: ${{ runner.temp }}/jobshop
+          FAKE_AGENT_BIN: ${{ runner.temp }}/control.test
+        run: node e2e/run-isolated.mjs
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-results
+          path: ui/test-results
+          if-no-files-found: ignore
+
   # Build once for the Go checks. Nix builds its own cached frontend derivation.
   ui:
     runs-on:
