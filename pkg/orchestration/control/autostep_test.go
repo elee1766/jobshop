@@ -21,6 +21,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/orchestration/control"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/support/clock"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
@@ -75,7 +76,7 @@ func autoRoot(t *testing.T, url string) config.Root {
 	root := config.Root{Dir: dir}
 	pack := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pack, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), []byte(`workflows:
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName), []byte(`workflows:
   mixed:
     vars: [issue]
     steps:
@@ -128,7 +129,7 @@ func autoRoot(t *testing.T, url string) config.Root {
         url: `+url+`/slow
 `), 0o600))
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "gopk"), 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "gopk", config.PackFileName), []byte(`template: go
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "gopk", packpkg.FileName), []byte(`template: go
 workflows:
   gomixed:
     vars: [issue]
@@ -411,7 +412,7 @@ func worktreeRoot(t *testing.T, sandbox bool) (config.Root, string) {
 	}
 	pack := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pack, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), []byte(`workflows:
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName), []byte(`workflows:
   wt:
     vars: [issue]
     steps:

@@ -18,6 +18,7 @@ import (
 	host "github.com/elee1766/acphost/pkg/acphost"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/orchestration/triggers"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/storage/store/sqlite"
 	"github.com/elee1766/jobshop/pkg/support/clock"
@@ -505,7 +506,7 @@ func TestScanOwnInstance(t *testing.T) {
 	cfg := *c.config()
 	// work belongs to b's instance; trigger a sorts first and would win the
 	// shared scan key without the instance check.
-	cfg.Instances = []config.PackInstance{{Path: "a", Workflows: []string{"check-a"}}, {Path: "b", Workflows: []string{"check-b", "work"}}}
+	cfg.Instances = []packpkg.Instance{{Path: "a", Workflows: []string{"check-a"}}, {Path: "b", Workflows: []string{"check-b", "work"}}}
 	lc, err := newLiveConfig(&cfg)
 	require.NoError(t, err)
 	c.live.Store(lc)

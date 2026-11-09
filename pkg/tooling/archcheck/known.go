@@ -6,10 +6,5 @@ package archcheck
 // an old entry because each entry names one source and one target. A package
 // pattern is for a subtree that moves together, never for "everything".
 func known() []Known {
-	return []Known{
-		{
-			Rule: "cue-only-in-packcue", From: "./pkg/orchestration/hooks", To: "cuelang.org/go/...", Issue: "JOB-172",
-			Why: "hooks/schema.go compiles a CUE schema for hook input and imports CUE directly. JOB-172 gives pack/cue the one evaluation API and hooks calls it.",
-		},
-	}
+	return []Known{}
 }

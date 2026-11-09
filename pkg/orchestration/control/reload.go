@@ -222,7 +222,10 @@ func (c *Controller) configShow(_ context.Context, sc scope, _ struct{}) (any, e
 	if err != nil {
 		return nil, err
 	}
-	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources, Instances: cfg.Instances, Disabled: cfg.Disabled}
+	out := rpc.ConfigShowResult{Config: map[string]any{}, Sources: cfg.Sources, Disabled: cfg.Disabled}
+	for _, in := range cfg.Instances {
+		out.Instances = append(out.Instances, rpc.PackInstance(in))
+	}
 	if cfg.Reload.Watch {
 		out.Watch = &rpc.ConfigWatch{On: true, Files: len(cfg.Watch.Files), Dirs: len(cfg.Watch.Dirs) + len(cfg.Watch.CUEDirs)}
 	}

@@ -1,4 +1,4 @@
-package config
+package pack
 
 import (
 	"errors"
@@ -64,7 +64,7 @@ func (t textFiles) load(m map[string]any, field, fileField, key string, subst bo
 
 // resolveTextFiles loads pools.*.prompt_file, workflows.*.steps[].prompt_file,
 // triggers.*.ticket.body_file and prompt_rules[].file.
-func resolveTextFiles(m map[string]any, t textFiles) error {
+func (ld loader) resolveTextFiles(m map[string]any, t textFiles) error {
 	pools, _ := m["pools"].(map[string]any)
 	for _, n := range sortedKeys(pools) {
 		if p, ok := pools[n].(map[string]any); ok {
@@ -99,7 +99,7 @@ func resolveTextFiles(m map[string]any, t textFiles) error {
 	// vars ({{.ticket}}, ...) kept for the controller.
 	et := t
 	if t.vars != nil {
-		et.vars = escalationPassthrough(t.vars)
+		et.vars = escalationPassthrough(t.vars, ld.opts.EscalationVars)
 	}
 	blocks := escalationBlocks(m)
 	for _, n := range sortedKeys(blocks) {

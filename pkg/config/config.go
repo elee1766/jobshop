@@ -17,9 +17,10 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/elee1766/jobshop/pkg/cron"
+	"github.com/elee1766/jobshop/pkg/config/cron"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ids"
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // Config is the resolved service and work configuration.
@@ -109,15 +110,15 @@ type Config struct {
 	// contribute entries like pools.
 	DeskCommands map[string]DeskCommand `yaml:"desk_commands,omitempty"`
 	// Packs are pack directories merged before this file (see LoadFile).
-	Packs []PackRef `yaml:"packs"`
+	Packs []pack.Ref `yaml:"packs"`
 	// Instances summarize each Packs entry as loaded (#248). Not kept in
 	// the last good config.
-	Instances []PackInstance `yaml:"-"`
+	Instances []pack.Instance `yaml:"-"`
 	// Warnings are non-fatal load findings, such as a deprecated pack var
 	// name the host still sets (#261). The controller logs them.
 	Warnings []string `yaml:"-"`
 	// Watch is what a config watcher follows (#533), recorded at load.
-	Watch WatchPaths `yaml:"-"`
+	Watch pack.WatchPaths `yaml:"-"`
 	// MetaPacks are extra allowed top-level ticket meta keys, beyond
 	// BuiltinMetaPacks.
 	MetaPacks []string `yaml:"meta_packs"`

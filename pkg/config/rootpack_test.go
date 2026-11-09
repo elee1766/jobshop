@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 func TestRootPack(t *testing.T) {
@@ -83,7 +85,7 @@ workflows:
 	require.NoError(t, SaveLastGood(root.LastGood(), c))
 	writeFiles(t, dir, map[string]string{"work/pack.yaml": "store: {driver: sqlite}\n"})
 	last, err := LoadOrLastGood(root)
-	require.ErrorIs(t, err, ErrPack)
+	require.ErrorIs(t, err, pack.ErrPack)
 	require.NotNil(t, last)
 	assert.Equal(t, c.Pools["app-dev"].Agent, last.Pools["app-dev"].Agent)
 	assert.Equal(t, c.Pools["app-dev"].Project, last.Pools["app-dev"].Project)
@@ -111,10 +113,10 @@ func TestRootPackErrors(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
-			writeFiles(t, dir, map[string]string{FileName: tc.service, PackFileName: tc.pack, "work.yaml": tc.pack})
+			writeFiles(t, dir, map[string]string{FileName: tc.service, pack.FileName: tc.pack, "work.yaml": tc.pack})
 			_, err := LoadFile(filepath.Join(dir, FileName))
 			require.ErrorContains(t, err, tc.want)
-			assert.Equal(t, tc.packError, errors.Is(err, ErrPack))
+			assert.Equal(t, tc.packError, errors.Is(err, pack.ErrPack))
 		})
 	}
 }

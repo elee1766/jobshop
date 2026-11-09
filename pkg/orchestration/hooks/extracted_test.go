@@ -31,15 +31,6 @@ func TestCheckStepOutput(t *testing.T) {
 	require.NoError(t, CheckStepOutput(0, nil, big))
 }
 
-func TestCheckSchemaCompileOnly(t *testing.T) {
-	t.Parallel()
-	require.NoError(t, CheckSchema(map[string]any{"type": "object"}, nil, false))
-	err := CheckSchema(map[string]any{"type": "nonsense"}, nil, false)
-	require.ErrorContains(t, err, "output_schema")
-	// Compile-only ignores the output.
-	require.NoError(t, CheckSchema(map[string]any{"type": "object"}, map[string]any{"x": 1}, false))
-}
-
 func step(id, status, resolution string, rev int64, fields domain.StepFields) domain.Ticket {
 	f, _ := json.Marshal(fields)
 	return domain.Ticket{ID: id, Kind: domain.KindStep, Pool: "dev", Status: domain.Status(status), Resolution: resolution, Revision: rev, Fields: f}

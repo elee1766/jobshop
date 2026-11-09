@@ -19,6 +19,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/execution/session"
 	"github.com/elee1766/jobshop/pkg/orchestration/control"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 
 	"github.com/elee1766/jobshop/pkg/domain"
@@ -172,7 +173,7 @@ func TestConfigShow(t *testing.T) {
 	root := config.Root{Dir: dir}
 	pack := filepath.Join(root.Dir, "pk")
 	require.NoError(t, os.MkdirAll(pack, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName),
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName),
 		[]byte("pools:\n  dev:\n    prompt: from-pack\n    max_sessions: 3\n"), 0o600))
 	cfg := fmt.Sprintf("packs:\n  - path: pk\nprojects:\n  js: {}\nagents:\n  fake:\n    command: %q\npools:\n  dev:\n    project: js\n    agent: fake\n    max_sessions: 0\n    dir: %q\n",
 		os.Args[0], root.Dir)
@@ -195,11 +196,11 @@ func TestConfigShow(t *testing.T) {
 	dev := res.Config["pools"].(map[string]any)["dev"].(map[string]any)
 	assert.Equal(t, "from-pack", dev["prompt"])
 	assert.InDelta(t, 0, dev["max_sessions"], 0)
-	assert.Equal(t, []string{filepath.Join(pack, config.PackFileName), root.Config()}, res.Sources["pools.dev"])
+	assert.Equal(t, []string{filepath.Join(pack, packpkg.FileName), root.Config()}, res.Sources["pools.dev"])
 	assert.Equal(t, []string{root.Config()}, res.Sources["agents.fake"])
 
 	// A workflow added to the pack shows up, with its source, after reload.
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName),
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName),
 		[]byte("pools:\n  dev:\n    prompt: from-pack\n    max_sessions: 3\nworkflows:\n  w:\n    vars: [issue]\n    steps:\n      - {id: s, pool: dev, title: \"Do #{{.issue}}\", prompt: p}\n"), 0o600))
 	require.NoError(t, admin.Call(t.Context(), rpc.MethodReload, struct{}{}, nil))
 	res = rpc.ConfigShowResult{}
@@ -208,7 +209,7 @@ func TestConfigShow(t *testing.T) {
 	steps := w["steps"].([]any)
 	require.Len(t, steps, 1)
 	assert.Equal(t, "Do #{{.issue}}", steps[0].(map[string]any)["title"])
-	assert.Equal(t, []string{filepath.Join(pack, config.PackFileName)}, res.Sources["workflows.w"])
+	assert.Equal(t, []string{filepath.Join(pack, packpkg.FileName)}, res.Sources["workflows.w"])
 }
 
 // TestEnvRefreshLive changes the agent env while a session is live (as a

@@ -11,6 +11,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/execution/automation/api"
 	"github.com/elee1766/jobshop/pkg/orchestration/hooks"
+	packcue "github.com/elee1766/jobshop/pkg/pack/cue"
 )
 
 // Script steps (JOB-124): a Starlark step function the controller runs
@@ -63,7 +64,7 @@ func (e Executor) script(ctx context.Context, cfg *config.Config, t domain.Ticke
 		res.Result, res.Err = ResultFailed, "a step function returns result(outcome=..., output=...), not actions"
 		return res
 	}
-	if err := hooks.CheckSchema(sf.OutputSchema, out.Output, true); err != nil {
+	if err := packcue.CheckSchema(sf.OutputSchema, out.Output, true); err != nil {
 		res.Result, res.Err = ResultFailed, err.Error()
 		return res
 	}

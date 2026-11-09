@@ -16,6 +16,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/execution/automation"
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // Program pins loaded source, credentials, authority, and the prompt asset root.
@@ -172,14 +173,14 @@ func hookManifestDigest(cfg *config.Config, root config.Root, entry, dir, module
 		Entry             string
 		Modules           string
 		Owners            map[string]any
-		Instances         []config.PackInstance
+		Instances         []pack.Instance
 		Pools             map[string]string
 		Workflows         map[string]string
 		Automation        config.Automation
 		Jev               config.Jev
 		Credentials       map[string]string
 		JevKey            string
-	}{1, rootDir, assetDir, resolvedRoot, resolvedAsset, entry, modules, owners, append([]config.PackInstance{}, cfg.Instances...), pools, workflows, cfg.Automation, cfg.Jev, credentials, hookKey(options.Jev.APIKey)}
+	}{1, rootDir, assetDir, resolvedRoot, resolvedAsset, entry, modules, owners, append([]pack.Instance{}, cfg.Instances...), pools, workflows, cfg.Automation, cfg.Jev, credentials, hookKey(options.Jev.APIKey)}
 	if !surroundings {
 		manifest.Version, manifest.Owners, manifest.Instances, manifest.Pools, manifest.Workflows = 2, nil, nil, nil, nil
 	}

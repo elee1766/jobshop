@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // TestRedactRules (#578): a config rule is caught, disabled_rules turns
@@ -50,7 +52,7 @@ func TestRedactNotInPacks(t *testing.T) {
 	dir := t.TempDir()
 	pk := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pk, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pk, PackFileName), []byte("redact:\n  disabled_rules: [generic-api-key]\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(pk, pack.FileName), []byte("redact:\n  disabled_rules: [generic-api-key]\n"), 0o600))
 	cfgPath := filepath.Join(dir, FileName)
 	require.NoError(t, os.WriteFile(cfgPath, []byte("packs:\n  - path: pk\n"), 0o600))
 	_, err := LoadFile(cfgPath)

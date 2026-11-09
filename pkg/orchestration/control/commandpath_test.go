@@ -17,6 +17,7 @@ import (
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/orchestration/control"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/support/clock"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
@@ -41,7 +42,7 @@ func TestCommandStepFindsJobshop(t *testing.T) {
 	require.NoError(t, os.Symlink(os.Args[0], exe))
 	pack := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pack, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), []byte(`workflows:
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName), []byte(`workflows:
   ver:
     vars: [issue]
     steps:

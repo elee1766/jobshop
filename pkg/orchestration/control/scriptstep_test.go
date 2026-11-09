@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/support/clock"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
@@ -43,7 +43,7 @@ func TestScriptStepSandboxWorktree(t *testing.T) {
 	t.Parallel()
 	root, repo := worktreeRoot(t, true)
 	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pk", "hooks.star"), []byte(scriptStepHooks), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pk", config.PackFileName), []byte(`workflows:
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, "pk", packpkg.FileName), []byte(`workflows:
   scripted:
     project: js
     vars: [issue]

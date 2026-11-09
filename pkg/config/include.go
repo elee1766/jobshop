@@ -5,7 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // IncludeKey lists files merged under the root config before its own keys
@@ -19,19 +20,6 @@ const IncludeKey = "include"
 // appendedKeys are top-level lists an include adds to instead of
 // replacing: both files contribute packs and shared tool dirs.
 var appendedKeys = []string{"packs", "shared_tools", "prompt_rules", "hooks"}
-
-// fileDir is the directory relative pack and prompt file paths resolve
-// against: the config file's own directory after following links (#532),
-// so a jobshop.yaml linked from a git checkout finds the packs beside it.
-// A link into the Nix store keeps the link's directory: a generated file
-// there has no siblings, and relative paths in it meant the root.
-func fileDir(path string) string {
-	target, err := filepath.EvalSymlinks(path)
-	if err != nil || strings.HasPrefix(target, "/nix/store/") {
-		return filepath.Dir(path)
-	}
-	return filepath.Dir(target)
-}
 
 // applyIncludes merges the files named by top's include list (paths
 // relative to dir) and then top itself. Maps merge per key, the
@@ -60,7 +48,7 @@ func applyIncludes(top map[string]any, dir, name string) (map[string]any, error)
 		if err != nil {
 			return nil, fmt.Errorf("%s: include[%d]: %w", name, i, err)
 		}
-		m, err := decodeMap(b)
+		m, err := pack.DecodeMap(b)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", filepath.Base(p), err)
 		}
@@ -83,6 +71,6 @@ func mergeTop(dst, src map[string]any) {
 				continue
 			}
 		}
-		dst[k] = mergeValue(dst[k], v)
+		dst[k] = pack.MergeValue(dst[k], v)
 	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/transport/cli"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
@@ -96,7 +97,7 @@ func TestNewUserPath(t *testing.T) {
 	vars["checkout"] = repo
 	out, err := yaml.Marshal(cfg)
 	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, config.PackFileName), out, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root.Dir, packpkg.FileName), out, 0o600))
 	_, err = config.LoadFile(root.Config())
 	require.NoError(t, err, "the guide's config loads")
 

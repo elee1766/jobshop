@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/elee1766/jobshop/pkg/config"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 )
 
 // TestSandboxProfiles: system mounts and env come from config (#625).
@@ -76,7 +77,7 @@ func TestPackSandboxProfile(t *testing.T) {
 	dir := t.TempDir()
 	pk := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pk, 0o700))
-	require.NoError(t, os.WriteFile(filepath.Join(pk, config.PackFileName), []byte(`sandbox_profiles:
+	require.NoError(t, os.WriteFile(filepath.Join(pk, packpkg.FileName), []byte(`sandbox_profiles:
   sys: {ro: [/usr/lib]}
 pools:
   dev: {agent: fake, dir: /tmp, sandbox: {backend: bubblewrap, profiles: [sys]}}

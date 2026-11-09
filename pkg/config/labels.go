@@ -2,9 +2,10 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // maxLabelLen bounds one pool label.
@@ -38,24 +39,12 @@ func (p Pool) HasLabels(want []string) bool {
 	return true
 }
 
-// InstanceLabels are the labels a packs entry gives every pool it
-// declares: instance:<name> from the entry's prefix (or the pack's name
-// without one) and pack:<pack> (JOB-81).
-func InstanceLabels(in PackInstance) []string {
-	pack := filepath.Base(in.Path)
-	inst := strings.Trim(in.Prefix, "-_")
-	if inst == "" {
-		inst = pack
-	}
-	return []string{"instance:" + inst, "pack:" + pack}
-}
-
 // addInstanceLabels adds each packs entry's labels to its pools, after the
 // pack and host files are merged, and sorts and dedupes every pool's
 // labels so the RPC order is stable.
 func (c *Config) addInstanceLabels() {
 	for _, in := range c.Instances {
-		add := InstanceLabels(in)
+		add := in.Labels()
 		for _, name := range in.Pools {
 			p, ok := c.Pools[name]
 			if !ok {
@@ -80,7 +69,7 @@ func (c *Config) addInstanceLabels() {
 // typed decode would accept 1 as "1"; a label is a name, so a number is
 // most likely a mistake.
 func checkRawPoolLabels(b []byte, src func(section, name string) string) error {
-	top, err := decodeMap(b)
+	top, err := pack.DecodeMap(b)
 	if err != nil {
 		return nil // the typed decode reports the syntax error
 	}

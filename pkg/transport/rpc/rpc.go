@@ -26,6 +26,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
+	"github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/storage/store"
 	"github.com/elee1766/jobshop/pkg/support/telemetry"
 )
@@ -1330,6 +1331,11 @@ type TriggerInfo struct {
 	Findings []string `json:"findings,omitempty"`
 }
 
+// PackInstance is one packs entry as `config show` reports it. It has the
+// pack package's Instance fields and keeps this wire name, which the
+// generated client declarations expose.
+type PackInstance pack.Instance
+
 // ConfigShowResult is the active merged config, keyed as in jobshop.yaml,
 // and for each "agents.<name>", "pools.<name>" and "triggers.<name>" the
 // files that set it in merge order (packs first, jobshop.yaml last).
@@ -1338,7 +1344,7 @@ type ConfigShowResult struct {
 	Sources map[string][]string `json:"sources"`
 	// Instances are the packs entries with their vars and the pools,
 	// workflows and triggers each declares, prefix applied (#248).
-	Instances []config.PackInstance `json:"instances"`
+	Instances []PackInstance `json:"instances"`
 	// Disabled are the entries set enabled: false (JOB-24). They are not
 	// in Config.
 	Disabled config.Disabled `json:"disabled"`

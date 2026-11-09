@@ -1,4 +1,4 @@
-package packcue_test
+package cue_test
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/elee1766/jobshop/pkg/packcue"
+	"github.com/elee1766/jobshop/pkg/pack/cue"
 )
 
 func TestLoadLocalReplacementSources(t *testing.T) {
@@ -42,7 +42,7 @@ language: version: "v0.17.0"
 		require.NoError(t, os.WriteFile(path, []byte(data), 0o600))
 	}
 
-	result, err := packcue.Load(filepath.Join(dir, "pack.cue"), dir)
+	result, err := cue.Load(filepath.Join(dir, "pack.cue"), dir)
 	require.NoError(t, err)
 	records := result.Data["records"].(map[string]any)
 	assert.Equal(t, map[string]any{"value": "local default", "note": "sibling"}, records["with.dot"])

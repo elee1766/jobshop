@@ -25,6 +25,9 @@ func families() []Family {
 		// imports nothing of the module and no third-party package, so any
 		// family can take a type from it without taking an implementation.
 		{Name: "domain", StdOnly: true},
+		// pack is a leaf of the module apart from itself: it assembles files and
+		// returns data, and config decodes it. It may not import config, store,
+		// automation or any provider (rule pack-is-independent).
 		{Name: "pack"},
 		{Name: "store", May: []string{"support", "ids", "domain"}},
 		{Name: "knowledge", May: []string{"store", "support", "domain"}},
@@ -33,7 +36,7 @@ func families() []Family {
 		{Name: "config", May: []string{"support", "ids", "pack", "store", "automation", "domain"}},
 		{Name: "integrations", May: []string{"support", "config", "domain"}},
 		{Name: "automation", May: []string{"integrations", "domain"}},
-		{Name: "wire", May: []string{"support", "config", "store", "domain"}},
+		{Name: "wire", May: []string{"support", "config", "store", "pack", "domain"}},
 		// sandbox is process isolation and resource mechanics: it takes a
 		// config and a process spec and knows nothing of sessions, so a
 		// command path can use it (JOB-167).
@@ -47,7 +50,7 @@ func families() []Family {
 		}},
 		{Name: "transport", May: []string{
 			"support", "ids", "store", "knowledge", "config", "integrations",
-			"wire", "session", "journal", "conversation", "orchestration", "tooling", "domain",
+			"wire", "session", "journal", "conversation", "orchestration", "tooling", "pack", "domain",
 		}},
 		{Name: "tooling", May: []string{"wire"}},
 		{Name: "content", May: []string{"config", "store", "wire", "orchestration", "domain"}},
@@ -70,7 +73,12 @@ func owners() []Owner {
 		// domain: shared business types and invariants (JOB-166).
 		{Pkg: "./pkg/domain", Target: "stay", Family: "domain", Child: "-"},
 
-		{Pkg: "./pkg/packcue", Target: "pack/cue", Family: "pack", Child: "JOB-172"},
+		// pack: assembly, provenance and watch paths, with the standalone CUE
+		// evaluator and the pack template language beneath it (JOB-172). pack
+		// takes the few facts it needs as data, so it never imports config.
+		{Pkg: "./pkg/pack", Target: "stay", Family: "pack", Child: "-"},
+		{Pkg: "./pkg/pack/cue", Target: "stay", Family: "pack", Child: "-"},
+		{Pkg: "./pkg/pack/tmpl", Target: "stay", Family: "pack", Child: "-"},
 
 		// storage
 		{Pkg: "./pkg/storage/store", Target: "storage/store", Family: "store", Child: "JOB-173"},
@@ -96,9 +104,8 @@ func owners() []Owner {
 		{Pkg: "./pkg/knowledge/memory", Target: "stay (leaf: files and skills, no storage)", Family: "knowledge", Child: "-"},
 
 		// config
-		{Pkg: "./pkg/config", Target: "config", Family: "config", Child: "JOB-172"},
-		{Pkg: "./pkg/config/tmpl", Target: "config/tmpl", Family: "config", Child: "-"},
-		{Pkg: "./pkg/cron", Target: "config/cron (parsed by config at load, evaluated by triggers)", Family: "config", Child: "JOB-172"},
+		{Pkg: "./pkg/config", Target: "stay (service configuration loading and composition)", Family: "config", Child: "-"},
+		{Pkg: "./pkg/config/cron", Target: "stay (parsed by config at load, evaluated by triggers)", Family: "config", Child: "-"},
 
 		// integrations (JOB-169): one client per provider, no shared tracker
 		// interface. apicall stays public because automation and cli sit outside

@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 // Loader tests on small fixture packs (JOB-2). They exercise one loader
@@ -81,7 +83,7 @@ func TestPackPrefix(t *testing.T) {
 	assert.Equal(t, "acme/gizmo", w.Repo)
 	assert.Equal(t, "gz-plan", w.EscalatePool)
 	assert.Equal(t, []string{"gz-dev", "gz-plan"}, []string{w.Steps[0].Pool, w.Steps[1].Pool})
-	assert.Equal(t, "gz-", w.PackVars[PackPrefixVar])
+	assert.Equal(t, "gz-", w.PackVars[pack.PrefixVar])
 	assert.Equal(t, "gz-dev", c.Triggers["gz-replan"].When.Pool)
 	assert.Equal(t, "gz-plan", c.Triggers["gz-replan"].Ticket.Pool)
 	red := c.Triggers["gz-red"]

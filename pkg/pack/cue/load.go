@@ -1,5 +1,7 @@
-// Package packcue evaluates local CUE packages without accessing module registries.
-package packcue
+// Package cue evaluates local CUE packages without accessing module
+// registries, and checks JSON Schemas. It imports no other package of the
+// module: no provider, process or storage code reaches CUE evaluation.
+package cue
 
 import (
 	"context"

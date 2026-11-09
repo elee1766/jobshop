@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 func TestConfigHookValidation(t *testing.T) {
@@ -26,7 +28,7 @@ jev:
   endpoint: https://example.com/decide
   api_key: missing-key
 `,
-		CUEPackFileName: `package example
+		pack.CUEFileName: `package example
 projects: js: {}
 workflows: example: {
     on_start: "hooks.star:begin"
@@ -58,7 +60,7 @@ def completed(run, step):
 	} {
 		write(tc.body)
 		_, err := LoadFile(filepath.Join(dir, FileName))
-		require.ErrorIs(t, err, ErrPack)
+		require.ErrorIs(t, err, pack.ErrPack)
 		require.ErrorContains(t, err, tc.want)
 	}
 	_, err = os.Stat(sentinel)

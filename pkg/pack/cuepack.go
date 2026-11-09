@@ -1,4 +1,4 @@
-package config
+package pack
 
 import (
 	"fmt"
@@ -8,30 +8,28 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/goccy/go-yaml"
-
-	"github.com/elee1766/jobshop/pkg/packcue"
+	"github.com/elee1766/jobshop/pkg/pack/cue"
 )
 
-// CUEPackFileName is the native pack entry point. Its package, not only
+// CUEFileName is the native pack entry point. Its package, not only
 // this file, is evaluated so CUE imports and sibling files retain their meaning.
-const CUEPackFileName = "pack.cue"
+const CUEFileName = "pack.cue"
 
-func loadCUEPack(file string) ([]packLayer, error) {
-	result, err := packcue.Load(file, fileDir(file))
+func (ld loader) loadCUE(file string) ([]layer, error) {
+	result, err := cue.Load(file, FileDir(file))
 	if err != nil {
 		return nil, err
 	}
 	exported := result.Data
-	var layers []packLayer
-	var summaries []PackInstance
+	var layers []layer
+	var summaries []Instance
 	if raw, exists := exported["packs"]; exists {
 		packs, ok := raw.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("%s: packs must be a mapping of named CUE instances", file)
 		}
 		for _, name := range slices.Sorted(maps.Keys(packs)) {
-			if !namePattern.MatchString(name) {
+			if !NamePattern.MatchString(name) {
 				return nil, fmt.Errorf("%s: packs.%s: invalid instance name", file, name)
 			}
 			instance, ok := packs[name].(map[string]any)
@@ -43,7 +41,7 @@ func loadCUEPack(file string) ([]packLayer, error) {
 				return nil, fmt.Errorf("%s: packs.%s.path: asset directory is required", file, name)
 			}
 			if !filepath.IsAbs(path) {
-				path = filepath.Join(fileDir(file), path)
+				path = filepath.Join(FileDir(file), path)
 			}
 			if info, err := os.Stat(path); err != nil {
 				return nil, fmt.Errorf("%s: packs.%s.path: %w", file, name, err)
@@ -72,22 +70,22 @@ func loadCUEPack(file string) ([]packLayer, error) {
 			delete(instance, "path")
 			delete(instance, "prefix")
 			delete(instance, "vars")
-			layer, err := cuePackLayer(file, path, instance, vars, cueEntrySources(result, instance, "packs", name), false)
+			l, err := ld.cueLayer(file, path, instance, vars, cueEntrySources(result, instance, "packs", name), false)
 			if err != nil {
 				return nil, fmt.Errorf("%s: packs.%s: %w", file, name, err)
 			}
-			child := []packLayer{layer}
+			child := []layer{l}
 			if prefix != "" {
 				prefixLayers(child, prefix)
-				child[0].textSources = prefixSources(layer.textSources, prefix)
-				child[0].entrySources = prefixSources(layer.entrySources, prefix)
+				child[0].textSources = prefixSources(l.textSources, prefix)
+				child[0].entrySources = prefixSources(l.entrySources, prefix)
 			}
-			summaries = append(summaries, packInstance(path, prefix, child))
+			summaries = append(summaries, summarize(path, prefix, child))
 			layers = append(layers, child...)
 		}
 		delete(exported, "packs")
 	}
-	root, err := cuePackLayer(file, fileDir(file), exported, nil, cueEntrySources(result, exported), true)
+	root, err := ld.cueLayer(file, FileDir(file), exported, nil, cueEntrySources(result, exported), true)
 	if err != nil {
 		return nil, err
 	}
@@ -96,48 +94,32 @@ func loadCUEPack(file string) ([]packLayer, error) {
 	return append(layers, root), nil
 }
 
-func cuePackLayer(file, dir string, m, vars map[string]any, sources map[string][]string, root bool) (packLayer, error) {
+func (ld loader) cueLayer(file, dir string, m, vars map[string]any, sources map[string][]string, root bool) (layer, error) {
 	if err := setPackVars(m, vars, file); err != nil {
-		return packLayer{}, err
+		return layer{}, err
 	}
 	textSources := map[string][]string{}
 	var textVars map[string]any
 	if vars != nil {
-		textVars = map[string]any{CheckOutputVar: placeholder(CheckOutputVar)}
-		event := map[string]any{}
-		for _, field := range EventFields {
-			event[field] = placeholder(EventVar + "." + field)
-		}
-		textVars[EventVar] = event
-		for _, name := range ScanVars {
-			textVars[name] = placeholder(name)
-		}
+		textVars = ld.lateVars()
 		maps.Copy(textVars, vars)
 	}
-	if err := resolveTextFiles(m, textFiles{dir: dir, file: file, vars: textVars, sources: textSources}); err != nil {
-		return packLayer{}, err
+	if err := ld.resolveTextFiles(m, textFiles{dir: dir, file: file, vars: textVars, sources: textSources}); err != nil {
+		return layer{}, err
 	}
 	if err := resolveScriptEntries(m, dir, file, textSources); err != nil {
-		return packLayer{}, err
+		return layer{}, err
 	}
-	b, err := yaml.Marshal(m)
-	if err != nil {
-		return packLayer{}, fmt.Errorf("%s: %w", file, err)
+	if err := ld.checkLayer(m, root); err != nil {
+		return layer{}, fmt.Errorf("%s: %w", file, err)
 	}
-	var schema any = &packFile{}
-	if root {
-		schema = &rootPackFile{}
-	}
-	if err := yaml.UnmarshalWithOptions(b, schema, yaml.Strict()); err != nil {
-		return packLayer{}, fmt.Errorf("%s: %w", file, err)
-	}
-	return packLayer{
+	return layer{
 		file: file, m: m, vars: vars, textSources: textSources,
 		entrySources: sources,
 	}, nil
 }
 
-func cueEntrySources(result *packcue.Result, m map[string]any, path ...string) map[string][]string {
+func cueEntrySources(result *cue.Result, m map[string]any, path ...string) map[string][]string {
 	sources := map[string][]string{}
 	for _, section := range mergedSections {
 		entries, _ := m[section].(map[string]any)

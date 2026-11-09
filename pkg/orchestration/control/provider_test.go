@@ -13,6 +13,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
+	packpkg "github.com/elee1766/jobshop/pkg/pack"
 	"github.com/elee1766/jobshop/pkg/support/clock"
 	"github.com/elee1766/jobshop/pkg/transport/rpc"
 )
@@ -31,7 +32,7 @@ exit 0
 `), 0o600))
 	pack := filepath.Join(dir, "pk")
 	require.NoError(t, os.MkdirAll(pack, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(pack, config.PackFileName), []byte(`workflows:
+	require.NoError(t, os.WriteFile(filepath.Join(pack, packpkg.FileName), []byte(`workflows:
   device:
     vars: [issue]
     steps:

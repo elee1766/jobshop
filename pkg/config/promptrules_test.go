@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/elee1766/jobshop/pkg/pack"
 )
 
 func TestRuleMatch(t *testing.T) {
@@ -67,7 +69,7 @@ func TestPromptRulesMerge(t *testing.T) {
 	assert.Equal(t, RuleSystem, c.PromptRules[0].At)
 	assert.Equal(t, RuleTurn, c.PromptRules[1].At, "default at")
 	assert.Equal(t, "host file\n", c.PromptRules[3].Text)
-	assert.Equal(t, []string{filepath.Join(dir, "p2", PackFileName)}, c.Sources["prompt_rules.p2-rule"])
+	assert.Equal(t, []string{filepath.Join(dir, "p2", pack.FileName)}, c.Sources["prompt_rules.p2-rule"])
 	assert.Equal(t, []string{"p1"}, c.PoolPacks("dev"))
 
 	// A pack rule cannot take a host rule's name (and so cannot replace it).
