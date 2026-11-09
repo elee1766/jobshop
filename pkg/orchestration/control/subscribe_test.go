@@ -97,6 +97,11 @@ func subController(t *testing.T) (*Controller, *scanClock, *fakeThreads) {
 		sessions: map[string]context.CancelFunc{}, runners: map[string]*runner{}, events: ev,
 	}
 	c.ctx = t.Context()
+	// Cleanups run last in, first out: wait for goroutines the controller
+	// started (t.Context is already done) before the store closes and
+	// TempDir is removed, or one still writing makes RemoveAll fail with
+	// "directory not empty" (#1131).
+	t.Cleanup(c.wg.Wait)
 	src := &fakeThreads{cs: map[string][]threads.Comment{}, since: map[string]time.Time{}, pr: map[string]bool{}}
 	return c, clk, src
 }
