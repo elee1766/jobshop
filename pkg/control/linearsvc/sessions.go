@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 // sessionPoll spaces the agent-session sweep. A delegation or mention

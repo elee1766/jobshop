@@ -7,7 +7,7 @@ import (
 	"sort"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/identity"
+	"github.com/elee1766/jobshop/pkg/integrations/identity"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 

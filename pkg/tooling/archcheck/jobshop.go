@@ -96,11 +96,14 @@ func owners() []Owner {
 		{Pkg: "./pkg/config/tmpl", Target: "config/tmpl", Family: "config", Child: "-"},
 		{Pkg: "./pkg/cron", Target: "config/cron (parsed by config at load, evaluated by triggers)", Family: "config", Child: "JOB-172"},
 
-		// integrations
-		{Pkg: "./pkg/apicall", Target: "integrations/apicall (used by automation, cli and linearsvc, so not internal)", Family: "integrations", Child: "JOB-169"},
-		{Pkg: "./pkg/github", Target: "integrations/github", Family: "integrations", Child: "JOB-169"},
-		{Pkg: "./pkg/linear", Target: "integrations/linear", Family: "integrations", Child: "JOB-169"},
-		{Pkg: "./pkg/identity", Target: "integrations/identity", Family: "integrations", Child: "JOB-169"},
+		// integrations (JOB-169): one client per provider, no shared tracker
+		// interface. apicall stays public because automation and cli sit outside
+		// the family and need the token source and the observer.
+		{Pkg: "./pkg/integrations/apicall", Target: "stay", Family: "integrations", Child: "-"},
+		{Pkg: "./pkg/integrations/github", Target: "stay", Family: "integrations", Child: "-"},
+		{Pkg: "./pkg/integrations/linear", Target: "stay", Family: "integrations", Child: "-"},
+		{Pkg: "./pkg/integrations/identity", Target: "stay", Family: "integrations", Child: "-"},
+		{Pkg: "./pkg/integrations/internal/transport", Target: "stay (token renewal and body limit both clients share)", Family: "integrations", Child: "-"},
 
 		// execution
 		{Pkg: "./pkg/automation/...", Target: "execution/automation/...", Family: "automation", Child: "JOB-167"},

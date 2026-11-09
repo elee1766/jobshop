@@ -12,10 +12,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 	"github.com/elee1766/jobshop/pkg/rpc"
 )
 

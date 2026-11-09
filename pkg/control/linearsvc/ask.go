@@ -11,7 +11,7 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 // Linear issue communication (#293). For a run with meta.linear.issue,

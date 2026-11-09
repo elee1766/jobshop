@@ -12,9 +12,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/automation"
-	gh "github.com/elee1766/jobshop/pkg/github"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	gh "github.com/elee1766/jobshop/pkg/integrations/github"
 )
 
 const token = "ghs_minted-per-call"

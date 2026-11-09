@@ -12,7 +12,7 @@
 // overwrite a wait that changed meanwhile (JOB-144).
 //
 // Provider clients stay where they are (the gh CLI adapter in
-// pkg/control, pkg/linear); the engine sees them through the small
+// pkg/control, pkg/integrations/linear); the engine sees them through the small
 // interfaces below.
 package waitengine
 
@@ -21,8 +21,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/github"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 // Source reads PR, check, issue, tag and commit state from GitHub.

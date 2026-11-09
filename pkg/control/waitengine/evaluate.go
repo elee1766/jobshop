@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/github"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
 )
 
 // Decision is the outcome of evaluating one wait against a Pass. It is

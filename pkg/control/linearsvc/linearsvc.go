@@ -3,7 +3,7 @@
 // intake, webhook handling, question mirroring on the issue, and the
 // outage backoff every Linear poller shares.
 //
-// It reuses pkg/linear for every request and the controller's shared
+// It reuses pkg/integrations/linear for every request and the controller's shared
 // per-identity clients (Host.Client), so credentials and token minting stay
 // in the controller. Every store write goes back through Host. Slow
 // requests run outside the supervisor pass: the sweeps start them through
@@ -16,11 +16,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/config"
 	"github.com/elee1766/jobshop/pkg/domain"
 	"github.com/elee1766/jobshop/pkg/ingest"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 	"github.com/elee1766/jobshop/pkg/store"
 )
 

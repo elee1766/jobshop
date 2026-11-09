@@ -10,8 +10,8 @@ import (
 
 	"github.com/elee1766/jobshop/pkg/control/waitengine"
 	"github.com/elee1766/jobshop/pkg/domain"
-	"github.com/elee1766/jobshop/pkg/github"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 // fakeGitHub serves one PR and its checks.

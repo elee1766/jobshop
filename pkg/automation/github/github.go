@@ -15,10 +15,10 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/elee1766/jobshop/pkg/apicall"
 	"github.com/elee1766/jobshop/pkg/automation/api"
 	automationhttp "github.com/elee1766/jobshop/pkg/automation/http"
-	gh "github.com/elee1766/jobshop/pkg/github"
+	"github.com/elee1766/jobshop/pkg/integrations/apicall"
+	gh "github.com/elee1766/jobshop/pkg/integrations/github"
 )
 
 // maxPages bounds pages=N: each page is one request.

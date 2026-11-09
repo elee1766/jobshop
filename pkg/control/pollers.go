@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/github"
 	"github.com/elee1766/jobshop/pkg/ingest"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
 )
 
 // pumpPollers runs each ingest.pollers entry (#341) on its interval

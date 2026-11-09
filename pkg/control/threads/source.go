@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/elee1766/jobshop/pkg/config"
-	"github.com/elee1766/jobshop/pkg/github"
-	"github.com/elee1766/jobshop/pkg/linear"
+	"github.com/elee1766/jobshop/pkg/integrations/github"
+	"github.com/elee1766/jobshop/pkg/integrations/linear"
 )
 
 // Source reads a thread's comments newer than since. Tests replace it;
@@ -30,7 +30,7 @@ func (m Mux) Comments(ctx context.Context, th Thread, since time.Time) ([]Commen
 	return m.GH.Comments(ctx, th, since)
 }
 
-// GHSource reads GitHub threads with the gh CLI (pkg/github), which has
+// GHSource reads GitHub threads with the gh CLI (pkg/integrations/github), which has
 // the host's token.
 type GHSource struct{}
 
